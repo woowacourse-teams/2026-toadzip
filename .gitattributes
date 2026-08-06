@@ -1,0 +1,14 @@
+* text=auto
+
+*.java text eol=lf
+*.gradle text eol=lf
+*.properties text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+**/gradlew text eol=lf
+
+*.bat text eol=crlf
+
+*.jar binary

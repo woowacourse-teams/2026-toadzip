@@ -1,0 +1,28 @@
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and JVM error reports
+*.log
+hs_err_pid*
+
+# Java and Gradle outputs
+*.class
+**/.gradle/
+**/build/
+
+# Frontend outputs (reserved for future use)
+**/node_modules/
+**/dist/
+**/coverage/
