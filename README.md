@@ -31,7 +31,53 @@ java -version
 - Docker Engine 또는 Docker Desktop
 - Docker Compose
 
-Docker Desktop에는 Docker Compose가 포함되어 있습니다.
+#### 1. Docker 설치
+
+아래 명령은 Amazon Linux 2023의 x86_64 환경을 기준으로 합니다.
+
+```shell
+sudo yum install -y docker
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"
+```
+
+그룹 권한을 적용하려면 로그아웃한 뒤 다시 접속합니다. 이후 설치 상태를 확인합니다.
+
+```shell
+docker --version
+```
+
+macOS와 Windows에서는 Docker Desktop을 설치하면 Docker Compose와 Buildx가 함께 제공되므로 아래 2번과 3번 과정은 생략할 수 있습니다.
+
+#### 2. Docker Compose 설치
+
+Docker Compose CLI 플러그인의 최신 안정 버전을 설치합니다.
+
+```shell
+mkdir -p ~/.docker/cli-plugins
+
+curl -SL \
+  https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
+  -o ~/.docker/cli-plugins/docker-compose
+
+chmod +x ~/.docker/cli-plugins/docker-compose
+docker compose version
+```
+
+#### 3. Docker Buildx 설치
+
+Docker Compose에서 이미지를 빌드할 수 있도록 Buildx v0.34.1 CLI 플러그인을 설치합니다.
+
+```shell
+mkdir -p ~/.docker/cli-plugins
+
+curl -SL \
+  https://github.com/docker/buildx/releases/download/v0.34.1/buildx-v0.34.1.linux-amd64 \
+  -o ~/.docker/cli-plugins/docker-buildx
+
+chmod +x ~/.docker/cli-plugins/docker-buildx
+docker buildx version
+```
 
 ### 환경변수 준비
 
