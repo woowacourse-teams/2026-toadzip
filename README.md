@@ -4,8 +4,10 @@
 
 ```text
 toadzip/
-├── backend/    # Spring Boot 백엔드
-└── frontend/   # 프런트엔드 자리 표시자
+├── compose.yaml    # 백엔드와 PostgreSQL 실행 설정
+├── .env.example    # 환경변수 예시
+├── backend/        # Spring Boot 백엔드와 Dockerfile
+└── frontend/       # 프런트엔드 자리 표시자
 ```
 
 ## 개발 환경
@@ -21,7 +23,64 @@ Gradle은 별도로 설치하지 않습니다. 저장소에 포함된 Gradle Wra
 java -version
 ```
 
-### IntelliJ IDEA 설정
+## Docker로 실행
+
+### 사전 준비
+
+- Git
+- Docker Engine 또는 Docker Desktop
+- Docker Compose
+
+Docker Desktop에는 Docker Compose가 포함되어 있습니다.
+
+### 환경변수 준비
+
+프로젝트 루트에서 예시 파일을 복사합니다.
+
+```shell
+cp .env.example .env
+```
+
+생성된 `.env`에서 PostgreSQL 비밀번호를 변경합니다. Git에 커밋하지 않습니다.
+
+### 빌드 및 실행
+
+프로젝트 루트에서 다음 명령을 실행합니다.
+
+```shell
+docker compose up -d --build
+```
+
+이 명령은 백엔드 이미지를 빌드하고 PostgreSQL과 백엔드 컨테이너를 함께 실행합니다.
+
+### 실행 확인
+
+```shell
+docker compose ps
+docker compose logs -f backend
+```
+
+헬스체크 API를 호출해 백엔드 상태를 확인할 수 있습니다.
+
+```shell
+curl http://localhost:8080/api/health
+```
+
+정상 응답:
+
+```json
+{"status":"UP"}
+```
+
+### 종료
+
+```shell
+docker compose down
+```
+
+`docker compose down`을 실행해도 PostgreSQL 데이터 볼륨은 유지됩니다.
+
+## IntelliJ IDEA 설정
 
 `backend`를 Gradle 프로젝트로 불러오고 Gradle JVM을 JDK 25로 설정합니다. `build.gradle`이 변경되면 Gradle 도구 창에서 **Reload All Gradle Projects**를 실행해야 새 의존성이 IDE 실행 클래스패스에 반영됩니다.
 
