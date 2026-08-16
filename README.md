@@ -15,6 +15,8 @@ toadzip/
 - JDK 25
 - Git
 
+백엔드 코드 작성 규칙은 [Backend Code Convention](backend/CODE_CONVENTION.md)을 참고합니다.
+
 Gradle은 별도로 설치하지 않습니다. 저장소에 포함된 Gradle Wrapper를 사용합니다.
 
 설치된 Java 버전을 확인합니다.
