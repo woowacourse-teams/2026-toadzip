@@ -232,10 +232,16 @@ public class LhLeaseInfoIngestService {
 		}
 
 		Map<CatalogKey, List<HousingComplex>> complexes = complexesByKey();
+		List<UnitType> allUnitTypes = unitTypeRepository.findAll();
+		Map<Long, List<UnitType>> unitTypesByComplex = new HashMap<>();
+		for (UnitType unitType : allUnitTypes) {
+			unitTypesByComplex.computeIfAbsent(unitType.getHousingComplex().getId(), ignored -> new ArrayList<>())
+				.add(unitType);
+		}
 		Map<Long, List<LeaseInfoRow>> rowsByUnitType = new LinkedHashMap<>();
 		Map<Long, UnitType> units = new HashMap<>();
 		for (LeaseInfoRow row : rows) {
-			UnitType unitType = resolve(row, complexes);
+			UnitType unitType = resolve(row, complexes, unitTypesByComplex);
 			if (unitType == null) {
 				continue;
 			}
@@ -244,7 +250,7 @@ public class LhLeaseInfoIngestService {
 		}
 
 		IngestReport report = IngestReport.empty();
-		for (UnitType unitType : unitTypeRepository.findAll()) {
+		for (UnitType unitType : allUnitTypes) {
 			if (unitType.updateTotalUnitCount(null)) {
 				report = report.plus(IngestReport.oneUpdated());
 			}
@@ -285,7 +291,8 @@ public class LhLeaseInfoIngestService {
 		return unitType.updateBaseRentTerms(new BaseRentTerms(deposit, monthlyRent, convertibleLimit));
 	}
 
-	private UnitType resolve(LeaseInfoRow row, Map<CatalogKey, List<HousingComplex>> complexes) {
+	private UnitType resolve(LeaseInfoRow row, Map<CatalogKey, List<HousingComplex>> complexes,
+			Map<Long, List<UnitType>> unitTypesByComplex) {
 		List<HousingComplex> candidates = complexes.get(row.key());
 		if (candidates == null || candidates.size() != 1) {
 			return null;
@@ -297,7 +304,7 @@ public class LhLeaseInfoIngestService {
 		if (row.exclusiveArea() == null || row.totalUnitCount() == null) {
 			return null;
 		}
-		List<UnitType> unitTypes = unitTypeRepository.findByHousingComplex(complex);
+		List<UnitType> unitTypes = unitTypesByComplex.getOrDefault(complex.getId(), List.of());
 		List<UnitType> matches = new ArrayList<>();
 		for (UnitType unitType : unitTypes) {
 			if (unitType.getExclusiveArea() != null
