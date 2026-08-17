@@ -3,6 +3,7 @@ package com.toadzip.backend.notice;
 import java.math.BigDecimal;
 import java.util.stream.Stream;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -12,6 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class LhUnitSupplyValuesTest {
 
 	@Test
+	@DisplayName("모든 공급 값이 null이면 비어 있다고 판단한다")
 	void isEmptyWhenEveryValueIsNull() {
 		LhUnitSupplyValues values = new LhUnitSupplyValues(null, null, null, null, null, null, null, null);
 
@@ -19,6 +21,7 @@ class LhUnitSupplyValuesTest {
 	}
 
 	@ParameterizedTest
+	@DisplayName("공급 값 중 하나라도 있으면 비어 있지 않다고 판단한다")
 	@MethodSource("nonEmptyValues")
 	void isNotEmptyWhenAnyValueExists(LhUnitSupplyValues values) {
 		assertThat(values.isEmpty()).isFalse();

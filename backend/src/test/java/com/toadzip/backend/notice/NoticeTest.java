@@ -3,6 +3,7 @@ package com.toadzip.backend.notice;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -11,6 +12,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class NoticeTest {
 
 	@Test
+	@DisplayName("이전 버전을 유지한 채 다음 공고 버전을 생성한다")
 	void createsNextVersionWithoutChangingPreviousVersion() {
 		Notice first = Notice.firstVersion("notice-1", null, snapshot("첫 공고"));
 
@@ -26,6 +28,7 @@ class NoticeTest {
 	}
 
 	@Test
+	@DisplayName("공고 버전을 더 이른 공고에 다시 연결한다")
 	void rebasesVersionOntoEarlierNotice() {
 		Notice previous = Notice.firstVersion("notice-1", null, snapshot("첫 공고"));
 		Notice correction = Notice.firstVersion("notice-2", "notice-1", snapshot("정정 공고"));
@@ -38,6 +41,7 @@ class NoticeTest {
 	}
 
 	@Test
+	@DisplayName("현재 공고 내용을 스냅샷과 비교한다")
 	void comparesCurrentContentWithSnapshot() {
 		Notice notice = Notice.firstVersion("notice-1", null, snapshot("첫 공고"));
 
@@ -46,6 +50,7 @@ class NoticeTest {
 	}
 
 	@Test
+	@DisplayName("하위 정보 목록을 읽기 전용으로 노출한다")
 	void exposesReadOnlyChildLists() {
 		Notice notice = Notice.firstVersion("notice-1", null, snapshot("첫 공고"));
 		notice.addSchedule("대전 산내", "2026.08.01~2026.08.03", null, null, null, null, null);
@@ -58,6 +63,7 @@ class NoticeTest {
 	}
 
 	@Test
+	@DisplayName("공고의 LH 하위 정보를 모두 비운다")
 	void clearsLhChildren() {
 		Notice notice = Notice.firstVersion("notice-1", null, snapshot("첫 공고"));
 		notice.addSchedule("대전 산내", "2026.08.01~2026.08.03", null, null, null, null, null);

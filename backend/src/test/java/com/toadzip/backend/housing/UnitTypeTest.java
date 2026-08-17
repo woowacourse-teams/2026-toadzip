@@ -2,6 +2,7 @@ package com.toadzip.backend.housing;
 
 import java.math.BigDecimal;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -9,6 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class UnitTypeTest {
 
 	@Test
+	@DisplayName("기본 임대 조건이 변경된 경우에만 갱신한다")
 	void updatesBaseRentTermsOnlyWhenValuesChange() {
 		UnitType unitType = unitType();
 		BaseRentTerms terms = new BaseRentTerms(10_000_000L, 100_000L, 3_000_000L);
@@ -19,6 +21,7 @@ class UnitTypeTest {
 	}
 
 	@Test
+	@DisplayName("전체 세대수가 변경된 경우에만 갱신한다")
 	void updatesTotalUnitCountOnlyWhenValueChanges() {
 		UnitType unitType = unitType();
 

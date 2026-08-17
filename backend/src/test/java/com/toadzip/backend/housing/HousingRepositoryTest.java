@@ -2,6 +2,7 @@ package com.toadzip.backend.housing;
 
 import java.math.BigDecimal;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +20,7 @@ class HousingRepositoryTest {
 	private UnitTypeRepository unitTypeRepository;
 
 	@Test
+	@DisplayName("원천 단지 식별자와 공급 유형으로 단지를 조회한다")
 	void findsComplexBySourceIdAndSupplyType() {
 		HousingComplex complex = this.housingComplexRepository.save(complex("complex-1", "3011013600101900001"));
 
@@ -27,6 +29,7 @@ class HousingRepositoryTest {
 	}
 
 	@Test
+	@DisplayName("같은 PNU와 공급 유형의 모든 단지 후보를 조회한다")
 	void returnsEveryComplexCandidateWithSamePnuAndSupplyType() {
 		HousingComplex first = this.housingComplexRepository.save(complex("complex-1", "3011013600101900001"));
 		HousingComplex second = this.housingComplexRepository.save(complex("complex-2", "3011013600101900001"));
@@ -36,6 +39,7 @@ class HousingRepositoryTest {
 	}
 
 	@Test
+	@DisplayName("주택형 자연키로 주택형을 조회한다")
 	void findsUnitTypeByNaturalKey() {
 		HousingComplex complex = this.housingComplexRepository.save(complex("complex-1", "3011013600101900001"));
 		BigDecimal exclusiveArea = new BigDecimal("36.5000");

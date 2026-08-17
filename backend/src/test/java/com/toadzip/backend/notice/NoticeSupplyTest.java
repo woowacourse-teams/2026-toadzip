@@ -3,6 +3,7 @@ package com.toadzip.backend.notice;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import com.toadzip.backend.housing.Address;
@@ -14,6 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class NoticeSupplyTest {
 
 	@Test
+	@DisplayName("단지 공급행을 LH 주택형 공급행으로 분리한다")
 	void splitsComplexSupplyIntoLhUnitSupply() {
 		NoticeSupply complexSupply = complexSupply(0);
 		complexSupply.applyMoveInYearMonth(YearMonth.of(2026, 10));
@@ -42,6 +44,7 @@ class NoticeSupplyTest {
 	}
 
 	@Test
+	@DisplayName("마이홈과 연결되지 않은 LH 공급행을 생성한다")
 	void createsLhOnlySupply() {
 		Notice notice = notice();
 
@@ -55,6 +58,7 @@ class NoticeSupplyTest {
 	}
 
 	@Test
+	@DisplayName("주택형을 찾지 못한 이유를 기록한다")
 	void recordsUnmatchedReasonWithoutUnitType() {
 		HousingComplex housingComplex = housingComplex();
 		NoticeSupply supply = complexSupply(0);
@@ -67,6 +71,7 @@ class NoticeSupplyTest {
 	}
 
 	@Test
+	@DisplayName("주택형을 연결하면 기존 실패 이유를 제거한다")
 	void clearsUnmatchedReasonWhenUnitTypeIsLinked() {
 		HousingComplex housingComplex = housingComplex();
 		UnitType unitType = new UnitType(housingComplex, "36", new BigDecimal("36.5000"), new BigDecimal("15.0000"));

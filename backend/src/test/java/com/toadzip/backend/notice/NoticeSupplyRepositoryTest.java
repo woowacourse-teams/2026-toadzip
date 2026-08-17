@@ -3,6 +3,7 @@ package com.toadzip.backend.notice;
 import java.time.YearMonth;
 
 import jakarta.persistence.EntityManager;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +28,7 @@ class NoticeSupplyRepositoryTest {
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
+	@DisplayName("입주 예정 연월을 YYYY-MM 문자열로 저장하고 복원한다")
 	void persistsYearMonthAsTextAndRestoresIt() {
 		Notice notice = this.noticeRepository.save(notice());
 		NoticeSupply supply = NoticeSupply.ofComplex(notice, 0, 10, "대전 산내", "3011013600101900001", "대전광역시 동구 산내로 123",
@@ -44,6 +46,7 @@ class NoticeSupplyRepositoryTest {
 	}
 
 	@Test
+	@DisplayName("공급행을 표시 순서대로 조회한다")
 	void findsSuppliesInDisplayOrder() {
 		Notice notice = this.noticeRepository.save(notice());
 		NoticeSupply second = this.noticeSupplyRepository.save(supply(notice, 1));
@@ -55,6 +58,7 @@ class NoticeSupplyRepositoryTest {
 	}
 
 	@Test
+	@DisplayName("공고 식별자로 공급행을 일괄 삭제한다")
 	void deletesSuppliesByNoticeId() {
 		Notice notice = this.noticeRepository.save(notice());
 		this.noticeSupplyRepository.save(supply(notice, 0));

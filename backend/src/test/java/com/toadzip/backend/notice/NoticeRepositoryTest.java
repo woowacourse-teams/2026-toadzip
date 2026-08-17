@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import jakarta.persistence.EntityManager;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +31,7 @@ class NoticeRepositoryTest {
 	private EntityManager entityManager;
 
 	@Test
+	@DisplayName("원천 식별자와 상세 URL로 공고를 조회한다")
 	void findsNoticeBySourceKeysAndDetailUrl() {
 		Notice notice = Notice.firstVersion("notice-1", null, snapshot("첫 공고"));
 		notice.prepareLhRequest("pan-1", "05");
@@ -43,6 +45,7 @@ class NoticeRepositoryTest {
 	}
 
 	@Test
+	@DisplayName("공고 버전 체인을 순서대로 조회한다")
 	void findsVersionChainInOrder() {
 		Notice first = this.noticeRepository.save(Notice.firstVersion("notice-1", null, snapshot("첫 공고")));
 		Notice next = this.noticeRepository.save(first.nextVersion("notice-2", "notice-1", snapshot("정정 공고")));
@@ -53,6 +56,7 @@ class NoticeRepositoryTest {
 	}
 
 	@Test
+	@DisplayName("공고 하위 정보를 표시 순서대로 저장하고 조회한다")
 	void persistsChildrenInDisplayOrder() {
 		Notice notice = Notice.firstVersion("notice-1", null, snapshot("첫 공고"));
 		notice.addSchedule("첫 일정", null, null, null, null, null, null);
@@ -70,6 +74,7 @@ class NoticeRepositoryTest {
 	}
 
 	@Test
+	@DisplayName("공고 식별자로 하위 정보를 일괄 삭제한다")
 	void deletesChildrenByNoticeId() {
 		Notice notice = Notice.firstVersion("notice-1", null, snapshot("첫 공고"));
 		notice.addSchedule("첫 일정", null, null, null, null, null, null);
@@ -88,6 +93,7 @@ class NoticeRepositoryTest {
 	}
 
 	@Test
+	@DisplayName("컬렉션을 비우면 저장된 하위 정보도 삭제한다")
 	void removesPersistedChildrenWhenCollectionsAreCleared() {
 		Notice notice = Notice.firstVersion("notice-1", null, snapshot("첫 공고"));
 		notice.addSchedule("첫 일정", null, null, null, null, null, null);
