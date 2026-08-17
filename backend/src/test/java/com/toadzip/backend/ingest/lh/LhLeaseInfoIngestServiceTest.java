@@ -69,18 +69,27 @@ class LhLeaseInfoIngestServiceTest {
 				new BigDecimal("20.1000")));
 		matched.updateBaseRentTerms(new BaseRentTerms(10_000_000L, 100_000L, 3_000_000L));
 		service = new LhLeaseInfoIngestService(null, MAPPER, complexRepository, unitTypeRepository,
-				new LhCatalogSourceStore(sourceRepository), transactionManager);
+				transactionManager, sourceRepository);
 	}
 
 	@Test
-	@DisplayName("지역·단지명·공급유형과 세대수·전용면적이 유일하면 임대조건을 보정한다")
-	void projectsUniqueCatalogRow() throws Exception {
+	@DisplayName("LH 카탈로그 원천 적재와 주택형 투영을 별도 단계로 실행한다")
+	void storesSourceBeforeProjection() throws Exception {
 		IngestReport report = service.applyPages(List.of(MAPPER.readTree(response("72", "19546000", "195460"))));
 		entityManager.flush();
 		entityManager.clear();
 
-		UnitType actual = unitTypeRepository.findById(matched.getId()).orElseThrow();
 		assertThat(report.failed()).isZero();
+		assertThat(sourceRepository.findAllByOrderBySourceOrderAscIdAsc()).hasSize(1);
+		UnitType beforeProjection = unitTypeRepository.findById(matched.getId()).orElseThrow();
+		assertThat(beforeProjection.getTotalUnitCount()).isNull();
+
+		IngestReport projection = service.projectAll();
+		entityManager.flush();
+		entityManager.clear();
+
+		UnitType actual = unitTypeRepository.findById(matched.getId()).orElseThrow();
+		assertThat(projection.failed()).isZero();
 		assertThat(actual.getTotalUnitCount()).isEqualTo(72);
 		assertThat(actual.getBaseRentTerms().getDeposit()).isEqualTo(19_546_000L);
 		assertThat(actual.getBaseRentTerms().getMonthlyRent()).isEqualTo(195_460L);
@@ -107,6 +116,9 @@ class LhLeaseInfoIngestServiceTest {
 		matched.updateTotalUnitCount(72);
 
 		service.applyPages(List.of(MAPPER.readTree(duplicateTargetResponse())));
+		entityManager.flush();
+		entityManager.clear();
+		service.projectAll();
 		entityManager.flush();
 		entityManager.clear();
 

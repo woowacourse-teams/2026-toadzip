@@ -21,13 +21,9 @@ public class MyHomeNoticeIngestService {
 
 	private final MyHomeNoticeSourceStore sourceStore;
 
-	private final MyHomeNoticeProjectionService projectionService;
-
-	public MyHomeNoticeIngestService(MyHomeNoticeSourceClient sourceClient, MyHomeNoticeSourceStore sourceStore,
-			MyHomeNoticeProjectionService projectionService) {
+	public MyHomeNoticeIngestService(MyHomeNoticeSourceClient sourceClient, MyHomeNoticeSourceStore sourceStore) {
 		this.sourceClient = sourceClient;
 		this.sourceStore = sourceStore;
-		this.projectionService = projectionService;
 	}
 
 	public MyHomeNoticeIngestResult ingest(int pageSize, int maxPages) {
@@ -44,7 +40,7 @@ public class MyHomeNoticeIngestService {
 			}
 		}
 		staging = staging.plus(storeBatch(completeRows));
-		return new MyHomeNoticeIngestResult(staging, projectionService.projectAll());
+		return new MyHomeNoticeIngestResult(staging);
 	}
 
 	private List<MyHomeNoticeSourceItem> fetchComplete(MyHomeNoticeSupplyType supplyType, int pageSize,

@@ -123,8 +123,7 @@ public class LhNoticeIngestService {
 			JsonNode details = apiClient.getRaw(DETAIL_PATH, resolved.toParams());
 			JsonNode supplies = apiClient.getRaw(SUPPLY_PATH, resolved.toParams());
 			LhNoticeSourceNormalizer.Rows rows = normalizer.normalize(resolved.panId(), details, supplies);
-			sourceStore.replaceSnapshot(resolved.panId(), rows.details(), rows.supplies());
-			return applyFromSources(notice, resolved, rows.details(), rows.supplies(), refresh);
+			return sourceStore.replaceSnapshot(resolved.panId(), rows.details(), rows.supplies());
 		}
 		catch (RuntimeException exception) {
 			log.warn("LH 공고 상세·공급 적재 실패: sourceNoticeId={}", notice.getSourceNoticeId(), exception);

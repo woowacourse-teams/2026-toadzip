@@ -100,7 +100,7 @@ public class LhLeaseInfoIngestService {
 		try {
 			List<JsonNode> pages = fetchPages(pageSize, maxPages);
 			List<LhLeaseInfoItem> items = readItems(pages);
-			return replaceAndProject(items);
+			return replaceSources(items);
 		}
 		catch (RuntimeException exception) {
 			log.warn("LH 임대 카탈로그 적재에 실패했습니다.", exception);
@@ -114,7 +114,7 @@ public class LhLeaseInfoIngestService {
 			return IngestReport.oneFailed();
 		}
 		try {
-			return replaceAndProject(readItems(pages));
+			return replaceSources(readItems(pages));
 		}
 		catch (RuntimeException exception) {
 			log.warn("LH 임대 카탈로그 페이지 반영에 실패했습니다.", exception);
@@ -155,18 +155,6 @@ public class LhLeaseInfoIngestService {
 			return IngestReport.oneFailed();
 		}
 		return sourceStore.replaceSnapshot(items);
-	}
-
-	private IngestReport replaceAndProject(List<LhLeaseInfoItem> items) {
-		if (items.isEmpty()) {
-			return IngestReport.oneFailed();
-		}
-		return Objects.requireNonNull(transactionTemplate.execute(status -> {
-			if (sourceStore != null) {
-				sourceStore.replaceSnapshot(items);
-			}
-			return projectItems(items);
-		}));
 	}
 
 	private List<JsonNode> fetchPages(int pageSize, int maxPages) {
@@ -232,14 +220,6 @@ public class LhLeaseInfoIngestService {
 			}
 		}
 		return false;
-	}
-
-	private IngestReport projectItems(List<LhLeaseInfoItem> items) {
-		List<LhCatalogSource> sources = new ArrayList<>();
-		for (int sourceOrder = 0; sourceOrder < items.size(); sourceOrder++) {
-			sources.add(new LhCatalogSource(sourceOrder, items.get(sourceOrder)));
-		}
-		return projectRows(sources);
 	}
 
 	private IngestReport projectRows(List<LhCatalogSource> sources) {

@@ -27,17 +27,13 @@ class MyHomeNoticeIngestServiceTest {
 	@Mock
 	private MyHomeNoticeSourceStore sourceStore;
 
-	@Mock
-	private MyHomeNoticeProjectionService projectionService;
-
 	@Test
-	@DisplayName("공급유형별 완전한 페이지를 한 번에 원천 저장하고 투영한다")
+	@DisplayName("공급유형별 완전한 페이지를 한 번에 원천 저장한다")
 	void storesAllCompleteSupplyTypeRowsBeforeProjection() {
 		when(sourceClient.fetch(any())).thenReturn(List.of());
 		when(sourceClient.fetch(new MyHomeNoticePageRequest(MyHomeNoticeSupplyType.PERMANENT_RENTAL, 1, 2)))
 			.thenReturn(List.of(item("1", 1)));
 		when(sourceStore.storeBatch(any())).thenReturn(IngestReport.oneCreated());
-		when(projectionService.projectAll()).thenReturn(IngestReport.oneUpdated());
 
 		MyHomeNoticeIngestResult result = service().ingest(2, 5);
 
@@ -45,7 +41,7 @@ class MyHomeNoticeIngestServiceTest {
 		verify(sourceStore).storeBatch(rows.capture());
 		assertThat(rows.getValue()).extracting(MyHomeNoticeSourceItem::pblancId).containsExactly("1");
 		assertThat(result.staging().created()).isOne();
-		assertThat(result.projection().updated()).isOne();
+		assertThat(result.staging().created()).isOne();
 	}
 
 	@Test
@@ -53,13 +49,11 @@ class MyHomeNoticeIngestServiceTest {
 	void doesNotStoreIncompleteSupplyTypeRows() {
 		when(sourceClient.fetch(any())).thenReturn(List.of(item("other", 1), item("other", 2)));
 		when(sourceStore.storeBatch(List.of())).thenReturn(IngestReport.empty());
-		when(projectionService.projectAll()).thenReturn(IngestReport.empty());
 
 		MyHomeNoticeIngestResult result = service().ingest(2, 1);
 
 		verify(sourceStore).storeBatch(List.of());
 		assertThat(result.staging().failed()).isEqualTo(MyHomeNoticeSupplyType.values().length);
-		verify(projectionService).projectAll();
 	}
 
 	@Test
@@ -70,8 +64,18 @@ class MyHomeNoticeIngestServiceTest {
 		verify(sourceClient, never()).fetch(any());
 	}
 
+	@Test
+	@DisplayName("마이홈 공고 원천 적재는 도메인 투영을 호출하지 않는다")
+	void storesSourceOnly() {
+		when(sourceClient.fetch(any())).thenReturn(List.of());
+		when(sourceStore.storeBatch(List.of())).thenReturn(IngestReport.empty());
+
+		service().ingest(10, 1);
+
+	}
+
 	private MyHomeNoticeIngestService service() {
-		return new MyHomeNoticeIngestService(sourceClient, sourceStore, projectionService);
+		return new MyHomeNoticeIngestService(sourceClient, sourceStore);
 	}
 
 	private MyHomeNoticeSourceItem item(String noticeId, Integer houseSn) {

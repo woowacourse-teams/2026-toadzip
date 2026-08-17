@@ -5,6 +5,8 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.toadzip.backend.ingest.IngestReport;
+
 @Service
 public class LhNoticeSourceStore {
 
@@ -19,7 +21,7 @@ public class LhNoticeSourceStore {
 	}
 
 	@Transactional
-	public void replaceSnapshot(String panId, List<LhNoticeDetailSource> details,
+	public IngestReport replaceSnapshot(String panId, List<LhNoticeDetailSource> details,
 			List<LhNoticeSupplySource> supplies) {
 		detailRepository.deleteByPanId(panId);
 		supplyRepository.deleteByPanId(panId);
@@ -27,5 +29,6 @@ public class LhNoticeSourceStore {
 		supplyRepository.flush();
 		detailRepository.saveAll(details);
 		supplyRepository.saveAll(supplies);
+		return new IngestReport(details.size() + supplies.size(), 0, 0, 0, java.util.Map.of());
 	}
 }

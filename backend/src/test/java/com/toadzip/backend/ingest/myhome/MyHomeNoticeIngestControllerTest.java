@@ -30,14 +30,13 @@ class MyHomeNoticeIngestControllerTest {
 	@Test
 	@DisplayName("기본 페이징 조건으로 마이홈 공고 적재를 실행한다")
 	void delegatesDefaultPaging() throws Exception {
-		MyHomeNoticeIngestResult result = new MyHomeNoticeIngestResult(IngestReport.oneCreated(),
-				IngestReport.oneUpdated());
+		MyHomeNoticeIngestResult result = new MyHomeNoticeIngestResult(IngestReport.oneCreated());
 		when(ingestService.ingest(100, 50)).thenReturn(result);
 
 		mockMvc.perform(post("/admin/ingest/notices"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.staging.created").value(1))
-			.andExpect(jsonPath("$.projection.updated").value(1));
+			.andExpect(jsonPath("$.projection").doesNotExist());
 
 		verify(ingestService).ingest(100, 50);
 	}
