@@ -54,8 +54,10 @@ public class MyHomeComplexSource {
 
 	private String styleNm;
 
+	@Column(precision = 10, scale = 4)
 	private BigDecimal suplyPrvuseAr;
 
+	@Column(precision = 10, scale = 4)
 	private BigDecimal suplyCmnuseAr;
 
 	private String houseTyNm;
@@ -84,7 +86,8 @@ public class MyHomeComplexSource {
 	}
 
 	public static String sourceKeyOf(MyHomeComplexSourceItem item) {
-		return keyPart(item.hsmpSn()) + keyPart(item.pnu()) + keyPart(item.suplyTyNm()) + keyPart(item.styleNm());
+		return keyPart(item.hsmpSn()) + keyPart(item.pnu()) + keyPart(item.suplyTyNm()) + keyPart(item.styleNm())
+				+ keyPart(item.suplyPrvuseAr()) + keyPart(item.suplyCmnuseAr());
 	}
 
 	public boolean replaceWith(MyHomeComplexSourceItem item) {
@@ -130,8 +133,13 @@ public class MyHomeComplexSource {
 
 	private static String keyPart(Object raw) {
 		String value = null;
+		if (raw instanceof BigDecimal decimal) {
+			value = decimal.stripTrailingZeros().toPlainString();
+		}
 		if (raw != null) {
-			value = SourceValues.trimToNull(raw.toString());
+			if (value == null) {
+				value = SourceValues.trimToNull(raw.toString());
+			}
 		}
 		if (value == null) {
 			return "-1:";

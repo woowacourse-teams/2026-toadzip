@@ -82,10 +82,30 @@ class MyHomeComplexSourceStoreTest {
 		assertThat(repository.count()).isEqualTo(2);
 	}
 
+	@Test
+	@DisplayName("주택형명이 같아도 면적이 다르면 별도 원천 행으로 저장한다")
+	void storesDifferentAreasSeparately() {
+		MyHomeComplexSourceItem first = item("LH", "46A", "39.9541", "10.1234");
+		MyHomeComplexSourceItem second = item("LH", "46A", "40.0000", "11.0000");
+
+		IngestReport report = store.store(java.util.List.of(first, second));
+		flushAndClear();
+
+		assertThat(report.created()).isEqualTo(2);
+		assertThat(repository.findAll()).extracting(MyHomeComplexSource::getSuplyPrvuseAr)
+			.containsExactlyInAnyOrder(new BigDecimal("39.9541"), new BigDecimal("40.0000"));
+	}
+
 	private MyHomeComplexSourceItem item(String institutionName, String styleName) {
+		return item(institutionName, styleName, "46.8", "20.2");
+	}
+
+	private MyHomeComplexSourceItem item(String institutionName, String styleName, String exclusiveArea,
+			String commonArea) {
 		return new MyHomeComplexSourceItem(123L, institutionName, "11", "서울특별시", "110", "종로구", " 테스트 단지 ",
-				"서울특별시 종로구 테스트로 1", "1111010100100010000", "20200101", 100, "국민임대", styleName, new BigDecimal("46.8"),
-				new BigDecimal("20.2"), "아파트", "지역난방", "복도식", "전체동 설치", 80, 10_000_000L, 200_000L, 20_000_000L);
+				"서울특별시 종로구 테스트로 1", "1111010100100010000", "20200101", 100, "국민임대", styleName,
+				new BigDecimal(exclusiveArea), new BigDecimal(commonArea), "아파트", "지역난방", "복도식", "전체동 설치", 80,
+				10_000_000L, 200_000L, 20_000_000L);
 	}
 
 	private void flushAndClear() {

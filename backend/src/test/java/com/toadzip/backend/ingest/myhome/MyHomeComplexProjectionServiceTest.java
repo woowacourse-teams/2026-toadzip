@@ -91,6 +91,20 @@ class MyHomeComplexProjectionServiceTest {
 	}
 
 	@Test
+	@DisplayName("주택형명이 같고 면적이 다른 staging 행을 각각 투영한다")
+	void projectsSameNamedUnitTypesWithDifferentAreas() {
+		MyHomeComplexSourceItem first = item(123L, "46A", "LH", "39.9541");
+		MyHomeComplexSourceItem second = item(123L, "46A", "LH", "40.0000");
+		sourceStore.store(List.of(first, second));
+
+		IngestReport report = service.projectAll();
+
+		assertThat(report.created()).isOne();
+		assertThat(unitTypeRepository.findAll()).extracting("exclusiveArea")
+			.containsExactlyInAnyOrder(new BigDecimal("39.9541"), new BigDecimal("40.0000"));
+	}
+
+	@Test
 	@DisplayName("staging 값이 달라지면 기존 도메인 행을 갱신한다")
 	void updatesChangedDomainRows() {
 		sourceStore.store(List.of(item(123L, "46A", "LH")));
@@ -147,13 +161,18 @@ class MyHomeComplexProjectionServiceTest {
 	}
 
 	private MyHomeComplexSourceItem item(Long complexId, String styleName, String institutionName) {
+		return item(complexId, styleName, institutionName, "46.8");
+	}
+
+	private MyHomeComplexSourceItem item(Long complexId, String styleName, String institutionName,
+			String exclusiveArea) {
 		String pnu = "1111010100100010000";
 		if (!complexId.equals(123L)) {
 			pnu = "1111010100100020000";
 		}
 		return new MyHomeComplexSourceItem(complexId, institutionName, "11", "서울특별시", "110", "종로구",
 				"테스트 단지 " + complexId, "서울특별시 종로구 테스트로 " + complexId, pnu, "20200101", 100, "국민임대", styleName,
-				new BigDecimal("46.8"), new BigDecimal("20.2"), "아파트", "지역난방", "복도식", "전체동 설치", 80, 10_000_000L,
+				new BigDecimal(exclusiveArea), new BigDecimal("20.2"), "아파트", "지역난방", "복도식", "전체동 설치", 80, 10_000_000L,
 				200_000L, 20_000_000L);
 	}
 
