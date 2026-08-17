@@ -12,6 +12,7 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 
 import com.toadzip.backend.ingest.IngestReport;
 import com.toadzip.backend.ingest.myhome.MyHomeComplexSourceItem;
+import com.toadzip.backend.ingest.myhome.MyHomeRegion;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -97,13 +98,37 @@ class MyHomeComplexSourceStoreTest {
 			.containsExactlyInAnyOrder(new BigDecimal("39.9541"), new BigDecimal("40.0000"));
 	}
 
+	@Test
+	@DisplayName("완전히 조회한 지역 스냅샷에서 사라진 원천 행을 제거한다")
+	void removesRowsMissingFromCompleteRegionSnapshot() {
+		MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+		store.store(java.util.List.of(item(123L, "LH", "46A"), item(124L, "LH", "59A")));
+
+		IngestReport report = store.replaceRegionSnapshot(region, java.util.List.of(item(123L, "LH", "46A")));
+		flushAndClear();
+
+		assertThat(report.updated()).isOne();
+		assertThat(repository.findAll()).singleElement()
+			.extracting(MyHomeComplexSource::getHsmpSn)
+			.isEqualTo(123L);
+	}
+
 	private MyHomeComplexSourceItem item(String institutionName, String styleName) {
-		return item(institutionName, styleName, "46.8", "20.2");
+		return item(123L, institutionName, styleName);
+	}
+
+	private MyHomeComplexSourceItem item(Long complexId, String institutionName, String styleName) {
+		return item(complexId, institutionName, styleName, "46.8", "20.2");
 	}
 
 	private MyHomeComplexSourceItem item(String institutionName, String styleName, String exclusiveArea,
 			String commonArea) {
-		return new MyHomeComplexSourceItem(123L, institutionName, "11", "서울특별시", "110", "종로구", " 테스트 단지 ",
+		return item(123L, institutionName, styleName, exclusiveArea, commonArea);
+	}
+
+	private MyHomeComplexSourceItem item(Long complexId, String institutionName, String styleName,
+			String exclusiveArea, String commonArea) {
+		return new MyHomeComplexSourceItem(complexId, institutionName, "11", "서울특별시", "110", "종로구", " 테스트 단지 ",
 				"서울특별시 종로구 테스트로 1", "1111010100100010000", "20200101", 100, "국민임대", styleName,
 				new BigDecimal(exclusiveArea), new BigDecimal(commonArea), "아파트", "지역난방", "복도식", "전체동 설치", 80,
 				10_000_000L, 200_000L, 20_000_000L);

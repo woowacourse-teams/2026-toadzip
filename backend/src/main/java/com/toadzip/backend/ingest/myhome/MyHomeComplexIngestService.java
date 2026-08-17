@@ -46,10 +46,7 @@ public class MyHomeComplexIngestService {
 	private IngestReport ingestRegion(MyHomeRegion region, int pageSize, int maxPages) {
 		try {
 			List<MyHomeComplexSourceItem> rows = fetchCompleteRegion(region, pageSize, maxPages);
-			if (rows.isEmpty()) {
-				return IngestReport.empty();
-			}
-			return sourceStore.store(rows);
+			return sourceStore.replaceRegionSnapshot(region, rows);
 		}
 		catch (RuntimeException exception) {
 			log.warn("마이홈 단지 지역 적재 실패: region={}", region.fullCode(), exception);

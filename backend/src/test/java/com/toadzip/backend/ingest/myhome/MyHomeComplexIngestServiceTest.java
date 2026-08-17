@@ -50,13 +50,13 @@ class MyHomeComplexIngestServiceTest {
 		when(sourceClient.fetch(new MyHomeComplexPageRequest("11", "110", 1, 2)))
 			.thenReturn(List.of(item(1L), item(2L)));
 		when(sourceClient.fetch(new MyHomeComplexPageRequest("11", "110", 2, 2))).thenReturn(List.of(item(3L)));
-		when(sourceStore.store(any())).thenReturn(new IngestReport(3, 0, 0, 0, null));
+		when(sourceStore.replaceRegionSnapshot(any(), any())).thenReturn(new IngestReport(3, 0, 0, 0, null));
 		when(projectionService.projectAll()).thenReturn(IngestReport.oneCreated());
 
 		MyHomeComplexIngestResult result = service.ingestNationwide(2, 10);
 
 		ArgumentCaptor<List<MyHomeComplexSourceItem>> rows = ArgumentCaptor.captor();
-		verify(sourceStore).store(rows.capture());
+		verify(sourceStore).replaceRegionSnapshot(org.mockito.ArgumentMatchers.eq(region), rows.capture());
 		assertThat(rows.getValue()).extracting(MyHomeComplexSourceItem::hsmpSn).containsExactly(1L, 2L, 3L);
 		assertThat(result.staging().created()).isEqualTo(3);
 		assertThat(result.projection().created()).isOne();
@@ -75,8 +75,23 @@ class MyHomeComplexIngestServiceTest {
 
 		MyHomeComplexIngestResult result = service.ingestNationwide(2, 10);
 
-		verify(sourceStore, never()).store(any());
+		verify(sourceStore, never()).replaceRegionSnapshot(any(), any());
 		assertThat(result.staging().failed()).isOne();
+	}
+
+	@Test
+	@DisplayName("완전히 조회한 빈 지역도 빈 스냅샷으로 저장한다")
+	void storesCompleteEmptyRegionSnapshot() {
+		MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+		when(regionCatalog.all()).thenReturn(List.of(region));
+		when(sourceClient.fetch(new MyHomeComplexPageRequest("11", "110", 1, 10))).thenReturn(List.of());
+		when(sourceStore.replaceRegionSnapshot(region, List.of())).thenReturn(IngestReport.oneUpdated());
+		when(projectionService.projectAll()).thenReturn(IngestReport.empty());
+
+		MyHomeComplexIngestResult result = service.ingestNationwide(10, 10);
+
+		verify(sourceStore).replaceRegionSnapshot(region, List.of());
+		assertThat(result.staging().updated()).isOne();
 	}
 
 	@Test
