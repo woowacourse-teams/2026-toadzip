@@ -1,6 +1,8 @@
 package com.toadzip.backend.ingest.myhome;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -92,6 +94,29 @@ class MyHomeComplexIngestServiceTest {
 
 		verify(sourceStore).replaceRegionSnapshot(region, List.of());
 		assertThat(result.staging().updated()).isOne();
+	}
+
+	@Test
+	@DisplayName("여러 지역을 동시에 조회하고 모든 지역의 스냅샷을 투영한다")
+	void ingestsRegionsConcurrently() throws Exception {
+		MyHomeRegion first = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+		MyHomeRegion second = new MyHomeRegion("11", "140", "서울특별시", "중구");
+		CountDownLatch firstPagesStarted = new CountDownLatch(2);
+		when(regionCatalog.all()).thenReturn(List.of(first, second));
+		when(sourceClient.fetch(any())).thenAnswer(invocation -> {
+			firstPagesStarted.countDown();
+			if (!firstPagesStarted.await(1, TimeUnit.SECONDS)) {
+				throw new AssertionError("지역 원천 조회가 동시에 시작되지 않았습니다.");
+			}
+			return List.of();
+		});
+		when(sourceStore.replaceRegionSnapshot(any(), any())).thenReturn(IngestReport.oneUpdated());
+		when(projectionService.projectAll()).thenReturn(IngestReport.empty());
+
+		MyHomeComplexIngestResult result = service.ingestNationwide(10, 10);
+
+		verify(sourceStore, org.mockito.Mockito.times(2)).replaceRegionSnapshot(any(), any());
+		assertThat(result.staging().updated()).isEqualTo(2);
 	}
 
 	@Test

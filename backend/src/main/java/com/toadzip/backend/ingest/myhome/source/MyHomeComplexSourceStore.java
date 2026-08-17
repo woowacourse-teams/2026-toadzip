@@ -1,7 +1,10 @@
 package com.toadzip.backend.ingest.myhome.source;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -24,8 +27,36 @@ public class MyHomeComplexSourceStore {
 	@Transactional
 	public IngestReport store(List<MyHomeComplexSourceItem> items) {
 		IngestReport report = IngestReport.empty();
+		if (items.isEmpty()) {
+			return report;
+		}
+
+		Set<String> sourceKeys = items.stream()
+			.map(MyHomeComplexSource::sourceKeyOf)
+			.collect(Collectors.toCollection(LinkedHashSet::new));
+		Map<String, MyHomeComplexSource> storedByKey = repository.findAllBySourceKeyIn(sourceKeys)
+			.stream()
+			.collect(Collectors.toMap(MyHomeComplexSource::getSourceKey, source -> source, (first, second) -> first,
+					LinkedHashMap::new));
+		List<MyHomeComplexSource> newSources = new ArrayList<>();
 		for (MyHomeComplexSourceItem item : items) {
-			report = report.plus(store(item));
+			String sourceKey = MyHomeComplexSource.sourceKeyOf(item);
+			MyHomeComplexSource stored = storedByKey.get(sourceKey);
+			if (stored == null) {
+				stored = MyHomeComplexSource.from(item);
+				storedByKey.put(sourceKey, stored);
+				newSources.add(stored);
+				report = report.plus(IngestReport.oneCreated());
+			}
+			else if (stored.replaceWith(item)) {
+				report = report.plus(IngestReport.oneUpdated());
+			}
+			else {
+				report = report.plus(IngestReport.oneUnchanged());
+			}
+		}
+		if (!newSources.isEmpty()) {
+			repository.saveAll(newSources);
 		}
 		return report;
 	}
@@ -47,19 +78,6 @@ public class MyHomeComplexSourceStore {
 			report = report.plus(IngestReport.oneUpdated());
 		}
 		return report;
-	}
-
-	private IngestReport store(MyHomeComplexSourceItem item) {
-		String sourceKey = MyHomeComplexSource.sourceKeyOf(item);
-		Optional<MyHomeComplexSource> stored = repository.findBySourceKey(sourceKey);
-		if (stored.isEmpty()) {
-			repository.save(MyHomeComplexSource.from(item));
-			return IngestReport.oneCreated();
-		}
-		if (stored.orElseThrow().replaceWith(item)) {
-			return IngestReport.oneUpdated();
-		}
-		return IngestReport.oneUnchanged();
 	}
 
 	private void validateRegion(MyHomeRegion region, List<MyHomeComplexSourceItem> items) {

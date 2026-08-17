@@ -2,6 +2,10 @@ package com.toadzip.backend.ingest.myhome;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -16,6 +20,8 @@ public class MyHomeComplexIngestService {
 	private static final int MAX_PAGE_SIZE = 1_000;
 
 	private static final int MAX_PAGES = 1_000;
+
+	private static final int MAX_CONCURRENT_REGIONS = 4;
 
 	private final MyHomeComplexSourceClient sourceClient;
 
@@ -36,8 +42,28 @@ public class MyHomeComplexIngestService {
 	public MyHomeComplexIngestResult ingestNationwide(int pageSize, int maxPages) {
 		validatePaging(pageSize, maxPages);
 		IngestReport staging = IngestReport.empty();
-		for (MyHomeRegion region : regionCatalog.all()) {
-			staging = staging.plus(ingestRegion(region, pageSize, maxPages));
+		List<MyHomeRegion> regions = List.copyOf(regionCatalog.all());
+		ExecutorService executor = Executors.newFixedThreadPool(MAX_CONCURRENT_REGIONS);
+		try {
+			List<Future<IngestReport>> futures = regions.stream()
+				.map(region -> executor.submit(() -> ingestRegion(region, pageSize, maxPages)))
+				.toList();
+			for (Future<IngestReport> future : futures) {
+				try {
+					staging = staging.plus(future.get());
+				}
+				catch (InterruptedException exception) {
+					Thread.currentThread().interrupt();
+					throw new IllegalStateException("마이홈 단지 지역 적재가 중단되었습니다.", exception);
+				}
+				catch (ExecutionException exception) {
+					log.warn("마이홈 단지 지역 적재 작업이 실패했습니다.", exception.getCause());
+					staging = staging.plus(IngestReport.oneFailed());
+				}
+			}
+		}
+		finally {
+			executor.shutdown();
 		}
 		IngestReport projection = projectionService.projectAll();
 		return new MyHomeComplexIngestResult(staging, projection);

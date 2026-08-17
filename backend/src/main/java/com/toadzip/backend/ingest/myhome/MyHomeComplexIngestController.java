@@ -19,7 +19,7 @@ public class MyHomeComplexIngestController {
 	}
 
 	@PostMapping
-	public MyHomeComplexIngestResult ingest(@RequestParam(defaultValue = "200") @Min(1) @Max(1000) int pageSize,
+	public MyHomeComplexIngestResult ingest(@RequestParam(defaultValue = "1000") @Min(1) @Max(1000) int pageSize,
 			@RequestParam(defaultValue = "50") @Min(1) @Max(1000) int maxPages) {
 		return ingestService.ingestNationwide(pageSize, maxPages);
 	}

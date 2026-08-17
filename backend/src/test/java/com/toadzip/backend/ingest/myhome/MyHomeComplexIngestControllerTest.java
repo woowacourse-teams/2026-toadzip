@@ -42,6 +42,18 @@ class MyHomeComplexIngestControllerTest {
 	}
 
 	@Test
+	@DisplayName("기본 단지 페이지 크기를 1000건으로 사용한다")
+	void usesLargeDefaultPageSize() throws Exception {
+		when(ingestService.ingestNationwide(1000, 50))
+			.thenReturn(new MyHomeComplexIngestResult(IngestReport.empty(), IngestReport.empty()));
+
+		mockMvc.perform(post("/admin/ingest/complexes"))
+			.andExpect(status().isOk());
+
+		verify(ingestService).ingestNationwide(1000, 50);
+	}
+
+	@Test
 	@DisplayName("페이징 조건이 범위를 벗어나면 요청을 거절한다")
 	void rejectsInvalidPageSize() throws Exception {
 		mockMvc.perform(post("/admin/ingest/complexes").param("pageSize", "0"))
