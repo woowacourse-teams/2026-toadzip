@@ -84,6 +84,18 @@ public class MyHomeComplexProjectionService {
 			groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(item);
 		}
 
+		try {
+			IngestReport projected = transactionTemplate.execute(status -> projectGroups(groups));
+			return report.plus(Objects.requireNonNull(projected));
+		}
+		catch (RuntimeException exception) {
+			log.warn("마이홈 단지 일괄 투영 실패", exception);
+			return report.plus(IngestReport.oneFailed());
+		}
+	}
+
+	private IngestReport projectGroups(Map<ComplexSupplyKey, List<MyHomeComplexSourceItem>> groups) {
+		IngestReport report = IngestReport.empty();
 		for (Map.Entry<ComplexSupplyKey, List<MyHomeComplexSourceItem>> entry : groups.entrySet()) {
 			report = report.plus(project(entry.getKey(), entry.getValue()));
 		}
@@ -92,8 +104,7 @@ public class MyHomeComplexProjectionService {
 
 	private IngestReport project(ComplexSupplyKey key, List<MyHomeComplexSourceItem> items) {
 		try {
-			IngestReport report = transactionTemplate.execute(status -> projectAggregate(key, items));
-			return Objects.requireNonNull(report);
+			return projectAggregate(key, items);
 		}
 		catch (RuntimeException exception) {
 			log.warn("마이홈 단지 투영 실패: sourceComplexId={}, supplyType={}", key.sourceComplexId(), key.supplyTypeName(),
@@ -137,7 +148,16 @@ public class MyHomeComplexProjectionService {
 			complex = complexRepository.save(complex);
 		}
 
-		UnitProjection unitProjection = projectUnitTypes(complex, items);
+		UnitProjection unitProjection;
+		try {
+			unitProjection = projectUnitTypes(complex, items);
+		}
+		catch (RuntimeException exception) {
+			if (created) {
+				complexRepository.delete(complex);
+			}
+			throw exception;
+		}
 		IngestReport storedReport = IngestReport.oneUnchanged();
 		if (created) {
 			storedReport = IngestReport.oneCreated();
