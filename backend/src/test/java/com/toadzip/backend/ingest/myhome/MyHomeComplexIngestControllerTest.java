@@ -16,11 +16,8 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 
-@SpringBootTest(properties = { "spring.security.user.name=admin", "spring.security.user.password=secret",
-		"spring.security.user.roles=ADMIN" })
+@SpringBootTest
 @AutoConfigureMockMvc
 class MyHomeComplexIngestControllerTest {
 
@@ -31,16 +28,13 @@ class MyHomeComplexIngestControllerTest {
 	private MyHomeComplexIngestService ingestService;
 
 	@Test
-	@DisplayName("관리 API는 페이징 조건으로 전국 단지 적재를 실행한다")
+	@DisplayName("인증 없이 페이징 조건으로 전국 단지 적재를 실행한다")
 	void delegatesNationwideIngestion() throws Exception {
 		MyHomeComplexIngestResult result = new MyHomeComplexIngestResult(IngestReport.oneCreated(),
 				IngestReport.oneUpdated());
 		when(ingestService.ingestNationwide(500, 20)).thenReturn(result);
 
-		mockMvc
-			.perform(post("/admin/ingest/complexes").with(httpBasic("admin", "secret"))
-				.param("pageSize", "500")
-				.param("maxPages", "20"))
+		mockMvc.perform(post("/admin/ingest/complexes").param("pageSize", "500").param("maxPages", "20"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.staging.created").value(1))
 			.andExpect(jsonPath("$.projection.updated").value(1));
@@ -50,25 +44,12 @@ class MyHomeComplexIngestControllerTest {
 	@Test
 	@DisplayName("페이징 조건이 범위를 벗어나면 요청을 거절한다")
 	void rejectsInvalidPageSize() throws Exception {
-		mockMvc.perform(post("/admin/ingest/complexes").with(httpBasic("admin", "secret")).param("pageSize", "0"))
+		mockMvc.perform(post("/admin/ingest/complexes").param("pageSize", "0"))
 			.andExpect(status().isBadRequest());
-		mockMvc.perform(post("/admin/ingest/complexes").with(httpBasic("admin", "secret")).param("pageSize", "1001"))
+		mockMvc.perform(post("/admin/ingest/complexes").param("pageSize", "1001"))
 			.andExpect(status().isBadRequest());
-		mockMvc.perform(post("/admin/ingest/complexes").with(httpBasic("admin", "secret")).param("maxPages", "1001"))
+		mockMvc.perform(post("/admin/ingest/complexes").param("maxPages", "1001"))
 			.andExpect(status().isBadRequest());
-	}
-
-	@Test
-	@DisplayName("인증하지 않은 사용자는 단지 적재 API를 호출할 수 없다")
-	void rejectsUnauthenticatedRequest() throws Exception {
-		mockMvc.perform(post("/admin/ingest/complexes")).andExpect(status().isUnauthorized());
-	}
-
-	@Test
-	@DisplayName("관리자 권한이 없는 사용자는 단지 적재 API를 호출할 수 없다")
-	void rejectsNonAdminRequest() throws Exception {
-		mockMvc.perform(post("/admin/ingest/complexes").with(user("member").roles("USER")))
-			.andExpect(status().isForbidden());
 	}
 
 }
