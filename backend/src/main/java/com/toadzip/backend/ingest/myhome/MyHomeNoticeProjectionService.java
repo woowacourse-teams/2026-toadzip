@@ -62,7 +62,7 @@ public class MyHomeNoticeProjectionService {
 	}
 
 	public IngestReport projectAll() {
-		List<MyHomeNoticeSourceItem> items = sourceRepository.findAllByOrderBySourceOrderAsc()
+		List<MyHomeNoticeSourceItem> items = sourceRepository.findAllByOrderBySourceOrderAscIdAsc()
 			.stream()
 			.map(MyHomeNoticeSource::toItem)
 			.toList();
@@ -188,6 +188,9 @@ public class MyHomeNoticeProjectionService {
 
 	private IngestReport projectNoticeInTransaction(String noticeId, List<MyHomeNoticeSourceItem> rows) {
 		MyHomeNoticeSourceItem head = rows.get(0);
+		if (rows.stream().skip(1).anyMatch(row -> !hasSameNoticeValues(head, row))) {
+			return IngestReport.oneRejected(IngestRejectionReason.INVALID_SOURCE_ROW);
+		}
 		String supplyType = SourceValues.trimToNull(head.suplyTyNm());
 		if (rows.stream().map(item -> SourceValues.trimToNull(item.suplyTyNm()))
 				.anyMatch(label -> !Objects.equals(label, supplyType))) {
@@ -210,6 +213,25 @@ public class MyHomeNoticeProjectionService {
 			return rejectedRows;
 		}
 		return upsertNotice(noticeId, validRows).plus(rejectedRows);
+	}
+
+	private boolean hasSameNoticeValues(MyHomeNoticeSourceItem first, MyHomeNoticeSourceItem second) {
+		return sameText(first.sttusNm(), second.sttusNm())
+				&& sameText(first.pblancNm(), second.pblancNm())
+				&& sameText(first.suplyInsttNm(), second.suplyInsttNm())
+				&& sameText(first.houseTyNm(), second.houseTyNm())
+				&& sameText(first.suplyTyNm(), second.suplyTyNm())
+				&& sameText(first.beforePblancId(), second.beforePblancId())
+				&& sameText(first.rcritPblancDe(), second.rcritPblancDe())
+				&& sameText(first.przwnerPresnatnDe(), second.przwnerPresnatnDe())
+				&& sameText(first.beginDe(), second.beginDe())
+				&& sameText(first.endDe(), second.endDe())
+				&& sameText(first.refrnc(), second.refrnc())
+				&& sameText(first.url(), second.url());
+	}
+
+	private boolean sameText(String first, String second) {
+		return Objects.equals(SourceValues.trimToNull(first), SourceValues.trimToNull(second));
 	}
 
 	private boolean validSupplyLine(MyHomeNoticeSourceItem row) {

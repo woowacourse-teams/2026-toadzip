@@ -91,6 +91,22 @@ class MyHomeNoticeProjectionServiceTest {
 	}
 
 	@Test
+	@DisplayName("서로 다른 공급행의 공고 단위 값이 갈리면 공고 전체를 제외한다")
+	void rejectsConflictingNoticeFields() {
+		MyHomeNoticeSourceItem first = item("100", 1, "행복주택");
+		MyHomeNoticeSourceItem second = new MyHomeNoticeSourceItem("100", 2, "일반공고", "다른 공고명", "LH",
+				"아파트", "행복주택", null, "20260801", "20260802", "20260803", "20260804", "문의",
+				"https://all", "https://pc", "https://mobile", "단지", "서울", "강남구", "서울 강남구 주소",
+				"도로", "법정동", "1111010100100010000", "지역난방", "100", 10, 100L, 10L, 90L, 1L);
+		sourceStore.storeBatch(List.of(first, second));
+
+		IngestReport report = service.projectAll();
+
+		assertThat(report.rejectedByReason()).containsEntry(IngestRejectionReason.INVALID_SOURCE_ROW, 1);
+		assertThat(noticeRepository.count()).isZero();
+	}
+
+	@Test
 	@DisplayName("houseSn이 없는 공급행만 있으면 공고를 제외한다")
 	void rejectsMissingHouseSerialNumber() {
 		sourceStore.storeBatch(List.of(item("100", null, "행복주택")));

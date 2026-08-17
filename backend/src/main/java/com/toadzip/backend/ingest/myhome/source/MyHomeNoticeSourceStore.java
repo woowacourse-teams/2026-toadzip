@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -36,10 +37,22 @@ public class MyHomeNoticeSourceStore {
 		DeduplicatedRows deduplicated = deduplicate(identified.rows());
 		IngestReport report = identified.report().plus(conflictReport(deduplicated.conflictedNoticeIds()));
 		Map<String, List<OrderedItem>> notices = groupByNotice(deduplicated.accepted());
+		int nextSourceOrder = nextSourceOrder();
 		for (List<OrderedItem> notice : notices.values()) {
-			report = report.plus(storeNotice(notice));
+			StoreNoticeResult stored = storeNotice(notice, nextSourceOrder);
+			report = report.plus(stored.report());
+			nextSourceOrder = stored.nextSourceOrder();
 		}
 		return report;
+	}
+
+	private int nextSourceOrder() {
+		return repository.findAll()
+			.stream()
+			.map(MyHomeNoticeSource::getSourceOrder)
+			.filter(Objects::nonNull)
+			.max(Integer::compareTo)
+			.orElse(-1) + 1;
 	}
 
 	private IdentifiedRows identify(List<MyHomeNoticeSourceItem> items) {
@@ -88,10 +101,11 @@ public class MyHomeNoticeSourceStore {
 		return notices;
 	}
 
-	private IngestReport storeNotice(List<OrderedItem> rows) {
+	private StoreNoticeResult storeNotice(List<OrderedItem> rows, int nextSourceOrder) {
 		Map<String, Optional<MyHomeNoticeSource>> storedByKey = findStored(rows);
 		if (containsChangedRow(rows, storedByKey)) {
-			return IngestReport.oneRejected(IngestRejectionReason.INVALID_SOURCE_ROW);
+			return new StoreNoticeResult(IngestReport.oneRejected(IngestRejectionReason.INVALID_SOURCE_ROW),
+					nextSourceOrder);
 		}
 		IngestReport report = IngestReport.empty();
 		for (OrderedItem row : rows) {
@@ -101,10 +115,11 @@ public class MyHomeNoticeSourceStore {
 				report = report.plus(IngestReport.oneUnchanged());
 				continue;
 			}
-			repository.save(MyHomeNoticeSource.from(row.sourceOrder(), row.item()));
+			repository.save(MyHomeNoticeSource.from(nextSourceOrder, row.item()));
+			nextSourceOrder++;
 			report = report.plus(IngestReport.oneCreated());
 		}
-		return report;
+		return new StoreNoticeResult(report, nextSourceOrder);
 	}
 
 	private Map<String, Optional<MyHomeNoticeSource>> findStored(List<OrderedItem> rows) {
@@ -147,6 +162,9 @@ public class MyHomeNoticeSourceStore {
 	}
 
 	private record DeduplicatedRows(List<OrderedItem> accepted, Set<String> conflictedNoticeIds) {
+	}
+
+	private record StoreNoticeResult(IngestReport report, int nextSourceOrder) {
 	}
 
 }

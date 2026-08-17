@@ -11,4 +11,6 @@ public interface MyHomeNoticeSourceRepository extends JpaRepository<MyHomeNotice
 
 	List<MyHomeNoticeSource> findAllByOrderBySourceOrderAsc();
 
+	List<MyHomeNoticeSource> findAllByOrderBySourceOrderAscIdAsc();
+
 }

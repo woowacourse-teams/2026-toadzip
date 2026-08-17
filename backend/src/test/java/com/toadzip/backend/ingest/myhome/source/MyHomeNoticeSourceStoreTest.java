@@ -137,6 +137,18 @@ class MyHomeNoticeSourceStoreTest {
 			.containsExactlyInAnyOrder("100", "200");
 	}
 
+	@Test
+	@DisplayName("반복 batch의 신규 원천 행은 기존 sourceOrder와 겹치지 않는다")
+	void appendsSourceOrderAfterExistingRows() {
+		store.storeBatch(List.of(item("100", 1, "첫 공고")));
+		store.storeBatch(List.of(item("200", 1, "둘째 공고")));
+		flushAndClear();
+
+		assertThat(repository.findAllByOrderBySourceOrderAscIdAsc())
+			.extracting(MyHomeNoticeSource::getSourceOrder)
+			.containsExactly(0, 1);
+	}
+
 	private MyHomeNoticeSourceItem item(String noticeId, Integer houseSerialNumber, String noticeName) {
 		return new MyHomeNoticeSourceItem(noticeId, houseSerialNumber, "일반공고", noticeName, "LH", "아파트", "행복주택",
 				null, "20260801", "20261001", "20260810", "20260812", "1600-1004", "https://example.com",
