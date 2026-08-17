@@ -53,6 +53,20 @@ public class LhCatalogSource {
 		monthlyRentText = SourceValues.trimToNull(item.monthlyRent());
 	}
 
+	public LhCatalogSource(int sourceOrder, String areaName, String supplyTypeName, String complexLabel,
+			String complexTotalUnitCount, String exclusiveArea, String totalUnitCount, String depositText,
+			String monthlyRentText) {
+		this.sourceOrder = sourceOrder;
+		this.areaName = SourceValues.trimToNull(areaName);
+		this.supplyTypeName = SourceValues.trimToNull(supplyTypeName);
+		this.complexLabel = SourceValues.trimToNull(complexLabel);
+		this.complexTotalUnitCount = SourceValues.trimToNull(complexTotalUnitCount);
+		this.exclusiveArea = SourceValues.trimToNull(exclusiveArea);
+		this.totalUnitCount = SourceValues.trimToNull(totalUnitCount);
+		this.depositText = SourceValues.trimToNull(depositText);
+		this.monthlyRentText = SourceValues.trimToNull(monthlyRentText);
+	}
+
 	public LhLeaseInfoItem toItem() {
 		return new LhLeaseInfoItem(areaName, supplyTypeName, complexLabel, complexTotalUnitCount, exclusiveArea,
 				totalUnitCount, depositText, monthlyRentText);

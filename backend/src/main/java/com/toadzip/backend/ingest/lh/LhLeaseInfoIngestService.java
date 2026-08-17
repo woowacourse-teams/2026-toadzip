@@ -84,6 +84,19 @@ public class LhLeaseInfoIngestService {
 		this(lhApiClient, objectMapper, complexRepository, unitTypeRepository, sourceStore, null, transactionManager);
 	}
 
+	public LhLeaseInfoIngestService(DataGoKrOpenApiClient lhApiClient, ObjectMapper objectMapper,
+			HousingComplexRepository complexRepository, UnitTypeRepository unitTypeRepository,
+			PlatformTransactionManager transactionManager, LhCatalogSourceRepository sourceRepository) {
+		this(lhApiClient, objectMapper, complexRepository, unitTypeRepository,
+				new LhCatalogSourceStore(sourceRepository), sourceRepository, transactionManager);
+	}
+
+	public LhLeaseInfoIngestService(DataGoKrOpenApiClient lhApiClient, ObjectMapper objectMapper,
+			HousingComplexRepository complexRepository, UnitTypeRepository unitTypeRepository,
+			PlatformTransactionManager transactionManager) {
+		this(lhApiClient, objectMapper, complexRepository, unitTypeRepository, null, null, transactionManager);
+	}
+
 	public IngestReport ingest(int pageSize, int maxPages) {
 		validatePaging(pageSize, maxPages);
 		try {
@@ -140,7 +153,7 @@ public class LhLeaseInfoIngestService {
 
 	/** typed source snapshot을 교체한다. projection은 실행하지 않는다. */
 	public IngestReport replaceSources(List<LhLeaseInfoItem> items) {
-		if (items == null || items.isEmpty()) {
+		if (sourceStore == null || items == null || items.isEmpty()) {
 			return IngestReport.oneFailed();
 		}
 		return sourceStore.replaceSnapshot(items);
@@ -151,7 +164,9 @@ public class LhLeaseInfoIngestService {
 			return IngestReport.oneFailed();
 		}
 		return Objects.requireNonNull(transactionTemplate.execute(status -> {
-			sourceStore.replaceSnapshot(items);
+			if (sourceStore != null) {
+				sourceStore.replaceSnapshot(items);
+			}
 			return projectItems(items);
 		}));
 	}
