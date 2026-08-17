@@ -7,8 +7,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
-import java.util.HashSet;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -265,19 +263,10 @@ public class LhLeaseInfoIngestService {
 			units.put(unitType.getId(), unitType);
 		}
 
-		Set<Long> ambiguous = new HashSet<>();
-		for (Map.Entry<Long, List<LeaseInfoRow>> entry : rowsByUnitType.entrySet()) {
-			if (entry.getValue().size() != 1) {
-				ambiguous.add(entry.getKey());
-			}
-		}
-
 		IngestReport report = IngestReport.empty();
 		for (UnitType unitType : unitTypeRepository.findAll()) {
-			if (!ambiguous.contains(unitType.getId())) {
-				if (unitType.updateTotalUnitCount(null)) {
-					report = report.plus(IngestReport.oneUpdated());
-				}
+			if (unitType.updateTotalUnitCount(null)) {
+				report = report.plus(IngestReport.oneUpdated());
 			}
 		}
 

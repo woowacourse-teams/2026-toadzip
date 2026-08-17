@@ -102,6 +102,19 @@ class LhLeaseInfoIngestServiceTest {
 	}
 
 	@Test
+	@DisplayName("같은 주택형을 가리키는 중복 원천행은 이전 총세대수를 남기지 않는다")
+	void clearsStaleCountWhenSourceRowsAreAmbiguous() throws Exception {
+		matched.updateTotalUnitCount(72);
+
+		service.applyPages(List.of(MAPPER.readTree(duplicateTargetResponse())));
+		entityManager.flush();
+		entityManager.clear();
+
+		UnitType actual = unitTypeRepository.findById(matched.getId()).orElseThrow();
+		assertThat(actual.getTotalUnitCount()).isNull();
+	}
+
+	@Test
 	@DisplayName("typed source는 sourceOrder 순으로 교체 저장하고 모든 필드를 보존한다")
 	void replacesTypedSourceSnapshotInOrder() {
 		service.replaceSources(List.of(
@@ -130,6 +143,18 @@ class LhLeaseInfoIngestServiceTest {
 				 "AIS_TP_CD_NM":"행복주택","SBD_LGO_NM":"강릉교동 행복주택","DDO_AR":"36.97",
 				 "LS_GMY":"%s","RFE":"%s"}]}]
 				 """.formatted(totalUnitCount, deposit, monthlyRent);
+	}
+
+	private String duplicateTargetResponse() {
+		return """
+				[{"resHeader":[{"SS_CODE":"Y"}]},
+				 {"dsList":[
+				  {"SUM_HSH_CNT":"180","HSH_CNT":"72","ARA_NM":"강원특별자치도 강릉시",
+				   "AIS_TP_CD_NM":"행복주택","SBD_LGO_NM":"강릉교동 행복주택","DDO_AR":"36.97"},
+				  {"SUM_HSH_CNT":"180","HSH_CNT":"70","ARA_NM":"강원특별자치도 강릉시",
+				   "AIS_TP_CD_NM":"행복주택","SBD_LGO_NM":"강릉교동 행복주택","DDO_AR":"36.97"}
+				 ]}]
+				 """;
 	}
 
 }
