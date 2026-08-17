@@ -27,6 +27,11 @@ public class MyHomeNoticeSourceStore {
 
 	@Transactional
 	public IngestReport store(List<MyHomeNoticeSourceItem> items) {
+		return storeBatch(items);
+	}
+
+	@Transactional
+	public IngestReport storeBatch(List<MyHomeNoticeSourceItem> items) {
 		IdentifiedRows identified = identify(items);
 		DeduplicatedRows deduplicated = deduplicate(identified.rows());
 		IngestReport report = identified.report().plus(conflictReport(deduplicated.conflictedNoticeIds()));
