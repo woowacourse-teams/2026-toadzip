@@ -95,16 +95,24 @@ public class MyHomeComplexProjectionService {
 	}
 
 	private IngestReport projectGroups(Map<ComplexSupplyKey, List<MyHomeComplexSourceItem>> groups) {
+		Map<ComplexSupplyKey, HousingComplex> storedComplexes = complexRepository.findAll()
+			.stream()
+			.collect(Collectors.toMap(complex -> new ComplexSupplyKey(complex.getSourceComplexId(),
+					complex.getSupplyTypeName()), complex -> complex, (first, second) -> first, LinkedHashMap::new));
+		Map<Long, List<UnitType>> storedUnitTypes = unitTypeRepository.findAll()
+			.stream()
+			.collect(Collectors.groupingBy(unitType -> unitType.getHousingComplex().getId()));
 		IngestReport report = IngestReport.empty();
 		for (Map.Entry<ComplexSupplyKey, List<MyHomeComplexSourceItem>> entry : groups.entrySet()) {
-			report = report.plus(project(entry.getKey(), entry.getValue()));
+			report = report.plus(project(entry.getKey(), entry.getValue(), storedComplexes, storedUnitTypes));
 		}
 		return report;
 	}
 
-	private IngestReport project(ComplexSupplyKey key, List<MyHomeComplexSourceItem> items) {
+	private IngestReport project(ComplexSupplyKey key, List<MyHomeComplexSourceItem> items,
+			Map<ComplexSupplyKey, HousingComplex> storedComplexes, Map<Long, List<UnitType>> storedUnitTypes) {
 		try {
-			return projectAggregate(key, items);
+			return projectAggregate(key, items, storedComplexes, storedUnitTypes);
 		}
 		catch (RuntimeException exception) {
 			log.warn("마이홈 단지 투영 실패: sourceComplexId={}, supplyType={}", key.sourceComplexId(), key.supplyTypeName(),
@@ -113,7 +121,8 @@ public class MyHomeComplexProjectionService {
 		}
 	}
 
-	private IngestReport projectAggregate(ComplexSupplyKey key, List<MyHomeComplexSourceItem> items) {
+	private IngestReport projectAggregate(ComplexSupplyKey key, List<MyHomeComplexSourceItem> items,
+			Map<ComplexSupplyKey, HousingComplex> storedComplexes, Map<Long, List<UnitType>> storedUnitTypes) {
 		Optional<IngestRejectionReason> rejection = validate(items);
 		if (rejection.isPresent()) {
 			return IngestReport.oneRejected(rejection.orElseThrow());
@@ -128,9 +137,7 @@ public class MyHomeComplexProjectionService {
 			.orElseThrow();
 		Integer unitCount = distinctValues(items, MyHomeComplexSourceItem::hshldCo).stream().findFirst().orElse(null);
 
-		Optional<HousingComplex> stored = complexRepository
-			.findBySourceComplexIdAndSupplyTypeName(key.sourceComplexId(), key.supplyTypeName());
-		HousingComplex complex = stored.orElse(null);
+		HousingComplex complex = storedComplexes.get(key);
 		boolean created = complex == null;
 		if (created) {
 			complex = new HousingComplex(name.value(), addressOf(head, roadAddress.value()), key.sourceComplexId(),
@@ -146,11 +153,12 @@ public class MyHomeComplexProjectionService {
 		}
 		if (created || complexChanged) {
 			complex = complexRepository.save(complex);
+			storedComplexes.put(key, complex);
 		}
 
 		UnitProjection unitProjection;
 		try {
-			unitProjection = projectUnitTypes(complex, items);
+			unitProjection = projectUnitTypes(complex, items, storedUnitTypes);
 		}
 		catch (RuntimeException exception) {
 			if (created) {
@@ -194,7 +202,8 @@ public class MyHomeComplexProjectionService {
 		return Optional.empty();
 	}
 
-	private UnitProjection projectUnitTypes(HousingComplex complex, List<MyHomeComplexSourceItem> items) {
+	private UnitProjection projectUnitTypes(HousingComplex complex, List<MyHomeComplexSourceItem> items,
+			Map<Long, List<UnitType>> storedUnitTypes) {
 		Map<UnitKey, MyHomeComplexSourceItem> distinct = new LinkedHashMap<>();
 		IngestReport rejections = IngestReport.empty();
 		for (MyHomeComplexSourceItem item : items) {
@@ -206,7 +215,7 @@ public class MyHomeComplexProjectionService {
 			distinct.putIfAbsent(new UnitKey(typeName, item.suplyPrvuseAr(), item.suplyCmnuseAr()), item);
 		}
 
-		Map<UnitKey, UnitType> storedByKey = unitTypeRepository.findByHousingComplex(complex)
+		Map<UnitKey, UnitType> storedByKey = storedUnitTypes.getOrDefault(complex.getId(), List.of())
 			.stream()
 			.collect(Collectors.toMap(this::unitKeyOf, unitType -> unitType, (first, second) -> first,
 					LinkedHashMap::new));
@@ -227,6 +236,7 @@ public class MyHomeComplexProjectionService {
 		}
 		if (!changedUnitTypes.isEmpty()) {
 			unitTypeRepository.saveAll(changedUnitTypes);
+			storedUnitTypes.computeIfAbsent(complex.getId(), ignored -> new ArrayList<>()).addAll(changedUnitTypes);
 		}
 		return new UnitProjection(changed, rejections);
 	}
