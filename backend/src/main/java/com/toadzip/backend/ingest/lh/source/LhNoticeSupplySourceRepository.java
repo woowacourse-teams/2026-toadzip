@@ -9,4 +9,6 @@ public interface LhNoticeSupplySourceRepository extends JpaRepository<LhNoticeSu
 	void deleteByPanId(String panId);
 
 	List<LhNoticeSupplySource> findByPanIdOrderBySourceOrderAscIdAsc(String panId);
+
+	List<LhNoticeSupplySource> findAllByOrderByPanIdAscSourceOrderAscIdAsc();
 }

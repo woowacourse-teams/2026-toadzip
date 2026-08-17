@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.lh;
 
-import tools.jackson.annotation.JsonIgnoreProperties;
-import tools.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record LhUnitSupplyItem(@JsonProperty("SBD_LGO_NM") String complexLabel,

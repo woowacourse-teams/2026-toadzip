@@ -32,4 +32,13 @@ public class IngestConfiguration {
 				"마이홈 공고");
 	}
 
+	@Bean("lhApiClient")
+	DataGoKrOpenApiClient lhApiClient(ObjectMapper objectMapper, IngestProperties properties) {
+		String baseUrl = null;
+		if (properties.baseUrl() != null) {
+			baseUrl = properties.baseUrl().lh();
+		}
+		return new DataGoKrOpenApiClient(RestClient.create(), objectMapper, baseUrl, properties.serviceKey(), "LH 공고");
+	}
+
 }

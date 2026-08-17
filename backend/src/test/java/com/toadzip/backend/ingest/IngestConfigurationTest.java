@@ -16,7 +16,7 @@ class IngestConfigurationTest {
 	@DisplayName("마이홈 공고 전용 base URL로 OpenAPI 클라이언트를 구성한다")
 	void configuresMyHomeNoticeOpenApiClient() {
 		IngestProperties properties = new IngestProperties("service-key",
-				new IngestProperties.BaseUrl("https://complex.example.com", "https://notice.example.com"));
+				new IngestProperties.BaseUrl("https://complex.example.com", "https://notice.example.com", "https://lh.example.com"));
 
 		DataGoKrOpenApiClient client = new IngestConfiguration().myHomeNoticeOpenApiClient(JsonMapper.builder().build(),
 				properties);
