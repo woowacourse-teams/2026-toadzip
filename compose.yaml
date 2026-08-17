@@ -26,6 +26,8 @@ services:
       SPRING_DATASOURCE_URL: "jdbc:postgresql://db:5432/${POSTGRES_DB:-toadzip}"
       SPRING_DATASOURCE_USERNAME: "${POSTGRES_USER:-toadzip}"
       SPRING_DATASOURCE_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+      DATA_GO_KR_SERVICE_KEY: "${DATA_GO_KR_SERVICE_KEY:-}"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
     depends_on:
       db:
         condition: service_healthy
