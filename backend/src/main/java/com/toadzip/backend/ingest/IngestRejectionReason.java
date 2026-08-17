@@ -1,0 +1,7 @@
+package com.toadzip.backend.ingest;
+
+public enum IngestRejectionReason {
+
+	UNKNOWN_SUPPLY_TYPE, UNSUPPORTED_SUPPLY_TYPE, NOT_CONSTRUCTION_HOUSING, MISSING_IDENTITY, INVALID_SOURCE_ROW
+
+}
