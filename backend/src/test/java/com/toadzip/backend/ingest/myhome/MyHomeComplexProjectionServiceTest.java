@@ -1,8 +1,8 @@
 package com.toadzip.backend.ingest.myhome;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.toadzip.backend.housing.HousingComplexRepository;
+import com.toadzip.backend.housing.UnitType;
 import com.toadzip.backend.housing.UnitTypeRepository;
 import com.toadzip.backend.ingest.ConstructionRentalPolicy;
 import com.toadzip.backend.ingest.IngestRejectionReason;
@@ -25,7 +26,6 @@ import com.toadzip.backend.ingest.myhome.source.MyHomeComplexSourceStore;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -148,15 +148,18 @@ class MyHomeComplexProjectionServiceTest {
 
 	private UnitTypeRepository failingForComplex(String sourceComplexId) {
 		UnitTypeRepository repository = mock(UnitTypeRepository.class);
-		when(repository.findByHousingComplexAndTypeNameAndExclusiveAreaAndResidentialCommonArea(any(), any(), any(),
-				any()))
-			.thenReturn(Optional.empty());
-		when(repository.save(argThat(unitType -> unitType != null
-				&& sourceComplexId.equals(unitType.getHousingComplex().getSourceComplexId()))))
-			.thenThrow(new IllegalStateException("주택형 저장 실패"));
-		when(repository.save(argThat(unitType -> unitType != null
-				&& !sourceComplexId.equals(unitType.getHousingComplex().getSourceComplexId()))))
-			.thenAnswer(invocation -> unitTypeRepository.save(invocation.getArgument(0)));
+		when(repository.findByHousingComplex(any())).thenReturn(List.of());
+		when(repository.saveAll(any())).thenAnswer(invocation -> {
+			List<UnitType> saved = new ArrayList<>();
+			Iterable<UnitType> incoming = invocation.getArgument(0);
+			for (UnitType unitType : incoming) {
+				if (sourceComplexId.equals(unitType.getHousingComplex().getSourceComplexId())) {
+					throw new IllegalStateException("주택형 저장 실패");
+				}
+				saved.add(unitTypeRepository.save(unitType));
+			}
+			return saved;
+		});
 		return repository;
 	}
 

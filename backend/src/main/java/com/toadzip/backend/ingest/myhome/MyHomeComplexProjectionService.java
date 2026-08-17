@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.myhome;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -10,6 +11,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -184,29 +186,37 @@ public class MyHomeComplexProjectionService {
 			distinct.putIfAbsent(new UnitKey(typeName, item.suplyPrvuseAr(), item.suplyCmnuseAr()), item);
 		}
 
+		Map<UnitKey, UnitType> storedByKey = unitTypeRepository.findByHousingComplex(complex)
+			.stream()
+			.collect(Collectors.toMap(this::unitKeyOf, unitType -> unitType, (first, second) -> first,
+					LinkedHashMap::new));
+		List<UnitType> changedUnitTypes = new ArrayList<>();
 		boolean changed = false;
 		for (Map.Entry<UnitKey, MyHomeComplexSourceItem> entry : distinct.entrySet()) {
-			if (upsertUnitType(complex, entry.getKey(), entry.getValue())) {
+			UnitType unitType = storedByKey.get(entry.getKey());
+			boolean created = unitType == null;
+			if (created) {
+				unitType = new UnitType(complex, entry.getKey().typeName(), entry.getKey().exclusiveArea(),
+						entry.getKey().residentialCommonArea());
+			}
+			boolean unitTypeChanged = unitType.updateBaseRentTerms(rentTermsOf(entry.getValue()));
+			if (created || unitTypeChanged) {
+				changedUnitTypes.add(unitType);
 				changed = true;
 			}
+		}
+		if (!changedUnitTypes.isEmpty()) {
+			unitTypeRepository.saveAll(changedUnitTypes);
 		}
 		return new UnitProjection(changed, rejections);
 	}
 
-	private boolean upsertUnitType(HousingComplex complex, UnitKey key, MyHomeComplexSourceItem item) {
-		Optional<UnitType> stored = unitTypeRepository
-			.findByHousingComplexAndTypeNameAndExclusiveAreaAndResidentialCommonArea(complex, key.typeName(),
-					key.exclusiveArea(), key.residentialCommonArea());
-		UnitType unitType = stored.orElse(null);
-		boolean created = unitType == null;
-		if (created) {
-			unitType = new UnitType(complex, key.typeName(), key.exclusiveArea(), key.residentialCommonArea());
-		}
-		boolean changed = unitType.updateBaseRentTerms(rentTermsOf(item));
-		if (created || changed) {
-			unitTypeRepository.save(unitType);
-		}
-		return created || changed;
+	private UnitKey unitKeyOf(UnitType unitType) {
+		return new UnitKey(unitType.getTypeName(), unitType.getExclusiveArea(), unitType.getResidentialCommonArea());
+	}
+
+	private static BigDecimal normalizeArea(BigDecimal area) {
+		return area == null ? null : area.setScale(4, RoundingMode.HALF_UP);
 	}
 
 	private BaseRentTerms rentTermsOf(MyHomeComplexSourceItem item) {
@@ -250,6 +260,11 @@ public class MyHomeComplexProjectionService {
 	}
 
 	private record UnitKey(String typeName, BigDecimal exclusiveArea, BigDecimal residentialCommonArea) {
+
+		private UnitKey {
+			exclusiveArea = normalizeArea(exclusiveArea);
+			residentialCommonArea = normalizeArea(residentialCommonArea);
+		}
 	}
 
 	private record UnitProjection(boolean changed, IngestReport rejections) {

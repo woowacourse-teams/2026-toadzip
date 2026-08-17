@@ -30,14 +30,13 @@ class MyHomeComplexIngestControllerTest {
 	@Test
 	@DisplayName("인증 없이 페이징 조건으로 전국 단지 적재를 실행한다")
 	void delegatesNationwideIngestion() throws Exception {
-		MyHomeComplexIngestResult result = new MyHomeComplexIngestResult(IngestReport.oneCreated(),
-				IngestReport.oneUpdated());
+		MyHomeComplexIngestResult result = new MyHomeComplexIngestResult(IngestReport.oneCreated());
 		when(ingestService.ingestNationwide(500, 20)).thenReturn(result);
 
 		mockMvc.perform(post("/admin/ingest/complexes").param("pageSize", "500").param("maxPages", "20"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.staging.created").value(1))
-			.andExpect(jsonPath("$.projection.updated").value(1));
+			.andExpect(jsonPath("$.projection").doesNotExist());
 		verify(ingestService).ingestNationwide(500, 20);
 	}
 
@@ -45,7 +44,7 @@ class MyHomeComplexIngestControllerTest {
 	@DisplayName("기본 단지 페이지 크기를 1000건으로 사용한다")
 	void usesLargeDefaultPageSize() throws Exception {
 		when(ingestService.ingestNationwide(1000, 50))
-			.thenReturn(new MyHomeComplexIngestResult(IngestReport.empty(), IngestReport.empty()));
+			.thenReturn(new MyHomeComplexIngestResult(IngestReport.empty()));
 
 		mockMvc.perform(post("/admin/ingest/complexes"))
 			.andExpect(status().isOk());

@@ -27,15 +27,12 @@ public class MyHomeComplexIngestService {
 
 	private final MyHomeComplexSourceStore sourceStore;
 
-	private final MyHomeComplexProjectionService projectionService;
-
 	private final MyHomeRegionCatalog regionCatalog;
 
 	public MyHomeComplexIngestService(MyHomeComplexSourceClient sourceClient, MyHomeComplexSourceStore sourceStore,
-			MyHomeComplexProjectionService projectionService, MyHomeRegionCatalog regionCatalog) {
+			MyHomeRegionCatalog regionCatalog) {
 		this.sourceClient = sourceClient;
 		this.sourceStore = sourceStore;
-		this.projectionService = projectionService;
 		this.regionCatalog = regionCatalog;
 	}
 
@@ -65,8 +62,7 @@ public class MyHomeComplexIngestService {
 		finally {
 			executor.shutdown();
 		}
-		IngestReport projection = projectionService.projectAll();
-		return new MyHomeComplexIngestResult(staging, projection);
+		return new MyHomeComplexIngestResult(staging);
 	}
 
 	private IngestReport ingestRegion(MyHomeRegion region, int pageSize, int maxPages) {

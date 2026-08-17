@@ -32,28 +32,24 @@ class MyHomeComplexIngestServiceTest {
 	private MyHomeComplexSourceStore sourceStore;
 
 	@Mock
-	private MyHomeComplexProjectionService projectionService;
-
-	@Mock
 	private MyHomeRegionCatalog regionCatalog;
 
 	private MyHomeComplexIngestService service;
 
 	@BeforeEach
 	void setUp() {
-		service = new MyHomeComplexIngestService(sourceClient, sourceStore, projectionService, regionCatalog);
+		service = new MyHomeComplexIngestService(sourceClient, sourceStore, regionCatalog);
 	}
 
 	@Test
-	@DisplayName("지역의 마지막 페이지까지 받은 뒤 staging과 도메인에 적재한다")
-	void ingestsCompleteRegionPagesAndProjectsStaging() {
+	@DisplayName("지역의 마지막 페이지까지 받은 뒤 원천 staging에 적재한다")
+	void ingestsCompleteRegionPagesIntoStaging() {
 		MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
 		when(regionCatalog.all()).thenReturn(List.of(region));
 		when(sourceClient.fetch(new MyHomeComplexPageRequest("11", "110", 1, 2)))
 			.thenReturn(List.of(item(1L), item(2L)));
 		when(sourceClient.fetch(new MyHomeComplexPageRequest("11", "110", 2, 2))).thenReturn(List.of(item(3L)));
 		when(sourceStore.replaceRegionSnapshot(any(), any())).thenReturn(new IngestReport(3, 0, 0, 0, null));
-		when(projectionService.projectAll()).thenReturn(IngestReport.oneCreated());
 
 		MyHomeComplexIngestResult result = service.ingestNationwide(2, 10);
 
@@ -61,7 +57,6 @@ class MyHomeComplexIngestServiceTest {
 		verify(sourceStore).replaceRegionSnapshot(org.mockito.ArgumentMatchers.eq(region), rows.capture());
 		assertThat(rows.getValue()).extracting(MyHomeComplexSourceItem::hsmpSn).containsExactly(1L, 2L, 3L);
 		assertThat(result.staging().created()).isEqualTo(3);
-		assertThat(result.projection().created()).isOne();
 	}
 
 	@Test
@@ -73,7 +68,6 @@ class MyHomeComplexIngestServiceTest {
 			.thenReturn(List.of(item(1L), item(2L)));
 		when(sourceClient.fetch(new MyHomeComplexPageRequest("11", "110", 2, 2)))
 			.thenThrow(new IllegalStateException("원천 호출 실패"));
-		when(projectionService.projectAll()).thenReturn(IngestReport.empty());
 
 		MyHomeComplexIngestResult result = service.ingestNationwide(2, 10);
 
@@ -88,7 +82,6 @@ class MyHomeComplexIngestServiceTest {
 		when(regionCatalog.all()).thenReturn(List.of(region));
 		when(sourceClient.fetch(new MyHomeComplexPageRequest("11", "110", 1, 10))).thenReturn(List.of());
 		when(sourceStore.replaceRegionSnapshot(region, List.of())).thenReturn(IngestReport.oneUpdated());
-		when(projectionService.projectAll()).thenReturn(IngestReport.empty());
 
 		MyHomeComplexIngestResult result = service.ingestNationwide(10, 10);
 
@@ -97,7 +90,7 @@ class MyHomeComplexIngestServiceTest {
 	}
 
 	@Test
-	@DisplayName("여러 지역을 동시에 조회하고 모든 지역의 스냅샷을 투영한다")
+	@DisplayName("여러 지역을 동시에 조회하고 모든 지역의 원천 스냅샷을 저장한다")
 	void ingestsRegionsConcurrently() throws Exception {
 		MyHomeRegion first = new MyHomeRegion("11", "110", "서울특별시", "종로구");
 		MyHomeRegion second = new MyHomeRegion("11", "140", "서울특별시", "중구");
@@ -111,7 +104,6 @@ class MyHomeComplexIngestServiceTest {
 			return List.of();
 		});
 		when(sourceStore.replaceRegionSnapshot(any(), any())).thenReturn(IngestReport.oneUpdated());
-		when(projectionService.projectAll()).thenReturn(IngestReport.empty());
 
 		MyHomeComplexIngestResult result = service.ingestNationwide(10, 10);
 
@@ -125,6 +117,18 @@ class MyHomeComplexIngestServiceTest {
 		assertThatThrownBy(() -> service.ingestNationwide(0, 10)).isInstanceOf(IllegalArgumentException.class);
 		assertThatThrownBy(() -> service.ingestNationwide(10, 0)).isInstanceOf(IllegalArgumentException.class);
 		assertThatThrownBy(() -> service.ingestNationwide(10, 1_001)).isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@Test
+	@DisplayName("원천 적재는 도메인 투영을 호출하지 않는다")
+	void storesSourceOnly() {
+		MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+		when(regionCatalog.all()).thenReturn(List.of(region));
+		when(sourceClient.fetch(new MyHomeComplexPageRequest("11", "110", 1, 10))).thenReturn(List.of());
+		when(sourceStore.replaceRegionSnapshot(region, List.of())).thenReturn(IngestReport.empty());
+
+		service.ingestNationwide(10, 10);
+
 	}
 
 	private MyHomeComplexSourceItem item(Long complexId) {

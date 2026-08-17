@@ -22,6 +22,9 @@ hs_err_pid*
 **/.gradle/
 **/build/
 
+# Local H2 database files
+backend/data/
+
 # Frontend outputs (reserved for future use)
 **/node_modules/
 **/dist/
