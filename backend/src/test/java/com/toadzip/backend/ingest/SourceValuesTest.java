@@ -1,6 +1,8 @@
 package com.toadzip.backend.ingest;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,6 +36,23 @@ class SourceValuesTest {
 		assertThat(SourceValues.toInt("없음")).isNull();
 		assertThat(SourceValues.toInt("999999999999999999999")).isNull();
 		assertThat(SourceValues.toInt(" ")).isNull();
+	}
+
+	@Test
+	@DisplayName("금액과 면적 문자열을 각각 정수와 소수로 변환한다")
+	void convertsSourceNumbers() {
+		assertThat(SourceValues.toLong("37,224,000원")).isEqualTo(37_224_000L);
+		assertThat(SourceValues.toLong("공고문 참조")).isNull();
+		assertThat(SourceValues.toDecimal("39.9541㎡")).isEqualByComparingTo(new BigDecimal("39.9541"));
+		assertThat(SourceValues.toDecimal("없음")).isNull();
+	}
+
+	@Test
+	@DisplayName("지원하는 연월 형식을 변환한다")
+	void convertsSupportedYearMonthFormats() {
+		assertThat(SourceValues.toYearMonth("202610")).isEqualTo(YearMonth.of(2026, 10));
+		assertThat(SourceValues.toYearMonth("2026.10")).isEqualTo(YearMonth.of(2026, 10));
+		assertThat(SourceValues.toYearMonth("202613")).isNull();
 	}
 
 }

@@ -19,6 +19,8 @@ public class DataGoKrOpenApiClient {
 
 	private static final String NO_DATA = "03";
 
+	private static final String LH_SUCCESS = "Y";
+
 	private final RestClient restClient;
 
 	private final ObjectMapper objectMapper;
@@ -39,9 +41,8 @@ public class DataGoKrOpenApiClient {
 	}
 
 	public <T> List<T> getList(String path, MultiValueMap<String, String> params, String listPointer, Class<T> type) {
-		JsonNode root = get(path, params);
-		JsonNode found = root.at(listPointer);
-		List<JsonNode> rows = rowsOf(found);
+		JsonNode root = getRaw(path, params);
+		List<JsonNode> rows = findRows(root, listPointer);
 		List<T> items = new ArrayList<>(rows.size());
 		for (JsonNode row : rows) {
 			items.add(objectMapper.convertValue(row, type));
@@ -62,7 +63,7 @@ public class DataGoKrOpenApiClient {
 		return URI.create(uri + "&" + query);
 	}
 
-	private JsonNode get(String path, MultiValueMap<String, String> params) {
+	public JsonNode getRaw(String path, MultiValueMap<String, String> params) {
 		requireConfigured();
 		JsonNode root = restClient.get().uri(buildUri(path, params)).retrieve().body(JsonNode.class);
 		if (root == null) {
@@ -83,15 +84,18 @@ public class DataGoKrOpenApiClient {
 
 	private void verifyResultCode(JsonNode root) {
 		JsonNode header = root.path("response").path("header");
-		String code = header.path("resultCode").asString("");
-		if (SUCCESS.equals(code) || NO_DATA.equals(code)) {
+		if (header.isObject()) {
+			verifyMolitHeader(header);
 			return;
 		}
-		String message = header.path("resultMsg").asString("");
-		throw new IllegalStateException("원천 오류 resultCode=%s, %s".formatted(code, message));
+		verifyLhHeader(root);
 	}
 
-	private List<JsonNode> rowsOf(JsonNode found) {
+	public static List<JsonNode> findRows(JsonNode root, String locator) {
+		JsonNode found = findByKey(root, locator);
+		if (locator.startsWith("/")) {
+			found = root.at(locator);
+		}
 		if (found.isArray()) {
 			List<JsonNode> rows = new ArrayList<>(found.size());
 			found.forEach(rows::add);
@@ -101,6 +105,42 @@ public class DataGoKrOpenApiClient {
 			return List.of(found);
 		}
 		return List.of();
+	}
+
+	private void verifyMolitHeader(JsonNode header) {
+		String code = header.path("resultCode").asString("");
+		if (SUCCESS.equals(code) || NO_DATA.equals(code)) {
+			return;
+		}
+		String message = header.path("resultMsg").asString("");
+		throw new IllegalStateException("원천 오류 resultCode=%s, %s".formatted(code, message));
+	}
+
+	private void verifyLhHeader(JsonNode root) {
+		List<JsonNode> headers = findRows(root, "resHeader");
+		if (headers.isEmpty()) {
+			throw new IllegalStateException("원천 응답에 resHeader가 없습니다.");
+		}
+		JsonNode header = headers.getFirst();
+		String code = header.path("SS_CODE").asString("");
+		if (LH_SUCCESS.equals(code)) {
+			return;
+		}
+		String message = header.path("RS_MSG").asString("");
+		throw new IllegalStateException("원천 오류 SS_CODE=%s, %s".formatted(code, message));
+	}
+
+	private static JsonNode findByKey(JsonNode root, String key) {
+		if (!root.isArray()) {
+			return root.path(key);
+		}
+		for (JsonNode element : root) {
+			JsonNode found = element.path(key);
+			if (!found.isMissingNode()) {
+				return found;
+			}
+		}
+		return root.path(key);
 	}
 
 	private static String encodeServiceKey(String raw) {
