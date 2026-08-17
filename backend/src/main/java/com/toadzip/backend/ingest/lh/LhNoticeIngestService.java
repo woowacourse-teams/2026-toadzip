@@ -150,9 +150,15 @@ public class LhNoticeIngestService {
 				continue;
 			}
 			String panId = request.orElseThrow().panId();
+			List<LhNoticeDetailSource> details = detailSourceRepository
+					.findByPanIdOrderBySourceOrderAscIdAsc(panId);
+			List<LhNoticeSupplySource> supplies = supplySourceRepository
+					.findByPanIdOrderBySourceOrderAscIdAsc(panId);
+			if (details.isEmpty() && supplies.isEmpty()) {
+				continue;
+			}
 			report = report.plus(applyFromSources(notice, panId,
-					detailSourceRepository.findByPanIdOrderBySourceOrderAscIdAsc(panId),
-					supplySourceRepository.findByPanIdOrderBySourceOrderAscIdAsc(panId)));
+				details, supplies));
 		}
 		return report;
 	}
