@@ -22,4 +22,14 @@ public class IngestConfiguration {
 				"마이홈 단지");
 	}
 
+	@Bean("myHomeNoticeOpenApiClient")
+	DataGoKrOpenApiClient myHomeNoticeOpenApiClient(ObjectMapper objectMapper, IngestProperties properties) {
+		String baseUrl = null;
+		if (properties.baseUrl() != null) {
+			baseUrl = properties.baseUrl().myhomeNotice();
+		}
+		return new DataGoKrOpenApiClient(RestClient.create(), objectMapper, baseUrl, properties.serviceKey(),
+				"마이홈 공고");
+	}
+
 }
