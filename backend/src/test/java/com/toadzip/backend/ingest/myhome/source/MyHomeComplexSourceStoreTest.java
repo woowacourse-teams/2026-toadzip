@@ -52,6 +52,7 @@ class MyHomeComplexSourceStoreTest {
 	@DisplayName("같은 자연키와 값인 원천 행은 중복 저장하지 않는다")
 	void skipsUnchangedSourceRow() {
 		store.store(java.util.List.of(item("LH", "46A")));
+		flushAndClear();
 		IngestReport report = store.store(java.util.List.of(item("LH", "46A")));
 		flushAndClear();
 

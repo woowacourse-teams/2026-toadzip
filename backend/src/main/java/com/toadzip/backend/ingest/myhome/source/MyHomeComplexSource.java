@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.myhome.source;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -119,8 +120,8 @@ public class MyHomeComplexSource {
 		hshldCo = item.hshldCo();
 		suplyTyNm = SourceValues.trimToNull(item.suplyTyNm());
 		styleNm = SourceValues.trimToNull(item.styleNm());
-		suplyPrvuseAr = item.suplyPrvuseAr();
-		suplyCmnuseAr = item.suplyCmnuseAr();
+		suplyPrvuseAr = normalizeArea(item.suplyPrvuseAr());
+		suplyCmnuseAr = normalizeArea(item.suplyCmnuseAr());
 		houseTyNm = SourceValues.trimToNull(item.houseTyNm());
 		heatMthdDetailNm = SourceValues.trimToNull(item.heatMthdDetailNm());
 		buldStleNm = SourceValues.trimToNull(item.buldStleNm());
@@ -134,7 +135,7 @@ public class MyHomeComplexSource {
 	private static String keyPart(Object raw) {
 		String value = null;
 		if (raw instanceof BigDecimal decimal) {
-			value = decimal.stripTrailingZeros().toPlainString();
+			value = normalizeArea(decimal).stripTrailingZeros().toPlainString();
 		}
 		if (raw != null) {
 			if (value == null) {
@@ -145,6 +146,13 @@ public class MyHomeComplexSource {
 			return "-1:";
 		}
 		return value.length() + ":" + value;
+	}
+
+	private static BigDecimal normalizeArea(BigDecimal area) {
+		if (area == null) {
+			return null;
+		}
+		return area.setScale(4, RoundingMode.HALF_UP);
 	}
 
 }
