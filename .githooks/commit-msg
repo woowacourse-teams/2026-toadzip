@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+sh "$root/scripts/validate-commit-message.sh" "$1"

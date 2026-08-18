@@ -9,12 +9,12 @@
 | 브랜치 | 용도 | 배포 대상 |
 | --- | --- | --- |
 | `main` | 운영 배포가 가능한 릴리스 | 운영 서버 |
-| `develop` | 통합 개발 작업 | 개발 서버 |
-| `<type>/<issue-number>-<short-description>` | 개별 작업 | `develop`에 병합 |
+| `dev` | 통합 개발 작업 | 개발 서버 |
+| `<type>/<issue-number>-<short-description>` | 개별 작업 | `dev`에 병합 |
 
-최신 `develop`에서 작업 브랜치를 생성한다. 작업이 끝나면 PR을 통해 `develop`에 병합한다.
+최신 `dev`에서 작업 브랜치를 생성한다. 작업이 끝나면 PR을 통해 `dev`에 병합한다.
 
-운영 배포 시에는 `develop`에서 `main`으로 PR을 생성하여 병합한다. `main`과 `develop`에는 직접 푸시하지 않으며, 병합이 끝난 작업 브랜치는 삭제한다.
+운영 배포 시에는 `dev`에서 `main`으로 PR을 생성하여 병합한다. `main`과 `dev`에는 직접 푸시하지 않으며, 병합이 끝난 작업 브랜치는 삭제한다.
 
 ### 브랜치 이름
 
