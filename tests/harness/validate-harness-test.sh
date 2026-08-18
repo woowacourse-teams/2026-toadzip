@@ -25,7 +25,7 @@ make_valid_fixture() {
     printf '# %s\n' "$name" > "$root/backend/docs/$name.md"
     printf '%s\n' "$name.md" >> "$root/backend/docs/README.md"
   done
-  for role in backend_explorer backend_architect backend_worker backend_reviewer
+  for role in backend_explorer backend_architect backend_reviewer
   do
     printf 'name = "%s"\n' "$role" > "$root/.codex/agents/$role.toml"
   done
@@ -56,6 +56,13 @@ make_valid_fixture "$fixture/missing-role"
 rm "$fixture/missing-role/.codex/agents/backend_reviewer.toml"
 if "$validator" "$fixture/missing-role" >/dev/null 2>&1; then
   fail "missing backend agent role must fail"
+fi
+
+make_valid_fixture "$fixture/writable-worker"
+printf 'name = "backend_worker"\n' \
+  > "$fixture/writable-worker/.codex/agents/backend_worker.toml"
+if "$validator" "$fixture/writable-worker" >/dev/null 2>&1; then
+  fail "writable backend worker must fail"
 fi
 
 make_valid_fixture "$fixture/root-only"

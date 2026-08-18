@@ -28,12 +28,14 @@ backend/docs/agent-collaboration.md
 backend/docs/quality-gates.md
 .codex/agents/backend_explorer.toml
 .codex/agents/backend_architect.toml
-.codex/agents/backend_worker.toml
 .codex/agents/backend_reviewer.toml'
 
 printf '%s\n' "$required_files" | while IFS= read -r path; do
   [ -f "$root/$path" ] || fail "missing $path"
 done
+
+[ ! -e "$root/.codex/agents/backend_worker.toml" ] \
+  || fail "writable backend worker must not exist"
 
 grep -Fq 'SERVICE_OVERVIEW.md' "$root/AGENTS.md" \
   || fail "AGENTS.md must link SERVICE_OVERVIEW.md"
