@@ -5,7 +5,7 @@ import org.springframework.stereotype.Service;
 import com.toadzip.backend.ingest.IngestReport;
 import com.toadzip.backend.ingest.NoticeSupplyCatalogLinker;
 import com.toadzip.backend.ingest.lh.LhLeaseInfoIngestService;
-import com.toadzip.backend.ingest.lh.LhNoticeIngestService;
+import com.toadzip.backend.ingest.lh.LhNoticeProjectionService;
 import com.toadzip.backend.ingest.lh.source.LhCatalogSourceRepository;
 import com.toadzip.backend.ingest.lh.source.LhNoticeDetailSourceRepository;
 import com.toadzip.backend.ingest.lh.source.LhNoticeSupplySourceRepository;
@@ -24,7 +24,7 @@ public class SourceProjectionService {
 
 	private final LhLeaseInfoIngestService lhLeaseInfoIngestService;
 
-	private final LhNoticeIngestService lhNoticeIngestService;
+	private final LhNoticeProjectionService lhNoticeProjectionService;
 
 	private final NoticeSupplyCatalogLinker catalogLinker;
 
@@ -40,7 +40,7 @@ public class SourceProjectionService {
 
 	public SourceProjectionService(MyHomeComplexProjectionService myHomeComplexProjectionService,
 			MyHomeNoticeProjectionService myHomeNoticeProjectionService,
-			LhLeaseInfoIngestService lhLeaseInfoIngestService, LhNoticeIngestService lhNoticeIngestService,
+			LhLeaseInfoIngestService lhLeaseInfoIngestService, LhNoticeProjectionService lhNoticeProjectionService,
 			NoticeSupplyCatalogLinker catalogLinker,
 			MyHomeComplexSourceRepository myHomeComplexSourceRepository,
 			MyHomeNoticeSourceRepository myHomeNoticeSourceRepository,
@@ -50,7 +50,7 @@ public class SourceProjectionService {
 		this.myHomeComplexProjectionService = myHomeComplexProjectionService;
 		this.myHomeNoticeProjectionService = myHomeNoticeProjectionService;
 		this.lhLeaseInfoIngestService = lhLeaseInfoIngestService;
-		this.lhNoticeIngestService = lhNoticeIngestService;
+		this.lhNoticeProjectionService = lhNoticeProjectionService;
 		this.catalogLinker = catalogLinker;
 		this.myHomeComplexSourceRepository = myHomeComplexSourceRepository;
 		this.myHomeNoticeSourceRepository = myHomeNoticeSourceRepository;
@@ -63,7 +63,7 @@ public class SourceProjectionService {
 		IngestReport complex = myHomeComplexProjectionService.projectAll();
 		IngestReport notice = myHomeNoticeProjectionService.projectAll();
 		IngestReport catalog = lhLeaseInfoIngestService.projectAll();
-		IngestReport lhNotice = lhNoticeIngestService.projectAll();
+		IngestReport lhNotice = lhNoticeProjectionService.projectAll();
 		IngestReport links = catalogLinker.linkAll();
 		return new SourceProjectionReport(myHomeComplexSourceRepository.count(), myHomeNoticeSourceRepository.count(),
 				lhCatalogSourceRepository.count(), lhNoticeDetailSourceRepository.count(),

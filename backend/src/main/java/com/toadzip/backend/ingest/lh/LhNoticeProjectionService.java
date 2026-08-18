@@ -15,7 +15,6 @@ import java.util.Optional;
 import java.util.Set;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -26,10 +25,8 @@ import com.toadzip.backend.ingest.IngestReport;
 import com.toadzip.backend.ingest.SourceValues;
 import com.toadzip.backend.ingest.lh.source.LhNoticeDetailSource;
 import com.toadzip.backend.ingest.lh.source.LhNoticeDetailSourceRepository;
-import com.toadzip.backend.ingest.lh.source.LhNoticeSourceStore;
 import com.toadzip.backend.ingest.lh.source.LhNoticeSupplySource;
 import com.toadzip.backend.ingest.lh.source.LhNoticeSupplySourceRepository;
-import com.toadzip.backend.ingest.openapi.DataGoKrOpenApiClient;
 import com.toadzip.backend.notice.LhUnitSupplyValues;
 import com.toadzip.backend.notice.Notice;
 import com.toadzip.backend.notice.NoticeAttachmentRepository;
@@ -39,17 +36,9 @@ import com.toadzip.backend.notice.NoticeSupply;
 import com.toadzip.backend.notice.NoticeSupplyRepository;
 import com.toadzip.backend.notice.ReceptionPlaceRepository;
 
-import tools.jackson.databind.JsonNode;
-
 @Slf4j
 @Service
-public class LhNoticeIngestService {
-
-	private static final String DETAIL_PATH = "lhLeaseNoticeDtlInfo1/getLeaseNoticeDtlInfo1";
-
-	private static final String SUPPLY_PATH = "lhLeaseNoticeSplInfo1/getLeaseNoticeSplInfo1";
-
-	private final DataGoKrOpenApiClient apiClient;
+public class LhNoticeProjectionService {
 
 	private final NoticeRepository noticeRepository;
 
@@ -61,10 +50,6 @@ public class LhNoticeIngestService {
 
 	private final Clock clock;
 
-	private final LhNoticeSourceNormalizer normalizer;
-
-	private final LhNoticeSourceStore sourceStore;
-
 	private final LhNoticeDetailSourceRepository detailSourceRepository;
 
 	private final LhNoticeSupplySourceRepository supplySourceRepository;
@@ -75,60 +60,22 @@ public class LhNoticeIngestService {
 
 	private final NoticeAttachmentRepository attachmentRepository;
 
-	public LhNoticeIngestService(@Qualifier("lhApiClient") DataGoKrOpenApiClient apiClient,
-			NoticeRepository noticeRepository, NoticeSupplyRepository supplyRepository,
+	public LhNoticeProjectionService(NoticeRepository noticeRepository, NoticeSupplyRepository supplyRepository,
 			LhSupplyInfoTypeResolver supplyTypeResolver, PlatformTransactionManager transactionManager, Clock clock,
-			LhNoticeSourceNormalizer normalizer, LhNoticeSourceStore sourceStore,
 			LhNoticeDetailSourceRepository detailSourceRepository,
 			LhNoticeSupplySourceRepository supplySourceRepository, NoticeScheduleRepository scheduleRepository,
 			ReceptionPlaceRepository receptionPlaceRepository, NoticeAttachmentRepository attachmentRepository) {
-		this.apiClient = apiClient;
 		this.noticeRepository = noticeRepository;
 		this.supplyRepository = supplyRepository;
 		this.supplyTypeResolver = supplyTypeResolver;
 		this.transactionTemplate = new TransactionTemplate(transactionManager);
 		this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 		this.clock = clock;
-		this.normalizer = normalizer;
-		this.sourceStore = sourceStore;
 		this.detailSourceRepository = detailSourceRepository;
 		this.supplySourceRepository = supplySourceRepository;
 		this.scheduleRepository = scheduleRepository;
 		this.receptionPlaceRepository = receptionPlaceRepository;
 		this.attachmentRepository = attachmentRepository;
-	}
-
-	public IngestReport ingest() {
-		return ingest(false);
-	}
-
-	public IngestReport ingest(boolean refresh) {
-		IngestReport report = IngestReport.empty();
-		for (Notice notice : noticeRepository.findByDetailUrlContaining("panId")) {
-			report = report.plus(applyOne(notice, refresh));
-		}
-		return report;
-	}
-
-	IngestReport applyOne(Notice notice, boolean refresh) {
-		if (!refresh && notice.getLhFetchedAt() != null) {
-			return IngestReport.oneUnchanged();
-		}
-		Optional<LhNoticeRequest> request = requestFor(notice);
-		if (request.isEmpty()) {
-			return rejectionFor(notice);
-		}
-		LhNoticeRequest resolved = request.orElseThrow();
-		try {
-			JsonNode details = apiClient.getRaw(DETAIL_PATH, resolved.toParams());
-			JsonNode supplies = apiClient.getRaw(SUPPLY_PATH, resolved.toParams());
-			LhNoticeSourceNormalizer.Rows rows = normalizer.normalize(resolved.panId(), details, supplies);
-			return sourceStore.replaceSnapshot(resolved.panId(), rows.details(), rows.supplies());
-		}
-		catch (RuntimeException exception) {
-			log.warn("LH 공고 상세·공급 적재 실패: sourceNoticeId={}", notice.getSourceNoticeId(), exception);
-			return IngestReport.oneFailed();
-		}
 	}
 
 	public IngestReport applyFromSources(Notice notice, List<LhNoticeDetailSource> details,

@@ -17,7 +17,6 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.toadzip.backend.ingest.lh.source.LhNoticeDetailSourceRepository;
-import com.toadzip.backend.ingest.lh.source.LhNoticeSourceStore;
 import com.toadzip.backend.ingest.lh.source.LhNoticeSupplySourceRepository;
 import com.toadzip.backend.notice.Notice;
 import com.toadzip.backend.notice.NoticeAttachmentRepository;
@@ -36,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-class LhNoticeIngestServiceIntegrationTest {
+class LhNoticeProjectionServiceIntegrationTest {
 
 	private static final String GURI_ADDRESS = "경기도 구리시 체육관로74번길 67";
 
@@ -78,7 +77,7 @@ class LhNoticeIngestServiceIntegrationTest {
 
 	private Notice notice;
 
-	private LhNoticeIngestService service;
+	private LhNoticeProjectionService service;
 
 	@BeforeEach
 	void setUp() {
@@ -103,10 +102,9 @@ class LhNoticeIngestServiceIntegrationTest {
 				"https://myhome/3", "https://m.myhome/3"));
 		});
 
-		service = new LhNoticeIngestService(null, noticeRepository, supplyRepository,
+		service = new LhNoticeProjectionService(noticeRepository, supplyRepository,
 				new LhSupplyInfoTypeResolver(), transactionManager, FIXED_CLOCK,
-				new LhNoticeSourceNormalizer(MAPPER),
-				new LhNoticeSourceStore(detailSourceRepository, supplySourceRepository), detailSourceRepository,
+				detailSourceRepository,
 				supplySourceRepository, scheduleRepository, receptionPlaceRepository, attachmentRepository);
 	}
 

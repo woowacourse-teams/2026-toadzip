@@ -11,9 +11,9 @@ import com.toadzip.backend.ingest.IngestReport;
 @RequestMapping("/admin/ingest/lh-notices")
 public class LhNoticeIngestController {
 
-	private final LhNoticeIngestService ingestService;
+	private final LhNoticeSourceIngestService ingestService;
 
-	public LhNoticeIngestController(LhNoticeIngestService ingestService) {
+	public LhNoticeIngestController(LhNoticeSourceIngestService ingestService) {
 		this.ingestService = ingestService;
 	}
 
