@@ -22,7 +22,7 @@ feature layers ─────────────────────�
 | 모든 패키지 | 순환 의존, 범용 `util` 패키지 |
 
 Domain에는 JPA 매핑을 허용한다. Entity 응답 금지와 계층별 책임은
-`../CODE_CONVENTION.md`를 원본으로 따른다.
+[CODE_CONVENTION.md](../CODE_CONVENTION.md)를 원본으로 따른다.
 
 ## 기능 간 협력
 

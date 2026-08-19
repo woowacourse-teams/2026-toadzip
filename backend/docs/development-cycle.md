@@ -13,7 +13,7 @@
 
 ## 2. 탐색
 
-1. `docs/README.md`에서 필요한 문서를 고른다.
+1. [README.md](README.md)에서 필요한 문서를 고른다.
 2. production code와 가까운 test를 함께 읽는다.
 3. Controller부터 Service, Repository와 Domain까지 호출·데이터 흐름을 추적한다.
 4. 공개 계약, 트랜잭션, 외부 연동과 실패 경로를 확인한다.

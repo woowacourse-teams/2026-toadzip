@@ -6,7 +6,7 @@
 HTTP → Request DTO 검증 → Controller → Service → Domain / Repository → Response DTO
 ```
 
-- Controller 책임과 Entity 응답 금지는 `../CODE_CONVENTION.md`를 원본으로 따른다.
+- Controller 책임과 Entity 응답 금지는 [CODE_CONVENTION.md](../CODE_CONVENTION.md)를 원본으로 따른다.
 - 문법 검증은 Controller, 비즈니스 불변식은 Domain에서 처리한다.
 - 날짜, 통화, 좌표와 식별자의 형식과 단위를 명시한다.
 - 알 수 없는 입력을 조용히 보정하지 않고 일관된 오류로 거부한다.

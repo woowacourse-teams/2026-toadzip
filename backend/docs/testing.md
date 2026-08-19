@@ -14,8 +14,8 @@
 
 ## 작업 순서
 
-Red → Green → Refactor 순서와 완료 증거는 `development-cycle.md`를 따른다.
-테스트 이름, 단일 동작과 Given-When-Then 규칙은 `../CODE_CONVENTION.md`가 원본이다.
+Red → Green → Refactor 순서와 완료 증거는 [development-cycle.md](development-cycle.md)를 따른다.
+테스트 이름, 단일 동작과 Given-When-Then 규칙은 [CODE_CONVENTION.md](../CODE_CONVENTION.md)가 원본이다.
 
 ## 테스트 작성
 

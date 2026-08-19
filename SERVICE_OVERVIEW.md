@@ -33,5 +33,5 @@
 ## 기술 구성
 
 - 백엔드: Java 25, Spring Boot 4, Gradle
-- 개발 지침: [`backend/AGENTS.md`](backend/AGENTS.md)
-- 개발 환경: [`docs/SETUP.md`](docs/SETUP.md)
+- 개발 지침: [backend/AGENTS.md](backend/AGENTS.md)
+- 개발 환경: [docs/SETUP.md](docs/SETUP.md)

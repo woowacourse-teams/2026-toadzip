@@ -27,11 +27,11 @@ Controller → Service → Repository → Database / External API
 Controller ↔ DTO
 ```
 
-세부 허용 의존성은 `layer-boundaries.md`에서 확인한다.
+세부 허용 의존성은 [layer-boundaries.md](layer-boundaries.md)에서 확인한다.
 
 ## 패키지 기준
 
-- `controller`, `service`, `repository`의 책임은 `../CODE_CONVENTION.md`를 따른다.
+- `controller`, `service`, `repository`의 책임은 [CODE_CONVENTION.md](../CODE_CONVENTION.md)를 따른다.
 - `repository`의 데이터 접근 대상에는 DB와 외부 API가 포함된다.
 - `domain`은 상태, 행위와 불변식을 소유한다.
 - `dto`: 외부 계약과 계층 간 전달 데이터
