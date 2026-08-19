@@ -19,7 +19,7 @@
 1. 변경한 테스트 또는 가장 가까운 Gradle task
 2. 영향 기능 테스트 묶음
 3. ./gradlew check
-4. ArchUnit 또는 구조 검사
+4. 존재하는 계층 의존성 검사 또는 수동 구조 검토
 5. git diff --check와 최종 diff 리뷰
 ```
 
@@ -31,7 +31,7 @@
 ## 완료 체크리스트
 
 - [ ] 사용자 관점의 결과가 테스트 또는 실행 증거로 확인된다.
-- [ ] Domain Entity·Application·Adapter 경계가 유지된다.
+- [ ] Controller·Service·Repository·Domain 의존 방향이 유지된다.
 - [ ] API·데이터·설정 변경의 호환성과 복구 경로를 확인했다.
 - [ ] 오류·경계값·권한·외부 실패 경로를 검증했다.
 - [ ] diff에 비밀, 임시 로그, 생성 산출물과 범위 이탈이 없다.

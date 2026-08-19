@@ -9,19 +9,19 @@ fail() {
   exit 1
 }
 
-LC_ALL=C "$validator" dev 'feat/123-housing-map' \
+LC_ALL=C "$validator" develop 'feat/123-housing-map' \
   'feat(housing): 지도 조회 추가 (#123)' >/dev/null \
   || fail "valid PR contract must pass"
 
-"$validator" dev 'style/9-java-format' \
+"$validator" develop 'style/9-java-format' \
   'style: 자바 포맷 정리 (#9)' >/dev/null \
   || fail "style type must pass"
 
-"$validator" main dev \
+"$validator" main develop \
   'chore(release): 운영 배포 준비 (#124)' >/dev/null \
-  || fail "dev to main release PR must pass"
+  || fail "develop to main release PR must pass"
 
-if "$validator" dev 'feature/map' '기능을 추가한다' >/dev/null 2>&1; then
+if "$validator" develop 'feature/map' '기능을 추가한다' >/dev/null 2>&1; then
   fail "invalid branch and title must fail"
 fi
 
@@ -30,17 +30,22 @@ if "$validator" main 'fix/18-duplicate-address' \
   fail "work branch targeting main must fail"
 fi
 
-if "$validator" dev dev \
+if "$validator" develop develop \
   'chore(release): 운영 배포 준비 (#124)' >/dev/null 2>&1; then
-  fail "dev branch targeting dev must fail"
+  fail "develop branch targeting develop must fail"
 fi
 
-if "$validator" dev 'feat/12-kakao-login' \
+if "$validator" main dev \
+  'chore(release): 운영 배포 준비 (#124)' >/dev/null 2>&1; then
+  fail "legacy dev release branch must fail"
+fi
+
+if "$validator" develop 'feat/12-kakao-login' \
   'feat(auth): 카카오 로그인을 추가한다 (#12)' >/dev/null 2>&1; then
   fail "sentence-ending summary must fail"
 fi
 
-if "$validator" dev 'feat/12-kakao-login' \
+if "$validator" develop 'feat/12-kakao-login' \
   'feat(auth): add kakao login (#12)' >/dev/null 2>&1; then
   fail "English summary must fail"
 fi

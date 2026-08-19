@@ -3,11 +3,11 @@
 ## 경계 책임
 
 ```text
-HTTP → Request DTO 검증 → Inbound Port → Use Case → Response DTO
+HTTP → Request DTO 검증 → Controller → Service → Domain / Repository → Response DTO
 ```
 
-- Controller는 HTTP 계약만 소유하고 Domain 객체를 직렬화하지 않는다.
-- 문법 검증은 Web, 비즈니스 불변식은 Domain에서 처리한다.
+- Controller 책임과 Entity 응답 금지는 `../CODE_CONVENTION.md`를 원본으로 따른다.
+- 문법 검증은 Controller, 비즈니스 불변식은 Domain에서 처리한다.
 - 날짜, 통화, 좌표와 식별자의 형식과 단위를 명시한다.
 - 알 수 없는 입력을 조용히 보정하지 않고 일관된 오류로 거부한다.
 
@@ -45,4 +45,4 @@ HTTP → Request DTO 검증 → Inbound Port → Use Case → Response DTO
 - 기존 필드의 의미·타입 변경과 필수화는 공개 계약 변경이다.
 - 추가 필드는 클라이언트가 모르는 필드를 허용하는지 확인한다.
 - breaking change는 승인과 마이그레이션 경로 없이 배포하지 않는다.
-- 요청·응답·오류 계약은 Web Adapter 테스트로 고정한다.
+- 요청·응답·오류 계약은 Controller 테스트로 고정한다.

@@ -29,14 +29,14 @@ printf '%s\n' "$title" | grep -Eq '다[.]? \(#[1-9][0-9]*\)$' && {
   exit 1
 }
 
-if [ "$head_branch" = dev ]; then
+if [ "$head_branch" = develop ]; then
   [ "$base_branch" = main ] || {
-    echo "PR check failed: dev must target main" >&2
+    echo "PR check failed: develop must target main" >&2
     exit 1
   }
 else
-  [ "$base_branch" = dev ] || {
-    echo "PR check failed: work branch must target dev" >&2
+  [ "$base_branch" = develop ] || {
+    echo "PR check failed: work branch must target develop" >&2
     exit 1
   }
   printf '%s\n' "$head_branch" \

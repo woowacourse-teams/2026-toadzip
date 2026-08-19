@@ -3,7 +3,7 @@ name: Harness Check
 on:
   pull_request:
   push:
-    branches: [main, dev]
+    branches: [main, develop]
 
 permissions:
   contents: read

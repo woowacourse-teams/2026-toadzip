@@ -14,7 +14,7 @@
 | `traceId` | 요청·트레이스 연결 |
 | `event` | 안정된 사건 이름 |
 | `result` | 성공·실패 결과 |
-| `source` | 외부 기관 또는 Adapter 식별 |
+| `source` | 외부 기관 또는 연동 대상 식별 |
 
 - 문장 조합보다 구조화 필드를 사용한다.
 - 비밀, 개인정보, 공고문 원문 전체를 기록하지 않는다.
@@ -32,7 +32,7 @@
 ## 트레이스
 
 ```text
-HTTP → Use Case → DB Query / External API → Mapping → Response
+HTTP → Controller → Service → DB Query / External API → Mapping → Response
 ```
 
 - 외부 호출, 재시도, DB 병목과 비동기 경계를 span으로 구분한다.
