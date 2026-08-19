@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+
 [ "$#" -eq 1 ] || {
   echo "usage: validate-commit-message.sh COMMIT_MESSAGE_FILE" >&2
   exit 2
@@ -15,7 +17,7 @@ printf '%s\n' "$title" | grep -Eq "$pattern" || {
   exit 1
 }
 
-printf '%s\n' "$title" | grep -Eq '[가-힣]' || {
+printf '%s\n' "$title" | python3 "$script_dir/contains-hangul.py" || {
   echo "commit check failed: summary must be written in Korean" >&2
   exit 1
 }

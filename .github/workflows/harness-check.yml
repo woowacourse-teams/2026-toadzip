@@ -20,6 +20,7 @@ jobs:
       - name: Test harness validator
         run: |
           sh tests/harness/validate-harness-test.sh
+          sh tests/harness/contains-hangul-test.sh
           sh tests/harness/validate-commit-message-test.sh
           sh tests/harness/validate-pr-test.sh
       - name: Validate PR contract

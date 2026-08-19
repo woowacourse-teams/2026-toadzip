@@ -9,7 +9,7 @@ fail() {
   exit 1
 }
 
-"$validator" dev 'feat/123-housing-map' \
+LC_ALL=C "$validator" dev 'feat/123-housing-map' \
   'feat(housing): 지도 조회 추가 (#123)' >/dev/null \
   || fail "valid PR contract must pass"
 

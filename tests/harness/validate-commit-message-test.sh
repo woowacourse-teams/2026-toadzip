@@ -12,7 +12,7 @@ fail() {
 }
 
 printf '%s\n' 'feat(auth): 카카오 로그인 콜백 추가 (#12)' > "$message"
-"$validator" "$message" >/dev/null || fail "valid scoped commit must pass"
+LC_ALL=C "$validator" "$message" >/dev/null || fail "valid scoped commit must pass"
 
 printf '%s\n' 'docs: 팀 브랜치 컨벤션 추가 (#21)' > "$message"
 "$validator" "$message" >/dev/null || fail "valid unscoped commit must pass"

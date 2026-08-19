@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+
 [ "$#" -eq 3 ] || {
   echo "usage: validate-pr.sh BASE_BRANCH HEAD_BRANCH TITLE" >&2
   exit 2
@@ -17,7 +19,7 @@ printf '%s\n' "$title" | grep -Eq "$title_pattern" || {
   exit 1
 }
 
-printf '%s\n' "$title" | grep -Eq '[가-힣]' || {
+printf '%s\n' "$title" | python3 "$script_dir/contains-hangul.py" || {
   echo "PR check failed: summary must be written in Korean" >&2
   exit 1
 }
