@@ -5,19 +5,18 @@
 ## 1. 적용 범위
 
 - 대상은 `backend/src/main/java`와 `backend/src/test/java`의 Java 코드다.
-- 모든 Java 코드는 우아한테크코스 Java Style Guide를 따른다.
+- Spring Java Format은 모든 Java 코드에 적용한다.
 - 객체지향 생활체조는 도메인과 비즈니스 코드에 우선 적용한다.
 - DTO, JPA, 프레임워크 연동 및 테스트 준비 코드는 목적에 따라 일부 규칙을 적용하지 않을 수 있다.
 - 규칙을 적용하지 않은 이유가 명확하지 않다면 PR에 근거를 작성한다.
 
-## 2. 우아한테크코스 Java Style Guide
+## 2. Spring Java Format
 
-[우아한테크코스 Java Style Guide](https://github.com/woowacourse/woowacourse-docs/tree/main/styleguide/java)를 기본 코드 스타일로 사용한다.
+[Spring Java Format](https://github.com/spring-io/spring-javaformat)을 모든 Java 코드에 적용한다.
 
-- Google Java Style을 기반으로 한다.
-- 블록 들여쓰기는 스페이스 네 칸을 사용한다.
-- 한 줄은 120자를 넘지 않는다.
-- 줄을 바꿀 때는 기존 줄보다 스페이스 여덟 칸 이상 들여쓴다.
+- 코드 형식은 formatter의 결과를 따른다.
+- 공백과 줄바꿈을 임의로 조정하지 않는다.
+- formatter가 처리하지 않는 사항은 아래 프로젝트 규칙을 따른다.
 
 ## 3. 객체지향 생활체조
 
@@ -61,9 +60,10 @@
 
 ## 4. 프로젝트 규칙
 
+- 타입은 `PascalCase`, 메서드와 변수는 `camelCase`, 상수는 `UPPER_SNAKE_CASE`, 패키지는 소문자로 작성한다.
 - 삼항 연산자를 사용하지 않는다.
 - 배열보다 컬렉션을 우선한다. `byte[]`, 가변 인자와 외부 API 연동은 예외로 한다.
-- 사용하지 않는 import를 허용하지 않는다.
+- 와일드카드 및 사용하지 않는 import를 허용하지 않는다.
 - 의존성은 생성자로 주입한다.
 - Controller는 요청 검증과 응답 변환, Service는 유스케이스 흐름과 트랜잭션, Repository는 데이터 접근을 담당한다.
 - Entity를 API 응답으로 직접 반환하지 않는다.
