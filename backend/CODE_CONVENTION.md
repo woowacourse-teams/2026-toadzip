@@ -5,16 +5,17 @@
 ## 1. 적용 범위
 
 - 대상은 `backend/src/main/java`와 `backend/src/test/java`의 Java 코드다.
-- 모든 Java 코드는 우아한테크코스 Java Style Guide를 따른다.
+- 모든 Java 코드는 Google Java Style Guide와 프로젝트 예외 사항을 따른다.
 - 객체지향 생활체조는 도메인과 비즈니스 코드에 우선 적용한다.
-- DTO, JPA, 프레임워크 연동 및 테스트 준비 코드는 목적에 따라 일부 규칙을 적용하지 않을 수 있다.
-- 규칙을 적용하지 않은 이유가 명확하지 않다면 PR에 근거를 작성한다.
+- DTO, JPA, 프레임워크 연동 및 테스트 준비 코드에는 객체지향 생활체조 규칙을 일부 적용하지 않을 수 있다.
+- 객체지향 생활체조 규칙을 적용하지 않은 이유가 명확하지 않다면 PR에 근거를 작성한다.
 
-## 2. 우아한테크코스 Java Style Guide
+## 2. Google Java Style Guide
 
-[우아한테크코스 Java Style Guide](https://github.com/woowacourse/woowacourse-docs/tree/main/styleguide/java)를 기본 코드 스타일로 사용한다.
+[Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)를 기본 코드 스타일로 사용한다.
 
-- Google Java Style을 기반으로 한다.
+다음 항목은 Google Java Style과 다르게 적용한다.
+
 - 블록 들여쓰기는 스페이스 네 칸을 사용한다.
 - 한 줄은 120자를 넘지 않는다.
 - 줄을 바꿀 때는 기존 줄보다 스페이스 여덟 칸 이상 들여쓴다.
