@@ -9,7 +9,7 @@
 ## 읽기 순서
 
 1. 모든 작업은 `docs/README.md`에서 필요한 문서를 찾는다.
-2. 제품 맥락은 `docs/backend-context.md`를 먼저 확인한다.
+2. 제품 맥락은 루트 `SERVICE_OVERVIEW.md`에서 확인한다.
 3. 구현은 `docs/development-cycle.md`의 작은 검증 루프를 따른다.
 4. 구조 변경은 `docs/architecture.md`와 `docs/module-boundaries.md`를 읽는다.
 5. Git 작업은 `docs/git-conventions.md`를 따른다.

@@ -18,8 +18,8 @@ make_valid_fixture() {
   printf '%s\n' '# Repository map' 'SERVICE_OVERVIEW.md' 'backend/AGENTS.md' > "$root/AGENTS.md"
   printf '%s\n' '# Backend contract' 'docs/README.md' > "$root/backend/AGENTS.md"
   : > "$root/backend/docs/README.md"
-  for name in backend-context architecture module-boundaries development-cycle \
-    code-conventions git-conventions api-conventions persistence testing security observability \
+  for name in architecture module-boundaries development-cycle code-conventions \
+    git-conventions api-conventions persistence testing security observability \
     agent-collaboration quality-gates
   do
     printf '# %s\n' "$name" > "$root/backend/docs/$name.md"

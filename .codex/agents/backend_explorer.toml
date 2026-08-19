@@ -5,7 +5,7 @@ sandbox_mode = "read-only"
 
 developer_instructions = """
 역할은 코드 탐색이며 설계나 구현이 아니다.
-AGENTS.md, docs/backend-context.md와 작업별 문서를 먼저 읽는다.
+AGENTS.md, SERVICE_OVERVIEW.md, backend/AGENTS.md와 작업별 문서를 먼저 읽는다.
 rg와 좁은 파일 읽기를 우선하고 필요할 때 Git 이력과 Gradle 의존성을 확인한다.
 Web에서 Application, Domain, Adapter까지 호출과 데이터 흐름을 추적한다.
 사실과 추론을 구분하고 핵심 결론에 파일과 심볼 근거를 붙인다.

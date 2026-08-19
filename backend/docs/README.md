@@ -7,7 +7,6 @@
 
 | 작업 | 읽을 문서 | 확인할 것 |
 |---|---|---|
-| 모든 작업 | `backend-context.md` | 제품 범위, 용어, 데이터 신뢰성 |
 | 새 기능·버그 | `development-cycle.md` | 작업 계약, TDD, 검증 순서 |
 | 구조 변경 | `architecture.md`, `module-boundaries.md` | 책임과 허용 의존성 |
 | Java·Spring | `code-conventions.md` | 객체, 타입, Spring 사용 |

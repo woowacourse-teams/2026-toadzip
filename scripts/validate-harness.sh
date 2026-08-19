@@ -13,7 +13,6 @@ required_files='AGENTS.md
 SERVICE_OVERVIEW.md
 backend/AGENTS.md
 backend/docs/README.md
-backend/docs/backend-context.md
 backend/docs/architecture.md
 backend/docs/module-boundaries.md
 backend/docs/development-cycle.md
