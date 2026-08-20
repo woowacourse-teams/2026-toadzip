@@ -1,0 +1,47 @@
+name: Harness Check
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate harness
+        run: sh scripts/validate-harness.sh
+      - name: Test harness validator
+        run: |
+          sh tests/harness/validate-harness-test.sh
+          sh tests/harness/contains-hangul-test.sh
+          sh tests/harness/validate-commit-message-test.sh
+          sh tests/harness/validate-pr-test.sh
+      - name: Validate PR contract
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: sh scripts/validate-pr.sh "$BASE_BRANCH" "$HEAD_BRANCH" "$PR_TITLE"
+      - name: Set up Java
+        if: ${{ hashFiles('gradlew', 'backend/gradlew') != '' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - name: Verify backend
+        if: ${{ hashFiles('gradlew', 'backend/gradlew') != '' }}
+        run: |
+          if [ -x ./gradlew ]; then
+            ./gradlew check
+          else
+            cd backend
+            ./gradlew check
+          fi

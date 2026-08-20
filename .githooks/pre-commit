@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+sh scripts/validate-harness.sh
