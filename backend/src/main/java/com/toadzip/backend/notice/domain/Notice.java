@@ -112,6 +112,7 @@ public class Notice {
         validateRequired(postedDate, "게시일");
         validateRequired(applicationStartDate, "접수 시작일");
         validateRequired(applicationEndDate, "접수 종료일");
+        validateApplicationPeriod(applicationStartDate, applicationEndDate);
         validateRequired(winnerAnnouncementDate, "당첨자 발표일");
         validateNotBlank(originalUrl, "원문 URL");
         validateNonNegative(viewCount, "조회수");
@@ -187,6 +188,12 @@ public class Notice {
     private void validateNonNegative(long value, String fieldName) {
         if (value < 0) {
             throw new IllegalArgumentException(fieldName + "은 음수일 수 없다.");
+        }
+    }
+
+    private void validateApplicationPeriod(LocalDate startDate, LocalDate endDate) {
+        if (endDate.isBefore(startDate)) {
+            throw new IllegalArgumentException("접수 종료일은 접수 시작일보다 빠를 수 없다.");
         }
     }
 }

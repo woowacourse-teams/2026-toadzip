@@ -52,6 +52,21 @@ class NoticeChildValidationTest {
     }
 
     @Test
+    void 일정_종료일시는_시작일시보다_빠를_수_없다() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> NoticeSchedule.create(
+                        createNotice(),
+                        "접수",
+                        "인터넷 접수",
+                        LocalDateTime.of(2026, 8, 14, 17, 0),
+                        LocalDateTime.of(2026, 8, 10, 10, 0),
+                        1
+                )
+        );
+    }
+
+    @Test
     void 공고일정의_표시순서는_음수일_수_없다() {
         assertThrows(
                 IllegalArgumentException.class,

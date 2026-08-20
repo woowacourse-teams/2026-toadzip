@@ -57,6 +57,7 @@ public class NoticeSchedule {
         validateNotBlank(name, "일정명");
         validateRequired(startAt, "시작일시");
         validateRequired(endAt, "종료일시");
+        validatePeriod(startAt, endAt);
         validateNonNegative(displayOrder, "표시순서");
         this.notice = notice;
         this.scheduleType = scheduleType;
@@ -92,6 +93,12 @@ public class NoticeSchedule {
     private void validateNonNegative(int value, String fieldName) {
         if (value < 0) {
             throw new IllegalArgumentException(fieldName + "은 음수일 수 없다.");
+        }
+    }
+
+    private void validatePeriod(LocalDateTime startAt, LocalDateTime endAt) {
+        if (endAt.isBefore(startAt)) {
+            throw new IllegalArgumentException("일정 종료일시는 시작일시보다 빠를 수 없다.");
         }
     }
 }

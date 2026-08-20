@@ -201,7 +201,21 @@ class DomainJpaPersistenceTest {
                 () -> assertEquals(userId, foundUserEligibilityInfo.getUserId()),
                 () -> assertEquals(userId, foundUserEligibilityInfo.getUser().getId()),
                 () -> assertEquals(userId, foundUserPlace.getUser().getId()),
+                () -> assertEquals(0, new BigDecimal("37.5665").compareTo(foundUserPlace.getLatitude())),
+                () -> assertEquals(0, new BigDecimal("126.9780").compareTo(foundUserPlace.getLongitude())),
                 () -> assertEquals(housingComplex.getId(), foundHousingType.getHousingComplex().getId()),
+                () -> assertEquals(
+                        0,
+                        new BigDecimal("37.5665").compareTo(
+                                foundHousingType.getHousingComplex().getAddress().getLatitude()
+                        )
+                ),
+                () -> assertEquals(
+                        0,
+                        new BigDecimal("126.9780").compareTo(
+                                foundHousingType.getHousingComplex().getAddress().getLongitude()
+                        )
+                ),
                 () -> assertEquals(originalNotice.getId(), foundCorrectedNotice.getPreviousNotice().getId()),
                 () -> assertEquals("source-notice-id-1", foundCorrectedNotice.getPreviousSourceNoticeIdentifier()),
                 () -> assertEquals(housingComplex.getId(), foundMatchedSupplyRow.getHousingComplex().getId()),

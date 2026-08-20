@@ -1,5 +1,6 @@
 package com.toadzip.backend.user.domain;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -141,6 +142,49 @@ class UserPlaceTest {
                         new BigDecimal("126.9780"),
                         null
                 )
+        );
+    }
+
+    @Test
+    void 위도는_영하_90도에서_90도_사이여야_한다() {
+        assertAll(
+                () -> assertDoesNotThrow(() -> createUserPlace(new BigDecimal("-90"), BigDecimal.ZERO)),
+                () -> assertDoesNotThrow(() -> createUserPlace(new BigDecimal("90"), BigDecimal.ZERO)),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> createUserPlace(new BigDecimal("-90.0001"), BigDecimal.ZERO)
+                ),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> createUserPlace(new BigDecimal("90.0001"), BigDecimal.ZERO)
+                )
+        );
+    }
+
+    @Test
+    void 경도는_영하_180도에서_180도_사이여야_한다() {
+        assertAll(
+                () -> assertDoesNotThrow(() -> createUserPlace(BigDecimal.ZERO, new BigDecimal("-180"))),
+                () -> assertDoesNotThrow(() -> createUserPlace(BigDecimal.ZERO, new BigDecimal("180"))),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> createUserPlace(BigDecimal.ZERO, new BigDecimal("-180.0001"))
+                ),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> createUserPlace(BigDecimal.ZERO, new BigDecimal("180.0001"))
+                )
+        );
+    }
+
+    private UserPlace createUserPlace(BigDecimal latitude, BigDecimal longitude) {
+        return UserPlace.create(
+                User.create("login-id", LocalDateTime.of(2026, 8, 19, 12, 0)),
+                "회사",
+                "서울특별시 중구 세종대로 110",
+                latitude,
+                longitude,
+                LocalDateTime.of(2026, 8, 19, 12, 30)
         );
     }
 }

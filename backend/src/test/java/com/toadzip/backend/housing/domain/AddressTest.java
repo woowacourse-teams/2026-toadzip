@@ -1,5 +1,6 @@
 package com.toadzip.backend.housing.domain;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -86,6 +87,38 @@ class AddressTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> createAddress(new BigDecimal("37.5665"), null)
+        );
+    }
+
+    @Test
+    void 위도는_영하_90도에서_90도_사이여야_한다() {
+        assertAll(
+                () -> assertDoesNotThrow(() -> createAddress(new BigDecimal("-90"), BigDecimal.ZERO)),
+                () -> assertDoesNotThrow(() -> createAddress(new BigDecimal("90"), BigDecimal.ZERO)),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> createAddress(new BigDecimal("-90.0001"), BigDecimal.ZERO)
+                ),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> createAddress(new BigDecimal("90.0001"), BigDecimal.ZERO)
+                )
+        );
+    }
+
+    @Test
+    void 경도는_영하_180도에서_180도_사이여야_한다() {
+        assertAll(
+                () -> assertDoesNotThrow(() -> createAddress(BigDecimal.ZERO, new BigDecimal("-180"))),
+                () -> assertDoesNotThrow(() -> createAddress(BigDecimal.ZERO, new BigDecimal("180"))),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> createAddress(BigDecimal.ZERO, new BigDecimal("-180.0001"))
+                ),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> createAddress(BigDecimal.ZERO, new BigDecimal("180.0001"))
+                )
         );
     }
 

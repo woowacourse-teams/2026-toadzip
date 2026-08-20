@@ -101,6 +101,22 @@ class NoticeValidationTest {
     }
 
     @Test
+    void 접수_종료일은_접수_시작일보다_빠를_수_없다() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> createNotice(
+                        validStringFields(),
+                        LocalDate.of(2026, 8, 1),
+                        LocalDate.of(2026, 8, 14),
+                        LocalDate.of(2026, 8, 10),
+                        LocalDate.of(2026, 9, 1),
+                        100L,
+                        createReceptionPlace()
+                )
+        );
+    }
+
+    @Test
     void 조회수는_음수일_수_없다() {
         assertThrows(
                 IllegalArgumentException.class,
