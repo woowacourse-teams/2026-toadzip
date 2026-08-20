@@ -55,9 +55,9 @@ class InterestValidationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {0, 1, 2, 3})
+    @ValueSource(ints = {0, 1})
     void 관심지역의_지역_문자열은_비어_있을_수_없다(int blankFieldIndex) {
-        String[] fields = {"11", "서울특별시", "11140", "중구"};
+        String[] fields = {"11", "11140"};
         fields[blankFieldIndex] = " ";
 
         assertThrows(
@@ -66,8 +66,6 @@ class InterestValidationTest {
                         createUser(),
                         fields[0],
                         fields[1],
-                        fields[2],
-                        fields[3],
                         LocalDateTime.of(2026, 8, 19, 12, 30)
                 )
         );
@@ -81,11 +79,11 @@ class InterestValidationTest {
         assertAll(
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> FavoriteRegion.create(null, "11", "서울특별시", "11140", "중구", createdAt)
+                        () -> FavoriteRegion.create(null, "11", "11140", createdAt)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> FavoriteRegion.create(user, "11", "서울특별시", "11140", "중구", null)
+                        () -> FavoriteRegion.create(user, "11", "11140", null)
                 )
         );
     }
@@ -104,9 +102,7 @@ class InterestValidationTest {
                         "1114010100100010000",
                         "1114010100",
                         "11",
-                        "서울특별시",
                         "11140",
-                        "중구",
                         new BigDecimal("37.5665"),
                         new BigDecimal("126.9780")
                 ),

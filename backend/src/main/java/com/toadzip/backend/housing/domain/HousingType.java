@@ -38,9 +38,6 @@ public class HousingType {
     private BigDecimal supplyArea;
 
     @Column(nullable = false)
-    private BigDecimal residentialCommonArea;
-
-    @Column(nullable = false)
     private int totalHouseholdCount;
 
     @Column(nullable = false)
@@ -56,7 +53,6 @@ public class HousingType {
             String name,
             BigDecimal exclusiveArea,
             BigDecimal supplyArea,
-            BigDecimal residentialCommonArea,
             int totalHouseholdCount,
             String floorPlanUrl,
             boolean duplex,
@@ -66,7 +62,6 @@ public class HousingType {
         validateNotBlank(name, "주택형명");
         validateRequiredAmount(exclusiveArea, "전용면적");
         validateNonNegativeIfPresent(supplyArea, "공급면적");
-        validateRequiredAmount(residentialCommonArea, "주거공용면적");
         validateNonNegative(totalHouseholdCount, "전체 세대수");
         validateNotBlank(floorPlanUrl, "평면도");
         validateNonNegativeIfPresent(maintenanceFee, "관리비");
@@ -74,7 +69,6 @@ public class HousingType {
         this.name = name;
         this.exclusiveArea = exclusiveArea;
         this.supplyArea = supplyArea;
-        this.residentialCommonArea = residentialCommonArea;
         this.totalHouseholdCount = totalHouseholdCount;
         this.floorPlanUrl = floorPlanUrl;
         this.duplex = duplex;
@@ -86,7 +80,6 @@ public class HousingType {
             String name,
             BigDecimal exclusiveArea,
             BigDecimal supplyArea,
-            BigDecimal residentialCommonArea,
             int totalHouseholdCount,
             String floorPlanUrl,
             boolean duplex,
@@ -97,7 +90,6 @@ public class HousingType {
                 name,
                 exclusiveArea,
                 supplyArea,
-                residentialCommonArea,
                 totalHouseholdCount,
                 floorPlanUrl,
                 duplex,

@@ -20,7 +20,7 @@ import com.toadzip.backend.notice.domain.SupplyCategory;
 import com.toadzip.backend.notice.domain.SupplyRow;
 import com.toadzip.backend.notice.domain.SupplyTarget;
 import com.toadzip.backend.user.domain.User;
-import com.toadzip.backend.user.domain.UserInfo;
+import com.toadzip.backend.user.domain.UserEligibilityInfo;
 import com.toadzip.backend.user.domain.UserPlace;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -92,9 +92,9 @@ class DomainJpaPersistenceTest {
         User user = createUser();
         entityManager.persist(user);
 
-        UserInfo userInfo = createUserInfo(user);
+        UserEligibilityInfo userEligibilityInfo = createUserEligibilityInfo(user);
         UserPlace userPlace = createUserPlace(user);
-        entityManager.persist(userInfo);
+        entityManager.persist(userEligibilityInfo);
         entityManager.persist(userPlace);
 
         HousingComplex housingComplex = createHousingComplex();
@@ -151,9 +151,7 @@ class DomainJpaPersistenceTest {
         FavoriteRegion favoriteRegion = FavoriteRegion.create(
                 user,
                 "11",
-                "서울특별시",
                 "11140",
-                "중구",
                 LocalDateTime.of(2026, 8, 19, 13, 3)
         );
         entityManager.persist(favoriteNotice);
@@ -179,7 +177,7 @@ class DomainJpaPersistenceTest {
 
         entityManager.clear();
 
-        UserInfo foundUserInfo = entityManager.find(UserInfo.class, userId);
+        UserEligibilityInfo foundUserEligibilityInfo = entityManager.find(UserEligibilityInfo.class, userId);
         UserPlace foundUserPlace = entityManager.find(UserPlace.class, userPlaceId);
         HousingType foundHousingType = entityManager.find(HousingType.class, housingTypeId);
         Notice foundCorrectedNotice = entityManager.find(Notice.class, correctedNoticeId);
@@ -200,8 +198,8 @@ class DomainJpaPersistenceTest {
         FavoriteRegion foundFavoriteRegion = entityManager.find(FavoriteRegion.class, favoriteRegionId);
 
         assertAll(
-                () -> assertEquals(userId, foundUserInfo.getUserId()),
-                () -> assertEquals(userId, foundUserInfo.getUser().getId()),
+                () -> assertEquals(userId, foundUserEligibilityInfo.getUserId()),
+                () -> assertEquals(userId, foundUserEligibilityInfo.getUser().getId()),
                 () -> assertEquals(userId, foundUserPlace.getUser().getId()),
                 () -> assertEquals(housingComplex.getId(), foundHousingType.getHousingComplex().getId()),
                 () -> assertEquals(originalNotice.getId(), foundCorrectedNotice.getPreviousNotice().getId()),
@@ -218,7 +216,8 @@ class DomainJpaPersistenceTest {
                 () -> assertNull(foundUnmatchedFavoriteNotice.getNotice()),
                 () -> assertEquals(housingComplex.getId(), foundFavoriteHousingComplex.getHousingComplex().getId()),
                 () -> assertEquals(userId, foundFavoriteRegion.getUser().getId()),
-                () -> assertEquals("서울특별시", foundFavoriteRegion.getProvinceName()),
+                () -> assertEquals("11", foundFavoriteRegion.getProvinceCode()),
+                () -> assertEquals("11140", foundFavoriteRegion.getCityCountyDistrictCode()),
                 () -> assertNotNull(foundCorrectedNotice.getReceptionPlace())
         );
     }
@@ -227,9 +226,9 @@ class DomainJpaPersistenceTest {
         return User.create("login-id", LocalDateTime.of(2026, 8, 19, 12, 0));
     }
 
-    private UserInfo createUserInfo(User user) {
+    private UserEligibilityInfo createUserEligibilityInfo(User user) {
         BigDecimal income = new BigDecimal("3000000");
-        return UserInfo.create(
+        return UserEligibilityInfo.create(
                 user,
                 LocalDate.of(1995, 5, 10),
                 "서울특별시",
@@ -280,9 +279,7 @@ class DomainJpaPersistenceTest {
                         "1114010100100010000",
                         "1114010100",
                         "11",
-                        "서울특별시",
                         "11140",
-                        "중구",
                         new BigDecimal("37.5665"),
                         new BigDecimal("126.9780")
                 ),
@@ -305,7 +302,6 @@ class DomainJpaPersistenceTest {
                 "36A",
                 new BigDecimal("36.00"),
                 new BigDecimal("48.00"),
-                new BigDecimal("12.00"),
                 120,
                 "https://example.com/floor-plan.png",
                 false,

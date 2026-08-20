@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.Table;
 import jakarta.persistence.metamodel.Attribute;
 import jakarta.persistence.metamodel.EntityType;
 import java.util.Set;
@@ -27,7 +28,7 @@ class UserJpaMappingTest {
                 Set.of("id", "loginIdentifier", "createdAt")
         );
         assertEntityAttributes(
-                "UserInfo",
+                "UserEligibilityInfo",
                 Set.of(
                         "userId",
                         "user",
@@ -58,10 +59,18 @@ class UserJpaMappingTest {
                         "newbornBirthDate"
                 )
         );
+        assertTableName("UserEligibilityInfo", "user_eligibility_infos");
         assertEntityAttributes(
                 "UserPlace",
                 Set.of("id", "user", "name", "address", "latitude", "longitude", "createdAt")
         );
+    }
+
+    private void assertTableName(String simpleClassName, String expectedTableName) {
+        Class<?> entityClass = assertDoesNotThrow(() -> Class.forName(DOMAIN_PACKAGE + simpleClassName));
+        Table table = entityClass.getAnnotation(Table.class);
+
+        assertEquals(expectedTableName, table.name());
     }
 
     private void assertEntityAttributes(String simpleClassName, Set<String> expectedAttributes) {

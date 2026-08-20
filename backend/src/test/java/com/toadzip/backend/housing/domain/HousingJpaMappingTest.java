@@ -50,7 +50,6 @@ class HousingJpaMappingTest {
                         "name",
                         "exclusiveArea",
                         "supplyArea",
-                        "residentialCommonArea",
                         "totalHouseholdCount",
                         "floorPlanUrl",
                         "duplex",
@@ -64,9 +63,7 @@ class HousingJpaMappingTest {
                         "pnu",
                         "legalDongCode",
                         "provinceCode",
-                        "provinceName",
                         "cityCountyDistrictCode",
-                        "cityCountyDistrictName",
                         "latitude",
                         "longitude"
                 )

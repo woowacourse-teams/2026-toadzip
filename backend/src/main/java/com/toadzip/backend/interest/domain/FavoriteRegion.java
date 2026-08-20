@@ -34,13 +34,7 @@ public class FavoriteRegion {
     private String provinceCode;
 
     @Column(nullable = false)
-    private String provinceName;
-
-    @Column(nullable = false)
     private String cityCountyDistrictCode;
-
-    @Column(nullable = false)
-    private String cityCountyDistrictName;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;
@@ -48,39 +42,29 @@ public class FavoriteRegion {
     private FavoriteRegion(
             User user,
             String provinceCode,
-            String provinceName,
             String cityCountyDistrictCode,
-            String cityCountyDistrictName,
             LocalDateTime createdAt
     ) {
         validateRequired(user, "유저");
         validateNotBlank(provinceCode, "시·도 코드");
-        validateNotBlank(provinceName, "시·도명");
         validateNotBlank(cityCountyDistrictCode, "시·군·구 코드");
-        validateNotBlank(cityCountyDistrictName, "시·군·구명");
         validateRequired(createdAt, "등록일시");
         this.user = user;
         this.provinceCode = provinceCode;
-        this.provinceName = provinceName;
         this.cityCountyDistrictCode = cityCountyDistrictCode;
-        this.cityCountyDistrictName = cityCountyDistrictName;
         this.createdAt = createdAt;
     }
 
     public static FavoriteRegion create(
             User user,
             String provinceCode,
-            String provinceName,
             String cityCountyDistrictCode,
-            String cityCountyDistrictName,
             LocalDateTime createdAt
     ) {
         return new FavoriteRegion(
                 user,
                 provinceCode,
-                provinceName,
                 cityCountyDistrictCode,
-                cityCountyDistrictName,
                 createdAt
         );
     }

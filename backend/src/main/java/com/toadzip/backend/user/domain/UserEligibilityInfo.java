@@ -17,9 +17,9 @@ import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "user_infos")
+@Table(name = "user_eligibility_infos")
 @NoArgsConstructor(access = PROTECTED)
-public class UserInfo {
+public class UserEligibilityInfo {
 
     @Id
     @Column(name = "user_id")
@@ -100,7 +100,7 @@ public class UserInfo {
 
     private LocalDate newbornBirthDate;
 
-    private UserInfo(
+    private UserEligibilityInfo(
             User user,
             LocalDate birthDate,
             String currentResidenceRegion,
@@ -169,7 +169,7 @@ public class UserInfo {
         this.newbornBirthDate = newbornBirthDate;
     }
 
-    public static UserInfo create(
+    public static UserEligibilityInfo create(
             User user,
             LocalDate birthDate,
             String currentResidenceRegion,
@@ -197,7 +197,7 @@ public class UserInfo {
             boolean veteran,
             LocalDate newbornBirthDate
     ) {
-        return new UserInfo(
+        return new UserEligibilityInfo(
                 user,
                 birthDate,
                 currentResidenceRegion,

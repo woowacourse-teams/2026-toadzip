@@ -26,13 +26,7 @@ public class Address {
     private String provinceCode;
 
     @Column(nullable = false)
-    private String provinceName;
-
-    @Column(nullable = false)
     private String cityCountyDistrictCode;
-
-    @Column(nullable = false)
-    private String cityCountyDistrictName;
 
     @Column(nullable = false)
     private BigDecimal latitude;
@@ -45,9 +39,7 @@ public class Address {
             String pnu,
             String legalDongCode,
             String provinceCode,
-            String provinceName,
             String cityCountyDistrictCode,
-            String cityCountyDistrictName,
             BigDecimal latitude,
             BigDecimal longitude
     ) {
@@ -55,18 +47,14 @@ public class Address {
         validateNotBlank(pnu, "PNU");
         validateNotBlank(legalDongCode, "법정동코드");
         validateNotBlank(provinceCode, "시·도 코드");
-        validateNotBlank(provinceName, "시·도명");
         validateNotBlank(cityCountyDistrictCode, "시·군·구 코드");
-        validateNotBlank(cityCountyDistrictName, "시·군·구명");
         validateRequired(latitude, "위도");
         validateRequired(longitude, "경도");
         this.roadAddress = roadAddress;
         this.pnu = pnu;
         this.legalDongCode = legalDongCode;
         this.provinceCode = provinceCode;
-        this.provinceName = provinceName;
         this.cityCountyDistrictCode = cityCountyDistrictCode;
-        this.cityCountyDistrictName = cityCountyDistrictName;
         this.latitude = latitude;
         this.longitude = longitude;
     }
@@ -76,9 +64,7 @@ public class Address {
             String pnu,
             String legalDongCode,
             String provinceCode,
-            String provinceName,
             String cityCountyDistrictCode,
-            String cityCountyDistrictName,
             BigDecimal latitude,
             BigDecimal longitude
     ) {
@@ -87,9 +73,7 @@ public class Address {
                 pnu,
                 legalDongCode,
                 provinceCode,
-                provinceName,
                 cityCountyDistrictCode,
-                cityCountyDistrictName,
                 latitude,
                 longitude
         );

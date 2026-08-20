@@ -36,9 +36,7 @@ class InterestJpaMappingTest {
                         "id",
                         "user",
                         "provinceCode",
-                        "provinceName",
                         "cityCountyDistrictCode",
-                        "cityCountyDistrictName",
                         "createdAt"
                 )
         );

@@ -18,14 +18,12 @@ class HousingTypeTest {
         HousingComplex housingComplex = createHousingComplex();
         BigDecimal exclusiveArea = new BigDecimal("36.00");
         BigDecimal supplyArea = new BigDecimal("48.00");
-        BigDecimal residentialCommonArea = new BigDecimal("12.00");
         BigDecimal maintenanceFee = new BigDecimal("120000");
         Method createMethod = assertDoesNotThrow(
                 () -> HousingType.class.getDeclaredMethod(
                         "create",
                         HousingComplex.class,
                         String.class,
-                        BigDecimal.class,
                         BigDecimal.class,
                         BigDecimal.class,
                         int.class,
@@ -42,7 +40,6 @@ class HousingTypeTest {
                         "36A",
                         exclusiveArea,
                         supplyArea,
-                        residentialCommonArea,
                         120,
                         "https://example.com/floor-plan.png",
                         false,
@@ -54,7 +51,6 @@ class HousingTypeTest {
         assertEquals("36A", housingType.getName());
         assertEquals(exclusiveArea, housingType.getExclusiveArea());
         assertEquals(supplyArea, housingType.getSupplyArea());
-        assertEquals(residentialCommonArea, housingType.getResidentialCommonArea());
         assertEquals(120, housingType.getTotalHouseholdCount());
         assertEquals("https://example.com/floor-plan.png", housingType.getFloorPlanUrl());
         assertFalse(housingType.isDuplex());
@@ -69,33 +65,27 @@ class HousingTypeTest {
         assertAll(
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createHousingType(null, "36A", area, area, area, 120, "floor-plan", area)
+                        () -> createHousingType(null, "36A", area, area, 120, "floor-plan", area)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createHousingType(housingComplex, " ", area, area, area, 120, "floor-plan", area)
+                        () -> createHousingType(housingComplex, " ", area, area, 120, "floor-plan", area)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createHousingType(housingComplex, "36A", area, area, area, 120, " ", area)
+                        () -> createHousingType(housingComplex, "36A", area, area, 120, " ", area)
                 )
         );
     }
 
     @Test
-    void 전용면적과_주거공용면적은_필수다() {
+    void 전용면적은_필수다() {
         HousingComplex housingComplex = createHousingComplex();
         BigDecimal area = new BigDecimal("36.00");
 
-        assertAll(
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createHousingType(housingComplex, "36A", null, area, area, 120, "floor-plan", area)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createHousingType(housingComplex, "36A", area, area, null, 120, "floor-plan", area)
-                )
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> createHousingType(housingComplex, "36A", null, area, 120, "floor-plan", area)
         );
     }
 
@@ -108,27 +98,22 @@ class HousingTypeTest {
         assertAll(
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createHousingType(housingComplex, "36A", negative, area, area, 120,
+                        () -> createHousingType(housingComplex, "36A", negative, area, 120,
                                 "floor-plan", area)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createHousingType(housingComplex, "36A", area, negative, area, 120,
+                        () -> createHousingType(housingComplex, "36A", area, negative, 120,
                                 "floor-plan", area)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createHousingType(housingComplex, "36A", area, area, negative, 120,
+                        () -> createHousingType(housingComplex, "36A", area, area, -1,
                                 "floor-plan", area)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createHousingType(housingComplex, "36A", area, area, area, -1,
-                                "floor-plan", area)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createHousingType(housingComplex, "36A", area, area, area, 120,
+                        () -> createHousingType(housingComplex, "36A", area, area, 120,
                                 "floor-plan", negative)
                 )
         );
@@ -139,7 +124,6 @@ class HousingTypeTest {
             String name,
             BigDecimal exclusiveArea,
             BigDecimal supplyArea,
-            BigDecimal residentialCommonArea,
             int totalHouseholdCount,
             String floorPlanUrl,
             BigDecimal maintenanceFee
@@ -149,7 +133,6 @@ class HousingTypeTest {
                 name,
                 exclusiveArea,
                 supplyArea,
-                residentialCommonArea,
                 totalHouseholdCount,
                 floorPlanUrl,
                 false,
@@ -167,9 +150,7 @@ class HousingTypeTest {
                         "1114010100100010000",
                         "1114010100",
                         "11",
-                        "서울특별시",
                         "11140",
-                        "중구",
                         new BigDecimal("37.5665"),
                         new BigDecimal("126.9780")
                 ),

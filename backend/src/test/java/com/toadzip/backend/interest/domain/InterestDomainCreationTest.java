@@ -67,8 +67,6 @@ class InterestDomainCreationTest {
                 User.class,
                 String.class,
                 String.class,
-                String.class,
-                String.class,
                 LocalDateTime.class
         );
 
@@ -76,17 +74,13 @@ class InterestDomainCreationTest {
                 createMethod,
                 user,
                 "11",
-                "서울특별시",
                 "11140",
-                "중구",
                 createdAt
         );
 
         assertEquals(user, favoriteRegion.getUser());
         assertEquals("11", favoriteRegion.getProvinceCode());
-        assertEquals("서울특별시", favoriteRegion.getProvinceName());
         assertEquals("11140", favoriteRegion.getCityCountyDistrictCode());
-        assertEquals("중구", favoriteRegion.getCityCountyDistrictName());
         assertEquals(createdAt, favoriteRegion.getCreatedAt());
     }
 
@@ -104,9 +98,7 @@ class InterestDomainCreationTest {
                         "1114010100100010000",
                         "1114010100",
                         "11",
-                        "서울특별시",
                         "11140",
-                        "중구",
                         new BigDecimal("37.5665"),
                         new BigDecimal("126.9780")
                 ),

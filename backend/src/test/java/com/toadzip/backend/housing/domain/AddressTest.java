@@ -24,8 +24,6 @@ class AddressTest {
                         String.class,
                         String.class,
                         String.class,
-                        String.class,
-                        String.class,
                         BigDecimal.class,
                         BigDecimal.class
                 )
@@ -38,9 +36,7 @@ class AddressTest {
                         "1114010100100010000",
                         "1114010100",
                         "11",
-                        "서울특별시",
                         "11140",
-                        "중구",
                         latitude,
                         longitude
                 )
@@ -50,24 +46,20 @@ class AddressTest {
         assertEquals("1114010100100010000", address.getPnu());
         assertEquals("1114010100", address.getLegalDongCode());
         assertEquals("11", address.getProvinceCode());
-        assertEquals("서울특별시", address.getProvinceName());
         assertEquals("11140", address.getCityCountyDistrictCode());
-        assertEquals("중구", address.getCityCountyDistrictName());
         assertEquals(latitude, address.getLatitude());
         assertEquals(longitude, address.getLongitude());
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {0, 1, 2, 3, 4, 5, 6})
+    @ValueSource(ints = {0, 1, 2, 3, 4})
     void 주소의_문자열_정보는_비어_있을_수_없다(int blankFieldIndex) {
         String[] fields = {
                 "서울특별시 중구 세종대로 110",
                 "1114010100100010000",
                 "1114010100",
                 "11",
-                "서울특별시",
-                "11140",
-                "중구"
+                "11140"
         };
         fields[blankFieldIndex] = " ";
 
@@ -79,8 +71,6 @@ class AddressTest {
                         fields[2],
                         fields[3],
                         fields[4],
-                        fields[5],
-                        fields[6],
                         new BigDecimal("37.5665"),
                         new BigDecimal("126.9780")
                 )
@@ -105,9 +95,7 @@ class AddressTest {
                 "1114010100100010000",
                 "1114010100",
                 "11",
-                "서울특별시",
                 "11140",
-                "중구",
                 latitude,
                 longitude
         );

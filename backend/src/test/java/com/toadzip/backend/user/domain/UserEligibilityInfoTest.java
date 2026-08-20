@@ -13,10 +13,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 
-class UserInfoTest {
+class UserEligibilityInfoTest {
 
     @Test
-    void 공공주택_자격_판단에_필요한_유저정보를_생성한다() {
+    void 공공주택_자격_판단에_필요한_유저_자격_정보를_생성한다() {
         User user = User.create("login-id", LocalDateTime.of(2026, 8, 19, 12, 0));
         LocalDate birthDate = LocalDate.of(1995, 5, 10);
         LocalDate marriageDate = LocalDate.of(2024, 3, 1);
@@ -29,7 +29,7 @@ class UserInfoTest {
         BigDecimal totalAssets = new BigDecimal("150000000");
         BigDecimal vehicleValue = new BigDecimal("20000000");
         Method createMethod = assertDoesNotThrow(
-                () -> UserInfo.class.getDeclaredMethod(
+                () -> UserEligibilityInfo.class.getDeclaredMethod(
                         "create",
                         User.class,
                         LocalDate.class,
@@ -60,8 +60,8 @@ class UserInfoTest {
                 )
         );
 
-        UserInfo userInfo = assertDoesNotThrow(
-                () -> (UserInfo) createMethod.invoke(
+        UserEligibilityInfo userEligibilityInfo = assertDoesNotThrow(
+                () -> (UserEligibilityInfo) createMethod.invoke(
                         null,
                         user,
                         birthDate,
@@ -92,32 +92,32 @@ class UserInfoTest {
                 )
         );
 
-        assertEquals(user, userInfo.getUser());
-        assertEquals(birthDate, userInfo.getBirthDate());
-        assertEquals("서울특별시", userInfo.getCurrentResidenceRegion());
-        assertTrue(userInfo.isHeadOfHousehold());
-        assertEquals(3, userInfo.getHouseholdMemberCount());
-        assertFalse(userInfo.isSingleParentFamily());
-        assertTrue(userInfo.isNonHomeowner());
-        assertEquals("기혼", userInfo.getMaritalStatus());
-        assertEquals(marriageDate, userInfo.getMarriageDate());
-        assertEquals(spouseIncome, userInfo.getSpouseMonthlyIncome());
-        assertEquals(1, userInfo.getChildCount());
-        assertFalse(userInfo.isStudent());
-        assertTrue(userInfo.isEmployed());
-        assertEquals(personalIncome, userInfo.getPersonalAverageMonthlyIncome());
-        assertEquals(householdIncome, userInfo.getHouseholdAverageMonthlyIncome());
-        assertEquals(parentsIncome, userInfo.getParentsAverageMonthlyIncome());
-        assertEquals(totalAssets, userInfo.getTotalAssets());
-        assertEquals(vehicleValue, userInfo.getVehicleValue());
-        assertTrue(userInfo.isHousingSubscriptionAccount());
-        assertEquals(subscriptionJoinDate, userInfo.getHousingSubscriptionAccountJoinDate());
-        assertEquals(36, userInfo.getHousingSubscriptionPaymentCount());
-        assertFalse(userInfo.isHousingBenefitRecipient());
-        assertFalse(userInfo.isBasicLivingRecipient());
-        assertFalse(userInfo.isDisabled());
-        assertFalse(userInfo.isVeteran());
-        assertEquals(newbornBirthDate, userInfo.getNewbornBirthDate());
+        assertEquals(user, userEligibilityInfo.getUser());
+        assertEquals(birthDate, userEligibilityInfo.getBirthDate());
+        assertEquals("서울특별시", userEligibilityInfo.getCurrentResidenceRegion());
+        assertTrue(userEligibilityInfo.isHeadOfHousehold());
+        assertEquals(3, userEligibilityInfo.getHouseholdMemberCount());
+        assertFalse(userEligibilityInfo.isSingleParentFamily());
+        assertTrue(userEligibilityInfo.isNonHomeowner());
+        assertEquals("기혼", userEligibilityInfo.getMaritalStatus());
+        assertEquals(marriageDate, userEligibilityInfo.getMarriageDate());
+        assertEquals(spouseIncome, userEligibilityInfo.getSpouseMonthlyIncome());
+        assertEquals(1, userEligibilityInfo.getChildCount());
+        assertFalse(userEligibilityInfo.isStudent());
+        assertTrue(userEligibilityInfo.isEmployed());
+        assertEquals(personalIncome, userEligibilityInfo.getPersonalAverageMonthlyIncome());
+        assertEquals(householdIncome, userEligibilityInfo.getHouseholdAverageMonthlyIncome());
+        assertEquals(parentsIncome, userEligibilityInfo.getParentsAverageMonthlyIncome());
+        assertEquals(totalAssets, userEligibilityInfo.getTotalAssets());
+        assertEquals(vehicleValue, userEligibilityInfo.getVehicleValue());
+        assertTrue(userEligibilityInfo.isHousingSubscriptionAccount());
+        assertEquals(subscriptionJoinDate, userEligibilityInfo.getHousingSubscriptionAccountJoinDate());
+        assertEquals(36, userEligibilityInfo.getHousingSubscriptionPaymentCount());
+        assertFalse(userEligibilityInfo.isHousingBenefitRecipient());
+        assertFalse(userEligibilityInfo.isBasicLivingRecipient());
+        assertFalse(userEligibilityInfo.isDisabled());
+        assertFalse(userEligibilityInfo.isVeteran());
+        assertEquals(newbornBirthDate, userEligibilityInfo.getNewbornBirthDate());
     }
 
     @Test
@@ -129,22 +129,22 @@ class UserInfoTest {
         assertAll(
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(null, birthDate, "서울특별시", 3, "기혼", amount, 1,
+                        () -> createUserEligibilityInfo(null, birthDate, "서울특별시", 3, "기혼", amount, 1,
                                 amount, amount, amount, amount, amount, 36)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, null, "서울특별시", 3, "기혼", amount, 1,
+                        () -> createUserEligibilityInfo(user, null, "서울특별시", 3, "기혼", amount, 1,
                                 amount, amount, amount, amount, amount, 36)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, birthDate, " ", 3, "기혼", amount, 1,
+                        () -> createUserEligibilityInfo(user, birthDate, " ", 3, "기혼", amount, 1,
                                 amount, amount, amount, amount, amount, 36)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, birthDate, "서울특별시", 3, " ", amount, 1,
+                        () -> createUserEligibilityInfo(user, birthDate, "서울특별시", 3, " ", amount, 1,
                                 amount, amount, amount, amount, amount, 36)
                 )
         );
@@ -159,17 +159,17 @@ class UserInfoTest {
         assertAll(
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, birthDate, "서울특별시", -1, "기혼", amount, 1,
+                        () -> createUserEligibilityInfo(user, birthDate, "서울특별시", -1, "기혼", amount, 1,
                                 amount, amount, amount, amount, amount, 36)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, birthDate, "서울특별시", 3, "기혼", amount, -1,
+                        () -> createUserEligibilityInfo(user, birthDate, "서울특별시", 3, "기혼", amount, -1,
                                 amount, amount, amount, amount, amount, 36)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
+                        () -> createUserEligibilityInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
                                 amount, amount, amount, amount, amount, -1)
                 )
         );
@@ -185,32 +185,32 @@ class UserInfoTest {
         assertAll(
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, birthDate, "서울특별시", 3, "기혼", negativeAmount, 1,
+                        () -> createUserEligibilityInfo(user, birthDate, "서울특별시", 3, "기혼", negativeAmount, 1,
                                 amount, amount, amount, amount, amount, 36)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
+                        () -> createUserEligibilityInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
                                 negativeAmount, amount, amount, amount, amount, 36)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
+                        () -> createUserEligibilityInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
                                 amount, negativeAmount, amount, amount, amount, 36)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
+                        () -> createUserEligibilityInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
                                 amount, amount, negativeAmount, amount, amount, 36)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
+                        () -> createUserEligibilityInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
                                 amount, amount, amount, negativeAmount, amount, 36)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
+                        () -> createUserEligibilityInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
                                 amount, amount, amount, amount, negativeAmount, 36)
                 )
         );
@@ -225,27 +225,27 @@ class UserInfoTest {
         assertAll(
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
+                        () -> createUserEligibilityInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
                                 null, amount, amount, amount, amount, 36)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
+                        () -> createUserEligibilityInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
                                 amount, null, amount, amount, amount, 36)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
+                        () -> createUserEligibilityInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
                                 amount, amount, null, amount, amount, 36)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
+                        () -> createUserEligibilityInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
                                 amount, amount, amount, null, amount, 36)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createUserInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
+                        () -> createUserEligibilityInfo(user, birthDate, "서울특별시", 3, "기혼", amount, 1,
                                 amount, amount, amount, amount, null, 36)
                 )
         );
@@ -255,7 +255,7 @@ class UserInfoTest {
         return User.create("login-id", LocalDateTime.of(2026, 8, 19, 12, 0));
     }
 
-    private UserInfo createUserInfo(
+    private UserEligibilityInfo createUserEligibilityInfo(
             User user,
             LocalDate birthDate,
             String currentResidenceRegion,
@@ -270,7 +270,7 @@ class UserInfoTest {
             BigDecimal vehicleValue,
             Integer housingSubscriptionPaymentCount
     ) {
-        return UserInfo.create(
+        return UserEligibilityInfo.create(
                 user,
                 birthDate,
                 currentResidenceRegion,

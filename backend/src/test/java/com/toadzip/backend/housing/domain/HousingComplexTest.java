@@ -183,9 +183,7 @@ class HousingComplexTest {
                 "1114010100100010000",
                 "1114010100",
                 "11",
-                "서울특별시",
                 "11140",
-                "중구",
                 new BigDecimal("37.5665"),
                 new BigDecimal("126.9780")
         );
