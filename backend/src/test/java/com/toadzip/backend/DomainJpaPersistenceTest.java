@@ -30,6 +30,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,6 +55,44 @@ class DomainJpaPersistenceTest {
                 .getSingleResult();
 
         assertEquals("NO", isNullable);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "user_eligibility_infos, user_id, NO",
+            "user_places, user_id, NO",
+            "favorite_notices, user_id, NO",
+            "favorite_notices, notice_id, NO",
+            "favorite_housing_complexes, user_id, NO",
+            "favorite_housing_complexes, housing_complex_id, NO",
+            "favorite_regions, user_id, NO",
+            "housing_types, housing_complex_id, NO",
+            "notices, previous_notice_id, YES",
+            "supply_rows, notice_id, NO",
+            "supply_rows, housing_complex_id, YES",
+            "supply_rows, housing_type_id, YES",
+            "supply_targets, supply_row_id, NO",
+            "notice_schedules, notice_id, NO",
+            "notice_attachments, notice_id, NO"
+    })
+    void 연관관계_외래키의_null_허용_여부를_보장한다(
+            String tableName,
+            String columnName,
+            String expectedNullability
+    ) {
+        Object actualNullability = entityManager.createNativeQuery(
+                        """
+                        SELECT is_nullable
+                        FROM information_schema.columns
+                        WHERE LOWER(table_name) = :tableName
+                          AND LOWER(column_name) = :columnName
+                        """
+                )
+                .setParameter("tableName", tableName)
+                .setParameter("columnName", columnName)
+                .getSingleResult();
+
+        assertEquals(expectedNullability, actualNullability);
     }
 
     @Test
@@ -138,11 +178,6 @@ class DomainJpaPersistenceTest {
                 correctedNotice,
                 LocalDateTime.of(2026, 8, 19, 13, 0)
         );
-        FavoriteNotice unmatchedFavoriteNotice = FavoriteNotice.create(
-                user,
-                null,
-                LocalDateTime.of(2026, 8, 19, 13, 1)
-        );
         FavoriteHousingComplex favoriteHousingComplex = FavoriteHousingComplex.create(
                 user,
                 housingComplex,
@@ -155,7 +190,6 @@ class DomainJpaPersistenceTest {
                 LocalDateTime.of(2026, 8, 19, 13, 3)
         );
         entityManager.persist(favoriteNotice);
-        entityManager.persist(unmatchedFavoriteNotice);
         entityManager.persist(favoriteHousingComplex);
         entityManager.persist(favoriteRegion);
 
@@ -171,7 +205,6 @@ class DomainJpaPersistenceTest {
         Long noticeScheduleId = noticeSchedule.getId();
         Long noticeAttachmentId = noticeAttachment.getId();
         Long favoriteNoticeId = favoriteNotice.getId();
-        Long unmatchedFavoriteNoticeId = unmatchedFavoriteNotice.getId();
         Long favoriteHousingComplexId = favoriteHousingComplex.getId();
         Long favoriteRegionId = favoriteRegion.getId();
 
@@ -187,10 +220,6 @@ class DomainJpaPersistenceTest {
         NoticeSchedule foundNoticeSchedule = entityManager.find(NoticeSchedule.class, noticeScheduleId);
         NoticeAttachment foundNoticeAttachment = entityManager.find(NoticeAttachment.class, noticeAttachmentId);
         FavoriteNotice foundFavoriteNotice = entityManager.find(FavoriteNotice.class, favoriteNoticeId);
-        FavoriteNotice foundUnmatchedFavoriteNotice = entityManager.find(
-                FavoriteNotice.class,
-                unmatchedFavoriteNoticeId
-        );
         FavoriteHousingComplex foundFavoriteHousingComplex = entityManager.find(
                 FavoriteHousingComplex.class,
                 favoriteHousingComplexId
@@ -227,7 +256,6 @@ class DomainJpaPersistenceTest {
                 () -> assertEquals(correctedNoticeId, foundNoticeSchedule.getNotice().getId()),
                 () -> assertEquals(correctedNoticeId, foundNoticeAttachment.getNotice().getId()),
                 () -> assertEquals(correctedNoticeId, foundFavoriteNotice.getNotice().getId()),
-                () -> assertNull(foundUnmatchedFavoriteNotice.getNotice()),
                 () -> assertEquals(housingComplex.getId(), foundFavoriteHousingComplex.getHousingComplex().getId()),
                 () -> assertEquals(userId, foundFavoriteRegion.getUser().getId()),
                 () -> assertEquals("11", foundFavoriteRegion.getProvinceCode()),

@@ -31,8 +31,8 @@ public class FavoriteNotice {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @ManyToOne(fetch = LAZY)
-    @JoinColumn(name = "notice_id")
+    @ManyToOne(fetch = LAZY, optional = false)
+    @JoinColumn(name = "notice_id", nullable = false)
     private Notice notice;
 
     @Column(nullable = false)
@@ -40,6 +40,7 @@ public class FavoriteNotice {
 
     private FavoriteNotice(User user, Notice notice, LocalDateTime createdAt) {
         validateRequired(user, "유저");
+        validateRequired(notice, "공고");
         validateRequired(createdAt, "등록일시");
         this.user = user;
         this.notice = notice;

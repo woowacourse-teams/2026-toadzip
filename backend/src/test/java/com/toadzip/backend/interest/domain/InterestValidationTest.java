@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.notice.domain.Notice;
+import com.toadzip.backend.notice.domain.ReceptionPlace;
 import com.toadzip.backend.user.domain.User;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -16,18 +18,23 @@ import org.junit.jupiter.params.provider.ValueSource;
 class InterestValidationTest {
 
     @Test
-    void 관심공고의_유저와_등록일시는_필수다() {
+    void 관심공고의_유저와_공고와_등록일시는_필수다() {
         User user = createUser();
+        Notice notice = createNotice();
         LocalDateTime createdAt = LocalDateTime.of(2026, 8, 19, 12, 30);
 
         assertAll(
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> FavoriteNotice.create(null, null, createdAt)
+                        () -> FavoriteNotice.create(null, notice, createdAt)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> FavoriteNotice.create(user, null, null)
+                        () -> FavoriteNotice.create(user, null, createdAt)
+                ),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> FavoriteNotice.create(user, notice, null)
                 )
         );
     }
@@ -90,6 +97,27 @@ class InterestValidationTest {
 
     private User createUser() {
         return User.create("login-id", LocalDateTime.of(2026, 8, 19, 12, 0));
+    }
+
+    private Notice createNotice() {
+        return Notice.create(
+                "source-notice-id",
+                null,
+                null,
+                "행복주택 모집공고",
+                "원공고",
+                "행복주택",
+                "신규모집",
+                "LH",
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 14),
+                LocalDate.of(2026, 9, 1),
+                "https://example.com/notices/1",
+                null,
+                0L,
+                ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null)
+        );
     }
 
     private HousingComplex createHousingComplex() {
