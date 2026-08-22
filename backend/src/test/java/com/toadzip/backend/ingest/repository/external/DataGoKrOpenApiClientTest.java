@@ -17,7 +17,7 @@ import tools.jackson.databind.json.JsonMapper;
 class DataGoKrOpenApiClientTest {
 
     @Test
-    @DisplayName("외부 응답 원문을 보존하고 응답 행을 탐색한다")
+    @DisplayName("외부 API 데이터를 보존하고 API 응답값 행을 탐색한다")
     void keepsRawResponseAndFindsRows() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
@@ -38,15 +38,15 @@ class DataGoKrOpenApiClientTest {
 
         var response = client.get("list", params);
 
-        assertThat(response.rawPayload()).isEqualTo(payload);
-        assertThat(DataGoKrOpenApiClient.findRows(response.body(), "/response/body/item"))
+        assertThat(response.apiData()).isEqualTo(payload);
+        assertThat(DataGoKrOpenApiClient.findRows(response.responseBody(), "/response/body/item"))
                 .singleElement()
                 .satisfies(row -> assertThat(row.path("id").asString()).isEqualTo("001"));
         server.verify();
     }
 
     @Test
-    @DisplayName("서비스키는 원문과 인코딩된 값에서 같은 URI를 만든다")
+    @DisplayName("서비스키는 인코딩 전후 값에서 같은 URI를 만든다")
     void buildsSameUriForDecodedAndEncodedServiceKeys() {
         LinkedMultiValueMap<String, String> params = new LinkedMultiValueMap<>();
         params.add("pageNo", "1");
@@ -72,8 +72,8 @@ class DataGoKrOpenApiClientTest {
     }
 
     @Test
-    @DisplayName("외부 오류 응답은 안전한 원천 오류로 변환한다")
-    void rejectsSourceErrorResponse() {
+    @DisplayName("외부 오류 응답은 안전한 외부 API 오류로 변환한다")
+    void rejectsExternalApiErrorResponse() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(request -> assertThat(request.getURI()).hasToString(
@@ -92,7 +92,7 @@ class DataGoKrOpenApiClientTest {
         );
 
         assertThatThrownBy(() -> client.get("list", new LinkedMultiValueMap<>()))
-                .isInstanceOf(ExternalDataRequestException.class)
+                .isInstanceOf(ExternalApiRequestException.class)
                 .hasMessageContaining("resultCode=30")
                 .hasMessageContaining("등록되지 않은 서비스키");
         server.verify();

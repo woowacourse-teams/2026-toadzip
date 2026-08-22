@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.toadzip.backend.ingest.dto.ExternalDataCollectionReport;
+import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
 import com.toadzip.backend.ingest.dto.MyHomeNoticeCollectionRequest;
 import com.toadzip.backend.ingest.service.MyHomeNoticeCollectionService;
 
@@ -22,7 +22,7 @@ public class MyHomeNoticeCollectionController {
     }
 
     @PostMapping
-    public ExternalDataCollectionReport collect(
+    public ExternalApiCollectionReport collect(
             @RequestParam(defaultValue = "100") @Min(1) @Max(1_000) int pageSize,
             @RequestParam(defaultValue = "50") @Min(1) @Max(1_000) int maxPages
     ) {

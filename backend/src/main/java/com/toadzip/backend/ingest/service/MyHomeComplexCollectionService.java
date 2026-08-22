@@ -10,14 +10,14 @@ import java.util.concurrent.Future;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import com.toadzip.backend.ingest.domain.ExternalDataSnapshot;
-import com.toadzip.backend.ingest.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.dto.ExternalDataResponse;
+import com.toadzip.backend.ingest.domain.ExternalApiData;
+import com.toadzip.backend.ingest.domain.ExternalApi;
+import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
+import com.toadzip.backend.ingest.dto.ExternalApiResponse;
 import com.toadzip.backend.ingest.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.dto.MyHomeRegion;
-import com.toadzip.backend.ingest.repository.ExternalDataCollectionStore;
-import com.toadzip.backend.ingest.repository.MyHomeComplexExternalRepository;
+import com.toadzip.backend.ingest.repository.ExternalApiCollectionStore;
+import com.toadzip.backend.ingest.repository.MyHomeComplexApiRepository;
 import com.toadzip.backend.ingest.repository.MyHomeRegionCatalog;
 import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
 
@@ -31,29 +31,29 @@ public class MyHomeComplexCollectionService {
 
     private final Clock clock;
 
-    private final MyHomeComplexExternalRepository externalRepository;
+    private final MyHomeComplexApiRepository apiRepository;
 
     private final MyHomeRegionCatalog regionCatalog;
 
-    private final ExternalDataCollectionStore store;
+    private final ExternalApiCollectionStore store;
 
-    private final ExternalDataFailureRecorder failureRecorder;
+    private final ExternalApiFailureRecorder failureRecorder;
 
     public MyHomeComplexCollectionService(
             Clock clock,
-            MyHomeComplexExternalRepository externalRepository,
+            MyHomeComplexApiRepository apiRepository,
             MyHomeRegionCatalog regionCatalog,
-            ExternalDataCollectionStore store,
-            ExternalDataFailureRecorder failureRecorder
+            ExternalApiCollectionStore store,
+            ExternalApiFailureRecorder failureRecorder
     ) {
         this.clock = clock;
-        this.externalRepository = externalRepository;
+        this.apiRepository = apiRepository;
         this.regionCatalog = regionCatalog;
         this.store = store;
         this.failureRecorder = failureRecorder;
     }
 
-    public ExternalDataCollectionReport collect(MyHomeComplexCollectionRequest request) {
+    public ExternalApiCollectionReport collect(MyHomeComplexCollectionRequest request) {
         List<MyHomeRegion> regions = regionsFor(request);
         if (regions.size() == 1) {
             return collectRegion(regions.getFirst(), request);
@@ -61,17 +61,17 @@ public class MyHomeComplexCollectionService {
         return collectRegionsConcurrently(regions, request);
     }
 
-    private ExternalDataCollectionReport collectRegionsConcurrently(
+    private ExternalApiCollectionReport collectRegionsConcurrently(
             List<MyHomeRegion> regions,
             MyHomeComplexCollectionRequest request
     ) {
-        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty("myhome-complex");
+        ExternalApiCollectionReport report = ExternalApiCollectionReport.empty("myhome-complex");
         ExecutorService executor = Executors.newFixedThreadPool(MAX_CONCURRENT_REGIONS);
         try {
-            List<Future<ExternalDataCollectionReport>> futures = regions.stream()
+            List<Future<ExternalApiCollectionReport>> futures = regions.stream()
                     .map(region -> executor.submit(() -> collectRegion(region, request)))
                     .toList();
-            for (Future<ExternalDataCollectionReport> future : futures) {
+            for (Future<ExternalApiCollectionReport> future : futures) {
                 report = report.plus(await(future, request));
             }
             return report;
@@ -81,8 +81,8 @@ public class MyHomeComplexCollectionService {
         }
     }
 
-    private ExternalDataCollectionReport await(
-            Future<ExternalDataCollectionReport> future,
+    private ExternalApiCollectionReport await(
+            Future<ExternalApiCollectionReport> future,
             MyHomeComplexCollectionRequest request
     ) {
         try {
@@ -95,54 +95,54 @@ public class MyHomeComplexCollectionService {
         catch (ExecutionException exception) {
             RuntimeException cause = runtimeExceptionOf(exception.getCause());
             failureRecorder.record(
-                    ExternalDataSource.MYHOME_COMPLEX,
+                    ExternalApi.MYHOME_COMPLEX,
                     request.requestDescription(regionCatalog.findAll().getFirst(), 1),
                     cause,
                     log,
                     "마이홈 단지 지역 수집에 실패했습니다"
             );
-            return new ExternalDataCollectionReport("myhome-complex", 0, 1);
+            return new ExternalApiCollectionReport("myhome-complex", 0, 1);
         }
     }
 
-    private ExternalDataCollectionReport collectRegion(
+    private ExternalApiCollectionReport collectRegion(
             MyHomeRegion region,
             MyHomeComplexCollectionRequest request
     ) {
         try {
-            List<ExternalDataSnapshot> snapshots = fetchCompleteRegion(region, request);
-            store.storeSnapshots(snapshots);
-            return new ExternalDataCollectionReport("myhome-complex", snapshots.size(), 0);
+            List<ExternalApiData> apiData = fetchCompleteRegion(region, request);
+            store.storeApiData(apiData);
+            return new ExternalApiCollectionReport("myhome-complex", apiData.size(), 0);
         }
         catch (RuntimeException exception) {
             failureRecorder.record(
-                    ExternalDataSource.MYHOME_COMPLEX,
+                    ExternalApi.MYHOME_COMPLEX,
                     request.requestDescription(region, 1),
                     exception,
                     log,
                     "마이홈 단지 지역 수집에 실패했습니다"
             );
-            return new ExternalDataCollectionReport("myhome-complex", 0, 1);
+            return new ExternalApiCollectionReport("myhome-complex", 0, 1);
         }
     }
 
-    private List<ExternalDataSnapshot> fetchCompleteRegion(
+    private List<ExternalApiData> fetchCompleteRegion(
             MyHomeRegion region,
             MyHomeComplexCollectionRequest request
     ) {
-        List<ExternalDataSnapshot> snapshots = new ArrayList<>();
+        List<ExternalApiData> apiData = new ArrayList<>();
         for (int page = 1; page <= request.maxPages(); page++) {
-            ExternalDataResponse response = externalRepository.fetch(region, request, page);
-            snapshots.add(ExternalDataSnapshot.create(
-                    ExternalDataSource.MYHOME_COMPLEX,
+            ExternalApiResponse response = apiRepository.fetch(region, request, page);
+            apiData.add(ExternalApiData.create(
+                    ExternalApi.MYHOME_COMPLEX,
                     request.requestDescription(region, page),
                     page,
                     clock.instant(),
-                    response.rawPayload()
+                    response.apiData()
             ));
-            int rowCount = DataGoKrOpenApiClient.findRows(response.body(), LIST_POINTER).size();
+            int rowCount = DataGoKrOpenApiClient.findRows(response.responseBody(), LIST_POINTER).size();
             if (rowCount < request.pageSize()) {
-                return snapshots;
+                return apiData;
             }
         }
         throw new IllegalStateException("마이홈 단지 조회가 최대 페이지 안에 끝나지 않았습니다.");

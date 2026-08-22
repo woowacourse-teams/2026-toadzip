@@ -17,10 +17,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.toadzip.backend.ingest.dto.ExternalDataResponse;
+import com.toadzip.backend.ingest.dto.ExternalApiResponse;
 import com.toadzip.backend.ingest.dto.LhLeaseCatalogCollectionRequest;
-import com.toadzip.backend.ingest.repository.ExternalDataCollectionStore;
-import com.toadzip.backend.ingest.repository.LhLeaseCatalogExternalRepository;
+import com.toadzip.backend.ingest.repository.ExternalApiCollectionStore;
+import com.toadzip.backend.ingest.repository.LhLeaseCatalogApiRepository;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
@@ -29,50 +29,50 @@ class LhLeaseCatalogCollectionServiceTest {
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-08-23T00:00:00Z"), ZoneOffset.UTC);
 
     @Mock
-    private LhLeaseCatalogExternalRepository externalRepository;
+    private LhLeaseCatalogApiRepository apiRepository;
 
     @Mock
-    private ExternalDataCollectionStore store;
+    private ExternalApiCollectionStore store;
 
     @Mock
-    private ExternalDataFailureRecorder failureRecorder;
+    private ExternalApiFailureRecorder failureRecorder;
 
     private LhLeaseCatalogCollectionService service;
 
     @BeforeEach
     void setUp() {
-        service = new LhLeaseCatalogCollectionService(CLOCK, externalRepository, store, failureRecorder);
+        service = new LhLeaseCatalogCollectionService(CLOCK, apiRepository, store, failureRecorder);
     }
 
     @Test
-    @DisplayName("LH 임대 카탈로그의 마지막 페이지까지 원문을 저장한다")
+    @DisplayName("LH 임대 카탈로그의 마지막 페이지까지 API 데이터를 저장한다")
     void storesCompleteCatalogPages() {
         LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
-        when(externalRepository.fetch(request, 1)).thenReturn(response("[{\"id\":1},{\"id\":2}]"));
-        when(externalRepository.fetch(request, 2)).thenReturn(response("[{\"id\":3}]"));
+        when(apiRepository.fetch(request, 1)).thenReturn(response("[{\"id\":1},{\"id\":2}]"));
+        when(apiRepository.fetch(request, 2)).thenReturn(response("[{\"id\":3}]"));
 
         var result = service.collect(request);
 
-        verify(store).storeSnapshots(any());
-        assertThat(result.storedSnapshotCount()).isEqualTo(2);
+        verify(store).storeApiData(any());
+        assertThat(result.storedApiDataCount()).isEqualTo(2);
         assertThat(result.failedRequestCount()).isZero();
     }
 
     @Test
-    @DisplayName("LH 임대 카탈로그 조회 실패는 원문 저장 없이 기록한다")
+    @DisplayName("LH 임대 카탈로그 조회 실패는 API 데이터 저장 없이 기록한다")
     void reportsCatalogFailureWithoutSaving() {
         LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
-        when(externalRepository.fetch(request, 1)).thenThrow(new IllegalStateException("조회 실패"));
+        when(apiRepository.fetch(request, 1)).thenThrow(new IllegalStateException("조회 실패"));
 
         var result = service.collect(request);
 
-        verify(store, never()).storeSnapshots(any());
+        verify(store, never()).storeApiData(any());
         verify(failureRecorder).record(any(), any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
     }
 
-    private ExternalDataResponse response(String rows) {
+    private ExternalApiResponse response(String rows) {
         String payload = "[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsList\":" + rows + "}]";
-        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+        return new ExternalApiResponse(payload, JsonMapper.builder().build().readTree(payload));
     }
 }

@@ -6,14 +6,14 @@ import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import com.toadzip.backend.ingest.domain.ExternalDataSnapshot;
-import com.toadzip.backend.ingest.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.dto.ExternalDataResponse;
+import com.toadzip.backend.ingest.domain.ExternalApiData;
+import com.toadzip.backend.ingest.domain.ExternalApi;
+import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
+import com.toadzip.backend.ingest.dto.ExternalApiResponse;
 import com.toadzip.backend.ingest.dto.MyHomeNoticeCollectionRequest;
 import com.toadzip.backend.ingest.dto.MyHomeNoticeSupplyType;
-import com.toadzip.backend.ingest.repository.ExternalDataCollectionStore;
-import com.toadzip.backend.ingest.repository.MyHomeNoticeExternalRepository;
+import com.toadzip.backend.ingest.repository.ExternalApiCollectionStore;
+import com.toadzip.backend.ingest.repository.MyHomeNoticeApiRepository;
 import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
 
 @Slf4j
@@ -24,70 +24,70 @@ public class MyHomeNoticeCollectionService {
 
     private final Clock clock;
 
-    private final MyHomeNoticeExternalRepository externalRepository;
+    private final MyHomeNoticeApiRepository apiRepository;
 
-    private final ExternalDataCollectionStore store;
+    private final ExternalApiCollectionStore store;
 
-    private final ExternalDataFailureRecorder failureRecorder;
+    private final ExternalApiFailureRecorder failureRecorder;
 
     public MyHomeNoticeCollectionService(
             Clock clock,
-            MyHomeNoticeExternalRepository externalRepository,
-            ExternalDataCollectionStore store,
-            ExternalDataFailureRecorder failureRecorder
+            MyHomeNoticeApiRepository apiRepository,
+            ExternalApiCollectionStore store,
+            ExternalApiFailureRecorder failureRecorder
     ) {
         this.clock = clock;
-        this.externalRepository = externalRepository;
+        this.apiRepository = apiRepository;
         this.store = store;
         this.failureRecorder = failureRecorder;
     }
 
-    public ExternalDataCollectionReport collect(MyHomeNoticeCollectionRequest request) {
-        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty("myhome-notice");
+    public ExternalApiCollectionReport collect(MyHomeNoticeCollectionRequest request) {
+        ExternalApiCollectionReport report = ExternalApiCollectionReport.empty("myhome-notice");
         for (MyHomeNoticeSupplyType supplyType : MyHomeNoticeSupplyType.values()) {
             report = report.plus(collectSupplyType(supplyType, request));
         }
         return report;
     }
 
-    private ExternalDataCollectionReport collectSupplyType(
+    private ExternalApiCollectionReport collectSupplyType(
             MyHomeNoticeSupplyType supplyType,
             MyHomeNoticeCollectionRequest request
     ) {
         try {
-            List<ExternalDataSnapshot> snapshots = fetchCompleteSupplyType(supplyType, request);
-            store.storeSnapshots(snapshots);
-            return new ExternalDataCollectionReport("myhome-notice", snapshots.size(), 0);
+            List<ExternalApiData> apiData = fetchCompleteSupplyType(supplyType, request);
+            store.storeApiData(apiData);
+            return new ExternalApiCollectionReport("myhome-notice", apiData.size(), 0);
         }
         catch (RuntimeException exception) {
             failureRecorder.record(
-                    ExternalDataSource.MYHOME_NOTICE,
+                    ExternalApi.MYHOME_NOTICE,
                     request.requestDescription(supplyType, 1),
                     exception,
                     log,
                     "마이홈 공고 공급유형 수집에 실패했습니다"
             );
-            return new ExternalDataCollectionReport("myhome-notice", 0, 1);
+            return new ExternalApiCollectionReport("myhome-notice", 0, 1);
         }
     }
 
-    private List<ExternalDataSnapshot> fetchCompleteSupplyType(
+    private List<ExternalApiData> fetchCompleteSupplyType(
             MyHomeNoticeSupplyType supplyType,
             MyHomeNoticeCollectionRequest request
     ) {
-        List<ExternalDataSnapshot> snapshots = new ArrayList<>();
+        List<ExternalApiData> apiData = new ArrayList<>();
         for (int page = 1; page <= request.maxPages(); page++) {
-            ExternalDataResponse response = externalRepository.fetch(supplyType, request, page);
-            snapshots.add(ExternalDataSnapshot.create(
-                    ExternalDataSource.MYHOME_NOTICE,
+            ExternalApiResponse response = apiRepository.fetch(supplyType, request, page);
+            apiData.add(ExternalApiData.create(
+                    ExternalApi.MYHOME_NOTICE,
                     request.requestDescription(supplyType, page),
                     page,
                     clock.instant(),
-                    response.rawPayload()
+                    response.apiData()
             ));
-            int rowCount = DataGoKrOpenApiClient.findRows(response.body(), LIST_POINTER).size();
+            int rowCount = DataGoKrOpenApiClient.findRows(response.responseBody(), LIST_POINTER).size();
             if (rowCount == 0 || rowCount < request.pageSize()) {
-                return snapshots;
+                return apiData;
             }
         }
         throw new IllegalStateException("마이홈 공고 조회가 최대 페이지 안에 끝나지 않았습니다.");

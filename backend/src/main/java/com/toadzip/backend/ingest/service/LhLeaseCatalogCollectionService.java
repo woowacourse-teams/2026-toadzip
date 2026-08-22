@@ -6,13 +6,13 @@ import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import com.toadzip.backend.ingest.domain.ExternalDataSnapshot;
-import com.toadzip.backend.ingest.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.dto.ExternalDataResponse;
+import com.toadzip.backend.ingest.domain.ExternalApiData;
+import com.toadzip.backend.ingest.domain.ExternalApi;
+import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
+import com.toadzip.backend.ingest.dto.ExternalApiResponse;
 import com.toadzip.backend.ingest.dto.LhLeaseCatalogCollectionRequest;
-import com.toadzip.backend.ingest.repository.ExternalDataCollectionStore;
-import com.toadzip.backend.ingest.repository.LhLeaseCatalogExternalRepository;
+import com.toadzip.backend.ingest.repository.ExternalApiCollectionStore;
+import com.toadzip.backend.ingest.repository.LhLeaseCatalogApiRepository;
 import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
 
 @Slf4j
@@ -23,56 +23,56 @@ public class LhLeaseCatalogCollectionService {
 
     private final Clock clock;
 
-    private final LhLeaseCatalogExternalRepository externalRepository;
+    private final LhLeaseCatalogApiRepository apiRepository;
 
-    private final ExternalDataCollectionStore store;
+    private final ExternalApiCollectionStore store;
 
-    private final ExternalDataFailureRecorder failureRecorder;
+    private final ExternalApiFailureRecorder failureRecorder;
 
     public LhLeaseCatalogCollectionService(
             Clock clock,
-            LhLeaseCatalogExternalRepository externalRepository,
-            ExternalDataCollectionStore store,
-            ExternalDataFailureRecorder failureRecorder
+            LhLeaseCatalogApiRepository apiRepository,
+            ExternalApiCollectionStore store,
+            ExternalApiFailureRecorder failureRecorder
     ) {
         this.clock = clock;
-        this.externalRepository = externalRepository;
+        this.apiRepository = apiRepository;
         this.store = store;
         this.failureRecorder = failureRecorder;
     }
 
-    public ExternalDataCollectionReport collect(LhLeaseCatalogCollectionRequest request) {
+    public ExternalApiCollectionReport collect(LhLeaseCatalogCollectionRequest request) {
         try {
-            List<ExternalDataSnapshot> snapshots = fetchCompleteCatalog(request);
-            store.storeSnapshots(snapshots);
-            return new ExternalDataCollectionReport("lh-lease-catalog", snapshots.size(), 0);
+            List<ExternalApiData> apiData = fetchCompleteCatalog(request);
+            store.storeApiData(apiData);
+            return new ExternalApiCollectionReport("lh-lease-catalog", apiData.size(), 0);
         }
         catch (RuntimeException exception) {
             failureRecorder.record(
-                    ExternalDataSource.LH_LEASE_CATALOG,
+                    ExternalApi.LH_LEASE_CATALOG,
                     request.requestDescription(1),
                     exception,
                     log,
                     "LH 임대 카탈로그 수집에 실패했습니다"
             );
-            return new ExternalDataCollectionReport("lh-lease-catalog", 0, 1);
+            return new ExternalApiCollectionReport("lh-lease-catalog", 0, 1);
         }
     }
 
-    private List<ExternalDataSnapshot> fetchCompleteCatalog(LhLeaseCatalogCollectionRequest request) {
-        List<ExternalDataSnapshot> snapshots = new ArrayList<>();
+    private List<ExternalApiData> fetchCompleteCatalog(LhLeaseCatalogCollectionRequest request) {
+        List<ExternalApiData> apiData = new ArrayList<>();
         for (int page = 1; page <= request.maxPages(); page++) {
-            ExternalDataResponse response = externalRepository.fetch(request, page);
-            snapshots.add(ExternalDataSnapshot.create(
-                    ExternalDataSource.LH_LEASE_CATALOG,
+            ExternalApiResponse response = apiRepository.fetch(request, page);
+            apiData.add(ExternalApiData.create(
+                    ExternalApi.LH_LEASE_CATALOG,
                     request.requestDescription(page),
                     page,
                     clock.instant(),
-                    response.rawPayload()
+                    response.apiData()
             ));
-            int rowCount = DataGoKrOpenApiClient.findRows(response.body(), LIST_KEY).size();
+            int rowCount = DataGoKrOpenApiClient.findRows(response.responseBody(), LIST_KEY).size();
             if (rowCount < request.pageSize()) {
-                return snapshots;
+                return apiData;
             }
         }
         throw new IllegalStateException("LH 임대 카탈로그 조회가 최대 페이지 안에 끝나지 않았습니다.");

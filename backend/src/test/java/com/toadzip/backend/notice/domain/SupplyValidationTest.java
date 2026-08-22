@@ -14,7 +14,7 @@ class SupplyValidationTest {
 
     @ParameterizedTest
     @ValueSource(ints = {0, 1, 2, 3})
-    void 공급행의_원천_문자열은_비어_있을_수_없다(int blankFieldIndex) {
+    void 공급행의_API_응답값_문자열은_비어_있을_수_없다(int blankFieldIndex) {
         String[] fields = validSupplyRowStringFields();
         fields[blankFieldIndex] = " ";
 
@@ -234,7 +234,7 @@ class SupplyValidationTest {
     private String[] validSupplyRowStringFields() {
         return new String[]{
                 "source-supply-row-id",
-                "원천 단지명",
+                "API 응답값 단지명",
                 "36A",
                 "1114010100100010000"
         };

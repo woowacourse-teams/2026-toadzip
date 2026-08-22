@@ -85,10 +85,10 @@ public class SupplyRow {
             int totalSupplyHouseholdCount
     ) {
         validateRequired(notice, "공고");
-        validateNotBlank(sourceSupplyRowIdentifier, "원천 공급행 식별자");
+        validateNotBlank(sourceSupplyRowIdentifier, "API 응답값 공급행 식별자");
         validateNonNegative(displayOrder, "표시순서");
-        validateNotBlank(sourceComplexName, "원천 단지명");
-        validateNotBlank(sourceHousingTypeName, "원천 주택형명");
+        validateNotBlank(sourceComplexName, "API 응답값 단지명");
+        validateNotBlank(sourceHousingTypeName, "API 응답값 주택형명");
         validateNotBlank(supplyPnu, "공급 PNU");
         validateRequired(expectedMoveInMonth, "입주 예정 연월");
         validateRequired(supplyCategory, "공급구분");

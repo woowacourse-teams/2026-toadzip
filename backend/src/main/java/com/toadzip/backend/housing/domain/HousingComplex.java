@@ -80,7 +80,7 @@ public class HousingComplex {
             Integer recentOneYearMoveOutCount
     ) {
         validateNotBlank(name, "단지명");
-        validateNotBlank(sourceComplexIdentifier, "원천 단지 식별자");
+        validateNotBlank(sourceComplexIdentifier, "API 응답값 단지 식별자");
         validateNotBlank(supplyType, "공급유형");
         validateRequired(address, "주소");
         validateNonNegative(totalHouseholdCount, "전체 세대수");

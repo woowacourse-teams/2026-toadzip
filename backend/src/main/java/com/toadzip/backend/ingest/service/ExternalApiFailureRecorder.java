@@ -4,34 +4,34 @@ import java.time.Clock;
 import org.slf4j.Logger;
 import org.springframework.stereotype.Service;
 
-import com.toadzip.backend.ingest.domain.ExternalDataCollectionFailure;
-import com.toadzip.backend.ingest.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.repository.ExternalDataCollectionStore;
+import com.toadzip.backend.ingest.domain.ExternalApiCollectionFailure;
+import com.toadzip.backend.ingest.domain.ExternalApi;
+import com.toadzip.backend.ingest.repository.ExternalApiCollectionStore;
 
 @Service
-public class ExternalDataFailureRecorder {
+public class ExternalApiFailureRecorder {
 
     private static final int MAX_REASON_LENGTH = 1_000;
 
     private final Clock clock;
 
-    private final ExternalDataCollectionStore store;
+    private final ExternalApiCollectionStore store;
 
-    public ExternalDataFailureRecorder(Clock clock, ExternalDataCollectionStore store) {
+    public ExternalApiFailureRecorder(Clock clock, ExternalApiCollectionStore store) {
         this.clock = clock;
         this.store = store;
     }
 
     public void record(
-            ExternalDataSource source,
+            ExternalApi externalApi,
             String requestDescription,
             RuntimeException exception,
             Logger logger,
             String logMessage
     ) {
         String reason = reasonOf(exception);
-        store.storeFailure(ExternalDataCollectionFailure.create(
-                source,
+        store.storeFailure(ExternalApiCollectionFailure.create(
+                externalApi,
                 requestDescription,
                 clock.instant(),
                 exception.getClass().getSimpleName(),

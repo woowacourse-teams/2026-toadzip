@@ -17,9 +17,9 @@ import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "external_data_snapshots")
+@Table(name = "external_api_data")
 @NoArgsConstructor(access = PROTECTED)
-public class ExternalDataSnapshot {
+public class ExternalApiData {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -27,7 +27,7 @@ public class ExternalDataSnapshot {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 40)
-    private ExternalDataSource source;
+    private ExternalApi externalApi;
 
     @Column(nullable = false, length = 2000)
     private String requestDescription;
@@ -40,35 +40,35 @@ public class ExternalDataSnapshot {
 
     @Lob
     @Column(nullable = false)
-    private String rawPayload;
+    private String apiData;
 
-    private ExternalDataSnapshot(
-            ExternalDataSource source,
+    private ExternalApiData(
+            ExternalApi externalApi,
             String requestDescription,
             int page,
             Instant collectedAt,
-            String rawPayload
+            String apiData
     ) {
-        validateRequired(source, "외부 데이터 출처");
+        validateRequired(externalApi, "외부 API");
         validateNotBlank(requestDescription, "조회 조건");
         validatePage(page);
         validateRequired(collectedAt, "수집 시각");
-        validateNotBlank(rawPayload, "원본 응답");
-        this.source = source;
+        validateNotBlank(apiData, "API 데이터");
+        this.externalApi = externalApi;
         this.requestDescription = requestDescription;
         this.page = page;
         this.collectedAt = collectedAt;
-        this.rawPayload = rawPayload;
+        this.apiData = apiData;
     }
 
-    public static ExternalDataSnapshot create(
-            ExternalDataSource source,
+    public static ExternalApiData create(
+            ExternalApi externalApi,
             String requestDescription,
             int page,
             Instant collectedAt,
-            String rawPayload
+            String apiData
     ) {
-        return new ExternalDataSnapshot(source, requestDescription, page, collectedAt, rawPayload);
+        return new ExternalApiData(externalApi, requestDescription, page, collectedAt, apiData);
     }
 
     private void validatePage(int value) {

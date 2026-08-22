@@ -16,9 +16,9 @@ import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "external_data_collection_failures")
+@Table(name = "external_api_collection_failures")
 @NoArgsConstructor(access = PROTECTED)
-public class ExternalDataCollectionFailure {
+public class ExternalApiCollectionFailure {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,7 +26,7 @@ public class ExternalDataCollectionFailure {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 40)
-    private ExternalDataSource source;
+    private ExternalApi externalApi;
 
     @Column(nullable = false, length = 2000)
     private String requestDescription;
@@ -40,33 +40,33 @@ public class ExternalDataCollectionFailure {
     @Column(nullable = false, length = 1000)
     private String reason;
 
-    private ExternalDataCollectionFailure(
-            ExternalDataSource source,
+    private ExternalApiCollectionFailure(
+            ExternalApi externalApi,
             String requestDescription,
             Instant occurredAt,
             String errorType,
             String reason
     ) {
-        validateRequired(source, "외부 데이터 출처");
+        validateRequired(externalApi, "외부 API");
         validateNotBlank(requestDescription, "조회 조건");
         validateRequired(occurredAt, "실패 시각");
         validateNotBlank(errorType, "오류 유형");
         validateNotBlank(reason, "실패 원인");
-        this.source = source;
+        this.externalApi = externalApi;
         this.requestDescription = requestDescription;
         this.occurredAt = occurredAt;
         this.errorType = errorType;
         this.reason = reason;
     }
 
-    public static ExternalDataCollectionFailure create(
-            ExternalDataSource source,
+    public static ExternalApiCollectionFailure create(
+            ExternalApi externalApi,
             String requestDescription,
             Instant occurredAt,
             String errorType,
             String reason
     ) {
-        return new ExternalDataCollectionFailure(source, requestDescription, occurredAt, errorType, reason);
+        return new ExternalApiCollectionFailure(externalApi, requestDescription, occurredAt, errorType, reason);
     }
 
     private void validateNotBlank(String value, String fieldName) {

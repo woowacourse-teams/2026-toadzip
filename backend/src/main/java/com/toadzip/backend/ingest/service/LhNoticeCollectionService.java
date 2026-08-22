@@ -7,14 +7,14 @@ import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import com.toadzip.backend.ingest.domain.ExternalDataSnapshot;
-import com.toadzip.backend.ingest.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.dto.ExternalDataResponse;
+import com.toadzip.backend.ingest.domain.ExternalApiData;
+import com.toadzip.backend.ingest.domain.ExternalApi;
+import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
+import com.toadzip.backend.ingest.dto.ExternalApiResponse;
 import com.toadzip.backend.ingest.dto.LhNoticeRequest;
-import com.toadzip.backend.ingest.repository.ExternalDataCollectionStore;
-import com.toadzip.backend.ingest.repository.ExternalDataSnapshotRepository;
-import com.toadzip.backend.ingest.repository.LhNoticeExternalRepository;
+import com.toadzip.backend.ingest.repository.ExternalApiCollectionStore;
+import com.toadzip.backend.ingest.repository.ExternalApiDataRepository;
+import com.toadzip.backend.ingest.repository.LhNoticeApiRepository;
 import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -29,77 +29,77 @@ public class LhNoticeCollectionService {
 
     private final ObjectMapper objectMapper;
 
-    private final ExternalDataSnapshotRepository snapshotRepository;
+    private final ExternalApiDataRepository apiDataRepository;
 
-    private final LhNoticeExternalRepository externalRepository;
+    private final LhNoticeApiRepository apiRepository;
 
-    private final ExternalDataCollectionStore store;
+    private final ExternalApiCollectionStore store;
 
-    private final ExternalDataFailureRecorder failureRecorder;
+    private final ExternalApiFailureRecorder failureRecorder;
 
     private final LhSupplyInfoTypeCodeResolver supplyTypeCodeResolver;
 
     public LhNoticeCollectionService(
             Clock clock,
             ObjectMapper objectMapper,
-            ExternalDataSnapshotRepository snapshotRepository,
-            LhNoticeExternalRepository externalRepository,
-            ExternalDataCollectionStore store,
-            ExternalDataFailureRecorder failureRecorder,
+            ExternalApiDataRepository apiDataRepository,
+            LhNoticeApiRepository apiRepository,
+            ExternalApiCollectionStore store,
+            ExternalApiFailureRecorder failureRecorder,
             LhSupplyInfoTypeCodeResolver supplyTypeCodeResolver
     ) {
         this.clock = clock;
         this.objectMapper = objectMapper;
-        this.snapshotRepository = snapshotRepository;
-        this.externalRepository = externalRepository;
+        this.apiDataRepository = apiDataRepository;
+        this.apiRepository = apiRepository;
         this.store = store;
         this.failureRecorder = failureRecorder;
         this.supplyTypeCodeResolver = supplyTypeCodeResolver;
     }
 
-    public ExternalDataCollectionReport collect() {
-        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty("lh-notice");
-        List<ExternalDataSnapshot> myHomeSnapshots = snapshotRepository
-                .findAllBySourceOrderByCollectedAtAscIdAsc(ExternalDataSource.MYHOME_NOTICE);
-        for (ExternalDataSnapshot snapshot : myHomeSnapshots) {
-            report = report.plus(collectNoticeRows(snapshot));
+    public ExternalApiCollectionReport collect() {
+        ExternalApiCollectionReport report = ExternalApiCollectionReport.empty("lh-notice");
+        List<ExternalApiData> myHomeApiData = apiDataRepository
+                .findAllByExternalApiOrderByCollectedAtAscIdAsc(ExternalApi.MYHOME_NOTICE);
+        for (ExternalApiData apiData : myHomeApiData) {
+            report = report.plus(collectNoticeRows(apiData));
         }
         return report;
     }
 
-    private ExternalDataCollectionReport collectNoticeRows(ExternalDataSnapshot snapshot) {
-        List<JsonNode> rows = DataGoKrOpenApiClient.findRows(parse(snapshot), LIST_POINTER);
-        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty("lh-notice");
+    private ExternalApiCollectionReport collectNoticeRows(ExternalApiData apiData) {
+        List<JsonNode> rows = DataGoKrOpenApiClient.findRows(parse(apiData), LIST_POINTER);
+        ExternalApiCollectionReport report = ExternalApiCollectionReport.empty("lh-notice");
         for (JsonNode row : rows) {
-            report = report.plus(collectNotice(row, snapshot.getId()));
+            report = report.plus(collectNotice(row, apiData.getId()));
         }
         return report;
     }
 
-    private ExternalDataCollectionReport collectNotice(JsonNode row, Long sourceSnapshotId) {
-        String requestDescription = "myhomeSnapshotId=" + sourceSnapshotId;
+    private ExternalApiCollectionReport collectNotice(JsonNode row, Long apiDataId) {
+        String requestDescription = "myhomeApiDataId=" + apiDataId;
         try {
             LhNoticeRequest request = requestOf(row).orElseThrow(() ->
                     new IllegalStateException("LH 공고 상세 조회 조건이 없습니다."));
             requestDescription = request.requestDescription();
-            ExternalDataResponse detail = externalRepository.fetchDetail(request);
-            ExternalDataResponse supply = externalRepository.fetchSupply(request);
-            List<ExternalDataSnapshot> snapshots = List.of(
-                    snapshot(ExternalDataSource.LH_NOTICE_DETAIL, request, detail),
-                    snapshot(ExternalDataSource.LH_NOTICE_SUPPLY, request, supply)
+            ExternalApiResponse detail = apiRepository.fetchDetail(request);
+            ExternalApiResponse supply = apiRepository.fetchSupply(request);
+            List<ExternalApiData> apiData = List.of(
+                    apiData(ExternalApi.LH_NOTICE_DETAIL, request, detail),
+                    apiData(ExternalApi.LH_NOTICE_SUPPLY, request, supply)
             );
-            store.storeSnapshots(snapshots);
-            return new ExternalDataCollectionReport("lh-notice", snapshots.size(), 0);
+            store.storeApiData(apiData);
+            return new ExternalApiCollectionReport("lh-notice", apiData.size(), 0);
         }
         catch (RuntimeException exception) {
             failureRecorder.record(
-                    ExternalDataSource.LH_NOTICE_DETAIL,
+                    ExternalApi.LH_NOTICE_DETAIL,
                     requestDescription,
                     exception,
                     log,
-                    "LH 공고 상세·공급 원천 수집에 실패했습니다"
+                    "LH 공고 상세·공급 외부 API 수집에 실패했습니다"
             );
-            return new ExternalDataCollectionReport("lh-notice", 0, 1);
+            return new ExternalApiCollectionReport("lh-notice", 0, 1);
         }
     }
 
@@ -124,26 +124,26 @@ public class LhNoticeCollectionService {
         }
     }
 
-    private ExternalDataSnapshot snapshot(
-            ExternalDataSource source,
+    private ExternalApiData apiData(
+            ExternalApi externalApi,
             LhNoticeRequest request,
-            ExternalDataResponse response
+            ExternalApiResponse response
     ) {
-        return ExternalDataSnapshot.create(
-                source,
+        return ExternalApiData.create(
+                externalApi,
                 request.requestDescription(),
                 1,
                 clock.instant(),
-                response.rawPayload()
+                response.apiData()
         );
     }
 
-    private JsonNode parse(ExternalDataSnapshot snapshot) {
+    private JsonNode parse(ExternalApiData apiData) {
         try {
-            return objectMapper.readTree(snapshot.getRawPayload());
+            return objectMapper.readTree(apiData.getApiData());
         }
         catch (RuntimeException exception) {
-            throw new IllegalStateException("마이홈 공고 원천 형식이 올바르지 않습니다.", exception);
+            throw new IllegalStateException("마이홈 공고 외부 API 형식이 올바르지 않습니다.", exception);
         }
     }
 }

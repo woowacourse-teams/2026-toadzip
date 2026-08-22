@@ -16,13 +16,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.toadzip.backend.ingest.domain.ExternalDataSnapshot;
-import com.toadzip.backend.ingest.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.dto.ExternalDataResponse;
+import com.toadzip.backend.ingest.domain.ExternalApiData;
+import com.toadzip.backend.ingest.domain.ExternalApi;
+import com.toadzip.backend.ingest.dto.ExternalApiResponse;
 import com.toadzip.backend.ingest.dto.LhNoticeRequest;
-import com.toadzip.backend.ingest.repository.ExternalDataCollectionStore;
-import com.toadzip.backend.ingest.repository.ExternalDataSnapshotRepository;
-import com.toadzip.backend.ingest.repository.LhNoticeExternalRepository;
+import com.toadzip.backend.ingest.repository.ExternalApiCollectionStore;
+import com.toadzip.backend.ingest.repository.ExternalApiDataRepository;
+import com.toadzip.backend.ingest.repository.LhNoticeApiRepository;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,16 +31,16 @@ class LhNoticeCollectionServiceTest {
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-08-23T00:00:00Z"), ZoneOffset.UTC);
 
     @Mock
-    private ExternalDataSnapshotRepository snapshotRepository;
+    private ExternalApiDataRepository apiDataRepository;
 
     @Mock
-    private LhNoticeExternalRepository externalRepository;
+    private LhNoticeApiRepository apiRepository;
 
     @Mock
-    private ExternalDataCollectionStore store;
+    private ExternalApiCollectionStore store;
 
     @Mock
-    private ExternalDataFailureRecorder failureRecorder;
+    private ExternalApiFailureRecorder failureRecorder;
 
     private LhNoticeCollectionService service;
 
@@ -49,8 +49,8 @@ class LhNoticeCollectionServiceTest {
         service = new LhNoticeCollectionService(
                 CLOCK,
                 JsonMapper.builder().build(),
-                snapshotRepository,
-                externalRepository,
+                apiDataRepository,
+                apiRepository,
                 store,
                 failureRecorder,
                 new LhSupplyInfoTypeCodeResolver()
@@ -58,44 +58,44 @@ class LhNoticeCollectionServiceTest {
     }
 
     @Test
-    @DisplayName("마이홈 공고 원문에서 LH 상세와 공급 원문을 조회해 저장한다")
-    void storesLhNoticeSourceResponses() {
-        ExternalDataSnapshot myHomeNotice = ExternalDataSnapshot.create(
-                ExternalDataSource.MYHOME_NOTICE,
+    @DisplayName("마이홈 공고 API 데이터에서 LH 상세와 공급 API 데이터를 조회해 저장한다")
+    void storesLhNoticeApiData() {
+        ExternalApiData myHomeNotice = ExternalApiData.create(
+                ExternalApi.MYHOME_NOTICE,
                 "suplyTy=10&pageNo=1",
                 1,
                 CLOCK.instant(),
                 noticePayload()
         );
-        when(snapshotRepository.findAllBySourceOrderByCollectedAtAscIdAsc(ExternalDataSource.MYHOME_NOTICE))
+        when(apiDataRepository.findAllByExternalApiOrderByCollectedAtAscIdAsc(ExternalApi.MYHOME_NOTICE))
                 .thenReturn(List.of(myHomeNotice));
-        when(externalRepository.fetchDetail(any())).thenReturn(response("detail"));
-        when(externalRepository.fetchSupply(any())).thenReturn(response("supply"));
+        when(apiRepository.fetchDetail(any())).thenReturn(response("detail"));
+        when(apiRepository.fetchSupply(any())).thenReturn(response("supply"));
 
         var result = service.collect();
 
-        verify(store).storeSnapshots(any());
-        assertThat(result.storedSnapshotCount()).isEqualTo(2);
+        verify(store).storeApiData(any());
+        assertThat(result.storedApiDataCount()).isEqualTo(2);
         assertThat(result.failedRequestCount()).isZero();
     }
 
     @Test
     @DisplayName("지원하지 않는 공급유형은 LH API를 호출하지 않고 실패로 기록한다")
     void recordsUnsupportedSupplyType() {
-        ExternalDataSnapshot myHomeNotice = ExternalDataSnapshot.create(
-                ExternalDataSource.MYHOME_NOTICE,
+        ExternalApiData myHomeNotice = ExternalApiData.create(
+                ExternalApi.MYHOME_NOTICE,
                 "suplyTy=10&pageNo=1",
                 1,
                 CLOCK.instant(),
                 noticePayload("매입임대")
         );
-        when(snapshotRepository.findAllBySourceOrderByCollectedAtAscIdAsc(ExternalDataSource.MYHOME_NOTICE))
+        when(apiDataRepository.findAllByExternalApiOrderByCollectedAtAscIdAsc(ExternalApi.MYHOME_NOTICE))
                 .thenReturn(List.of(myHomeNotice));
 
         var result = service.collect();
 
         verify(failureRecorder).record(any(), any(), any(), any(), any());
-        assertThat(result.storedSnapshotCount()).isZero();
+        assertThat(result.storedApiDataCount()).isZero();
         assertThat(result.failedRequestCount()).isOne();
     }
 
@@ -110,8 +110,8 @@ class LhNoticeCollectionServiceTest {
                 + "&uppAisTpCd=06&aisTpCd=06\"}]}}}";
     }
 
-    private ExternalDataResponse response(String name) {
-        String payload = "{\"source\":\"" + name + "\"}";
-        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+    private ExternalApiResponse response(String name) {
+        String payload = "{\"externalApi\":\"" + name + "\"}";
+        return new ExternalApiResponse(payload, JsonMapper.builder().build().readTree(payload));
     }
 }
