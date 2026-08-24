@@ -8,6 +8,7 @@ import java.util.List;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Repository;
 
+import com.toadzip.backend.ingest.dto.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.dto.MyHomeRegion;
 
 @Repository
@@ -30,7 +31,7 @@ public class MyHomeRegionCatalog {
                 .filter(region -> region.provinceCode().equals(provinceCode))
                 .filter(region -> region.districtCode().equals(districtCode))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("마이홈 지역 코드가 존재하지 않습니다."));
+                .orElseThrow(() -> new InvalidIngestRequestException("마이홈 지역 코드가 존재하지 않습니다."));
     }
 
     private List<MyHomeRegion> loadRegions() {
