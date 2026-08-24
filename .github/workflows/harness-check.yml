@@ -23,6 +23,8 @@ jobs:
           sh tests/harness/contains-hangul-test.sh
           sh tests/harness/validate-commit-message-test.sh
           sh tests/harness/validate-pr-test.sh
+      - name: Test PostgreSQL test lifecycle
+        run: bash tests/harness/test-postgres-test.sh
       - name: Validate PR contract
         if: ${{ github.event_name == 'pull_request' }}
         env:
