@@ -18,7 +18,7 @@
 ```text
 1. 변경한 테스트 또는 가장 가까운 Gradle task
 2. 영향 기능 테스트 묶음
-3. ./gradlew check
+3. ./scripts/test-postgres.sh
 4. 존재하는 계층 의존성 검사 또는 수동 구조 검토
 5. git diff --check와 최종 diff 리뷰
 ```

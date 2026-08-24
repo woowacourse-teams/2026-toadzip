@@ -4,11 +4,13 @@
 
 **Goal:** 각 개발자가 Docker Compose로 격리된 PostgreSQL을 실행하고, `local` 프로필의 Hibernate `update` 전략으로 현재 JPA 엔티티의 테이블을 생성한 뒤 DBeaver에서 조회할 수 있게 한다.
 
-**Architecture:** 운영용 기본 Compose 파일은 유지하고 `compose.local.yaml`을 오버레이로 적용한다. 로컬 전용 JPA 정책은 `application-local.yml`에만 두며, 개발자별 비밀값은 추적하지 않는 `.env`에서 주입한다. 자동 테스트는 `local` 프로필이 애플리케이션 종료 시 스키마를 삭제하지 않는 동작으로 `ddl-auto: update` 계약을 검증하고, 최종 확인은 실제 PostgreSQL 컨테이너의 테이블 목록으로 수행한다.
+**Architecture:** 운영용 기본 Compose 파일은 유지하고 `compose.local.yaml`을 오버레이로 적용한다. 로컬 전용 JPA 정책은 `application-local.yml`에만 두며, 개발자별 비밀값은 추적하지 않는 `.env`에서 주입한다. 자동 테스트는 독립된 `toadzip_test` PostgreSQL에서 `local` 프로필이 애플리케이션 종료 시 스키마를 삭제하지 않는 `ddl-auto: update` 계약을 검증하고, 최종 확인은 실제 PostgreSQL 컨테이너의 테이블 목록으로 수행한다.
 
-**Tech Stack:** Java 25, Spring Boot 4.1, Spring Data JPA, Hibernate, PostgreSQL 17, Docker Compose, JUnit 5, H2(test)
+**Tech Stack:** Java 25, Spring Boot 4.1, Spring Data JPA, Hibernate, PostgreSQL 17, Docker Compose, Bash, JUnit 5
 
 **Spec:** GitHub issue #14 및 사용자 승인 범위: `application-local.yml`, `compose.local.yaml`, `.env.example`의 `POSTGRES_PORT`, 로컬 DB/DBeaver 문서, Hibernate 테이블 생성 검증, `develop` 대상 PR.
+
+테스트 실행 경로의 최종 설계와 구현 단계는 [PostgreSQL 테스트 환경 설계](../specs/2026-08-24-postgresql-test-environment-design.md)와 [PostgreSQL 테스트 환경 구현 계획](2026-08-24-postgresql-test-environment.md)을 따른다.
 
 ## Global Constraints
 
@@ -31,14 +33,14 @@
 - Modify: `docs/SETUP.md`
 
 - [ ] **Step 1: local 프로필 스키마 유지 동작의 실패 테스트 작성**
-  - `SpringApplicationBuilder`로 `local` 프로필과 고유한 H2 메모리 DB를 사용해 애플리케이션 컨텍스트를 실행하고 종료한다.
-  - 종료 후 JDBC metadata로 `NOTICES` 테이블이 남아 있음을 검증한다.
-  - 실행: `cd backend && ./gradlew test --tests com.toadzip.backend.LocalProfileSchemaPersistenceTest`
+  - `SpringApplicationBuilder`로 `local` 프로필과 독립된 `toadzip_test` PostgreSQL을 사용해 애플리케이션 컨텍스트를 실행하고 종료한다.
+  - 종료 후 JDBC metadata로 PostgreSQL에서 `NOTICES` 테이블이 남아 있음을 검증한다.
+  - 실행: `./scripts/test-postgres.sh test --tests com.toadzip.backend.LocalProfileSchemaPersistenceTest`
   - 기대: `application-local.yml`이 없으므로 기본 `create-drop` 동작으로 테이블이 삭제되어 실패한다.
 
 - [ ] **Step 2: local 프로필 JPA 설정의 최소 구현**
   - `application-local.yml`에 `spring.jpa.hibernate.ddl-auto: update`만 추가한다.
-  - 같은 테스트를 다시 실행해 통과를 확인한다.
+  - 같은 PostgreSQL 테스트를 다시 실행해 통과를 확인한다.
 
 - [ ] **Step 3: 로컬 Compose 오버레이와 예시 환경변수 추가**
   - `compose.local.yaml`에서 DB의 `${POSTGRES_PORT:-5432}`를 컨테이너 5432에 `127.0.0.1`로 바인딩한다.
@@ -58,7 +60,7 @@
   - 검증용으로 만든 임시 Compose 프로젝트와 볼륨만 정리한다.
 
 - [ ] **Step 6: 전체 품질 게이트와 자체 리뷰**
-  - `cd backend && ./gradlew check`
+  - `./scripts/test-postgres.sh`
   - `sh tests/harness/validate-harness-test.sh`
   - `sh scripts/validate-harness.sh`
   - `git diff --check`

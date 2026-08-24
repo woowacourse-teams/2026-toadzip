@@ -34,7 +34,7 @@ Red → Green → Refactor 순서와 완료 증거는 [development-cycle.md](dev
 ## 실행 순서
 
 ```text
-가까운 테스트 → 기능 테스트 묶음 → ./gradlew check
+가까운 테스트 → 기능 테스트 묶음 → ./scripts/test-postgres.sh
 ```
 
 환경 때문에 실행하지 못한 검사는 실패와 구분해 미검증으로 보고한다.

@@ -82,8 +82,7 @@ PR을 병합할 때는 Create a merge commit을 사용한다. Merge commit 제�
 PR을 생성하기 전에 변경 사항과 관련된 테스트를 실행한다. 백엔드 코드를 변경한 경우 다음 명령어로 전체 테스트를 실행한다.
 
 ```bash
-cd backend
-./gradlew test
+./scripts/test-postgres.sh
 ```
 
 기능이나 API 동작을 변경한 경우 관련 시나리오를 직접 확인한다. 실행한 테스트와 검증 결과는 PR 템플릿의 `검증 결과`에 작성한다. 검증하지 못한 항목이 있다면 그 사유를 함께 작성한다.

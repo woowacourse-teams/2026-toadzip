@@ -36,12 +36,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
-      - name: Verify backend
+      - name: Verify backend against PostgreSQL
         if: ${{ hashFiles('gradlew', 'backend/gradlew') != '' }}
-        run: |
-          if [ -x ./gradlew ]; then
-            ./gradlew check
-          else
-            cd backend
-            ./gradlew check
-          fi
+        run: ./scripts/test-postgres.sh

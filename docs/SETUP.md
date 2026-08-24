@@ -63,6 +63,23 @@ docker compose -f compose.yaml -f compose.local.yaml exec db sh -c \
 `local` 프로필은 Hibernate의 `update` 전략으로 로컬 스키마를 맞춘다. 이는 운영 환경의
 마이그레이션 수단이 아니다.
 
+## PostgreSQL 테스트
+
+전체 백엔드 검증은 프로젝트 루트에서 실행한다.
+
+```shell
+./scripts/test-postgres.sh
+```
+
+특정 테스트만 실행하려면 Gradle 인자를 그대로 전달한다.
+
+```shell
+./scripts/test-postgres.sh test --tests com.toadzip.backend.DomainJpaPersistenceTest
+```
+
+테스트는 개발용 데이터와 분리된 `toadzip_test:55432` PostgreSQL을 사용한다. 실행이 끝나면
+테스트 컨테이너와 데이터는 자동으로 삭제된다.
+
 ## DBeaver 연결
 
 DBeaver에서 PostgreSQL 연결을 만들고 다음 값을 입력한다.
