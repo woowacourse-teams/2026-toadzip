@@ -21,11 +21,12 @@ class LocalProfileSchemaPersistenceTest {
     void local_프로필은_종료_후에도_스키마를_유지한다() throws Exception {
         String jdbcUrl = testDatabaseUrl();
 
-        ConfigurableApplicationContext applicationContext = new SpringApplicationBuilder(BackendApplication.class)
+        try (ConfigurableApplicationContext applicationContext = new SpringApplicationBuilder(BackendApplication.class)
                 .environment(createIsolatedEnvironment(jdbcUrl))
-                .run();
-
-        applicationContext.close();
+                .run()) {
+            String ddlAuto = applicationContext.getEnvironment().getProperty("spring.jpa.hibernate.ddl-auto");
+            assertEquals("update", ddlAuto);
+        }
 
         try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
                 ResultSet tables = connection.getMetaData().getTables(null, null, "notices", new String[] {"TABLE"})) {
