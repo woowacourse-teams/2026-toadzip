@@ -13,11 +13,14 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 import com.toadzip.backend.global.error.ApiErrorResponse;
 import com.toadzip.backend.ingest.dto.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.service.IngestAlreadyRunningException;
 
 @RestControllerAdvice(basePackages = "com.toadzip.backend.ingest.controller")
 public class IngestExceptionHandler {
 
     private static final String INVALID_INGEST_REQUEST = "INVALID_INGEST_REQUEST";
+
+    private static final String INGEST_ALREADY_RUNNING = "INGEST_ALREADY_RUNNING";
 
     @ExceptionHandler(InvalidIngestRequestException.class)
     public ResponseEntity<ApiErrorResponse> handleInvalidIngestRequest(
@@ -48,6 +51,19 @@ public class IngestExceptionHandler {
                 traceIdOf(request)
         );
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(IngestAlreadyRunningException.class)
+    public ResponseEntity<ApiErrorResponse> handleIngestAlreadyRunning(
+            IngestAlreadyRunningException exception,
+            HttpServletRequest request
+    ) {
+        ApiErrorResponse response = new ApiErrorResponse(
+                INGEST_ALREADY_RUNNING,
+                exception.getMessage(),
+                traceIdOf(request)
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
     }
 
     private String invalidRequestMessage(Exception exception) {
