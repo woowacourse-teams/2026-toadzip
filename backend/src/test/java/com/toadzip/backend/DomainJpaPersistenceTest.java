@@ -26,21 +26,34 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.PersistenceException;
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 @Transactional
-@SpringBootTest
+@PostgreSqlIntegrationTest
 class DomainJpaPersistenceTest {
 
     @PersistenceContext
     private EntityManager entityManager;
+
+    @Autowired
+    private DataSource dataSource;
+
+    @Test
+    void 영속성_통합_테스트는_PostgreSQL에서_실행한다() throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName());
+        }
+    }
 
     @Test
     void 접수처_연락처_컬럼은_null을_허용하지_않는다() {

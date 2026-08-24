@@ -3,6 +3,7 @@ package com.toadzip.backend.housing.domain;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.toadzip.backend.PostgreSqlIntegrationTest;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.metamodel.Attribute;
 import jakarta.persistence.metamodel.ManagedType;
@@ -10,9 +11,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
+@PostgreSqlIntegrationTest
 class HousingJpaMappingTest {
 
     private static final String DOMAIN_PACKAGE = "com.toadzip.backend.housing.domain.";
