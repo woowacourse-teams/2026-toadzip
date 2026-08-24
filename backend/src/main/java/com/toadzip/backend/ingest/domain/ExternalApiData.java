@@ -10,8 +10,13 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
+import jakarta.persistence.PostLoad;
 import jakarta.persistence.Table;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HexFormat;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -38,6 +43,15 @@ public class ExternalApiData {
     @Column(nullable = false)
     private Instant collectedAt;
 
+    @Column(name = "content_hash", length = 64)
+    private String contentHash;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private LhNoticeProcessingStatus lhNoticeProcessingStatus;
+
+    private Instant lhNoticeProcessedAt;
+
     @Lob
     @Column(nullable = false)
     private String apiData;
@@ -58,6 +72,10 @@ public class ExternalApiData {
         this.requestDescription = requestDescription;
         this.page = page;
         this.collectedAt = collectedAt;
+        this.contentHash = contentHashOf(apiData);
+        if (externalApi == ExternalApi.MYHOME_NOTICE) {
+            this.lhNoticeProcessingStatus = LhNoticeProcessingStatus.PENDING;
+        }
         this.apiData = apiData;
     }
 
@@ -69,6 +87,53 @@ public class ExternalApiData {
             String apiData
     ) {
         return new ExternalApiData(externalApi, requestDescription, page, collectedAt, apiData);
+    }
+
+    public void completeLhNoticeProcessing(Instant processedAt) {
+        changeLhNoticeProcessingStatus(LhNoticeProcessingStatus.COMPLETED, processedAt);
+    }
+
+    public void failLhNoticeProcessing(Instant processedAt) {
+        changeLhNoticeProcessingStatus(LhNoticeProcessingStatus.FAILED, processedAt);
+    }
+
+    @PostLoad
+    private void initializeCollectionMetadata() {
+        if (contentHash == null) {
+            contentHash = contentHashOf(apiData);
+        }
+        if (externalApi == ExternalApi.MYHOME_NOTICE && lhNoticeProcessingStatus == null) {
+            lhNoticeProcessingStatus = LhNoticeProcessingStatus.PENDING;
+        }
+    }
+
+    private void changeLhNoticeProcessingStatus(
+            LhNoticeProcessingStatus status,
+            Instant processedAt
+    ) {
+        validateRequired(processedAt, "LH 공고 처리 시각");
+        if (externalApi != ExternalApi.MYHOME_NOTICE) {
+            throw new IllegalStateException("마이홈 공고 API 데이터만 LH 공고 처리 상태를 변경할 수 있습니다.");
+        }
+        if (lhNoticeProcessingStatus != null
+                && lhNoticeProcessingStatus != LhNoticeProcessingStatus.PENDING) {
+            return;
+        }
+        lhNoticeProcessingStatus = status;
+        lhNoticeProcessedAt = processedAt;
+    }
+
+    private static String contentHashOf(String apiData) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(apiData.getBytes(StandardCharsets.UTF_8)));
+        }
+        catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(
+                    "API 데이터 hash 알고리즘을 사용할 수 없습니다.",
+                    exception
+            );
+        }
     }
 
     private void validatePage(int value) {

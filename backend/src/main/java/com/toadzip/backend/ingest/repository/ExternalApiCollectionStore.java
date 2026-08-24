@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.repository;
 
+import java.time.Instant;
 import java.util.List;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,8 +24,21 @@ public class ExternalApiCollectionStore {
     }
 
     @Transactional
-    public void storeApiData(List<ExternalApiData> apiData) {
+    public int storeApiData(List<ExternalApiData> apiData) {
         apiDataRepository.saveAll(apiData);
+        return apiData.size();
+    }
+
+    @Transactional
+    public void completeLhNoticeProcessing(ExternalApiData sourceApiData, Instant processedAt) {
+        sourceApiData.completeLhNoticeProcessing(processedAt);
+        apiDataRepository.save(sourceApiData);
+    }
+
+    @Transactional
+    public void failLhNoticeProcessing(ExternalApiData sourceApiData, Instant processedAt) {
+        sourceApiData.failLhNoticeProcessing(processedAt);
+        apiDataRepository.save(sourceApiData);
     }
 
     @Transactional

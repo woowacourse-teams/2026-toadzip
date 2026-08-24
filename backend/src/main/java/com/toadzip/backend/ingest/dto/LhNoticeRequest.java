@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.dto;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -49,6 +50,23 @@ public record LhNoticeRequest(
     }
 
     public String requestDescription() {
+        String description = legacyRequestDescription();
+        if (announcementTypeCode == null) {
+            return description;
+        }
+        return description + "&AIS_TP_CD=" + announcementTypeCode;
+    }
+
+    public List<String> compatibleRequestDescriptions() {
+        String currentDescription = requestDescription();
+        String legacyDescription = legacyRequestDescription();
+        if (currentDescription.equals(legacyDescription)) {
+            return List.of(currentDescription);
+        }
+        return List.of(currentDescription, legacyDescription);
+    }
+
+    private String legacyRequestDescription() {
         return "PAN_ID=" + panId
                 + "&CCR_CNNT_SYS_DS_CD=" + connectionSystemDivisionCode
                 + "&UPP_AIS_TP_CD=" + upperAnnouncementTypeCode
