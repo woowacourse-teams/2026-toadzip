@@ -20,7 +20,6 @@
 - 기본 명령 `./scripts/test-postgres.sh`는 캐시와 무관하게 Gradle `check`의 test task를 실제 실행한다.
 - 성공, 실패와 인터럽트 모두 `toadzip-test` Compose 프로젝트만 정리한다.
 - Spring/JPA 테스트는 PostgreSQL 제품명을 자동 검증하고 공유 스키마에서 직렬 실행한다.
-- IntelliJ IDEA와 DBeaver 연결 방법은 코드, 설정과 저장소 문서에 추가하지 않는다.
 
 ---
 
@@ -193,7 +192,6 @@
 **Files:**
 
 - Modify: `.github/workflows/harness-check.yml`
-- Modify: `docs/SETUP.md`
 - Modify: `CONTRIBUTING.md`
 - Modify: `backend/docs/testing.md`
 - Modify: `backend/docs/quality-gates.md`
@@ -220,15 +218,11 @@
   다음 문서에서 전체 backend 검증 명령을 root 기준 `./scripts/test-postgres.sh`로 바꾼다.
 
   ```text
-  docs/SETUP.md
   CONTRIBUTING.md
   backend/docs/testing.md
   backend/docs/quality-gates.md
   backend/docs/development-cycle.md
   ```
-
-  `docs/SETUP.md`에는 기본 실행과 focused test, 테스트 DB가 `toadzip_test:55432`이고 종료 시
-  자동 삭제된다는 점만 기록한다. IntelliJ 또는 DBeaver 연결 절차는 추가하지 않는다.
 
 - [ ] **Step 3: 이전 계획의 H2 참조 제거**
 
@@ -251,15 +245,6 @@
   Expected: every command succeeds and Compose output contains only the test `db` service.
 
 - [ ] **Step 5: 범위 자체 검토와 commit**
-
-  Verify:
-
-  ```shell
-  rg -n "IntelliJ|DBeaver" compose.test.yaml scripts/test-postgres.sh backend/src/test .github/workflows CONTRIBUTING.md backend/docs docs/SETUP.md
-  ```
-
-  Expected: 새 test execution 문서에는 IntelliJ/DBeaver 지침이 없으며 기존 local DB의 DBeaver
-  문단 외에 새 언급이 없다.
 
   Commit:
 

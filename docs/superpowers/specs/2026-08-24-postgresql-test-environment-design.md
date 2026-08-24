@@ -14,8 +14,6 @@
 - 기존 Spring/JPA 테스트의 PostgreSQL 전환
 - GitHub Actions와 테스트 실행 문서의 명령 통일
 
-IntelliJ IDEA 또는 DBeaver 연결 방법은 작업 범위에 포함하지 않는다.
-
 ## 구성
 
 ### 테스트 PostgreSQL
@@ -89,4 +87,3 @@ GitHub Actions의 백엔드 검증 단계는 로컬과 동일하게 `./scripts/t
 - `./scripts/test-postgres.sh` 한 번으로 기동, 전체 검사와 정리가 완료된다.
 - 테스트 실패 시에도 테스트 Compose 프로젝트가 남지 않는다.
 - GitHub Actions가 동일한 스크립트로 통과한다.
-- IntelliJ 또는 DBeaver 사용법은 변경 파일에 추가되지 않는다.

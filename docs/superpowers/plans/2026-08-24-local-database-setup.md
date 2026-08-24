@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan.
 
-**Goal:** 각 개발자가 Docker Compose로 격리된 PostgreSQL을 실행하고, `local` 프로필의 Hibernate `update` 전략으로 현재 JPA 엔티티의 테이블을 생성한 뒤 DBeaver에서 조회할 수 있게 한다.
+**Goal:** 각 개발자가 Docker Compose로 격리된 PostgreSQL을 실행하고, `local` 프로필의 Hibernate `update` 전략으로 현재 JPA 엔티티의 테이블을 생성해 확인할 수 있게 한다.
 
 **Architecture:** 운영용 기본 Compose 파일은 유지하고 `compose.local.yaml`을 오버레이로 적용한다. 로컬 전용 JPA 정책은 `application-local.yml`에만 두며, 개발자별 비밀값은 추적하지 않는 `.env`에서 주입한다. 자동 테스트는 독립된 `toadzip_test` PostgreSQL에서 `local` 프로필이 애플리케이션 종료 시 스키마를 삭제하지 않는 `ddl-auto: update` 계약을 검증하고, 최종 확인은 실제 PostgreSQL 컨테이너의 테이블 목록으로 수행한다.
 
 **Tech Stack:** Java 25, Spring Boot 4.1, Spring Data JPA, Hibernate, PostgreSQL 17, Docker Compose, Bash, JUnit 5
 
-**Spec:** GitHub issue #14 및 사용자 승인 범위: `application-local.yml`, `compose.local.yaml`, `.env.example`의 `POSTGRES_PORT`, 로컬 DB/DBeaver 문서, Hibernate 테이블 생성 검증, `develop` 대상 PR.
+**Spec:** GitHub issue #14 및 사용자 승인 범위: `application-local.yml`, `compose.local.yaml`, `.env.example`의 `POSTGRES_PORT`, 로컬 실행 문서, Hibernate 테이블 생성 검증, `develop` 대상 PR.
 
 테스트 실행 경로의 최종 설계와 구현 단계는 [PostgreSQL 테스트 환경 설계](../specs/2026-08-24-postgresql-test-environment-design.md)와 [PostgreSQL 테스트 환경 구현 계획](2026-08-24-postgresql-test-environment.md)을 따른다.
 
@@ -29,6 +29,7 @@
 - Create: `backend/src/test/java/com/toadzip/backend/LocalProfileSchemaPersistenceTest.java`
 - Create: `backend/src/main/resources/application-local.yml`
 - Create: `compose.local.yaml`
+- Create: `docs/LOCAL_SETUP.md`
 - Modify: `.env.example`
 - Modify: `docs/SETUP.md`
 
@@ -49,9 +50,9 @@
   - 실행: `POSTGRES_PASSWORD=change-me docker compose -f compose.yaml -f compose.local.yaml config`
   - 기대: 병합된 설정에서 DB 포트와 backend local 프로필이 확인된다.
 
-- [ ] **Step 4: 실행·검증·DBeaver 연결 문서화**
-  - `.env` 생성, 전체/DB/backend 실행, 상태 확인, 테이블 확인, DBeaver 연결값, 종료와 데이터 초기화를 설명한다.
-  - 데이터 초기화 명령에는 로컬 볼륨 삭제 경고를 표시한다.
+- [ ] **Step 4: 로컬 실행 문서 분리**
+  - 공통 `docs/SETUP.md`는 기존의 간단한 실행 안내를 유지하고 `docs/LOCAL_SETUP.md` 링크만 추가한다.
+  - `docs/LOCAL_SETUP.md`에는 `.env` 생성, 로컬 오버레이 실행, 테이블 확인과 종료만 설명한다.
 
 - [ ] **Step 5: 실제 PostgreSQL 스키마 생성 검증**
   - 충돌 없는 임시 Compose 프로젝트명과 포트로 전체 스택을 실행한다.
