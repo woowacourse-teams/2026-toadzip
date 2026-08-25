@@ -29,6 +29,19 @@ Controller ↔ DTO
 
 세부 허용 의존성은 [layer-boundaries.md](layer-boundaries.md)에서 확인한다.
 
+## 기능 간 협력
+
+`Housing`과 `Announcement`가 서로의 정보를 사용하는 경우 다음 의존을 함께 구성할 수 있다.
+
+```text
+Housing: HousingController → AnnouncementService, HousingService → AnnouncementRepository
+Announcement: AnnouncementController → HousingService, AnnouncementService → HousingRepository
+```
+
+기능 간 협력은 양방향일 수 있지만 각 객체의 의존은
+Controller → Service → Repository 방향을 따른다. 두 객체가 서로를 참조하거나 의존 경로를
+따라 원래 객체로 돌아오는 순환 참조는 금지한다.
+
 ## 패키지 기준
 
 - `controller`, `service`, `repository`의 책임은 [CODE_CONVENTION.md](../CODE_CONVENTION.md)를 따른다.
@@ -40,7 +53,6 @@ Controller ↔ DTO
 ## 구조 선택 기준
 
 - 비즈니스 규칙은 Controller나 Repository가 아니라 Domain에 둔다.
-- 기능 간 협력은 Service에서 수행하고 다른 기능의 Repository를 직접 호출하지 않는다.
 - 인터페이스는 대체 구현이나 테스트 경계가 실제로 필요할 때만 만든다.
 - 공통 코드는 둘 이상의 기능에서 안정적으로 공유될 때만 `global`로 옮긴다.
 - 비동기 이벤트는 동기 결합을 끊을 필요가 증명된 뒤 도입한다.
