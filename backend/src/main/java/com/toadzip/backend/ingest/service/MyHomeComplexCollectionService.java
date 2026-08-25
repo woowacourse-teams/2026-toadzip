@@ -28,7 +28,7 @@ public class MyHomeComplexCollectionService {
 
     private static final String LIST_POINTER = "/response/body/item";
 
-    private static final int MAX_CONCURRENT_REGIONS = 2;
+    private static final int MAX_CONCURRENT_REGIONS = 4;
 
     private final ObjectMapper objectMapper;
 
@@ -60,10 +60,11 @@ public class MyHomeComplexCollectionService {
 
     public MyHomeComplexCollectionReport collect(MyHomeComplexCollectionRequest request) {
         log.info(
-                "마이홈 단지 수집을 시작합니다: pageSize={}, maxPages={}, allRegions={}",
+                "마이홈 단지 수집을 시작합니다: pageSize={}, maxPages={}, allRegions={}, maxConcurrentRegions={}",
                 request.pageSize(),
                 request.maxPages(),
-                request.requestsAllRegions()
+                request.requestsAllRegions(),
+                MAX_CONCURRENT_REGIONS
         );
         List<MyHomeRegion> regions = regionsFor(request);
         MyHomeComplexCollectionReport report = collectRegions(regions, request);
