@@ -3,11 +3,13 @@ package com.toadzip.backend.ingest.repository.external;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 
 import java.net.URI;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.RestClient;
@@ -96,5 +98,57 @@ class DataGoKrOpenApiClientTest {
                 .hasMessageContaining("resultCode=30")
                 .hasMessageContaining("등록되지 않은 서비스키");
         server.verify();
+    }
+
+    @Test
+    @DisplayName("서버 오류는 재시도 가능한 외부 API 오류로 변환한다")
+    void marksServerErrorAsRetryable() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(request -> assertThat(request.getURI()).hasToString(
+                "https://example.com/list?serviceKey=key"))
+                .andRespond(withStatus(HttpStatus.GATEWAY_TIMEOUT));
+        DataGoKrOpenApiClient client = client(builder);
+
+        assertThatThrownBy(() -> client.get("list", new LinkedMultiValueMap<>()))
+                .isInstanceOfSatisfying(
+                        ExternalApiRequestException.class,
+                        exception -> {
+                            assertThat(exception.isRetryable()).isTrue();
+                            assertThat(exception).hasMessageContaining("HTTP 504");
+                        }
+                );
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("요청 한도 초과는 즉시 중단할 외부 API 오류로 변환한다")
+    void marksTooManyRequestsAsNotRetryable() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(request -> assertThat(request.getURI()).hasToString(
+                "https://example.com/list?serviceKey=key"))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
+        DataGoKrOpenApiClient client = client(builder);
+
+        assertThatThrownBy(() -> client.get("list", new LinkedMultiValueMap<>()))
+                .isInstanceOfSatisfying(
+                        ExternalApiRequestException.class,
+                        exception -> {
+                            assertThat(exception.isRetryable()).isFalse();
+                            assertThat(exception).hasMessageContaining("HTTP 429");
+                        }
+                );
+        server.verify();
+    }
+
+    private DataGoKrOpenApiClient client(RestClient.Builder builder) {
+        return new DataGoKrOpenApiClient(
+                builder.build(),
+                JsonMapper.builder().build(),
+                "https://example.com",
+                "key",
+                "마이홈 단지"
+        );
     }
 }

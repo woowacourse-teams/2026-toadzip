@@ -23,8 +23,8 @@ public class MyHomeNoticeCollectionController {
 
     @PostMapping
     public ExternalApiCollectionReport collect(
-            @RequestParam(defaultValue = "100") @Min(1) @Max(1_000) int pageSize,
-            @RequestParam(defaultValue = "50") @Min(1) @Max(1_000) int maxPages
+            @RequestParam(defaultValue = "10") @Min(1) @Max(1_000) int pageSize,
+            @RequestParam(defaultValue = "1000") @Min(1) @Max(1_000) int maxPages
     ) {
         return collectionService.collect(new MyHomeNoticeCollectionRequest(pageSize, maxPages));
     }

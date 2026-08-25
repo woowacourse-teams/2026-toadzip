@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -43,7 +44,13 @@ class MyHomeNoticeCollectionServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new MyHomeNoticeCollectionService(CLOCK, apiRepository, store, failureRecorder);
+        service = new MyHomeNoticeCollectionService(
+                CLOCK,
+                apiRepository,
+                store,
+                failureRecorder,
+                new ExternalApiRetryExecutor(Duration.ZERO)
+        );
     }
 
     @Test

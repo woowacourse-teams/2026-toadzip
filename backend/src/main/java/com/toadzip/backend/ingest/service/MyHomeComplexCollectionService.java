@@ -12,8 +12,8 @@ import org.springframework.stereotype.Service;
 
 import com.toadzip.backend.ingest.domain.ExternalApiData;
 import com.toadzip.backend.ingest.domain.ExternalApi;
-import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
 import com.toadzip.backend.ingest.dto.ExternalApiResponse;
+import com.toadzip.backend.ingest.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.dto.MyHomeRegion;
 import com.toadzip.backend.ingest.repository.ExternalApiCollectionStore;
@@ -39,39 +39,57 @@ public class MyHomeComplexCollectionService {
 
     private final ExternalApiFailureRecorder failureRecorder;
 
+    private final ExternalApiRetryExecutor retryExecutor;
+
     public MyHomeComplexCollectionService(
             Clock clock,
             MyHomeComplexApiRepository apiRepository,
             MyHomeRegionCatalog regionCatalog,
             ExternalApiCollectionStore store,
-            ExternalApiFailureRecorder failureRecorder
+            ExternalApiFailureRecorder failureRecorder,
+            ExternalApiRetryExecutor retryExecutor
     ) {
         this.clock = clock;
         this.apiRepository = apiRepository;
         this.regionCatalog = regionCatalog;
         this.store = store;
         this.failureRecorder = failureRecorder;
+        this.retryExecutor = retryExecutor;
     }
 
-    public ExternalApiCollectionReport collect(MyHomeComplexCollectionRequest request) {
+    public MyHomeComplexCollectionReport collect(MyHomeComplexCollectionRequest request) {
         List<MyHomeRegion> regions = regionsFor(request);
+        MyHomeComplexCollectionReport report = collectRegions(regions, request);
+        log.info(
+                "마이홈 단지 수집을 완료했습니다: storedApiDataCount={}, failedRequestCount={}, externalApiCallCount={}",
+                report.storedApiDataCount(),
+                report.failedRequestCount(),
+                report.externalApiCallCount()
+        );
+        return report;
+    }
+
+    private MyHomeComplexCollectionReport collectRegions(
+            List<MyHomeRegion> regions,
+            MyHomeComplexCollectionRequest request
+    ) {
         if (regions.size() == 1) {
             return collectRegion(regions.getFirst(), request);
         }
         return collectRegionsConcurrently(regions, request);
     }
 
-    private ExternalApiCollectionReport collectRegionsConcurrently(
+    private MyHomeComplexCollectionReport collectRegionsConcurrently(
             List<MyHomeRegion> regions,
             MyHomeComplexCollectionRequest request
     ) {
-        ExternalApiCollectionReport report = ExternalApiCollectionReport.empty("myhome-complex");
+        MyHomeComplexCollectionReport report = MyHomeComplexCollectionReport.empty();
         ExecutorService executor = Executors.newFixedThreadPool(MAX_CONCURRENT_REGIONS);
         try {
-            List<Future<ExternalApiCollectionReport>> futures = regions.stream()
+            List<Future<MyHomeComplexCollectionReport>> futures = regions.stream()
                     .map(region -> executor.submit(() -> collectRegion(region, request)))
                     .toList();
-            for (Future<ExternalApiCollectionReport> future : futures) {
+            for (Future<MyHomeComplexCollectionReport> future : futures) {
                 report = report.plus(await(future, request));
             }
             return report;
@@ -81,8 +99,8 @@ public class MyHomeComplexCollectionService {
         }
     }
 
-    private ExternalApiCollectionReport await(
-            Future<ExternalApiCollectionReport> future,
+    private MyHomeComplexCollectionReport await(
+            Future<MyHomeComplexCollectionReport> future,
             MyHomeComplexCollectionRequest request
     ) {
         try {
@@ -101,18 +119,19 @@ public class MyHomeComplexCollectionService {
                     log,
                     "마이홈 단지 지역 수집에 실패했습니다"
             );
-            return new ExternalApiCollectionReport("myhome-complex", 0, 1);
+            return new MyHomeComplexCollectionReport("myhome-complex", 0, 1, 0);
         }
     }
 
-    private ExternalApiCollectionReport collectRegion(
+    private MyHomeComplexCollectionReport collectRegion(
             MyHomeRegion region,
             MyHomeComplexCollectionRequest request
     ) {
+        ExternalApiCallCounter callCounter = new ExternalApiCallCounter();
         try {
-            List<ExternalApiData> apiData = fetchCompleteRegion(region, request);
+            List<ExternalApiData> apiData = fetchCompleteRegion(region, request, callCounter);
             store.storeApiData(apiData);
-            return new ExternalApiCollectionReport("myhome-complex", apiData.size(), 0);
+            return new MyHomeComplexCollectionReport("myhome-complex", apiData.size(), 0, callCounter.count());
         }
         catch (RuntimeException exception) {
             failureRecorder.record(
@@ -122,17 +141,25 @@ public class MyHomeComplexCollectionService {
                     log,
                     "마이홈 단지 지역 수집에 실패했습니다"
             );
-            return new ExternalApiCollectionReport("myhome-complex", 0, 1);
+            return new MyHomeComplexCollectionReport("myhome-complex", 0, 1, callCounter.count());
         }
     }
 
     private List<ExternalApiData> fetchCompleteRegion(
             MyHomeRegion region,
-            MyHomeComplexCollectionRequest request
+            MyHomeComplexCollectionRequest request,
+            ExternalApiCallCounter callCounter
     ) {
         List<ExternalApiData> apiData = new ArrayList<>();
         for (int page = 1; page <= request.maxPages(); page++) {
-            ExternalApiResponse response = apiRepository.fetch(region, request, page);
+            int currentPage = page;
+            String requestDescription = request.requestDescription(region, currentPage);
+            ExternalApiResponse response = retryExecutor.execute(
+                    ExternalApi.MYHOME_COMPLEX,
+                    requestDescription,
+                    () -> apiRepository.fetch(region, request, currentPage),
+                    callCounter
+            );
             apiData.add(ExternalApiData.create(
                     ExternalApi.MYHOME_COMPLEX,
                     request.requestDescription(region, page),

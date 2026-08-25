@@ -13,8 +13,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.mockito.ArgumentCaptor;
 
 import com.toadzip.backend.ingest.dto.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.dto.MyHomeComplexCollectionReport;
+import com.toadzip.backend.ingest.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.service.MyHomeComplexCollectionService;
 
 @WebMvcTest(MyHomeComplexCollectionController.class)
@@ -25,6 +28,23 @@ class MyHomeComplexCollectionControllerTest {
 
     @MockitoBean
     private MyHomeComplexCollectionService collectionService;
+
+    @Test
+    void 기본_페이지_크기와_최대_페이지로_전체_지역을_수집한다() throws Exception {
+        when(collectionService.collect(any()))
+                .thenReturn(new MyHomeComplexCollectionReport("myhome-complex", 3, 1, 7));
+
+        mockMvc.perform(post("/api/admin/ingest/myhome/complexes"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.storedApiDataCount").value(3))
+                .andExpect(jsonPath("$.failedRequestCount").value(1))
+                .andExpect(jsonPath("$.externalApiCallCount").value(7));
+
+        ArgumentCaptor<MyHomeComplexCollectionRequest> request = ArgumentCaptor.captor();
+        verify(collectionService).collect(request.capture());
+        org.assertj.core.api.Assertions.assertThat(request.getValue().pageSize()).isEqualTo(10);
+        org.assertj.core.api.Assertions.assertThat(request.getValue().maxPages()).isEqualTo(1_000);
+    }
 
     @Test
     void 시도_코드만_전달하면_공통_오류_응답과_함께_400을_반환한다() throws Exception {

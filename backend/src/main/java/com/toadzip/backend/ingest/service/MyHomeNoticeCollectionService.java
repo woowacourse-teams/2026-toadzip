@@ -30,16 +30,20 @@ public class MyHomeNoticeCollectionService {
 
     private final ExternalApiFailureRecorder failureRecorder;
 
+    private final ExternalApiRetryExecutor retryExecutor;
+
     public MyHomeNoticeCollectionService(
             Clock clock,
             MyHomeNoticeApiRepository apiRepository,
             ExternalApiCollectionStore store,
-            ExternalApiFailureRecorder failureRecorder
+            ExternalApiFailureRecorder failureRecorder,
+            ExternalApiRetryExecutor retryExecutor
     ) {
         this.clock = clock;
         this.apiRepository = apiRepository;
         this.store = store;
         this.failureRecorder = failureRecorder;
+        this.retryExecutor = retryExecutor;
     }
 
     public ExternalApiCollectionReport collect(MyHomeNoticeCollectionRequest request) {
@@ -54,8 +58,9 @@ public class MyHomeNoticeCollectionService {
             MyHomeNoticeSupplyType supplyType,
             MyHomeNoticeCollectionRequest request
     ) {
+        ExternalApiCallCounter callCounter = new ExternalApiCallCounter();
         try {
-            List<ExternalApiData> apiData = fetchCompleteSupplyType(supplyType, request);
+            List<ExternalApiData> apiData = fetchCompleteSupplyType(supplyType, request, callCounter);
             store.storeApiData(apiData);
             return new ExternalApiCollectionReport("myhome-notice", apiData.size(), 0);
         }
@@ -73,11 +78,19 @@ public class MyHomeNoticeCollectionService {
 
     private List<ExternalApiData> fetchCompleteSupplyType(
             MyHomeNoticeSupplyType supplyType,
-            MyHomeNoticeCollectionRequest request
+            MyHomeNoticeCollectionRequest request,
+            ExternalApiCallCounter callCounter
     ) {
         List<ExternalApiData> apiData = new ArrayList<>();
         for (int page = 1; page <= request.maxPages(); page++) {
-            ExternalApiResponse response = apiRepository.fetch(supplyType, request, page);
+            int currentPage = page;
+            String requestDescription = request.requestDescription(supplyType, currentPage);
+            ExternalApiResponse response = retryExecutor.execute(
+                    ExternalApi.MYHOME_NOTICE,
+                    requestDescription,
+                    () -> apiRepository.fetch(supplyType, request, currentPage),
+                    callCounter
+            );
             apiData.add(ExternalApiData.create(
                     ExternalApi.MYHOME_NOTICE,
                     request.requestDescription(supplyType, page),

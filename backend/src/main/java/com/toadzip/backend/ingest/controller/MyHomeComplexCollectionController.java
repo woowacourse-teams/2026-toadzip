@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
+import com.toadzip.backend.ingest.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.service.MyHomeComplexCollectionService;
 
@@ -22,11 +22,11 @@ public class MyHomeComplexCollectionController {
     }
 
     @PostMapping
-    public ExternalApiCollectionReport collect(
+    public MyHomeComplexCollectionReport collect(
             @RequestParam(required = false) String provinceCode,
             @RequestParam(required = false) String districtCode,
-            @RequestParam(defaultValue = "1000") @Min(1) @Max(1_000) int pageSize,
-            @RequestParam(defaultValue = "50") @Min(1) @Max(1_000) int maxPages
+            @RequestParam(defaultValue = "10") @Min(1) @Max(1_000) int pageSize,
+            @RequestParam(defaultValue = "1000") @Min(1) @Max(1_000) int maxPages
     ) {
         return collectionService.collect(new MyHomeComplexCollectionRequest(
                 provinceCode,

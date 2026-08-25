@@ -6,6 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -94,6 +97,21 @@ public class DataGoKrOpenApiClient {
         catch (ExternalApiRequestException exception) {
             throw exception;
         }
+        catch (HttpServerErrorException exception) {
+            throw ExternalApiRequestException.retryable(
+                    httpFailureMessage(exception.getStatusCode().value()),
+                    exception
+            );
+        }
+        catch (ResourceAccessException exception) {
+            throw ExternalApiRequestException.retryable(apiName + " 외부 API 연결에 실패했습니다.", exception);
+        }
+        catch (HttpClientErrorException exception) {
+            throw new ExternalApiRequestException(
+                    httpFailureMessage(exception.getStatusCode().value()),
+                    exception
+            );
+        }
         catch (RuntimeException exception) {
             throw new ExternalApiRequestException(apiName + " 외부 API 호출에 실패했습니다.", exception);
         }
@@ -115,6 +133,10 @@ public class DataGoKrOpenApiClient {
         if (serviceKey == null || serviceKey.isBlank()) {
             throw new ExternalApiRequestException("공공데이터 서비스키가 비어 있습니다.");
         }
+    }
+
+    private String httpFailureMessage(int statusCode) {
+        return apiName + " 외부 API 호출에 실패했습니다: HTTP " + statusCode;
     }
 
     private void verifyResultCode(JsonNode root) {

@@ -3,10 +3,12 @@ package com.toadzip.backend.ingest.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -53,7 +55,8 @@ class MyHomeComplexCollectionServiceTest {
                 apiRepository,
                 regionCatalog,
                 store,
-                failureRecorder
+                failureRecorder,
+                new ExternalApiRetryExecutor(Duration.ZERO)
         );
     }
 
@@ -78,6 +81,7 @@ class MyHomeComplexCollectionServiceTest {
                 );
         assertThat(result.storedApiDataCount()).isEqualTo(2);
         assertThat(result.failedRequestCount()).isZero();
+        assertThat(result.externalApiCallCount()).isEqualTo(2);
     }
 
     @Test
@@ -94,6 +98,47 @@ class MyHomeComplexCollectionServiceTest {
         verify(failureRecorder).record(any(), any(), any(), any(), any());
         assertThat(result.storedApiDataCount()).isZero();
         assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.externalApiCallCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("재시도 가능한 외부 API 실패는 다시 호출하고 실제 호출 횟수를 반환한다")
+    void retriesRetryableApiFailureAndReportsCallCount() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(apiRepository.fetch(region, request(), 1))
+                .thenThrow(com.toadzip.backend.ingest.repository.external.ExternalApiRequestException.retryable(
+                        "일시적 실패",
+                        new IllegalStateException("504")
+                ))
+                .thenReturn(response("[{\"id\":1}]"));
+
+        var result = service.collect(request());
+
+        assertThat(result.storedApiDataCount()).isOne();
+        assertThat(result.failedRequestCount()).isZero();
+        assertThat(result.externalApiCallCount()).isEqualTo(2);
+        verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("재시도를 모두 소진하면 최종 실패만 기록하고 전체 호출 횟수를 반환한다")
+    void recordsFailureAfterRetryExhaustion() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(apiRepository.fetch(region, request(), 1))
+                .thenThrow(com.toadzip.backend.ingest.repository.external.ExternalApiRequestException.retryable(
+                        "일시적 실패",
+                        new IllegalStateException("504")
+                ));
+
+        var result = service.collect(request());
+
+        verify(apiRepository, times(3)).fetch(region, request(), 1);
+        verify(failureRecorder).record(any(), any(), any(), any(), any());
+        assertThat(result.storedApiDataCount()).isZero();
+        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.externalApiCallCount()).isEqualTo(3);
     }
 
     private MyHomeComplexCollectionRequest request() {
