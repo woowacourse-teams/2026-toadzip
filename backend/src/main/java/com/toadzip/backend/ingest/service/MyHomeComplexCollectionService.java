@@ -23,7 +23,8 @@ import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
 
 @Slf4j
 @Service
-public class MyHomeComplexCollectionService {
+public class MyHomeComplexCollectionService
+        implements RawDataCollector<MyHomeComplexCollectionRequest> {
 
     private static final String LIST_POINTER = "/response/body/item";
 
@@ -53,6 +54,12 @@ public class MyHomeComplexCollectionService {
         this.failureRecorder = failureRecorder;
     }
 
+    @Override
+    public RawDataCollectionJob job() {
+        return RawDataCollectionJob.MYHOME_COMPLEX;
+    }
+
+    @Override
     public ExternalApiCollectionReport collect(MyHomeComplexCollectionRequest request) {
         List<MyHomeRegion> regions = regionsFor(request);
         if (regions.size() == 1) {

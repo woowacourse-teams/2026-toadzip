@@ -31,6 +31,7 @@ import com.toadzip.backend.ingest.domain.ExternalApi;
 import com.toadzip.backend.ingest.domain.LhNoticeProcessingStatus;
 import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
 import com.toadzip.backend.ingest.dto.ExternalApiResponse;
+import com.toadzip.backend.ingest.dto.LhNoticeCollectionRequest;
 import com.toadzip.backend.ingest.repository.ExternalApiCollectionStore;
 import com.toadzip.backend.ingest.repository.ExternalApiDataRepository;
 import com.toadzip.backend.ingest.repository.LhNoticeCollectionExecutionLock;
@@ -41,6 +42,8 @@ import tools.jackson.databind.json.JsonMapper;
 class LhNoticeCollectionServiceTest {
 
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-08-23T00:00:00Z"), ZoneOffset.UTC);
+
+    private static final LhNoticeCollectionRequest REQUEST = new LhNoticeCollectionRequest();
 
     @Mock
     private ExternalApiDataRepository apiDataRepository;
@@ -97,7 +100,7 @@ class LhNoticeCollectionServiceTest {
         when(apiRepository.fetchSupply(any())).thenReturn(response("supply"));
         when(store.storeApiData(any())).thenReturn(1);
 
-        var result = service.collect();
+        var result = service.collect(REQUEST);
 
         verify(store, times(2)).storeApiData(any());
         verify(store).completeLhNoticeProcessing(myHomeNotice, CLOCK.instant());
@@ -128,7 +131,7 @@ class LhNoticeCollectionServiceTest {
                 any()
         )).thenReturn(true);
 
-        var result = service.collect();
+        var result = service.collect(REQUEST);
 
         verify(apiRepository, never()).fetchDetail(any());
         verify(apiRepository, never()).fetchSupply(any());
@@ -159,7 +162,7 @@ class LhNoticeCollectionServiceTest {
                         LhNoticeProcessingStatus.COMPLETED
                 )).thenReturn(true);
 
-        var result = service.collect();
+        var result = service.collect(REQUEST);
 
         verify(apiRepository, never()).fetchDetail(any());
         verify(apiRepository, never()).fetchSupply(any());
@@ -192,7 +195,7 @@ class LhNoticeCollectionServiceTest {
         when(apiRepository.fetchSupply(any())).thenReturn(response("supply"));
         when(store.storeApiData(any())).thenReturn(1);
 
-        var result = service.collect();
+        var result = service.collect(REQUEST);
 
         verify(store).failLhNoticeProcessing(malformedSnapshot, CLOCK.instant());
         verify(store).completeLhNoticeProcessing(validSnapshot, CLOCK.instant());
@@ -206,7 +209,7 @@ class LhNoticeCollectionServiceTest {
     void LH_공고_수집이_실행_중이면_중복_실행은_외부_API를_호출하지_않는다() {
         doReturn(Optional.empty()).when(executionLock).tryRun(any());
 
-        assertThatThrownBy(service::collect)
+        assertThatThrownBy(() -> service.collect(REQUEST))
                 .isInstanceOf(IngestAlreadyRunningException.class)
                 .hasMessage("LH 공고 수집이 이미 실행 중입니다.");
 
@@ -237,7 +240,7 @@ class LhNoticeCollectionServiceTest {
         )).thenReturn(true);
         when(apiRepository.fetchSupply(any())).thenThrow(new IllegalStateException("공급 조회 실패"));
 
-        var result = service.collect();
+        var result = service.collect(REQUEST);
 
         verify(apiRepository, never()).fetchDetail(any());
         verify(apiRepository).fetchSupply(any());
@@ -273,7 +276,7 @@ class LhNoticeCollectionServiceTest {
         when(apiRepository.fetchSupply(any())).thenThrow(new IllegalStateException("공급 조회 실패"));
         when(store.storeApiData(any())).thenReturn(1);
 
-        var result = service.collect();
+        var result = service.collect(REQUEST);
 
         verify(apiRepository).fetchDetail(any());
         verify(apiRepository).fetchSupply(any());
@@ -318,7 +321,7 @@ class LhNoticeCollectionServiceTest {
                 .thenReturn(response("correction-supply"));
         when(store.storeApiData(any())).thenReturn(1);
 
-        var result = service.collect();
+        var result = service.collect(REQUEST);
 
         verify(apiRepository).fetchDetail(argThat(request -> request.panId().equals("101")));
         verify(apiRepository).fetchSupply(argThat(request -> request.panId().equals("101")));
@@ -343,7 +346,7 @@ class LhNoticeCollectionServiceTest {
         ))
                 .thenReturn(List.of(myHomeNotice));
 
-        var result = service.collect();
+        var result = service.collect(REQUEST);
 
         verify(failureRecorder).record(any(), any(), any(), any(), any());
         verify(store).failLhNoticeProcessing(myHomeNotice, CLOCK.instant());

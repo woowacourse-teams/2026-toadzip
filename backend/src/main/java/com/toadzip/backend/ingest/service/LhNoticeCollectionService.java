@@ -12,6 +12,7 @@ import com.toadzip.backend.ingest.domain.ExternalApi;
 import com.toadzip.backend.ingest.domain.LhNoticeProcessingStatus;
 import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
 import com.toadzip.backend.ingest.dto.ExternalApiResponse;
+import com.toadzip.backend.ingest.dto.LhNoticeCollectionRequest;
 import com.toadzip.backend.ingest.dto.LhNoticeRequest;
 import com.toadzip.backend.ingest.repository.ExternalApiCollectionStore;
 import com.toadzip.backend.ingest.repository.ExternalApiDataRepository;
@@ -23,7 +24,8 @@ import tools.jackson.databind.ObjectMapper;
 
 @Slf4j
 @Service
-public class LhNoticeCollectionService {
+public class LhNoticeCollectionService
+        implements RawDataCollector<LhNoticeCollectionRequest> {
 
     private static final String LIST_POINTER = "/response/body/item";
 
@@ -63,7 +65,13 @@ public class LhNoticeCollectionService {
         this.supplyTypeCodeResolver = supplyTypeCodeResolver;
     }
 
-    public ExternalApiCollectionReport collect() {
+    @Override
+    public RawDataCollectionJob job() {
+        return RawDataCollectionJob.LH_NOTICE;
+    }
+
+    @Override
+    public ExternalApiCollectionReport collect(LhNoticeCollectionRequest request) {
         return executionLock.tryRun(this::collectPendingApiData)
                 .orElseThrow(() -> {
                     log.warn("LH 공고 수집이 이미 실행 중이므로 중복 실행을 건너뜁니다.");
