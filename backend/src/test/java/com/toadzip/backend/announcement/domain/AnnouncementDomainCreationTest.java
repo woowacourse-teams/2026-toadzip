@@ -1,4 +1,4 @@
-package com.toadzip.backend.notice.domain;
+package com.toadzip.backend.announcement.domain;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import org.junit.jupiter.api.Test;
 
-class NoticeDomainCreationTest {
+class AnnouncementDomainCreationTest {
 
     @Test
     void 공고_접수처를_생성한다() {
@@ -44,17 +44,17 @@ class NoticeDomainCreationTest {
 
     @Test
     void 원공고와_정정공고를_각각_생성한다() {
-        Notice previousNotice = new Notice();
+        Announcement previousAnnouncement = new Announcement();
         ReceptionPlace receptionPlace = new ReceptionPlace();
         LocalDate postedDate = LocalDate.of(2026, 8, 1);
         LocalDate applicationStartDate = LocalDate.of(2026, 8, 10);
         LocalDate applicationEndDate = LocalDate.of(2026, 8, 14);
         LocalDate winnerAnnouncementDate = LocalDate.of(2026, 9, 1);
         Method createMethod = findCreateMethod(
-                Notice.class,
+                Announcement.class,
                 String.class,
                 String.class,
-                Notice.class,
+                Announcement.class,
                 String.class,
                 String.class,
                 String.class,
@@ -70,11 +70,11 @@ class NoticeDomainCreationTest {
                 ReceptionPlace.class
         );
 
-        Notice notice = invoke(
+        Announcement announcement = invoke(
                 createMethod,
-                "source-notice-id-2",
-                "source-notice-id-1",
-                previousNotice,
+                "source-announcement-id-2",
+                "source-announcement-id-1",
+                previousAnnouncement,
                 "행복주택 정정 모집공고",
                 "정정공고",
                 "행복주택",
@@ -84,37 +84,37 @@ class NoticeDomainCreationTest {
                 applicationStartDate,
                 applicationEndDate,
                 winnerAnnouncementDate,
-                "https://example.com/notices/2",
+                "https://example.com/announcements/2",
                 "접수일 변경",
                 100L,
                 receptionPlace
         );
 
-        assertEquals("source-notice-id-2", notice.getSourceNoticeIdentifier());
-        assertEquals("source-notice-id-1", notice.getPreviousSourceNoticeIdentifier());
-        assertEquals(previousNotice, notice.getPreviousNotice());
-        assertEquals("행복주택 정정 모집공고", notice.getName());
-        assertEquals("정정공고", notice.getStatus());
-        assertEquals("행복주택", notice.getSupplyType());
-        assertEquals("신규모집", notice.getRecruitmentType());
-        assertEquals("LH", notice.getProvider());
-        assertEquals(postedDate, notice.getPostedDate());
-        assertEquals(applicationStartDate, notice.getApplicationStartDate());
-        assertEquals(applicationEndDate, notice.getApplicationEndDate());
-        assertEquals(winnerAnnouncementDate, notice.getWinnerAnnouncementDate());
-        assertEquals("https://example.com/notices/2", notice.getOriginalUrl());
-        assertEquals("접수일 변경", notice.getCorrectionCancellationReason());
-        assertEquals(100L, notice.getViewCount());
-        assertEquals(receptionPlace, notice.getReceptionPlace());
+        assertEquals("source-announcement-id-2", announcement.getSourceAnnouncementIdentifier());
+        assertEquals("source-announcement-id-1", announcement.getPreviousSourceAnnouncementIdentifier());
+        assertEquals(previousAnnouncement, announcement.getPreviousAnnouncement());
+        assertEquals("행복주택 정정 모집공고", announcement.getName());
+        assertEquals("정정공고", announcement.getStatus());
+        assertEquals("행복주택", announcement.getSupplyType());
+        assertEquals("신규모집", announcement.getRecruitmentType());
+        assertEquals("LH", announcement.getProvider());
+        assertEquals(postedDate, announcement.getPostedDate());
+        assertEquals(applicationStartDate, announcement.getApplicationStartDate());
+        assertEquals(applicationEndDate, announcement.getApplicationEndDate());
+        assertEquals(winnerAnnouncementDate, announcement.getWinnerAnnouncementDate());
+        assertEquals("https://example.com/announcements/2", announcement.getOriginalUrl());
+        assertEquals("접수일 변경", announcement.getCorrectionCancellationReason());
+        assertEquals(100L, announcement.getViewCount());
+        assertEquals(receptionPlace, announcement.getReceptionPlace());
     }
 
     @Test
     void 매칭되지_않은_원천_공급행도_생성한다() {
-        Notice notice = new Notice();
+        Announcement announcement = new Announcement();
         YearMonth expectedMoveInMonth = YearMonth.of(2027, 3);
         Method createMethod = findCreateMethod(
                 SupplyRow.class,
-                Notice.class,
+                Announcement.class,
                 HousingComplex.class,
                 HousingType.class,
                 String.class,
@@ -130,7 +130,7 @@ class NoticeDomainCreationTest {
 
         SupplyRow supplyRow = invoke(
                 createMethod,
-                notice,
+                announcement,
                 null,
                 null,
                 "source-supply-row-id",
@@ -144,7 +144,7 @@ class NoticeDomainCreationTest {
                 20
         );
 
-        assertEquals(notice, supplyRow.getNotice());
+        assertEquals(announcement, supplyRow.getAnnouncement());
         assertNull(supplyRow.getHousingComplex());
         assertNull(supplyRow.getHousingType());
         assertEquals("source-supply-row-id", supplyRow.getSourceSupplyRowIdentifier());
@@ -206,12 +206,12 @@ class NoticeDomainCreationTest {
 
     @Test
     void 공고_일정을_생성한다() {
-        Notice notice = new Notice();
+        Announcement announcement = new Announcement();
         LocalDateTime startAt = LocalDateTime.of(2026, 8, 10, 10, 0);
         LocalDateTime endAt = LocalDateTime.of(2026, 8, 14, 17, 0);
         Method createMethod = findCreateMethod(
-                NoticeSchedule.class,
-                Notice.class,
+                AnnouncementSchedule.class,
+                Announcement.class,
                 String.class,
                 String.class,
                 LocalDateTime.class,
@@ -219,9 +219,9 @@ class NoticeDomainCreationTest {
                 int.class
         );
 
-        NoticeSchedule schedule = invoke(
+        AnnouncementSchedule schedule = invoke(
                 createMethod,
-                notice,
+                announcement,
                 "접수",
                 "인터넷 접수",
                 startAt,
@@ -229,7 +229,7 @@ class NoticeDomainCreationTest {
                 1
         );
 
-        assertEquals(notice, schedule.getNotice());
+        assertEquals(announcement, schedule.getAnnouncement());
         assertEquals("접수", schedule.getScheduleType());
         assertEquals("인터넷 접수", schedule.getName());
         assertEquals(startAt, schedule.getStartAt());
@@ -239,29 +239,29 @@ class NoticeDomainCreationTest {
 
     @Test
     void 공고_첨부파일을_생성한다() {
-        Notice notice = new Notice();
+        Announcement announcement = new Announcement();
         Method createMethod = findCreateMethod(
-                NoticeAttachment.class,
-                Notice.class,
+                AnnouncementAttachment.class,
+                Announcement.class,
                 String.class,
                 String.class,
                 String.class,
                 int.class
         );
 
-        NoticeAttachment attachment = invoke(
+        AnnouncementAttachment attachment = invoke(
                 createMethod,
-                notice,
+                announcement,
                 "모집공고문.pdf",
                 "공고문",
-                "https://example.com/files/notice.pdf",
+                "https://example.com/files/announcement.pdf",
                 1
         );
 
-        assertEquals(notice, attachment.getNotice());
+        assertEquals(announcement, attachment.getAnnouncement());
         assertEquals("모집공고문.pdf", attachment.getFileName());
         assertEquals("공고문", attachment.getFileType());
-        assertEquals("https://example.com/files/notice.pdf", attachment.getFileUrl());
+        assertEquals("https://example.com/files/announcement.pdf", attachment.getFileUrl());
         assertEquals(1, attachment.getDisplayOrder());
     }
 

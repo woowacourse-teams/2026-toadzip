@@ -1,4 +1,4 @@
-package com.toadzip.backend.notice.domain;
+package com.toadzip.backend.announcement.domain;
 
 import static lombok.AccessLevel.PROTECTED;
 

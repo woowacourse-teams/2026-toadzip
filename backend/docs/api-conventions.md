@@ -29,7 +29,7 @@ HTTP → Request DTO 검증 → Controller → Service → Domain / Repository �
 
 ```json
 {
-  "code": "NOTICE_NOT_FOUND",
+  "code": "ANNOUNCEMENT_NOT_FOUND",
   "message": "모집 공고를 찾을 수 없습니다.",
   "traceId": "공개 가능한 추적 식별자"
 }

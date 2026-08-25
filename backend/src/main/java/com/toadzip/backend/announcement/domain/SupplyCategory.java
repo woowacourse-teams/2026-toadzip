@@ -1,4 +1,4 @@
-package com.toadzip.backend.notice.domain;
+package com.toadzip.backend.announcement.domain;
 
 public enum SupplyCategory {
     NEW_SUPPLY,

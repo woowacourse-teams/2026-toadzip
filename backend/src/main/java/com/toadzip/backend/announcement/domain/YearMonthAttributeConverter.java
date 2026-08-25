@@ -1,4 +1,4 @@
-package com.toadzip.backend.notice.domain;
+package com.toadzip.backend.announcement.domain;
 
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
