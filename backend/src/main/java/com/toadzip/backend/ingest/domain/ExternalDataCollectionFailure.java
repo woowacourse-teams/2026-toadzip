@@ -16,9 +16,9 @@ import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "external_api_collection_failures")
+@Table(name = "external_data_collection_failures")
 @NoArgsConstructor(access = PROTECTED)
-public class ExternalApiCollectionFailure {
+public class ExternalDataCollectionFailure {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,7 +26,7 @@ public class ExternalApiCollectionFailure {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 40)
-    private ExternalApi externalApi;
+    private ExternalDataSource source;
 
     @Column(nullable = false, length = 2000)
     private String requestDescription;
@@ -34,39 +34,68 @@ public class ExternalApiCollectionFailure {
     @Column(nullable = false)
     private Instant occurredAt;
 
+    @Column(nullable = false, columnDefinition = "integer default 1")
+    private Integer attemptCount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20, columnDefinition = "varchar(20) default 'PENDING'")
+    private ExternalDataFailureStatus status;
+
+    private Instant resolvedAt;
+
     @Column(nullable = false, length = 120)
     private String errorType;
 
     @Column(nullable = false, length = 1000)
     private String reason;
 
-    private ExternalApiCollectionFailure(
-            ExternalApi externalApi,
+    private ExternalDataCollectionFailure(
+            ExternalDataSource source,
             String requestDescription,
             Instant occurredAt,
+            int attemptCount,
             String errorType,
             String reason
     ) {
-        validateRequired(externalApi, "외부 API");
+        validateRequired(source, "외부 데이터 출처");
         validateNotBlank(requestDescription, "조회 조건");
         validateRequired(occurredAt, "실패 시각");
+        if (attemptCount < 0) {
+            throw new IllegalArgumentException("시도 횟수는 음수일 수 없습니다.");
+        }
         validateNotBlank(errorType, "오류 유형");
         validateNotBlank(reason, "실패 원인");
-        this.externalApi = externalApi;
+        this.source = source;
         this.requestDescription = requestDescription;
         this.occurredAt = occurredAt;
+        this.attemptCount = attemptCount;
+        status = ExternalDataFailureStatus.PENDING;
         this.errorType = errorType;
         this.reason = reason;
     }
 
-    public static ExternalApiCollectionFailure create(
-            ExternalApi externalApi,
+    public static ExternalDataCollectionFailure create(
+            ExternalDataSource source,
             String requestDescription,
             Instant occurredAt,
+            int attemptCount,
             String errorType,
             String reason
     ) {
-        return new ExternalApiCollectionFailure(externalApi, requestDescription, occurredAt, errorType, reason);
+        return new ExternalDataCollectionFailure(
+                source,
+                requestDescription,
+                occurredAt,
+                attemptCount,
+                errorType,
+                reason
+        );
+    }
+
+    public void resolve(Instant resolvedAt) {
+        validateRequired(resolvedAt, "해결 시각");
+        status = ExternalDataFailureStatus.RESOLVED;
+        this.resolvedAt = resolvedAt;
     }
 
     private void validateNotBlank(String value, String fieldName) {

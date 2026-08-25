@@ -397,7 +397,7 @@ class DomainJpaPersistenceTest {
                 housingType,
                 "source-supply-row-id-" + displayOrder,
                 displayOrder,
-                "API 응답값 단지명",
+                "원천 단지명",
                 "36A",
                 "1114010100100010000",
                 YearMonth.of(2027, 3),

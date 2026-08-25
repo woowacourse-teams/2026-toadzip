@@ -12,7 +12,7 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
-import com.toadzip.backend.ingest.dto.ExternalApiResponse;
+import com.toadzip.backend.ingest.dto.ExternalDataResponse;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -21,6 +21,8 @@ public class DataGoKrOpenApiClient {
     private static final String SUCCESS = "00";
 
     private static final String NO_DATA = "03";
+
+    private static final List<String> RETRYABLE_RESULT_CODES = List.of("01", "05", "23");
 
     private static final String LH_SUCCESS = "Y";
 
@@ -32,29 +34,29 @@ public class DataGoKrOpenApiClient {
 
     private final String serviceKey;
 
-    private final String apiName;
+    private final String sourceName;
 
     public DataGoKrOpenApiClient(
             RestClient restClient,
             ObjectMapper objectMapper,
             String baseUrl,
             String serviceKey,
-            String apiName
+            String sourceName
     ) {
         this.restClient = restClient;
         this.objectMapper = objectMapper;
         this.baseUrl = baseUrl;
         this.serviceKey = encodeServiceKey(serviceKey);
-        this.apiName = apiName;
+        this.sourceName = sourceName;
     }
 
-    public ExternalApiResponse get(String path, MultiValueMap<String, String> params) {
+    public ExternalDataResponse get(String path, MultiValueMap<String, String> params) {
         requireConfigured();
         URI requestUri = buildUri(path, params);
-        String apiData = requestApiData(requestUri);
-        JsonNode responseBody = parseApiData(apiData);
-        verifyResultCode(responseBody);
-        return new ExternalApiResponse(apiData, responseBody);
+        String rawPayload = requestRawPayload(requestUri);
+        JsonNode body = parsePayload(rawPayload);
+        verifyResultCode(body);
+        return new ExternalDataResponse(rawPayload, body);
     }
 
     URI buildUri(String path, MultiValueMap<String, String> params) {
@@ -86,57 +88,88 @@ public class DataGoKrOpenApiClient {
         return List.of();
     }
 
-    private String requestApiData(URI requestUri) {
+    private String requestRawPayload(URI requestUri) {
         try {
-            String apiData = restClient.get().uri(requestUri).retrieve().body(String.class);
-            if (apiData == null || apiData.isBlank()) {
-                throw new ExternalApiRequestException(apiName + " 응답이 비어 있습니다.");
+            String rawPayload = restClient.get().uri(requestUri).retrieve().body(String.class);
+            if (rawPayload == null || rawPayload.isBlank()) {
+                throw new ExternalDataRequestException(sourceName + " 응답이 비어 있습니다.");
             }
-            return apiData;
+            return rawPayload;
         }
-        catch (ExternalApiRequestException exception) {
+        catch (ExternalDataRequestException exception) {
             throw exception;
         }
         catch (HttpServerErrorException exception) {
-            throw ExternalApiRequestException.retryable(
+            throw ExternalDataRequestException.retryable(
                     httpFailureMessage(exception.getStatusCode().value()),
                     exception
             );
         }
         catch (ResourceAccessException exception) {
-            throw ExternalApiRequestException.retryable(apiName + " 외부 API 연결에 실패했습니다.", exception);
+            throw ExternalDataRequestException.retryable(sourceName + " 외부 API 연결에 실패했습니다.", exception);
         }
         catch (HttpClientErrorException exception) {
-            throw new ExternalApiRequestException(
+            if (exception.getStatusCode().value() == 429) {
+                throw tooManyRequests(exception);
+            }
+            throw new ExternalDataRequestException(
                     httpFailureMessage(exception.getStatusCode().value()),
                     exception
             );
         }
         catch (RuntimeException exception) {
-            throw new ExternalApiRequestException(apiName + " 외부 API 호출에 실패했습니다.", exception);
+            throw new ExternalDataRequestException(sourceName + " 외부 API 호출에 실패했습니다.", exception);
         }
     }
 
-    private JsonNode parseApiData(String apiData) {
+    private JsonNode parsePayload(String rawPayload) {
         try {
-            return objectMapper.readTree(apiData);
+            return objectMapper.readTree(rawPayload);
         }
         catch (RuntimeException exception) {
-            throw new ExternalApiRequestException(apiName + " 응답 형식이 올바르지 않습니다.", exception);
+            throw new ExternalDataRequestException(sourceName + " 응답 형식이 올바르지 않습니다.", exception);
         }
     }
 
     private void requireConfigured() {
         if (baseUrl == null || baseUrl.isBlank()) {
-            throw new ExternalApiRequestException(apiName + " API 주소가 비어 있습니다.");
+            throw new ExternalDataRequestException(sourceName + " API 주소가 비어 있습니다.");
         }
         if (serviceKey == null || serviceKey.isBlank()) {
-            throw new ExternalApiRequestException("공공데이터 서비스키가 비어 있습니다.");
+            throw new ExternalDataRequestException("공공데이터 서비스키가 비어 있습니다.");
         }
     }
 
     private String httpFailureMessage(int statusCode) {
-        return apiName + " 외부 API 호출에 실패했습니다: HTTP " + statusCode;
+        return sourceName + " 외부 API 호출에 실패했습니다: HTTP " + statusCode;
+    }
+
+    private ExternalDataRequestException tooManyRequests(HttpClientErrorException exception) {
+        JsonNode header = gatewayErrorHeader(exception.getResponseBodyAsString());
+        String code = header.path("returnReasonCode").asString("");
+        String message = header.path("returnAuthMsg").asString("");
+        String reason = httpFailureMessage(exception.getStatusCode().value());
+        if (!code.isBlank()) {
+            reason += ", resultCode=" + code + ", " + message;
+        }
+        if ("22".equals(code)) {
+            return new ExternalDataRequestException(reason, exception);
+        }
+        return ExternalDataRequestException.retryable(reason, exception);
+    }
+
+    private JsonNode gatewayErrorHeader(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return objectMapper.createObjectNode();
+        }
+        try {
+            return objectMapper.readTree(responseBody)
+                    .path("OpenAPI_ServiceResponse")
+                    .path("cmmMsgHeader");
+        }
+        catch (RuntimeException exception) {
+            return objectMapper.createObjectNode();
+        }
     }
 
     private void verifyResultCode(JsonNode root) {
@@ -154,13 +187,17 @@ public class DataGoKrOpenApiClient {
             return;
         }
         String message = header.path("resultMsg").asString("");
-        throw new ExternalApiRequestException("외부 API 오류 resultCode=" + code + ", " + message);
+        String reason = "원천 오류 resultCode=" + code + ", " + message;
+        if (RETRYABLE_RESULT_CODES.contains(code)) {
+            throw ExternalDataRequestException.retryable(reason);
+        }
+        throw new ExternalDataRequestException(reason);
     }
 
     private void verifyLhHeader(JsonNode root) {
         List<JsonNode> headers = findRows(root, "resHeader");
         if (headers.isEmpty()) {
-            throw new ExternalApiRequestException("외부 API 응답에 resHeader가 없습니다.");
+            throw new ExternalDataRequestException("원천 응답에 resHeader가 없습니다.");
         }
         JsonNode header = headers.getFirst();
         String code = header.path("SS_CODE").asString("");
@@ -168,7 +205,7 @@ public class DataGoKrOpenApiClient {
             return;
         }
         String message = header.path("RS_MSG").asString("");
-        throw new ExternalApiRequestException("외부 API 오류 SS_CODE=" + code + ", " + message);
+        throw new ExternalDataRequestException("원천 오류 SS_CODE=" + code + ", " + message);
     }
 
     private static JsonNode findByKey(JsonNode root, String key) {

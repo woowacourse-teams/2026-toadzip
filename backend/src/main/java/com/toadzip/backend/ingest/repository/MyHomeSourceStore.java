@@ -1,6 +1,8 @@
 package com.toadzip.backend.ingest.repository;
 
 import java.util.ArrayList;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -24,16 +26,21 @@ public class MyHomeSourceStore {
 
     private final MyHomeNoticeSourceRepository noticeRepository;
 
+    private final Clock clock;
+
     public MyHomeSourceStore(
             MyHomeComplexSourceRepository complexRepository,
-            MyHomeNoticeSourceRepository noticeRepository
+            MyHomeNoticeSourceRepository noticeRepository,
+            Clock clock
     ) {
         this.complexRepository = complexRepository;
         this.noticeRepository = noticeRepository;
+        this.clock = clock;
     }
 
     @Transactional
     public int replaceComplexRegion(MyHomeRegion region, List<MyHomeComplexSourceItem> items) {
+        Instant collectedAt = clock.instant();
         validateRegion(region, items);
         Set<String> sourceKeys = items.stream()
                 .map(MyHomeComplexSource::sourceKeyOf)
@@ -49,6 +56,7 @@ public class MyHomeSourceStore {
                 source = MyHomeComplexSource.from(item);
             }
             source.replaceWith(item);
+            source.markCollectedAt(collectedAt);
             sources.add(source);
         }
         complexRepository.saveAll(sources);
@@ -63,6 +71,7 @@ public class MyHomeSourceStore {
 
     @Transactional
     public int storeNotices(List<MyHomeNoticeSourceItem> items) {
+        Instant collectedAt = clock.instant();
         Map<String, MyHomeNoticeSourceItem> unique = new LinkedHashMap<>();
         for (MyHomeNoticeSourceItem item : items) {
             unique.put(MyHomeNoticeSource.sourceKeyOf(item), item);
@@ -80,6 +89,7 @@ public class MyHomeSourceStore {
                 source = MyHomeNoticeSource.from(sourceOrder, item);
             }
             source.replaceWith(item);
+            source.markCollectedAt(collectedAt);
             sources.add(source);
             sourceOrder++;
         }

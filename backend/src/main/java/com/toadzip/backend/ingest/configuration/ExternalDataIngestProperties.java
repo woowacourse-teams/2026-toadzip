@@ -3,7 +3,7 @@ package com.toadzip.backend.ingest.configuration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "ingest")
-public record ExternalApiIngestProperties(String serviceKey, BaseUrl baseUrl) {
+public record ExternalDataIngestProperties(String serviceKey, BaseUrl baseUrl) {
 
     public record BaseUrl(String myhomeComplex, String myhomeNotice, String lh) {
     }

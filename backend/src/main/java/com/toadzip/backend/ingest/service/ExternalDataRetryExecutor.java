@@ -5,12 +5,12 @@ import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import com.toadzip.backend.ingest.domain.ExternalApi;
-import com.toadzip.backend.ingest.repository.external.ExternalApiRequestException;
+import com.toadzip.backend.ingest.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.repository.external.ExternalDataRequestException;
 
 @Slf4j
 @Component
-public class ExternalApiRetryExecutor {
+public class ExternalDataRetryExecutor {
 
     private static final int MAX_ATTEMPTS = 3;
 
@@ -18,49 +18,54 @@ public class ExternalApiRetryExecutor {
 
     private final Duration retryDelay;
 
-    public ExternalApiRetryExecutor() {
+    public ExternalDataRetryExecutor() {
         this(DEFAULT_RETRY_DELAY);
     }
 
-    ExternalApiRetryExecutor(Duration retryDelay) {
+    ExternalDataRetryExecutor(Duration retryDelay) {
         this.retryDelay = retryDelay;
     }
 
     public <T> T execute(
-            ExternalApi externalApi,
+            ExternalDataSource source,
             String requestDescription,
             Supplier<T> action,
-            ExternalApiCallCounter callCounter
+            ExternalDataCallCounter callCounter
     ) {
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             callCounter.increment();
             try {
                 return action.get();
             }
-            catch (ExternalApiRequestException exception) {
+            catch (ExternalDataRequestException exception) {
                 if (!canRetry(exception, attempt)) {
-                    throw exception;
+                    throw new ExternalDataCallFailureException(
+                            source,
+                            requestDescription,
+                            attempt,
+                            exception
+                    );
                 }
                 log.warn(
-                        "외부 API 호출을 재시도합니다: externalApi={}, request={}, attempt={}, maxAttempts={}",
-                        externalApi,
+                        "외부 데이터 호출을 재시도합니다: source={}, request={}, attempt={}, maxAttempts={}",
+                        source,
                         requestDescription,
                         attempt,
                         MAX_ATTEMPTS
                 );
-                waitBeforeRetry();
+                waitBeforeRetry(attempt);
             }
         }
         throw new IllegalStateException("외부 API 재시도 흐름이 올바르게 종료되지 않았습니다.");
     }
 
-    private boolean canRetry(ExternalApiRequestException exception, int attempt) {
+    private boolean canRetry(ExternalDataRequestException exception, int attempt) {
         return exception.isRetryable() && attempt < MAX_ATTEMPTS;
     }
 
-    private void waitBeforeRetry() {
+    private void waitBeforeRetry(int attempt) {
         try {
-            Thread.sleep(retryDelay);
+            Thread.sleep(retryDelay.multipliedBy(attempt));
         }
         catch (InterruptedException exception) {
             Thread.currentThread().interrupt();

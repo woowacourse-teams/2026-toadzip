@@ -4,7 +4,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
+import com.toadzip.backend.ingest.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.service.LhNoticeDetailCollectionService;
 import com.toadzip.backend.ingest.service.LhNoticeSupplyCollectionService;
 
@@ -25,12 +25,12 @@ public class LhNoticeCollectionController {
     }
 
     @PostMapping("/details")
-    public ExternalApiCollectionReport collectDetails() {
+    public ExternalDataCollectionReport collectDetails() {
         return detailCollectionService.collect();
     }
 
     @PostMapping("/supplies")
-    public ExternalApiCollectionReport collectSupplies() {
+    public ExternalDataCollectionReport collectSupplies() {
         return supplyCollectionService.collect();
     }
 }

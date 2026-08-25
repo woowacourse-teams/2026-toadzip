@@ -3,6 +3,9 @@ package com.toadzip.backend.ingest.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +20,8 @@ import com.toadzip.backend.ingest.dto.LhNoticeSupplySourceItem;
 @DataJpaTest
 class LhSourceStoreTest {
 
+    private static final Instant COLLECTED_AT = Instant.parse("2026-08-25T01:00:00Z");
+
     @Autowired
     private LhCatalogSourceRepository catalogRepository;
 
@@ -30,7 +35,12 @@ class LhSourceStoreTest {
 
     @BeforeEach
     void setUp() {
-        store = new LhSourceStore(catalogRepository, detailRepository, supplyRepository);
+        store = new LhSourceStore(
+                catalogRepository,
+                detailRepository,
+                supplyRepository,
+                Clock.fixed(COLLECTED_AT, ZoneOffset.UTC)
+        );
     }
 
     @Test
@@ -44,6 +54,7 @@ class LhSourceStoreTest {
 
         assertThat(storedRowCount).isEqualTo(2);
         assertThat(catalogRepository.findAll())
+                .allSatisfy(source -> assertThat(source.getCollectedAt()).isEqualTo(COLLECTED_AT))
                 .extracting(source -> source.getExclusiveArea())
                 .containsExactly("36.97", "44.12");
     }

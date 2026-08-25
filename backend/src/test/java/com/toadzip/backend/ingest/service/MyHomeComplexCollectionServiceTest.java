@@ -18,11 +18,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.toadzip.backend.ingest.dto.ExternalApiResponse;
+import com.toadzip.backend.ingest.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.dto.MyHomeComplexSourceItem;
 import com.toadzip.backend.ingest.dto.MyHomeRegion;
-import com.toadzip.backend.ingest.repository.MyHomeComplexApiRepository;
+import com.toadzip.backend.ingest.repository.MyHomeComplexExternalRepository;
 import com.toadzip.backend.ingest.repository.MyHomeRegionCatalog;
 import com.toadzip.backend.ingest.repository.MyHomeSourceStore;
 import tools.jackson.databind.json.JsonMapper;
@@ -31,7 +31,7 @@ import tools.jackson.databind.json.JsonMapper;
 class MyHomeComplexCollectionServiceTest {
 
     @Mock
-    private MyHomeComplexApiRepository apiRepository;
+    private MyHomeComplexExternalRepository externalRepository;
 
     @Mock
     private MyHomeRegionCatalog regionCatalog;
@@ -40,7 +40,7 @@ class MyHomeComplexCollectionServiceTest {
     private MyHomeSourceStore sourceStore;
 
     @Mock
-    private ExternalApiFailureRecorder failureRecorder;
+    private ExternalDataFailureRecorder failureRecorder;
 
     private MyHomeComplexCollectionService service;
 
@@ -48,11 +48,11 @@ class MyHomeComplexCollectionServiceTest {
     void setUp() {
         service = new MyHomeComplexCollectionService(
                 JsonMapper.builder().build(),
-                apiRepository,
+                externalRepository,
                 regionCatalog,
                 sourceStore,
                 failureRecorder,
-                new ExternalApiRetryExecutor(Duration.ZERO)
+                new ExternalDataRetryExecutor(Duration.ZERO)
         );
     }
 
@@ -61,9 +61,9 @@ class MyHomeComplexCollectionServiceTest {
     void storesCompleteRegionPages() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
-        when(apiRepository.fetch(region, request(), 1))
+        when(externalRepository.fetch(region, request(), 1))
                 .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]"));
-        when(apiRepository.fetch(region, request(), 2)).thenReturn(response("[{\"hsmpSn\":3}]"));
+        when(externalRepository.fetch(region, request(), 2)).thenReturn(response("[{\"hsmpSn\":3}]"));
         when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(3);
 
         var result = service.collect(request());
@@ -82,9 +82,9 @@ class MyHomeComplexCollectionServiceTest {
     void doesNotStoreIncompleteRegion() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
-        when(apiRepository.fetch(region, request(), 1))
+        when(externalRepository.fetch(region, request(), 1))
                 .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]"));
-        when(apiRepository.fetch(region, request(), 2)).thenThrow(new IllegalStateException("조회 실패"));
+        when(externalRepository.fetch(region, request(), 2)).thenThrow(new IllegalStateException("조회 실패"));
 
         var result = service.collect(request());
 
@@ -100,8 +100,8 @@ class MyHomeComplexCollectionServiceTest {
     void retriesRetryableApiFailureAndReportsCallCount() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
-        when(apiRepository.fetch(region, request(), 1))
-                .thenThrow(com.toadzip.backend.ingest.repository.external.ExternalApiRequestException.retryable(
+        when(externalRepository.fetch(region, request(), 1))
+                .thenThrow(com.toadzip.backend.ingest.repository.external.ExternalDataRequestException.retryable(
                         "일시적 실패",
                         new IllegalStateException("504")
                 ))
@@ -121,28 +121,78 @@ class MyHomeComplexCollectionServiceTest {
     void recordsFailureAfterRetryExhaustion() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
-        when(apiRepository.fetch(region, request(), 1))
-                .thenThrow(com.toadzip.backend.ingest.repository.external.ExternalApiRequestException.retryable(
+        when(externalRepository.fetch(region, request(), 1))
+                .thenThrow(com.toadzip.backend.ingest.repository.external.ExternalDataRequestException.retryable(
                         "일시적 실패",
                         new IllegalStateException("504")
                 ));
 
         var result = service.collect(request());
 
-        verify(apiRepository, times(3)).fetch(region, request(), 1);
+        verify(externalRepository, times(3)).fetch(region, request(), 1);
         verify(failureRecorder).record(any(), any(), any(), any(), any());
         assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isOne();
         assertThat(result.externalApiCallCount()).isEqualTo(3);
     }
 
+    @Test
+    @DisplayName("API가 요청한 페이지 크기보다 적게 반환해도 totalCount까지 계속 조회한다")
+    void continuesUntilTotalCountWhenApiClampsPageSize() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1))
+                .thenReturn(response("[{\"hsmpSn\":1}]", 2));
+        when(externalRepository.fetch(region, request(), 2))
+                .thenReturn(response("[{\"hsmpSn\":2}]", 2));
+        when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(2);
+
+        var result = service.collect(request());
+
+        verify(externalRepository).fetch(region, request(), 2);
+        assertThat(result.storedRowCount()).isEqualTo(2);
+        assertThat(result.externalApiCallCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("재시도를 소진한 실제 실패 페이지와 시도 횟수를 기록한다")
+    void recordsActualFailedPageAndAttemptCount() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1))
+                .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]"));
+        when(externalRepository.fetch(region, request(), 2))
+                .thenThrow(com.toadzip.backend.ingest.repository.external.ExternalDataRequestException.retryable(
+                        "resultCode=05",
+                        new IllegalStateException("timeout")
+                ));
+
+        service.collect(request());
+
+        ArgumentCaptor<RuntimeException> failure = ArgumentCaptor.captor();
+        verify(failureRecorder).record(any(), any(), failure.capture(), any(), any());
+        assertThat(failure.getValue()).isInstanceOfSatisfying(
+                ExternalDataCallFailureException.class,
+                exception -> {
+                    assertThat(exception.getRequestDescription())
+                            .isEqualTo("brtcCode=11&signguCode=110&pageNo=2&numOfRows=2");
+                    assertThat(exception.getAttemptCount()).isEqualTo(3);
+                }
+        );
+    }
+
     private MyHomeComplexCollectionRequest request() {
         return new MyHomeComplexCollectionRequest("11", "110", 2, 10);
     }
 
-    private ExternalApiResponse response(String items) {
+    private ExternalDataResponse response(String items) {
+        return response(items, null);
+    }
+
+    private ExternalDataResponse response(String items, Integer totalCount) {
+        String totalCountField = totalCount == null ? "" : "\"totalCount\":" + totalCount + ",";
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"},"
-                + "\"body\":{\"item\":" + items + "}}}";
-        return new ExternalApiResponse(payload, JsonMapper.builder().build().readTree(payload));
+                + "\"body\":{" + totalCountField + "\"item\":" + items + "}}}";
+        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
     }
 }

@@ -15,11 +15,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.toadzip.backend.ingest.dto.ExternalApiResponse;
+import com.toadzip.backend.ingest.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.dto.MyHomeNoticeCollectionRequest;
 import com.toadzip.backend.ingest.dto.MyHomeNoticeSourceItem;
 import com.toadzip.backend.ingest.dto.MyHomeNoticeSupplyType;
-import com.toadzip.backend.ingest.repository.MyHomeNoticeApiRepository;
+import com.toadzip.backend.ingest.repository.MyHomeNoticeExternalRepository;
 import com.toadzip.backend.ingest.repository.MyHomeSourceStore;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -27,13 +27,13 @@ import tools.jackson.databind.json.JsonMapper;
 class MyHomeNoticeCollectionServiceTest {
 
     @Mock
-    private MyHomeNoticeApiRepository apiRepository;
+    private MyHomeNoticeExternalRepository externalRepository;
 
     @Mock
     private MyHomeSourceStore sourceStore;
 
     @Mock
-    private ExternalApiFailureRecorder failureRecorder;
+    private ExternalDataFailureRecorder failureRecorder;
 
     private MyHomeNoticeCollectionService service;
 
@@ -41,10 +41,10 @@ class MyHomeNoticeCollectionServiceTest {
     void setUp() {
         service = new MyHomeNoticeCollectionService(
                 JsonMapper.builder().build(),
-                apiRepository,
+                externalRepository,
                 sourceStore,
                 failureRecorder,
-                new ExternalApiRetryExecutor(Duration.ZERO)
+                new ExternalDataRetryExecutor(Duration.ZERO)
         );
     }
 
@@ -52,7 +52,7 @@ class MyHomeNoticeCollectionServiceTest {
     @DisplayName("공급유형별 API 데이터를 조회하고 페이지 API 데이터를 저장한다")
     void storesNoticeApiDataPages() {
         MyHomeNoticeCollectionRequest request = new MyHomeNoticeCollectionRequest(2, 10);
-        when(apiRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
             MyHomeNoticeSupplyType supplyType = invocation.getArgument(0);
             if (supplyType == MyHomeNoticeSupplyType.HAPPY_HOUSE) {
                 return response("[{\"pblancId\":\"1\"}]");
@@ -82,7 +82,7 @@ class MyHomeNoticeCollectionServiceTest {
     @DisplayName("공급유형 조회 실패는 실패 이력 기록 대상으로 전달한다")
     void reportsNoticeApiDataFailure() {
         MyHomeNoticeCollectionRequest request = new MyHomeNoticeCollectionRequest(2, 10);
-        when(apiRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenThrow(new IllegalStateException("조회 실패"));
 
         var result = service.collect(request);
@@ -93,9 +93,9 @@ class MyHomeNoticeCollectionServiceTest {
         assertThat(result.failedRequestCount()).isEqualTo(MyHomeNoticeSupplyType.values().length);
     }
 
-    private ExternalApiResponse response(String items) {
+    private ExternalDataResponse response(String items) {
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"},"
                 + "\"body\":{\"item\":" + items + "}}}";
-        return new ExternalApiResponse(payload, JsonMapper.builder().build().readTree(payload));
+        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
     }
 }

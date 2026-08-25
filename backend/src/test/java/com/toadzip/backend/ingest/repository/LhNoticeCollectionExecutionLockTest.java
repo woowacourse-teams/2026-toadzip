@@ -20,7 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.toadzip.backend.ingest.domain.ExternalApi;
+import com.toadzip.backend.ingest.domain.ExternalDataSource;
 
 @ExtendWith(MockitoExtension.class)
 class LhNoticeCollectionExecutionLockTest {
@@ -56,7 +56,7 @@ class LhNoticeCollectionExecutionLockTest {
 
         try (var executor = Executors.newSingleThreadExecutor()) {
             var runningOperation = executor.submit(() -> executionLock.tryRun(
-                    ExternalApi.LH_NOTICE_DETAIL,
+                    ExternalDataSource.LH_NOTICE_DETAIL,
                     () -> {
                         operationStarted.countDown();
                         await(releaseOperation);
@@ -66,7 +66,7 @@ class LhNoticeCollectionExecutionLockTest {
             assertThat(operationStarted.await(1, TimeUnit.SECONDS)).isTrue();
 
             var rejectedOperation = executionLock.tryRun(
-                    ExternalApi.LH_NOTICE_DETAIL,
+                    ExternalDataSource.LH_NOTICE_DETAIL,
                     () -> "duplicate"
             );
             releaseOperation.countDown();
@@ -82,7 +82,7 @@ class LhNoticeCollectionExecutionLockTest {
         AtomicBoolean operationExecuted = new AtomicBoolean();
         when(resultSet.getBoolean(1)).thenReturn(false);
 
-        var result = executionLock.tryRun(ExternalApi.LH_NOTICE_SUPPLY, () -> {
+        var result = executionLock.tryRun(ExternalDataSource.LH_NOTICE_SUPPLY, () -> {
             operationExecuted.set(true);
             return "duplicate";
         });
@@ -94,8 +94,8 @@ class LhNoticeCollectionExecutionLockTest {
 
     @Test
     void 상세와_공급_API는_서로_다른_DB_잠금을_사용한다() throws Exception {
-        executionLock.tryRun(ExternalApi.LH_NOTICE_DETAIL, () -> "detail");
-        executionLock.tryRun(ExternalApi.LH_NOTICE_SUPPLY, () -> "supply");
+        executionLock.tryRun(ExternalDataSource.LH_NOTICE_DETAIL, () -> "detail");
+        executionLock.tryRun(ExternalDataSource.LH_NOTICE_SUPPLY, () -> "supply");
 
         verify(statement, times(2)).setLong(1, 8_432_026_082_400_001L);
         verify(statement, times(2)).setLong(1, 8_432_026_082_400_002L);

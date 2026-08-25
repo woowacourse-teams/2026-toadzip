@@ -25,7 +25,7 @@ public class MyHomeComplexCollectionController {
     public MyHomeComplexCollectionReport collect(
             @RequestParam(required = false) String provinceCode,
             @RequestParam(required = false) String districtCode,
-            @RequestParam(defaultValue = "10") @Min(1) @Max(1_000) int pageSize,
+            @RequestParam(defaultValue = "500") @Min(1) @Max(1_000) int pageSize,
             @RequestParam(defaultValue = "1000") @Min(1) @Max(1_000) int maxPages
     ) {
         return collectionService.collect(new MyHomeComplexCollectionRequest(

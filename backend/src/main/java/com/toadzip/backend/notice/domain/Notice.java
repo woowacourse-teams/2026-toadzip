@@ -103,7 +103,7 @@ public class Notice {
             long viewCount,
             ReceptionPlace receptionPlace
     ) {
-        validateNotBlank(sourceNoticeIdentifier, "API 응답값 공고 식별자");
+        validateNotBlank(sourceNoticeIdentifier, "원천 공고 식별자");
         validateNotBlank(name, "공고명");
         validateNotBlank(status, "공고 상태");
         validateNotBlank(supplyType, "공급유형");

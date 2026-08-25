@@ -1,6 +1,8 @@
 package com.toadzip.backend.ingest.repository;
 
 import java.util.ArrayList;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,14 +21,18 @@ public class LhSourceStore {
 
     private final LhNoticeSupplySourceRepository supplyRepository;
 
+    private final Clock clock;
+
     public LhSourceStore(
             LhCatalogSourceRepository catalogRepository,
             LhNoticeDetailSourceRepository detailRepository,
-            LhNoticeSupplySourceRepository supplyRepository
+            LhNoticeSupplySourceRepository supplyRepository,
+            Clock clock
     ) {
         this.catalogRepository = catalogRepository;
         this.detailRepository = detailRepository;
         this.supplyRepository = supplyRepository;
+        this.clock = clock;
     }
 
     @Transactional
@@ -35,8 +41,11 @@ public class LhSourceStore {
             throw new IllegalArgumentException("LH 카탈로그 원천 행이 비어 있습니다.");
         }
         List<LhCatalogSource> sources = new ArrayList<>();
+        Instant collectedAt = clock.instant();
         for (int sourceOrder = 0; sourceOrder < items.size(); sourceOrder++) {
-            sources.add(new LhCatalogSource(sourceOrder, items.get(sourceOrder)));
+            LhCatalogSource source = new LhCatalogSource(sourceOrder, items.get(sourceOrder));
+            source.markCollectedAt(collectedAt);
+            sources.add(source);
         }
         catalogRepository.deleteAllInBatch();
         catalogRepository.saveAll(sources);
@@ -45,6 +54,8 @@ public class LhSourceStore {
 
     @Transactional
     public int replaceDetails(String panId, List<LhNoticeDetailSource> sources) {
+        Instant collectedAt = clock.instant();
+        sources.forEach(source -> source.markCollectedAt(collectedAt));
         detailRepository.deleteByPanId(panId);
         detailRepository.flush();
         detailRepository.saveAll(sources);
@@ -53,6 +64,8 @@ public class LhSourceStore {
 
     @Transactional
     public int replaceSupplies(String panId, List<LhNoticeSupplySource> sources) {
+        Instant collectedAt = clock.instant();
+        sources.forEach(source -> source.markCollectedAt(collectedAt));
         supplyRepository.deleteByPanId(panId);
         supplyRepository.flush();
         supplyRepository.saveAll(sources);

@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -25,6 +26,8 @@ public class MyHomeNoticeSource {
 
     @Column(nullable = false, unique = true, length = 500)
     private String sourceKey;
+
+    private Instant collectedAt;
 
     private Integer sourceOrder;
 
@@ -116,6 +119,13 @@ public class MyHomeNoticeSource {
         enty = item.enty();
         surlus = item.surlus();
         mtRntchrg = item.mtRntchrg();
+    }
+
+    public void markCollectedAt(Instant collectedAt) {
+        if (collectedAt == null) {
+            throw new IllegalArgumentException("수집 시각은 필수입니다.");
+        }
+        this.collectedAt = collectedAt;
     }
 
     private static String keyPart(Object raw) {

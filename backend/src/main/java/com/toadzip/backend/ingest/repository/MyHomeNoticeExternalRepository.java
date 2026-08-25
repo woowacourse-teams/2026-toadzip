@@ -5,28 +5,31 @@ import org.springframework.stereotype.Repository;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 
-import com.toadzip.backend.ingest.dto.ExternalApiResponse;
-import com.toadzip.backend.ingest.dto.MyHomeComplexCollectionRequest;
-import com.toadzip.backend.ingest.dto.MyHomeRegion;
+import com.toadzip.backend.ingest.dto.ExternalDataResponse;
+import com.toadzip.backend.ingest.dto.MyHomeNoticeCollectionRequest;
+import com.toadzip.backend.ingest.dto.MyHomeNoticeSupplyType;
 import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
 
 @Repository
-public class MyHomeComplexApiRepository {
+public class MyHomeNoticeExternalRepository {
 
-    private static final String PATH = "rentalHouseGwList";
+    private static final String PATH = "rsdtRcritNtcList";
 
     private final DataGoKrOpenApiClient client;
 
-    public MyHomeComplexApiRepository(
-            @Qualifier("myHomeComplexOpenApiClient") DataGoKrOpenApiClient client
+    public MyHomeNoticeExternalRepository(
+            @Qualifier("myHomeNoticeOpenApiClient") DataGoKrOpenApiClient client
     ) {
         this.client = client;
     }
 
-    public ExternalApiResponse fetch(MyHomeRegion region, MyHomeComplexCollectionRequest request, int page) {
+    public ExternalDataResponse fetch(
+            MyHomeNoticeSupplyType supplyType,
+            MyHomeNoticeCollectionRequest request,
+            int page
+    ) {
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("brtcCode", region.provinceCode());
-        params.add("signguCode", region.districtCode());
+        params.add("suplyTy", supplyType.requestCode());
         params.add("pageNo", String.valueOf(page));
         params.add("numOfRows", String.valueOf(request.pageSize()));
         return client.get(PATH, params);

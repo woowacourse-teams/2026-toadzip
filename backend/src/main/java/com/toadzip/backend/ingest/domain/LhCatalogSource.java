@@ -7,6 +7,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -23,6 +24,7 @@ public class LhCatalogSource {
     private Long id;
 
     private Integer sourceOrder;
+    private Instant collectedAt;
     private String areaName;
     private String supplyTypeName;
     private String complexLabel;
@@ -42,6 +44,13 @@ public class LhCatalogSource {
         totalUnitCount = trim(item.totalUnitCount());
         depositText = trim(item.depositText());
         monthlyRentText = trim(item.monthlyRentText());
+    }
+
+    public void markCollectedAt(Instant collectedAt) {
+        if (collectedAt == null) {
+            throw new IllegalArgumentException("수집 시각은 필수입니다.");
+        }
+        this.collectedAt = collectedAt;
     }
 
     private static String trim(String value) {

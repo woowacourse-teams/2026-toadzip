@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.service;
 
-final class ExternalApiCallCounter {
+final class ExternalDataCallCounter {
 
     private int count;
 

@@ -42,7 +42,7 @@ class MyHomeComplexCollectionControllerTest {
 
         ArgumentCaptor<MyHomeComplexCollectionRequest> request = ArgumentCaptor.captor();
         verify(collectionService).collect(request.capture());
-        org.assertj.core.api.Assertions.assertThat(request.getValue().pageSize()).isEqualTo(10);
+        org.assertj.core.api.Assertions.assertThat(request.getValue().pageSize()).isEqualTo(500);
         org.assertj.core.api.Assertions.assertThat(request.getValue().maxPages()).isEqualTo(1_000);
     }
 

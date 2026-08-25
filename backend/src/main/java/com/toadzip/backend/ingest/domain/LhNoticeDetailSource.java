@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -26,6 +27,7 @@ public class LhNoticeDetailSource {
     private Long id;
 
     private Integer sourceOrder;
+    private Instant collectedAt;
     private String panId;
     private String datasetType;
     private String complexName;
@@ -128,6 +130,13 @@ public class LhNoticeDetailSource {
         this.attachmentComplexName = trim(attachmentComplexName);
         this.correctionReason = trim(correctionReason);
         this.etcContents = trim(etcContents);
+    }
+
+    public void markCollectedAt(Instant collectedAt) {
+        if (collectedAt == null) {
+            throw new IllegalArgumentException("수집 시각은 필수입니다.");
+        }
+        this.collectedAt = collectedAt;
     }
 
     private static String trim(String value) {

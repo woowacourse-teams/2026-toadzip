@@ -7,13 +7,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.toadzip.backend.ingest.domain.ExternalApi;
+import com.toadzip.backend.ingest.domain.ExternalDataSource;
 
 @ExtendWith(MockitoExtension.class)
-class LhNoticeApiCollectionEntryPointTest {
+class LhNoticeExternalCollectionEntryPointTest {
 
     @Mock
-    private LhNoticeApiCollectionService collectionService;
+    private LhNoticeExternalCollectionService collectionService;
 
     @Test
     void 상세_수집_진입점은_LH_상세_API만_선택한다() {
@@ -22,7 +22,7 @@ class LhNoticeApiCollectionEntryPointTest {
 
         detailCollectionService.collect();
 
-        verify(collectionService).collect(ExternalApi.LH_NOTICE_DETAIL);
+        verify(collectionService).collect(ExternalDataSource.LH_NOTICE_DETAIL);
     }
 
     @Test
@@ -32,6 +32,6 @@ class LhNoticeApiCollectionEntryPointTest {
 
         supplyCollectionService.collect();
 
-        verify(collectionService).collect(ExternalApi.LH_NOTICE_SUPPLY);
+        verify(collectionService).collect(ExternalDataSource.LH_NOTICE_SUPPLY);
     }
 }

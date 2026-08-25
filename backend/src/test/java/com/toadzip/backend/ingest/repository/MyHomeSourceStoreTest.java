@@ -3,6 +3,9 @@ package com.toadzip.backend.ingest.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,6 +19,8 @@ import com.toadzip.backend.ingest.dto.MyHomeRegion;
 @DataJpaTest
 class MyHomeSourceStoreTest {
 
+    private static final Instant COLLECTED_AT = Instant.parse("2026-08-25T01:00:00Z");
+
     @Autowired
     private MyHomeComplexSourceRepository complexRepository;
 
@@ -26,7 +31,11 @@ class MyHomeSourceStoreTest {
 
     @BeforeEach
     void setUp() {
-        store = new MyHomeSourceStore(complexRepository, noticeRepository);
+        store = new MyHomeSourceStore(
+                complexRepository,
+                noticeRepository,
+                Clock.fixed(COLLECTED_AT, ZoneOffset.UTC)
+        );
     }
 
     @Test
@@ -40,6 +49,7 @@ class MyHomeSourceStoreTest {
         assertThat(storedRowCount).isEqualTo(2);
         assertThat(complexRepository.findAll())
                 .hasSize(2)
+                .allSatisfy(source -> assertThat(source.getCollectedAt()).isEqualTo(COLLECTED_AT))
                 .extracting(source -> source.getStyleNm())
                 .containsExactlyInAnyOrder("14", "19");
     }

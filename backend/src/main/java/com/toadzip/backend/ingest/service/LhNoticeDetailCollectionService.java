@@ -2,19 +2,19 @@ package com.toadzip.backend.ingest.service;
 
 import org.springframework.stereotype.Service;
 
-import com.toadzip.backend.ingest.domain.ExternalApi;
-import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
+import com.toadzip.backend.ingest.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.dto.ExternalDataCollectionReport;
 
 @Service
 public class LhNoticeDetailCollectionService {
 
-    private final LhNoticeApiCollectionService collectionService;
+    private final LhNoticeExternalCollectionService collectionService;
 
-    public LhNoticeDetailCollectionService(LhNoticeApiCollectionService collectionService) {
+    public LhNoticeDetailCollectionService(LhNoticeExternalCollectionService collectionService) {
         this.collectionService = collectionService;
     }
 
-    public ExternalApiCollectionReport collect() {
-        return collectionService.collect(ExternalApi.LH_NOTICE_DETAIL);
+    public ExternalDataCollectionReport collect() {
+        return collectionService.collect(ExternalDataSource.LH_NOTICE_DETAIL);
     }
 }

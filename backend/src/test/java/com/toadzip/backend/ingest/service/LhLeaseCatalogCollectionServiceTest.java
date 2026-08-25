@@ -14,9 +14,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.toadzip.backend.ingest.dto.ExternalApiResponse;
+import com.toadzip.backend.ingest.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.dto.LhLeaseCatalogCollectionRequest;
-import com.toadzip.backend.ingest.repository.LhLeaseCatalogApiRepository;
+import com.toadzip.backend.ingest.repository.LhLeaseCatalogExternalRepository;
 import com.toadzip.backend.ingest.repository.LhSourceStore;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -24,28 +24,33 @@ import tools.jackson.databind.json.JsonMapper;
 class LhLeaseCatalogCollectionServiceTest {
 
     @Mock
-    private LhLeaseCatalogApiRepository apiRepository;
+    private LhLeaseCatalogExternalRepository externalRepository;
 
     @Mock
     private LhSourceStore sourceStore;
 
     @Mock
-    private ExternalApiFailureRecorder failureRecorder;
+    private ExternalDataFailureRecorder failureRecorder;
 
     private LhLeaseCatalogCollectionService service;
 
     @BeforeEach
     void setUp() {
-        service = new LhLeaseCatalogCollectionService(apiRepository, sourceStore, failureRecorder);
+        service = new LhLeaseCatalogCollectionService(
+                externalRepository,
+                sourceStore,
+                failureRecorder,
+                new ExternalDataRetryExecutor(java.time.Duration.ZERO)
+        );
     }
 
     @Test
     @DisplayName("LH 임대 카탈로그의 마지막 페이지까지 API 데이터를 저장한다")
     void storesCompleteCatalogPages() {
         LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
-        when(apiRepository.fetch(request, 1))
+        when(externalRepository.fetch(request, 1))
                 .thenReturn(response("[{\"ARA_NM\":\"서울\"},{\"ARA_NM\":\"부산\"}]"));
-        when(apiRepository.fetch(request, 2)).thenReturn(response("[{\"ARA_NM\":\"대구\"}]"));
+        when(externalRepository.fetch(request, 2)).thenReturn(response("[{\"ARA_NM\":\"대구\"}]"));
         when(sourceStore.replaceCatalog(any())).thenReturn(3);
 
         var result = service.collect(request);
@@ -53,13 +58,14 @@ class LhLeaseCatalogCollectionServiceTest {
         verify(sourceStore).replaceCatalog(any());
         assertThat(result.storedRowCount()).isEqualTo(3);
         assertThat(result.failedRequestCount()).isZero();
+        assertThat(result.externalApiCallCount()).isEqualTo(2);
     }
 
     @Test
     @DisplayName("LH 임대 카탈로그 조회 실패는 API 데이터 저장 없이 기록한다")
     void reportsCatalogFailureWithoutSaving() {
         LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
-        when(apiRepository.fetch(request, 1)).thenThrow(new IllegalStateException("조회 실패"));
+        when(externalRepository.fetch(request, 1)).thenThrow(new IllegalStateException("조회 실패"));
 
         var result = service.collect(request);
 
@@ -68,8 +74,8 @@ class LhLeaseCatalogCollectionServiceTest {
         assertThat(result.failedRequestCount()).isOne();
     }
 
-    private ExternalApiResponse response(String rows) {
+    private ExternalDataResponse response(String rows) {
         String payload = "[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsList\":" + rows + "}]";
-        return new ExternalApiResponse(payload, JsonMapper.builder().build().readTree(payload));
+        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
     }
 }

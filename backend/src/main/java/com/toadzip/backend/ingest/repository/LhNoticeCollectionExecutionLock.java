@@ -13,44 +13,44 @@ import javax.sql.DataSource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
-import com.toadzip.backend.ingest.domain.ExternalApi;
+import com.toadzip.backend.ingest.domain.ExternalDataSource;
 
 @Slf4j
 @Repository
 public class LhNoticeCollectionExecutionLock {
 
-    private static final Map<ExternalApi, Long> LOCK_KEYS = Map.of(
-            ExternalApi.LH_NOTICE_DETAIL, 8_432_026_082_400_001L,
-            ExternalApi.LH_NOTICE_SUPPLY, 8_432_026_082_400_002L
+    private static final Map<ExternalDataSource, Long> LOCK_KEYS = Map.of(
+            ExternalDataSource.LH_NOTICE_DETAIL, 8_432_026_082_400_001L,
+            ExternalDataSource.LH_NOTICE_SUPPLY, 8_432_026_082_400_002L
     );
 
     private static final String TRY_LOCK_SQL = "SELECT pg_try_advisory_lock(?)";
 
     private static final String UNLOCK_SQL = "SELECT pg_advisory_unlock(?)";
 
-    private final Map<ExternalApi, ReentrantLock> localLocks = new EnumMap<>(ExternalApi.class);
+    private final Map<ExternalDataSource, ReentrantLock> localLocks = new EnumMap<>(ExternalDataSource.class);
 
     private final DataSource dataSource;
 
     public LhNoticeCollectionExecutionLock(DataSource dataSource) {
         this.dataSource = dataSource;
-        LOCK_KEYS.keySet().forEach(externalApi -> localLocks.put(externalApi, new ReentrantLock()));
+        LOCK_KEYS.keySet().forEach(source -> localLocks.put(source, new ReentrantLock()));
     }
 
-    public <T> Optional<T> tryRun(ExternalApi externalApi, Supplier<T> operation) {
-        ReentrantLock localLock = localLock(externalApi);
+    public <T> Optional<T> tryRun(ExternalDataSource source, Supplier<T> operation) {
+        ReentrantLock localLock = localLock(source);
         if (!localLock.tryLock()) {
             return Optional.empty();
         }
         try (Connection connection = dataSource.getConnection()) {
-            if (!executeLockQuery(connection, TRY_LOCK_SQL, lockKey(externalApi))) {
+            if (!executeLockQuery(connection, TRY_LOCK_SQL, lockKey(source))) {
                 return Optional.empty();
             }
             try {
                 return Optional.of(operation.get());
             }
             finally {
-                releaseDatabaseLock(connection, lockKey(externalApi));
+                releaseDatabaseLock(connection, lockKey(source));
             }
         }
         catch (SQLException exception) {
@@ -64,16 +64,16 @@ public class LhNoticeCollectionExecutionLock {
         }
     }
 
-    private ReentrantLock localLock(ExternalApi externalApi) {
-        ReentrantLock localLock = localLocks.get(externalApi);
+    private ReentrantLock localLock(ExternalDataSource source) {
+        ReentrantLock localLock = localLocks.get(source);
         if (localLock == null) {
             throw new IllegalArgumentException("LH 공고 API가 아닙니다.");
         }
         return localLock;
     }
 
-    private long lockKey(ExternalApi externalApi) {
-        Long lockKey = LOCK_KEYS.get(externalApi);
+    private long lockKey(ExternalDataSource source) {
+        Long lockKey = LOCK_KEYS.get(source);
         if (lockKey == null) {
             throw new IllegalArgumentException("LH 공고 API가 아닙니다.");
         }

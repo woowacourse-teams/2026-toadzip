@@ -11,11 +11,11 @@ import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
 import tools.jackson.databind.ObjectMapper;
 
 @Configuration
-@EnableConfigurationProperties(ExternalApiIngestProperties.class)
-public class ExternalApiIngestConfiguration {
+@EnableConfigurationProperties(ExternalDataIngestProperties.class)
+public class ExternalDataIngestConfiguration {
 
     @Bean
-    RestClient externalApiRestClient() {
+    RestClient externalDataRestClient() {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(10));
         requestFactory.setReadTimeout(Duration.ofSeconds(30));
@@ -24,12 +24,12 @@ public class ExternalApiIngestConfiguration {
 
     @Bean("myHomeComplexOpenApiClient")
     DataGoKrOpenApiClient myHomeComplexOpenApiClient(
-            RestClient externalApiRestClient,
+            RestClient externalDataRestClient,
             ObjectMapper objectMapper,
-            ExternalApiIngestProperties properties
+            ExternalDataIngestProperties properties
     ) {
         return new DataGoKrOpenApiClient(
-                externalApiRestClient,
+                externalDataRestClient,
                 objectMapper,
                 properties.baseUrl().myhomeComplex(),
                 properties.serviceKey(),
@@ -39,12 +39,12 @@ public class ExternalApiIngestConfiguration {
 
     @Bean("myHomeNoticeOpenApiClient")
     DataGoKrOpenApiClient myHomeNoticeOpenApiClient(
-            RestClient externalApiRestClient,
+            RestClient externalDataRestClient,
             ObjectMapper objectMapper,
-            ExternalApiIngestProperties properties
+            ExternalDataIngestProperties properties
     ) {
         return new DataGoKrOpenApiClient(
-                externalApiRestClient,
+                externalDataRestClient,
                 objectMapper,
                 properties.baseUrl().myhomeNotice(),
                 properties.serviceKey(),
@@ -54,12 +54,12 @@ public class ExternalApiIngestConfiguration {
 
     @Bean("lhOpenApiClient")
     DataGoKrOpenApiClient lhOpenApiClient(
-            RestClient externalApiRestClient,
+            RestClient externalDataRestClient,
             ObjectMapper objectMapper,
-            ExternalApiIngestProperties properties
+            ExternalDataIngestProperties properties
     ) {
         return new DataGoKrOpenApiClient(
-                externalApiRestClient,
+                externalDataRestClient,
                 objectMapper,
                 properties.baseUrl().lh(),
                 properties.serviceKey(),

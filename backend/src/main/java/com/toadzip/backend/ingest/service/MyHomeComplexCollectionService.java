@@ -9,13 +9,13 @@ import java.util.concurrent.Future;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import com.toadzip.backend.ingest.domain.ExternalApi;
-import com.toadzip.backend.ingest.dto.ExternalApiResponse;
+import com.toadzip.backend.ingest.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.dto.MyHomeComplexSourceItem;
 import com.toadzip.backend.ingest.dto.MyHomeRegion;
-import com.toadzip.backend.ingest.repository.MyHomeComplexApiRepository;
+import com.toadzip.backend.ingest.repository.MyHomeComplexExternalRepository;
 import com.toadzip.backend.ingest.repository.MyHomeRegionCatalog;
 import com.toadzip.backend.ingest.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
@@ -28,30 +28,30 @@ public class MyHomeComplexCollectionService {
 
     private static final String LIST_POINTER = "/response/body/item";
 
-    private static final int MAX_CONCURRENT_REGIONS = 4;
+    private static final int MAX_CONCURRENT_REGIONS = 2;
 
     private final ObjectMapper objectMapper;
 
-    private final MyHomeComplexApiRepository apiRepository;
+    private final MyHomeComplexExternalRepository externalRepository;
 
     private final MyHomeRegionCatalog regionCatalog;
 
     private final MyHomeSourceStore sourceStore;
 
-    private final ExternalApiFailureRecorder failureRecorder;
+    private final ExternalDataFailureRecorder failureRecorder;
 
-    private final ExternalApiRetryExecutor retryExecutor;
+    private final ExternalDataRetryExecutor retryExecutor;
 
     public MyHomeComplexCollectionService(
             ObjectMapper objectMapper,
-            MyHomeComplexApiRepository apiRepository,
+            MyHomeComplexExternalRepository externalRepository,
             MyHomeRegionCatalog regionCatalog,
             MyHomeSourceStore sourceStore,
-            ExternalApiFailureRecorder failureRecorder,
-            ExternalApiRetryExecutor retryExecutor
+            ExternalDataFailureRecorder failureRecorder,
+            ExternalDataRetryExecutor retryExecutor
     ) {
         this.objectMapper = objectMapper;
-        this.apiRepository = apiRepository;
+        this.externalRepository = externalRepository;
         this.regionCatalog = regionCatalog;
         this.sourceStore = sourceStore;
         this.failureRecorder = failureRecorder;
@@ -59,6 +59,12 @@ public class MyHomeComplexCollectionService {
     }
 
     public MyHomeComplexCollectionReport collect(MyHomeComplexCollectionRequest request) {
+        log.info(
+                "마이홈 단지 수집을 시작합니다: pageSize={}, maxPages={}, allRegions={}",
+                request.pageSize(),
+                request.maxPages(),
+                request.requestsAllRegions()
+        );
         List<MyHomeRegion> regions = regionsFor(request);
         MyHomeComplexCollectionReport report = collectRegions(regions, request);
         log.info(
@@ -114,7 +120,7 @@ public class MyHomeComplexCollectionService {
         catch (ExecutionException exception) {
             RuntimeException cause = runtimeExceptionOf(exception.getCause());
             failureRecorder.record(
-                    ExternalApi.MYHOME_COMPLEX,
+                    ExternalDataSource.MYHOME_COMPLEX,
                     request.requestDescription(regionCatalog.findAll().getFirst(), 1),
                     cause,
                     log,
@@ -128,7 +134,7 @@ public class MyHomeComplexCollectionService {
             MyHomeRegion region,
             MyHomeComplexCollectionRequest request
     ) {
-        ExternalApiCallCounter callCounter = new ExternalApiCallCounter();
+        ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
         try {
             List<MyHomeComplexSourceItem> items = fetchCompleteRegion(region, request, callCounter);
             int storedRowCount = sourceStore.replaceComplexRegion(region, items);
@@ -136,7 +142,7 @@ public class MyHomeComplexCollectionService {
         }
         catch (RuntimeException exception) {
             failureRecorder.record(
-                    ExternalApi.MYHOME_COMPLEX,
+                    ExternalDataSource.MYHOME_COMPLEX,
                     request.requestDescription(region, 1),
                     exception,
                     log,
@@ -149,28 +155,36 @@ public class MyHomeComplexCollectionService {
     private List<MyHomeComplexSourceItem> fetchCompleteRegion(
             MyHomeRegion region,
             MyHomeComplexCollectionRequest request,
-            ExternalApiCallCounter callCounter
+            ExternalDataCallCounter callCounter
     ) {
         List<MyHomeComplexSourceItem> items = new ArrayList<>();
         for (int page = 1; page <= request.maxPages(); page++) {
             int currentPage = page;
             String requestDescription = request.requestDescription(region, currentPage);
-            ExternalApiResponse response = retryExecutor.execute(
-                    ExternalApi.MYHOME_COMPLEX,
+            ExternalDataResponse response = retryExecutor.execute(
+                    ExternalDataSource.MYHOME_COMPLEX,
                     requestDescription,
-                    () -> apiRepository.fetch(region, request, currentPage),
+                    () -> externalRepository.fetch(region, request, currentPage),
                     callCounter
             );
-            List<JsonNode> rows = DataGoKrOpenApiClient.findRows(response.responseBody(), LIST_POINTER);
+            failureRecorder.resolve(ExternalDataSource.MYHOME_COMPLEX, requestDescription);
+            List<JsonNode> rows = DataGoKrOpenApiClient.findRows(response.body(), LIST_POINTER);
             rows.stream()
                     .map(row -> objectMapper.convertValue(row, MyHomeComplexSourceItem.class))
                     .forEach(items::add);
-            int rowCount = rows.size();
-            if (rowCount < request.pageSize()) {
+            if (collectionCompleted(response.body(), items.size(), rows.size(), request.pageSize())) {
                 return items;
             }
         }
         throw new IllegalStateException("마이홈 단지 조회가 최대 페이지 안에 끝나지 않았습니다.");
+    }
+
+    private boolean collectionCompleted(JsonNode responseBody, int collectedCount, int rowCount, int pageSize) {
+        int totalCount = responseBody.at("/response/body/totalCount").asInt(-1);
+        if (totalCount >= 0) {
+            return collectedCount >= totalCount;
+        }
+        return rowCount < pageSize;
     }
 
     private List<MyHomeRegion> regionsFor(MyHomeComplexCollectionRequest request) {

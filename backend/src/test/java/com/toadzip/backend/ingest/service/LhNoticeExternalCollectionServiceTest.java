@@ -20,25 +20,25 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.toadzip.backend.ingest.domain.ExternalApi;
+import com.toadzip.backend.ingest.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.domain.MyHomeNoticeSource;
-import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
-import com.toadzip.backend.ingest.dto.ExternalApiResponse;
+import com.toadzip.backend.ingest.dto.ExternalDataCollectionReport;
+import com.toadzip.backend.ingest.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.dto.MyHomeNoticeSourceItem;
-import com.toadzip.backend.ingest.repository.LhNoticeApiRepository;
+import com.toadzip.backend.ingest.repository.LhNoticeExternalRepository;
 import com.toadzip.backend.ingest.repository.LhNoticeCollectionExecutionLock;
 import com.toadzip.backend.ingest.repository.LhSourceStore;
 import com.toadzip.backend.ingest.repository.MyHomeNoticeSourceRepository;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
-class LhNoticeApiCollectionServiceTest {
+class LhNoticeExternalCollectionServiceTest {
 
     @Mock
     private MyHomeNoticeSourceRepository myHomeNoticeRepository;
 
     @Mock
-    private LhNoticeApiRepository apiRepository;
+    private LhNoticeExternalRepository externalRepository;
 
     @Mock
     private LhNoticeCollectionExecutionLock executionLock;
@@ -47,41 +47,41 @@ class LhNoticeApiCollectionServiceTest {
     private LhSourceStore sourceStore;
 
     @Mock
-    private ExternalApiFailureRecorder failureRecorder;
+    private ExternalDataFailureRecorder failureRecorder;
 
-    private LhNoticeApiCollectionService service;
+    private LhNoticeExternalCollectionService service;
 
     @BeforeEach
     void setUp() {
-        lenient().when(executionLock.<ExternalApiCollectionReport>tryRun(any(), any()))
+        lenient().when(executionLock.<ExternalDataCollectionReport>tryRun(any(), any()))
                 .thenAnswer(invocation -> {
-                    Supplier<ExternalApiCollectionReport> operation = invocation.getArgument(1);
+                    Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(1);
                     return Optional.of(operation.get());
                 });
-        service = new LhNoticeApiCollectionService(
+        service = new LhNoticeExternalCollectionService(
                 myHomeNoticeRepository,
-                apiRepository,
+                externalRepository,
                 executionLock,
                 sourceStore,
                 new LhNoticeSourceMapper(),
                 failureRecorder,
                 new LhSupplyInfoTypeCodeResolver(),
-                new ExternalApiRetryExecutor(Duration.ZERO)
+                new ExternalDataRetryExecutor(Duration.ZERO)
         );
     }
 
     @Test
     void LH_상세_수집은_상세_행만_저장한다() {
         source(noticeSource());
-        when(apiRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
         when(sourceStore.replaceDetails(eq("100"), any())).thenReturn(1);
 
-        ExternalApiCollectionReport result = service.collect(ExternalApi.LH_NOTICE_DETAIL);
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_NOTICE_DETAIL);
 
         verify(sourceStore).replaceDetails(eq("100"), any());
         verify(sourceStore, never()).replaceSupplies(any(), any());
-        verify(apiRepository).fetchDetail(any());
-        verify(apiRepository, never()).fetchSupply(any());
+        verify(externalRepository).fetchDetail(any());
+        verify(externalRepository, never()).fetchSupply(any());
         assertThat(result.storedRowCount()).isOne();
         assertThat(result.failedRequestCount()).isZero();
     }
@@ -89,15 +89,15 @@ class LhNoticeApiCollectionServiceTest {
     @Test
     void LH_공급_수집은_공급_행만_저장한다() {
         source(noticeSource());
-        when(apiRepository.fetchSupply(any())).thenReturn(supplyResponse());
+        when(externalRepository.fetchSupply(any())).thenReturn(supplyResponse());
         when(sourceStore.replaceSupplies(eq("100"), any())).thenReturn(1);
 
-        ExternalApiCollectionReport result = service.collect(ExternalApi.LH_NOTICE_SUPPLY);
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_NOTICE_SUPPLY);
 
         verify(sourceStore).replaceSupplies(eq("100"), any());
         verify(sourceStore, never()).replaceDetails(any(), any());
-        verify(apiRepository).fetchSupply(any());
-        verify(apiRepository, never()).fetchDetail(any());
+        verify(externalRepository).fetchSupply(any());
+        verify(externalRepository, never()).fetchDetail(any());
         assertThat(result.storedRowCount()).isOne();
         assertThat(result.failedRequestCount()).isZero();
     }
@@ -105,12 +105,12 @@ class LhNoticeApiCollectionServiceTest {
     @Test
     void 상세_API_실패는_공급_API_수집을_막지_않는다() {
         source(noticeSource());
-        when(apiRepository.fetchDetail(any())).thenThrow(new IllegalStateException("상세 조회 실패"));
-        when(apiRepository.fetchSupply(any())).thenReturn(supplyResponse());
+        when(externalRepository.fetchDetail(any())).thenThrow(new IllegalStateException("상세 조회 실패"));
+        when(externalRepository.fetchSupply(any())).thenReturn(supplyResponse());
         when(sourceStore.replaceSupplies(eq("100"), any())).thenReturn(1);
 
-        ExternalApiCollectionReport detail = service.collect(ExternalApi.LH_NOTICE_DETAIL);
-        ExternalApiCollectionReport supply = service.collect(ExternalApi.LH_NOTICE_SUPPLY);
+        ExternalDataCollectionReport detail = service.collect(ExternalDataSource.LH_NOTICE_DETAIL);
+        ExternalDataCollectionReport supply = service.collect(ExternalDataSource.LH_NOTICE_SUPPLY);
 
         assertThat(detail.failedRequestCount()).isOne();
         assertThat(supply.storedRowCount()).isOne();
@@ -119,12 +119,12 @@ class LhNoticeApiCollectionServiceTest {
     @Test
     void 기존_행이_있어도_명시적_수집은_해당_API_snapshot을_교체한다() {
         source(noticeSource());
-        when(apiRepository.fetchSupply(any())).thenReturn(supplyResponse());
+        when(externalRepository.fetchSupply(any())).thenReturn(supplyResponse());
         when(sourceStore.replaceSupplies(eq("100"), any())).thenReturn(1);
 
-        ExternalApiCollectionReport result = service.collect(ExternalApi.LH_NOTICE_SUPPLY);
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_NOTICE_SUPPLY);
 
-        verify(apiRepository).fetchSupply(any());
+        verify(externalRepository).fetchSupply(any());
         verify(sourceStore).replaceSupplies(eq("100"), any());
         assertThat(result.storedRowCount()).isOne();
         assertThat(result.failedRequestCount()).isZero();
@@ -134,26 +134,26 @@ class LhNoticeApiCollectionServiceTest {
     void 조회_조건이_없는_공고는_실패_이력으로_남긴다() {
         source(invalidNoticeSource());
 
-        ExternalApiCollectionReport result = service.collect(ExternalApi.LH_NOTICE_DETAIL);
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_NOTICE_DETAIL);
 
-        verify(failureRecorder).record(eq(ExternalApi.LH_NOTICE_DETAIL), any(), any(), any(), any());
-        verify(apiRepository, never()).fetchDetail(any());
+        verify(failureRecorder).record(eq(ExternalDataSource.LH_NOTICE_DETAIL), any(), any(), any(), any());
+        verify(externalRepository, never()).fetchDetail(any());
         assertThat(result.failedRequestCount()).isOne();
     }
 
     @Test
     void 같은_API_수집이_실행_중이면_외부_API를_호출하지_않는다() {
-        doReturn(Optional.empty()).when(executionLock).tryRun(eq(ExternalApi.LH_NOTICE_DETAIL), any());
+        doReturn(Optional.empty()).when(executionLock).tryRun(eq(ExternalDataSource.LH_NOTICE_DETAIL), any());
 
-        assertThatThrownBy(() -> service.collect(ExternalApi.LH_NOTICE_DETAIL))
+        assertThatThrownBy(() -> service.collect(ExternalDataSource.LH_NOTICE_DETAIL))
                 .isInstanceOf(IngestAlreadyRunningException.class);
 
-        verify(apiRepository, never()).fetchDetail(any());
+        verify(externalRepository, never()).fetchDetail(any());
     }
 
     @Test
     void LH_상세나_공급이_아닌_API는_거절한다() {
-        assertThatThrownBy(() -> service.collect(ExternalApi.MYHOME_NOTICE))
+        assertThatThrownBy(() -> service.collect(ExternalDataSource.MYHOME_NOTICE))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("LH 공고 API가 아닙니다.");
     }
@@ -182,17 +182,17 @@ class LhNoticeApiCollectionServiceTest {
         );
     }
 
-    private ExternalApiResponse detailResponse() {
+    private ExternalDataResponse detailResponse() {
         return response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},"
                 + "{\"dsEtcInfo\":[{\"CRC_RSN\":\"정정\"}]}]");
     }
 
-    private ExternalApiResponse supplyResponse() {
+    private ExternalDataResponse supplyResponse() {
         return response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},"
                 + "{\"dsList01\":[{\"SBD_LGO_NM\":\"행복주택\"}]}]");
     }
 
-    private ExternalApiResponse response(String payload) {
-        return new ExternalApiResponse(payload, JsonMapper.builder().build().readTree(payload));
+    private ExternalDataResponse response(String payload) {
+        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
     }
 }

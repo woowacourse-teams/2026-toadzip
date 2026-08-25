@@ -109,7 +109,7 @@ class NoticeDomainCreationTest {
     }
 
     @Test
-    void 매칭되지_않은_API_응답값_공급행도_생성한다() {
+    void 매칭되지_않은_원천_공급행도_생성한다() {
         Notice notice = new Notice();
         YearMonth expectedMoveInMonth = YearMonth.of(2027, 3);
         Method createMethod = findCreateMethod(
@@ -135,7 +135,7 @@ class NoticeDomainCreationTest {
                 null,
                 "source-supply-row-id",
                 1,
-                "API 응답값 단지명",
+                "원천 단지명",
                 "36A",
                 "1114010100100010000",
                 expectedMoveInMonth,
@@ -149,7 +149,7 @@ class NoticeDomainCreationTest {
         assertNull(supplyRow.getHousingType());
         assertEquals("source-supply-row-id", supplyRow.getSourceSupplyRowIdentifier());
         assertEquals(1, supplyRow.getDisplayOrder());
-        assertEquals("API 응답값 단지명", supplyRow.getSourceComplexName());
+        assertEquals("원천 단지명", supplyRow.getSourceComplexName());
         assertEquals("36A", supplyRow.getSourceHousingTypeName());
         assertEquals("1114010100100010000", supplyRow.getSupplyPnu());
         assertEquals(expectedMoveInMonth, supplyRow.getExpectedMoveInMonth());

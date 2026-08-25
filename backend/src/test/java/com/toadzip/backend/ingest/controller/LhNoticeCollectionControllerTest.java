@@ -11,7 +11,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
+import com.toadzip.backend.ingest.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.service.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.service.LhNoticeDetailCollectionService;
 import com.toadzip.backend.ingest.service.LhNoticeSupplyCollectionService;
@@ -31,9 +31,9 @@ class LhNoticeCollectionControllerTest {
     @Test
     void LH_상세와_공급_원본을_서로_다른_경로에서_수집한다() throws Exception {
         when(detailCollectionService.collect())
-                .thenReturn(new ExternalApiCollectionReport("lh-notice-detail", 1, 0));
+                .thenReturn(new ExternalDataCollectionReport("lh-notice-detail", 1, 0, 1));
         when(supplyCollectionService.collect())
-                .thenReturn(new ExternalApiCollectionReport("lh-notice-supply", 2, 0));
+                .thenReturn(new ExternalDataCollectionReport("lh-notice-supply", 2, 0, 1));
 
         mockMvc.perform(post("/api/admin/ingest/lh/notices/details"))
                 .andExpect(status().isOk())

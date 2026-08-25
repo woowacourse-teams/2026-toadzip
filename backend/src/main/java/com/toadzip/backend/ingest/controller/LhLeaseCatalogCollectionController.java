@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
+import com.toadzip.backend.ingest.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.dto.LhLeaseCatalogCollectionRequest;
 import com.toadzip.backend.ingest.service.LhLeaseCatalogCollectionService;
 
@@ -22,7 +22,7 @@ public class LhLeaseCatalogCollectionController {
     }
 
     @PostMapping
-    public ExternalApiCollectionReport collect(
+    public ExternalDataCollectionReport collect(
             @RequestParam(defaultValue = "9999") @Min(1) @Max(10_000) int pageSize,
             @RequestParam(defaultValue = "1") @Min(1) @Max(10_000) int maxPages
     ) {

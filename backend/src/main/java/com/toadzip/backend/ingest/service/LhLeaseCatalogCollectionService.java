@@ -5,12 +5,12 @@ import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import com.toadzip.backend.ingest.domain.ExternalApi;
-import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
-import com.toadzip.backend.ingest.dto.ExternalApiResponse;
+import com.toadzip.backend.ingest.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.dto.ExternalDataCollectionReport;
+import com.toadzip.backend.ingest.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.dto.LhCatalogSourceItem;
 import com.toadzip.backend.ingest.dto.LhLeaseCatalogCollectionRequest;
-import com.toadzip.backend.ingest.repository.LhLeaseCatalogApiRepository;
+import com.toadzip.backend.ingest.repository.LhLeaseCatalogExternalRepository;
 import com.toadzip.backend.ingest.repository.LhSourceStore;
 import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
 import tools.jackson.databind.JsonNode;
@@ -21,45 +21,73 @@ public class LhLeaseCatalogCollectionService {
 
     private static final String LIST_KEY = "dsList";
 
-    private final LhLeaseCatalogApiRepository apiRepository;
+    private final LhLeaseCatalogExternalRepository externalRepository;
 
     private final LhSourceStore sourceStore;
 
-    private final ExternalApiFailureRecorder failureRecorder;
+    private final ExternalDataFailureRecorder failureRecorder;
+
+    private final ExternalDataRetryExecutor retryExecutor;
 
     public LhLeaseCatalogCollectionService(
-            LhLeaseCatalogApiRepository apiRepository,
+            LhLeaseCatalogExternalRepository externalRepository,
             LhSourceStore sourceStore,
-            ExternalApiFailureRecorder failureRecorder
+            ExternalDataFailureRecorder failureRecorder,
+            ExternalDataRetryExecutor retryExecutor
     ) {
-        this.apiRepository = apiRepository;
+        this.externalRepository = externalRepository;
         this.sourceStore = sourceStore;
         this.failureRecorder = failureRecorder;
+        this.retryExecutor = retryExecutor;
     }
 
-    public ExternalApiCollectionReport collect(LhLeaseCatalogCollectionRequest request) {
+    public ExternalDataCollectionReport collect(LhLeaseCatalogCollectionRequest request) {
+        ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
+        log.info("LH 임대 카탈로그 수집을 시작합니다: pageSize={}, maxPages={}", request.pageSize(), request.maxPages());
         try {
-            List<LhCatalogSourceItem> items = fetchCompleteCatalog(request);
+            List<LhCatalogSourceItem> items = fetchCompleteCatalog(request, callCounter);
             int storedRowCount = sourceStore.replaceCatalog(items);
-            return new ExternalApiCollectionReport("lh-lease-catalog", storedRowCount, 0);
+            ExternalDataCollectionReport report = new ExternalDataCollectionReport(
+                    "lh-lease-catalog",
+                    storedRowCount,
+                    0,
+                    callCounter.count()
+            );
+            log.info(
+                    "LH 임대 카탈로그 수집을 완료했습니다: storedRowCount={}, externalApiCallCount={}",
+                    report.storedRowCount(),
+                    report.externalApiCallCount()
+            );
+            return report;
         }
         catch (RuntimeException exception) {
             failureRecorder.record(
-                    ExternalApi.LH_LEASE_CATALOG,
+                    ExternalDataSource.LH_LEASE_CATALOG,
                     request.requestDescription(1),
                     exception,
                     log,
                     "LH 임대 카탈로그 수집에 실패했습니다"
             );
-            return new ExternalApiCollectionReport("lh-lease-catalog", 0, 1);
+            return new ExternalDataCollectionReport("lh-lease-catalog", 0, 1, callCounter.count());
         }
     }
 
-    private List<LhCatalogSourceItem> fetchCompleteCatalog(LhLeaseCatalogCollectionRequest request) {
+    private List<LhCatalogSourceItem> fetchCompleteCatalog(
+            LhLeaseCatalogCollectionRequest request,
+            ExternalDataCallCounter callCounter
+    ) {
         List<LhCatalogSourceItem> items = new ArrayList<>();
         for (int page = 1; page <= request.maxPages(); page++) {
-            ExternalApiResponse response = apiRepository.fetch(request, page);
-            List<JsonNode> rows = DataGoKrOpenApiClient.findRows(response.responseBody(), LIST_KEY);
+            int currentPage = page;
+            String requestDescription = request.requestDescription(currentPage);
+            ExternalDataResponse response = retryExecutor.execute(
+                    ExternalDataSource.LH_LEASE_CATALOG,
+                    requestDescription,
+                    () -> externalRepository.fetch(request, currentPage),
+                    callCounter
+            );
+            failureRecorder.resolve(ExternalDataSource.LH_LEASE_CATALOG, requestDescription);
+            List<JsonNode> rows = DataGoKrOpenApiClient.findRows(response.body(), LIST_KEY);
             rows.stream().map(LhCatalogSourceItem::from).forEach(items::add);
             int rowCount = rows.size();
             if (rowCount < request.pageSize()) {
