@@ -11,7 +11,11 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 
+@SpringBootTest
+@ActiveProfiles("test")
 class UserJpaMappingTest {
 
     private static final String DOMAIN_PACKAGE = "com.toadzip.backend.user.domain.";
