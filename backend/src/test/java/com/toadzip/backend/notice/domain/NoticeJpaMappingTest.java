@@ -3,7 +3,6 @@ package com.toadzip.backend.notice.domain;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.toadzip.backend.PostgreSqlIntegrationTest;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.metamodel.Attribute;
 import jakarta.persistence.metamodel.ManagedType;
@@ -12,7 +11,6 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-@PostgreSqlIntegrationTest
 class NoticeJpaMappingTest {
 
     private static final String DOMAIN_PACKAGE = "com.toadzip.backend.notice.domain.";
