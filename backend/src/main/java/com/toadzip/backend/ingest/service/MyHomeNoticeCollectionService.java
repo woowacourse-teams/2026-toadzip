@@ -18,8 +18,7 @@ import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
 
 @Slf4j
 @Service
-public class MyHomeNoticeCollectionService
-        implements RawDataCollector<MyHomeNoticeCollectionRequest> {
+public class MyHomeNoticeCollectionService {
 
     private static final String LIST_POINTER = "/response/body/item";
 
@@ -43,12 +42,6 @@ public class MyHomeNoticeCollectionService
         this.failureRecorder = failureRecorder;
     }
 
-    @Override
-    public RawDataCollectionJob job() {
-        return RawDataCollectionJob.MYHOME_NOTICE;
-    }
-
-    @Override
     public ExternalApiCollectionReport collect(MyHomeNoticeCollectionRequest request) {
         ExternalApiCollectionReport report = ExternalApiCollectionReport.empty("myhome-notice");
         for (MyHomeNoticeSupplyType supplyType : MyHomeNoticeSupplyType.values()) {

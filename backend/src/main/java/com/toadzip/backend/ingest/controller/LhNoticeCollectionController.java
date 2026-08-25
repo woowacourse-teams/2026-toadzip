@@ -5,21 +5,32 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
-import com.toadzip.backend.ingest.dto.LhNoticeCollectionRequest;
-import com.toadzip.backend.ingest.service.LhNoticeCollectionService;
+import com.toadzip.backend.ingest.service.LhNoticeDetailCollectionService;
+import com.toadzip.backend.ingest.service.LhNoticeSupplyCollectionService;
 
 @RestController
 @RequestMapping("/api/admin/ingest/lh/notices")
 public class LhNoticeCollectionController {
 
-    private final LhNoticeCollectionService collectionService;
+    private final LhNoticeDetailCollectionService detailCollectionService;
 
-    public LhNoticeCollectionController(LhNoticeCollectionService collectionService) {
-        this.collectionService = collectionService;
+    private final LhNoticeSupplyCollectionService supplyCollectionService;
+
+    public LhNoticeCollectionController(
+            LhNoticeDetailCollectionService detailCollectionService,
+            LhNoticeSupplyCollectionService supplyCollectionService
+    ) {
+        this.detailCollectionService = detailCollectionService;
+        this.supplyCollectionService = supplyCollectionService;
     }
 
-    @PostMapping
-    public ExternalApiCollectionReport collect() {
-        return collectionService.collect(new LhNoticeCollectionRequest());
+    @PostMapping("/details")
+    public ExternalApiCollectionReport collectDetails() {
+        return detailCollectionService.collect();
+    }
+
+    @PostMapping("/supplies")
+    public ExternalApiCollectionReport collectSupplies() {
+        return supplyCollectionService.collect();
     }
 }

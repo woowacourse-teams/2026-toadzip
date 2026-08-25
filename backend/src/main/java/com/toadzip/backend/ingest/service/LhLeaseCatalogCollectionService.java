@@ -17,8 +17,7 @@ import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
 
 @Slf4j
 @Service
-public class LhLeaseCatalogCollectionService
-        implements RawDataCollector<LhLeaseCatalogCollectionRequest> {
+public class LhLeaseCatalogCollectionService {
 
     private static final String LIST_KEY = "dsList";
 
@@ -42,12 +41,6 @@ public class LhLeaseCatalogCollectionService
         this.failureRecorder = failureRecorder;
     }
 
-    @Override
-    public RawDataCollectionJob job() {
-        return RawDataCollectionJob.LH_LEASE_CATALOG;
-    }
-
-    @Override
     public ExternalApiCollectionReport collect(LhLeaseCatalogCollectionRequest request) {
         try {
             List<ExternalApiData> apiData = fetchCompleteCatalog(request);

@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -18,6 +19,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import com.toadzip.backend.ingest.domain.ExternalApi;
 
 @ExtendWith(MockitoExtension.class)
 class LhNoticeCollectionExecutionLockTest {
@@ -47,19 +50,25 @@ class LhNoticeCollectionExecutionLockTest {
     }
 
     @Test
-    void 수집_실행_잠금을_보유한_동안_같은_인스턴스의_중복_실행을_거절한다() throws Exception {
+    void 같은_API_수집_잠금의_중복_실행을_거절한다() throws Exception {
         CountDownLatch operationStarted = new CountDownLatch(1);
         CountDownLatch releaseOperation = new CountDownLatch(1);
 
         try (var executor = Executors.newSingleThreadExecutor()) {
-            var runningOperation = executor.submit(() -> executionLock.tryRun(() -> {
-                operationStarted.countDown();
-                await(releaseOperation);
-                return "completed";
-            }));
+            var runningOperation = executor.submit(() -> executionLock.tryRun(
+                    ExternalApi.LH_NOTICE_DETAIL,
+                    () -> {
+                        operationStarted.countDown();
+                        await(releaseOperation);
+                        return "completed";
+                    }
+            ));
             assertThat(operationStarted.await(1, TimeUnit.SECONDS)).isTrue();
 
-            var rejectedOperation = executionLock.tryRun(() -> "duplicate");
+            var rejectedOperation = executionLock.tryRun(
+                    ExternalApi.LH_NOTICE_DETAIL,
+                    () -> "duplicate"
+            );
             releaseOperation.countDown();
 
             assertThat(rejectedOperation).isEmpty();
@@ -73,7 +82,7 @@ class LhNoticeCollectionExecutionLockTest {
         AtomicBoolean operationExecuted = new AtomicBoolean();
         when(resultSet.getBoolean(1)).thenReturn(false);
 
-        var result = executionLock.tryRun(() -> {
+        var result = executionLock.tryRun(ExternalApi.LH_NOTICE_SUPPLY, () -> {
             operationExecuted.set(true);
             return "duplicate";
         });
@@ -83,10 +92,21 @@ class LhNoticeCollectionExecutionLockTest {
         verify(dataSource).getConnection();
     }
 
+    @Test
+    void 상세와_공급_API는_서로_다른_DB_잠금을_사용한다() throws Exception {
+        executionLock.tryRun(ExternalApi.LH_NOTICE_DETAIL, () -> "detail");
+        executionLock.tryRun(ExternalApi.LH_NOTICE_SUPPLY, () -> "supply");
+
+        verify(statement, times(2)).setLong(1, 8_432_026_082_400_001L);
+        verify(statement, times(2)).setLong(1, 8_432_026_082_400_002L);
+    }
+
     private void await(CountDownLatch latch) {
         try {
             if (!latch.await(1, TimeUnit.SECONDS)) {
-                throw new IllegalStateException("테스트 제한 시간 안에 실행 잠금을 해제하지 못했습니다.");
+                throw new IllegalStateException(
+                        "테스트 제한 시간 안에 실행 잠금을 해제하지 못했습니다."
+                );
             }
         }
         catch (InterruptedException exception) {
