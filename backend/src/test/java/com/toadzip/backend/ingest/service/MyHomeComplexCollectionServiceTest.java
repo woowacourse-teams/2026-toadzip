@@ -2,15 +2,13 @@ package com.toadzip.backend.ingest.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -20,19 +18,17 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.toadzip.backend.ingest.domain.ExternalApiData;
 import com.toadzip.backend.ingest.dto.ExternalApiResponse;
 import com.toadzip.backend.ingest.dto.MyHomeComplexCollectionRequest;
+import com.toadzip.backend.ingest.dto.MyHomeComplexSourceItem;
 import com.toadzip.backend.ingest.dto.MyHomeRegion;
-import com.toadzip.backend.ingest.repository.ExternalApiCollectionStore;
 import com.toadzip.backend.ingest.repository.MyHomeComplexApiRepository;
 import com.toadzip.backend.ingest.repository.MyHomeRegionCatalog;
+import com.toadzip.backend.ingest.repository.MyHomeSourceStore;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
 class MyHomeComplexCollectionServiceTest {
-
-    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-08-23T00:00:00Z"), ZoneOffset.UTC);
 
     @Mock
     private MyHomeComplexApiRepository apiRepository;
@@ -41,7 +37,7 @@ class MyHomeComplexCollectionServiceTest {
     private MyHomeRegionCatalog regionCatalog;
 
     @Mock
-    private ExternalApiCollectionStore store;
+    private MyHomeSourceStore sourceStore;
 
     @Mock
     private ExternalApiFailureRecorder failureRecorder;
@@ -51,10 +47,10 @@ class MyHomeComplexCollectionServiceTest {
     @BeforeEach
     void setUp() {
         service = new MyHomeComplexCollectionService(
-                CLOCK,
+                JsonMapper.builder().build(),
                 apiRepository,
                 regionCatalog,
-                store,
+                sourceStore,
                 failureRecorder,
                 new ExternalApiRetryExecutor(Duration.ZERO)
         );
@@ -65,21 +61,18 @@ class MyHomeComplexCollectionServiceTest {
     void storesCompleteRegionPages() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
-        when(apiRepository.fetch(region, request(), 1)).thenReturn(response("[{\"id\":1},{\"id\":2}]"));
-        when(apiRepository.fetch(region, request(), 2)).thenReturn(response("[{\"id\":3}]"));
+        when(apiRepository.fetch(region, request(), 1))
+                .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]"));
+        when(apiRepository.fetch(region, request(), 2)).thenReturn(response("[{\"hsmpSn\":3}]"));
+        when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(3);
 
         var result = service.collect(request());
 
-        ArgumentCaptor<List<ExternalApiData>> apiData = ArgumentCaptor.captor();
-        verify(store).storeApiData(apiData.capture());
-        assertThat(apiData.getValue()).extracting(ExternalApiData::getApiData)
-                .containsExactly(
-                        "{\"response\":{\"header\":{\"resultCode\":\"00\"},"
-                                + "\"body\":{\"item\":[{\"id\":1},{\"id\":2}]}}}",
-                        "{\"response\":{\"header\":{\"resultCode\":\"00\"},"
-                                + "\"body\":{\"item\":[{\"id\":3}]}}}"
-                );
-        assertThat(result.storedApiDataCount()).isEqualTo(2);
+        ArgumentCaptor<List<MyHomeComplexSourceItem>> items = ArgumentCaptor.captor();
+        verify(sourceStore).replaceComplexRegion(eq(region), items.capture());
+        assertThat(items.getValue()).extracting(MyHomeComplexSourceItem::hsmpSn)
+                .containsExactly(1L, 2L, 3L);
+        assertThat(result.storedRowCount()).isEqualTo(3);
         assertThat(result.failedRequestCount()).isZero();
         assertThat(result.externalApiCallCount()).isEqualTo(2);
     }
@@ -89,14 +82,15 @@ class MyHomeComplexCollectionServiceTest {
     void doesNotStoreIncompleteRegion() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
-        when(apiRepository.fetch(region, request(), 1)).thenReturn(response("[{\"id\":1},{\"id\":2}]"));
+        when(apiRepository.fetch(region, request(), 1))
+                .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]"));
         when(apiRepository.fetch(region, request(), 2)).thenThrow(new IllegalStateException("조회 실패"));
 
         var result = service.collect(request());
 
-        verify(store, never()).storeApiData(any());
+        verify(sourceStore, never()).replaceComplexRegion(any(), any());
         verify(failureRecorder).record(any(), any(), any(), any(), any());
-        assertThat(result.storedApiDataCount()).isZero();
+        assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isOne();
         assertThat(result.externalApiCallCount()).isEqualTo(2);
     }
@@ -111,11 +105,12 @@ class MyHomeComplexCollectionServiceTest {
                         "일시적 실패",
                         new IllegalStateException("504")
                 ))
-                .thenReturn(response("[{\"id\":1}]"));
+                .thenReturn(response("[{\"hsmpSn\":1}]"));
+        when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(1);
 
         var result = service.collect(request());
 
-        assertThat(result.storedApiDataCount()).isOne();
+        assertThat(result.storedRowCount()).isOne();
         assertThat(result.failedRequestCount()).isZero();
         assertThat(result.externalApiCallCount()).isEqualTo(2);
         verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
@@ -136,7 +131,7 @@ class MyHomeComplexCollectionServiceTest {
 
         verify(apiRepository, times(3)).fetch(region, request(), 1);
         verify(failureRecorder).record(any(), any(), any(), any(), any());
-        assertThat(result.storedApiDataCount()).isZero();
+        assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isOne();
         assertThat(result.externalApiCallCount()).isEqualTo(3);
     }

@@ -36,7 +36,7 @@ class MyHomeComplexCollectionControllerTest {
 
         mockMvc.perform(post("/api/admin/ingest/myhome/complexes"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.storedApiDataCount").value(3))
+                .andExpect(jsonPath("$.storedRowCount").value(3))
                 .andExpect(jsonPath("$.failedRequestCount").value(1))
                 .andExpect(jsonPath("$.externalApiCallCount").value(7));
 

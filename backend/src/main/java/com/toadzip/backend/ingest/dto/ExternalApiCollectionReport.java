@@ -1,12 +1,12 @@
 package com.toadzip.backend.ingest.dto;
 
-public record ExternalApiCollectionReport(String operation, int storedApiDataCount, int failedRequestCount) {
+public record ExternalApiCollectionReport(String operation, int storedRowCount, int failedRequestCount) {
 
     public ExternalApiCollectionReport {
         if (operation == null || operation.isBlank()) {
             throw new IllegalArgumentException("수집 작업명은 필수입니다.");
         }
-        if (storedApiDataCount < 0 || failedRequestCount < 0) {
+        if (storedRowCount < 0 || failedRequestCount < 0) {
             throw new IllegalArgumentException("수집 결과 개수는 음수일 수 없습니다.");
         }
     }
@@ -21,7 +21,7 @@ public record ExternalApiCollectionReport(String operation, int storedApiDataCou
         }
         return new ExternalApiCollectionReport(
                 operation,
-                storedApiDataCount + other.storedApiDataCount,
+                storedRowCount + other.storedRowCount,
                 failedRequestCount + other.failedRequestCount
         );
     }

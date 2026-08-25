@@ -6,9 +6,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -19,20 +16,18 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.toadzip.backend.ingest.dto.ExternalApiResponse;
 import com.toadzip.backend.ingest.dto.LhLeaseCatalogCollectionRequest;
-import com.toadzip.backend.ingest.repository.ExternalApiCollectionStore;
 import com.toadzip.backend.ingest.repository.LhLeaseCatalogApiRepository;
+import com.toadzip.backend.ingest.repository.LhSourceStore;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
 class LhLeaseCatalogCollectionServiceTest {
 
-    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-08-23T00:00:00Z"), ZoneOffset.UTC);
-
     @Mock
     private LhLeaseCatalogApiRepository apiRepository;
 
     @Mock
-    private ExternalApiCollectionStore store;
+    private LhSourceStore sourceStore;
 
     @Mock
     private ExternalApiFailureRecorder failureRecorder;
@@ -41,20 +36,22 @@ class LhLeaseCatalogCollectionServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new LhLeaseCatalogCollectionService(CLOCK, apiRepository, store, failureRecorder);
+        service = new LhLeaseCatalogCollectionService(apiRepository, sourceStore, failureRecorder);
     }
 
     @Test
     @DisplayName("LH 임대 카탈로그의 마지막 페이지까지 API 데이터를 저장한다")
     void storesCompleteCatalogPages() {
         LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
-        when(apiRepository.fetch(request, 1)).thenReturn(response("[{\"id\":1},{\"id\":2}]"));
-        when(apiRepository.fetch(request, 2)).thenReturn(response("[{\"id\":3}]"));
+        when(apiRepository.fetch(request, 1))
+                .thenReturn(response("[{\"ARA_NM\":\"서울\"},{\"ARA_NM\":\"부산\"}]"));
+        when(apiRepository.fetch(request, 2)).thenReturn(response("[{\"ARA_NM\":\"대구\"}]"));
+        when(sourceStore.replaceCatalog(any())).thenReturn(3);
 
         var result = service.collect(request);
 
-        verify(store).storeApiData(any());
-        assertThat(result.storedApiDataCount()).isEqualTo(2);
+        verify(sourceStore).replaceCatalog(any());
+        assertThat(result.storedRowCount()).isEqualTo(3);
         assertThat(result.failedRequestCount()).isZero();
     }
 
@@ -66,7 +63,7 @@ class LhLeaseCatalogCollectionServiceTest {
 
         var result = service.collect(request);
 
-        verify(store, never()).storeApiData(any());
+        verify(sourceStore, never()).replaceCatalog(any());
         verify(failureRecorder).record(any(), any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
     }

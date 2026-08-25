@@ -1,20 +1,21 @@
 package com.toadzip.backend.ingest.service;
 
-import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import com.toadzip.backend.ingest.domain.ExternalApiData;
 import com.toadzip.backend.ingest.domain.ExternalApi;
 import com.toadzip.backend.ingest.dto.ExternalApiCollectionReport;
 import com.toadzip.backend.ingest.dto.ExternalApiResponse;
 import com.toadzip.backend.ingest.dto.MyHomeNoticeCollectionRequest;
+import com.toadzip.backend.ingest.dto.MyHomeNoticeSourceItem;
 import com.toadzip.backend.ingest.dto.MyHomeNoticeSupplyType;
-import com.toadzip.backend.ingest.repository.ExternalApiCollectionStore;
 import com.toadzip.backend.ingest.repository.MyHomeNoticeApiRepository;
+import com.toadzip.backend.ingest.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 @Slf4j
 @Service
@@ -22,26 +23,26 @@ public class MyHomeNoticeCollectionService {
 
     private static final String LIST_POINTER = "/response/body/item";
 
-    private final Clock clock;
+    private final ObjectMapper objectMapper;
 
     private final MyHomeNoticeApiRepository apiRepository;
 
-    private final ExternalApiCollectionStore store;
+    private final MyHomeSourceStore sourceStore;
 
     private final ExternalApiFailureRecorder failureRecorder;
 
     private final ExternalApiRetryExecutor retryExecutor;
 
     public MyHomeNoticeCollectionService(
-            Clock clock,
+            ObjectMapper objectMapper,
             MyHomeNoticeApiRepository apiRepository,
-            ExternalApiCollectionStore store,
+            MyHomeSourceStore sourceStore,
             ExternalApiFailureRecorder failureRecorder,
             ExternalApiRetryExecutor retryExecutor
     ) {
-        this.clock = clock;
+        this.objectMapper = objectMapper;
         this.apiRepository = apiRepository;
-        this.store = store;
+        this.sourceStore = sourceStore;
         this.failureRecorder = failureRecorder;
         this.retryExecutor = retryExecutor;
     }
@@ -60,9 +61,9 @@ public class MyHomeNoticeCollectionService {
     ) {
         ExternalApiCallCounter callCounter = new ExternalApiCallCounter();
         try {
-            List<ExternalApiData> apiData = fetchCompleteSupplyType(supplyType, request, callCounter);
-            store.storeApiData(apiData);
-            return new ExternalApiCollectionReport("myhome-notice", apiData.size(), 0);
+            List<MyHomeNoticeSourceItem> items = fetchCompleteSupplyType(supplyType, request, callCounter);
+            int storedRowCount = sourceStore.storeNotices(items);
+            return new ExternalApiCollectionReport("myhome-notice", storedRowCount, 0);
         }
         catch (RuntimeException exception) {
             failureRecorder.record(
@@ -76,12 +77,12 @@ public class MyHomeNoticeCollectionService {
         }
     }
 
-    private List<ExternalApiData> fetchCompleteSupplyType(
+    private List<MyHomeNoticeSourceItem> fetchCompleteSupplyType(
             MyHomeNoticeSupplyType supplyType,
             MyHomeNoticeCollectionRequest request,
             ExternalApiCallCounter callCounter
     ) {
-        List<ExternalApiData> apiData = new ArrayList<>();
+        List<MyHomeNoticeSourceItem> items = new ArrayList<>();
         for (int page = 1; page <= request.maxPages(); page++) {
             int currentPage = page;
             String requestDescription = request.requestDescription(supplyType, currentPage);
@@ -91,16 +92,13 @@ public class MyHomeNoticeCollectionService {
                     () -> apiRepository.fetch(supplyType, request, currentPage),
                     callCounter
             );
-            apiData.add(ExternalApiData.create(
-                    ExternalApi.MYHOME_NOTICE,
-                    request.requestDescription(supplyType, page),
-                    page,
-                    clock.instant(),
-                    response.apiData()
-            ));
-            int rowCount = DataGoKrOpenApiClient.findRows(response.responseBody(), LIST_POINTER).size();
+            List<JsonNode> rows = DataGoKrOpenApiClient.findRows(response.responseBody(), LIST_POINTER);
+            rows.stream()
+                    .map(row -> objectMapper.convertValue(row, MyHomeNoticeSourceItem.class))
+                    .forEach(items::add);
+            int rowCount = rows.size();
             if (rowCount == 0 || rowCount < request.pageSize()) {
-                return apiData;
+                return items;
             }
         }
         throw new IllegalStateException("마이홈 공고 조회가 최대 페이지 안에 끝나지 않았습니다.");

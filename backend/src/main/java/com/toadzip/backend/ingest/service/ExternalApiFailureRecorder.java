@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
 
 import com.toadzip.backend.ingest.domain.ExternalApiCollectionFailure;
 import com.toadzip.backend.ingest.domain.ExternalApi;
-import com.toadzip.backend.ingest.repository.ExternalApiCollectionStore;
+import com.toadzip.backend.ingest.repository.ExternalApiFailureStore;
 
 @Service
 public class ExternalApiFailureRecorder {
@@ -15,9 +15,9 @@ public class ExternalApiFailureRecorder {
 
     private final Clock clock;
 
-    private final ExternalApiCollectionStore store;
+    private final ExternalApiFailureStore store;
 
-    public ExternalApiFailureRecorder(Clock clock, ExternalApiCollectionStore store) {
+    public ExternalApiFailureRecorder(Clock clock, ExternalApiFailureStore store) {
         this.clock = clock;
         this.store = store;
     }
@@ -30,7 +30,7 @@ public class ExternalApiFailureRecorder {
             String logMessage
     ) {
         String reason = reasonOf(exception);
-        store.storeFailure(ExternalApiCollectionFailure.create(
+        store.store(ExternalApiCollectionFailure.create(
                 externalApi,
                 requestDescription,
                 clock.instant(),

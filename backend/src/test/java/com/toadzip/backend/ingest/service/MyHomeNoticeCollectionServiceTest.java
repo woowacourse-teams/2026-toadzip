@@ -5,10 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -18,24 +15,22 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.toadzip.backend.ingest.domain.ExternalApiData;
 import com.toadzip.backend.ingest.dto.ExternalApiResponse;
 import com.toadzip.backend.ingest.dto.MyHomeNoticeCollectionRequest;
+import com.toadzip.backend.ingest.dto.MyHomeNoticeSourceItem;
 import com.toadzip.backend.ingest.dto.MyHomeNoticeSupplyType;
-import com.toadzip.backend.ingest.repository.ExternalApiCollectionStore;
 import com.toadzip.backend.ingest.repository.MyHomeNoticeApiRepository;
+import com.toadzip.backend.ingest.repository.MyHomeSourceStore;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
 class MyHomeNoticeCollectionServiceTest {
 
-    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-08-23T00:00:00Z"), ZoneOffset.UTC);
-
     @Mock
     private MyHomeNoticeApiRepository apiRepository;
 
     @Mock
-    private ExternalApiCollectionStore store;
+    private MyHomeSourceStore sourceStore;
 
     @Mock
     private ExternalApiFailureRecorder failureRecorder;
@@ -45,9 +40,9 @@ class MyHomeNoticeCollectionServiceTest {
     @BeforeEach
     void setUp() {
         service = new MyHomeNoticeCollectionService(
-                CLOCK,
+                JsonMapper.builder().build(),
                 apiRepository,
-                store,
+                sourceStore,
                 failureRecorder,
                 new ExternalApiRetryExecutor(Duration.ZERO)
         );
@@ -64,14 +59,22 @@ class MyHomeNoticeCollectionServiceTest {
             }
             return response("[]");
         });
+        when(sourceStore.storeNotices(any())).thenAnswer(invocation -> {
+            List<?> items = invocation.getArgument(0);
+            return items.size();
+        });
 
         var result = service.collect(request);
 
-        ArgumentCaptor<List<ExternalApiData>> apiData = ArgumentCaptor.captor();
-        verify(store, org.mockito.Mockito.times(MyHomeNoticeSupplyType.values().length))
-                .storeApiData(apiData.capture());
-        assertThat(apiData.getAllValues()).allSatisfy(value -> assertThat(value).hasSize(1));
-        assertThat(result.storedApiDataCount()).isEqualTo(MyHomeNoticeSupplyType.values().length);
+        ArgumentCaptor<List<MyHomeNoticeSourceItem>> items = ArgumentCaptor.captor();
+        verify(sourceStore, org.mockito.Mockito.times(MyHomeNoticeSupplyType.values().length))
+                .storeNotices(items.capture());
+        assertThat(items.getAllValues()).filteredOn(value -> !value.isEmpty())
+                .singleElement()
+                .extracting(List::getFirst)
+                .extracting(value -> ((MyHomeNoticeSourceItem) value).pblancId())
+                .isEqualTo("1");
+        assertThat(result.storedRowCount()).isOne();
         assertThat(result.failedRequestCount()).isZero();
     }
 
@@ -86,7 +89,7 @@ class MyHomeNoticeCollectionServiceTest {
 
         verify(failureRecorder, org.mockito.Mockito.times(MyHomeNoticeSupplyType.values().length))
                 .record(any(), any(), any(), any(), any());
-        assertThat(result.storedApiDataCount()).isZero();
+        assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isEqualTo(MyHomeNoticeSupplyType.values().length);
     }
 

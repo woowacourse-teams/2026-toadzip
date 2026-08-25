@@ -1,0 +1,59 @@
+package com.toadzip.backend.ingest.domain;
+
+import static lombok.AccessLevel.PROTECTED;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+import com.toadzip.backend.ingest.dto.LhNoticeSupplySourceItem;
+
+@Getter
+@Entity
+@Table(
+        name = "lh_notice_supply_source",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"pan_id", "source_order"})
+)
+@NoArgsConstructor(access = PROTECTED)
+public class LhNoticeSupplySource {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private Integer sourceOrder;
+    private String panId;
+    private String complexLabel;
+    private String typeName;
+    private String exclusiveArea;
+    private String supplyArea;
+    private String totalUnitCount;
+    private String suppliedUnitCount;
+    private String depositText;
+    private String monthlyRentText;
+
+    public LhNoticeSupplySource(int sourceOrder, String panId, LhNoticeSupplySourceItem item) {
+        this.sourceOrder = sourceOrder;
+        this.panId = trim(panId);
+        complexLabel = trim(item.complexLabel());
+        typeName = trim(item.typeName());
+        exclusiveArea = trim(item.exclusiveArea());
+        supplyArea = trim(item.supplyArea());
+        totalUnitCount = trim(item.totalUnitCount());
+        suppliedUnitCount = trim(item.suppliedUnitCount());
+        depositText = trim(item.depositText());
+        monthlyRentText = trim(item.monthlyRentText());
+    }
+
+    private static String trim(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.strip();
+    }
+}

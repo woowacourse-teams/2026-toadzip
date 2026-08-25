@@ -38,12 +38,12 @@ class LhNoticeCollectionControllerTest {
         mockMvc.perform(post("/api/admin/ingest/lh/notices/details"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.operation").value("lh-notice-detail"))
-                .andExpect(jsonPath("$.storedApiDataCount").value(1));
+                .andExpect(jsonPath("$.storedRowCount").value(1));
 
         mockMvc.perform(post("/api/admin/ingest/lh/notices/supplies"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.operation").value("lh-notice-supply"))
-                .andExpect(jsonPath("$.storedApiDataCount").value(2));
+                .andExpect(jsonPath("$.storedRowCount").value(2));
     }
 
     @Test
