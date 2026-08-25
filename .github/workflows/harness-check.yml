@@ -23,8 +23,6 @@ jobs:
           sh tests/harness/contains-hangul-test.sh
           sh tests/harness/validate-commit-message-test.sh
           sh tests/harness/validate-pr-test.sh
-      - name: Test PostgreSQL test lifecycle
-        run: bash tests/harness/test-postgres-test.sh
       - name: Validate PR contract
         if: ${{ github.event_name == 'pull_request' }}
         env:
@@ -38,6 +36,25 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
+      - name: Start test PostgreSQL
+        id: start-postgres
+        if: ${{ hashFiles('gradlew', 'backend/gradlew') != '' }}
+        run: >-
+          docker compose --project-name toadzip-test --file compose.test.yaml
+          up --detach --wait --wait-timeout 60 --force-recreate db
       - name: Verify backend against PostgreSQL
         if: ${{ hashFiles('gradlew', 'backend/gradlew') != '' }}
-        run: ./scripts/test-postgres.sh
+        working-directory: backend
+        run: ./gradlew --rerun-tasks check
+      - name: Show PostgreSQL logs on failure
+        if: ${{ failure() && steps.start-postgres.outcome == 'success' }}
+        run: >-
+          docker compose --project-name toadzip-test --file compose.test.yaml
+          logs --no-color db
+      - name: Stop test PostgreSQL
+        if: >-
+          ${{ always() &&
+          (steps.start-postgres.outcome == 'success' || steps.start-postgres.outcome == 'failure') }}
+        run: >-
+          docker compose --project-name toadzip-test --file compose.test.yaml
+          down --volumes --remove-orphans
