@@ -1,10 +1,12 @@
 package com.toadzip.backend.ingest.service;
 
 import java.net.URI;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +19,7 @@ import com.toadzip.backend.ingest.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.dto.LhNoticeRequest;
 import com.toadzip.backend.ingest.repository.LhNoticeExternalRepository;
 import com.toadzip.backend.ingest.repository.LhNoticeCollectionExecutionLock;
+import com.toadzip.backend.ingest.repository.LhNoticeCollectionProgressStore;
 import com.toadzip.backend.ingest.repository.LhSourceStore;
 import com.toadzip.backend.ingest.repository.MyHomeNoticeSourceRepository;
 
@@ -28,6 +31,7 @@ public class LhNoticeExternalCollectionService {
     private final LhNoticeExternalRepository externalRepository;
     private final LhNoticeCollectionExecutionLock executionLock;
     private final LhSourceStore sourceStore;
+    private final LhNoticeCollectionProgressStore progressStore;
     private final LhNoticeSourceMapper sourceMapper;
     private final ExternalDataFailureRecorder failureRecorder;
     private final LhSupplyInfoTypeCodeResolver supplyTypeCodeResolver;
@@ -38,6 +42,7 @@ public class LhNoticeExternalCollectionService {
             LhNoticeExternalRepository externalRepository,
             LhNoticeCollectionExecutionLock executionLock,
             LhSourceStore sourceStore,
+            LhNoticeCollectionProgressStore progressStore,
             LhNoticeSourceMapper sourceMapper,
             ExternalDataFailureRecorder failureRecorder,
             LhSupplyInfoTypeCodeResolver supplyTypeCodeResolver,
@@ -47,6 +52,7 @@ public class LhNoticeExternalCollectionService {
         this.externalRepository = externalRepository;
         this.executionLock = executionLock;
         this.sourceStore = sourceStore;
+        this.progressStore = progressStore;
         this.sourceMapper = sourceMapper;
         this.failureRecorder = failureRecorder;
         this.supplyTypeCodeResolver = supplyTypeCodeResolver;
@@ -70,8 +76,9 @@ public class LhNoticeExternalCollectionService {
 
     private ExternalDataCollectionReport collectNotices(ExternalDataSource targetSource) {
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(operation(targetSource));
+        Set<String> attemptedRequests = new HashSet<>();
         for (MyHomeNoticeSource source : distinctNotices()) {
-            report = report.plus(collectNotice(targetSource, source));
+            report = report.plus(collectNotice(targetSource, source, attemptedRequests));
         }
         return report;
     }
@@ -79,25 +86,43 @@ public class LhNoticeExternalCollectionService {
     private List<MyHomeNoticeSource> distinctNotices() {
         Map<String, MyHomeNoticeSource> sources = new LinkedHashMap<>();
         for (MyHomeNoticeSource source : myHomeNoticeRepository.findAll()) {
-            String key = source.getPblancId();
-            if (key == null || key.isBlank()) {
-                key = "source:" + source.getSourceKey();
-            }
+            String key = sourceNoticeKey(source);
             sources.putIfAbsent(key, source);
         }
         return List.copyOf(sources.values());
     }
 
-    private ExternalDataCollectionReport collectNotice(ExternalDataSource targetSource, MyHomeNoticeSource source) {
+    private ExternalDataCollectionReport collectNotice(
+            ExternalDataSource targetSource,
+            MyHomeNoticeSource source,
+            Set<String> attemptedRequests
+    ) {
         Optional<LhNoticeRequest> request = requestOf(source);
         if (request.isEmpty()) {
             return recordInvalidSource(targetSource, source);
         }
         LhNoticeRequest resolved = request.orElseThrow();
-        return fetchAndStore(targetSource, resolved);
+        String sourceNoticeKey = sourceNoticeKey(source);
+        String requestDescription = resolved.requestDescription();
+        if (!attemptedRequests.add(requestDescription)) {
+            return ExternalDataCollectionReport.empty(operation(targetSource));
+        }
+        if (progressStore.isCompleted(targetSource, requestDescription)) {
+            return ExternalDataCollectionReport.empty(operation(targetSource));
+        }
+        if (progressStore.hasStoredRows(targetSource, resolved.panId())
+                && !progressStore.hasCollectionHistory(targetSource, resolved.panId())) {
+            progressStore.complete(targetSource, sourceNoticeKey, requestDescription, resolved.panId());
+            return ExternalDataCollectionReport.empty(operation(targetSource));
+        }
+        return fetchAndStore(targetSource, sourceNoticeKey, resolved);
     }
 
-    private ExternalDataCollectionReport fetchAndStore(ExternalDataSource targetSource, LhNoticeRequest request) {
+    private ExternalDataCollectionReport fetchAndStore(
+            ExternalDataSource targetSource,
+            String sourceNoticeKey,
+            LhNoticeRequest request
+    ) {
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
         try {
             ExternalDataResponse response = retryExecutor.execute(
@@ -108,6 +133,12 @@ public class LhNoticeExternalCollectionService {
             );
             failureRecorder.resolve(targetSource, request.requestDescription());
             int storedRowCount = store(targetSource, request.panId(), response);
+            progressStore.complete(
+                    targetSource,
+                    sourceNoticeKey,
+                    request.requestDescription(),
+                    request.panId()
+            );
             return new ExternalDataCollectionReport(operation(targetSource), storedRowCount, 0, callCounter.count());
         }
         catch (RuntimeException exception) {
@@ -178,6 +209,14 @@ public class LhNoticeExternalCollectionService {
             return source.getSourceKey();
         }
         return "myhomeNoticeSourceId=" + source.getId();
+    }
+
+    private String sourceNoticeKey(MyHomeNoticeSource source) {
+        String pblancId = source.getPblancId();
+        if (pblancId == null || pblancId.isBlank()) {
+            return "source:" + source.getSourceKey();
+        }
+        return pblancId;
     }
 
     private String operation(ExternalDataSource targetSource) {

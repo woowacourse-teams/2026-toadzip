@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -27,6 +28,7 @@ import com.toadzip.backend.ingest.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.dto.MyHomeNoticeSourceItem;
 import com.toadzip.backend.ingest.repository.LhNoticeExternalRepository;
 import com.toadzip.backend.ingest.repository.LhNoticeCollectionExecutionLock;
+import com.toadzip.backend.ingest.repository.LhNoticeCollectionProgressStore;
 import com.toadzip.backend.ingest.repository.LhSourceStore;
 import com.toadzip.backend.ingest.repository.MyHomeNoticeSourceRepository;
 import tools.jackson.databind.json.JsonMapper;
@@ -47,6 +49,9 @@ class LhNoticeExternalCollectionServiceTest {
     private LhSourceStore sourceStore;
 
     @Mock
+    private LhNoticeCollectionProgressStore progressStore;
+
+    @Mock
     private ExternalDataFailureRecorder failureRecorder;
 
     private LhNoticeExternalCollectionService service;
@@ -63,6 +68,7 @@ class LhNoticeExternalCollectionServiceTest {
                 externalRepository,
                 executionLock,
                 sourceStore,
+                progressStore,
                 new LhNoticeSourceMapper(),
                 failureRecorder,
                 new LhSupplyInfoTypeCodeResolver(),
@@ -117,17 +123,86 @@ class LhNoticeExternalCollectionServiceTest {
     }
 
     @Test
-    void 기존_행이_있어도_명시적_수집은_해당_API_snapshot을_교체한다() {
+    void 완료된_동일_요청은_외부_API를_재호출하지_않는다() {
         source(noticeSource());
-        when(externalRepository.fetchSupply(any())).thenReturn(supplyResponse());
-        when(sourceStore.replaceSupplies(eq("100"), any())).thenReturn(1);
+        when(progressStore.isCompleted(
+                eq(ExternalDataSource.LH_NOTICE_SUPPLY),
+                any()
+        )).thenReturn(true);
 
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_NOTICE_SUPPLY);
 
-        verify(externalRepository).fetchSupply(any());
-        verify(sourceStore).replaceSupplies(eq("100"), any());
-        assertThat(result.storedRowCount()).isOne();
+        verify(externalRepository, never()).fetchSupply(any());
+        verify(sourceStore, never()).replaceSupplies(any(), any());
+        assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isZero();
+        assertThat(result.externalApiCallCount()).isZero();
+    }
+
+    @Test
+    void 실패한_요청은_다음_실행에서_다시_호출한다() {
+        source(noticeSource());
+        when(externalRepository.fetchDetail(any()))
+                .thenThrow(new IllegalStateException("일시적 실패"))
+                .thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("100"), any())).thenReturn(1);
+
+        ExternalDataCollectionReport failed = service.collect(ExternalDataSource.LH_NOTICE_DETAIL);
+        ExternalDataCollectionReport retried = service.collect(ExternalDataSource.LH_NOTICE_DETAIL);
+
+        verify(externalRepository, org.mockito.Mockito.times(2)).fetchDetail(any());
+        verify(progressStore).complete(
+                eq(ExternalDataSource.LH_NOTICE_DETAIL),
+                eq("100"),
+                any(),
+                eq("100")
+        );
+        assertThat(failed.failedRequestCount()).isOne();
+        assertThat(retried.storedRowCount()).isOne();
+    }
+
+    @Test
+    void 기존_적재_행은_첫_증분_실행에서_호출하지_않고_체크포인트만_생성한다() {
+        source(noticeSource());
+        when(progressStore.hasStoredRows(ExternalDataSource.LH_NOTICE_DETAIL, "100")).thenReturn(true);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_NOTICE_DETAIL);
+
+        verify(externalRepository, never()).fetchDetail(any());
+        verify(progressStore).complete(
+                eq(ExternalDataSource.LH_NOTICE_DETAIL),
+                eq("100"),
+                any(),
+                eq("100")
+        );
+        assertThat(result.externalApiCallCount()).isZero();
+    }
+
+    @Test
+    void 수집_이력이_있는_panId의_조회_조건이_바뀌면_다시_호출한다() {
+        source(noticeSource());
+        when(progressStore.hasStoredRows(ExternalDataSource.LH_NOTICE_DETAIL, "100")).thenReturn(true);
+        when(progressStore.hasCollectionHistory(ExternalDataSource.LH_NOTICE_DETAIL, "100")).thenReturn(true);
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("100"), any())).thenReturn(1);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_NOTICE_DETAIL);
+
+        verify(externalRepository).fetchDetail(any());
+        assertThat(result.externalApiCallCount()).isOne();
+    }
+
+    @Test
+    void 한_실행에서는_동일한_LH_요청을_한_번만_호출한다() {
+        MyHomeNoticeSource first = noticeSource("notice-100");
+        MyHomeNoticeSource second = noticeSource("notice-101");
+        when(myHomeNoticeRepository.findAll()).thenReturn(List.of(first, second));
+        when(externalRepository.fetchSupply(any())).thenThrow(new IllegalStateException("일시적 실패"));
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_NOTICE_SUPPLY);
+
+        verify(externalRepository, times(1)).fetchSupply(any());
+        assertThat(result.failedRequestCount()).isOne();
     }
 
     @Test
@@ -163,7 +238,12 @@ class LhNoticeExternalCollectionServiceTest {
     }
 
     private MyHomeNoticeSource noticeSource() {
+        return noticeSource("100");
+    }
+
+    private MyHomeNoticeSource noticeSource(String pblancId) {
         return MyHomeNoticeSource.from(0, item(
+                pblancId,
                 "행복주택",
                 "https://apply.lh.or.kr/panDetail?panId=100"
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"
@@ -171,12 +251,16 @@ class LhNoticeExternalCollectionServiceTest {
     }
 
     private MyHomeNoticeSource invalidNoticeSource() {
-        return MyHomeNoticeSource.from(0, item(null, null));
+        return MyHomeNoticeSource.from(0, item("100", null, null));
     }
 
     private MyHomeNoticeSourceItem item(String supplyType, String url) {
+        return item("100", supplyType, url);
+    }
+
+    private MyHomeNoticeSourceItem item(String pblancId, String supplyType, String url) {
         return new MyHomeNoticeSourceItem(
-                "100", 1, null, "공고", null, null, supplyType, null, null, null,
+                pblancId, 1, null, "공고", null, null, supplyType, null, null, null,
                 null, null, null, url, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null
         );
