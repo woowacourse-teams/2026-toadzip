@@ -1,4 +1,4 @@
-package com.toadzip.backend.announcement.domain;
+package com.toadzip.backend.notice.domain;
 
 import static jakarta.persistence.FetchType.LAZY;
 import static lombok.AccessLevel.PROTECTED;
@@ -11,62 +11,71 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "announcement_attachments")
+@Table(name = "notice_schedules")
 @NoArgsConstructor(access = PROTECTED)
-public class AnnouncementAttachment {
+public class NoticeSchedule {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = LAZY, optional = false)
-    @JoinColumn(name = "announcement_id", nullable = false)
-    private Announcement announcement;
+    @JoinColumn(name = "notice_id", nullable = false)
+    private Notice notice;
 
     @Column(nullable = false)
-    private String fileName;
+    private String scheduleType;
 
     @Column(nullable = false)
-    private String fileType;
+    private String name;
 
     @Column(nullable = false)
-    private String fileUrl;
+    private LocalDateTime startAt;
+
+    @Column(nullable = false)
+    private LocalDateTime endAt;
 
     @Column(nullable = false)
     private int displayOrder;
 
-    private AnnouncementAttachment(
-            Announcement announcement,
-            String fileName,
-            String fileType,
-            String fileUrl,
+    private NoticeSchedule(
+            Notice notice,
+            String scheduleType,
+            String name,
+            LocalDateTime startAt,
+            LocalDateTime endAt,
             int displayOrder
     ) {
-        validateRequired(announcement, "공고");
-        validateNotBlank(fileName, "파일명");
-        validateNotBlank(fileType, "파일종류");
-        validateNotBlank(fileUrl, "파일 URL");
+        validateRequired(notice, "공고");
+        validateNotBlank(scheduleType, "일정유형");
+        validateNotBlank(name, "일정명");
+        validateRequired(startAt, "시작일시");
+        validateRequired(endAt, "종료일시");
+        validatePeriod(startAt, endAt);
         validateNonNegative(displayOrder, "표시순서");
-        this.announcement = announcement;
-        this.fileName = fileName;
-        this.fileType = fileType;
-        this.fileUrl = fileUrl;
+        this.notice = notice;
+        this.scheduleType = scheduleType;
+        this.name = name;
+        this.startAt = startAt;
+        this.endAt = endAt;
         this.displayOrder = displayOrder;
     }
 
-    public static AnnouncementAttachment create(
-            Announcement announcement,
-            String fileName,
-            String fileType,
-            String fileUrl,
+    public static NoticeSchedule create(
+            Notice notice,
+            String scheduleType,
+            String name,
+            LocalDateTime startAt,
+            LocalDateTime endAt,
             int displayOrder
     ) {
-        return new AnnouncementAttachment(announcement, fileName, fileType, fileUrl, displayOrder);
+        return new NoticeSchedule(notice, scheduleType, name, startAt, endAt, displayOrder);
     }
 
     private void validateRequired(Object value, String fieldName) {
@@ -84,6 +93,12 @@ public class AnnouncementAttachment {
     private void validateNonNegative(int value, String fieldName) {
         if (value < 0) {
             throw new IllegalArgumentException(fieldName + "은 음수일 수 없다.");
+        }
+    }
+
+    private void validatePeriod(LocalDateTime startAt, LocalDateTime endAt) {
+        if (endAt.isBefore(startAt)) {
+            throw new IllegalArgumentException("일정 종료일시는 시작일시보다 빠를 수 없다.");
         }
     }
 }

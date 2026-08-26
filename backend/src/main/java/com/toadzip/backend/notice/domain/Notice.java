@@ -1,4 +1,4 @@
-package com.toadzip.backend.announcement.domain;
+package com.toadzip.backend.notice.domain;
 
 import static jakarta.persistence.FetchType.LAZY;
 import static lombok.AccessLevel.PROTECTED;
@@ -20,22 +20,22 @@ import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "announcements")
+@Table(name = "notices")
 @NoArgsConstructor(access = PROTECTED)
-public class Announcement {
+public class Notice {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false)
-    private String sourceAnnouncementIdentifier;
+    private String sourceNoticeIdentifier;
 
-    private String previousSourceAnnouncementIdentifier;
+    private String previousSourceNoticeIdentifier;
 
     @OneToOne(fetch = LAZY)
-    @JoinColumn(name = "previous_announcement_id", unique = true)
-    private Announcement previousAnnouncement;
+    @JoinColumn(name = "previous_notice_id", unique = true)
+    private Notice previousNotice;
 
     @Column(nullable = false)
     private String name;
@@ -85,10 +85,10 @@ public class Announcement {
     })
     private ReceptionPlace receptionPlace;
 
-    private Announcement(
-            String sourceAnnouncementIdentifier,
-            String previousSourceAnnouncementIdentifier,
-            Announcement previousAnnouncement,
+    private Notice(
+            String sourceNoticeIdentifier,
+            String previousSourceNoticeIdentifier,
+            Notice previousNotice,
             String name,
             String status,
             String supplyType,
@@ -103,7 +103,7 @@ public class Announcement {
             long viewCount,
             ReceptionPlace receptionPlace
     ) {
-        validateNotBlank(sourceAnnouncementIdentifier, "원천 공고 식별자");
+        validateNotBlank(sourceNoticeIdentifier, "원천 공고 식별자");
         validateNotBlank(name, "공고명");
         validateNotBlank(status, "공고 상태");
         validateNotBlank(supplyType, "공급유형");
@@ -117,9 +117,9 @@ public class Announcement {
         validateNotBlank(originalUrl, "원문 URL");
         validateNonNegative(viewCount, "조회수");
         validateRequired(receptionPlace, "접수처");
-        this.sourceAnnouncementIdentifier = sourceAnnouncementIdentifier;
-        this.previousSourceAnnouncementIdentifier = previousSourceAnnouncementIdentifier;
-        this.previousAnnouncement = previousAnnouncement;
+        this.sourceNoticeIdentifier = sourceNoticeIdentifier;
+        this.previousSourceNoticeIdentifier = previousSourceNoticeIdentifier;
+        this.previousNotice = previousNotice;
         this.name = name;
         this.status = status;
         this.supplyType = supplyType;
@@ -135,10 +135,10 @@ public class Announcement {
         this.receptionPlace = receptionPlace;
     }
 
-    public static Announcement create(
-            String sourceAnnouncementIdentifier,
-            String previousSourceAnnouncementIdentifier,
-            Announcement previousAnnouncement,
+    public static Notice create(
+            String sourceNoticeIdentifier,
+            String previousSourceNoticeIdentifier,
+            Notice previousNotice,
             String name,
             String status,
             String supplyType,
@@ -153,10 +153,10 @@ public class Announcement {
             long viewCount,
             ReceptionPlace receptionPlace
     ) {
-        return new Announcement(
-                sourceAnnouncementIdentifier,
-                previousSourceAnnouncementIdentifier,
-                previousAnnouncement,
+        return new Notice(
+                sourceNoticeIdentifier,
+                previousSourceNoticeIdentifier,
+                previousNotice,
                 name,
                 status,
                 supplyType,

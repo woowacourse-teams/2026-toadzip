@@ -3,10 +3,10 @@ package com.toadzip.backend.interest.domain;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.toadzip.backend.announcement.domain.Announcement;
-import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.notice.domain.Notice;
+import com.toadzip.backend.notice.domain.ReceptionPlace;
 import com.toadzip.backend.user.domain.User;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -20,21 +20,21 @@ class InterestValidationTest {
     @Test
     void 관심공고의_유저와_공고와_등록일시는_필수다() {
         User user = createUser();
-        Announcement announcement = createAnnouncement();
+        Notice notice = createNotice();
         LocalDateTime createdAt = LocalDateTime.of(2026, 8, 19, 12, 30);
 
         assertAll(
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> FavoriteAnnouncement.create(null, announcement, createdAt)
+                        () -> FavoriteNotice.create(null, notice, createdAt)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> FavoriteAnnouncement.create(user, null, createdAt)
+                        () -> FavoriteNotice.create(user, null, createdAt)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> FavoriteAnnouncement.create(user, announcement, null)
+                        () -> FavoriteNotice.create(user, notice, null)
                 )
         );
     }
@@ -99,9 +99,9 @@ class InterestValidationTest {
         return User.create("login-id", LocalDateTime.of(2026, 8, 19, 12, 0));
     }
 
-    private Announcement createAnnouncement() {
-        return Announcement.create(
-                "source-announcement-id",
+    private Notice createNotice() {
+        return Notice.create(
+                "source-notice-id",
                 null,
                 null,
                 "행복주택 모집공고",
@@ -113,7 +113,7 @@ class InterestValidationTest {
                 LocalDate.of(2026, 8, 10),
                 LocalDate.of(2026, 8, 14),
                 LocalDate.of(2026, 9, 1),
-                "https://example.com/announcements/1",
+                "https://example.com/notices/1",
                 null,
                 0L,
                 ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null)

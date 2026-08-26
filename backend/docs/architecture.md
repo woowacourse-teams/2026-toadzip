@@ -13,7 +13,7 @@ com.toadzip.backend
 │   ├── repository
 │   ├── domain
 │   └── dto
-├── announcement
+├── notice
 ├── eligibility
 ├── interest
 └── global

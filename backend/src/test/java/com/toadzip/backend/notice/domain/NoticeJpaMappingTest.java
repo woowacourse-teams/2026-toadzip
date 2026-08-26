@@ -1,4 +1,4 @@
-package com.toadzip.backend.announcement.domain;
+package com.toadzip.backend.notice.domain;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -13,9 +13,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class AnnouncementJpaMappingTest {
+class NoticeJpaMappingTest {
 
-    private static final String DOMAIN_PACKAGE = "com.toadzip.backend.announcement.domain.";
+    private static final String DOMAIN_PACKAGE = "com.toadzip.backend.notice.domain.";
 
     @Autowired
     private EntityManagerFactory entityManagerFactory;
@@ -23,12 +23,12 @@ class AnnouncementJpaMappingTest {
     @Test
     void 공고_도메인을_JPA_관리_타입으로_등록한다() {
         assertEntityAttributes(
-                "Announcement",
+                "Notice",
                 Set.of(
                         "id",
-                        "sourceAnnouncementIdentifier",
-                        "previousSourceAnnouncementIdentifier",
-                        "previousAnnouncement",
+                        "sourceNoticeIdentifier",
+                        "previousSourceNoticeIdentifier",
+                        "previousNotice",
                         "name",
                         "status",
                         "supplyType",
@@ -48,7 +48,7 @@ class AnnouncementJpaMappingTest {
                 "SupplyRow",
                 Set.of(
                         "id",
-                        "announcement",
+                        "notice",
                         "housingComplex",
                         "housingType",
                         "sourceSupplyRowIdentifier",
@@ -79,12 +79,12 @@ class AnnouncementJpaMappingTest {
                 )
         );
         assertEntityAttributes(
-                "AnnouncementSchedule",
-                Set.of("id", "announcement", "scheduleType", "name", "startAt", "endAt", "displayOrder")
+                "NoticeSchedule",
+                Set.of("id", "notice", "scheduleType", "name", "startAt", "endAt", "displayOrder")
         );
         assertEntityAttributes(
-                "AnnouncementAttachment",
-                Set.of("id", "announcement", "fileName", "fileType", "fileUrl", "displayOrder")
+                "NoticeAttachment",
+                Set.of("id", "notice", "fileName", "fileType", "fileUrl", "displayOrder")
         );
         assertEmbeddableAttributes(
                 "ReceptionPlace",

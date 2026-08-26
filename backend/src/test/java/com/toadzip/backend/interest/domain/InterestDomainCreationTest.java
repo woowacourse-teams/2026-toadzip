@@ -3,10 +3,10 @@ package com.toadzip.backend.interest.domain;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.toadzip.backend.announcement.domain.Announcement;
-import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.notice.domain.Notice;
+import com.toadzip.backend.notice.domain.ReceptionPlace;
 import com.toadzip.backend.user.domain.User;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
@@ -19,20 +19,20 @@ class InterestDomainCreationTest {
     @Test
     void 관심공고를_생성한다() {
         User user = createUser();
-        Announcement announcement = createAnnouncement();
+        Notice notice = createNotice();
         LocalDateTime createdAt = LocalDateTime.of(2026, 8, 19, 12, 30);
         Method createMethod = findCreateMethod(
-                FavoriteAnnouncement.class,
+                FavoriteNotice.class,
                 User.class,
-                Announcement.class,
+                Notice.class,
                 LocalDateTime.class
         );
 
-        FavoriteAnnouncement favoriteAnnouncement = invoke(createMethod, user, announcement, createdAt);
+        FavoriteNotice favoriteNotice = invoke(createMethod, user, notice, createdAt);
 
-        assertEquals(user, favoriteAnnouncement.getUser());
-        assertEquals(announcement, favoriteAnnouncement.getAnnouncement());
-        assertEquals(createdAt, favoriteAnnouncement.getCreatedAt());
+        assertEquals(user, favoriteNotice.getUser());
+        assertEquals(notice, favoriteNotice.getNotice());
+        assertEquals(createdAt, favoriteNotice.getCreatedAt());
     }
 
     @Test
@@ -89,9 +89,9 @@ class InterestDomainCreationTest {
         return User.create("login-id", LocalDateTime.of(2026, 8, 19, 12, 0));
     }
 
-    private Announcement createAnnouncement() {
-        return Announcement.create(
-                "source-announcement-id",
+    private Notice createNotice() {
+        return Notice.create(
+                "source-notice-id",
                 null,
                 null,
                 "행복주택 모집공고",
@@ -103,7 +103,7 @@ class InterestDomainCreationTest {
                 LocalDate.of(2026, 8, 10),
                 LocalDate.of(2026, 8, 14),
                 LocalDate.of(2026, 9, 1),
-                "https://example.com/announcements/1",
+                "https://example.com/notices/1",
                 null,
                 0L,
                 ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null)

@@ -3,7 +3,7 @@ package com.toadzip.backend.interest.domain;
 import static jakarta.persistence.FetchType.LAZY;
 import static lombok.AccessLevel.PROTECTED;
 
-import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.notice.domain.Notice;
 import com.toadzip.backend.user.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -19,9 +19,9 @@ import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "favorite_announcements")
+@Table(name = "favorite_notices")
 @NoArgsConstructor(access = PROTECTED)
-public class FavoriteAnnouncement {
+public class FavoriteNotice {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -32,23 +32,23 @@ public class FavoriteAnnouncement {
     private User user;
 
     @ManyToOne(fetch = LAZY, optional = false)
-    @JoinColumn(name = "announcement_id", nullable = false)
-    private Announcement announcement;
+    @JoinColumn(name = "notice_id", nullable = false)
+    private Notice notice;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
-    private FavoriteAnnouncement(User user, Announcement announcement, LocalDateTime createdAt) {
+    private FavoriteNotice(User user, Notice notice, LocalDateTime createdAt) {
         validateRequired(user, "유저");
-        validateRequired(announcement, "공고");
+        validateRequired(notice, "공고");
         validateRequired(createdAt, "등록일시");
         this.user = user;
-        this.announcement = announcement;
+        this.notice = notice;
         this.createdAt = createdAt;
     }
 
-    public static FavoriteAnnouncement create(User user, Announcement announcement, LocalDateTime createdAt) {
-        return new FavoriteAnnouncement(user, announcement, createdAt);
+    public static FavoriteNotice create(User user, Notice notice, LocalDateTime createdAt) {
+        return new FavoriteNotice(user, notice, createdAt);
     }
 
     private void validateRequired(Object value, String fieldName) {

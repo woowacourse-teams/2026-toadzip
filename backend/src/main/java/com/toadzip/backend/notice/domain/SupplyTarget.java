@@ -1,4 +1,4 @@
-package com.toadzip.backend.announcement.domain;
+package com.toadzip.backend.notice.domain;
 
 import static jakarta.persistence.FetchType.LAZY;
 import static lombok.AccessLevel.PROTECTED;

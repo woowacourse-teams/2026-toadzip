@@ -1,4 +1,4 @@
-package com.toadzip.backend.announcement.domain;
+package com.toadzip.backend.notice.domain;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -21,7 +21,7 @@ class SupplyValidationTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> createSupplyRow(
-                        createAnnouncement(),
+                        createNotice(),
                         fields,
                         1,
                         YearMonth.of(2027, 3),
@@ -33,7 +33,7 @@ class SupplyValidationTest {
 
     @Test
     void 공급행의_공고와_입주예정연월과_공급구분은_필수다() {
-        Announcement announcement = createAnnouncement();
+        Notice notice = createNotice();
         String[] fields = validSupplyRowStringFields();
         YearMonth expectedMoveInMonth = YearMonth.of(2027, 3);
 
@@ -44,30 +44,30 @@ class SupplyValidationTest {
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createSupplyRow(announcement, fields, 1, null, SupplyCategory.NEW_SUPPLY, 20)
+                        () -> createSupplyRow(notice, fields, 1, null, SupplyCategory.NEW_SUPPLY, 20)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createSupplyRow(announcement, fields, 1, expectedMoveInMonth, null, 20)
+                        () -> createSupplyRow(notice, fields, 1, expectedMoveInMonth, null, 20)
                 )
         );
     }
 
     @Test
     void 공급행의_표시순서와_전체_공급세대수는_음수일_수_없다() {
-        Announcement announcement = createAnnouncement();
+        Notice notice = createNotice();
         String[] fields = validSupplyRowStringFields();
         YearMonth expectedMoveInMonth = YearMonth.of(2027, 3);
 
         assertAll(
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createSupplyRow(announcement, fields, -1, expectedMoveInMonth,
+                        () -> createSupplyRow(notice, fields, -1, expectedMoveInMonth,
                                 SupplyCategory.NEW_SUPPLY, 20)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createSupplyRow(announcement, fields, 1, expectedMoveInMonth,
+                        () -> createSupplyRow(notice, fields, 1, expectedMoveInMonth,
                                 SupplyCategory.NEW_SUPPLY, -1)
                 )
         );
@@ -153,7 +153,7 @@ class SupplyValidationTest {
 
     private SupplyRow createSupplyRow() {
         return createSupplyRow(
-                createAnnouncement(),
+                createNotice(),
                 validSupplyRowStringFields(),
                 1,
                 YearMonth.of(2027, 3),
@@ -163,7 +163,7 @@ class SupplyValidationTest {
     }
 
     private SupplyRow createSupplyRow(
-            Announcement announcement,
+            Notice notice,
             String[] fields,
             int displayOrder,
             YearMonth expectedMoveInMonth,
@@ -171,7 +171,7 @@ class SupplyValidationTest {
             int totalSupplyHouseholdCount
     ) {
         return SupplyRow.create(
-                announcement,
+                notice,
                 null,
                 null,
                 fields[0],
@@ -210,9 +210,9 @@ class SupplyValidationTest {
         );
     }
 
-    private Announcement createAnnouncement() {
-        return Announcement.create(
-                "source-announcement-id",
+    private Notice createNotice() {
+        return Notice.create(
+                "source-notice-id",
                 null,
                 null,
                 "행복주택 모집공고",
@@ -224,7 +224,7 @@ class SupplyValidationTest {
                 LocalDate.of(2026, 8, 10),
                 LocalDate.of(2026, 8, 14),
                 LocalDate.of(2026, 9, 1),
-                "https://example.com/announcements/1",
+                "https://example.com/notices/1",
                 null,
                 0L,
                 ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", "https://apply.lh.or.kr")

@@ -19,7 +19,7 @@
 ## 핵심 기능
 
 - `housing`: 주택 위치와 기본 정보
-- `announcement`: 공고, 일정, 원문과 주택 연결
+- `notice`: 공고, 일정, 원문과 주택 연결
 - `eligibility`: 공급 유형과 자격 판단 보조
 - `interest`: 관심 조건 저장과 알림 요청
 

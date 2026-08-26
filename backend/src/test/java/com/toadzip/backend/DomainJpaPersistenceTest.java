@@ -6,19 +6,19 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.toadzip.backend.announcement.domain.Announcement;
-import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
-import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
-import com.toadzip.backend.announcement.domain.ReceptionPlace;
-import com.toadzip.backend.announcement.domain.SupplyCategory;
-import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
-import com.toadzip.backend.interest.domain.FavoriteAnnouncement;
 import com.toadzip.backend.interest.domain.FavoriteHousingComplex;
+import com.toadzip.backend.interest.domain.FavoriteNotice;
 import com.toadzip.backend.interest.domain.FavoriteRegion;
+import com.toadzip.backend.notice.domain.Notice;
+import com.toadzip.backend.notice.domain.NoticeAttachment;
+import com.toadzip.backend.notice.domain.NoticeSchedule;
+import com.toadzip.backend.notice.domain.ReceptionPlace;
+import com.toadzip.backend.notice.domain.SupplyCategory;
+import com.toadzip.backend.notice.domain.SupplyRow;
+import com.toadzip.backend.notice.domain.SupplyTarget;
 import com.toadzip.backend.user.domain.User;
 import com.toadzip.backend.user.domain.UserEligibilityInfo;
 import com.toadzip.backend.user.domain.UserPlace;
@@ -48,7 +48,7 @@ class DomainJpaPersistenceTest {
                         """
                         SELECT is_nullable
                         FROM information_schema.columns
-                        WHERE LOWER(table_name) = 'announcements'
+                        WHERE LOWER(table_name) = 'notices'
                           AND LOWER(column_name) = 'reception_contact'
                         """
                 )
@@ -61,19 +61,19 @@ class DomainJpaPersistenceTest {
     @CsvSource({
             "user_eligibility_infos, user_id, NO",
             "user_places, user_id, NO",
-            "favorite_announcements, user_id, NO",
-            "favorite_announcements, announcement_id, NO",
+            "favorite_notices, user_id, NO",
+            "favorite_notices, notice_id, NO",
             "favorite_housing_complexes, user_id, NO",
             "favorite_housing_complexes, housing_complex_id, NO",
             "favorite_regions, user_id, NO",
             "housing_types, housing_complex_id, NO",
-            "announcements, previous_announcement_id, YES",
-            "supply_rows, announcement_id, NO",
+            "notices, previous_notice_id, YES",
+            "supply_rows, notice_id, NO",
             "supply_rows, housing_complex_id, YES",
             "supply_rows, housing_type_id, YES",
             "supply_targets, supply_row_id, NO",
-            "announcement_schedules, announcement_id, NO",
-            "announcement_attachments, announcement_id, NO"
+            "notice_schedules, notice_id, NO",
+            "notice_attachments, notice_id, NO"
     })
     void 연관관계_외래키의_null_허용_여부를_보장한다(
             String tableName,
@@ -97,37 +97,31 @@ class DomainJpaPersistenceTest {
 
     @Test
     void 하나의_이전_공고는_하나의_후속_공고만_참조한다() {
-        Announcement originalAnnouncement = createAnnouncement(
-                null,
-                null,
-                null,
-                "source-announcement-id-1",
-                "원공고"
-        );
-        entityManager.persist(originalAnnouncement);
+        Notice originalNotice = createNotice(null, null, null, "source-notice-id-1", "원공고");
+        entityManager.persist(originalNotice);
 
-        Announcement firstCorrectedAnnouncement = createAnnouncement(
-                originalAnnouncement,
-                "source-announcement-id-1",
+        Notice firstCorrectedNotice = createNotice(
+                originalNotice,
+                "source-notice-id-1",
                 "접수일 변경",
-                "source-announcement-id-2",
+                "source-notice-id-2",
                 "정정공고"
         );
-        entityManager.persist(firstCorrectedAnnouncement);
+        entityManager.persist(firstCorrectedNotice);
         entityManager.flush();
 
-        Announcement secondCorrectedAnnouncement = createAnnouncement(
-                originalAnnouncement,
-                "source-announcement-id-1",
+        Notice secondCorrectedNotice = createNotice(
+                originalNotice,
+                "source-notice-id-1",
                 "발표일 변경",
-                "source-announcement-id-3",
+                "source-notice-id-3",
                 "정정공고"
         );
 
         assertThrows(
                 PersistenceException.class,
                 () -> {
-                    entityManager.persist(secondCorrectedAnnouncement);
+                    entityManager.persist(secondCorrectedNotice);
                     entityManager.flush();
                 }
         );
@@ -149,27 +143,21 @@ class DomainJpaPersistenceTest {
         HousingType housingType = createHousingType(housingComplex);
         entityManager.persist(housingType);
 
-        Announcement originalAnnouncement = createAnnouncement(
-                null,
-                null,
-                null,
-                "source-announcement-id-1",
-                "원공고"
-        );
-        entityManager.persist(originalAnnouncement);
+        Notice originalNotice = createNotice(null, null, null, "source-notice-id-1", "원공고");
+        entityManager.persist(originalNotice);
 
-        Announcement correctedAnnouncement = createAnnouncement(
-                originalAnnouncement,
-                "source-announcement-id-1",
+        Notice correctedNotice = createNotice(
+                originalNotice,
+                "source-notice-id-1",
                 "접수일 변경",
-                "source-announcement-id-2",
+                "source-notice-id-2",
                 "정정공고"
         );
-        entityManager.persist(correctedAnnouncement);
+        entityManager.persist(correctedNotice);
 
-        SupplyRow matchedSupplyRow = createSupplyRow(correctedAnnouncement, housingComplex, housingType, 1, null);
+        SupplyRow matchedSupplyRow = createSupplyRow(correctedNotice, housingComplex, housingType, 1, null);
         SupplyRow unmatchedSupplyRow = createSupplyRow(
-                correctedAnnouncement,
+                correctedNotice,
                 null,
                 null,
                 2,
@@ -179,15 +167,15 @@ class DomainJpaPersistenceTest {
         entityManager.persist(unmatchedSupplyRow);
 
         SupplyTarget supplyTarget = createSupplyTarget(matchedSupplyRow);
-        AnnouncementSchedule announcementSchedule = createAnnouncementSchedule(correctedAnnouncement);
-        AnnouncementAttachment announcementAttachment = createAnnouncementAttachment(correctedAnnouncement);
+        NoticeSchedule noticeSchedule = createNoticeSchedule(correctedNotice);
+        NoticeAttachment noticeAttachment = createNoticeAttachment(correctedNotice);
         entityManager.persist(supplyTarget);
-        entityManager.persist(announcementSchedule);
-        entityManager.persist(announcementAttachment);
+        entityManager.persist(noticeSchedule);
+        entityManager.persist(noticeAttachment);
 
-        FavoriteAnnouncement favoriteAnnouncement = FavoriteAnnouncement.create(
+        FavoriteNotice favoriteNotice = FavoriteNotice.create(
                 user,
-                correctedAnnouncement,
+                correctedNotice,
                 LocalDateTime.of(2026, 8, 19, 13, 0)
         );
         FavoriteHousingComplex favoriteHousingComplex = FavoriteHousingComplex.create(
@@ -201,7 +189,7 @@ class DomainJpaPersistenceTest {
                 "11140",
                 LocalDateTime.of(2026, 8, 19, 13, 3)
         );
-        entityManager.persist(favoriteAnnouncement);
+        entityManager.persist(favoriteNotice);
         entityManager.persist(favoriteHousingComplex);
         entityManager.persist(favoriteRegion);
 
@@ -210,13 +198,13 @@ class DomainJpaPersistenceTest {
         Long userId = user.getId();
         Long userPlaceId = userPlace.getId();
         Long housingTypeId = housingType.getId();
-        Long correctedAnnouncementId = correctedAnnouncement.getId();
+        Long correctedNoticeId = correctedNotice.getId();
         Long matchedSupplyRowId = matchedSupplyRow.getId();
         Long unmatchedSupplyRowId = unmatchedSupplyRow.getId();
         Long supplyTargetId = supplyTarget.getId();
-        Long announcementScheduleId = announcementSchedule.getId();
-        Long announcementAttachmentId = announcementAttachment.getId();
-        Long favoriteAnnouncementId = favoriteAnnouncement.getId();
+        Long noticeScheduleId = noticeSchedule.getId();
+        Long noticeAttachmentId = noticeAttachment.getId();
+        Long favoriteNoticeId = favoriteNotice.getId();
         Long favoriteHousingComplexId = favoriteHousingComplex.getId();
         Long favoriteRegionId = favoriteRegion.getId();
 
@@ -225,22 +213,13 @@ class DomainJpaPersistenceTest {
         UserEligibilityInfo foundUserEligibilityInfo = entityManager.find(UserEligibilityInfo.class, userId);
         UserPlace foundUserPlace = entityManager.find(UserPlace.class, userPlaceId);
         HousingType foundHousingType = entityManager.find(HousingType.class, housingTypeId);
-        Announcement foundCorrectedAnnouncement = entityManager.find(Announcement.class, correctedAnnouncementId);
+        Notice foundCorrectedNotice = entityManager.find(Notice.class, correctedNoticeId);
         SupplyRow foundMatchedSupplyRow = entityManager.find(SupplyRow.class, matchedSupplyRowId);
         SupplyRow foundUnmatchedSupplyRow = entityManager.find(SupplyRow.class, unmatchedSupplyRowId);
         SupplyTarget foundSupplyTarget = entityManager.find(SupplyTarget.class, supplyTargetId);
-        AnnouncementSchedule foundAnnouncementSchedule = entityManager.find(
-                AnnouncementSchedule.class,
-                announcementScheduleId
-        );
-        AnnouncementAttachment foundAnnouncementAttachment = entityManager.find(
-                AnnouncementAttachment.class,
-                announcementAttachmentId
-        );
-        FavoriteAnnouncement foundFavoriteAnnouncement = entityManager.find(
-                FavoriteAnnouncement.class,
-                favoriteAnnouncementId
-        );
+        NoticeSchedule foundNoticeSchedule = entityManager.find(NoticeSchedule.class, noticeScheduleId);
+        NoticeAttachment foundNoticeAttachment = entityManager.find(NoticeAttachment.class, noticeAttachmentId);
+        FavoriteNotice foundFavoriteNotice = entityManager.find(FavoriteNotice.class, favoriteNoticeId);
         FavoriteHousingComplex foundFavoriteHousingComplex = entityManager.find(
                 FavoriteHousingComplex.class,
                 favoriteHousingComplexId
@@ -266,28 +245,22 @@ class DomainJpaPersistenceTest {
                                 foundHousingType.getHousingComplex().getAddress().getLongitude()
                         )
                 ),
-                () -> assertEquals(
-                        originalAnnouncement.getId(),
-                        foundCorrectedAnnouncement.getPreviousAnnouncement().getId()
-                ),
-                () -> assertEquals(
-                        "source-announcement-id-1",
-                        foundCorrectedAnnouncement.getPreviousSourceAnnouncementIdentifier()
-                ),
+                () -> assertEquals(originalNotice.getId(), foundCorrectedNotice.getPreviousNotice().getId()),
+                () -> assertEquals("source-notice-id-1", foundCorrectedNotice.getPreviousSourceNoticeIdentifier()),
                 () -> assertEquals(housingComplex.getId(), foundMatchedSupplyRow.getHousingComplex().getId()),
                 () -> assertEquals(housingTypeId, foundMatchedSupplyRow.getHousingType().getId()),
                 () -> assertEquals(YearMonth.of(2027, 3), foundMatchedSupplyRow.getExpectedMoveInMonth()),
                 () -> assertNull(foundUnmatchedSupplyRow.getHousingComplex()),
                 () -> assertNull(foundUnmatchedSupplyRow.getHousingType()),
                 () -> assertEquals(matchedSupplyRowId, foundSupplyTarget.getSupplyRow().getId()),
-                () -> assertEquals(correctedAnnouncementId, foundAnnouncementSchedule.getAnnouncement().getId()),
-                () -> assertEquals(correctedAnnouncementId, foundAnnouncementAttachment.getAnnouncement().getId()),
-                () -> assertEquals(correctedAnnouncementId, foundFavoriteAnnouncement.getAnnouncement().getId()),
+                () -> assertEquals(correctedNoticeId, foundNoticeSchedule.getNotice().getId()),
+                () -> assertEquals(correctedNoticeId, foundNoticeAttachment.getNotice().getId()),
+                () -> assertEquals(correctedNoticeId, foundFavoriteNotice.getNotice().getId()),
                 () -> assertEquals(housingComplex.getId(), foundFavoriteHousingComplex.getHousingComplex().getId()),
                 () -> assertEquals(userId, foundFavoriteRegion.getUser().getId()),
                 () -> assertEquals("11", foundFavoriteRegion.getProvinceCode()),
                 () -> assertEquals("11140", foundFavoriteRegion.getCityCountyDistrictCode()),
-                () -> assertNotNull(foundCorrectedAnnouncement.getReceptionPlace())
+                () -> assertNotNull(foundCorrectedNotice.getReceptionPlace())
         );
     }
 
@@ -378,17 +351,17 @@ class DomainJpaPersistenceTest {
         );
     }
 
-    private Announcement createAnnouncement(
-            Announcement previousAnnouncement,
-            String previousSourceAnnouncementIdentifier,
+    private Notice createNotice(
+            Notice previousNotice,
+            String previousSourceNoticeIdentifier,
             String correctionCancellationReason,
-            String sourceAnnouncementIdentifier,
+            String sourceNoticeIdentifier,
             String status
     ) {
-        return Announcement.create(
-                sourceAnnouncementIdentifier,
-                previousSourceAnnouncementIdentifier,
-                previousAnnouncement,
+        return Notice.create(
+                sourceNoticeIdentifier,
+                previousSourceNoticeIdentifier,
+                previousNotice,
                 "행복주택 모집공고",
                 status,
                 "행복주택",
@@ -398,7 +371,7 @@ class DomainJpaPersistenceTest {
                 LocalDate.of(2026, 8, 10),
                 LocalDate.of(2026, 8, 14),
                 LocalDate.of(2026, 9, 1),
-                "https://example.com/announcements/" + sourceAnnouncementIdentifier,
+                "https://example.com/notices/" + sourceNoticeIdentifier,
                 correctionCancellationReason,
                 100L,
                 ReceptionPlace.create(
@@ -412,14 +385,14 @@ class DomainJpaPersistenceTest {
     }
 
     private SupplyRow createSupplyRow(
-            Announcement announcement,
+            Notice notice,
             HousingComplex housingComplex,
             HousingType housingType,
             int displayOrder,
             String matchingFailureReason
     ) {
         return SupplyRow.create(
-                announcement,
+                notice,
                 housingComplex,
                 housingType,
                 "source-supply-row-id-" + displayOrder,
@@ -449,9 +422,9 @@ class DomainJpaPersistenceTest {
         );
     }
 
-    private AnnouncementSchedule createAnnouncementSchedule(Announcement announcement) {
-        return AnnouncementSchedule.create(
-                announcement,
+    private NoticeSchedule createNoticeSchedule(Notice notice) {
+        return NoticeSchedule.create(
+                notice,
                 "접수",
                 "인터넷 접수",
                 LocalDateTime.of(2026, 8, 10, 10, 0),
@@ -460,12 +433,12 @@ class DomainJpaPersistenceTest {
         );
     }
 
-    private AnnouncementAttachment createAnnouncementAttachment(Announcement announcement) {
-        return AnnouncementAttachment.create(
-                announcement,
+    private NoticeAttachment createNoticeAttachment(Notice notice) {
+        return NoticeAttachment.create(
+                notice,
                 "모집공고문.pdf",
                 "공고문",
-                "https://example.com/files/announcement.pdf",
+                "https://example.com/files/notice.pdf",
                 1
         );
     }
