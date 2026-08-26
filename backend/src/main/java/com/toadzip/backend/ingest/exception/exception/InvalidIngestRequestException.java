@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.dto;
+package com.toadzip.backend.ingest.exception.exception;
 
 public class InvalidIngestRequestException extends RuntimeException {
 

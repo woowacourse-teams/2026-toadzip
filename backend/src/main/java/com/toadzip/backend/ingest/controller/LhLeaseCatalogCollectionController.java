@@ -23,8 +23,12 @@ public class LhLeaseCatalogCollectionController {
 
     @PostMapping
     public ExternalDataCollectionReport collect(
-            @RequestParam(defaultValue = "9999") @Min(1) @Max(10_000) int pageSize,
-            @RequestParam(defaultValue = "1") @Min(1) @Max(10_000) int maxPages
+            @RequestParam(defaultValue = "9999")
+            @Min(value = 1, message = "1 이상이어야 합니다.")
+            @Max(value = 10_000, message = "10000 이하여야 합니다.") int pageSize,
+            @RequestParam(defaultValue = "1")
+            @Min(value = 1, message = "1 이상이어야 합니다.")
+            @Max(value = 10_000, message = "10000 이하여야 합니다.") int maxPages
     ) {
         return collectionService.collect(new LhLeaseCatalogCollectionRequest(pageSize, maxPages));
     }

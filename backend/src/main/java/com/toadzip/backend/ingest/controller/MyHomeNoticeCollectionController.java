@@ -23,8 +23,12 @@ public class MyHomeNoticeCollectionController {
 
     @PostMapping
     public ExternalDataCollectionReport collect(
-            @RequestParam(defaultValue = "10") @Min(1) @Max(1_000) int pageSize,
-            @RequestParam(defaultValue = "1000") @Min(1) @Max(1_000) int maxPages
+            @RequestParam(defaultValue = "10")
+            @Min(value = 1, message = "1 이상이어야 합니다.")
+            @Max(value = 1_000, message = "1000 이하여야 합니다.") int pageSize,
+            @RequestParam(defaultValue = "1000")
+            @Min(value = 1, message = "1 이상이어야 합니다.")
+            @Max(value = 1_000, message = "1000 이하여야 합니다.") int maxPages
     ) {
         return collectionService.collect(new MyHomeNoticeCollectionRequest(pageSize, maxPages));
     }

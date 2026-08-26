@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.service;
+package com.toadzip.backend.ingest.exception.exception;
 
 public class IngestAlreadyRunningException extends RuntimeException {
 

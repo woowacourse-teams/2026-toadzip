@@ -12,7 +12,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.toadzip.backend.ingest.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.service.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.service.LhNoticeDetailCollectionService;
 import com.toadzip.backend.ingest.service.LhNoticeSupplyCollectionService;
 

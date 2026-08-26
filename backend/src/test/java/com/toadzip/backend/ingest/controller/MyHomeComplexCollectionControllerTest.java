@@ -15,9 +15,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.mockito.ArgumentCaptor;
 
-import com.toadzip.backend.ingest.dto.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.dto.MyHomeComplexCollectionRequest;
+import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.service.MyHomeComplexCollectionService;
 
 @WebMvcTest(MyHomeComplexCollectionController.class)
@@ -74,13 +74,17 @@ class MyHomeComplexCollectionControllerTest {
     }
 
     @Test
-    void 허용_범위를_벗어난_숫자_파라미터는_공통_오류_응답과_함께_400을_반환한다() throws Exception {
+    void 허용_범위를_벗어난_모든_숫자_파라미터를_검증_오류로_반환한다() throws Exception {
         mockMvc.perform(post("/api/admin/ingest/myhome/complexes")
-                        .param("pageSize", "0"))
+                        .param("pageSize", "0")
+                        .param("maxPages", "1001"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INGEST_REQUEST"))
-                .andExpect(jsonPath("$.message").value("요청 파라미터가 허용 범위를 벗어났습니다."))
-                .andExpect(jsonPath("$.traceId").isNotEmpty());
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("요청값이 올바르지 않습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(jsonPath("$.errors.length()").value(2))
+                .andExpect(jsonPath("$.errors[?(@.field == 'pageSize')].reason").value("1 이상이어야 합니다."))
+                .andExpect(jsonPath("$.errors[?(@.field == 'maxPages')].reason").value("1000 이하여야 합니다."));
 
         verify(collectionService, never()).collect(any());
     }
@@ -90,10 +94,11 @@ class MyHomeComplexCollectionControllerTest {
         mockMvc.perform(post("/api/admin/ingest/myhome/complexes")
                         .param("pageSize", "invalid"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_INGEST_REQUEST"))
-                .andExpect(jsonPath("$.message")
-                        .value("요청 파라미터 형식이 올바르지 않습니다: pageSize"))
-                .andExpect(jsonPath("$.traceId").isNotEmpty());
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("요청값이 올바르지 않습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].field").value("pageSize"))
+                .andExpect(jsonPath("$.errors[0].reason").value("형식이 올바르지 않습니다."));
 
         verify(collectionService, never()).collect(any());
     }

@@ -25,8 +25,12 @@ public class MyHomeComplexCollectionController {
     public MyHomeComplexCollectionReport collect(
             @RequestParam(required = false) String provinceCode,
             @RequestParam(required = false) String districtCode,
-            @RequestParam(defaultValue = "500") @Min(1) @Max(1_000) int pageSize,
-            @RequestParam(defaultValue = "1000") @Min(1) @Max(1_000) int maxPages
+            @RequestParam(defaultValue = "500")
+            @Min(value = 1, message = "1 이상이어야 합니다.")
+            @Max(value = 1_000, message = "1000 이하여야 합니다.") int pageSize,
+            @RequestParam(defaultValue = "1000")
+            @Min(value = 1, message = "1 이상이어야 합니다.")
+            @Max(value = 1_000, message = "1000 이하여야 합니다.") int maxPages
     ) {
         return collectionService.collect(new MyHomeComplexCollectionRequest(
                 provinceCode,

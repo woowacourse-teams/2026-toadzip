@@ -8,8 +8,8 @@ import java.util.List;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Repository;
 
-import com.toadzip.backend.ingest.dto.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.dto.MyHomeRegion;
+import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 
 @Repository
 public class MyHomeRegionCatalog {

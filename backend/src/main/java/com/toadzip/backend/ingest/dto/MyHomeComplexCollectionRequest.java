@@ -1,5 +1,7 @@
 package com.toadzip.backend.ingest.dto;
 
+import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+
 public record MyHomeComplexCollectionRequest(
         String provinceCode,
         String districtCode,

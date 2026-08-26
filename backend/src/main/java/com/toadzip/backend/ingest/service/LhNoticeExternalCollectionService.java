@@ -17,6 +17,7 @@ import com.toadzip.backend.ingest.domain.MyHomeNoticeSource;
 import com.toadzip.backend.ingest.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.dto.LhNoticeRequest;
+import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.repository.LhNoticeExternalRepository;
 import com.toadzip.backend.ingest.repository.LhNoticeCollectionExecutionLock;
 import com.toadzip.backend.ingest.repository.LhNoticeCollectionProgressStore;
