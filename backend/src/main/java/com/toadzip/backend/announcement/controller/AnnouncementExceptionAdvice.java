@@ -4,6 +4,8 @@ import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementCursorException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestException;
 import com.toadzip.backend.global.exception.ErrorResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import java.util.UUID;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -23,28 +25,39 @@ public class AnnouncementExceptionAdvice {
     private static final String ANNOUNCEMENT_NOT_FOUND_MESSAGE = "모집 공고를 찾을 수 없습니다.";
 
     @ExceptionHandler(InvalidAnnouncementRequestException.class)
-    public ResponseEntity<ErrorResponse> handleInvalidRequest() {
-        return badRequest(INVALID_REQUEST, INVALID_REQUEST_MESSAGE);
+    public ResponseEntity<ErrorResponse> handleInvalidRequest(HttpServletRequest request) {
+        return badRequest(INVALID_REQUEST, INVALID_REQUEST_MESSAGE, request);
     }
 
     @ExceptionHandler(InvalidAnnouncementCursorException.class)
-    public ResponseEntity<ErrorResponse> handleInvalidCursor() {
-        return badRequest(INVALID_CURSOR, INVALID_CURSOR_MESSAGE);
+    public ResponseEntity<ErrorResponse> handleInvalidCursor(HttpServletRequest request) {
+        return badRequest(INVALID_CURSOR, INVALID_CURSOR_MESSAGE, request);
     }
 
     @ExceptionHandler(AnnouncementNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleAnnouncementNotFound() {
+    public ResponseEntity<ErrorResponse> handleAnnouncementNotFound(HttpServletRequest request) {
         ErrorResponse response = new ErrorResponse(
                 ANNOUNCEMENT_NOT_FOUND,
                 ANNOUNCEMENT_NOT_FOUND_MESSAGE,
-                null,
-                null
+                traceIdOf(request)
         );
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
     }
 
-    private ResponseEntity<ErrorResponse> badRequest(String code, String message) {
+    private ResponseEntity<ErrorResponse> badRequest(
+            String code,
+            String message,
+            HttpServletRequest request
+    ) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(new ErrorResponse(code, message, null, null));
+                .body(new ErrorResponse(code, message, traceIdOf(request)));
+    }
+
+    private String traceIdOf(HttpServletRequest request) {
+        String requestId = request.getRequestId();
+        if (requestId == null || requestId.isBlank()) {
+            return UUID.randomUUID().toString();
+        }
+        return requestId;
     }
 }

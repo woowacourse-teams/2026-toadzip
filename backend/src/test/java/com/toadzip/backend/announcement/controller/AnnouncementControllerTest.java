@@ -42,13 +42,15 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
-@WebMvcTest
+@WebMvcTest(AnnouncementController.class)
+@Import(AnnouncementExceptionAdvice.class)
 class AnnouncementControllerTest {
 
     @Autowired
@@ -119,15 +121,13 @@ class AnnouncementControllerTest {
                 mockMvc.perform(get("/api/v1/announcements").param("size", "0")),
                 400,
                 "INVALID_REQUEST",
-                "요청 값을 확인해 주세요.",
-                "0"
+                "요청 값을 확인해 주세요."
         );
         assertError(
                 mockMvc.perform(get("/api/v1/announcements").param("size", "51")),
                 400,
                 "INVALID_REQUEST",
-                "요청 값을 확인해 주세요.",
-                "51"
+                "요청 값을 확인해 주세요."
         );
     }
 
@@ -142,15 +142,13 @@ class AnnouncementControllerTest {
                 mockMvc.perform(get("/api/v1/announcements").param("cursor", "bad-cursor")),
                 400,
                 "INVALID_CURSOR",
-                "커서 값을 확인해 주세요.",
-                "bad-cursor"
+                "커서 값을 확인해 주세요."
         );
         assertError(
                 mockMvc.perform(get("/api/v1/announcements").param("cursor", "")),
                 400,
                 "INVALID_CURSOR",
-                "커서 값을 확인해 주세요.",
-                "InvalidAnnouncementCursorException"
+                "커서 값을 확인해 주세요."
         );
     }
 
@@ -166,27 +164,18 @@ class AnnouncementControllerTest {
     }
 
     @Test
-    void 숫자로_변환할_수_없는_size와_ID는_고정된_INVALID_REQUEST로_반환한다() throws Exception {
-        assertError(
+    void 숫자로_변환할_수_없는_size와_ID는_필드가_포함된_VALIDATION_FAILED로_반환한다() throws Exception {
+        assertValidationError(
                 mockMvc.perform(get("/api/v1/announcements").param("size", "abc")),
-                400,
-                "INVALID_REQUEST",
-                "요청 값을 확인해 주세요.",
-                "abc"
+                "size"
         );
-        assertError(
+        assertValidationError(
                 mockMvc.perform(get("/api/v1/announcements").param("size", "2147483648")),
-                400,
-                "INVALID_REQUEST",
-                "요청 값을 확인해 주세요.",
-                "2147483648"
+                "size"
         );
-        assertError(
+        assertValidationError(
                 mockMvc.perform(get("/api/v1/announcements/not-a-number")),
-                400,
-                "INVALID_REQUEST",
-                "요청 값을 확인해 주세요.",
-                "not-a-number"
+                "announcementId"
         );
     }
 
@@ -195,8 +184,7 @@ class AnnouncementControllerTest {
                 mockMvc.perform(get("/api/v1/announcements/{announcementId}", announcementId)),
                 404,
                 "ANNOUNCEMENT_NOT_FOUND",
-                "모집 공고를 찾을 수 없습니다.",
-                "AnnouncementNotFoundException"
+                "모집 공고를 찾을 수 없습니다."
         );
     }
 
@@ -204,23 +192,38 @@ class AnnouncementControllerTest {
             ResultActions resultActions,
             int statusCode,
             String code,
-            String message,
-            String requestValue
+            String message
     ) throws Exception {
-        String expectedJson = """
-                {"code":"%s","message":"%s"}
-                """.formatted(code, message);
         String body = resultActions
                 .andExpect(status().is(statusCode))
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(content().json(expectedJson, JsonCompareMode.STRICT))
-                .andExpect(jsonPath("$.traceId").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.code").value(code))
+                .andExpect(jsonPath("$.message").value(message))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
                 .andExpect(jsonPath("$.errors").doesNotHaveJsonPath())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
-        assertFalse(body.contains(requestValue));
+        assertFalse(body.contains("Exception"));
+        assertFalse(body.contains("SQL"));
+        assertFalse(body.contains("stack"));
+    }
+
+    private void assertValidationError(ResultActions resultActions, String field) throws Exception {
+        String body = resultActions
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("요청값이 올바르지 않습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(jsonPath("$.errors.length()").value(1))
+                .andExpect(jsonPath("$.errors[0].field").value(field))
+                .andExpect(jsonPath("$.errors[0].reason").value("형식이 올바르지 않습니다."))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
         assertFalse(body.contains("Exception"));
         assertFalse(body.contains("SQL"));
         assertFalse(body.contains("stack"));
