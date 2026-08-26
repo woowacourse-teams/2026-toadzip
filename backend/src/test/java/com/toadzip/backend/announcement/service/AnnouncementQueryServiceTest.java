@@ -297,7 +297,7 @@ class AnnouncementQueryServiceTest {
     }
 
     @Test
-    void 상세는_리비전과_자식_순서와_매칭_요약과_공급조건을_조합한다() {
+    void 상세는_정정사유와_자식_순서와_매칭_요약과_공급조건을_조합한다() {
         Announcement previous = persist(createAnnouncement(
                 "previous",
                 null,
@@ -389,7 +389,6 @@ class AnnouncementQueryServiceTest {
         AnnouncementDetailResponse response = announcementQueryService.getAnnouncement(detail.getId());
 
         assertEquals(detail.getId(), response.announcementId());
-        assertEquals(previous.getId(), response.previousAnnouncementId());
         assertEquals(AnnouncementPublicationType.CORRECTION, response.publicationType());
         assertEquals("접수 일정 정정", response.correctionOrCancellationReason());
         assertEquals(ApplicationStatus.APPLYING, response.applicationStatus());

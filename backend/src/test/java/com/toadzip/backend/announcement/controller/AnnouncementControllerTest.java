@@ -100,6 +100,7 @@ class AnnouncementControllerTest {
                 .andExpect(content().json(expectedDetailJson(), JsonCompareMode.STRICT))
                 .andExpect(jsonPath("$.data.competition.actualRate").isNumber())
                 .andExpect(jsonPath("$.data.receptionPlaces.length()").value(1))
+                .andExpect(jsonPath("$.data.previousAnnouncementId").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$..sourceAnnouncementIdentifier").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$..previousAnnouncement").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$..announcement").doesNotHaveJsonPath())
@@ -302,7 +303,6 @@ class AnnouncementControllerTest {
         );
         return new AnnouncementDetailResponse(
                 42L,
-                null,
                 AnnouncementPublicationType.ORIGINAL,
                 null,
                 ApplicationStatus.APPLYING,
@@ -382,7 +382,6 @@ class AnnouncementControllerTest {
                 {
                   "data": {
                     "announcementId": 42,
-                    "previousAnnouncementId": null,
                     "publicationType": "ORIGINAL",
                     "correctionOrCancellationReason": null,
                     "applicationStatus": "APPLYING",

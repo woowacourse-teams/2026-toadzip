@@ -175,7 +175,7 @@ class AnnouncementApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.announcementId").value(correction.getId()))
-                .andExpect(jsonPath("$.data.previousAnnouncementId").value(original.getId()))
+                .andExpect(jsonPath("$.data.previousAnnouncementId").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.data.correctionOrCancellationReason").value("접수 일정 정정"))
                 .andExpect(jsonPath("$.data.receptionPlaces.length()").value(1))
                 .andExpect(jsonPath("$.data.schedules[0].type").value("APPLICATION"))

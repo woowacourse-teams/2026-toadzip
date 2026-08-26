@@ -246,7 +246,6 @@ public class AnnouncementQueryService {
     ) {
         return new AnnouncementDetailResponse(
                 announcement.getId(),
-                previousAnnouncementId(announcement),
                 announcement.getStatus(),
                 announcement.getCorrectionCancellationReason(),
                 applicationStatus(announcement, today),
@@ -274,13 +273,6 @@ public class AnnouncementQueryService {
                         announcement.getPredictedCompetitionRate()
                 )
         );
-    }
-
-    private Long previousAnnouncementId(Announcement announcement) {
-        if (announcement.getPreviousAnnouncement() == null) {
-            return null;
-        }
-        return announcement.getPreviousAnnouncement().getId();
     }
 
     private ApplicationStatus applicationStatus(Announcement announcement, LocalDate today) {

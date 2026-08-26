@@ -9,7 +9,6 @@ import java.util.List;
 
 public record AnnouncementDetailResponse(
         long announcementId,
-        Long previousAnnouncementId,
         AnnouncementPublicationType publicationType,
         String correctionOrCancellationReason,
         ApplicationStatus applicationStatus,
