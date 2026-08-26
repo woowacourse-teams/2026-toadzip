@@ -30,19 +30,47 @@ npm ci
 
 ## 개발 서버 실행
 
-`frontend/.env.example`을 참고해 `frontend/.env`를 생성한다.
+`frontend/.env.example`을 참고해 Git이 추적하지 않는 `frontend/.env.local`을
+생성한다.
 
 ```shell
-Copy-Item .env.example .env
+cp .env.example .env.local
 ```
 
-로컬 기본값은 `http://localhost:8080`이다.
+NAVER Cloud Platform에서 로컬 Web 서비스 URL로 `http://localhost`를
+등록하고 브라우저용 Client ID를 입력한다.
+
+```dotenv
+VITE_API_BASE_URL=http://localhost:8080
+VITE_NAVER_MAPS_CLIENT_ID=발급받은_Client_ID
+```
+
+`VITE_*` 환경 변수는 빌드 결과와 브라우저에 공개된다. Client Secret이나 서버
+비밀값을 입력하지 않는다. 로컬에서 API 주소를 생략하면
+`http://localhost:8080`을 사용하고, 운영 빌드에서는 API 주소가 없으면 빌드가
+실패한다. Client ID가 없으면 빌드는 정상적으로 완료되지만 실행 화면에는 지도
+사용 불가 안내가 표시된다.
 
 ```shell
 npm run dev
 ```
 
 명령어가 출력하는 로컬 주소를 브라우저에서 열어 애플리케이션을 확인한다.
+
+## 환경별 지도 설정
+
+모든 환경은 `VITE_NAVER_MAPS_CLIENT_ID`라는 같은 변수명을 사용하고 환경별 빌드
+시점에 값을 주입한다.
+
+| 환경 | Client ID와 Web 서비스 URL |
+| --- | --- |
+| 로컬 | 비운영 Client ID, `http://localhost` |
+| 개발 | 비운영 Client ID, 실제 개발 프론트엔드 주소 |
+| 운영 | 별도 운영 Client ID, 실제 운영 프론트엔드 주소 |
+
+Vite는 환경 변수 값을 정적 빌드 결과에 포함하므로 개발과 운영은 각각 올바른
+값으로 빌드한다. 서버 실행 중 환경 변수만 바꾸거나 런타임 설정 파일을 별도로
+사용하지 않는다.
 
 ## 코드 검사
 
