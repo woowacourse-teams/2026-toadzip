@@ -1,0 +1,49 @@
+package com.toadzip.backend.global.config;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.jayway.jsonpath.JsonPath;
+import java.net.http.HttpResponse;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.test.context.ActiveProfiles;
+
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "spring.main.web-application-type=servlet"
+)
+@ActiveProfiles({"local", "test"})
+class OpenApiDocumentationIntegrationTest {
+
+    @LocalServerPort
+    private int port;
+
+    @Test
+    void 로컬_프로필은_헬스_체크_API가_포함된_OpenAPI_문서를_제공한다() throws Exception {
+        HttpResponse<String> response = TestHttpClient.get(port, "/v3/api-docs");
+
+        assertEquals(200, response.statusCode());
+        assertTrue(response.headers().firstValue("content-type").orElseThrow().startsWith("application/json"));
+        assertNotNull(JsonPath.read(response.body(), "$.paths['/api/health'].get"));
+    }
+
+    @Test
+    void 로컬_프로필은_Swagger_UI를_제공한다() throws Exception {
+        HttpResponse<String> response = TestHttpClient.get(port, "/swagger-ui/index.html");
+
+        assertEquals(200, response.statusCode());
+        assertTrue(response.headers().firstValue("content-type").orElseThrow().startsWith("text/html"));
+    }
+
+    @Test
+    void OpenAPI_문서는_서비스_기본_정보를_제공한다() throws Exception {
+        HttpResponse<String> response = TestHttpClient.get(port, "/v3/api-docs");
+
+        assertEquals(200, response.statusCode());
+        assertEquals("두꺼비집 API", JsonPath.read(response.body(), "$.info.title"));
+        assertEquals("0.0.1", JsonPath.read(response.body(), "$.info.version"));
+    }
+}
