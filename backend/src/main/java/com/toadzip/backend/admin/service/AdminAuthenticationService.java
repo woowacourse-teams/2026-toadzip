@@ -5,9 +5,10 @@ import com.toadzip.backend.admin.repository.AdminAccountRepository;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,7 +48,7 @@ public class AdminAuthenticationService {
             return authenticationManager.authenticate(
                     UsernamePasswordAuthenticationToken.unauthenticated(loginIdentifier, password)
             );
-        } catch (AuthenticationException exception) {
+        } catch (BadCredentialsException | UsernameNotFoundException exception) {
             throw new InvalidAdminCredentialsException();
         }
     }
