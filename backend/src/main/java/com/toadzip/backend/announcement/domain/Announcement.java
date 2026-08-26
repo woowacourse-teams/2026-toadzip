@@ -17,6 +17,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
@@ -28,7 +29,10 @@ import org.hibernate.annotations.JdbcType;
 
 @Getter
 @Entity
-@Table(name = "announcements")
+@Table(
+        name = "announcements",
+        indexes = @Index(name = "idx_announcements_posted_date_id", columnList = "posted_date,id")
+)
 @NoArgsConstructor(access = PROTECTED)
 public class Announcement {
 
