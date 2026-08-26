@@ -32,6 +32,7 @@ make_valid_fixture() {
     '[CONTRIBUTING.md](../../CONTRIBUTING.md)' \
     > "$root/backend/docs/README.md"
   for name in architecture layer-boundaries development-cycle api-conventions \
+    exception-handling \
     persistence testing security observability \
     agent-collaboration quality-gates
   do
@@ -126,6 +127,12 @@ make_valid_fixture "$fixture/missing-contributing"
 rm "$fixture/missing-contributing/CONTRIBUTING.md"
 if "$validator" "$fixture/missing-contributing" >/dev/null 2>&1; then
   fail "missing original contribution guide must fail"
+fi
+
+make_valid_fixture "$fixture/missing-exception-handling"
+rm "$fixture/missing-exception-handling/backend/docs/exception-handling.md"
+if "$validator" "$fixture/missing-exception-handling" >/dev/null 2>&1; then
+  fail "missing exception handling convention must fail"
 fi
 
 make_valid_fixture "$fixture/duplicate-code-convention"

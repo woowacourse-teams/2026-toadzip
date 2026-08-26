@@ -20,6 +20,7 @@ backend/docs/architecture.md
 backend/docs/layer-boundaries.md
 backend/docs/development-cycle.md
 backend/docs/api-conventions.md
+backend/docs/exception-handling.md
 backend/docs/persistence.md
 backend/docs/testing.md
 backend/docs/security.md

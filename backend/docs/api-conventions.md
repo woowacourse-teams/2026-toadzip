@@ -27,22 +27,12 @@ HTTP → Request DTO 검증 → Controller → Service → Domain / Repository �
 
 ## 오류 응답
 
-```json
-{
-  "code": "ANNOUNCEMENT_NOT_FOUND",
-  "message": "모집 공고를 찾을 수 없습니다.",
-  "traceId": "공개 가능한 추적 식별자"
-}
-```
-
-- `code`는 클라이언트 계약이고 `message`는 사용자 이해를 돕는다.
-- 내부 예외명, SQL, 스택 트레이스와 비밀을 응답에 포함하지 않는다.
-- 같은 실패는 모든 endpoint에서 같은 상태와 code로 매핑한다.
-- 필드 검증 실패는 어떤 입력이 왜 거부됐는지 안전하게 표현한다.
+오류 응답 구조, 검증 실패, 예외 소유권과 Advice 우선순위는
+[exception-handling.md](exception-handling.md)를 원본으로 따른다.
 
 ## 변경과 호환성
 
 - 기존 필드의 의미·타입 변경과 필수화는 공개 계약 변경이다.
 - 추가 필드는 클라이언트가 모르는 필드를 허용하는지 확인한다.
 - breaking change는 승인과 마이그레이션 경로 없이 배포하지 않는다.
-- 요청·응답·오류 계약은 Controller 테스트로 고정한다.
+- 요청·응답 계약은 Controller 테스트로 고정한다.

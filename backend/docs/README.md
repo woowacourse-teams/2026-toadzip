@@ -20,7 +20,8 @@
 | 구조 변경 | [architecture.md](architecture.md), [layer-boundaries.md](layer-boundaries.md) | 계층 책임과 허용 의존성 |
 | Java·Spring | [CODE_CONVENTION.md](../CODE_CONVENTION.md) | 코드 스타일과 객체 규칙 |
 | Git 작업 | [CONTRIBUTING.md](../../CONTRIBUTING.md) | 이슈, 브랜치, 커밋, PR |
-| HTTP API | [api-conventions.md](api-conventions.md) | 요청, 응답, 오류 계약 |
+| HTTP API | [api-conventions.md](api-conventions.md) | 요청, 응답, 호환성 |
+| 예외 처리 | [exception-handling.md](exception-handling.md) | 예외 소유권, Advice, 오류 계약 |
 | DB 변경 | [persistence.md](persistence.md) | 모델, 쿼리, 트랜잭션 |
 | 테스트 | [testing.md](testing.md) | 테스트 범위와 대역 기준 |
 | 보안 변경 | [security.md](security.md) | 인증, 인가, 개인정보, 비밀 |
