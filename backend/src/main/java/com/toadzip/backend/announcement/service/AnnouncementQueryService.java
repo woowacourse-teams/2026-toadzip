@@ -47,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -61,6 +62,8 @@ public class AnnouncementQueryService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AnnouncementQueryService.class);
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+    private static final Pattern PROVINCE_CODE_PATTERN = Pattern.compile("\\d{2}");
+    private static final Pattern DISTRICT_CODE_PATTERN = Pattern.compile("\\d{5}");
     private static final int MINIMUM_PAGE_SIZE = 1;
     private static final int MAXIMUM_PAGE_SIZE = 50;
 
@@ -486,10 +489,17 @@ public class AnnouncementQueryService {
             LOGGER.warn(
                     "공고 공급 단지의 행정구역 코드를 변환할 수 없습니다. "
                             + "provinceCode={}, cityCountyDistrictCode={}",
-                    provinceCode,
-                    districtCode
+                    regionCodeForLog(provinceCode, PROVINCE_CODE_PATTERN),
+                    regionCodeForLog(districtCode, DISTRICT_CODE_PATTERN)
             );
         }
+    }
+
+    private String regionCodeForLog(String regionCode, Pattern expectedPattern) {
+        if (regionCode != null && expectedPattern.matcher(regionCode).matches()) {
+            return regionCode;
+        }
+        return "[invalid]";
     }
 
     private record ListAggregate(

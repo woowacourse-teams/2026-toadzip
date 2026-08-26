@@ -290,6 +290,47 @@ class AnnouncementQueryServiceTest {
     }
 
     @Test
+    void 잘못된_행정구역_코드는_경고_로그에_원문을_노출하지_않는다(CapturedOutput output) {
+        Announcement announcement = persist(createAnnouncement(
+                "unsafe-region",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 5),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11),
+                null,
+                null,
+                0L
+        ));
+        HousingComplex housingComplex = persist(createComplex(
+                "잘못된 지역 코드 단지",
+                "unsafe-region-complex",
+                "11\nFORGED-PROVINCE",
+                "11140\r\nFORGED-DISTRICT",
+                null
+        ));
+        persist(createSupplyRow(announcement, housingComplex, null, "unsafe-region-row", 0, 1));
+        entityManager.flush();
+
+        AnnouncementListResponse response = announcementQueryService.getAnnouncements(null, 20);
+
+        String logs = output.getAll();
+        assertEquals(List.of(), response.items().getFirst().regionNames());
+        assertEquals(
+                1L,
+                logs.lines()
+                        .filter(line -> line.contains(
+                                "공고 공급 단지의 행정구역 코드를 변환할 수 없습니다."
+                        ))
+                        .count()
+        );
+        assertFalse(response.toString().contains("FORGED"));
+        assertTrue(logs.contains("provinceCode=[invalid], cityCountyDistrictCode=[invalid]"));
+        assertFalse(logs.contains("FORGED"));
+    }
+
+    @Test
     void 잘못된_목록_크기는_저장소_접근_전에_거부한다() {
         AnnouncementRepository announcementRepository = mock(AnnouncementRepository.class);
         AnnouncementQueryService service = new AnnouncementQueryService(
