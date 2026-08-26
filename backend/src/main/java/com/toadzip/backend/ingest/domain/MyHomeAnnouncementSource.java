@@ -12,8 +12,6 @@ import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import com.toadzip.backend.ingest.dto.MyHomeAnnouncementSourceItem;
-
 @Getter
 @Entity
 @Table(name = "myhome_announcement_source")
@@ -74,51 +72,51 @@ public class MyHomeAnnouncementSource {
     private Long surlus;
     private Long mtRntchrg;
 
-    private MyHomeAnnouncementSource(int sourceOrder, MyHomeAnnouncementSourceItem item) {
+    private MyHomeAnnouncementSource(int sourceOrder, MyHomeAnnouncementSourceData data) {
         this.sourceOrder = sourceOrder;
-        sourceKey = sourceKeyOf(item);
-        replaceWith(item);
+        sourceKey = sourceKeyOf(data);
+        replaceWith(data);
     }
 
-    public static MyHomeAnnouncementSource from(int sourceOrder, MyHomeAnnouncementSourceItem item) {
-        return new MyHomeAnnouncementSource(sourceOrder, item);
+    public static MyHomeAnnouncementSource from(int sourceOrder, MyHomeAnnouncementSourceData data) {
+        return new MyHomeAnnouncementSource(sourceOrder, data);
     }
 
-    public static String sourceKeyOf(MyHomeAnnouncementSourceItem item) {
-        return keyPart(item.pblancId()) + keyPart(item.houseSn());
+    public static String sourceKeyOf(MyHomeAnnouncementSourceData data) {
+        return keyPart(data.pblancId()) + keyPart(data.houseSn());
     }
 
-    public void replaceWith(MyHomeAnnouncementSourceItem item) {
-        pblancId = trim(item.pblancId());
-        houseSn = item.houseSn();
-        sttusNm = trim(item.sttusNm());
-        pblancNm = trim(item.pblancNm());
-        suplyInsttNm = trim(item.suplyInsttNm());
-        houseTyNm = trim(item.houseTyNm());
-        suplyTyNm = trim(item.suplyTyNm());
-        beforePblancId = trim(item.beforePblancId());
-        rcritPblancDe = trim(item.rcritPblancDe());
-        przwnerPresnatnDe = trim(item.przwnerPresnatnDe());
-        beginDe = trim(item.beginDe());
-        endDe = trim(item.endDe());
-        refrnc = trim(item.refrnc());
-        url = trim(item.url());
-        pcUrl = trim(item.pcUrl());
-        mobileUrl = trim(item.mobileUrl());
-        hsmpNm = trim(item.hsmpNm());
-        brtcNm = trim(item.brtcNm());
-        signguNm = trim(item.signguNm());
-        fullAdres = trim(item.fullAdres());
-        rnCodeNm = trim(item.rnCodeNm());
-        refrnLegaldongNm = trim(item.refrnLegaldongNm());
-        pnu = trim(item.pnu());
-        heatMthdNm = trim(item.heatMthdNm());
-        totHshldCo = trim(item.totHshldCo());
-        sumSuplyCo = item.sumSuplyCo();
-        rentGtn = item.rentGtn();
-        enty = item.enty();
-        surlus = item.surlus();
-        mtRntchrg = item.mtRntchrg();
+    public void replaceWith(MyHomeAnnouncementSourceData data) {
+        pblancId = trim(data.pblancId());
+        houseSn = data.houseSn();
+        sttusNm = trim(data.sttusNm());
+        pblancNm = trim(data.pblancNm());
+        suplyInsttNm = trim(data.suplyInsttNm());
+        houseTyNm = trim(data.houseTyNm());
+        suplyTyNm = trim(data.suplyTyNm());
+        beforePblancId = trim(data.beforePblancId());
+        rcritPblancDe = trim(data.rcritPblancDe());
+        przwnerPresnatnDe = trim(data.przwnerPresnatnDe());
+        beginDe = trim(data.beginDe());
+        endDe = trim(data.endDe());
+        refrnc = trim(data.refrnc());
+        url = trim(data.url());
+        pcUrl = trim(data.pcUrl());
+        mobileUrl = trim(data.mobileUrl());
+        hsmpNm = trim(data.hsmpNm());
+        brtcNm = trim(data.brtcNm());
+        signguNm = trim(data.signguNm());
+        fullAdres = trim(data.fullAdres());
+        rnCodeNm = trim(data.rnCodeNm());
+        refrnLegaldongNm = trim(data.refrnLegaldongNm());
+        pnu = trim(data.pnu());
+        heatMthdNm = trim(data.heatMthdNm());
+        totHshldCo = trim(data.totHshldCo());
+        sumSuplyCo = data.sumSuplyCo();
+        rentGtn = data.rentGtn();
+        enty = data.enty();
+        surlus = data.surlus();
+        mtRntchrg = data.mtRntchrg();
     }
 
     public void markCollectedAt(Instant collectedAt) {

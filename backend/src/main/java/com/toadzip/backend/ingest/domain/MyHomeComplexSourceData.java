@@ -1,10 +1,8 @@
-package com.toadzip.backend.ingest.dto;
+package com.toadzip.backend.ingest.domain;
 
 import java.math.BigDecimal;
 
-import com.toadzip.backend.ingest.domain.MyHomeComplexSourceData;
-
-public record MyHomeComplexSourceItem(
+public record MyHomeComplexSourceData(
         Long hsmpSn,
         String insttNm,
         String brtcCode,
@@ -29,13 +27,4 @@ public record MyHomeComplexSourceItem(
         Long bassMtRntchrg,
         Long bassCnvrsGtnLmt
 ) {
-
-    public MyHomeComplexSourceData toSourceData() {
-        return new MyHomeComplexSourceData(
-                hsmpSn, insttNm, brtcCode, brtcNm, signguCode, signguNm, hsmpNm, rnAdres, pnu,
-                competDe, hshldCo, suplyTyNm, styleNm, suplyPrvuseAr, suplyCmnuseAr, houseTyNm,
-                heatMthdDetailNm, buldStleNm, elvtrInstlAtNm, parkngCo, bassRentGtn,
-                bassMtRntchrg, bassCnvrsGtnLmt
-        );
-    }
 }

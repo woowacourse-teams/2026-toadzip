@@ -12,8 +12,6 @@ import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import com.toadzip.backend.ingest.dto.LhAnnouncementSupplySourceItem;
-
 @Getter
 @Entity
 @Table(
@@ -39,17 +37,17 @@ public class LhAnnouncementSupplySource {
     private String depositText;
     private String monthlyRentText;
 
-    public LhAnnouncementSupplySource(int sourceOrder, String panId, LhAnnouncementSupplySourceItem item) {
+    public LhAnnouncementSupplySource(int sourceOrder, String panId, LhAnnouncementSupplySourceData data) {
         this.sourceOrder = sourceOrder;
         this.panId = trim(panId);
-        complexLabel = trim(item.complexLabel());
-        typeName = trim(item.typeName());
-        exclusiveArea = trim(item.exclusiveArea());
-        supplyArea = trim(item.supplyArea());
-        totalUnitCount = trim(item.totalUnitCount());
-        suppliedUnitCount = trim(item.suppliedUnitCount());
-        depositText = trim(item.depositText());
-        monthlyRentText = trim(item.monthlyRentText());
+        complexLabel = trim(data.complexLabel());
+        typeName = trim(data.typeName());
+        exclusiveArea = trim(data.exclusiveArea());
+        supplyArea = trim(data.supplyArea());
+        totalUnitCount = trim(data.totalUnitCount());
+        suppliedUnitCount = trim(data.suppliedUnitCount());
+        depositText = trim(data.depositText());
+        monthlyRentText = trim(data.monthlyRentText());
     }
 
     public void markCollectedAt(Instant collectedAt) {

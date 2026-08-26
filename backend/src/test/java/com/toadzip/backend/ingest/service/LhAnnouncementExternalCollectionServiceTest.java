@@ -311,13 +311,13 @@ class LhAnnouncementExternalCollectionServiceTest {
                 "행복주택",
                 "https://apply.lh.or.kr/panDetail?panId=100"
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"
-        ));
+        ).toSourceData());
         ReflectionTestUtils.setField(source, "id", ++nextSourceId);
         return source;
     }
 
     private MyHomeAnnouncementSource invalidAnnouncementSource() {
-        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, item("100", null, null));
+        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, item("100", null, null).toSourceData());
         ReflectionTestUtils.setField(source, "id", ++nextSourceId);
         return source;
     }

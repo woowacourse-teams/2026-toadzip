@@ -43,7 +43,7 @@ public class LhSourceStore {
         List<LhCatalogSource> sources = new ArrayList<>();
         Instant collectedAt = clock.instant();
         for (int sourceOrder = 0; sourceOrder < items.size(); sourceOrder++) {
-            LhCatalogSource source = new LhCatalogSource(sourceOrder, items.get(sourceOrder));
+            LhCatalogSource source = new LhCatalogSource(sourceOrder, items.get(sourceOrder).toSourceData());
             source.markCollectedAt(collectedAt);
             sources.add(source);
         }

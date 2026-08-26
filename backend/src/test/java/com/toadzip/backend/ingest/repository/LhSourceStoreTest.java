@@ -91,7 +91,7 @@ class LhSourceStoreTest {
                         "50",
                         null,
                         null
-                )
+                ).toSourceData()
         );
 
         store.replaceDetails("PAN-1", List.of(detail));

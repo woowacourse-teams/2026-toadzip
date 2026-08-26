@@ -1,8 +1,6 @@
-package com.toadzip.backend.ingest.dto;
+package com.toadzip.backend.ingest.domain;
 
-import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSourceData;
-
-public record MyHomeAnnouncementSourceItem(
+public record MyHomeAnnouncementSourceData(
         String pblancId,
         Integer houseSn,
         String sttusNm,
@@ -34,13 +32,4 @@ public record MyHomeAnnouncementSourceItem(
         Long surlus,
         Long mtRntchrg
 ) {
-
-    public MyHomeAnnouncementSourceData toSourceData() {
-        return new MyHomeAnnouncementSourceData(
-                pblancId, houseSn, sttusNm, pblancNm, suplyInsttNm, houseTyNm, suplyTyNm,
-                beforePblancId, rcritPblancDe, przwnerPresnatnDe, beginDe, endDe, refrnc, url,
-                pcUrl, mobileUrl, hsmpNm, brtcNm, signguNm, fullAdres, rnCodeNm, refrnLegaldongNm,
-                pnu, heatMthdNm, totHshldCo, sumSuplyCo, rentGtn, enty, surlus, mtRntchrg
-        );
-    }
 }

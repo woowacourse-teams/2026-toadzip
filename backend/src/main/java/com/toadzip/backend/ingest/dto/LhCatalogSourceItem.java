@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.dto;
 
+import com.toadzip.backend.ingest.domain.LhCatalogSourceData;
 import tools.jackson.databind.JsonNode;
 
 public record LhCatalogSourceItem(
@@ -23,6 +24,19 @@ public record LhCatalogSourceItem(
                 text(row, "HSH_CNT"),
                 text(row, "LS_GMY"),
                 text(row, "RFE")
+        );
+    }
+
+    public LhCatalogSourceData toSourceData() {
+        return new LhCatalogSourceData(
+                areaName,
+                supplyTypeName,
+                complexLabel,
+                complexTotalUnitCount,
+                exclusiveArea,
+                totalUnitCount,
+                depositText,
+                monthlyRentText
         );
     }
 

@@ -14,8 +14,6 @@ import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import com.toadzip.backend.ingest.dto.MyHomeComplexSourceItem;
-
 @Getter
 @Entity
 @Table(name = "myhome_complex_source")
@@ -60,48 +58,48 @@ public class MyHomeComplexSource {
     private Long bassMtRntchrg;
     private Long bassCnvrsGtnLmt;
 
-    private MyHomeComplexSource(MyHomeComplexSourceItem item) {
-        sourceKey = sourceKeyOf(item);
-        replaceWith(item);
+    private MyHomeComplexSource(MyHomeComplexSourceData data) {
+        sourceKey = sourceKeyOf(data);
+        replaceWith(data);
     }
 
-    public static MyHomeComplexSource from(MyHomeComplexSourceItem item) {
-        return new MyHomeComplexSource(item);
+    public static MyHomeComplexSource from(MyHomeComplexSourceData data) {
+        return new MyHomeComplexSource(data);
     }
 
-    public static String sourceKeyOf(MyHomeComplexSourceItem item) {
-        return keyPart(item.hsmpSn())
-                + keyPart(item.pnu())
-                + keyPart(item.suplyTyNm())
-                + keyPart(item.styleNm())
-                + keyPart(item.suplyPrvuseAr())
-                + keyPart(item.suplyCmnuseAr());
+    public static String sourceKeyOf(MyHomeComplexSourceData data) {
+        return keyPart(data.hsmpSn())
+                + keyPart(data.pnu())
+                + keyPart(data.suplyTyNm())
+                + keyPart(data.styleNm())
+                + keyPart(data.suplyPrvuseAr())
+                + keyPart(data.suplyCmnuseAr());
     }
 
-    public void replaceWith(MyHomeComplexSourceItem item) {
-        hsmpSn = item.hsmpSn();
-        insttNm = trim(item.insttNm());
-        brtcCode = trim(item.brtcCode());
-        brtcNm = trim(item.brtcNm());
-        signguCode = trim(item.signguCode());
-        signguNm = trim(item.signguNm());
-        hsmpNm = trim(item.hsmpNm());
-        rnAdres = trim(item.rnAdres());
-        pnu = trim(item.pnu());
-        competDe = trim(item.competDe());
-        hshldCo = item.hshldCo();
-        suplyTyNm = trim(item.suplyTyNm());
-        styleNm = trim(item.styleNm());
-        suplyPrvuseAr = area(item.suplyPrvuseAr());
-        suplyCmnuseAr = area(item.suplyCmnuseAr());
-        houseTyNm = trim(item.houseTyNm());
-        heatMthdDetailNm = trim(item.heatMthdDetailNm());
-        buldStleNm = trim(item.buldStleNm());
-        elvtrInstlAtNm = trim(item.elvtrInstlAtNm());
-        parkngCo = item.parkngCo();
-        bassRentGtn = item.bassRentGtn();
-        bassMtRntchrg = item.bassMtRntchrg();
-        bassCnvrsGtnLmt = item.bassCnvrsGtnLmt();
+    public void replaceWith(MyHomeComplexSourceData data) {
+        hsmpSn = data.hsmpSn();
+        insttNm = trim(data.insttNm());
+        brtcCode = trim(data.brtcCode());
+        brtcNm = trim(data.brtcNm());
+        signguCode = trim(data.signguCode());
+        signguNm = trim(data.signguNm());
+        hsmpNm = trim(data.hsmpNm());
+        rnAdres = trim(data.rnAdres());
+        pnu = trim(data.pnu());
+        competDe = trim(data.competDe());
+        hshldCo = data.hshldCo();
+        suplyTyNm = trim(data.suplyTyNm());
+        styleNm = trim(data.styleNm());
+        suplyPrvuseAr = area(data.suplyPrvuseAr());
+        suplyCmnuseAr = area(data.suplyCmnuseAr());
+        houseTyNm = trim(data.houseTyNm());
+        heatMthdDetailNm = trim(data.heatMthdDetailNm());
+        buldStleNm = trim(data.buldStleNm());
+        elvtrInstlAtNm = trim(data.elvtrInstlAtNm());
+        parkngCo = data.parkngCo();
+        bassRentGtn = data.bassRentGtn();
+        bassMtRntchrg = data.bassMtRntchrg();
+        bassCnvrsGtnLmt = data.bassCnvrsGtnLmt();
     }
 
     public void markCollectedAt(Instant collectedAt) {

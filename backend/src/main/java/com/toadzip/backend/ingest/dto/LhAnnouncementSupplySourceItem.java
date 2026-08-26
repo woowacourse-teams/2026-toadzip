@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.dto;
 
+import com.toadzip.backend.ingest.domain.LhAnnouncementSupplySourceData;
 import tools.jackson.databind.JsonNode;
 
 public record LhAnnouncementSupplySourceItem(
@@ -23,6 +24,19 @@ public record LhAnnouncementSupplySourceItem(
                 text(row, "NOW_HSH_CNT"),
                 text(row, "LS_GMY"),
                 text(row, "RFE")
+        );
+    }
+
+    public LhAnnouncementSupplySourceData toSourceData() {
+        return new LhAnnouncementSupplySourceData(
+                complexLabel,
+                typeName,
+                exclusiveArea,
+                supplyArea,
+                totalUnitCount,
+                suppliedUnitCount,
+                depositText,
+                monthlyRentText
         );
     }
 

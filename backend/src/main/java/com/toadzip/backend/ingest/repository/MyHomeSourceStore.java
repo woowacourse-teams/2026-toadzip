@@ -43,6 +43,7 @@ public class MyHomeSourceStore {
         Instant collectedAt = clock.instant();
         validateRegion(region, items);
         Set<String> sourceKeys = items.stream()
+                .map(MyHomeComplexSourceItem::toSourceData)
                 .map(MyHomeComplexSource::sourceKeyOf)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         Map<String, MyHomeComplexSource> stored = complexRepository.findAllBySourceKeyIn(sourceKeys)
@@ -50,12 +51,12 @@ public class MyHomeSourceStore {
                 .collect(Collectors.toMap(MyHomeComplexSource::getSourceKey, Function.identity()));
         List<MyHomeComplexSource> sources = new ArrayList<>();
         for (MyHomeComplexSourceItem item : items) {
-            String sourceKey = MyHomeComplexSource.sourceKeyOf(item);
+            String sourceKey = MyHomeComplexSource.sourceKeyOf(item.toSourceData());
             MyHomeComplexSource source = stored.get(sourceKey);
             if (source == null) {
-                source = MyHomeComplexSource.from(item);
+                source = MyHomeComplexSource.from(item.toSourceData());
             }
-            source.replaceWith(item);
+            source.replaceWith(item.toSourceData());
             source.markCollectedAt(collectedAt);
             sources.add(source);
         }
@@ -74,7 +75,7 @@ public class MyHomeSourceStore {
         Instant collectedAt = clock.instant();
         Map<String, MyHomeAnnouncementSourceItem> unique = new LinkedHashMap<>();
         for (MyHomeAnnouncementSourceItem item : items) {
-            unique.put(MyHomeAnnouncementSource.sourceKeyOf(item), item);
+            unique.put(MyHomeAnnouncementSource.sourceKeyOf(item.toSourceData()), item);
         }
         Map<String, MyHomeAnnouncementSource> stored = announcementRepository.findAllBySourceKeyIn(unique.keySet())
                 .stream()
@@ -86,9 +87,9 @@ public class MyHomeSourceStore {
             MyHomeAnnouncementSourceItem item = entry.getValue();
             MyHomeAnnouncementSource source = stored.get(sourceKey);
             if (source == null) {
-                source = MyHomeAnnouncementSource.from(sourceOrder, item);
+                source = MyHomeAnnouncementSource.from(sourceOrder, item.toSourceData());
             }
-            source.replaceWith(item);
+            source.replaceWith(item.toSourceData());
             source.markCollectedAt(collectedAt);
             sources.add(source);
             sourceOrder++;

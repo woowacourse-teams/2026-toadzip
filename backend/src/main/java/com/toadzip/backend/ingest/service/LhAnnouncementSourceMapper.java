@@ -45,7 +45,7 @@ public class LhAnnouncementSourceMapper {
             sources.add(new LhAnnouncementSupplySource(
                     sourceOrder,
                     panId,
-                    LhAnnouncementSupplySourceItem.from(rows.get(sourceOrder))
+                    LhAnnouncementSupplySourceItem.from(rows.get(sourceOrder)).toSourceData()
             ));
         }
         return sources;
