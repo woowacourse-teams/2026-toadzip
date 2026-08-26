@@ -1,5 +1,6 @@
 package com.toadzip.backend.housing.controller;
 
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -55,6 +56,20 @@ class HousingComplexControllerTest {
                         .param("northEastLng", "127.100000"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].keys()", containsInAnyOrder(
+                        "complexId",
+                        "name",
+                        "latitude",
+                        "longitude",
+                        "rentalType",
+                        "agency",
+                        "exclusiveAreaMin",
+                        "exclusiveAreaMax",
+                        "depositMin",
+                        "depositMax",
+                        "monthlyRentMin",
+                        "monthlyRentMax"
+                )))
                 .andExpect(jsonPath("$.data.items[0].complexId").value(17))
                 .andExpect(jsonPath("$.data.items[0].name").value("행복 단지"))
                 .andExpect(jsonPath("$.data.items[0].latitude").value(37.500000))

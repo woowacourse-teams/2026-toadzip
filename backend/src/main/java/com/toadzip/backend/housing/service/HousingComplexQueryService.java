@@ -3,6 +3,7 @@ package com.toadzip.backend.housing.service;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.toadzip.backend.housing.domain.MapBounds;
 import com.toadzip.backend.housing.dto.response.HousingComplexMapResponse;
 import com.toadzip.backend.housing.repository.ComplexSummaryQueryRepository;
 

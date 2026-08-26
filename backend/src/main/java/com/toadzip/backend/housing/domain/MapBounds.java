@@ -1,4 +1,4 @@
-package com.toadzip.backend.housing.service;
+package com.toadzip.backend.housing.domain;
 
 import java.math.BigDecimal;
 

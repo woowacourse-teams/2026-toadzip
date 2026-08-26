@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.housing.domain.MapBounds;
 import com.toadzip.backend.housing.dto.response.HousingComplexMapItemResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexMapResponse;
 import com.toadzip.backend.housing.repository.ComplexSummaryQueryRepository;
@@ -193,6 +194,20 @@ class HousingComplexMapQueryTest {
                 () -> assertNull(item.monthlyRentMin()),
                 () -> assertNull(item.monthlyRentMax())
         );
+    }
+
+    @Test
+    void repository가_반환한_단지_ID_순서를_그대로_보존한다() {
+        when(repository.findAllInBounds(BOUNDS)).thenReturn(List.of(
+                row(9L, "먼저 반환된 단지", "HAPPY_HOUSING", "LH", null, null, null, null),
+                row(3L, "나중 반환된 단지", "NATIONAL_RENTAL", "SH", null, null, null, null)
+        ));
+
+        List<Long> complexIds = service.getComplexesForMap(BOUNDS).items().stream()
+                .map(HousingComplexMapItemResponse::complexId)
+                .toList();
+
+        assertEquals(List.of(9L, 3L), complexIds);
     }
 
     @ParameterizedTest

@@ -6,7 +6,7 @@ import java.util.List;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
-import com.toadzip.backend.housing.service.MapBounds;
+import com.toadzip.backend.housing.domain.MapBounds;
 
 @Repository
 public class ComplexSummaryQueryRepository {

@@ -7,9 +7,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.toadzip.backend.global.response.ApiResponse;
+import com.toadzip.backend.housing.domain.MapBounds;
 import com.toadzip.backend.housing.dto.response.HousingComplexMapResponse;
 import com.toadzip.backend.housing.service.HousingComplexQueryService;
-import com.toadzip.backend.housing.service.MapBounds;
 
 @RestController
 @RequestMapping("/api/v1/complexes")

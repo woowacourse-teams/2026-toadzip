@@ -12,7 +12,7 @@ import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
-import com.toadzip.backend.housing.service.MapBounds;
+import com.toadzip.backend.housing.domain.MapBounds;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -45,9 +45,10 @@ class ComplexSummaryQueryRepositoryTest {
     private ComplexSummaryQueryRepository repository;
 
     @Test
-    void 경계_안과_경계선의_단지만_ID_오름차순으로_조회한다() {
+    void 경계_안과_남서_북동_경계선의_단지만_ID_오름차순으로_조회한다() {
         HousingComplex boundaryComplex = persistComplex("경계 단지", "37.400000", "126.800000");
         HousingComplex insideComplex = persistComplex("영역 안 단지", "37.500000", "126.900000");
+        HousingComplex northEastBoundaryComplex = persistComplex("북동 경계 단지", "37.600000", "127.100000");
         persistComplex("영역 밖 단지", "37.700000", "126.900000");
         entityManager.flush();
 
@@ -55,14 +56,17 @@ class ComplexSummaryQueryRepositoryTest {
                 .map(ComplexSummaryRow::complexId)
                 .toList();
 
-        assertEquals(List.of(boundaryComplex.getId(), insideComplex.getId()), complexIds);
+        assertEquals(
+                List.of(boundaryComplex.getId(), insideComplex.getId(), northEastBoundaryComplex.getId()),
+                complexIds
+        );
     }
 
     @Test
-    void 대표_공고의_공급대상에서만_가격_범위를_집계한다() {
+    void 대표_공고의_모든_공급행에서만_가격_범위를_집계한다() {
         HousingComplex complex = persistComplex("가격 집계 단지", "37.500000", "126.900000");
         HousingType housingType = persistHousingType(complex, "36A", "36.12");
-        persistHousingType(complex, "44B", "44.87");
+        HousingType secondHousingType = persistHousingType(complex, "44B", "44.87");
         Announcement oldAnnouncement = persistAnnouncement(null, "ORIGINAL", LocalDate.of(2026, 7, 1), "old");
         SupplyRow oldSupplyRow = persistSupplyRow(oldAnnouncement, complex, housingType, "old-row", 1);
         persistSupplyTarget(oldSupplyRow, "과거", "10000000", "100000", 1);
@@ -72,9 +76,22 @@ class ComplexSummaryQueryRepositoryTest {
                 LocalDate.of(2026, 8, 1),
                 "representative"
         );
-        SupplyRow representativeRow = persistSupplyRow(representative, complex, housingType, "latest-row", 1);
-        persistSupplyTarget(representativeRow, "청년", "50000000", "200000", 1);
-        persistSupplyTarget(representativeRow, "신혼부부", "70000000", "300000", 2);
+        SupplyRow firstRepresentativeRow = persistSupplyRow(
+                representative,
+                complex,
+                housingType,
+                "latest-first-row",
+                1
+        );
+        SupplyRow secondRepresentativeRow = persistSupplyRow(
+                representative,
+                complex,
+                secondHousingType,
+                "latest-second-row",
+                2
+        );
+        persistSupplyTarget(firstRepresentativeRow, "청년", "50000000", "300000", 1);
+        persistSupplyTarget(secondRepresentativeRow, "신혼부부", "70000000", "200000", 1);
         entityManager.flush();
 
         ComplexSummaryRow row = repository.findAllInBounds(SEOUL_BOUNDS).getFirst();
@@ -87,6 +104,30 @@ class ComplexSummaryQueryRepositoryTest {
                 () -> assertBigDecimalEquals("200000", row.monthlyRentMin()),
                 () -> assertBigDecimalEquals("300000", row.monthlyRentMax()),
                 () -> assertEquals(representative.getId(), row.announcementId())
+        );
+    }
+
+    @Test
+    void 대표_공고의_공급행에_공급대상이_없으면_가격_범위를_null로_조회한다() {
+        HousingComplex complex = persistComplex("공급대상 없는 단지", "37.500000", "126.900000");
+        HousingType housingType = persistHousingType(complex, "36A", "36.00");
+        Announcement representative = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 1),
+                "without-target"
+        );
+        persistSupplyRow(representative, complex, housingType, "without-target-row", 1);
+        entityManager.flush();
+
+        ComplexSummaryRow row = repository.findAllInBounds(SEOUL_BOUNDS).getFirst();
+
+        assertAll(
+                () -> assertEquals(representative.getId(), row.announcementId()),
+                () -> assertNull(row.depositMin()),
+                () -> assertNull(row.depositMax()),
+                () -> assertNull(row.monthlyRentMin()),
+                () -> assertNull(row.monthlyRentMax())
         );
     }
 
