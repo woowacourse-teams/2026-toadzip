@@ -3,9 +3,14 @@ package com.toadzip.backend.announcement.domain;
 import static jakarta.persistence.FetchType.LAZY;
 import static lombok.AccessLevel.PROTECTED;
 
+import com.toadzip.backend.housing.domain.AgencyCode;
+import com.toadzip.backend.housing.domain.AgencyCodeConverter;
+import com.toadzip.backend.housing.domain.RentalType;
+import com.toadzip.backend.housing.domain.RentalTypeConverter;
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.AttributeOverrides;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -14,6 +19,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -41,16 +47,20 @@ public class Announcement {
     private String name;
 
     @Column(nullable = false)
-    private String status;
+    @Convert(converter = AnnouncementPublicationTypeConverter.class)
+    private AnnouncementPublicationType status;
 
     @Column(nullable = false)
-    private String supplyType;
+    @Convert(converter = RentalTypeConverter.class)
+    private RentalType supplyType;
 
     @Column(nullable = false)
-    private String recruitmentType;
+    @Convert(converter = RecruitmentTypeConverter.class)
+    private RecruitmentType recruitmentType;
 
     @Column(nullable = false)
-    private String provider;
+    @Convert(converter = AgencyCodeConverter.class)
+    private AgencyCode provider;
 
     @Column(nullable = false)
     private LocalDate postedDate;
@@ -72,6 +82,12 @@ public class Announcement {
     @Column(nullable = false)
     private long viewCount;
 
+    @Column(precision = 12, scale = 4)
+    private BigDecimal actualCompetitionRate;
+
+    @Column(precision = 12, scale = 4)
+    private BigDecimal predictedCompetitionRate;
+
     @Embedded
     @AttributeOverrides({
             @AttributeOverride(name = "name", column = @Column(name = "reception_place_name", nullable = false)),
@@ -90,10 +106,10 @@ public class Announcement {
             String previousSourceAnnouncementIdentifier,
             Announcement previousAnnouncement,
             String name,
-            String status,
-            String supplyType,
-            String recruitmentType,
-            String provider,
+            AnnouncementPublicationType status,
+            RentalType supplyType,
+            RecruitmentType recruitmentType,
+            AgencyCode provider,
             LocalDate postedDate,
             LocalDate applicationStartDate,
             LocalDate applicationEndDate,
@@ -101,14 +117,16 @@ public class Announcement {
             String originalUrl,
             String correctionCancellationReason,
             long viewCount,
+            BigDecimal actualCompetitionRate,
+            BigDecimal predictedCompetitionRate,
             ReceptionPlace receptionPlace
     ) {
         validateNotBlank(sourceAnnouncementIdentifier, "원천 공고 식별자");
         validateNotBlank(name, "공고명");
-        validateNotBlank(status, "공고 상태");
-        validateNotBlank(supplyType, "공급유형");
-        validateNotBlank(recruitmentType, "모집유형");
-        validateNotBlank(provider, "공급기관");
+        validateRequired(status, "공고 상태");
+        validateRequired(supplyType, "공급유형");
+        validateRequired(recruitmentType, "모집유형");
+        validateRequired(provider, "공급기관");
         validateRequired(postedDate, "게시일");
         validateRequired(applicationStartDate, "접수 시작일");
         validateRequired(applicationEndDate, "접수 종료일");
@@ -116,6 +134,8 @@ public class Announcement {
         validateRequired(winnerAnnouncementDate, "당첨자 발표일");
         validateNotBlank(originalUrl, "원문 URL");
         validateNonNegative(viewCount, "조회수");
+        validateNonNegativeIfPresent(actualCompetitionRate, "실제 경쟁률");
+        validateNonNegativeIfPresent(predictedCompetitionRate, "예상 경쟁률");
         validateRequired(receptionPlace, "접수처");
         this.sourceAnnouncementIdentifier = sourceAnnouncementIdentifier;
         this.previousSourceAnnouncementIdentifier = previousSourceAnnouncementIdentifier;
@@ -132,6 +152,8 @@ public class Announcement {
         this.originalUrl = originalUrl;
         this.correctionCancellationReason = correctionCancellationReason;
         this.viewCount = viewCount;
+        this.actualCompetitionRate = actualCompetitionRate;
+        this.predictedCompetitionRate = predictedCompetitionRate;
         this.receptionPlace = receptionPlace;
     }
 
@@ -140,10 +162,10 @@ public class Announcement {
             String previousSourceAnnouncementIdentifier,
             Announcement previousAnnouncement,
             String name,
-            String status,
-            String supplyType,
-            String recruitmentType,
-            String provider,
+            AnnouncementPublicationType status,
+            RentalType supplyType,
+            RecruitmentType recruitmentType,
+            AgencyCode provider,
             LocalDate postedDate,
             LocalDate applicationStartDate,
             LocalDate applicationEndDate,
@@ -169,6 +191,130 @@ public class Announcement {
                 originalUrl,
                 correctionCancellationReason,
                 viewCount,
+                null,
+                null,
+                receptionPlace
+        );
+    }
+
+    public static Announcement create(
+            String sourceAnnouncementIdentifier,
+            String previousSourceAnnouncementIdentifier,
+            Announcement previousAnnouncement,
+            String name,
+            AnnouncementPublicationType status,
+            RentalType supplyType,
+            RecruitmentType recruitmentType,
+            AgencyCode provider,
+            LocalDate postedDate,
+            LocalDate applicationStartDate,
+            LocalDate applicationEndDate,
+            LocalDate winnerAnnouncementDate,
+            String originalUrl,
+            String correctionCancellationReason,
+            long viewCount,
+            BigDecimal actualCompetitionRate,
+            BigDecimal predictedCompetitionRate,
+            ReceptionPlace receptionPlace
+    ) {
+        return new Announcement(
+                sourceAnnouncementIdentifier,
+                previousSourceAnnouncementIdentifier,
+                previousAnnouncement,
+                name,
+                status,
+                supplyType,
+                recruitmentType,
+                provider,
+                postedDate,
+                applicationStartDate,
+                applicationEndDate,
+                winnerAnnouncementDate,
+                originalUrl,
+                correctionCancellationReason,
+                viewCount,
+                actualCompetitionRate,
+                predictedCompetitionRate,
+                receptionPlace
+        );
+    }
+
+    public static Announcement create(
+            String sourceAnnouncementIdentifier,
+            String previousSourceAnnouncementIdentifier,
+            Announcement previousAnnouncement,
+            String name,
+            String status,
+            String supplyType,
+            String recruitmentType,
+            String provider,
+            LocalDate postedDate,
+            LocalDate applicationStartDate,
+            LocalDate applicationEndDate,
+            LocalDate winnerAnnouncementDate,
+            String originalUrl,
+            String correctionCancellationReason,
+            long viewCount,
+            ReceptionPlace receptionPlace
+    ) {
+        return create(
+                sourceAnnouncementIdentifier,
+                previousSourceAnnouncementIdentifier,
+                previousAnnouncement,
+                name,
+                AnnouncementPublicationType.fromStoredValue(status),
+                RentalType.fromStoredValue(supplyType),
+                RecruitmentType.fromStoredValue(recruitmentType),
+                AgencyCode.fromStoredValue(provider),
+                postedDate,
+                applicationStartDate,
+                applicationEndDate,
+                winnerAnnouncementDate,
+                originalUrl,
+                correctionCancellationReason,
+                viewCount,
+                receptionPlace
+        );
+    }
+
+    public static Announcement create(
+            String sourceAnnouncementIdentifier,
+            String previousSourceAnnouncementIdentifier,
+            Announcement previousAnnouncement,
+            String name,
+            String status,
+            String supplyType,
+            String recruitmentType,
+            String provider,
+            LocalDate postedDate,
+            LocalDate applicationStartDate,
+            LocalDate applicationEndDate,
+            LocalDate winnerAnnouncementDate,
+            String originalUrl,
+            String correctionCancellationReason,
+            long viewCount,
+            BigDecimal actualCompetitionRate,
+            BigDecimal predictedCompetitionRate,
+            ReceptionPlace receptionPlace
+    ) {
+        return create(
+                sourceAnnouncementIdentifier,
+                previousSourceAnnouncementIdentifier,
+                previousAnnouncement,
+                name,
+                AnnouncementPublicationType.fromStoredValue(status),
+                RentalType.fromStoredValue(supplyType),
+                RecruitmentType.fromStoredValue(recruitmentType),
+                AgencyCode.fromStoredValue(provider),
+                postedDate,
+                applicationStartDate,
+                applicationEndDate,
+                winnerAnnouncementDate,
+                originalUrl,
+                correctionCancellationReason,
+                viewCount,
+                actualCompetitionRate,
+                predictedCompetitionRate,
                 receptionPlace
         );
     }
@@ -187,6 +333,12 @@ public class Announcement {
 
     private void validateNonNegative(long value, String fieldName) {
         if (value < 0) {
+            throw new IllegalArgumentException(fieldName + "은 음수일 수 없다.");
+        }
+    }
+
+    private void validateNonNegativeIfPresent(BigDecimal value, String fieldName) {
+        if (value != null && value.signum() < 0) {
             throw new IllegalArgumentException(fieldName + "은 음수일 수 없다.");
         }
     }

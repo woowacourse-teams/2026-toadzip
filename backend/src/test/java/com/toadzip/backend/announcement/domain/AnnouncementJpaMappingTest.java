@@ -43,6 +43,8 @@ class AnnouncementJpaMappingTest {
                         "originalUrl",
                         "correctionCancellationReason",
                         "viewCount",
+                        "actualCompetitionRate",
+                        "predictedCompetitionRate",
                         "receptionPlace"
                 )
         );

@@ -4,6 +4,7 @@ import static jakarta.persistence.FetchType.LAZY;
 import static lombok.AccessLevel.PROTECTED;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -30,7 +31,8 @@ public class AnnouncementSchedule {
     private Announcement announcement;
 
     @Column(nullable = false)
-    private String scheduleType;
+    @Convert(converter = ScheduleTypeConverter.class)
+    private ScheduleType scheduleType;
 
     @Column(nullable = false)
     private String name;
@@ -46,14 +48,14 @@ public class AnnouncementSchedule {
 
     private AnnouncementSchedule(
             Announcement announcement,
-            String scheduleType,
+            ScheduleType scheduleType,
             String name,
             LocalDateTime startAt,
             LocalDateTime endAt,
             int displayOrder
     ) {
         validateRequired(announcement, "공고");
-        validateNotBlank(scheduleType, "일정유형");
+        validateRequired(scheduleType, "일정유형");
         validateNotBlank(name, "일정명");
         validateRequired(startAt, "시작일시");
         validateRequired(endAt, "종료일시");
@@ -69,13 +71,24 @@ public class AnnouncementSchedule {
 
     public static AnnouncementSchedule create(
             Announcement announcement,
-            String scheduleType,
+            ScheduleType scheduleType,
             String name,
             LocalDateTime startAt,
             LocalDateTime endAt,
             int displayOrder
     ) {
         return new AnnouncementSchedule(announcement, scheduleType, name, startAt, endAt, displayOrder);
+    }
+
+    public static AnnouncementSchedule create(
+            Announcement announcement,
+            String scheduleType,
+            String name,
+            LocalDateTime startAt,
+            LocalDateTime endAt,
+            int displayOrder
+    ) {
+        return create(announcement, ScheduleType.fromStoredValue(scheduleType), name, startAt, endAt, displayOrder);
     }
 
     private void validateRequired(Object value, String fieldName) {

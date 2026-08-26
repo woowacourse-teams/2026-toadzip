@@ -4,6 +4,7 @@ import static jakarta.persistence.FetchType.LAZY;
 import static lombok.AccessLevel.PROTECTED;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -32,7 +33,8 @@ public class AnnouncementAttachment {
     private String fileName;
 
     @Column(nullable = false)
-    private String fileType;
+    @Convert(converter = AttachmentTypeConverter.class)
+    private AttachmentType fileType;
 
     @Column(nullable = false)
     private String fileUrl;
@@ -43,13 +45,13 @@ public class AnnouncementAttachment {
     private AnnouncementAttachment(
             Announcement announcement,
             String fileName,
-            String fileType,
+            AttachmentType fileType,
             String fileUrl,
             int displayOrder
     ) {
         validateRequired(announcement, "공고");
         validateNotBlank(fileName, "파일명");
-        validateNotBlank(fileType, "파일종류");
+        validateRequired(fileType, "파일종류");
         validateNotBlank(fileUrl, "파일 URL");
         validateNonNegative(displayOrder, "표시순서");
         this.announcement = announcement;
@@ -62,11 +64,21 @@ public class AnnouncementAttachment {
     public static AnnouncementAttachment create(
             Announcement announcement,
             String fileName,
-            String fileType,
+            AttachmentType fileType,
             String fileUrl,
             int displayOrder
     ) {
         return new AnnouncementAttachment(announcement, fileName, fileType, fileUrl, displayOrder);
+    }
+
+    public static AnnouncementAttachment create(
+            Announcement announcement,
+            String fileName,
+            String fileType,
+            String fileUrl,
+            int displayOrder
+    ) {
+        return create(announcement, fileName, AttachmentType.fromStoredValue(fileType), fileUrl, displayOrder);
     }
 
     private void validateRequired(Object value, String fieldName) {
