@@ -3,7 +3,9 @@ package com.toadzip.backend.admin.controller;
 import com.toadzip.backend.admin.dto.AdminLoginRequest;
 import com.toadzip.backend.admin.dto.AdminSessionResponse;
 import com.toadzip.backend.admin.dto.CsrfTokenResponse;
+import com.toadzip.backend.admin.service.AdminAuthenticationAuditService;
 import com.toadzip.backend.admin.service.AdminAuthenticationService;
+import com.toadzip.backend.admin.service.InvalidAdminCredentialsException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -28,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminAuthenticationController {
 
     private final AdminAuthenticationService adminAuthenticationService;
+    private final AdminAuthenticationAuditService adminAuthenticationAuditService;
     private final SecurityContextRepository securityContextRepository;
 
     @GetMapping("/csrf")
@@ -41,14 +44,15 @@ public class AdminAuthenticationController {
             HttpServletRequest servletRequest,
             HttpServletResponse servletResponse
     ) {
-        Authentication authentication = adminAuthenticationService.authenticate(
-                request.loginIdentifier(),
-                request.password()
-        );
-        servletRequest.getSession();
-        servletRequest.changeSessionId();
-        saveAuthentication(authentication, servletRequest, servletResponse);
-        return AdminSessionResponse.from(authentication.getName());
+        try {
+            return loginAndCreateSession(request, servletRequest, servletResponse);
+        } catch (InvalidAdminCredentialsException exception) {
+            adminAuthenticationAuditService.recordLoginFailure(
+                    request.loginIdentifier(),
+                    servletRequest.getRequestId()
+            );
+            throw exception;
+        }
     }
 
     @GetMapping("/me")
@@ -64,6 +68,23 @@ public class AdminAuthenticationController {
             HttpServletResponse servletResponse
     ) {
         new SecurityContextLogoutHandler().logout(servletRequest, servletResponse, authentication);
+        adminAuthenticationAuditService.recordLogout(authentication.getName(), servletRequest.getRequestId());
+    }
+
+    private AdminSessionResponse loginAndCreateSession(
+            AdminLoginRequest request,
+            HttpServletRequest servletRequest,
+            HttpServletResponse servletResponse
+    ) {
+        Authentication authentication = adminAuthenticationService.authenticate(
+                request.loginIdentifier(),
+                request.password()
+        );
+        servletRequest.getSession();
+        servletRequest.changeSessionId();
+        saveAuthentication(authentication, servletRequest, servletResponse);
+        adminAuthenticationAuditService.recordLoginSuccess(authentication.getName(), servletRequest.getRequestId());
+        return AdminSessionResponse.from(authentication.getName());
     }
 
     private void saveAuthentication(

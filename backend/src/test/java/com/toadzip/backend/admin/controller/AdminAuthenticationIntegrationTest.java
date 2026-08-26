@@ -7,7 +7,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.admin.domain.AdminAccount;
+import com.toadzip.backend.admin.domain.AdminAuthenticationAuditAction;
+import com.toadzip.backend.admin.domain.AdminAuthenticationAuditLog;
+import com.toadzip.backend.admin.domain.AdminAuthenticationAuditResult;
 import com.toadzip.backend.admin.repository.AdminAccountRepository;
+import com.toadzip.backend.admin.repository.AdminAuthenticationAuditLogRepository;
 import jakarta.servlet.http.Cookie;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,10 +43,14 @@ class AdminAuthenticationIntegrationTest {
     private AdminAccountRepository adminAccountRepository;
 
     @Autowired
+    private AdminAuthenticationAuditLogRepository auditLogRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @BeforeEach
     void setUp() {
+        auditLogRepository.deleteAll();
         adminAccountRepository.deleteAll();
         adminAccountRepository.save(
                 AdminAccount.create(
@@ -91,6 +99,9 @@ class AdminAuthenticationIntegrationTest {
 
         mockMvc.perform(get("/api/admin/auth/me").session(session))
                 .andExpect(status().isUnauthorized());
+
+        assertAuditLog(AdminAuthenticationAuditAction.LOGIN, AdminAuthenticationAuditResult.SUCCESS);
+        assertAuditLog(AdminAuthenticationAuditAction.LOGOUT, AdminAuthenticationAuditResult.SUCCESS);
     }
 
     @Test
@@ -102,6 +113,22 @@ class AdminAuthenticationIntegrationTest {
                         .header(csrfFixture.headerName(), csrfFixture.token()))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("INVALID_ADMIN_CREDENTIALS"));
+
+        assertAuditLog(AdminAuthenticationAuditAction.LOGIN, AdminAuthenticationAuditResult.FAILURE);
+    }
+
+    private void assertAuditLog(
+            AdminAuthenticationAuditAction action,
+            AdminAuthenticationAuditResult result
+    ) {
+        AdminAuthenticationAuditLog auditLog = auditLogRepository.findAll()
+                .stream()
+                .filter(log -> log.getAction() == action && log.getResult() == result)
+                .findFirst()
+                .orElseThrow();
+        assertEquals("admin", auditLog.getLoginIdentifier());
+        org.assertj.core.api.Assertions.assertThat(auditLog.getRequestTraceId()).isNotBlank();
+        org.assertj.core.api.Assertions.assertThat(auditLog.getOccurredAt()).isNotNull();
     }
 
     private CsrfFixture issueCsrfToken() throws Exception {
