@@ -38,6 +38,7 @@ import com.toadzip.backend.ingest.repository.LhAnnouncementCollectionProgressSto
 import com.toadzip.backend.ingest.repository.LhAnnouncementCollectionProgressStore.BatchProgress;
 import com.toadzip.backend.ingest.repository.LhSourceStore;
 import com.toadzip.backend.ingest.repository.MyHomeAnnouncementSourceRepository;
+import com.toadzip.backend.ingest.repository.external.ExternalDataRequestException;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
@@ -147,9 +148,23 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void LH_상세_저장_실패는_외부_API_실패로_기록하지_않는다() {
+        source(announcementSource());
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("100"), any())).thenThrow(new IllegalStateException("DB 저장 실패"));
+
+        assertThatThrownBy(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("DB 저장 실패");
+
+        verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+    }
+
+    @Test
     void 상세_API_실패는_공급_API_수집을_막지_않는다() {
         source(announcementSource());
-        when(externalRepository.fetchDetail(any())).thenThrow(new IllegalStateException("상세 조회 실패"));
+        when(externalRepository.fetchDetail(any())).thenThrow(new ExternalDataRequestException("상세 조회 실패"));
         when(externalRepository.fetchSupply(any())).thenReturn(supplyResponse());
         when(sourceStore.replaceSupplies(eq("100"), any())).thenReturn(1);
 
@@ -179,7 +194,7 @@ class LhAnnouncementExternalCollectionServiceTest {
     void 실패한_요청은_다음_실행에서_다시_호출한다() {
         source(announcementSource());
         when(externalRepository.fetchDetail(any()))
-                .thenThrow(new IllegalStateException("일시적 실패"))
+                .thenThrow(new ExternalDataRequestException("일시적 실패"))
                 .thenReturn(detailResponse());
         when(sourceStore.replaceDetails(eq("100"), any())).thenReturn(1);
 
@@ -234,7 +249,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         MyHomeAnnouncementSource first = announcementSource("announcement-100");
         MyHomeAnnouncementSource second = announcementSource("announcement-101");
         source(first, second);
-        when(externalRepository.fetchSupply(any())).thenThrow(new IllegalStateException("일시적 실패"));
+        when(externalRepository.fetchSupply(any())).thenThrow(new ExternalDataRequestException("일시적 실패"));
 
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
 

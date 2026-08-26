@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -25,6 +26,7 @@ import com.toadzip.backend.ingest.dto.MyHomeRegion;
 import com.toadzip.backend.ingest.repository.MyHomeComplexExternalRepository;
 import com.toadzip.backend.ingest.repository.MyHomeRegionCatalog;
 import com.toadzip.backend.ingest.repository.MyHomeSourceStore;
+import com.toadzip.backend.ingest.repository.external.ExternalDataRequestException;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
@@ -84,7 +86,7 @@ class MyHomeComplexCollectionServiceTest {
         when(regionCatalog.find("11", "110")).thenReturn(region);
         when(externalRepository.fetch(region, request(), 1))
                 .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]"));
-        when(externalRepository.fetch(region, request(), 2)).thenThrow(new IllegalStateException("조회 실패"));
+        when(externalRepository.fetch(region, request(), 2)).thenThrow(new ExternalDataRequestException("조회 실패"));
 
         var result = service.collect(request());
 
@@ -208,6 +210,41 @@ class MyHomeComplexCollectionServiceTest {
 
         verify(sourceStore).replaceComplexRegion(region, List.of());
         assertThat(result.failedRequestCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("마이홈 단지 저장 실패는 외부 API 실패로 기록하지 않는다")
+    void propagatesComplexStoreFailure() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1)).thenReturn(response("[{\"hsmpSn\":1}]"));
+        when(sourceStore.replaceComplexRegion(eq(region), any()))
+                .thenThrow(new IllegalStateException("DB 저장 실패"));
+
+        assertThatThrownBy(() -> service.collect(request()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("DB 저장 실패");
+
+        verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("전국 동시 수집의 저장 실패도 외부 API 실패로 기록하지 않는다")
+    void propagatesConcurrentComplexStoreFailure() {
+        MyHomeRegion seoul = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        MyHomeRegion busan = new MyHomeRegion("26", "110", "부산광역시", "중구");
+        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        when(regionCatalog.findAll()).thenReturn(List.of(seoul, busan));
+        when(externalRepository.fetch(seoul, request, 1)).thenReturn(response("[{\"hsmpSn\":1}]"));
+        when(externalRepository.fetch(busan, request, 1)).thenReturn(response("[{\"hsmpSn\":2}]"));
+        when(sourceStore.replaceComplexRegion(eq(seoul), any()))
+                .thenThrow(new IllegalStateException("DB 저장 실패"));
+
+        assertThatThrownBy(() -> service.collect(request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("DB 저장 실패");
+
+        verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
     }
 
     private MyHomeComplexCollectionRequest request() {

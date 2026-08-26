@@ -1,7 +1,9 @@
 package com.toadzip.backend.ingest.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -21,6 +23,7 @@ import com.toadzip.backend.ingest.dto.MyHomeAnnouncementSourceItem;
 import com.toadzip.backend.ingest.dto.MyHomeAnnouncementSupplyType;
 import com.toadzip.backend.ingest.repository.MyHomeAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.repository.MyHomeSourceStore;
+import com.toadzip.backend.ingest.repository.external.ExternalDataRequestException;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
@@ -83,7 +86,7 @@ class MyHomeAnnouncementCollectionServiceTest {
     void reportsAnnouncementApiDataFailure() {
         MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
-                .thenThrow(new IllegalStateException("조회 실패"));
+                .thenThrow(new ExternalDataRequestException("조회 실패"));
 
         var result = service.collect(request);
 
@@ -91,6 +94,21 @@ class MyHomeAnnouncementCollectionServiceTest {
                 .record(any(), any(), any(), any(), any());
         assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isEqualTo(MyHomeAnnouncementSupplyType.values().length);
+    }
+
+    @Test
+    @DisplayName("마이홈 공고 저장 실패는 외부 API 실패로 기록하지 않는다")
+    void propagatesAnnouncementStoreFailure() {
+        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(response("[]"));
+        when(sourceStore.storeAnnouncements(any())).thenThrow(new IllegalStateException("DB 저장 실패"));
+
+        assertThatThrownBy(() -> service.collect(request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("DB 저장 실패");
+
+        verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
     }
 
     private ExternalDataResponse response(String items) {

@@ -13,6 +13,7 @@ import com.toadzip.backend.ingest.dto.LhLeaseCatalogCollectionRequest;
 import com.toadzip.backend.ingest.repository.LhLeaseCatalogExternalRepository;
 import com.toadzip.backend.ingest.repository.LhSourceStore;
 import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
+import com.toadzip.backend.ingest.repository.external.ExternalDataRequestException;
 import tools.jackson.databind.JsonNode;
 
 @Slf4j
@@ -44,23 +45,11 @@ public class LhLeaseCatalogCollectionService {
     public ExternalDataCollectionReport collect(LhLeaseCatalogCollectionRequest request) {
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
         log.info("LH 임대 카탈로그 수집을 시작합니다: pageSize={}, maxPages={}", request.pageSize(), request.maxPages());
+        List<LhCatalogSourceItem> items;
         try {
-            List<LhCatalogSourceItem> items = fetchCompleteCatalog(request, callCounter);
-            int storedRowCount = sourceStore.replaceCatalog(items);
-            ExternalDataCollectionReport report = new ExternalDataCollectionReport(
-                    "lh-lease-catalog",
-                    storedRowCount,
-                    0,
-                    callCounter.count()
-            );
-            log.info(
-                    "LH 임대 카탈로그 수집을 완료했습니다: storedRowCount={}, externalApiCallCount={}",
-                    report.storedRowCount(),
-                    report.externalApiCallCount()
-            );
-            return report;
+            items = fetchCompleteCatalog(request, callCounter);
         }
-        catch (RuntimeException exception) {
+        catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
             failureRecorder.record(
                     ExternalDataSource.LH_LEASE_CATALOG,
                     request.requestDescription(1),
@@ -70,6 +59,19 @@ public class LhLeaseCatalogCollectionService {
             );
             return new ExternalDataCollectionReport("lh-lease-catalog", 0, 1, callCounter.count());
         }
+        int storedRowCount = sourceStore.replaceCatalog(items);
+        ExternalDataCollectionReport report = new ExternalDataCollectionReport(
+                "lh-lease-catalog",
+                storedRowCount,
+                0,
+                callCounter.count()
+        );
+        log.info(
+                "LH 임대 카탈로그 수집을 완료했습니다: storedRowCount={}, externalApiCallCount={}",
+                report.storedRowCount(),
+                report.externalApiCallCount()
+        );
+        return report;
     }
 
     private List<LhCatalogSourceItem> fetchCompleteCatalog(
@@ -94,6 +96,6 @@ public class LhLeaseCatalogCollectionService {
                 return items;
             }
         }
-        throw new IllegalStateException("LH 임대 카탈로그 조회가 최대 페이지 안에 끝나지 않았습니다.");
+        throw new ExternalDataRequestException("LH 임대 카탈로그 조회가 최대 페이지 안에 끝나지 않았습니다.");
     }
 }

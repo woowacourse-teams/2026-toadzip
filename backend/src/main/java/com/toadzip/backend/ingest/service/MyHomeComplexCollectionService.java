@@ -99,7 +99,7 @@ public class MyHomeComplexCollectionService {
                     .map(region -> executor.submit(() -> collectRegion(region, request)))
                     .toList();
             for (Future<MyHomeComplexCollectionReport> future : futures) {
-                report = report.plus(await(future, request));
+                report = report.plus(await(future));
             }
             return report;
         }
@@ -108,10 +108,7 @@ public class MyHomeComplexCollectionService {
         }
     }
 
-    private MyHomeComplexCollectionReport await(
-            Future<MyHomeComplexCollectionReport> future,
-            MyHomeComplexCollectionRequest request
-    ) {
+    private MyHomeComplexCollectionReport await(Future<MyHomeComplexCollectionReport> future) {
         try {
             return future.get();
         }
@@ -120,15 +117,7 @@ public class MyHomeComplexCollectionService {
             throw new IllegalStateException("마이홈 단지 수집이 중단되었습니다.", exception);
         }
         catch (ExecutionException exception) {
-            RuntimeException cause = runtimeExceptionOf(exception.getCause());
-            failureRecorder.record(
-                    ExternalDataSource.MYHOME_COMPLEX,
-                    request.requestDescription(regionCatalog.findAll().getFirst(), 1),
-                    cause,
-                    log,
-                    "마이홈 단지 지역 수집에 실패했습니다"
-            );
-            return new MyHomeComplexCollectionReport("myhome-complex", 0, 1, 0);
+            throw runtimeExceptionOf(exception.getCause());
         }
     }
 
@@ -137,12 +126,11 @@ public class MyHomeComplexCollectionService {
             MyHomeComplexCollectionRequest request
     ) {
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
+        List<MyHomeComplexSourceItem> items;
         try {
-            List<MyHomeComplexSourceItem> items = fetchCompleteRegion(region, request, callCounter);
-            int storedRowCount = sourceStore.replaceComplexRegion(region, items);
-            return new MyHomeComplexCollectionReport("myhome-complex", storedRowCount, 0, callCounter.count());
+            items = fetchCompleteRegion(region, request, callCounter);
         }
-        catch (RuntimeException exception) {
+        catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
             failureRecorder.record(
                     ExternalDataSource.MYHOME_COMPLEX,
                     request.requestDescription(region, 1),
@@ -152,6 +140,8 @@ public class MyHomeComplexCollectionService {
             );
             return new MyHomeComplexCollectionReport("myhome-complex", 0, 1, callCounter.count());
         }
+        int storedRowCount = sourceStore.replaceComplexRegion(region, items);
+        return new MyHomeComplexCollectionReport("myhome-complex", storedRowCount, 0, callCounter.count());
     }
 
     private List<MyHomeComplexSourceItem> fetchCompleteRegion(
@@ -174,14 +164,23 @@ public class MyHomeComplexCollectionService {
             );
             List<JsonNode> rows = collectedPage.rows();
             rows.stream()
-                    .map(row -> objectMapper.convertValue(row, MyHomeComplexSourceItem.class))
+                    .map(this::sourceItemOf)
                     .forEach(items::add);
             failureRecorder.resolve(ExternalDataSource.MYHOME_COMPLEX, requestDescription);
             if (collectionCompleted(collectedPage.response().body(), items.size(), rows.size(), request.pageSize())) {
                 return items;
             }
         }
-        throw new IllegalStateException("마이홈 단지 조회가 최대 페이지 안에 끝나지 않았습니다.");
+        throw new ExternalDataRequestException("마이홈 단지 조회가 최대 페이지 안에 끝나지 않았습니다.");
+    }
+
+    private MyHomeComplexSourceItem sourceItemOf(JsonNode row) {
+        try {
+            return objectMapper.convertValue(row, MyHomeComplexSourceItem.class);
+        }
+        catch (RuntimeException exception) {
+            throw new ExternalDataRequestException("마이홈 단지 응답 항목 형식이 올바르지 않습니다.", exception);
+        }
     }
 
     private CollectedPage validatePage(ExternalDataResponse response, int collectedCount) {

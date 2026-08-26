@@ -24,6 +24,7 @@ import com.toadzip.backend.ingest.repository.LhAnnouncementCollectionProgressSto
 import com.toadzip.backend.ingest.repository.LhAnnouncementCollectionProgressStore.BatchProgress;
 import com.toadzip.backend.ingest.repository.LhSourceStore;
 import com.toadzip.backend.ingest.repository.MyHomeAnnouncementSourceRepository;
+import com.toadzip.backend.ingest.repository.external.ExternalDataRequestException;
 
 @Slf4j
 @Service
@@ -202,33 +203,49 @@ public class LhAnnouncementExternalCollectionService {
             LhAnnouncementRequest request
     ) {
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
+        ExternalDataResponse response;
         try {
-            ExternalDataResponse response = retryExecutor.execute(
+            response = retryExecutor.execute(
                     targetSource,
                     request.requestDescription(),
                     () -> fetch(targetSource, request),
                     callCounter
             );
-            failureRecorder.resolve(targetSource, request.requestDescription());
-            int storedRowCount = store(targetSource, request.panId(), response);
-            progressStore.complete(
-                    targetSource,
-                    sourceAnnouncementKey,
-                    request.requestDescription(),
-                    request.panId()
-            );
-            return new ExternalDataCollectionReport(operation(targetSource), storedRowCount, 0, callCounter.count());
         }
-        catch (RuntimeException exception) {
-            failureRecorder.record(
-                    targetSource,
-                    request.requestDescription(),
-                    exception,
-                    log,
-                    "LH 외부 API 수집에 실패했습니다"
-            );
-            return new ExternalDataCollectionReport(operation(targetSource), 0, 1, callCounter.count());
+        catch (ExternalDataCallFailureException exception) {
+            return failedReport(targetSource, request, exception, callCounter);
         }
+        int storedRowCount;
+        try {
+            storedRowCount = store(targetSource, request.panId(), response);
+        }
+        catch (ExternalDataRequestException exception) {
+            return failedReport(targetSource, request, exception, callCounter);
+        }
+        failureRecorder.resolve(targetSource, request.requestDescription());
+        progressStore.complete(
+                targetSource,
+                sourceAnnouncementKey,
+                request.requestDescription(),
+                request.panId()
+        );
+        return new ExternalDataCollectionReport(operation(targetSource), storedRowCount, 0, callCounter.count());
+    }
+
+    private ExternalDataCollectionReport failedReport(
+            ExternalDataSource targetSource,
+            LhAnnouncementRequest request,
+            RuntimeException exception,
+            ExternalDataCallCounter callCounter
+    ) {
+        failureRecorder.record(
+                targetSource,
+                request.requestDescription(),
+                exception,
+                log,
+                "LH 외부 API 수집에 실패했습니다"
+        );
+        return new ExternalDataCollectionReport(operation(targetSource), 0, 1, callCounter.count());
     }
 
     private int store(ExternalDataSource targetSource, String panId, ExternalDataResponse response) {

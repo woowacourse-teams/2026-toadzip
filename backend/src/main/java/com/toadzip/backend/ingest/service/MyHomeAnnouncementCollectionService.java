@@ -14,6 +14,7 @@ import com.toadzip.backend.ingest.dto.MyHomeAnnouncementSupplyType;
 import com.toadzip.backend.ingest.repository.MyHomeAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
+import com.toadzip.backend.ingest.repository.external.ExternalDataRequestException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -72,12 +73,11 @@ public class MyHomeAnnouncementCollectionService {
             MyHomeAnnouncementCollectionRequest request
     ) {
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
+        List<MyHomeAnnouncementSourceItem> items;
         try {
-            List<MyHomeAnnouncementSourceItem> items = fetchCompleteSupplyType(supplyType, request, callCounter);
-            int storedRowCount = sourceStore.storeAnnouncements(items);
-            return new ExternalDataCollectionReport("myhome-announcement", storedRowCount, 0, callCounter.count());
+            items = fetchCompleteSupplyType(supplyType, request, callCounter);
         }
-        catch (RuntimeException exception) {
+        catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
             failureRecorder.record(
                     ExternalDataSource.MYHOME_ANNOUNCEMENT,
                     request.requestDescription(supplyType, 1),
@@ -87,6 +87,8 @@ public class MyHomeAnnouncementCollectionService {
             );
             return new ExternalDataCollectionReport("myhome-announcement", 0, 1, callCounter.count());
         }
+        int storedRowCount = sourceStore.storeAnnouncements(items);
+        return new ExternalDataCollectionReport("myhome-announcement", storedRowCount, 0, callCounter.count());
     }
 
     private List<MyHomeAnnouncementSourceItem> fetchCompleteSupplyType(
@@ -107,15 +109,24 @@ public class MyHomeAnnouncementCollectionService {
             failureRecorder.resolve(ExternalDataSource.MYHOME_ANNOUNCEMENT, requestDescription);
             List<JsonNode> rows = DataGoKrOpenApiClient.findRows(response.body(), LIST_POINTER);
             rows.stream()
-                    .map(row -> objectMapper.convertValue(row, MyHomeAnnouncementSourceItem.class))
+                    .map(this::sourceItemOf)
                     .forEach(items::add);
             if (collectionCompleted(response.body(), items.size(), rows.size(), request.pageSize())) {
                 return items;
             }
         }
-        throw new IllegalStateException(
+        throw new ExternalDataRequestException(
                 "마이홈 공고 조회가 최대 페이지 안에 끝나지 않았습니다."
         );
+    }
+
+    private MyHomeAnnouncementSourceItem sourceItemOf(JsonNode row) {
+        try {
+            return objectMapper.convertValue(row, MyHomeAnnouncementSourceItem.class);
+        }
+        catch (RuntimeException exception) {
+            throw new ExternalDataRequestException("마이홈 공고 응답 항목 형식이 올바르지 않습니다.", exception);
+        }
     }
 
     private boolean collectionCompleted(
