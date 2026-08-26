@@ -19,6 +19,7 @@ import com.toadzip.backend.ingest.repository.MyHomeComplexExternalRepository;
 import com.toadzip.backend.ingest.repository.MyHomeRegionCatalog;
 import com.toadzip.backend.ingest.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
+import com.toadzip.backend.ingest.repository.external.ExternalDataRequestException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -162,22 +163,68 @@ public class MyHomeComplexCollectionService {
         for (int page = 1; page <= request.maxPages(); page++) {
             int currentPage = page;
             String requestDescription = request.requestDescription(region, currentPage);
-            ExternalDataResponse response = retryExecutor.execute(
+            CollectedPage collectedPage = retryExecutor.execute(
                     ExternalDataSource.MYHOME_COMPLEX,
                     requestDescription,
-                    () -> externalRepository.fetch(region, request, currentPage),
+                    () -> validatePage(
+                            externalRepository.fetch(region, request, currentPage),
+                            items.size()
+                    ),
                     callCounter
             );
-            failureRecorder.resolve(ExternalDataSource.MYHOME_COMPLEX, requestDescription);
-            List<JsonNode> rows = DataGoKrOpenApiClient.findRows(response.body(), LIST_POINTER);
+            List<JsonNode> rows = collectedPage.rows();
             rows.stream()
                     .map(row -> objectMapper.convertValue(row, MyHomeComplexSourceItem.class))
                     .forEach(items::add);
-            if (collectionCompleted(response.body(), items.size(), rows.size(), request.pageSize())) {
+            failureRecorder.resolve(ExternalDataSource.MYHOME_COMPLEX, requestDescription);
+            if (collectionCompleted(collectedPage.response().body(), items.size(), rows.size(), request.pageSize())) {
                 return items;
             }
         }
         throw new IllegalStateException("마이홈 단지 조회가 최대 페이지 안에 끝나지 않았습니다.");
+    }
+
+    private CollectedPage validatePage(ExternalDataResponse response, int collectedCount) {
+        JsonNode root = response.body();
+        String resultCode = root.at("/response/header/resultCode").asString("");
+        if ("03".equals(resultCode)) {
+            return new CollectedPage(response, List.of());
+        }
+        JsonNode body = root.at("/response/body");
+        if (!body.isObject()) {
+            throw invalidResponseSchema();
+        }
+        int totalCount = totalCountOf(body);
+        JsonNode item = body.path("item");
+        if (item.isMissingNode() || item.isNull()) {
+            if (totalCount == 0) {
+                return new CollectedPage(response, List.of());
+            }
+            throw invalidResponseSchema();
+        }
+        if (!item.isArray() && !item.isObject()) {
+            throw invalidResponseSchema();
+        }
+        List<JsonNode> rows = DataGoKrOpenApiClient.findRows(response.body(), LIST_POINTER);
+        if (rows.isEmpty() && collectedCount == 0 && totalCount != 0) {
+            throw invalidResponseSchema();
+        }
+        return new CollectedPage(response, rows);
+    }
+
+    private int totalCountOf(JsonNode body) {
+        JsonNode totalCount = body.path("totalCount");
+        if (totalCount.isMissingNode() || totalCount.isNull()) {
+            return -1;
+        }
+        if (!totalCount.isIntegralNumber() || totalCount.asInt(-1) < 0) {
+            throw invalidResponseSchema();
+        }
+        return totalCount.asInt();
+    }
+
+    private ExternalDataRequestException invalidResponseSchema() {
+        return new ExternalDataRequestException("마이홈 단지 응답에 body, item 또는 totalCount 구조가 올바르지 않습니다.");
     }
 
     private boolean collectionCompleted(JsonNode responseBody, int collectedCount, int rowCount, int pageSize) {
@@ -200,5 +247,8 @@ public class MyHomeComplexCollectionService {
             return runtimeException;
         }
         return new IllegalStateException("마이홈 단지 수집 작업이 실패했습니다.", cause);
+    }
+
+    private record CollectedPage(ExternalDataResponse response, List<JsonNode> rows) {
     }
 }

@@ -181,6 +181,35 @@ class MyHomeComplexCollectionServiceTest {
         );
     }
 
+    @Test
+    @DisplayName("정상 코드에 body와 totalCount가 없으면 기존 지역 snapshot을 교체하지 않는다")
+    void doesNotReplaceRegionWhenSuccessfulResponseHasNoBody() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1)).thenReturn(responseWithoutBody());
+
+        var result = service.collect(request());
+
+        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(failureRecorder).record(any(), any(), any(), any(), any());
+        assertThat(result.storedRowCount()).isZero();
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
+    @DisplayName("totalCount가 0인 응답은 명시적인 빈 snapshot으로 저장한다")
+    void replacesRegionWithExplicitEmptySnapshot() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1)).thenReturn(response("[]", 0));
+        when(sourceStore.replaceComplexRegion(region, List.of())).thenReturn(0);
+
+        var result = service.collect(request());
+
+        verify(sourceStore).replaceComplexRegion(region, List.of());
+        assertThat(result.failedRequestCount()).isZero();
+    }
+
     private MyHomeComplexCollectionRequest request() {
         return new MyHomeComplexCollectionRequest("11", "110", 2, 10);
     }
@@ -193,6 +222,11 @@ class MyHomeComplexCollectionServiceTest {
         String totalCountField = totalCount == null ? "" : "\"totalCount\":" + totalCount + ",";
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"},"
                 + "\"body\":{" + totalCountField + "\"item\":" + items + "}}}";
+        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+    }
+
+    private ExternalDataResponse responseWithoutBody() {
+        String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"}}}";
         return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
     }
 }
