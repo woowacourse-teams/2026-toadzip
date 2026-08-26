@@ -8,12 +8,25 @@ import com.toadzip.backend.ingest.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.dto.LhAnnouncementSupplySourceItem;
 import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
+import com.toadzip.backend.ingest.repository.external.ExternalDataRequestException;
 import tools.jackson.databind.JsonNode;
 
 @Component
 public class LhAnnouncementSourceMapper {
 
+    private static final List<String> DETAIL_DATASET_KEYS = List.of(
+            "dsEtcInfo",
+            "dsSbd",
+            "dsSplScdl",
+            "dsCtrtPlc",
+            "dsAhflInfo",
+            "dsSbdAhfl"
+    );
+
+    private static final String SUPPLY_DATASET_KEY = "dsList01";
+
     public List<LhAnnouncementDetailSource> details(String panId, JsonNode root) {
+        requireAnyDataset(root, DETAIL_DATASET_KEYS, "LH 공고 상세");
         List<LhAnnouncementDetailSource> sources = new ArrayList<>();
         addEtcInfo(sources, panId, root);
         addComplexes(sources, panId, root);
@@ -25,7 +38,8 @@ public class LhAnnouncementSourceMapper {
     }
 
     public List<LhAnnouncementSupplySource> supplies(String panId, JsonNode root) {
-        List<JsonNode> rows = DataGoKrOpenApiClient.findRows(root, "dsList01");
+        requireAnyDataset(root, List.of(SUPPLY_DATASET_KEY), "LH 공고 공급");
+        List<JsonNode> rows = DataGoKrOpenApiClient.findRows(root, SUPPLY_DATASET_KEY);
         List<LhAnnouncementSupplySource> sources = new ArrayList<>();
         for (int sourceOrder = 0; sourceOrder < rows.size(); sourceOrder++) {
             sources.add(new LhAnnouncementSupplySource(
@@ -35,6 +49,25 @@ public class LhAnnouncementSourceMapper {
             ));
         }
         return sources;
+    }
+
+    private void requireAnyDataset(JsonNode root, List<String> datasetKeys, String sourceName) {
+        boolean containsDataset = datasetKeys.stream().anyMatch(key -> containsDataset(root, key));
+        if (!containsDataset) {
+            throw new ExternalDataRequestException(sourceName + " 응답에 예상 dataset이 없습니다.");
+        }
+    }
+
+    private boolean containsDataset(JsonNode root, String datasetKey) {
+        if (!root.isArray()) {
+            return root.has(datasetKey);
+        }
+        for (JsonNode element : root) {
+            if (element.has(datasetKey)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void addEtcInfo(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {

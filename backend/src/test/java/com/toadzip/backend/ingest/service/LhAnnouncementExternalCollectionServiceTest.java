@@ -121,6 +121,32 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void LH_상세_응답에_상세_dataset이_없으면_기존_snapshot과_체크포인트를_보존한다() {
+        source(announcementSource());
+        when(externalRepository.fetchDetail(any())).thenReturn(response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]}]"));
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        verify(sourceStore, never()).replaceDetails(any(), any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        assertThat(result.storedRowCount()).isZero();
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
+    void LH_공급_응답에_공급_dataset이_없으면_기존_snapshot과_체크포인트를_보존한다() {
+        source(announcementSource());
+        when(externalRepository.fetchSupply(any())).thenReturn(response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]}]"));
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+
+        verify(sourceStore, never()).replaceSupplies(any(), any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        assertThat(result.storedRowCount()).isZero();
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
     void 상세_API_실패는_공급_API_수집을_막지_않는다() {
         source(announcementSource());
         when(externalRepository.fetchDetail(any())).thenThrow(new IllegalStateException("상세 조회 실패"));
