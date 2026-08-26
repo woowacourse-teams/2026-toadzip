@@ -59,4 +59,15 @@ class LhAnnouncementCollectionControllerTest {
                 .andExpect(jsonPath("$.message").value("lh-announcement-detail 수집이 이미 실행 중입니다."))
                 .andExpect(jsonPath("$.traceId").isNotEmpty());
     }
+
+    @Test
+    void LH_공급_수집이_실패하면_502와_수집_결과를_반환한다() throws Exception {
+        when(supplyCollectionService.collect())
+                .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 2, 1, 4));
+
+        mockMvc.perform(post("/api/admin/ingest/lh/announcements/supplies"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.storedRowCount").value(2))
+                .andExpect(jsonPath("$.failedRequestCount").value(1));
+    }
 }

@@ -1,5 +1,7 @@
 package com.toadzip.backend.ingest.controller;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,12 +27,19 @@ public class LhAnnouncementCollectionController {
     }
 
     @PostMapping("/details")
-    public ExternalDataCollectionReport collectDetails() {
-        return detailCollectionService.collect();
+    public ResponseEntity<ExternalDataCollectionReport> collectDetails() {
+        return responseOf(detailCollectionService.collect());
     }
 
     @PostMapping("/supplies")
-    public ExternalDataCollectionReport collectSupplies() {
-        return supplyCollectionService.collect();
+    public ResponseEntity<ExternalDataCollectionReport> collectSupplies() {
+        return responseOf(supplyCollectionService.collect());
+    }
+
+    private ResponseEntity<ExternalDataCollectionReport> responseOf(ExternalDataCollectionReport report) {
+        if (report.failedRequestCount() > 0) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(report);
+        }
+        return ResponseEntity.ok(report);
     }
 }

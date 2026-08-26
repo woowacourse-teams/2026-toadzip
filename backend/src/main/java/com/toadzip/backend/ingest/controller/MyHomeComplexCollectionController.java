@@ -2,6 +2,8 @@ package com.toadzip.backend.ingest.controller;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -22,7 +24,7 @@ public class MyHomeComplexCollectionController {
     }
 
     @PostMapping
-    public MyHomeComplexCollectionReport collect(
+    public ResponseEntity<MyHomeComplexCollectionReport> collect(
             @RequestParam(required = false) String provinceCode,
             @RequestParam(required = false) String districtCode,
             @RequestParam(defaultValue = "500")
@@ -32,11 +34,15 @@ public class MyHomeComplexCollectionController {
             @Min(value = 1, message = "1 이상이어야 합니다.")
             @Max(value = 1_000, message = "1000 이하여야 합니다.") int maxPages
     ) {
-        return collectionService.collect(new MyHomeComplexCollectionRequest(
+        MyHomeComplexCollectionReport report = collectionService.collect(new MyHomeComplexCollectionRequest(
                 provinceCode,
                 districtCode,
                 pageSize,
                 maxPages
         ));
+        if (report.failedRequestCount() > 0) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(report);
+        }
+        return ResponseEntity.ok(report);
     }
 }

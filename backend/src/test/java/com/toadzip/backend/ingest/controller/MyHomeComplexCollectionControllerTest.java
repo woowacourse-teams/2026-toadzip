@@ -32,18 +32,30 @@ class MyHomeComplexCollectionControllerTest {
     @Test
     void 기본_페이지_크기와_최대_페이지로_전체_지역을_수집한다() throws Exception {
         when(collectionService.collect(any()))
-                .thenReturn(new MyHomeComplexCollectionReport("myhome-complex", 3, 1, 7));
+                .thenReturn(new MyHomeComplexCollectionReport("myhome-complex", 3, 0, 7));
 
         mockMvc.perform(post("/api/admin/ingest/myhome/complexes"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.storedRowCount").value(3))
-                .andExpect(jsonPath("$.failedRequestCount").value(1))
+                .andExpect(jsonPath("$.failedRequestCount").value(0))
                 .andExpect(jsonPath("$.externalApiCallCount").value(7));
 
         ArgumentCaptor<MyHomeComplexCollectionRequest> request = ArgumentCaptor.captor();
         verify(collectionService).collect(request.capture());
         org.assertj.core.api.Assertions.assertThat(request.getValue().pageSize()).isEqualTo(500);
         org.assertj.core.api.Assertions.assertThat(request.getValue().maxPages()).isEqualTo(1_000);
+    }
+
+    @Test
+    void 일부_지역_수집이_실패하면_502와_수집_결과를_반환한다() throws Exception {
+        when(collectionService.collect(any()))
+                .thenReturn(new MyHomeComplexCollectionReport("myhome-complex", 3, 1, 7));
+
+        mockMvc.perform(post("/api/admin/ingest/myhome/complexes"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.storedRowCount").value(3))
+                .andExpect(jsonPath("$.failedRequestCount").value(1))
+                .andExpect(jsonPath("$.externalApiCallCount").value(7));
     }
 
     @Test
