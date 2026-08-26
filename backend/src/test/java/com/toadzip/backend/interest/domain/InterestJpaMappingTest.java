@@ -25,8 +25,8 @@ class InterestJpaMappingTest {
     @Test
     void 관심_도메인을_JPA_엔티티로_등록한다() {
         assertEntityAttributes(
-                "FavoriteNotice",
-                Set.of("id", "user", "notice", "createdAt")
+                "FavoriteAnnouncement",
+                Set.of("id", "user", "announcement", "createdAt")
         );
         assertEntityAttributes(
                 "FavoriteHousingComplex",

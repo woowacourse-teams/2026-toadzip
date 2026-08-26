@@ -1,4 +1,4 @@
-package com.toadzip.backend.notice.domain;
+package com.toadzip.backend.announcement.domain;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -9,7 +9,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
-class NoticeValidationTest {
+class AnnouncementValidationTest {
 
     @Test
     void 접수처명과_접수방식은_비어_있을_수_없다() {
@@ -50,7 +50,7 @@ class NoticeValidationTest {
 
         assertThrows(
                 IllegalArgumentException.class,
-                () -> createNotice(
+                () -> createAnnouncement(
                         fields,
                         LocalDate.of(2026, 8, 1),
                         LocalDate.of(2026, 8, 10),
@@ -74,27 +74,27 @@ class NoticeValidationTest {
         assertAll(
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createNotice(fields, null, applicationStartDate, applicationEndDate,
+                        () -> createAnnouncement(fields, null, applicationStartDate, applicationEndDate,
                                 winnerAnnouncementDate, 100L, receptionPlace)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createNotice(fields, postedDate, null, applicationEndDate,
+                        () -> createAnnouncement(fields, postedDate, null, applicationEndDate,
                                 winnerAnnouncementDate, 100L, receptionPlace)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createNotice(fields, postedDate, applicationStartDate, null,
+                        () -> createAnnouncement(fields, postedDate, applicationStartDate, null,
                                 winnerAnnouncementDate, 100L, receptionPlace)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createNotice(fields, postedDate, applicationStartDate, applicationEndDate,
+                        () -> createAnnouncement(fields, postedDate, applicationStartDate, applicationEndDate,
                                 null, 100L, receptionPlace)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
-                        () -> createNotice(fields, postedDate, applicationStartDate, applicationEndDate,
+                        () -> createAnnouncement(fields, postedDate, applicationStartDate, applicationEndDate,
                                 winnerAnnouncementDate, 100L, null)
                 )
         );
@@ -104,7 +104,7 @@ class NoticeValidationTest {
     void 접수_종료일은_접수_시작일보다_빠를_수_없다() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> createNotice(
+                () -> createAnnouncement(
                         validStringFields(),
                         LocalDate.of(2026, 8, 1),
                         LocalDate.of(2026, 8, 14),
@@ -120,7 +120,7 @@ class NoticeValidationTest {
     void 조회수는_음수일_수_없다() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> createNotice(
+                () -> createAnnouncement(
                         validStringFields(),
                         LocalDate.of(2026, 8, 1),
                         LocalDate.of(2026, 8, 10),
@@ -132,7 +132,7 @@ class NoticeValidationTest {
         );
     }
 
-    private Notice createNotice(
+    private Announcement createAnnouncement(
             String[] fields,
             LocalDate postedDate,
             LocalDate applicationStartDate,
@@ -141,7 +141,7 @@ class NoticeValidationTest {
             long viewCount,
             ReceptionPlace receptionPlace
     ) {
-        return Notice.create(
+        return Announcement.create(
                 fields[0],
                 null,
                 null,
@@ -163,13 +163,13 @@ class NoticeValidationTest {
 
     private String[] validStringFields() {
         return new String[]{
-                "source-notice-id",
+                "source-announcement-id",
                 "행복주택 모집공고",
                 "원공고",
                 "행복주택",
                 "신규모집",
                 "LH",
-                "https://example.com/notices/1"
+                "https://example.com/announcements/1"
         };
     }
 
