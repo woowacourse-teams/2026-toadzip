@@ -45,11 +45,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Pattern;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -60,10 +56,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class AnnouncementQueryService {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(AnnouncementQueryService.class);
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
-    private static final Pattern PROVINCE_CODE_PATTERN = Pattern.compile("\\d{2}");
-    private static final Pattern DISTRICT_CODE_PATTERN = Pattern.compile("\\d{5}");
     private static final int MINIMUM_PAGE_SIZE = 1;
     private static final int MAXIMUM_PAGE_SIZE = 50;
 
@@ -104,13 +97,11 @@ public class AnnouncementQueryService {
         List<Announcement> announcements = fetchedAnnouncements.stream().limit(size).toList();
         List<SupplyRow> supplyRows = findSupplyRows(announcementIds(announcements));
         Map<Long, List<SupplyRow>> rowsByAnnouncementId = groupRowsByAnnouncementId(supplyRows);
-        Set<RegionCodePair> warnedUnresolvedRegions = new HashSet<>();
         List<AnnouncementListItemResponse> items = announcements.stream()
                 .map(announcement -> toListItem(
                         announcement,
                         rowsByAnnouncementId.getOrDefault(announcement.getId(), List.of()),
-                        today,
-                        warnedUnresolvedRegions
+                        today
                 ))
                 .toList();
         return new AnnouncementListResponse(items, nextCursor(announcements, hasNext), hasNext);
@@ -130,7 +121,7 @@ public class AnnouncementQueryService {
         List<SupplyRow> supplyRows = findSupplyRows(announcementIds);
         List<SupplyTarget> supplyTargets = findSupplyTargets(supplyRowIds(supplyRows));
         Map<Long, List<SupplyTarget>> targetsBySupplyRowId = groupTargetsBySupplyRowId(supplyTargets);
-        ListAggregate aggregate = aggregateRows(supplyRows, new HashSet<>());
+        ListAggregate aggregate = aggregateRows(supplyRows);
         SupplyComposition supplyComposition = composeSupplyRows(supplyRows, targetsBySupplyRowId);
         return toDetailResponse(
                 announcement,
@@ -220,10 +211,9 @@ public class AnnouncementQueryService {
     private AnnouncementListItemResponse toListItem(
             Announcement announcement,
             List<SupplyRow> supplyRows,
-            LocalDate today,
-            Set<RegionCodePair> warnedUnresolvedRegions
+            LocalDate today
     ) {
-        ListAggregate aggregate = aggregateRows(supplyRows, warnedUnresolvedRegions);
+        ListAggregate aggregate = aggregateRows(supplyRows);
         return new AnnouncementListItemResponse(
                 announcement.getId(),
                 announcement.getStatus(),
@@ -431,10 +421,7 @@ public class AnnouncementQueryService {
         return amount.longValueExact();
     }
 
-    private ListAggregate aggregateRows(
-            List<SupplyRow> supplyRows,
-            Set<RegionCodePair> warnedUnresolvedRegions
-    ) {
+    private ListAggregate aggregateRows(List<SupplyRow> supplyRows) {
         Set<String> regionNames = new LinkedHashSet<>();
         Set<Long> complexIds = new HashSet<>();
         Integer supplyHouseholdCount = null;
@@ -449,7 +436,7 @@ public class AnnouncementQueryService {
                 continue;
             }
             complexIds.add(housingComplex.getId());
-            addRegionName(regionNames, housingComplex.getAddress(), warnedUnresolvedRegions);
+            addRegionName(regionNames, housingComplex.getAddress());
             if (thumbnailImageUrl == null && housingComplex.getImageUrl() != null) {
                 thumbnailImageUrl = housingComplex.getImageUrl();
             }
@@ -472,34 +459,11 @@ public class AnnouncementQueryService {
         return Math.addExact(total, rowCount);
     }
 
-    private void addRegionName(
-            Set<String> regionNames,
-            Address address,
-            Set<RegionCodePair> warnedUnresolvedRegions
-    ) {
-        String provinceCode = address.getProvinceCode();
-        String districtCode = address.getCityCountyDistrictCode();
-        Optional<String> resolvedName = regionCodeResolver.resolve(provinceCode, districtCode);
-        if (resolvedName.isPresent()) {
-            regionNames.add(resolvedName.get());
-            return;
-        }
-        RegionCodePair unresolvedRegion = new RegionCodePair(provinceCode, districtCode);
-        if (warnedUnresolvedRegions.add(unresolvedRegion)) {
-            LOGGER.warn(
-                    "공고 공급 단지의 행정구역 코드를 변환할 수 없습니다. "
-                            + "provinceCode={}, cityCountyDistrictCode={}",
-                    regionCodeForLog(provinceCode, PROVINCE_CODE_PATTERN),
-                    regionCodeForLog(districtCode, DISTRICT_CODE_PATTERN)
-            );
-        }
-    }
-
-    private String regionCodeForLog(String regionCode, Pattern expectedPattern) {
-        if (regionCode != null && expectedPattern.matcher(regionCode).matches()) {
-            return regionCode;
-        }
-        return "[invalid]";
+    private void addRegionName(Set<String> regionNames, Address address) {
+        regionCodeResolver.resolve(
+                address.getProvinceCode(),
+                address.getCityCountyDistrictCode()
+        ).ifPresent(regionNames::add);
     }
 
     private record ListAggregate(
@@ -513,6 +477,4 @@ public class AnnouncementQueryService {
     private record SupplyComposition(List<SupplyRowResponse> supplyRows, List<String> targets) {
     }
 
-    private record RegionCodePair(String provinceCode, String districtCode) {
-    }
 }

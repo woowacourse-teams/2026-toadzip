@@ -51,12 +51,9 @@ import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.system.CapturedOutput;
-import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
@@ -67,7 +64,6 @@ import org.springframework.transaction.annotation.Transactional;
 @SpringBootTest
 @ActiveProfiles("test")
 @Import(AnnouncementQueryServiceTest.FixedClockConfig.class)
-@ExtendWith(OutputCaptureExtension.class)
 class AnnouncementQueryServiceTest {
 
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
@@ -82,7 +78,7 @@ class AnnouncementQueryServiceTest {
     private AnnouncementCursorCodec announcementCursorCodec;
 
     @Test
-    void 목록은_최신_리비전과_동률_ID_순서로_상태와_집계를_반환한다(CapturedOutput output) {
+    void 목록은_최신_리비전과_동률_ID_순서로_상태와_집계를_반환한다() {
         Announcement original = persist(createAnnouncement(
                 "original",
                 null,
@@ -237,14 +233,6 @@ class AnnouncementQueryServiceTest {
         assertEquals(ApplicationStatus.CLOSED, response.items().get(4).applicationStatus());
         assertNull(response.items().get(4).dDay());
         assertEquals(37L, entityManager.find(Announcement.class, correction.getId()).getViewCount());
-        assertEquals(
-                1L,
-                output.getAll().lines()
-                        .filter(line -> line.contains(
-                                "provinceCode=99, cityCountyDistrictCode=99999"
-                        ))
-                        .count()
-        );
     }
 
     @Test
@@ -287,47 +275,6 @@ class AnnouncementQueryServiceTest {
         assertFalse(secondPage.hasNext());
         assertNull(secondPage.nextCursor());
         assertEquals(first.getId(), secondPage.items().getFirst().announcementId());
-    }
-
-    @Test
-    void 잘못된_행정구역_코드는_경고_로그에_원문을_노출하지_않는다(CapturedOutput output) {
-        Announcement announcement = persist(createAnnouncement(
-                "unsafe-region",
-                null,
-                null,
-                AnnouncementPublicationType.ORIGINAL,
-                LocalDate.of(2026, 8, 5),
-                LocalDate.of(2026, 8, 10),
-                LocalDate.of(2026, 8, 11),
-                null,
-                null,
-                0L
-        ));
-        HousingComplex housingComplex = persist(createComplex(
-                "잘못된 지역 코드 단지",
-                "unsafe-region-complex",
-                "11\nFORGED-PROVINCE",
-                "11140\r\nFORGED-DISTRICT",
-                null
-        ));
-        persist(createSupplyRow(announcement, housingComplex, null, "unsafe-region-row", 0, 1));
-        entityManager.flush();
-
-        AnnouncementListResponse response = announcementQueryService.getAnnouncements(null, 20);
-
-        String logs = output.getAll();
-        assertEquals(List.of(), response.items().getFirst().regionNames());
-        assertEquals(
-                1L,
-                logs.lines()
-                        .filter(line -> line.contains(
-                                "공고 공급 단지의 행정구역 코드를 변환할 수 없습니다."
-                        ))
-                        .count()
-        );
-        assertFalse(response.toString().contains("FORGED"));
-        assertTrue(logs.contains("provinceCode=[invalid], cityCountyDistrictCode=[invalid]"));
-        assertFalse(logs.contains("FORGED"));
     }
 
     @Test
