@@ -7,6 +7,12 @@
 
 명령어는 `frontend/` 디렉터리에서 실행한다.
 
+`nvm`을 사용한다면 `.nvmrc`에 기록된 Node.js 버전을 적용한다.
+
+```shell
+nvm use
+```
+
 ## 의존성 설치
 
 ```shell
@@ -28,6 +34,22 @@ npm run dev
 ```shell
 npm run lint
 ```
+
+## 단위 테스트
+
+```shell
+npm run test
+```
+
+Vitest와 React Testing Library로 테스트를 한 번 실행한다.
+
+## 전체 검사
+
+```shell
+npm run check
+```
+
+코드 검사, 단위 테스트, TypeScript 검사와 프로덕션 빌드를 차례로 실행한다.
 
 ## 프로덕션 빌드
 
