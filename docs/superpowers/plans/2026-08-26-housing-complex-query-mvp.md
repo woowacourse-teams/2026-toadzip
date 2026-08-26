@@ -541,6 +541,9 @@ String nextCursor = hasNext ? cursorCodec.encode(page.getLast().postedDate(), pa
 return new HousingComplexListResponse(mapper.toListItems(page, today()), nextCursor, hasNext);
 ```
 
+Inject the existing application `Clock`; compute `today` with its `Asia/Seoul` zone and never call the
+system clock directly. Keep `getComplexes` under `@Transactional(readOnly = true)`.
+
 Extend `HousingComplexCodeMapper` only now to map `ORIGINAL`/`원공고` and
 `CORRECTION`/`정정공고`; cancellation leaves never reach an API response and unknown publication values
 fail explicitly. Use the representative leaf's publication code, derive `BEFORE_APPLICATION`, `APPLYING`,
