@@ -31,4 +31,18 @@ public class ExternalDataFailureStore {
                 ExternalDataFailureStatus.PENDING
         ).forEach(failure -> failure.resolve(resolvedAt));
     }
+
+    @Transactional
+    public void skip(
+            ExternalDataSource source,
+            String requestDescription,
+            Instant skippedAt,
+            String skipReason
+    ) {
+        failureRepository.findAllBySourceAndRequestDescriptionAndStatus(
+                source,
+                requestDescription,
+                ExternalDataFailureStatus.PENDING
+        ).forEach(failure -> failure.skip(skippedAt, skipReason));
+    }
 }

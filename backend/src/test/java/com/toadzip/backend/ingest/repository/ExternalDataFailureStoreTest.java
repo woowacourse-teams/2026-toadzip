@@ -64,4 +64,33 @@ class ExternalDataFailureStoreTest {
             assertThat(failure.getResolvedAt()).isEqualTo(resolvedAt);
         });
     }
+
+    @Test
+    void 대상이_아닌_요청은_스킵_상태로_변경한다() {
+        Instant occurredAt = Instant.parse("2026-08-23T00:01:00Z");
+        Instant skippedAt = Instant.parse("2026-08-23T00:02:00Z");
+        ExternalDataFailureStore store = new ExternalDataFailureStore(repository);
+        store.store(ExternalDataCollectionFailure.create(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                "myhomeAnnouncementSourceId=7",
+                occurredAt,
+                0,
+                "IllegalStateException",
+                "LH 공고 조회 조건이 없습니다."
+        ));
+
+        store.skip(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                "myhomeAnnouncementSourceId=7",
+                skippedAt,
+                "LH 공급기관이 아닌 마이홈 공고라서 수집 대상이 아닙니다."
+        );
+
+        assertThat(repository.findAll()).singleElement().satisfies(failure -> {
+            assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.SKIPPED);
+            assertThat(failure.getResolvedAt()).isEqualTo(skippedAt);
+            assertThat(failure.getErrorType()).isEqualTo("NOT_APPLICABLE");
+            assertThat(failure.getReason()).isEqualTo("LH 공급기관이 아닌 마이홈 공고라서 수집 대상이 아닙니다.");
+        });
+    }
 }

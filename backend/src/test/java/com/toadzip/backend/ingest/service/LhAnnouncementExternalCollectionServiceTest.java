@@ -20,6 +20,7 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
@@ -30,6 +31,7 @@ import com.toadzip.backend.ingest.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.dto.ExternalDataResponse;
+import com.toadzip.backend.ingest.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.dto.MyHomeAnnouncementSourceItem;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.repository.LhAnnouncementExternalRepository;
@@ -276,14 +278,53 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
-    void 조회_조건이_없는_공고는_실패_이력으로_남긴다() {
-        source(invalidAnnouncementSource());
+    void LH가_아닌_공급기관은_실패가_아닌_스킵으로_집계한다() {
+        source(nonLhAnnouncementSource());
 
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
-        verify(failureRecorder).record(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any(), any(), any());
+        verify(failureRecorder).skip(
+                eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
+                any(),
+                eq("LH 공급기관이 아닌 마이홈 공고라서 수집 대상이 아닙니다.")
+        );
+        verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
         verify(externalRepository, never()).fetchDetail(any());
-        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.failedRequestCount()).isZero();
+        assertThat(result.skippedRequestCount()).isOne();
+    }
+
+    @Test
+    void 지원하지_않는_LH_공고_조건은_실패가_아닌_스킵으로_집계한다() {
+        source(unsupportedLhAnnouncementSource());
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        verify(failureRecorder).skip(
+                eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
+                any(),
+                eq("LH 공고 조회 조건을 지원하지 않아 건너뛰었습니다.")
+        );
+        verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+        verify(externalRepository, never()).fetchDetail(any());
+        assertThat(result.failedRequestCount()).isZero();
+        assertThat(result.skippedRequestCount()).isOne();
+    }
+
+    @Test
+    void 통합공공임대는_LH_공급정보_코드_064로_호출한다() {
+        source(integratedLhAnnouncementSource());
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("2015122300020531"), any())).thenReturn(1);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        ArgumentCaptor<LhAnnouncementRequest> request = ArgumentCaptor.forClass(LhAnnouncementRequest.class);
+        verify(externalRepository).fetchDetail(request.capture());
+        assertThat(request.getValue().supplyInfoTypeCode()).isEqualTo("064");
+        assertThat(result.storedRowCount()).isOne();
+        assertThat(result.failedRequestCount()).isZero();
+        assertThat(result.skippedRequestCount()).isZero();
     }
 
     @Test
@@ -331,8 +372,36 @@ class LhAnnouncementExternalCollectionServiceTest {
         return source;
     }
 
-    private MyHomeAnnouncementSource invalidAnnouncementSource() {
-        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, item("100", null, null).toSourceData());
+    private MyHomeAnnouncementSource nonLhAnnouncementSource() {
+        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, itemWithProvider(
+                "100",
+                "부산도시공사",
+                "행복주택",
+                "https://apply.lh.or.kr/panDetail?panId=100"
+                        + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"
+        ).toSourceData());
+        ReflectionTestUtils.setField(source, "id", ++nextSourceId);
+        return source;
+    }
+
+    private MyHomeAnnouncementSource unsupportedLhAnnouncementSource() {
+        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, item(
+                "100",
+                "지원하지 않는 유형",
+                "https://apply.lh.or.kr/panDetail?panId=100"
+                        + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"
+        ).toSourceData());
+        ReflectionTestUtils.setField(source, "id", ++nextSourceId);
+        return source;
+    }
+
+    private MyHomeAnnouncementSource integratedLhAnnouncementSource() {
+        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, item(
+                "2015122300020531",
+                "통합공공임대",
+                "https://apply.lh.or.kr/panDetail?panId=2015122300020531"
+                        + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=48"
+        ).toSourceData());
         ReflectionTestUtils.setField(source, "id", ++nextSourceId);
         return source;
     }
@@ -343,7 +412,20 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     private MyHomeAnnouncementSourceItem item(String pblancId, String supplyType, String url) {
         return new MyHomeAnnouncementSourceItem(
-                pblancId, 1, null, "공고", null, null, supplyType, null, null, null,
+                pblancId, 1, null, "공고", "LH", null, supplyType, null, null, null,
+                null, null, null, url, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null
+        );
+    }
+
+    private MyHomeAnnouncementSourceItem itemWithProvider(
+            String pblancId,
+            String provider,
+            String supplyType,
+            String url
+    ) {
+        return new MyHomeAnnouncementSourceItem(
+                pblancId, 1, null, "공고", provider, null, supplyType, null, null, null,
                 null, null, null, url, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null
         );

@@ -58,6 +58,10 @@ public class ExternalDataFailureRecorder {
         store.resolve(source, requestDescription, clock.instant());
     }
 
+    public void skip(ExternalDataSource source, String requestDescription, String skipReason) {
+        store.skip(source, requestDescription, clock.instant(), skipReason);
+    }
+
     private String reasonOf(RuntimeException exception) {
         String reason = exception.getMessage();
         if (reason == null || reason.isBlank()) {

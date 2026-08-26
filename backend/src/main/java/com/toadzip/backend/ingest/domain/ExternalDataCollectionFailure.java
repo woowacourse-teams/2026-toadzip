@@ -98,6 +98,15 @@ public class ExternalDataCollectionFailure {
         this.resolvedAt = resolvedAt;
     }
 
+    public void skip(Instant skippedAt, String skipReason) {
+        validateRequired(skippedAt, "건너뛴 시각");
+        validateNotBlank(skipReason, "건너뛴 사유");
+        status = ExternalDataFailureStatus.SKIPPED;
+        resolvedAt = skippedAt;
+        errorType = "NOT_APPLICABLE";
+        reason = skipReason;
+    }
+
     private void validateNotBlank(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + "은 필수입니다.");

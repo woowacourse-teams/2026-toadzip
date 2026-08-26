@@ -4,14 +4,25 @@ public record ExternalDataCollectionReport(
         String operation,
         int storedRowCount,
         int failedRequestCount,
-        int externalApiCallCount
+        int externalApiCallCount,
+        int skippedRequestCount
 ) {
+
+    public ExternalDataCollectionReport(
+            String operation,
+            int storedRowCount,
+            int failedRequestCount,
+            int externalApiCallCount
+    ) {
+        this(operation, storedRowCount, failedRequestCount, externalApiCallCount, 0);
+    }
 
     public ExternalDataCollectionReport {
         if (operation == null || operation.isBlank()) {
             throw new IllegalArgumentException("수집 작업명은 필수입니다.");
         }
-        if (storedRowCount < 0 || failedRequestCount < 0 || externalApiCallCount < 0) {
+        if (storedRowCount < 0 || failedRequestCount < 0 || externalApiCallCount < 0
+                || skippedRequestCount < 0) {
             throw new IllegalArgumentException("수집 결과 개수는 음수일 수 없습니다.");
         }
     }
@@ -28,7 +39,8 @@ public record ExternalDataCollectionReport(
                 operation,
                 storedRowCount + other.storedRowCount,
                 failedRequestCount + other.failedRequestCount,
-                externalApiCallCount + other.externalApiCallCount
+                externalApiCallCount + other.externalApiCallCount,
+                skippedRequestCount + other.skippedRequestCount
         );
     }
 }
