@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 class AdminAccountTest {
 
     @Test
-    void 관리자는_활성_ADMIN_권한으로_생성한다() {
+    void 관리자는_ADMIN_권한으로_생성한다() {
         LocalDateTime createdAt = LocalDateTime.of(2026, 8, 26, 10, 0);
 
         AdminAccount adminAccount = AdminAccount.create("admin", "password-hash", createdAt);
