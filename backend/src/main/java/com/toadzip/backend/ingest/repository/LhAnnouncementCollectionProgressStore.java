@@ -1,6 +1,9 @@
 package com.toadzip.backend.ingest.repository;
 
 import java.time.Clock;
+import java.util.Collection;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,28 +30,23 @@ public class LhAnnouncementCollectionProgressStore {
         this.clock = clock;
     }
 
-    public boolean isCompleted(
+    public BatchProgress findBatch(
             ExternalDataSource source,
-            String requestDescription
+            Collection<String> requestDescriptions,
+            Collection<String> panIds
     ) {
-        return checkpointRepository.existsBySourceAndRequestHash(
-                source,
-                LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescription)
+        if (requestDescriptions.isEmpty()) {
+            return BatchProgress.empty();
+        }
+        Set<String> requestHashes = requestDescriptions.stream()
+                .map(LhAnnouncementCollectionCheckpoint::requestHashOf)
+                .collect(Collectors.toSet());
+        Set<String> completedRequestHashes = Set.copyOf(
+                checkpointRepository.findCompletedRequestHashes(source, requestHashes)
         );
-    }
-
-    public boolean hasStoredRows(ExternalDataSource source, String panId) {
-        if (source == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL) {
-            return detailRepository.existsByPanId(panId);
-        }
-        if (source == ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY) {
-            return supplyRepository.existsByPanId(panId);
-        }
-        throw new IllegalArgumentException("LH 공고 상세·공급 원천만 확인할 수 있습니다.");
-    }
-
-    public boolean hasCollectionHistory(ExternalDataSource source, String panId) {
-        return checkpointRepository.existsBySourceAndPanId(source, panId);
+        Set<String> storedPanIds = findStoredPanIds(source, panIds);
+        Set<String> historyPanIds = Set.copyOf(checkpointRepository.findHistoryPanIds(source, panIds));
+        return new BatchProgress(completedRequestHashes, storedPanIds, historyPanIds);
     }
 
     @Transactional
@@ -58,15 +56,53 @@ public class LhAnnouncementCollectionProgressStore {
             String requestDescription,
             String panId
     ) {
-        if (isCompleted(source, requestDescription)) {
-            return;
-        }
-        checkpointRepository.save(LhAnnouncementCollectionCheckpoint.complete(
+        LhAnnouncementCollectionCheckpoint checkpoint = LhAnnouncementCollectionCheckpoint.complete(
                 source,
                 sourceAnnouncementKey,
                 requestDescription,
                 panId,
                 clock.instant()
-        ));
+        );
+        checkpointRepository.insertIfAbsent(
+                checkpoint.getSource().name(),
+                checkpoint.getSourceAnnouncementKey(),
+                checkpoint.getRequestHash(),
+                checkpoint.getRequestDescription(),
+                checkpoint.getPanId(),
+                checkpoint.getCompletedAt()
+        );
+    }
+
+    private Set<String> findStoredPanIds(ExternalDataSource source, Collection<String> panIds) {
+        if (source == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL) {
+            return Set.copyOf(detailRepository.findStoredPanIds(panIds));
+        }
+        if (source == ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY) {
+            return Set.copyOf(supplyRepository.findStoredPanIds(panIds));
+        }
+        throw new IllegalArgumentException("LH 공고 상세·공급 원천만 확인할 수 있습니다.");
+    }
+
+    public record BatchProgress(
+            Set<String> completedRequestHashes,
+            Set<String> storedPanIds,
+            Set<String> historyPanIds
+    ) {
+
+        public BatchProgress {
+            completedRequestHashes = Set.copyOf(completedRequestHashes);
+            storedPanIds = Set.copyOf(storedPanIds);
+            historyPanIds = Set.copyOf(historyPanIds);
+        }
+
+        public static BatchProgress empty() {
+            return new BatchProgress(Set.of(), Set.of(), Set.of());
+        }
+
+        public boolean isCompleted(String requestDescription) {
+            return completedRequestHashes.contains(
+                    LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescription)
+            );
+        }
     }
 }

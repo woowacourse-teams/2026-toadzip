@@ -9,6 +9,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +24,10 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(
         name = "lh_announcement_collection_checkpoints",
+        indexes = @Index(
+                name = "idx_lh_announcement_checkpoint_source_pan_id",
+                columnList = "source, pan_id"
+        ),
         uniqueConstraints = @UniqueConstraint(columnNames = {"source", "request_hash"})
 )
 @NoArgsConstructor(access = PROTECTED)

@@ -1,13 +1,13 @@
 package com.toadzip.backend.ingest.service;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import com.toadzip.backend.ingest.domain.ExternalDataSource;
@@ -21,12 +21,15 @@ import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningExcept
 import com.toadzip.backend.ingest.repository.LhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.repository.LhAnnouncementCollectionExecutionLock;
 import com.toadzip.backend.ingest.repository.LhAnnouncementCollectionProgressStore;
+import com.toadzip.backend.ingest.repository.LhAnnouncementCollectionProgressStore.BatchProgress;
 import com.toadzip.backend.ingest.repository.LhSourceStore;
 import com.toadzip.backend.ingest.repository.MyHomeAnnouncementSourceRepository;
 
 @Slf4j
 @Service
 public class LhAnnouncementExternalCollectionService {
+
+    private static final int ANNOUNCEMENT_BATCH_SIZE = 500;
 
     private final MyHomeAnnouncementSourceRepository myHomeAnnouncementRepository;
     private final LhAnnouncementExternalRepository externalRepository;
@@ -78,46 +81,119 @@ public class LhAnnouncementExternalCollectionService {
 
     private ExternalDataCollectionReport collectAnnouncements(ExternalDataSource targetSource) {
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(operation(targetSource));
+        Set<String> visitedSourceAnnouncements = new HashSet<>();
         Set<String> attemptedRequests = new HashSet<>();
-        for (MyHomeAnnouncementSource source : distinctAnnouncements()) {
-            report = report.plus(collectAnnouncement(targetSource, source, attemptedRequests));
+        long lastSeenId = 0L;
+        while (true) {
+            List<MyHomeAnnouncementSource> sources = findNextBatch(lastSeenId);
+            if (sources.isEmpty()) {
+                return report;
+            }
+            lastSeenId = sources.getLast().getId();
+            report = report.plus(collectBatch(
+                    targetSource,
+                    sources,
+                    visitedSourceAnnouncements,
+                    attemptedRequests
+            ));
+        }
+    }
+
+    private List<MyHomeAnnouncementSource> findNextBatch(long lastSeenId) {
+        return myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(
+                lastSeenId,
+                PageRequest.of(0, ANNOUNCEMENT_BATCH_SIZE)
+        );
+    }
+
+    private ExternalDataCollectionReport collectBatch(
+            ExternalDataSource targetSource,
+            List<MyHomeAnnouncementSource> sources,
+            Set<String> visitedSourceAnnouncements,
+            Set<String> attemptedRequests
+    ) {
+        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(operation(targetSource));
+        List<CollectionCandidate> candidates = new ArrayList<>();
+        for (MyHomeAnnouncementSource source : sources) {
+            String sourceAnnouncementKey = sourceAnnouncementKey(source);
+            if (!visitedSourceAnnouncements.add(sourceAnnouncementKey)) {
+                continue;
+            }
+            Optional<LhAnnouncementRequest> request = requestOf(source);
+            if (request.isEmpty()) {
+                report = report.plus(recordInvalidSource(targetSource, source));
+                continue;
+            }
+            LhAnnouncementRequest resolved = request.orElseThrow();
+            if (!attemptedRequests.add(resolved.requestDescription())) {
+                continue;
+            }
+            candidates.add(new CollectionCandidate(sourceAnnouncementKey, resolved));
+        }
+        return report.plus(collectCandidates(targetSource, candidates));
+    }
+
+    private ExternalDataCollectionReport collectCandidates(
+            ExternalDataSource targetSource,
+            List<CollectionCandidate> candidates
+    ) {
+        if (candidates.isEmpty()) {
+            return ExternalDataCollectionReport.empty(operation(targetSource));
+        }
+        BatchProgress progress = progressStore.findBatch(
+                targetSource,
+                candidates.stream().map(CollectionCandidate::requestDescription).toList(),
+                candidates.stream().map(CollectionCandidate::panId).toList()
+        );
+        Set<String> storedPanIds = new HashSet<>(progress.storedPanIds());
+        Set<String> historyPanIds = new HashSet<>(progress.historyPanIds());
+        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(operation(targetSource));
+        for (CollectionCandidate candidate : candidates) {
+            report = report.plus(collectCandidate(
+                    targetSource,
+                    candidate,
+                    progress,
+                    storedPanIds,
+                    historyPanIds
+            ));
         }
         return report;
     }
 
-    private List<MyHomeAnnouncementSource> distinctAnnouncements() {
-        Map<String, MyHomeAnnouncementSource> sources = new LinkedHashMap<>();
-        for (MyHomeAnnouncementSource source : myHomeAnnouncementRepository.findAll()) {
-            String key = sourceAnnouncementKey(source);
-            sources.putIfAbsent(key, source);
+    private ExternalDataCollectionReport collectCandidate(
+            ExternalDataSource targetSource,
+            CollectionCandidate candidate,
+            BatchProgress progress,
+            Set<String> storedPanIds,
+            Set<String> historyPanIds
+    ) {
+        if (progress.isCompleted(candidate.requestDescription())) {
+            return ExternalDataCollectionReport.empty(operation(targetSource));
         }
-        return List.copyOf(sources.values());
+        if (storedPanIds.contains(candidate.panId()) && !historyPanIds.contains(candidate.panId())) {
+            complete(targetSource, candidate);
+            historyPanIds.add(candidate.panId());
+            return ExternalDataCollectionReport.empty(operation(targetSource));
+        }
+        ExternalDataCollectionReport report = fetchAndStore(
+                targetSource,
+                candidate.sourceAnnouncementKey(),
+                candidate.request()
+        );
+        if (report.failedRequestCount() == 0) {
+            storedPanIds.add(candidate.panId());
+            historyPanIds.add(candidate.panId());
+        }
+        return report;
     }
 
-    private ExternalDataCollectionReport collectAnnouncement(
-            ExternalDataSource targetSource,
-            MyHomeAnnouncementSource source,
-            Set<String> attemptedRequests
-    ) {
-        Optional<LhAnnouncementRequest> request = requestOf(source);
-        if (request.isEmpty()) {
-            return recordInvalidSource(targetSource, source);
-        }
-        LhAnnouncementRequest resolved = request.orElseThrow();
-        String sourceAnnouncementKey = sourceAnnouncementKey(source);
-        String requestDescription = resolved.requestDescription();
-        if (!attemptedRequests.add(requestDescription)) {
-            return ExternalDataCollectionReport.empty(operation(targetSource));
-        }
-        if (progressStore.isCompleted(targetSource, requestDescription)) {
-            return ExternalDataCollectionReport.empty(operation(targetSource));
-        }
-        if (progressStore.hasStoredRows(targetSource, resolved.panId())
-                && !progressStore.hasCollectionHistory(targetSource, resolved.panId())) {
-            progressStore.complete(targetSource, sourceAnnouncementKey, requestDescription, resolved.panId());
-            return ExternalDataCollectionReport.empty(operation(targetSource));
-        }
-        return fetchAndStore(targetSource, sourceAnnouncementKey, resolved);
+    private void complete(ExternalDataSource targetSource, CollectionCandidate candidate) {
+        progressStore.complete(
+                targetSource,
+                candidate.sourceAnnouncementKey(),
+                candidate.requestDescription(),
+                candidate.panId()
+        );
     }
 
     private ExternalDataCollectionReport fetchAndStore(
@@ -239,5 +315,16 @@ public class LhAnnouncementExternalCollectionService {
     private IngestAlreadyRunningException alreadyRunning(ExternalDataSource targetSource) {
         log.warn("{} 수집이 이미 실행 중이므로 중복 실행을 건너뜁니다.", operation(targetSource));
         return new IngestAlreadyRunningException(operation(targetSource) + " 수집이 이미 실행 중입니다.");
+    }
+
+    private record CollectionCandidate(String sourceAnnouncementKey, LhAnnouncementRequest request) {
+
+        private String requestDescription() {
+            return request.requestDescription();
+        }
+
+        private String panId() {
+            return request.panId();
+        }
     }
 }

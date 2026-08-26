@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
@@ -14,14 +15,18 @@ import static org.mockito.Mockito.when;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.toadzip.backend.ingest.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.dto.ExternalDataResponse;
@@ -30,6 +35,7 @@ import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningExcept
 import com.toadzip.backend.ingest.repository.LhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.repository.LhAnnouncementCollectionExecutionLock;
 import com.toadzip.backend.ingest.repository.LhAnnouncementCollectionProgressStore;
+import com.toadzip.backend.ingest.repository.LhAnnouncementCollectionProgressStore.BatchProgress;
 import com.toadzip.backend.ingest.repository.LhSourceStore;
 import com.toadzip.backend.ingest.repository.MyHomeAnnouncementSourceRepository;
 import tools.jackson.databind.json.JsonMapper;
@@ -57,13 +63,18 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     private LhAnnouncementExternalCollectionService service;
 
+    private long nextSourceId;
+
     @BeforeEach
     void setUp() {
+        nextSourceId = 0L;
         lenient().when(executionLock.<ExternalDataCollectionReport>tryRun(any(), any()))
                 .thenAnswer(invocation -> {
                     Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(1);
                     return Optional.of(operation.get());
                 });
+        lenient().when(progressStore.findBatch(any(), any(), any()))
+                .thenReturn(BatchProgress.empty());
         service = new LhAnnouncementExternalCollectionService(
                 myHomeAnnouncementRepository,
                 externalRepository,
@@ -126,10 +137,8 @@ class LhAnnouncementExternalCollectionServiceTest {
     @Test
     void 완료된_동일_요청은_외부_API를_재호출하지_않는다() {
         source(announcementSource());
-        when(progressStore.isCompleted(
-                eq(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY),
-                any()
-        )).thenReturn(true);
+        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY), any(), any()))
+                .thenReturn(progressWithCompletedRequest(announcementRequestDescription()));
 
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
 
@@ -165,7 +174,8 @@ class LhAnnouncementExternalCollectionServiceTest {
     @Test
     void 기존_적재_행은_첫_증분_실행에서_호출하지_않고_체크포인트만_생성한다() {
         source(announcementSource());
-        when(progressStore.hasStoredRows(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, "100")).thenReturn(true);
+        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any()))
+                .thenReturn(new BatchProgress(Set.of(), Set.of("100"), Set.of()));
 
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
@@ -182,8 +192,8 @@ class LhAnnouncementExternalCollectionServiceTest {
     @Test
     void 수집_이력이_있는_panId의_조회_조건이_바뀌면_다시_호출한다() {
         source(announcementSource());
-        when(progressStore.hasStoredRows(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, "100")).thenReturn(true);
-        when(progressStore.hasCollectionHistory(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, "100")).thenReturn(true);
+        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any()))
+                .thenReturn(new BatchProgress(Set.of(), Set.of("100"), Set.of("100")));
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
         when(sourceStore.replaceDetails(eq("100"), any())).thenReturn(1);
 
@@ -197,13 +207,31 @@ class LhAnnouncementExternalCollectionServiceTest {
     void 한_실행에서는_동일한_LH_요청을_한_번만_호출한다() {
         MyHomeAnnouncementSource first = announcementSource("announcement-100");
         MyHomeAnnouncementSource second = announcementSource("announcement-101");
-        when(myHomeAnnouncementRepository.findAll()).thenReturn(List.of(first, second));
+        source(first, second);
         when(externalRepository.fetchSupply(any())).thenThrow(new IllegalStateException("일시적 실패"));
 
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
 
         verify(externalRepository, times(1)).fetchSupply(any());
         assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
+    void 마이홈_공고를_ID_기준_500개씩_조회한다() {
+        MyHomeAnnouncementSource source = announcementSource();
+        source(source);
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("100"), any())).thenReturn(1);
+
+        service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        org.mockito.ArgumentCaptor<Long> cursor = org.mockito.ArgumentCaptor.captor();
+        org.mockito.ArgumentCaptor<Pageable> pageable = org.mockito.ArgumentCaptor.captor();
+        verify(myHomeAnnouncementRepository, times(2))
+                .findByIdGreaterThanOrderByIdAsc(cursor.capture(), pageable.capture());
+        assertThat(cursor.getAllValues()).containsExactly(0L, source.getId());
+        assertThat(pageable.getAllValues()).allSatisfy(value -> assertThat(value.getPageSize()).isEqualTo(500));
+        verify(progressStore).findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any());
     }
 
     @Test
@@ -234,8 +262,17 @@ class LhAnnouncementExternalCollectionServiceTest {
                 .hasMessage("LH 공고 API가 아닙니다.");
     }
 
-    private void source(MyHomeAnnouncementSource source) {
-        when(myHomeAnnouncementRepository.findAll()).thenReturn(List.of(source));
+    private void source(MyHomeAnnouncementSource... sources) {
+        List<MyHomeAnnouncementSource> batch = List.of(sources);
+        long lastId = batch.getLast().getId();
+        when(myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(anyLong(), any()))
+                .thenAnswer(invocation -> {
+                    long cursor = invocation.getArgument(0);
+                    if (cursor < lastId) {
+                        return batch;
+                    }
+                    return List.of();
+                });
     }
 
     private MyHomeAnnouncementSource announcementSource() {
@@ -243,16 +280,20 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     private MyHomeAnnouncementSource announcementSource(String pblancId) {
-        return MyHomeAnnouncementSource.from(0, item(
+        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, item(
                 pblancId,
                 "행복주택",
                 "https://apply.lh.or.kr/panDetail?panId=100"
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"
         ));
+        ReflectionTestUtils.setField(source, "id", ++nextSourceId);
+        return source;
     }
 
     private MyHomeAnnouncementSource invalidAnnouncementSource() {
-        return MyHomeAnnouncementSource.from(0, item("100", null, null));
+        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, item("100", null, null));
+        ReflectionTestUtils.setField(source, "id", ++nextSourceId);
+        return source;
     }
 
     private MyHomeAnnouncementSourceItem item(String supplyType, String url) {
@@ -279,5 +320,18 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     private ExternalDataResponse response(String payload) {
         return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+    }
+
+    private BatchProgress progressWithCompletedRequest(String requestDescription) {
+        return new BatchProgress(
+                Set.of(LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescription)),
+                Set.of(),
+                Set.of()
+        );
+    }
+
+    private String announcementRequestDescription() {
+        return "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06"
+                + "&SPL_INF_TP_CD=063&AIS_TP_CD=06";
     }
 }

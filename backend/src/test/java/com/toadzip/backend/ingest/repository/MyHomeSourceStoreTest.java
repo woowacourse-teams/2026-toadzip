@@ -9,6 +9,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -89,6 +90,29 @@ class MyHomeSourceStoreTest {
                 .containsExactlyInAnyOrder(0, 1);
     }
 
+    @Test
+    void 마이홈_공고를_ID_키셋_방식으로_일정한_크기만큼_조회한다() {
+        store.storeAnnouncements(List.of(
+                announcement("21026", 1, "첫 공고"),
+                announcement("21027", 2, "둘째 공고"),
+                announcement("21028", 3, "셋째 공고")
+        ));
+
+        var firstBatch = announcementRepository.findByIdGreaterThanOrderByIdAsc(
+                0L,
+                PageRequest.of(0, 2)
+        );
+        var secondBatch = announcementRepository.findByIdGreaterThanOrderByIdAsc(
+                firstBatch.getLast().getId(),
+                PageRequest.of(0, 2)
+        );
+
+        assertThat(firstBatch).extracting(source -> source.getPblancId())
+                .containsExactly("21026", "21027");
+        assertThat(secondBatch).extracting(source -> source.getPblancId())
+                .containsExactly("21028");
+    }
+
     private MyHomeComplexSourceItem complex(Long hsmpSn, String styleName, BigDecimal exclusiveArea) {
         return new MyHomeComplexSourceItem(
                 hsmpSn, "LH서울", "11", "서울특별시", "140", "중구", "서울특별시 중구",
@@ -99,8 +123,12 @@ class MyHomeSourceStoreTest {
     }
 
     private MyHomeAnnouncementSourceItem announcement(String name) {
+        return announcement("21026", 1, name);
+    }
+
+    private MyHomeAnnouncementSourceItem announcement(String pblancId, int houseSn, String name) {
         return new MyHomeAnnouncementSourceItem(
-                "21026", 1, "일반공고", name, "부산도시공사", "아파트", "영구임대",
+                pblancId, houseSn, "일반공고", name, "부산도시공사", "아파트", "영구임대",
                 null, "20260813", "20261106", "20260824", "20260831", null,
                 "https://example.com", null, null, "동삼2", "부산광역시", "영도구",
                 "부산광역시 영도구", null, null, "2620012100105100000", "중앙난방", null,

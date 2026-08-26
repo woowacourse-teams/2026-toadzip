@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -12,6 +13,7 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.test.context.ActiveProfiles;
 
 import com.toadzip.backend.ingest.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.domain.LhAnnouncementDetailSource;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -36,12 +38,15 @@ class LhAnnouncementCollectionProgressStoreTest {
 
         store.complete(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, "announcement-100", request, "100");
 
-        assertThat(store.isCompleted(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, request)).isTrue();
-        assertThat(store.hasCollectionHistory(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, "100")).isTrue();
-        assertThat(store.isCompleted(
+        var progress = store.findBatch(
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
-                request + "&AIS_TP_CD=06"
-        )).isFalse();
+                List.of(request, request + "&AIS_TP_CD=06"),
+                List.of("100")
+        );
+
+        assertThat(progress.isCompleted(request)).isTrue();
+        assertThat(progress.historyPanIds()).containsExactly("100");
+        assertThat(progress.isCompleted(request + "&AIS_TP_CD=06")).isFalse();
         assertThat(checkpointRepository.findAll()).singleElement().satisfies(checkpoint -> {
             assertThat(checkpoint.getPanId()).isEqualTo("100");
             assertThat(checkpoint.getCompletedAt()).isEqualTo(COMPLETED_AT);
@@ -57,6 +62,30 @@ class LhAnnouncementCollectionProgressStoreTest {
         store.complete(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "another-source-key", request, "100");
 
         assertThat(checkpointRepository.count()).isOne();
+    }
+
+    @Test
+    void 배치의_완료_요청과_적재_panId와_수집_이력을_한번에_조회한다() {
+        LhAnnouncementCollectionProgressStore store = store();
+        String completedRequest = "PAN_ID=100&SPL_INF_TP_CD=063";
+        String historyRequest = "PAN_ID=200&SPL_INF_TP_CD=063";
+        store.complete(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, "announcement-100", completedRequest, "100");
+        store.complete(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, "announcement-200", historyRequest, "200");
+        detailRepository.save(new LhAnnouncementDetailSource(
+                0, "100", "ETC_INFO", null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null
+        ));
+
+        var progress = store.findBatch(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                List.of(completedRequest, "PAN_ID=300&SPL_INF_TP_CD=063"),
+                List.of("100", "200", "300")
+        );
+
+        assertThat(progress.isCompleted(completedRequest)).isTrue();
+        assertThat(progress.storedPanIds()).containsExactly("100");
+        assertThat(progress.historyPanIds()).containsExactlyInAnyOrder("100", "200");
     }
 
     private LhAnnouncementCollectionProgressStore store() {
