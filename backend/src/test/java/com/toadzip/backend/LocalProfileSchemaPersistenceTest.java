@@ -29,7 +29,7 @@ class LocalProfileSchemaPersistenceTest {
         }
 
         try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
-                ResultSet tables = connection.getMetaData().getTables(null, null, "notices", new String[] {"TABLE"})) {
+                ResultSet tables = connection.getMetaData().getTables(null, null, "announcements", new String[] {"TABLE"})) {
             assertAll(
                     () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                     () -> assertTrue(tables.next())
