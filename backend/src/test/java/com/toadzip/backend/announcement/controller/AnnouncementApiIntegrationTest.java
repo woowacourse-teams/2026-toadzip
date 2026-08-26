@@ -202,7 +202,82 @@ class AnnouncementApiIntegrationTest {
                 .andExpect(jsonPath("$..hibernateLazyInitializer").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$..handler").doesNotHaveJsonPath());
 
+        mockMvc.perform(get("/api/v1/announcements/{announcementId}", original.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.announcementId").value(original.getId()))
+                .andExpect(jsonPath("$.data.previousAnnouncementId").doesNotHaveJsonPath());
+
         assertNotNull(announcementController);
+    }
+
+    @Test
+    void 취소공고가_최신인_체인은_목록에서_제외한다() throws Exception {
+        Announcement original = persist(createAnnouncement(
+                "api-cancelled-original",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 1),
+                null,
+                null
+        ));
+        Announcement correction = persist(createAnnouncement(
+                "api-cancelled-correction",
+                original,
+                "api-cancelled-original",
+                AnnouncementPublicationType.CORRECTION,
+                LocalDate.of(2026, 8, 2),
+                null,
+                "접수 일정 정정"
+        ));
+        persist(createAnnouncement(
+                "api-cancellation",
+                correction,
+                "api-cancelled-correction",
+                AnnouncementPublicationType.CANCELLATION,
+                LocalDate.of(2026, 8, 3),
+                null,
+                "사업 취소"
+        ));
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/announcements"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(0));
+    }
+
+    @Test
+    void 취소공고는_ID로_상세조회하면_취소사유와_취소상태를_반환한다() throws Exception {
+        Announcement original = persist(createAnnouncement(
+                "api-detail-cancelled-original",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 1),
+                null,
+                null
+        ));
+        Announcement cancellation = persist(createAnnouncement(
+                "api-detail-cancellation",
+                original,
+                "api-detail-cancelled-original",
+                AnnouncementPublicationType.CANCELLATION,
+                LocalDate.of(2026, 8, 2),
+                null,
+                "사업 취소"
+        ));
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/announcements/{announcementId}", cancellation.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.announcementId").value(cancellation.getId()))
+                .andExpect(jsonPath("$.data.publicationType").value("CANCELLATION"))
+                .andExpect(jsonPath("$.data.correctionOrCancellationReason").value("사업 취소"))
+                .andExpect(jsonPath("$.data.applicationStatus").value("CANCELLED"))
+                .andExpect(jsonPath("$.data.dDay").value(nullValue()))
+                .andExpect(jsonPath("$.data.previousAnnouncementId").doesNotHaveJsonPath());
     }
 
     private Announcement createAnnouncement(

@@ -39,7 +39,6 @@ import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.RentalType;
-import com.toadzip.backend.region.repository.RegionCodeResolver;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.math.BigDecimal;
@@ -103,10 +102,22 @@ class AnnouncementQueryServiceTest {
                 new BigDecimal("3.7500"),
                 37L
         ));
+        Announcement cancellationOriginal = persist(createAnnouncement(
+                "cancellation-original",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 10),
+                null,
+                null,
+                1L
+        ));
         Announcement cancellation = persist(createAnnouncement(
                 "cancellation",
-                null,
-                null,
+                cancellationOriginal,
+                "cancellation-original",
                 AnnouncementPublicationType.CANCELLATION,
                 LocalDate.of(2026, 8, 5),
                 LocalDate.of(2026, 8, 10),
@@ -189,7 +200,6 @@ class AnnouncementQueryServiceTest {
         assertNull(response.nextCursor());
         assertEquals(
                 List.of(
-                        cancellation.getId(),
                         correction.getId(),
                         applying.getId(),
                         beforeApplication.getId(),
@@ -198,13 +208,12 @@ class AnnouncementQueryServiceTest {
                 response.items().stream().map(AnnouncementListItemResponse::announcementId).toList()
         );
         assertFalse(response.items().stream().anyMatch(item -> item.announcementId() == original.getId()));
+        assertFalse(response.items().stream().anyMatch(
+                item -> item.announcementId() == cancellationOriginal.getId()
+        ));
+        assertFalse(response.items().stream().anyMatch(item -> item.announcementId() == cancellation.getId()));
 
-        AnnouncementListItemResponse cancelledItem = response.items().get(0);
-        assertEquals(AnnouncementPublicationType.CANCELLATION, cancelledItem.publicationType());
-        assertEquals(ApplicationStatus.CANCELLED, cancelledItem.applicationStatus());
-        assertNull(cancelledItem.dDay());
-
-        AnnouncementListItemResponse correctionItem = response.items().get(1);
+        AnnouncementListItemResponse correctionItem = response.items().getFirst();
         assertEquals(AnnouncementPublicationType.CORRECTION, correctionItem.publicationType());
         assertEquals(ApplicationStatus.APPLYING, correctionItem.applicationStatus());
         assertEquals(RentalType.HAPPY_HOUSING, correctionItem.rentalType());
@@ -224,15 +233,53 @@ class AnnouncementQueryServiceTest {
         assertEquals(new BigDecimal("3.7500"), correctionItem.predictedCompetitionRate());
         assertEquals("https://example.com/busan.png", correctionItem.thumbnailImageUrl());
 
-        assertEquals(ApplicationStatus.APPLYING, response.items().get(2).applicationStatus());
-        assertEquals(1, response.items().get(2).dDay());
-        assertNull(response.items().get(2).supplyHouseholdCount());
-        assertEquals(ApplicationStatus.BEFORE_APPLICATION, response.items().get(3).applicationStatus());
-        assertEquals(2, response.items().get(3).dDay());
-        assertEquals(0, response.items().get(3).supplyHouseholdCount());
-        assertEquals(ApplicationStatus.CLOSED, response.items().get(4).applicationStatus());
-        assertNull(response.items().get(4).dDay());
+        assertEquals(ApplicationStatus.APPLYING, response.items().get(1).applicationStatus());
+        assertEquals(1, response.items().get(1).dDay());
+        assertNull(response.items().get(1).supplyHouseholdCount());
+        assertEquals(ApplicationStatus.BEFORE_APPLICATION, response.items().get(2).applicationStatus());
+        assertEquals(2, response.items().get(2).dDay());
+        assertEquals(0, response.items().get(2).supplyHouseholdCount());
+        assertEquals(ApplicationStatus.CLOSED, response.items().get(3).applicationStatus());
+        assertNull(response.items().get(3).dDay());
         assertEquals(37L, entityManager.find(Announcement.class, correction.getId()).getViewCount());
+    }
+
+    @Test
+    void 상세는_취소공고의_사유와_취소상태를_반환한다() {
+        Announcement original = persist(createAnnouncement(
+                "cancelled-detail-original",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 12),
+                null,
+                null,
+                0L
+        ));
+        Announcement cancellation = persist(createAnnouncement(
+                "cancelled-detail",
+                original,
+                "cancelled-detail-original",
+                AnnouncementPublicationType.CANCELLATION,
+                LocalDate.of(2026, 8, 2),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 12),
+                null,
+                null,
+                0L,
+                "사업 취소"
+        ));
+        entityManager.flush();
+
+        AnnouncementDetailResponse response = announcementQueryService.getAnnouncement(cancellation.getId());
+
+        assertEquals(cancellation.getId(), response.announcementId());
+        assertEquals(AnnouncementPublicationType.CANCELLATION, response.publicationType());
+        assertEquals("사업 취소", response.correctionOrCancellationReason());
+        assertEquals(ApplicationStatus.CANCELLED, response.applicationStatus());
+        assertNull(response.dDay());
     }
 
     @Test
@@ -280,20 +327,21 @@ class AnnouncementQueryServiceTest {
     @Test
     void 잘못된_목록_크기는_저장소_접근_전에_거부한다() {
         AnnouncementRepository announcementRepository = mock(AnnouncementRepository.class);
+        AnnouncementResponseMapper announcementResponseMapper = mock(AnnouncementResponseMapper.class);
         AnnouncementQueryService service = new AnnouncementQueryService(
                 announcementRepository,
                 mock(AnnouncementScheduleRepository.class),
                 mock(AnnouncementAttachmentRepository.class),
                 mock(SupplyRowRepository.class),
                 mock(SupplyTargetRepository.class),
-                mock(RegionCodeResolver.class),
+                announcementResponseMapper,
                 new AnnouncementCursorCodec(),
                 fixedClock()
         );
 
         assertThrows(InvalidAnnouncementRequestException.class, () -> service.getAnnouncements(null, 0));
         assertThrows(InvalidAnnouncementRequestException.class, () -> service.getAnnouncements(null, 51));
-        verifyNoInteractions(announcementRepository);
+        verifyNoInteractions(announcementRepository, announcementResponseMapper);
     }
 
     @Test

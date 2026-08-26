@@ -38,6 +38,7 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.util.Map;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -451,6 +452,51 @@ class DomainJpaPersistenceTest {
                 () -> assertNull(foundSupplyTarget.getMonthlyRent()),
                 () -> assertNull(foundSupplyTarget.getConvertedDeposit()),
                 () -> assertNull(foundSupplyTarget.getApplicationCondition())
+        );
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "announcements, status",
+            "announcements, supply_type",
+            "announcements, recruitment_type",
+            "announcements, provider",
+            "announcements, reception_method",
+            "announcement_schedules, schedule_type",
+            "announcement_attachments, file_type",
+            "supply_rows, supply_category"
+    })
+    void DB는_허용되지_않은_enum_값을_거부한다(String tableName, String columnName) {
+        Announcement announcement = createAnnouncement(
+                null,
+                null,
+                null,
+                "invalid-enum-source",
+                "원공고"
+        );
+        entityManager.persist(announcement);
+        SupplyRow supplyRow = createSupplyRow(announcement, null, null, 1, "미매칭");
+        AnnouncementSchedule schedule = createAnnouncementSchedule(announcement);
+        AnnouncementAttachment attachment = createAnnouncementAttachment(announcement);
+        entityManager.persist(supplyRow);
+        entityManager.persist(schedule);
+        entityManager.persist(attachment);
+        entityManager.flush();
+        Map<String, Long> rowIds = Map.of(
+                "announcements", announcement.getId(),
+                "announcement_schedules", schedule.getId(),
+                "announcement_attachments", attachment.getId(),
+                "supply_rows", supplyRow.getId()
+        );
+
+        String updateSql = "UPDATE " + tableName
+                + " SET " + columnName + " = 'INVALID_ENUM_VALUE' WHERE id = :id";
+
+        assertThrows(
+                PersistenceException.class,
+                () -> entityManager.createNativeQuery(updateSql)
+                        .setParameter("id", rowIds.get(tableName))
+                        .executeUpdate()
         );
     }
 

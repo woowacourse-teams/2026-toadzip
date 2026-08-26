@@ -134,6 +134,7 @@ public class Announcement {
         validateNotBlank(sourceAnnouncementIdentifier, "원천 공고 식별자");
         validateNotBlank(name, "공고명");
         validateRequired(status, "공고 상태");
+        validateRevisionLink(status, previousAnnouncement);
         validateRequired(supplyType, "공급유형");
         validateRequired(recruitmentType, "모집유형");
         validateRequired(provider, "공급기관");
@@ -338,6 +339,18 @@ public class Announcement {
     private void validateRequired(Object value, String fieldName) {
         if (value == null) {
             throw new IllegalArgumentException(fieldName + "은 필수다.");
+        }
+    }
+
+    private void validateRevisionLink(
+            AnnouncementPublicationType status,
+            Announcement previousAnnouncement
+    ) {
+        if (status == AnnouncementPublicationType.ORIGINAL && previousAnnouncement != null) {
+            throw new IllegalArgumentException("원공고는 이전 공고를 참조할 수 없다.");
+        }
+        if (status != AnnouncementPublicationType.ORIGINAL && previousAnnouncement == null) {
+            throw new IllegalArgumentException("정정·취소공고는 이전 공고가 필수다.");
         }
     }
 

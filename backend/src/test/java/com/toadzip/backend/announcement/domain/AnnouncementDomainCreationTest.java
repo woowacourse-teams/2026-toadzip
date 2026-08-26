@@ -3,6 +3,7 @@ package com.toadzip.backend.announcement.domain;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -14,8 +15,30 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class AnnouncementDomainCreationTest {
+
+    @ParameterizedTest
+    @EnumSource(
+            value = AnnouncementPublicationType.class,
+            names = {"CORRECTION", "CANCELLATION"}
+    )
+    void 정정과_취소공고는_이전공고없이_생성할_수_없다(AnnouncementPublicationType publicationType) {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> createAnnouncement(publicationType, null)
+        );
+    }
+
+    @Test
+    void 원공고는_이전공고를_참조할_수_없다() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> createAnnouncement(AnnouncementPublicationType.ORIGINAL, new Announcement())
+        );
+    }
 
     @Test
     void 공고_접수처를_생성한다() {
@@ -42,6 +65,36 @@ class AnnouncementDomainCreationTest {
         assertNull(receptionPlace.getAddress());
         assertEquals("1600-1004", receptionPlace.getContact());
         assertEquals("https://apply.lh.or.kr", receptionPlace.getUrl());
+    }
+
+    private Announcement createAnnouncement(
+            AnnouncementPublicationType publicationType,
+            Announcement previousAnnouncement
+    ) {
+        return Announcement.create(
+                "source-announcement-id",
+                null,
+                previousAnnouncement,
+                "행복주택 모집공고",
+                publicationType,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 14),
+                LocalDate.of(2026, 9, 1),
+                "https://example.com/announcements/1",
+                null,
+                0L,
+                ReceptionPlace.create(
+                        "LH 청약센터",
+                        ReceptionMethod.ONLINE,
+                        null,
+                        "1600-1004",
+                        "https://apply.lh.or.kr"
+                )
+        );
     }
 
     @Test

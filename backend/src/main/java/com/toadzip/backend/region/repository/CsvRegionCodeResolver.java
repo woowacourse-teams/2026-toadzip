@@ -16,15 +16,24 @@ import org.springframework.stereotype.Component;
 public final class CsvRegionCodeResolver implements RegionCodeResolver {
 
     private static final String EXPECTED_HEADER = "regionCode,sido,sigungu,name";
+    private static final String EXPECTED_ALIAS_HEADER = "legacyRegionCode,currentRegionCode";
     private static final int COLUMN_COUNT = 4;
+    private static final int ALIAS_COLUMN_COUNT = 2;
     private static final int REGION_CODE_INDEX = 0;
     private static final int NAME_INDEX = 3;
+    private static final int LEGACY_REGION_CODE_INDEX = 0;
+    private static final int CURRENT_REGION_CODE_INDEX = 1;
 
     private final Map<String, String> regionNames;
+    private final Map<String, String> regionCodeAliases;
 
     @Autowired
-    CsvRegionCodeResolver(@Value("classpath:region/regions.csv") Resource resource) {
-        regionNames = loadRegionNames(resource);
+    CsvRegionCodeResolver(
+            @Value("classpath:region/regions.csv") Resource regionResource,
+            @Value("classpath:region/region-code-aliases.csv") Resource aliasResource
+    ) {
+        regionNames = loadRegionNames(regionResource);
+        regionCodeAliases = loadRegionCodeAliases(aliasResource, regionNames);
     }
 
     @Override
@@ -38,7 +47,11 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver {
         if (!cityCountyDistrictCode.startsWith(provinceCode)) {
             return Optional.empty();
         }
-        return Optional.ofNullable(regionNames.get(cityCountyDistrictCode));
+        String currentRegionCode = regionCodeAliases.getOrDefault(
+                cityCountyDistrictCode,
+                cityCountyDistrictCode
+        );
+        return Optional.ofNullable(regionNames.get(currentRegionCode));
     }
 
     private static Map<String, String> loadRegionNames(Resource resource) {
@@ -66,6 +79,9 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver {
         int lineNumber = 1;
         while ((line = reader.readLine()) != null) {
             lineNumber++;
+            if (line.startsWith("#")) {
+                continue;
+            }
             addRow(regionNames, line, lineNumber, resource);
         }
         return Map.copyOf(regionNames);
@@ -119,6 +135,115 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver {
     private static IllegalStateException invalidRow(Resource resource, int lineNumber, String reason) {
         return new IllegalStateException(
                 "Invalid region CSV " + resource.getDescription() + " at line " + lineNumber + ": " + reason
+        );
+    }
+
+    private static Map<String, String> loadRegionCodeAliases(
+            Resource resource,
+            Map<String, String> regionNames
+    ) {
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
+            validateAliasHeader(reader.readLine(), resource);
+            return readAliasRows(reader, resource, regionNames);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to read region alias CSV: " + resource.getDescription(), exception);
+        }
+    }
+
+    private static void validateAliasHeader(String header, Resource resource) {
+        if (EXPECTED_ALIAS_HEADER.equals(header)) {
+            return;
+        }
+        throw new IllegalStateException(
+                "Invalid region alias CSV header in " + resource.getDescription()
+                        + ": expected " + EXPECTED_ALIAS_HEADER
+        );
+    }
+
+    private static Map<String, String> readAliasRows(
+            BufferedReader reader,
+            Resource resource,
+            Map<String, String> regionNames
+    ) throws IOException {
+        Map<String, String> regionCodeAliases = new HashMap<>();
+        String line;
+        int lineNumber = 1;
+        while ((line = reader.readLine()) != null) {
+            lineNumber++;
+            if (line.startsWith("#")) {
+                continue;
+            }
+            addAliasRow(regionCodeAliases, regionNames, line, lineNumber, resource);
+        }
+        return Map.copyOf(regionCodeAliases);
+    }
+
+    private static void addAliasRow(
+            Map<String, String> regionCodeAliases,
+            Map<String, String> regionNames,
+            String line,
+            int lineNumber,
+            Resource resource
+    ) {
+        String[] cells = line.split(",", -1);
+        validateAliasColumnCount(cells, lineNumber, resource);
+        String legacyRegionCode = cells[LEGACY_REGION_CODE_INDEX];
+        String currentRegionCode = cells[CURRENT_REGION_CODE_INDEX];
+        validateAliasRegionCode(legacyRegionCode, "legacyRegionCode", lineNumber, resource);
+        validateAliasRegionCode(currentRegionCode, "currentRegionCode", lineNumber, resource);
+        validateAliasRelationship(legacyRegionCode, currentRegionCode, regionNames, lineNumber, resource);
+        String previousCode = regionCodeAliases.putIfAbsent(legacyRegionCode, currentRegionCode);
+        if (previousCode != null) {
+            throw invalidAliasRow(resource, lineNumber, "duplicate legacyRegionCode '" + legacyRegionCode + "'");
+        }
+    }
+
+    private static void validateAliasColumnCount(String[] cells, int lineNumber, Resource resource) {
+        if (cells.length == ALIAS_COLUMN_COUNT) {
+            return;
+        }
+        throw invalidAliasRow(resource, lineNumber, "expected 2 columns but found " + cells.length);
+    }
+
+    private static void validateAliasRegionCode(
+            String regionCode,
+            String columnName,
+            int lineNumber,
+            Resource resource
+    ) {
+        if (regionCode.matches("\\d{5}")) {
+            return;
+        }
+        throw invalidAliasRow(resource, lineNumber, columnName + " must be exactly five digits");
+    }
+
+    private static void validateAliasRelationship(
+            String legacyRegionCode,
+            String currentRegionCode,
+            Map<String, String> regionNames,
+            int lineNumber,
+            Resource resource
+    ) {
+        if (regionNames.containsKey(legacyRegionCode)) {
+            throw invalidAliasRow(
+                    resource,
+                    lineNumber,
+                    "legacyRegionCode '" + legacyRegionCode + "' conflicts with canonical regionCode"
+            );
+        }
+        if (!regionNames.containsKey(currentRegionCode)) {
+            throw invalidAliasRow(
+                    resource,
+                    lineNumber,
+                    "currentRegionCode '" + currentRegionCode + "' is not a canonical regionCode"
+            );
+        }
+    }
+
+    private static IllegalStateException invalidAliasRow(Resource resource, int lineNumber, String reason) {
+        return new IllegalStateException(
+                "Invalid region alias CSV " + resource.getDescription() + " at line " + lineNumber + ": " + reason
         );
     }
 }

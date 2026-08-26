@@ -14,7 +14,14 @@ public interface AnnouncementRepository extends JpaRepository<Announcement, Long
     @Query("""
             SELECT announcement
             FROM Announcement announcement
-            WHERE NOT EXISTS (
+            WHERE CAST(announcement.status AS string) IN (
+                'ORIGINAL', '원공고', 'CORRECTION', '정정공고'
+            )
+              AND (
+                CAST(announcement.status AS string) IN ('ORIGINAL', '원공고')
+                OR announcement.previousAnnouncement IS NOT NULL
+            )
+              AND NOT EXISTS (
                 SELECT nextAnnouncement.id
                 FROM Announcement nextAnnouncement
                 WHERE nextAnnouncement.previousAnnouncement = announcement
@@ -26,7 +33,14 @@ public interface AnnouncementRepository extends JpaRepository<Announcement, Long
     @Query("""
             SELECT announcement
             FROM Announcement announcement
-            WHERE NOT EXISTS (
+            WHERE CAST(announcement.status AS string) IN (
+                'ORIGINAL', '원공고', 'CORRECTION', '정정공고'
+            )
+              AND (
+                CAST(announcement.status AS string) IN ('ORIGINAL', '원공고')
+                OR announcement.previousAnnouncement IS NOT NULL
+            )
+              AND NOT EXISTS (
                 SELECT nextAnnouncement.id
                 FROM Announcement nextAnnouncement
                 WHERE nextAnnouncement.previousAnnouncement = announcement
@@ -46,7 +60,6 @@ public interface AnnouncementRepository extends JpaRepository<Announcement, Long
     @Query("""
             SELECT announcement
             FROM Announcement announcement
-            LEFT JOIN FETCH announcement.previousAnnouncement
             WHERE announcement.id = :id
             """)
     Optional<Announcement> findDetailById(@Param("id") long id);

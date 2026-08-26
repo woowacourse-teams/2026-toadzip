@@ -131,20 +131,20 @@ class AnnouncementQueryRepositoryTest {
     }
 
     @Test
-    void 최신_후속공고만_게시일과_ID_내림차순으로_조회한다() {
+    void 취소되지_않은_최신_후속공고만_게시일과_ID_내림차순으로_조회한다() {
         List<Announcement> announcements = announcementRepository.findLatestLeaves(pageable(10));
 
         List<Long> actualIds = announcements.stream().map(Announcement::getId).toList();
         assertEquals(
                 List.of(
                         sameDateLeafAnnouncement.getId(),
-                        cancellationAnnouncement.getId(),
                         olderLeafAnnouncement.getId()
                 ),
                 actualIds
         );
         assertFalse(actualIds.contains(originalAnnouncement.getId()));
         assertFalse(actualIds.contains(correctionAnnouncement.getId()));
+        assertFalse(actualIds.contains(cancellationAnnouncement.getId()));
     }
 
     @Test
@@ -158,29 +158,106 @@ class AnnouncementQueryRepositoryTest {
                 pageable(10)
         );
 
-        List<Long> combinedIds = List.of(
-                firstPage.getFirst().getId(),
-                secondPage.get(0).getId(),
-                secondPage.get(1).getId()
-        );
+        List<Long> combinedIds = List.of(firstPage.getFirst().getId(), secondPage.getFirst().getId());
         assertEquals(
-                List.of(cancellationAnnouncement.getId(), olderLeafAnnouncement.getId()),
+                List.of(olderLeafAnnouncement.getId()),
                 secondPage.stream().map(Announcement::getId).toList()
         );
         assertEquals(combinedIds.size(), new HashSet<>(combinedIds).size());
     }
 
     @Test
-    void 상세_조회는_이전_공고를_함께_조회한다() {
-        Long cancellationId = cancellationAnnouncement.getId();
+    void 기존_미연결_정정공고는_목록과_커서_조회에서_제외한다() {
+        Announcement unlinkedCorrection = persist(createAnnouncement(
+                "legacy-unlinked-correction",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 5)
+        ));
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE announcements SET status = 'CORRECTION' WHERE id = :id")
+                .setParameter("id", unlinkedCorrection.getId())
+                .executeUpdate();
+        entityManager.clear();
+
+        List<Long> latestIds = announcementRepository.findLatestLeaves(pageable(20)).stream()
+                .map(Announcement::getId)
+                .toList();
+        List<Long> cursorIds = announcementRepository.findLatestLeavesAfter(
+                        LocalDate.of(2026, 8, 6),
+                        Long.MAX_VALUE,
+                        pageable(20)
+                ).stream()
+                .map(Announcement::getId)
+                .toList();
+
+        assertFalse(latestIds.contains(unlinkedCorrection.getId()));
+        assertFalse(cursorIds.contains(unlinkedCorrection.getId()));
+    }
+
+    @Test
+    void 상세_조회는_연결된_모든_공고를_ID로_조회한다() {
+        Long originalId = originalAnnouncement.getId();
         Long correctionId = correctionAnnouncement.getId();
+        Long cancellationId = cancellationAnnouncement.getId();
+
+        assertTrue(announcementRepository.findDetailById(cancellationId).isPresent());
+        assertTrue(announcementRepository.findDetailById(originalId).isPresent());
+        assertTrue(announcementRepository.findDetailById(correctionId).isPresent());
+    }
+
+    @Test
+    void 기존_한글값으로_저장된_원공고도_목록과_상세에서_공개한다() {
+        Announcement legacyOriginal = persist(createAnnouncement(
+                "legacy-original",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 5)
+        ));
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE announcements SET status = '원공고' WHERE id = :id")
+                .setParameter("id", legacyOriginal.getId())
+                .executeUpdate();
         entityManager.clear();
 
-        Announcement found = announcementRepository.findDetailById(cancellationId).orElseThrow();
+        List<Long> latestIds = announcementRepository.findLatestLeaves(pageable(20)).stream()
+                .map(Announcement::getId)
+                .toList();
 
-        assertTrue(entityManagerFactory.getPersistenceUnitUtil().isLoaded(found, "previousAnnouncement"));
+        assertTrue(latestIds.contains(legacyOriginal.getId()));
+        assertTrue(announcementRepository.findDetailById(legacyOriginal.getId()).isPresent());
+    }
+
+    @Test
+    void 기존_한글값으로_저장된_정정공고도_체인의_최신이면_목록에_공개한다() {
+        Announcement original = persist(createAnnouncement(
+                "legacy-correction-original",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 4)
+        ));
+        Announcement legacyCorrection = persist(createAnnouncement(
+                "legacy-correction",
+                original,
+                "legacy-correction-original",
+                AnnouncementPublicationType.CORRECTION,
+                LocalDate.of(2026, 8, 5)
+        ));
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE announcements SET status = '정정공고' WHERE id = :id")
+                .setParameter("id", legacyCorrection.getId())
+                .executeUpdate();
         entityManager.clear();
-        assertEquals(correctionId, found.getPreviousAnnouncement().getId());
+
+        List<Long> latestIds = announcementRepository.findLatestLeaves(pageable(20)).stream()
+                .map(Announcement::getId)
+                .toList();
+
+        assertTrue(latestIds.contains(legacyCorrection.getId()));
+        assertFalse(latestIds.contains(original.getId()));
     }
 
     @Test
