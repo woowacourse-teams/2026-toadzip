@@ -216,10 +216,24 @@ public class MyHomeComplexCollectionService {
         if (totalCount.isMissingNode() || totalCount.isNull()) {
             return -1;
         }
-        if (!totalCount.isIntegralNumber() || totalCount.asInt(-1) < 0) {
+        if (totalCount.isIntegralNumber() && totalCount.canConvertToInt()) {
+            return requireNonNegativeTotalCount(totalCount.intValue());
+        }
+        if (totalCount.isTextual()) {
+            try {
+                return requireNonNegativeTotalCount(Integer.parseInt(totalCount.textValue()));
+            } catch (NumberFormatException exception) {
+                throw invalidResponseSchema();
+            }
+        }
+        throw invalidResponseSchema();
+    }
+
+    private int requireNonNegativeTotalCount(int totalCount) {
+        if (totalCount < 0) {
             throw invalidResponseSchema();
         }
-        return totalCount.asInt();
+        return totalCount;
     }
 
     private ExternalDataRequestException invalidResponseSchema() {

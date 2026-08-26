@@ -157,6 +157,23 @@ class MyHomeComplexCollectionServiceTest {
     }
 
     @Test
+    @DisplayName("문자열 totalCount 응답도 정상 snapshot으로 저장한다")
+    void acceptsTextualTotalCount() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1))
+                .thenReturn(responseWithTextualTotalCount("[{\"hsmpSn\":1}]", "1"));
+        when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(1);
+
+        var result = service.collect(request());
+
+        verify(sourceStore).replaceComplexRegion(eq(region), any());
+        assertThat(result.storedRowCount()).isOne();
+        assertThat(result.failedRequestCount()).isZero();
+        assertThat(result.externalApiCallCount()).isOne();
+    }
+
+    @Test
     @DisplayName("재시도를 소진한 실제 실패 페이지와 시도 횟수를 기록한다")
     void recordsActualFailedPageAndAttemptCount() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
@@ -259,6 +276,12 @@ class MyHomeComplexCollectionServiceTest {
         String totalCountField = totalCount == null ? "" : "\"totalCount\":" + totalCount + ",";
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"},"
                 + "\"body\":{" + totalCountField + "\"item\":" + items + "}}}";
+        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+    }
+
+    private ExternalDataResponse responseWithTextualTotalCount(String items, String totalCount) {
+        String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"},"
+                + "\"body\":{\"totalCount\":\"" + totalCount + "\",\"item\":" + items + "}}}";
         return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
     }
 
