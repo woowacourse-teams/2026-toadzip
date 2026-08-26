@@ -6,6 +6,15 @@
 docker compose -f compose.yaml -f compose.local.yaml up -d --build
 ```
 
+## API 문서
+
+로컬 프로필에서만 Swagger UI와 OpenAPI 명세를 제공한다.
+
+- Swagger UI: `http://localhost:8080/swagger-ui/index.html`
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+
+`.env`에서 `BACKEND_PORT`를 변경했다면 URL의 `8080`을 같은 포트로 바꾼다.
+
 ## DB GUI 연결
 
 ```text
