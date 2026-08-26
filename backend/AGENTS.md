@@ -21,7 +21,8 @@
 - 의존성은 Controller → Service → Repository·Domain 방향으로만 흐른다.
 - 계층별 책임과 Entity 응답 금지는 [CODE_CONVENTION.md](CODE_CONVENTION.md)를 원본으로 따른다.
 - Domain은 HTTP, DTO, Controller, Service와 Repository에 의존하지 않는다.
-- 기능 간 협력은 Service에서 수행하고 순환 의존을 만들지 않는다.
+- 기능 간 협력도 기능 소속과 관계없이 Controller → Service → Repository 방향을 유지하고
+  객체 간 순환 의존을 만들지 않는다.
 - `global`에는 공통 기술 설정만 두고 기능별 비즈니스 규칙을 넣지 않는다.
 
 ## 작업 계약
