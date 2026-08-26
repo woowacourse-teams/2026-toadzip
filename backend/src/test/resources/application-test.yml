@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:${TEST_POSTGRES_PORT:55432}/toadzip_test
+    username: toadzip_test
+    password: toadzip_test
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  main:
+    web-application-type: none

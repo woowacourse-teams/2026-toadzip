@@ -34,7 +34,9 @@ Red → Green → Refactor 순서와 완료 증거는 [development-cycle.md](dev
 ## 실행 순서
 
 ```text
-가까운 테스트 → 기능 테스트 묶음 → ./gradlew check
+테스트 PostgreSQL 기동 → 가까운 테스트 → 기능 테스트 묶음 → Gradle check → 테스트 PostgreSQL 정리
 ```
+
+통합 테스트 전후의 PostgreSQL 기동과 정리는 루트 `compose.test.yaml`을 사용한다.
 
 환경 때문에 실행하지 못한 검사는 실패와 구분해 미검증으로 보고한다.

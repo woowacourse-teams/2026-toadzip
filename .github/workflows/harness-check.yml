@@ -36,12 +36,25 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
-      - name: Verify backend
+      - name: Start test PostgreSQL
+        id: start-postgres
         if: ${{ hashFiles('gradlew', 'backend/gradlew') != '' }}
-        run: |
-          if [ -x ./gradlew ]; then
-            ./gradlew check
-          else
-            cd backend
-            ./gradlew check
-          fi
+        run: >-
+          docker compose --project-name toadzip-test --file compose.test.yaml
+          up --detach --wait --wait-timeout 60 --force-recreate db
+      - name: Verify backend against PostgreSQL
+        if: ${{ hashFiles('gradlew', 'backend/gradlew') != '' }}
+        working-directory: backend
+        run: ./gradlew --rerun-tasks check
+      - name: Show PostgreSQL logs on failure
+        if: ${{ failure() && steps.start-postgres.outcome == 'success' }}
+        run: >-
+          docker compose --project-name toadzip-test --file compose.test.yaml
+          logs --no-color db
+      - name: Stop test PostgreSQL
+        if: >-
+          ${{ always() &&
+          (steps.start-postgres.outcome == 'success' || steps.start-postgres.outcome == 'failure') }}
+        run: >-
+          docker compose --project-name toadzip-test --file compose.test.yaml
+          down --volumes --remove-orphans
