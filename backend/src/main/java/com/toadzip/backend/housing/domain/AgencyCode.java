@@ -1,6 +1,8 @@
 package com.toadzip.backend.housing.domain;
 
-public enum AgencyCode {
+import com.toadzip.backend.global.persistence.LegacyStoredValue;
+
+public enum AgencyCode implements LegacyStoredValue {
     LH("한국토지주택공사"),
     SH("서울주택도시공사"),
     GH("경기주택도시공사"),
@@ -23,6 +25,11 @@ public enum AgencyCode {
     }
 
     public String displayName() {
+        return displayName;
+    }
+
+    @Override
+    public String legacyStoredValue() {
         return displayName;
     }
 }

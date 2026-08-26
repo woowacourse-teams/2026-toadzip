@@ -2,11 +2,13 @@ package com.toadzip.backend.announcement.domain;
 
 import static lombok.AccessLevel.PROTECTED;
 
+import com.toadzip.backend.global.persistence.LegacyEnumVarcharJdbcType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Embeddable;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcType;
 
 @Getter
 @Embeddable
@@ -18,6 +20,7 @@ public class ReceptionPlace {
 
     @Column(nullable = false)
     @Convert(converter = ReceptionMethodConverter.class)
+    @JdbcType(LegacyEnumVarcharJdbcType.class)
     private ReceptionMethod method;
 
     private String address;

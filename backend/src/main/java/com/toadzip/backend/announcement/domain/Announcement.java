@@ -3,6 +3,7 @@ package com.toadzip.backend.announcement.domain;
 import static jakarta.persistence.FetchType.LAZY;
 import static lombok.AccessLevel.PROTECTED;
 
+import com.toadzip.backend.global.persistence.LegacyEnumVarcharJdbcType;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.AgencyCodeConverter;
 import com.toadzip.backend.housing.domain.RentalType;
@@ -23,6 +24,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcType;
 
 @Getter
 @Entity
@@ -48,18 +50,22 @@ public class Announcement {
 
     @Column(nullable = false)
     @Convert(converter = AnnouncementPublicationTypeConverter.class)
+    @JdbcType(LegacyEnumVarcharJdbcType.class)
     private AnnouncementPublicationType status;
 
     @Column(nullable = false)
     @Convert(converter = RentalTypeConverter.class)
+    @JdbcType(LegacyEnumVarcharJdbcType.class)
     private RentalType supplyType;
 
     @Column(nullable = false)
     @Convert(converter = RecruitmentTypeConverter.class)
+    @JdbcType(LegacyEnumVarcharJdbcType.class)
     private RecruitmentType recruitmentType;
 
     @Column(nullable = false)
     @Convert(converter = AgencyCodeConverter.class)
+    @JdbcType(LegacyEnumVarcharJdbcType.class)
     private AgencyCode provider;
 
     @Column(nullable = false)

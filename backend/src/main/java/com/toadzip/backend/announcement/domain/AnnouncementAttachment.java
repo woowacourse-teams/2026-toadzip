@@ -3,6 +3,7 @@ package com.toadzip.backend.announcement.domain;
 import static jakarta.persistence.FetchType.LAZY;
 import static lombok.AccessLevel.PROTECTED;
 
+import com.toadzip.backend.global.persistence.LegacyEnumVarcharJdbcType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
@@ -14,6 +15,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcType;
 
 @Getter
 @Entity
@@ -34,6 +36,7 @@ public class AnnouncementAttachment {
 
     @Column(nullable = false)
     @Convert(converter = AttachmentTypeConverter.class)
+    @JdbcType(LegacyEnumVarcharJdbcType.class)
     private AttachmentType fileType;
 
     @Column(nullable = false)

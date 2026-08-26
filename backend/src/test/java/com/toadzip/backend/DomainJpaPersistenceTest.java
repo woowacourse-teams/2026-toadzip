@@ -404,7 +404,6 @@ class DomainJpaPersistenceTest {
                 () -> assertEquals("ONLINE", storedCodes[4])
         );
 
-        removeGeneratedEnumChecks();
         entityManager.createNativeQuery(
                         """
                         UPDATE announcements
@@ -453,28 +452,6 @@ class DomainJpaPersistenceTest {
                 () -> assertNull(foundSupplyTarget.getConvertedDeposit()),
                 () -> assertNull(foundSupplyTarget.getApplicationCondition())
         );
-    }
-
-    private void removeGeneratedEnumChecks() {
-        entityManager.createNativeQuery(
-                        """
-                        ALTER TABLE announcements
-                        DROP CONSTRAINT IF EXISTS announcements_status_check,
-                        DROP CONSTRAINT IF EXISTS announcements_supply_type_check,
-                        DROP CONSTRAINT IF EXISTS announcements_recruitment_type_check,
-                        DROP CONSTRAINT IF EXISTS announcements_provider_check,
-                        DROP CONSTRAINT IF EXISTS announcements_reception_method_check
-                        """
-                )
-                .executeUpdate();
-        entityManager.createNativeQuery(
-                        "ALTER TABLE announcement_schedules DROP CONSTRAINT IF EXISTS announcement_schedules_schedule_type_check"
-                )
-                .executeUpdate();
-        entityManager.createNativeQuery(
-                        "ALTER TABLE announcement_attachments DROP CONSTRAINT IF EXISTS announcement_attachments_file_type_check"
-                )
-                .executeUpdate();
     }
 
     private User createUser() {
