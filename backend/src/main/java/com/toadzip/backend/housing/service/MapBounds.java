@@ -53,7 +53,7 @@ public record MapBounds(
     }
 
     private static void requireAscending(BigDecimal start, BigDecimal end) {
-        if (start.compareTo(end) > 0) {
+        if (start.compareTo(end) >= 0) {
             throw new InvalidMapBoundsException();
         }
     }

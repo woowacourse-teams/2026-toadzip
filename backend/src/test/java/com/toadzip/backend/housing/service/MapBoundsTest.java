@@ -43,6 +43,8 @@ class MapBoundsTest {
                 Arguments.of(null, decimal("126.0"), decimal("38.0"), decimal("127.0")),
                 Arguments.of(decimal("-90.1"), decimal("126.0"), decimal("38.0"), decimal("127.0")),
                 Arguments.of(decimal("37.0"), decimal("180.1"), decimal("38.0"), decimal("127.0")),
+                Arguments.of(decimal("37.0"), decimal("126.0"), decimal("37.0"), decimal("127.0")),
+                Arguments.of(decimal("37.0"), decimal("126.0"), decimal("38.0"), decimal("126.0")),
                 Arguments.of(decimal("38.0"), decimal("126.0"), decimal("37.0"), decimal("127.0")),
                 Arguments.of(decimal("37.0"), decimal("127.0"), decimal("38.0"), decimal("126.0"))
         );

@@ -24,6 +24,7 @@ public final class HousingComplexCursorCodec {
         if (cursor == null || cursor.isBlank()) {
             throw new InvalidComplexCursorException();
         }
+        requireUnpaddedUrlSafeBase64(cursor);
         try {
             String payload = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
             String[] parts = payload.split("\\|", -1);
@@ -51,5 +52,28 @@ public final class HousingComplexCursorCodec {
             return null;
         }
         return LocalDate.parse(rawPostedDate);
+    }
+
+    private void requireUnpaddedUrlSafeBase64(String cursor) {
+        if (cursor.contains("=")) {
+            throw new InvalidComplexCursorException();
+        }
+        boolean hasOnlyUrlSafeAlphabet = cursor.chars().allMatch(this::isUrlSafeBase64Character);
+        if (!hasOnlyUrlSafeAlphabet) {
+            throw new InvalidComplexCursorException();
+        }
+    }
+
+    private boolean isUrlSafeBase64Character(int character) {
+        if (character >= 'A' && character <= 'Z') {
+            return true;
+        }
+        if (character >= 'a' && character <= 'z') {
+            return true;
+        }
+        if (character >= '0' && character <= '9') {
+            return true;
+        }
+        return character == '-' || character == '_';
     }
 }

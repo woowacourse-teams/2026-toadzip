@@ -34,7 +34,7 @@ class HousingComplexCursorCodecTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"", " ", "bad", "djJ8MjAyNi0wOC0yNnw0MQ=="})
+    @ValueSource(strings = {"", " ", "bad", "djJ8MjAyNi0wOC0yNnw0MQ==", "djF8fnw0MQ==", "ab+c"})
     void 잘못된_커서를_거부한다(String cursor) {
         assertThrows(InvalidComplexCursorException.class, () -> codec.decode(cursor));
     }
