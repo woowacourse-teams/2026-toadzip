@@ -15,7 +15,7 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.test.context.ActiveProfiles;
 
 import com.toadzip.backend.ingest.dto.MyHomeComplexSourceItem;
-import com.toadzip.backend.ingest.dto.MyHomeNoticeSourceItem;
+import com.toadzip.backend.ingest.dto.MyHomeAnnouncementSourceItem;
 import com.toadzip.backend.ingest.dto.MyHomeRegion;
 
 @DataJpaTest
@@ -29,7 +29,7 @@ class MyHomeSourceStoreTest {
     private MyHomeComplexSourceRepository complexRepository;
 
     @Autowired
-    private MyHomeNoticeSourceRepository noticeRepository;
+    private MyHomeAnnouncementSourceRepository announcementRepository;
 
     private MyHomeSourceStore store;
 
@@ -37,7 +37,7 @@ class MyHomeSourceStoreTest {
     void setUp() {
         store = new MyHomeSourceStore(
                 complexRepository,
-                noticeRepository,
+                announcementRepository,
                 Clock.fixed(COLLECTED_AT, ZoneOffset.UTC)
         );
     }
@@ -60,11 +60,11 @@ class MyHomeSourceStoreTest {
 
     @Test
     void 같은_마이홈_공고_식별자는_새_행을_추가하지_않고_컬럼을_갱신한다() {
-        store.storeNotices(List.of(notice("공고명")));
+        store.storeAnnouncements(List.of(announcement("공고명")));
 
-        store.storeNotices(List.of(notice("변경 공고명")));
+        store.storeAnnouncements(List.of(announcement("변경 공고명")));
 
-        assertThat(noticeRepository.findAll()).singleElement().satisfies(source -> {
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(source -> {
             assertThat(source.getPblancId()).isEqualTo("21026");
             assertThat(source.getHouseSn()).isOne();
             assertThat(source.getPblancNm()).isEqualTo("변경 공고명");
@@ -73,18 +73,18 @@ class MyHomeSourceStoreTest {
 
     @Test
     void 새_마이홈_공고의_원천_순서는_기존_행_다음부터_이어진다() {
-        store.storeNotices(List.of(notice("첫 공고")));
+        store.storeAnnouncements(List.of(announcement("첫 공고")));
 
-        MyHomeNoticeSourceItem second = new MyHomeNoticeSourceItem(
+        MyHomeAnnouncementSourceItem second = new MyHomeAnnouncementSourceItem(
                 "21027", 2, "일반공고", "두 번째 공고", "부산도시공사", "아파트", "영구임대",
                 null, "20260813", "20261106", "20260824", "20260831", null,
                 "https://example.com/2", null, null, "동삼2", "부산광역시", "영도구",
                 "부산광역시 영도구", null, null, "2620012100105100000", "중앙난방", null,
                 300, 2_160_000L, 432_000L, 1_728_000L, 42_800L
         );
-        store.storeNotices(List.of(second));
+        store.storeAnnouncements(List.of(second));
 
-        assertThat(noticeRepository.findAll())
+        assertThat(announcementRepository.findAll())
                 .extracting(source -> source.getSourceOrder())
                 .containsExactlyInAnyOrder(0, 1);
     }
@@ -98,8 +98,8 @@ class MyHomeSourceStoreTest {
         );
     }
 
-    private MyHomeNoticeSourceItem notice(String name) {
-        return new MyHomeNoticeSourceItem(
+    private MyHomeAnnouncementSourceItem announcement(String name) {
+        return new MyHomeAnnouncementSourceItem(
                 "21026", 1, "일반공고", name, "부산도시공사", "아파트", "영구임대",
                 null, "20260813", "20261106", "20260824", "20260831", null,
                 "https://example.com", null, null, "동삼2", "부산광역시", "영도구",

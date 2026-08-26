@@ -14,9 +14,9 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.toadzip.backend.ingest.domain.MyHomeComplexSource;
-import com.toadzip.backend.ingest.domain.MyHomeNoticeSource;
+import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.dto.MyHomeComplexSourceItem;
-import com.toadzip.backend.ingest.dto.MyHomeNoticeSourceItem;
+import com.toadzip.backend.ingest.dto.MyHomeAnnouncementSourceItem;
 import com.toadzip.backend.ingest.dto.MyHomeRegion;
 
 @Repository
@@ -24,17 +24,17 @@ public class MyHomeSourceStore {
 
     private final MyHomeComplexSourceRepository complexRepository;
 
-    private final MyHomeNoticeSourceRepository noticeRepository;
+    private final MyHomeAnnouncementSourceRepository announcementRepository;
 
     private final Clock clock;
 
     public MyHomeSourceStore(
             MyHomeComplexSourceRepository complexRepository,
-            MyHomeNoticeSourceRepository noticeRepository,
+            MyHomeAnnouncementSourceRepository announcementRepository,
             Clock clock
     ) {
         this.complexRepository = complexRepository;
-        this.noticeRepository = noticeRepository;
+        this.announcementRepository = announcementRepository;
         this.clock = clock;
     }
 
@@ -70,30 +70,30 @@ public class MyHomeSourceStore {
     }
 
     @Transactional
-    public int storeNotices(List<MyHomeNoticeSourceItem> items) {
+    public int storeAnnouncements(List<MyHomeAnnouncementSourceItem> items) {
         Instant collectedAt = clock.instant();
-        Map<String, MyHomeNoticeSourceItem> unique = new LinkedHashMap<>();
-        for (MyHomeNoticeSourceItem item : items) {
-            unique.put(MyHomeNoticeSource.sourceKeyOf(item), item);
+        Map<String, MyHomeAnnouncementSourceItem> unique = new LinkedHashMap<>();
+        for (MyHomeAnnouncementSourceItem item : items) {
+            unique.put(MyHomeAnnouncementSource.sourceKeyOf(item), item);
         }
-        Map<String, MyHomeNoticeSource> stored = noticeRepository.findAllBySourceKeyIn(unique.keySet())
+        Map<String, MyHomeAnnouncementSource> stored = announcementRepository.findAllBySourceKeyIn(unique.keySet())
                 .stream()
-                .collect(Collectors.toMap(MyHomeNoticeSource::getSourceKey, Function.identity()));
-        List<MyHomeNoticeSource> sources = new ArrayList<>();
-        int sourceOrder = noticeRepository.findMaxSourceOrder() + 1;
-        for (Map.Entry<String, MyHomeNoticeSourceItem> entry : unique.entrySet()) {
+                .collect(Collectors.toMap(MyHomeAnnouncementSource::getSourceKey, Function.identity()));
+        List<MyHomeAnnouncementSource> sources = new ArrayList<>();
+        int sourceOrder = announcementRepository.findMaxSourceOrder() + 1;
+        for (Map.Entry<String, MyHomeAnnouncementSourceItem> entry : unique.entrySet()) {
             String sourceKey = entry.getKey();
-            MyHomeNoticeSourceItem item = entry.getValue();
-            MyHomeNoticeSource source = stored.get(sourceKey);
+            MyHomeAnnouncementSourceItem item = entry.getValue();
+            MyHomeAnnouncementSource source = stored.get(sourceKey);
             if (source == null) {
-                source = MyHomeNoticeSource.from(sourceOrder, item);
+                source = MyHomeAnnouncementSource.from(sourceOrder, item);
             }
             source.replaceWith(item);
             source.markCollectedAt(collectedAt);
             sources.add(source);
             sourceOrder++;
         }
-        noticeRepository.saveAll(sources);
+        announcementRepository.saveAll(sources);
         return sources.size();
     }
 
@@ -102,7 +102,9 @@ public class MyHomeSourceStore {
                 .anyMatch(item -> !region.provinceCode().equals(item.brtcCode())
                         || !region.districtCode().equals(item.signguCode()));
         if (containsOtherRegion) {
-            throw new IllegalArgumentException("지역 스냅샷에 다른 지역의 원천 행이 포함되어 있습니다.");
+            throw new IllegalArgumentException(
+                    "지역 스냅샷에 다른 지역의 원천 행이 포함되어 있습니다."
+            );
         }
     }
 }

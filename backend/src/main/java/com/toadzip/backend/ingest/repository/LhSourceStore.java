@@ -8,8 +8,8 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.toadzip.backend.ingest.domain.LhCatalogSource;
-import com.toadzip.backend.ingest.domain.LhNoticeDetailSource;
-import com.toadzip.backend.ingest.domain.LhNoticeSupplySource;
+import com.toadzip.backend.ingest.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.dto.LhCatalogSourceItem;
 
 @Repository
@@ -17,16 +17,16 @@ public class LhSourceStore {
 
     private final LhCatalogSourceRepository catalogRepository;
 
-    private final LhNoticeDetailSourceRepository detailRepository;
+    private final LhAnnouncementDetailSourceRepository detailRepository;
 
-    private final LhNoticeSupplySourceRepository supplyRepository;
+    private final LhAnnouncementSupplySourceRepository supplyRepository;
 
     private final Clock clock;
 
     public LhSourceStore(
             LhCatalogSourceRepository catalogRepository,
-            LhNoticeDetailSourceRepository detailRepository,
-            LhNoticeSupplySourceRepository supplyRepository,
+            LhAnnouncementDetailSourceRepository detailRepository,
+            LhAnnouncementSupplySourceRepository supplyRepository,
             Clock clock
     ) {
         this.catalogRepository = catalogRepository;
@@ -53,7 +53,7 @@ public class LhSourceStore {
     }
 
     @Transactional
-    public int replaceDetails(String panId, List<LhNoticeDetailSource> sources) {
+    public int replaceDetails(String panId, List<LhAnnouncementDetailSource> sources) {
         Instant collectedAt = clock.instant();
         sources.forEach(source -> source.markCollectedAt(collectedAt));
         detailRepository.deleteByPanId(panId);
@@ -63,7 +63,7 @@ public class LhSourceStore {
     }
 
     @Transactional
-    public int replaceSupplies(String panId, List<LhNoticeSupplySource> sources) {
+    public int replaceSupplies(String panId, List<LhAnnouncementSupplySource> sources) {
         Instant collectedAt = clock.instant();
         sources.forEach(source -> source.markCollectedAt(collectedAt));
         supplyRepository.deleteByPanId(panId);

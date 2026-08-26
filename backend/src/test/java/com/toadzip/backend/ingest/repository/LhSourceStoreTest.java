@@ -14,10 +14,10 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.test.context.ActiveProfiles;
 
-import com.toadzip.backend.ingest.domain.LhNoticeDetailSource;
-import com.toadzip.backend.ingest.domain.LhNoticeSupplySource;
+import com.toadzip.backend.ingest.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.dto.LhCatalogSourceItem;
-import com.toadzip.backend.ingest.dto.LhNoticeSupplySourceItem;
+import com.toadzip.backend.ingest.dto.LhAnnouncementSupplySourceItem;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -30,10 +30,10 @@ class LhSourceStoreTest {
     private LhCatalogSourceRepository catalogRepository;
 
     @Autowired
-    private LhNoticeDetailSourceRepository detailRepository;
+    private LhAnnouncementDetailSourceRepository detailRepository;
 
     @Autowired
-    private LhNoticeSupplySourceRepository supplyRepository;
+    private LhAnnouncementSupplySourceRepository supplyRepository;
 
     private LhSourceStore store;
 
@@ -74,15 +74,24 @@ class LhSourceStoreTest {
 
     @Test
     void LH_상세와_공급은_panId별로_각각_독립된_테이블에_저장한다() {
-        LhNoticeDetailSource detail = new LhNoticeDetailSource(
+        LhAnnouncementDetailSource detail = new LhAnnouncementDetailSource(
                 0, "PAN-1", "ETC_INFO", null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, "정정", "공고문 확인"
         );
-        LhNoticeSupplySource supply = new LhNoticeSupplySource(
+        LhAnnouncementSupplySource supply = new LhAnnouncementSupplySource(
                 0,
                 "PAN-1",
-                new LhNoticeSupplySourceItem("순천선평3", "24(일반)", "24.71", "37.9268", "240", "50", null, null)
+                new LhAnnouncementSupplySourceItem(
+                        "순천선평3",
+                        "24(일반)",
+                        "24.71",
+                        "37.9268",
+                        "240",
+                        "50",
+                        null,
+                        null
+                )
         );
 
         store.replaceDetails("PAN-1", List.of(detail));

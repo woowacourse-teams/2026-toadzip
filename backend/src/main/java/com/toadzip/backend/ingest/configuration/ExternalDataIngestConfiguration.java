@@ -37,8 +37,8 @@ public class ExternalDataIngestConfiguration {
         );
     }
 
-    @Bean("myHomeNoticeOpenApiClient")
-    DataGoKrOpenApiClient myHomeNoticeOpenApiClient(
+    @Bean("myHomeAnnouncementOpenApiClient")
+    DataGoKrOpenApiClient myHomeAnnouncementOpenApiClient(
             RestClient externalDataRestClient,
             ObjectMapper objectMapper,
             ExternalDataIngestProperties properties
@@ -46,7 +46,7 @@ public class ExternalDataIngestConfiguration {
         return new DataGoKrOpenApiClient(
                 externalDataRestClient,
                 objectMapper,
-                properties.baseUrl().myhomeNotice(),
+                properties.baseUrl().myhomeAnnouncement(),
                 properties.serviceKey(),
                 "마이홈 공고"
         );

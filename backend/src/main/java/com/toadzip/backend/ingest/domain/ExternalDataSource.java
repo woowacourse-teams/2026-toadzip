@@ -2,8 +2,8 @@ package com.toadzip.backend.ingest.domain;
 
 public enum ExternalDataSource {
     MYHOME_COMPLEX,
-    MYHOME_NOTICE,
+    MYHOME_ANNOUNCEMENT,
     LH_LEASE_CATALOG,
-    LH_NOTICE_DETAIL,
-    LH_NOTICE_SUPPLY
+    LH_ANNOUNCEMENT_DETAIL,
+    LH_ANNOUNCEMENT_SUPPLY
 }

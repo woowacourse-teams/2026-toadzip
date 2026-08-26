@@ -1,0 +1,35 @@
+package com.toadzip.backend.ingest.dto;
+
+public record MyHomeAnnouncementSourceItem(
+        String pblancId,
+        Integer houseSn,
+        String sttusNm,
+        String pblancNm,
+        String suplyInsttNm,
+        String houseTyNm,
+        String suplyTyNm,
+        String beforePblancId,
+        String rcritPblancDe,
+        String przwnerPresnatnDe,
+        String beginDe,
+        String endDe,
+        String refrnc,
+        String url,
+        String pcUrl,
+        String mobileUrl,
+        String hsmpNm,
+        String brtcNm,
+        String signguNm,
+        String fullAdres,
+        String rnCodeNm,
+        String refrnLegaldongNm,
+        String pnu,
+        String heatMthdNm,
+        String totHshldCo,
+        Integer sumSuplyCo,
+        Long rentGtn,
+        Long enty,
+        Long surlus,
+        Long mtRntchrg
+) {
+}
