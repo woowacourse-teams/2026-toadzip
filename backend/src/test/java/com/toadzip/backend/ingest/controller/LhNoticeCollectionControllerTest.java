@@ -35,12 +35,12 @@ class LhNoticeCollectionControllerTest {
         when(supplyCollectionService.collect())
                 .thenReturn(new ExternalDataCollectionReport("lh-notice-supply", 2, 0, 1));
 
-        mockMvc.perform(post("/api/admin/ingest/lh/notices/details"))
+        mockMvc.perform(post("/api/admin/ingest/lh/announcements/details"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.operation").value("lh-notice-detail"))
                 .andExpect(jsonPath("$.storedRowCount").value(1));
 
-        mockMvc.perform(post("/api/admin/ingest/lh/notices/supplies"))
+        mockMvc.perform(post("/api/admin/ingest/lh/announcements/supplies"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.operation").value("lh-notice-supply"))
                 .andExpect(jsonPath("$.storedRowCount").value(2));
@@ -53,10 +53,16 @@ class LhNoticeCollectionControllerTest {
                         "lh-notice-detail 수집이 이미 실행 중입니다."
                 ));
 
-        mockMvc.perform(post("/api/admin/ingest/lh/notices/details"))
+        mockMvc.perform(post("/api/admin/ingest/lh/announcements/details"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("INGEST_ALREADY_RUNNING"))
                 .andExpect(jsonPath("$.message").value("lh-notice-detail 수집이 이미 실행 중입니다."))
                 .andExpect(jsonPath("$.traceId").isNotEmpty());
+    }
+
+    @Test
+    void 기존_notice_수집_경로는_더_이상_노출하지_않는다() throws Exception {
+        mockMvc.perform(post("/api/admin/ingest/lh/notices/details"))
+                .andExpect(status().isNotFound());
     }
 }

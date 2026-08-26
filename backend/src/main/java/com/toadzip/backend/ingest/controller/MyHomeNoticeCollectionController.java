@@ -12,7 +12,7 @@ import com.toadzip.backend.ingest.dto.MyHomeNoticeCollectionRequest;
 import com.toadzip.backend.ingest.service.MyHomeNoticeCollectionService;
 
 @RestController
-@RequestMapping("/api/admin/ingest/myhome/notices")
+@RequestMapping("/api/admin/ingest/myhome/announcements")
 public class MyHomeNoticeCollectionController {
 
     private final MyHomeNoticeCollectionService collectionService;

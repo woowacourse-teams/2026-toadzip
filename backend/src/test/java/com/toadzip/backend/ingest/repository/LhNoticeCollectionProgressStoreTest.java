@@ -8,10 +8,14 @@ import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.test.context.ActiveProfiles;
 
 import com.toadzip.backend.ingest.domain.ExternalDataSource;
 
 @DataJpaTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@ActiveProfiles("test")
 class LhNoticeCollectionProgressStoreTest {
 
     private static final Instant COMPLETED_AT = Instant.parse("2026-08-25T10:00:00Z");

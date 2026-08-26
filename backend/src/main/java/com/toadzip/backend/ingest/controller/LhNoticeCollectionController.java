@@ -9,7 +9,7 @@ import com.toadzip.backend.ingest.service.LhNoticeDetailCollectionService;
 import com.toadzip.backend.ingest.service.LhNoticeSupplyCollectionService;
 
 @RestController
-@RequestMapping("/api/admin/ingest/lh/notices")
+@RequestMapping("/api/admin/ingest/lh/announcements")
 public class LhNoticeCollectionController {
 
     private final LhNoticeDetailCollectionService detailCollectionService;

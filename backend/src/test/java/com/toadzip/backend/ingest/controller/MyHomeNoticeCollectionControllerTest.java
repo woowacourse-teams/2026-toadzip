@@ -26,12 +26,18 @@ class MyHomeNoticeCollectionControllerTest {
 
     @Test
     void 기본_페이지_크기와_최대_페이지로_공고를_수집한다() throws Exception {
-        mockMvc.perform(post("/api/admin/ingest/myhome/notices"))
+        mockMvc.perform(post("/api/admin/ingest/myhome/announcements"))
                 .andExpect(status().isOk());
 
         ArgumentCaptor<MyHomeNoticeCollectionRequest> request = ArgumentCaptor.captor();
         verify(collectionService).collect(request.capture());
         assertThat(request.getValue().pageSize()).isEqualTo(10);
         assertThat(request.getValue().maxPages()).isEqualTo(1_000);
+    }
+
+    @Test
+    void 기존_notice_수집_경로는_더_이상_노출하지_않는다() throws Exception {
+        mockMvc.perform(post("/api/admin/ingest/myhome/notices"))
+                .andExpect(status().isNotFound());
     }
 }
