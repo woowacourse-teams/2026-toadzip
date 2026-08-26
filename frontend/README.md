@@ -3,10 +3,10 @@
 ## 사전 준비
 
 - Node.js 계약은 [`.nvmrc`](.nvmrc)와 [`package.json`](package.json)의 `engines.node`가 함께 정의한다.
-- npm 계약은 `package.json`의 `packageManager`와 `engines.npm`이 함께 정의한다.
+- npm 계약은 `package.json`의 `packageManager`가 정의한다.
 - 정확한 설치 의존성 그래프의 원본은 [`package-lock.json`](package-lock.json)이다.
 
-런타임 또는 패키지 관리자 계약을 바꿀 때는 두 정의를 함께 갱신한다.
+Node.js 계약을 바꿀 때는 두 정의를 함께 갱신한다.
 
 명령어는 `frontend/` 디렉터리에서 실행한다.
 

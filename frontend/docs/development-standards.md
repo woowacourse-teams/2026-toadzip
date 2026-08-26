@@ -7,7 +7,7 @@
 | 판단 대상 | 원본 또는 역할 |
 |---|---|
 | Node.js | [`.nvmrc`](../.nvmrc)와 [`package.json`](../package.json)의 `engines.node` |
-| npm | `package.json`의 `packageManager`와 `engines.npm` |
+| npm | `package.json`의 `packageManager` |
 | 명령·직접 의존성 | `package.json` |
 | 재현할 전체 의존성 그래프 | [`package-lock.json`](../package-lock.json) |
 | TypeScript 검사 | [`tsconfig.json`](../tsconfig.json)과 참조 설정 |
@@ -15,7 +15,7 @@
 | 개발·테스트·프로덕션 빌드 | [`vite.config.ts`](../vite.config.ts) |
 | 설치·실행 방법 | [`README.md`](../README.md) |
 
-Node.js나 npm 계약을 변경할 때는 같은 행의 중복 정의를 함께 갱신한다.
+Node.js 계약을 변경할 때는 같은 행의 두 정의를 함께 갱신한다.
 
 - React는 화면과 상호작용을, React Router는 URL과 탐색을 소유한다.
 - TypeScript는 정적 계약이며 외부 데이터의 런타임 안전을 대신하지 않는다.
