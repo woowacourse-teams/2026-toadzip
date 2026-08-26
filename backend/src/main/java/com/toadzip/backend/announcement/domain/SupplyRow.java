@@ -1,4 +1,4 @@
-package com.toadzip.backend.notice.domain;
+package com.toadzip.backend.announcement.domain;
 
 import static jakarta.persistence.EnumType.STRING;
 import static jakarta.persistence.FetchType.LAZY;
@@ -31,8 +31,8 @@ public class SupplyRow {
     private Long id;
 
     @ManyToOne(fetch = LAZY, optional = false)
-    @JoinColumn(name = "notice_id", nullable = false)
-    private Notice notice;
+    @JoinColumn(name = "announcement_id", nullable = false)
+    private Announcement announcement;
 
     @ManyToOne(fetch = LAZY)
     @JoinColumn(name = "housing_complex_id")
@@ -71,7 +71,7 @@ public class SupplyRow {
     private int totalSupplyHouseholdCount;
 
     private SupplyRow(
-            Notice notice,
+            Announcement announcement,
             HousingComplex housingComplex,
             HousingType housingType,
             String sourceSupplyRowIdentifier,
@@ -84,7 +84,7 @@ public class SupplyRow {
             String matchingFailureReason,
             int totalSupplyHouseholdCount
     ) {
-        validateRequired(notice, "공고");
+        validateRequired(announcement, "공고");
         validateNotBlank(sourceSupplyRowIdentifier, "원천 공급행 식별자");
         validateNonNegative(displayOrder, "표시순서");
         validateNotBlank(sourceComplexName, "원천 단지명");
@@ -93,7 +93,7 @@ public class SupplyRow {
         validateRequired(expectedMoveInMonth, "입주 예정 연월");
         validateRequired(supplyCategory, "공급구분");
         validateNonNegative(totalSupplyHouseholdCount, "전체 공급세대수");
-        this.notice = notice;
+        this.announcement = announcement;
         this.housingComplex = housingComplex;
         this.housingType = housingType;
         this.sourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
@@ -108,7 +108,7 @@ public class SupplyRow {
     }
 
     public static SupplyRow create(
-            Notice notice,
+            Announcement announcement,
             HousingComplex housingComplex,
             HousingType housingType,
             String sourceSupplyRowIdentifier,
@@ -122,7 +122,7 @@ public class SupplyRow {
             int totalSupplyHouseholdCount
     ) {
         return new SupplyRow(
-                notice,
+                announcement,
                 housingComplex,
                 housingType,
                 sourceSupplyRowIdentifier,
