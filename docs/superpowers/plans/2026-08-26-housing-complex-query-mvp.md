@@ -28,6 +28,7 @@
 - 오류 코드는 `INVALID_MAP_BOUNDS`, `INVALID_CURSOR`, `INVALID_REQUEST`, `COMPLEX_NOT_FOUND`를 사용한다.
 - 새 production dependency를 추가하지 않는다.
 - 실행계획 근거와 배포 마이그레이션이 없는 인덱스·컬럼 변경은 이번 MVP에 추가하지 않는다.
+- `HousingComplexQueryService`의 지도·목록·상세 public 조회 메서드는 모두 `@Transactional(readOnly = true)` 경계다.
 - 브랜치는 `origin/develop`을 기준으로 하며 #20 브랜치의 커밋이나 코드에 의존하지 않는다. #20은 패턴 참고 자료로만 사용한다.
 - 모든 production 동작은 실패 테스트를 먼저 확인한 뒤 구현한다. 새 타입은 최종 public signature의
   compile-only shell을 먼저 만들 수 있지만, RED는 반드시 컴파일을 통과하고 빠진 행동의 assertion으로 실패해야 한다.
@@ -176,9 +177,6 @@ git commit -m "feat(housing): 단지 조회 공통 계약 추가 (#21)"
 ### Task 2: 지도 영역 단지 요약 조회
 
 **Files:**
-- Create: `backend/src/main/java/com/toadzip/backend/region/repository/RegionCodeResolver.java`
-- Create: `backend/src/main/java/com/toadzip/backend/region/repository/CsvRegionCodeResolver.java`
-- Create: `backend/src/main/resources/region/regions.csv`
 - Create: `backend/src/main/java/com/toadzip/backend/housing/repository/ComplexSummaryRow.java`
 - Create: `backend/src/main/java/com/toadzip/backend/housing/repository/ComplexSummaryQueryRepository.java`
 - Create: `backend/src/main/java/com/toadzip/backend/housing/service/HousingComplexCodeMapper.java`
@@ -188,7 +186,6 @@ git commit -m "feat(housing): 단지 조회 공통 계약 추가 (#21)"
 - Create: `backend/src/main/java/com/toadzip/backend/housing/dto/response/AgencyResponse.java`
 - Create: `backend/src/main/java/com/toadzip/backend/housing/dto/response/HousingComplexMapItemResponse.java`
 - Create: `backend/src/main/java/com/toadzip/backend/housing/dto/response/HousingComplexMapResponse.java`
-- Test: `backend/src/test/java/com/toadzip/backend/region/repository/CsvRegionCodeResolverTest.java`
 - Test: `backend/src/test/java/com/toadzip/backend/housing/repository/ComplexSummaryQueryRepositoryTest.java`
 - Test: `backend/src/test/java/com/toadzip/backend/housing/service/HousingComplexMapQueryTest.java`
 - Test: `backend/src/test/java/com/toadzip/backend/housing/controller/HousingComplexControllerTest.java`
@@ -226,26 +223,12 @@ public record HousingComplexMapResponse(List<HousingComplexMapItemResponse> item
 
 - [ ] **Step 0: Add compile-only Task 2 shells**
 
-Create the listed response/projection records and final public method signatures. The resolver and repository
-return empty results, the service returns an empty `HousingComplexMapResponse`, and the controller has only
+Create the listed response/projection records and final public method signatures. The repository returns
+empty results, the service returns an empty `HousingComplexMapResponse`, and the controller has only
 its constructor/class-level mapping with no endpoint. These are compile-only shells with no requested query,
 mapping, validation, or HTTP behavior; do not commit them separately.
 
-- [ ] **Step 1: Write the official region resolver tests, verify RED, then implement**
-
-```java
-assertEquals(Optional.of("서울특별시 중구"), resolver.resolve("11", "11140"));
-assertEquals(Optional.empty(), resolver.resolve("99", "99999"));
-```
-
-Run: `cd backend && ./gradlew test --tests '*CsvRegionCodeResolverTest'`
-
-Expected: tests compile and FAIL because the shell cannot resolve the official `11140` row.
-
-Reuse the PR #48 CSV format exactly: header `regionCode,sido,sigungu,name`, 269 unique sorted rows,
-UTF-8 classpath loading, and no heuristic extraction from road addresses.
-
-- [ ] **Step 2: Write PostgreSQL repository tests for inclusive bounds and summary aggregation**
+- [ ] **Step 1: Write PostgreSQL repository tests for inclusive bounds and summary aggregation**
 
 ```java
 @Test
@@ -270,7 +253,7 @@ Run: `cd backend && TEST_POSTGRES_PORT=55433 ./gradlew test --tests '*ComplexSum
 
 Expected: tests compile and FAIL on returned IDs/aggregates because the shell repository returns no rows.
 
-- [ ] **Step 3: Implement the read-model SQL and projection**
+- [ ] **Step 2: Implement the read-model SQL and projection**
 
 Create this projection contract so `JdbcClient` values have one unambiguous Java type:
 
@@ -346,7 +329,7 @@ The leaf anti-join always checks successors of every publication type before the
 applied. A cancellation leaf therefore leaves the complex with no representative announcement; it never
 revives the cancelled predecessor. Freeze this with a repository fixture and assertion.
 
-- [ ] **Step 4: Write failing map service response tests**
+- [ ] **Step 3: Write failing map service response tests**
 
 ```java
 HousingComplexMapResponse response = service.getComplexesForMap(bounds);
@@ -363,12 +346,13 @@ Run: `cd backend && TEST_POSTGRES_PORT=55433 ./gradlew test --tests '*HousingCom
 
 Expected: tests compile and FAIL because the shell service returns no map items.
 
-- [ ] **Step 5: Implement canonical code and map response mapping**
+- [ ] **Step 4: Implement canonical code and map response mapping**
 
 For Task 2, `HousingComplexCodeMapper` maps only canonical and approved legacy values for rental type and
 agency. Agency mapping returns both code and the fixed display name. Unknown values throw
 `IllegalStateException`; they are not silently converted to `ETC`. Publication and building-related
 mappings are added only after their failing Task 3/4 tests.
+Annotate `HousingComplexQueryService.getComplexesForMap` with `@Transactional(readOnly = true)`.
 
 ```java
 return switch (storedValue) {
@@ -383,7 +367,7 @@ return switch (storedValue) {
 };
 ```
 
-- [ ] **Step 6: Write the failing map HTTP contract test, then add the endpoint**
+- [ ] **Step 5: Write the failing map HTTP contract test, then add the endpoint**
 
 Create a `@WebMvcTest(HousingComplexController.class)` test with `HousingComplexQueryService` replaced at
 the controller boundary. First verify that a valid four-coordinate request returns the exact
@@ -405,9 +389,9 @@ public ApiResponse<HousingComplexMapResponse> getComplexesForMap(
 }
 ```
 
-- [ ] **Step 7: Run Task 2 tests and commit**
+- [ ] **Step 6: Run Task 2 tests and commit**
 
-Run: `cd backend && TEST_POSTGRES_PORT=55433 ./gradlew test --tests '*CsvRegionCodeResolverTest' --tests '*ComplexSummaryQueryRepositoryTest' --tests '*HousingComplexMapQueryTest' --tests '*HousingComplexControllerTest'`
+Run: `cd backend && TEST_POSTGRES_PORT=55433 ./gradlew test --tests '*ComplexSummaryQueryRepositoryTest' --tests '*HousingComplexMapQueryTest' --tests '*HousingComplexControllerTest'`
 
 ```bash
 git add backend/src/main backend/src/test
@@ -419,6 +403,9 @@ git commit -m "feat(housing): 지도 영역 단지 조회 추가 (#21)"
 ### Task 3: 커서 기반 단지 목록 조회
 
 **Files:**
+- Create: `backend/src/main/java/com/toadzip/backend/region/repository/RegionCodeResolver.java`
+- Create: `backend/src/main/java/com/toadzip/backend/region/repository/CsvRegionCodeResolver.java`
+- Create: `backend/src/main/resources/region/regions.csv`
 - Modify: `backend/src/main/java/com/toadzip/backend/housing/repository/ComplexSummaryQueryRepository.java`
 - Modify: `backend/src/main/java/com/toadzip/backend/housing/service/HousingComplexCodeMapper.java`
 - Modify: `backend/src/main/java/com/toadzip/backend/housing/service/HousingComplexSummaryMapper.java`
@@ -428,6 +415,7 @@ git commit -m "feat(housing): 지도 영역 단지 조회 추가 (#21)"
 - Create: `backend/src/main/java/com/toadzip/backend/housing/dto/response/HousingComplexListItemResponse.java`
 - Create: `backend/src/main/java/com/toadzip/backend/housing/dto/response/HousingComplexListResponse.java`
 - Modify: `backend/src/test/java/com/toadzip/backend/housing/repository/ComplexSummaryQueryRepositoryTest.java`
+- Test: `backend/src/test/java/com/toadzip/backend/region/repository/CsvRegionCodeResolverTest.java`
 - Test: `backend/src/test/java/com/toadzip/backend/housing/service/HousingComplexListQueryTest.java`
 - Modify: `backend/src/test/java/com/toadzip/backend/housing/controller/HousingComplexControllerTest.java`
 
@@ -481,7 +469,24 @@ repository returns empty pages, the mapper returns an empty list, and the servic
 response; leave the controller collection route absent. These shells contain no cursor, sorting, status or
 pagination behavior and are not committed separately.
 
-- [ ] **Step 1: Write failing repository keyset tests**
+- [ ] **Step 1: Write the official region resolver tests, verify RED, then implement**
+
+Add compile-only `RegionCodeResolver`/`CsvRegionCodeResolver` types whose resolver initially returns empty,
+then write:
+
+```java
+assertEquals(Optional.of("서울특별시 중구"), resolver.resolve("11", "11140"));
+assertEquals(Optional.empty(), resolver.resolve("99", "99999"));
+```
+
+Run: `cd backend && ./gradlew test --tests '*CsvRegionCodeResolverTest'`
+
+Expected: tests compile and FAIL because the shell cannot resolve the official `11140` row. Then reuse the
+PR #48 CSV content without checking out that branch: header `regionCode,sido,sigungu,name`, 269 unique
+sorted rows, UTF-8 classpath loading, and no heuristic extraction from road addresses. Use `git show` only
+to read the reference and create/edit the new file with `apply_patch`; never use checkout or shell redirection.
+
+- [ ] **Step 2: Write failing repository keyset tests**
 
 ```java
 @Test
@@ -499,7 +504,7 @@ Run: `cd backend && TEST_POSTGRES_PORT=55433 ./gradlew test --tests '*ComplexSum
 
 Expected: tests compile and FAIL on page IDs because the new page shell methods return empty results.
 
-- [ ] **Step 2: Implement first-page and after-cursor SQL variants**
+- [ ] **Step 3: Implement first-page and after-cursor SQL variants**
 
 ```sql
 ORDER BY representative.posted_date DESC NULLS LAST, housing_complex.id DESC
@@ -508,7 +513,7 @@ LIMIT :limit
 
 For a non-null cursor date, rows after the cursor satisfy an older date, the same date with a smaller complex ID, or a null date. For a null cursor date, only null-date rows with a smaller complex ID qualify.
 
-- [ ] **Step 3: Write failing service pagination tests**
+- [ ] **Step 4: Write failing service pagination tests**
 
 ```java
 HousingComplexListResponse response = service.getComplexes(bounds, null, 2);
@@ -526,7 +531,7 @@ Run: `cd backend && TEST_POSTGRES_PORT=55433 ./gradlew test --tests '*HousingCom
 
 Expected: tests compile and FAIL on items/cursor/validation assertions because the service shell has no list behavior.
 
-- [ ] **Step 4: Implement page+1 slicing and representative response mapping**
+- [ ] **Step 5: Implement page+1 slicing and representative response mapping**
 
 ```java
 List<ComplexSummaryRow> fetched = findRows(bounds, cursor, size + 1);
@@ -546,7 +551,7 @@ Resolve `regionName` with `RegionCodeResolver`; because the field is non-null in
 unresolvable stored region codes are a data-integrity failure (`IllegalStateException`) rather than a guessed
 road-address substring or a nullable response.
 
-- [ ] **Step 5: Extend the HTTP contract test, then add the list endpoint**
+- [ ] **Step 6: Extend the HTTP contract test, then add the list endpoint**
 
 Before changing the controller, add failing cases to `HousingComplexControllerTest` for the list success
 envelope, default `size=20`, partial bounds as `INVALID_MAP_BOUNDS`, and service-thrown
@@ -569,9 +574,9 @@ public ApiResponse<HousingComplexListResponse> getComplexes(
 }
 ```
 
-- [ ] **Step 6: Run Task 3 tests and commit**
+- [ ] **Step 7: Run Task 3 tests and commit**
 
-Run: `cd backend && TEST_POSTGRES_PORT=55433 ./gradlew test --tests '*ComplexSummaryQueryRepositoryTest' --tests '*HousingComplexListQueryTest' --tests '*HousingComplexCursorCodecTest' --tests '*HousingComplexControllerTest'`
+Run: `cd backend && TEST_POSTGRES_PORT=55433 ./gradlew test --tests '*CsvRegionCodeResolverTest' --tests '*ComplexSummaryQueryRepositoryTest' --tests '*HousingComplexListQueryTest' --tests '*HousingComplexCursorCodecTest' --tests '*HousingComplexControllerTest'`
 
 ```bash
 git add backend/src/main backend/src/test
