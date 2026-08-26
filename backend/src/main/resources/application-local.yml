@@ -2,3 +2,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
+
+app:
+  admin:
+    bootstrap:
+      enabled: ${ADMIN_BOOTSTRAP_ENABLED:false}
+      login-identifier: ${ADMIN_LOGIN_IDENTIFIER:}
+      password: ${ADMIN_PASSWORD:}
