@@ -39,14 +39,14 @@
 
 **Files:**
 - Create: `backend/src/main/java/com/toadzip/backend/global/response/ApiResponse.java`
-- Create: `backend/src/main/java/com/toadzip/backend/housing/service/MapBounds.java`
+- Create: `backend/src/main/java/com/toadzip/backend/housing/domain/MapBounds.java`
 - Create: `backend/src/main/java/com/toadzip/backend/housing/service/HousingComplexCursorCodec.java`
 - Create: `backend/src/main/java/com/toadzip/backend/housing/exception/InvalidMapBoundsException.java`
 - Create: `backend/src/main/java/com/toadzip/backend/housing/exception/InvalidComplexCursorException.java`
 - Create: `backend/src/main/java/com/toadzip/backend/housing/exception/InvalidComplexRequestException.java`
 - Create: `backend/src/main/java/com/toadzip/backend/housing/exception/HousingComplexNotFoundException.java`
 - Create: `backend/src/main/java/com/toadzip/backend/housing/controller/HousingComplexExceptionAdvice.java`
-- Test: `backend/src/test/java/com/toadzip/backend/housing/service/MapBoundsTest.java`
+- Test: `backend/src/test/java/com/toadzip/backend/housing/domain/MapBoundsTest.java`
 - Test: `backend/src/test/java/com/toadzip/backend/housing/service/HousingComplexCursorCodecTest.java`
 - Test: `backend/src/test/java/com/toadzip/backend/housing/controller/HousingComplexExceptionAdviceTest.java`
 
