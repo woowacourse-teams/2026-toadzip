@@ -123,7 +123,7 @@ describe('NaverMap', () => {
       '지도를 불러오고 있습니다.',
     )
     expect(
-      screen.getByRole('region', { name: '공공임대 지도' }),
+      screen.getByRole('region', { name: '공공임대주택 지도' }),
     ).toHaveAttribute('aria-busy', 'true')
   })
 
@@ -163,7 +163,7 @@ describe('NaverMap', () => {
     )
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(
-      screen.getByRole('region', { name: '공공임대 지도' }),
+      screen.getByRole('region', { name: '공공임대주택 지도' }),
     ).toHaveAttribute('aria-busy', 'false')
     expect(observe).toHaveBeenCalledOnce()
 

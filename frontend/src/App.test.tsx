@@ -27,7 +27,7 @@ describe('App', () => {
     expect(screen.getByRole('banner', { name: '서비스 헤더' })).toBeVisible()
     expect(screen.getByRole('link', { name: '두꺼비집 홈' })).toBeVisible()
     expect(
-      screen.getByRole('region', { name: '공공임대 지도' }),
+      screen.getByRole('region', { name: '공공임대주택 지도' }),
     ).toBeVisible()
     expect(screen.getByRole('alert')).toHaveTextContent(
       '지도 설정이 준비되지 않았습니다.',

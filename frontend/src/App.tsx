@@ -27,7 +27,7 @@ function Home() {
             </svg>
           </span>
           <span className="brand-name">두꺼비집</span>
-          <span className="brand-tagline">공공임대 지도</span>
+          <span className="brand-tagline">공공임대주택 지도</span>
         </Link>
       </header>
       <main className="map-main">

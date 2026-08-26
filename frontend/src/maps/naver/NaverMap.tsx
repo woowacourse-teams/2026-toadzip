@@ -203,7 +203,7 @@ export default function NaverMap() {
       aria-busy={isLoading}
     >
       <h1 className="visually-hidden" id="map-title">
-        공공임대 지도
+        공공임대주택 지도
       </h1>
       <p className="visually-hidden" id="map-description">
         서울시청을 중심으로 지도를 표시합니다. 실제 주택 데이터는 아직 표시하지
