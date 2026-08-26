@@ -20,7 +20,6 @@ public class AdminAuthenticationService {
     private final AuthenticationManager authenticationManager;
     private final PasswordEncoder passwordEncoder;
 
-    @Transactional
     public Authentication authenticate(String loginIdentifier, String password) {
         Authentication authentication = authenticateCredentials(loginIdentifier, password);
         return authentication;

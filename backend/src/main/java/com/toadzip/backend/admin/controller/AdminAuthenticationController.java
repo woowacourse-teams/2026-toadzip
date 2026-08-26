@@ -5,6 +5,7 @@ import com.toadzip.backend.admin.dto.AdminSessionResponse;
 import com.toadzip.backend.admin.dto.CsrfTokenResponse;
 import com.toadzip.backend.admin.service.AdminAuthenticationAuditService;
 import com.toadzip.backend.admin.service.AdminAuthenticationService;
+import com.toadzip.backend.admin.service.AdminLoginAttemptLimiter;
 import com.toadzip.backend.admin.service.InvalidAdminCredentialsException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -31,6 +32,7 @@ public class AdminAuthenticationController {
 
     private final AdminAuthenticationService adminAuthenticationService;
     private final AdminAuthenticationAuditService adminAuthenticationAuditService;
+    private final AdminLoginAttemptLimiter adminLoginAttemptLimiter;
     private final SecurityContextRepository securityContextRepository;
 
     @GetMapping("/csrf")
@@ -44,8 +46,11 @@ public class AdminAuthenticationController {
             HttpServletRequest servletRequest,
             HttpServletResponse servletResponse
     ) {
+        adminLoginAttemptLimiter.registerAttempt(servletRequest.getRemoteAddr(), request.loginIdentifier());
         try {
-            return loginAndCreateSession(request, servletRequest, servletResponse);
+            AdminSessionResponse response = loginAndCreateSession(request, servletRequest, servletResponse);
+            adminLoginAttemptLimiter.reset(servletRequest.getRemoteAddr(), request.loginIdentifier());
+            return response;
         } catch (InvalidAdminCredentialsException exception) {
             adminAuthenticationAuditService.recordLoginFailure(
                     request.loginIdentifier(),

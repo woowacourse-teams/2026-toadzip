@@ -117,6 +117,24 @@ class AdminAuthenticationIntegrationTest {
         assertAuditLog(AdminAuthenticationAuditAction.LOGIN, AdminAuthenticationAuditResult.FAILURE);
     }
 
+    @Test
+    void 같은_IP와_식별자의_여섯_번째_로그인_시도는_429를_반환한다() throws Exception {
+        CsrfFixture csrfFixture = issueCsrfToken();
+
+        for (int attempt = 0; attempt < 5; attempt++) {
+            mockMvc.perform(loginRequest("rate-limited-admin", "wrong-password")
+                            .cookie(csrfFixture.cookie())
+                            .header(csrfFixture.headerName(), csrfFixture.token()))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        mockMvc.perform(loginRequest("rate-limited-admin", "wrong-password")
+                        .cookie(csrfFixture.cookie())
+                        .header(csrfFixture.headerName(), csrfFixture.token()))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("LOGIN_ATTEMPTS_EXCEEDED"));
+    }
+
     private void assertAuditLog(
             AdminAuthenticationAuditAction action,
             AdminAuthenticationAuditResult result
@@ -141,9 +159,16 @@ class AdminAuthenticationIntegrationTest {
     }
 
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder loginRequest(String password) {
+        return loginRequest("admin", password);
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder loginRequest(
+            String loginIdentifier,
+            String password
+    ) {
         return post("/api/admin/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"loginIdentifier\":\"admin\",\"password\":\"" + password + "\"}");
+                .content("{\"loginIdentifier\":\"" + loginIdentifier + "\",\"password\":\"" + password + "\"}");
     }
 
     private record CsrfFixture(String token, String headerName, Cookie cookie) {
