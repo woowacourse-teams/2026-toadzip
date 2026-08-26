@@ -60,6 +60,17 @@ class MyHomeSourceStoreTest {
     }
 
     @Test
+    void 동일한_마이홈_단지_원천_행은_한_번만_저장한다() {
+        MyHomeRegion region = new MyHomeRegion("11", "140", "서울특별시", "중구");
+        MyHomeComplexSourceItem duplicate = complex(31845188L, "14", new BigDecimal("14.5400"));
+
+        int storedRowCount = store.replaceComplexRegion(region, List.of(duplicate, duplicate));
+
+        assertThat(storedRowCount).isOne();
+        assertThat(complexRepository.findAll()).hasSize(1);
+    }
+
+    @Test
     void 같은_마이홈_공고_식별자는_새_행을_추가하지_않고_컬럼을_갱신한다() {
         store.storeAnnouncements(List.of(announcement("공고명")));
 

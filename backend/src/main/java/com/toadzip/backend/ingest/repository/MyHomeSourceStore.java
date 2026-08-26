@@ -4,10 +4,8 @@ import java.util.ArrayList;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
@@ -42,16 +40,17 @@ public class MyHomeSourceStore {
     public int replaceComplexRegion(MyHomeRegion region, List<MyHomeComplexSourceItem> items) {
         Instant collectedAt = clock.instant();
         validateRegion(region, items);
-        Set<String> sourceKeys = items.stream()
-                .map(MyHomeComplexSourceItem::toSourceData)
-                .map(MyHomeComplexSource::sourceKeyOf)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        Map<String, MyHomeComplexSource> stored = complexRepository.findAllBySourceKeyIn(sourceKeys)
+        Map<String, MyHomeComplexSourceItem> unique = new LinkedHashMap<>();
+        for (MyHomeComplexSourceItem item : items) {
+            unique.put(MyHomeComplexSource.sourceKeyOf(item.toSourceData()), item);
+        }
+        Map<String, MyHomeComplexSource> stored = complexRepository.findAllBySourceKeyIn(unique.keySet())
                 .stream()
                 .collect(Collectors.toMap(MyHomeComplexSource::getSourceKey, Function.identity()));
         List<MyHomeComplexSource> sources = new ArrayList<>();
-        for (MyHomeComplexSourceItem item : items) {
-            String sourceKey = MyHomeComplexSource.sourceKeyOf(item.toSourceData());
+        for (Map.Entry<String, MyHomeComplexSourceItem> entry : unique.entrySet()) {
+            String sourceKey = entry.getKey();
+            MyHomeComplexSourceItem item = entry.getValue();
             MyHomeComplexSource source = stored.get(sourceKey);
             if (source == null) {
                 source = MyHomeComplexSource.from(item.toSourceData());
@@ -64,10 +63,10 @@ public class MyHomeSourceStore {
         List<MyHomeComplexSource> stale = complexRepository
                 .findAllByBrtcCodeAndSignguCode(region.provinceCode(), region.districtCode())
                 .stream()
-                .filter(source -> !sourceKeys.contains(source.getSourceKey()))
+                .filter(source -> !unique.containsKey(source.getSourceKey()))
                 .toList();
         complexRepository.deleteAll(stale);
-        return items.size();
+        return sources.size();
     }
 
     @Transactional
