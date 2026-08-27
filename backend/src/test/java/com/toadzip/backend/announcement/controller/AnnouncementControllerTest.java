@@ -1,5 +1,6 @@
 package com.toadzip.backend.announcement.controller;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -41,8 +42,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
-import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -126,23 +127,24 @@ class AnnouncementControllerTest {
                 org.mockito.ArgumentMatchers.eq(15)
         );
         AnnouncementSearchRequest request = requestCaptor.getValue();
-        org.junit.jupiter.api.Assertions.assertEquals("행복주택", request.keyword());
-        org.junit.jupiter.api.Assertions.assertEquals("11140", request.regionCode());
-        org.junit.jupiter.api.Assertions.assertEquals(
+        assertEquals("행복주택", request.keyword());
+        assertEquals("11140", request.regionCode());
+        assertEquals(
                 List.of(RentalType.HAPPY_HOUSING, RentalType.NATIONAL_RENTAL), request.rentalTypes()
         );
-        org.junit.jupiter.api.Assertions.assertEquals(
+        assertEquals(
                 List.of(ApplicationStatus.BEFORE_APPLICATION, ApplicationStatus.APPLYING), request.applicationStatuses()
         );
-        org.junit.jupiter.api.Assertions.assertEquals(
-                List.of(AnnouncementPublicationType.ORIGINAL, AnnouncementPublicationType.CORRECTION), request.publicationTypes()
+        assertEquals(
+                List.of(AnnouncementPublicationType.ORIGINAL, AnnouncementPublicationType.CORRECTION),
+                request.publicationTypes()
         );
-        org.junit.jupiter.api.Assertions.assertEquals(List.of(AgencyCode.LH, AgencyCode.SH), request.agencyCodes());
-        org.junit.jupiter.api.Assertions.assertEquals(
+        assertEquals(List.of(AgencyCode.LH, AgencyCode.SH), request.agencyCodes());
+        assertEquals(
                 List.of(RecruitmentType.NEW, RecruitmentType.WAITLIST), request.recruitmentTypes()
         );
-        org.junit.jupiter.api.Assertions.assertEquals(LocalDate.of(2026, 8, 1), request.applicationFrom());
-        org.junit.jupiter.api.Assertions.assertEquals(LocalDate.of(2026, 8, 31), request.applicationTo());
+        assertEquals(LocalDate.of(2026, 8, 1), request.applicationFrom());
+        assertEquals(LocalDate.of(2026, 8, 31), request.applicationTo());
     }
 
     @Test
