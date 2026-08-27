@@ -1,15 +1,16 @@
 package com.toadzip.backend.ingest.service;
 
+import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.dto.MyHomeComplexMappingReport;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
@@ -23,12 +24,16 @@ public class MyHomeComplexMappingWriter {
 
     private final HousingTypeRepository housingTypeRepository;
 
+    private final SupplyRowRepository supplyRowRepository;
+
     public MyHomeComplexMappingWriter(
             HousingComplexRepository complexRepository,
-            HousingTypeRepository housingTypeRepository
+            HousingTypeRepository housingTypeRepository,
+            SupplyRowRepository supplyRowRepository
     ) {
         this.complexRepository = complexRepository;
         this.housingTypeRepository = housingTypeRepository;
+        this.supplyRowRepository = supplyRowRepository;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -103,9 +108,27 @@ public class MyHomeComplexMappingWriter {
         int created = 0;
         int updated = 0;
         int unchanged = 0;
+        List<MyHomeHousingTypeMappingData> unmatchedIncoming = new ArrayList<>();
         for (MyHomeHousingTypeMappingData data : incoming) {
-            HousingType housingType = storedByIdentifier.get(data.sourceHousingTypeIdentifier());
+            HousingType housingType = storedByIdentifier.remove(data.sourceHousingTypeIdentifier());
             if (housingType == null) {
+                unmatchedIncoming.add(data);
+                continue;
+            }
+            if (housingType.updateFromMyHome(
+                    data.sourceHousingTypeIdentifier(),
+                    data.name(),
+                    data.exclusiveArea(),
+                    data.supplyArea()
+            )) {
+                updated++;
+                continue;
+            }
+            unchanged++;
+        }
+        for (MyHomeHousingTypeMappingData data : unmatchedIncoming) {
+            HousingType corrected = findUniqueStoredTypeByName(storedByIdentifier, data.name());
+            if (corrected == null) {
                 housingTypeRepository.save(HousingType.createFromMyHome(
                         complex,
                         data.sourceHousingTypeIdentifier(),
@@ -116,22 +139,35 @@ public class MyHomeComplexMappingWriter {
                 created++;
                 continue;
             }
-            if (housingType.updateFromMyHome(data.name(), data.exclusiveArea(), data.supplyArea())) {
-                updated++;
-                continue;
-            }
-            unchanged++;
+            storedByIdentifier.remove(corrected.getSourceHousingTypeIdentifier());
+            corrected.updateFromMyHome(
+                    data.sourceHousingTypeIdentifier(),
+                    data.name(),
+                    data.exclusiveArea(),
+                    data.supplyArea()
+            );
+            updated++;
         }
-        Set<String> incomingIdentifiers = incoming.stream()
-                .map(MyHomeHousingTypeMappingData::sourceHousingTypeIdentifier)
-                .collect(Collectors.toSet());
-        List<HousingType> stale = storedByIdentifier.entrySet()
-                .stream()
-                .filter(entry -> !incomingIdentifiers.contains(entry.getKey()))
-                .map(Map.Entry::getValue)
+        List<HousingType> stale = List.copyOf(storedByIdentifier.values());
+        List<HousingType> deletable = stale.stream()
+                .filter(type -> !supplyRowRepository.existsByHousingType(type))
                 .toList();
-        housingTypeRepository.deleteAll(stale);
-        return new HousingTypeWriteResult(created, updated, unchanged, stale.size());
+        housingTypeRepository.deleteAll(deletable);
+        return new HousingTypeWriteResult(created, updated, unchanged, deletable.size());
+    }
+
+    private HousingType findUniqueStoredTypeByName(
+            Map<String, HousingType> storedByIdentifier,
+            String name
+    ) {
+        List<HousingType> sameName = storedByIdentifier.values()
+                .stream()
+                .filter(type -> type.getName().equals(name))
+                .toList();
+        if (sameName.size() != 1) {
+            return null;
+        }
+        return sameName.getFirst();
     }
 
     private record ComplexWriteResult(HousingComplex complex, boolean created, boolean updated) {

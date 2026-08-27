@@ -83,7 +83,7 @@ public class MyHomeComplexSourceMapper {
                 districtCode
         );
         List<MyHomeHousingTypeMappingData> housingTypes = sources.stream()
-                .map(source -> housingTypeOf(sourceComplexIdentifier, source))
+                .map(this::housingTypeOf)
                 .toList();
         return new MyHomeComplexMappingData(
                 sourceComplexIdentifier,
@@ -115,10 +115,7 @@ public class MyHomeComplexSourceMapper {
         return "매입임대".equals(supplyType);
     }
 
-    private MyHomeHousingTypeMappingData housingTypeOf(
-            String sourceComplexIdentifier,
-            MyHomeComplexSource source
-    ) {
+    private MyHomeHousingTypeMappingData housingTypeOf(MyHomeComplexSource source) {
         String name = requiredText(source.getStyleNm(), "주택형명");
         BigDecimal exclusiveArea = requiredArea(source.getSuplyPrvuseAr(), "전용면적");
         BigDecimal commonArea = optionalArea(source.getSuplyCmnuseAr(), "공용면적");
@@ -127,7 +124,7 @@ public class MyHomeComplexSourceMapper {
             supplyArea = exclusiveArea.add(commonArea).setScale(4, RoundingMode.HALF_UP);
         }
         return new MyHomeHousingTypeMappingData(
-                sourceComplexIdentifier + ":" + name,
+                source.getSourceKey(),
                 name,
                 exclusiveArea,
                 supplyArea

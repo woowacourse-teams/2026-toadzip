@@ -7,6 +7,14 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.ReceptionPlace;
+import com.toadzip.backend.announcement.domain.SupplyCategory;
+import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.domain.MyHomeComplexSource;
@@ -21,6 +29,7 @@ import com.toadzip.backend.ingest.repository.MyHomeComplexSourceRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -53,11 +62,19 @@ class MyHomeComplexMappingServiceTest {
     @Autowired
     private MyHomeComplexMappingCandidateRepository candidateRepository;
 
+    @Autowired
+    private AnnouncementRepository announcementRepository;
+
+    @Autowired
+    private SupplyRowRepository supplyRowRepository;
+
     @MockitoBean
     private RoadAddressGeocodingService geocodingService;
 
     @BeforeEach
     void setUp() {
+        supplyRowRepository.deleteAll();
+        announcementRepository.deleteAll();
         housingTypeRepository.deleteAll();
         complexRepository.deleteAll();
         candidateRepository.deleteAll();
@@ -170,6 +187,22 @@ class MyHomeComplexMappingServiceTest {
     }
 
     @Test
+    void 같은_주택형명이라도_면적이_다르면_서로_다른_주택형으로_매핑한다() {
+        sourceRepository.saveAll(List.of(
+                source("46A", "46.8000", "20.2000"),
+                source("46A", "47.8000", "21.2000")
+        ));
+
+        var report = service.mapAll();
+
+        assertThat(report.createdHousingTypeCount()).isEqualTo(2);
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(housingTypeRepository.findAll())
+                .extracting(type -> type.getExclusiveArea())
+                .containsExactlyInAnyOrder(new BigDecimal("46.8000"), new BigDecimal("47.8000"));
+    }
+
+    @Test
     void 변경된_마이홈_단지_정보를_기존_단지에_갱신한다() {
         MyHomeComplexSource source = source("46A", "46.8000", "20.2000");
         sourceRepository.save(source);
@@ -194,7 +227,8 @@ class MyHomeComplexMappingServiceTest {
         service.mapAll();
         Long housingTypeId = housingTypeRepository.findAll().getFirst().getId();
         sourceRepository.deleteAll();
-        sourceRepository.save(source("46A", "47.12345", "20.2000"));
+        MyHomeComplexSource correctedSource = source("46A", "47.12345", "20.2000");
+        sourceRepository.save(correctedSource);
 
         var report = service.mapAll();
 
@@ -203,8 +237,35 @@ class MyHomeComplexMappingServiceTest {
         assertThat(report.deletedHousingTypeCount()).isZero();
         assertThat(housingTypeRepository.findAll()).singleElement().satisfies(type -> {
             assertThat(type.getId()).isEqualTo(housingTypeId);
+            assertThat(type.getSourceHousingTypeIdentifier()).isEqualTo(correctedSource.getSourceKey());
             assertThat(type.getExclusiveArea()).isEqualByComparingTo("47.1235");
         });
+    }
+
+    @Test
+    void 공고가_참조하는_주택형은_원천에서_사라져도_보존한다() {
+        sourceRepository.saveAll(List.of(
+                source("46A", "46.8000", "20.2000"),
+                source("59A", "59.9500", "24.1000")
+        ));
+        service.mapAll();
+        var complex = complexRepository.findAll().getFirst();
+        var referencedType = housingTypeRepository.findAll()
+                .stream()
+                .filter(type -> type.getName().equals("46A"))
+                .findFirst()
+                .orElseThrow();
+        Announcement announcement = announcementRepository.save(announcement());
+        supplyRowRepository.save(supplyRow(announcement, complex, referencedType));
+        sourceRepository.deleteAll();
+        sourceRepository.save(source("59A", "59.9500", "24.1000"));
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(report.deletedHousingTypeCount()).isZero();
+        assertThat(housingTypeRepository.existsById(referencedType.getId())).isTrue();
+        assertThat(supplyRowRepository.existsByHousingType(referencedType)).isTrue();
     }
 
     @Test
@@ -340,6 +401,48 @@ class MyHomeComplexMappingServiceTest {
         return source(data(
                 123L, styleName, exclusiveArea, commonArea, "서울주택도시공사", "20200101"
         ));
+    }
+
+    private Announcement announcement() {
+        return Announcement.create(
+                "announcement-1",
+                null,
+                null,
+                "테스트 공고",
+                "원공고",
+                "국민임대",
+                "신규모집",
+                "LH",
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 14),
+                LocalDate.of(2026, 9, 1),
+                "https://example.com/announcements/1",
+                null,
+                0L,
+                ReceptionPlace.create("마이홈", "인터넷", null, "1600-1004", "https://example.com")
+        );
+    }
+
+    private SupplyRow supplyRow(
+            Announcement announcement,
+            HousingComplex complex,
+            HousingType housingType
+    ) {
+        return SupplyRow.create(
+                announcement,
+                complex,
+                housingType,
+                "supply-row-1",
+                1,
+                complex.getName(),
+                housingType.getName(),
+                complex.getAddress().getPnu(),
+                YearMonth.of(2027, 3),
+                SupplyCategory.NEW_SUPPLY,
+                null,
+                10
+        );
     }
 
     private MyHomeComplexSource source(MyHomeComplexSourceData data) {

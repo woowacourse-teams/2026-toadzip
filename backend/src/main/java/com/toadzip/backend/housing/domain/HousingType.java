@@ -137,15 +137,23 @@ public class HousingType {
         );
     }
 
-    public boolean updateFromMyHome(String name, BigDecimal exclusiveArea, BigDecimal supplyArea) {
+    public boolean updateFromMyHome(
+            String sourceHousingTypeIdentifier,
+            String name,
+            BigDecimal exclusiveArea,
+            BigDecimal supplyArea
+    ) {
+        validateNotBlankStatic(sourceHousingTypeIdentifier, "원천 주택형 식별자");
         validateNotBlank(name, "주택형명");
         validateRequiredAmount(exclusiveArea, "전용면적");
         validateNonNegativeIfPresent(supplyArea, "공급면적");
-        if (this.name.equals(name)
+        if (this.sourceHousingTypeIdentifier.equals(sourceHousingTypeIdentifier)
+                && this.name.equals(name)
                 && this.exclusiveArea.compareTo(exclusiveArea) == 0
                 && sameAmount(this.supplyArea, supplyArea)) {
             return false;
         }
+        this.sourceHousingTypeIdentifier = sourceHousingTypeIdentifier;
         this.name = name;
         this.exclusiveArea = exclusiveArea;
         this.supplyArea = supplyArea;
