@@ -33,7 +33,14 @@ export interface NaverMapMarker {
   selected?: boolean
 }
 
+export interface NaverMapCameraTarget {
+  readonly latitude: number
+  readonly longitude: number
+  readonly zoom?: number
+}
+
 export interface NaverMapProps {
+  cameraTarget?: NaverMapCameraTarget
   markers?: NaverMapMarker[]
   onMarkerSelect?: (complexId: string) => void
   onViewportChange?: (viewport: ViewportSnapshot) => void
@@ -123,6 +130,7 @@ function MapUnavailable({ onRetry, reason }: MapUnavailableProps) {
 }
 
 export default function NaverMap({
+  cameraTarget,
   markers = [],
   onMarkerSelect,
   onViewportChange,
@@ -131,10 +139,14 @@ export default function NaverMap({
   const mapInstanceRef = useRef<naver.maps.Map | null>(null)
   const mapsRef = useRef<typeof naver.maps | null>(null)
   const markerOverlaysRef = useRef<naver.maps.Marker[]>([])
+  const appliedCameraTargetRef = useRef<NaverMapCameraTarget | null>(null)
   const onMarkerSelectRef = useRef(onMarkerSelect)
   const onViewportChangeRef = useRef(onViewportChange)
   const [attempt, setAttempt] = useState(0)
   const [status, setStatus] = useState<MapStatus>({ kind: 'loading' })
+  const cameraLatitude = cameraTarget?.latitude
+  const cameraLongitude = cameraTarget?.longitude
+  const cameraZoom = cameraTarget?.zoom
 
   useEffect(() => {
     onMarkerSelectRef.current = onMarkerSelect
@@ -158,6 +170,14 @@ export default function NaverMap({
     let idleListener: naver.maps.MapEventListener | null = null
     setStatus({ kind: 'loading' })
 
+    const removeIdleListener = () => {
+      if (!idleListener || !mapsRef.current) {
+        return
+      }
+      mapsRef.current.Event.removeListener(idleListener)
+      idleListener = null
+    }
+
     const handleAuthenticationFailure = () => {
       if (cancelled) {
         return
@@ -165,10 +185,12 @@ export default function NaverMap({
 
       resizeObserver?.disconnect()
       resizeObserver = null
+      removeIdleListener()
       const failedMap = mapInstance
       mapInstance = null
       mapInstanceRef.current = null
       mapsRef.current = null
+      appliedCameraTargetRef.current = null
       setStatus({ kind: 'unavailable', reason: 'authentication' })
       destroyMapSafely(failedMap)
     }
@@ -195,6 +217,7 @@ export default function NaverMap({
           mapInstance = createdMap
           mapInstanceRef.current = createdMap
           mapsRef.current = maps
+          appliedCameraTargetRef.current = null
 
           const emitViewport = () => {
             const viewport = readViewport(createdMap)
@@ -220,10 +243,12 @@ export default function NaverMap({
         } catch {
           resizeObserver?.disconnect()
           resizeObserver = null
+          removeIdleListener()
           const failedMap = mapInstance
           mapInstance = null
           mapInstanceRef.current = null
           mapsRef.current = null
+          appliedCameraTargetRef.current = null
           setStatus({ kind: 'unavailable', reason: 'initialization' })
           destroyMapSafely(failedMap)
         }
@@ -238,13 +263,12 @@ export default function NaverMap({
       cancelled = true
       unsubscribeAuthenticationFailure()
       resizeObserver?.disconnect()
-      if (idleListener && mapsRef.current) {
-        mapsRef.current.Event.removeListener(idleListener)
-      }
+      removeIdleListener()
       clearMarkers(markerOverlaysRef.current)
       markerOverlaysRef.current = []
       mapInstanceRef.current = null
       mapsRef.current = null
+      appliedCameraTargetRef.current = null
       destroyMapSafely(mapInstance)
     }
   }, [attempt])
@@ -269,6 +293,41 @@ export default function NaverMap({
       markerOverlaysRef.current = []
     }
   }, [markers, status.kind])
+
+  useEffect(() => {
+    const mapInstance = mapInstanceRef.current
+    const maps = mapsRef.current
+
+    if (!mapInstance || !maps || status.kind !== 'ready') {
+      return
+    }
+
+    if (
+      cameraLatitude === undefined ||
+      cameraLongitude === undefined ||
+      !isValidCameraTarget(cameraLatitude, cameraLongitude, cameraZoom)
+    ) {
+      appliedCameraTargetRef.current = null
+      return
+    }
+
+    const nextTarget: NaverMapCameraTarget = {
+      latitude: cameraLatitude,
+      longitude: cameraLongitude,
+      zoom: cameraZoom,
+    }
+    const previousTarget = appliedCameraTargetRef.current
+
+    if (cameraCoordinatesChanged(previousTarget, nextTarget)) {
+      mapInstance.panTo(new maps.LatLng(cameraLatitude, cameraLongitude))
+    }
+
+    if (cameraZoom !== undefined && previousTarget?.zoom !== cameraZoom) {
+      mapInstance.setZoom(cameraZoom)
+    }
+
+    appliedCameraTargetRef.current = nextTarget
+  }, [cameraLatitude, cameraLongitude, cameraZoom, status.kind])
 
   const retry = () => {
     setStatus({ kind: 'loading' })
@@ -301,6 +360,33 @@ export default function NaverMap({
         <MapUnavailable reason={status.reason} onRetry={retry} />
       )}
     </section>
+  )
+}
+
+function isValidCameraTarget(
+  latitude: number,
+  longitude: number,
+  zoom: number | undefined,
+): boolean {
+  return (
+    Number.isFinite(latitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    Number.isFinite(longitude) &&
+    longitude >= -180 &&
+    longitude <= 180 &&
+    (zoom === undefined || Number.isFinite(zoom))
+  )
+}
+
+function cameraCoordinatesChanged(
+  previousTarget: NaverMapCameraTarget | null,
+  nextTarget: NaverMapCameraTarget,
+): boolean {
+  return (
+    previousTarget === null ||
+    previousTarget.latitude !== nextTarget.latitude ||
+    previousTarget.longitude !== nextTarget.longitude
   )
 }
 
@@ -369,6 +455,7 @@ function createMarker(
     ? 'housing-map-marker is-selected'
     : 'housing-map-marker'
   button.setAttribute('aria-label', `${marker.name} 단지 상세 보기`)
+  button.dataset.complexId = marker.id
   button.title = marker.name
   button.textContent = marker.selected ? '●' : '•'
   button.addEventListener('click', onSelect)

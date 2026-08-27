@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MapBounds } from '../model/publicHousing.ts'
 import {
+  decodeComplexDetailEnvelope,
   decodeComplexPageEnvelope,
   PublicHousingContractError,
 } from './publicHousingContract.ts'
@@ -38,12 +39,172 @@ const LIST_ITEM = {
   },
 }
 
+const COMPLEX_DETAIL = {
+  complexId: 17,
+  name: '행복 단지',
+  rentalType: 'HAPPY_HOUSING',
+  agency: { code: 'LH', name: '한국토지주택공사' },
+  address: {
+    regionName: '서울특별시 중구',
+    roadAddress: '서울특별시 중구 세종대로 110',
+    latitude: 37.5,
+    longitude: 126.9,
+  },
+  completionDate: null,
+  buildingType: 'APARTMENT',
+  hasElevator: false,
+  heatingType: 'INDIVIDUAL',
+  corridorType: 'STAIR',
+  moveOutCountLastYear: 0,
+  totalHouseholdCount: 100,
+  totalParkingCount: 0,
+  images: [],
+  overviewImageUrl: null,
+  housingTypes: [
+    {
+      housingTypeId: 101,
+      name: null,
+      exclusiveArea: 36.12,
+      supplyArea: null,
+      floorPlanImageUrl: null,
+      floorPlan3dImageUrl: null,
+      isDuplex: false,
+      maintenanceFee: 0,
+      currentSupplyConditions: [
+        {
+          target: null,
+          deposit: 0,
+          monthlyRent: null,
+          convertibleDeposit: null,
+        },
+      ],
+    },
+  ],
+  currentAnnouncements: [
+    {
+      announcementId: 201,
+      title: null,
+      publicationType: 'ORIGINAL',
+      applicationStatus: 'APPLYING',
+      targets: [],
+      applicationStartAt: null,
+      applicationEndAt: '2026-08-27',
+      dDay: 0,
+      actualCompetitionRate: 0,
+    },
+  ],
+}
+
 afterEach(() => {
   vi.unstubAllEnvs()
   vi.resetModules()
 })
 
 describe('공공주택 HTTP repository', () => {
+  it('단지 상세의 full DTO를 보존하고 중첩 ID를 canonical string으로 변환한다', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ data: COMPLEX_DETAIL }))
+    const repository = createRepository(fetchMock, 'https://api.example.test')
+    const controller = new AbortController()
+
+    const detail = await repository.findComplexDetail('17', controller.signal)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.example.test/api/v1/complexes/17',
+      expect.objectContaining({ signal: controller.signal }),
+    )
+    expect(detail).toMatchObject({
+      complexId: '17',
+      completionDate: null,
+      hasElevator: false,
+      moveOutCountLastYear: 0,
+      totalParkingCount: 0,
+      images: [],
+      housingTypes: [
+        {
+          housingTypeId: '101',
+          isDuplex: false,
+          maintenanceFee: 0,
+          currentSupplyConditions: [{ deposit: 0 }],
+        },
+      ],
+      currentAnnouncements: [
+        {
+          announcementId: '201',
+          targets: [],
+          dDay: 0,
+          actualCompetitionRate: 0,
+        },
+      ],
+    })
+    expect(detail.raw).toEqual(COMPLEX_DETAIL)
+  })
+
+  it('canonical positive Java Long이 아닌 상세 ID는 요청하지 않는다', async () => {
+    const fetchMock = vi.fn()
+    const repository = createRepository(fetchMock, '')
+
+    for (const invalidId of [
+      '0',
+      '-1',
+      '01',
+      '1e3',
+      '9223372036854775808',
+    ]) {
+      await expect(
+        repository.findComplexDetail(
+          invalidId,
+          new AbortController().signal,
+        ),
+      ).rejects.toBeInstanceOf(RangeError)
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('Java Long 범위의 canonical ID는 JS safe integer보다 커도 경로로 전달한다', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ data: COMPLEX_DETAIL }))
+    const repository = createRepository(fetchMock, '')
+
+    await repository.findComplexDetail(
+      '9223372036854775807',
+      new AbortController().signal,
+    )
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/complexes/9223372036854775807',
+      expect.any(Object),
+    )
+  })
+
+  it('없는 단지 상세 404를 계약 오류와 구분되는 HTTP 오류로 전달한다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(
+        {
+          code: 'COMPLEX_NOT_FOUND',
+          message: '단지를 찾을 수 없습니다.',
+          traceId: 'trace-id',
+        },
+        404,
+      ),
+    )
+    const repository = createRepository(fetchMock, '')
+
+    const error = await repository
+      .findComplexDetail('999', new AbortController().signal)
+      .catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(PublicHousingHttpError)
+    expect(error).not.toBeInstanceOf(PublicHousingContractError)
+    expect(error).toMatchObject({
+      status: 404,
+      code: 'COMPLEX_NOT_FOUND',
+      message: '단지를 찾을 수 없습니다.',
+    })
+  })
+
   it('bounds, cursor, size와 AbortSignal로 목록을 조회하고 ID를 문자열로 변환한다', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({
@@ -228,6 +389,49 @@ describe('공공주택 HTTP repository', () => {
 })
 
 describe('공공주택 응답 계약', () => {
+  it('상세의 중첩 ID도 safe positive integer로 검증한다', () => {
+    expect(() =>
+      decodeComplexDetailEnvelope({
+        data: {
+          ...COMPLEX_DETAIL,
+          housingTypes: [
+            {
+              ...COMPLEX_DETAIL.housingTypes[0],
+              housingTypeId: Number.MAX_SAFE_INTEGER + 1,
+            },
+          ],
+        },
+      }),
+    ).toThrowError(
+      expect.objectContaining<Partial<PublicHousingContractError>>({
+        path: '$.data.housingTypes[0].housingTypeId',
+      }),
+    )
+  })
+
+  it('상세의 null, false, 0과 빈 배열을 그대로 보존한다', () => {
+    const decoded = decodeComplexDetailEnvelope({ data: COMPLEX_DETAIL })
+
+    expect(decoded).toMatchObject({
+      completionDate: null,
+      hasElevator: false,
+      moveOutCountLastYear: 0,
+      totalParkingCount: 0,
+      images: [],
+      housingTypes: [
+        {
+          name: null,
+          isDuplex: false,
+          maintenanceFee: 0,
+          currentSupplyConditions: [{ target: null, deposit: 0 }],
+        },
+      ],
+      currentAnnouncements: [
+        { title: null, targets: [], dDay: 0, actualCompetitionRate: 0 },
+      ],
+    })
+  })
+
   it('빈 배열, null과 false를 빈 성공 응답으로 보존한다', () => {
     const decoded = decodeComplexPageEnvelope({
       data: { items: [], nextCursor: null, hasNext: false },

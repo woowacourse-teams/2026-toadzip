@@ -1,7 +1,12 @@
 import type {
   HousingAgency,
+  RawComplexAddress,
+  RawComplexCurrentAnnouncement,
+  RawComplexDetail,
+  RawComplexHousingType,
   RawComplexListItem,
   RawComplexPage,
+  RawComplexSupplyCondition,
   RawMapComplex,
   RawMapComplexResponse,
   RawRepresentativeAnnouncement,
@@ -20,6 +25,11 @@ export class PublicHousingContractError extends Error {
 export function decodeComplexPageEnvelope(value: unknown): RawComplexPage {
   const envelope = recordAt(value, '$')
   return decodeComplexPage(recordField(envelope, 'data', '$'), '$.data')
+}
+
+export function decodeComplexDetailEnvelope(value: unknown): RawComplexDetail {
+  const envelope = recordAt(value, '$')
+  return decodeComplexDetail(recordField(envelope, 'data', '$'), '$.data')
 }
 
 export function decodeMapComplexEnvelope(
@@ -51,6 +61,252 @@ function decodeComplexPage(value: unknown, path: string): RawComplexPage {
     hasNext: booleanAt(
       recordField(response, 'hasNext', path),
       `${path}.hasNext`,
+    ),
+  }
+}
+
+function decodeComplexDetail(value: unknown, path: string): RawComplexDetail {
+  const detail = recordAt(value, path)
+
+  return {
+    complexId: positiveSafeIntegerAt(
+      recordField(detail, 'complexId', path),
+      `${path}.complexId`,
+    ),
+    name: nullableStringAt(recordField(detail, 'name', path), `${path}.name`),
+    rentalType: nullableStringAt(
+      recordField(detail, 'rentalType', path),
+      `${path}.rentalType`,
+    ),
+    agency: decodeNullableAgency(
+      recordField(detail, 'agency', path),
+      `${path}.agency`,
+    ),
+    address: decodeNullableComplexAddress(
+      recordField(detail, 'address', path),
+      `${path}.address`,
+    ),
+    completionDate: nullableDateStringAt(
+      recordField(detail, 'completionDate', path),
+      `${path}.completionDate`,
+    ),
+    buildingType: nullableStringAt(
+      recordField(detail, 'buildingType', path),
+      `${path}.buildingType`,
+    ),
+    hasElevator: nullableBooleanAt(
+      recordField(detail, 'hasElevator', path),
+      `${path}.hasElevator`,
+    ),
+    heatingType: nullableStringAt(
+      recordField(detail, 'heatingType', path),
+      `${path}.heatingType`,
+    ),
+    corridorType: nullableStringAt(
+      recordField(detail, 'corridorType', path),
+      `${path}.corridorType`,
+    ),
+    moveOutCountLastYear: nullableSafeIntegerAt(
+      recordField(detail, 'moveOutCountLastYear', path),
+      `${path}.moveOutCountLastYear`,
+    ),
+    totalHouseholdCount: nullableSafeIntegerAt(
+      recordField(detail, 'totalHouseholdCount', path),
+      `${path}.totalHouseholdCount`,
+    ),
+    totalParkingCount: nullableSafeIntegerAt(
+      recordField(detail, 'totalParkingCount', path),
+      `${path}.totalParkingCount`,
+    ),
+    images: stringArrayAt(
+      recordField(detail, 'images', path),
+      `${path}.images`,
+    ),
+    overviewImageUrl: nullableStringAt(
+      recordField(detail, 'overviewImageUrl', path),
+      `${path}.overviewImageUrl`,
+    ),
+    housingTypes: decodeComplexHousingTypes(
+      recordField(detail, 'housingTypes', path),
+      `${path}.housingTypes`,
+    ),
+    currentAnnouncements: decodeComplexCurrentAnnouncements(
+      recordField(detail, 'currentAnnouncements', path),
+      `${path}.currentAnnouncements`,
+    ),
+  }
+}
+
+function decodeNullableComplexAddress(
+  value: unknown,
+  path: string,
+): RawComplexAddress | null {
+  if (value === null) {
+    return null
+  }
+
+  const address = recordAt(value, path)
+  return {
+    regionName: nullableStringAt(
+      recordField(address, 'regionName', path),
+      `${path}.regionName`,
+    ),
+    roadAddress: nullableStringAt(
+      recordField(address, 'roadAddress', path),
+      `${path}.roadAddress`,
+    ),
+    latitude: nullableFiniteNumberAt(
+      recordField(address, 'latitude', path),
+      `${path}.latitude`,
+    ),
+    longitude: nullableFiniteNumberAt(
+      recordField(address, 'longitude', path),
+      `${path}.longitude`,
+    ),
+  }
+}
+
+function decodeComplexHousingTypes(
+  value: unknown,
+  path: string,
+): readonly RawComplexHousingType[] {
+  return arrayAt(value, path).map((item, index) =>
+    decodeComplexHousingType(item, `${path}[${index}]`),
+  )
+}
+
+function decodeComplexHousingType(
+  value: unknown,
+  path: string,
+): RawComplexHousingType {
+  const housingType = recordAt(value, path)
+
+  return {
+    housingTypeId: positiveSafeIntegerAt(
+      recordField(housingType, 'housingTypeId', path),
+      `${path}.housingTypeId`,
+    ),
+    name: nullableStringAt(
+      recordField(housingType, 'name', path),
+      `${path}.name`,
+    ),
+    exclusiveArea: nullableFiniteNumberAt(
+      recordField(housingType, 'exclusiveArea', path),
+      `${path}.exclusiveArea`,
+    ),
+    supplyArea: nullableFiniteNumberAt(
+      recordField(housingType, 'supplyArea', path),
+      `${path}.supplyArea`,
+    ),
+    floorPlanImageUrl: nullableStringAt(
+      recordField(housingType, 'floorPlanImageUrl', path),
+      `${path}.floorPlanImageUrl`,
+    ),
+    floorPlan3dImageUrl: nullableStringAt(
+      recordField(housingType, 'floorPlan3dImageUrl', path),
+      `${path}.floorPlan3dImageUrl`,
+    ),
+    isDuplex: nullableBooleanAt(
+      recordField(housingType, 'isDuplex', path),
+      `${path}.isDuplex`,
+    ),
+    maintenanceFee: nullableSafeIntegerAt(
+      recordField(housingType, 'maintenanceFee', path),
+      `${path}.maintenanceFee`,
+    ),
+    currentSupplyConditions: decodeComplexSupplyConditions(
+      recordField(housingType, 'currentSupplyConditions', path),
+      `${path}.currentSupplyConditions`,
+    ),
+  }
+}
+
+function decodeComplexSupplyConditions(
+  value: unknown,
+  path: string,
+): readonly RawComplexSupplyCondition[] {
+  return arrayAt(value, path).map((item, index) =>
+    decodeComplexSupplyCondition(item, `${path}[${index}]`),
+  )
+}
+
+function decodeComplexSupplyCondition(
+  value: unknown,
+  path: string,
+): RawComplexSupplyCondition {
+  const condition = recordAt(value, path)
+
+  return {
+    target: nullableStringAt(
+      recordField(condition, 'target', path),
+      `${path}.target`,
+    ),
+    deposit: nullableSafeIntegerAt(
+      recordField(condition, 'deposit', path),
+      `${path}.deposit`,
+    ),
+    monthlyRent: nullableSafeIntegerAt(
+      recordField(condition, 'monthlyRent', path),
+      `${path}.monthlyRent`,
+    ),
+    convertibleDeposit: nullableSafeIntegerAt(
+      recordField(condition, 'convertibleDeposit', path),
+      `${path}.convertibleDeposit`,
+    ),
+  }
+}
+
+function decodeComplexCurrentAnnouncements(
+  value: unknown,
+  path: string,
+): readonly RawComplexCurrentAnnouncement[] {
+  return arrayAt(value, path).map((item, index) =>
+    decodeComplexCurrentAnnouncement(item, `${path}[${index}]`),
+  )
+}
+
+function decodeComplexCurrentAnnouncement(
+  value: unknown,
+  path: string,
+): RawComplexCurrentAnnouncement {
+  const announcement = recordAt(value, path)
+
+  return {
+    announcementId: positiveSafeIntegerAt(
+      recordField(announcement, 'announcementId', path),
+      `${path}.announcementId`,
+    ),
+    title: nullableStringAt(
+      recordField(announcement, 'title', path),
+      `${path}.title`,
+    ),
+    publicationType: nullableStringAt(
+      recordField(announcement, 'publicationType', path),
+      `${path}.publicationType`,
+    ),
+    applicationStatus: nullableStringAt(
+      recordField(announcement, 'applicationStatus', path),
+      `${path}.applicationStatus`,
+    ),
+    targets: stringArrayAt(
+      recordField(announcement, 'targets', path),
+      `${path}.targets`,
+    ),
+    applicationStartAt: nullableDateStringAt(
+      recordField(announcement, 'applicationStartAt', path),
+      `${path}.applicationStartAt`,
+    ),
+    applicationEndAt: nullableDateStringAt(
+      recordField(announcement, 'applicationEndAt', path),
+      `${path}.applicationEndAt`,
+    ),
+    dDay: nullableSafeIntegerAt(
+      recordField(announcement, 'dDay', path),
+      `${path}.dDay`,
+    ),
+    actualCompetitionRate: nullableFiniteNumberAt(
+      recordField(announcement, 'actualCompetitionRate', path),
+      `${path}.actualCompetitionRate`,
     ),
   }
 }
@@ -243,6 +499,12 @@ function arrayAt(value: unknown, path: string): readonly unknown[] {
   return value
 }
 
+function stringArrayAt(value: unknown, path: string): readonly string[] {
+  return arrayAt(value, path).map((item, index) =>
+    stringAt(item, `${path}[${index}]`),
+  )
+}
+
 function stringAt(value: unknown, path: string): string {
   if (typeof value !== 'string') {
     throw new PublicHousingContractError(path)
@@ -262,6 +524,13 @@ function booleanAt(value: unknown, path: string): boolean {
     throw new PublicHousingContractError(path)
   }
   return value
+}
+
+function nullableBooleanAt(value: unknown, path: string): boolean | null {
+  if (value === null) {
+    return null
+  }
+  return booleanAt(value, path)
 }
 
 function finiteNumberAt(value: unknown, path: string): number {

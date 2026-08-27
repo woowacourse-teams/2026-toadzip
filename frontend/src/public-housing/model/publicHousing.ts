@@ -106,3 +106,115 @@ export interface MapComplex {
   readonly monthlyRentMax: number | null
   readonly raw: RawMapComplex
 }
+
+export interface RawComplexAddress {
+  readonly regionName: string | null
+  readonly roadAddress: string | null
+  readonly latitude: number | null
+  readonly longitude: number | null
+}
+
+export interface RawComplexSupplyCondition {
+  readonly target: string | null
+  readonly deposit: number | null
+  readonly monthlyRent: number | null
+  readonly convertibleDeposit: number | null
+}
+
+export interface RawComplexHousingType {
+  readonly housingTypeId: number
+  readonly name: string | null
+  readonly exclusiveArea: number | null
+  readonly supplyArea: number | null
+  readonly floorPlanImageUrl: string | null
+  readonly floorPlan3dImageUrl: string | null
+  readonly isDuplex: boolean | null
+  readonly maintenanceFee: number | null
+  readonly currentSupplyConditions: readonly RawComplexSupplyCondition[]
+}
+
+export interface RawComplexCurrentAnnouncement {
+  readonly announcementId: number
+  readonly title: string | null
+  readonly publicationType: string | null
+  readonly applicationStatus: string | null
+  readonly targets: readonly string[]
+  readonly applicationStartAt: string | null
+  readonly applicationEndAt: string | null
+  readonly dDay: number | null
+  readonly actualCompetitionRate: number | null
+}
+
+export interface RawComplexDetail {
+  readonly complexId: number
+  readonly name: string | null
+  readonly rentalType: string | null
+  readonly agency: HousingAgency | null
+  readonly address: RawComplexAddress | null
+  readonly completionDate: string | null
+  readonly buildingType: string | null
+  readonly hasElevator: boolean | null
+  readonly heatingType: string | null
+  readonly corridorType: string | null
+  readonly moveOutCountLastYear: number | null
+  readonly totalHouseholdCount: number | null
+  readonly totalParkingCount: number | null
+  readonly images: readonly string[]
+  readonly overviewImageUrl: string | null
+  readonly housingTypes: readonly RawComplexHousingType[]
+  readonly currentAnnouncements: readonly RawComplexCurrentAnnouncement[]
+}
+
+export type ComplexAddress = RawComplexAddress
+
+export interface ComplexSupplyCondition {
+  readonly target: string | null
+  readonly deposit: number | null
+  readonly monthlyRent: number | null
+  readonly convertibleDeposit: number | null
+}
+
+export interface ComplexHousingType {
+  readonly housingTypeId: string
+  readonly name: string | null
+  readonly exclusiveArea: number | null
+  readonly supplyArea: number | null
+  readonly floorPlanImageUrl: string | null
+  readonly floorPlan3dImageUrl: string | null
+  readonly isDuplex: boolean | null
+  readonly maintenanceFee: number | null
+  readonly currentSupplyConditions: readonly ComplexSupplyCondition[]
+}
+
+export interface ComplexCurrentAnnouncement {
+  readonly announcementId: string
+  readonly title: string | null
+  readonly publicationType: string | null
+  readonly applicationStatus: string | null
+  readonly targets: readonly string[]
+  readonly applicationStartAt: string | null
+  readonly applicationEndAt: string | null
+  readonly dDay: number | null
+  readonly actualCompetitionRate: number | null
+}
+
+export interface ComplexDetail {
+  readonly complexId: string
+  readonly name: string | null
+  readonly rentalType: string | null
+  readonly agency: HousingAgency | null
+  readonly address: ComplexAddress | null
+  readonly completionDate: string | null
+  readonly buildingType: string | null
+  readonly hasElevator: boolean | null
+  readonly heatingType: string | null
+  readonly corridorType: string | null
+  readonly moveOutCountLastYear: number | null
+  readonly totalHouseholdCount: number | null
+  readonly totalParkingCount: number | null
+  readonly images: readonly string[]
+  readonly overviewImageUrl: string | null
+  readonly housingTypes: readonly ComplexHousingType[]
+  readonly currentAnnouncements: readonly ComplexCurrentAnnouncement[]
+  readonly raw: RawComplexDetail
+}

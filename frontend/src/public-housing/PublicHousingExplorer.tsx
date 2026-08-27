@@ -1,25 +1,46 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import { useLocation, useNavigate } from 'react-router'
 import NaverMap, {
+  type NaverMapCameraTarget,
   type NaverMapMarker,
 } from '../maps/naver/NaverMap.tsx'
-import { publicHousingRepository } from './api/publicHousingRepository.ts'
+import {
+  publicHousingRepository,
+  PublicHousingHttpError,
+} from './api/publicHousingRepository.ts'
 import type { PublicHousingRepository } from './api/publicHousingRepository.ts'
 import {
   HousingComplexCard,
   type HousingComplexCardData,
 } from './components/HousingComplexCard.tsx'
+import { HousingComplexDetailPanel } from './components/HousingComplexDetailPanel.tsx'
 import {
   evaluateViewportRequest,
   type ViewportBlockReason,
   type ViewportSnapshot,
 } from './map/viewportPolicy.ts'
 import type {
+  ComplexDetail,
   ComplexListItem,
   MapBounds,
   MapComplex,
 } from './model/publicHousing.ts'
+import {
+  clearComplexIdQuery,
+  parseComplexIdQuery,
+  setComplexIdQuery,
+} from './navigation/detailLocation.ts'
+import { toHousingComplexDetailData } from './presentation/complexDetailPresentation.ts'
 
 const PAGE_SIZE = 20
+const DETAIL_HISTORY_STATE_KEY = 'toadzipComplexDetailEntry'
 
 type RequestStatus = 'idle' | 'loading' | 'loading-more' | 'ready' | 'error'
 
@@ -42,6 +63,20 @@ interface AppliedViewport {
   readonly signature: string
 }
 
+type ComplexDetailStatus =
+  | 'closed'
+  | 'loading'
+  | 'ready'
+  | 'not-found'
+  | 'error'
+
+interface ComplexDetailState {
+  readonly complexId: string | null
+  readonly detail: ComplexDetail | null
+  readonly errorMessage: string | null
+  readonly status: ComplexDetailStatus
+}
+
 export interface PublicHousingExplorerProps {
   repository?: PublicHousingRepository
 }
@@ -60,9 +95,18 @@ const INITIAL_COMPLEX_RESULTS: ComplexResultsState = {
   status: 'idle',
 }
 
+const INITIAL_COMPLEX_DETAIL: ComplexDetailState = {
+  complexId: null,
+  detail: null,
+  errorMessage: null,
+  status: 'closed',
+}
+
 export function PublicHousingExplorer({
   repository = publicHousingRepository,
 }: PublicHousingExplorerProps) {
+  const location = useLocation()
+  const navigate = useNavigate()
   const [viewport, setViewport] = useState<ViewportSnapshot | null>(null)
   const [appliedViewport, setAppliedViewport] =
     useState<AppliedViewport | null>(null)
@@ -74,10 +118,156 @@ export function PublicHousingExplorer({
     null,
   )
   const [hoveredComplexId, setHoveredComplexId] = useState<string | null>(null)
+  const [complexDetail, setComplexDetail] =
+    useState<ComplexDetailState>(INITIAL_COMPLEX_DETAIL)
+  const [detailRetryRevision, setDetailRetryRevision] = useState(0)
   const firstRequestStartedRef = useRef(false)
   const requestRevisionRef = useRef(0)
   const searchAbortRef = useRef<AbortController | null>(null)
   const paginationAbortRef = useRef<AbortController | null>(null)
+  const detailOpenerRef = useRef<HTMLElement | null>(null)
+  const detailOpenerComplexIdRef = useRef<string | null>(null)
+  const detailOpenerWasMarkerRef = useRef(false)
+  const complexCardRefsRef = useRef(new Map<string, HTMLElement>())
+  const complexIdQuery = useMemo(
+    () => parseComplexIdQuery(new URLSearchParams(location.search)),
+    [location.search],
+  )
+
+  useEffect(() => {
+    if (complexIdQuery.kind === 'absent') {
+      setComplexDetail(INITIAL_COMPLEX_DETAIL)
+      const opener = detailOpenerRef.current
+      const openerComplexId = detailOpenerComplexIdRef.current
+      const openerWasMarker = detailOpenerWasMarkerRef.current
+      detailOpenerRef.current = null
+      detailOpenerComplexIdRef.current = null
+      detailOpenerWasMarkerRef.current = false
+      setTimeout(() => restoreComplexFocus({
+        cards: complexCardRefsRef.current,
+        complexId: openerComplexId,
+        opener,
+        openerWasMarker,
+      }), 0)
+      return
+    }
+
+    if (complexIdQuery.kind === 'invalid') {
+      setComplexDetail(INITIAL_COMPLEX_DETAIL)
+      const nextSearch = clearComplexIdQuery(
+        new URLSearchParams(location.search),
+      )
+      navigate({
+        hash: location.hash,
+        pathname: location.pathname,
+        search: toSearchString(nextSearch),
+      }, { replace: true, state: location.state })
+      return
+    }
+
+    const complexId = complexIdQuery.complexId
+    const controller = new AbortController()
+    let active = true
+    setSelectedComplexId(complexId)
+    setComplexDetail({
+      complexId,
+      detail: null,
+      errorMessage: null,
+      status: 'loading',
+    })
+
+    repository
+      .findComplexDetail(complexId, controller.signal)
+      .then((detail) => {
+        if (!active) {
+          return
+        }
+        setComplexDetail({
+          complexId,
+          detail,
+          errorMessage: null,
+          status: 'ready',
+        })
+      })
+      .catch((error: unknown) => {
+        if (!active || isAbortError(error)) {
+          return
+        }
+        setComplexDetail({
+          complexId,
+          detail: null,
+          errorMessage: detailErrorMessage(error),
+          status: isNotFoundError(error) ? 'not-found' : 'error',
+        })
+      })
+
+    return () => {
+      active = false
+      controller.abort()
+    }
+  }, [
+    complexIdQuery,
+    detailRetryRevision,
+    location.hash,
+    location.pathname,
+    location.search,
+    location.state,
+    navigate,
+    repository,
+  ])
+
+  const openComplexDetail = useCallback((complexId: string) => {
+    const currentSearch = new URLSearchParams(location.search)
+    const currentComplexId = parseComplexIdQuery(currentSearch)
+    const activeElement = document.activeElement
+    if (activeElement instanceof HTMLElement) {
+      detailOpenerRef.current = activeElement
+      detailOpenerWasMarkerRef.current = activeElement.classList.contains(
+        'housing-map-marker',
+      )
+    }
+    detailOpenerComplexIdRef.current = complexId
+    const internalState = currentComplexId.kind === 'valid'
+      ? location.state
+      : withDetailHistoryState(location.state)
+    setSelectedComplexId(complexId)
+    navigate({
+      hash: location.hash,
+      pathname: location.pathname,
+      search: toSearchString(setComplexIdQuery(currentSearch, complexId)),
+    }, {
+      replace: currentComplexId.kind === 'valid',
+      state: internalState,
+    })
+  }, [
+    location.hash,
+    location.pathname,
+    location.search,
+    location.state,
+    navigate,
+  ])
+
+  const closeComplexDetail = useCallback(() => {
+    if (isDetailHistoryState(location.state)) {
+      navigate(-1)
+      return
+    }
+
+    const nextSearch = clearComplexIdQuery(
+      new URLSearchParams(location.search),
+    )
+    navigate({
+      hash: location.hash,
+      pathname: location.pathname,
+      search: toSearchString(nextSearch),
+    }, { replace: true, state: location.state })
+  }, [
+    location.hash,
+    location.pathname,
+    location.search,
+    location.state,
+    navigate,
+  ])
 
   const applyViewport = useCallback(
     (nextViewport: ViewportSnapshot) => {
@@ -239,13 +429,20 @@ export function PublicHousingExplorer({
     viewportDecision,
     appliedViewport?.signature ?? null,
   )
+  const detailMapTarget = toDetailMapTarget(complexDetail.detail)
   const markers = useMemo(
-    () => toNaverMapMarkers(mapResults.items, selectedComplexId),
-    [mapResults.items, selectedComplexId],
+    () => toNaverMapMarkers(
+      mapResults.items,
+      selectedComplexId,
+      complexDetail.detail,
+    ),
+    [complexDetail.detail, mapResults.items, selectedComplexId],
   )
 
   return (
-    <div className="housing-explorer">
+    <div className={complexDetail.status === 'closed'
+      ? 'housing-explorer'
+      : 'housing-explorer has-complex-detail'}>
       <aside className="housing-results" aria-label="공공임대주택 검색 결과">
         <header className="housing-results__header">
           <div>
@@ -286,8 +483,11 @@ export function PublicHousingExplorer({
           state={complexResults}
           selectedComplexId={selectedComplexId}
           hoveredComplexId={hoveredComplexId}
-          onSelect={setSelectedComplexId}
+          onSelect={openComplexDetail}
           onHover={setHoveredComplexId}
+          onCardRef={(complexId, node) => {
+            setComplexCardRef(complexCardRefsRef.current, complexId, node)
+          }}
           onRetry={() => {
             if (appliedViewport && viewport) {
               applyViewport({ ...viewport, bounds: appliedViewport.bounds })
@@ -311,8 +511,9 @@ export function PublicHousingExplorer({
 
       <main className="housing-map-workspace">
         <NaverMap
+          cameraTarget={detailMapTarget}
           markers={markers}
-          onMarkerSelect={setSelectedComplexId}
+          onMarkerSelect={openComplexDetail}
           onViewportChange={handleViewportChange}
         />
         {mapResults.status === 'error' && (
@@ -321,8 +522,104 @@ export function PublicHousingExplorer({
             <span>{mapResults.errorMessage}</span>
           </div>
         )}
+        <ComplexDetailLayer
+          state={complexDetail}
+          onClose={closeComplexDetail}
+          onRetry={() => setDetailRetryRevision((current) => current + 1)}
+        />
       </main>
     </div>
+  )
+}
+
+function ComplexDetailLayer({
+  state,
+  onClose,
+  onRetry,
+}: {
+  state: ComplexDetailState
+  onClose: () => void
+  onRetry: () => void
+}) {
+  if (state.status === 'closed') {
+    return null
+  }
+
+  if (state.status === 'ready' && state.detail) {
+    return (
+      <div className="housing-detail-layer">
+        <HousingComplexDetailPanel
+          detail={toHousingComplexDetailData(state.detail)}
+          onClose={onClose}
+        />
+      </div>
+    )
+  }
+
+  const content = detailStateContent(state)
+  return (
+    <ComplexDetailStatePanel
+      content={content}
+      state={state}
+      onClose={onClose}
+      onRetry={onRetry}
+    />
+  )
+}
+
+function ComplexDetailStatePanel({
+  content,
+  state,
+  onClose,
+  onRetry,
+}: {
+  content: ReturnType<typeof detailStateContent>
+  state: ComplexDetailState
+  onClose: () => void
+  onRetry: () => void
+}) {
+  const panelRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    panelRef.current?.focus()
+  }, [state.complexId, state.status])
+
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key !== 'Escape') {
+      return
+    }
+    event.stopPropagation()
+    onClose()
+  }
+
+  return (
+    <aside
+      ref={panelRef}
+      className="housing-detail-layer housing-detail-state"
+      aria-label="단지 상세 정보"
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
+    >
+      <header>
+        <div>
+          <span>단지 상세 정보</span>
+          <strong>{content.title}</strong>
+        </div>
+        <button type="button" aria-label="단지 상세 닫기" onClick={onClose}>
+          <span aria-hidden="true">×</span>
+        </button>
+      </header>
+      <div
+        className="housing-detail-state__content"
+        role={state.status === 'loading' ? 'status' : 'alert'}
+      >
+        <strong>{content.heading}</strong>
+        <span>{content.description}</span>
+        {state.status === 'error' && (
+          <button type="button" onClick={onRetry}>다시 시도</button>
+        )}
+      </div>
+    </aside>
   )
 }
 
@@ -363,6 +660,7 @@ function ComplexResultContent({
   hoveredComplexId,
   onSelect,
   onHover,
+  onCardRef,
   onRetry,
 }: {
   state: ComplexResultsState
@@ -370,6 +668,7 @@ function ComplexResultContent({
   hoveredComplexId: string | null
   onSelect: (complexId: string) => void
   onHover: (complexId: string | null) => void
+  onCardRef: (complexId: string, node: HTMLElement | null) => void
   onRetry: () => void
 }) {
   if (state.status === 'idle') {
@@ -429,6 +728,7 @@ function ComplexResultContent({
               complex={toComplexCardData(complex)}
               selected={selectedComplexId === complex.complexId}
               hovered={hoveredComplexId === complex.complexId}
+              cardRef={(node) => onCardRef(complex.complexId, node)}
               onSelect={onSelect}
               onHover={onHover}
             />
@@ -484,14 +784,158 @@ function rentalTypeLabel(rentalType: string | null) {
 function toNaverMapMarkers(
   complexes: readonly MapComplex[],
   selectedComplexId: string | null,
+  detail: ComplexDetail | null,
 ): NaverMapMarker[] {
-  return complexes.map((complex) => ({
+  const markers = complexes.map((complex) => ({
     id: complex.complexId,
     latitude: complex.latitude,
     longitude: complex.longitude,
     name: complex.name ?? '단지명 정보 확인 중',
     selected: complex.complexId === selectedComplexId,
   }))
+  const target = toDetailMapTarget(detail)
+  if (
+    detail === null ||
+    target === undefined ||
+    markers.some((marker) => marker.id === detail.complexId)
+  ) {
+    return markers
+  }
+
+  return [
+    ...markers,
+    {
+      id: detail.complexId,
+      latitude: target.latitude,
+      longitude: target.longitude,
+      name: detail.name ?? '단지명 정보 확인 중',
+      selected: true,
+    },
+  ]
+}
+
+function toDetailMapTarget(
+  detail: ComplexDetail | null,
+): NaverMapCameraTarget | undefined {
+  const latitude = detail?.address?.latitude
+  const longitude = detail?.address?.longitude
+  if (
+    latitude === null ||
+    latitude === undefined ||
+    longitude === null ||
+    longitude === undefined ||
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return undefined
+  }
+  return { latitude, longitude }
+}
+
+function detailStateContent(state: ComplexDetailState) {
+  if (state.status === 'loading') {
+    return {
+      description: '선택한 단지의 기본 정보와 주택형을 확인하고 있습니다.',
+      heading: '단지 상세를 불러오고 있습니다.',
+      title: `단지 ${state.complexId ?? ''}`.trim(),
+    }
+  }
+  if (state.status === 'not-found') {
+    return {
+      description: '삭제되었거나 아직 제공되지 않는 단지일 수 있습니다.',
+      heading: '단지를 찾을 수 없습니다.',
+      title: `단지 ${state.complexId ?? ''}`.trim(),
+    }
+  }
+  return {
+    description: state.errorMessage ?? '잠시 후 다시 시도해 주세요.',
+    heading: '단지 상세를 불러오지 못했습니다.',
+    title: `단지 ${state.complexId ?? ''}`.trim(),
+  }
+}
+
+function detailErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+  return '잠시 후 다시 시도해 주세요.'
+}
+
+function isNotFoundError(error: unknown) {
+  return error instanceof PublicHousingHttpError && error.status === 404
+}
+
+function toSearchString(searchParams: URLSearchParams) {
+  const search = searchParams.toString()
+  return search ? `?${search}` : ''
+}
+
+function withDetailHistoryState(state: unknown) {
+  const currentState = isRecord(state) ? state : {}
+  return { ...currentState, [DETAIL_HISTORY_STATE_KEY]: true }
+}
+
+function isDetailHistoryState(state: unknown) {
+  return isRecord(state) && state[DETAIL_HISTORY_STATE_KEY] === true
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function setComplexCardRef(
+  cards: Map<string, HTMLElement>,
+  complexId: string,
+  node: HTMLElement | null,
+) {
+  if (node === null) {
+    cards.delete(complexId)
+    return
+  }
+  cards.set(complexId, node)
+}
+
+function restoreComplexFocus({
+  cards,
+  complexId,
+  opener,
+  openerWasMarker,
+}: {
+  cards: ReadonlyMap<string, HTMLElement>
+  complexId: string | null
+  opener: HTMLElement | null
+  openerWasMarker: boolean
+}) {
+  if (opener?.isConnected) {
+    opener.focus()
+    return
+  }
+  if (complexId === null) {
+    return
+  }
+  if (openerWasMarker) {
+    const marker = findComplexMarker(complexId)
+    if (marker) {
+      marker.focus()
+      return
+    }
+  }
+  focusComplexCard(cards.get(complexId))
+}
+
+function findComplexMarker(complexId: string) {
+  return [...document.querySelectorAll<HTMLButtonElement>(
+    '.housing-map-marker[data-complex-id]',
+  )].find((marker) => marker.dataset.complexId === complexId)
+}
+
+function focusComplexCard(card: HTMLElement | undefined) {
+  card?.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]')
+    ?.focus()
 }
 
 function isPendingViewport(

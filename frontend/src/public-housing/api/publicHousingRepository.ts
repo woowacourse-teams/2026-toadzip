@@ -1,16 +1,23 @@
 import type {
+  ComplexDetail,
   ComplexPage,
   MapBounds,
   MapComplex,
 } from '../model/publicHousing.ts'
 import {
+  decodeComplexDetailEnvelope,
   decodeComplexPageEnvelope,
   decodeMapComplexEnvelope,
   PublicHousingContractError,
 } from './publicHousingContract.ts'
-import { toComplexPage, toMapComplexes } from './publicHousingMapper.ts'
+import {
+  toComplexDetail,
+  toComplexPage,
+  toMapComplexes,
+} from './publicHousingMapper.ts'
 
 const COMPLEXES_PATH = '/api/v1/complexes'
+const MAX_JAVA_LONG = 9_223_372_036_854_775_807n
 
 interface RepositoryOptions {
   readonly apiBaseUrl?: string
@@ -34,6 +41,10 @@ export interface PublicHousingRepository {
     bounds: MapBounds,
     signal: AbortSignal,
   ): Promise<readonly MapComplex[]>
+  findComplexDetail(
+    complexId: string,
+    signal: AbortSignal,
+  ): Promise<ComplexDetail>
 }
 
 export class PublicHousingHttpError extends Error {
@@ -81,6 +92,16 @@ export function createHttpPublicHousingRepository(
         signal,
       )
       return toMapComplexes(decodeMapComplexEnvelope(payload).items)
+    },
+
+    async findComplexDetail(complexId, signal) {
+      validateCanonicalId(complexId)
+      const payload = await requestJson(
+        fetcher,
+        `${apiBaseUrl}${COMPLEXES_PATH}/${complexId}`,
+        signal,
+      )
+      return toComplexDetail(decodeComplexDetailEnvelope(payload))
     },
   }
 }
@@ -148,6 +169,16 @@ function validateBounds(bounds: MapBounds) {
 function validateSize(size: number) {
   if (!Number.isInteger(size) || size < 1 || size > 50) {
     throw new RangeError('단지 목록 크기는 1부터 50 사이의 정수여야 합니다.')
+  }
+}
+
+function validateCanonicalId(id: string) {
+  if (
+    !/^[1-9]\d*$/.test(id) ||
+    id.length > 19 ||
+    BigInt(id) > MAX_JAVA_LONG
+  ) {
+    throw new RangeError('단지 ID는 양의 Java Long 정수 문자열이어야 합니다.')
   }
 }
 

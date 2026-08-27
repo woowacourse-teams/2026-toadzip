@@ -332,6 +332,118 @@ a {
   line-height: 1.5;
 }
 
+.housing-detail-layer {
+  position: absolute;
+  z-index: 6;
+  top: 14px;
+  bottom: 14px;
+  left: 14px;
+  width: min(480px, calc(100% - 28px));
+  min-width: 0;
+  min-height: 0;
+}
+
+.housing-detail-state {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid rgb(203 213 217 / 94%);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow:
+    0 24px 64px rgb(18 37 47 / 22%),
+    0 3px 10px rgb(18 37 47 / 10%);
+  flex-direction: column;
+}
+
+.housing-detail-state > header {
+  display: flex;
+  min-height: 70px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 14px 11px 18px;
+  border-bottom: 1px solid #e1e4e8;
+}
+
+.housing-detail-state > header div {
+  min-width: 0;
+}
+
+.housing-detail-state > header span {
+  display: block;
+  color: var(--brand-dark);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.housing-detail-state > header strong {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.housing-detail-state > header button {
+  display: grid;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid #d8dde2;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #656b74;
+  place-items: center;
+}
+
+.housing-detail-state > header button span {
+  color: currentcolor;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.housing-detail-state__content {
+  display: flex;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: #f7f7f8;
+  color: var(--muted);
+  text-align: center;
+  flex: 1;
+  flex-direction: column;
+}
+
+.housing-detail-state__content strong {
+  color: #1e2124;
+  font-size: 18px;
+  line-height: 1.5;
+}
+
+.housing-detail-state__content span {
+  margin-top: 8px;
+  line-height: 1.6;
+}
+
+.housing-detail-state__content button {
+  min-height: 44px;
+  margin-top: 20px;
+  padding: 0 18px;
+  border: 1px solid var(--brand);
+  border-radius: 8px;
+  background: var(--brand);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.housing-detail-state:focus-visible,
+.housing-detail-state button:focus-visible {
+  outline: 4px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .housing-map-marker {
   display: grid;
   width: 40px;
@@ -558,6 +670,32 @@ a {
 
   .housing-results__scroll {
     padding: 12px;
+  }
+
+  .housing-detail-layer {
+    position: fixed;
+    z-index: 20;
+    top: 64px;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: auto;
+  }
+
+  .housing-explorer.has-complex-detail .housing-results,
+  .housing-explorer.has-complex-detail .map-region,
+  .housing-explorer.has-complex-detail .housing-map-notice {
+    visibility: hidden;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1279px) {
+  .housing-explorer.has-complex-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .housing-explorer.has-complex-detail .housing-results {
+    display: none;
   }
 }
 

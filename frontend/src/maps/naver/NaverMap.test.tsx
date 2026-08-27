@@ -21,19 +21,47 @@ vi.mock('./loadNaverMapsSdk.ts', async () => {
 })
 
 interface FakeSdk {
+  addListener: ReturnType<typeof vi.fn>
   autoResizeMap: ReturnType<typeof vi.fn>
   destroyMap: ReturnType<typeof vi.fn>
+  emitIdle: () => void
   latLngConstructor: ReturnType<typeof vi.fn>
   mapConstructor: ReturnType<typeof vi.fn>
+  markerConstructor: ReturnType<typeof vi.fn>
+  markerSetMap: ReturnType<typeof vi.fn>
   maps: typeof naver.maps
+  panToMap: ReturnType<typeof vi.fn>
+  removeListener: ReturnType<typeof vi.fn>
+  setZoomMap: ReturnType<typeof vi.fn>
 }
 
 function createFakeSdk(): FakeSdk {
   const destroyMap = vi.fn()
   const autoResizeMap = vi.fn()
+  const panToMap = vi.fn()
+  const setZoomMap = vi.fn()
+  const markerSetMap = vi.fn()
+  const removeListener = vi.fn()
+  let idleListener: (() => void) | null = null
+  const addListener = vi.fn(
+    (_map: naver.maps.Map, eventName: string, listener: () => void) => {
+      if (eventName === 'idle') {
+        idleListener = listener
+      }
+
+      return { eventName } as unknown as naver.maps.MapEventListener
+    },
+  )
   const mapInstance = {
     autoResize: autoResizeMap,
     destroy: destroyMap,
+    getBounds: () => ({
+      getNE: () => ({ lat: () => 37.7, lng: () => 127.1 }),
+      getSW: () => ({ lat: () => 37.5, lng: () => 126.8 }),
+    }),
+    getZoom: () => 14,
+    panTo: panToMap,
+    setZoom: setZoomMap,
   }
   const mapConstructor = vi.fn(function FakeMapConstructor(
     _element: string | HTMLElement,
@@ -47,16 +75,45 @@ function createFakeSdk(): FakeSdk {
   ) {
     return { latitude, longitude }
   })
+  const markerConstructor = vi.fn(function FakeMarkerConstructor() {
+    return { setMap: markerSetMap }
+  })
+  const pointConstructor = vi.fn(function FakePointConstructor(
+    x: number,
+    y: number,
+  ) {
+    return { x, y }
+  })
+  const sizeConstructor = vi.fn(function FakeSizeConstructor(
+    width: number,
+    height: number,
+  ) {
+    return { height, width }
+  })
 
   return {
+    addListener,
     autoResizeMap,
     destroyMap,
+    emitIdle: () => idleListener?.(),
     latLngConstructor,
     mapConstructor,
+    markerConstructor,
+    markerSetMap,
     maps: {
+      Event: {
+        addListener,
+        removeListener,
+      },
       LatLng: latLngConstructor,
       Map: mapConstructor,
+      Marker: markerConstructor,
+      Point: pointConstructor,
+      Size: sizeConstructor,
     } as unknown as typeof naver.maps,
+    panToMap,
+    removeListener,
+    setZoomMap,
   }
 }
 
@@ -177,6 +234,141 @@ describe('NaverMap', () => {
     expect(fakeSdk.destroyMap).toHaveBeenCalledOnce()
   })
 
+  it('camera target에서 실제로 달라진 위치와 zoom만 적용한다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+
+    const { rerender } = render(
+      <NaverMap
+        cameraTarget={{ latitude: 37.51, longitude: 127.02, zoom: 15 }}
+      />,
+    )
+
+    await waitFor(() => expect(fakeSdk.panToMap).toHaveBeenCalledOnce())
+    expect(fakeSdk.panToMap).toHaveBeenLastCalledWith({
+      latitude: 37.51,
+      longitude: 127.02,
+    })
+    expect(fakeSdk.setZoomMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(15)
+
+    rerender(
+      <NaverMap
+        cameraTarget={{ latitude: 37.51, longitude: 127.02, zoom: 15 }}
+      />,
+    )
+
+    expect(fakeSdk.panToMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.setZoomMap).toHaveBeenCalledOnce()
+
+    rerender(
+      <NaverMap
+        cameraTarget={{ latitude: 37.52, longitude: 127.02, zoom: 15 }}
+      />,
+    )
+
+    expect(fakeSdk.panToMap).toHaveBeenCalledTimes(2)
+    expect(fakeSdk.setZoomMap).toHaveBeenCalledOnce()
+
+    rerender(
+      <NaverMap
+        cameraTarget={{ latitude: 37.52, longitude: 127.02, zoom: 16 }}
+      />,
+    )
+
+    expect(fakeSdk.panToMap).toHaveBeenCalledTimes(2)
+    expect(fakeSdk.setZoomMap).toHaveBeenCalledTimes(2)
+    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(16)
+    expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce()
+  })
+
+  it('잘못된 camera target은 지도에 전달하지 않는다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+
+    render(
+      <NaverMap
+        cameraTarget={{ latitude: Number.NaN, longitude: 127, zoom: 15 }}
+      />,
+    )
+
+    await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
+    expect(fakeSdk.panToMap).not.toHaveBeenCalled()
+    expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
+  })
+
+  it('camera 이동과 함께 marker와 idle callback 수명주기를 유지한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const onMarkerSelect = vi.fn()
+    const onViewportChange = vi.fn()
+    const markers = [
+      {
+        id: '101',
+        latitude: 37.6,
+        longitude: 127,
+        name: '테스트 단지',
+      },
+    ]
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+
+    const { rerender, unmount } = render(
+      <NaverMap
+        markers={markers}
+        onMarkerSelect={onMarkerSelect}
+        onViewportChange={onViewportChange}
+      />,
+    )
+
+    await waitFor(() =>
+      expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce(),
+    )
+    expect(fakeSdk.addListener).toHaveBeenCalledWith(
+      expect.anything(),
+      'idle',
+      expect.any(Function),
+    )
+
+    fakeSdk.emitIdle()
+
+    expect(onViewportChange).toHaveBeenCalledWith({
+      bounds: {
+        southWestLat: 37.5,
+        southWestLng: 126.8,
+        northEastLat: 37.7,
+        northEastLng: 127.1,
+      },
+      zoom: 14,
+    })
+
+    const markerOptions = fakeSdk.markerConstructor.mock.calls[0]?.[0]
+    const markerButton = markerOptions?.icon?.content
+    if (!(markerButton instanceof HTMLButtonElement)) {
+      throw new Error('단지 marker 버튼을 찾을 수 없습니다.')
+    }
+    expect(markerButton).toHaveAttribute('data-complex-id', '101')
+    fireEvent.click(markerButton)
+
+    expect(onMarkerSelect).toHaveBeenCalledWith('101')
+
+    rerender(
+      <NaverMap
+        cameraTarget={{ latitude: 37.61, longitude: 127.01 }}
+        markers={markers}
+        onMarkerSelect={onMarkerSelect}
+        onViewportChange={onViewportChange}
+      />,
+    )
+
+    expect(fakeSdk.panToMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
+
+    unmount()
+
+    expect(fakeSdk.markerSetMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.markerSetMap).toHaveBeenCalledWith(null)
+    expect(fakeSdk.removeListener).toHaveBeenCalledOnce()
+  })
+
   it('인증 실패에는 재시도 없이 설정 확인을 안내한다', async () => {
     loadNaverMapsSdkMock.mockRejectedValue(
       new NaverMapsSdkError(
@@ -202,7 +394,7 @@ describe('NaverMap', () => {
     })
     loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
 
-    render(<NaverMap />)
+    render(<NaverMap onViewportChange={vi.fn()} />)
     await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
 
     act(() => {
@@ -218,6 +410,7 @@ describe('NaverMap', () => {
       '지도 인증에 실패했습니다.',
     )
     expect(fakeSdk.destroyMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.removeListener).toHaveBeenCalledOnce()
   })
 
   it('네트워크 실패 후 다시 시도하면 지도를 표시한다', async () => {
@@ -277,12 +470,13 @@ describe('NaverMap', () => {
     vi.stubGlobal('ResizeObserver', FailingResizeObserver)
     loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
 
-    render(<NaverMap />)
+    render(<NaverMap onViewportChange={vi.fn()} />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       '지도를 표시하지 못했습니다.',
     )
     expect(fakeSdk.destroyMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.removeListener).toHaveBeenCalledOnce()
   })
 
   it('준비되기 전에 unmount되면 늦은 응답으로 지도를 만들지 않는다', async () => {
