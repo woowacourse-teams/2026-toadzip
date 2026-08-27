@@ -36,15 +36,21 @@ class HousingComplexExceptionAdviceTest {
                 "INVALID_REQUEST"
         );
         assertError(
-                advice.handleInvalidRegionCode(new InvalidRegionCodeException(), new MockHttpServletRequest()),
-                BAD_REQUEST,
-                "INVALID_REGION_CODE"
-        );
-        assertError(
                 advice.handleHousingComplexNotFound(new HousingComplexNotFoundException(), new MockHttpServletRequest()),
                 NOT_FOUND,
                 "COMPLEX_NOT_FOUND"
         );
+    }
+
+    @Test
+    void 유효하지_않은_지역코드는_고정된_오류_계약으로_변환한다() {
+        var response = advice.handleInvalidRegionCode(
+                new InvalidRegionCodeException(),
+                new MockHttpServletRequest()
+        );
+
+        assertError(response, BAD_REQUEST, "INVALID_REGION_CODE");
+        assertThat(response.getBody().message()).isEqualTo("지역 코드를 확인해 주세요.");
     }
 
     private void assertError(
