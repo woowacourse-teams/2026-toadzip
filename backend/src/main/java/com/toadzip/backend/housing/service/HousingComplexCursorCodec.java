@@ -56,18 +56,6 @@ public final class HousingComplexCursorCodec {
         }
     }
 
-    public String encode(LocalDate postedDate, long complexId) {
-        return encode(new ComplexSummaryCursor(postedDate, complexId));
-    }
-
-    public HousingComplexCursor decode(String cursor) {
-        ComplexSummaryCursor decoded = decode(cursor, ComplexSort.LATEST_ANNOUNCEMENT);
-        return new HousingComplexCursor(decoded.postedDate(), decoded.complexId());
-    }
-
-    public record HousingComplexCursor(LocalDate postedDate, long complexId) {
-    }
-
     private ComplexSummaryCursor decodeV2(String[] parts, ComplexSort requestedSort) {
         ComplexSort cursorSort = ComplexSort.valueOf(parts[1]);
         if (cursorSort != requestedSort) {

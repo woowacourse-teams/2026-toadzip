@@ -6,165 +6,33 @@ import java.util.List;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
-import com.toadzip.backend.housing.domain.MapBounds;
+import com.toadzip.backend.housing.domain.ComplexSort;
 
 @Repository
 public class ComplexSummaryQueryRepository {
 
-    private static final String BASE_SUMMARY_QUERY = """
-            WITH latest_leaf AS (
-                SELECT announcement.*
-                FROM announcements announcement
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM announcements successor
-                    WHERE successor.previous_announcement_id = announcement.id
-                )
-                  AND announcement.status NOT IN ('CANCELLATION', '취소공고')
-            ), representative AS (
-                SELECT DISTINCT ON (supply_row.housing_complex_id)
-                       supply_row.housing_complex_id,
-                       announcement.id AS announcement_id,
-                       announcement.status AS publication_type,
-                       announcement.posted_date,
-                       announcement.application_start_date,
-                       announcement.application_end_date
-                FROM supply_rows supply_row
-                JOIN latest_leaf announcement ON announcement.id = supply_row.announcement_id
-                WHERE supply_row.housing_complex_id IS NOT NULL
-                ORDER BY supply_row.housing_complex_id, announcement.posted_date DESC, announcement.id DESC
-            ), area_range AS (
-                SELECT housing_complex_id,
-                       MIN(exclusive_area) AS exclusive_area_min,
-                       MAX(exclusive_area) AS exclusive_area_max
-                FROM housing_types
-                GROUP BY housing_complex_id
-            ), price_range AS (
-                SELECT supply_row.housing_complex_id,
-                       MIN(supply_target.rental_deposit) AS deposit_min,
-                       MAX(supply_target.rental_deposit) AS deposit_max,
-                       MIN(supply_target.monthly_rent) AS monthly_rent_min,
-                       MAX(supply_target.monthly_rent) AS monthly_rent_max
-                FROM representative
-                JOIN supply_rows supply_row
-                  ON supply_row.housing_complex_id = representative.housing_complex_id
-                 AND supply_row.announcement_id = representative.announcement_id
-                JOIN supply_targets supply_target ON supply_target.supply_row_id = supply_row.id
-                GROUP BY supply_row.housing_complex_id
-            )
-            SELECT housing_complex.id AS complex_id,
-                   housing_complex.name,
-                   housing_complex.image_url,
-                   housing_complex.province_code,
-                   housing_complex.city_county_district_code,
-                   housing_complex.supply_type AS rental_type,
-                   housing_complex.provider AS agency_code,
-                   housing_complex.latitude,
-                   housing_complex.longitude,
-                   area_range.exclusive_area_min,
-                   area_range.exclusive_area_max,
-                   price_range.deposit_min,
-                   price_range.deposit_max,
-                   price_range.monthly_rent_min,
-                   price_range.monthly_rent_max,
-                   representative.announcement_id,
-                   representative.publication_type,
-                   representative.posted_date,
-                   representative.application_start_date,
-                   representative.application_end_date
-            FROM housing_complexes housing_complex
-            LEFT JOIN representative ON representative.housing_complex_id = housing_complex.id
-            LEFT JOIN area_range ON area_range.housing_complex_id = housing_complex.id
-            LEFT JOIN price_range ON price_range.housing_complex_id = housing_complex.id
-            WHERE housing_complex.latitude BETWEEN :southWestLat AND :northEastLat
-              AND housing_complex.longitude BETWEEN :southWestLng AND :northEastLng
-            """;
-
-    private static final String FIND_ALL_IN_BOUNDS = BASE_SUMMARY_QUERY + """
-            ORDER BY housing_complex.id
-            """;
-
-    private static final String FIND_FIRST_PAGE = BASE_SUMMARY_QUERY + """
-            ORDER BY representative.posted_date DESC NULLS LAST, housing_complex.id DESC
-            LIMIT :limit
-            """;
-
-    private static final String FIND_PAGE_AFTER_POSTED_DATE = BASE_SUMMARY_QUERY + """
-              AND (
-                    representative.posted_date < :cursorPostedDate
-                    OR (
-                        representative.posted_date = :cursorPostedDate
-                        AND housing_complex.id < :cursorComplexId
-                    )
-                    OR representative.posted_date IS NULL
-              )
-            ORDER BY representative.posted_date DESC NULLS LAST, housing_complex.id DESC
-            LIMIT :limit
-            """;
-
-    private static final String FIND_PAGE_AFTER_NULL_DATE = BASE_SUMMARY_QUERY + """
-              AND representative.posted_date IS NULL
-              AND housing_complex.id < :cursorComplexId
-            ORDER BY representative.posted_date DESC NULLS LAST, housing_complex.id DESC
-            LIMIT :limit
-            """;
-
     private final JdbcClient jdbcClient;
 
-    public ComplexSummaryQueryRepository(JdbcClient jdbcClient) {
+    private final ComplexSummarySqlBuilder sqlBuilder;
+
+    public ComplexSummaryQueryRepository(JdbcClient jdbcClient, ComplexSummarySqlBuilder sqlBuilder) {
         this.jdbcClient = jdbcClient;
+        this.sqlBuilder = sqlBuilder;
     }
 
-    public List<ComplexSummaryRow> findAllInBounds(MapBounds bounds) {
-        return jdbcClient.sql(FIND_ALL_IN_BOUNDS)
-                .param("southWestLat", bounds.southWestLat())
-                .param("southWestLng", bounds.southWestLng())
-                .param("northEastLat", bounds.northEastLat())
-                .param("northEastLng", bounds.northEastLng())
-                .query(this::mapRow)
-                .list();
+    public List<ComplexSummaryRow> findAll(HousingComplexSearchCondition condition) {
+        ComplexSummarySqlQuery query = sqlBuilder.buildMapQuery(condition);
+        return execute(query);
     }
 
-    public List<ComplexSummaryRow> findFirstPage(MapBounds bounds, int limit) {
-        return jdbcClient.sql(FIND_FIRST_PAGE)
-                .param("southWestLat", bounds.southWestLat())
-                .param("southWestLng", bounds.southWestLng())
-                .param("northEastLat", bounds.northEastLat())
-                .param("northEastLng", bounds.northEastLng())
-                .param("limit", limit)
-                .query(this::mapRow)
-                .list();
-    }
-
-    public List<ComplexSummaryRow> findPageAfter(MapBounds bounds, ComplexSummaryCursor cursor, int limit) {
-        if (cursor.postedDate() == null) {
-            return findPageAfterNullDate(bounds, cursor, limit);
-        }
-        return jdbcClient.sql(FIND_PAGE_AFTER_POSTED_DATE)
-                .param("southWestLat", bounds.southWestLat())
-                .param("southWestLng", bounds.southWestLng())
-                .param("northEastLat", bounds.northEastLat())
-                .param("northEastLng", bounds.northEastLng())
-                .param("cursorPostedDate", cursor.postedDate())
-                .param("cursorComplexId", cursor.complexId())
-                .param("limit", limit)
-                .query(this::mapRow)
-                .list();
-    }
-
-    private List<ComplexSummaryRow> findPageAfterNullDate(
-            MapBounds bounds,
+    public List<ComplexSummaryRow> findPage(
+            HousingComplexSearchCondition condition,
+            ComplexSort sort,
             ComplexSummaryCursor cursor,
             int limit
     ) {
-        return jdbcClient.sql(FIND_PAGE_AFTER_NULL_DATE)
-                .param("southWestLat", bounds.southWestLat())
-                .param("southWestLng", bounds.southWestLng())
-                .param("northEastLat", bounds.northEastLat())
-                .param("northEastLng", bounds.northEastLng())
-                .param("cursorComplexId", cursor.complexId())
-                .param("limit", limit)
-                .query(this::mapRow)
-                .list();
+        ComplexSummarySqlQuery query = sqlBuilder.buildListQuery(condition, sort, cursor, limit);
+        return execute(query);
     }
 
     private ComplexSummaryRow mapRow(ResultSet resultSet, int rowNumber) throws SQLException {
@@ -190,5 +58,12 @@ public class ComplexSummaryQueryRepository {
                 resultSet.getObject("application_start_date", java.time.LocalDate.class),
                 resultSet.getObject("application_end_date", java.time.LocalDate.class)
         );
+    }
+
+    private List<ComplexSummaryRow> execute(ComplexSummarySqlQuery query) {
+        return jdbcClient.sql(query.sql())
+                .params(query.parameters())
+                .query(this::mapRow)
+                .list();
     }
 }

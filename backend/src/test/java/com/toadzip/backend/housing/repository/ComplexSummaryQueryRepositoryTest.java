@@ -10,6 +10,7 @@ import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.housing.domain.Address;
+import com.toadzip.backend.housing.domain.ComplexSort;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.MapBounds;
@@ -18,6 +19,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -28,7 +30,7 @@ import org.springframework.test.context.ActiveProfiles;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("test")
-@Import(ComplexSummaryQueryRepository.class)
+@Import({ComplexSummaryQueryRepository.class, ComplexSummarySqlBuilder.class})
 class ComplexSummaryQueryRepositoryTest {
 
     private static final MapBounds SEOUL_BOUNDS = MapBounds.of(
@@ -52,7 +54,7 @@ class ComplexSummaryQueryRepositoryTest {
         persistComplex("영역 밖 단지", "37.700000", "126.900000");
         entityManager.flush();
 
-        List<Long> complexIds = repository.findAllInBounds(SEOUL_BOUNDS).stream()
+        List<Long> complexIds = repository.findAll(noFilters(SEOUL_BOUNDS)).stream()
                 .map(ComplexSummaryRow::complexId)
                 .toList();
 
@@ -94,7 +96,7 @@ class ComplexSummaryQueryRepositoryTest {
         persistSupplyTarget(secondRepresentativeRow, "신혼부부", "70000000", "200000", 1);
         entityManager.flush();
 
-        ComplexSummaryRow row = repository.findAllInBounds(SEOUL_BOUNDS).getFirst();
+        ComplexSummaryRow row = repository.findAll(noFilters(SEOUL_BOUNDS)).getFirst();
 
         assertAll(
                 () -> assertEquals(new BigDecimal("36.12"), row.exclusiveAreaMin()),
@@ -120,7 +122,7 @@ class ComplexSummaryQueryRepositoryTest {
         persistSupplyRow(representative, complex, housingType, "without-target-row", 1);
         entityManager.flush();
 
-        ComplexSummaryRow row = repository.findAllInBounds(SEOUL_BOUNDS).getFirst();
+        ComplexSummaryRow row = repository.findAll(noFilters(SEOUL_BOUNDS)).getFirst();
 
         assertAll(
                 () -> assertEquals(representative.getId(), row.announcementId()),
@@ -148,7 +150,7 @@ class ComplexSummaryQueryRepositoryTest {
         persistSupplyTarget(cancellationRow, "취소공고", "70000000", "300000", 1);
         entityManager.flush();
 
-        ComplexSummaryRow row = repository.findAllInBounds(SEOUL_BOUNDS).getFirst();
+        ComplexSummaryRow row = repository.findAll(noFilters(SEOUL_BOUNDS)).getFirst();
 
         assertAll(
                 () -> assertNull(row.announcementId()),
@@ -206,13 +208,23 @@ class ComplexSummaryQueryRepositoryTest {
         persistUnmatchedSupplyRow(unmatched);
         entityManager.flush();
 
-        List<ComplexSummaryRow> first = repository.findFirstPage(SEOUL_BOUNDS, 3);
+        List<ComplexSummaryRow> first = repository.findPage(
+                noFilters(SEOUL_BOUNDS),
+                ComplexSort.LATEST_ANNOUNCEMENT,
+                null,
+                3
+        );
         assertEquals(
                 List.of(corrected.getId(), cursorComplex.getId(), sameDateSmaller.getId()),
                 ids(first)
         );
         ComplexSummaryCursor cursor = cursorOf(first.get(1));
-        List<ComplexSummaryRow> second = repository.findPageAfter(SEOUL_BOUNDS, cursor, 10);
+        List<ComplexSummaryRow> second = repository.findPage(
+                noFilters(SEOUL_BOUNDS),
+                ComplexSort.LATEST_ANNOUNCEMENT,
+                cursor,
+                10
+        );
 
         assertAll(
                 () -> assertEquals(correction.getId(), first.getFirst().announcementId()),
@@ -241,9 +253,10 @@ class ComplexSummaryQueryRepositoryTest {
         persistRepresentative(announced, "ORIGINAL", LocalDate.of(2026, 8, 1), "announced");
         entityManager.flush();
 
-        List<ComplexSummaryRow> page = repository.findPageAfter(
-                SEOUL_BOUNDS,
-                new ComplexSummaryCursor(null, cursorComplex.getId()),
+        List<ComplexSummaryRow> page = repository.findPage(
+                noFilters(SEOUL_BOUNDS),
+                ComplexSort.LATEST_ANNOUNCEMENT,
+                new ComplexSummaryCursor(ComplexSort.LATEST_ANNOUNCEMENT, null, cursorComplex.getId()),
                 10
         );
 
@@ -413,7 +426,34 @@ class ComplexSummaryQueryRepositoryTest {
     }
 
     private ComplexSummaryCursor cursorOf(ComplexSummaryRow row) {
-        return new ComplexSummaryCursor(row.postedDate(), row.complexId());
+        ComplexSummaryCursor.SortValue primaryValue = null;
+        if (row.postedDate() != null) {
+            primaryValue = new ComplexSummaryCursor.DateValue(row.postedDate());
+        }
+        return new ComplexSummaryCursor(ComplexSort.LATEST_ANNOUNCEMENT, primaryValue, row.complexId());
+    }
+
+    private HousingComplexSearchCondition noFilters(MapBounds bounds) {
+        return new HousingComplexSearchCondition(
+                bounds,
+                null,
+                null,
+                Set.of(),
+                Set.of(),
+                Set.of(),
+                Set.of(),
+                Set.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2026, 8, 27)
+        );
     }
 
     private List<Long> ids(List<ComplexSummaryRow> rows) {

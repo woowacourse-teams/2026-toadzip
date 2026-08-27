@@ -1,15 +1,17 @@
 package com.toadzip.backend.housing.controller;
 
-import io.swagger.v3.oas.annotations.Parameter;
-import java.math.BigDecimal;
+import jakarta.validation.Valid;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.toadzip.backend.global.response.ApiResponse;
-import com.toadzip.backend.housing.domain.MapBounds;
+import com.toadzip.backend.housing.domain.ComplexSort;
+import com.toadzip.backend.housing.dto.request.HousingComplexSearchRequest;
 import com.toadzip.backend.housing.dto.response.HousingComplexDetailResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexListResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexMapResponse;
@@ -27,19 +29,12 @@ public class HousingComplexController {
 
     @GetMapping
     public ApiResponse<HousingComplexListResponse> getComplexes(
+            @Valid @ParameterObject @ModelAttribute HousingComplexSearchRequest request,
+            @RequestParam(defaultValue = "LATEST_ANNOUNCEMENT") ComplexSort sort,
             @RequestParam(required = false) String cursor,
-            @RequestParam(defaultValue = "20") int size,
-            @Parameter(required = true)
-            @RequestParam(required = false) BigDecimal southWestLat,
-            @Parameter(required = true)
-            @RequestParam(required = false) BigDecimal southWestLng,
-            @Parameter(required = true)
-            @RequestParam(required = false) BigDecimal northEastLat,
-            @Parameter(required = true)
-            @RequestParam(required = false) BigDecimal northEastLng
+            @RequestParam(defaultValue = "20") int size
     ) {
-        MapBounds bounds = MapBounds.of(southWestLat, southWestLng, northEastLat, northEastLng);
-        return new ApiResponse<>(queryService.getComplexes(bounds, cursor, size));
+        return new ApiResponse<>(queryService.getComplexes(request, sort, cursor, size));
     }
 
     @GetMapping("/{complexId}")
@@ -51,16 +46,8 @@ public class HousingComplexController {
 
     @GetMapping("/map")
     public ApiResponse<HousingComplexMapResponse> getComplexesForMap(
-            @Parameter(required = true)
-            @RequestParam(required = false) BigDecimal southWestLat,
-            @Parameter(required = true)
-            @RequestParam(required = false) BigDecimal southWestLng,
-            @Parameter(required = true)
-            @RequestParam(required = false) BigDecimal northEastLat,
-            @Parameter(required = true)
-            @RequestParam(required = false) BigDecimal northEastLng
+            @Valid @ParameterObject @ModelAttribute HousingComplexSearchRequest request
     ) {
-        MapBounds bounds = MapBounds.of(southWestLat, southWestLng, northEastLat, northEastLng);
-        return new ApiResponse<>(queryService.getComplexesForMap(bounds));
+        return new ApiResponse<>(queryService.getComplexesForMap(request));
     }
 }

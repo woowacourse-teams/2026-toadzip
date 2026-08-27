@@ -11,28 +11,6 @@ public record ComplexSummaryCursor(
         SortValue primaryValue,
         long complexId
 ) {
-    public ComplexSummaryCursor(LocalDate postedDate, long complexId) {
-        this(
-                ComplexSort.LATEST_ANNOUNCEMENT,
-                dateValue(postedDate),
-                complexId
-        );
-    }
-
-    public LocalDate postedDate() {
-        if (primaryValue == null) {
-            return null;
-        }
-        return ((DateValue) primaryValue).value();
-    }
-
-    private static SortValue dateValue(LocalDate postedDate) {
-        if (postedDate == null) {
-            return null;
-        }
-        return new DateValue(postedDate);
-    }
-
     public sealed interface SortValue permits DateValue, DecimalValue {
 
         Object jdbcValue();
