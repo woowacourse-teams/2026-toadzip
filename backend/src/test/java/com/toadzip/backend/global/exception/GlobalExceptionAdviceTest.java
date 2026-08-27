@@ -1,6 +1,7 @@
 package com.toadzip.backend.global.exception;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -61,7 +62,7 @@ class GlobalExceptionAdviceTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.message").value("요청값이 올바르지 않습니다."))
-                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(jsonPath("$.traceId").value(matchesPattern(".*\\S.*")))
                 .andExpect(jsonPath("$.errors.length()").value(1))
                 .andExpect(jsonPath("$.errors[0].field").value("amount"))
                 .andExpect(jsonPath("$.errors[0].reason").value("형식이 올바르지 않습니다."))
