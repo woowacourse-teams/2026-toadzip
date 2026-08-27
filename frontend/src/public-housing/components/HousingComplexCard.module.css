@@ -1,0 +1,263 @@
+.card {
+  --card-accent: #08756c;
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  padding: 11px 12px 10px;
+  border: 1px solid #d9e1e3;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgb(18 37 47 / 5%);
+  container: housing-complex-card / inline-size;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.card:hover,
+.hovered {
+  border-color: #aebdc1;
+  box-shadow: 0 4px 12px rgb(18 37 47 / 8%);
+  transform: none;
+}
+
+.selected {
+  border-color: #346ada;
+  box-shadow:
+    0 0 0 2px rgb(52 106 218 / 18%),
+    0 4px 12px rgb(18 37 47 / 8%);
+}
+
+.primaryAction {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.primaryAction:focus-visible,
+.announcementAction:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: -3px;
+}
+
+.titleRow,
+.context,
+.conditions,
+.announcement {
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.titleRow {
+  min-width: 0;
+}
+
+.titleRow h3 {
+  margin: 2px 0 0;
+  color: #13242d;
+  font-size: 15.5px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 1.28;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.context {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.region {
+  display: inline-flex;
+  min-height: 20px;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 0 6px;
+  border: 1px solid #b9cff8;
+  border-radius: 7px;
+  background: #eaf1ff;
+  color: #164f9f;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.context p {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  color: #52646c;
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.context p strong:first-child {
+  display: inline-flex;
+  min-height: 19px;
+  align-items: center;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: #e7f5f2;
+  color: #08756c;
+  font-weight: 900;
+}
+
+.context p strong:last-child {
+  color: #1b303a;
+  font-weight: 900;
+}
+
+.context i {
+  color: #89989e;
+  font-style: normal;
+}
+
+.conditions {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  margin: 8px 0 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.conditions > div {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid #dce3e5;
+  border-radius: 8px;
+  background: #f7f9fa;
+}
+
+.conditions dt,
+.announcementMetric dt {
+  color: #6d7882;
+  font-size: 8.5px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.conditions dd {
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: #1b303a;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.announcement {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+  padding: 8px;
+  border: 1px solid #dce3e5;
+  border-radius: 8px;
+  background: #f7f9fa;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+}
+
+.announcement[data-status='upcoming'] {
+  --card-accent: #2457b3;
+}
+
+.announcement[data-status='closed'],
+.announcement[data-status='unknown'] {
+  --card-accent: #5f6871;
+}
+
+.announcementMetric {
+  min-width: 0;
+  margin: 0;
+}
+
+.announcementMetric dd {
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: #1b303a;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.announcementMetric .emphasized {
+  color: var(--card-accent);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.announcement[data-urgency='urgent'] .announcementMetric:last-of-type .emphasized {
+  color: #c74439;
+}
+
+.announcementAction {
+  position: relative;
+  z-index: 3;
+  min-width: 88px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #08756c;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 850;
+  pointer-events: auto;
+}
+
+.announcementAction:hover {
+  background: #06685f;
+}
+
+@container housing-complex-card (max-width: 270px) {
+  .context,
+  .context p {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
+  .conditions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .areaMetric {
+    grid-column: 1 / -1;
+  }
+
+  .announcement {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .announcementAction {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+}

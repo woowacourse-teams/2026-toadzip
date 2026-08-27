@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ViewportSnapshot } from '../../public-housing/map/viewportPolicy.ts'
 import {
   loadNaverMapsSdk,
   NaverMapsSdkError,
@@ -22,6 +23,20 @@ interface FailureContent {
 const INITIAL_CENTER = {
   latitude: 37.5666103,
   longitude: 126.9783882,
+}
+
+export interface NaverMapMarker {
+  id: string
+  latitude: number
+  longitude: number
+  name: string
+  selected?: boolean
+}
+
+export interface NaverMapProps {
+  markers?: NaverMapMarker[]
+  onMarkerSelect?: (complexId: string) => void
+  onViewportChange?: (viewport: ViewportSnapshot) => void
 }
 
 const FAILURE_CONTENT: Record<MapFailureReason, FailureContent> = {
@@ -107,10 +122,27 @@ function MapUnavailable({ onRetry, reason }: MapUnavailableProps) {
   )
 }
 
-export default function NaverMap() {
+export default function NaverMap({
+  markers = [],
+  onMarkerSelect,
+  onViewportChange,
+}: NaverMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null)
+  const mapInstanceRef = useRef<naver.maps.Map | null>(null)
+  const mapsRef = useRef<typeof naver.maps | null>(null)
+  const markerOverlaysRef = useRef<naver.maps.Marker[]>([])
+  const onMarkerSelectRef = useRef(onMarkerSelect)
+  const onViewportChangeRef = useRef(onViewportChange)
   const [attempt, setAttempt] = useState(0)
   const [status, setStatus] = useState<MapStatus>({ kind: 'loading' })
+
+  useEffect(() => {
+    onMarkerSelectRef.current = onMarkerSelect
+  }, [onMarkerSelect])
+
+  useEffect(() => {
+    onViewportChangeRef.current = onViewportChange
+  }, [onViewportChange])
 
   useEffect(() => {
     const clientId = import.meta.env.VITE_NAVER_MAPS_CLIENT_ID?.trim() ?? ''
@@ -123,6 +155,7 @@ export default function NaverMap() {
     let cancelled = false
     let mapInstance: naver.maps.Map | null = null
     let resizeObserver: ResizeObserver | null = null
+    let idleListener: naver.maps.MapEventListener | null = null
     setStatus({ kind: 'loading' })
 
     const handleAuthenticationFailure = () => {
@@ -134,6 +167,8 @@ export default function NaverMap() {
       resizeObserver = null
       const failedMap = mapInstance
       mapInstance = null
+      mapInstanceRef.current = null
+      mapsRef.current = null
       setStatus({ kind: 'unavailable', reason: 'authentication' })
       destroyMapSafely(failedMap)
     }
@@ -147,7 +182,7 @@ export default function NaverMap() {
         }
 
         try {
-          mapInstance = new maps.Map(mapContainerRef.current, {
+          const createdMap = new maps.Map(mapContainerRef.current, {
             center: new maps.LatLng(
               INITIAL_CENTER.latitude,
               INITIAL_CENTER.longitude,
@@ -157,9 +192,27 @@ export default function NaverMap() {
             zoom: 14,
             zoomControl: true,
           })
+          mapInstance = createdMap
+          mapInstanceRef.current = createdMap
+          mapsRef.current = maps
+
+          const emitViewport = () => {
+            const viewport = readViewport(createdMap)
+            if (viewport) {
+              onViewportChangeRef.current?.(viewport)
+            }
+          }
+
+          if (onViewportChangeRef.current) {
+            idleListener = maps.Event.addListener(
+              createdMap,
+              'idle',
+              emitViewport,
+            )
+          }
 
           if (typeof ResizeObserver === 'function') {
-            resizeObserver = new ResizeObserver(() => mapInstance?.autoResize())
+            resizeObserver = new ResizeObserver(() => createdMap.autoResize())
             resizeObserver.observe(mapContainerRef.current)
           }
 
@@ -169,6 +222,8 @@ export default function NaverMap() {
           resizeObserver = null
           const failedMap = mapInstance
           mapInstance = null
+          mapInstanceRef.current = null
+          mapsRef.current = null
           setStatus({ kind: 'unavailable', reason: 'initialization' })
           destroyMapSafely(failedMap)
         }
@@ -183,9 +238,37 @@ export default function NaverMap() {
       cancelled = true
       unsubscribeAuthenticationFailure()
       resizeObserver?.disconnect()
+      if (idleListener && mapsRef.current) {
+        mapsRef.current.Event.removeListener(idleListener)
+      }
+      clearMarkers(markerOverlaysRef.current)
+      markerOverlaysRef.current = []
+      mapInstanceRef.current = null
+      mapsRef.current = null
       destroyMapSafely(mapInstance)
     }
   }, [attempt])
+
+  useEffect(() => {
+    const mapInstance = mapInstanceRef.current
+    const maps = mapsRef.current
+
+    if (!mapInstance || !maps || status.kind !== 'ready') {
+      return
+    }
+
+    clearMarkers(markerOverlaysRef.current)
+    markerOverlaysRef.current = markers.map((marker) =>
+      createMarker(maps, mapInstance, marker, () => {
+        onMarkerSelectRef.current?.(marker.id)
+      }),
+    )
+
+    return () => {
+      clearMarkers(markerOverlaysRef.current)
+      markerOverlaysRef.current = []
+    }
+  }, [markers, status.kind])
 
   const retry = () => {
     setStatus({ kind: 'loading' })
@@ -206,8 +289,7 @@ export default function NaverMap() {
         공공임대주택 지도
       </h1>
       <p className="visually-hidden" id="map-description">
-        서울시청을 중심으로 지도를 표시합니다. 실제 주택 데이터는 아직 표시하지
-        않습니다.
+        현재 지도 영역의 공공임대주택 단지를 표시합니다.
       </p>
       <div
         className="map-surface"
@@ -220,4 +302,91 @@ export default function NaverMap() {
       )}
     </section>
   )
+}
+
+function readViewport(mapInstance: naver.maps.Map): ViewportSnapshot | null {
+  const bounds = mapInstance.getBounds()
+  const southWest = readCoordinate(bounds, 'getSW')
+  const northEast = readCoordinate(bounds, 'getNE')
+  const zoom = mapInstance.getZoom()
+
+  if (!southWest || !northEast || !Number.isFinite(zoom)) {
+    return null
+  }
+
+  return {
+    bounds: {
+      southWestLat: southWest.latitude,
+      southWestLng: southWest.longitude,
+      northEastLat: northEast.latitude,
+      northEastLng: northEast.longitude,
+    },
+    zoom,
+  }
+}
+
+function readCoordinate(
+  bounds: naver.maps.Bounds,
+  methodName: 'getNE' | 'getSW',
+): { latitude: number; longitude: number } | null {
+  const method: unknown = Reflect.get(bounds, methodName)
+  if (typeof method !== 'function') {
+    return null
+  }
+
+  const coordinate: unknown = Reflect.apply(method, bounds, [])
+  if (typeof coordinate !== 'object' || coordinate === null) {
+    return null
+  }
+
+  const latitudeMethod: unknown = Reflect.get(coordinate, 'lat')
+  const longitudeMethod: unknown = Reflect.get(coordinate, 'lng')
+  if (
+    typeof latitudeMethod !== 'function' ||
+    typeof longitudeMethod !== 'function'
+  ) {
+    return null
+  }
+
+  const latitude: unknown = Reflect.apply(latitudeMethod, coordinate, [])
+  const longitude: unknown = Reflect.apply(longitudeMethod, coordinate, [])
+  if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+    return null
+  }
+
+  return { latitude, longitude }
+}
+
+function createMarker(
+  maps: typeof naver.maps,
+  mapInstance: naver.maps.Map,
+  marker: NaverMapMarker,
+  onSelect: () => void,
+): naver.maps.Marker {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = marker.selected
+    ? 'housing-map-marker is-selected'
+    : 'housing-map-marker'
+  button.setAttribute('aria-label', `${marker.name} 단지 상세 보기`)
+  button.title = marker.name
+  button.textContent = marker.selected ? '●' : '•'
+  button.addEventListener('click', onSelect)
+
+  return new maps.Marker({
+    clickable: true,
+    cursor: 'pointer',
+    icon: {
+      anchor: new maps.Point(20, 40),
+      content: button,
+      size: new maps.Size(40, 40),
+    },
+    map: mapInstance,
+    position: new maps.LatLng(marker.latitude, marker.longitude),
+    title: marker.name,
+  })
+}
+
+function clearMarkers(markers: naver.maps.Marker[]) {
+  markers.forEach((marker) => marker.setMap(null))
 }

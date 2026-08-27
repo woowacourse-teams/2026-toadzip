@@ -1,0 +1,171 @@
+import type {
+  ComplexPage,
+  MapBounds,
+  MapComplex,
+} from '../model/publicHousing.ts'
+import {
+  decodeComplexPageEnvelope,
+  decodeMapComplexEnvelope,
+  PublicHousingContractError,
+} from './publicHousingContract.ts'
+import { toComplexPage, toMapComplexes } from './publicHousingMapper.ts'
+
+const COMPLEXES_PATH = '/api/v1/complexes'
+
+interface RepositoryOptions {
+  readonly apiBaseUrl?: string
+  readonly fetcher?: typeof globalThis.fetch
+}
+
+interface ErrorBody {
+  readonly code: string | null
+  readonly message: string | null
+  readonly traceId: string | null
+}
+
+export interface PublicHousingRepository {
+  findComplexPage(
+    bounds: MapBounds,
+    cursor: string | null,
+    size: number,
+    signal: AbortSignal,
+  ): Promise<ComplexPage>
+  findMapComplexes(
+    bounds: MapBounds,
+    signal: AbortSignal,
+  ): Promise<readonly MapComplex[]>
+}
+
+export class PublicHousingHttpError extends Error {
+  readonly status: number
+  readonly code: string | null
+  readonly traceId: string | null
+
+  constructor(status: number, body: ErrorBody) {
+    super(body.message ?? '공공주택 정보를 불러오지 못했습니다.')
+    this.name = 'PublicHousingHttpError'
+    this.status = status
+    this.code = body.code
+    this.traceId = body.traceId
+  }
+}
+
+export function createHttpPublicHousingRepository(
+  options: RepositoryOptions = {},
+): PublicHousingRepository {
+  const apiBaseUrl = options.apiBaseUrl ?? resolveApiBaseUrl()
+  const fetcher = options.fetcher ?? globalThis.fetch
+
+  return {
+    async findComplexPage(bounds, cursor, size, signal) {
+      validateSize(size)
+      const search = boundsSearchParams(bounds)
+      if (cursor !== null) {
+        search.set('cursor', cursor)
+      }
+      search.set('size', String(size))
+
+      const payload = await requestJson(
+        fetcher,
+        `${apiBaseUrl}${COMPLEXES_PATH}?${search.toString()}`,
+        signal,
+      )
+      return toComplexPage(decodeComplexPageEnvelope(payload))
+    },
+
+    async findMapComplexes(bounds, signal) {
+      const search = boundsSearchParams(bounds)
+      const payload = await requestJson(
+        fetcher,
+        `${apiBaseUrl}${COMPLEXES_PATH}/map?${search.toString()}`,
+        signal,
+      )
+      return toMapComplexes(decodeMapComplexEnvelope(payload).items)
+    },
+  }
+}
+
+export const publicHousingRepository = createHttpPublicHousingRepository()
+
+async function requestJson(
+  fetcher: typeof globalThis.fetch,
+  url: string,
+  signal: AbortSignal,
+): Promise<unknown> {
+  const response = await fetcher(url, {
+    headers: { Accept: 'application/json' },
+    signal,
+  })
+
+  if (!response.ok) {
+    throw new PublicHousingHttpError(response.status, await decodeErrorBody(response))
+  }
+
+  try {
+    return (await response.json()) as unknown
+  } catch (error) {
+    throw new PublicHousingContractError(
+      error instanceof Error ? '$ (invalid JSON)' : '$',
+    )
+  }
+}
+
+async function decodeErrorBody(response: Response): Promise<ErrorBody> {
+  const value = (await response.json().catch(() => null)) as unknown
+  if (!isRecord(value)) {
+    return { code: null, message: null, traceId: null }
+  }
+
+  return {
+    code: nullableString(value.code),
+    message: nullableString(value.message),
+    traceId: nullableString(value.traceId),
+  }
+}
+
+function boundsSearchParams(bounds: MapBounds): URLSearchParams {
+  validateBounds(bounds)
+  return new URLSearchParams({
+    southWestLat: String(bounds.southWestLat),
+    southWestLng: String(bounds.southWestLng),
+    northEastLat: String(bounds.northEastLat),
+    northEastLng: String(bounds.northEastLng),
+  })
+}
+
+function validateBounds(bounds: MapBounds) {
+  const coordinates = [
+    bounds.southWestLat,
+    bounds.southWestLng,
+    bounds.northEastLat,
+    bounds.northEastLng,
+  ]
+  if (coordinates.some((coordinate) => !Number.isFinite(coordinate))) {
+    throw new RangeError('지도 범위 좌표는 유한한 숫자여야 합니다.')
+  }
+}
+
+function validateSize(size: number) {
+  if (!Number.isInteger(size) || size < 1 || size > 50) {
+    throw new RangeError('단지 목록 크기는 1부터 50 사이의 정수여야 합니다.')
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function nullableString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
+}
+
+function resolveApiBaseUrl(): string {
+  const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL
+  if (configuredApiBaseUrl) {
+    return configuredApiBaseUrl
+  }
+  if (import.meta.env.DEV) {
+    return 'http://localhost:8080'
+  }
+  return ''
+}
