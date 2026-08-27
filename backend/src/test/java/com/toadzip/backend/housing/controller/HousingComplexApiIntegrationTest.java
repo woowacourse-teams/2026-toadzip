@@ -247,6 +247,7 @@ class HousingComplexApiIntegrationTest {
                 .andExpect(jsonPath("$.data.currentAnnouncements.length()").value(1))
                 .andExpect(jsonPath("$.data.currentAnnouncements[0].announcementId").value(correction.getId()))
                 .andExpect(jsonPath("$.data.currentAnnouncements[0].publicationType").value("CORRECTION"))
+                .andExpect(jsonPath("$.data.currentAnnouncements[0].actualCompetitionRate").value(2.5))
                 .andExpect(jsonPath("$.data.currentAnnouncements[0].targets", contains(
                         "대학생",
                         "청년",
@@ -283,7 +284,8 @@ class HousingComplexApiIntegrationTest {
                 "correction",
                 TODAY.minusDays(1),
                 TODAY.minusDays(1),
-                TODAY.plusDays(3)
+                TODAY.plusDays(3),
+                new BigDecimal("2.5000")
         );
         SupplyRow firstCorrectionRow = persistSupplyRow(
                 correction,
@@ -450,6 +452,26 @@ class HousingComplexApiIntegrationTest {
             LocalDate applicationStartDate,
             LocalDate applicationEndDate
     ) {
+        return persistAnnouncement(
+                previous,
+                status,
+                suffix,
+                postedDate,
+                applicationStartDate,
+                applicationEndDate,
+                null
+        );
+    }
+
+    private Announcement persistAnnouncement(
+            Announcement previous,
+            String status,
+            String suffix,
+            LocalDate postedDate,
+            LocalDate applicationStartDate,
+            LocalDate applicationEndDate,
+            BigDecimal actualCompetitionRate
+    ) {
         String previousSourceIdentifier = null;
         if (previous != null) {
             previousSourceIdentifier = previous.getSourceAnnouncementIdentifier();
@@ -470,6 +492,8 @@ class HousingComplexApiIntegrationTest {
                 "https://example.com/announcements/" + suffix,
                 null,
                 0,
+                actualCompetitionRate,
+                null,
                 ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null)
         );
         entityManager.persist(announcement);

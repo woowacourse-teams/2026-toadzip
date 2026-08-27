@@ -744,7 +744,10 @@ assertAll(
         () -> assertNull(response.overviewImageUrl()),
         () -> assertNull(response.housingTypes().getFirst().floorPlan3dImageUrl()),
         () -> assertEquals(List.of("청년"), response.currentAnnouncements().getFirst().targets()),
-        () -> assertNull(response.currentAnnouncements().getFirst().actualCompetitionRate())
+        () -> assertEquals(
+                new BigDecimal("2.5000"),
+                response.currentAnnouncements().getFirst().actualCompetitionRate()
+        )
 );
 ```
 
@@ -761,8 +764,10 @@ reports not found; the missing-complex case passes.
 It derives `BEFORE_APPLICATION` or `APPLYING` and D-Day from a `LocalDate today`
 argument supplied by the service; it does not query repositories or own a `Clock`. Map the single stored
 `imageUrl` to a zero-or-one element `images` array, keep `overviewImageUrl` and 3D floor plans `null`, and
-keep `actualCompetitionRate` `null` because the current model stores no official rate. Convert every
-nullable money value, including maintenance fee, with `longValueExact()`.
+project the nullable `Announcement.actualCompetitionRate` added by #20 into each current announcement.
+Convert every nullable money value, including maintenance fee, with `longValueExact()`. Run the five detail
+projections in a read-only `REPEATABLE_READ` transaction so one response is assembled from one database
+snapshot even when a correction or collection update commits between statements.
 
 Extend `HousingComplexCodeMapper` only after the detail tests are RED: heating values
 `INDIVIDUAL`/`개별난방`, `CENTRAL`/`중앙난방`, `DISTRICT`/`지역난방`, `ETC`/`기타`; building values

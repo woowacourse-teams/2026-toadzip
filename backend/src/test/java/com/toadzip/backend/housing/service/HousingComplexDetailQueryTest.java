@@ -101,7 +101,7 @@ class HousingComplexDetailQueryTest {
     }
 
     @Test
-    void 상세의_금액을_longValueExact로_변환하고_공식_출처가_없는_필드는_null로_둔다() {
+    void 상세의_금액을_longValueExact로_변환하고_저장된_실제_경쟁률을_반환한다() {
         HousingComplexDetailResponse response = getExistingComplex();
         HousingTypeDetailResponse firstType = response.housingTypes().getFirst();
         HousingTypeDetailResponse secondType = response.housingTypes().getLast();
@@ -117,7 +117,10 @@ class HousingComplexDetailQueryTest {
                 () -> assertEquals(1000000L,
                         firstType.currentSupplyConditions().getFirst().convertibleDeposit()),
                 () -> assertNull(firstType.currentSupplyConditions().getLast().convertibleDeposit()),
-                () -> assertNull(response.currentAnnouncements().getFirst().actualCompetitionRate())
+                () -> assertEquals(
+                        new BigDecimal("2.5000"),
+                        response.currentAnnouncements().getFirst().actualCompetitionRate()
+                )
         );
     }
 
@@ -338,7 +341,8 @@ class HousingComplexDetailQueryTest {
                         "CORRECTION",
                         LocalDate.of(2026, 8, 26),
                         LocalDate.of(2026, 8, 28),
-                        LocalDate.of(2026, 8, 30)
+                        LocalDate.of(2026, 8, 30),
+                        new BigDecimal("2.5000")
                 ),
                 new CurrentAnnouncementRow(
                         201L,
@@ -346,7 +350,8 @@ class HousingComplexDetailQueryTest {
                         "원공고",
                         LocalDate.of(2026, 8, 25),
                         LocalDate.of(2026, 8, 20),
-                        TODAY
+                        TODAY,
+                        null
                 )
         ));
         when(detailRepository.findCurrentAnnouncementTargets(COMPLEX_ID, TODAY)).thenReturn(List.of(

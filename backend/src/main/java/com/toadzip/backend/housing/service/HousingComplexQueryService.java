@@ -7,6 +7,7 @@ import java.time.ZoneId;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.toadzip.backend.housing.domain.MapBounds;
@@ -89,7 +90,7 @@ public class HousingComplexQueryService {
         );
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public HousingComplexDetailResponse getComplex(long complexId) {
         LocalDate today = today();
         ComplexDetailRow complex = detailRepository.findComplex(complexId)

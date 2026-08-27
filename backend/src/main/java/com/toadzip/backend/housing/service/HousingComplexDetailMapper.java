@@ -172,7 +172,7 @@ public class HousingComplexDetailMapper {
                 row.applicationStartAt(),
                 row.applicationEndAt(),
                 Math.toIntExact(ChronoUnit.DAYS.between(today, row.applicationEndAt())),
-                null
+                row.actualCompetitionRate()
         );
     }
 

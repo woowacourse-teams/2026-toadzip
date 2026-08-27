@@ -92,7 +92,8 @@ public class ComplexDetailQueryRepository {
                    announcement.status AS publication_type,
                    announcement.posted_date,
                    announcement.application_start_date,
-                   announcement.application_end_date
+                   announcement.application_end_date,
+                   announcement.actual_competition_rate
             FROM current_leaf announcement
             WHERE EXISTS (
                 SELECT 1
@@ -239,7 +240,8 @@ public class ComplexDetailQueryRepository {
                 resultSet.getString("publication_type"),
                 resultSet.getObject("posted_date", LocalDate.class),
                 resultSet.getObject("application_start_date", LocalDate.class),
-                resultSet.getObject("application_end_date", LocalDate.class)
+                resultSet.getObject("application_end_date", LocalDate.class),
+                resultSet.getBigDecimal("actual_competition_rate")
         );
     }
 

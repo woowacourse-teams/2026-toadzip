@@ -1,5 +1,6 @@
 package com.toadzip.backend.housing.repository;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 public record CurrentAnnouncementRow(
@@ -8,6 +9,7 @@ public record CurrentAnnouncementRow(
         String publicationType,
         LocalDate postedDate,
         LocalDate applicationStartAt,
-        LocalDate applicationEndAt
+        LocalDate applicationEndAt,
+        BigDecimal actualCompetitionRate
 ) {
 }

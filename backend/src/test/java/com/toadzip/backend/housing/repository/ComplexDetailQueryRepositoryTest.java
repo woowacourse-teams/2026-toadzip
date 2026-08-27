@@ -2,6 +2,7 @@ package com.toadzip.backend.housing.repository;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
@@ -126,7 +127,8 @@ class ComplexDetailQueryRepositoryTest {
                 "correction",
                 TODAY,
                 TODAY,
-                TODAY.plusDays(3)
+                TODAY.plusDays(3),
+                new BigDecimal("2.5000")
         );
         persistSupplyRow(correction, complex, housingType, "correction-row", 1);
 
@@ -158,7 +160,9 @@ class ComplexDetailQueryRepositoryTest {
                         announcementIds(rows)
                 ),
                 () -> assertEquals(List.of("CORRECTION", "ORIGINAL", "ORIGINAL"),
-                        rows.stream().map(CurrentAnnouncementRow::publicationType).toList())
+                        rows.stream().map(CurrentAnnouncementRow::publicationType).toList()),
+                () -> assertEquals(new BigDecimal("2.5000"), rows.getFirst().actualCompetitionRate()),
+                () -> assertNull(rows.get(1).actualCompetitionRate())
         );
     }
 
@@ -355,6 +359,26 @@ class ComplexDetailQueryRepositoryTest {
             LocalDate applicationStartDate,
             LocalDate applicationEndDate
     ) {
+        return persistAnnouncement(
+                previous,
+                status,
+                suffix,
+                postedDate,
+                applicationStartDate,
+                applicationEndDate,
+                null
+        );
+    }
+
+    private Announcement persistAnnouncement(
+            Announcement previous,
+            String status,
+            String suffix,
+            LocalDate postedDate,
+            LocalDate applicationStartDate,
+            LocalDate applicationEndDate,
+            BigDecimal actualCompetitionRate
+    ) {
         String previousSourceIdentifier = null;
         if (previous != null) {
             previousSourceIdentifier = previous.getSourceAnnouncementIdentifier();
@@ -375,6 +399,8 @@ class ComplexDetailQueryRepositoryTest {
                 "https://example.com/announcements/" + suffix,
                 null,
                 0,
+                actualCompetitionRate,
+                null,
                 ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null)
         );
         entityManager.persist(announcement);
