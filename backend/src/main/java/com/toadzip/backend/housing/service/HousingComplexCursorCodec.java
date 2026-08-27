@@ -40,7 +40,9 @@ public final class HousingComplexCursorCodec {
         }
         requireUnpaddedUrlSafeBase64(rawCursor);
         try {
-            String payload = new String(Base64.getUrlDecoder().decode(rawCursor), StandardCharsets.UTF_8);
+            byte[] decodedBytes = Base64.getUrlDecoder().decode(rawCursor);
+            requireCanonicalBase64(rawCursor, decodedBytes);
+            String payload = new String(decodedBytes, StandardCharsets.UTF_8);
             String[] parts = payload.split("\\|", -1);
             if (parts.length == 5 && V2.equals(parts[0])) {
                 return decodeV2(parts, requestedSort);
@@ -168,6 +170,15 @@ public final class HousingComplexCursorCodec {
         return Base64.getUrlEncoder()
                 .withoutPadding()
                 .encodeToString(payload.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void requireCanonicalBase64(String cursor, byte[] decodedBytes) {
+        String canonicalCursor = Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(decodedBytes);
+        if (!canonicalCursor.equals(cursor)) {
+            throw new InvalidComplexCursorException();
+        }
     }
 
     private void requireUnpaddedUrlSafeBase64(String cursor) {

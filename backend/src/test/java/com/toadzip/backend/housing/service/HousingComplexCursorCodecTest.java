@@ -134,6 +134,18 @@ class HousingComplexCursorCodecTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {
+            "djJ8REVQT1NJVF9BU0N8MHw1MDAwMDAwMHw0MR",
+            "djJ8REVQT1NJVF9BU0N8MHw1MDAwMDAwMHw0MTF"
+    })
+    void noncanonical_pad_bit_Base64_alias를_거부한다(String cursor) {
+        assertThrows(
+                InvalidComplexCursorException.class,
+                () -> codec.decode(cursor, ComplexSort.DEPOSIT_ASC)
+        );
+    }
+
+    @ParameterizedTest
     @MethodSource("invalidCursorsForEncoding")
     void 발급할_수_없는_typed_커서를_거부한다(ComplexSummaryCursor cursor) {
         assertThrows(InvalidComplexCursorException.class, () -> codec.encode(cursor));
