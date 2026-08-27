@@ -1,5 +1,6 @@
 package com.toadzip.backend.announcement.controller;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -16,6 +17,7 @@ import com.toadzip.backend.announcement.domain.ReceptionMethod;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyType;
+import com.toadzip.backend.announcement.dto.request.AnnouncementSearchRequest;
 import com.toadzip.backend.announcement.dto.response.AgencyResponse;
 import com.toadzip.backend.announcement.dto.response.AnnouncementAttachmentResponse;
 import com.toadzip.backend.announcement.dto.response.AnnouncementDetailResponse;
@@ -31,6 +33,7 @@ import com.toadzip.backend.announcement.dto.response.SupplyTargetResponse;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementCursorException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestException;
+import com.toadzip.backend.announcement.exception.InvalidRegionCodeException;
 import com.toadzip.backend.announcement.service.AnnouncementQueryService;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
@@ -40,6 +43,7 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -63,7 +67,7 @@ class AnnouncementControllerTest {
 
     @Test
     void 목록은_data_봉투와_공개_DTO_필드만_JSON으로_반환한다() throws Exception {
-        when(announcementQueryService.getAnnouncements(null, 20)).thenReturn(listResponse());
+        when(announcementQueryService.getAnnouncements(noFilters(), null, 20)).thenReturn(listResponse());
 
         mockMvc.perform(get("/api/v1/announcements"))
                 .andExpect(status().isOk())
@@ -77,19 +81,70 @@ class AnnouncementControllerTest {
                 .andExpect(jsonPath("$..hibernateLazyInitializer").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$..handler").doesNotHaveJsonPath());
 
-        verify(announcementQueryService).getAnnouncements(null, 20);
+        verify(announcementQueryService).getAnnouncements(noFilters(), null, 20);
     }
 
     @Test
     void 생략하거나_빈_size는_기본값_20으로_서비스에_전달한다() throws Exception {
-        when(announcementQueryService.getAnnouncements(null, 20)).thenReturn(listResponse());
+        when(announcementQueryService.getAnnouncements(noFilters(), null, 20)).thenReturn(listResponse());
 
         mockMvc.perform(get("/api/v1/announcements"))
                 .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/announcements").param("size", ""))
                 .andExpect(status().isOk());
 
-        verify(announcementQueryService, times(2)).getAnnouncements(null, 20);
+        verify(announcementQueryService, times(2)).getAnnouncements(noFilters(), null, 20);
+    }
+
+    @Test
+    void 목록_검색_쿼리와_반복_enum_값을_서비스로_전달한다() throws Exception {
+        when(announcementQueryService.getAnnouncements(
+                org.mockito.ArgumentMatchers.any(AnnouncementSearchRequest.class),
+                org.mockito.ArgumentMatchers.eq("cursor-value"),
+                org.mockito.ArgumentMatchers.eq(15)
+        )).thenReturn(listResponse());
+
+        mockMvc.perform(get("/api/v1/announcements")
+                        .param("keyword", "행복주택")
+                        .param("regionCode", "11140")
+                        .param("rentalTypes", "HAPPY_HOUSING", "NATIONAL_RENTAL")
+                        .param("applicationStatuses", "BEFORE_APPLICATION", "APPLYING")
+                        .param("publicationTypes", "ORIGINAL", "CORRECTION")
+                        .param("agencyCodes", "LH", "SH")
+                        .param("recruitmentTypes", "NEW", "WAITLIST")
+                        .param("applicationFrom", "2026-08-01")
+                        .param("applicationTo", "2026-08-31")
+                        .param("cursor", "cursor-value")
+                        .param("size", "15"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<AnnouncementSearchRequest> requestCaptor = ArgumentCaptor.forClass(
+                AnnouncementSearchRequest.class
+        );
+        verify(announcementQueryService).getAnnouncements(
+                requestCaptor.capture(),
+                org.mockito.ArgumentMatchers.eq("cursor-value"),
+                org.mockito.ArgumentMatchers.eq(15)
+        );
+        AnnouncementSearchRequest request = requestCaptor.getValue();
+        assertEquals("행복주택", request.keyword());
+        assertEquals("11140", request.regionCode());
+        assertEquals(
+                List.of(RentalType.HAPPY_HOUSING, RentalType.NATIONAL_RENTAL), request.rentalTypes()
+        );
+        assertEquals(
+                List.of(ApplicationStatus.BEFORE_APPLICATION, ApplicationStatus.APPLYING), request.applicationStatuses()
+        );
+        assertEquals(
+                List.of(AnnouncementPublicationType.ORIGINAL, AnnouncementPublicationType.CORRECTION),
+                request.publicationTypes()
+        );
+        assertEquals(List.of(AgencyCode.LH, AgencyCode.SH), request.agencyCodes());
+        assertEquals(
+                List.of(RecruitmentType.NEW, RecruitmentType.WAITLIST), request.recruitmentTypes()
+        );
+        assertEquals(LocalDate.of(2026, 8, 1), request.applicationFrom());
+        assertEquals(LocalDate.of(2026, 8, 31), request.applicationTo());
     }
 
     @Test
@@ -115,9 +170,9 @@ class AnnouncementControllerTest {
 
     @Test
     void size_허용범위_밖의_값은_고정된_INVALID_REQUEST로_반환한다() throws Exception {
-        when(announcementQueryService.getAnnouncements(null, 0))
+        when(announcementQueryService.getAnnouncements(noFilters(), null, 0))
                 .thenThrow(new InvalidAnnouncementRequestException());
-        when(announcementQueryService.getAnnouncements(null, 51))
+        when(announcementQueryService.getAnnouncements(noFilters(), null, 51))
                 .thenThrow(new InvalidAnnouncementRequestException());
 
         assertError(
@@ -136,9 +191,9 @@ class AnnouncementControllerTest {
 
     @Test
     void 잘못되거나_빈_cursor는_고정된_INVALID_CURSOR로_반환한다() throws Exception {
-        when(announcementQueryService.getAnnouncements("bad-cursor", 20))
+        when(announcementQueryService.getAnnouncements(noFilters(), "bad-cursor", 20))
                 .thenThrow(new InvalidAnnouncementCursorException());
-        when(announcementQueryService.getAnnouncements("", 20))
+        when(announcementQueryService.getAnnouncements(noFilters(), "", 20))
                 .thenThrow(new InvalidAnnouncementCursorException());
 
         assertError(
@@ -182,6 +237,46 @@ class AnnouncementControllerTest {
         );
     }
 
+    @Test
+    void 잘못된_enum과_날짜는_필드가_포함된_VALIDATION_FAILED로_반환한다() throws Exception {
+        assertValidationErrorWithField(
+                mockMvc.perform(get("/api/v1/announcements").param("agencyCodes", "UNKNOWN")),
+                "agencyCodes"
+        );
+        assertValidationErrorWithField(
+                mockMvc.perform(get("/api/v1/announcements").param("applicationFrom", "2026/08/01")),
+                "applicationFrom"
+        );
+    }
+
+    @Test
+    void 유효값과_빈_enum_반복값은_필드가_포함된_VALIDATION_FAILED로_반환한다() throws Exception {
+        assertValidationErrorWithFieldAndNoLeaks(
+                mockMvc.perform(get("/api/v1/announcements").param("agencyCodes", "LH", "")),
+                "agencyCodes"
+        );
+    }
+
+    @Test
+    void 잘못된_지역코드는_고정된_INVALID_REGION_CODE로_반환한다() throws Exception {
+        AnnouncementSearchRequest request = new AnnouncementSearchRequest(
+                null, "99999", null, null, null, null, null, null, null
+        );
+        when(announcementQueryService.getAnnouncements(request, null, 20))
+                .thenThrow(new InvalidRegionCodeException());
+
+        assertError(
+                mockMvc.perform(get("/api/v1/announcements").param("regionCode", "99999")),
+                400,
+                "INVALID_REGION_CODE",
+                "지역 코드를 확인해 주세요."
+        );
+    }
+
+    private AnnouncementSearchRequest noFilters() {
+        return new AnnouncementSearchRequest(null, null, null, null, null, null, null, null, null);
+    }
+
     private void assertAnnouncementNotFound(long announcementId) throws Exception {
         assertError(
                 mockMvc.perform(get("/api/v1/announcements/{announcementId}", announcementId)),
@@ -223,6 +318,31 @@ class AnnouncementControllerTest {
                 .andExpect(jsonPath("$.errors.length()").value(1))
                 .andExpect(jsonPath("$.errors[0].field").value(field))
                 .andExpect(jsonPath("$.errors[0].reason").value("형식이 올바르지 않습니다."))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertFalse(body.contains("Exception"));
+        assertFalse(body.contains("SQL"));
+        assertFalse(body.contains("stack"));
+    }
+
+    private void assertValidationErrorWithField(ResultActions resultActions, String field) throws Exception {
+        resultActions
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors.length()").value(1))
+                .andExpect(jsonPath("$.errors[0].field").value(field));
+    }
+
+    private void assertValidationErrorWithFieldAndNoLeaks(ResultActions resultActions, String field) throws Exception {
+        String body = resultActions
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.errors.length()").value(1))
+                .andExpect(jsonPath("$.errors[0].field").value(org.hamcrest.Matchers.startsWith(field)))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();

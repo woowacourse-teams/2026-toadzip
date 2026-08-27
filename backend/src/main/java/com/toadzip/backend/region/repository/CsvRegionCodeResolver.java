@@ -5,8 +5,10 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
@@ -26,6 +28,7 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver {
 
     private final Map<String, String> regionNames;
     private final Map<String, String> regionCodeAliases;
+    private final Map<String, Set<String>> equivalentRegionCodes;
 
     @Autowired
     CsvRegionCodeResolver(
@@ -34,6 +37,7 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver {
     ) {
         regionNames = loadRegionNames(regionResource);
         regionCodeAliases = loadRegionCodeAliases(aliasResource, regionNames);
+        equivalentRegionCodes = buildEquivalentRegionCodes(regionNames, regionCodeAliases);
     }
 
     @Override
@@ -52,6 +56,31 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver {
                 cityCountyDistrictCode
         );
         return Optional.ofNullable(regionNames.get(currentRegionCode));
+    }
+
+    @Override
+    public Optional<Set<String>> equivalentCodes(String regionCode) {
+        if (regionCode == null) {
+            return Optional.empty();
+        }
+        String currentRegionCode = regionCodeAliases.getOrDefault(regionCode, regionCode);
+        return Optional.ofNullable(equivalentRegionCodes.get(currentRegionCode));
+    }
+
+    private static Map<String, Set<String>> buildEquivalentRegionCodes(
+            Map<String, String> regionNames,
+            Map<String, String> regionCodeAliases
+    ) {
+        Map<String, Set<String>> codesByCurrentRegionCode = new HashMap<>();
+        regionNames.keySet().forEach(regionCode ->
+                codesByCurrentRegionCode.put(regionCode, new HashSet<>(Set.of(regionCode))));
+        regionCodeAliases.forEach((legacyRegionCode, currentRegionCode) ->
+                codesByCurrentRegionCode.get(currentRegionCode).add(legacyRegionCode));
+
+        Map<String, Set<String>> immutableCodesByCurrentRegionCode = new HashMap<>();
+        codesByCurrentRegionCode.forEach((currentRegionCode, equivalentCodes) ->
+                immutableCodesByCurrentRegionCode.put(currentRegionCode, Set.copyOf(equivalentCodes)));
+        return Map.copyOf(immutableCodesByCurrentRegionCode);
     }
 
     private static Map<String, String> loadRegionNames(Resource resource) {
