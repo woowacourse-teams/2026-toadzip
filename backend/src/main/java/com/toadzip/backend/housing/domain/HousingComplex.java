@@ -9,13 +9,20 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDate;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "housing_complexes")
+@Table(
+        name = "housing_complexes",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_housing_complex_source_identifier",
+                columnNames = "source_complex_identifier"
+        )
+)
 @NoArgsConstructor(access = PROTECTED)
 public class HousingComplex {
 
@@ -139,6 +146,100 @@ public class HousingComplex {
                 imageUrl,
                 recentOneYearMoveOutCount
         );
+    }
+
+    public static HousingComplex createFromMyHome(
+            String name,
+            String sourceComplexIdentifier,
+            String supplyType,
+            Address address,
+            int totalHouseholdCount,
+            String provider,
+            LocalDate completionDate,
+            String heatingType,
+            String housingType,
+            String corridorType,
+            boolean elevatorInstalled,
+            int parkingSpaceCount
+    ) {
+        return new HousingComplex(
+                name,
+                sourceComplexIdentifier,
+                supplyType,
+                address,
+                totalHouseholdCount,
+                provider,
+                completionDate,
+                heatingType,
+                housingType,
+                corridorType,
+                elevatorInstalled,
+                parkingSpaceCount,
+                null,
+                null
+        );
+    }
+
+    public boolean updateFromMyHome(
+            String name,
+            String supplyType,
+            Address address,
+            int totalHouseholdCount,
+            String provider,
+            LocalDate completionDate,
+            String heatingType,
+            String housingType,
+            String corridorType,
+            boolean elevatorInstalled,
+            int parkingSpaceCount
+    ) {
+        HousingComplex incoming = createFromMyHome(
+                name,
+                sourceComplexIdentifier,
+                supplyType,
+                address,
+                totalHouseholdCount,
+                provider,
+                completionDate,
+                heatingType,
+                housingType,
+                corridorType,
+                elevatorInstalled,
+                parkingSpaceCount
+        );
+        if (hasSameMyHomeValues(incoming)) {
+            return false;
+        }
+        applyMyHomeValues(incoming);
+        return true;
+    }
+
+    private boolean hasSameMyHomeValues(HousingComplex incoming) {
+        return name.equals(incoming.name)
+                && supplyType.equals(incoming.supplyType)
+                && address.hasSameValues(incoming.address)
+                && totalHouseholdCount == incoming.totalHouseholdCount
+                && provider.equals(incoming.provider)
+                && completionDate.equals(incoming.completionDate)
+                && heatingType.equals(incoming.heatingType)
+                && housingType.equals(incoming.housingType)
+                && corridorType.equals(incoming.corridorType)
+                && elevatorInstalled == incoming.elevatorInstalled
+                && parkingSpaceCount == incoming.parkingSpaceCount;
+    }
+
+    private void applyMyHomeValues(HousingComplex incoming) {
+        name = incoming.name;
+        supplyType = incoming.supplyType;
+        address = incoming.address;
+        totalHouseholdCount = incoming.totalHouseholdCount;
+        provider = incoming.provider;
+        completionDate = incoming.completionDate;
+        heatingType = incoming.heatingType;
+        housingType = incoming.housingType;
+        corridorType = incoming.corridorType;
+        elevatorInstalled = incoming.elevatorInstalled;
+        parkingSpaceCount = incoming.parkingSpaceCount;
     }
 
     private void validateNotBlank(String value, String fieldName) {

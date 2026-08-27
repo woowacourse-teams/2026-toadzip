@@ -3,6 +3,7 @@ package com.toadzip.backend.housing.domain;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.lang.reflect.Method;
@@ -12,6 +13,23 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class AddressTest {
+
+    @Test
+    void 원천에_좌표가_없으면_주소를_미확정_좌표로_생성한다() {
+        Address address = Address.createFromMyHome(
+                "서울특별시 중구 세종대로 110",
+                "1114010100100010000",
+                "1114010100",
+                "11",
+                "11140"
+        );
+
+        assertAll(
+                () -> assertEquals("서울특별시 중구 세종대로 110", address.getRoadAddress()),
+                () -> assertNull(address.getLatitude()),
+                () -> assertNull(address.getLongitude())
+        );
+    }
 
     @Test
     void 단지_주소를_생성한다() {

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.lang.reflect.Method;
@@ -12,6 +13,24 @@ import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 
 class HousingTypeTest {
+
+    @Test
+    void 마이홈에_없는_주택형_정보는_미확정으로_생성한다() {
+        HousingType housingType = HousingType.createFromMyHome(
+                createHousingComplex(),
+                "source-housing-type-id",
+                "46A",
+                new BigDecimal("46.8000"),
+                new BigDecimal("67.0000")
+        );
+
+        assertAll(
+                () -> assertEquals("source-housing-type-id", housingType.getSourceHousingTypeIdentifier()),
+                () -> assertNull(housingType.getTotalHouseholdCount()),
+                () -> assertNull(housingType.getFloorPlanUrl()),
+                () -> assertNull(housingType.getDuplex())
+        );
+    }
 
     @Test
     void 단지에_속한_주택형을_생성한다() {
