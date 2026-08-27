@@ -16,13 +16,21 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.YearMonth;
+import java.util.Objects;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "supply_rows")
+@Table(
+        name = "supply_rows",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_supply_row_source_identifier",
+                columnNames = "source_supply_row_identifier"
+        )
+)
 @NoArgsConstructor(access = PROTECTED)
 public class SupplyRow {
 
@@ -133,6 +141,65 @@ public class SupplyRow {
                 matchingFailureReason,
                 totalSupplyHouseholdCount
         );
+    }
+
+    public boolean updateFromSource(
+            HousingComplex housingComplex,
+            HousingType housingType,
+            int displayOrder,
+            String sourceComplexName,
+            String sourceHousingTypeName,
+            String supplyPnu,
+            YearMonth expectedMoveInMonth,
+            SupplyCategory supplyCategory,
+            String matchingFailureReason,
+            Integer totalSupplyHouseholdCount
+    ) {
+        SupplyRow incoming = new SupplyRow(
+                announcement,
+                housingComplex,
+                housingType,
+                sourceSupplyRowIdentifier,
+                displayOrder,
+                sourceComplexName,
+                sourceHousingTypeName,
+                supplyPnu,
+                expectedMoveInMonth,
+                supplyCategory,
+                matchingFailureReason,
+                totalSupplyHouseholdCount
+        );
+        if (hasSameSourceValues(incoming)) {
+            return false;
+        }
+        applySourceValues(incoming);
+        return true;
+    }
+
+    private boolean hasSameSourceValues(SupplyRow incoming) {
+        return Objects.equals(housingComplex, incoming.housingComplex)
+                && Objects.equals(housingType, incoming.housingType)
+                && displayOrder == incoming.displayOrder
+                && sourceComplexName.equals(incoming.sourceComplexName)
+                && sourceHousingTypeName.equals(incoming.sourceHousingTypeName)
+                && supplyPnu.equals(incoming.supplyPnu)
+                && Objects.equals(expectedMoveInMonth, incoming.expectedMoveInMonth)
+                && supplyCategory == incoming.supplyCategory
+                && Objects.equals(matchingFailureReason, incoming.matchingFailureReason)
+                && Objects.equals(totalSupplyHouseholdCount, incoming.totalSupplyHouseholdCount);
+    }
+
+    private void applySourceValues(SupplyRow incoming) {
+        housingComplex = incoming.housingComplex;
+        housingType = incoming.housingType;
+        displayOrder = incoming.displayOrder;
+        sourceComplexName = incoming.sourceComplexName;
+        sourceHousingTypeName = incoming.sourceHousingTypeName;
+        supplyPnu = incoming.supplyPnu;
+        expectedMoveInMonth = incoming.expectedMoveInMonth;
+        supplyCategory = incoming.supplyCategory;
+        matchingFailureReason = incoming.matchingFailureReason;
+        totalSupplyHouseholdCount = incoming.totalSupplyHouseholdCount;
     }
 
     private void validateRequired(Object value, String fieldName) {

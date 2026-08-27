@@ -21,8 +21,10 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Objects;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcType;
@@ -31,7 +33,11 @@ import org.hibernate.annotations.JdbcType;
 @Entity
 @Table(
         name = "announcements",
-        indexes = @Index(name = "idx_announcements_posted_date_id", columnList = "posted_date,id")
+        indexes = @Index(name = "idx_announcements_posted_date_id", columnList = "posted_date,id"),
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_announcement_source_identifier",
+                columnNames = "source_announcement_identifier"
+        )
 )
 @NoArgsConstructor(access = PROTECTED)
 public class Announcement {
@@ -206,6 +212,83 @@ public class Announcement {
                 null,
                 receptionPlace
         );
+    }
+
+    public boolean updateFromSource(
+            String previousSourceAnnouncementIdentifier,
+            Announcement previousAnnouncement,
+            String name,
+            AnnouncementPublicationType status,
+            RentalType supplyType,
+            RecruitmentType recruitmentType,
+            AgencyCode provider,
+            LocalDate postedDate,
+            LocalDate applicationStartDate,
+            LocalDate applicationEndDate,
+            LocalDate winnerAnnouncementDate,
+            String originalUrl,
+            String correctionCancellationReason,
+            ReceptionPlace receptionPlace
+    ) {
+        Announcement incoming = new Announcement(
+                sourceAnnouncementIdentifier,
+                previousSourceAnnouncementIdentifier,
+                previousAnnouncement,
+                name,
+                status,
+                supplyType,
+                recruitmentType,
+                provider,
+                postedDate,
+                applicationStartDate,
+                applicationEndDate,
+                winnerAnnouncementDate,
+                originalUrl,
+                correctionCancellationReason,
+                viewCount,
+                actualCompetitionRate,
+                predictedCompetitionRate,
+                receptionPlace
+        );
+        if (hasSameSourceValues(incoming)) {
+            return false;
+        }
+        applySourceValues(incoming);
+        return true;
+    }
+
+    private boolean hasSameSourceValues(Announcement incoming) {
+        return Objects.equals(previousSourceAnnouncementIdentifier, incoming.previousSourceAnnouncementIdentifier)
+                && Objects.equals(previousAnnouncement, incoming.previousAnnouncement)
+                && name.equals(incoming.name)
+                && status == incoming.status
+                && supplyType == incoming.supplyType
+                && recruitmentType == incoming.recruitmentType
+                && provider == incoming.provider
+                && postedDate.equals(incoming.postedDate)
+                && applicationStartDate.equals(incoming.applicationStartDate)
+                && applicationEndDate.equals(incoming.applicationEndDate)
+                && winnerAnnouncementDate.equals(incoming.winnerAnnouncementDate)
+                && originalUrl.equals(incoming.originalUrl)
+                && Objects.equals(correctionCancellationReason, incoming.correctionCancellationReason)
+                && receptionPlace.hasSameValues(incoming.receptionPlace);
+    }
+
+    private void applySourceValues(Announcement incoming) {
+        previousSourceAnnouncementIdentifier = incoming.previousSourceAnnouncementIdentifier;
+        previousAnnouncement = incoming.previousAnnouncement;
+        name = incoming.name;
+        status = incoming.status;
+        supplyType = incoming.supplyType;
+        recruitmentType = incoming.recruitmentType;
+        provider = incoming.provider;
+        postedDate = incoming.postedDate;
+        applicationStartDate = incoming.applicationStartDate;
+        applicationEndDate = incoming.applicationEndDate;
+        winnerAnnouncementDate = incoming.winnerAnnouncementDate;
+        originalUrl = incoming.originalUrl;
+        correctionCancellationReason = incoming.correctionCancellationReason;
+        receptionPlace = incoming.receptionPlace;
     }
 
     public static Announcement create(
