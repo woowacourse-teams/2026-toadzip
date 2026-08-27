@@ -7,7 +7,6 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 import com.toadzip.backend.housing.domain.MapBounds;
-import com.toadzip.backend.housing.service.HousingComplexCursorCodec.HousingComplexCursor;
 
 @Repository
 public class ComplexSummaryQueryRepository {
@@ -136,7 +135,7 @@ public class ComplexSummaryQueryRepository {
                 .list();
     }
 
-    public List<ComplexSummaryRow> findPageAfter(MapBounds bounds, HousingComplexCursor cursor, int limit) {
+    public List<ComplexSummaryRow> findPageAfter(MapBounds bounds, ComplexSummaryCursor cursor, int limit) {
         if (cursor.postedDate() == null) {
             return findPageAfterNullDate(bounds, cursor, limit);
         }
@@ -154,7 +153,7 @@ public class ComplexSummaryQueryRepository {
 
     private List<ComplexSummaryRow> findPageAfterNullDate(
             MapBounds bounds,
-            HousingComplexCursor cursor,
+            ComplexSummaryCursor cursor,
             int limit
     ) {
         return jdbcClient.sql(FIND_PAGE_AFTER_NULL_DATE)

@@ -27,7 +27,10 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver {
         if (provinceCode == null || cityCountyDistrictCode == null) {
             return Optional.empty();
         }
-        if (!cityCountyDistrictCode.startsWith(provinceCode)) {
+        if (!provinceCode.matches("[0-9]{2}") || !cityCountyDistrictCode.matches("[0-9]{5}")) {
+            return Optional.empty();
+        }
+        if (!cityCountyDistrictCode.substring(0, 2).equals(provinceCode)) {
             return Optional.empty();
         }
         return Optional.ofNullable(regionNames.get(cityCountyDistrictCode));

@@ -13,6 +13,7 @@ import com.toadzip.backend.housing.domain.MapBounds;
 import com.toadzip.backend.housing.dto.response.HousingComplexListResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexMapResponse;
 import com.toadzip.backend.housing.exception.InvalidComplexRequestException;
+import com.toadzip.backend.housing.repository.ComplexSummaryCursor;
 import com.toadzip.backend.housing.repository.ComplexSummaryQueryRepository;
 import com.toadzip.backend.housing.repository.ComplexSummaryRow;
 
@@ -78,7 +79,9 @@ public class HousingComplexQueryService {
         if (cursor == null) {
             return repository.findFirstPage(bounds, limit);
         }
-        return repository.findPageAfter(bounds, cursorCodec.decode(cursor), limit);
+        HousingComplexCursorCodec.HousingComplexCursor decoded = cursorCodec.decode(cursor);
+        ComplexSummaryCursor summaryCursor = new ComplexSummaryCursor(decoded.postedDate(), decoded.complexId());
+        return repository.findPageAfter(bounds, summaryCursor, limit);
     }
 
     private String nextCursor(List<ComplexSummaryRow> page, boolean hasNext) {

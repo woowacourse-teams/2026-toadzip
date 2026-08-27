@@ -13,7 +13,6 @@ import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.MapBounds;
-import com.toadzip.backend.housing.service.HousingComplexCursorCodec;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -212,7 +211,7 @@ class ComplexSummaryQueryRepositoryTest {
                 List.of(corrected.getId(), cursorComplex.getId(), sameDateSmaller.getId()),
                 ids(first)
         );
-        HousingComplexCursorCodec.HousingComplexCursor cursor = cursorOf(first.get(1));
+        ComplexSummaryCursor cursor = cursorOf(first.get(1));
         List<ComplexSummaryRow> second = repository.findPageAfter(SEOUL_BOUNDS, cursor, 10);
 
         assertAll(
@@ -244,7 +243,7 @@ class ComplexSummaryQueryRepositoryTest {
 
         List<ComplexSummaryRow> page = repository.findPageAfter(
                 SEOUL_BOUNDS,
-                new HousingComplexCursorCodec.HousingComplexCursor(null, cursorComplex.getId()),
+                new ComplexSummaryCursor(null, cursorComplex.getId()),
                 10
         );
 
@@ -413,8 +412,8 @@ class ComplexSummaryQueryRepositoryTest {
         entityManager.persist(supplyRow);
     }
 
-    private HousingComplexCursorCodec.HousingComplexCursor cursorOf(ComplexSummaryRow row) {
-        return new HousingComplexCursorCodec.HousingComplexCursor(row.postedDate(), row.complexId());
+    private ComplexSummaryCursor cursorOf(ComplexSummaryRow row) {
+        return new ComplexSummaryCursor(row.postedDate(), row.complexId());
     }
 
     private List<Long> ids(List<ComplexSummaryRow> rows) {

@@ -14,6 +14,7 @@ import com.toadzip.backend.housing.domain.MapBounds;
 import com.toadzip.backend.housing.dto.response.HousingComplexListItemResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexListResponse;
 import com.toadzip.backend.housing.exception.InvalidComplexRequestException;
+import com.toadzip.backend.housing.repository.ComplexSummaryCursor;
 import com.toadzip.backend.housing.repository.ComplexSummaryQueryRepository;
 import com.toadzip.backend.housing.repository.ComplexSummaryRow;
 import com.toadzip.backend.housing.service.HousingComplexCursorCodec.HousingComplexCursor;
@@ -92,7 +93,7 @@ class HousingComplexListQueryTest {
 
     @Test
     void null_게시일_커서에서도_반환한_페이지의_마지막_단지로_다음_커서를_만든다() {
-        HousingComplexCursor cursor = new HousingComplexCursor(null, 40L);
+        ComplexSummaryCursor cursor = new ComplexSummaryCursor(null, 40L);
         when(repository.findPageAfter(BOUNDS, cursor, 2)).thenReturn(List.of(
                 rowWithoutAnnouncement(30L),
                 rowWithoutAnnouncement(20L)
