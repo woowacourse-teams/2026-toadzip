@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.jayway.jsonpath.JsonPath;
 import java.net.http.HttpResponse;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -19,6 +21,30 @@ import org.springframework.test.context.ActiveProfiles;
 )
 @ActiveProfiles({"local", "test"})
 class OpenApiDocumentationIntegrationTest {
+
+    private static final Set<String> COMMON_SEARCH_PARAMETERS = Set.of(
+            "keyword",
+            "regionCode",
+            "rentalTypes",
+            "applicationStatuses",
+            "agencyCodes",
+            "recruitmentTypes",
+            "minDeposit",
+            "maxDeposit",
+            "minMonthlyRent",
+            "maxMonthlyRent",
+            "minExclusiveArea",
+            "maxExclusiveArea",
+            "builtYearFrom",
+            "builtYearTo",
+            "hasElevator",
+            "southWestLat",
+            "southWestLng",
+            "northEastLat",
+            "northEastLng"
+    );
+
+    private static final Set<String> LIST_ONLY_PARAMETERS = Set.of("sort", "cursor", "size");
 
     @LocalServerPort
     private int port;
@@ -81,6 +107,52 @@ class OpenApiDocumentationIntegrationTest {
         );
     }
 
+    @Test
+    void 단지_목록과_지도_OpenAPI는_모든_공통_검색_parameter를_제공한다() throws Exception {
+        HttpResponse<String> response = TestHttpClient.get(port, "/v3/api-docs");
+
+        assertEquals(200, response.statusCode());
+        Set<String> listParameters = queryParameterNames(response.body(), "/api/v1/complexes");
+        Set<String> mapParameters = queryParameterNames(response.body(), "/api/v1/complexes/map");
+        assertAll(
+                () -> assertTrue(listParameters.containsAll(COMMON_SEARCH_PARAMETERS)),
+                () -> assertTrue(mapParameters.containsAll(COMMON_SEARCH_PARAMETERS)),
+                () -> assertTrue(listParameters.containsAll(LIST_ONLY_PARAMETERS)),
+                () -> assertEquals(COMMON_SEARCH_PARAMETERS, mapParameters),
+                () -> assertEquals(
+                        COMMON_SEARCH_PARAMETERS.size() + LIST_ONLY_PARAMETERS.size(),
+                        listParameters.size()
+                )
+        );
+    }
+
+    @Test
+    void 단지_목록_OpenAPI만_다섯_정렬과_cursor_size_계약을_제공한다() throws Exception {
+        HttpResponse<String> response = TestHttpClient.get(port, "/v3/api-docs");
+
+        assertEquals(200, response.statusCode());
+        Map<String, Object> sort = queryParameter(response.body(), "/api/v1/complexes", "sort");
+        Map<String, Object> size = queryParameter(response.body(), "/api/v1/complexes", "size");
+        Map<String, Object> sortSchema = schema(sort);
+        Map<String, Object> sizeSchema = schema(size);
+        assertAll(
+                () -> assertEquals(List.of(
+                        "LATEST_ANNOUNCEMENT",
+                        "DEPOSIT_ASC",
+                        "MONTHLY_RENT_ASC",
+                        "AREA_DESC",
+                        "COMPLETION_DATE_DESC"
+                ), sortSchema.get("enum")),
+                () -> assertEquals("LATEST_ANNOUNCEMENT", sortSchema.get("default")),
+                () -> assertEquals(20, sizeSchema.get("default")),
+                () -> assertTrue(queryParameterNames(response.body(), "/api/v1/complexes")
+                        .containsAll(LIST_ONLY_PARAMETERS)),
+                () -> assertTrue(queryParameterNames(response.body(), "/api/v1/complexes/map")
+                        .stream()
+                        .noneMatch(LIST_ONLY_PARAMETERS::contains))
+        );
+    }
+
     private void assertRequiredQueryParameter(String document, String path, String parameterName) {
         List<Boolean> requiredValues = JsonPath.read(
                 document,
@@ -88,5 +160,24 @@ class OpenApiDocumentationIntegrationTest {
                         + "' && @.in == 'query')].required"
         );
         assertEquals(List.of(true), requiredValues);
+    }
+
+    private Set<String> queryParameterNames(String document, String path) {
+        List<String> names = JsonPath.read(document, "$.paths['" + path + "'].get.parameters[*].name");
+        return Set.copyOf(names);
+    }
+
+    private Map<String, Object> queryParameter(String document, String path, String parameterName) {
+        List<Map<String, Object>> parameters = JsonPath.read(
+                document,
+                "$.paths['" + path + "'].get.parameters[?(@.name == '" + parameterName + "')]"
+        );
+        assertEquals(1, parameters.size());
+        return parameters.getFirst();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> schema(Map<String, Object> parameter) {
+        return (Map<String, Object>) parameter.get("schema");
     }
 }

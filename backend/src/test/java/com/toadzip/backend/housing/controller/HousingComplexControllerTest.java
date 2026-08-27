@@ -180,7 +180,10 @@ class HousingComplexControllerTest {
                         .param("northEastLng", "127.1"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.errors[0].field").value(field));
+                .andExpect(jsonPath("$.message").value("요청값이 올바르지 않습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(jsonPath("$.errors[0].field").value(field))
+                .andExpect(noInternalDetails());
     }
 
     @Test
@@ -201,7 +204,10 @@ class HousingComplexControllerTest {
                         .param("northEastLat", "37.6")
                         .param("northEastLng", "127.1"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("단지 조회 요청값이 올바르지 않습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(noInternalDetails());
 
         ArgumentCaptor<HousingComplexSearchRequest> requestCaptor =
                 ArgumentCaptor.forClass(HousingComplexSearchRequest.class);
