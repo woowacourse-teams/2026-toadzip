@@ -32,24 +32,18 @@ public class SupplyTarget {
     @Column(nullable = false)
     private String target;
 
-    @Column(nullable = false)
     private String supplyRank;
 
-    @Column(nullable = false)
-    private int supplyHouseholdCount;
+    private Integer supplyHouseholdCount;
 
-    @Column(nullable = false)
-    private int reserveCount;
+    private Integer reserveCount;
 
-    @Column(nullable = false)
     private BigDecimal rentalDeposit;
 
-    @Column(nullable = false)
     private BigDecimal monthlyRent;
 
     private BigDecimal convertedDeposit;
 
-    @Column(nullable = false)
     private String applicationCondition;
 
     @Column(nullable = false)
@@ -59,8 +53,8 @@ public class SupplyTarget {
             SupplyRow supplyRow,
             String target,
             String supplyRank,
-            int supplyHouseholdCount,
-            int reserveCount,
+            Integer supplyHouseholdCount,
+            Integer reserveCount,
             BigDecimal rentalDeposit,
             BigDecimal monthlyRent,
             BigDecimal convertedDeposit,
@@ -69,13 +63,13 @@ public class SupplyTarget {
     ) {
         validateRequired(supplyRow, "공급행");
         validateNotBlank(target, "대상");
-        validateNotBlank(supplyRank, "공급순위");
-        validateNonNegative(supplyHouseholdCount, "공급세대수");
-        validateNonNegative(reserveCount, "예비자수");
-        validateRequiredAmount(rentalDeposit, "임대보증금");
-        validateRequiredAmount(monthlyRent, "월임대료");
-        validateNonNegativeIfPresent(convertedDeposit, "전환보증금");
-        validateNotBlank(applicationCondition, "신청조건");
+        validateNotBlankIfPresent(supplyRank, "공급순위");
+        validateNonNegativeIfPresent(supplyHouseholdCount, "공급세대수");
+        validateNonNegativeIfPresent(reserveCount, "예비자수");
+        validateAmountIfPresent(rentalDeposit, "임대보증금");
+        validateAmountIfPresent(monthlyRent, "월임대료");
+        validateAmountIfPresent(convertedDeposit, "전환보증금");
+        validateNotBlankIfPresent(applicationCondition, "신청조건");
         validateNonNegative(displayOrder, "표시순서");
         this.supplyRow = supplyRow;
         this.target = target;
@@ -93,8 +87,8 @@ public class SupplyTarget {
             SupplyRow supplyRow,
             String target,
             String supplyRank,
-            int supplyHouseholdCount,
-            int reserveCount,
+            Integer supplyHouseholdCount,
+            Integer reserveCount,
             BigDecimal rentalDeposit,
             BigDecimal monthlyRent,
             BigDecimal convertedDeposit,
@@ -133,14 +127,36 @@ public class SupplyTarget {
         }
     }
 
-    private void validateRequiredAmount(BigDecimal value, String fieldName) {
-        validateRequired(value, fieldName);
-        validateNonNegativeIfPresent(value, fieldName);
+    private void validateNotBlankIfPresent(String value, String fieldName) {
+        if (value != null && value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + "은 비어 있을 수 없다.");
+        }
     }
 
-    private void validateNonNegativeIfPresent(BigDecimal value, String fieldName) {
-        if (value != null && value.signum() < 0) {
+    private void validateNonNegativeIfPresent(Integer value, String fieldName) {
+        if (value != null) {
+            validateNonNegative(value, fieldName);
+        }
+    }
+
+    private void validateAmountIfPresent(BigDecimal value, String fieldName) {
+        if (value != null) {
+            validateNonNegativeAmount(value, fieldName);
+            validateExactLong(value, fieldName);
+        }
+    }
+
+    private void validateNonNegativeAmount(BigDecimal value, String fieldName) {
+        if (value.signum() < 0) {
             throw new IllegalArgumentException(fieldName + "은 음수일 수 없다.");
+        }
+    }
+
+    private void validateExactLong(BigDecimal value, String fieldName) {
+        try {
+            value.longValueExact();
+        } catch (ArithmeticException exception) {
+            throw new IllegalArgumentException(fieldName + "은 Long 범위의 정수여야 한다.", exception);
         }
     }
 }

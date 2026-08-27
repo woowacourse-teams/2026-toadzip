@@ -10,6 +10,7 @@
 
 - 백엔드 작업은 [backend/AGENTS.md](backend/AGENTS.md)를 추가로 따른다.
 - 백엔드 코드 컨벤션의 원본은 [backend/CODE_CONVENTION.md](backend/CODE_CONVENTION.md)다.
+- 프론트엔드 작업은 [frontend/AGENTS.md](frontend/AGENTS.md)를 추가로 따른다.
 - 저장소 기여와 Git 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)를 따른다.
 
 ## 저장소 공통 하네스

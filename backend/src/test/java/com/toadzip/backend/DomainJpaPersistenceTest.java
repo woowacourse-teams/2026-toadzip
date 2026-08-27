@@ -8,14 +8,21 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
+import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
+import com.toadzip.backend.announcement.domain.AttachmentType;
+import com.toadzip.backend.announcement.domain.ReceptionMethod;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
+import com.toadzip.backend.announcement.domain.RecruitmentType;
+import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.interest.domain.FavoriteAnnouncement;
 import com.toadzip.backend.interest.domain.FavoriteHousingComplex;
 import com.toadzip.backend.interest.domain.FavoriteRegion;
@@ -31,6 +38,7 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.util.Map;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -304,6 +312,191 @@ class DomainJpaPersistenceTest {
                 () -> assertEquals("11", foundFavoriteRegion.getProvinceCode()),
                 () -> assertEquals("11140", foundFavoriteRegion.getCityCountyDistrictCode()),
                 () -> assertNotNull(foundCorrectedAnnouncement.getReceptionPlace())
+        );
+    }
+
+    @Test
+    void 공고_코드는_정식값으로_저장하고_명시된_기존값과_null_공급값을_읽는다() {
+        Announcement announcement = Announcement.create(
+                "source-announcement-id-legacy",
+                null,
+                null,
+                "행복주택 모집공고",
+                "원공고",
+                "행복주택",
+                "신규모집",
+                "LH",
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 14),
+                LocalDate.of(2026, 9, 1),
+                "https://example.com/announcements/legacy",
+                null,
+                100L,
+                new BigDecimal("1.2500"),
+                new BigDecimal("2.5000"),
+                ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", "https://apply.lh.or.kr")
+        );
+        entityManager.persist(announcement);
+
+        SupplyRow supplyRow = SupplyRow.create(
+                announcement,
+                null,
+                null,
+                "source-supply-row-id-legacy",
+                1,
+                "원문 단지",
+                "36A",
+                "1114010100100010000",
+                null,
+                SupplyCategory.NEW_SUPPLY,
+                "미매칭",
+                null
+        );
+        entityManager.persist(supplyRow);
+
+        SupplyTarget supplyTarget = SupplyTarget.create(
+                supplyRow,
+                "청년",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                1
+        );
+        AnnouncementSchedule schedule = AnnouncementSchedule.create(
+                announcement,
+                ScheduleType.APPLICATION,
+                "인터넷 접수",
+                LocalDateTime.of(2026, 8, 10, 10, 0),
+                LocalDateTime.of(2026, 8, 14, 17, 0),
+                1
+        );
+        AnnouncementAttachment attachment = AnnouncementAttachment.create(
+                announcement,
+                "모집공고문.pdf",
+                AttachmentType.ANNOUNCEMENT,
+                "https://example.com/files/announcement.pdf",
+                1
+        );
+        entityManager.persist(supplyTarget);
+        entityManager.persist(schedule);
+        entityManager.persist(attachment);
+        entityManager.flush();
+
+        Object[] storedCodes = (Object[]) entityManager.createNativeQuery(
+                        """
+                        SELECT status, supply_type, recruitment_type, provider, reception_method
+                        FROM announcements
+                        WHERE id = :announcementId
+                        """
+                )
+                .setParameter("announcementId", announcement.getId())
+                .getSingleResult();
+
+        assertAll(
+                () -> assertEquals("ORIGINAL", storedCodes[0]),
+                () -> assertEquals("HAPPY_HOUSING", storedCodes[1]),
+                () -> assertEquals("NEW", storedCodes[2]),
+                () -> assertEquals("LH", storedCodes[3]),
+                () -> assertEquals("ONLINE", storedCodes[4])
+        );
+
+        entityManager.createNativeQuery(
+                        """
+                        UPDATE announcements
+                        SET status = '정정공고', supply_type = '행복주택', recruitment_type = '신규모집',
+                            provider = '한국토지주택공사', reception_method = '인터넷'
+                        WHERE id = :announcementId
+                        """
+                )
+                .setParameter("announcementId", announcement.getId())
+                .executeUpdate();
+        entityManager.createNativeQuery(
+                        "UPDATE announcement_schedules SET schedule_type = '접수' WHERE id = :scheduleId"
+                )
+                .setParameter("scheduleId", schedule.getId())
+                .executeUpdate();
+        entityManager.createNativeQuery(
+                        "UPDATE announcement_attachments SET file_type = '공고문' WHERE id = :attachmentId"
+                )
+                .setParameter("attachmentId", attachment.getId())
+                .executeUpdate();
+        entityManager.clear();
+
+        Announcement foundAnnouncement = entityManager.find(Announcement.class, announcement.getId());
+        SupplyRow foundSupplyRow = entityManager.find(SupplyRow.class, supplyRow.getId());
+        SupplyTarget foundSupplyTarget = entityManager.find(SupplyTarget.class, supplyTarget.getId());
+        AnnouncementSchedule foundSchedule = entityManager.find(AnnouncementSchedule.class, schedule.getId());
+        AnnouncementAttachment foundAttachment = entityManager.find(AnnouncementAttachment.class, attachment.getId());
+
+        assertAll(
+                () -> assertEquals(AnnouncementPublicationType.CORRECTION, foundAnnouncement.getStatus()),
+                () -> assertEquals(RentalType.HAPPY_HOUSING, foundAnnouncement.getSupplyType()),
+                () -> assertEquals(RecruitmentType.NEW, foundAnnouncement.getRecruitmentType()),
+                () -> assertEquals(AgencyCode.LH, foundAnnouncement.getProvider()),
+                () -> assertEquals(ReceptionMethod.ONLINE, foundAnnouncement.getReceptionPlace().getMethod()),
+                () -> assertEquals(new BigDecimal("1.2500"), foundAnnouncement.getActualCompetitionRate()),
+                () -> assertEquals(new BigDecimal("2.5000"), foundAnnouncement.getPredictedCompetitionRate()),
+                () -> assertEquals(ScheduleType.APPLICATION, foundSchedule.getScheduleType()),
+                () -> assertEquals(AttachmentType.ANNOUNCEMENT, foundAttachment.getFileType()),
+                () -> assertNull(foundSupplyRow.getExpectedMoveInMonth()),
+                () -> assertNull(foundSupplyRow.getTotalSupplyHouseholdCount()),
+                () -> assertNull(foundSupplyTarget.getSupplyRank()),
+                () -> assertNull(foundSupplyTarget.getSupplyHouseholdCount()),
+                () -> assertNull(foundSupplyTarget.getReserveCount()),
+                () -> assertNull(foundSupplyTarget.getRentalDeposit()),
+                () -> assertNull(foundSupplyTarget.getMonthlyRent()),
+                () -> assertNull(foundSupplyTarget.getConvertedDeposit()),
+                () -> assertNull(foundSupplyTarget.getApplicationCondition())
+        );
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "announcements, status",
+            "announcements, supply_type",
+            "announcements, recruitment_type",
+            "announcements, provider",
+            "announcements, reception_method",
+            "announcement_schedules, schedule_type",
+            "announcement_attachments, file_type",
+            "supply_rows, supply_category"
+    })
+    void DB는_허용되지_않은_enum_값을_거부한다(String tableName, String columnName) {
+        Announcement announcement = createAnnouncement(
+                null,
+                null,
+                null,
+                "invalid-enum-source",
+                "원공고"
+        );
+        entityManager.persist(announcement);
+        SupplyRow supplyRow = createSupplyRow(announcement, null, null, 1, "미매칭");
+        AnnouncementSchedule schedule = createAnnouncementSchedule(announcement);
+        AnnouncementAttachment attachment = createAnnouncementAttachment(announcement);
+        entityManager.persist(supplyRow);
+        entityManager.persist(schedule);
+        entityManager.persist(attachment);
+        entityManager.flush();
+        Map<String, Long> rowIds = Map.of(
+                "announcements", announcement.getId(),
+                "announcement_schedules", schedule.getId(),
+                "announcement_attachments", attachment.getId(),
+                "supply_rows", supplyRow.getId()
+        );
+
+        String updateSql = "UPDATE " + tableName
+                + " SET " + columnName + " = 'INVALID_ENUM_VALUE' WHERE id = :id";
+
+        assertThrows(
+                PersistenceException.class,
+                () -> entityManager.createNativeQuery(updateSql)
+                        .setParameter("id", rowIds.get(tableName))
+                        .executeUpdate()
         );
     }
 

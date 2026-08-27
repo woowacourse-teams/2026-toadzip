@@ -13,7 +13,7 @@ fail() {
 
 make_valid_fixture() {
   root=$1
-  mkdir -p "$root/backend/docs" "$root/.codex/agents"
+  mkdir -p "$root/backend/docs" "$root/frontend/docs" "$root/.codex/agents"
   printf '%s\n' '# Service' > "$root/SERVICE_OVERVIEW.md"
   printf '%s\n' '# Project' > "$root/README.md"
   printf '%s\n' '# Contributing' > "$root/CONTRIBUTING.md"
@@ -21,6 +21,7 @@ make_valid_fixture() {
   printf '%s\n' '# Repository map' \
     '[SERVICE_OVERVIEW.md](SERVICE_OVERVIEW.md)' \
     '[backend/AGENTS.md](backend/AGENTS.md)' \
+    '[frontend/AGENTS.md](frontend/AGENTS.md)' \
     '[CONTRIBUTING.md](CONTRIBUTING.md)' \
     '[backend/CODE_CONVENTION.md](backend/CODE_CONVENTION.md)' \
     > "$root/AGENTS.md"
@@ -31,6 +32,17 @@ make_valid_fixture() {
     '[CODE_CONVENTION.md](../CODE_CONVENTION.md)' \
     '[CONTRIBUTING.md](../../CONTRIBUTING.md)' \
     > "$root/backend/docs/README.md"
+  printf '%s\n' '# Frontend' '[AGENTS.md](AGENTS.md)' \
+    > "$root/frontend/README.md"
+  printf '%s\n' '# Frontend agent map' \
+    '[SERVICE_OVERVIEW.md](../SERVICE_OVERVIEW.md)' \
+    '[CONTRIBUTING.md](../CONTRIBUTING.md)' \
+    '[README.md](README.md)' \
+    '[development-standards.md](docs/development-standards.md)' \
+    '[quality-gates.md](docs/quality-gates.md)' > "$root/frontend/AGENTS.md"
+  printf '%s\n' '# Development standards' \
+    > "$root/frontend/docs/development-standards.md"
+  printf '%s\n' '# Quality gates' > "$root/frontend/docs/quality-gates.md"
   for name in architecture layer-boundaries development-cycle api-conventions \
     exception-handling \
     persistence testing security observability \
@@ -48,6 +60,39 @@ make_valid_fixture() {
 
 make_valid_fixture "$fixture/valid"
 "$validator" "$fixture/valid" >/dev/null || fail "valid harness must pass"
+
+make_valid_fixture "$fixture/missing-frontend-guide"
+rm "$fixture/missing-frontend-guide/frontend/docs/development-standards.md"
+if "$validator" "$fixture/missing-frontend-guide" >/dev/null 2>&1; then
+  fail "missing frontend development guide must fail"
+fi
+
+make_valid_fixture "$fixture/unlinked-frontend-entry"
+sed '/frontend\/AGENTS.md/d' "$fixture/unlinked-frontend-entry/AGENTS.md" \
+  > "$fixture/unlinked-frontend-entry/AGENTS.tmp"
+mv "$fixture/unlinked-frontend-entry/AGENTS.tmp" \
+  "$fixture/unlinked-frontend-entry/AGENTS.md"
+if "$validator" "$fixture/unlinked-frontend-entry" >/dev/null 2>&1; then
+  fail "unlinked frontend agent entrypoint must fail"
+fi
+
+make_valid_fixture "$fixture/unlinked-frontend-quality"
+sed '/quality-gates.md/d' "$fixture/unlinked-frontend-quality/frontend/AGENTS.md" \
+  > "$fixture/unlinked-frontend-quality/frontend/AGENTS.tmp"
+mv "$fixture/unlinked-frontend-quality/frontend/AGENTS.tmp" \
+  "$fixture/unlinked-frontend-quality/frontend/AGENTS.md"
+if "$validator" "$fixture/unlinked-frontend-quality" >/dev/null 2>&1; then
+  fail "unlinked frontend quality guide must fail"
+fi
+
+make_valid_fixture "$fixture/unlinked-frontend-readme"
+sed '/AGENTS.md/d' "$fixture/unlinked-frontend-readme/frontend/README.md" \
+  > "$fixture/unlinked-frontend-readme/frontend/README.tmp"
+mv "$fixture/unlinked-frontend-readme/frontend/README.tmp" \
+  "$fixture/unlinked-frontend-readme/frontend/README.md"
+if "$validator" "$fixture/unlinked-frontend-readme" >/dev/null 2>&1; then
+  fail "frontend README without agent entrypoint must fail"
+fi
 
 make_valid_fixture "$fixture/long"
 i=0
@@ -109,6 +154,55 @@ if "$validator" "$fixture/writable-role" >/dev/null 2>&1; then
   fail "writable backend role must fail"
 fi
 
+make_valid_fixture "$fixture/commented-read-only-role"
+sed 's/sandbox_mode = "read-only"/sandbox_mode = "workspace-write"\n# sandbox_mode = "read-only"/' \
+  "$fixture/commented-read-only-role/.codex/agents/backend_architect.toml" \
+  > "$fixture/commented-read-only-role/.codex/agents/backend_architect.tmp"
+mv "$fixture/commented-read-only-role/.codex/agents/backend_architect.tmp" \
+  "$fixture/commented-read-only-role/.codex/agents/backend_architect.toml"
+if "$validator" "$fixture/commented-read-only-role" >/dev/null 2>&1; then
+  fail "comment must not disguise writable backend role"
+fi
+
+make_valid_fixture "$fixture/string-read-only-role"
+sed 's/sandbox_mode = "read-only"/sandbox_mode = "workspace-write"/' \
+  "$fixture/string-read-only-role/.codex/agents/backend_architect.toml" \
+  > "$fixture/string-read-only-role/.codex/agents/backend_architect.tmp"
+printf '%s\n' 'developer_instructions = """' \
+  'sandbox_mode = "read-only"' '"""' \
+  >> "$fixture/string-read-only-role/.codex/agents/backend_architect.tmp"
+mv "$fixture/string-read-only-role/.codex/agents/backend_architect.tmp" \
+  "$fixture/string-read-only-role/.codex/agents/backend_architect.toml"
+if "$validator" "$fixture/string-read-only-role" >/dev/null 2>&1; then
+  fail "string must not disguise writable backend role"
+fi
+
+make_valid_fixture "$fixture/comment-delimiter-role"
+sed 's/sandbox_mode = "read-only"/# """\nsandbox_mode = "workspace-write"/' \
+  "$fixture/comment-delimiter-role/.codex/agents/backend_architect.toml" \
+  > "$fixture/comment-delimiter-role/.codex/agents/backend_architect.tmp"
+printf '%s\n' 'developer_instructions = """' \
+  'sandbox_mode = "read-only"' '"""' \
+  >> "$fixture/comment-delimiter-role/.codex/agents/backend_architect.tmp"
+mv "$fixture/comment-delimiter-role/.codex/agents/backend_architect.tmp" \
+  "$fixture/comment-delimiter-role/.codex/agents/backend_architect.toml"
+if "$validator" "$fixture/comment-delimiter-role" >/dev/null 2>&1; then
+  fail "comment delimiter must not disguise writable backend role"
+fi
+
+make_valid_fixture "$fixture/string-only-role"
+sed '/sandbox_mode = "read-only"/d' \
+  "$fixture/string-only-role/.codex/agents/backend_architect.toml" \
+  > "$fixture/string-only-role/.codex/agents/backend_architect.tmp"
+printf '%s\n' 'developer_instructions = """' \
+  'sandbox_mode = "read-only"' '"""' \
+  >> "$fixture/string-only-role/.codex/agents/backend_architect.tmp"
+mv "$fixture/string-only-role/.codex/agents/backend_architect.tmp" \
+  "$fixture/string-only-role/.codex/agents/backend_architect.toml"
+if "$validator" "$fixture/string-only-role" >/dev/null 2>&1; then
+  fail "string-only sandbox mode must fail"
+fi
+
 make_valid_fixture "$fixture/root-only"
 rm -rf "$fixture/root-only/backend"
 mkdir -p "$fixture/root-only/docs"
@@ -161,10 +255,12 @@ while [ "$i" -lt 100 ]; do
   printf 'CONTRIBUTING line %s\n' "$i" >> "$fixture/project-docs/CONTRIBUTING.md"
   printf 'CODE_CONVENTION line %s\n' "$i" \
     >> "$fixture/project-docs/backend/CODE_CONVENTION.md"
+  printf 'DEVELOPMENT line %s\n' "$i" \
+    >> "$fixture/project-docs/frontend/docs/development-standards.md"
   printf 'SETUP line %s\n' "$i" >> "$fixture/project-docs/docs/SETUP.md"
   i=$((i + 1))
 done
 "$validator" "$fixture/project-docs" >/dev/null \
-  || fail "project Markdown outside the harness contract must pass"
+  || fail "documents without line limits must pass"
 
 echo "PASS: harness validator behavior"
