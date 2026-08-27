@@ -13,6 +13,7 @@ import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.MapBounds;
+import com.toadzip.backend.housing.service.HousingComplexCursorCodec;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -160,6 +161,96 @@ class ComplexSummaryQueryRepositoryTest {
         );
     }
 
+    @Test
+    void 최신_대표공고_게시일과_단지_ID로_안정적으로_페이지를_나눈다() {
+        HousingComplex noAnnouncement = persistComplex("공고 없는 단지", "37.500000", "126.900000");
+        HousingComplex cancelled = persistComplex("취소 단지", "37.500000", "126.900000");
+        HousingComplex older = persistComplex("오래된 단지", "37.500000", "126.900000");
+        HousingComplex sameDateSmaller = persistComplex("동일일 작은 ID", "37.500000", "126.900000");
+        HousingComplex cursorComplex = persistComplex("커서 단지", "37.500000", "126.900000");
+        HousingComplex corrected = persistComplex("정정 단지", "37.500000", "126.900000");
+        HousingComplex nullDateGreater = persistComplex("공고 없는 큰 ID", "37.500000", "126.900000");
+
+        persistRepresentative(older, "ORIGINAL", LocalDate.of(2026, 8, 8), "older");
+        persistRepresentative(sameDateSmaller, "ORIGINAL", LocalDate.of(2026, 8, 9), "same-smaller");
+        persistRepresentative(cursorComplex, "ORIGINAL", LocalDate.of(2026, 8, 9), "cursor");
+
+        Announcement cancelledOriginal = persistRepresentative(
+                cancelled,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 7),
+                "cancelled-original"
+        );
+        Announcement cancellation = persistAnnouncement(
+                cancelledOriginal,
+                "CANCELLATION",
+                LocalDate.of(2026, 8, 10),
+                "cancellation-leaf"
+        );
+        persistSupplyRow(cancellation, cancelled, null, "cancellation-row", 1);
+
+        Announcement correctedOriginal = persistRepresentative(
+                corrected,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 6),
+                "corrected-original"
+        );
+        Announcement correction = persistAnnouncement(
+                correctedOriginal,
+                "CORRECTION",
+                LocalDate.of(2026, 8, 10),
+                "correction-leaf"
+        );
+        persistSupplyRow(correction, corrected, null, "correction-row", 1);
+
+        Announcement unmatched = persistAnnouncement(null, "ORIGINAL", LocalDate.of(2026, 8, 12), "unmatched");
+        persistUnmatchedSupplyRow(unmatched);
+        entityManager.flush();
+
+        List<ComplexSummaryRow> first = repository.findFirstPage(SEOUL_BOUNDS, 3);
+        assertEquals(
+                List.of(corrected.getId(), cursorComplex.getId(), sameDateSmaller.getId()),
+                ids(first)
+        );
+        HousingComplexCursorCodec.HousingComplexCursor cursor = cursorOf(first.get(1));
+        List<ComplexSummaryRow> second = repository.findPageAfter(SEOUL_BOUNDS, cursor, 10);
+
+        assertAll(
+                () -> assertEquals(correction.getId(), first.getFirst().announcementId()),
+                () -> assertEquals("CORRECTION", first.getFirst().publicationType()),
+                () -> assertEquals(
+                        List.of(
+                                sameDateSmaller.getId(),
+                                older.getId(),
+                                nullDateGreater.getId(),
+                                cancelled.getId(),
+                                noAnnouncement.getId()
+                        ),
+                        ids(second)
+                ),
+                () -> assertNull(second.get(3).announcementId()),
+                () -> assertNull(second.get(4).announcementId())
+        );
+    }
+
+    @Test
+    void 게시일이_null인_커서_뒤에는_더_작은_ID의_null_게시일_단지만_포함한다() {
+        HousingComplex smaller = persistComplex("작은 ID", "37.500000", "126.900000");
+        HousingComplex cursorComplex = persistComplex("null 커서 단지", "37.500000", "126.900000");
+        HousingComplex greater = persistComplex("큰 ID", "37.500000", "126.900000");
+        HousingComplex announced = persistComplex("공고 단지", "37.500000", "126.900000");
+        persistRepresentative(announced, "ORIGINAL", LocalDate.of(2026, 8, 1), "announced");
+        entityManager.flush();
+
+        List<ComplexSummaryRow> page = repository.findPageAfter(
+                SEOUL_BOUNDS,
+                new HousingComplexCursorCodec.HousingComplexCursor(null, cursorComplex.getId()),
+                10
+        );
+
+        assertEquals(List.of(smaller.getId()), ids(page));
+    }
+
     private HousingComplex persistComplex(String name, String latitude, String longitude) {
         HousingComplex complex = HousingComplex.create(
                 name,
@@ -240,6 +331,17 @@ class ComplexSummaryQueryRepositoryTest {
         return announcement;
     }
 
+    private Announcement persistRepresentative(
+            HousingComplex complex,
+            String status,
+            LocalDate postedDate,
+            String suffix
+    ) {
+        Announcement announcement = persistAnnouncement(null, status, postedDate, suffix);
+        persistSupplyRow(announcement, complex, null, suffix + "-row", 1);
+        return announcement;
+    }
+
     private SupplyRow persistSupplyRow(
             Announcement announcement,
             HousingComplex complex,
@@ -254,7 +356,7 @@ class ComplexSummaryQueryRepositoryTest {
                 sourceIdentifier,
                 displayOrder,
                 complex.getName(),
-                housingType.getName(),
+                sourceHousingTypeName(housingType),
                 "1114010100100010000",
                 YearMonth.of(2027, 3),
                 SupplyCategory.NEW_SUPPLY,
@@ -263,6 +365,13 @@ class ComplexSummaryQueryRepositoryTest {
         );
         entityManager.persist(supplyRow);
         return supplyRow;
+    }
+
+    private String sourceHousingTypeName(HousingType housingType) {
+        if (housingType == null) {
+            return "36A";
+        }
+        return housingType.getName();
     }
 
     private void persistSupplyTarget(
@@ -284,6 +393,32 @@ class ComplexSummaryQueryRepositoryTest {
                 "신청 조건",
                 displayOrder
         ));
+    }
+
+    private void persistUnmatchedSupplyRow(Announcement announcement) {
+        SupplyRow supplyRow = SupplyRow.create(
+                announcement,
+                null,
+                null,
+                "unmatched-row",
+                1,
+                "매칭되지 않은 단지",
+                "36A",
+                "1114010100100010000",
+                YearMonth.of(2027, 3),
+                SupplyCategory.NEW_SUPPLY,
+                "단지 매칭 실패",
+                10
+        );
+        entityManager.persist(supplyRow);
+    }
+
+    private HousingComplexCursorCodec.HousingComplexCursor cursorOf(ComplexSummaryRow row) {
+        return new HousingComplexCursorCodec.HousingComplexCursor(row.postedDate(), row.complexId());
+    }
+
+    private List<Long> ids(List<ComplexSummaryRow> rows) {
+        return rows.stream().map(ComplexSummaryRow::complexId).toList();
     }
 
     private void assertBigDecimalEquals(String expected, BigDecimal actual) {

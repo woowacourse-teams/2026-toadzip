@@ -7,11 +7,12 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 import com.toadzip.backend.housing.domain.MapBounds;
+import com.toadzip.backend.housing.service.HousingComplexCursorCodec.HousingComplexCursor;
 
 @Repository
 public class ComplexSummaryQueryRepository {
 
-    private static final String FIND_ALL_IN_BOUNDS = """
+    private static final String BASE_SUMMARY_QUERY = """
             WITH latest_leaf AS (
                 SELECT announcement.*
                 FROM announcements announcement
@@ -77,7 +78,35 @@ public class ComplexSummaryQueryRepository {
             LEFT JOIN price_range ON price_range.housing_complex_id = housing_complex.id
             WHERE housing_complex.latitude BETWEEN :southWestLat AND :northEastLat
               AND housing_complex.longitude BETWEEN :southWestLng AND :northEastLng
+            """;
+
+    private static final String FIND_ALL_IN_BOUNDS = BASE_SUMMARY_QUERY + """
             ORDER BY housing_complex.id
+            """;
+
+    private static final String FIND_FIRST_PAGE = BASE_SUMMARY_QUERY + """
+            ORDER BY representative.posted_date DESC NULLS LAST, housing_complex.id DESC
+            LIMIT :limit
+            """;
+
+    private static final String FIND_PAGE_AFTER_POSTED_DATE = BASE_SUMMARY_QUERY + """
+              AND (
+                    representative.posted_date < :cursorPostedDate
+                    OR (
+                        representative.posted_date = :cursorPostedDate
+                        AND housing_complex.id < :cursorComplexId
+                    )
+                    OR representative.posted_date IS NULL
+              )
+            ORDER BY representative.posted_date DESC NULLS LAST, housing_complex.id DESC
+            LIMIT :limit
+            """;
+
+    private static final String FIND_PAGE_AFTER_NULL_DATE = BASE_SUMMARY_QUERY + """
+              AND representative.posted_date IS NULL
+              AND housing_complex.id < :cursorComplexId
+            ORDER BY representative.posted_date DESC NULLS LAST, housing_complex.id DESC
+            LIMIT :limit
             """;
 
     private final JdbcClient jdbcClient;
@@ -92,6 +121,49 @@ public class ComplexSummaryQueryRepository {
                 .param("southWestLng", bounds.southWestLng())
                 .param("northEastLat", bounds.northEastLat())
                 .param("northEastLng", bounds.northEastLng())
+                .query(this::mapRow)
+                .list();
+    }
+
+    public List<ComplexSummaryRow> findFirstPage(MapBounds bounds, int limit) {
+        return jdbcClient.sql(FIND_FIRST_PAGE)
+                .param("southWestLat", bounds.southWestLat())
+                .param("southWestLng", bounds.southWestLng())
+                .param("northEastLat", bounds.northEastLat())
+                .param("northEastLng", bounds.northEastLng())
+                .param("limit", limit)
+                .query(this::mapRow)
+                .list();
+    }
+
+    public List<ComplexSummaryRow> findPageAfter(MapBounds bounds, HousingComplexCursor cursor, int limit) {
+        if (cursor.postedDate() == null) {
+            return findPageAfterNullDate(bounds, cursor, limit);
+        }
+        return jdbcClient.sql(FIND_PAGE_AFTER_POSTED_DATE)
+                .param("southWestLat", bounds.southWestLat())
+                .param("southWestLng", bounds.southWestLng())
+                .param("northEastLat", bounds.northEastLat())
+                .param("northEastLng", bounds.northEastLng())
+                .param("cursorPostedDate", cursor.postedDate())
+                .param("cursorComplexId", cursor.complexId())
+                .param("limit", limit)
+                .query(this::mapRow)
+                .list();
+    }
+
+    private List<ComplexSummaryRow> findPageAfterNullDate(
+            MapBounds bounds,
+            HousingComplexCursor cursor,
+            int limit
+    ) {
+        return jdbcClient.sql(FIND_PAGE_AFTER_NULL_DATE)
+                .param("southWestLat", bounds.southWestLat())
+                .param("southWestLng", bounds.southWestLng())
+                .param("northEastLat", bounds.northEastLat())
+                .param("northEastLng", bounds.northEastLng())
+                .param("cursorComplexId", cursor.complexId())
+                .param("limit", limit)
                 .query(this::mapRow)
                 .list();
     }

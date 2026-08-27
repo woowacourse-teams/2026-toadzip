@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.toadzip.backend.global.response.ApiResponse;
 import com.toadzip.backend.housing.domain.MapBounds;
+import com.toadzip.backend.housing.dto.response.HousingComplexListResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexMapResponse;
 import com.toadzip.backend.housing.service.HousingComplexQueryService;
 
@@ -19,6 +20,19 @@ public class HousingComplexController {
 
     public HousingComplexController(HousingComplexQueryService queryService) {
         this.queryService = queryService;
+    }
+
+    @GetMapping
+    public ApiResponse<HousingComplexListResponse> getComplexes(
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) BigDecimal southWestLat,
+            @RequestParam(required = false) BigDecimal southWestLng,
+            @RequestParam(required = false) BigDecimal northEastLat,
+            @RequestParam(required = false) BigDecimal northEastLng
+    ) {
+        MapBounds bounds = MapBounds.of(southWestLat, southWestLng, northEastLat, northEastLng);
+        return new ApiResponse<>(queryService.getComplexes(bounds, cursor, size));
     }
 
     @GetMapping("/map")

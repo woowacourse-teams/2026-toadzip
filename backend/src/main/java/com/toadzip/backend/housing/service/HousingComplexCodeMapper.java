@@ -29,4 +29,12 @@ public class HousingComplexCodeMapper {
             default -> throw new IllegalStateException("지원하지 않는 공급기관 저장값이다.");
         };
     }
+
+    public String toPublicationType(String storedValue) {
+        return switch (storedValue) {
+            case "ORIGINAL", "원공고" -> "ORIGINAL";
+            case "CORRECTION", "정정공고" -> "CORRECTION";
+            default -> throw new IllegalStateException("지원하지 않는 공고구분 저장값이다.");
+        };
+    }
 }
