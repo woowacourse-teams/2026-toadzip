@@ -1,6 +1,7 @@
 package com.toadzip.backend.admin.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -65,14 +66,27 @@ class AdminAuthenticationIntegrationTest {
     void 비로그인_관리자_조회는_401을_반환한다() throws Exception {
         mockMvc.perform(get("/api/admin/auth/me"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
+                .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"))
+                .andExpect(jsonPath("$.message").value("관리자 로그인이 필요합니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
     }
 
     @Test
     void CSRF_토큰_없이_로그인할_수_없다() throws Exception {
         mockMvc.perform(loginRequest("correct-password"))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"))
+                .andExpect(jsonPath("$.message").value("관리자 권한이 필요합니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
+    }
+
+    @Test
+    void 관리자_권한이_아닌_인증_주체는_403_오류_계약을_반환한다() throws Exception {
+        mockMvc.perform(get("/api/admin/auth/me").with(user("member").roles("USER")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"))
+                .andExpect(jsonPath("$.message").value("관리자 권한이 필요합니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
     }
 
     @Test
@@ -112,7 +126,9 @@ class AdminAuthenticationIntegrationTest {
                         .cookie(csrfFixture.cookie())
                         .header(csrfFixture.headerName(), csrfFixture.token()))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("INVALID_ADMIN_CREDENTIALS"));
+                .andExpect(jsonPath("$.code").value("INVALID_ADMIN_CREDENTIALS"))
+                .andExpect(jsonPath("$.message").value("관리자 로그인 정보가 올바르지 않습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
 
         assertAuditLog(AdminAuthenticationAuditAction.LOGIN, AdminAuthenticationAuditResult.FAILURE);
     }
@@ -132,7 +148,25 @@ class AdminAuthenticationIntegrationTest {
                         .cookie(csrfFixture.cookie())
                         .header(csrfFixture.headerName(), csrfFixture.token()))
                 .andExpect(status().isTooManyRequests())
-                .andExpect(jsonPath("$.code").value("LOGIN_ATTEMPTS_EXCEEDED"));
+                .andExpect(jsonPath("$.code").value("LOGIN_ATTEMPTS_EXCEEDED"))
+                .andExpect(jsonPath("$.message").value("로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
+    }
+
+    @Test
+    void 로그인_요청값_검증_실패는_공통_오류_계약을_반환한다() throws Exception {
+        CsrfFixture csrfFixture = issueCsrfToken();
+
+        mockMvc.perform(post("/api/admin/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"loginIdentifier\":\"\",\"password\":\"\"}")
+                        .cookie(csrfFixture.cookie())
+                        .header(csrfFixture.headerName(), csrfFixture.token()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("요청값이 올바르지 않습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(jsonPath("$.errors.length()").value(2));
     }
 
     private void assertAuditLog(

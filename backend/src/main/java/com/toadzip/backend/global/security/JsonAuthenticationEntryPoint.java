@@ -22,6 +22,7 @@ public class JsonAuthenticationEntryPoint implements AuthenticationEntryPoint {
             AuthenticationException authenticationException
     ) throws IOException, ServletException {
         securityErrorResponseWriter.write(
+                request,
                 response,
                 HttpServletResponse.SC_UNAUTHORIZED,
                 "AUTHENTICATION_REQUIRED",

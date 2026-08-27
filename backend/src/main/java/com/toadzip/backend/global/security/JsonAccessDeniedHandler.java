@@ -22,6 +22,7 @@ public class JsonAccessDeniedHandler implements AccessDeniedHandler {
             AccessDeniedException accessDeniedException
     ) throws IOException, ServletException {
         securityErrorResponseWriter.write(
+                request,
                 response,
                 HttpServletResponse.SC_FORBIDDEN,
                 "ACCESS_DENIED",
