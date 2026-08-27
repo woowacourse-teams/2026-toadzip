@@ -294,6 +294,44 @@ class MyHomeComplexMappingServiceTest {
     }
 
     @Test
+    void 준비된_후_변환_불가로_바뀐_후보는_실패만_기록하고_제거한다() {
+        MyHomeComplexSource source = source("46A", "46.8000", "20.2000");
+        sourceRepository.save(source);
+        service.prepare();
+        source.replaceWith(dataWith(
+                123L, "46A", "46.8000", "20.2000", "서울주택도시공사",
+                null, "국민임대", "20200101", "지역난방", "아파트", "복도식", "전체동 설치"
+        ));
+        sourceRepository.save(source);
+
+        var preparation = service.prepare();
+
+        assertThat(preparation.stagedCandidateCount()).isZero();
+        assertThat(preparation.failedSourceRowCount()).isOne();
+        assertThat(candidateRepository.findAll()).isEmpty();
+        assertThat(service.mapNext(100).failedSourceRowCount()).isZero();
+    }
+
+    @Test
+    void 준비된_후_변환_불가로_바뀐_원천은_전체_매핑에서_한_번만_실패로_집계한다() {
+        MyHomeComplexSource source = source("46A", "46.8000", "20.2000");
+        sourceRepository.save(source);
+        service.prepare();
+        source.replaceWith(dataWith(
+                123L, "46A", "46.8000", "20.2000", "서울주택도시공사",
+                null, "국민임대", "20200101", "지역난방", "아파트", "복도식", "전체동 설치"
+        ));
+        sourceRepository.save(source);
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isOne();
+        assertThat(candidateRepository.findAll()).isEmpty();
+        assertThat(complexRepository.findAll()).isEmpty();
+        verify(geocodingService, never()).geocode(anyString());
+    }
+
+    @Test
     void 실패했던_원천이_정상화되면_현재_실패_목록에서_제거한다() {
         MyHomeComplexSource source = source(data(
                 123L,

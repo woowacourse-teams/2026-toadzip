@@ -116,9 +116,12 @@ public class MyHomeComplexMappingService {
         for (Map.Entry<String, List<MyHomeComplexSource>> entry : groupedSources.entrySet()) {
             prepareCandidate(entry.getKey(), entry.getValue(), storedCandidates, preparedCandidates, failures, occurredAt);
         }
+        Set<String> preparedCandidateIdentifiers = preparedCandidates.stream()
+                .map(MyHomeComplexMappingCandidate::getSourceComplexIdentifier)
+                .collect(Collectors.toSet());
         List<MyHomeComplexMappingCandidate> staleCandidates = storedCandidates.values()
                 .stream()
-                .filter(candidate -> !groupedSources.containsKey(candidate.getSourceComplexIdentifier()))
+                .filter(candidate -> !preparedCandidateIdentifiers.contains(candidate.getSourceComplexIdentifier()))
                 .toList();
         candidateStore.synchronize(preparedCandidates, staleCandidates);
         failureStore.replaceAll(failures);
