@@ -29,7 +29,8 @@ public class JusoCoordinateRequestRateLimiter {
     public synchronized void acquire() {
         long currentNanos = nanoTime.getAsLong();
         waitUntilAvailable(currentNanos);
-        nextRequestNanos = Math.max(currentNanos, nextRequestNanos) + REQUEST_INTERVAL_NANOS;
+        long availableNanos = nanoTime.getAsLong();
+        nextRequestNanos = Math.max(availableNanos, nextRequestNanos) + REQUEST_INTERVAL_NANOS;
     }
 
     private void waitUntilAvailable(long currentNanos) {
