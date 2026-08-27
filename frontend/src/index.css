@@ -211,10 +211,23 @@ a {
   cursor: not-allowed;
 }
 
+.housing-results__panel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.housing-results__panel[hidden] {
+  display: none;
+}
+
 .housing-results__scroll {
   min-height: 0;
   padding: 16px;
   overflow-y: auto;
+  flex: 1;
 }
 
 .housing-results__list {

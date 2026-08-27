@@ -1,10 +1,14 @@
 import type {
+  AnnouncementListItem,
+  AnnouncementPage,
   ComplexCurrentAnnouncement,
   ComplexDetail,
   ComplexHousingType,
   ComplexListItem,
   ComplexPage,
   MapComplex,
+  RawAnnouncementListItem,
+  RawAnnouncementPage,
   RawComplexCurrentAnnouncement,
   RawComplexDetail,
   RawComplexHousingType,
@@ -18,6 +22,15 @@ import type {
 export function toComplexPage(raw: RawComplexPage): ComplexPage {
   return {
     items: raw.items.map(toComplexListItem),
+    nextCursor: raw.nextCursor,
+    hasNext: raw.hasNext,
+    raw,
+  }
+}
+
+export function toAnnouncementPage(raw: RawAnnouncementPage): AnnouncementPage {
+  return {
+    items: raw.items.map(toAnnouncementListItem),
     nextCursor: raw.nextCursor,
     hasNext: raw.hasNext,
     raw,
@@ -72,6 +85,32 @@ function toComplexListItem(raw: RawComplexListItem): ComplexListItem {
     representativeAnnouncement: toRepresentativeAnnouncement(
       raw.representativeAnnouncement,
     ),
+    raw,
+  }
+}
+
+function toAnnouncementListItem(
+  raw: RawAnnouncementListItem,
+): AnnouncementListItem {
+  return {
+    announcementId: canonicalId(raw.announcementId),
+    publicationType: raw.publicationType,
+    applicationStatus: raw.applicationStatus,
+    rentalType: raw.rentalType,
+    recruitmentType: raw.recruitmentType,
+    title: raw.title,
+    regionNames: raw.regionNames,
+    publishedAt: raw.publishedAt,
+    applicationStartAt: raw.applicationStartAt,
+    applicationEndAt: raw.applicationEndAt,
+    dDay: raw.dDay,
+    viewCount: raw.viewCount,
+    supplyComplexCount: raw.supplyComplexCount,
+    supplyHouseholdCount: raw.supplyHouseholdCount,
+    agency: raw.agency,
+    actualCompetitionRate: raw.actualCompetitionRate,
+    predictedCompetitionRate: raw.predictedCompetitionRate,
+    thumbnailImageUrl: raw.thumbnailImageUrl,
     raw,
   }
 }

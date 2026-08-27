@@ -1,22 +1,26 @@
 import type {
+  AnnouncementPage,
   ComplexDetail,
   ComplexPage,
   MapBounds,
   MapComplex,
 } from '../model/publicHousing.ts'
 import {
+  decodeAnnouncementPageEnvelope,
   decodeComplexDetailEnvelope,
   decodeComplexPageEnvelope,
   decodeMapComplexEnvelope,
   PublicHousingContractError,
 } from './publicHousingContract.ts'
 import {
+  toAnnouncementPage,
   toComplexDetail,
   toComplexPage,
   toMapComplexes,
 } from './publicHousingMapper.ts'
 
 const COMPLEXES_PATH = '/api/v1/complexes'
+const ANNOUNCEMENTS_PATH = '/api/v1/announcements'
 const MAX_JAVA_LONG = 9_223_372_036_854_775_807n
 
 interface RepositoryOptions {
@@ -45,6 +49,11 @@ export interface PublicHousingRepository {
     complexId: string,
     signal: AbortSignal,
   ): Promise<ComplexDetail>
+  findAnnouncementPage(
+    cursor: string | null,
+    size: number,
+    signal: AbortSignal,
+  ): Promise<AnnouncementPage>
 }
 
 export class PublicHousingHttpError extends Error {
@@ -69,7 +78,7 @@ export function createHttpPublicHousingRepository(
 
   return {
     async findComplexPage(bounds, cursor, size, signal) {
-      validateSize(size)
+      validatePageSize(size)
       const search = boundsSearchParams(bounds)
       if (cursor !== null) {
         search.set('cursor', cursor)
@@ -102,6 +111,20 @@ export function createHttpPublicHousingRepository(
         signal,
       )
       return toComplexDetail(decodeComplexDetailEnvelope(payload))
+    },
+
+    async findAnnouncementPage(cursor, size, signal) {
+      validatePageSize(size)
+      const search = new URLSearchParams({ size: String(size) })
+      if (cursor !== null) {
+        search.set('cursor', cursor)
+      }
+      const payload = await requestJson(
+        fetcher,
+        `${apiBaseUrl}${ANNOUNCEMENTS_PATH}?${search.toString()}`,
+        signal,
+      )
+      return toAnnouncementPage(decodeAnnouncementPageEnvelope(payload))
     },
   }
 }
@@ -166,9 +189,9 @@ function validateBounds(bounds: MapBounds) {
   }
 }
 
-function validateSize(size: number) {
+function validatePageSize(size: number) {
   if (!Number.isInteger(size) || size < 1 || size > 50) {
-    throw new RangeError('단지 목록 크기는 1부터 50 사이의 정수여야 합니다.')
+    throw new RangeError('목록 크기는 1부터 50 사이의 정수여야 합니다.')
   }
 }
 

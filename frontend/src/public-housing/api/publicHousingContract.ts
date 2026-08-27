@@ -1,5 +1,7 @@
 import type {
   HousingAgency,
+  RawAnnouncementListItem,
+  RawAnnouncementPage,
   RawComplexAddress,
   RawComplexCurrentAnnouncement,
   RawComplexDetail,
@@ -25,6 +27,28 @@ export class PublicHousingContractError extends Error {
 export function decodeComplexPageEnvelope(value: unknown): RawComplexPage {
   const envelope = recordAt(value, '$')
   return decodeComplexPage(recordField(envelope, 'data', '$'), '$.data')
+}
+
+export function decodeAnnouncementPageEnvelope(
+  value: unknown,
+): RawAnnouncementPage {
+  const envelope = recordAt(value, '$')
+  const data = recordAt(recordField(envelope, 'data', '$'), '$.data')
+  const items = arrayAt(recordField(data, 'items', '$.data'), '$.data.items')
+
+  return {
+    items: items.map((item, index) =>
+      decodeAnnouncementListItem(item, `$.data.items[${index}]`),
+    ),
+    nextCursor: nullableStringAt(
+      recordField(data, 'nextCursor', '$.data'),
+      '$.data.nextCursor',
+    ),
+    hasNext: booleanAt(
+      recordField(data, 'hasNext', '$.data'),
+      '$.data.hasNext',
+    ),
+  }
 }
 
 export function decodeComplexDetailEnvelope(value: unknown): RawComplexDetail {
@@ -366,6 +390,88 @@ function decodeComplexListItem(
     representativeAnnouncement: decodeNullableRepresentativeAnnouncement(
       recordField(item, 'representativeAnnouncement', path),
       `${path}.representativeAnnouncement`,
+    ),
+  }
+}
+
+function decodeAnnouncementListItem(
+  value: unknown,
+  path: string,
+): RawAnnouncementListItem {
+  const item = recordAt(value, path)
+
+  return {
+    announcementId: positiveSafeIntegerAt(
+      recordField(item, 'announcementId', path),
+      `${path}.announcementId`,
+    ),
+    publicationType: nullableStringAt(
+      recordField(item, 'publicationType', path),
+      `${path}.publicationType`,
+    ),
+    applicationStatus: nullableStringAt(
+      recordField(item, 'applicationStatus', path),
+      `${path}.applicationStatus`,
+    ),
+    rentalType: nullableStringAt(
+      recordField(item, 'rentalType', path),
+      `${path}.rentalType`,
+    ),
+    recruitmentType: nullableStringAt(
+      recordField(item, 'recruitmentType', path),
+      `${path}.recruitmentType`,
+    ),
+    title: nullableStringAt(
+      recordField(item, 'title', path),
+      `${path}.title`,
+    ),
+    regionNames: stringArrayAt(
+      recordField(item, 'regionNames', path),
+      `${path}.regionNames`,
+    ),
+    publishedAt: nullableDateStringAt(
+      recordField(item, 'publishedAt', path),
+      `${path}.publishedAt`,
+    ),
+    applicationStartAt: nullableDateStringAt(
+      recordField(item, 'applicationStartAt', path),
+      `${path}.applicationStartAt`,
+    ),
+    applicationEndAt: nullableDateStringAt(
+      recordField(item, 'applicationEndAt', path),
+      `${path}.applicationEndAt`,
+    ),
+    dDay: nullableSafeIntegerAt(
+      recordField(item, 'dDay', path),
+      `${path}.dDay`,
+    ),
+    viewCount: safeIntegerAt(
+      recordField(item, 'viewCount', path),
+      `${path}.viewCount`,
+    ),
+    supplyComplexCount: safeIntegerAt(
+      recordField(item, 'supplyComplexCount', path),
+      `${path}.supplyComplexCount`,
+    ),
+    supplyHouseholdCount: nullableSafeIntegerAt(
+      recordField(item, 'supplyHouseholdCount', path),
+      `${path}.supplyHouseholdCount`,
+    ),
+    agency: decodeNullableAgency(
+      recordField(item, 'agency', path),
+      `${path}.agency`,
+    ),
+    actualCompetitionRate: nullableFiniteNumberAt(
+      recordField(item, 'actualCompetitionRate', path),
+      `${path}.actualCompetitionRate`,
+    ),
+    predictedCompetitionRate: nullableFiniteNumberAt(
+      recordField(item, 'predictedCompetitionRate', path),
+      `${path}.predictedCompetitionRate`,
+    ),
+    thumbnailImageUrl: nullableStringAt(
+      recordField(item, 'thumbnailImageUrl', path),
+      `${path}.thumbnailImageUrl`,
     ),
   }
 }

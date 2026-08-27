@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MapBounds } from '../model/publicHousing.ts'
 import {
+  decodeAnnouncementPageEnvelope,
   decodeComplexDetailEnvelope,
   decodeComplexPageEnvelope,
   PublicHousingContractError,
@@ -95,12 +96,147 @@ const COMPLEX_DETAIL = {
   ],
 }
 
+const ANNOUNCEMENT_ITEM = {
+  announcementId: 42,
+  publicationType: 'ORIGINAL',
+  applicationStatus: 'APPLYING',
+  rentalType: 'HAPPY_HOUSING',
+  recruitmentType: 'NEW',
+  title: null,
+  regionNames: [],
+  publishedAt: null,
+  applicationStartAt: '2026-08-10',
+  applicationEndAt: '2026-08-12',
+  dDay: 0,
+  viewCount: 0,
+  supplyComplexCount: 0,
+  supplyHouseholdCount: 0,
+  agency: null,
+  actualCompetitionRate: 0,
+  predictedCompetitionRate: null,
+  thumbnailImageUrl: null,
+}
+
 afterEach(() => {
   vi.unstubAllEnvs()
   vi.resetModules()
 })
 
 describe('공공주택 HTTP repository', () => {
+  it('공고 목록은 지도 bounds 없이 opaque cursor, size와 AbortSignal로 조회한다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        data: {
+          items: [ANNOUNCEMENT_ITEM],
+          nextCursor: 'next+/cursor',
+          hasNext: true,
+        },
+      }),
+    )
+    const repository = createRepository(fetchMock, 'https://api.example.test')
+    const controller = new AbortController()
+
+    const page = await repository.findAnnouncementPage(
+      'opaque+/cursor',
+      20,
+      controller.signal,
+    )
+
+    const [requestUrl, requestInit] = fetchMock.mock.calls[0] ?? []
+    const url = new URL(String(requestUrl))
+    expect(url.pathname).toBe('/api/v1/announcements')
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      size: '20',
+      cursor: 'opaque+/cursor',
+    })
+    expect(requestInit).toEqual(
+      expect.objectContaining({ signal: controller.signal }),
+    )
+    expect(page).toMatchObject({
+      nextCursor: 'next+/cursor',
+      hasNext: true,
+      items: [
+        {
+          announcementId: '42',
+          title: null,
+          regionNames: [],
+          dDay: 0,
+          viewCount: 0,
+          supplyComplexCount: 0,
+          supplyHouseholdCount: 0,
+          agency: null,
+          actualCompetitionRate: 0,
+        },
+      ],
+    })
+    expect(page.raw.items[0]).toEqual(ANNOUNCEMENT_ITEM)
+  })
+
+  it('첫 공고 페이지는 cursor 파라미터를 보내지 않는다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ data: { items: [], nextCursor: null, hasNext: false } }),
+    )
+    const repository = createRepository(fetchMock, '')
+
+    await repository.findAnnouncementPage(
+      null,
+      20,
+      new AbortController().signal,
+    )
+
+    const [requestUrl] = fetchMock.mock.calls[0] ?? []
+    const search = new URL(String(requestUrl), 'https://example.test').searchParams
+    expect(search.get('size')).toBe('20')
+    expect(search.has('cursor')).toBe(false)
+  })
+
+  it('공고 목록의 잘못된 cursor HTTP 오류를 계약 오류와 구분한다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(
+        {
+          code: 'INVALID_CURSOR',
+          message: '커서 값을 확인해 주세요.',
+          traceId: 'trace-id',
+        },
+        400,
+      ),
+    )
+    const repository = createRepository(fetchMock, '')
+
+    const error = await repository
+      .findAnnouncementPage(
+        'invalid-cursor',
+        20,
+        new AbortController().signal,
+      )
+      .catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(PublicHousingHttpError)
+    expect(error).not.toBeInstanceOf(PublicHousingContractError)
+    expect(error).toMatchObject({ status: 400, code: 'INVALID_CURSOR' })
+  })
+
+  it('공고 목록 size 경계 밖에서는 요청하지 않는다', async () => {
+    const fetchMock = vi.fn()
+    const repository = createRepository(fetchMock, '')
+
+    await expect(
+      repository.findAnnouncementPage(
+        null,
+        0,
+        new AbortController().signal,
+      ),
+    ).rejects.toBeInstanceOf(RangeError)
+    await expect(
+      repository.findAnnouncementPage(
+        null,
+        51,
+        new AbortController().signal,
+      ),
+    ).rejects.toBeInstanceOf(RangeError)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('단지 상세의 full DTO를 보존하고 중첩 ID를 canonical string으로 변환한다', async () => {
     const fetchMock = vi
       .fn()
@@ -389,6 +525,35 @@ describe('공공주택 HTTP repository', () => {
 })
 
 describe('공공주택 응답 계약', () => {
+  it('공고 목록의 빈 배열, null과 false를 빈 성공으로 보존한다', () => {
+    const decoded = decodeAnnouncementPageEnvelope({
+      data: { items: [], nextCursor: null, hasNext: false },
+    })
+
+    expect(decoded).toEqual({ items: [], nextCursor: null, hasNext: false })
+  })
+
+  it('공고 ID가 safe positive integer가 아니면 계약 오류로 거절한다', () => {
+    expect(() =>
+      decodeAnnouncementPageEnvelope({
+        data: {
+          items: [
+            {
+              ...ANNOUNCEMENT_ITEM,
+              announcementId: Number.MAX_SAFE_INTEGER + 1,
+            },
+          ],
+          nextCursor: null,
+          hasNext: false,
+        },
+      }),
+    ).toThrowError(
+      expect.objectContaining<Partial<PublicHousingContractError>>({
+        path: '$.data.items[0].announcementId',
+      }),
+    )
+  })
+
   it('상세의 중첩 ID도 safe positive integer로 검증한다', () => {
     expect(() =>
       decodeComplexDetailEnvelope({

@@ -218,3 +218,59 @@ export interface ComplexDetail {
   readonly currentAnnouncements: readonly ComplexCurrentAnnouncement[]
   readonly raw: RawComplexDetail
 }
+
+export interface RawAnnouncementListItem {
+  readonly announcementId: number
+  readonly publicationType: string | null
+  readonly applicationStatus: string | null
+  readonly rentalType: string | null
+  readonly recruitmentType: string | null
+  readonly title: string | null
+  readonly regionNames: readonly string[]
+  readonly publishedAt: string | null
+  readonly applicationStartAt: string | null
+  readonly applicationEndAt: string | null
+  readonly dDay: number | null
+  readonly viewCount: number
+  readonly supplyComplexCount: number
+  readonly supplyHouseholdCount: number | null
+  readonly agency: HousingAgency | null
+  readonly actualCompetitionRate: number | null
+  readonly predictedCompetitionRate: number | null
+  readonly thumbnailImageUrl: string | null
+}
+
+export interface RawAnnouncementPage {
+  readonly items: readonly RawAnnouncementListItem[]
+  readonly nextCursor: string | null
+  readonly hasNext: boolean
+}
+
+export interface AnnouncementListItem {
+  readonly announcementId: string
+  readonly publicationType: string | null
+  readonly applicationStatus: string | null
+  readonly rentalType: string | null
+  readonly recruitmentType: string | null
+  readonly title: string | null
+  readonly regionNames: readonly string[]
+  readonly publishedAt: string | null
+  readonly applicationStartAt: string | null
+  readonly applicationEndAt: string | null
+  readonly dDay: number | null
+  readonly viewCount: number
+  readonly supplyComplexCount: number
+  readonly supplyHouseholdCount: number | null
+  readonly agency: HousingAgency | null
+  readonly actualCompetitionRate: number | null
+  readonly predictedCompetitionRate: number | null
+  readonly thumbnailImageUrl: string | null
+  readonly raw: RawAnnouncementListItem
+}
+
+export interface AnnouncementPage {
+  readonly items: readonly AnnouncementListItem[]
+  readonly nextCursor: string | null
+  readonly hasNext: boolean
+  readonly raw: RawAnnouncementPage
+}

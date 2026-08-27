@@ -1,4 +1,11 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { useState } from 'react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -8,11 +15,15 @@ import {
   type PublicHousingRepository,
 } from './api/publicHousingRepository.ts'
 import type {
+  AnnouncementListItem,
+  AnnouncementPage,
   ComplexDetail,
   ComplexListItem,
   ComplexPage,
   MapBounds,
   MapComplex,
+  RawAnnouncementListItem,
+  RawAnnouncementPage,
   RawComplexDetail,
   RawComplexListItem,
   RawComplexPage,
@@ -156,6 +167,31 @@ describe('PublicHousingExplorer', () => {
     expect(screen.getByTestId('location-search')).toBeEmptyDOMElement()
   })
 
+  it('단지 상세를 연 카드가 숨겨지면 닫을 때 현재 결과 탭으로 focus가 돌아간다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository)
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+
+    const openButton = await screen.findByRole('button', {
+      name: '서울가람 행복주택 단지 상세 보기',
+    })
+    openButton.focus()
+    fireEvent.click(openButton)
+    await screen.findByRole('complementary', {
+      name: '서울가람 행복주택 단지 상세 정보',
+    })
+
+    const announcementTab = screen.getByRole('tab', { name: '공고 목록' })
+    fireEvent.click(announcementTab)
+    fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
+
+    await waitFor(() => expect(announcementTab).toHaveFocus())
+    expect(announcementTab).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByRole('complementary', {
+      name: '서울가람 행복주택 단지 상세 정보',
+    })).not.toBeInTheDocument()
+  })
+
   it('내부에서 연 상세은 뒤로 갔다가 앞으로 온 뒤에도 닫기로 원래 목록에 복귀한다', async () => {
     const repository = createRepository()
     renderExplorer(repository)
@@ -283,6 +319,135 @@ describe('PublicHousingExplorer', () => {
     expect(repository.findComplexDetail).not.toHaveBeenCalled()
     expect(screen.queryByLabelText('단지 상세 정보')).not.toBeInTheDocument()
   })
+
+  it('공고 탭을 처음 열 때 지도와 분리된 공고 cursor 목록을 불러와 유지한다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository)
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    await screen.findByRole('heading', { name: '서울가람 행복주택' })
+
+    const announcementTab = screen.getByRole('tab', { name: '공고 목록' })
+    fireEvent.click(announcementTab)
+
+    const announcementHeading = await screen.findByRole('heading', {
+      name: '성남 청년 행복주택 입주자 모집 공고',
+    })
+    expect(announcementHeading).toBeVisible()
+    expect(announcementTab).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('1건')).toBeVisible()
+    expect(screen.getByText('공급 세대수')).toBeVisible()
+    expect(screen.getByText('75세대')).toBeVisible()
+    expect(screen.queryByText('공급 단지')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /입주자 모집 공고 상세 보기/ }))
+      .not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '공공임대주택 지도' })).toBeVisible()
+    expect(repository.findAnnouncementPage).toHaveBeenCalledWith(
+      null,
+      20,
+      expect.any(AbortSignal),
+    )
+
+    fireEvent.click(screen.getByRole('tab', { name: '단지 목록' }))
+    fireEvent.click(announcementTab)
+
+    expect(repository.findAnnouncementPage).toHaveBeenCalledOnce()
+    expect(screen.getByRole('heading', {
+      name: '성남 청년 행복주택 입주자 모집 공고',
+    })).toBeVisible()
+  })
+
+  it('공고 첫 로딩은 완료된 0건으로 알리지 않는다', () => {
+    const repository = createRepository()
+    repository.findAnnouncementPage.mockReturnValueOnce(
+      new Promise<AnnouncementPage>(() => undefined),
+    )
+    renderExplorer(repository)
+
+    fireEvent.click(screen.getByRole('tab', { name: '공고 목록' }))
+
+    const count = screen.getByLabelText('공고 목록 불러오는 중')
+    expect(count).toHaveTextContent('불러오는 중')
+    expect(count).not.toHaveTextContent('0건')
+  })
+
+  it('결과 탭은 좌우 방향키로 전환하고 활성 탭만 tab stop으로 둔다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository)
+    const complexTab = screen.getByRole('tab', { name: '단지 목록' })
+    const announcementTab = screen.getByRole('tab', { name: '공고 목록' })
+
+    complexTab.focus()
+    fireEvent.keyDown(complexTab, { key: 'ArrowRight' })
+
+    expect(announcementTab).toHaveFocus()
+    expect(announcementTab).toHaveAttribute('aria-selected', 'true')
+    expect(announcementTab).toHaveAttribute('tabindex', '0')
+    expect(complexTab).toHaveAttribute('tabindex', '-1')
+    await screen.findByRole('heading', {
+      name: '성남 청년 행복주택 입주자 모집 공고',
+    })
+
+    fireEvent.keyDown(announcementTab, { key: 'ArrowLeft' })
+    expect(complexTab).toHaveFocus()
+    expect(complexTab).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('공고 탭에서 viewport를 적용해도 지도와 단지만 갱신하고 공고는 유지한다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository)
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    await screen.findByRole('heading', { name: '서울가람 행복주택' })
+    fireEvent.click(screen.getByRole('tab', { name: '공고 목록' }))
+    await screen.findByRole('heading', {
+      name: '성남 청년 행복주택 입주자 모집 공고',
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
+    expect(screen.getByText(
+      '공고는 전국 최신순이며 지도·단지만 이 영역으로 갱신합니다.',
+    )).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '지도·단지 다시 찾기' }))
+
+    await waitFor(() => {
+      expect(repository.findMapComplexes).toHaveBeenCalledTimes(2)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
+    })
+    expect(repository.findAnnouncementPage).toHaveBeenCalledOnce()
+    expect(screen.getByRole('heading', {
+      name: '성남 청년 행복주택 입주자 모집 공고',
+    })).toBeVisible()
+  })
+
+  it('공고 탭의 스크롤을 보존하고 지도 마커는 단지 탭 상세로 연다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository)
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    await screen.findByRole('heading', { name: '서울가람 행복주택' })
+    fireEvent.click(screen.getByRole('tab', { name: '공고 목록' }))
+    const announcementPanel = await screen.findByRole('tabpanel', {
+      name: '공고 목록',
+    })
+    const scroll = announcementPanel.querySelector<HTMLElement>(
+      '.housing-results__scroll',
+    )
+    if (scroll === null) {
+      throw new Error('공고 목록 scroll container를 찾을 수 없습니다.')
+    }
+    scroll.scrollTop = 120
+    fireEvent.click(screen.getByRole('tab', { name: '단지 목록' }))
+    fireEvent.click(screen.getByRole('tab', { name: '공고 목록' }))
+    expect(scroll.scrollTop).toBe(120)
+
+    fireEvent.click(within(
+      screen.getByRole('region', { name: '공공임대주택 지도' }),
+    ).getByRole('button', { name: '서울가람 행복주택 지도 마커 선택' }))
+
+    expect(screen.getByRole('tab', { name: '단지 목록' }))
+      .toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByRole('complementary', {
+      name: '서울가람 행복주택 단지 상세 정보',
+    })).toBeVisible()
+  })
 })
 
 function renderExplorer(
@@ -371,15 +536,51 @@ function FakeNaverMap({
 }
 
 function createRepository(): PublicHousingRepository & {
+  findAnnouncementPage: ReturnType<typeof vi.fn>
   findComplexDetail: ReturnType<typeof vi.fn>
   findComplexPage: ReturnType<typeof vi.fn>
   findMapComplexes: ReturnType<typeof vi.fn>
 } {
   return {
+    findAnnouncementPage: vi.fn().mockResolvedValue(announcementPage()),
     findComplexDetail: vi.fn().mockResolvedValue(complexDetail()),
     findComplexPage: vi.fn().mockResolvedValue(complexPage()),
     findMapComplexes: vi.fn().mockResolvedValue([mapComplex()]),
   }
+}
+
+function announcementPage(): AnnouncementPage {
+  const item = announcementListItem()
+  const raw: RawAnnouncementPage = {
+    hasNext: false,
+    items: [item.raw],
+    nextCursor: null,
+  }
+  return { hasNext: false, items: [item], nextCursor: null, raw }
+}
+
+function announcementListItem(): AnnouncementListItem {
+  const raw: RawAnnouncementListItem = {
+    actualCompetitionRate: null,
+    agency: { code: 'LH', name: '한국토지주택공사' },
+    announcementId: 201,
+    applicationEndAt: '2026-08-30',
+    applicationStartAt: '2026-08-28',
+    applicationStatus: 'APPLYING',
+    dDay: 2,
+    predictedCompetitionRate: null,
+    publicationType: 'ORIGINAL',
+    publishedAt: '2026-08-20',
+    recruitmentType: 'NEW',
+    regionNames: ['경기도 성남시'],
+    rentalType: 'HAPPY_HOUSING',
+    supplyComplexCount: 2,
+    supplyHouseholdCount: 75,
+    thumbnailImageUrl: null,
+    title: '성남 청년 행복주택 입주자 모집 공고',
+    viewCount: 614,
+  }
+  return { ...raw, announcementId: '201', raw }
 }
 
 function complexDetail(): ComplexDetail {

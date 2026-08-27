@@ -17,6 +17,11 @@ import {
 } from './api/publicHousingRepository.ts'
 import type { PublicHousingRepository } from './api/publicHousingRepository.ts'
 import {
+  type AnnouncementResultsState,
+  useAnnouncementResults,
+} from './announcements/useAnnouncementResults.ts'
+import { HousingAnnouncementCard } from './components/HousingAnnouncementCard.tsx'
+import {
   HousingComplexCard,
   type HousingComplexCardData,
 } from './components/HousingComplexCard.tsx'
@@ -38,9 +43,12 @@ import {
   setComplexIdQuery,
 } from './navigation/detailLocation.ts'
 import { toHousingComplexDetailData } from './presentation/complexDetailPresentation.ts'
+import { toHousingAnnouncementCardData } from './presentation/announcementPresentation.ts'
 
 const PAGE_SIZE = 20
 const DETAIL_HISTORY_STATE_KEY = 'toadzipComplexDetailEntry'
+
+type ResultTab = 'complexes' | 'announcements'
 
 type RequestStatus = 'idle' | 'loading' | 'loading-more' | 'ready' | 'error'
 
@@ -108,6 +116,8 @@ export function PublicHousingExplorer({
   const location = useLocation()
   const navigate = useNavigate()
   const [viewport, setViewport] = useState<ViewportSnapshot | null>(null)
+  const [activeResultTab, setActiveResultTab] =
+    useState<ResultTab>('complexes')
   const [appliedViewport, setAppliedViewport] =
     useState<AppliedViewport | null>(null)
   const [mapResults, setMapResults] =
@@ -132,6 +142,10 @@ export function PublicHousingExplorer({
   const complexIdQuery = useMemo(
     () => parseComplexIdQuery(new URLSearchParams(location.search)),
     [location.search],
+  )
+  const announcementResults = useAnnouncementResults(
+    repository,
+    activeResultTab === 'announcements',
   )
 
   useEffect(() => {
@@ -230,6 +244,7 @@ export function PublicHousingExplorer({
     const internalState = currentComplexId.kind === 'valid'
       ? location.state
       : withDetailHistoryState(location.state)
+    setActiveResultTab('complexes')
     setSelectedComplexId(complexId)
     navigate({
       hash: location.hash,
@@ -248,6 +263,9 @@ export function PublicHousingExplorer({
   ])
 
   const closeComplexDetail = useCallback(() => {
+    if (!isAvailableFocusTarget(detailOpenerRef.current)) {
+      focusActiveResultTab()
+    }
     if (isDetailHistoryState(location.state)) {
       navigate(-1)
       return
@@ -438,6 +456,11 @@ export function PublicHousingExplorer({
     ),
     [complexDetail.detail, mapResults.items, selectedComplexId],
   )
+  const resultCount = resultCountLabel(
+    activeResultTab,
+    complexResults,
+    announcementResults.state,
+  )
 
   return (
     <div className={complexDetail.status === 'closed'
@@ -449,12 +472,17 @@ export function PublicHousingExplorer({
             <p className="housing-results__eyebrow">지도 기반 탐색</p>
             <h1>공공임대주택</h1>
           </div>
-          <span className="housing-results__count" aria-live="polite">
-            {complexResults.items.length}곳
+          <span
+            className="housing-results__count"
+            aria-label={resultCount.accessibleLabel}
+            aria-live="polite"
+          >
+            {resultCount.visibleLabel}
           </span>
         </header>
 
         <ViewportAction
+          announcementsActive={activeResultTab === 'announcements'}
           decision={viewportDecision}
           pending={pendingViewport}
           onApply={() => {
@@ -465,48 +493,69 @@ export function PublicHousingExplorer({
           }}
         />
 
-        <div className="housing-results__tabs" role="tablist" aria-label="결과 종류">
-          <button
-            type="button"
-            role="tab"
-            aria-selected="true"
-            className="is-active"
-          >
-            단지 목록
-          </button>
-          <button type="button" role="tab" aria-selected="false" disabled>
-            공고 목록
-          </button>
+        <ResultTabs activeTab={activeResultTab} onSelect={setActiveResultTab} />
+
+        <div
+          className="housing-results__panel"
+          id="complex-results-panel"
+          role="tabpanel"
+          aria-labelledby="complex-results-tab"
+          hidden={activeResultTab !== 'complexes'}
+        >
+            <ComplexResultContent
+              state={complexResults}
+              selectedComplexId={selectedComplexId}
+              hoveredComplexId={hoveredComplexId}
+              onSelect={openComplexDetail}
+              onHover={setHoveredComplexId}
+              onCardRef={(complexId, node) => {
+                setComplexCardRef(complexCardRefsRef.current, complexId, node)
+              }}
+              onRetry={() => {
+                if (appliedViewport && viewport) {
+                  applyViewport({ ...viewport, bounds: appliedViewport.bounds })
+                }
+              }}
+            />
+
+            {complexResults.hasNext && (
+              <button
+                className="housing-results__more"
+                type="button"
+                onClick={loadMore}
+                disabled={complexResults.status === 'loading-more'}
+              >
+                {complexResults.status === 'loading-more'
+                  ? '불러오는 중'
+                  : '단지 더 보기'}
+              </button>
+            )}
         </div>
 
-        <ComplexResultContent
-          state={complexResults}
-          selectedComplexId={selectedComplexId}
-          hoveredComplexId={hoveredComplexId}
-          onSelect={openComplexDetail}
-          onHover={setHoveredComplexId}
-          onCardRef={(complexId, node) => {
-            setComplexCardRef(complexCardRefsRef.current, complexId, node)
-          }}
-          onRetry={() => {
-            if (appliedViewport && viewport) {
-              applyViewport({ ...viewport, bounds: appliedViewport.bounds })
-            }
-          }}
-        />
-
-        {complexResults.hasNext && (
-          <button
-            className="housing-results__more"
-            type="button"
-            onClick={loadMore}
-            disabled={complexResults.status === 'loading-more'}
-          >
-            {complexResults.status === 'loading-more'
-              ? '불러오는 중'
-              : '단지 더 보기'}
-          </button>
-        )}
+        <div
+          className="housing-results__panel"
+          id="announcement-results-panel"
+          role="tabpanel"
+          aria-labelledby="announcement-results-tab"
+          hidden={activeResultTab !== 'announcements'}
+        >
+            <AnnouncementResultContent
+              state={announcementResults.state}
+              onRetry={announcementResults.retry}
+            />
+            {announcementResults.state.hasNext && (
+              <button
+                className="housing-results__more"
+                type="button"
+                onClick={announcementResults.loadMore}
+                disabled={announcementResults.state.status === 'loading-more'}
+              >
+                {announcementResults.state.status === 'loading-more'
+                  ? '불러오는 중'
+                  : '공고 더 보기'}
+              </button>
+            )}
+        </div>
       </aside>
 
       <main className="housing-map-workspace">
@@ -623,11 +672,191 @@ function ComplexDetailStatePanel({
   )
 }
 
+function ResultTabs({
+  activeTab,
+  onSelect,
+}: {
+  activeTab: ResultTab
+  onSelect: (tab: ResultTab) => void
+}) {
+  const complexTabRef = useRef<HTMLButtonElement>(null)
+  const announcementTabRef = useRef<HTMLButtonElement>(null)
+
+  function selectFromKeyboard(
+    event: KeyboardEvent<HTMLButtonElement>,
+    currentTab: ResultTab,
+  ) {
+    const targetTab = keyboardResultTab(event.key, currentTab)
+    if (targetTab === null) {
+      return
+    }
+    event.preventDefault()
+    onSelect(targetTab)
+    const target = targetTab === 'complexes'
+      ? complexTabRef.current
+      : announcementTabRef.current
+    target?.focus()
+  }
+
+  return (
+    <div className="housing-results__tabs" role="tablist" aria-label="결과 종류">
+      <button
+        ref={complexTabRef}
+        id="complex-results-tab"
+        type="button"
+        role="tab"
+        aria-controls="complex-results-panel"
+        aria-selected={activeTab === 'complexes'}
+        className={activeTab === 'complexes' ? 'is-active' : undefined}
+        tabIndex={activeTab === 'complexes' ? 0 : -1}
+        onClick={() => onSelect('complexes')}
+        onKeyDown={(event) => selectFromKeyboard(event, 'complexes')}
+      >
+        단지 목록
+      </button>
+      <button
+        ref={announcementTabRef}
+        id="announcement-results-tab"
+        type="button"
+        role="tab"
+        aria-controls="announcement-results-panel"
+        aria-selected={activeTab === 'announcements'}
+        className={activeTab === 'announcements' ? 'is-active' : undefined}
+        tabIndex={activeTab === 'announcements' ? 0 : -1}
+        onClick={() => onSelect('announcements')}
+        onKeyDown={(event) => selectFromKeyboard(event, 'announcements')}
+      >
+        공고 목록
+      </button>
+    </div>
+  )
+}
+
+function AnnouncementResultContent({
+  state,
+  onRetry,
+}: {
+  state: AnnouncementResultsState
+  onRetry: () => void
+}) {
+  if (state.status === 'idle') {
+    return (
+      <div className="housing-results__state" role="status">
+        <strong>공고 목록을 준비하고 있습니다.</strong>
+      </div>
+    )
+  }
+
+  if (state.status === 'loading' && state.items.length === 0) {
+    return (
+      <div className="housing-results__state" role="status">
+        <strong>공고를 불러오고 있습니다.</strong>
+        <span>현재 제공되는 최신 공고를 확인하고 있습니다.</span>
+      </div>
+    )
+  }
+
+  if (state.status === 'error' && state.items.length === 0) {
+    return (
+      <div className="housing-results__state housing-results__state--error" role="alert">
+        <strong>공고 목록을 불러오지 못했습니다.</strong>
+        <span>{state.errorMessage}</span>
+        <button type="button" onClick={onRetry}>다시 시도</button>
+      </div>
+    )
+  }
+
+  if (state.status === 'ready' && state.items.length === 0) {
+    return (
+      <div className="housing-results__state" role="status">
+        <strong>현재 확인되는 공고가 없습니다.</strong>
+        <span>새 공고가 등록되면 이 목록에서 확인할 수 있습니다.</span>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="housing-results__scroll"
+      aria-busy={state.status === 'loading-more'}
+    >
+      {state.status === 'error' && (
+        <div className="housing-results__inline-error" role="alert">
+          <span>{state.errorMessage}</span>
+          <button type="button" onClick={onRetry}>다시 시도</button>
+        </div>
+      )}
+      <ul className="housing-results__list">
+        {state.items.map((announcement) => (
+          <li key={announcement.announcementId}>
+            <HousingAnnouncementCard
+              announcement={toHousingAnnouncementCardData(announcement)}
+            />
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function keyboardResultTab(key: string, currentTab: ResultTab) {
+  if (key === 'Home') {
+    return 'complexes' as const
+  }
+  if (key === 'End') {
+    return 'announcements' as const
+  }
+  if (key !== 'ArrowLeft' && key !== 'ArrowRight') {
+    return null
+  }
+  return currentTab === 'complexes' ? 'announcements' : 'complexes'
+}
+
+function resultCountLabel(
+  activeTab: ResultTab,
+  complexes: ComplexResultsState,
+  announcements: AnnouncementResultsState,
+) {
+  if (
+    activeTab === 'announcements'
+    && (announcements.status === 'idle' || announcements.status === 'loading')
+  ) {
+    return {
+      accessibleLabel: '공고 목록 불러오는 중',
+      visibleLabel: '불러오는 중',
+    }
+  }
+  if (
+    activeTab === 'announcements'
+    && announcements.status === 'error'
+    && announcements.items.length === 0
+  ) {
+    return {
+      accessibleLabel: '공고 목록 불러오기 실패',
+      visibleLabel: '불러오기 실패',
+    }
+  }
+  if (activeTab === 'announcements') {
+    const count = announcements.items.length
+    return {
+      accessibleLabel: `현재 불러온 공고 ${count}건`,
+      visibleLabel: `${count}건`,
+    }
+  }
+  const count = complexes.items.length
+  return {
+    accessibleLabel: `현재 불러온 단지 ${count}곳`,
+    visibleLabel: `${count}곳`,
+  }
+}
+
 function ViewportAction({
+  announcementsActive,
   decision,
   pending,
   onApply,
 }: {
+  announcementsActive: boolean
   decision: ReturnType<typeof evaluateViewportRequest> | null
   pending: boolean
   onApply: () => void
@@ -635,7 +864,7 @@ function ViewportAction({
   if (decision && !decision.allowed) {
     return (
       <div className="housing-viewport-action housing-viewport-action--blocked" role="status">
-        <span>{viewportGuidance(decision.reason)}</span>
+        <span>{viewportGuidance(decision.reason, announcementsActive)}</span>
       </div>
     )
   }
@@ -646,9 +875,13 @@ function ViewportAction({
 
   return (
     <div className="housing-viewport-action">
-      <span>지도를 움직였습니다.</span>
+      <span>
+        {announcementsActive
+          ? '공고는 전국 최신순이며 지도·단지만 이 영역으로 갱신합니다.'
+          : '지도를 움직였습니다.'}
+      </span>
       <button type="button" onClick={onApply}>
-        이 지역에서 다시 찾기
+        {announcementsActive ? '지도·단지 다시 찾기' : '이 지역에서 다시 찾기'}
       </button>
     </div>
   )
@@ -910,7 +1143,7 @@ function restoreComplexFocus({
   opener: HTMLElement | null
   openerWasMarker: boolean
 }) {
-  if (opener?.isConnected) {
+  if (isAvailableFocusTarget(opener)) {
     opener.focus()
     return
   }
@@ -919,12 +1152,15 @@ function restoreComplexFocus({
   }
   if (openerWasMarker) {
     const marker = findComplexMarker(complexId)
-    if (marker) {
+    if (isAvailableFocusTarget(marker)) {
       marker.focus()
       return
     }
   }
-  focusComplexCard(cards.get(complexId))
+  if (focusComplexCard(cards.get(complexId))) {
+    return
+  }
+  focusActiveResultTab()
 }
 
 function findComplexMarker(complexId: string) {
@@ -934,8 +1170,26 @@ function findComplexMarker(complexId: string) {
 }
 
 function focusComplexCard(card: HTMLElement | undefined) {
-  card?.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]')
-    ?.focus()
+  const button = card?.querySelector<HTMLButtonElement>(
+    'button[aria-haspopup="dialog"]',
+  )
+  if (!isAvailableFocusTarget(button)) {
+    return false
+  }
+  button.focus()
+  return true
+}
+
+function focusActiveResultTab() {
+  document.querySelector<HTMLButtonElement>(
+    '[role="tab"][aria-selected="true"]',
+  )?.focus()
+}
+
+function isAvailableFocusTarget(
+  element: HTMLElement | null | undefined,
+): element is HTMLElement {
+  return Boolean(element?.isConnected && !element.closest('[hidden]'))
 }
 
 function isPendingViewport(
@@ -959,9 +1213,13 @@ function appendUniqueComplexes(
   ]
 }
 
-function viewportGuidance(reason: ViewportBlockReason) {
+function viewportGuidance(
+  reason: ViewportBlockReason,
+  announcementsActive: boolean,
+) {
+  const subject = announcementsActive ? '지도 마커를' : '단지를'
   if (reason === 'zoom-too-low') {
-    return '단지를 불러오려면 지도를 조금 더 확대해 주세요.'
+    return `${subject} 불러오려면 지도를 조금 더 확대해 주세요.`
   }
   if (
     reason === 'latitude-span-too-large' ||
