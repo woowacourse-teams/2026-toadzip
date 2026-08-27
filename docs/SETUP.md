@@ -1,4 +1,4 @@
-# 개발 환경 설정 및 실행
+# 환경별 설정
 
 ## 사전 준비
 
@@ -7,38 +7,7 @@
 - Docker Compose
 - Docker Buildx
 
-## 실행
-
-프로젝트 루트의 `.env.example`을 참고해 `.env`를 생성한다.
-
-로컬 PostgreSQL 설정은 [로컬 개발 환경](LOCAL_SETUP.md)을 참고한다.
-
-### 전체 실행
-
-프로젝트 루트에서 백엔드와 PostgreSQL을 빌드하고 실행한다.
-
-```shell
-docker compose up -d --build
-```
-
-### PostgreSQL 실행
-
-PostgreSQL만 실행한다.
-
-```shell
-docker compose up -d db
-```
-
-### 백엔드 실행
-
-백엔드를 빌드하고 실행한다.
-
-```shell
-docker compose up -d --build backend
-```
-
-## 종료
-
-```shell
-docker compose down
-```
+- [로컬 환경](LOCAL_SETUP.md)
+- [개발 서버](DEV_SERVER_SETUP.md)
+- [운영 서버](PROD_SERVER_SETUP.md)
+- [DB 서버](../infra/db/SETUP.md)
