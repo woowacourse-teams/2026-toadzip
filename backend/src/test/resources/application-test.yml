@@ -4,6 +4,8 @@ spring:
     username: toadzip_test
     password: toadzip_test
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 4
   jpa:
     hibernate:
       ddl-auto: create-drop
