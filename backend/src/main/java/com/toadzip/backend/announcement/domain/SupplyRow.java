@@ -58,7 +58,6 @@ public class SupplyRow {
     private String supplyPnu;
 
     @Convert(converter = YearMonthAttributeConverter.class)
-    @Column(nullable = false)
     private YearMonth expectedMoveInMonth;
 
     @Enumerated(STRING)
@@ -67,8 +66,7 @@ public class SupplyRow {
 
     private String matchingFailureReason;
 
-    @Column(nullable = false)
-    private int totalSupplyHouseholdCount;
+    private Integer totalSupplyHouseholdCount;
 
     private SupplyRow(
             Announcement announcement,
@@ -82,7 +80,7 @@ public class SupplyRow {
             YearMonth expectedMoveInMonth,
             SupplyCategory supplyCategory,
             String matchingFailureReason,
-            int totalSupplyHouseholdCount
+            Integer totalSupplyHouseholdCount
     ) {
         validateRequired(announcement, "공고");
         validateNotBlank(sourceSupplyRowIdentifier, "원천 공급행 식별자");
@@ -90,9 +88,9 @@ public class SupplyRow {
         validateNotBlank(sourceComplexName, "원천 단지명");
         validateNotBlank(sourceHousingTypeName, "원천 주택형명");
         validateNotBlank(supplyPnu, "공급 PNU");
-        validateRequired(expectedMoveInMonth, "입주 예정 연월");
         validateRequired(supplyCategory, "공급구분");
-        validateNonNegative(totalSupplyHouseholdCount, "전체 공급세대수");
+        validateNotBlankIfPresent(matchingFailureReason, "매칭 실패 사유");
+        validateNonNegativeIfPresent(totalSupplyHouseholdCount, "전체 공급세대수");
         this.announcement = announcement;
         this.housingComplex = housingComplex;
         this.housingType = housingType;
@@ -119,7 +117,7 @@ public class SupplyRow {
             YearMonth expectedMoveInMonth,
             SupplyCategory supplyCategory,
             String matchingFailureReason,
-            int totalSupplyHouseholdCount
+            Integer totalSupplyHouseholdCount
     ) {
         return new SupplyRow(
                 announcement,
@@ -152,6 +150,18 @@ public class SupplyRow {
     private void validateNonNegative(int value, String fieldName) {
         if (value < 0) {
             throw new IllegalArgumentException(fieldName + "은 음수일 수 없다.");
+        }
+    }
+
+    private void validateNotBlankIfPresent(String value, String fieldName) {
+        if (value != null && value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + "은 비어 있을 수 없다.");
+        }
+    }
+
+    private void validateNonNegativeIfPresent(Integer value, String fieldName) {
+        if (value != null) {
+            validateNonNegative(value, fieldName);
         }
     }
 }

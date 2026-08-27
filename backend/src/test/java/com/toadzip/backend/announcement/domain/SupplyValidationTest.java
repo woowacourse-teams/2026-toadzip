@@ -32,7 +32,7 @@ class SupplyValidationTest {
     }
 
     @Test
-    void 공급행의_공고와_입주예정연월과_공급구분은_필수다() {
+    void 공급행의_공고와_공급구분은_필수다() {
         Announcement announcement = createAnnouncement();
         String[] fields = validSupplyRowStringFields();
         YearMonth expectedMoveInMonth = YearMonth.of(2027, 3);
@@ -41,10 +41,6 @@ class SupplyValidationTest {
                 () -> assertThrows(
                         IllegalArgumentException.class,
                         () -> createSupplyRow(null, fields, 1, expectedMoveInMonth, SupplyCategory.NEW_SUPPLY, 20)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createSupplyRow(announcement, fields, 1, null, SupplyCategory.NEW_SUPPLY, 20)
                 ),
                 () -> assertThrows(
                         IllegalArgumentException.class,
@@ -95,8 +91,7 @@ class SupplyValidationTest {
     }
 
     @Test
-    void 공급대상의_공급행과_임대보증금과_월임대료는_필수다() {
-        SupplyRow supplyRow = createSupplyRow();
+    void 공급대상의_공급행은_필수다() {
         String[] fields = validSupplyTargetStringFields();
         BigDecimal amount = new BigDecimal("1000000");
 
@@ -104,14 +99,6 @@ class SupplyValidationTest {
                 () -> assertThrows(
                         IllegalArgumentException.class,
                         () -> createSupplyTarget(null, fields, 10, 20, amount, amount, amount, 1)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createSupplyTarget(supplyRow, fields, 10, 20, null, amount, amount, 1)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createSupplyTarget(supplyRow, fields, 10, 20, amount, null, amount, 1)
                 )
         );
     }

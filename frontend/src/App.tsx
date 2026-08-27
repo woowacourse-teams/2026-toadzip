@@ -1,4 +1,9 @@
 import { Route, Routes } from 'react-router'
+import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
+import { AdminHome } from './admin/auth/AdminHome'
+import { AdminLayout } from './admin/auth/AdminLayout'
+import { LoginPage } from './admin/auth/LoginPage'
+import { RequireAdmin } from './admin/auth/RequireAdmin'
 
 function Home() {
   return (
@@ -18,10 +23,27 @@ function NotFound() {
   )
 }
 
+function AdminRoutes() {
+  return (
+    <AdminAuthProvider>
+      <Routes>
+        <Route path="login" element={<LoginPage />} />
+        <Route element={<RequireAdmin />}>
+          <Route element={<AdminLayout />}>
+            <Route index element={<AdminHome />} />
+          </Route>
+        </Route>
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </AdminAuthProvider>
+  )
+}
+
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
+      <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   )
