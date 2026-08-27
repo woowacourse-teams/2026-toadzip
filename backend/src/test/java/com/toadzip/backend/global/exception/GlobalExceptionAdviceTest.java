@@ -13,9 +13,11 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @WebMvcTest(GlobalExceptionAdviceTest.TestController.class)
+@AutoConfigureMockMvc(addFilters = false)
 @Import(GlobalExceptionAdviceTest.TestController.class)
 class GlobalExceptionAdviceTest {
 
@@ -113,6 +116,16 @@ class GlobalExceptionAdviceTest {
                 .andExpect(content().string(not(containsString("database password"))));
     }
 
+    @Test
+    void 인증_제공자_장애는_안전한_500_오류_계약으로_반환한다() throws Exception {
+        mockMvc.perform(get("/test/errors/authentication-service"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_SERVER_ERROR"))
+                .andExpect(jsonPath("$.message").value("서버 내부 오류가 발생했습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(content().string(not(containsString("database unavailable"))));
+    }
+
     @RestController
     @RequestMapping("/test/errors")
     static class TestController {
@@ -128,6 +141,11 @@ class GlobalExceptionAdviceTest {
         @GetMapping("/unexpected")
         void failUnexpectedly() {
             throw new IllegalStateException("database password must not be exposed");
+        }
+
+        @GetMapping("/authentication-service")
+        void failAuthenticationService() {
+            throw new AuthenticationServiceException("database unavailable");
         }
     }
 

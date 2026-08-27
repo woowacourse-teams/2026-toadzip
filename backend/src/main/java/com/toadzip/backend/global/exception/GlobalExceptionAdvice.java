@@ -2,7 +2,6 @@ package com.toadzip.backend.global.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
@@ -146,7 +145,7 @@ public class GlobalExceptionAdvice {
             Exception exception,
             HttpServletRequest request
     ) {
-        String traceId = traceIdOf(request);
+        String traceId = RequestTraceIdResolver.resolve(request);
         LOGGER.error(
                 "Unexpected server error: traceId={}, method={}, path={}",
                 traceId,
@@ -169,7 +168,7 @@ public class GlobalExceptionAdvice {
         ErrorResponse errorResponse = new ErrorResponse(
                 VALIDATION_FAILED,
                 "요청값이 올바르지 않습니다.",
-                traceIdOf(request),
+                RequestTraceIdResolver.resolve(request),
                 errors
         );
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
@@ -181,7 +180,7 @@ public class GlobalExceptionAdvice {
             String message,
             HttpServletRequest request
     ) {
-        ErrorResponse errorResponse = new ErrorResponse(code, message, traceIdOf(request));
+        ErrorResponse errorResponse = new ErrorResponse(code, message, RequestTraceIdResolver.resolve(request));
         return ResponseEntity.status(status).body(errorResponse);
     }
 
@@ -207,11 +206,4 @@ public class GlobalExceptionAdvice {
         return reason + ".";
     }
 
-    private String traceIdOf(HttpServletRequest request) {
-        String requestId = request.getRequestId();
-        if (requestId == null || requestId.isBlank()) {
-            return UUID.randomUUID().toString();
-        }
-        return requestId;
-    }
 }
