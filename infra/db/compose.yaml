@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: toadzip
       POSTGRES_USER: toadzip
-      POSTGRES_PASSWORD: ${DEV_DB_PASSWORD}
+      POSTGRES_PASSWORD: "${DEV_DB_PASSWORD:?DEV_DB_PASSWORD is required}"
     ports:
       - "5432:5432"
     volumes:
@@ -21,7 +21,7 @@ services:
     environment:
       POSTGRES_DB: toadzip
       POSTGRES_USER: toadzip
-      POSTGRES_PASSWORD: ${PROD_DB_PASSWORD}
+      POSTGRES_PASSWORD: "${PROD_DB_PASSWORD:?PROD_DB_PASSWORD is required}"
     ports:
       - "5433:5432"
     volumes:
@@ -38,7 +38,7 @@ services:
     environment:
       POSTGRES_DB: toadzip_shared
       POSTGRES_USER: toadzip
-      POSTGRES_PASSWORD: ${SHARED_DB_PASSWORD}
+      POSTGRES_PASSWORD: "${SHARED_DB_PASSWORD:?SHARED_DB_PASSWORD is required}"
     ports:
       - "5434:5432"
     volumes:
