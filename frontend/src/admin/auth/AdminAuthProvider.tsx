@@ -30,7 +30,13 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function logout() {
-    await logoutAdmin()
+    try {
+      await logoutAdmin()
+    } catch (requestError) {
+      if (!(requestError instanceof AdminApiError) || requestError.status !== 401) {
+        throw requestError
+      }
+    }
     setSession(null)
   }
 
