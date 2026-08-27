@@ -25,6 +25,8 @@ import java.time.YearMonth;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -454,6 +456,15 @@ class ComplexSummaryQueryRepositoryTest {
         );
     }
 
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(OneSidedBound.class)
+    void 한쪽_범위_bound만_있어도_해당_조건만_독립적으로_적용한다(OneSidedBound bound) {
+        OneSidedBoundFixture fixture = persistOneSidedBoundFixture(bound);
+        entityManager.flush();
+
+        assertBothQueryPaths(fixture.condition(), fixture.expectedComplexId());
+    }
+
     @Test
     void 엘리베이터_설치여부는_true와_false를_정확히_구분한다() {
         HousingComplex installed = persistComplexWithElevator("엘리베이터 있음", true);
@@ -790,6 +801,68 @@ class ComplexSummaryQueryRepositoryTest {
     }
 
     @Test
+    void 가격_filter는_선택된_대표공고의_공급대상만_검색한다() {
+        HousingComplex historicalMatch = persistComplex("과거 가격만 일치", "37.500000", "126.900000");
+        Announcement olderAnnouncement = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 1),
+                "older-price-match"
+        );
+        SupplyRow olderRow = persistSupplyRow(
+                olderAnnouncement,
+                historicalMatch,
+                null,
+                "older-price-match-row",
+                1
+        );
+        persistSupplyTarget(olderRow, "과거 가격 일치", "50000000", "200000", 1);
+        Announcement latestAnnouncement = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 2),
+                "latest-price-mismatch"
+        );
+        SupplyRow latestRow = persistSupplyRow(
+                latestAnnouncement,
+                historicalMatch,
+                null,
+                "latest-price-mismatch-row",
+                1
+        );
+        persistSupplyTarget(latestRow, "대표 가격 불일치", "40000000", "200000", 1);
+
+        HousingComplex representativeMatch = persistComplex("대표 가격 일치", "37.500000", "126.900000");
+        Announcement matchingRepresentative = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 3),
+                "representative-price-match"
+        );
+        SupplyRow matchingRow = persistSupplyRow(
+                matchingRepresentative,
+                representativeMatch,
+                null,
+                "representative-price-match-row",
+                1
+        );
+        persistSupplyTarget(matchingRow, "대표 가격 일치", "50000000", "200000", 1);
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                priceAreaFilters(
+                        new BigDecimal("50000000"),
+                        new BigDecimal("50000000"),
+                        null,
+                        null,
+                        null,
+                        null
+                ),
+                representativeMatch.getId()
+        );
+    }
+
+    @Test
     void 가격과_면적은_대표공고의_같은_공급행에_연결된_주택형에서_만족해야_한다() {
         HousingComplex crossRow = persistComplex("교차 공급행", "37.500000", "126.900000");
         HousingType priceOnlyType = persistHousingType(crossRow, "20A", "20.00");
@@ -1077,6 +1150,137 @@ class ComplexSummaryQueryRepositoryTest {
                 LocalDate.of(2020, 1, 1),
                 elevatorInstalled
         );
+    }
+
+    private OneSidedBoundFixture persistOneSidedBoundFixture(OneSidedBound bound) {
+        return switch (bound) {
+            case BUILT_YEAR_FROM -> persistBuiltYearBoundFixture(bound, 2020, 2019, 2020, null);
+            case BUILT_YEAR_TO -> persistBuiltYearBoundFixture(bound, 2020, 2021, null, 2020);
+            case MIN_EXCLUSIVE_AREA -> persistAreaBoundFixture(bound, "30.00", "29.99", "30.00", null);
+            case MAX_EXCLUSIVE_AREA -> persistAreaBoundFixture(bound, "30.00", "30.01", null, "30.00");
+            case MIN_DEPOSIT -> persistPriceBoundFixture(
+                    bound,
+                    "50000000",
+                    "100000",
+                    "49999999",
+                    "100000",
+                    priceAreaFilters(new BigDecimal("50000000"), null, null, null, null, null)
+            );
+            case MAX_DEPOSIT -> persistPriceBoundFixture(
+                    bound,
+                    "50000000",
+                    "100000",
+                    "50000001",
+                    "100000",
+                    priceAreaFilters(null, new BigDecimal("50000000"), null, null, null, null)
+            );
+            case MIN_MONTHLY_RENT -> persistPriceBoundFixture(
+                    bound,
+                    "50000000",
+                    "100000",
+                    "50000000",
+                    "99999",
+                    priceAreaFilters(null, null, new BigDecimal("100000"), null, null, null)
+            );
+            case MAX_MONTHLY_RENT -> persistPriceBoundFixture(
+                    bound,
+                    "50000000",
+                    "100000",
+                    "50000000",
+                    "100001",
+                    priceAreaFilters(null, null, null, new BigDecimal("100000"), null, null)
+            );
+        };
+    }
+
+    private OneSidedBoundFixture persistBuiltYearBoundFixture(
+            OneSidedBound bound,
+            int matchingYear,
+            int excludedYear,
+            Integer builtYearFrom,
+            Integer builtYearTo
+    ) {
+        HousingComplex matching = persistComplexWithCompletionDate(
+                bound + " 일치",
+                LocalDate.of(matchingYear, 1, 1)
+        );
+        persistComplexWithCompletionDate(bound + " 불일치", LocalDate.of(excludedYear, 1, 1));
+        HousingComplexSearchCondition condition = directFilters(
+                null,
+                null,
+                Set.of(),
+                Set.of(),
+                Set.of(),
+                builtYearFrom,
+                builtYearTo,
+                null
+        );
+        return new OneSidedBoundFixture(condition, matching.getId());
+    }
+
+    private OneSidedBoundFixture persistAreaBoundFixture(
+            OneSidedBound bound,
+            String matchingArea,
+            String excludedArea,
+            String minExclusiveArea,
+            String maxExclusiveArea
+    ) {
+        HousingComplex matching = persistComplex(bound + " 일치", "37.500000", "126.900000");
+        persistHousingType(matching, "일치 주택형", matchingArea);
+        HousingComplex excluded = persistComplex(bound + " 불일치", "37.500000", "126.900000");
+        persistHousingType(excluded, "불일치 주택형", excludedArea);
+        HousingComplexSearchCondition condition = priceAreaFilters(
+                null,
+                null,
+                null,
+                null,
+                decimalOrNull(minExclusiveArea),
+                decimalOrNull(maxExclusiveArea)
+        );
+        return new OneSidedBoundFixture(condition, matching.getId());
+    }
+
+    private OneSidedBoundFixture persistPriceBoundFixture(
+            OneSidedBound bound,
+            String matchingDeposit,
+            String matchingMonthlyRent,
+            String excludedDeposit,
+            String excludedMonthlyRent,
+            HousingComplexSearchCondition condition
+    ) {
+        HousingComplex matching = persistPricedComplex(
+                bound + " 일치",
+                matchingDeposit,
+                matchingMonthlyRent
+        );
+        persistPricedComplex(bound + " 불일치", excludedDeposit, excludedMonthlyRent);
+        return new OneSidedBoundFixture(condition, matching.getId());
+    }
+
+    private HousingComplex persistPricedComplex(String suffix, String rentalDeposit, String monthlyRent) {
+        HousingComplex complex = persistComplex(suffix, "37.500000", "126.900000");
+        Announcement announcement = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 1),
+                "one-sided-" + suffix
+        );
+        SupplyRow supplyRow = persistSupplyRow(
+                announcement,
+                complex,
+                null,
+                "one-sided-" + suffix + "-row",
+                1
+        );
+        persistSupplyTarget(supplyRow, "한쪽 가격 조건", rentalDeposit, monthlyRent, 1);
+        return complex;
+    }
+
+    private BigDecimal decimalOrNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        return new BigDecimal(value);
     }
 
     private HousingType persistHousingType(
@@ -1445,5 +1649,22 @@ class ComplexSummaryQueryRepositoryTest {
                 () -> assertBigDecimalEquals("100000", row.monthlyRentMin()),
                 () -> assertBigDecimalEquals("500000", row.monthlyRentMax())
         );
+    }
+
+    private enum OneSidedBound {
+        BUILT_YEAR_FROM,
+        BUILT_YEAR_TO,
+        MIN_EXCLUSIVE_AREA,
+        MAX_EXCLUSIVE_AREA,
+        MIN_DEPOSIT,
+        MAX_DEPOSIT,
+        MIN_MONTHLY_RENT,
+        MAX_MONTHLY_RENT
+    }
+
+    private record OneSidedBoundFixture(
+            HousingComplexSearchCondition condition,
+            Long expectedComplexId
+    ) {
     }
 }
