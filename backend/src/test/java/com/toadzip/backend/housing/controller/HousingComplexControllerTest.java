@@ -1,6 +1,7 @@
 package com.toadzip.backend.housing.controller;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -34,6 +35,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultMatcher;
 
 @WebMvcTest(HousingComplexController.class)
 @Import(HousingComplexExceptionAdvice.class)
@@ -54,7 +56,7 @@ class HousingComplexControllerTest {
 
     @Test
     void 네_좌표로_지도_영역_단지_요약을_조회한다() throws Exception {
-        when(queryService.getComplexesForMap(any())).thenReturn(new HousingComplexMapResponse(List.of(
+        when(queryService.getComplexesForMap(BOUNDS)).thenReturn(new HousingComplexMapResponse(List.of(
                 new HousingComplexMapItemResponse(
                         17L,
                         "행복 단지",
@@ -77,6 +79,8 @@ class HousingComplexControllerTest {
                         .param("northEastLat", "37.600000")
                         .param("northEastLng", "127.100000"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("data")))
+                .andExpect(jsonPath("$.data.keys()", containsInAnyOrder("items")))
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].keys()", containsInAnyOrder(
                         "complexId",
@@ -116,9 +120,85 @@ class HousingComplexControllerTest {
                         .param("southWestLng", "126.800000")
                         .param("northEastLat", "37.600000"))
                 .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId")))
                 .andExpect(jsonPath("$.code").value("INVALID_MAP_BOUNDS"))
                 .andExpect(jsonPath("$.message").value("지도 범위 좌표가 올바르지 않습니다."))
-                .andExpect(jsonPath("$.traceId").isNotEmpty());
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(noInternalDetails());
+    }
+
+    @Test
+    void 네_지도_경계를_모두_생략하면_INVALID_MAP_BOUNDS를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/v1/complexes/map"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId")))
+                .andExpect(jsonPath("$.code").value("INVALID_MAP_BOUNDS"))
+                .andExpect(jsonPath("$.message").value("지도 범위 좌표가 올바르지 않습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(noInternalDetails());
+    }
+
+    @Test
+    void 뒤집힌_지도_경계는_INVALID_MAP_BOUNDS를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/v1/complexes/map")
+                        .param("southWestLat", "37.600000")
+                        .param("southWestLng", "126.800000")
+                        .param("northEastLat", "37.400000")
+                        .param("northEastLng", "127.100000"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId")))
+                .andExpect(jsonPath("$.code").value("INVALID_MAP_BOUNDS"))
+                .andExpect(jsonPath("$.message").value("지도 범위 좌표가 올바르지 않습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(noInternalDetails());
+    }
+
+    @Test
+    void 동일한_지도_경계는_INVALID_MAP_BOUNDS를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/v1/complexes/map")
+                        .param("southWestLat", "37.400000")
+                        .param("southWestLng", "126.800000")
+                        .param("northEastLat", "37.400000")
+                        .param("northEastLng", "127.100000"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId")))
+                .andExpect(jsonPath("$.code").value("INVALID_MAP_BOUNDS"))
+                .andExpect(jsonPath("$.message").value("지도 범위 좌표가 올바르지 않습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(noInternalDetails());
+    }
+
+    @Test
+    void 허용_범위를_벗어난_지도_경계는_INVALID_MAP_BOUNDS를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/v1/complexes/map")
+                        .param("southWestLat", "-91")
+                        .param("southWestLng", "126.800000")
+                        .param("northEastLat", "37.600000")
+                        .param("northEastLng", "127.100000"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId")))
+                .andExpect(jsonPath("$.code").value("INVALID_MAP_BOUNDS"))
+                .andExpect(jsonPath("$.message").value("지도 범위 좌표가 올바르지 않습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(noInternalDetails());
+    }
+
+    @Test
+    void 숫자가_아닌_bounds는_VALIDATION_FAILED를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/v1/complexes/map")
+                        .param("southWestLat", "not-a-number")
+                        .param("southWestLng", "126.800000")
+                        .param("northEastLat", "37.600000")
+                        .param("northEastLng", "127.100000"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId", "errors")))
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("요청값이 올바르지 않습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(jsonPath("$.errors.length()").value(1))
+                .andExpect(jsonPath("$.errors[0].keys()", containsInAnyOrder("field", "reason")))
+                .andExpect(jsonPath("$.errors[0].field").value("southWestLat"))
+                .andExpect(noInternalDetails());
     }
 
     @Test
@@ -133,6 +213,7 @@ class HousingComplexControllerTest {
                         .param("northEastLat", "37.600000")
                         .param("northEastLng", "127.100000"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("data")))
                 .andExpect(jsonPath("$.data.keys()", containsInAnyOrder("items", "nextCursor", "hasNext")))
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].keys()", containsInAnyOrder(
@@ -204,9 +285,11 @@ class HousingComplexControllerTest {
                         .param("southWestLng", "126.800000")
                         .param("northEastLat", "37.600000"))
                 .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId")))
                 .andExpect(jsonPath("$.code").value("INVALID_MAP_BOUNDS"))
                 .andExpect(jsonPath("$.message").value("지도 범위 좌표가 올바르지 않습니다."))
-                .andExpect(jsonPath("$.traceId").isNotEmpty());
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(noInternalDetails());
     }
 
     @Test
@@ -221,13 +304,15 @@ class HousingComplexControllerTest {
                         .param("northEastLat", "37.600000")
                         .param("northEastLng", "127.100000"))
                 .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId")))
                 .andExpect(jsonPath("$.code").value("INVALID_CURSOR"))
                 .andExpect(jsonPath("$.message").value("단지 조회 커서가 올바르지 않습니다."))
-                .andExpect(jsonPath("$.traceId").isNotEmpty());
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(noInternalDetails());
     }
 
     @Test
-    void 잘못된_목록_크기는_INVALID_REQUEST를_반환한다() throws Exception {
+    void size_51은_INVALID_REQUEST를_반환한다() throws Exception {
         when(queryService.getComplexes(any(), any(), eq(51)))
                 .thenThrow(new InvalidComplexRequestException());
 
@@ -238,9 +323,63 @@ class HousingComplexControllerTest {
                         .param("northEastLat", "37.600000")
                         .param("northEastLng", "127.100000"))
                 .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId")))
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
                 .andExpect(jsonPath("$.message").value("단지 조회 요청값이 올바르지 않습니다."))
-                .andExpect(jsonPath("$.traceId").isNotEmpty());
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(noInternalDetails());
+    }
+
+    @Test
+    void size_0은_INVALID_REQUEST를_반환한다() throws Exception {
+        when(queryService.getComplexes(any(), any(), eq(0)))
+                .thenThrow(new InvalidComplexRequestException());
+
+        mockMvc.perform(get("/api/v1/complexes")
+                        .param("size", "0")
+                        .param("southWestLat", "37.400000")
+                        .param("southWestLng", "126.800000")
+                        .param("northEastLat", "37.600000")
+                        .param("northEastLng", "127.100000"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId")))
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("단지 조회 요청값이 올바르지 않습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(noInternalDetails());
+    }
+
+    @Test
+    void 숫자가_아닌_size는_VALIDATION_FAILED를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/v1/complexes")
+                        .param("size", "not-a-number")
+                        .param("southWestLat", "37.400000")
+                        .param("southWestLng", "126.800000")
+                        .param("northEastLat", "37.600000")
+                        .param("northEastLng", "127.100000"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId", "errors")))
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("요청값이 올바르지 않습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(jsonPath("$.errors.length()").value(1))
+                .andExpect(jsonPath("$.errors[0].keys()", containsInAnyOrder("field", "reason")))
+                .andExpect(jsonPath("$.errors[0].field").value("size"))
+                .andExpect(noInternalDetails());
+    }
+
+    @Test
+    void 숫자가_아닌_단지_ID는_VALIDATION_FAILED를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/v1/complexes/not-a-number"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId", "errors")))
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("요청값이 올바르지 않습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(jsonPath("$.errors.length()").value(1))
+                .andExpect(jsonPath("$.errors[0].keys()", containsInAnyOrder("field", "reason")))
+                .andExpect(jsonPath("$.errors[0].field").value("complexId"))
+                .andExpect(noInternalDetails());
     }
 
     @Test
@@ -318,9 +457,11 @@ class HousingComplexControllerTest {
 
         mockMvc.perform(get("/api/v1/complexes/999"))
                 .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId")))
                 .andExpect(jsonPath("$.code").value("COMPLEX_NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value("단지를 찾을 수 없습니다."))
-                .andExpect(jsonPath("$.traceId").isNotEmpty());
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(noInternalDetails());
     }
 
     private HousingComplexListResponse listResponse(long complexId) {
@@ -401,5 +542,16 @@ class HousingComplexControllerTest {
                         null
                 ))
         );
+    }
+
+    private ResultMatcher noInternalDetails() {
+        return result -> {
+            String body = result.getResponse().getContentAsString();
+            assertFalse(body.contains("SQL"));
+            assertFalse(body.contains("Exception"));
+            assertFalse(body.contains("java."));
+            assertFalse(body.contains("org.springframework"));
+            assertFalse(body.contains("stackTrace"));
+        };
     }
 }

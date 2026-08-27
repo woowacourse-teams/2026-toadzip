@@ -1,5 +1,6 @@
 package com.toadzip.backend.global.config;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -45,5 +46,20 @@ class OpenApiDocumentationIntegrationTest {
         assertEquals(200, response.statusCode());
         assertEquals("두꺼비집 API", JsonPath.read(response.body(), "$.info.title"));
         assertEquals("0.0.1", JsonPath.read(response.body(), "$.info.version"));
+    }
+
+    @Test
+    void 로컬_프로필_OpenAPI는_단지_목록_지도_상세_GET_경로를_제공한다() throws Exception {
+        HttpResponse<String> response = TestHttpClient.get(port, "/v3/api-docs");
+
+        assertEquals(200, response.statusCode());
+        assertAll(
+                () -> assertNotNull(JsonPath.read(response.body(), "$.paths['/api/v1/complexes'].get")),
+                () -> assertNotNull(JsonPath.read(response.body(), "$.paths['/api/v1/complexes/map'].get")),
+                () -> assertNotNull(JsonPath.read(
+                        response.body(),
+                        "$.paths['/api/v1/complexes/{complexId}'].get"
+                ))
+        );
     }
 }
