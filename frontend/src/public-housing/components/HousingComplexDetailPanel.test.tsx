@@ -284,7 +284,7 @@ describe('HousingComplexDetailPanel', () => {
   it('현재 공고 이동을 독립적인 버튼 callback으로 제공한다', () => {
     const { onOpenAnnouncement, panel } = renderPanel()
     const button = within(panel).getByRole('button', {
-      name: `${BASE_DETAIL.currentAnnouncements[0].title} 공고 상세 보기`,
+      name: `${BASE_DETAIL.currentAnnouncements[0].title} 상세 보기`,
     })
 
     fireEvent.click(button)

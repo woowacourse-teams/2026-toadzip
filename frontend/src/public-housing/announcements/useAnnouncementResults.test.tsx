@@ -115,6 +115,7 @@ function createRepository(): PublicHousingRepository & {
   findAnnouncementPage: ReturnType<typeof vi.fn>
 } {
   return {
+    findAnnouncementDetail: vi.fn(),
     findAnnouncementPage: vi.fn().mockResolvedValue(
       announcementPage(['101'], null, false),
     ),

@@ -1,4 +1,5 @@
 import type {
+  AnnouncementDetail,
   AnnouncementPage,
   ComplexDetail,
   ComplexPage,
@@ -6,6 +7,7 @@ import type {
   MapComplex,
 } from '../model/publicHousing.ts'
 import {
+  decodeAnnouncementDetailEnvelope,
   decodeAnnouncementPageEnvelope,
   decodeComplexDetailEnvelope,
   decodeComplexPageEnvelope,
@@ -13,6 +15,7 @@ import {
   PublicHousingContractError,
 } from './publicHousingContract.ts'
 import {
+  toAnnouncementDetail,
   toAnnouncementPage,
   toComplexDetail,
   toComplexPage,
@@ -54,6 +57,10 @@ export interface PublicHousingRepository {
     size: number,
     signal: AbortSignal,
   ): Promise<AnnouncementPage>
+  findAnnouncementDetail(
+    announcementId: string,
+    signal: AbortSignal,
+  ): Promise<AnnouncementDetail>
 }
 
 export class PublicHousingHttpError extends Error {
@@ -104,7 +111,7 @@ export function createHttpPublicHousingRepository(
     },
 
     async findComplexDetail(complexId, signal) {
-      validateCanonicalId(complexId)
+      validateCanonicalId(complexId, '단지')
       const payload = await requestJson(
         fetcher,
         `${apiBaseUrl}${COMPLEXES_PATH}/${complexId}`,
@@ -125,6 +132,16 @@ export function createHttpPublicHousingRepository(
         signal,
       )
       return toAnnouncementPage(decodeAnnouncementPageEnvelope(payload))
+    },
+
+    async findAnnouncementDetail(announcementId, signal) {
+      validateCanonicalId(announcementId, '공고')
+      const payload = await requestJson(
+        fetcher,
+        `${apiBaseUrl}${ANNOUNCEMENTS_PATH}/${announcementId}`,
+        signal,
+      )
+      return toAnnouncementDetail(decodeAnnouncementDetailEnvelope(payload))
     },
   }
 }
@@ -148,6 +165,9 @@ async function requestJson(
   try {
     return (await response.json()) as unknown
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error
+    }
     throw new PublicHousingContractError(
       error instanceof Error ? '$ (invalid JSON)' : '$',
     )
@@ -155,7 +175,15 @@ async function requestJson(
 }
 
 async function decodeErrorBody(response: Response): Promise<ErrorBody> {
-  const value = (await response.json().catch(() => null)) as unknown
+  let value: unknown
+  try {
+    value = (await response.json()) as unknown
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw error
+    }
+    value = null
+  }
   if (!isRecord(value)) {
     return { code: null, message: null, traceId: null }
   }
@@ -165,6 +193,13 @@ async function decodeErrorBody(response: Response): Promise<ErrorBody> {
     message: nullableString(value.message),
     traceId: nullableString(value.traceId),
   }
+}
+
+function isAbortError(error: unknown) {
+  return typeof error === 'object'
+    && error !== null
+    && 'name' in error
+    && error.name === 'AbortError'
 }
 
 function boundsSearchParams(bounds: MapBounds): URLSearchParams {
@@ -195,13 +230,13 @@ function validatePageSize(size: number) {
   }
 }
 
-function validateCanonicalId(id: string) {
+function validateCanonicalId(id: string, entity: string) {
   if (
     !/^[1-9]\d*$/.test(id) ||
     id.length > 19 ||
     BigInt(id) > MAX_JAVA_LONG
   ) {
-    throw new RangeError('단지 ID는 양의 Java Long 정수 문자열이어야 합니다.')
+    throw new RangeError(`${entity} ID는 양의 Java Long 정수 문자열이어야 합니다.`)
   }
 }
 

@@ -274,3 +274,187 @@ export interface AnnouncementPage {
   readonly hasNext: boolean
   readonly raw: RawAnnouncementPage
 }
+
+export interface RawAnnouncementReceptionPlace {
+  readonly name: string | null
+  readonly method: string | null
+  readonly address: string | null
+  readonly phoneNumber: string | null
+  readonly url: string | null
+}
+
+export interface RawAnnouncementSchedule {
+  readonly scheduleId: number
+  readonly type: string | null
+  readonly name: string | null
+  readonly startAt: string | null
+  readonly endAt: string | null
+}
+
+export interface RawAnnouncementAttachment {
+  readonly attachmentId: number
+  readonly fileName: string | null
+  readonly fileType: string | null
+  readonly fileUrl: string | null
+}
+
+export interface RawAnnouncementSupplyComplex {
+  readonly complexId: number
+  readonly name: string | null
+  readonly address: string | null
+  readonly totalHouseholdCount: number | null
+  readonly overviewImageUrl: string | null
+}
+
+export interface RawAnnouncementHousingType {
+  readonly housingTypeId: number
+  readonly name: string | null
+  readonly exclusiveArea: number | null
+  readonly supplyArea: number | null
+  readonly floorPlanImageUrl: string | null
+  readonly floorPlan3dImageUrl: string | null
+}
+
+export interface RawAnnouncementSupplyTarget {
+  readonly supplyTargetId: number
+  readonly target: string | null
+  readonly priority: string | null
+  readonly supplyHouseholdCount: number | null
+  readonly waitlistCount: number | null
+  readonly deposit: number | null
+  readonly monthlyRent: number | null
+  readonly convertibleDeposit: number | null
+  readonly applicationCondition: string | null
+}
+
+export interface RawAnnouncementSupplyRow {
+  readonly supplyRowId: number
+  readonly sourceComplexName: string | null
+  readonly sourceHousingTypeName: string | null
+  readonly complex: RawAnnouncementSupplyComplex | null
+  readonly housingType: RawAnnouncementHousingType | null
+  readonly occupancyExpectedYearMonth: string | null
+  readonly supplyType: string | null
+  readonly totalSupplyHouseholdCount: number | null
+  readonly targets: readonly RawAnnouncementSupplyTarget[]
+}
+
+export interface RawAnnouncementCompetition {
+  readonly actualRate: number | null
+  readonly predictedRate: number | null
+}
+
+export interface RawAnnouncementDetail {
+  readonly announcementId: number
+  readonly publicationType: string | null
+  readonly correctionOrCancellationReason: string | null
+  readonly applicationStatus: string | null
+  readonly rentalType: string | null
+  readonly recruitmentType: string | null
+  readonly title: string | null
+  readonly regionNames: readonly string[]
+  readonly agency: HousingAgency | null
+  readonly publishedAt: string | null
+  readonly applicationStartAt: string | null
+  readonly applicationEndAt: string | null
+  readonly dDay: number | null
+  readonly winnerAnnouncementAt: string | null
+  readonly viewCount: number
+  readonly targets: readonly string[]
+  readonly supplyComplexCount: number
+  readonly supplyHouseholdCount: number | null
+  readonly documentLinkUrl: string | null
+  readonly receptionPlaces: readonly RawAnnouncementReceptionPlace[]
+  readonly schedules: readonly RawAnnouncementSchedule[]
+  readonly attachments: readonly RawAnnouncementAttachment[]
+  readonly supplyRows: readonly RawAnnouncementSupplyRow[]
+  readonly competition: RawAnnouncementCompetition | null
+}
+
+export type AnnouncementReceptionPlace = RawAnnouncementReceptionPlace
+
+export interface AnnouncementSchedule {
+  readonly scheduleId: string
+  readonly type: string | null
+  readonly name: string | null
+  readonly startAt: string | null
+  readonly endAt: string | null
+}
+
+export interface AnnouncementAttachment {
+  readonly attachmentId: string
+  readonly fileName: string | null
+  readonly fileType: string | null
+  readonly fileUrl: string | null
+}
+
+export interface AnnouncementSupplyComplex {
+  readonly complexId: string
+  readonly name: string | null
+  readonly address: string | null
+  readonly totalHouseholdCount: number | null
+  readonly overviewImageUrl: string | null
+}
+
+export interface AnnouncementHousingType {
+  readonly housingTypeId: string
+  readonly name: string | null
+  readonly exclusiveArea: number | null
+  readonly supplyArea: number | null
+  readonly floorPlanImageUrl: string | null
+  readonly floorPlan3dImageUrl: string | null
+}
+
+export interface AnnouncementSupplyTarget {
+  readonly supplyTargetId: string
+  readonly target: string | null
+  readonly priority: string | null
+  readonly supplyHouseholdCount: number | null
+  readonly waitlistCount: number | null
+  readonly deposit: number | null
+  readonly monthlyRent: number | null
+  readonly convertibleDeposit: number | null
+  readonly applicationCondition: string | null
+}
+
+export interface AnnouncementSupplyRow {
+  readonly supplyRowId: string
+  readonly sourceComplexName: string | null
+  readonly sourceHousingTypeName: string | null
+  readonly complex: AnnouncementSupplyComplex | null
+  readonly housingType: AnnouncementHousingType | null
+  readonly occupancyExpectedYearMonth: string | null
+  readonly supplyType: string | null
+  readonly totalSupplyHouseholdCount: number | null
+  readonly targets: readonly AnnouncementSupplyTarget[]
+}
+
+export type AnnouncementCompetition = RawAnnouncementCompetition
+
+export interface AnnouncementDetail {
+  readonly announcementId: string
+  readonly publicationType: string | null
+  readonly correctionOrCancellationReason: string | null
+  readonly applicationStatus: string | null
+  readonly rentalType: string | null
+  readonly recruitmentType: string | null
+  readonly title: string | null
+  readonly regionNames: readonly string[]
+  readonly agency: HousingAgency | null
+  readonly publishedAt: string | null
+  readonly applicationStartAt: string | null
+  readonly applicationEndAt: string | null
+  readonly dDay: number | null
+  readonly winnerAnnouncementAt: string | null
+  readonly viewCount: number
+  readonly targets: readonly string[]
+  readonly supplyComplexCount: number
+  readonly supplyHouseholdCount: number | null
+  readonly documentLinkUrl: string | null
+  readonly receptionPlaces: readonly AnnouncementReceptionPlace[]
+  readonly schedules: readonly AnnouncementSchedule[]
+  readonly attachments: readonly AnnouncementAttachment[]
+  readonly supplyRows: readonly AnnouncementSupplyRow[]
+  readonly competition: AnnouncementCompetition | null
+  readonly raw: RawAnnouncementDetail
+}

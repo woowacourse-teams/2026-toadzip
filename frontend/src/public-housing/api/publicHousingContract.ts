@@ -1,7 +1,16 @@
 import type {
   HousingAgency,
+  RawAnnouncementAttachment,
+  RawAnnouncementCompetition,
+  RawAnnouncementDetail,
+  RawAnnouncementHousingType,
   RawAnnouncementListItem,
   RawAnnouncementPage,
+  RawAnnouncementReceptionPlace,
+  RawAnnouncementSchedule,
+  RawAnnouncementSupplyComplex,
+  RawAnnouncementSupplyRow,
+  RawAnnouncementSupplyTarget,
   RawComplexAddress,
   RawComplexCurrentAnnouncement,
   RawComplexDetail,
@@ -51,6 +60,16 @@ export function decodeAnnouncementPageEnvelope(
   }
 }
 
+export function decodeAnnouncementDetailEnvelope(
+  value: unknown,
+): RawAnnouncementDetail {
+  const envelope = recordAt(value, '$')
+  return decodeAnnouncementDetail(
+    recordField(envelope, 'data', '$'),
+    '$.data',
+  )
+}
+
 export function decodeComplexDetailEnvelope(value: unknown): RawComplexDetail {
   const envelope = recordAt(value, '$')
   return decodeComplexDetail(recordField(envelope, 'data', '$'), '$.data')
@@ -85,6 +104,420 @@ function decodeComplexPage(value: unknown, path: string): RawComplexPage {
     hasNext: booleanAt(
       recordField(response, 'hasNext', path),
       `${path}.hasNext`,
+    ),
+  }
+}
+
+function decodeAnnouncementDetail(
+  value: unknown,
+  path: string,
+): RawAnnouncementDetail {
+  const detail = recordAt(value, path)
+
+  return {
+    announcementId: positiveSafeIntegerAt(
+      recordField(detail, 'announcementId', path),
+      `${path}.announcementId`,
+    ),
+    publicationType: nullableStringAt(
+      recordField(detail, 'publicationType', path),
+      `${path}.publicationType`,
+    ),
+    correctionOrCancellationReason: nullableStringAt(
+      recordField(detail, 'correctionOrCancellationReason', path),
+      `${path}.correctionOrCancellationReason`,
+    ),
+    applicationStatus: nullableStringAt(
+      recordField(detail, 'applicationStatus', path),
+      `${path}.applicationStatus`,
+    ),
+    rentalType: nullableStringAt(
+      recordField(detail, 'rentalType', path),
+      `${path}.rentalType`,
+    ),
+    recruitmentType: nullableStringAt(
+      recordField(detail, 'recruitmentType', path),
+      `${path}.recruitmentType`,
+    ),
+    title: nullableStringAt(
+      recordField(detail, 'title', path),
+      `${path}.title`,
+    ),
+    regionNames: stringArrayAt(
+      recordField(detail, 'regionNames', path),
+      `${path}.regionNames`,
+    ),
+    agency: decodeNullableAgency(
+      recordField(detail, 'agency', path),
+      `${path}.agency`,
+    ),
+    publishedAt: nullableDateStringAt(
+      recordField(detail, 'publishedAt', path),
+      `${path}.publishedAt`,
+    ),
+    applicationStartAt: nullableDateStringAt(
+      recordField(detail, 'applicationStartAt', path),
+      `${path}.applicationStartAt`,
+    ),
+    applicationEndAt: nullableDateStringAt(
+      recordField(detail, 'applicationEndAt', path),
+      `${path}.applicationEndAt`,
+    ),
+    dDay: nullableSafeIntegerAt(
+      recordField(detail, 'dDay', path),
+      `${path}.dDay`,
+    ),
+    winnerAnnouncementAt: nullableDateStringAt(
+      recordField(detail, 'winnerAnnouncementAt', path),
+      `${path}.winnerAnnouncementAt`,
+    ),
+    viewCount: safeIntegerAt(
+      recordField(detail, 'viewCount', path),
+      `${path}.viewCount`,
+    ),
+    targets: stringArrayAt(
+      recordField(detail, 'targets', path),
+      `${path}.targets`,
+    ),
+    supplyComplexCount: safeIntegerAt(
+      recordField(detail, 'supplyComplexCount', path),
+      `${path}.supplyComplexCount`,
+    ),
+    supplyHouseholdCount: nullableSafeIntegerAt(
+      recordField(detail, 'supplyHouseholdCount', path),
+      `${path}.supplyHouseholdCount`,
+    ),
+    documentLinkUrl: nullableStringAt(
+      recordField(detail, 'documentLinkUrl', path),
+      `${path}.documentLinkUrl`,
+    ),
+    receptionPlaces: decodeAnnouncementReceptionPlaces(
+      recordField(detail, 'receptionPlaces', path),
+      `${path}.receptionPlaces`,
+    ),
+    schedules: decodeAnnouncementSchedules(
+      recordField(detail, 'schedules', path),
+      `${path}.schedules`,
+    ),
+    attachments: decodeAnnouncementAttachments(
+      recordField(detail, 'attachments', path),
+      `${path}.attachments`,
+    ),
+    supplyRows: decodeAnnouncementSupplyRows(
+      recordField(detail, 'supplyRows', path),
+      `${path}.supplyRows`,
+    ),
+    competition: decodeNullableAnnouncementCompetition(
+      recordField(detail, 'competition', path),
+      `${path}.competition`,
+    ),
+  }
+}
+
+function decodeAnnouncementReceptionPlaces(
+  value: unknown,
+  path: string,
+): readonly RawAnnouncementReceptionPlace[] {
+  return arrayAt(value, path).map((item, index) =>
+    decodeAnnouncementReceptionPlace(item, `${path}[${index}]`),
+  )
+}
+
+function decodeAnnouncementReceptionPlace(
+  value: unknown,
+  path: string,
+): RawAnnouncementReceptionPlace {
+  const place = recordAt(value, path)
+
+  return {
+    name: nullableStringAt(recordField(place, 'name', path), `${path}.name`),
+    method: nullableStringAt(
+      recordField(place, 'method', path),
+      `${path}.method`,
+    ),
+    address: nullableStringAt(
+      recordField(place, 'address', path),
+      `${path}.address`,
+    ),
+    phoneNumber: nullableStringAt(
+      recordField(place, 'phoneNumber', path),
+      `${path}.phoneNumber`,
+    ),
+    url: nullableStringAt(recordField(place, 'url', path), `${path}.url`),
+  }
+}
+
+function decodeAnnouncementSchedules(
+  value: unknown,
+  path: string,
+): readonly RawAnnouncementSchedule[] {
+  return arrayAt(value, path).map((item, index) =>
+    decodeAnnouncementSchedule(item, `${path}[${index}]`),
+  )
+}
+
+function decodeAnnouncementSchedule(
+  value: unknown,
+  path: string,
+): RawAnnouncementSchedule {
+  const schedule = recordAt(value, path)
+
+  return {
+    scheduleId: positiveSafeIntegerAt(
+      recordField(schedule, 'scheduleId', path),
+      `${path}.scheduleId`,
+    ),
+    type: nullableStringAt(
+      recordField(schedule, 'type', path),
+      `${path}.type`,
+    ),
+    name: nullableStringAt(
+      recordField(schedule, 'name', path),
+      `${path}.name`,
+    ),
+    startAt: nullableDateTimeStringAt(
+      recordField(schedule, 'startAt', path),
+      `${path}.startAt`,
+    ),
+    endAt: nullableDateTimeStringAt(
+      recordField(schedule, 'endAt', path),
+      `${path}.endAt`,
+    ),
+  }
+}
+
+function decodeAnnouncementAttachments(
+  value: unknown,
+  path: string,
+): readonly RawAnnouncementAttachment[] {
+  return arrayAt(value, path).map((item, index) =>
+    decodeAnnouncementAttachment(item, `${path}[${index}]`),
+  )
+}
+
+function decodeAnnouncementAttachment(
+  value: unknown,
+  path: string,
+): RawAnnouncementAttachment {
+  const attachment = recordAt(value, path)
+
+  return {
+    attachmentId: positiveSafeIntegerAt(
+      recordField(attachment, 'attachmentId', path),
+      `${path}.attachmentId`,
+    ),
+    fileName: nullableStringAt(
+      recordField(attachment, 'fileName', path),
+      `${path}.fileName`,
+    ),
+    fileType: nullableStringAt(
+      recordField(attachment, 'fileType', path),
+      `${path}.fileType`,
+    ),
+    fileUrl: nullableStringAt(
+      recordField(attachment, 'fileUrl', path),
+      `${path}.fileUrl`,
+    ),
+  }
+}
+
+function decodeAnnouncementSupplyRows(
+  value: unknown,
+  path: string,
+): readonly RawAnnouncementSupplyRow[] {
+  return arrayAt(value, path).map((item, index) =>
+    decodeAnnouncementSupplyRow(item, `${path}[${index}]`),
+  )
+}
+
+function decodeAnnouncementSupplyRow(
+  value: unknown,
+  path: string,
+): RawAnnouncementSupplyRow {
+  const row = recordAt(value, path)
+
+  return {
+    supplyRowId: positiveSafeIntegerAt(
+      recordField(row, 'supplyRowId', path),
+      `${path}.supplyRowId`,
+    ),
+    sourceComplexName: nullableStringAt(
+      recordField(row, 'sourceComplexName', path),
+      `${path}.sourceComplexName`,
+    ),
+    sourceHousingTypeName: nullableStringAt(
+      recordField(row, 'sourceHousingTypeName', path),
+      `${path}.sourceHousingTypeName`,
+    ),
+    complex: decodeNullableAnnouncementSupplyComplex(
+      recordField(row, 'complex', path),
+      `${path}.complex`,
+    ),
+    housingType: decodeNullableAnnouncementHousingType(
+      recordField(row, 'housingType', path),
+      `${path}.housingType`,
+    ),
+    occupancyExpectedYearMonth: nullableYearMonthStringAt(
+      recordField(row, 'occupancyExpectedYearMonth', path),
+      `${path}.occupancyExpectedYearMonth`,
+    ),
+    supplyType: nullableStringAt(
+      recordField(row, 'supplyType', path),
+      `${path}.supplyType`,
+    ),
+    totalSupplyHouseholdCount: nullableSafeIntegerAt(
+      recordField(row, 'totalSupplyHouseholdCount', path),
+      `${path}.totalSupplyHouseholdCount`,
+    ),
+    targets: decodeAnnouncementSupplyTargets(
+      recordField(row, 'targets', path),
+      `${path}.targets`,
+    ),
+  }
+}
+
+function decodeNullableAnnouncementSupplyComplex(
+  value: unknown,
+  path: string,
+): RawAnnouncementSupplyComplex | null {
+  if (value === null) {
+    return null
+  }
+
+  const complex = recordAt(value, path)
+  return {
+    complexId: positiveSafeIntegerAt(
+      recordField(complex, 'complexId', path),
+      `${path}.complexId`,
+    ),
+    name: nullableStringAt(
+      recordField(complex, 'name', path),
+      `${path}.name`,
+    ),
+    address: nullableStringAt(
+      recordField(complex, 'address', path),
+      `${path}.address`,
+    ),
+    totalHouseholdCount: nullableSafeIntegerAt(
+      recordField(complex, 'totalHouseholdCount', path),
+      `${path}.totalHouseholdCount`,
+    ),
+    overviewImageUrl: nullableStringAt(
+      recordField(complex, 'overviewImageUrl', path),
+      `${path}.overviewImageUrl`,
+    ),
+  }
+}
+
+function decodeNullableAnnouncementHousingType(
+  value: unknown,
+  path: string,
+): RawAnnouncementHousingType | null {
+  if (value === null) {
+    return null
+  }
+
+  const housingType = recordAt(value, path)
+  return {
+    housingTypeId: positiveSafeIntegerAt(
+      recordField(housingType, 'housingTypeId', path),
+      `${path}.housingTypeId`,
+    ),
+    name: nullableStringAt(
+      recordField(housingType, 'name', path),
+      `${path}.name`,
+    ),
+    exclusiveArea: nullableFiniteNumberAt(
+      recordField(housingType, 'exclusiveArea', path),
+      `${path}.exclusiveArea`,
+    ),
+    supplyArea: nullableFiniteNumberAt(
+      recordField(housingType, 'supplyArea', path),
+      `${path}.supplyArea`,
+    ),
+    floorPlanImageUrl: nullableStringAt(
+      recordField(housingType, 'floorPlanImageUrl', path),
+      `${path}.floorPlanImageUrl`,
+    ),
+    floorPlan3dImageUrl: nullableStringAt(
+      recordField(housingType, 'floorPlan3dImageUrl', path),
+      `${path}.floorPlan3dImageUrl`,
+    ),
+  }
+}
+
+function decodeAnnouncementSupplyTargets(
+  value: unknown,
+  path: string,
+): readonly RawAnnouncementSupplyTarget[] {
+  return arrayAt(value, path).map((item, index) =>
+    decodeAnnouncementSupplyTarget(item, `${path}[${index}]`),
+  )
+}
+
+function decodeAnnouncementSupplyTarget(
+  value: unknown,
+  path: string,
+): RawAnnouncementSupplyTarget {
+  const target = recordAt(value, path)
+
+  return {
+    supplyTargetId: positiveSafeIntegerAt(
+      recordField(target, 'supplyTargetId', path),
+      `${path}.supplyTargetId`,
+    ),
+    target: nullableStringAt(
+      recordField(target, 'target', path),
+      `${path}.target`,
+    ),
+    priority: nullableStringAt(
+      recordField(target, 'priority', path),
+      `${path}.priority`,
+    ),
+    supplyHouseholdCount: nullableSafeIntegerAt(
+      recordField(target, 'supplyHouseholdCount', path),
+      `${path}.supplyHouseholdCount`,
+    ),
+    waitlistCount: nullableSafeIntegerAt(
+      recordField(target, 'waitlistCount', path),
+      `${path}.waitlistCount`,
+    ),
+    deposit: nullableSafeIntegerAt(
+      recordField(target, 'deposit', path),
+      `${path}.deposit`,
+    ),
+    monthlyRent: nullableSafeIntegerAt(
+      recordField(target, 'monthlyRent', path),
+      `${path}.monthlyRent`,
+    ),
+    convertibleDeposit: nullableSafeIntegerAt(
+      recordField(target, 'convertibleDeposit', path),
+      `${path}.convertibleDeposit`,
+    ),
+    applicationCondition: nullableStringAt(
+      recordField(target, 'applicationCondition', path),
+      `${path}.applicationCondition`,
+    ),
+  }
+}
+
+function decodeNullableAnnouncementCompetition(
+  value: unknown,
+  path: string,
+): RawAnnouncementCompetition | null {
+  if (value === null) {
+    return null
+  }
+
+  const competition = recordAt(value, path)
+  return {
+    actualRate: nullableFiniteNumberAt(
+      recordField(competition, 'actualRate', path),
+      `${path}.actualRate`,
+    ),
+    predictedRate: nullableFiniteNumberAt(
+      recordField(competition, 'predictedRate', path),
+      `${path}.predictedRate`,
     ),
   }
 }
@@ -688,4 +1121,34 @@ function nullableDateStringAt(value: unknown, path: string): string | null {
     return null
   }
   return dateStringAt(value, path)
+}
+
+function nullableDateTimeStringAt(
+  value: unknown,
+  path: string,
+): string | null {
+  if (value === null) {
+    return null
+  }
+
+  const dateTime = stringAt(value, path)
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(dateTime)) {
+    throw new PublicHousingContractError(path)
+  }
+  return dateTime
+}
+
+function nullableYearMonthStringAt(
+  value: unknown,
+  path: string,
+): string | null {
+  if (value === null) {
+    return null
+  }
+
+  const yearMonth = stringAt(value, path)
+  if (!/^\d{4}-\d{2}$/.test(yearMonth)) {
+    throw new PublicHousingContractError(path)
+  }
+  return yearMonth
 }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MapBounds } from '../model/publicHousing.ts'
 import {
+  decodeAnnouncementDetailEnvelope,
   decodeAnnouncementPageEnvelope,
   decodeComplexDetailEnvelope,
   decodeComplexPageEnvelope,
@@ -115,6 +116,104 @@ const ANNOUNCEMENT_ITEM = {
   actualCompetitionRate: 0,
   predictedCompetitionRate: null,
   thumbnailImageUrl: null,
+}
+
+const ANNOUNCEMENT_DETAIL = {
+  announcementId: 42,
+  publicationType: 'ORIGINAL',
+  correctionOrCancellationReason: null,
+  applicationStatus: 'APPLYING',
+  rentalType: 'HAPPY_HOUSING',
+  recruitmentType: 'NEW',
+  title: '2026년 행복주택 입주자 모집',
+  regionNames: ['서울특별시 중구'],
+  agency: { code: 'LH', name: '한국토지주택공사' },
+  publishedAt: '2026-08-01',
+  applicationStartAt: '2026-08-10',
+  applicationEndAt: '2026-08-12',
+  dDay: 0,
+  winnerAnnouncementAt: '2026-08-20',
+  viewCount: 0,
+  targets: [],
+  supplyComplexCount: 1,
+  supplyHouseholdCount: 0,
+  documentLinkUrl: 'https://example.com/announcement',
+  receptionPlaces: [
+    {
+      name: 'LH 청약센터',
+      method: 'ONLINE',
+      address: null,
+      phoneNumber: '1600-1004',
+      url: null,
+    },
+  ],
+  schedules: [
+    {
+      scheduleId: 501,
+      type: 'APPLICATION',
+      name: null,
+      startAt: '2026-08-10T09:30:15',
+      endAt: null,
+    },
+  ],
+  attachments: [
+    {
+      attachmentId: 601,
+      fileName: null,
+      fileType: 'ANNOUNCEMENT',
+      fileUrl: null,
+    },
+  ],
+  supplyRows: [
+    {
+      supplyRowId: 301,
+      sourceComplexName: '원문 단지',
+      sourceHousingTypeName: null,
+      complex: {
+        complexId: 101,
+        name: null,
+        address: null,
+        totalHouseholdCount: 0,
+        overviewImageUrl: null,
+      },
+      housingType: {
+        housingTypeId: 201,
+        name: null,
+        exclusiveArea: 0,
+        supplyArea: null,
+        floorPlanImageUrl: null,
+        floorPlan3dImageUrl: null,
+      },
+      occupancyExpectedYearMonth: '2027-03',
+      supplyType: 'NEW',
+      totalSupplyHouseholdCount: 0,
+      targets: [
+        {
+          supplyTargetId: 401,
+          target: '청년',
+          priority: null,
+          supplyHouseholdCount: 0,
+          waitlistCount: null,
+          deposit: 0,
+          monthlyRent: null,
+          convertibleDeposit: null,
+          applicationCondition: null,
+        },
+      ],
+    },
+    {
+      supplyRowId: 302,
+      sourceComplexName: '미매칭 원문 단지',
+      sourceHousingTypeName: '미매칭 44A',
+      complex: null,
+      housingType: null,
+      occupancyExpectedYearMonth: null,
+      supplyType: 'RESUPPLY',
+      totalSupplyHouseholdCount: null,
+      targets: [],
+    },
+  ],
+  competition: { actualRate: 0, predictedRate: null },
 }
 
 afterEach(() => {
@@ -235,6 +334,106 @@ describe('공공주택 HTTP repository', () => {
       ),
     ).rejects.toBeInstanceOf(RangeError)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('공고 상세의 full DTO를 보존하고 모든 중첩 ID를 canonical string으로 변환한다', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ data: ANNOUNCEMENT_DETAIL }))
+    const repository = createRepository(fetchMock, 'https://api.example.test')
+    const controller = new AbortController()
+
+    const detail = await repository.findAnnouncementDetail(
+      '42',
+      controller.signal,
+    )
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.example.test/api/v1/announcements/42',
+      expect.objectContaining({ signal: controller.signal }),
+    )
+    expect(detail).toMatchObject({
+      announcementId: '42',
+      correctionOrCancellationReason: null,
+      dDay: 0,
+      viewCount: 0,
+      targets: [],
+      supplyHouseholdCount: 0,
+      schedules: [{ scheduleId: '501', name: null, endAt: null }],
+      attachments: [{ attachmentId: '601', fileName: null }],
+      supplyRows: [
+        {
+          supplyRowId: '301',
+          complex: { complexId: '101', totalHouseholdCount: 0 },
+          housingType: { housingTypeId: '201', exclusiveArea: 0 },
+          totalSupplyHouseholdCount: 0,
+          targets: [
+            {
+              supplyTargetId: '401',
+              supplyHouseholdCount: 0,
+              deposit: 0,
+              monthlyRent: null,
+            },
+          ],
+        },
+        {
+          supplyRowId: '302',
+          complex: null,
+          housingType: null,
+          occupancyExpectedYearMonth: null,
+          targets: [],
+        },
+      ],
+      competition: { actualRate: 0, predictedRate: null },
+    })
+    expect(detail.raw).toEqual(ANNOUNCEMENT_DETAIL)
+  })
+
+  it('canonical positive Java Long이 아닌 공고 상세 ID는 요청하지 않는다', async () => {
+    const fetchMock = vi.fn()
+    const repository = createRepository(fetchMock, '')
+
+    for (const invalidId of [
+      '0',
+      '-1',
+      '01',
+      '1e3',
+      '9223372036854775808',
+    ]) {
+      await expect(
+        repository.findAnnouncementDetail(
+          invalidId,
+          new AbortController().signal,
+        ),
+      ).rejects.toBeInstanceOf(RangeError)
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('없는 공고 상세 404를 계약 오류와 구분되는 HTTP 오류로 전달한다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(
+        {
+          code: 'ANNOUNCEMENT_NOT_FOUND',
+          message: '공고를 찾을 수 없습니다.',
+          traceId: 'trace-id',
+        },
+        404,
+      ),
+    )
+    const repository = createRepository(fetchMock, '')
+
+    const error = await repository
+      .findAnnouncementDetail('999', new AbortController().signal)
+      .catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(PublicHousingHttpError)
+    expect(error).not.toBeInstanceOf(PublicHousingContractError)
+    expect(error).toMatchObject({
+      status: 404,
+      code: 'ANNOUNCEMENT_NOT_FOUND',
+      message: '공고를 찾을 수 없습니다.',
+    })
   })
 
   it('단지 상세의 full DTO를 보존하고 중첩 ID를 canonical string으로 변환한다', async () => {
@@ -458,6 +657,34 @@ describe('공공주택 HTTP repository', () => {
     ).rejects.toBeInstanceOf(PublicHousingContractError)
   })
 
+  it('성공 응답 본문을 읽다가 취소되면 AbortError를 그대로 전달한다', async () => {
+    const abortError = new DOMException('요청이 취소되었습니다.', 'AbortError')
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: vi.fn().mockRejectedValue(abortError),
+      ok: true,
+      status: 200,
+    })
+    const repository = createRepository(fetchMock, '')
+
+    await expect(
+      repository.findMapComplexes(BOUNDS, new AbortController().signal),
+    ).rejects.toBe(abortError)
+  })
+
+  it('오류 응답 본문을 읽다가 취소되면 AbortError를 삼키지 않는다', async () => {
+    const abortError = new DOMException('요청이 취소되었습니다.', 'AbortError')
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: vi.fn().mockRejectedValue(abortError),
+      ok: false,
+      status: 499,
+    })
+    const repository = createRepository(fetchMock, '')
+
+    await expect(
+      repository.findMapComplexes(BOUNDS, new AbortController().signal),
+    ).rejects.toBe(abortError)
+  })
+
   it('목록 크기는 백엔드 계약인 1부터 50 사이만 요청한다', async () => {
     const fetchMock = vi.fn()
     const repository = createRepository(fetchMock, '')
@@ -525,6 +752,91 @@ describe('공공주택 HTTP repository', () => {
 })
 
 describe('공공주택 응답 계약', () => {
+  it('공고 상세의 null, 0, 빈 배열과 미매칭 공급행을 그대로 보존한다', () => {
+    const decoded = decodeAnnouncementDetailEnvelope({
+      data: ANNOUNCEMENT_DETAIL,
+    })
+
+    expect(decoded).toMatchObject({
+      correctionOrCancellationReason: null,
+      dDay: 0,
+      viewCount: 0,
+      targets: [],
+      supplyHouseholdCount: 0,
+      receptionPlaces: [{ address: null, url: null }],
+      schedules: [{ name: null, endAt: null }],
+      attachments: [{ fileName: null, fileUrl: null }],
+      supplyRows: [
+        {
+          totalSupplyHouseholdCount: 0,
+          targets: [{ supplyHouseholdCount: 0, deposit: 0 }],
+        },
+        { complex: null, housingType: null, targets: [] },
+      ],
+      competition: { actualRate: 0, predictedRate: null },
+    })
+  })
+
+  it('공고 상세의 중첩 ID가 safe positive integer가 아니면 정확한 경로로 거절한다', () => {
+    expect(() =>
+      decodeAnnouncementDetailEnvelope({
+        data: {
+          ...ANNOUNCEMENT_DETAIL,
+          supplyRows: [
+            {
+              ...ANNOUNCEMENT_DETAIL.supplyRows[0],
+              targets: [
+                {
+                  ...ANNOUNCEMENT_DETAIL.supplyRows[0].targets[0],
+                  supplyTargetId: Number.MAX_SAFE_INTEGER + 1,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ).toThrowError(
+      expect.objectContaining<Partial<PublicHousingContractError>>({
+        path: '$.data.supplyRows[0].targets[0].supplyTargetId',
+      }),
+    )
+  })
+
+  it('공고 상세의 날짜시간과 입주 예정 연월 형식을 검증한다', () => {
+    expect(() =>
+      decodeAnnouncementDetailEnvelope({
+        data: {
+          ...ANNOUNCEMENT_DETAIL,
+          schedules: [
+            { ...ANNOUNCEMENT_DETAIL.schedules[0], startAt: '2026-08-10' },
+          ],
+        },
+      }),
+    ).toThrowError(
+      expect.objectContaining<Partial<PublicHousingContractError>>({
+        path: '$.data.schedules[0].startAt',
+      }),
+    )
+
+    expect(() =>
+      decodeAnnouncementDetailEnvelope({
+        data: {
+          ...ANNOUNCEMENT_DETAIL,
+          supplyRows: [
+            {
+              ...ANNOUNCEMENT_DETAIL.supplyRows[0],
+              occupancyExpectedYearMonth: '2027',
+            },
+          ],
+        },
+      }),
+    ).toThrowError(
+      expect.objectContaining<Partial<PublicHousingContractError>>({
+        path: '$.data.supplyRows[0].occupancyExpectedYearMonth',
+      }),
+    )
+  })
+
   it('공고 목록의 빈 배열, null과 false를 빈 성공으로 보존한다', () => {
     const decoded = decodeAnnouncementPageEnvelope({
       data: { items: [], nextCursor: null, hasNext: false },

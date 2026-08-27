@@ -17,6 +17,7 @@ export interface HousingAnnouncementCardData {
 
 export interface HousingAnnouncementCardProps {
   readonly announcement: HousingAnnouncementCardData
+  readonly cardRef?: (node: HTMLElement | null) => void
   readonly selected?: boolean
   readonly onSelect?: (announcementId: string) => void
 }
@@ -29,6 +30,7 @@ interface DeadlinePresentation {
 
 export function HousingAnnouncementCard({
   announcement,
+  cardRef,
   selected = false,
   onSelect,
 }: HousingAnnouncementCardProps) {
@@ -44,6 +46,7 @@ export function HousingAnnouncementCard({
 
   return (
     <article
+      ref={cardRef}
       className={className}
       data-status={statusTone(announcement.applicationStatus)}
       data-urgency={urgent ? 'urgent' : undefined}

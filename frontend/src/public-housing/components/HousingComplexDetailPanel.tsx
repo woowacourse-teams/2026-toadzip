@@ -299,7 +299,8 @@ function AnnouncementCard({
         <button
           type="button"
           className={styles.announcementAction}
-          aria-label={`${title} 공고 상세 보기`}
+          data-detail-return-focus={`announcement:${announcement.announcementId}`}
+          aria-label={`${title} 상세 보기`}
           onClick={() => onOpenAnnouncement(announcement.announcementId)}
         >
           공고 상세 보기

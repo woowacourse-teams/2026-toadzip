@@ -695,19 +695,19 @@ a {
     width: auto;
   }
 
-  .housing-explorer.has-complex-detail .housing-results,
-  .housing-explorer.has-complex-detail .map-region,
-  .housing-explorer.has-complex-detail .housing-map-notice {
+  .housing-explorer.has-detail .housing-results,
+  .housing-explorer.has-detail .map-region,
+  .housing-explorer.has-detail .housing-map-notice {
     visibility: hidden;
   }
 }
 
 @media (min-width: 768px) and (max-width: 1279px) {
-  .housing-explorer.has-complex-detail {
+  .housing-explorer.has-detail {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .housing-explorer.has-complex-detail .housing-results {
+  .housing-explorer.has-detail .housing-results {
     display: none;
   }
 }
