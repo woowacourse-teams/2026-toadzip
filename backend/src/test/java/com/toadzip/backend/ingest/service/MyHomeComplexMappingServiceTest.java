@@ -192,16 +192,19 @@ class MyHomeComplexMappingServiceTest {
     void 변경된_주택형_원천_스냅샷을_중복_없이_반영한다() {
         sourceRepository.save(source("46A", "46.8000", "20.2000"));
         service.mapAll();
+        Long housingTypeId = housingTypeRepository.findAll().getFirst().getId();
         sourceRepository.deleteAll();
         sourceRepository.save(source("46A", "47.12345", "20.2000"));
 
         var report = service.mapAll();
 
-        assertThat(report.createdHousingTypeCount()).isOne();
-        assertThat(report.deletedHousingTypeCount()).isOne();
-        assertThat(housingTypeRepository.findAll()).singleElement().satisfies(type ->
-                assertThat(type.getExclusiveArea()).isEqualByComparingTo("47.1235")
-        );
+        assertThat(report.updatedHousingTypeCount()).isOne();
+        assertThat(report.createdHousingTypeCount()).isZero();
+        assertThat(report.deletedHousingTypeCount()).isZero();
+        assertThat(housingTypeRepository.findAll()).singleElement().satisfies(type -> {
+            assertThat(type.getId()).isEqualTo(housingTypeId);
+            assertThat(type.getExclusiveArea()).isEqualByComparingTo("47.1235");
+        });
     }
 
     @Test
