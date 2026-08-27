@@ -19,7 +19,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
 @AutoConfigureMockMvc
-@ActiveProfiles({"local", "test"})
+@ActiveProfiles("test")
 class RegionApiIntegrationTest {
 
     @Autowired
