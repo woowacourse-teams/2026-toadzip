@@ -10,9 +10,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.toadzip.backend.housing.domain.MapBounds;
+import com.toadzip.backend.housing.dto.response.HousingComplexDetailResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexListResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexMapResponse;
+import com.toadzip.backend.housing.exception.HousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.InvalidComplexRequestException;
+import com.toadzip.backend.housing.repository.ComplexDetailQueryRepository;
+import com.toadzip.backend.housing.repository.ComplexDetailRow;
 import com.toadzip.backend.housing.repository.ComplexSummaryCursor;
 import com.toadzip.backend.housing.repository.ComplexSummaryQueryRepository;
 import com.toadzip.backend.housing.repository.ComplexSummaryRow;
@@ -24,7 +28,11 @@ public class HousingComplexQueryService {
 
     private final ComplexSummaryQueryRepository repository;
 
+    private final ComplexDetailQueryRepository detailRepository;
+
     private final HousingComplexSummaryMapper summaryMapper;
+
+    private final HousingComplexDetailMapper detailMapper;
 
     private final HousingComplexCursorCodec cursorCodec;
 
@@ -34,10 +42,14 @@ public class HousingComplexQueryService {
     public HousingComplexQueryService(
             ComplexSummaryQueryRepository repository,
             HousingComplexSummaryMapper summaryMapper,
+            ComplexDetailQueryRepository detailRepository,
+            HousingComplexDetailMapper detailMapper,
             Clock clock
     ) {
         this.repository = repository;
         this.summaryMapper = summaryMapper;
+        this.detailRepository = detailRepository;
+        this.detailMapper = detailMapper;
         this.cursorCodec = new HousingComplexCursorCodec();
         this.clock = clock;
     }
@@ -46,7 +58,15 @@ public class HousingComplexQueryService {
             ComplexSummaryQueryRepository repository,
             HousingComplexSummaryMapper summaryMapper
     ) {
-        this(repository, summaryMapper, Clock.fixed(Instant.EPOCH, SEOUL_ZONE));
+        this(repository, summaryMapper, null, null, Clock.fixed(Instant.EPOCH, SEOUL_ZONE));
+    }
+
+    HousingComplexQueryService(
+            ComplexSummaryQueryRepository repository,
+            HousingComplexSummaryMapper summaryMapper,
+            Clock clock
+    ) {
+        this(repository, summaryMapper, null, null, clock);
     }
 
     @Transactional(readOnly = true)
@@ -66,6 +86,21 @@ public class HousingComplexQueryService {
                 summaryMapper.toListItems(page, today()),
                 nextCursor(page, hasNext),
                 hasNext
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public HousingComplexDetailResponse getComplex(long complexId) {
+        LocalDate today = today();
+        ComplexDetailRow complex = detailRepository.findComplex(complexId)
+                .orElseThrow(HousingComplexNotFoundException::new);
+        return detailMapper.toResponse(
+                complex,
+                detailRepository.findHousingTypes(complexId),
+                detailRepository.findCurrentSupplyConditions(complexId, today),
+                detailRepository.findCurrentAnnouncements(complexId, today),
+                detailRepository.findCurrentAnnouncementTargets(complexId, today),
+                today
         );
     }
 

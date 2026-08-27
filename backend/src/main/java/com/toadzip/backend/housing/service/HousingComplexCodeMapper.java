@@ -30,6 +30,35 @@ public class HousingComplexCodeMapper {
         };
     }
 
+    public String toHeatingType(String storedValue) {
+        return switch (storedValue) {
+            case "INDIVIDUAL", "개별난방" -> "INDIVIDUAL";
+            case "CENTRAL", "중앙난방" -> "CENTRAL";
+            case "DISTRICT", "지역난방" -> "DISTRICT";
+            case "ETC", "기타" -> "ETC";
+            default -> throw new IllegalStateException("지원하지 않는 난방유형 저장값이다.");
+        };
+    }
+
+    public String toBuildingType(String storedValue) {
+        return switch (storedValue) {
+            case "APARTMENT", "아파트" -> "APARTMENT";
+            case "OFFICETEL", "오피스텔" -> "OFFICETEL";
+            case "ETC", "기타" -> "ETC";
+            default -> throw new IllegalStateException("지원하지 않는 건물유형 저장값이다.");
+        };
+    }
+
+    public String toCorridorType(String storedValue) {
+        return switch (storedValue) {
+            case "STAIR", "계단식" -> "STAIR";
+            case "CORRIDOR", "복도식" -> "CORRIDOR";
+            case "MIXED", "혼합식" -> "MIXED";
+            case "UNKNOWN", "미상" -> "UNKNOWN";
+            default -> throw new IllegalStateException("지원하지 않는 복도유형 저장값이다.");
+        };
+    }
+
     public String toPublicationType(String storedValue) {
         return switch (storedValue) {
             case "ORIGINAL", "원공고" -> "ORIGINAL";

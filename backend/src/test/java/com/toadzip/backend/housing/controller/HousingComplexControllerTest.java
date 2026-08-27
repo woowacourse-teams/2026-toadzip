@@ -10,12 +10,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.housing.dto.response.AgencyResponse;
+import com.toadzip.backend.housing.dto.response.CurrentAnnouncementResponse;
+import com.toadzip.backend.housing.dto.response.CurrentSupplyConditionResponse;
+import com.toadzip.backend.housing.dto.response.HousingComplexAddressResponse;
+import com.toadzip.backend.housing.dto.response.HousingComplexDetailResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexMapItemResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexMapResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexListItemResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexListResponse;
+import com.toadzip.backend.housing.dto.response.HousingTypeDetailResponse;
 import com.toadzip.backend.housing.dto.response.RepresentativeAnnouncementResponse;
 import com.toadzip.backend.housing.domain.MapBounds;
+import com.toadzip.backend.housing.exception.HousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.InvalidComplexCursorException;
 import com.toadzip.backend.housing.exception.InvalidComplexRequestException;
 import com.toadzip.backend.housing.service.HousingComplexQueryService;
@@ -237,6 +243,86 @@ class HousingComplexControllerTest {
                 .andExpect(jsonPath("$.traceId").isNotEmpty());
     }
 
+    @Test
+    void 단지_상세를_정확한_ApiResponse_envelope과_JSON_key로_조회한다() throws Exception {
+        when(queryService.getComplex(17L)).thenReturn(detailResponse());
+
+        mockMvc.perform(get("/api/v1/complexes/17"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("data")))
+                .andExpect(jsonPath("$.data.keys()", containsInAnyOrder(
+                        "complexId",
+                        "name",
+                        "rentalType",
+                        "agency",
+                        "address",
+                        "completionDate",
+                        "buildingType",
+                        "hasElevator",
+                        "heatingType",
+                        "corridorType",
+                        "moveOutCountLastYear",
+                        "totalHouseholdCount",
+                        "totalParkingCount",
+                        "images",
+                        "overviewImageUrl",
+                        "housingTypes",
+                        "currentAnnouncements"
+                )))
+                .andExpect(jsonPath("$.data.complexId").value(17))
+                .andExpect(jsonPath("$.data.agency.keys()", containsInAnyOrder("code", "name")))
+                .andExpect(jsonPath("$.data.address.keys()", containsInAnyOrder(
+                        "regionName",
+                        "roadAddress",
+                        "latitude",
+                        "longitude"
+                )))
+                .andExpect(jsonPath("$.data.address.regionName").value("서울특별시 중구"))
+                .andExpect(jsonPath("$.data.address.latitude").value(37.500000))
+                .andExpect(jsonPath("$.data.address.longitude").value(126.900000))
+                .andExpect(jsonPath("$.data.images[0]").value("https://example.com/complex.png"))
+                .andExpect(jsonPath("$.data.overviewImageUrl").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.data.housingTypes[0].keys()", containsInAnyOrder(
+                        "housingTypeId",
+                        "name",
+                        "exclusiveArea",
+                        "supplyArea",
+                        "floorPlanImageUrl",
+                        "floorPlan3dImageUrl",
+                        "isDuplex",
+                        "maintenanceFee",
+                        "currentSupplyConditions"
+                )))
+                .andExpect(jsonPath("$.data.housingTypes[0].currentSupplyConditions[0].keys()",
+                        containsInAnyOrder("target", "deposit", "monthlyRent", "convertibleDeposit")))
+                .andExpect(jsonPath("$.data.currentAnnouncements[0].keys()", containsInAnyOrder(
+                        "announcementId",
+                        "title",
+                        "publicationType",
+                        "applicationStatus",
+                        "targets",
+                        "applicationStartAt",
+                        "applicationEndAt",
+                        "dDay",
+                        "actualCompetitionRate"
+                )))
+                .andExpect(jsonPath("$.data.currentAnnouncements[0].applicationStartAt")
+                        .value("2026-08-20"))
+                .andExpect(jsonPath("$.data.currentAnnouncements[0].applicationEndAt")
+                        .value("2026-08-27"));
+    }
+
+    @Test
+    void 없는_단지_상세는_404_COMPLEX_NOT_FOUND를_반환한다() throws Exception {
+        when(queryService.getComplex(999L)).thenThrow(new HousingComplexNotFoundException());
+
+        mockMvc.perform(get("/api/v1/complexes/999"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("COMPLEX_NOT_FOUND"))
+                .andExpect(jsonPath("$.message").value("단지를 찾을 수 없습니다."))
+                .andExpect(jsonPath("$.traceId").isNotEmpty());
+    }
+
     private HousingComplexListResponse listResponse(long complexId) {
         return new HousingComplexListResponse(
                 List.of(new HousingComplexListItemResponse(
@@ -262,6 +348,58 @@ class HousingComplexControllerTest {
                 )),
                 "next-cursor",
                 true
+        );
+    }
+
+    private HousingComplexDetailResponse detailResponse() {
+        return new HousingComplexDetailResponse(
+                17L,
+                "행복 단지",
+                "HAPPY_HOUSING",
+                new AgencyResponse("LH", "한국토지주택공사"),
+                new HousingComplexAddressResponse(
+                        "서울특별시 중구",
+                        "서울특별시 중구 세종대로 110",
+                        new BigDecimal("37.500000"),
+                        new BigDecimal("126.900000")
+                ),
+                LocalDate.of(2020, 1, 1),
+                "APARTMENT",
+                true,
+                "INDIVIDUAL",
+                "STAIR",
+                7,
+                100,
+                80,
+                List.of("https://example.com/complex.png"),
+                null,
+                List.of(new HousingTypeDetailResponse(
+                        101L,
+                        "36A",
+                        new BigDecimal("36.12"),
+                        null,
+                        "https://example.com/floor.png",
+                        null,
+                        false,
+                        null,
+                        List.of(new CurrentSupplyConditionResponse(
+                                "청년",
+                                50000000L,
+                                200000L,
+                                null
+                        ))
+                )),
+                List.of(new CurrentAnnouncementResponse(
+                        201L,
+                        "행복주택 모집 공고",
+                        "ORIGINAL",
+                        "APPLYING",
+                        List.of("청년"),
+                        LocalDate.of(2026, 8, 20),
+                        LocalDate.of(2026, 8, 27),
+                        0,
+                        null
+                ))
         );
     }
 }
