@@ -37,9 +37,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -137,7 +134,7 @@ class AnnouncementQueryRepositoryTest {
 
     @Test
     void 취소되지_않은_최신_후속공고만_게시일과_ID_내림차순으로_조회한다() {
-        List<Announcement> announcements = announcementRepository.findLatestLeaves(pageable(10));
+        List<Announcement> announcements = search(noFilters(), null, null, 10);
 
         List<Long> actualIds = announcements.stream().map(Announcement::getId).toList();
         assertEquals(
@@ -154,13 +151,14 @@ class AnnouncementQueryRepositoryTest {
 
     @Test
     void 같은_게시일의_커서_뒤부터_중복_없이_이어_조회한다() {
-        List<Announcement> firstPage = announcementRepository.findLatestLeaves(pageable(1));
+        List<Announcement> firstPage = search(noFilters(), null, null, 1);
         Announcement cursorAnnouncement = firstPage.getFirst();
 
-        List<Announcement> secondPage = announcementRepository.findLatestLeavesAfter(
+        List<Announcement> secondPage = search(
+                noFilters(),
                 cursorAnnouncement.getPostedDate(),
                 cursorAnnouncement.getId(),
-                pageable(10)
+                10
         );
 
         List<Long> combinedIds = List.of(firstPage.getFirst().getId(), secondPage.getFirst().getId());
@@ -186,13 +184,14 @@ class AnnouncementQueryRepositoryTest {
                 .executeUpdate();
         entityManager.clear();
 
-        List<Long> latestIds = announcementRepository.findLatestLeaves(pageable(20)).stream()
+        List<Long> latestIds = search(noFilters(), null, null, 20).stream()
                 .map(Announcement::getId)
                 .toList();
-        List<Long> cursorIds = announcementRepository.findLatestLeavesAfter(
+        List<Long> cursorIds = search(
+                        noFilters(),
                         LocalDate.of(2026, 8, 6),
                         Long.MAX_VALUE,
-                        pageable(20)
+                        20
                 ).stream()
                 .map(Announcement::getId)
                 .toList();
@@ -227,7 +226,7 @@ class AnnouncementQueryRepositoryTest {
                 .executeUpdate();
         entityManager.clear();
 
-        List<Long> latestIds = announcementRepository.findLatestLeaves(pageable(20)).stream()
+        List<Long> latestIds = search(noFilters(), null, null, 20).stream()
                 .map(Announcement::getId)
                 .toList();
 
@@ -257,7 +256,7 @@ class AnnouncementQueryRepositoryTest {
                 .executeUpdate();
         entityManager.clear();
 
-        List<Long> latestIds = announcementRepository.findLatestLeaves(pageable(20)).stream()
+        List<Long> latestIds = search(noFilters(), null, null, 20).stream()
                 .map(Announcement::getId)
                 .toList();
 
@@ -1274,10 +1273,6 @@ class AnnouncementQueryRepositoryTest {
                 null,
                 displayOrder
         );
-    }
-
-    private Pageable pageable(int size) {
-        return PageRequest.of(0, size, Sort.unsorted());
     }
 
     private <T> T persist(T entity) {
