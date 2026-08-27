@@ -4,7 +4,7 @@ import { AdminHome } from './admin/auth/AdminHome'
 import { AdminLayout } from './admin/auth/AdminLayout'
 import { LoginPage } from './admin/auth/LoginPage'
 import { RequireAdmin } from './admin/auth/RequireAdmin'
-import { PublicHousingExplorer } from './public-housing/PublicHousingExplorer.tsx'
+import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHousingExplorer.tsx'
 
 function Home() {
   return (
@@ -31,7 +31,7 @@ function Home() {
         </Link>
       </header>
       <main className="map-main">
-        <PublicHousingExplorer />
+        <DefaultPublicHousingExplorer />
       </main>
     </div>
   )

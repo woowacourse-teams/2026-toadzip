@@ -32,6 +32,7 @@ import type {
   RawMapComplex,
 } from './model/publicHousing.ts'
 import { PublicHousingExplorer } from './PublicHousingExplorer.tsx'
+import type { LocalMapSnapshot } from './map/localMapMarkerResolver.ts'
 
 vi.mock('../maps/naver/NaverMap.tsx', () => ({
   default: FakeNaverMap,
@@ -137,6 +138,71 @@ describe('PublicHousingExplorer', () => {
       '17',
       expect.any(AbortSignal),
     )
+  })
+
+  it('로컬 행정구역 cluster는 상세 요청 없이 그 지역의 개별 단지로 전환한다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository, '/', LOCAL_MAP_SNAPSHOT)
+
+    fireEvent.click(screen.getByRole('button', {
+      name: '서울 중구 1곳 행정구역 cluster 선택',
+    }))
+
+    expect(repository.findComplexDetail).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', {
+      name: '서울 중구 1곳 행정구역 cluster 선택',
+    })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', {
+      name: '서울가람 행복주택 지도 마커 선택',
+    })).toBeVisible()
+    expect(screen.getByRole('button', {
+      name: '서울 성동구 1곳 행정구역 cluster 선택',
+    })).toBeVisible()
+    expect(screen.getByTestId('map-focus-region')).toHaveTextContent('11140')
+
+    fireEvent.click(screen.getByRole('button', {
+      name: '서울가람 행복주택 지도 마커 선택',
+    }))
+    expect(repository.findComplexDetail).toHaveBeenCalledWith(
+      '17',
+      expect.any(AbortSignal),
+    )
+  })
+
+  it('로컬 직접 URL 상세는 지역만 펼치고 상세 focus를 지도에 넘기지 않는다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository, '/?complexId=17', LOCAL_MAP_SNAPSHOT)
+
+    const detailHeading = await screen.findByRole('heading', {
+      name: '서울가람 행복주택',
+      level: 2,
+    })
+    await waitFor(() => expect(detailHeading).toHaveFocus())
+    expect(screen.getByRole('button', {
+      name: '서울가람 행복주택 지도 마커 선택',
+    })).toBeVisible()
+    expect(screen.getByTestId('map-focus-region')).toBeEmptyDOMElement()
+  })
+
+  it('자동 확장 뒤 같은 지역 cluster를 다시 선택하면 새 focus 요청을 만든다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository, '/', LOCAL_MAP_SNAPSHOT)
+
+    fireEvent.click(screen.getByRole('button', {
+      name: '서울 중구 1곳 행정구역 cluster 선택',
+    }))
+    expect(screen.getByTestId('map-focus-region')).toHaveTextContent('11140')
+
+    fireEvent.click(screen.getByRole('button', { name: '단지 18 직접 열기' }))
+    await screen.findByRole('button', {
+      name: '서울마루 국민임대 지도 마커 선택',
+    })
+    expect(screen.getByTestId('map-focus-region')).toBeEmptyDOMElement()
+
+    fireEvent.click(screen.getByRole('button', {
+      name: '서울 중구 1곳 행정구역 cluster 선택',
+    }))
+    expect(screen.getByTestId('map-focus-region')).toHaveTextContent('11140')
   })
 
   it('단지 카드에서 상세 A를 열고 닫으면 URL과 focus가 원래 카드로 돌아간다', async () => {
@@ -752,10 +818,14 @@ describe('PublicHousingExplorer', () => {
 function renderExplorer(
   repository: PublicHousingRepository,
   initialEntry = '/',
+  localMapSnapshot?: LocalMapSnapshot,
 ) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <PublicHousingExplorer repository={repository} />
+      <PublicHousingExplorer
+        localMapSnapshot={localMapSnapshot}
+        repository={repository}
+      />
       <LocationSearch />
     </MemoryRouter>,
   )
@@ -769,13 +839,18 @@ function LocationSearch() {
       <output data-testid="location-search">{location.search}</output>
       <button type="button" onClick={() => navigate(-1)}>브라우저 뒤로</button>
       <button type="button" onClick={() => navigate(1)}>브라우저 앞으로</button>
+      <button type="button" onClick={() => navigate('/?complexId=18')}>
+        단지 18 직접 열기
+      </button>
     </div>
   )
 }
 
 function FakeNaverMap({
   cameraTarget,
+  focusRegionCode,
   markers = [],
+  onClusterSelect,
   onMarkerSelect,
   onViewportChange,
 }: NaverMapProps) {
@@ -783,6 +858,7 @@ function FakeNaverMap({
 
   return (
     <section aria-label="공공임대주택 지도">
+      <output data-testid="map-focus-region">{focusRegionCode}</output>
       {cameraTarget && (
         <output>
           카메라 {cameraTarget.latitude},{cameraTarget.longitude}
@@ -818,20 +894,64 @@ function FakeNaverMap({
       >
         넓은 영역 알림
       </button>
-      {markers.map((marker) => (
-        <button
-          key={marker.id}
-          type="button"
-          onClick={() => {
-            onMarkerSelect?.(marker.id)
-            setRevision((current) => current + 1)
-          }}
-        >
-          {marker.name} 지도 마커 선택
-        </button>
-      ))}
+      {markers.map((marker) => marker.kind === 'region-cluster'
+        ? (
+            <button
+              key={`region-${marker.regionCode}`}
+              type="button"
+              onClick={() => {
+                onClusterSelect?.(marker.regionCode)
+                setRevision((current) => current + 1)
+              }}
+            >
+              {marker.regionName} {marker.uniqueComplexCount}곳 행정구역 cluster 선택
+            </button>
+          )
+        : (
+            <button
+              key={`complex-${marker.id}`}
+              type="button"
+              onClick={() => {
+                onMarkerSelect?.(marker.id)
+                setRevision((current) => current + 1)
+              }}
+            >
+              {marker.name} 지도 마커 선택
+            </button>
+          ))}
     </section>
   )
+}
+
+const LOCAL_MAP_SNAPSHOT: LocalMapSnapshot = {
+  regions: [
+    {
+      regionCode: '11140',
+      name: '서울 중구',
+      anchor: { latitude: 37.5636, longitude: 126.9976 },
+    },
+    {
+      regionCode: '11200',
+      name: '서울 성동구',
+      anchor: { latitude: 37.5633, longitude: 127.0371 },
+    },
+  ],
+  complexes: [
+    {
+      complexId: '17',
+      regionCode: '11140',
+      name: '서울가람 행복주택',
+      latitude: 37.5666,
+      longitude: 126.9784,
+    },
+    {
+      complexId: '18',
+      regionCode: '11200',
+      name: '서울마루 국민임대',
+      latitude: 37.5633,
+      longitude: 127.0371,
+    },
+  ],
 }
 
 function createRepository(): PublicHousingRepository & {

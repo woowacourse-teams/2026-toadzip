@@ -147,6 +147,53 @@ a {
   line-height: 1.5;
 }
 
+.housing-results__local-badge {
+  display: inline-flex;
+  min-height: 24px;
+  margin-top: 6px;
+  padding: 2px 8px;
+  align-items: center;
+  border: 1px solid #b5c9f8;
+  border-radius: 999px;
+  background: #edf3ff;
+  color: var(--brand-dark);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.local-public-housing-state {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  padding: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #f8fafc;
+  color: var(--text);
+  flex-direction: column;
+  text-align: center;
+}
+
+.local-public-housing-state span {
+  color: var(--muted);
+}
+
+.local-public-housing-state button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--brand);
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.local-public-housing-state button:focus-visible {
+  outline: 4px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .housing-results__count {
   color: var(--brand-dark);
   font-size: 17px;
@@ -484,6 +531,60 @@ a {
 .housing-map-marker:focus-visible {
   outline: 4px solid #256ef4;
   outline-offset: 3px;
+}
+
+.housing-map-cluster {
+  display: flex;
+  width: 76px;
+  height: 62px;
+  padding: 0;
+  align-items: stretch;
+  border: 3px solid rgb(255 255 255 / 94%);
+  border-radius: 17px;
+  background: #172b4d;
+  box-shadow: 0 7px 16px rgb(18 37 47 / 28%);
+  color: #ffffff;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.housing-map-cluster span,
+.housing-map-cluster strong {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  padding: 0 5px;
+  place-items: center;
+}
+
+.housing-map-cluster span {
+  display: block;
+  height: 23px;
+  flex: 0 0 23px;
+  overflow: hidden;
+  border-bottom: 1px solid rgb(255 255 255 / 18%);
+  background: rgb(37 110 244 / 32%);
+  color: #e8f1ff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 22px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.housing-map-cluster strong {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.housing-map-cluster:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 2px;
+  box-shadow:
+    0 7px 16px rgb(18 37 47 / 28%),
+    0 0 0 6px var(--focus);
 }
 
 .housing-viewport-action button:focus-visible,

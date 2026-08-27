@@ -25,13 +25,29 @@ const INITIAL_CENTER = {
   longitude: 126.9783882,
 }
 
-export interface NaverMapMarker {
+export interface NaverMapComplexMarker {
+  readonly kind: 'complex'
   id: string
   latitude: number
   longitude: number
   name: string
+  regionCode?: string
+  regionName?: string
   selected?: boolean
 }
+
+export interface NaverMapRegionClusterMarker {
+  readonly kind: 'region-cluster'
+  readonly latitude: number
+  readonly longitude: number
+  readonly regionCode: string
+  readonly regionName: string
+  readonly uniqueComplexCount: number
+}
+
+export type NaverMapMarker =
+  | NaverMapComplexMarker
+  | NaverMapRegionClusterMarker
 
 export interface NaverMapCameraTarget {
   readonly latitude: number
@@ -41,7 +57,9 @@ export interface NaverMapCameraTarget {
 
 export interface NaverMapProps {
   cameraTarget?: NaverMapCameraTarget
+  focusRegionCode?: string | null
   markers?: NaverMapMarker[]
+  onClusterSelect?: (regionCode: string) => void
   onMarkerSelect?: (complexId: string) => void
   onViewportChange?: (viewport: ViewportSnapshot) => void
 }
@@ -131,7 +149,9 @@ function MapUnavailable({ onRetry, reason }: MapUnavailableProps) {
 
 export default function NaverMap({
   cameraTarget,
+  focusRegionCode,
   markers = [],
+  onClusterSelect,
   onMarkerSelect,
   onViewportChange,
 }: NaverMapProps) {
@@ -140,13 +160,20 @@ export default function NaverMap({
   const mapsRef = useRef<typeof naver.maps | null>(null)
   const markerOverlaysRef = useRef<naver.maps.Marker[]>([])
   const appliedCameraTargetRef = useRef<NaverMapCameraTarget | null>(null)
+  const completedFocusRegionCodeRef = useRef<string | null>(null)
+  const onClusterSelectRef = useRef(onClusterSelect)
   const onMarkerSelectRef = useRef(onMarkerSelect)
   const onViewportChangeRef = useRef(onViewportChange)
   const [attempt, setAttempt] = useState(0)
+  const [markerAnnouncement, setMarkerAnnouncement] = useState('')
   const [status, setStatus] = useState<MapStatus>({ kind: 'loading' })
   const cameraLatitude = cameraTarget?.latitude
   const cameraLongitude = cameraTarget?.longitude
   const cameraZoom = cameraTarget?.zoom
+
+  useEffect(() => {
+    onClusterSelectRef.current = onClusterSelect
+  }, [onClusterSelect])
 
   useEffect(() => {
     onMarkerSelectRef.current = onMarkerSelect
@@ -191,6 +218,8 @@ export default function NaverMap({
       mapInstanceRef.current = null
       mapsRef.current = null
       appliedCameraTargetRef.current = null
+      completedFocusRegionCodeRef.current = null
+      setMarkerAnnouncement('')
       setStatus({ kind: 'unavailable', reason: 'authentication' })
       destroyMapSafely(failedMap)
     }
@@ -218,6 +247,7 @@ export default function NaverMap({
           mapInstanceRef.current = createdMap
           mapsRef.current = maps
           appliedCameraTargetRef.current = null
+          completedFocusRegionCodeRef.current = null
 
           const emitViewport = () => {
             const viewport = readViewport(createdMap)
@@ -249,6 +279,7 @@ export default function NaverMap({
           mapInstanceRef.current = null
           mapsRef.current = null
           appliedCameraTargetRef.current = null
+          completedFocusRegionCodeRef.current = null
           setStatus({ kind: 'unavailable', reason: 'initialization' })
           destroyMapSafely(failedMap)
         }
@@ -269,6 +300,7 @@ export default function NaverMap({
       mapInstanceRef.current = null
       mapsRef.current = null
       appliedCameraTargetRef.current = null
+      completedFocusRegionCodeRef.current = null
       destroyMapSafely(mapInstance)
     }
   }, [attempt])
@@ -282,17 +314,54 @@ export default function NaverMap({
     }
 
     clearMarkers(markerOverlaysRef.current)
-    markerOverlaysRef.current = markers.map((marker) =>
-      createMarker(maps, mapInstance, marker, () => {
-        onMarkerSelectRef.current?.(marker.id)
-      }),
+    const createdMarkers = markers.map((marker) =>
+      createMarker(maps, mapInstance, marker, () => selectMarker(
+        marker,
+        onClusterSelectRef.current,
+        onMarkerSelectRef.current,
+      )),
     )
+    markerOverlaysRef.current = createdMarkers.map(({ overlay }) => overlay)
+    const focusTarget = findRegionFocusTarget(
+      createdMarkers,
+      markers,
+      focusRegionCode,
+    )
+    let focusTimeout: number | null = null
+
+    if (focusRegionCode === undefined || focusRegionCode === null) {
+      completedFocusRegionCodeRef.current = null
+      setMarkerAnnouncement('')
+    }
+    if (
+      focusRegionCode !== undefined
+      && focusRegionCode !== null
+      && focusTarget === null
+      && completedFocusRegionCodeRef.current !== focusRegionCode
+    ) {
+      setMarkerAnnouncement('')
+    }
+    if (
+      focusTarget !== null
+      && completedFocusRegionCodeRef.current !== focusRegionCode
+    ) {
+      setMarkerAnnouncement(
+        `${focusTarget.regionName}의 개별 단지 ${focusTarget.count}곳을 지도에 표시했습니다.`,
+      )
+      focusTimeout = window.setTimeout(() => {
+        focusTarget.button.focus()
+        completedFocusRegionCodeRef.current = focusRegionCode ?? null
+      }, 0)
+    }
 
     return () => {
+      if (focusTimeout !== null) {
+        window.clearTimeout(focusTimeout)
+      }
       clearMarkers(markerOverlaysRef.current)
       markerOverlaysRef.current = []
     }
-  }, [markers, status.kind])
+  }, [focusRegionCode, markers, status.kind])
 
   useEffect(() => {
     const mapInstance = mapInstanceRef.current
@@ -355,6 +424,16 @@ export default function NaverMap({
         ref={mapContainerRef}
         aria-hidden={!isReady}
       />
+      {markerAnnouncement && (
+        <p
+          className="visually-hidden"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {markerAnnouncement}
+        </p>
+      )}
       {isLoading && <MapLoading />}
       {status.kind === 'unavailable' && (
         <MapUnavailable reason={status.reason} onRetry={retry} />
@@ -443,12 +522,74 @@ function readCoordinate(
   return { latitude, longitude }
 }
 
+interface CreatedMarker {
+  readonly button: HTMLButtonElement
+  readonly overlay: naver.maps.Marker
+}
+
+interface RegionFocusTarget {
+  readonly button: HTMLButtonElement
+  readonly count: number
+  readonly regionName: string
+}
+
+function selectMarker(
+  marker: NaverMapMarker,
+  onClusterSelect: ((regionCode: string) => void) | undefined,
+  onMarkerSelect: ((complexId: string) => void) | undefined,
+) {
+  if (marker.kind === 'region-cluster') {
+    onClusterSelect?.(marker.regionCode)
+    return
+  }
+  onMarkerSelect?.(marker.id)
+}
+
+function findRegionFocusTarget(
+  createdMarkers: readonly CreatedMarker[],
+  markers: readonly NaverMapMarker[],
+  focusRegionCode: string | null | undefined,
+): RegionFocusTarget | null {
+  if (focusRegionCode === undefined || focusRegionCode === null) {
+    return null
+  }
+  const markerIndex = markers.findIndex((marker) =>
+    marker.kind === 'complex' && marker.regionCode === focusRegionCode,
+  )
+  const marker = markers[markerIndex]
+  const createdMarker = createdMarkers[markerIndex]
+  if (marker?.kind !== 'complex' || createdMarker === undefined) {
+    return null
+  }
+  const count = markers.filter((candidate) =>
+    candidate.kind === 'complex'
+      && candidate.regionCode === focusRegionCode,
+  ).length
+  return {
+    button: createdMarker.button,
+    count,
+    regionName: marker.regionName?.trim() || '선택한 지역',
+  }
+}
+
 function createMarker(
   maps: typeof naver.maps,
   mapInstance: naver.maps.Map,
   marker: NaverMapMarker,
   onSelect: () => void,
-): naver.maps.Marker {
+): CreatedMarker {
+  if (marker.kind === 'region-cluster') {
+    return createRegionClusterMarker(maps, mapInstance, marker, onSelect)
+  }
+  return createComplexMarker(maps, mapInstance, marker, onSelect)
+}
+
+function createComplexMarker(
+  maps: typeof naver.maps,
+  mapInstance: naver.maps.Map,
+  marker: NaverMapComplexMarker,
+  onSelect: () => void,
+): CreatedMarker {
   const button = document.createElement('button')
   button.type = 'button'
   button.className = marker.selected
@@ -456,11 +597,14 @@ function createMarker(
     : 'housing-map-marker'
   button.setAttribute('aria-label', `${marker.name} 단지 상세 보기`)
   button.dataset.complexId = marker.id
+  if (marker.regionCode !== undefined) {
+    button.dataset.regionCode = marker.regionCode
+  }
   button.title = marker.name
   button.textContent = marker.selected ? '●' : '•'
   button.addEventListener('click', onSelect)
 
-  return new maps.Marker({
+  const overlay = new maps.Marker({
     clickable: true,
     cursor: 'pointer',
     icon: {
@@ -472,6 +616,42 @@ function createMarker(
     position: new maps.LatLng(marker.latitude, marker.longitude),
     title: marker.name,
   })
+  return { button, overlay }
+}
+
+function createRegionClusterMarker(
+  maps: typeof naver.maps,
+  mapInstance: naver.maps.Map,
+  marker: NaverMapRegionClusterMarker,
+  onSelect: () => void,
+): CreatedMarker {
+  const button = document.createElement('button')
+  const regionName = document.createElement('span')
+  const count = document.createElement('strong')
+  const title = `${marker.regionName}, 공공임대 단지 ${marker.uniqueComplexCount}곳`
+  button.type = 'button'
+  button.className = 'housing-map-cluster'
+  button.dataset.regionCode = marker.regionCode
+  button.setAttribute('aria-label', `${title}, 개별 단지 보기`)
+  button.title = title
+  regionName.textContent = marker.regionName
+  count.textContent = `${marker.uniqueComplexCount}곳`
+  button.append(regionName, count)
+  button.addEventListener('click', onSelect)
+
+  const overlay = new maps.Marker({
+    clickable: true,
+    cursor: 'pointer',
+    icon: {
+      anchor: new maps.Point(38, 31),
+      content: button,
+      size: new maps.Size(76, 62),
+    },
+    map: mapInstance,
+    position: new maps.LatLng(marker.latitude, marker.longitude),
+    title,
+  })
+  return { button, overlay }
 }
 
 function clearMarkers(markers: naver.maps.Marker[]) {

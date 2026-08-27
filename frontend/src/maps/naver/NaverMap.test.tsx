@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import NaverMap from './NaverMap.tsx'
+import NaverMap, { type NaverMapMarker } from './NaverMap.tsx'
 import {
   loadNaverMapsSdk,
   NaverMapsSdkError,
@@ -303,12 +303,13 @@ describe('NaverMap', () => {
     const onViewportChange = vi.fn()
     const markers = [
       {
+        kind: 'complex',
         id: '101',
         latitude: 37.6,
         longitude: 127,
         name: '테스트 단지',
       },
-    ]
+    ] satisfies NaverMapMarker[]
     loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
 
     const { rerender, unmount } = render(
@@ -367,6 +368,121 @@ describe('NaverMap', () => {
     expect(fakeSdk.markerSetMap).toHaveBeenCalledOnce()
     expect(fakeSdk.markerSetMap).toHaveBeenCalledWith(null)
     expect(fakeSdk.removeListener).toHaveBeenCalledOnce()
+  })
+
+  it('행정구역 cluster를 안전한 버튼으로 렌더링하고 개별 단지 callback과 분리한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const onClusterSelect = vi.fn()
+    const onMarkerSelect = vi.fn()
+    const focusSpy = vi.spyOn(HTMLButtonElement.prototype, 'focus')
+    const clusterMarkers = [
+      {
+        kind: 'region-cluster',
+        latitude: 37.5636,
+        longitude: 126.9976,
+        regionCode: '11140',
+        regionName: '서울 중구',
+        uniqueComplexCount: 2,
+      },
+    ] satisfies NaverMapMarker[]
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+
+    const { rerender } = render(
+      <NaverMap
+        markers={clusterMarkers}
+        onClusterSelect={onClusterSelect}
+        onMarkerSelect={onMarkerSelect}
+      />,
+    )
+
+    await waitFor(() =>
+      expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce(),
+    )
+    const clusterOptions = fakeSdk.markerConstructor.mock.calls[0]?.[0]
+    const clusterButton = clusterOptions?.icon?.content
+    if (!(clusterButton instanceof HTMLButtonElement)) {
+      throw new Error('행정구역 cluster 버튼을 찾을 수 없습니다.')
+    }
+
+    expect(clusterButton).toHaveClass('housing-map-cluster')
+    expect(clusterButton).toHaveAttribute('type', 'button')
+    expect(clusterButton).toHaveAttribute('data-region-code', '11140')
+    expect(clusterButton).toHaveAccessibleName(
+      '서울 중구, 공공임대 단지 2곳, 개별 단지 보기',
+    )
+    expect(clusterButton).toHaveTextContent('서울 중구2곳')
+    expect(clusterOptions?.icon?.anchor).toEqual({ x: 38, y: 31 })
+    expect(clusterOptions?.icon?.size).toEqual({ height: 62, width: 76 })
+
+    fireEvent.click(clusterButton)
+
+    expect(onClusterSelect).toHaveBeenCalledWith('11140')
+    expect(onMarkerSelect).not.toHaveBeenCalled()
+
+    const individualMarkers = [
+      {
+        kind: 'complex',
+        id: '101',
+        latitude: 37.5666,
+        longitude: 126.9784,
+        name: '서울가람 행복주택',
+        regionCode: '11140',
+        regionName: '서울 중구',
+      },
+      {
+        kind: 'complex',
+        id: '102',
+        latitude: 37.564,
+        longitude: 126.99,
+        name: '서울마루 국민임대',
+        regionCode: '11140',
+        regionName: '서울 중구',
+      },
+    ] satisfies NaverMapMarker[]
+
+    rerender(
+      <NaverMap
+        focusRegionCode="11140"
+        markers={individualMarkers}
+        onClusterSelect={onClusterSelect}
+        onMarkerSelect={onMarkerSelect}
+      />,
+    )
+
+    await waitFor(() => expect(focusSpy).toHaveBeenCalledOnce())
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      '서울 중구의 개별 단지 2곳을 지도에 표시했습니다.',
+    )
+    const firstComplexOptions = fakeSdk.markerConstructor.mock.calls[1]?.[0]
+    const firstComplexButton = firstComplexOptions?.icon?.content
+    if (!(firstComplexButton instanceof HTMLButtonElement)) {
+      throw new Error('첫 개별 단지 marker 버튼을 찾을 수 없습니다.')
+    }
+    expect(focusSpy.mock.instances[0]).toBe(firstComplexButton)
+    expect(firstComplexButton).toHaveAttribute('data-region-code', '11140')
+
+    fireEvent.click(firstComplexButton)
+
+    expect(onMarkerSelect).toHaveBeenCalledWith('101')
+    expect(onClusterSelect).toHaveBeenCalledOnce()
+
+    rerender(
+      <NaverMap
+        focusRegionCode="11140"
+        markers={individualMarkers.map((marker) => ({
+          ...marker,
+          selected: marker.kind === 'complex' && marker.id === '101',
+        }))}
+        onClusterSelect={onClusterSelect}
+        onMarkerSelect={onMarkerSelect}
+      />,
+    )
+
+    await waitFor(() =>
+      expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(5),
+    )
+    expect(focusSpy).toHaveBeenCalledOnce()
+    focusSpy.mockRestore()
   })
 
   it('인증 실패에는 재시도 없이 설정 확인을 안내한다', async () => {

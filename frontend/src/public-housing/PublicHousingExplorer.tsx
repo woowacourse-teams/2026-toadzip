@@ -11,10 +11,8 @@ import NaverMap, {
   type NaverMapCameraTarget,
   type NaverMapMarker,
 } from '../maps/naver/NaverMap.tsx'
-import {
-  publicHousingRepository,
-  PublicHousingHttpError,
-} from './api/publicHousingRepository.ts'
+import { defaultPublicHousingRepository } from './api/defaultPublicHousingRepository.ts'
+import { PublicHousingHttpError } from './api/publicHousingRepository.ts'
 import type { PublicHousingRepository } from './api/publicHousingRepository.ts'
 import {
   type AnnouncementResultsState,
@@ -32,6 +30,10 @@ import {
   type ViewportBlockReason,
   type ViewportSnapshot,
 } from './map/viewportPolicy.ts'
+import {
+  resolveLocalMapMarkers,
+  type LocalMapSnapshot,
+} from './map/localMapMarkerResolver.ts'
 import type {
   AnnouncementDetail,
   ComplexDetail,
@@ -114,6 +116,7 @@ interface PendingListFocus {
 }
 
 export interface PublicHousingExplorerProps {
+  localMapSnapshot?: LocalMapSnapshot
   repository?: PublicHousingRepository
 }
 
@@ -146,7 +149,8 @@ const INITIAL_ANNOUNCEMENT_DETAIL: AnnouncementDetailState = {
 }
 
 export function PublicHousingExplorer({
-  repository = publicHousingRepository,
+  localMapSnapshot,
+  repository = defaultPublicHousingRepository,
 }: PublicHousingExplorerProps) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -167,6 +171,11 @@ export function PublicHousingExplorer({
     null,
   )
   const [hoveredComplexId, setHoveredComplexId] = useState<string | null>(null)
+  const [expandedRegionCode, setExpandedRegionCode] = useState<string | null>(
+    null,
+  )
+  const [clusterFocusRegionCode, setClusterFocusRegionCode] =
+    useState<string | null>(null)
   const [complexDetail, setComplexDetail] =
     useState<ComplexDetailState>(INITIAL_COMPLEX_DETAIL)
   const [announcementDetail, setAnnouncementDetail] =
@@ -204,6 +213,24 @@ export function PublicHousingExplorer({
       && activeResultTab === 'announcements'
       && detailLocation.kind !== 'announcement',
   )
+
+  useEffect(() => {
+    setExpandedRegionCode(null)
+    setClusterFocusRegionCode(null)
+  }, [localMapSnapshot])
+
+  useEffect(() => {
+    if (localMapSnapshot === undefined || selectedComplexId === null) {
+      return
+    }
+    const selectedComplex = localMapSnapshot.complexes.find(
+      (complex) => complex.complexId === selectedComplexId,
+    )
+    if (selectedComplex !== undefined) {
+      setExpandedRegionCode(selectedComplex.regionCode)
+      setClusterFocusRegionCode(null)
+    }
+  }, [localMapSnapshot, selectedComplexId])
 
   useEffect(() => {
     if (detailLocation.kind === 'none') {
@@ -507,6 +534,11 @@ export function PublicHousingExplorer({
     [openDetail],
   )
 
+  const expandRegionCluster = useCallback((regionCode: string) => {
+    setExpandedRegionCode(regionCode)
+    setClusterFocusRegionCode(regionCode)
+  }, [])
+
   const closeDetail = useCallback(() => {
     if (isDetailHistoryState(location.state)) {
       navigate(-1)
@@ -691,12 +723,24 @@ export function PublicHousingExplorer({
   )
   const detailMapTarget = toDetailMapTarget(complexDetail.detail)
   const markers = useMemo(
-    () => toNaverMapMarkers(
+    () => localMapSnapshot === undefined
+      ? toNaverMapMarkers(
+          mapResults.items,
+          selectedComplexId,
+          complexDetail.detail,
+        )
+      : resolveLocalMapMarkers(
+          localMapSnapshot,
+          expandedRegionCode,
+          selectedComplexId,
+        ),
+    [
+      complexDetail.detail,
+      expandedRegionCode,
+      localMapSnapshot,
       mapResults.items,
       selectedComplexId,
-      complexDetail.detail,
-    ),
-    [complexDetail.detail, mapResults.items, selectedComplexId],
+    ],
   )
   const resultCount = resultCountLabel(
     activeResultTab,
@@ -718,6 +762,9 @@ export function PublicHousingExplorer({
           <div>
             <p className="housing-results__eyebrow">지도 기반 탐색</p>
             <h1>공공임대주택</h1>
+            {localMapSnapshot !== undefined && (
+              <span className="housing-results__local-badge">로컬 mock</span>
+            )}
           </div>
           <span
             className="housing-results__count"
@@ -818,7 +865,9 @@ export function PublicHousingExplorer({
       <main className="housing-map-workspace">
         <NaverMap
           cameraTarget={detailMapTarget}
+          focusRegionCode={clusterFocusRegionCode ?? undefined}
           markers={markers}
+          onClusterSelect={expandRegionCluster}
           onMarkerSelect={openComplexDetail}
           onViewportChange={handleViewportChange}
         />
@@ -1390,6 +1439,7 @@ function toNaverMapMarkers(
   detail: ComplexDetail | null,
 ): NaverMapMarker[] {
   const markers = complexes.map((complex) => ({
+    kind: 'complex' as const,
     id: complex.complexId,
     latitude: complex.latitude,
     longitude: complex.longitude,
@@ -1408,6 +1458,7 @@ function toNaverMapMarkers(
   return [
     ...markers,
     {
+      kind: 'complex',
       id: detail.complexId,
       latitude: target.latitude,
       longitude: target.longitude,
