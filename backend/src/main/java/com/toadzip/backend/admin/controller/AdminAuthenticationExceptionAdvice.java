@@ -1,17 +1,20 @@
 package com.toadzip.backend.admin.controller;
 
-import com.toadzip.backend.admin.service.AdminLoginAttemptLimitExceededException;
-import com.toadzip.backend.admin.service.InvalidAdminCredentialsException;
+import com.toadzip.backend.admin.exception.AdminLoginAttemptLimitExceededException;
+import com.toadzip.backend.admin.exception.InvalidAdminCredentialsException;
 import com.toadzip.backend.global.exception.ErrorResponse;
 import com.toadzip.backend.global.exception.RequestTraceIdResolver;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@RestControllerAdvice(assignableTypes = AdminAuthenticationController.class)
-public class AdminAuthenticationExceptionHandler {
+@Order(Ordered.HIGHEST_PRECEDENCE)
+@RestControllerAdvice
+public class AdminAuthenticationExceptionAdvice {
 
     @ExceptionHandler(InvalidAdminCredentialsException.class)
     public ResponseEntity<ErrorResponse> handleInvalidAdminCredentials(HttpServletRequest request) {

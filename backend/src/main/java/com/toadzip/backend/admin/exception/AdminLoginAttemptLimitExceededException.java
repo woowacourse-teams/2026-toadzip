@@ -1,4 +1,4 @@
-package com.toadzip.backend.admin.service;
+package com.toadzip.backend.admin.exception;
 
 public class AdminLoginAttemptLimitExceededException extends RuntimeException {
 

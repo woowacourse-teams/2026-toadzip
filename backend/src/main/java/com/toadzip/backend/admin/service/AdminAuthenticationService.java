@@ -1,6 +1,7 @@
 package com.toadzip.backend.admin.service;
 
 import com.toadzip.backend.admin.domain.AdminAccount;
+import com.toadzip.backend.admin.exception.InvalidAdminCredentialsException;
 import com.toadzip.backend.admin.repository.AdminAccountRepository;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;

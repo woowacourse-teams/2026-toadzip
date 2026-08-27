@@ -2,6 +2,8 @@ package com.toadzip.backend.admin.service;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import com.toadzip.backend.admin.exception.InvalidAdminCredentialsException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;

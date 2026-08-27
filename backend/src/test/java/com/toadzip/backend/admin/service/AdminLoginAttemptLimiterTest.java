@@ -3,6 +3,7 @@ package com.toadzip.backend.admin.service;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.toadzip.backend.admin.exception.AdminLoginAttemptLimitExceededException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
