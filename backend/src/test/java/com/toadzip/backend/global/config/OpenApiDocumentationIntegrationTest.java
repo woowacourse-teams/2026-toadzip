@@ -81,6 +81,23 @@ class OpenApiDocumentationIntegrationTest {
         );
     }
 
+    @Test
+    void 지역_검색_OpenAPI는_keyword_필수_query_parameter와_최대_길이를_제공한다() throws Exception {
+        HttpResponse<String> response = TestHttpClient.get(port, "/v3/api-docs");
+
+        assertEquals(200, response.statusCode());
+        assertNotNull(JsonPath.read(response.body(), "$.paths['/api/v1/regions'].get"));
+        assertRequiredQueryParameter(response.body(), "/api/v1/regions", "keyword");
+        assertEquals(
+                List.of(50),
+                JsonPath.read(
+                        response.body(),
+                        "$.paths['/api/v1/regions'].get.parameters[?(@.name == 'keyword' && @.in == 'query')]"
+                                + ".schema.maxLength"
+                )
+        );
+    }
+
     private void assertRequiredQueryParameter(String document, String path, String parameterName) {
         List<Boolean> requiredValues = JsonPath.read(
                 document,
