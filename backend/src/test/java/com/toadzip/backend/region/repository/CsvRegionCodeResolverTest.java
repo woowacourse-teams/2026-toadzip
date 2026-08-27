@@ -28,6 +28,193 @@ class CsvRegionCodeResolverTest {
     private static final String EFFECTIVE_DATE_METADATA = "# effectiveDate=2026-07-01";
 
     @Test
+    void 시도명으로_검색하면_시도_전체가_먼저이고_소속_시군구가_코드순으로_이어진다() {
+        CsvRegionCodeResolver resolver = resolver(
+                "11140,서울특별시,중구,서울특별시 중구",
+                "11110,서울특별시,종로구,서울특별시 종로구",
+                "26110,부산광역시,중구,부산광역시 중구"
+        );
+
+        assertEquals(List.of(
+                new RegionSearchResult("11", "서울특별시", null, "서울특별시 전체"),
+                new RegionSearchResult("11110", "서울특별시", "종로구", "서울특별시 종로구"),
+                new RegionSearchResult("11140", "서울특별시", "중구", "서울특별시 중구")
+        ), resolver.findByKeyword("서울"));
+    }
+
+    @Test
+    void 중복된_시군구명은_시도별_전체_표시명으로_구분한다() {
+        CsvRegionCodeResolver resolver = resolver(
+                "11140,서울특별시,중구,서울특별시 중구",
+                "26110,부산광역시,중구,부산광역시 중구"
+        );
+
+        assertEquals(List.of(
+                new RegionSearchResult("11140", "서울특별시", "중구", "서울특별시 중구"),
+                new RegionSearchResult("26110", "부산광역시", "중구", "부산광역시 중구")
+        ), resolver.findByKeyword("중구"));
+    }
+
+    @Test
+    void 전체_표시명으로도_시군구를_검색한다() {
+        CsvRegionCodeResolver resolver = resolver("11140,서울특별시,중구,서울특별시 중구");
+
+        assertEquals(List.of(
+                new RegionSearchResult("11140", "서울특별시", "중구", "서울특별시 중구")
+        ), resolver.findByKeyword("서울특별시 중구"));
+    }
+
+    @Test
+    void 퍼센트와_밑줄은_와일드카드가_아닌_문자로_검색한다() {
+        CsvRegionCodeResolver resolver = resolver(
+                "11110,서울%특별시,중_구,서울%특별시 중_구",
+                "11140,서울특별시,중구,서울특별시 중구"
+        );
+
+        assertEquals(List.of(
+                new RegionSearchResult("11", "서울%특별시", null, "서울%특별시 전체"),
+                new RegionSearchResult("11110", "서울%특별시", "중_구", "서울%특별시 중_구")
+        ), resolver.findByKeyword("%"));
+        assertEquals(List.of(
+                new RegionSearchResult("11110", "서울%특별시", "중_구", "서울%특별시 중_구")
+        ), resolver.findByKeyword("_"));
+    }
+
+    @Test
+    void 일치하는_지역이_없으면_빈_목록을_반환한다() {
+        CsvRegionCodeResolver resolver = resolver("11140,서울특별시,중구,서울특별시 중구");
+
+        assertEquals(List.of(), resolver.findByKeyword("제주"));
+    }
+
+    @Test
+    void 전체라는_표시용_문구만으로는_시도_전체를_검색하지_않는다() {
+        CsvRegionCodeResolver resolver = resolver("11140,서울특별시,중구,서울특별시 중구");
+
+        assertEquals(List.of(), resolver.findByKeyword("전체"));
+    }
+
+    @Test
+    void 세종은_시도_전체와_동일한_이름의_시군구를_서로_구분한다() {
+        CsvRegionCodeResolver resolver = resolver(
+                "36110,세종특별자치시,세종특별자치시,세종특별자치시"
+        );
+
+        assertEquals(List.of(
+                new RegionSearchResult("36", "세종특별자치시", null, "세종특별자치시 전체"),
+                new RegionSearchResult("36110", "세종특별자치시", "세종특별자치시", "세종특별자치시")
+        ), resolver.findByKeyword("세종특별자치시"));
+    }
+
+    @Test
+    void 검색_결과에는_별칭이_아닌_정본_지역코드만_포함한다() {
+        CsvRegionCodeResolver resolver = resolverWithContentsAndAliases(
+                HEADER + "\n12210,전남광주통합특별시,동구,전남광주통합특별시 동구",
+                ALIAS_HEADER + "\n29110,12210"
+        );
+
+        assertEquals(List.of(
+                new RegionSearchResult("12", "전남광주통합특별시", null, "전남광주통합특별시 전체"),
+                new RegionSearchResult("12210", "전남광주통합특별시", "동구", "전남광주통합특별시 동구")
+        ), resolver.findByKeyword("전남광주"));
+    }
+
+    @Test
+    void 검색_결과는_수정할수_없는_목록이다() {
+        CsvRegionCodeResolver resolver = resolver("11140,서울특별시,중구,서울특별시 중구");
+
+        List<RegionSearchResult> results = resolver.findByKeyword("서울");
+
+        assertThrows(UnsupportedOperationException.class, () -> results.add(
+                new RegionSearchResult("99999", "테스트", "테스트", "테스트")
+        ));
+    }
+
+    @Test
+    void 검색_결과는_입력행의_순서와_관계없이_안정적으로_정렬된다() {
+        CsvRegionCodeResolver resolver = resolver(
+                "26140,부산광역시,서구,부산광역시 서구",
+                "11140,서울특별시,중구,서울특별시 중구",
+                "26110,부산광역시,중구,부산광역시 중구",
+                "11110,서울특별시,종로구,서울특별시 종로구"
+        );
+
+        assertEquals(List.of(
+                new RegionSearchResult("11", "서울특별시", null, "서울특별시 전체"),
+                new RegionSearchResult("11110", "서울특별시", "종로구", "서울특별시 종로구"),
+                new RegionSearchResult("11140", "서울특별시", "중구", "서울특별시 중구"),
+                new RegionSearchResult("26", "부산광역시", null, "부산광역시 전체"),
+                new RegionSearchResult("26110", "부산광역시", "중구", "부산광역시 중구"),
+                new RegionSearchResult("26140", "부산광역시", "서구", "부산광역시 서구")
+        ), resolver.findByKeyword("시"));
+    }
+
+    @Test
+    void 현재와_과거_시도코드는_같은_동등코드_집합으로_해석한다() {
+        CsvRegionCodeResolver resolver = resolverWithContentsAndAliases(
+                HEADER + "\n12210,전남광주통합특별시,동구,전남광주통합특별시 동구",
+                ALIAS_HEADER + "\n29110,12210\n46110,12210"
+        );
+
+        Set<String> expected = Set.of("12", "29", "46");
+        assertEquals(expected, resolver.equivalentProvinceCodes("12").orElseThrow());
+        assertEquals(expected, resolver.equivalentProvinceCodes("29").orElseThrow());
+        assertEquals(expected, resolver.equivalentProvinceCodes("46").orElseThrow());
+    }
+
+    @Test
+    void 정본이나_과거_시도코드로_등록되지_않은_값은_해석하지_않는다() {
+        CsvRegionCodeResolver resolver = resolverWithContentsAndAliases(
+                HEADER + "\n12210,전남광주통합특별시,동구,전남광주통합특별시 동구",
+                ALIAS_HEADER + "\n29110,12210"
+        );
+
+        assertTrue(resolver.equivalentProvinceCodes("1").isEmpty());
+        assertTrue(resolver.equivalentProvinceCodes("123").isEmpty());
+        assertTrue(resolver.equivalentProvinceCodes("aa").isEmpty());
+        assertTrue(resolver.equivalentProvinceCodes("99").isEmpty());
+    }
+
+    @Test
+    void 동등_시도코드_집합은_수정할수_없다() {
+        CsvRegionCodeResolver resolver = resolverWithContentsAndAliases(
+                HEADER + "\n12210,전남광주통합특별시,동구,전남광주통합특별시 동구",
+                ALIAS_HEADER + "\n29110,12210"
+        );
+
+        Set<String> provinceCodes = resolver.equivalentProvinceCodes("12").orElseThrow();
+
+        assertThrows(UnsupportedOperationException.class, () -> provinceCodes.add("46"));
+    }
+
+    @Test
+    void 정본_시도코드와_같은_과거_접두어는_동등코드로_승격하지_않는다() {
+        CsvRegionCodeResolver resolver = resolverWithContentsAndAliases(
+                HEADER + "\n12210,전남광주통합특별시,동구,전남광주통합특별시 동구"
+                        + "\n29110,광역시,중구,광역시 중구",
+                ALIAS_HEADER + "\n29140,12210"
+        );
+
+        assertEquals(Set.of("12"), resolver.equivalentProvinceCodes("12").orElseThrow());
+        assertEquals(Set.of("29"), resolver.equivalentProvinceCodes("29").orElseThrow());
+    }
+
+    @Test
+    void 하나의_과거_시도코드가_여러_현재_시도코드에_매핑되면_초기화에_실패한다() {
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> resolverWithContentsAndAliases(
+                        HEADER + "\n12210,전남광주통합특별시,동구,전남광주통합특별시 동구"
+                                + "\n26110,부산광역시,중구,부산광역시 중구",
+                        ALIAS_HEADER + "\n29110,12210\n29140,26110"
+                )
+        );
+
+        assertTrue(exception.getMessage().contains("29"));
+        assertTrue(exception.getMessage().contains("multiple"));
+    }
+
+    @Test
     void 시도코드와_시군구코드가_일치하면_공식_지역명을_반환한다() {
         CsvRegionCodeResolver resolver = resolver("11140,서울특별시,중구,서울특별시 중구");
 
