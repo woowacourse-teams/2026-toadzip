@@ -12,7 +12,7 @@ type ApiErrorBody = {
   message?: string
 }
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
+const apiBaseUrl = resolveApiBaseUrl()
 
 export class AdminApiError extends Error {
   readonly status: number
@@ -78,4 +78,15 @@ async function errorMessage(response: Response): Promise<string> {
     return body.message
   }
   return '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+}
+
+function resolveApiBaseUrl(): string {
+  const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL
+  if (configuredApiBaseUrl) {
+    return configuredApiBaseUrl
+  }
+  if (import.meta.env.DEV) {
+    return 'http://localhost:8080'
+  }
+  throw new Error('VITE_API_BASE_URL must be configured outside development.')
 }

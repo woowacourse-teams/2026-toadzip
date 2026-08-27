@@ -23,6 +23,14 @@ npm ci
 
 ## 개발 서버 실행
 
+`frontend/.env.example`을 참고해 `frontend/.env`를 생성한다.
+
+```shell
+Copy-Item .env.example .env
+```
+
+로컬 기본값은 `http://localhost:8080`이다.
+
 ```shell
 npm run dev
 ```
@@ -58,6 +66,15 @@ npm run build
 ```
 
 TypeScript 타입 검사 후 프로덕션 파일을 `dist/`에 생성한다.
+
+운영 프런트엔드와 API를 서로 다른 주소에 배포하므로, 운영 빌드 환경에는 공개 API 주소를 반드시 설정한다.
+
+```text
+VITE_API_BASE_URL=https://api.toadzip.com
+```
+
+값이 없으면 빌드는 실패한다. 운영 백엔드에는 `ADMIN_CORS_ALLOWED_ORIGIN=https://toadzip.com`와
+`SESSION_COOKIE_SECURE=true`를 설정한다.
 
 ## 빌드 결과 확인
 
