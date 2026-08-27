@@ -38,8 +38,7 @@ class LocalProfileSchemaPersistenceTest {
     }
 
     private String testDatabaseUrl() {
-        String testPort = System.getenv().getOrDefault("TEST_POSTGRES_PORT", "55432");
-        return "jdbc:postgresql://127.0.0.1:" + testPort + "/toadzip_test";
+        return "jdbc:postgresql://127.0.0.1:55432/toadzip_test";
     }
 
     private ConfigurableEnvironment createIsolatedEnvironment(String jdbcUrl) {
@@ -53,10 +52,18 @@ class LocalProfileSchemaPersistenceTest {
                         "spring.datasource.username", "toadzip_test",
                         "spring.datasource.password", "toadzip_test",
                         "spring.datasource.driver-class-name", "org.postgresql.Driver",
+                        "app.datasource.shared.url", sharedTestDatabaseUrl(),
+                        "app.datasource.shared.username", "toadzip_shared_test",
+                        "app.datasource.shared.password", "toadzip_shared_test",
+                        "app.datasource.shared.driver-class-name", "org.postgresql.Driver",
                         "spring.main.web-application-type", "none"
                 )
         ));
         environment.setActiveProfiles("local");
         return environment;
+    }
+
+    private String sharedTestDatabaseUrl() {
+        return "jdbc:postgresql://127.0.0.1:55433/toadzip_shared_test";
     }
 }
