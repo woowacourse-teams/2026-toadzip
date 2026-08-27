@@ -1,7 +1,6 @@
 services:
   db-dev:
     image: postgres:17-alpine
-    container_name: toadzip-db-dev
     environment:
       POSTGRES_DB: toadzip
       POSTGRES_USER: toadzip
@@ -19,7 +18,6 @@ services:
 
   db-prod:
     image: postgres:17-alpine
-    container_name: toadzip-db-prod
     environment:
       POSTGRES_DB: toadzip
       POSTGRES_USER: toadzip
@@ -37,7 +35,6 @@ services:
 
   db-shared:
     image: postgres:17-alpine
-    container_name: toadzip-db-shared
     environment:
       POSTGRES_DB: toadzip_shared
       POSTGRES_USER: toadzip
