@@ -81,6 +81,4 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
       - name: Check frontend
-        env:
-          VITE_API_BASE_URL: https://api.toadzip.com
         run: npm run check
