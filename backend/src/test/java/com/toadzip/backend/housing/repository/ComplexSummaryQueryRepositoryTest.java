@@ -5,15 +5,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.ApplicationStatus;
+import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.housing.domain.Address;
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.ComplexSort;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.MapBounds;
+import com.toadzip.backend.housing.domain.RentalType;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -263,33 +267,816 @@ class ComplexSummaryQueryRepositoryTest {
         assertEquals(List.of(smaller.getId()), ids(page));
     }
 
+    @Test
+    void keyword는_단지명과_도로명주소를_대소문자_없이_부분_검색한다() {
+        HousingComplex nameMatch = persistComplex(
+                "SeoUL Forest",
+                "서울특별시 중구 세종대로 110",
+                "11",
+                "11140",
+                "행복주택",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+        HousingComplex addressMatch = persistComplex(
+                "주소 검색 단지",
+                "서울특별시 강남구 TeHeRaN-ro 1",
+                "11",
+                "11680",
+                "행복주택",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+        persistComplex("무관한 단지", "37.500000", "126.900000");
+        entityManager.flush();
+
+        assertBothQueryPaths(directFilters("seoul", null, Set.of(), Set.of(), Set.of(), null, null, null),
+                nameMatch.getId());
+        assertBothQueryPaths(directFilters("teheran", null, Set.of(), Set.of(), Set.of(), null, null, null),
+                addressMatch.getId());
+    }
+
+    @Test
+    void keyword의_퍼센트_밑줄_역슬래시는_wildcard가_아닌_문자_그대로_검색한다() {
+        HousingComplex percent = persistComplex("퍼센트%단지", "37.500000", "126.900000");
+        persistComplex("퍼센트X단지", "37.500000", "126.900000");
+        HousingComplex underscore = persistComplex("밑줄_단지", "37.500000", "126.900000");
+        persistComplex("밑줄X단지", "37.500000", "126.900000");
+        HousingComplex backslash = persistComplex("역슬래시\\단지", "37.500000", "126.900000");
+        persistComplex("역슬래시X단지", "37.500000", "126.900000");
+        entityManager.flush();
+
+        assertBothQueryPaths(directFilters("%", null, Set.of(), Set.of(), Set.of(), null, null, null),
+                percent.getId());
+        assertBothQueryPaths(directFilters("_", null, Set.of(), Set.of(), Set.of(), null, null, null),
+                underscore.getId());
+        assertBothQueryPaths(directFilters("\\", null, Set.of(), Set.of(), Set.of(), null, null, null),
+                backslash.getId());
+    }
+
+    @Test
+    void 시도와_canonical_legacy_시군구_코드_집합을_함께_검색한다() {
+        HousingComplex firstDistrict = persistComplex(
+                "서울 중구",
+                "서울특별시 중구 세종대로 110",
+                "11",
+                "11140",
+                "행복주택",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+        HousingComplex secondDistrict = persistComplex(
+                "서울 종로구",
+                "서울특별시 종로구 종로 1",
+                "11",
+                "11110",
+                "행복주택",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+        persistComplex(
+                "경기 성남시",
+                "경기도 성남시 분당구 판교역로 1",
+                "41",
+                "41135",
+                "행복주택",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                directFilters(null, "11", Set.of("11140", "11110"), Set.of(), Set.of(), null, null, null),
+                firstDistrict.getId(),
+                secondDistrict.getId()
+        );
+    }
+
+    @Test
+    void 임대유형은_canonical과_한글_legacy_저장값을_같은_enum으로_검색한다() {
+        HousingComplex canonical = persistComplex(
+                "canonical 임대유형",
+                "서울특별시 중구 세종대로 110",
+                "11",
+                "11140",
+                "HAPPY_HOUSING",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+        HousingComplex legacy = persistComplex(
+                "legacy 임대유형",
+                "서울특별시 중구 세종대로 111",
+                "11",
+                "11140",
+                "행복주택",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+        persistComplex(
+                "다른 임대유형",
+                "서울특별시 중구 세종대로 112",
+                "11",
+                "11140",
+                "국민임대",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                directFilters(null, null, Set.of(), Set.of(RentalType.HAPPY_HOUSING), Set.of(), null, null, null),
+                canonical.getId(),
+                legacy.getId()
+        );
+    }
+
+    @Test
+    void 공급기관은_canonical과_한글_legacy_저장값을_같은_enum으로_검색한다() {
+        HousingComplex canonical = persistComplex(
+                "canonical 공급기관",
+                "서울특별시 중구 세종대로 110",
+                "11",
+                "11140",
+                "행복주택",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+        HousingComplex legacy = persistComplex(
+                "legacy 공급기관",
+                "서울특별시 중구 세종대로 111",
+                "11",
+                "11140",
+                "행복주택",
+                "한국토지주택공사",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+        persistComplex(
+                "다른 공급기관",
+                "서울특별시 중구 세종대로 112",
+                "11",
+                "11140",
+                "행복주택",
+                "SH",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                directFilters(null, null, Set.of(), Set.of(), Set.of(AgencyCode.LH), null, null, null),
+                canonical.getId(),
+                legacy.getId()
+        );
+    }
+
+    @Test
+    void 준공연도_범위는_from과_to_양끝을_포함한다() {
+        persistComplexWithCompletionDate("범위 전", LocalDate.of(2019, 12, 31));
+        HousingComplex fromBoundary = persistComplexWithCompletionDate("from 경계", LocalDate.of(2020, 1, 1));
+        HousingComplex toBoundary = persistComplexWithCompletionDate("to 경계", LocalDate.of(2021, 12, 31));
+        persistComplexWithCompletionDate("범위 후", LocalDate.of(2022, 1, 1));
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                directFilters(null, null, Set.of(), Set.of(), Set.of(), 2020, 2021, null),
+                fromBoundary.getId(),
+                toBoundary.getId()
+        );
+    }
+
+    @Test
+    void 엘리베이터_설치여부는_true와_false를_정확히_구분한다() {
+        HousingComplex installed = persistComplexWithElevator("엘리베이터 있음", true);
+        HousingComplex notInstalled = persistComplexWithElevator("엘리베이터 없음", false);
+        entityManager.flush();
+
+        assertBothQueryPaths(directFilters(null, null, Set.of(), Set.of(), Set.of(), null, null, true),
+                installed.getId());
+        assertBothQueryPaths(directFilters(null, null, Set.of(), Set.of(), Set.of(), null, null, false),
+                notInstalled.getId());
+    }
+
+    @Test
+    void 같은_enum은_OR이고_다른_그룹과_연도범위는_AND이며_단지_ID는_중복되지_않는다() {
+        HousingComplex happy = persistComplex(
+                "행복주택 LH",
+                "서울특별시 중구 세종대로 110",
+                "11",
+                "11140",
+                "행복주택",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+        HousingComplex national = persistComplex(
+                "국민임대 LH",
+                "서울특별시 중구 세종대로 111",
+                "11",
+                "11140",
+                "국민임대",
+                "LH",
+                LocalDate.of(2021, 1, 1),
+                true
+        );
+        persistComplex(
+                "행복주택 SH",
+                "서울특별시 중구 세종대로 112",
+                "11",
+                "11140",
+                "행복주택",
+                "SH",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+        persistComplex(
+                "오래된 행복주택 LH",
+                "서울특별시 중구 세종대로 113",
+                "11",
+                "11140",
+                "행복주택",
+                "LH",
+                LocalDate.of(2010, 1, 1),
+                true
+        );
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                directFilters(
+                        null,
+                        null,
+                        Set.of(),
+                        Set.of(RentalType.HAPPY_HOUSING, RentalType.NATIONAL_RENTAL),
+                        Set.of(AgencyCode.LH),
+                        2020,
+                        2021,
+                        null
+                ),
+                happy.getId(),
+                national.getId()
+        );
+    }
+
+    @Test
+    void 모집유형은_대표공고의_canonical과_한글_legacy_저장값을_같은_enum으로_검색한다() {
+        HousingComplex canonical = persistComplex("canonical 모집유형", "37.500000", "126.900000");
+        HousingComplex legacy = persistComplex("legacy 모집유형", "37.500000", "126.900000");
+        HousingComplex other = persistComplex("다른 모집유형", "37.500000", "126.900000");
+        persistComplex("대표공고 없음", "37.500000", "126.900000");
+        persistRepresentativeWithApplicationPeriod(
+                canonical,
+                "NEW",
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 28),
+                LocalDate.of(2026, 8, 31),
+                "canonical-recruitment"
+        );
+        Announcement legacyAnnouncement = persistRepresentativeWithApplicationPeriod(
+                legacy,
+                "NEW",
+                LocalDate.of(2026, 8, 2),
+                LocalDate.of(2026, 8, 28),
+                LocalDate.of(2026, 8, 31),
+                "legacy-recruitment"
+        );
+        persistRepresentativeWithApplicationPeriod(
+                other,
+                "WAITLIST",
+                LocalDate.of(2026, 8, 3),
+                LocalDate.of(2026, 8, 28),
+                LocalDate.of(2026, 8, 31),
+                "other-recruitment"
+        );
+        entityManager.flush();
+        updateRecruitmentType(legacyAnnouncement, "신규모집");
+
+        assertBothQueryPaths(
+                announcementFilters(Set.of(), Set.of(RecruitmentType.NEW)),
+                canonical.getId(),
+                legacy.getId()
+        );
+    }
+
+    @Test
+    void BEFORE_APPLICATION은_대표공고의_접수시작일이_today보다_뒤인_단지만_검색한다() {
+        HousingComplex before = persistComplex("접수 전", "37.500000", "126.900000");
+        HousingComplex applying = persistComplex("접수 중", "37.500000", "126.900000");
+        persistRepresentativeWithApplicationPeriod(
+                before,
+                "NEW",
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 28),
+                LocalDate.of(2026, 8, 31),
+                "before"
+        );
+        persistRepresentativeWithApplicationPeriod(
+                applying,
+                "NEW",
+                LocalDate.of(2026, 8, 2),
+                LocalDate.of(2026, 8, 27),
+                LocalDate.of(2026, 8, 31),
+                "not-before"
+        );
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                announcementFilters(Set.of(ApplicationStatus.BEFORE_APPLICATION), Set.of()),
+                before.getId()
+        );
+    }
+
+    @Test
+    void APPLYING은_대표공고의_접수시작일과_종료일_today_양끝을_포함한다() {
+        HousingComplex startBoundary = persistComplex("시작일 경계", "37.500000", "126.900000");
+        HousingComplex endBoundary = persistComplex("종료일 경계", "37.500000", "126.900000");
+        HousingComplex before = persistComplex("접수 전", "37.500000", "126.900000");
+        HousingComplex closed = persistComplex("접수 종료", "37.500000", "126.900000");
+        persistRepresentativeWithApplicationPeriod(
+                startBoundary,
+                "NEW",
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 27),
+                LocalDate.of(2026, 8, 30),
+                "applying-start-boundary"
+        );
+        persistRepresentativeWithApplicationPeriod(
+                endBoundary,
+                "NEW",
+                LocalDate.of(2026, 8, 2),
+                LocalDate.of(2026, 8, 20),
+                LocalDate.of(2026, 8, 27),
+                "applying-end-boundary"
+        );
+        persistRepresentativeWithApplicationPeriod(
+                before,
+                "NEW",
+                LocalDate.of(2026, 8, 3),
+                LocalDate.of(2026, 8, 28),
+                LocalDate.of(2026, 8, 31),
+                "applying-before"
+        );
+        persistRepresentativeWithApplicationPeriod(
+                closed,
+                "NEW",
+                LocalDate.of(2026, 8, 4),
+                LocalDate.of(2026, 8, 20),
+                LocalDate.of(2026, 8, 26),
+                "applying-closed"
+        );
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                announcementFilters(Set.of(ApplicationStatus.APPLYING), Set.of()),
+                startBoundary.getId(),
+                endBoundary.getId()
+        );
+    }
+
+    @Test
+    void CLOSED는_대표공고의_접수종료일이_today보다_앞인_단지만_검색한다() {
+        HousingComplex closed = persistComplex("접수 종료", "37.500000", "126.900000");
+        HousingComplex applying = persistComplex("종료일 경계", "37.500000", "126.900000");
+        persistRepresentativeWithApplicationPeriod(
+                closed,
+                "NEW",
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 20),
+                LocalDate.of(2026, 8, 26),
+                "closed"
+        );
+        persistRepresentativeWithApplicationPeriod(
+                applying,
+                "NEW",
+                LocalDate.of(2026, 8, 2),
+                LocalDate.of(2026, 8, 20),
+                LocalDate.of(2026, 8, 27),
+                "not-closed"
+        );
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                announcementFilters(Set.of(ApplicationStatus.CLOSED), Set.of()),
+                closed.getId()
+        );
+    }
+
+    @Test
+    void 여러_접수상태는_OR로_검색하고_대표공고가_없는_단지는_제외한다() {
+        HousingComplex before = persistComplex("접수 전", "37.500000", "126.900000");
+        HousingComplex applying = persistComplex("접수 중", "37.500000", "126.900000");
+        HousingComplex closed = persistComplex("접수 종료", "37.500000", "126.900000");
+        persistComplex("대표공고 없음", "37.500000", "126.900000");
+        persistRepresentativeWithApplicationPeriod(
+                before,
+                "NEW",
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 28),
+                LocalDate.of(2026, 8, 31),
+                "multiple-before"
+        );
+        persistRepresentativeWithApplicationPeriod(
+                applying,
+                "NEW",
+                LocalDate.of(2026, 8, 2),
+                LocalDate.of(2026, 8, 20),
+                LocalDate.of(2026, 8, 30),
+                "multiple-applying"
+        );
+        persistRepresentativeWithApplicationPeriod(
+                closed,
+                "NEW",
+                LocalDate.of(2026, 8, 3),
+                LocalDate.of(2026, 8, 20),
+                LocalDate.of(2026, 8, 26),
+                "multiple-closed"
+        );
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                announcementFilters(
+                        Set.of(ApplicationStatus.BEFORE_APPLICATION, ApplicationStatus.CLOSED),
+                        Set.of()
+                ),
+                before.getId(),
+                closed.getId()
+        );
+    }
+
+    @Test
+    void 과거공고가_조건을_만족해도_최신_대표공고가_불일치하면_제외한다() {
+        HousingComplex complex = persistComplex("과거 조건 일치 단지", "37.500000", "126.900000");
+        persistRepresentativeWithApplicationPeriod(
+                complex,
+                "NEW",
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 20),
+                LocalDate.of(2026, 8, 30),
+                "historical-match"
+        );
+        persistRepresentativeWithApplicationPeriod(
+                complex,
+                "WAITLIST",
+                LocalDate.of(2026, 8, 20),
+                LocalDate.of(2026, 8, 28),
+                LocalDate.of(2026, 8, 31),
+                "current-mismatch"
+        );
+        entityManager.flush();
+
+        assertBothQueryPaths(announcementFilters(Set.of(), Set.of(RecruitmentType.NEW)));
+        assertBothQueryPaths(announcementFilters(Set.of(ApplicationStatus.APPLYING), Set.of()));
+    }
+
+    @Test
+    void 면적_범위는_실제_주택형_한_개가_양끝을_만족해야_한다() {
+        HousingComplex gap = persistComplex("면적 gap 단지", "37.500000", "126.900000");
+        persistHousingType(gap, "20A", "20.00");
+        persistHousingType(gap, "60A", "60.00");
+        HousingComplex matched = persistComplex("면적 일치 단지", "37.500000", "126.900000");
+        persistHousingType(matched, "30A", "30.00");
+        persistHousingType(matched, "50A", "50.00");
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                priceAreaFilters(null, null, null, null, new BigDecimal("30.00"), new BigDecimal("50.00")),
+                matched.getId()
+        );
+    }
+
+    @Test
+    void 보증금과_월세는_대표공고의_같은_공급대상이_양끝을_동시에_만족해야_한다() {
+        HousingComplex crossTarget = persistComplex("교차 공급대상", "37.500000", "126.900000");
+        Announcement crossAnnouncement = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 1),
+                "cross-target"
+        );
+        SupplyRow crossRow = persistSupplyRow(crossAnnouncement, crossTarget, null, "cross-target-row", 1);
+        persistSupplyTarget(crossRow, "보증금만 일치", "50000000", "100000", 1);
+        persistSupplyTarget(crossRow, "월세만 일치", "40000000", "300000", 2);
+
+        HousingComplex matched = persistComplex("동일 공급대상", "37.500000", "126.900000");
+        Announcement matchedAnnouncement = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 2),
+                "same-target"
+        );
+        SupplyRow matchedRow = persistSupplyRow(matchedAnnouncement, matched, null, "same-target-row", 1);
+        persistSupplyTarget(matchedRow, "양끝 일치", "50000000", "300000", 1);
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                priceAreaFilters(
+                        new BigDecimal("50000000"),
+                        new BigDecimal("60000000"),
+                        new BigDecimal("200000"),
+                        new BigDecimal("300000"),
+                        null,
+                        null
+                ),
+                matched.getId()
+        );
+    }
+
+    @Test
+    void 가격과_면적은_대표공고의_같은_공급행에_연결된_주택형에서_만족해야_한다() {
+        HousingComplex crossRow = persistComplex("교차 공급행", "37.500000", "126.900000");
+        HousingType priceOnlyType = persistHousingType(crossRow, "20A", "20.00");
+        HousingType areaOnlyType = persistHousingType(crossRow, "40A", "40.00");
+        Announcement crossAnnouncement = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 1),
+                "cross-row"
+        );
+        SupplyRow priceOnlyRow = persistSupplyRow(
+                crossAnnouncement,
+                crossRow,
+                priceOnlyType,
+                "price-only-row",
+                1
+        );
+        SupplyRow areaOnlyRow = persistSupplyRow(
+                crossAnnouncement,
+                crossRow,
+                areaOnlyType,
+                "area-only-row",
+                2
+        );
+        persistSupplyTarget(priceOnlyRow, "가격만 일치", "50000000", "200000", 1);
+        persistSupplyTarget(areaOnlyRow, "면적만 일치", "40000000", "200000", 1);
+
+        HousingComplex matched = persistComplex("같은 공급행", "37.500000", "126.900000");
+        HousingType matchedType = persistHousingType(matched, "50A", "50.00");
+        Announcement matchedAnnouncement = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 2),
+                "same-row"
+        );
+        SupplyRow matchedRow = persistSupplyRow(
+                matchedAnnouncement,
+                matched,
+                matchedType,
+                "same-row",
+                1
+        );
+        persistSupplyTarget(matchedRow, "가격과 면적 일치", "60000000", "200000", 1);
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                priceAreaFilters(
+                        new BigDecimal("50000000"),
+                        new BigDecimal("60000000"),
+                        null,
+                        null,
+                        new BigDecimal("30.00"),
+                        new BigDecimal("50.00")
+                ),
+                matched.getId()
+        );
+    }
+
+    @Test
+    void null_가격은_숫자_필터와_일치하지_않는다() {
+        HousingComplex nullPrice = persistComplex("가격 null", "37.500000", "126.900000");
+        Announcement nullAnnouncement = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 1),
+                "null-price"
+        );
+        SupplyRow nullRow = persistSupplyRow(nullAnnouncement, nullPrice, null, "null-price-row", 1);
+        persistNullableSupplyTarget(nullRow, "가격 없음", null, null, 1);
+
+        HousingComplex matched = persistComplex("가격 있음", "37.500000", "126.900000");
+        Announcement matchedAnnouncement = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 2),
+                "nonnull-price"
+        );
+        SupplyRow matchedRow = persistSupplyRow(matchedAnnouncement, matched, null, "nonnull-price-row", 1);
+        persistSupplyTarget(matchedRow, "가격 있음", "0", "0", 1);
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                priceAreaFilters(new BigDecimal("0"), null, new BigDecimal("0"), null, null, null),
+                matched.getId()
+        );
+    }
+
+    @Test
+    void 가격만_검색할_때는_대표공고_공급행의_주택형이_없어도_일치한다() {
+        HousingComplex complex = persistComplex("주택형 없는 가격", "37.500000", "126.900000");
+        Announcement announcement = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 1),
+                "price-without-housing-type"
+        );
+        SupplyRow supplyRow = persistSupplyRow(
+                announcement,
+                complex,
+                null,
+                "price-without-housing-type-row",
+                1
+        );
+        persistSupplyTarget(supplyRow, "가격 일치", "50000000", "200000", 1);
+
+        HousingComplex other = persistComplex("주택형 없는 다른 가격", "37.500000", "126.900000");
+        Announcement otherAnnouncement = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 2),
+                "other-price-without-housing-type"
+        );
+        SupplyRow otherRow = persistSupplyRow(
+                otherAnnouncement,
+                other,
+                null,
+                "other-price-without-housing-type-row",
+                1
+        );
+        persistSupplyTarget(otherRow, "가격 불일치", "40000000", "200000", 1);
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                priceAreaFilters(new BigDecimal("50000000"), new BigDecimal("50000000"), null, null, null, null),
+                complex.getId()
+        );
+    }
+
+    @Test
+    void 가격과_면적_filter가_있어도_응답_범위는_대표공고와_전체_주택형으로_집계한다() {
+        HousingComplex complex = persistComplex("집계 유지 단지", "37.500000", "126.900000");
+        HousingType small = persistHousingType(complex, "20A", "20.00");
+        HousingType large = persistHousingType(complex, "60A", "60.00");
+        Announcement announcement = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 1),
+                "unfiltered-aggregates"
+        );
+        SupplyRow smallRow = persistSupplyRow(announcement, complex, small, "small-row", 1);
+        SupplyRow largeRow = persistSupplyRow(announcement, complex, large, "large-row", 2);
+        persistSupplyTarget(smallRow, "필터 일치", "10000000", "100000", 1);
+        persistSupplyTarget(largeRow, "집계에만 포함", "50000000", "500000", 1);
+
+        HousingComplex other = persistComplex("필터 불일치 단지", "37.500000", "126.900000");
+        HousingType otherType = persistHousingType(other, "20A", "20.00");
+        Announcement otherAnnouncement = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 2),
+                "filtered-out-aggregate"
+        );
+        SupplyRow otherRow = persistSupplyRow(otherAnnouncement, other, otherType, "filtered-out-row", 1);
+        persistSupplyTarget(otherRow, "필터 불일치", "90000000", "900000", 1);
+        entityManager.flush();
+        HousingComplexSearchCondition condition = priceAreaFilters(
+                new BigDecimal("10000000"),
+                new BigDecimal("10000000"),
+                new BigDecimal("100000"),
+                new BigDecimal("100000"),
+                new BigDecimal("20.00"),
+                new BigDecimal("20.00")
+        );
+
+        List<ComplexSummaryRow> mapRows = repository.findAll(condition);
+        List<ComplexSummaryRow> listRows = repository.findPage(
+                condition,
+                ComplexSort.LATEST_ANNOUNCEMENT,
+                null,
+                100
+        );
+        ComplexSummaryRow mapRow = mapRows.getFirst();
+        ComplexSummaryRow listRow = listRows.getFirst();
+
+        assertAll(
+                () -> assertEquals(1, mapRows.size()),
+                () -> assertEquals(1, listRows.size()),
+                () -> assertEquals(complex.getId(), mapRow.complexId()),
+                () -> assertEquals(complex.getId(), listRow.complexId()),
+                () -> assertAggregateRanges(mapRow),
+                () -> assertAggregateRanges(listRow)
+        );
+    }
+
     private HousingComplex persistComplex(String name, String latitude, String longitude) {
+        return persistComplex(
+                name,
+                "서울특별시 중구 세종대로 110",
+                "11",
+                "11140",
+                "행복주택",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                true,
+                latitude,
+                longitude
+        );
+    }
+
+    private HousingComplex persistComplex(
+            String name,
+            String roadAddress,
+            String provinceCode,
+            String cityCountyDistrictCode,
+            String supplyType,
+            String provider,
+            LocalDate completionDate,
+            boolean elevatorInstalled
+    ) {
+        return persistComplex(
+                name,
+                roadAddress,
+                provinceCode,
+                cityCountyDistrictCode,
+                supplyType,
+                provider,
+                completionDate,
+                elevatorInstalled,
+                "37.500000",
+                "126.900000"
+        );
+    }
+
+    private HousingComplex persistComplex(
+            String name,
+            String roadAddress,
+            String provinceCode,
+            String cityCountyDistrictCode,
+            String supplyType,
+            String provider,
+            LocalDate completionDate,
+            boolean elevatorInstalled,
+            String latitude,
+            String longitude
+    ) {
         HousingComplex complex = HousingComplex.create(
                 name,
                 "source-" + name,
-                "행복주택",
+                supplyType,
                 Address.create(
-                        "서울특별시 중구 세종대로 110",
+                        roadAddress,
                         "1114010100100010000",
                         "1114010100",
-                        "11",
-                        "11140",
+                        provinceCode,
+                        cityCountyDistrictCode,
                         new BigDecimal(latitude),
                         new BigDecimal(longitude)
                 ),
                 100,
-                "LH",
-                LocalDate.of(2020, 1, 1),
+                provider,
+                completionDate,
                 "개별난방",
                 "아파트",
                 "계단식",
-                true,
+                elevatorInstalled,
                 80,
                 null,
                 null
         );
         entityManager.persist(complex);
         return complex;
+    }
+
+    private HousingComplex persistComplexWithCompletionDate(String name, LocalDate completionDate) {
+        return persistComplex(
+                name,
+                "서울특별시 중구 세종대로 110",
+                "11",
+                "11140",
+                "행복주택",
+                "LH",
+                completionDate,
+                true
+        );
+    }
+
+    private HousingComplex persistComplexWithElevator(String name, boolean elevatorInstalled) {
+        return persistComplex(
+                name,
+                "서울특별시 중구 세종대로 110",
+                "11",
+                "11140",
+                "행복주택",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                elevatorInstalled
+        );
     }
 
     private HousingType persistHousingType(
@@ -354,6 +1141,69 @@ class ComplexSummaryQueryRepositoryTest {
         return announcement;
     }
 
+    private Announcement persistRepresentativeWithApplicationPeriod(
+            HousingComplex complex,
+            String recruitmentType,
+            LocalDate postedDate,
+            LocalDate applicationStartDate,
+            LocalDate applicationEndDate,
+            String suffix
+    ) {
+        Announcement announcement = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                recruitmentType,
+                postedDate,
+                applicationStartDate,
+                applicationEndDate,
+                suffix
+        );
+        persistSupplyRow(announcement, complex, null, suffix + "-row", 1);
+        return announcement;
+    }
+
+    private Announcement persistAnnouncement(
+            Announcement previousAnnouncement,
+            String status,
+            String recruitmentType,
+            LocalDate postedDate,
+            LocalDate applicationStartDate,
+            LocalDate applicationEndDate,
+            String suffix
+    ) {
+        String previousSourceIdentifier = null;
+        if (previousAnnouncement != null) {
+            previousSourceIdentifier = "source-original";
+        }
+        Announcement announcement = Announcement.create(
+                "source-" + suffix,
+                previousSourceIdentifier,
+                previousAnnouncement,
+                "공고 " + suffix,
+                status,
+                "행복주택",
+                recruitmentType,
+                "LH",
+                postedDate,
+                applicationStartDate,
+                applicationEndDate,
+                postedDate.plusMonths(1),
+                "https://example.com/announcements/" + suffix,
+                null,
+                0,
+                ReceptionPlace.create("LH 청약센터", "인터넷", null, "1600-1004", null)
+        );
+        entityManager.persist(announcement);
+        return announcement;
+    }
+
+    private void updateRecruitmentType(Announcement announcement, String storedValue) {
+        entityManager.createNativeQuery("UPDATE announcements SET recruitment_type = :storedValue WHERE id = :id")
+                .setParameter("storedValue", storedValue)
+                .setParameter("id", announcement.getId())
+                .executeUpdate();
+    }
+
     private SupplyRow persistSupplyRow(
             Announcement announcement,
             HousingComplex complex,
@@ -401,6 +1251,27 @@ class ComplexSummaryQueryRepositoryTest {
                 5,
                 new BigDecimal(rentalDeposit),
                 new BigDecimal(monthlyRent),
+                null,
+                "신청 조건",
+                displayOrder
+        ));
+    }
+
+    private void persistNullableSupplyTarget(
+            SupplyRow supplyRow,
+            String target,
+            BigDecimal rentalDeposit,
+            BigDecimal monthlyRent,
+            int displayOrder
+    ) {
+        entityManager.persist(SupplyTarget.create(
+                supplyRow,
+                target,
+                "1순위",
+                5,
+                5,
+                rentalDeposit,
+                monthlyRent,
                 null,
                 "신청 조건",
                 displayOrder
@@ -456,11 +1327,123 @@ class ComplexSummaryQueryRepositoryTest {
         );
     }
 
+    private HousingComplexSearchCondition directFilters(
+            String keyword,
+            String provinceCode,
+            Set<String> cityCountyDistrictCodes,
+            Set<RentalType> rentalTypes,
+            Set<AgencyCode> agencyCodes,
+            Integer builtYearFrom,
+            Integer builtYearTo,
+            Boolean hasElevator
+    ) {
+        return new HousingComplexSearchCondition(
+                SEOUL_BOUNDS,
+                keyword,
+                provinceCode,
+                cityCountyDistrictCodes,
+                rentalTypes,
+                Set.of(),
+                agencyCodes,
+                Set.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                builtYearFrom,
+                builtYearTo,
+                hasElevator,
+                LocalDate.of(2026, 8, 27)
+        );
+    }
+
+    private HousingComplexSearchCondition announcementFilters(
+            Set<ApplicationStatus> applicationStatuses,
+            Set<RecruitmentType> recruitmentTypes
+    ) {
+        return new HousingComplexSearchCondition(
+                SEOUL_BOUNDS,
+                null,
+                null,
+                Set.of(),
+                Set.of(),
+                applicationStatuses,
+                Set.of(),
+                recruitmentTypes,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2026, 8, 27)
+        );
+    }
+
+    private HousingComplexSearchCondition priceAreaFilters(
+            BigDecimal minDeposit,
+            BigDecimal maxDeposit,
+            BigDecimal minMonthlyRent,
+            BigDecimal maxMonthlyRent,
+            BigDecimal minExclusiveArea,
+            BigDecimal maxExclusiveArea
+    ) {
+        return new HousingComplexSearchCondition(
+                SEOUL_BOUNDS,
+                null,
+                null,
+                Set.of(),
+                Set.of(),
+                Set.of(),
+                Set.of(),
+                Set.of(),
+                minDeposit,
+                maxDeposit,
+                minMonthlyRent,
+                maxMonthlyRent,
+                minExclusiveArea,
+                maxExclusiveArea,
+                null,
+                null,
+                null,
+                LocalDate.of(2026, 8, 27)
+        );
+    }
+
+    private void assertBothQueryPaths(HousingComplexSearchCondition condition, Long... expectedIds) {
+        List<Long> mapIds = ids(repository.findAll(condition));
+        List<Long> listIds = ids(repository.findPage(condition, ComplexSort.LATEST_ANNOUNCEMENT, null, 100));
+        Set<Long> expected = Set.of(expectedIds);
+
+        assertAll(
+                () -> assertEquals(expected, Set.copyOf(mapIds)),
+                () -> assertEquals(expectedIds.length, mapIds.size()),
+                () -> assertEquals(expected, Set.copyOf(listIds)),
+                () -> assertEquals(expectedIds.length, listIds.size())
+        );
+    }
+
     private List<Long> ids(List<ComplexSummaryRow> rows) {
         return rows.stream().map(ComplexSummaryRow::complexId).toList();
     }
 
     private void assertBigDecimalEquals(String expected, BigDecimal actual) {
         assertEquals(0, new BigDecimal(expected).compareTo(actual));
+    }
+
+    private void assertAggregateRanges(ComplexSummaryRow row) {
+        assertAll(
+                () -> assertBigDecimalEquals("20.00", row.exclusiveAreaMin()),
+                () -> assertBigDecimalEquals("60.00", row.exclusiveAreaMax()),
+                () -> assertBigDecimalEquals("10000000", row.depositMin()),
+                () -> assertBigDecimalEquals("50000000", row.depositMax()),
+                () -> assertBigDecimalEquals("100000", row.monthlyRentMin()),
+                () -> assertBigDecimalEquals("500000", row.monthlyRentMax())
+        );
     }
 }
