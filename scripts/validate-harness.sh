@@ -2,7 +2,10 @@
 set -eu
 
 root=${1:-$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)}
-readme="$root/backend/docs/README.md"
+backend_readme="$root/backend/docs/README.md"
+frontend_agents="$root/frontend/AGENTS.md"
+frontend_readme="$root/frontend/README.md"
+agent_validator=$(CDPATH= cd -- "$(dirname "$0")" && pwd)/validate-agent-config.py
 
 fail() {
   echo "harness check failed: $1" >&2
@@ -27,6 +30,10 @@ backend/docs/security.md
 backend/docs/observability.md
 backend/docs/agent-collaboration.md
 backend/docs/quality-gates.md
+frontend/README.md
+frontend/AGENTS.md
+frontend/docs/development-standards.md
+frontend/docs/quality-gates.md
 .codex/agents/backend_explorer.toml
 .codex/agents/backend_architect.toml
 .codex/agents/backend_reviewer.toml'
@@ -38,11 +45,11 @@ done
 [ ! -e "$root/.codex/agents/backend_worker.toml" ] \
   || fail "writable backend worker must not exist"
 
-for role in backend_explorer backend_architect backend_reviewer
-do
-  grep -Fq 'sandbox_mode = "read-only"' "$root/.codex/agents/$role.toml" \
-    || fail "$role must use read-only sandbox mode"
-done
+python3 "$agent_validator" \
+  "$root/.codex/agents/backend_explorer.toml" \
+  "$root/.codex/agents/backend_architect.toml" \
+  "$root/.codex/agents/backend_reviewer.toml" \
+  || fail "backend agent roles must declare top-level read-only sandbox mode"
 
 for path in backend/docs/code-conventions.md backend/docs/git-conventions.md \
   backend/docs/module-boundaries.md
@@ -54,6 +61,8 @@ grep -Fq '](SERVICE_OVERVIEW.md)' "$root/AGENTS.md" \
   || fail "AGENTS.md must link SERVICE_OVERVIEW.md"
 grep -Fq '](backend/AGENTS.md)' "$root/AGENTS.md" \
   || fail "AGENTS.md must link backend/AGENTS.md"
+grep -Fq '](frontend/AGENTS.md)' "$root/AGENTS.md" \
+  || fail "AGENTS.md must link frontend/AGENTS.md"
 grep -Fq '](backend/CODE_CONVENTION.md)' "$root/AGENTS.md" \
   || fail "AGENTS.md must link backend/CODE_CONVENTION.md"
 grep -Fq '](CONTRIBUTING.md)' "$root/AGENTS.md" \
@@ -64,19 +73,33 @@ grep -Fq '](CODE_CONVENTION.md)' "$root/backend/AGENTS.md" \
   || fail "backend/AGENTS.md must link CODE_CONVENTION.md"
 grep -Fq '](../CONTRIBUTING.md)' "$root/backend/AGENTS.md" \
   || fail "backend/AGENTS.md must link CONTRIBUTING.md"
-grep -Fq '](../../SERVICE_OVERVIEW.md)' "$readme" \
+grep -Fq '](../../SERVICE_OVERVIEW.md)' "$backend_readme" \
   || fail "backend/docs/README.md must link SERVICE_OVERVIEW.md"
-grep -Fq '](../CODE_CONVENTION.md)' "$readme" \
+grep -Fq '](../CODE_CONVENTION.md)' "$backend_readme" \
   || fail "backend/docs/README.md must link backend/CODE_CONVENTION.md"
-grep -Fq '](../../CONTRIBUTING.md)' "$readme" \
+grep -Fq '](../../CONTRIBUTING.md)' "$backend_readme" \
   || fail "backend/docs/README.md must link CONTRIBUTING.md"
+
+grep -Fq '](AGENTS.md)' "$frontend_readme" \
+  || fail "frontend/README.md must link frontend/AGENTS.md"
+grep -Fq '](../SERVICE_OVERVIEW.md)' "$frontend_agents" \
+  || fail "frontend/AGENTS.md must link SERVICE_OVERVIEW.md"
+grep -Fq '](../CONTRIBUTING.md)' "$frontend_agents" \
+  || fail "frontend/AGENTS.md must link CONTRIBUTING.md"
+grep -Fq '](README.md)' "$frontend_agents" \
+  || fail "frontend/AGENTS.md must link frontend/README.md"
+grep -Fq '](docs/development-standards.md)' "$frontend_agents" \
+  || fail "frontend/AGENTS.md must link development-standards.md"
+grep -Fq '](docs/quality-gates.md)' "$frontend_agents" \
+  || fail "frontend/AGENTS.md must link quality-gates.md"
 
 printf '%s\n' "$required_files" | while IFS= read -r path; do
   case "$path" in
     backend/docs/README.md|README.md|CONTRIBUTING.md|AGENTS.md|SERVICE_OVERVIEW.md|backend/AGENTS.md|backend/CODE_CONVENTION.md) continue ;;
     backend/docs/*)
       name=${path#backend/docs/}
-      grep -Fq "$name" "$readme" || fail "backend/docs/README.md must link $name"
+      grep -Fq "$name" "$backend_readme" \
+        || fail "backend/docs/README.md must link $name"
       ;;
   esac
 done
