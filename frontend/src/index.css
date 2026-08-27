@@ -34,3 +34,94 @@ p {
   margin-top: 12px;
   color: #475569;
 }
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.admin-login-page {
+  display: grid;
+  padding: 24px;
+  place-content: center;
+}
+
+.admin-login-form {
+  display: grid;
+  width: min(100%, 360px);
+  gap: 16px;
+  padding: 28px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #ffffff;
+  text-align: left;
+}
+
+.admin-login-form h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.admin-login-form label {
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.admin-login-form input {
+  padding: 10px 12px;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+}
+
+.admin-login-form button,
+.admin-header button {
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 6px;
+  color: #ffffff;
+  background: #0f766e;
+}
+
+.form-error {
+  margin: 0;
+  color: #b91c1c;
+}
+
+.admin-layout {
+  min-height: 100vh;
+}
+
+.admin-header {
+  display: flex;
+  padding: 16px 24px;
+  align-items: center;
+  justify-content: space-between;
+  color: #ffffff;
+  background: #0f172a;
+}
+
+.admin-header div {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.admin-header button {
+  background: #334155;
+}
+
+.admin-content {
+  display: block;
+  min-height: auto;
+  padding: 32px 24px;
+  text-align: left;
+}
+
+.admin-layout-error {
+  padding: 12px 24px;
+}
