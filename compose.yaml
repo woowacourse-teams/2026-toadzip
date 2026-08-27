@@ -1,42 +1,21 @@
 services:
-  db:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_DB: "${POSTGRES_DB:-toadzip}"
-      POSTGRES_USER: "${POSTGRES_USER:-toadzip}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-    restart: unless-stopped
-
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     image: toadzip-backend:latest
     environment:
-      SPRING_DATASOURCE_URL: "jdbc:postgresql://${DB_HOST}:5432/${POSTGRES_DB:-toadzip}"
-      SPRING_DATASOURCE_USERNAME: "${POSTGRES_USER:-toadzip}"
-      SPRING_DATASOURCE_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://${PRIMARY_DB_HOST:?PRIMARY_DB_HOST is required}:${PRIMARY_DB_PORT:-5432}/${PRIMARY_DB_NAME:-toadzip}"
+      SPRING_DATASOURCE_USERNAME: "${PRIMARY_DB_USERNAME:-toadzip}"
+      SPRING_DATASOURCE_PASSWORD: "${PRIMARY_DB_PASSWORD:?PRIMARY_DB_PASSWORD is required}"
+      APP_DATASOURCE_SHARED_URL: "jdbc:postgresql://${SHARED_DB_HOST:?SHARED_DB_HOST is required}:${SHARED_DB_PORT:-5434}/${SHARED_DB_NAME:-toadzip_shared}"
+      APP_DATASOURCE_SHARED_USERNAME: "${SHARED_DB_USERNAME:-toadzip}"
+      APP_DATASOURCE_SHARED_PASSWORD: "${SHARED_DB_PASSWORD:?SHARED_DB_PASSWORD is required}"
       DATA_GO_KR_SERVICE_KEY: "${DATA_GO_KR_SERVICE_KEY:-}"
       JUSO_ADDRESS_API_KEY: "${JUSO_ADDRESS_API_KEY:-}"
       JUSO_COORDINATE_API_KEY: "${JUSO_COORDINATE_API_KEY:-}"
       ADMIN_CORS_ALLOWED_ORIGIN: "${ADMIN_CORS_ALLOWED_ORIGIN:-http://localhost:5173}"
       SESSION_COOKIE_SECURE: "${SESSION_COOKIE_SECURE:-false}"
-    depends_on:
-      db:
-        condition: service_healthy
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     restart: unless-stopped
-
-volumes:
-  postgres_data:

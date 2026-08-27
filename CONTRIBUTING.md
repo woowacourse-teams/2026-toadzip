@@ -83,7 +83,7 @@ PR을 생성하기 전에 변경 사항과 관련된 테스트를 실행한다. 
 
 ```bash
 docker compose --project-name toadzip-test --file compose.test.yaml \
-  up --detach --wait --wait-timeout 60 --force-recreate db
+  up --detach --wait --wait-timeout 60 --force-recreate db db-shared
 
 cd backend
 ./gradlew --rerun-tasks check

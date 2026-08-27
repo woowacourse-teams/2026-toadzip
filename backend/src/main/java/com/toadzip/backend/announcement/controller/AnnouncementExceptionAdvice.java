@@ -3,6 +3,7 @@ package com.toadzip.backend.announcement.controller;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementCursorException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestException;
+import com.toadzip.backend.announcement.exception.InvalidRegionCodeException;
 import com.toadzip.backend.global.exception.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.UUID;
@@ -21,6 +22,8 @@ public class AnnouncementExceptionAdvice {
     private static final String INVALID_REQUEST_MESSAGE = "요청 값을 확인해 주세요.";
     private static final String INVALID_CURSOR = "INVALID_CURSOR";
     private static final String INVALID_CURSOR_MESSAGE = "커서 값을 확인해 주세요.";
+    private static final String INVALID_REGION_CODE = "INVALID_REGION_CODE";
+    private static final String INVALID_REGION_CODE_MESSAGE = "지역 코드를 확인해 주세요.";
     private static final String ANNOUNCEMENT_NOT_FOUND = "ANNOUNCEMENT_NOT_FOUND";
     private static final String ANNOUNCEMENT_NOT_FOUND_MESSAGE = "모집 공고를 찾을 수 없습니다.";
 
@@ -32,6 +35,11 @@ public class AnnouncementExceptionAdvice {
     @ExceptionHandler(InvalidAnnouncementCursorException.class)
     public ResponseEntity<ErrorResponse> handleInvalidCursor(HttpServletRequest request) {
         return badRequest(INVALID_CURSOR, INVALID_CURSOR_MESSAGE, request);
+    }
+
+    @ExceptionHandler(InvalidRegionCodeException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidRegionCode(HttpServletRequest request) {
+        return badRequest(INVALID_REGION_CODE, INVALID_REGION_CODE_MESSAGE, request);
     }
 
     @ExceptionHandler(AnnouncementNotFoundException.class)

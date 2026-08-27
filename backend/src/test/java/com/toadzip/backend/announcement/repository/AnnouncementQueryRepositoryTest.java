@@ -9,6 +9,7 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
+import com.toadzip.backend.announcement.domain.ApplicationStatus;
 import com.toadzip.backend.announcement.domain.AttachmentType;
 import com.toadzip.backend.announcement.domain.ReceptionMethod;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
@@ -31,13 +32,11 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -54,6 +53,9 @@ class AnnouncementQueryRepositoryTest {
 
     @Autowired
     private AnnouncementRepository announcementRepository;
+
+    @Autowired
+    private AnnouncementSearchRepository announcementSearchRepository;
 
     @Autowired
     private AnnouncementScheduleRepository announcementScheduleRepository;
@@ -132,7 +134,7 @@ class AnnouncementQueryRepositoryTest {
 
     @Test
     void 취소되지_않은_최신_후속공고만_게시일과_ID_내림차순으로_조회한다() {
-        List<Announcement> announcements = announcementRepository.findLatestLeaves(pageable(10));
+        List<Announcement> announcements = search(noFilters(), null, null, 10);
 
         List<Long> actualIds = announcements.stream().map(Announcement::getId).toList();
         assertEquals(
@@ -149,13 +151,14 @@ class AnnouncementQueryRepositoryTest {
 
     @Test
     void 같은_게시일의_커서_뒤부터_중복_없이_이어_조회한다() {
-        List<Announcement> firstPage = announcementRepository.findLatestLeaves(pageable(1));
+        List<Announcement> firstPage = search(noFilters(), null, null, 1);
         Announcement cursorAnnouncement = firstPage.getFirst();
 
-        List<Announcement> secondPage = announcementRepository.findLatestLeavesAfter(
+        List<Announcement> secondPage = search(
+                noFilters(),
                 cursorAnnouncement.getPostedDate(),
                 cursorAnnouncement.getId(),
-                pageable(10)
+                10
         );
 
         List<Long> combinedIds = List.of(firstPage.getFirst().getId(), secondPage.getFirst().getId());
@@ -181,13 +184,14 @@ class AnnouncementQueryRepositoryTest {
                 .executeUpdate();
         entityManager.clear();
 
-        List<Long> latestIds = announcementRepository.findLatestLeaves(pageable(20)).stream()
+        List<Long> latestIds = search(noFilters(), null, null, 20).stream()
                 .map(Announcement::getId)
                 .toList();
-        List<Long> cursorIds = announcementRepository.findLatestLeavesAfter(
+        List<Long> cursorIds = search(
+                        noFilters(),
                         LocalDate.of(2026, 8, 6),
                         Long.MAX_VALUE,
-                        pageable(20)
+                        20
                 ).stream()
                 .map(Announcement::getId)
                 .toList();
@@ -222,7 +226,7 @@ class AnnouncementQueryRepositoryTest {
                 .executeUpdate();
         entityManager.clear();
 
-        List<Long> latestIds = announcementRepository.findLatestLeaves(pageable(20)).stream()
+        List<Long> latestIds = search(noFilters(), null, null, 20).stream()
                 .map(Announcement::getId)
                 .toList();
 
@@ -252,12 +256,509 @@ class AnnouncementQueryRepositoryTest {
                 .executeUpdate();
         entityManager.clear();
 
-        List<Long> latestIds = announcementRepository.findLatestLeaves(pageable(20)).stream()
+        List<Long> latestIds = search(noFilters(), null, null, 20).stream()
                 .map(Announcement::getId)
                 .toList();
 
         assertTrue(latestIds.contains(legacyCorrection.getId()));
         assertFalse(latestIds.contains(original.getId()));
+    }
+
+    @Test
+    void 검색_조회는_취소_리프가_있는_체인과_미연결_정정공고를_제외한다() {
+        Announcement unlinkedCorrection = persist(createAnnouncement(
+                "search-unlinked-correction",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 5)
+        ));
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE announcements SET status = '정정공고' WHERE id = :id")
+                .setParameter("id", unlinkedCorrection.getId())
+                .executeUpdate();
+        entityManager.clear();
+
+        List<Long> announcementIds = search(noFilters(), null, null, 20).stream()
+                .map(Announcement::getId)
+                .toList();
+
+        assertFalse(announcementIds.contains(originalAnnouncement.getId()));
+        assertFalse(announcementIds.contains(correctionAnnouncement.getId()));
+        assertFalse(announcementIds.contains(cancellationAnnouncement.getId()));
+        assertFalse(announcementIds.contains(unlinkedCorrection.getId()));
+        assertEquals(
+                List.of(sameDateLeafAnnouncement.getId(), olderLeafAnnouncement.getId()),
+                announcementIds
+        );
+    }
+
+    @Test
+    void 검색_조회는_같은_게시일에서_더_작은_ID를_커서_다음_페이지로_조회한다() {
+        Announcement cursorAnnouncement = persist(createAnnouncement(
+                "search-same-date-cursor",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                sameDateLeafAnnouncement.getPostedDate()
+        ));
+
+        List<Announcement> announcements = search(
+                noFilters(),
+                cursorAnnouncement.getPostedDate(),
+                cursorAnnouncement.getId(),
+                20
+        );
+
+        assertEquals(
+                List.of(sameDateLeafAnnouncement.getId(), olderLeafAnnouncement.getId()),
+                announcements.stream().map(Announcement::getId).toList()
+        );
+    }
+
+    @Test
+    void 검색_조회는_퍼센트와_밑줄을_리터럴로_처리한_공고명_부분일치를_조회한다() {
+        Announcement matchingAnnouncement = persist(createAnnouncement(
+                "search-keyword",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 6),
+                "100%_행복\\특별 공고",
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH
+        ));
+        persist(createAnnouncement(
+                "search-keyword-nonmatching",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 5),
+                "100A행복특별 공고",
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH
+        ));
+        entityManager.flush();
+
+        List<Announcement> announcements = search(withKeyword("100%_행복\\특별"), null, null, 20);
+
+        assertEquals(List.of(matchingAnnouncement.getId()), announcements.stream().map(Announcement::getId).toList());
+    }
+
+    @Test
+    void 검색_조회는_영문과_한글_저장값의_임대유형을_함께_조회한다() {
+        Announcement englishRentalType = persist(createAnnouncement(
+                "search-rental-english",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 6),
+                "영문 임대유형 공고",
+                RentalType.NATIONAL_RENTAL,
+                RecruitmentType.NEW,
+                AgencyCode.LH
+        ));
+        Announcement legacyRentalType = persist(createAnnouncement(
+                "search-rental-legacy",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 5),
+                "한글 임대유형 공고",
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH
+        ));
+        updateStoredEnumValue(legacyRentalType, "supply_type", "국민임대");
+
+        List<Announcement> announcements = search(
+                withRentalTypes(Set.of(RentalType.NATIONAL_RENTAL)),
+                null,
+                null,
+                20
+        );
+
+        assertEquals(
+                List.of(englishRentalType.getId(), legacyRentalType.getId()),
+                announcements.stream().map(Announcement::getId).toList()
+        );
+    }
+
+    @Test
+    void 검색_조회는_영문과_한글_저장값의_모집유형을_함께_조회한다() {
+        Announcement englishRecruitmentType = persist(createAnnouncement(
+                "search-recruitment-english",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 6),
+                "영문 모집유형 공고",
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.WAITLIST,
+                AgencyCode.LH
+        ));
+        Announcement legacyRecruitmentType = persist(createAnnouncement(
+                "search-recruitment-legacy",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 5),
+                "한글 모집유형 공고",
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH
+        ));
+        updateStoredEnumValue(legacyRecruitmentType, "recruitment_type", "예비입주자");
+
+        List<Announcement> announcements = search(
+                withRecruitmentTypes(Set.of(RecruitmentType.WAITLIST)),
+                null,
+                null,
+                20
+        );
+
+        assertEquals(
+                List.of(englishRecruitmentType.getId(), legacyRecruitmentType.getId()),
+                announcements.stream().map(Announcement::getId).toList()
+        );
+    }
+
+    @Test
+    void 검색_조회는_영문과_한글_저장값의_게시유형을_함께_조회한다() {
+        Announcement original = persist(createAnnouncement(
+                "search-publication-original",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 4)
+        ));
+        Announcement englishPublicationType = persist(createAnnouncement(
+                "search-publication-english",
+                original,
+                "search-publication-original",
+                AnnouncementPublicationType.CORRECTION,
+                LocalDate.of(2026, 8, 6)
+        ));
+        Announcement legacyOriginal = persist(createAnnouncement(
+                "search-publication-legacy-original",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 4)
+        ));
+        Announcement legacyPublicationType = persist(createAnnouncement(
+                "search-publication-legacy",
+                legacyOriginal,
+                "search-publication-legacy-original",
+                AnnouncementPublicationType.CORRECTION,
+                LocalDate.of(2026, 8, 5)
+        ));
+        updateStoredEnumValue(legacyPublicationType, "status", "정정공고");
+
+        List<Announcement> announcements = search(
+                withPublicationTypes(Set.of(AnnouncementPublicationType.CORRECTION)),
+                null,
+                null,
+                20
+        );
+
+        assertEquals(
+                List.of(englishPublicationType.getId(), legacyPublicationType.getId()),
+                announcements.stream().map(Announcement::getId).toList()
+        );
+    }
+
+    @Test
+    void 검색_조회는_공급기관_조건의_여러_값을_OR로_조회한다() {
+        Announcement lhAnnouncement = persist(createAnnouncement(
+                "search-agency-lh",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 6),
+                "LH 공고",
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH
+        ));
+        Announcement shAnnouncement = persist(createAnnouncement(
+                "search-agency-sh",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                LocalDate.of(2026, 8, 5),
+                "SH 공고",
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.SH
+        ));
+        updateStoredEnumValue(shAnnouncement, "provider", "서울주택도시공사");
+
+        List<Announcement> announcements = search(
+                withAgencyCodes(Set.of(AgencyCode.LH, AgencyCode.SH)),
+                null,
+                null,
+                20
+        );
+
+        assertTrue(announcements.stream().map(Announcement::getId).toList().containsAll(
+                List.of(lhAnnouncement.getId(), shAnnouncement.getId())
+        ));
+        assertTrue(announcements.stream().map(Announcement::getProvider)
+                .allMatch(provider -> provider == AgencyCode.LH || provider == AgencyCode.SH));
+    }
+
+    @Test
+    void 검색_조회는_접수_시작일과_종료일이_오늘인_공고를_접수중으로_조회한다() {
+        LocalDate today = LocalDate.of(2026, 8, 27);
+        Announcement applyingAnnouncement = persist(createAnnouncement(
+                "status-applying-boundary",
+                LocalDate.of(2026, 8, 6),
+                today,
+                today
+        ));
+
+        List<Announcement> announcements = search(
+                withApplicationStatuses(Set.of(ApplicationStatus.APPLYING), today),
+                null,
+                null,
+                20
+        );
+
+        assertEquals(List.of(applyingAnnouncement.getId()), announcements.stream().map(Announcement::getId).toList());
+    }
+
+    @Test
+    void 검색_조회는_접수_시작일이_오늘_이후인_공고를_접수예정으로_조회한다() {
+        LocalDate today = LocalDate.of(2026, 8, 20);
+        Announcement beforeApplicationAnnouncement = persist(createAnnouncement(
+                "status-before-application",
+                LocalDate.of(2026, 8, 6),
+                today.plusDays(1),
+                today.plusDays(2)
+        ));
+
+        List<Announcement> announcements = search(
+                withApplicationStatuses(Set.of(ApplicationStatus.BEFORE_APPLICATION), today),
+                null,
+                null,
+                20
+        );
+
+        assertEquals(
+                List.of(beforeApplicationAnnouncement.getId()),
+                announcements.stream().map(Announcement::getId).toList()
+        );
+    }
+
+    @Test
+    void 검색_조회는_접수_종료일이_오늘_이전인_공고를_접수마감으로_조회한다() {
+        LocalDate today = LocalDate.of(2026, 8, 12);
+        Announcement closedAnnouncement = persist(createAnnouncement(
+                "status-closed",
+                LocalDate.of(2026, 8, 6),
+                today.minusDays(2),
+                today.minusDays(1)
+        ));
+
+        List<Announcement> announcements = search(
+                withApplicationStatuses(Set.of(ApplicationStatus.CLOSED), today),
+                null,
+                null,
+                20
+        );
+
+        assertEquals(List.of(closedAnnouncement.getId()), announcements.stream().map(Announcement::getId).toList());
+    }
+
+    @Test
+    void 검색_조회는_여러_접수상태를_OR로_조회한다() {
+        LocalDate today = LocalDate.of(2026, 8, 12);
+        Announcement beforeApplicationAnnouncement = persist(createAnnouncement(
+                "status-or-before",
+                LocalDate.of(2026, 8, 7),
+                today.plusDays(1),
+                today.plusDays(2)
+        ));
+        Announcement closedAnnouncement = persist(createAnnouncement(
+                "status-or-closed",
+                LocalDate.of(2026, 8, 6),
+                today.minusDays(2),
+                today.minusDays(1)
+        ));
+
+        List<Announcement> announcements = search(
+                withApplicationStatuses(Set.of(ApplicationStatus.BEFORE_APPLICATION, ApplicationStatus.CLOSED), today),
+                null,
+                null,
+                20
+        );
+
+        assertEquals(
+                List.of(beforeApplicationAnnouncement.getId(), closedAnnouncement.getId()),
+                announcements.stream().map(Announcement::getId).toList()
+        );
+    }
+
+    @Test
+    void 검색_조회는_접수기간과_검색기간이_양쪽_경계에서_겹치는_공고를_포함한다() {
+        Announcement overlapsAtStart = persist(createAnnouncement(
+                "period-overlaps-at-start",
+                LocalDate.of(2026, 8, 9),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 20)
+        ));
+        Announcement contained = persist(createAnnouncement(
+                "period-contained",
+                LocalDate.of(2026, 8, 8),
+                LocalDate.of(2026, 8, 22),
+                LocalDate.of(2026, 8, 24)
+        ));
+        Announcement overlapsAtEnd = persist(createAnnouncement(
+                "period-overlaps-at-end",
+                LocalDate.of(2026, 8, 7),
+                LocalDate.of(2026, 8, 30),
+                LocalDate.of(2026, 8, 31)
+        ));
+        persist(createAnnouncement(
+                "period-non-overlap",
+                LocalDate.of(2026, 8, 6),
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 9)
+        ));
+
+        List<Announcement> announcements = search(
+                withApplicationPeriod(LocalDate.of(2026, 8, 20), LocalDate.of(2026, 8, 30)),
+                null,
+                null,
+                20
+        );
+
+        assertEquals(
+                List.of(overlapsAtStart.getId(), contained.getId(), overlapsAtEnd.getId()),
+                announcements.stream().map(Announcement::getId).toList()
+        );
+    }
+
+    @Test
+    void 검색_조회는_접수기간_시작일만_지정하면_그_날에_종료하는_공고를_포함한다() {
+        Announcement overlapsFrom = persist(createAnnouncement(
+                "period-from-boundary",
+                LocalDate.of(2026, 8, 7),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 20)
+        ));
+        persist(createAnnouncement(
+                "period-from-non-overlap",
+                LocalDate.of(2026, 8, 6),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 19)
+        ));
+
+        List<Announcement> announcements = search(
+                withApplicationPeriod(LocalDate.of(2026, 8, 20), null),
+                null,
+                null,
+                20
+        );
+
+        assertEquals(List.of(overlapsFrom.getId()), announcements.stream().map(Announcement::getId).toList());
+    }
+
+    @Test
+    void 검색_조회는_접수기간_종료일만_지정하면_그_날에_시작하는_공고를_포함한다() {
+        Announcement overlapsTo = persist(createAnnouncement(
+                "period-to-boundary",
+                LocalDate.of(2026, 8, 7),
+                LocalDate.of(2026, 8, 20),
+                LocalDate.of(2026, 8, 22)
+        ));
+        persist(createAnnouncement(
+                "period-to-non-overlap",
+                LocalDate.of(2026, 8, 6),
+                LocalDate.of(2026, 8, 21),
+                LocalDate.of(2026, 8, 22)
+        ));
+
+        List<Announcement> announcements = search(
+                withApplicationPeriod(null, LocalDate.of(2026, 8, 20)),
+                null,
+                null,
+                20
+        );
+
+        assertEquals(
+                List.of(
+                        overlapsTo.getId(),
+                        sameDateLeafAnnouncement.getId(),
+                        olderLeafAnnouncement.getId()
+                ),
+                announcements.stream().map(Announcement::getId).toList()
+        );
+    }
+
+    @Test
+    void 검색_조회는_시작일과_종료일이_같은_검색기간에_정확히_겹치는_공고를_포함한다(
+            ) {
+        Announcement sameDayAnnouncement = persist(createAnnouncement(
+                "period-same-day",
+                LocalDate.of(2026, 8, 6),
+                LocalDate.of(2026, 8, 20),
+                LocalDate.of(2026, 8, 20)
+        ));
+        persist(createAnnouncement(
+                "period-before-same-day",
+                LocalDate.of(2026, 8, 5),
+                LocalDate.of(2026, 8, 19),
+                LocalDate.of(2026, 8, 19)
+        ));
+
+        List<Announcement> announcements = search(
+                withApplicationPeriod(LocalDate.of(2026, 8, 20), LocalDate.of(2026, 8, 20)),
+                null,
+                null,
+                20
+        );
+
+        assertEquals(List.of(sameDayAnnouncement.getId()), announcements.stream().map(Announcement::getId).toList());
+    }
+
+    @Test
+    void 검색_조회는_지역_동등코드에_연결된_여러_공급행을_공고_하나로_조회한다() {
+        Announcement multiSupplyRowAnnouncement = persist(createAnnouncement(
+                "region-multi-supply-row",
+                LocalDate.of(2026, 8, 7),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 14)
+        ));
+        HousingComplex matchingComplex = persist(createHousingComplex("29110", "region-matching-complex"));
+        persist(createSupplyRow(multiSupplyRowAnnouncement, matchingComplex, null, "region-matching-row-1", 0, null));
+        persist(createSupplyRow(multiSupplyRowAnnouncement, matchingComplex, null, "region-matching-row-2", 1, null));
+        persist(createSupplyRow(
+                multiSupplyRowAnnouncement,
+                null,
+                null,
+                "region-null-complex-row",
+                2,
+                "단지 매칭 실패"
+        ));
+
+        Announcement unmatchedAnnouncement = persist(createAnnouncement(
+                "region-unmatched",
+                LocalDate.of(2026, 8, 6),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 14)
+        ));
+        persist(createSupplyRow(unmatchedAnnouncement, null, null, "region-unmatched-row", 0, "단지 매칭 실패"));
+
+        List<Announcement> announcements = search(withRegionCodes(Set.of("12210", "29110")), null, null, 20);
+
+        assertEquals(
+                List.of(multiSupplyRowAnnouncement.getId()),
+                announcements.stream().map(Announcement::getId).toList()
+        );
     }
 
     @Test
@@ -440,6 +941,236 @@ class AnnouncementQueryRepositoryTest {
         );
     }
 
+    private Announcement createAnnouncement(
+            String sourceIdentifier,
+            LocalDate postedDate,
+            LocalDate applicationStartDate,
+            LocalDate applicationEndDate
+    ) {
+        return Announcement.create(
+                sourceIdentifier,
+                null,
+                null,
+                sourceIdentifier + " 공고",
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                postedDate,
+                applicationStartDate,
+                applicationEndDate,
+                LocalDate.of(2026, 9, 1),
+                "https://example.com/announcements/" + sourceIdentifier,
+                null,
+                0L,
+                ReceptionPlace.create(
+                        "LH 청약센터",
+                        ReceptionMethod.ONLINE,
+                        null,
+                        "1600-1004",
+                        "https://apply.lh.or.kr"
+                )
+        );
+    }
+
+    private Announcement createAnnouncement(
+            String sourceIdentifier,
+            Announcement previousAnnouncement,
+            String previousSourceIdentifier,
+            AnnouncementPublicationType publicationType,
+            LocalDate postedDate,
+            String name,
+            RentalType rentalType,
+            RecruitmentType recruitmentType,
+            AgencyCode agencyCode
+    ) {
+        return Announcement.create(
+                sourceIdentifier,
+                previousSourceIdentifier,
+                previousAnnouncement,
+                name,
+                publicationType,
+                rentalType,
+                recruitmentType,
+                agencyCode,
+                postedDate,
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 14),
+                LocalDate.of(2026, 9, 1),
+                "https://example.com/announcements/" + sourceIdentifier,
+                null,
+                0L,
+                ReceptionPlace.create(
+                        "LH 청약센터",
+                        ReceptionMethod.ONLINE,
+                        null,
+                        "1600-1004",
+                        "https://apply.lh.or.kr"
+                )
+        );
+    }
+
+    private List<Announcement> search(
+            AnnouncementSearchCondition condition,
+            LocalDate cursorPostedDate,
+            Long cursorId,
+            int limit
+    ) {
+        return announcementSearchRepository.findLatestLeaves(condition, cursorPostedDate, cursorId, limit);
+    }
+
+    private AnnouncementSearchCondition noFilters() {
+        return new AnnouncementSearchCondition(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    private AnnouncementSearchCondition withKeyword(String keyword) {
+        return new AnnouncementSearchCondition(
+                keyword,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    private AnnouncementSearchCondition withRentalTypes(Set<RentalType> rentalTypes) {
+        return new AnnouncementSearchCondition(
+                null,
+                null,
+                rentalTypes,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    private AnnouncementSearchCondition withPublicationTypes(
+            Set<AnnouncementPublicationType> publicationTypes
+    ) {
+        return new AnnouncementSearchCondition(
+                null,
+                null,
+                null,
+                null,
+                publicationTypes,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    private AnnouncementSearchCondition withAgencyCodes(Set<AgencyCode> agencyCodes) {
+        return new AnnouncementSearchCondition(
+                null,
+                null,
+                null,
+                null,
+                null,
+                agencyCodes,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    private AnnouncementSearchCondition withRecruitmentTypes(Set<RecruitmentType> recruitmentTypes) {
+        return new AnnouncementSearchCondition(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                recruitmentTypes,
+                null,
+                null,
+                null
+        );
+    }
+
+    private AnnouncementSearchCondition withApplicationStatuses(
+            Set<ApplicationStatus> applicationStatuses,
+            LocalDate today
+    ) {
+        return new AnnouncementSearchCondition(
+                null,
+                null,
+                null,
+                applicationStatuses,
+                null,
+                null,
+                null,
+                null,
+                null,
+                today
+        );
+    }
+
+    private AnnouncementSearchCondition withApplicationPeriod(
+            LocalDate applicationFrom,
+            LocalDate applicationTo
+    ) {
+        return new AnnouncementSearchCondition(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                applicationFrom,
+                applicationTo,
+                null
+        );
+    }
+
+    private AnnouncementSearchCondition withRegionCodes(Set<String> regionCodes) {
+        return new AnnouncementSearchCondition(
+                null,
+                regionCodes,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    private void updateStoredEnumValue(Announcement announcement, String columnName, String storedValue) {
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE announcements SET " + columnName + " = :value WHERE id = :id")
+                .setParameter("value", storedValue)
+                .setParameter("id", announcement.getId())
+                .executeUpdate();
+        entityManager.clear();
+    }
+
     private AnnouncementSchedule createSchedule(Announcement announcement, String name, int displayOrder) {
         return AnnouncementSchedule.create(
                 announcement,
@@ -462,16 +1193,20 @@ class AnnouncementQueryRepositoryTest {
     }
 
     private HousingComplex createHousingComplex() {
+        return createHousingComplex("11140", "query-complex");
+    }
+
+    private HousingComplex createHousingComplex(String cityCountyDistrictCode, String sourceComplexIdentifier) {
         return HousingComplex.create(
                 "조회 단지",
-                "query-complex",
+                sourceComplexIdentifier,
                 "행복주택",
                 Address.create(
                         "서울특별시 중구 세종대로 110",
                         "1114010100100010000",
                         "1114010100",
                         "11",
-                        "11140",
+                        cityCountyDistrictCode,
                         new BigDecimal("37.5665"),
                         new BigDecimal("126.9780")
                 ),
@@ -538,10 +1273,6 @@ class AnnouncementQueryRepositoryTest {
                 null,
                 displayOrder
         );
-    }
-
-    private Pageable pageable(int size) {
-        return PageRequest.of(0, size, Sort.unsorted());
     }
 
     private <T> T persist(T entity) {
