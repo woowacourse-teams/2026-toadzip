@@ -215,7 +215,7 @@ public class MyHomeComplexMappingService {
                     candidate.getSourceComplexIdentifier(),
                     sources,
                     MyHomeComplexMappingFailureReason.GEOCODING_ERROR,
-                    "도로명주소 좌표 변환 실패: " + exception.getReason(),
+                    "도로명주소 좌표 변환 실패: " + exception.getReason() + ", " + exception.getMessage(),
                     occurredAt
             );
         }

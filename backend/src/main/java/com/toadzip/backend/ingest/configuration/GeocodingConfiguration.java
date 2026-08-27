@@ -9,7 +9,6 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 import com.toadzip.backend.ingest.repository.RoadAddressCoordinateRepository;
-import com.toadzip.backend.ingest.repository.external.JusoCoordinateRequestRateLimiter;
 import com.toadzip.backend.ingest.repository.external.JusoRoadAddressCoordinateRepository;
 
 @Configuration
@@ -27,13 +26,11 @@ public class GeocodingConfiguration {
     @Bean
     RoadAddressCoordinateRepository roadAddressCoordinateRepository(
             @Qualifier("geocodingRestClient") RestClient geocodingRestClient,
-            JusoGeocodingProperties properties,
-            JusoCoordinateRequestRateLimiter rateLimiter
+            JusoGeocodingProperties properties
     ) {
         return new JusoRoadAddressCoordinateRepository(
                 geocodingRestClient,
-                properties,
-                rateLimiter
+                properties
         );
     }
 }
