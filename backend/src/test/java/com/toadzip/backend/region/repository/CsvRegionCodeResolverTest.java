@@ -12,6 +12,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
@@ -53,6 +55,25 @@ class CsvRegionCodeResolverTest {
         assertTrue(resolver.resolve("", "11140").isEmpty());
         assertTrue(resolver.resolve("1", "11140").isEmpty());
         assertTrue(resolver.resolve("111", "11140").isEmpty());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "1, 11140",
+            "11140, 11140",
+            "ab, 11140",
+            "11, 1114",
+            "11, 111400",
+            "11, 11A40",
+            "26, 11140"
+    })
+    void 형식이_잘못되거나_서로_불일치하는_지역코드_pair는_해석하지_않는다(
+            String provinceCode,
+            String cityCountyDistrictCode
+    ) {
+        assertTrue(resolver("11140,서울특별시,중구,서울특별시 중구")
+                .resolve(provinceCode, cityCountyDistrictCode)
+                .isEmpty());
     }
 
     @Test
