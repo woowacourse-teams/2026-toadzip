@@ -2,9 +2,13 @@ package com.toadzip.backend.announcement.repository;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
+import com.toadzip.backend.announcement.domain.ApplicationStatus;
+import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.global.persistence.LegacyStoredValue;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -41,6 +45,7 @@ public class AnnouncementSearchRepository {
 
         addVisibilityPredicates(criteriaBuilder, query, announcement, predicates);
         addDirectFilterPredicates(criteriaBuilder, announcement, condition, predicates);
+        addDerivedFilterPredicates(criteriaBuilder, query, announcement, condition, predicates);
         addCursorPredicate(criteriaBuilder, announcement, cursorPostedDate, cursorId, predicates);
 
         query.select(announcement)
@@ -129,6 +134,105 @@ public class AnnouncementSearchRepository {
                     )
             ));
         }
+    }
+
+    private void addDerivedFilterPredicates(
+            HibernateCriteriaBuilder criteriaBuilder,
+            CriteriaQuery<Announcement> query,
+            Root<Announcement> announcement,
+            AnnouncementSearchCondition condition,
+            List<Predicate> predicates
+    ) {
+        addApplicationStatusPredicate(criteriaBuilder, announcement, condition, predicates);
+        addApplicationPeriodPredicates(criteriaBuilder, announcement, condition, predicates);
+        addRegionPredicate(criteriaBuilder, query, announcement, condition, predicates);
+    }
+
+    private void addApplicationStatusPredicate(
+            HibernateCriteriaBuilder criteriaBuilder,
+            Root<Announcement> announcement,
+            AnnouncementSearchCondition condition,
+            List<Predicate> predicates
+    ) {
+        if (!hasValues(condition.applicationStatuses()) || condition.today() == null) {
+            return;
+        }
+
+        List<Predicate> statusPredicates = condition.applicationStatuses().stream()
+                .filter(applicationStatus -> applicationStatus != ApplicationStatus.CANCELLED)
+                .map(applicationStatus -> applicationStatusPredicate(
+                        criteriaBuilder,
+                        announcement,
+                        applicationStatus,
+                        condition.today()
+                ))
+                .toList();
+        if (!statusPredicates.isEmpty()) {
+            predicates.add(criteriaBuilder.or(statusPredicates.toArray(Predicate[]::new)));
+        }
+    }
+
+    private Predicate applicationStatusPredicate(
+            HibernateCriteriaBuilder criteriaBuilder,
+            Root<Announcement> announcement,
+            ApplicationStatus applicationStatus,
+            LocalDate today
+    ) {
+        return switch (applicationStatus) {
+            case BEFORE_APPLICATION -> criteriaBuilder.greaterThan(
+                    announcement.get("applicationStartDate"),
+                    today
+            );
+            case APPLYING -> criteriaBuilder.and(
+                    criteriaBuilder.lessThanOrEqualTo(announcement.get("applicationStartDate"), today),
+                    criteriaBuilder.greaterThanOrEqualTo(announcement.get("applicationEndDate"), today)
+            );
+            case CLOSED -> criteriaBuilder.lessThan(announcement.get("applicationEndDate"), today);
+            case CANCELLED -> criteriaBuilder.disjunction();
+        };
+    }
+
+    private void addApplicationPeriodPredicates(
+            HibernateCriteriaBuilder criteriaBuilder,
+            Root<Announcement> announcement,
+            AnnouncementSearchCondition condition,
+            List<Predicate> predicates
+    ) {
+        if (condition.applicationFrom() != null) {
+            predicates.add(criteriaBuilder.greaterThanOrEqualTo(
+                    announcement.get("applicationEndDate"),
+                    condition.applicationFrom()
+            ));
+        }
+        if (condition.applicationTo() != null) {
+            predicates.add(criteriaBuilder.lessThanOrEqualTo(
+                    announcement.get("applicationStartDate"),
+                    condition.applicationTo()
+            ));
+        }
+    }
+
+    private void addRegionPredicate(
+            HibernateCriteriaBuilder criteriaBuilder,
+            CriteriaQuery<Announcement> query,
+            Root<Announcement> announcement,
+            AnnouncementSearchCondition condition,
+            List<Predicate> predicates
+    ) {
+        if (!hasValues(condition.regionCodes())) {
+            return;
+        }
+
+        Subquery<Long> supplyRowQuery = query.subquery(Long.class);
+        Root<SupplyRow> supplyRow = supplyRowQuery.from(SupplyRow.class);
+        Join<SupplyRow, HousingComplex> housingComplex = supplyRow.join("housingComplex");
+        supplyRowQuery.select(supplyRow.get("id"))
+                .where(
+                        criteriaBuilder.equal(supplyRow.get("announcement"), announcement),
+                        criteriaBuilder.isNotNull(supplyRow.get("housingComplex")),
+                        housingComplex.get("address").get("cityCountyDistrictCode").in(condition.regionCodes())
+                );
+        predicates.add(criteriaBuilder.exists(supplyRowQuery));
     }
 
     private boolean hasValues(Collection<?> values) {
