@@ -1,0 +1,13 @@
+*
+!frontend/
+!frontend/**
+!infra/
+!infra/nginx/
+!infra/nginx/**
+
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
