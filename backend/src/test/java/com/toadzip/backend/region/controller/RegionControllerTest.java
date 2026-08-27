@@ -76,10 +76,27 @@ class RegionControllerTest {
     }
 
     @Test
-    void 누락_공백_초과길이_검색어는_keyword_필드_VALIDATION_FAILED를_반환한다() throws Exception {
-        assertKeywordValidationError(mockMvc.perform(get("/api/v1/regions")));
-        assertKeywordValidationError(mockMvc.perform(get("/api/v1/regions").param("keyword", "   ")));
-        assertKeywordValidationError(mockMvc.perform(get("/api/v1/regions").param("keyword", "a".repeat(51))));
+    void 누락된_검색어는_필수값_검증_오류를_반환한다() throws Exception {
+        assertKeywordValidationError(
+                mockMvc.perform(get("/api/v1/regions")),
+                "필수 값입니다."
+        );
+    }
+
+    @Test
+    void 공백_검색어는_입력_안내_검증_오류를_반환한다() throws Exception {
+        assertKeywordValidationError(
+                mockMvc.perform(get("/api/v1/regions").param("keyword", "   ")),
+                "검색어를 입력해 주세요."
+        );
+    }
+
+    @Test
+    void 검색어가_51자이면_최대_길이_검증_오류를_반환한다() throws Exception {
+        assertKeywordValidationError(
+                mockMvc.perform(get("/api/v1/regions").param("keyword", "a".repeat(51))),
+                "검색어는 50자 이하여야 합니다."
+        );
     }
 
     private RegionSearchResponse searchResponse() {
@@ -89,11 +106,12 @@ class RegionControllerTest {
         ));
     }
 
-    private void assertKeywordValidationError(ResultActions resultActions) throws Exception {
+    private void assertKeywordValidationError(ResultActions resultActions, String reason) throws Exception {
         resultActions
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.errors[0].field").value("keyword"));
+                .andExpect(jsonPath("$.errors[0].field").value("keyword"))
+                .andExpect(jsonPath("$.errors[0].reason").value(reason));
     }
 }
