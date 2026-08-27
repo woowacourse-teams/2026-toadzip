@@ -109,7 +109,7 @@ public class HousingComplexQueryService {
         boolean hasNext = fetched.size() > size;
         List<ComplexSummaryRow> page = fetched.stream().limit(size).toList();
         return new HousingComplexListResponse(
-                summaryMapper.toListItems(page, today()),
+                summaryMapper.toListItems(page, condition.today()),
                 nextCursor(page, hasNext, normalizedSort),
                 hasNext
         );

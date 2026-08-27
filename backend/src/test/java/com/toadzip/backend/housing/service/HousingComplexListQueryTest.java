@@ -437,6 +437,44 @@ class HousingComplexListQueryTest {
         assertEquals(expectedCode, response.items().getFirst().representativeAnnouncement().publicationType());
     }
 
+    @Test
+    void 자정을_지나는_목록_요청도_검색조건의_기준일로_응답상태와_D_Day를_계산한다() {
+        Instant beforeSeoulMidnight = Instant.parse("2026-08-27T14:59:59Z");
+        Instant afterSeoulMidnight = Instant.parse("2026-08-27T15:00:01Z");
+        Clock advancingClock = mock(Clock.class);
+        when(advancingClock.instant()).thenReturn(beforeSeoulMidnight, afterSeoulMidnight);
+        HousingComplexSummaryMapper summaryMapper = new HousingComplexSummaryMapper(
+                new HousingComplexCodeMapper(),
+                regionCodeResolver
+        );
+        service = new HousingComplexQueryService(repository, summaryMapper, regionCodeResolver, advancingClock);
+        when(repository.findPage(any(), eq(ComplexSort.LATEST_ANNOUNCEMENT), isNull(), eq(2))).thenReturn(List.of(row(
+                1L,
+                LocalDate.of(2026, 8, 20),
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 20),
+                LocalDate.of(2026, 8, 27)
+        )));
+
+        HousingComplexListResponse response = service.getComplexes(
+                baseSearchRequest(), ComplexSort.LATEST_ANNOUNCEMENT, null, 1);
+
+        ArgumentCaptor<HousingComplexSearchCondition> conditionCaptor =
+                ArgumentCaptor.forClass(HousingComplexSearchCondition.class);
+        verify(repository).findPage(
+                conditionCaptor.capture(),
+                eq(ComplexSort.LATEST_ANNOUNCEMENT),
+                isNull(),
+                eq(2)
+        );
+        HousingComplexListItemResponse item = response.items().getFirst();
+        assertAll(
+                () -> assertEquals(LocalDate.of(2026, 8, 27), conditionCaptor.getValue().today()),
+                () -> assertEquals("APPLYING", item.representativeAnnouncement().applicationStatus()),
+                () -> assertEquals(0, item.representativeAnnouncement().dDay())
+        );
+    }
+
     @ParameterizedTest
     @CsvSource(nullValues = "NULL", value = {
             "2026-08-28, 2026-08-30, BEFORE_APPLICATION, 3",
