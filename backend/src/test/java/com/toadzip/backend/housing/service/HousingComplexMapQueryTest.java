@@ -259,17 +259,17 @@ class HousingComplexMapQueryTest {
     }
 
     @Test
-    void repository가_반환한_단지_ID_순서를_그대로_보존한다() {
+    void repository_findAll이_반환한_단지_ID_오름차순을_그대로_보존한다() {
         when(repository.findAll(any(HousingComplexSearchCondition.class))).thenReturn(List.of(
-                row(9L, "먼저 반환된 단지", "HAPPY_HOUSING", "LH", null, null, null, null),
-                row(3L, "나중 반환된 단지", "NATIONAL_RENTAL", "SH", null, null, null, null)
+                row(3L, "작은 ID 단지", "HAPPY_HOUSING", "LH", null, null, null, null),
+                row(9L, "큰 ID 단지", "NATIONAL_RENTAL", "SH", null, null, null, null)
         ));
 
         List<Long> complexIds = service.getComplexesForMap(baseSearchRequest()).items().stream()
                 .map(HousingComplexMapItemResponse::complexId)
                 .toList();
 
-        assertEquals(List.of(9L, 3L), complexIds);
+        assertEquals(List.of(3L, 9L), complexIds);
     }
 
     @ParameterizedTest
@@ -367,7 +367,8 @@ class HousingComplexMapQueryTest {
                 null,
                 null,
                 null,
-                null
+                null,
+                LocalDate.of(2020, 1, 1)
         );
     }
 

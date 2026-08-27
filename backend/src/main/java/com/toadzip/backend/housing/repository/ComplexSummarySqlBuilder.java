@@ -12,7 +12,6 @@ import com.toadzip.backend.announcement.domain.ApplicationStatus;
 import com.toadzip.backend.global.persistence.LegacyStoredValue;
 import com.toadzip.backend.housing.domain.ComplexSort;
 import com.toadzip.backend.housing.domain.MapBounds;
-import com.toadzip.backend.housing.repository.ComplexSummaryCursor.DateValue;
 
 @Component
 final class ComplexSummarySqlBuilder {
@@ -77,7 +76,8 @@ final class ComplexSummarySqlBuilder {
                    representative.publication_type,
                    representative.posted_date,
                    representative.application_start_date,
-                   representative.application_end_date
+                   representative.application_end_date,
+                   housing_complex.completion_date
             FROM housing_complexes housing_complex
             LEFT JOIN representative ON representative.housing_complex_id = housing_complex.id
             LEFT JOIN area_range ON area_range.housing_complex_id = housing_complex.id
@@ -193,31 +193,6 @@ final class ComplexSummarySqlBuilder {
             ORDER BY housing_complex.id
             """;
 
-    private static final String FIRST_PAGE = """
-            ORDER BY representative.posted_date DESC NULLS LAST, housing_complex.id DESC
-            LIMIT :limit
-            """;
-
-    private static final String PAGE_AFTER_POSTED_DATE = """
-              AND (
-                    representative.posted_date < :cursorPostedDate
-                    OR (
-                        representative.posted_date = :cursorPostedDate
-                        AND housing_complex.id < :cursorComplexId
-                    )
-                    OR representative.posted_date IS NULL
-              )
-            ORDER BY representative.posted_date DESC NULLS LAST, housing_complex.id DESC
-            LIMIT :limit
-            """;
-
-    private static final String PAGE_AFTER_NULL_DATE = """
-              AND representative.posted_date IS NULL
-              AND housing_complex.id < :cursorComplexId
-            ORDER BY representative.posted_date DESC NULLS LAST, housing_complex.id DESC
-            LIMIT :limit
-            """;
-
     ComplexSummarySqlQuery buildMapQuery(HousingComplexSearchCondition condition) {
         Map<String, Object> parameters = new HashMap<>(boundsParameters(condition.bounds()));
         return new ComplexSummarySqlQuery(
@@ -234,17 +209,61 @@ final class ComplexSummarySqlBuilder {
     ) {
         Map<String, Object> parameters = new HashMap<>(boundsParameters(condition.bounds()));
         String filteredQuery = BASE_SUMMARY_QUERY + filters(condition, parameters);
+        SortSpec sortSpec = sortSpec(sort);
         parameters.put("limit", limit);
         if (cursor == null) {
-            return new ComplexSummarySqlQuery(filteredQuery + FIRST_PAGE, parameters);
+            return new ComplexSummarySqlQuery(filteredQuery + firstPage(sortSpec), parameters);
         }
         parameters.put("cursorComplexId", cursor.complexId());
         if (cursor.primaryValue() == null) {
-            return new ComplexSummarySqlQuery(filteredQuery + PAGE_AFTER_NULL_DATE, parameters);
+            return new ComplexSummarySqlQuery(filteredQuery + pageAfterNull(sortSpec), parameters);
         }
-        DateValue postedDate = (DateValue) cursor.primaryValue();
-        parameters.put("cursorPostedDate", postedDate.value());
-        return new ComplexSummarySqlQuery(filteredQuery + PAGE_AFTER_POSTED_DATE, parameters);
+        parameters.put("cursorValue", cursor.primaryValue().jdbcValue());
+        return new ComplexSummarySqlQuery(filteredQuery + pageAfterValue(sortSpec), parameters);
+    }
+
+    private String firstPage(SortSpec sortSpec) {
+        return orderBy(sortSpec) + "LIMIT :limit\n";
+    }
+
+    private String pageAfterValue(SortSpec sortSpec) {
+        String expression = sortSpec.expression();
+        return "  AND (\n"
+                + "        " + expression + " " + comparisonOperator(sortSpec.direction()) + " :cursorValue\n"
+                + "        OR (" + expression + " = :cursorValue AND housing_complex.id < :cursorComplexId)\n"
+                + "        OR " + expression + " IS NULL\n"
+                + "  )\n"
+                + orderBy(sortSpec)
+                + "LIMIT :limit\n";
+    }
+
+    private String pageAfterNull(SortSpec sortSpec) {
+        return "  AND " + sortSpec.expression() + " IS NULL\n"
+                + "  AND housing_complex.id < :cursorComplexId\n"
+                + orderBy(sortSpec)
+                + "LIMIT :limit\n";
+    }
+
+    private String comparisonOperator(Direction direction) {
+        return switch (direction) {
+            case ASC -> ">";
+            case DESC -> "<";
+        };
+    }
+
+    private String orderBy(SortSpec sortSpec) {
+        return "ORDER BY " + sortSpec.expression() + " " + sortSpec.direction()
+                + " NULLS LAST, housing_complex.id DESC\n";
+    }
+
+    private SortSpec sortSpec(ComplexSort sort) {
+        return switch (sort) {
+            case LATEST_ANNOUNCEMENT -> new SortSpec("representative.posted_date", Direction.DESC);
+            case DEPOSIT_ASC -> new SortSpec("price_range.deposit_min", Direction.ASC);
+            case MONTHLY_RENT_ASC -> new SortSpec("price_range.monthly_rent_min", Direction.ASC);
+            case AREA_DESC -> new SortSpec("area_range.exclusive_area_max", Direction.DESC);
+            case COMPLETION_DATE_DESC -> new SortSpec("housing_complex.completion_date", Direction.DESC);
+        };
     }
 
     private String filters(HousingComplexSearchCondition condition, Map<String, Object> parameters) {
@@ -469,5 +488,13 @@ final class ComplexSummarySqlBuilder {
                 "northEastLat", bounds.northEastLat(),
                 "northEastLng", bounds.northEastLng()
         );
+    }
+
+    private enum Direction {
+        ASC,
+        DESC
+    }
+
+    private record SortSpec(String expression, Direction direction) {
     }
 }

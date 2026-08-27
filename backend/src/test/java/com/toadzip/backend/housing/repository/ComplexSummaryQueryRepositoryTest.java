@@ -22,6 +22,8 @@ import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -267,6 +269,58 @@ class ComplexSummaryQueryRepositoryTest {
         );
 
         assertEquals(List.of(smaller.getId()), ids(page));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(ComplexSort.class)
+    void 다섯_정렬은_null을_마지막에_두고_동률이면_단지_ID_내림차순으로_조회한다(
+            ComplexSort sort
+    ) {
+        List<Long> expectedIds = persistSortOrderFixture(sort);
+        entityManager.flush();
+
+        List<Long> actualIds = ids(repository.findPage(noFilters(SEOUL_BOUNDS), sort, null, 10));
+
+        assertEquals(expectedIds, actualIds);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(ComplexSort.class)
+    void 다섯_정렬의_keyset_두_페이지에는_중복과_누락이_없다(ComplexSort sort) {
+        List<Long> expectedIds = persistSortOrderFixture(sort);
+        entityManager.flush();
+
+        List<ComplexSummaryRow> first = repository.findPage(noFilters(SEOUL_BOUNDS), sort, null, 2);
+        List<ComplexSummaryRow> second = repository.findPage(
+                noFilters(SEOUL_BOUNDS),
+                sort,
+                cursorOf(first.getLast(), sort),
+                10
+        );
+
+        List<Long> firstIds = ids(first);
+        List<Long> secondIds = ids(second);
+        Set<Long> intersection = new HashSet<>(firstIds);
+        intersection.retainAll(secondIds);
+        Set<Long> union = new HashSet<>(firstIds);
+        union.addAll(secondIds);
+        List<Long> combined = new ArrayList<>(firstIds);
+        combined.addAll(secondIds);
+        assertAll(
+                () -> assertEquals(Set.of(), intersection),
+                () -> assertEquals(Set.copyOf(expectedIds), union),
+                () -> assertEquals(expectedIds, combined)
+        );
+
+        if (sort != ComplexSort.COMPLETION_DATE_DESC) {
+            List<ComplexSummaryRow> afterNull = repository.findPage(
+                    noFilters(SEOUL_BOUNDS),
+                    sort,
+                    cursorOf(second.getLast(), sort),
+                    10
+            );
+            assertEquals(List.of(), afterNull);
+        }
     }
 
     @Test
@@ -1152,6 +1206,85 @@ class ComplexSummaryQueryRepositoryTest {
         );
     }
 
+    private List<Long> persistSortOrderFixture(ComplexSort sort) {
+        return switch (sort) {
+            case LATEST_ANNOUNCEMENT -> persistLatestAnnouncementSortFixture();
+            case DEPOSIT_ASC -> persistDepositSortFixture();
+            case MONTHLY_RENT_ASC -> persistMonthlyRentSortFixture();
+            case AREA_DESC -> persistAreaSortFixture();
+            case COMPLETION_DATE_DESC -> persistCompletionDateSortFixture();
+        };
+    }
+
+    private List<Long> persistLatestAnnouncementSortFixture() {
+        HousingComplex older = persistComplex("최신공고 오래된 값", "37.500000", "126.900000");
+        HousingComplex tieSmaller = persistComplex("최신공고 동률 작은 ID", "37.500000", "126.900000");
+        HousingComplex tieGreater = persistComplex("최신공고 동률 큰 ID", "37.500000", "126.900000");
+        HousingComplex noAnnouncement = persistComplex("최신공고 null", "37.500000", "126.900000");
+        persistRepresentative(older, "ORIGINAL", LocalDate.of(2026, 8, 1), "sort-latest-older");
+        persistRepresentative(tieSmaller, "ORIGINAL", LocalDate.of(2026, 8, 2), "sort-latest-tie-smaller");
+        persistRepresentative(tieGreater, "ORIGINAL", LocalDate.of(2026, 8, 2), "sort-latest-tie-greater");
+        return List.of(tieGreater.getId(), tieSmaller.getId(), older.getId(), noAnnouncement.getId());
+    }
+
+    private List<Long> persistDepositSortFixture() {
+        HousingComplex lower = persistPricedComplex("보증금 낮은 값", "10000000", "300000", "deposit-lower");
+        HousingComplex tieSmaller = persistPricedComplex(
+                "보증금 동률 작은 ID", "50000000", "200000", "deposit-tie-smaller");
+        HousingComplex tieGreater = persistPricedComplex(
+                "보증금 동률 큰 ID", "50000000", "100000", "deposit-tie-greater");
+        HousingComplex noPrice = persistComplex("보증금 null", "37.500000", "126.900000");
+        return List.of(lower.getId(), tieGreater.getId(), tieSmaller.getId(), noPrice.getId());
+    }
+
+    private List<Long> persistMonthlyRentSortFixture() {
+        HousingComplex lower = persistPricedComplex("월세 낮은 값", "70000000", "100000", "rent-lower");
+        HousingComplex tieSmaller = persistPricedComplex(
+                "월세 동률 작은 ID", "60000000", "300000", "rent-tie-smaller");
+        HousingComplex tieGreater = persistPricedComplex(
+                "월세 동률 큰 ID", "50000000", "300000", "rent-tie-greater");
+        HousingComplex noPrice = persistComplex("월세 null", "37.500000", "126.900000");
+        return List.of(lower.getId(), tieGreater.getId(), tieSmaller.getId(), noPrice.getId());
+    }
+
+    private List<Long> persistAreaSortFixture() {
+        HousingComplex lower = persistComplex("면적 낮은 값", "37.500000", "126.900000");
+        HousingComplex tieSmaller = persistComplex("면적 동률 작은 ID", "37.500000", "126.900000");
+        HousingComplex tieGreater = persistComplex("면적 동률 큰 ID", "37.500000", "126.900000");
+        HousingComplex noArea = persistComplex("면적 null", "37.500000", "126.900000");
+        persistHousingType(lower, "면적 낮은 값", "36.12");
+        persistHousingType(tieSmaller, "면적 동률 작은 ID", "44.87");
+        persistHousingType(tieGreater, "면적 동률 큰 ID", "44.87");
+        return List.of(tieGreater.getId(), tieSmaller.getId(), lower.getId(), noArea.getId());
+    }
+
+    private List<Long> persistCompletionDateSortFixture() {
+        HousingComplex tieSmaller = persistComplexWithCompletionDate(
+                "준공일 동률 작은 ID", LocalDate.of(2020, 1, 1));
+        HousingComplex tieGreater = persistComplexWithCompletionDate(
+                "준공일 동률 큰 ID", LocalDate.of(2020, 1, 1));
+        HousingComplex older = persistComplexWithCompletionDate("준공일 오래된 값", LocalDate.of(2018, 1, 1));
+        return List.of(tieGreater.getId(), tieSmaller.getId(), older.getId());
+    }
+
+    private HousingComplex persistPricedComplex(
+            String name,
+            String rentalDeposit,
+            String monthlyRent,
+            String suffix
+    ) {
+        HousingComplex complex = persistComplex(name, "37.500000", "126.900000");
+        Announcement announcement = persistRepresentative(
+                complex,
+                "ORIGINAL",
+                LocalDate.of(2026, 8, 1),
+                suffix
+        );
+        SupplyRow supplyRow = persistSupplyRow(announcement, complex, null, suffix + "-price-row", 2);
+        persistSupplyTarget(supplyRow, "정렬 공급대상", rentalDeposit, monthlyRent, 1);
+        return complex;
+    }
+
     private OneSidedBoundFixture persistOneSidedBoundFixture(OneSidedBound bound) {
         return switch (bound) {
             case BUILT_YEAR_FROM -> persistBuiltYearBoundFixture(bound, 2020, 2019, 2020, null);
@@ -1501,11 +1634,32 @@ class ComplexSummaryQueryRepositoryTest {
     }
 
     private ComplexSummaryCursor cursorOf(ComplexSummaryRow row) {
-        ComplexSummaryCursor.SortValue primaryValue = null;
-        if (row.postedDate() != null) {
-            primaryValue = new ComplexSummaryCursor.DateValue(row.postedDate());
+        return cursorOf(row, ComplexSort.LATEST_ANNOUNCEMENT);
+    }
+
+    private ComplexSummaryCursor cursorOf(ComplexSummaryRow row, ComplexSort sort) {
+        ComplexSummaryCursor.SortValue primaryValue = switch (sort) {
+            case LATEST_ANNOUNCEMENT -> dateValue(row.postedDate());
+            case DEPOSIT_ASC -> decimalValue(row.depositMin());
+            case MONTHLY_RENT_ASC -> decimalValue(row.monthlyRentMin());
+            case AREA_DESC -> decimalValue(row.exclusiveAreaMax());
+            case COMPLETION_DATE_DESC -> dateValue(row.completionDate());
+        };
+        return new ComplexSummaryCursor(sort, primaryValue, row.complexId());
+    }
+
+    private ComplexSummaryCursor.DateValue dateValue(LocalDate value) {
+        if (value == null) {
+            return null;
         }
-        return new ComplexSummaryCursor(ComplexSort.LATEST_ANNOUNCEMENT, primaryValue, row.complexId());
+        return new ComplexSummaryCursor.DateValue(value);
+    }
+
+    private ComplexSummaryCursor.DecimalValue decimalValue(BigDecimal value) {
+        if (value == null) {
+            return null;
+        }
+        return new ComplexSummaryCursor.DecimalValue(value);
     }
 
     private HousingComplexSearchCondition noFilters(MapBounds bounds) {

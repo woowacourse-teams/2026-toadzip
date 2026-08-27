@@ -307,19 +307,33 @@ public class HousingComplexQueryService {
             return null;
         }
         ComplexSummaryRow finalItem = page.getLast();
-        ComplexSummaryCursor cursor = new ComplexSummaryCursor(
-                sort,
-                latestPrimaryValue(finalItem, sort),
-                finalItem.complexId()
-        );
-        return cursorCodec.encode(cursor);
+        return cursorCodec.encode(cursorOf(finalItem, sort));
     }
 
-    private ComplexSummaryCursor.SortValue latestPrimaryValue(ComplexSummaryRow row, ComplexSort sort) {
-        if (sort != ComplexSort.LATEST_ANNOUNCEMENT || row.postedDate() == null) {
-            return null;
+    private ComplexSummaryCursor cursorOf(ComplexSummaryRow row, ComplexSort sort) {
+        return switch (sort) {
+            case LATEST_ANNOUNCEMENT -> dateCursor(sort, row.postedDate(), row.complexId());
+            case DEPOSIT_ASC -> decimalCursor(sort, row.depositMin(), row.complexId());
+            case MONTHLY_RENT_ASC -> decimalCursor(sort, row.monthlyRentMin(), row.complexId());
+            case AREA_DESC -> decimalCursor(sort, row.exclusiveAreaMax(), row.complexId());
+            case COMPLETION_DATE_DESC -> dateCursor(sort, row.completionDate(), row.complexId());
+        };
+    }
+
+    private ComplexSummaryCursor dateCursor(ComplexSort sort, LocalDate value, long complexId) {
+        ComplexSummaryCursor.DateValue primaryValue = null;
+        if (value != null) {
+            primaryValue = new ComplexSummaryCursor.DateValue(value);
         }
-        return new ComplexSummaryCursor.DateValue(row.postedDate());
+        return new ComplexSummaryCursor(sort, primaryValue, complexId);
+    }
+
+    private ComplexSummaryCursor decimalCursor(ComplexSort sort, BigDecimal value, long complexId) {
+        ComplexSummaryCursor.DecimalValue primaryValue = null;
+        if (value != null) {
+            primaryValue = new ComplexSummaryCursor.DecimalValue(value);
+        }
+        return new ComplexSummaryCursor(sort, primaryValue, complexId);
     }
 
     private LocalDate today() {

@@ -24,6 +24,7 @@ import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.dto.request.HousingComplexSearchRequest;
 import com.toadzip.backend.housing.dto.response.HousingComplexListItemResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexListResponse;
+import com.toadzip.backend.housing.exception.InvalidComplexCursorException;
 import com.toadzip.backend.housing.exception.InvalidComplexRequestException;
 import com.toadzip.backend.housing.exception.InvalidMapBoundsException;
 import com.toadzip.backend.housing.exception.InvalidRegionCodeException;
@@ -33,10 +34,12 @@ import com.toadzip.backend.housing.repository.ComplexSummaryRow;
 import com.toadzip.backend.housing.repository.HousingComplexSearchCondition;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -44,8 +47,9 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
@@ -260,6 +264,68 @@ class HousingComplexListQueryTest {
         );
     }
 
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(ComplexSort.class)
+    void 다섯_정렬은_반환한_페이지의_마지막_row값으로_typed_다음_커서를_만든다(
+            ComplexSort sort
+    ) {
+        when(repository.findPage(any(), eq(sort), isNull(), eq(3))).thenReturn(List.of(
+                row(10L, LocalDate.of(2026, 8, 21), "ORIGINAL", LocalDate.of(2026, 8, 22),
+                        LocalDate.of(2026, 8, 29)),
+                row(9L, LocalDate.of(2026, 8, 20), "ORIGINAL", LocalDate.of(2026, 8, 22),
+                        LocalDate.of(2026, 8, 29)),
+                row(8L, LocalDate.of(2026, 8, 19), "ORIGINAL", LocalDate.of(2026, 8, 22),
+                        LocalDate.of(2026, 8, 29))
+        ));
+
+        HousingComplexListResponse response = service.getComplexes(baseSearchRequest(), sort, null, 2);
+
+        assertEquals(expectedCursor(sort), new HousingComplexCursorCodec().decode(response.nextCursor(), sort));
+    }
+
+    @Test
+    void v1_커서는_default_최신공고_정렬에서_해석해_repository에_전달한다() {
+        ComplexSummaryCursor decoded = new ComplexSummaryCursor(
+                ComplexSort.LATEST_ANNOUNCEMENT,
+                new ComplexSummaryCursor.DateValue(LocalDate.of(2026, 8, 20)),
+                9L
+        );
+        when(repository.findPage(any(), eq(ComplexSort.LATEST_ANNOUNCEMENT), eq(decoded), eq(2)))
+                .thenReturn(List.of());
+
+        service.getComplexes(baseSearchRequest(), null, legacyCursor("2026-08-20", 9L), 1);
+
+        verify(repository).findPage(any(), eq(ComplexSort.LATEST_ANNOUNCEMENT), eq(decoded), eq(2));
+    }
+
+    @Test
+    void v1_커서와_최신공고가_아닌_정렬의_조합은_repository_호출_전에_거부한다() {
+        String cursor = legacyCursor("2026-08-20", 9L);
+
+        assertThrows(
+                InvalidComplexCursorException.class,
+                () -> service.getComplexes(baseSearchRequest(), ComplexSort.DEPOSIT_ASC, cursor, 1)
+        );
+
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void v2_커서와_요청_정렬이_다르면_repository_호출_전에_거부한다() {
+        String cursor = new HousingComplexCursorCodec().encode(new ComplexSummaryCursor(
+                ComplexSort.DEPOSIT_ASC,
+                new ComplexSummaryCursor.DecimalValue(new BigDecimal("50000000")),
+                9L
+        ));
+
+        assertThrows(
+                InvalidComplexCursorException.class,
+                () -> service.getComplexes(baseSearchRequest(), ComplexSort.AREA_DESC, cursor, 1)
+        );
+
+        verifyNoInteractions(repository);
+    }
+
     @Test
     void null_게시일_커서에서도_반환한_페이지의_마지막_단지로_다음_커서를_만든다() {
         ComplexSummaryCursor cursor = new ComplexSummaryCursor(ComplexSort.LATEST_ANNOUNCEMENT, null, 40L);
@@ -456,7 +522,8 @@ class HousingComplexListQueryTest {
                 null,
                 null,
                 null,
-                null
+                null,
+                LocalDate.of(2020, 1, 1)
         );
         when(repository.findPage(any(), eq(ComplexSort.LATEST_ANNOUNCEMENT), isNull(), eq(2)))
                 .thenReturn(List.of(unresolved));
@@ -682,7 +749,8 @@ class HousingComplexListQueryTest {
                 publicationType,
                 postedDate,
                 applicationStartDate,
-                applicationEndDate
+                applicationEndDate,
+                LocalDate.of(2020, 1, 1)
         );
     }
 
@@ -707,8 +775,27 @@ class HousingComplexListQueryTest {
                 null,
                 null,
                 null,
-                null
+                null,
+                LocalDate.of(2020, 1, 1)
         );
+    }
+
+    private ComplexSummaryCursor expectedCursor(ComplexSort sort) {
+        ComplexSummaryCursor.SortValue primaryValue = switch (sort) {
+            case LATEST_ANNOUNCEMENT -> new ComplexSummaryCursor.DateValue(LocalDate.of(2026, 8, 20));
+            case DEPOSIT_ASC -> new ComplexSummaryCursor.DecimalValue(new BigDecimal("50000000"));
+            case MONTHLY_RENT_ASC -> new ComplexSummaryCursor.DecimalValue(new BigDecimal("200000"));
+            case AREA_DESC -> new ComplexSummaryCursor.DecimalValue(new BigDecimal("44.87"));
+            case COMPLETION_DATE_DESC -> new ComplexSummaryCursor.DateValue(LocalDate.of(2020, 1, 1));
+        };
+        return new ComplexSummaryCursor(sort, primaryValue, 9L);
+    }
+
+    private String legacyCursor(String rawPostedDate, long complexId) {
+        String payload = "v1|" + rawPostedDate + "|" + complexId;
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(payload.getBytes(StandardCharsets.UTF_8));
     }
 
     private List<Long> ids(HousingComplexListResponse response) {
