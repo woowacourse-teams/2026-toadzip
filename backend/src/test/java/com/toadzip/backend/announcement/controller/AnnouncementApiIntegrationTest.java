@@ -295,6 +295,7 @@ class AnnouncementApiIntegrationTest {
     @Test
     void 모든_검색_그룹의_교집합과_같은_그룹의_OR을_HTTP로_반환한다() throws Exception {
         HousingComplex canonicalRegionComplex = persist(createHousingComplex("api-combined-canonical", "12210"));
+        HousingComplex differentRegionComplex = persist(createHousingComplex("api-combined-other-region", "11140"));
         Announcement original = persist(createSearchAnnouncement(
                 "api-combined-original",
                 "통합_검색 원본 공고",
@@ -306,7 +307,7 @@ class AnnouncementApiIntegrationTest {
                 AgencyCode.LH,
                 LocalDate.of(2026, 8, 12),
                 LocalDate.of(2026, 8, 10),
-                LocalDate.of(2026, 8, 12)
+                LocalDate.of(2026, 8, 11)
         ));
         Announcement previous = persist(createSearchAnnouncement(
                 "api-combined-previous",
@@ -319,7 +320,7 @@ class AnnouncementApiIntegrationTest {
                 AgencyCode.LH,
                 LocalDate.of(2026, 8, 1),
                 LocalDate.of(2026, 8, 10),
-                LocalDate.of(2026, 8, 12)
+                LocalDate.of(2026, 8, 11)
         ));
         Announcement correction = persist(createSearchAnnouncement(
                 "api-combined-correction",
@@ -332,7 +333,7 @@ class AnnouncementApiIntegrationTest {
                 AgencyCode.SH,
                 LocalDate.of(2026, 8, 11),
                 LocalDate.of(2026, 8, 10),
-                LocalDate.of(2026, 8, 12)
+                LocalDate.of(2026, 8, 11)
         ));
         Announcement wrongRentalType = persist(createSearchAnnouncement(
                 "api-combined-wrong-rental",
@@ -345,7 +346,7 @@ class AnnouncementApiIntegrationTest {
                 AgencyCode.LH,
                 LocalDate.of(2026, 8, 13),
                 LocalDate.of(2026, 8, 10),
-                LocalDate.of(2026, 8, 12)
+                LocalDate.of(2026, 8, 11)
         ));
         Announcement regionOnly = persist(createSearchAnnouncement(
                 "api-combined-region-only",
@@ -358,10 +359,36 @@ class AnnouncementApiIntegrationTest {
                 AgencyCode.LH,
                 LocalDate.of(2026, 8, 13),
                 LocalDate.of(2026, 8, 10),
-                LocalDate.of(2026, 8, 12)
+                LocalDate.of(2026, 8, 11)
         ));
-        Announcement outsideApplicationWindow = persist(createSearchAnnouncement(
-                "api-combined-window-only",
+        Announcement wrongRegion = persist(createSearchAnnouncement(
+                "api-combined-wrong-region",
+                "통합_검색 지역 불일치 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 13),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        Announcement wrongApplicationStatus = persist(createSearchAnnouncement(
+                "api-combined-wrong-status",
+                "통합_검색 신청상태 불일치 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 13),
+                LocalDate.of(2026, 8, 11),
+                LocalDate.of(2026, 8, 15)
+        ));
+        Announcement wrongApplicationPeriod = persist(createSearchAnnouncement(
+                "api-combined-wrong-period",
                 "통합_검색 접수기간 불일치 공고",
                 null,
                 null,
@@ -370,8 +397,8 @@ class AnnouncementApiIntegrationTest {
                 RecruitmentType.NEW,
                 AgencyCode.LH,
                 LocalDate.of(2026, 8, 13),
-                LocalDate.of(2026, 8, 13),
-                LocalDate.of(2026, 8, 15)
+                LocalDate.of(2026, 8, 9),
+                LocalDate.of(2026, 8, 10)
         ));
         persistSearchSupplyRows(
                 canonicalRegionComplex,
@@ -379,8 +406,10 @@ class AnnouncementApiIntegrationTest {
                 correction,
                 wrongRentalType,
                 regionOnly,
-                outsideApplicationWindow
+                wrongApplicationStatus,
+                wrongApplicationPeriod
         );
+        persistSearchSupplyRows(differentRegionComplex, wrongRegion);
         entityManager.flush();
         entityManager.clear();
 
@@ -663,8 +692,8 @@ class AnnouncementApiIntegrationTest {
                 .param("publicationTypes", "ORIGINAL", "CORRECTION")
                 .param("agencyCodes", "LH", "SH")
                 .param("recruitmentTypes", "NEW", "WAITLIST")
-                .param("applicationFrom", "2026-08-10")
-                .param("applicationTo", "2026-08-12");
+                .param("applicationFrom", "2026-08-11")
+                .param("applicationTo", "2026-08-11");
     }
 
     private MockHttpServletRequestBuilder cursorSearchRequest() {
