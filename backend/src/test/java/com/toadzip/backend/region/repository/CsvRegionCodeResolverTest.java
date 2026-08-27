@@ -126,6 +126,36 @@ class CsvRegionCodeResolverTest {
     }
 
     @Test
+    void 현재_지역코드는_자신과_모든_과거_코드를_반환한다() {
+        CsvRegionCodeResolver resolver = resolverWithContentsAndAliases(
+                HEADER + "\n12210,전남광주통합특별시,동구,전남광주통합특별시 동구",
+                ALIAS_HEADER + "\n29110,12210"
+        );
+
+        assertEquals(Set.of("12210", "29110"), resolver.equivalentCodes("12210").orElseThrow());
+    }
+
+    @Test
+    void 과거_지역코드도_동일한_현재_지역_코드_집합을_반환한다() {
+        CsvRegionCodeResolver resolver = resolverWithContentsAndAliases(
+                HEADER + "\n12210,전남광주통합특별시,동구,전남광주통합특별시 동구",
+                ALIAS_HEADER + "\n29110,12210"
+        );
+
+        assertEquals(Set.of("12210", "29110"), resolver.equivalentCodes("29110").orElseThrow());
+    }
+
+    @Test
+    void 미등록_지역코드는_해석하지_않는다() {
+        CsvRegionCodeResolver resolver = resolverWithContentsAndAliases(
+                HEADER + "\n12210,전남광주통합특별시,동구,전남광주통합특별시 동구",
+                ALIAS_HEADER + "\n29110,12210"
+        );
+
+        assertTrue(resolver.equivalentCodes("99999").isEmpty());
+    }
+
+    @Test
     void 별칭의_현재_지역코드가_정본에_없으면_초기화에_실패한다() {
         IllegalStateException exception = assertThrows(
                 IllegalStateException.class,
