@@ -406,6 +406,7 @@ git commit -m "feat(housing): 지도 영역 단지 조회 추가 (#21)"
 - Create: `backend/src/main/java/com/toadzip/backend/region/repository/RegionCodeResolver.java`
 - Create: `backend/src/main/java/com/toadzip/backend/region/repository/CsvRegionCodeResolver.java`
 - Create: `backend/src/main/resources/region/regions.csv`
+- Create: `backend/src/main/java/com/toadzip/backend/housing/repository/ComplexSummaryCursor.java`
 - Modify: `backend/src/main/java/com/toadzip/backend/housing/repository/ComplexSummaryQueryRepository.java`
 - Modify: `backend/src/main/java/com/toadzip/backend/housing/service/HousingComplexCodeMapper.java`
 - Modify: `backend/src/main/java/com/toadzip/backend/housing/service/HousingComplexSummaryMapper.java`
@@ -415,13 +416,14 @@ git commit -m "feat(housing): 지도 영역 단지 조회 추가 (#21)"
 - Create: `backend/src/main/java/com/toadzip/backend/housing/dto/response/HousingComplexListItemResponse.java`
 - Create: `backend/src/main/java/com/toadzip/backend/housing/dto/response/HousingComplexListResponse.java`
 - Modify: `backend/src/test/java/com/toadzip/backend/housing/repository/ComplexSummaryQueryRepositoryTest.java`
+- Test: `backend/src/test/java/com/toadzip/backend/housing/repository/HousingRepositoryLayerBoundaryTest.java`
 - Test: `backend/src/test/java/com/toadzip/backend/region/repository/CsvRegionCodeResolverTest.java`
 - Test: `backend/src/test/java/com/toadzip/backend/housing/service/HousingComplexListQueryTest.java`
 - Modify: `backend/src/test/java/com/toadzip/backend/housing/controller/HousingComplexControllerTest.java`
 
 **Interfaces:**
 - Consumes: `MapBounds`, optional encoded cursor, `size`
-- Produces: `findFirstPage(bounds, limit)` and `findPageAfter(bounds, cursor, limit)`
+- Produces: `findFirstPage(bounds, limit)` and `findPageAfter(bounds, repositoryCursor, limit)`
 - Produces: `HousingComplexQueryService.getComplexes(bounds, cursor, size)`
 - Produces: `GET /api/v1/complexes`
 
@@ -477,6 +479,7 @@ then write:
 ```java
 assertEquals(Optional.of("서울특별시 중구"), resolver.resolve("11", "11140"));
 assertEquals(Optional.empty(), resolver.resolve("99", "99999"));
+assertEquals(Optional.empty(), resolver.resolve("1", "11140"));
 ```
 
 Run: `cd backend && ./gradlew test --tests '*CsvRegionCodeResolverTest'`
@@ -492,7 +495,7 @@ to read the reference and create/edit the new file with `apply_patch`; never use
 @Test
 void 최신_대표공고_게시일과_단지_ID로_안정적으로_페이지를_나눈다() {
     List<ComplexSummaryRow> first = repository.findFirstPage(bounds, 3);
-    HousingComplexCursorCodec.HousingComplexCursor cursor = cursorOf(first.get(1));
+    ComplexSummaryCursor cursor = cursorOf(first.get(1));
     List<ComplexSummaryRow> second = repository.findPageAfter(bounds, cursor, 3);
     assertEquals(List.of(thirdComplexId, complexWithoutAnnouncementId), ids(second));
 }
@@ -512,6 +515,8 @@ LIMIT :limit
 ```
 
 For a non-null cursor date, rows after the cursor satisfy an older date, the same date with a smaller complex ID, or a null date. For a null cursor date, only null-date rows with a smaller complex ID qualify.
+The service decodes the public `v1` cursor and adapts it to this repository-owned keyset value so the repository
+does not depend on a service type.
 
 - [ ] **Step 4: Write failing service pagination tests**
 
