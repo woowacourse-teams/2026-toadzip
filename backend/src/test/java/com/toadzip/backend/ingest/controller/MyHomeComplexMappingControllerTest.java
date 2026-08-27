@@ -12,6 +12,7 @@ import com.toadzip.backend.ingest.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.dto.MyHomeComplexMappingFailureResponse;
 import com.toadzip.backend.ingest.dto.MyHomeComplexMappingPreparationReport;
 import com.toadzip.backend.ingest.dto.MyHomeComplexMappingReport;
+import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.service.MyHomeComplexMappingService;
 import java.time.Instant;
 import java.util.List;
@@ -85,6 +86,18 @@ class MyHomeComplexMappingControllerTest {
                 .andExpect(jsonPath("$.failedSourceRowCount").value(0));
 
         verify(mappingService).mapAll();
+    }
+
+    @Test
+    void 매핑이_이미_실행_중이면_409를_반환한다() throws Exception {
+        when(mappingService.mapAll()).thenThrow(new IngestAlreadyRunningException(
+                "마이홈 단지 매핑이 이미 실행 중입니다."
+        ));
+
+        mockMvc.perform(post("/api/admin/ingest/myhome/complex-mappings"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INGEST_ALREADY_RUNNING"))
+                .andExpect(jsonPath("$.message").value("마이홈 단지 매핑이 이미 실행 중입니다."));
     }
 
     @Test

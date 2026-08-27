@@ -13,9 +13,11 @@ import com.toadzip.backend.ingest.dto.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.dto.MyHomeComplexMappingFailureResponse;
 import com.toadzip.backend.ingest.dto.MyHomeComplexMappingPreparationReport;
 import com.toadzip.backend.ingest.dto.MyHomeComplexMappingReport;
+import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.repository.MyHomeComplexMappingCandidateRepository;
 import com.toadzip.backend.ingest.repository.MyHomeComplexMappingCandidateStore;
+import com.toadzip.backend.ingest.repository.MyHomeComplexMappingExecutionLock;
 import com.toadzip.backend.ingest.repository.MyHomeComplexMappingFailureRepository;
 import com.toadzip.backend.ingest.repository.MyHomeComplexMappingFailureStore;
 import com.toadzip.backend.ingest.repository.MyHomeComplexSourceRepository;
@@ -57,6 +59,8 @@ public class MyHomeComplexMappingService {
 
     private final MyHomeComplexMappingCandidateStore candidateStore;
 
+    private final MyHomeComplexMappingExecutionLock executionLock;
+
     private final MyHomeComplexSourceMapper sourceMapper;
 
     private final RoadAddressGeocodingService geocodingService;
@@ -71,6 +75,7 @@ public class MyHomeComplexMappingService {
             MyHomeComplexMappingFailureStore failureStore,
             MyHomeComplexMappingCandidateRepository candidateRepository,
             MyHomeComplexMappingCandidateStore candidateStore,
+            MyHomeComplexMappingExecutionLock executionLock,
             MyHomeComplexSourceMapper sourceMapper,
             RoadAddressGeocodingService geocodingService,
             MyHomeComplexMappingWriter writer,
@@ -81,6 +86,7 @@ public class MyHomeComplexMappingService {
         this.failureStore = failureStore;
         this.candidateRepository = candidateRepository;
         this.candidateStore = candidateStore;
+        this.executionLock = executionLock;
         this.sourceMapper = sourceMapper;
         this.geocodingService = geocodingService;
         this.writer = writer;
@@ -88,6 +94,11 @@ public class MyHomeComplexMappingService {
     }
 
     public MyHomeComplexMappingPreparationReport prepare() {
+        return executionLock.tryRun(this::prepareUnlocked)
+                .orElseThrow(this::alreadyRunning);
+    }
+
+    private MyHomeComplexMappingPreparationReport prepareUnlocked() {
         Instant occurredAt = clock.instant();
         List<MyHomeComplexMappingFailure> failures = new ArrayList<>();
         Map<String, List<MyHomeComplexSource>> groupedSources = groupSources(
@@ -116,6 +127,11 @@ public class MyHomeComplexMappingService {
 
     public MyHomeComplexMappingReport mapNext(int batchSize) {
         validateBatchSize(batchSize);
+        return executionLock.tryRun(() -> mapNextUnlocked(batchSize))
+                .orElseThrow(this::alreadyRunning);
+    }
+
+    private MyHomeComplexMappingReport mapNextUnlocked(int batchSize) {
         List<MyHomeComplexMappingCandidate> candidates = candidateRepository.findAllByStatusInOrderByIdAsc(
                 PROCESSABLE_STATUSES,
                 PageRequest.of(0, batchSize)
@@ -129,12 +145,17 @@ public class MyHomeComplexMappingService {
     }
 
     public MyHomeComplexMappingReport mapAll() {
-        MyHomeComplexMappingPreparationReport preparation = prepare();
+        return executionLock.tryRun(this::mapAllUnlocked)
+                .orElseThrow(this::alreadyRunning);
+    }
+
+    private MyHomeComplexMappingReport mapAllUnlocked() {
+        MyHomeComplexMappingPreparationReport preparation = prepareUnlocked();
         MyHomeComplexMappingReport report = MyHomeComplexMappingReport.failedRows(
                 preparation.failedSourceRowCount()
         );
         while (hasProcessableCandidate()) {
-            report = report.plus(mapNext(MAX_BATCH_SIZE));
+            report = report.plus(mapNextUnlocked(MAX_BATCH_SIZE));
         }
         return report;
     }
@@ -353,5 +374,10 @@ public class MyHomeComplexMappingService {
         if (batchSize < 1 || batchSize > MAX_BATCH_SIZE) {
             throw new IllegalArgumentException("배치 크기는 1 이상 1000 이하여야 합니다.");
         }
+    }
+
+    private IngestAlreadyRunningException alreadyRunning() {
+        log.warn("마이홈 단지 매핑이 이미 실행 중이므로 중복 실행을 건너뜁니다.");
+        return new IngestAlreadyRunningException("마이홈 단지 매핑이 이미 실행 중입니다.");
     }
 }
