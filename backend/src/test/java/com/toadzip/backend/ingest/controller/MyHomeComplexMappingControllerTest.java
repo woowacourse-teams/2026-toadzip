@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.controller;
 
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -56,6 +57,19 @@ class MyHomeComplexMappingControllerTest {
                 .andExpect(jsonPath("$.createdHousingTypeCount").value(2));
 
         verify(mappingService).mapNext(50);
+    }
+
+    @Test
+    void 허용_범위를_벗어난_배치_크기는_검증_오류로_반환한다() throws Exception {
+        mockMvc.perform(post("/api/admin/ingest/myhome/complex-mappings/batches")
+                        .param("batchSize", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("요청값이 올바르지 않습니다."))
+                .andExpect(jsonPath("$.errors[0].field").value("batchSize"))
+                .andExpect(jsonPath("$.errors[0].reason").value("1 이상이어야 합니다."));
+
+        verify(mappingService, never()).mapNext(0);
     }
 
     @Test

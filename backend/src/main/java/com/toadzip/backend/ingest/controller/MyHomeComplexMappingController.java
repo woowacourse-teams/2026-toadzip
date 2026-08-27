@@ -4,6 +4,8 @@ import com.toadzip.backend.ingest.dto.MyHomeComplexMappingFailureResponse;
 import com.toadzip.backend.ingest.dto.MyHomeComplexMappingPreparationReport;
 import com.toadzip.backend.ingest.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.service.MyHomeComplexMappingService;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,7 +36,9 @@ public class MyHomeComplexMappingController {
 
     @PostMapping("/batches")
     public ResponseEntity<MyHomeComplexMappingReport> mapNext(
-            @RequestParam(defaultValue = "100") int batchSize
+            @RequestParam(defaultValue = "100")
+            @Min(value = 1, message = "1 이상이어야 합니다.")
+            @Max(value = 1_000, message = "1000 이하여야 합니다.") int batchSize
     ) {
         return ResponseEntity.ok(mappingService.mapNext(batchSize));
     }
