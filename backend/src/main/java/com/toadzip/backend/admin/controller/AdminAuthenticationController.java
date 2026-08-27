@@ -7,6 +7,7 @@ import com.toadzip.backend.admin.exception.InvalidAdminCredentialsException;
 import com.toadzip.backend.admin.service.AdminAuthenticationAuditService;
 import com.toadzip.backend.admin.service.AdminAuthenticationService;
 import com.toadzip.backend.admin.service.AdminLoginAttemptLimiter;
+import com.toadzip.backend.global.exception.RequestTraceIdResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -54,7 +55,7 @@ public class AdminAuthenticationController {
         } catch (InvalidAdminCredentialsException exception) {
             adminAuthenticationAuditService.recordLoginFailure(
                     request.loginIdentifier(),
-                    servletRequest.getRequestId()
+                    RequestTraceIdResolver.resolve(servletRequest)
             );
             throw exception;
         }
@@ -73,7 +74,10 @@ public class AdminAuthenticationController {
             HttpServletResponse servletResponse
     ) {
         new SecurityContextLogoutHandler().logout(servletRequest, servletResponse, authentication);
-        adminAuthenticationAuditService.recordLogout(authentication.getName(), servletRequest.getRequestId());
+        adminAuthenticationAuditService.recordLogout(
+                authentication.getName(),
+                RequestTraceIdResolver.resolve(servletRequest)
+        );
     }
 
     private AdminSessionResponse loginAndCreateSession(
@@ -88,7 +92,10 @@ public class AdminAuthenticationController {
         servletRequest.getSession();
         servletRequest.changeSessionId();
         saveAuthentication(authentication, servletRequest, servletResponse);
-        adminAuthenticationAuditService.recordLoginSuccess(authentication.getName(), servletRequest.getRequestId());
+        adminAuthenticationAuditService.recordLoginSuccess(
+                authentication.getName(),
+                RequestTraceIdResolver.resolve(servletRequest)
+        );
         return AdminSessionResponse.from(authentication.getName());
     }
 
