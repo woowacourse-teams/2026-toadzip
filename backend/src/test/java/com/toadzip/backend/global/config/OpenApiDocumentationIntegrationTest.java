@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jayway.jsonpath.JsonPath;
 import java.net.http.HttpResponse;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -112,17 +114,13 @@ class OpenApiDocumentationIntegrationTest {
         HttpResponse<String> response = TestHttpClient.get(port, "/v3/api-docs");
 
         assertEquals(200, response.statusCode());
-        Set<String> listParameters = queryParameterNames(response.body(), "/api/v1/complexes");
-        Set<String> mapParameters = queryParameterNames(response.body(), "/api/v1/complexes/map");
+        Set<String> expectedListParameters = new HashSet<>(COMMON_SEARCH_PARAMETERS);
+        expectedListParameters.addAll(LIST_ONLY_PARAMETERS);
+        List<Map<String, Object>> listParameters = parameters(response.body(), "/api/v1/complexes");
+        List<Map<String, Object>> mapParameters = parameters(response.body(), "/api/v1/complexes/map");
         assertAll(
-                () -> assertTrue(listParameters.containsAll(COMMON_SEARCH_PARAMETERS)),
-                () -> assertTrue(mapParameters.containsAll(COMMON_SEARCH_PARAMETERS)),
-                () -> assertTrue(listParameters.containsAll(LIST_ONLY_PARAMETERS)),
-                () -> assertEquals(COMMON_SEARCH_PARAMETERS, mapParameters),
-                () -> assertEquals(
-                        COMMON_SEARCH_PARAMETERS.size() + LIST_ONLY_PARAMETERS.size(),
-                        listParameters.size()
-                )
+                () -> assertExactQueryParameters(listParameters, expectedListParameters),
+                () -> assertExactQueryParameters(mapParameters, COMMON_SEARCH_PARAMETERS)
         );
     }
 
@@ -162,18 +160,42 @@ class OpenApiDocumentationIntegrationTest {
         assertEquals(List.of(true), requiredValues);
     }
 
+    private List<Map<String, Object>> parameters(String document, String path) {
+        return JsonPath.read(document, "$.paths['" + path + "'].get.parameters");
+    }
+
     private Set<String> queryParameterNames(String document, String path) {
-        List<String> names = JsonPath.read(document, "$.paths['" + path + "'].get.parameters[*].name");
-        return Set.copyOf(names);
+        return parameterNames(parameters(document, path));
+    }
+
+    private void assertExactQueryParameters(
+            List<Map<String, Object>> parameters,
+            Set<String> expectedNames
+    ) {
+        List<String> names = new ArrayList<>();
+        parameters.forEach(parameter -> {
+            assertEquals("query", parameter.get("in"));
+            names.add((String) parameter.get("name"));
+        });
+        assertEquals(expectedNames.size(), parameters.size());
+        assertEquals(names.size(), Set.copyOf(names).size());
+        assertEquals(expectedNames, Set.copyOf(names));
+    }
+
+    private Set<String> parameterNames(List<Map<String, Object>> parameters) {
+        return parameters.stream()
+                .map(parameter -> (String) parameter.get("name"))
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     private Map<String, Object> queryParameter(String document, String path, String parameterName) {
-        List<Map<String, Object>> parameters = JsonPath.read(
-                document,
-                "$.paths['" + path + "'].get.parameters[?(@.name == '" + parameterName + "')]"
-        );
-        assertEquals(1, parameters.size());
-        return parameters.getFirst();
+        List<Map<String, Object>> matchingParameters = parameters(document, path).stream()
+                .filter(parameter -> parameterName.equals(parameter.get("name")))
+                .toList();
+        assertEquals(1, matchingParameters.size());
+        Map<String, Object> parameter = matchingParameters.getFirst();
+        assertEquals("query", parameter.get("in"));
+        return parameter;
     }
 
     @SuppressWarnings("unchecked")

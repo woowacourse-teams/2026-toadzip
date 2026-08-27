@@ -2,6 +2,7 @@ package com.toadzip.backend.housing.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -179,10 +180,14 @@ class HousingComplexControllerTest {
                         .param("northEastLat", "37.6")
                         .param("northEastLng", "127.1"))
                 .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId", "errors")))
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.message").value("요청값이 올바르지 않습니다."))
-                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andExpect(jsonPath("$.traceId").value(matchesPattern(".*\\S.*")))
+                .andExpect(jsonPath("$.errors.length()").value(1))
+                .andExpect(jsonPath("$.errors[0].keys()", containsInAnyOrder("field", "reason")))
                 .andExpect(jsonPath("$.errors[0].field").value(field))
+                .andExpect(jsonPath("$.errors[0].reason").value("형식이 올바르지 않습니다."))
                 .andExpect(noInternalDetails());
     }
 
@@ -798,7 +803,17 @@ class HousingComplexControllerTest {
             assertFalse(body.contains("Exception"));
             assertFalse(body.contains("java."));
             assertFalse(body.contains("org.springframework"));
+            assertFalse(body.contains("com.toadzip"));
+            assertFalse(body.contains("Failed to convert"));
+            assertFalse(body.contains("For input string"));
             assertFalse(body.contains("stackTrace"));
+            assertFalse(body.contains("\"stack\""));
+            assertFalse(body.contains("\"stackTrace\""));
+            assertFalse(body.contains("\"cause\""));
+            assertFalse(body.contains("\"exception\""));
+            assertFalse(body.contains("\"exceptionType\""));
+            assertFalse(body.contains("\"type\""));
+            assertFalse(body.contains("\"class\""));
         };
     }
 }
