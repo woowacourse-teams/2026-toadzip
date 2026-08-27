@@ -279,7 +279,18 @@ button {
 
 .admin-login-page {
   display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
   padding: 24px;
+  place-content: center;
+}
+
+.admin-auth-state {
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 24px;
+  text-align: center;
   place-content: center;
 }
 
@@ -327,6 +338,7 @@ button {
 
 .admin-layout {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .admin-header {
@@ -353,6 +365,16 @@ button {
   min-height: auto;
   padding: 32px 24px;
   text-align: left;
+}
+
+.admin-content h1,
+.admin-content p {
+  margin: 0;
+}
+
+.admin-content p {
+  margin-top: 12px;
+  color: #475569;
 }
 
 .admin-layout-error {
