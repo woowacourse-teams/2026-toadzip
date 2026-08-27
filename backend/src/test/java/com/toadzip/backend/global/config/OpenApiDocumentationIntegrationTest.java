@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jayway.jsonpath.JsonPath;
 import java.net.http.HttpResponse;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -61,5 +62,31 @@ class OpenApiDocumentationIntegrationTest {
                         "$.paths['/api/v1/complexes/{complexId}'].get"
                 ))
         );
+    }
+
+    @Test
+    void 단지_OpenAPI는_지도_경계를_필수_query_parameter로_제공한다() throws Exception {
+        HttpResponse<String> response = TestHttpClient.get(port, "/v3/api-docs");
+
+        assertEquals(200, response.statusCode());
+        assertAll(
+                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes", "southWestLat"),
+                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes", "southWestLng"),
+                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes", "northEastLat"),
+                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes", "northEastLng"),
+                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes/map", "southWestLat"),
+                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes/map", "southWestLng"),
+                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes/map", "northEastLat"),
+                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes/map", "northEastLng")
+        );
+    }
+
+    private void assertRequiredQueryParameter(String document, String path, String parameterName) {
+        List<Boolean> requiredValues = JsonPath.read(
+                document,
+                "$.paths['" + path + "'].get.parameters[?(@.name == '" + parameterName
+                        + "' && @.in == 'query')].required"
+        );
+        assertEquals(List.of(true), requiredValues);
     }
 }
