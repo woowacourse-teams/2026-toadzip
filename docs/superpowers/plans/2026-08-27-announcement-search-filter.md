@@ -103,7 +103,6 @@ git commit -m "feat(region): 검색용 동등 지역 코드 해석 추가 (#22)"
 **Files:**
 - Create: `backend/src/main/java/com/toadzip/backend/announcement/repository/AnnouncementSearchCondition.java`
 - Create: `backend/src/main/java/com/toadzip/backend/announcement/repository/AnnouncementSearchRepository.java`
-- Modify: `backend/src/main/java/com/toadzip/backend/announcement/repository/AnnouncementRepository.java`
 - Modify: `backend/src/test/java/com/toadzip/backend/announcement/repository/AnnouncementQueryRepositoryTest.java`
 
 **Interfaces:**
@@ -170,17 +169,15 @@ public class AnnouncementSearchRepository {
 
 base predicates는 기존 JPQL과 동일하게 original/correction stored values, original 또는 연결된 correction, successor `NOT EXISTS`를 적용한다. enum path 비교는 `HibernateCriteriaBuilder.cast(path, String.class)`와 `LegacyStoredValue.storedValues()`를 한 private helper에서 사용한다. keyword는 lower-case literal LIKE pattern을 만들고 `\\` escape를 명시한다. cursor 두 값은 함께 있을 때만 기존 keyset predicate를 추가한다.
 
-- [ ] **Step 4: 기존 `AnnouncementRepository`의 중복 목록 JPQL 제거**
+`AnnouncementRepository`의 기존 목록 메서드는 아직 `AnnouncementQueryService`가 사용하므로 Task 4의 service 전환까지 유지한다. Task 2에서 먼저 제거하면 중간 커밋이 컴파일되지 않는다.
 
-`findLatestLeaves(Pageable)`와 `findLatestLeavesAfter(...)`를 제거하고 `findDetailById(...)`와 `JpaRepository` 책임만 남긴다.
-
-- [ ] **Step 5: repository 테스트 통과 확인**
+- [ ] **Step 4: repository 테스트 통과 확인**
 
 Run: `cd backend && ./gradlew test --tests '*AnnouncementQueryRepositoryTest'`
 
 Expected: PASS for base leaf, direct filter, legacy value and cursor cases.
 
-- [ ] **Step 6: 커밋**
+- [ ] **Step 5: 커밋**
 
 ```bash
 git add backend/src/main/java/com/toadzip/backend/announcement/repository \
@@ -261,6 +258,7 @@ git commit -m "feat(announcement): 접수기간과 지역 검색 조건 추가 (
 - Create: `backend/src/main/java/com/toadzip/backend/announcement/exception/InvalidRegionCodeException.java`
 - Modify: `backend/src/main/java/com/toadzip/backend/announcement/controller/AnnouncementController.java`
 - Modify: `backend/src/main/java/com/toadzip/backend/announcement/controller/AnnouncementExceptionAdvice.java`
+- Modify: `backend/src/main/java/com/toadzip/backend/announcement/repository/AnnouncementRepository.java`
 - Modify: `backend/src/main/java/com/toadzip/backend/announcement/service/AnnouncementQueryService.java`
 - Modify: `backend/src/test/java/com/toadzip/backend/announcement/controller/AnnouncementControllerTest.java`
 - Modify: `backend/src/test/java/com/toadzip/backend/announcement/service/AnnouncementQueryServiceTest.java`
@@ -340,7 +338,11 @@ Expected: FAIL because request DTO and new service signature do not exist.
 
 Controller는 `@ModelAttribute AnnouncementSearchRequest request`와 기존 `cursor`, `size`를 받는다. Service는 null list를 empty set으로 정규화하고 keyword trim, 기간 순서, 취소 상태, region code를 repository 호출 전에 검증한다. LIKE 문법 escaping은 query를 소유하는 `AnnouncementSearchRepository`가 담당한다. 유효한 region은 `equivalentCodes` 결과를 condition에 넣는다. 오늘 날짜는 한 번만 계산하고 condition과 mapper에 재사용한다.
 
-- [ ] **Step 6: `INVALID_REGION_CODE` advice 계약 구현**
+- [ ] **Step 6: 서비스 전환 뒤 기존 목록 JPQL 제거**
+
+`AnnouncementQueryService`가 `AnnouncementSearchRepository.findLatestLeaves(...)`만 사용하도록 전환한 뒤 `AnnouncementRepository.findLatestLeaves(Pageable)`와 `findLatestLeavesAfter(...)`를 제거한다. `findDetailById(...)`와 `JpaRepository` 책임은 유지한다.
+
+- [ ] **Step 7: `INVALID_REGION_CODE` advice 계약 구현**
 
 ```java
 @ExceptionHandler(InvalidRegionCodeException.class)
@@ -349,13 +351,13 @@ public ResponseEntity<ErrorResponse> handleInvalidRegionCode(HttpServletRequest 
 }
 ```
 
-- [ ] **Step 7: Controller와 Service 테스트 통과 확인**
+- [ ] **Step 8: Controller와 Service 테스트 통과 확인**
 
 Run: `cd backend && ./gradlew test --tests '*AnnouncementControllerTest' --tests '*AnnouncementQueryServiceTest'`
 
 Expected: PASS, including previous size/cursor/detail contracts.
 
-- [ ] **Step 8: 커밋**
+- [ ] **Step 9: 커밋**
 
 ```bash
 git add backend/src/main/java/com/toadzip/backend/announcement \
