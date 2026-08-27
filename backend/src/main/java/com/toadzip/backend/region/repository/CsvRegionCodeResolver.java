@@ -5,8 +5,11 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
@@ -26,6 +29,8 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver {
 
     private final Map<String, String> regionNames;
     private final Map<String, String> regionCodeAliases;
+    private final Map<String, Set<String>> equivalentRegionCodes;
+    private final Set<String> registeredProvinceCodes;
 
     @Autowired
     CsvRegionCodeResolver(
@@ -34,6 +39,8 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver {
     ) {
         regionNames = loadRegionNames(regionResource);
         regionCodeAliases = loadRegionCodeAliases(aliasResource, regionNames);
+        equivalentRegionCodes = buildEquivalentRegionCodes(regionNames.keySet(), regionCodeAliases);
+        registeredProvinceCodes = buildRegisteredProvinceCodes(regionNames.keySet());
     }
 
     @Override
@@ -52,6 +59,44 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver {
                 cityCountyDistrictCode
         );
         return Optional.ofNullable(regionNames.get(currentRegionCode));
+    }
+
+    @Override
+    public Optional<Set<String>> equivalentCodes(String regionCode) {
+        if (regionCode == null || !regionCode.matches("[0-9]{5}")) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(equivalentRegionCodes.get(regionCode));
+    }
+
+    @Override
+    public boolean isRegisteredProvinceCode(String provinceCode) {
+        return provinceCode != null
+                && provinceCode.matches("[0-9]{2}")
+                && registeredProvinceCodes.contains(provinceCode);
+    }
+
+    private static Map<String, Set<String>> buildEquivalentRegionCodes(
+            Set<String> regionCodes,
+            Map<String, String> regionCodeAliases
+    ) {
+        Map<String, Set<String>> codesByCurrentRegionCode = new HashMap<>();
+        regionCodes.forEach(regionCode -> codesByCurrentRegionCode.put(regionCode, new HashSet<>(Set.of(regionCode))));
+        regionCodeAliases.forEach((legacyRegionCode, currentRegionCode) ->
+                codesByCurrentRegionCode.get(currentRegionCode).add(legacyRegionCode));
+
+        Map<String, Set<String>> equivalentCodes = new HashMap<>();
+        codesByCurrentRegionCode.values().forEach(codes -> {
+            Set<String> immutableCodes = Set.copyOf(codes);
+            codes.forEach(regionCode -> equivalentCodes.put(regionCode, immutableCodes));
+        });
+        return Map.copyOf(equivalentCodes);
+    }
+
+    private static Set<String> buildRegisteredProvinceCodes(Set<String> regionCodes) {
+        return regionCodes.stream()
+                .map(regionCode -> regionCode.substring(0, 2))
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     private static Map<String, String> loadRegionNames(Resource resource) {

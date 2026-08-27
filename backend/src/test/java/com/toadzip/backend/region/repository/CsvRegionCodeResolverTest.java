@@ -1,6 +1,7 @@
 package com.toadzip.backend.region.repository;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -144,6 +145,26 @@ class CsvRegionCodeResolverTest {
 
         assertEquals("전남광주통합특별시 동구", resolver.resolve("29", "29110").orElseThrow());
         assertEquals("전남광주통합특별시 동구", resolver.resolve("12", "12210").orElseThrow());
+    }
+
+    @Test
+    void 현재와_과거_시군구코드는_같은_동등코드_집합으로_해석한다() {
+        CsvRegionCodeResolver resolver = resolverWithContentsAndAliases(
+                HEADER + "\n12210,전남광주통합특별시,동구,전남광주통합특별시 동구",
+                ALIAS_HEADER + "\n29110,12210"
+        );
+
+        Set<String> expected = Set.of("12210", "29110");
+        assertEquals(expected, resolver.equivalentCodes("12210").orElseThrow());
+        assertEquals(expected, resolver.equivalentCodes("29110").orElseThrow());
+    }
+
+    @Test
+    void 정본_지역에_존재하는_시도_prefix만_등록된_시도코드다() {
+        CsvRegionCodeResolver resolver = resolver("11140,서울특별시,중구,서울특별시 중구");
+
+        assertTrue(resolver.isRegisteredProvinceCode("11"));
+        assertFalse(resolver.isRegisteredProvinceCode("99"));
     }
 
     @Test

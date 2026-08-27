@@ -12,6 +12,7 @@ import com.toadzip.backend.housing.exception.HousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.InvalidComplexCursorException;
 import com.toadzip.backend.housing.exception.InvalidComplexRequestException;
 import com.toadzip.backend.housing.exception.InvalidMapBoundsException;
+import com.toadzip.backend.housing.exception.InvalidRegionCodeException;
 
 class HousingComplexExceptionAdviceTest {
 
@@ -33,6 +34,11 @@ class HousingComplexExceptionAdviceTest {
                 advice.handleInvalidComplexRequest(new InvalidComplexRequestException(), new MockHttpServletRequest()),
                 BAD_REQUEST,
                 "INVALID_REQUEST"
+        );
+        assertError(
+                advice.handleInvalidRegionCode(new InvalidRegionCodeException(), new MockHttpServletRequest()),
+                BAD_REQUEST,
+                "INVALID_REGION_CODE"
         );
         assertError(
                 advice.handleHousingComplexNotFound(new HousingComplexNotFoundException(), new MockHttpServletRequest()),
