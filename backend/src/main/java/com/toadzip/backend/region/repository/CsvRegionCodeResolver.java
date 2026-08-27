@@ -41,10 +41,10 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver {
         if (provinceCode == null || cityCountyDistrictCode == null) {
             return Optional.empty();
         }
-        if (!provinceCode.matches("\\d{2}")) {
+        if (!provinceCode.matches("[0-9]{2}") || !cityCountyDistrictCode.matches("[0-9]{5}")) {
             return Optional.empty();
         }
-        if (!cityCountyDistrictCode.startsWith(provinceCode)) {
+        if (!cityCountyDistrictCode.substring(0, 2).equals(provinceCode)) {
             return Optional.empty();
         }
         String currentRegionCode = regionCodeAliases.getOrDefault(
