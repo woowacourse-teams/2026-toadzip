@@ -296,15 +296,17 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver, RegionSe
             Map<String, RegionSearchResult> canonicalRegions
     ) {
         Map<String, RegionSearchResult> provinceAggregates = new HashMap<>();
-        canonicalRegions.values().forEach(region -> provinceAggregates.putIfAbsent(
-                provinceCode(region.regionCode()),
-                new RegionSearchResult(
+        canonicalRegions.values().stream()
+                .sorted(Comparator.comparing(RegionSearchResult::regionCode))
+                .forEach(region -> provinceAggregates.putIfAbsent(
                         provinceCode(region.regionCode()),
-                        region.provinceName(),
-                        null,
-                        region.provinceName() + " 전체"
-                )
-        ));
+                        new RegionSearchResult(
+                                provinceCode(region.regionCode()),
+                                region.provinceName(),
+                                null,
+                                region.provinceName() + " 전체"
+                        )
+                ));
         List<RegionSearchResult> results = new ArrayList<>(provinceAggregates.values());
         results.addAll(canonicalRegions.values());
         results.sort(Comparator.comparing(
