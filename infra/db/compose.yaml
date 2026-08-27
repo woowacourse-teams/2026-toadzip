@@ -1,0 +1,59 @@
+services:
+  db-dev:
+    image: postgres:17-alpine
+    container_name: toadzip-db-dev
+    environment:
+      POSTGRES_DB: toadzip
+      POSTGRES_USER: toadzip
+      POSTGRES_PASSWORD: ${DEV_DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U toadzip -d toadzip"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  db-prod:
+    image: postgres:17-alpine
+    container_name: toadzip-db-prod
+    environment:
+      POSTGRES_DB: toadzip
+      POSTGRES_USER: toadzip
+      POSTGRES_PASSWORD: ${PROD_DB_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - db_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U toadzip -d toadzip"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  db-shared:
+    image: postgres:17-alpine
+    container_name: toadzip-db-shared
+    environment:
+      POSTGRES_DB: toadzip_shared
+      POSTGRES_USER: toadzip
+      POSTGRES_PASSWORD: ${SHARED_DB_PASSWORD}
+    ports:
+      - "5434:5432"
+    volumes:
+      - db_shared_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U toadzip -d toadzip_shared"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  db_dev_data:
+  db_prod_data:
+  db_shared_data:
