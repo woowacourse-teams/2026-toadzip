@@ -251,9 +251,10 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeRegion seoul = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion busan = new MyHomeRegion("26", "110", "부산광역시", "중구");
         MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
-        when(regionCatalog.findAll()).thenReturn(List.of(seoul, busan));
+        when(regionCatalog.findAll()).thenReturn(List.of(busan, seoul));
         when(externalRepository.fetch(seoul, request, 1)).thenReturn(response("[{\"hsmpSn\":1}]"));
         when(externalRepository.fetch(busan, request, 1)).thenReturn(response("[{\"hsmpSn\":2}]"));
+        when(sourceStore.replaceComplexRegion(eq(busan), any())).thenReturn(1);
         when(sourceStore.replaceComplexRegion(eq(seoul), any()))
                 .thenThrow(new IllegalStateException("DB 저장 실패"));
 
