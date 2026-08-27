@@ -11,4 +11,8 @@ public interface RegionCodeResolver {
     default Optional<Set<String>> equivalentProvinceCodes(String provinceCode) {
         return Optional.empty();
     }
+
+    default Optional<Set<String>> equivalentCodes(String regionCode) {
+        return Optional.empty();
+    }
 }

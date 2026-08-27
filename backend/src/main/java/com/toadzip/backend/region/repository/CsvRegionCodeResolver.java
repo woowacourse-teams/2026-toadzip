@@ -35,6 +35,7 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver, RegionSe
     private final Map<String, String> regionCodeAliases;
     private final List<RegionSearchResult> searchResults;
     private final Map<String, Set<String>> provinceCodeEquivalences;
+    private final Map<String, Set<String>> equivalentRegionCodes;
 
     @Autowired
     CsvRegionCodeResolver(
@@ -45,6 +46,7 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver, RegionSe
         regionCodeAliases = loadRegionCodeAliases(aliasResource, canonicalRegions);
         searchResults = createSearchResults(canonicalRegions);
         provinceCodeEquivalences = createProvinceCodeEquivalences(canonicalRegions, regionCodeAliases);
+        equivalentRegionCodes = buildEquivalentRegionCodes(canonicalRegions, regionCodeAliases);
     }
 
     @Override
@@ -88,6 +90,31 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver, RegionSe
         return region.provinceName().contains(keyword)
                 || region.districtName().contains(keyword)
                 || region.displayName().contains(keyword);
+    }
+
+    @Override
+    public Optional<Set<String>> equivalentCodes(String regionCode) {
+        if (regionCode == null) {
+            return Optional.empty();
+        }
+        String currentRegionCode = regionCodeAliases.getOrDefault(regionCode, regionCode);
+        return Optional.ofNullable(equivalentRegionCodes.get(currentRegionCode));
+    }
+
+    private static Map<String, Set<String>> buildEquivalentRegionCodes(
+            Map<String, RegionSearchResult> canonicalRegions,
+            Map<String, String> regionCodeAliases
+    ) {
+        Map<String, Set<String>> codesByCurrentRegionCode = new HashMap<>();
+        canonicalRegions.keySet().forEach(regionCode ->
+                codesByCurrentRegionCode.put(regionCode, new HashSet<>(Set.of(regionCode))));
+        regionCodeAliases.forEach((legacyRegionCode, currentRegionCode) ->
+                codesByCurrentRegionCode.get(currentRegionCode).add(legacyRegionCode));
+
+        Map<String, Set<String>> immutableCodesByCurrentRegionCode = new HashMap<>();
+        codesByCurrentRegionCode.forEach((currentRegionCode, equivalentCodes) ->
+                immutableCodesByCurrentRegionCode.put(currentRegionCode, Set.copyOf(equivalentCodes)));
+        return Map.copyOf(immutableCodesByCurrentRegionCode);
     }
 
     private static Map<String, RegionSearchResult> loadCanonicalRegions(Resource resource) {
