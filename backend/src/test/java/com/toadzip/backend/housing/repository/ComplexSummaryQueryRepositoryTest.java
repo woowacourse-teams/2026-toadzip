@@ -97,8 +97,8 @@ class ComplexSummaryQueryRepositoryTest {
         ComplexSummaryRow row = repository.findAllInBounds(SEOUL_BOUNDS).getFirst();
 
         assertAll(
-                () -> assertEquals(new BigDecimal("36.12"), row.exclusiveAreaMin()),
-                () -> assertEquals(new BigDecimal("44.87"), row.exclusiveAreaMax()),
+                () -> assertEquals(new BigDecimal("36.1200"), row.exclusiveAreaMin()),
+                () -> assertEquals(new BigDecimal("44.8700"), row.exclusiveAreaMax()),
                 () -> assertBigDecimalEquals("50000000", row.depositMin()),
                 () -> assertBigDecimalEquals("70000000", row.depositMax()),
                 () -> assertBigDecimalEquals("200000", row.monthlyRentMin()),

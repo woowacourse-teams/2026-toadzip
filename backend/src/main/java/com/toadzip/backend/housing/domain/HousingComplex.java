@@ -48,20 +48,20 @@ public class HousingComplex {
     @Column(nullable = false)
     private String provider;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private LocalDate completionDate;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private String heatingType;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private String housingType;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private String corridorType;
 
-    @Column(nullable = false)
-    private boolean elevatorInstalled;
+    @Column(nullable = true)
+    private Boolean elevatorInstalled;
 
     @Column(nullable = false)
     private int parkingSpaceCount;
@@ -81,7 +81,7 @@ public class HousingComplex {
             String heatingType,
             String housingType,
             String corridorType,
-            boolean elevatorInstalled,
+            Boolean elevatorInstalled,
             int parkingSpaceCount,
             String imageUrl,
             Integer recentOneYearMoveOutCount
@@ -92,10 +92,9 @@ public class HousingComplex {
         validateRequired(address, "주소");
         validateNonNegative(totalHouseholdCount, "전체 세대수");
         validateNotBlank(provider, "공급기관");
-        validateRequired(completionDate, "준공일");
-        validateNotBlank(heatingType, "난방유형");
-        validateNotBlank(housingType, "주택유형");
-        validateNotBlank(corridorType, "복도유형");
+        validateNotBlankIfPresent(heatingType, "난방유형");
+        validateNotBlankIfPresent(housingType, "주택유형");
+        validateNotBlankIfPresent(corridorType, "복도유형");
         validateNonNegative(parkingSpaceCount, "주차대수");
         validateNonNegativeIfPresent(recentOneYearMoveOutCount, "최근 1년 퇴거자 수");
         this.name = name;
@@ -125,7 +124,7 @@ public class HousingComplex {
             String heatingType,
             String housingType,
             String corridorType,
-            boolean elevatorInstalled,
+            Boolean elevatorInstalled,
             int parkingSpaceCount,
             String imageUrl,
             Integer recentOneYearMoveOutCount
@@ -159,7 +158,7 @@ public class HousingComplex {
             String heatingType,
             String housingType,
             String corridorType,
-            boolean elevatorInstalled,
+            Boolean elevatorInstalled,
             int parkingSpaceCount
     ) {
         return new HousingComplex(
@@ -190,7 +189,7 @@ public class HousingComplex {
             String heatingType,
             String housingType,
             String corridorType,
-            boolean elevatorInstalled,
+            Boolean elevatorInstalled,
             int parkingSpaceCount
     ) {
         HousingComplex incoming = createFromMyHome(
@@ -220,11 +219,11 @@ public class HousingComplex {
                 && address.hasSameValues(incoming.address)
                 && totalHouseholdCount == incoming.totalHouseholdCount
                 && provider.equals(incoming.provider)
-                && completionDate.equals(incoming.completionDate)
-                && heatingType.equals(incoming.heatingType)
-                && housingType.equals(incoming.housingType)
-                && corridorType.equals(incoming.corridorType)
-                && elevatorInstalled == incoming.elevatorInstalled
+                && java.util.Objects.equals(completionDate, incoming.completionDate)
+                && java.util.Objects.equals(heatingType, incoming.heatingType)
+                && java.util.Objects.equals(housingType, incoming.housingType)
+                && java.util.Objects.equals(corridorType, incoming.corridorType)
+                && java.util.Objects.equals(elevatorInstalled, incoming.elevatorInstalled)
                 && parkingSpaceCount == incoming.parkingSpaceCount;
     }
 
@@ -251,6 +250,12 @@ public class HousingComplex {
     private void validateRequired(Object value, String fieldName) {
         if (value == null) {
             throw new IllegalArgumentException(fieldName + "은 필수다.");
+        }
+    }
+
+    private void validateNotBlankIfPresent(String value, String fieldName) {
+        if (value != null && value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + "은 비어 있을 수 없다.");
         }
     }
 

@@ -9,17 +9,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.toadzip.backend.ingest.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.dto.MyHomeComplexMappingFailureResponse;
+import com.toadzip.backend.ingest.dto.MyHomeComplexMappingPreparationReport;
 import com.toadzip.backend.ingest.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.service.MyHomeComplexMappingService;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(MyHomeComplexMappingController.class)
+@AutoConfigureMockMvc(addFilters = false)
 class MyHomeComplexMappingControllerTest {
 
     @Autowired
@@ -27,6 +30,33 @@ class MyHomeComplexMappingControllerTest {
 
     @MockitoBean
     private MyHomeComplexMappingService mappingService;
+
+    @Test
+    void 좌표_조회_전_단지_후보를_준비한다() throws Exception {
+        when(mappingService.prepare()).thenReturn(new MyHomeComplexMappingPreparationReport(10, 2));
+
+        mockMvc.perform(post("/api/admin/ingest/myhome/complex-mappings/candidates"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stagedCandidateCount").value(10))
+                .andExpect(jsonPath("$.failedSourceRowCount").value(2));
+
+        verify(mappingService).prepare();
+    }
+
+    @Test
+    void 준비된_후보를_요청한_배치_크기로_매핑한다() throws Exception {
+        when(mappingService.mapNext(50)).thenReturn(new MyHomeComplexMappingReport(
+                1, 0, 0, 2, 0, 0, 0, 0
+        ));
+
+        mockMvc.perform(post("/api/admin/ingest/myhome/complex-mappings/batches")
+                        .param("batchSize", "50"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdComplexCount").value(1))
+                .andExpect(jsonPath("$.createdHousingTypeCount").value(2));
+
+        verify(mappingService).mapNext(50);
+    }
 
     @Test
     void 저장된_마이홈_원천의_단지와_주택형_매핑을_실행한다() throws Exception {

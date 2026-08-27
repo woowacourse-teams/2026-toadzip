@@ -48,12 +48,16 @@ public class HousingType {
     @Column(precision = 10, scale = 4)
     private BigDecimal supplyArea;
 
+    @Column(nullable = true)
     private Integer totalHouseholdCount;
 
+    @Column(nullable = true)
     private String floorPlanUrl;
 
+    @Column(nullable = true)
     private Boolean duplex;
 
+    @Column(nullable = true)
     private BigDecimal maintenanceFee;
 
     private HousingType(

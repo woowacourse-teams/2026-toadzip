@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.service;
 
+import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
@@ -31,8 +32,8 @@ public class MyHomeComplexMappingWriter {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public MyHomeComplexMappingReport write(MyHomeComplexMappingData data) {
-        ComplexWriteResult complexResult = upsertComplex(data);
+    public MyHomeComplexMappingReport write(MyHomeComplexMappingData data, Address address) {
+        ComplexWriteResult complexResult = upsertComplex(data, address);
         HousingTypeWriteResult housingTypeResult = synchronizeHousingTypes(
                 complexResult.complex(),
                 data.housingTypes()
@@ -49,7 +50,7 @@ public class MyHomeComplexMappingWriter {
         );
     }
 
-    private ComplexWriteResult upsertComplex(MyHomeComplexMappingData data) {
+    private ComplexWriteResult upsertComplex(MyHomeComplexMappingData data, Address address) {
         HousingComplex complex = complexRepository
                 .findBySourceComplexIdentifier(data.sourceComplexIdentifier())
                 .orElse(null);
@@ -58,7 +59,7 @@ public class MyHomeComplexMappingWriter {
                     data.name(),
                     data.sourceComplexIdentifier(),
                     data.supplyType(),
-                    data.address(),
+                    address,
                     data.totalHouseholdCount(),
                     data.provider(),
                     data.completionDate(),
@@ -73,7 +74,7 @@ public class MyHomeComplexMappingWriter {
         boolean updated = complex.updateFromMyHome(
                 data.name(),
                 data.supplyType(),
-                data.address(),
+                address,
                 data.totalHouseholdCount(),
                 data.provider(),
                 data.completionDate(),

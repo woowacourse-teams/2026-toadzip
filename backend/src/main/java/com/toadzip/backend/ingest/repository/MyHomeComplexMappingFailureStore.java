@@ -19,4 +19,13 @@ public class MyHomeComplexMappingFailureStore {
         repository.deleteAllInBatch();
         repository.saveAll(failures);
     }
+
+    @Transactional
+    public void replaceForComplex(
+            String sourceComplexIdentifier,
+            List<MyHomeComplexMappingFailure> failures
+    ) {
+        repository.deleteAllBySourceComplexIdentifier(sourceComplexIdentifier);
+        repository.saveAll(failures);
+    }
 }

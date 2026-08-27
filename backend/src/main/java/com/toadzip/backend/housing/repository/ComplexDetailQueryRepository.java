@@ -198,7 +198,7 @@ public class ComplexDetailQueryRepository {
                 resultSet.getBigDecimal("longitude"),
                 resultSet.getObject("completion_date", LocalDate.class),
                 resultSet.getString("building_type"),
-                resultSet.getBoolean("has_elevator"),
+                resultSet.getObject("has_elevator", Boolean.class),
                 resultSet.getString("heating_type"),
                 resultSet.getString("corridor_type"),
                 resultSet.getObject("move_out_count_last_year", Integer.class),
@@ -214,7 +214,7 @@ public class ComplexDetailQueryRepository {
                 resultSet.getBigDecimal("exclusive_area"),
                 resultSet.getBigDecimal("supply_area"),
                 resultSet.getString("floor_plan_image_url"),
-                resultSet.getBoolean("is_duplex"),
+                resultSet.getObject("is_duplex", Boolean.class),
                 resultSet.getBigDecimal("maintenance_fee")
         );
     }

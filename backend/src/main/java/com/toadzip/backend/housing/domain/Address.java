@@ -5,6 +5,7 @@ import static lombok.AccessLevel.PROTECTED;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Objects;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -13,6 +14,8 @@ import lombok.NoArgsConstructor;
 @Embeddable
 @NoArgsConstructor(access = PROTECTED)
 public class Address {
+
+    private static final int COORDINATE_SCALE = 6;
 
     @Column(nullable = false)
     private String roadAddress;
@@ -29,10 +32,10 @@ public class Address {
     @Column(nullable = false)
     private String cityCountyDistrictCode;
 
-    @Column(precision = 9, scale = 6)
+    @Column(nullable = false, precision = 9, scale = 6)
     private BigDecimal latitude;
 
-    @Column(precision = 10, scale = 6)
+    @Column(nullable = false, precision = 10, scale = 6)
     private BigDecimal longitude;
 
     private Address(
@@ -54,8 +57,8 @@ public class Address {
         this.legalDongCode = legalDongCode;
         this.provinceCode = provinceCode;
         this.cityCountyDistrictCode = cityCountyDistrictCode;
-        this.latitude = latitude;
-        this.longitude = longitude;
+        this.latitude = normalizeCoordinate(latitude);
+        this.longitude = normalizeCoordinate(longitude);
     }
 
     public static Address create(
@@ -77,24 +80,6 @@ public class Address {
                 cityCountyDistrictCode,
                 latitude,
                 longitude
-        );
-    }
-
-    public static Address createFromMyHome(
-            String roadAddress,
-            String pnu,
-            String legalDongCode,
-            String provinceCode,
-            String cityCountyDistrictCode
-    ) {
-        return new Address(
-                roadAddress,
-                pnu,
-                legalDongCode,
-                provinceCode,
-                cityCountyDistrictCode,
-                null,
-                null
         );
     }
 
@@ -137,5 +122,9 @@ public class Address {
                 || longitude.compareTo(BigDecimal.valueOf(180)) > 0) {
             throw new IllegalArgumentException("경도는 -180도 이상 180도 이하여야 한다.");
         }
+    }
+
+    private static BigDecimal normalizeCoordinate(BigDecimal coordinate) {
+        return coordinate.setScale(COORDINATE_SCALE, RoundingMode.HALF_UP);
     }
 }

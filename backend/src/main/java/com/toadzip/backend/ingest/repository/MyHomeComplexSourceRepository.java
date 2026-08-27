@@ -11,4 +11,6 @@ public interface MyHomeComplexSourceRepository extends JpaRepository<MyHomeCompl
     List<MyHomeComplexSource> findAllBySourceKeyIn(Collection<String> sourceKeys);
 
     List<MyHomeComplexSource> findAllByBrtcCodeAndSignguCode(String brtcCode, String signguCode);
+
+    List<MyHomeComplexSource> findAllByHsmpSnIn(Collection<Long> hsmpSns);
 }

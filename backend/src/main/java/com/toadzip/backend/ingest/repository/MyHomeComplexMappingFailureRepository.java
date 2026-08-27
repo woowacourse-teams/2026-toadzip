@@ -8,4 +8,6 @@ public interface MyHomeComplexMappingFailureRepository
         extends JpaRepository<MyHomeComplexMappingFailure, Long> {
 
     List<MyHomeComplexMappingFailure> findAllByOrderBySourceKeyAsc();
+
+    void deleteAllBySourceComplexIdentifier(String sourceComplexIdentifier);
 }
