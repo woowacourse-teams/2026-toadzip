@@ -261,6 +261,7 @@ git commit -m "feat(announcement): 접수기간과 지역 검색 조건 추가 (
 - Modify: `backend/src/main/java/com/toadzip/backend/announcement/repository/AnnouncementRepository.java`
 - Modify: `backend/src/main/java/com/toadzip/backend/announcement/service/AnnouncementQueryService.java`
 - Modify: `backend/src/test/java/com/toadzip/backend/announcement/controller/AnnouncementControllerTest.java`
+- Modify: `backend/src/test/java/com/toadzip/backend/announcement/repository/AnnouncementQueryRepositoryTest.java`
 - Modify: `backend/src/test/java/com/toadzip/backend/announcement/service/AnnouncementQueryServiceTest.java`
 
 **Interfaces:**
@@ -340,7 +341,7 @@ Controller는 `@ModelAttribute AnnouncementSearchRequest request`와 기존 `cur
 
 - [ ] **Step 6: 서비스 전환 뒤 기존 목록 JPQL 제거**
 
-`AnnouncementQueryService`가 `AnnouncementSearchRepository.findLatestLeaves(...)`만 사용하도록 전환한 뒤 `AnnouncementRepository.findLatestLeaves(Pageable)`와 `findLatestLeavesAfter(...)`를 제거한다. `findDetailById(...)`와 `JpaRepository` 책임은 유지한다.
+`AnnouncementQueryService`가 `AnnouncementSearchRepository.findLatestLeaves(...)`만 사용하도록 전환하고, 기존 repository 회귀 테스트의 목록 호출도 새 repository의 무필터 조건으로 이관한다. 그 뒤 `AnnouncementRepository.findLatestLeaves(Pageable)`와 `findLatestLeavesAfter(...)`를 제거한다. 기존 회귀 테스트를 삭제하지 않고 `findDetailById(...)`와 `JpaRepository` 책임은 유지한다.
 
 - [ ] **Step 7: `INVALID_REGION_CODE` advice 계약 구현**
 
@@ -353,7 +354,7 @@ public ResponseEntity<ErrorResponse> handleInvalidRegionCode(HttpServletRequest 
 
 - [ ] **Step 8: Controller와 Service 테스트 통과 확인**
 
-Run: `cd backend && ./gradlew test --tests '*AnnouncementControllerTest' --tests '*AnnouncementQueryServiceTest'`
+Run: `cd backend && ./gradlew test --tests '*AnnouncementControllerTest' --tests '*AnnouncementQueryServiceTest' --tests '*AnnouncementQueryRepositoryTest'`
 
 Expected: PASS, including previous size/cursor/detail contracts.
 
@@ -362,6 +363,7 @@ Expected: PASS, including previous size/cursor/detail contracts.
 ```bash
 git add backend/src/main/java/com/toadzip/backend/announcement \
   backend/src/test/java/com/toadzip/backend/announcement/controller/AnnouncementControllerTest.java \
+  backend/src/test/java/com/toadzip/backend/announcement/repository/AnnouncementQueryRepositoryTest.java \
   backend/src/test/java/com/toadzip/backend/announcement/service/AnnouncementQueryServiceTest.java
 git commit -m "feat(announcement): 공고 검색 요청과 검증 연결 (#22)"
 ```
