@@ -1,18 +1,18 @@
-package com.toadzip.backend.geocoding.service;
+package com.toadzip.backend.ingest.service;
 
-import static com.toadzip.backend.geocoding.exception.RoadAddressGeocodingFailureReason.ADDRESS_NOT_FOUND;
-import static com.toadzip.backend.geocoding.exception.RoadAddressGeocodingFailureReason.AMBIGUOUS_ADDRESS;
-import static com.toadzip.backend.geocoding.exception.RoadAddressGeocodingFailureReason.COORDINATE_NOT_FOUND;
-import static com.toadzip.backend.geocoding.exception.RoadAddressGeocodingFailureReason.INVALID_ADDRESS;
+import static com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingFailureReason.ADDRESS_NOT_FOUND;
+import static com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingFailureReason.AMBIGUOUS_ADDRESS;
+import static com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingFailureReason.COORDINATE_NOT_FOUND;
+import static com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingFailureReason.INVALID_ADDRESS;
 
-import com.toadzip.backend.geocoding.domain.NormalizedRoadAddress;
-import com.toadzip.backend.geocoding.domain.RoadAddressCandidate;
-import com.toadzip.backend.geocoding.domain.UtmKCoordinate;
-import com.toadzip.backend.geocoding.domain.Wgs84Coordinate;
-import com.toadzip.backend.geocoding.dto.GeocodedRoadAddress;
-import com.toadzip.backend.geocoding.exception.RoadAddressGeocodingException;
-import com.toadzip.backend.geocoding.repository.RoadAddressCoordinateRepository;
-import com.toadzip.backend.geocoding.repository.external.JusoApiException;
+import com.toadzip.backend.ingest.domain.NormalizedRoadAddress;
+import com.toadzip.backend.ingest.domain.RoadAddressCandidate;
+import com.toadzip.backend.ingest.domain.UtmKCoordinate;
+import com.toadzip.backend.ingest.domain.Wgs84Coordinate;
+import com.toadzip.backend.ingest.dto.GeocodedRoadAddress;
+import com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingException;
+import com.toadzip.backend.ingest.repository.RoadAddressCoordinateRepository;
+import com.toadzip.backend.ingest.repository.external.JusoApiException;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;

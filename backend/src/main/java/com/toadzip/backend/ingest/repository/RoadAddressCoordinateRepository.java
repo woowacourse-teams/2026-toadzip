@@ -1,8 +1,8 @@
-package com.toadzip.backend.geocoding.repository;
+package com.toadzip.backend.ingest.repository;
 
-import com.toadzip.backend.geocoding.domain.JusoAddressCode;
-import com.toadzip.backend.geocoding.domain.RoadAddressCandidate;
-import com.toadzip.backend.geocoding.domain.UtmKCoordinate;
+import com.toadzip.backend.ingest.domain.JusoAddressCode;
+import com.toadzip.backend.ingest.domain.RoadAddressCandidate;
+import com.toadzip.backend.ingest.domain.UtmKCoordinate;
 import java.util.List;
 import java.util.Optional;
 

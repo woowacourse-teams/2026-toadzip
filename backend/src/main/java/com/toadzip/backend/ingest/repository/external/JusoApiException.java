@@ -1,6 +1,6 @@
-package com.toadzip.backend.geocoding.repository.external;
+package com.toadzip.backend.ingest.repository.external;
 
-import com.toadzip.backend.geocoding.exception.RoadAddressGeocodingFailureReason;
+import com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingFailureReason;
 
 public class JusoApiException extends RuntimeException {
 

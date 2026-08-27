@@ -1,11 +1,11 @@
-package com.toadzip.backend.geocoding.service;
+package com.toadzip.backend.ingest.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.toadzip.backend.geocoding.domain.UtmKCoordinate;
-import com.toadzip.backend.geocoding.exception.RoadAddressGeocodingException;
-import com.toadzip.backend.geocoding.exception.RoadAddressGeocodingFailureReason;
+import com.toadzip.backend.ingest.domain.UtmKCoordinate;
+import com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingException;
+import com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingFailureReason;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 

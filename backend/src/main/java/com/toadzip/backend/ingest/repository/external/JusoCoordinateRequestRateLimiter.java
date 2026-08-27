@@ -1,10 +1,10 @@
-package com.toadzip.backend.geocoding.repository.external;
+package com.toadzip.backend.ingest.repository.external;
 
 import java.time.Duration;
 import java.util.function.LongSupplier;
 import org.springframework.stereotype.Component;
 
-import com.toadzip.backend.geocoding.exception.RoadAddressGeocodingFailureReason;
+import com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingFailureReason;
 
 @Component
 public class JusoCoordinateRequestRateLimiter {

@@ -1,4 +1,4 @@
-package com.toadzip.backend.geocoding.configuration;
+package com.toadzip.backend.ingest.configuration;
 
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -8,9 +8,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
-import com.toadzip.backend.geocoding.repository.RoadAddressCoordinateRepository;
-import com.toadzip.backend.geocoding.repository.external.JusoCoordinateRequestRateLimiter;
-import com.toadzip.backend.geocoding.repository.external.JusoRoadAddressCoordinateRepository;
+import com.toadzip.backend.ingest.repository.RoadAddressCoordinateRepository;
+import com.toadzip.backend.ingest.repository.external.JusoCoordinateRequestRateLimiter;
+import com.toadzip.backend.ingest.repository.external.JusoRoadAddressCoordinateRepository;
 
 @Configuration
 @EnableConfigurationProperties(JusoGeocodingProperties.class)

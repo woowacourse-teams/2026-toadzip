@@ -1,9 +1,9 @@
-package com.toadzip.backend.geocoding.service;
+package com.toadzip.backend.ingest.service;
 
-import com.toadzip.backend.geocoding.domain.UtmKCoordinate;
-import com.toadzip.backend.geocoding.domain.Wgs84Coordinate;
-import com.toadzip.backend.geocoding.exception.RoadAddressGeocodingException;
-import com.toadzip.backend.geocoding.exception.RoadAddressGeocodingFailureReason;
+import com.toadzip.backend.ingest.domain.UtmKCoordinate;
+import com.toadzip.backend.ingest.domain.Wgs84Coordinate;
+import com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingException;
+import com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingFailureReason;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import org.locationtech.proj4j.CRSFactory;

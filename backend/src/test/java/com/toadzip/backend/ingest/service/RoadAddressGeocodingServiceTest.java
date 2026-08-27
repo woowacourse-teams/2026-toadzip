@@ -1,14 +1,14 @@
-package com.toadzip.backend.geocoding.service;
+package com.toadzip.backend.ingest.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.toadzip.backend.geocoding.domain.JusoAddressCode;
-import com.toadzip.backend.geocoding.domain.RoadAddressCandidate;
-import com.toadzip.backend.geocoding.domain.UtmKCoordinate;
-import com.toadzip.backend.geocoding.exception.RoadAddressGeocodingException;
-import com.toadzip.backend.geocoding.exception.RoadAddressGeocodingFailureReason;
-import com.toadzip.backend.geocoding.repository.RoadAddressCoordinateRepository;
+import com.toadzip.backend.ingest.domain.JusoAddressCode;
+import com.toadzip.backend.ingest.domain.RoadAddressCandidate;
+import com.toadzip.backend.ingest.domain.UtmKCoordinate;
+import com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingException;
+import com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingFailureReason;
+import com.toadzip.backend.ingest.repository.RoadAddressCoordinateRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;

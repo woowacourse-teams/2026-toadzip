@@ -1,4 +1,4 @@
-package com.toadzip.backend.geocoding.exception;
+package com.toadzip.backend.ingest.exception.exception;
 
 public class RoadAddressGeocodingException extends RuntimeException {
 

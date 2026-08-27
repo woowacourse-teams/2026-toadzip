@@ -1,4 +1,4 @@
-package com.toadzip.backend.geocoding.domain;
+package com.toadzip.backend.ingest.domain;
 
 public record JusoAddressCode(
         String administrativeCode,

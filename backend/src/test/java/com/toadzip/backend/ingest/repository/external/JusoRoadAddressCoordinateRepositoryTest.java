@@ -1,12 +1,12 @@
-package com.toadzip.backend.geocoding.repository.external;
+package com.toadzip.backend.ingest.repository.external;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
-import com.toadzip.backend.geocoding.configuration.JusoGeocodingProperties;
-import com.toadzip.backend.geocoding.domain.JusoAddressCode;
-import com.toadzip.backend.geocoding.exception.RoadAddressGeocodingFailureReason;
+import com.toadzip.backend.ingest.configuration.JusoGeocodingProperties;
+import com.toadzip.backend.ingest.domain.JusoAddressCode;
+import com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingFailureReason;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

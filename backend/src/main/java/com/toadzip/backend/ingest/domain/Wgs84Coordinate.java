@@ -1,4 +1,4 @@
-package com.toadzip.backend.geocoding.domain;
+package com.toadzip.backend.ingest.domain;
 
 import java.math.BigDecimal;
 

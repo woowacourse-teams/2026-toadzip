@@ -1,4 +1,4 @@
-package com.toadzip.backend.geocoding.repository.external;
+package com.toadzip.backend.ingest.repository.external;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
