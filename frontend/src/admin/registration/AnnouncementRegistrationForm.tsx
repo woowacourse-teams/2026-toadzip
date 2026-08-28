@@ -33,8 +33,10 @@ const supplyCategories = options(['NEW_SUPPLY', 'RESUPPLY'])
 
 export function AnnouncementRegistrationForm({
   housingComplex,
+  onSubmittingChange,
 }: {
   housingComplex: HousingComplexCreateResponse | null
+  onSubmittingChange: (isSubmitting: boolean) => void
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
@@ -50,6 +52,7 @@ export function AnnouncementRegistrationForm({
 
   async function submit(form: HTMLFormElement, housingComplexId: number) {
     setIsSubmitting(true)
+    onSubmittingChange(true)
     setSuccess(null)
     setError(null)
     setFieldErrors({})
@@ -65,6 +68,7 @@ export function AnnouncementRegistrationForm({
       setFieldErrors(failure.fieldErrors)
     } finally {
       setIsSubmitting(false)
+      onSubmittingChange(false)
     }
   }
 

@@ -123,6 +123,23 @@ class AdminHousingComplexRegistrationIntegrationTest {
     }
 
     @Test
+    void 해석할_수_없는_지역코드_조합은_저장하지_않고_잘못된_요청으로_거부한다() throws Exception {
+        String unknownRegionRequest = validRequest()
+                .replace("\"provinceCode\": \"11\"", "\"provinceCode\": \"99\"")
+                .replace("\"cityCountyDistrictCode\": \"11140\"", "\"cityCountyDistrictCode\": \"99999\"");
+
+        mockMvc.perform(post(ENDPOINT)
+                        .with(user("admin").roles("ADMIN"))
+                        .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(unknownRegionRequest))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REGION_CODE"));
+
+        assertEquals(0, housingComplexRepository.count());
+    }
+
+    @Test
     void CSRF_토큰이_없으면_단지를_저장할_수_없다() throws Exception {
         mockMvc.perform(post(ENDPOINT)
                         .with(user("admin").roles("ADMIN"))

@@ -32,8 +32,10 @@ const buildingTypes = options(['APARTMENT', 'OFFICETEL', 'ETC'])
 const corridorTypes = options(['STAIR', 'CORRIDOR', 'MIXED', 'UNKNOWN'])
 
 export function HousingComplexRegistrationForm({
+  disabled,
   onCreated,
 }: {
+  disabled: boolean
   onCreated: (housingComplex: HousingComplexCreateResponse) => void
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -43,6 +45,9 @@ export function HousingComplexRegistrationForm({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (disabled) {
+      return
+    }
     void submit(event.currentTarget)
   }
 
@@ -69,7 +74,7 @@ export function HousingComplexRegistrationForm({
     <section className="registration-card" aria-labelledby="housing-registration-title">
       <h2 id="housing-registration-title">단지 등록</h2>
       <form className="registration-form" onSubmit={handleSubmit}>
-        <fieldset>
+        <fieldset disabled={disabled}>
           <legend>기본 정보</legend>
           <div className="registration-grid">
             <RegistrationTextField errors={fieldErrors} label="단지명" maxLength={255} name="name" required />
@@ -99,7 +104,7 @@ export function HousingComplexRegistrationForm({
           </div>
         </fieldset>
 
-        <fieldset>
+        <fieldset disabled={disabled}>
           <legend>주소</legend>
           <div className="registration-grid">
             <RegistrationTextField
@@ -154,7 +159,7 @@ export function HousingComplexRegistrationForm({
           </div>
         </fieldset>
 
-        <fieldset>
+        <fieldset disabled={disabled}>
           <legend>시설 정보</legend>
           <div className="registration-grid">
             <RegistrationTextField
@@ -228,7 +233,7 @@ export function HousingComplexRegistrationForm({
 
         {success ? <p className="registration-message registration-success" role="status">{success}</p> : null}
         {error ? <RegistrationError fieldErrors={fieldErrors} message={error} /> : null}
-        <button className="registration-submit" disabled={isSubmitting} type="submit">
+        <button className="registration-submit" disabled={isSubmitting || disabled} type="submit">
           {isSubmitting ? '단지 저장 중…' : '단지 저장'}
         </button>
       </form>

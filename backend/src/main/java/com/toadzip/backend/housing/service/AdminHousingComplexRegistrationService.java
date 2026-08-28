@@ -8,7 +8,9 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexCreateRequest;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexCreateRequest.AddressRequest;
 import com.toadzip.backend.housing.dto.response.AdminHousingComplexCreateResponse;
+import com.toadzip.backend.housing.exception.InvalidRegionCodeException;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.region.repository.RegionCodeResolver;
 
 @Service
 public class AdminHousingComplexRegistrationService {
@@ -17,16 +19,21 @@ public class AdminHousingComplexRegistrationService {
 
     private final HousingComplexSourceIdentifierGenerator identifierGenerator;
 
+    private final RegionCodeResolver regionCodeResolver;
+
     public AdminHousingComplexRegistrationService(
             HousingComplexRepository housingComplexRepository,
-            HousingComplexSourceIdentifierGenerator identifierGenerator
+            HousingComplexSourceIdentifierGenerator identifierGenerator,
+            RegionCodeResolver regionCodeResolver
     ) {
         this.housingComplexRepository = housingComplexRepository;
         this.identifierGenerator = identifierGenerator;
+        this.regionCodeResolver = regionCodeResolver;
     }
 
     @Transactional
     public AdminHousingComplexCreateResponse register(AdminHousingComplexCreateRequest request) {
+        validateRegionCode(request.address());
         Address address = createAddress(request.address());
         HousingComplex housingComplex = housingComplexRepository.save(createHousingComplex(request, address));
         return new AdminHousingComplexCreateResponse(
@@ -34,6 +41,13 @@ public class AdminHousingComplexRegistrationService {
                 housingComplex.getName(),
                 address.getRoadAddress()
         );
+    }
+
+    private void validateRegionCode(AddressRequest request) {
+        if (regionCodeResolver.resolve(request.provinceCode(), request.cityCountyDistrictCode()).isPresent()) {
+            return;
+        }
+        throw new InvalidRegionCodeException();
     }
 
     private HousingComplex createHousingComplex(

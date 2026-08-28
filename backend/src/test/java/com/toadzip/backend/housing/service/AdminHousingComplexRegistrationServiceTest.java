@@ -2,9 +2,11 @@ package com.toadzip.backend.housing.service;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.housing.domain.AgencyCode;
@@ -16,9 +18,12 @@ import com.toadzip.backend.housing.dto.request.AdminHousingComplexCreateRequest.
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexCreateRequest.CorridorType;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexCreateRequest.HeatingType;
 import com.toadzip.backend.housing.dto.response.AdminHousingComplexCreateResponse;
+import com.toadzip.backend.housing.exception.InvalidRegionCodeException;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.region.repository.RegionCodeResolver;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -32,7 +37,8 @@ class AdminHousingComplexRegistrationServiceTest {
         );
         AdminHousingComplexRegistrationService service = new AdminHousingComplexRegistrationService(
                 repository,
-                identifierGenerator
+                identifierGenerator,
+                (provinceCode, cityCountyDistrictCode) -> Optional.of("서울특별시 중구")
         );
         HousingComplex saved = mock(HousingComplex.class);
         when(identifierGenerator.generate()).thenReturn(
@@ -61,6 +67,24 @@ class AdminHousingComplexRegistrationServiceTest {
                 () -> assertEquals("APARTMENT", housingComplex.getHousingType()),
                 () -> assertEquals("STAIR", housingComplex.getCorridorType())
         );
+    }
+
+    @Test
+    void 해석할_수_없는_지역코드_조합은_저장하지_않는다() {
+        HousingComplexRepository repository = mock(HousingComplexRepository.class);
+        HousingComplexSourceIdentifierGenerator identifierGenerator = mock(
+                HousingComplexSourceIdentifierGenerator.class
+        );
+        RegionCodeResolver regionCodeResolver = (provinceCode, cityCountyDistrictCode) -> Optional.empty();
+        AdminHousingComplexRegistrationService service = new AdminHousingComplexRegistrationService(
+                repository,
+                identifierGenerator,
+                regionCodeResolver
+        );
+
+        assertThrows(InvalidRegionCodeException.class, () -> service.register(request()));
+
+        verifyNoInteractions(repository, identifierGenerator);
     }
 
     private AdminHousingComplexCreateRequest request() {

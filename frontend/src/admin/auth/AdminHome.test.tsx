@@ -142,6 +142,33 @@ describe('AdminHome', () => {
     expect(screen.getByLabelText('공고명')).toHaveValue('')
   })
 
+  it('공고 저장 중에는 선택 단지를 바꿀 수 없다', async () => {
+    apiMocks.createHousingComplex.mockResolvedValue(housingResponse())
+    const announcementResponse = deferred<AnnouncementCreateResponse>()
+    apiMocks.createAnnouncement.mockReturnValue(announcementResponse.promise)
+    render(<AdminHome />)
+    fillHousingForm()
+    submitWithButton('단지 저장')
+    await screen.findByText(/선택 단지:/)
+    fillAnnouncementForm()
+
+    submitWithButton('공고 저장')
+
+    expect(screen.getByRole('button', { name: '단지 저장' })).toBeDisabled()
+    expect(screen.getByLabelText('단지명')).toBeDisabled()
+
+    await act(async () => {
+      announcementResponse.resolve({
+        announcementId: 7,
+        supplyRowId: 9,
+        housingComplexId: 42,
+        name: '2026년 두께비 행복주택 입주자 모집',
+      })
+    })
+
+    expect(screen.getByRole('button', { name: '단지 저장' })).toBeEnabled()
+  })
+
   it('공고 저장 실패 시 입력값을 유지한다', async () => {
     apiMocks.createHousingComplex.mockResolvedValue(housingResponse())
     apiMocks.createAnnouncement.mockRejectedValue(
