@@ -40,6 +40,8 @@ public class MyHomeAnnouncementMappingService {
 
     private final MyHomeAnnouncementSourceMapper sourceMapper;
 
+    private final MyHomeAnnouncementSupplyRowResolver supplyRowResolver;
+
     private final MyHomeAnnouncementMappingWriter writer;
 
     private final Clock clock;
@@ -51,6 +53,7 @@ public class MyHomeAnnouncementMappingService {
             MyHomeAnnouncementMappingExecutionLock executionLock,
             AnnouncementRepository announcementRepository,
             MyHomeAnnouncementSourceMapper sourceMapper,
+            MyHomeAnnouncementSupplyRowResolver supplyRowResolver,
             MyHomeAnnouncementMappingWriter writer,
             Clock clock
     ) {
@@ -60,6 +63,7 @@ public class MyHomeAnnouncementMappingService {
         this.executionLock = executionLock;
         this.announcementRepository = announcementRepository;
         this.sourceMapper = sourceMapper;
+        this.supplyRowResolver = supplyRowResolver;
         this.writer = writer;
         this.clock = clock;
     }
@@ -113,7 +117,7 @@ public class MyHomeAnnouncementMappingService {
             );
         }
         try {
-            MyHomeAnnouncementMappingData data = sourceMapper.map(sources);
+            MyHomeAnnouncementMappingData data = supplyRowResolver.resolve(sourceMapper.map(sources));
             PreviousAnnouncementResult previousResult = previousAnnouncementOf(
                     data,
                     groupedSources,

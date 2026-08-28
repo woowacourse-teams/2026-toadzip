@@ -15,6 +15,12 @@ import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSourceData;
+import com.toadzip.backend.ingest.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.domain.LhAnnouncementCollectionCheckpoint;
+import com.toadzip.backend.ingest.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.domain.LhAnnouncementSupplySourceData;
+import com.toadzip.backend.ingest.repository.LhAnnouncementCollectionCheckpointRepository;
+import com.toadzip.backend.ingest.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.repository.MyHomeAnnouncementSourceRepository;
 import java.math.BigDecimal;
@@ -55,6 +61,12 @@ class MyHomeAnnouncementMappingServiceTest {
     @Autowired
     private HousingTypeRepository housingTypeRepository;
 
+    @Autowired
+    private LhAnnouncementCollectionCheckpointRepository checkpointRepository;
+
+    @Autowired
+    private LhAnnouncementSupplySourceRepository lhSupplyRepository;
+
     @BeforeEach
     void setUp() {
         supplyRowRepository.deleteAll();
@@ -63,6 +75,8 @@ class MyHomeAnnouncementMappingServiceTest {
         complexRepository.deleteAll();
         failureRepository.deleteAll();
         sourceRepository.deleteAll();
+        checkpointRepository.deleteAll();
+        lhSupplyRepository.deleteAll();
     }
 
     @Test
@@ -262,6 +276,56 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     @Test
+    void lh_공급행을_정제_단지에_연결하고_주택형명과_면적으로_정제_주택형을_확정한다() {
+        saveMappedComplex();
+        HousingComplex complex = complexRepository.findAll().getFirst();
+        HousingType nameMatched = housingTypeRepository.findAllByHousingComplex(complex).getFirst();
+        HousingType exclusiveAreaMatched = housingTypeRepository.save(HousingType.createFromMyHome(
+                complex,
+                "second-source-housing-type-id",
+                "59A",
+                new BigDecimal("59.9500"),
+                new BigDecimal("84.0500")
+        ));
+        HousingType supplyAreaMatched = housingTypeRepository.save(HousingType.createFromMyHome(
+                complex,
+                "third-source-housing-type-id",
+                "36A",
+                new BigDecimal("36.1000"),
+                new BigDecimal("50.0000")
+        ));
+        sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
+        service.mapAll();
+        saveLhSupplyCheckpoint("21026", "PAN-1");
+        lhSupplyRepository.saveAll(List.of(
+                lhSupply(0, "PAN-1", "동삼 2단지 국민임대", "46-A형", "99.0000", "99.0000"),
+                lhSupply(1, "PAN-1", "동삼 2단지 국민임대", "59형", "59.9500", "99.0000"),
+                lhSupply(2, "PAN-1", "동삼 2단지 국민임대", "기타", "99.0000", "50.0000"),
+                lhSupply(3, "PAN-1", "동삼 2단지 국민임대", "미상", "77.0000", "88.0000")
+        ));
+
+        var report = service.mapAll();
+
+        assertThat(report.createdSupplyRowCount()).isEqualTo(3);
+        assertThat(report.updatedSupplyRowCount()).isOne();
+        assertThat(report.failedSourceRowCount()).isOne();
+        assertThat(supplyRowRepository.findAll()).hasSize(4);
+        SupplyRow firstResolvedRow = supplyRowRepository.findAll().stream()
+                .filter(row -> !row.getSourceSupplyRowIdentifier().contains(":LH:"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(firstResolvedRow.getHousingType().getId()).isEqualTo(nameMatched.getId());
+        assertThat(supplyRow("21026:LH:PAN-1:1").getHousingType().getId())
+                .isEqualTo(exclusiveAreaMatched.getId());
+        assertThat(supplyRow("21026:LH:PAN-1:2").getHousingType().getId())
+                .isEqualTo(supplyAreaMatched.getId());
+        assertThat(supplyRow("21026:LH:PAN-1:3")).satisfies(row -> {
+            assertThat(row.getHousingType()).isNull();
+            assertThat(row.getMatchingFailureReason()).contains("면적으로도 주택형 하나를 확정할 수 없습니다");
+        });
+    }
+
+    @Test
     void 필수_날짜를_변환할_수_없으면_공고를_만들지_않고_실패를_기록한다() {
         MyHomeAnnouncementSourceData invalid = withPostedDate(
                 data("21026", 1, "부산도시공사", "동삼2"),
@@ -341,6 +405,46 @@ class MyHomeAnnouncementMappingServiceTest {
 
     private MyHomeAnnouncementSource source(int order, MyHomeAnnouncementSourceData data) {
         MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(order, data);
+        source.markCollectedAt(COLLECTED_AT);
+        return source;
+    }
+
+    private SupplyRow supplyRow(String sourceIdentifier) {
+        return supplyRowRepository.findBySourceSupplyRowIdentifier(sourceIdentifier).orElseThrow();
+    }
+
+    private void saveLhSupplyCheckpoint(String announcementIdentifier, String panId) {
+        checkpointRepository.save(LhAnnouncementCollectionCheckpoint.complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                announcementIdentifier,
+                "PAN_ID=" + panId + "&UPP_AIS_TP_CD=06&AIS_TP_CD=07",
+                panId,
+                COLLECTED_AT
+        ));
+    }
+
+    private LhAnnouncementSupplySource lhSupply(
+            int sourceOrder,
+            String panId,
+            String complexLabel,
+            String typeName,
+            String exclusiveArea,
+            String supplyArea
+    ) {
+        LhAnnouncementSupplySource source = new LhAnnouncementSupplySource(
+                sourceOrder,
+                panId,
+                new LhAnnouncementSupplySourceData(
+                        complexLabel,
+                        typeName,
+                        exclusiveArea,
+                        supplyArea,
+                        "100",
+                        "10",
+                        null,
+                        null
+                )
+        );
         source.markCollectedAt(COLLECTED_AT);
         return source;
     }

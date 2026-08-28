@@ -6,7 +6,18 @@ import java.util.Locale;
 
 final class MyHomeSupplyNameNormalizer {
 
-    private static final List<String> COMPLEX_SUFFIXES = List.of("아파트", "단지", "apt");
+    private static final List<String> COMPLEX_NOISE_WORDS = List.of(
+            "국민임대주택",
+            "국민임대",
+            "영구임대주택",
+            "영구임대",
+            "행복주택",
+            "통합공공임대",
+            "휴먼시아",
+            "아파트",
+            "단지",
+            "apt"
+    );
 
     private static final List<String> HOUSING_TYPE_SUFFIXES = List.of("주택형", "타입", "type", "형");
 
@@ -14,11 +25,24 @@ final class MyHomeSupplyNameNormalizer {
     }
 
     static String complexName(String value) {
-        return removeSuffixes(alphanumeric(value), COMPLEX_SUFFIXES);
+        String normalized = alphanumeric(value).replace("블록", "bl");
+        for (String noiseWord : COMPLEX_NOISE_WORDS) {
+            normalized = normalized.replace(noiseWord, "");
+        }
+        return normalized;
     }
 
     static String housingTypeName(String value) {
         return removeSuffixes(alphanumeric(value), HOUSING_TYPE_SUFFIXES);
+    }
+
+    static boolean sameComplex(String left, String right) {
+        String normalizedLeft = complexName(left);
+        String normalizedRight = complexName(right);
+        if (normalizedLeft.length() < 4 || normalizedRight.length() < 4) {
+            return normalizedLeft.equals(normalizedRight);
+        }
+        return normalizedLeft.contains(normalizedRight) || normalizedRight.contains(normalizedLeft);
     }
 
     private static String alphanumeric(String value) {

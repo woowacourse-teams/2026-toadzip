@@ -11,6 +11,7 @@ import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.dto.MyHomeAnnouncementMappingReport;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -125,7 +126,7 @@ public class MyHomeAnnouncementMappingWriter {
             if (match.failure() != null) {
                 failures.add(match.failure());
             }
-            SupplyRow stored = storedRows.get(data.source().getSourceKey());
+            SupplyRow stored = storedRows.remove(data.sourceSupplyRowIdentifier());
             if (stored == null) {
                 supplyRowRepository.save(createSupplyRow(announcement, data, match, index + 1));
                 created++;
@@ -162,7 +163,7 @@ public class MyHomeAnnouncementMappingWriter {
                 announcement,
                 match.complex(),
                 match.housingType(),
-                data.source().getSourceKey(),
+                data.sourceSupplyRowIdentifier(),
                 displayOrder,
                 data.sourceComplexName(),
                 data.sourceHousingTypeName(),
@@ -225,11 +226,17 @@ public class MyHomeAnnouncementMappingWriter {
         if (housingTypes.size() > 1) {
             HousingType matched = uniqueHousingTypeByName(housingTypes, data.sourceHousingTypeName());
             if (matched == null) {
+                matched = uniqueHousingTypeByExclusiveArea(housingTypes, data.exclusiveArea());
+            }
+            if (matched == null) {
+                matched = uniqueHousingTypeBySupplyArea(housingTypes, data.supplyArea());
+            }
+            if (matched == null) {
                 return SupplyMatchResult.failure(
                         data,
                         complex,
                         MyHomeAnnouncementMappingFailureReason.AMBIGUOUS_HOUSING_TYPE,
-                        "공고 원본의 주택형명을 보정해도 주택형 하나를 확정할 수 없습니다."
+                        "LH 공급행의 주택형명과 면적으로도 주택형 하나를 확정할 수 없습니다."
                 );
             }
             return SupplyMatchResult.matched(complex, matched);
@@ -247,6 +254,52 @@ public class MyHomeAnnouncementMappingWriter {
             return null;
         }
         return matched.getFirst();
+    }
+
+    private HousingType uniqueHousingTypeByExclusiveArea(
+            List<HousingType> housingTypes,
+            BigDecimal exclusiveArea
+    ) {
+        if (exclusiveArea == null) {
+            return null;
+        }
+        return uniqueHousingTypeByArea(
+                housingTypes,
+                housingType -> housingType.getExclusiveArea(),
+                exclusiveArea
+        );
+    }
+
+    private HousingType uniqueHousingTypeBySupplyArea(
+            List<HousingType> housingTypes,
+            BigDecimal supplyArea
+    ) {
+        if (supplyArea == null) {
+            return null;
+        }
+        return uniqueHousingTypeByArea(
+                housingTypes,
+                HousingType::getSupplyArea,
+                supplyArea
+        );
+    }
+
+    private HousingType uniqueHousingTypeByArea(
+            List<HousingType> housingTypes,
+            Function<HousingType, BigDecimal> areaExtractor,
+            BigDecimal sourceArea
+    ) {
+        List<HousingType> matched = housingTypes.stream()
+                .filter(housingType -> sameArea(areaExtractor.apply(housingType), sourceArea))
+                .toList();
+        if (matched.size() != 1) {
+            return null;
+        }
+        return matched.getFirst();
+    }
+
+    private boolean sameArea(BigDecimal left, BigDecimal right) {
+        return left != null && right != null && left.compareTo(right) == 0;
     }
 
     private MyHomeAnnouncementMappingReport reportOf(

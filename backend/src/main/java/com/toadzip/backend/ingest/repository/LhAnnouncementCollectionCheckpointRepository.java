@@ -34,6 +34,11 @@ public interface LhAnnouncementCollectionCheckpointRepository
             @Param("panIds") Collection<String> panIds
     );
 
+    List<LhAnnouncementCollectionCheckpoint> findAllBySourceAndSourceAnnouncementKeyOrderByIdAsc(
+            ExternalDataSource source,
+            String sourceAnnouncementKey
+    );
+
     @Modifying
     @Query(value = """
             insert into lh_announcement_collection_checkpoints

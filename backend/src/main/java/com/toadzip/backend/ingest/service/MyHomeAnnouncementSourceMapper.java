@@ -9,6 +9,7 @@ import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSource;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -109,12 +110,15 @@ public class MyHomeAnnouncementSourceMapper {
         String pnu = pnuOf(requiredText(source.getPnu(), "PNU"));
         return new MyHomeSupplyRowMappingData(
                 source,
+                source.getSourceKey(),
                 requiredText(source.getHsmpNm(), "단지명"),
                 requiredText(source.getHouseTyNm(), "주택유형명"),
                 pnu,
                 complexSupplyTypeOf(sourceSupplyType),
                 supplyCategoryOf(announcementName),
-                nonNegative(source.getSumSuplyCo(), "공급호수")
+                nonNegative(source.getSumSuplyCo(), "공급호수"),
+                null,
+                null
         );
     }
 
@@ -328,16 +332,38 @@ record MyHomeAnnouncementMappingData(
         ReceptionPlace receptionPlace,
         List<MyHomeSupplyRowMappingData> supplyRows
 ) {
+
+    MyHomeAnnouncementMappingData withSupplyRows(List<MyHomeSupplyRowMappingData> resolvedSupplyRows) {
+        return new MyHomeAnnouncementMappingData(
+                sourceAnnouncementIdentifier,
+                previousSourceAnnouncementIdentifier,
+                name,
+                publicationType,
+                rentalType,
+                recruitmentType,
+                provider,
+                postedDate,
+                applicationStartDate,
+                applicationEndDate,
+                winnerAnnouncementDate,
+                originalUrl,
+                receptionPlace,
+                resolvedSupplyRows
+        );
+    }
 }
 
 record MyHomeSupplyRowMappingData(
         MyHomeAnnouncementSource source,
+        String sourceSupplyRowIdentifier,
         String sourceComplexName,
         String sourceHousingTypeName,
         String pnu,
         String complexSupplyType,
         SupplyCategory supplyCategory,
-        Integer totalSupplyHouseholdCount
+        Integer totalSupplyHouseholdCount,
+        BigDecimal exclusiveArea,
+        BigDecimal supplyArea
 ) {
 }
 
