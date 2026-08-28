@@ -1,0 +1,374 @@
+.card {
+  --announcement-accent: #08756c;
+  position: relative;
+  min-width: 0;
+  padding: 10px 11px 9px;
+  border: 1px solid #d9e1e3;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgb(18 37 47 / 5%);
+  color: #13242d;
+  container: housing-announcement-card / inline-size;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.card[data-status='upcoming'] {
+  --announcement-accent: #2457b3;
+}
+
+.card[data-status='closed'],
+.card[data-status='cancelled'],
+.card[data-status='unknown'] {
+  --announcement-accent: #5f6871;
+}
+
+.card[data-interactive='true'] {
+  cursor: pointer;
+}
+
+.card:hover {
+  border-color: #aebdc1;
+  box-shadow: 0 4px 12px rgb(18 37 47 / 8%);
+  transform: none;
+}
+
+.selected {
+  border-color: #346ada;
+  box-shadow:
+    0 0 0 2px rgb(52 106 218 / 18%),
+    0 4px 12px rgb(18 37 47 / 8%);
+}
+
+.summary {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  min-width: 0;
+  align-items: start;
+  column-gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.card[data-interactive='true'] .summary {
+  pointer-events: none;
+}
+
+.titleRow {
+  min-width: 0;
+  min-height: 32px;
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.titleRow h3 {
+  margin: 2px 0 0;
+  color: #13242d;
+  font-size: 15.5px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 1.28;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.context {
+  display: flex;
+  min-width: 0;
+  align-self: center;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.region,
+.interest {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.region {
+  min-height: 20px;
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border: 1px solid #b9cff8;
+  border-radius: 7px;
+  background: #eaf1ff;
+  color: #164f9f;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.interest {
+  flex: 0 1 auto;
+  color: #52646c;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.interest strong:first-child {
+  display: inline-flex;
+  min-height: 19px;
+  align-items: center;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: #e7f5f2;
+  color: #08756c;
+  font-weight: 900;
+}
+
+.interest strong:nth-of-type(2) {
+  color: #1b303a;
+  font-weight: 900;
+}
+
+.interest span {
+  color: #6d7882;
+  font-size: 8.5px;
+  font-weight: 750;
+}
+
+.interest i {
+  color: #89989e;
+  font-style: normal;
+}
+
+.schedule {
+  display: grid;
+  min-width: 0;
+  margin-top: 5px;
+  padding: 7px 8px;
+  border: 1px solid #dce3e5;
+  border-radius: 8px;
+  background: #f7f9fa;
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
+.signal {
+  display: flex;
+  min-width: 0;
+  min-height: 22px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.statusGroup {
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: center;
+}
+
+.status {
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: 7px;
+  background: var(--announcement-accent);
+  color: #ffffff;
+  font-size: 8.5px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.deadline {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: baseline;
+  gap: 4px;
+  margin: 0 0 0 auto;
+  white-space: nowrap;
+}
+
+.deadline span {
+  color: #52646c;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.deadline strong {
+  color: var(--announcement-accent);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+}
+
+.card[data-urgency='urgent'] .deadline strong {
+  color: #c74439;
+}
+
+.period {
+  min-width: 0;
+  margin: 5px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid #e7ebed;
+}
+
+.periodRow {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  grid-template-columns: 54px minmax(0, 1fr);
+}
+
+.period dt,
+.supply dt {
+  color: #6d7882;
+  font-size: 8.5px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.periodValues {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  gap: 3px 10px;
+  margin: 0;
+  color: #1b303a;
+  line-height: 1.3;
+}
+
+.periodValues > span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.periodValues time,
+.periodValues b {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  letter-spacing: -0.025em;
+}
+
+.periodValues b {
+  font-size: 10px;
+}
+
+.periodValues small {
+  color: #6d7882;
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.supply {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 12px;
+  margin: 7px 0 0;
+  padding: 5px 0;
+  border-top: 1px solid #dce3e5;
+  border-bottom: 1px solid #e7ebed;
+  grid-column: 1 / -1;
+  grid-row: 4;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.supplyMetric {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.supplyMetric dd {
+  flex: 0 0 auto;
+  margin: 0;
+  color: #52646c;
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.footer {
+  display: flex;
+  min-width: 0;
+  min-height: 14px;
+  align-items: end;
+  justify-content: flex-end;
+  margin-top: 4px;
+  color: #6d7882;
+  font-size: 8px;
+  font-weight: 650;
+  grid-column: 1 / -1;
+  grid-row: 5;
+  line-height: 1.4;
+}
+
+.footer p {
+  margin: 0;
+}
+
+.primaryAction {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.primaryAction:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: -3px;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@container housing-announcement-card (max-width: 270px) {
+  .context,
+  .interest {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
+  .periodRow {
+    align-items: start;
+    gap: 3px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .periodValues {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 1px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+}
