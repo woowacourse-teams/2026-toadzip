@@ -37,6 +37,7 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver, RegionSe
     private final List<RegionSearchResult> searchResults;
     private final Map<String, Set<String>> provinceCodeEquivalences;
     private final Map<String, Set<String>> equivalentRegionCodes;
+    private final Set<String> registeredProvinceCodes;
 
     @Autowired
     CsvRegionCodeResolver(
@@ -48,6 +49,7 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver, RegionSe
         searchResults = createSearchResults(canonicalRegions);
         provinceCodeEquivalences = createProvinceCodeEquivalences(canonicalRegions, regionCodeAliases);
         equivalentRegionCodes = buildEquivalentRegionCodes(canonicalRegions, regionCodeAliases);
+        registeredProvinceCodes = canonicalProvinceCodes(canonicalRegions);
     }
 
     @Override
@@ -82,6 +84,13 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver, RegionSe
             return Optional.empty();
         }
         return Optional.ofNullable(provinceCodeEquivalences.get(provinceCode));
+    }
+
+    @Override
+    public boolean isRegisteredProvinceCode(String provinceCode) {
+        return provinceCode != null
+                && provinceCode.matches("[0-9]{2}")
+                && registeredProvinceCodes.contains(provinceCode);
     }
 
     private static boolean matches(String keyword, RegionSearchResult region) {

@@ -1,6 +1,7 @@
 package com.toadzip.backend.region.repository;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -14,6 +15,8 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
@@ -363,6 +366,44 @@ class CsvRegionCodeResolverTest {
         );
 
         assertEquals(Set.of("12210", "29110"), resolver.equivalentCodes("29110").orElseThrow());
+    }
+
+    @Test
+    void 동등_지역코드_집합은_불변이다() {
+        CsvRegionCodeResolver resolver = resolverWithContentsAndAliases(
+                HEADER + "\n12210,전남광주통합특별시,동구,전남광주통합특별시 동구",
+                ALIAS_HEADER + "\n29110,12210"
+        );
+
+        Set<String> equivalentCodes = resolver.equivalentCodes("12210").orElseThrow();
+
+        assertThrows(UnsupportedOperationException.class, () -> equivalentCodes.add("99999"));
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "1", "1111", "111111", "12A10"})
+    void 형식이_잘못된_시군구코드는_동등코드로_해석하지_않는다(String regionCode) {
+        CsvRegionCodeResolver resolver = resolver("11140,서울특별시,중구,서울특별시 중구");
+
+        assertTrue(resolver.equivalentCodes(regionCode).isEmpty());
+    }
+
+    @Test
+    void 정본_지역에_존재하는_시도_prefix만_등록된_시도코드다() {
+        CsvRegionCodeResolver resolver = resolver("11140,서울특별시,중구,서울특별시 중구");
+
+        assertTrue(resolver.isRegisteredProvinceCode("11"));
+        assertFalse(resolver.isRegisteredProvinceCode("99"));
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "1", "111", "1A"})
+    void 형식이_잘못된_시도코드는_등록되지_않는다(String provinceCode) {
+        CsvRegionCodeResolver resolver = resolver("11140,서울특별시,중구,서울특별시 중구");
+
+        assertFalse(resolver.isRegisteredProvinceCode(provinceCode));
     }
 
     @Test
