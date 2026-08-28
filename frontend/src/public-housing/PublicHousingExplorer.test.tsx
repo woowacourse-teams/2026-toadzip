@@ -119,6 +119,21 @@ describe('PublicHousingExplorer', () => {
     expect(screen.getByText('1곳')).toBeVisible()
   })
 
+  it('지도 응답의 임대 조건을 정보형 마커 표시값으로 변환한다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository)
+
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+
+    const marker = await screen.findByRole('button', {
+      name: '서울가람 행복주택 지도 마커 선택',
+    })
+    expect(marker).toHaveAttribute('data-agency-label', 'LH')
+    expect(marker).toHaveAttribute('data-rental-type-label', '행복주택')
+    expect(marker).toHaveAttribute('data-area-label', '36.12~44.87㎡')
+    expect(marker).toHaveAttribute('data-monthly-rent-label', '20만~30만 원')
+  })
+
   it('이후 지도 이동도 idle 뒤 자동으로 마지막 영역을 요청한다', async () => {
     const repository = createRepository()
     renderExplorer(repository)
@@ -1480,6 +1495,10 @@ function FakeNaverMap({
           data-highlighted={marker.highlighted || undefined}
           data-map-complex-marker="true"
           data-selected={marker.selected || undefined}
+          data-agency-label={marker.agencyLabel}
+          data-rental-type-label={marker.rentalTypeLabel}
+          data-area-label={marker.areaLabel}
+          data-monthly-rent-label={marker.monthlyRentLabel}
           onMouseEnter={() => onMarkerHighlight?.(marker.id)}
           onMouseLeave={() => onMarkerHighlight?.(null)}
           onFocus={() => onMarkerHighlight?.(marker.id)}

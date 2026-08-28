@@ -34,6 +34,7 @@ interface FakeSdk {
   mapConstructor: ReturnType<typeof vi.fn>
   markerConstructor: ReturnType<typeof vi.fn>
   markerSetMap: ReturnType<typeof vi.fn>
+  markerSetZIndex: ReturnType<typeof vi.fn>
   maps: typeof naver.maps
   panToMap: ReturnType<typeof vi.fn>
   removeListener: ReturnType<typeof vi.fn>
@@ -63,6 +64,7 @@ function createFakeSdk(): FakeSdk {
   const getMaxZoomMap = vi.fn(() => 21)
   const getMinZoomMap = vi.fn(() => 6)
   const markerSetMap = vi.fn()
+  const markerSetZIndex = vi.fn()
   const removeListener = vi.fn()
   let idleListener: (() => void) | null = null
   const addListener = vi.fn(
@@ -137,6 +139,7 @@ function createFakeSdk(): FakeSdk {
           content.remove()
         }
       },
+      setZIndex: markerSetZIndex,
     }
   })
   const pointConstructor = vi.fn(function FakePointConstructor(
@@ -166,6 +169,7 @@ function createFakeSdk(): FakeSdk {
     mapConstructor,
     markerConstructor,
     markerSetMap,
+    markerSetZIndex,
     maps: {
       Event: {
         addListener,
@@ -219,6 +223,12 @@ let authenticationFailureListener:
   | ((error: NaverMapsSdkError) => void)
   | null = null
 const unsubscribeAuthenticationFailure = vi.fn()
+const markerPresentation = {
+  agencyLabel: 'LH',
+  areaLabel: '36.21~46.72㎡',
+  monthlyRentLabel: '12만~18만 원',
+  rentalTypeLabel: '국민임대',
+}
 
 beforeEach(() => {
   loadNaverMapsSdkMock.mockReset()
@@ -478,6 +488,7 @@ describe('NaverMap', () => {
     const onViewportChange = vi.fn()
     const markers = [
       {
+        ...markerPresentation,
         id: '101',
         latitude: 37.6,
         longitude: 127,
@@ -550,6 +561,7 @@ describe('NaverMap', () => {
     const onMarkerHighlight = vi.fn()
     const nextMarkerHighlight = vi.fn()
     const marker = {
+      ...markerPresentation,
       id: '101',
       latitude: 37.6,
       longitude: 127,
@@ -581,6 +593,7 @@ describe('NaverMap', () => {
 
     expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
     expect(markerButton).toHaveClass('is-highlighted')
+    expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(20)
     act(() => fakeSdk.emitIdle())
     expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
     expect(markerButton).toHaveFocus()
@@ -602,22 +615,103 @@ describe('NaverMap', () => {
     expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2)
   })
 
+  it('개별 marker에 공급기관·임대유형과 임대 요약을 항상 표시한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const marker = {
+      ...markerPresentation,
+      highlighted: true,
+      id: '101',
+      latitude: 37.6,
+      longitude: 127,
+      name: '서울 공공임대 1단지',
+      selected: true,
+    } satisfies NaverMapMarker
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+
+    render(<NaverMap markers={[marker]} />)
+
+    await waitFor(() =>
+      expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce(),
+    )
+    const markerButton = createdMarkerButton(fakeSdk, 0)
+
+    expect(markerButton).toHaveTextContent('LH · 국민임대')
+    expect(markerButton).toHaveTextContent('36.21~46.72㎡')
+    expect(markerButton).toHaveTextContent('월 12만~18만 원')
+    expect(markerButton).toHaveAccessibleName(
+      '서울 공공임대 1단지, LH · 국민임대, 36.21~46.72㎡, 월 12만~18만 원, 단지 상세 보기',
+    )
+    expect(markerButton).toHaveAttribute('title', '서울 공공임대 1단지')
+    expect(markerButton).toHaveClass('is-highlighted', 'is-selected')
+    await waitFor(() =>
+      expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(30),
+    )
+    expect(markerButton.querySelector('.housing-map-marker__top')).toHaveTextContent(
+      'LH · 국민임대',
+    )
+    expect(markerButton.querySelector('.housing-map-marker__body')).toHaveTextContent(
+      '36.21~46.72㎡월 12만~18만 원',
+    )
+  })
+
+  it('marker 표시 문구가 바뀌면 overlay를 새 정보로 교체한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const marker = {
+      ...markerPresentation,
+      id: '101',
+      latitude: 37.6,
+      longitude: 127,
+      name: '테스트 단지',
+    } satisfies NaverMapMarker
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+
+    const { rerender } = render(<NaverMap markers={[marker]} />)
+
+    await waitFor(() =>
+      expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce(),
+    )
+    const previousButton = createdMarkerButton(fakeSdk, 0)
+
+    rerender(
+      <NaverMap
+        markers={[{
+          ...marker,
+          areaLabel: '46.73~59.88㎡',
+          monthlyRentLabel: '18만~24만 원',
+          rentalTypeLabel: '통합공공임대',
+        }]}
+      />,
+    )
+
+    await waitFor(() =>
+      expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2),
+    )
+    const nextButton = createdMarkerButton(fakeSdk, 1)
+    expect(previousButton).not.toBeInTheDocument()
+    expect(nextButton).toHaveTextContent('LH · 통합공공임대')
+    expect(nextButton).toHaveTextContent('46.73~59.88㎡')
+    expect(nextButton).toHaveTextContent('월 18만~24만 원')
+  })
+
   it('화면에서 가까운 단지만 64px cluster로 묶는다', async () => {
     const fakeSdk = createFakeSdk()
     const markers = [
       {
+        ...markerPresentation,
         id: 'near-a',
         latitude: 37.5,
         longitude: 127,
         name: '가까운 첫 단지',
       },
       {
+        ...markerPresentation,
         id: 'near-b',
         latitude: 37.5,
         longitude: 127.001,
         name: '가까운 둘째 단지',
       },
       {
+        ...markerPresentation,
         id: 'far',
         latitude: 37.5,
         longitude: 127.0025,
@@ -650,7 +744,9 @@ describe('NaverMap', () => {
     )
     expect(clusterButton).toHaveAccessibleName('2곳 단지 묶음, 확대해서 보기')
     expect(clusterButton).toHaveTextContent('2곳')
-    expect(farMarkerButton).toHaveAccessibleName('먼 단지 단지 상세 보기')
+    expect(farMarkerButton).toHaveAccessibleName(
+      '먼 단지, LH · 국민임대, 36.21~46.72㎡, 월 12만~18만 원, 단지 상세 보기',
+    )
     expect(fakeSdk.fromCoordToOffset).toHaveBeenCalledTimes(3)
   })
 
@@ -658,6 +754,7 @@ describe('NaverMap', () => {
     const fakeSdk = createFakeSdk()
     const markers = [
       {
+        ...markerPresentation,
         id: 'selected',
         latitude: 37.5,
         longitude: 127,
@@ -665,12 +762,14 @@ describe('NaverMap', () => {
         selected: true,
       },
       {
+        ...markerPresentation,
         id: 'cluster-a',
         latitude: 37.5,
         longitude: 127,
         name: '묶음 첫 단지',
       },
       {
+        ...markerPresentation,
         highlighted: true,
         id: 'cluster-b',
         latitude: 37.5,
@@ -712,12 +811,14 @@ describe('NaverMap', () => {
     const fakeSdk = createFakeSdk()
     const markers = [
       {
+        ...markerPresentation,
         id: '101',
         latitude: 37.5,
         longitude: 127,
         name: '첫 단지',
       },
       {
+        ...markerPresentation,
         id: '102',
         latitude: 37.5,
         longitude: 127.001,
@@ -774,8 +875,20 @@ describe('NaverMap', () => {
   it('확대 뒤에도 묶인 cluster에 focus를 복원하고 한 번만 안내한다', async () => {
     const fakeSdk = createFakeSdk()
     const markers = [
-      { id: '101', latitude: 37.5, longitude: 127, name: '첫 단지' },
-      { id: '102', latitude: 37.5, longitude: 127, name: '둘째 단지' },
+      {
+        ...markerPresentation,
+        id: '101',
+        latitude: 37.5,
+        longitude: 127,
+        name: '첫 단지',
+      },
+      {
+        ...markerPresentation,
+        id: '102',
+        latitude: 37.5,
+        longitude: 127,
+        name: '둘째 단지',
+      },
     ] satisfies NaverMapMarker[]
     const focus = vi.spyOn(HTMLButtonElement.prototype, 'focus')
     loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
@@ -809,12 +922,14 @@ describe('NaverMap', () => {
     const fakeSdk = createFakeSdk()
     const markers = [
       {
+        ...markerPresentation,
         id: '101',
         latitude: 37.5,
         longitude: 127,
         name: '첫 단지',
       },
       {
+        ...markerPresentation,
         id: '102',
         latitude: 37.5,
         longitude: 127.001,

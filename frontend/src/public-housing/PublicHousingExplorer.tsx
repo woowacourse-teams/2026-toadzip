@@ -53,6 +53,10 @@ import {
 import { toHousingAnnouncementDetailData } from './presentation/announcementDetailPresentation.ts'
 import { toHousingComplexDetailData } from './presentation/complexDetailPresentation.ts'
 import { toHousingAnnouncementCardData } from './presentation/announcementPresentation.ts'
+import {
+  presentComplexDetailMarker,
+  presentMapComplexMarker,
+} from './presentation/mapMarkerPresentation.ts'
 
 const PAGE_SIZE = 20
 const VIEWPORT_DEBOUNCE_MS = 300
@@ -1634,6 +1638,7 @@ function toNaverMapMarkers(
   detail: ComplexDetail | null,
 ): NaverMapMarker[] {
   const markers = complexes.map((complex) => ({
+    ...presentMapComplexMarker(complex),
     highlighted: highlightedComplexIds.has(complex.complexId),
     id: complex.complexId,
     latitude: complex.latitude,
@@ -1653,6 +1658,7 @@ function toNaverMapMarkers(
   return [
     ...markers,
     {
+      ...presentComplexDetailMarker(detail),
       highlighted: highlightedComplexIds.has(detail.complexId),
       id: detail.complexId,
       latitude: target.latitude,

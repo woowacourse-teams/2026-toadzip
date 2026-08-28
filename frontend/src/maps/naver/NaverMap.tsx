@@ -32,11 +32,15 @@ const CAMERA_COORDINATE_PRECISION = 5
 const CAMERA_ZOOM_PRECISION = 2
 
 export interface NaverMapComplexMarker {
+  agencyLabel: string
+  areaLabel: string
   id: string
   highlighted?: boolean
   latitude: number
   longitude: number
+  monthlyRentLabel: string
   name: string
+  rentalTypeLabel: string
   selected?: boolean
 }
 
@@ -383,6 +387,7 @@ export default function NaverMap({
         onMarkerSelectRef.current?.(complexId)
       },
     }))
+    applyMarkerHighlights(createdMarkers, markersRef.current)
     createdMarkersRef.current = createdMarkers
     markerOverlaysRef.current = createdMarkers.map(({ overlay }) => overlay)
     const clusterFocusTimer = restoreClusterFocus(
@@ -770,11 +775,14 @@ function createComplexMarker(
   const button = document.createElement('button')
   button.type = 'button'
   button.className = markerClassName(marker)
-  button.setAttribute('aria-label', `${marker.name} 단지 상세 보기`)
+  button.setAttribute('aria-label', markerAriaLabel(marker))
   button.dataset.complexId = marker.id
   button.dataset.mapComplexMarker = 'true'
   button.title = marker.name
-  button.textContent = marker.selected ? '●' : '•'
+  button.append(
+    createMarkerTop(marker),
+    createMarkerBody(marker),
+  )
   button.addEventListener('click', onSelect)
   const isInteracting = bindMarkerHighlight(button, marker.id, onHighlight)
 
@@ -782,15 +790,45 @@ function createComplexMarker(
     clickable: true,
     cursor: 'pointer',
     icon: {
-      anchor: new maps.Point(20, 40),
+      anchor: new maps.Point(84, 70),
       content: button,
-      size: new maps.Size(40, 40),
+      size: new maps.Size(168, 70),
     },
     map: mapInstance,
     position: new maps.LatLng(marker.latitude, marker.longitude),
     title: marker.name,
   })
   return { button, isInteracting, overlay }
+}
+
+function markerAriaLabel(marker: NaverMapComplexMarker) {
+  return [
+    marker.name,
+    `${marker.agencyLabel} · ${marker.rentalTypeLabel}`,
+    marker.areaLabel,
+    `월 ${marker.monthlyRentLabel}`,
+    '단지 상세 보기',
+  ].join(', ')
+}
+
+function createMarkerTop(marker: NaverMapComplexMarker) {
+  const top = document.createElement('span')
+  top.className = 'housing-map-marker__top'
+  top.textContent = `${marker.agencyLabel} · ${marker.rentalTypeLabel}`
+  return top
+}
+
+function createMarkerBody(marker: NaverMapComplexMarker) {
+  const body = document.createElement('span')
+  const area = document.createElement('strong')
+  const monthlyRent = document.createElement('b')
+  body.className = 'housing-map-marker__body'
+  area.className = 'housing-map-marker__area'
+  area.textContent = marker.areaLabel
+  monthlyRent.className = 'housing-map-marker__rent'
+  monthlyRent.textContent = `월 ${marker.monthlyRentLabel}`
+  body.append(area, monthlyRent)
+  return body
 }
 
 function markerClassName(marker: NaverMapComplexMarker) {
@@ -903,6 +941,10 @@ function createMarkerGeometryKey(markers: readonly NaverMapMarker[]) {
     marker.latitude,
     marker.longitude,
     marker.name,
+    marker.agencyLabel,
+    marker.rentalTypeLabel,
+    marker.areaLabel,
+    marker.monthlyRentLabel,
     Boolean(marker.selected),
   ]))
 }
@@ -914,12 +956,23 @@ function applyMarkerHighlights(
   const highlightedIds = new Set(
     markers.filter(({ highlighted }) => highlighted).map(({ id }) => id),
   )
-  createdMarkers.forEach(({ button, rendered }) => {
+  createdMarkers.forEach(({ button, overlay, rendered }) => {
     const highlighted = rendered.kind === 'complex'
       ? highlightedIds.has(rendered.marker.id)
       : rendered.members.some(({ id }) => highlightedIds.has(id))
     button.classList.toggle('is-highlighted', highlighted)
+    overlay.setZIndex(markerZIndex(rendered, highlighted))
   })
+}
+
+function markerZIndex(marker: RenderedMarker, highlighted: boolean) {
+  if (marker.kind === 'complex' && marker.marker.selected) {
+    return 30
+  }
+  if (highlighted) {
+    return 20
+  }
+  return marker.kind === 'complex' ? 10 : 0
 }
 
 function sameRenderedMarkers(
@@ -946,6 +999,10 @@ function renderedMarkerGeometryKey(marker: RenderedMarker | undefined) {
       marker.marker.latitude,
       marker.marker.longitude,
       marker.marker.name,
+      marker.marker.agencyLabel,
+      marker.marker.rentalTypeLabel,
+      marker.marker.areaLabel,
+      marker.marker.monthlyRentLabel,
       Boolean(marker.marker.selected),
     ])
   }
