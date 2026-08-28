@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.repository;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -34,7 +35,7 @@ public interface LhAnnouncementCollectionCheckpointRepository
             @Param("panIds") Collection<String> panIds
     );
 
-    List<LhAnnouncementCollectionCheckpoint> findAllBySourceAndSourceAnnouncementKeyOrderByIdAsc(
+    Optional<LhAnnouncementCollectionCheckpoint> findFirstBySourceAndSourceAnnouncementKeyOrderByIdDesc(
             ExternalDataSource source,
             String sourceAnnouncementKey
     );

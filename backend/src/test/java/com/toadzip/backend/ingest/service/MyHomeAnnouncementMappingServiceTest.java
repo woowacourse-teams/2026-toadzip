@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
@@ -21,6 +23,7 @@ import com.toadzip.backend.ingest.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.domain.LhAnnouncementSupplySourceData;
 import com.toadzip.backend.ingest.repository.LhAnnouncementCollectionCheckpointRepository;
 import com.toadzip.backend.ingest.repository.LhAnnouncementSupplySourceRepository;
+import com.toadzip.backend.ingest.repository.LhSourceStore;
 import com.toadzip.backend.ingest.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.repository.MyHomeAnnouncementSourceRepository;
 import java.math.BigDecimal;
@@ -56,6 +59,9 @@ class MyHomeAnnouncementMappingServiceTest {
     private SupplyRowRepository supplyRowRepository;
 
     @Autowired
+    private SupplyTargetRepository supplyTargetRepository;
+
+    @Autowired
     private HousingComplexRepository complexRepository;
 
     @Autowired
@@ -67,8 +73,12 @@ class MyHomeAnnouncementMappingServiceTest {
     @Autowired
     private LhAnnouncementSupplySourceRepository lhSupplyRepository;
 
+    @Autowired
+    private LhSourceStore lhSourceStore;
+
     @BeforeEach
     void setUp() {
+        supplyTargetRepository.deleteAll();
         supplyRowRepository.deleteAll();
         announcementRepository.deleteAll();
         housingTypeRepository.deleteAll();
@@ -322,6 +332,66 @@ class MyHomeAnnouncementMappingServiceTest {
         assertThat(supplyRow("21026:LH:PAN-1:3")).satisfies(row -> {
             assertThat(row.getHousingType()).isNull();
             assertThat(row.getMatchingFailureReason()).contains("면적으로도 주택형 하나를 확정할 수 없습니다");
+        });
+    }
+
+    @Test
+    void 최신_lh_공급_스냅샷에서_사라진_공급행을_삭제한다() {
+        saveMappedComplex();
+        sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
+        saveLhSupplyCheckpoint("21026", "PAN-1");
+        lhSourceStore.replaceSupplies("PAN-1", List.of(
+                lhSupply(0, "PAN-1", "동삼2", "46A", "46.8000", "67.0000"),
+                lhSupply(1, "PAN-1", "동삼2", "46A", "46.8000", "67.0000"),
+                lhSupply(2, "PAN-1", "동삼2", "46A", "46.8000", "67.0000")
+        ));
+        service.mapAll();
+        assertThat(supplyRowRepository.findAll()).hasSize(3);
+        SupplyRow staleRow = supplyRow("21026:LH:PAN-1:2");
+        supplyTargetRepository.save(SupplyTarget.create(
+                staleRow,
+                "청년",
+                null,
+                1,
+                null,
+                null,
+                null,
+                null,
+                null,
+                1
+        ));
+
+        lhSourceStore.replaceSupplies("PAN-1", List.of(
+                lhSupply(0, "PAN-1", "동삼2", "46A", "46.8000", "67.0000")
+        ));
+
+        var report = service.mapAll();
+
+        assertThat(report.deletedSupplyRowCount()).isEqualTo(2);
+        assertThat(supplyRowRepository.findAll()).singleElement()
+                .extracting(SupplyRow::getSourceSupplyRowIdentifier)
+                .isEqualTo(MyHomeAnnouncementSource.sourceKeyOf(data("21026", 1, "LH", "동삼2")));
+        assertThat(supplyTargetRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void 최신_체크포인트의_lh_공급행만_매핑한다() {
+        saveMappedComplex();
+        sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
+        saveLhSupplyCheckpoint("21026", "PAN-OLD");
+        lhSourceStore.replaceSupplies("PAN-OLD", List.of(
+                lhSupply(0, "PAN-OLD", "동삼2", "과거형", "99.0000", "99.0000")
+        ));
+        saveLhSupplyCheckpoint("21026", "PAN-CURRENT");
+        lhSourceStore.replaceSupplies("PAN-CURRENT", List.of(
+                lhSupply(0, "PAN-CURRENT", "동삼2", "46A", "46.8000", "67.0000")
+        ));
+
+        service.mapAll();
+
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getSourceHousingTypeName()).isEqualTo("46A");
+            assertThat(row.getHousingType()).isNotNull();
         });
     }
 

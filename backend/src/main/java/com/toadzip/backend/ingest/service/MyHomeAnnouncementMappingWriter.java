@@ -4,6 +4,7 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
+import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
@@ -28,6 +29,8 @@ public class MyHomeAnnouncementMappingWriter {
 
     private final SupplyRowRepository supplyRowRepository;
 
+    private final SupplyTargetRepository supplyTargetRepository;
+
     private final HousingComplexRepository housingComplexRepository;
 
     private final HousingTypeRepository housingTypeRepository;
@@ -35,11 +38,13 @@ public class MyHomeAnnouncementMappingWriter {
     public MyHomeAnnouncementMappingWriter(
             AnnouncementRepository announcementRepository,
             SupplyRowRepository supplyRowRepository,
+            SupplyTargetRepository supplyTargetRepository,
             HousingComplexRepository housingComplexRepository,
             HousingTypeRepository housingTypeRepository
     ) {
         this.announcementRepository = announcementRepository;
         this.supplyRowRepository = supplyRowRepository;
+        this.supplyTargetRepository = supplyTargetRepository;
         this.housingComplexRepository = housingComplexRepository;
         this.housingTypeRepository = housingTypeRepository;
     }
@@ -150,7 +155,17 @@ public class MyHomeAnnouncementMappingWriter {
             }
             unchanged++;
         }
-        return new SupplyRowsWriteResult(created, updated, unchanged, failures);
+        List<SupplyRow> staleRows = List.copyOf(storedRows.values());
+        deleteStaleRows(staleRows);
+        return new SupplyRowsWriteResult(created, updated, unchanged, staleRows.size(), failures);
+    }
+
+    private void deleteStaleRows(List<SupplyRow> staleRows) {
+        if (staleRows.isEmpty()) {
+            return;
+        }
+        supplyTargetRepository.deleteAllBySupplyRowIn(staleRows);
+        supplyRowRepository.deleteAll(staleRows);
     }
 
     private SupplyRow createSupplyRow(
@@ -316,6 +331,7 @@ public class MyHomeAnnouncementMappingWriter {
                 supplyRows.created(),
                 supplyRows.updated(),
                 supplyRows.unchanged(),
+                supplyRows.deleted(),
                 supplyRows.failures().size()
         );
     }
@@ -331,6 +347,7 @@ public class MyHomeAnnouncementMappingWriter {
             int created,
             int updated,
             int unchanged,
+            int deleted,
             List<MyHomeSupplyMatchingFailureData> failures
     ) {
     }

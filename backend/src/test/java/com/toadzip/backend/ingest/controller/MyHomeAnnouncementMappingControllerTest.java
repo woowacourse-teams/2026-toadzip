@@ -33,13 +33,14 @@ class MyHomeAnnouncementMappingControllerTest {
     @Test
     void 저장된_마이홈_원천의_공고와_공급행_매핑을_실행한다() throws Exception {
         when(mappingService.mapAll()).thenReturn(new MyHomeAnnouncementMappingReport(
-                1, 0, 0, 2, 0, 0, 1
+                1, 0, 0, 2, 0, 0, 0, 1
         ));
 
         mockMvc.perform(post("/api/admin/ingest/myhome/announcement-mappings"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.createdAnnouncementCount").value(1))
                 .andExpect(jsonPath("$.createdSupplyRowCount").value(2))
+                .andExpect(jsonPath("$.deletedSupplyRowCount").value(0))
                 .andExpect(jsonPath("$.failedSourceRowCount").value(1));
 
         verify(mappingService).mapAll();

@@ -1,7 +1,6 @@
 package com.toadzip.backend.ingest.service;
 
 import com.toadzip.backend.ingest.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.repository.LhAnnouncementCollectionCheckpointRepository;
 import com.toadzip.backend.ingest.repository.LhAnnouncementSupplySourceRepository;
@@ -9,10 +8,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -62,19 +59,13 @@ public class MyHomeAnnouncementSupplyRowResolver {
     }
 
     private List<LhAnnouncementSupplySource> findLhSupplies(String announcementIdentifier) {
-        List<LhAnnouncementCollectionCheckpoint> checkpoints = checkpointRepository
-                .findAllBySourceAndSourceAnnouncementKeyOrderByIdAsc(
+        return checkpointRepository
+                .findFirstBySourceAndSourceAnnouncementKeyOrderByIdDesc(
                         ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
                         announcementIdentifier
-                );
-        Set<String> panIds = new LinkedHashSet<>();
-        for (LhAnnouncementCollectionCheckpoint checkpoint : checkpoints) {
-            panIds.add(checkpoint.getPanId());
-        }
-        if (panIds.isEmpty()) {
-            return List.of();
-        }
-        return lhSupplyRepository.findAllByPanIdInOrderByPanIdAscSourceOrderAsc(panIds);
+                )
+                .map(checkpoint -> lhSupplyRepository.findAllByPanIdOrderBySourceOrderAsc(checkpoint.getPanId()))
+                .orElseGet(List::of);
     }
 
     private Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matchByComplex(
