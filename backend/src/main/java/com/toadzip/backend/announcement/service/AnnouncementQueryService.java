@@ -179,7 +179,7 @@ public class AnnouncementQueryService {
         if (normalizedRegionCode.isEmpty()) {
             throw new InvalidRegionCodeException();
         }
-        return regionCodeResolver.equivalentCodes(normalizedRegionCode)
+        return regionCodeResolver.filterCodes(normalizedRegionCode)
                 .orElseThrow(InvalidRegionCodeException::new);
     }
 

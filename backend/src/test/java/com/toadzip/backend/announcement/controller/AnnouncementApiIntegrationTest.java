@@ -293,6 +293,114 @@ class AnnouncementApiIntegrationTest {
     }
 
     @Test
+    void 시도_전체_지역코드는_소속_시군구의_공고를_조회한다() throws Exception {
+        HousingComplex seoulComplex = persist(createHousingComplex("api-province-seoul", "11140"));
+        Announcement announcement = persist(createSearchAnnouncement(
+                "api-province-announcement",
+                "서울 전체 검색 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 12),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        persistSearchSupplyRows(seoulComplex, announcement);
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/announcements").param("regionCode", "11"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(announcement.getId()));
+    }
+
+    @Test
+    void 하위_구가_있는_시_지역코드는_소속_구의_공고만_조회한다() throws Exception {
+        HousingComplex suwonComplex = persist(createHousingComplex("api-city-suwon", "41111"));
+        HousingComplex seongnamComplex = persist(createHousingComplex("api-city-seongnam", "41131"));
+        Announcement suwonAnnouncement = persist(createSearchAnnouncement(
+                "api-city-suwon-announcement",
+                "수원시 검색 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 12),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        Announcement seongnamAnnouncement = persist(createSearchAnnouncement(
+                "api-city-seongnam-announcement",
+                "성남시 검색 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 13),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        persistSearchSupplyRows(suwonComplex, suwonAnnouncement);
+        persistSearchSupplyRows(seongnamComplex, seongnamAnnouncement);
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/announcements").param("regionCode", "41110"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(suwonAnnouncement.getId()));
+    }
+
+    @Test
+    void 코드_접두사가_같은_다른_군의_공고는_지역_필터에서_제외한다() throws Exception {
+        HousingComplex yeongdongComplex = persist(createHousingComplex("api-county-yeongdong", "43740"));
+        HousingComplex jeungpyeongComplex = persist(createHousingComplex("api-county-jeungpyeong", "43745"));
+        Announcement yeongdongAnnouncement = persist(createSearchAnnouncement(
+                "api-county-yeongdong-announcement",
+                "영동군 검색 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 12),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        Announcement jeungpyeongAnnouncement = persist(createSearchAnnouncement(
+                "api-county-jeungpyeong-announcement",
+                "증평군 검색 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 13),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        persistSearchSupplyRows(yeongdongComplex, yeongdongAnnouncement);
+        persistSearchSupplyRows(jeungpyeongComplex, jeungpyeongAnnouncement);
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/announcements").param("regionCode", "43740"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(yeongdongAnnouncement.getId()));
+    }
+
+    @Test
     void 모든_검색_그룹의_교집합과_같은_그룹의_OR을_HTTP로_반환한다() throws Exception {
         HousingComplex canonicalRegionComplex = persist(createHousingComplex("api-combined-canonical", "12210"));
         HousingComplex differentRegionComplex = persist(createHousingComplex("api-combined-other-region", "11140"));
