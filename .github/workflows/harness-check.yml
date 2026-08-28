@@ -41,7 +41,7 @@ jobs:
         if: ${{ hashFiles('gradlew', 'backend/gradlew') != '' }}
         run: >-
           docker compose --project-name toadzip-test --file compose.test.yaml
-          up --detach --wait --wait-timeout 60 --force-recreate db
+          up --detach --wait --wait-timeout 60 --force-recreate db db-shared
       - name: Verify backend against PostgreSQL
         if: ${{ hashFiles('gradlew', 'backend/gradlew') != '' }}
         working-directory: backend
@@ -50,7 +50,7 @@ jobs:
         if: ${{ failure() && steps.start-postgres.outcome == 'success' }}
         run: >-
           docker compose --project-name toadzip-test --file compose.test.yaml
-          logs --no-color db
+          logs --no-color db db-shared
       - name: Stop test PostgreSQL
         if: >-
           ${{ always() &&
