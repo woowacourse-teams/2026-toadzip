@@ -3,6 +3,8 @@ package com.toadzip.backend.announcement.controller;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -35,6 +37,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -46,7 +50,12 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 @Transactional
 @AutoConfigureMockMvc
@@ -62,6 +71,9 @@ class AnnouncementApiIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Autowired
     private AnnouncementController announcementController;
@@ -280,6 +292,345 @@ class AnnouncementApiIntegrationTest {
                 .andExpect(jsonPath("$.data.previousAnnouncementId").doesNotHaveJsonPath());
     }
 
+    @Test
+    void 시도_전체_지역코드는_소속_시군구의_공고를_조회한다() throws Exception {
+        HousingComplex seoulComplex = persist(createHousingComplex("api-province-seoul", "11140"));
+        Announcement announcement = persist(createSearchAnnouncement(
+                "api-province-announcement",
+                "서울 전체 검색 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 12),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        persistSearchSupplyRows(seoulComplex, announcement);
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/announcements").param("regionCode", "11"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(announcement.getId()));
+    }
+
+    @Test
+    void 하위_구가_있는_시_지역코드는_소속_구의_공고만_조회한다() throws Exception {
+        HousingComplex suwonComplex = persist(createHousingComplex("api-city-suwon", "41111"));
+        HousingComplex seongnamComplex = persist(createHousingComplex("api-city-seongnam", "41131"));
+        Announcement suwonAnnouncement = persist(createSearchAnnouncement(
+                "api-city-suwon-announcement",
+                "수원시 검색 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 12),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        Announcement seongnamAnnouncement = persist(createSearchAnnouncement(
+                "api-city-seongnam-announcement",
+                "성남시 검색 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 13),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        persistSearchSupplyRows(suwonComplex, suwonAnnouncement);
+        persistSearchSupplyRows(seongnamComplex, seongnamAnnouncement);
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/announcements").param("regionCode", "41110"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(suwonAnnouncement.getId()));
+    }
+
+    @Test
+    void 코드_접두사가_같은_다른_군의_공고는_지역_필터에서_제외한다() throws Exception {
+        HousingComplex yeongdongComplex = persist(createHousingComplex("api-county-yeongdong", "43740"));
+        HousingComplex jeungpyeongComplex = persist(createHousingComplex("api-county-jeungpyeong", "43745"));
+        Announcement yeongdongAnnouncement = persist(createSearchAnnouncement(
+                "api-county-yeongdong-announcement",
+                "영동군 검색 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 12),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        Announcement jeungpyeongAnnouncement = persist(createSearchAnnouncement(
+                "api-county-jeungpyeong-announcement",
+                "증평군 검색 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 13),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        persistSearchSupplyRows(yeongdongComplex, yeongdongAnnouncement);
+        persistSearchSupplyRows(jeungpyeongComplex, jeungpyeongAnnouncement);
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/announcements").param("regionCode", "43740"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(yeongdongAnnouncement.getId()));
+    }
+
+    @Test
+    void 모든_검색_그룹의_교집합과_같은_그룹의_OR을_HTTP로_반환한다() throws Exception {
+        HousingComplex canonicalRegionComplex = persist(createHousingComplex("api-combined-canonical", "12210"));
+        HousingComplex differentRegionComplex = persist(createHousingComplex("api-combined-other-region", "11140"));
+        Announcement original = persist(createSearchAnnouncement(
+                "api-combined-original",
+                "통합_검색 원본 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 12),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        Announcement previous = persist(createSearchAnnouncement(
+                "api-combined-previous",
+                "이전 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        Announcement correction = persist(createSearchAnnouncement(
+                "api-combined-correction",
+                "통합_검색 정정 공고",
+                previous,
+                "api-combined-previous",
+                AnnouncementPublicationType.CORRECTION,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.WAITLIST,
+                AgencyCode.SH,
+                LocalDate.of(2026, 8, 11),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        Announcement wrongRentalType = persist(createSearchAnnouncement(
+                "api-combined-wrong-rental",
+                "통합_검색 임대유형 불일치 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.NATIONAL_RENTAL,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 13),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        Announcement regionOnly = persist(createSearchAnnouncement(
+                "api-combined-region-only",
+                "다른 키워드 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 13),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        Announcement wrongRegion = persist(createSearchAnnouncement(
+                "api-combined-wrong-region",
+                "통합_검색 지역 불일치 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 13),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 11)
+        ));
+        Announcement wrongApplicationStatus = persist(createSearchAnnouncement(
+                "api-combined-wrong-status",
+                "통합_검색 신청상태 불일치 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 13),
+                LocalDate.of(2026, 8, 11),
+                LocalDate.of(2026, 8, 15)
+        ));
+        Announcement wrongApplicationPeriod = persist(createSearchAnnouncement(
+                "api-combined-wrong-period",
+                "통합_검색 접수기간 불일치 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 13),
+                LocalDate.of(2026, 8, 9),
+                LocalDate.of(2026, 8, 10)
+        ));
+        persistSearchSupplyRows(
+                canonicalRegionComplex,
+                original,
+                correction,
+                wrongRentalType,
+                regionOnly,
+                wrongApplicationStatus,
+                wrongApplicationPeriod
+        );
+        persistSearchSupplyRows(differentRegionComplex, wrongRegion);
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(combinedSearchRequest().param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(2))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(original.getId()))
+                .andExpect(jsonPath("$.data.items[1].announcementId").value(correction.getId()))
+                .andExpect(jsonPath("$.data.hasNext").value(false))
+                .andExpect(jsonPath("$.data.nextCursor").value(nullValue()));
+    }
+
+    @Test
+    void 필터를_유지한_커서는_같은_게시일의_공고를_중복_없이_두_페이지로_나눈다()
+            throws Exception {
+        HousingComplex canonicalRegionComplex = persist(createHousingComplex("api-cursor-canonical", "12210"));
+        Announcement first = persist(createSearchAnnouncement(
+                "api-cursor-first",
+                "커서_검색 첫째 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 12),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 12)
+        ));
+        Announcement second = persist(createSearchAnnouncement(
+                "api-cursor-second",
+                "커서_검색 둘째 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 12),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 12)
+        ));
+        Announcement third = persist(createSearchAnnouncement(
+                "api-cursor-third",
+                "커서_검색 셋째 공고",
+                null,
+                null,
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 12),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 12)
+        ));
+        persistSearchSupplyRows(canonicalRegionComplex, first, second, third);
+        entityManager.flush();
+        entityManager.clear();
+
+        MvcResult firstPage = mockMvc.perform(cursorSearchRequest().param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.hasNext").value(true))
+                .andExpect(jsonPath("$.data.nextCursor").isNotEmpty())
+                .andReturn();
+        String nextCursor = nextCursor(firstPage);
+        assertFalse(nextCursor.isBlank());
+
+        MvcResult secondPage = mockMvc.perform(cursorSearchRequest()
+                        .param("size", "2")
+                        .param("cursor", nextCursor))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.hasNext").value(false))
+                .andExpect(jsonPath("$.data.nextCursor").value(nullValue()))
+                .andReturn();
+
+        assertEquals(List.of(third.getId(), second.getId()), announcementIds(firstPage));
+        assertEquals(List.of(first.getId()), announcementIds(secondPage));
+    }
+
+    @Test
+    void 취소_공고유형_필터는_공개된_INVALID_REQUEST로_거부한다() throws Exception {
+        assertPublicError(
+                mockMvc.perform(get("/api/v1/announcements").param("publicationTypes", "CANCELLATION")),
+                "INVALID_REQUEST"
+        );
+    }
+
+    @Test
+    void 취소_신청상태_필터는_공개된_INVALID_REQUEST로_거부한다() throws Exception {
+        assertPublicError(
+                mockMvc.perform(get("/api/v1/announcements").param("applicationStatuses", "CANCELLED")),
+                "INVALID_REQUEST"
+        );
+    }
+
+    @Test
+    void 역전된_신청기간은_공개된_INVALID_REQUEST로_거부한다() throws Exception {
+        assertPublicError(
+                mockMvc.perform(get("/api/v1/announcements")
+                        .param("applicationFrom", "2026-08-13")
+                        .param("applicationTo", "2026-08-12")),
+                "INVALID_REQUEST"
+        );
+    }
+
+    @Test
+    void 알수_없는_지역코드는_공개된_INVALID_REGION_CODE로_거부한다() throws Exception {
+        assertPublicError(
+                mockMvc.perform(get("/api/v1/announcements").param("regionCode", "99999")),
+                "INVALID_REGION_CODE"
+        );
+    }
+
     private Announcement createAnnouncement(
             String sourceIdentifier,
             Announcement previousAnnouncement,
@@ -317,17 +668,60 @@ class AnnouncementApiIntegrationTest {
         );
     }
 
+    private Announcement createSearchAnnouncement(
+            String sourceIdentifier,
+            String name,
+            Announcement previousAnnouncement,
+            String previousSourceIdentifier,
+            AnnouncementPublicationType publicationType,
+            RentalType rentalType,
+            RecruitmentType recruitmentType,
+            AgencyCode agencyCode,
+            LocalDate postedDate,
+            LocalDate applicationStartDate,
+            LocalDate applicationEndDate
+    ) {
+        return Announcement.create(
+                sourceIdentifier,
+                previousSourceIdentifier,
+                previousAnnouncement,
+                name,
+                publicationType,
+                rentalType,
+                recruitmentType,
+                agencyCode,
+                postedDate,
+                applicationStartDate,
+                applicationEndDate,
+                LocalDate.of(2026, 8, 20),
+                "https://example.com/announcements/" + sourceIdentifier,
+                null,
+                0L,
+                ReceptionPlace.create(
+                        "검색 접수처",
+                        ReceptionMethod.ONLINE,
+                        null,
+                        "1600-1004",
+                        "https://apply.lh.or.kr"
+                )
+        );
+    }
+
     private HousingComplex createHousingComplex() {
+        return createHousingComplex("api-complex", "11140");
+    }
+
+    private HousingComplex createHousingComplex(String sourceIdentifier, String cityCountyDistrictCode) {
         return HousingComplex.create(
                 "서울 행복주택",
-                "api-complex",
+                sourceIdentifier,
                 "행복주택",
                 Address.create(
                         "서울특별시 중구 세종대로 110",
                         "1114010100100010000",
                         "1114010100",
-                        "11",
-                        "11140",
+                        cityCountyDistrictCode.substring(0, 2),
+                        cityCountyDistrictCode,
                         new BigDecimal("37.566500"),
                         new BigDecimal("126.978000")
                 ),
@@ -380,6 +774,78 @@ class AnnouncementApiIntegrationTest {
                 matchingFailureReason,
                 totalSupplyHouseholdCount
         );
+    }
+
+    private void persistSearchSupplyRows(HousingComplex housingComplex, Announcement... announcements) {
+        for (int index = 0; index < announcements.length; index++) {
+            Announcement announcement = announcements[index];
+            persist(createSupplyRow(
+                    announcement,
+                    housingComplex,
+                    null,
+                    announcement.getSourceAnnouncementIdentifier() + "-supply",
+                    index,
+                    1,
+                    null
+            ));
+        }
+    }
+
+    private MockHttpServletRequestBuilder combinedSearchRequest() {
+        return get("/api/v1/announcements")
+                .param("keyword", "  통합_검색  ")
+                .param("regionCode", "29110")
+                .param("rentalTypes", "HAPPY_HOUSING")
+                .param("applicationStatuses", "APPLYING")
+                .param("publicationTypes", "ORIGINAL", "CORRECTION")
+                .param("agencyCodes", "LH", "SH")
+                .param("recruitmentTypes", "NEW", "WAITLIST")
+                .param("applicationFrom", "2026-08-11")
+                .param("applicationTo", "2026-08-11");
+    }
+
+    private MockHttpServletRequestBuilder cursorSearchRequest() {
+        return get("/api/v1/announcements")
+                .param("keyword", "  커서_검색  ")
+                .param("regionCode", "29110")
+                .param("rentalTypes", "HAPPY_HOUSING")
+                .param("applicationStatuses", "APPLYING")
+                .param("publicationTypes", "ORIGINAL")
+                .param("agencyCodes", "LH")
+                .param("recruitmentTypes", "NEW")
+                .param("applicationFrom", "2026-08-10")
+                .param("applicationTo", "2026-08-12");
+    }
+
+    private String nextCursor(MvcResult result) throws Exception {
+        return responseData(result).path("nextCursor").asText();
+    }
+
+    private List<Long> announcementIds(MvcResult result) throws Exception {
+        List<Long> announcementIds = new ArrayList<>();
+        for (JsonNode item : responseData(result).path("items")) {
+            announcementIds.add(item.path("announcementId").asLong());
+        }
+        return announcementIds;
+    }
+
+    private JsonNode responseData(MvcResult result) throws Exception {
+        return objectMapper.readTree(result.getResponse().getContentAsString()).path("data");
+    }
+
+    private void assertPublicError(ResultActions resultActions, String errorCode) throws Exception {
+        String responseBody = resultActions
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value(errorCode))
+                .andExpect(jsonPath("$.traceId").isNotEmpty())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertFalse(responseBody.contains("Exception"));
+        assertFalse(responseBody.contains("SQL"));
+        assertFalse(responseBody.contains("stack"));
     }
 
     private <T> T persist(T entity) {
