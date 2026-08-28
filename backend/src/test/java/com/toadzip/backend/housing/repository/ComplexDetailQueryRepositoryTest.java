@@ -81,7 +81,7 @@ class ComplexDetailQueryRepositoryTest {
                 new HousingTypeDetailRow(
                         first.getId(),
                         "36A",
-                        new BigDecimal("36.12"),
+                        new BigDecimal("36.1200"),
                         null,
                         "https://example.com/36a.png",
                         false,
@@ -90,8 +90,8 @@ class ComplexDetailQueryRepositoryTest {
                 new HousingTypeDetailRow(
                         second.getId(),
                         "44B",
-                        new BigDecimal("44.87"),
-                        new BigDecimal("51.10"),
+                        new BigDecimal("44.8700"),
+                        new BigDecimal("51.1000"),
                         "https://example.com/44b.png",
                         true,
                         new BigDecimal("123456.00")
@@ -326,7 +326,7 @@ class ComplexDetailQueryRepositoryTest {
             String exclusiveArea,
             String supplyArea,
             String floorPlanUrl,
-            boolean duplex,
+            Boolean duplex,
             String maintenanceFee
     ) {
         BigDecimal storedSupplyArea = null;

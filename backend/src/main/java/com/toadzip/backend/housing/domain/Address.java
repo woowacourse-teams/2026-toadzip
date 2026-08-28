@@ -5,6 +5,8 @@ import static lombok.AccessLevel.PROTECTED;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.Objects;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -12,6 +14,8 @@ import lombok.NoArgsConstructor;
 @Embeddable
 @NoArgsConstructor(access = PROTECTED)
 public class Address {
+
+    private static final int COORDINATE_SCALE = 6;
 
     @Column(nullable = false)
     private String roadAddress;
@@ -48,15 +52,13 @@ public class Address {
         validateNotBlank(legalDongCode, "법정동코드");
         validateNotBlank(provinceCode, "시·도 코드");
         validateNotBlank(cityCountyDistrictCode, "시·군·구 코드");
-        validateLatitude(latitude);
-        validateLongitude(longitude);
         this.roadAddress = roadAddress;
         this.pnu = pnu;
         this.legalDongCode = legalDongCode;
         this.provinceCode = provinceCode;
         this.cityCountyDistrictCode = cityCountyDistrictCode;
-        this.latitude = latitude;
-        this.longitude = longitude;
+        this.latitude = normalizeCoordinate(latitude);
+        this.longitude = normalizeCoordinate(longitude);
     }
 
     public static Address create(
@@ -68,6 +70,8 @@ public class Address {
             BigDecimal latitude,
             BigDecimal longitude
     ) {
+        validateLatitude(latitude);
+        validateLongitude(longitude);
         return new Address(
                 roadAddress,
                 pnu,
@@ -79,19 +83,32 @@ public class Address {
         );
     }
 
+    public boolean hasSameValues(Address other) {
+        if (other == null) {
+            return false;
+        }
+        return roadAddress.equals(other.roadAddress)
+                && pnu.equals(other.pnu)
+                && legalDongCode.equals(other.legalDongCode)
+                && provinceCode.equals(other.provinceCode)
+                && cityCountyDistrictCode.equals(other.cityCountyDistrictCode)
+                && Objects.equals(latitude, other.latitude)
+                && Objects.equals(longitude, other.longitude);
+    }
+
     private void validateNotBlank(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + "은 필수다.");
         }
     }
 
-    private void validateRequired(Object value, String fieldName) {
+    private static void validateRequired(Object value, String fieldName) {
         if (value == null) {
             throw new IllegalArgumentException(fieldName + "은 필수다.");
         }
     }
 
-    private void validateLatitude(BigDecimal latitude) {
+    private static void validateLatitude(BigDecimal latitude) {
         validateRequired(latitude, "위도");
         if (latitude.compareTo(BigDecimal.valueOf(-90)) < 0
                 || latitude.compareTo(BigDecimal.valueOf(90)) > 0) {
@@ -99,11 +116,15 @@ public class Address {
         }
     }
 
-    private void validateLongitude(BigDecimal longitude) {
+    private static void validateLongitude(BigDecimal longitude) {
         validateRequired(longitude, "경도");
         if (longitude.compareTo(BigDecimal.valueOf(-180)) < 0
                 || longitude.compareTo(BigDecimal.valueOf(180)) > 0) {
             throw new IllegalArgumentException("경도는 -180도 이상 180도 이하여야 한다.");
         }
+    }
+
+    private static BigDecimal normalizeCoordinate(BigDecimal coordinate) {
+        return coordinate.setScale(COORDINATE_SCALE, RoundingMode.HALF_UP);
     }
 }

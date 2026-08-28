@@ -7,7 +7,9 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import com.toadzip.backend.ingest.configuration.JusoGeocodingProperties;
 import com.toadzip.backend.ingest.domain.JusoAddressCode;
 import com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingFailureReason;
-import java.util.concurrent.atomic.AtomicLong;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -24,15 +26,9 @@ class JusoRoadAddressCoordinateRepositoryTest {
     void setUp() {
         RestClient.Builder builder = RestClient.builder();
         server = MockRestServiceServer.bindTo(builder).build();
-        AtomicLong nanoTime = new AtomicLong();
-        JusoCoordinateRequestRateLimiter limiter = new JusoCoordinateRequestRateLimiter(
-                nanoTime::get,
-                duration -> nanoTime.addAndGet(duration.toNanos())
-        );
         repository = new JusoRoadAddressCoordinateRepository(
                 builder.build(),
-                new JusoGeocodingProperties("https://example.com", "address-key", "coordinate-key"),
-                limiter
+                new JusoGeocodingProperties("https://example.com", "address-key", "coordinate-key")
         );
     }
 
@@ -71,6 +67,22 @@ class JusoRoadAddressCoordinateRepositoryTest {
     }
 
     @Test
+    void 연속된_좌표_조회에_인위적인_대기를_적용하지_않는다() {
+        server.expect(request -> assertThat(request.getURI())
+                .hasToString("https://example.com/addrCoordApi.do"))
+                .andRespond(withSuccess(coordinatePayload(), MediaType.APPLICATION_JSON));
+        server.expect(request -> assertThat(request.getURI())
+                .hasToString("https://example.com/addrCoordApi.do"))
+                .andRespond(withSuccess(coordinatePayload(), MediaType.APPLICATION_JSON));
+        JusoAddressCode addressCode = new JusoAddressCode("1114010300", "111402005001", "0", "110", "0");
+
+        repository.findCoordinate(addressCode);
+        repository.findCoordinate(addressCode);
+
+        server.verify();
+    }
+
+    @Test
     void 원천_오류코드를_외부_API_실패로_변환한다() {
         server.expect(request -> assertThat(request.getURI())
                 .hasToString("https://example.com/addrLinkApi.do"))
@@ -87,6 +99,57 @@ class JusoRoadAddressCoordinateRepositoryTest {
                                 .isEqualTo(RoadAddressGeocodingFailureReason.EXTERNAL_API_ERROR)
                 )
                 .hasMessageNotContaining("address-key");
+        server.verify();
+    }
+
+    @Test
+    void 다량_요청_오류는_백오프_후_재시도한다() {
+        List<Duration> delays = new ArrayList<>();
+        RestClient.Builder builder = RestClient.builder();
+        server = MockRestServiceServer.bindTo(builder).build();
+        repository = new JusoRoadAddressCoordinateRepository(
+                builder.build(),
+                new JusoGeocodingProperties("https://example.com", "address-key", "coordinate-key"),
+                delays::add
+        );
+        server.expect(request -> assertThat(request.getURI())
+                        .hasToString("https://example.com/addrLinkApi.do"))
+                .andRespond(withSuccess(tooManyRequestsPayload(), MediaType.APPLICATION_JSON));
+        server.expect(request -> assertThat(request.getURI())
+                        .hasToString("https://example.com/addrLinkApi.do"))
+                .andRespond(withSuccess(tooManyRequestsPayload(), MediaType.APPLICATION_JSON));
+        server.expect(request -> assertThat(request.getURI())
+                        .hasToString("https://example.com/addrLinkApi.do"))
+                .andRespond(withSuccess(addressPayload(), MediaType.APPLICATION_JSON));
+
+        var result = repository.search("서울특별시 중구 세종대로 110");
+
+        assertThat(result).hasSize(1);
+        assertThat(delays).containsExactly(Duration.ofSeconds(1), Duration.ofSeconds(2));
+        server.verify();
+    }
+
+    @Test
+    void 승인키_오류는_재시도하지_않는다() {
+        List<Duration> delays = new ArrayList<>();
+        RestClient.Builder builder = RestClient.builder();
+        server = MockRestServiceServer.bindTo(builder).build();
+        repository = new JusoRoadAddressCoordinateRepository(
+                builder.build(),
+                new JusoGeocodingProperties("https://example.com", "address-key", "coordinate-key"),
+                delays::add
+        );
+        server.expect(request -> assertThat(request.getURI())
+                        .hasToString("https://example.com/addrLinkApi.do"))
+                .andRespond(withSuccess(
+                        "{\"results\":{\"common\":{\"errorCode\":\"E0001\","
+                                + "\"errorMessage\":\"승인되지 않은 KEY 입니다.\"}}}",
+                        MediaType.APPLICATION_JSON
+                ));
+
+        assertThatThrownBy(() -> repository.search("서울특별시 중구 세종대로 110"))
+                .isInstanceOf(JusoApiException.class);
+        assertThat(delays).isEmpty();
         server.verify();
     }
 
@@ -112,8 +175,7 @@ class JusoRoadAddressCoordinateRepositoryTest {
     void 승인키가_없으면_외부_호출_전에_실패한다() {
         repository = new JusoRoadAddressCoordinateRepository(
                 RestClient.create(),
-                new JusoGeocodingProperties("https://example.com", "", ""),
-                new JusoCoordinateRequestRateLimiter()
+                new JusoGeocodingProperties("https://example.com", "", "")
         );
 
         assertThatThrownBy(() -> repository.search("서울특별시 중구 세종대로 110"))
@@ -137,6 +199,13 @@ class JusoRoadAddressCoordinateRepositoryTest {
         return """
                 {"results":{"common":{"errorCode":"0","errorMessage":"정상","totalCount":"1"},
                 "juso":[{"entX":"953875.0441724667","entY":"1951999.4987320001"}]}}
+                """;
+    }
+
+    private String tooManyRequestsPayload() {
+        return """
+                {"results":{"common":{"errorCode":"E0007",
+                "errorMessage":"짧은 시간동안 다량의 주소검색 요청이 있습니다."}}}
                 """;
     }
 }

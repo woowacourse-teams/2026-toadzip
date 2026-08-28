@@ -5,7 +5,12 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -18,17 +23,31 @@ import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.housing.domain.Address;
+import com.toadzip.backend.housing.domain.ComplexSort;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.EnumMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -39,6 +58,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
@@ -57,6 +77,16 @@ class HousingComplexApiIntegrationTest {
     private static final String NORTH_EAST_LATITUDE = "37.600000";
 
     private static final String NORTH_EAST_LONGITUDE = "127.100000";
+
+    private static final String SEARCH_SOUTH_WEST_LATITUDE = "35.000000";
+
+    private static final String SEARCH_SOUTH_WEST_LONGITUDE = "126.700000";
+
+    private static final String SEARCH_NORTH_EAST_LATITUDE = "35.500000";
+
+    private static final String SEARCH_NORTH_EAST_LONGITUDE = "127.200000";
+
+    private static final int MAX_FILTERED_LIST_PAGES = 10;
 
     @Autowired
     private EntityManager entityManager;
@@ -77,6 +107,20 @@ class HousingComplexApiIntegrationTest {
     private HousingType secondInsideType;
 
     private Announcement correction;
+
+    private HousingComplex matchingFirstComplex;
+
+    private HousingComplex matchingSecondComplex;
+
+    private HousingComplex matchingThirdComplex;
+
+    private HousingComplex filterExcludedComplex;
+
+    private Map<FullFilterSentinel, HousingComplex> fullFilterSentinels;
+
+    private HousingComplex firstNullSortComplex;
+
+    private HousingComplex secondNullSortComplex;
 
     @BeforeEach
     void setUpFixture() {
@@ -126,7 +170,158 @@ class HousingComplexApiIntegrationTest {
         persistCancellationChain(boundaryType);
         persistEndedLeaf();
         persistUnmatchedCurrentRow();
+        persistSearchFixture();
         entityManager.flush();
+    }
+
+    @Test
+    void 같은_전체_검색조건의_목록과_지도는_같은_단지_ID_집합을_반환한다() throws Exception {
+        List<Long> listIds = fetchEveryFilteredListPage();
+        List<Long> mapIds = fetchFilteredMapIds();
+
+        Set<Long> expectedIds = Set.of(
+                matchingFirstComplex.getId(),
+                matchingSecondComplex.getId(),
+                matchingThirdComplex.getId()
+        );
+        Set<Long> sentinelIds = fullFilterSentinels.values().stream()
+                .map(HousingComplex::getId)
+                .collect(java.util.stream.Collectors.toSet());
+
+        assertEquals(expectedIds, new HashSet<>(listIds));
+        assertEquals(expectedIds, new HashSet<>(mapIds));
+        assertEquals(List.of(
+                matchingFirstComplex.getId(),
+                matchingSecondComplex.getId(),
+                matchingThirdComplex.getId()
+        ), mapIds);
+        assertTrue(listIds.stream().noneMatch(sentinelIds::contains));
+        assertTrue(mapIds.stream().noneMatch(sentinelIds::contains));
+    }
+
+    @ParameterizedTest
+    @EnumSource(ComplexSort.class)
+    void 다섯_정렬은_동률과_null을_포함한_HTTP_두_페이지를_중복과_누락_없이_잇는다(
+            ComplexSort sort
+    ) throws Exception {
+        MvcResult firstPage = mockMvc.perform(sortRequest(sort, null))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(3))
+                .andExpect(jsonPath("$.data.hasNext").value(true))
+                .andExpect(jsonPath("$.data.nextCursor").isNotEmpty())
+                .andReturn();
+        String firstBody = firstPage.getResponse().getContentAsString();
+        List<Long> firstIds = readComplexIds(firstBody);
+        String cursor = JsonPath.read(firstBody, "$.data.nextCursor");
+
+        MvcResult secondPage = mockMvc.perform(sortRequest(sort, cursor))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(2))
+                .andExpect(jsonPath("$.data.hasNext").value(false))
+                .andExpect(jsonPath("$.data.nextCursor").value(nullValue()))
+                .andReturn();
+        List<Long> secondIds = readComplexIds(secondPage.getResponse().getContentAsString());
+
+        Set<Long> overlap = new HashSet<>(firstIds);
+        overlap.retainAll(secondIds);
+        List<Long> allIds = new ArrayList<>(firstIds);
+        allIds.addAll(secondIds);
+        assertTrue(overlap.isEmpty());
+        assertEquals(expectedSortOrder(sort), allIds);
+        assertEquals(searchFixtureIds(), new HashSet<>(allIds));
+    }
+
+    @Test
+    void v1_최신공고_커서_HTTP_요청은_성공하고_다음_커서를_v2로_발급한다() throws Exception {
+        String legacyCursor = encodedCursor(
+                "v1|" + TODAY.minusDays(1) + "|" + filterExcludedComplex.getId()
+        );
+
+        MvcResult response = mockMvc.perform(sortRequest(ComplexSort.LATEST_ANNOUNCEMENT, legacyCursor, "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].complexId").value(matchingFirstComplex.getId()))
+                .andExpect(jsonPath("$.data.hasNext").value(true))
+                .andExpect(jsonPath("$.data.nextCursor").isNotEmpty())
+                .andReturn();
+
+        String nextCursor = JsonPath.read(response.getResponse().getContentAsString(), "$.data.nextCursor");
+        String payload = new String(Base64.getUrlDecoder().decode(nextCursor), StandardCharsets.UTF_8);
+        assertTrue(payload.startsWith("v2|LATEST_ANNOUNCEMENT|"));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("invalidRequestCases")
+    void 의미가_잘못된_검색값은_정확한_INVALID_REQUEST_계약으로_반환한다(HttpErrorCase errorCase)
+            throws Exception {
+        assertHttpError(
+                requestFor("/api/v1/complexes", errorCase),
+                "INVALID_REQUEST",
+                "단지 조회 요청값이 올바르지 않습니다.",
+                errorCase.expectedField()
+        );
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("invalidRegionCases")
+    void 잘못된_지역_코드는_정확한_INVALID_REGION_CODE_계약으로_반환한다(HttpErrorCase errorCase)
+            throws Exception {
+        assertHttpError(
+                requestFor("/api/v1/complexes", errorCase),
+                "INVALID_REGION_CODE",
+                "지역 코드를 확인해 주세요.",
+                errorCase.expectedField()
+        );
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("malformedBindingCases")
+    void 변환할_수_없는_검색값은_정확한_VALIDATION_FAILED와_field를_반환한다(HttpErrorCase errorCase)
+            throws Exception {
+        assertHttpError(
+                requestFor("/api/v1/complexes", errorCase),
+                "VALIDATION_FAILED",
+                "요청값이 올바르지 않습니다.",
+                errorCase.expectedField()
+        );
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("invalidCursorCases")
+    void 잘못된_커서는_정확한_INVALID_CURSOR_계약으로_반환한다(HttpErrorCase errorCase)
+            throws Exception {
+        assertHttpError(
+                requestFor("/api/v1/complexes", errorCase),
+                "INVALID_CURSOR",
+                "단지 조회 커서가 올바르지 않습니다.",
+                errorCase.expectedField()
+        );
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("invalidBoundsCases")
+    void 잘못된_지도_경계는_정확한_INVALID_MAP_BOUNDS_계약으로_반환한다(HttpErrorCase errorCase)
+            throws Exception {
+        assertHttpError(
+                requestFor("/api/v1/complexes/map", errorCase),
+                "INVALID_MAP_BOUNDS",
+                "지도 범위 좌표가 올바르지 않습니다.",
+                errorCase.expectedField()
+        );
+    }
+
+    @Test
+    void 잘못된_bounds는_filter와_cursor_오류보다_먼저_INVALID_MAP_BOUNDS로_반환한다() throws Exception {
+        assertHttpError(
+                get("/api/v1/complexes")
+                        .param("keyword", " ")
+                        .param("cursor", "bad!")
+                        .param("southWestLng", SOUTH_WEST_LONGITUDE)
+                        .param("northEastLat", NORTH_EAST_LATITUDE)
+                        .param("northEastLng", NORTH_EAST_LONGITUDE),
+                "INVALID_MAP_BOUNDS",
+                "지도 범위 좌표가 올바르지 않습니다.",
+                null
+        );
     }
 
     @Test
@@ -258,6 +453,599 @@ class HousingComplexApiIntegrationTest {
                 .andExpect(content().string(not(containsString("취소 공고 대상"))))
                 .andExpect(content().string(not(containsString("종료 대상"))))
                 .andExpect(content().string(not(containsString("미매칭 대상"))));
+    }
+
+    private void persistSearchFixture() {
+        matchingFirstComplex = persistSearchComplex(
+                "통합 검색 커서 정렬 A 단지",
+                "35.100000",
+                "126.900000",
+                "HAPPY_HOUSING",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+        persistSearchSupply(
+                matchingFirstComplex,
+                "filter-a",
+                "행복주택",
+                "신규모집",
+                "LH",
+                TODAY.minusDays(1),
+                TODAY.minusDays(1),
+                TODAY.plusDays(1),
+                "40.00",
+                "15000000",
+                "150000"
+        );
+        matchingSecondComplex = persistSearchComplex(
+                "통합 검색 커서 정렬 B 단지",
+                "35.200000",
+                "127.000000",
+                "국민임대",
+                "서울주택도시공사",
+                LocalDate.of(2021, 1, 1),
+                true
+        );
+        persistSearchSupply(
+                matchingSecondComplex,
+                "filter-b",
+                "국민임대",
+                "예비입주자",
+                "서울주택도시공사",
+                TODAY.minusDays(2),
+                TODAY.minusDays(4),
+                TODAY.minusDays(1),
+                "45.00",
+                "20000000",
+                "200000"
+        );
+        matchingThirdComplex = persistSearchComplex(
+                "통합 검색 C 단지",
+                "35.250000",
+                "127.050000",
+                "HAPPY_HOUSING",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+        persistSearchSupply(
+                matchingThirdComplex,
+                "filter-c",
+                "행복주택",
+                "신규모집",
+                "LH",
+                TODAY.minusDays(1),
+                TODAY.minusDays(1),
+                TODAY.plusDays(1),
+                "42.00",
+                "18000000",
+                "180000"
+        );
+
+        fullFilterSentinels = new EnumMap<>(FullFilterSentinel.class);
+        for (FullFilterSentinel sentinel : FullFilterSentinel.values()) {
+            fullFilterSentinels.put(sentinel, persistFullFilterSentinel(sentinel));
+        }
+        filterExcludedComplex = fullFilterSentinels.get(FullFilterSentinel.KEYWORD);
+
+        firstNullSortComplex = persistSearchComplex(
+                "커서 정렬 null A 단지",
+                "35.350000",
+                "127.120000",
+                "HAPPY_HOUSING",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+        secondNullSortComplex = persistSearchComplex(
+                "커서 정렬 null B 단지",
+                "35.400000",
+                "127.150000",
+                "HAPPY_HOUSING",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                true
+        );
+    }
+
+    private HousingComplex persistFullFilterSentinel(FullFilterSentinel sentinel) {
+        String suffix = sentinel.name().toLowerCase(Locale.ROOT);
+        String name = "통합 검색 sentinel " + suffix;
+        String roadAddress = "전남광주통합특별시 동구 통합 검색로 1";
+        String latitude = "35.300000";
+        String longitude = "127.100000";
+        String complexSupplyType = "HAPPY_HOUSING";
+        String announcementSupplyType = "행복주택";
+        String complexProvider = "LH";
+        String announcementProvider = "LH";
+        String provinceCode = "12";
+        String districtCode = "12210";
+        LocalDate completionDate = LocalDate.of(2020, 1, 1);
+        boolean elevatorInstalled = true;
+        String recruitmentType = "신규모집";
+        LocalDate applicationStartDate = TODAY.minusDays(1);
+        LocalDate applicationEndDate = TODAY.plusDays(1);
+        String exclusiveArea = "40.00";
+        String deposit = "15000000";
+        String monthlyRent = "150000";
+
+        switch (sentinel) {
+            case KEYWORD -> {
+                name = "커서 정렬 keyword sentinel";
+                roadAddress = "전남광주특별시 동구 다른길 1";
+            }
+            case REGION -> districtCode = "12240";
+            case RENTAL_TYPE -> {
+                complexSupplyType = "PERMANENT_RENTAL";
+                announcementSupplyType = "영구임대";
+            }
+            case APPLICATION_STATUS -> {
+                applicationStartDate = TODAY.plusDays(1);
+                applicationEndDate = TODAY.plusDays(2);
+            }
+            case AGENCY -> {
+                complexProvider = "GH";
+                announcementProvider = "GH";
+            }
+            case RECRUITMENT_TYPE -> recruitmentType = "기타";
+            case MIN_DEPOSIT -> deposit = "9999999";
+            case MAX_DEPOSIT -> deposit = "25000001";
+            case MIN_MONTHLY_RENT -> monthlyRent = "99999";
+            case MAX_MONTHLY_RENT -> monthlyRent = "250001";
+            case MIN_EXCLUSIVE_AREA -> exclusiveArea = "38.99";
+            case MAX_EXCLUSIVE_AREA -> exclusiveArea = "46.01";
+            case BUILT_YEAR_FROM -> completionDate = LocalDate.of(2019, 12, 31);
+            case BUILT_YEAR_TO -> completionDate = LocalDate.of(2022, 1, 1);
+            case ELEVATOR -> elevatorInstalled = false;
+            case SOUTH_WEST_LATITUDE -> latitude = "34.999999";
+            case NORTH_EAST_LATITUDE -> latitude = "35.500001";
+            case SOUTH_WEST_LONGITUDE -> longitude = "126.699999";
+            case NORTH_EAST_LONGITUDE -> longitude = "127.200001";
+        }
+
+        HousingComplex complex = persistComplex(
+                name,
+                latitude,
+                longitude,
+                complexSupplyType,
+                complexProvider,
+                completionDate,
+                elevatorInstalled,
+                provinceCode,
+                districtCode,
+                roadAddress
+        );
+        persistSearchSupply(
+                complex,
+                "sentinel-" + suffix,
+                announcementSupplyType,
+                recruitmentType,
+                announcementProvider,
+                TODAY.minusDays(1),
+                applicationStartDate,
+                applicationEndDate,
+                exclusiveArea,
+                deposit,
+                monthlyRent
+        );
+        return complex;
+    }
+
+    private HousingComplex persistSearchComplex(
+            String name,
+            String latitude,
+            String longitude,
+            String supplyType,
+            String provider,
+            LocalDate completionDate,
+            boolean elevatorInstalled
+    ) {
+        return persistComplex(
+                name,
+                latitude,
+                longitude,
+                supplyType,
+                provider,
+                completionDate,
+                elevatorInstalled,
+                "12",
+                "12210",
+                "전남광주통합특별시 동구 통합로 1"
+        );
+    }
+
+    private void persistSearchSupply(
+            HousingComplex complex,
+            String suffix,
+            String supplyType,
+            String recruitmentType,
+            String provider,
+            LocalDate postedDate,
+            LocalDate applicationStartDate,
+            LocalDate applicationEndDate,
+            String exclusiveArea,
+            String deposit,
+            String monthlyRent
+    ) {
+        HousingType housingType = persistHousingType(
+                complex,
+                suffix + "-type",
+                exclusiveArea,
+                exclusiveArea,
+                "https://example.com/" + suffix + ".png",
+                false,
+                "100000"
+        );
+        Announcement announcement = persistAnnouncement(
+                null,
+                "ORIGINAL",
+                suffix,
+                postedDate,
+                applicationStartDate,
+                applicationEndDate,
+                null,
+                supplyType,
+                recruitmentType,
+                provider
+        );
+        SupplyRow supplyRow = persistSupplyRow(announcement, complex, housingType, suffix + "-row", 1);
+        persistSupplyTarget(supplyRow, suffix + "-target", deposit, monthlyRent, null, 1);
+    }
+
+    private List<Long> fetchEveryFilteredListPage() throws Exception {
+        List<Long> ids = new ArrayList<>();
+        Set<String> seenCursors = new HashSet<>();
+        String cursor = null;
+        boolean hasNext = true;
+        int pageCount = 0;
+        while (hasNext) {
+            pageCount++;
+            if (pageCount > MAX_FILTERED_LIST_PAGES) {
+                fail("전체 filter 목록 조회가 최대 페이지 수를 초과했습니다.");
+            }
+            MockHttpServletRequestBuilder request = allFilterRequest("/api/v1/complexes")
+                    .param("sort", "DEPOSIT_ASC")
+                    .param("size", "1");
+            if (cursor != null) {
+                request.param("cursor", cursor);
+            }
+            MvcResult response = mockMvc.perform(request)
+                    .andExpect(status().isOk())
+                    .andReturn();
+            String body = response.getResponse().getContentAsString();
+            ids.addAll(readComplexIds(body));
+            hasNext = JsonPath.read(body, "$.data.hasNext");
+            String nextCursor = JsonPath.read(body, "$.data.nextCursor");
+            if (hasNext) {
+                assertFalse(nextCursor == null || nextCursor.isBlank());
+                assertTrue(seenCursors.add(nextCursor), "반복된 next cursor를 반환했습니다.");
+            } else {
+                assertNull(nextCursor);
+            }
+            cursor = nextCursor;
+        }
+        return ids;
+    }
+
+    private List<Long> fetchFilteredMapIds() throws Exception {
+        MvcResult response = mockMvc.perform(allFilterRequest("/api/v1/complexes/map"))
+                .andExpect(status().isOk())
+                .andReturn();
+        return readComplexIds(response.getResponse().getContentAsString());
+    }
+
+    private MockHttpServletRequestBuilder allFilterRequest(String path) {
+        return get(path)
+                .param("keyword", "통합 검색")
+                .param("regionCode", "29110")
+                .param("rentalTypes", "HAPPY_HOUSING", "NATIONAL_RENTAL")
+                .param("applicationStatuses", "APPLYING", "CLOSED")
+                .param("agencyCodes", "LH", "SH")
+                .param("recruitmentTypes", "NEW", "WAITLIST")
+                .param("minDeposit", "10000000")
+                .param("maxDeposit", "25000000")
+                .param("minMonthlyRent", "100000")
+                .param("maxMonthlyRent", "250000")
+                .param("minExclusiveArea", "39.00")
+                .param("maxExclusiveArea", "46.00")
+                .param("builtYearFrom", "2020")
+                .param("builtYearTo", "2021")
+                .param("hasElevator", "true")
+                .param("southWestLat", SEARCH_SOUTH_WEST_LATITUDE)
+                .param("southWestLng", SEARCH_SOUTH_WEST_LONGITUDE)
+                .param("northEastLat", SEARCH_NORTH_EAST_LATITUDE)
+                .param("northEastLng", SEARCH_NORTH_EAST_LONGITUDE);
+    }
+
+    private MockHttpServletRequestBuilder sortRequest(ComplexSort sort, String cursor) {
+        return sortRequest(sort, cursor, "3");
+    }
+
+    private MockHttpServletRequestBuilder sortRequest(ComplexSort sort, String cursor, String size) {
+        MockHttpServletRequestBuilder request = get("/api/v1/complexes")
+                .param("keyword", "커서 정렬")
+                .param("regionCode", "29110")
+                .param("sort", sort.name())
+                .param("size", size)
+                .param("southWestLat", SEARCH_SOUTH_WEST_LATITUDE)
+                .param("southWestLng", SEARCH_SOUTH_WEST_LONGITUDE)
+                .param("northEastLat", SEARCH_NORTH_EAST_LATITUDE)
+                .param("northEastLng", SEARCH_NORTH_EAST_LONGITUDE);
+        if (cursor != null) {
+            request.param("cursor", cursor);
+        }
+        return request;
+    }
+
+    private List<Long> readComplexIds(String body) {
+        List<Number> rawIds = JsonPath.read(body, "$.data.items[*].complexId");
+        return rawIds.stream().map(Number::longValue).toList();
+    }
+
+    private List<Long> expectedSortOrder(ComplexSort sort) {
+        return switch (sort) {
+            case LATEST_ANNOUNCEMENT, DEPOSIT_ASC, MONTHLY_RENT_ASC -> List.of(
+                    filterExcludedComplex.getId(),
+                    matchingFirstComplex.getId(),
+                    matchingSecondComplex.getId(),
+                    secondNullSortComplex.getId(),
+                    firstNullSortComplex.getId()
+            );
+            case AREA_DESC -> List.of(
+                    matchingSecondComplex.getId(),
+                    filterExcludedComplex.getId(),
+                    matchingFirstComplex.getId(),
+                    secondNullSortComplex.getId(),
+                    firstNullSortComplex.getId()
+            );
+            case COMPLETION_DATE_DESC -> List.of(
+                    matchingSecondComplex.getId(),
+                    secondNullSortComplex.getId(),
+                    firstNullSortComplex.getId(),
+                    filterExcludedComplex.getId(),
+                    matchingFirstComplex.getId()
+            );
+        };
+    }
+
+    private Set<Long> searchFixtureIds() {
+        return Set.of(
+                matchingFirstComplex.getId(),
+                matchingSecondComplex.getId(),
+                filterExcludedComplex.getId(),
+                firstNullSortComplex.getId(),
+                secondNullSortComplex.getId()
+        );
+    }
+
+    private void assertHttpError(
+            MockHttpServletRequestBuilder request,
+            String expectedCode,
+            String expectedMessage,
+            String expectedField
+    ) throws Exception {
+        MvcResult response = mockMvc.perform(request)
+                .andExpect(status().isBadRequest())
+                .andReturn();
+        String body = response.getResponse().getContentAsString();
+        Map<String, Object> document = JsonPath.read(body, "$");
+        assertEquals(expectedCode, document.get("code"));
+        assertEquals(expectedMessage, document.get("message"));
+        String traceId = (String) document.get("traceId");
+        assertTrue(traceId != null && !traceId.isBlank());
+        if ("VALIDATION_FAILED".equals(expectedCode)) {
+            assertEquals(Set.of("code", "message", "traceId", "errors"), document.keySet());
+            List<Map<String, Object>> errors = JsonPath.read(body, "$.errors");
+            assertEquals(1, errors.size());
+            Map<String, Object> error = errors.getFirst();
+            assertEquals(Set.of("field", "reason"), error.keySet());
+            assertEquals(expectedField, error.get("field"));
+            assertEquals("형식이 올바르지 않습니다.", error.get("reason"));
+        } else {
+            assertEquals(Set.of("code", "message", "traceId"), document.keySet());
+        }
+        assertNoInternalDetails(body);
+    }
+
+    private MockHttpServletRequestBuilder requestFor(String path, HttpErrorCase errorCase) {
+        MockHttpServletRequestBuilder request = get(path);
+        if (errorCase.addDefaultBounds()) {
+            addDefaultBounds(request);
+        }
+        List<String> parameters = errorCase.parameterPairs();
+        for (int index = 0; index < parameters.size(); index += 2) {
+            request.param(parameters.get(index), parameters.get(index + 1));
+        }
+        return request;
+    }
+
+    private void addDefaultBounds(MockHttpServletRequestBuilder request) {
+        request.param("southWestLat", SOUTH_WEST_LATITUDE)
+                .param("southWestLng", SOUTH_WEST_LONGITUDE)
+                .param("northEastLat", NORTH_EAST_LATITUDE)
+                .param("northEastLng", NORTH_EAST_LONGITUDE);
+    }
+
+    private void assertNoInternalDetails(String body) {
+        assertFalse(body.contains("SQL"));
+        assertFalse(body.contains("Exception"));
+        assertFalse(body.contains("java."));
+        assertFalse(body.contains("org.springframework"));
+        assertFalse(body.contains("com.toadzip"));
+        assertFalse(body.contains("Failed to convert"));
+        assertFalse(body.contains("For input string"));
+        assertFalse(body.contains("stackTrace"));
+        assertFalse(body.contains("\"stack\""));
+        assertFalse(body.contains("\"stackTrace\""));
+        assertFalse(body.contains("\"cause\""));
+        assertFalse(body.contains("\"exception\""));
+        assertFalse(body.contains("\"exceptionType\""));
+        assertFalse(body.contains("\"type\""));
+        assertFalse(body.contains("\"class\""));
+    }
+
+    private static List<Arguments> invalidRequestCases() {
+        return List.of(
+                errorCase("공백 keyword", null, true, "keyword", "   "),
+                errorCase("음수 금액", null, true, "minDeposit", "-1"),
+                errorCase("음수 면적", null, true, "minExclusiveArea", "-0.01"),
+                errorCase("역전 금액 범위", null, true, "minDeposit", "2", "maxDeposit", "1"),
+                errorCase(
+                        "역전 월 임대료 범위",
+                        null,
+                        true,
+                        "minMonthlyRent",
+                        "2",
+                        "maxMonthlyRent",
+                        "1"
+                ),
+                errorCase("역전 면적 범위", null, true, "minExclusiveArea", "2", "maxExclusiveArea", "1"),
+                errorCase("범위 밖 year", null, true, "builtYearFrom", "0"),
+                errorCase("역전 year 범위", null, true, "builtYearFrom", "2021", "builtYearTo", "2020"),
+                errorCase("CANCELLED 신청 상태", null, true, "applicationStatuses", "CANCELLED"),
+                errorCase("빈 enum 요소", null, true, "agencyCodes", "LH", "agencyCodes", ""),
+                errorCase("filter가 cursor보다 우선", null, true, "keyword", " ", "cursor", "bad!")
+        );
+    }
+
+    private static List<Arguments> invalidRegionCases() {
+        return List.of(
+                errorCase("공백 regionCode", null, true, "regionCode", " "),
+                errorCase("형식 오류 regionCode", null, true, "regionCode", "111"),
+                errorCase("미등록 2자리 regionCode", null, true, "regionCode", "99"),
+                errorCase("미등록 5자리 regionCode", null, true, "regionCode", "99999"),
+                errorCase("region이 cursor보다 우선", null, true, "regionCode", "99999", "cursor", "bad!")
+        );
+    }
+
+    private static List<Arguments> malformedBindingCases() {
+        return List.of(
+                errorCase("malformed enum", "agencyCodes", true, "agencyCodes", "UNKNOWN"),
+                errorCase("malformed number", "minDeposit", true, "minDeposit", "not-a-number"),
+                errorCase("malformed decimal", "minExclusiveArea", true, "minExclusiveArea", "not-a-decimal"),
+                errorCase("malformed boolean", "hasElevator", true, "hasElevator", "not-a-boolean")
+        );
+    }
+
+    private static List<Arguments> invalidCursorCases() {
+        return List.of(
+                errorCase("malformed cursor", null, true, "cursor", "bad!"),
+                errorCase(
+                        "typed-value cursor",
+                        null,
+                        true,
+                        "sort",
+                        "DEPOSIT_ASC",
+                        "cursor",
+                        encodedCursor("v2|DEPOSIT_ASC|0|not-a-decimal|1")
+                ),
+                errorCase(
+                        "sort mismatch cursor",
+                        null,
+                        true,
+                        "sort",
+                        "DEPOSIT_ASC",
+                        "cursor",
+                        encodedCursor("v2|LATEST_ANNOUNCEMENT|0|2026-08-27|1")
+                )
+        );
+    }
+
+    private static List<Arguments> invalidBoundsCases() {
+        return List.of(
+                errorCase(
+                        "누락 bounds",
+                        null,
+                        false,
+                        "southWestLng",
+                        SOUTH_WEST_LONGITUDE,
+                        "northEastLat",
+                        NORTH_EAST_LATITUDE,
+                        "northEastLng",
+                        NORTH_EAST_LONGITUDE
+                ),
+                errorCase(
+                        "범위초과 bounds",
+                        null,
+                        false,
+                        "southWestLat",
+                        "-91",
+                        "southWestLng",
+                        SOUTH_WEST_LONGITUDE,
+                        "northEastLat",
+                        NORTH_EAST_LATITUDE,
+                        "northEastLng",
+                        NORTH_EAST_LONGITUDE
+                ),
+                errorCase(
+                        "역전 bounds",
+                        null,
+                        false,
+                        "southWestLat",
+                        NORTH_EAST_LATITUDE,
+                        "southWestLng",
+                        SOUTH_WEST_LONGITUDE,
+                        "northEastLat",
+                        SOUTH_WEST_LATITUDE,
+                        "northEastLng",
+                        NORTH_EAST_LONGITUDE
+                )
+        );
+    }
+
+    private static Arguments errorCase(
+            String name,
+            String expectedField,
+            boolean addDefaultBounds,
+            String... parameterPairs
+    ) {
+        return Arguments.of(new HttpErrorCase(
+                name,
+                expectedField,
+                addDefaultBounds,
+                List.of(parameterPairs)
+        ));
+    }
+
+    private static String encodedCursor(String payload) {
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(payload.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private record HttpErrorCase(
+            String name,
+            String expectedField,
+            boolean addDefaultBounds,
+            List<String> parameterPairs
+    ) {
+        @Override
+        public String toString() {
+            return name;
+        }
+    }
+
+    private enum FullFilterSentinel {
+        KEYWORD,
+        REGION,
+        RENTAL_TYPE,
+        APPLICATION_STATUS,
+        AGENCY,
+        RECRUITMENT_TYPE,
+        MIN_DEPOSIT,
+        MAX_DEPOSIT,
+        MIN_MONTHLY_RENT,
+        MAX_MONTHLY_RENT,
+        MIN_EXCLUSIVE_AREA,
+        MAX_EXCLUSIVE_AREA,
+        BUILT_YEAR_FROM,
+        BUILT_YEAR_TO,
+        ELEVATOR,
+        SOUTH_WEST_LATITUDE,
+        NORTH_EAST_LATITUDE,
+        SOUTH_WEST_LONGITUDE,
+        NORTH_EAST_LONGITUDE
     }
 
     private void persistCorrectionChain(HousingType sameDateType) {
@@ -393,26 +1181,52 @@ class HousingComplexApiIntegrationTest {
     }
 
     private HousingComplex persistComplex(String name, String latitude, String longitude) {
+        return persistComplex(
+                name,
+                latitude,
+                longitude,
+                "행복주택",
+                "LH",
+                LocalDate.of(2020, 1, 1),
+                true,
+                "11",
+                "11140",
+                "서울특별시 중구 세종대로 110"
+        );
+    }
+
+    private HousingComplex persistComplex(
+            String name,
+            String latitude,
+            String longitude,
+            String supplyType,
+            String provider,
+            LocalDate completionDate,
+            boolean elevatorInstalled,
+            String provinceCode,
+            String districtCode,
+            String roadAddress
+    ) {
         HousingComplex complex = HousingComplex.create(
                 name,
                 "source-" + name,
-                "행복주택",
+                supplyType,
                 Address.create(
-                        "서울특별시 중구 세종대로 110",
-                        "1114010100100010000",
-                        "1114010100",
-                        "11",
-                        "11140",
+                        roadAddress,
+                        districtCode + "101001000100000",
+                        districtCode + "10100",
+                        provinceCode,
+                        districtCode,
                         new BigDecimal(latitude),
                         new BigDecimal(longitude)
                 ),
                 100,
-                "LH",
-                LocalDate.of(2020, 1, 1),
+                provider,
+                completionDate,
                 "개별난방",
                 "아파트",
                 "계단식",
-                true,
+                elevatorInstalled,
                 80,
                 "https://example.com/" + name + ".png",
                 7
@@ -427,7 +1241,7 @@ class HousingComplexApiIntegrationTest {
             String exclusiveArea,
             String supplyArea,
             String floorPlanUrl,
-            boolean duplex,
+            Boolean duplex,
             String maintenanceFee
     ) {
         HousingType housingType = HousingType.create(
@@ -459,7 +1273,10 @@ class HousingComplexApiIntegrationTest {
                 postedDate,
                 applicationStartDate,
                 applicationEndDate,
-                null
+                null,
+                "행복주택",
+                "신규모집",
+                "LH"
         );
     }
 
@@ -472,6 +1289,32 @@ class HousingComplexApiIntegrationTest {
             LocalDate applicationEndDate,
             BigDecimal actualCompetitionRate
     ) {
+        return persistAnnouncement(
+                previous,
+                status,
+                suffix,
+                postedDate,
+                applicationStartDate,
+                applicationEndDate,
+                actualCompetitionRate,
+                "행복주택",
+                "신규모집",
+                "LH"
+        );
+    }
+
+    private Announcement persistAnnouncement(
+            Announcement previous,
+            String status,
+            String suffix,
+            LocalDate postedDate,
+            LocalDate applicationStartDate,
+            LocalDate applicationEndDate,
+            BigDecimal actualCompetitionRate,
+            String supplyType,
+            String recruitmentType,
+            String provider
+    ) {
         String previousSourceIdentifier = null;
         if (previous != null) {
             previousSourceIdentifier = previous.getSourceAnnouncementIdentifier();
@@ -482,9 +1325,9 @@ class HousingComplexApiIntegrationTest {
                 previous,
                 "공고 " + suffix,
                 status,
-                "행복주택",
-                "신규모집",
-                "LH",
+                supplyType,
+                recruitmentType,
+                provider,
                 postedDate,
                 applicationStartDate,
                 applicationEndDate,

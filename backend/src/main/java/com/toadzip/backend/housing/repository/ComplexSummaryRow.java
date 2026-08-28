@@ -23,6 +23,7 @@ public record ComplexSummaryRow(
         String publicationType,
         LocalDate postedDate,
         LocalDate applicationStartDate,
-        LocalDate applicationEndDate
+        LocalDate applicationEndDate,
+        LocalDate completionDate
 ) {
 }

@@ -61,11 +61,13 @@ class HousingComplexDetailQueryTest {
         };
         HousingComplexCodeMapper codeMapper = new HousingComplexCodeMapper();
         HousingComplexDetailMapper detailMapper = new HousingComplexDetailMapper(codeMapper, regionCodeResolver);
+        RegionCodeResolver noOpSearchRegionCodeResolver = (provinceCode, cityCountyDistrictCode) -> Optional.empty();
         service = new HousingComplexQueryService(
                 summaryRepository,
                 summaryMapper,
                 detailRepository,
                 detailMapper,
+                noOpSearchRegionCodeResolver,
                 CLOCK
         );
         stubDetail(complexRow("https://example.com/complex.png", "INDIVIDUAL", "APARTMENT", "STAIR"));
@@ -153,6 +155,43 @@ class HousingComplexDetailQueryTest {
                 () -> assertEquals(List.of(), response.images()),
                 () -> assertNull(response.moveOutCountLastYear())
         );
+    }
+
+    @Test
+    void 주택형_복층_여부가_없으면_null로_반환한다() {
+        stubDetail(new ComplexDetailRow(
+                COMPLEX_ID,
+                "행복 단지",
+                null,
+                "11",
+                "11140",
+                "서울특별시 중구 세종대로 110",
+                "HAPPY_HOUSING",
+                "LH",
+                new BigDecimal("37.500000"),
+                new BigDecimal("126.900000"),
+                null,
+                "APARTMENT",
+                null,
+                null,
+                null,
+                null,
+                100,
+                80
+        ));
+        when(detailRepository.findHousingTypes(COMPLEX_ID)).thenReturn(List.of(new HousingTypeDetailRow(
+                101L,
+                "46A",
+                new BigDecimal("46.8000"),
+                null,
+                null,
+                null,
+                null
+        )));
+
+        HousingComplexDetailResponse response = getExistingComplex();
+
+        assertNull(response.housingTypes().getFirst().isDuplex());
     }
 
     @Test

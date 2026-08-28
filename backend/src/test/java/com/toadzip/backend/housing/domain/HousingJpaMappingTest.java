@@ -49,6 +49,7 @@ class HousingJpaMappingTest {
                 Set.of(
                         "id",
                         "housingComplex",
+                        "sourceHousingTypeIdentifier",
                         "name",
                         "exclusiveArea",
                         "supplyArea",

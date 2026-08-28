@@ -378,7 +378,7 @@ class AnnouncementQueryServiceTest {
         assertThrows(InvalidAnnouncementRequestException.class, () -> service.getAnnouncements(
                 new AnnouncementSearchRequest("   ", null, null, null, null, null, null, null, null), null, 20
         ));
-        when(regionCodeResolver.equivalentCodes("99999")).thenReturn(Optional.empty());
+        when(regionCodeResolver.filterCodes("99999")).thenReturn(Optional.empty());
         assertThrows(InvalidRegionCodeException.class, () -> service.getAnnouncements(
                 requestWithRegion("99999"), null, 20
         ));
@@ -417,7 +417,7 @@ class AnnouncementQueryServiceTest {
         AnnouncementSearchRepository announcementSearchRepository = mock(AnnouncementSearchRepository.class);
         RegionCodeResolver regionCodeResolver = mock(RegionCodeResolver.class);
         AnnouncementResponseMapper announcementResponseMapper = mock(AnnouncementResponseMapper.class);
-        when(regionCodeResolver.equivalentCodes("11140")).thenReturn(Optional.of(Set.of("11140", "11000")));
+        when(regionCodeResolver.filterCodes("11140")).thenReturn(Optional.of(Set.of("11140", "11000")));
         when(announcementSearchRepository.findLatestLeaves(
                 org.mockito.ArgumentMatchers.any(AnnouncementSearchCondition.class),
                 org.mockito.ArgumentMatchers.isNull(),

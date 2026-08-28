@@ -1,6 +1,7 @@
 package com.toadzip.backend.global.exception;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -20,6 +21,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -51,6 +53,24 @@ class GlobalExceptionAdviceTest {
                 .andExpect(jsonPath("$.errors.length()").value(2))
                 .andExpect(jsonPath("$.errors[?(@.field == 'title')].reason").value("필수 값입니다."))
                 .andExpect(jsonPath("$.errors[?(@.field == 'sourceUrl')].reason").value("필수 값입니다."));
+    }
+
+    @Test
+    void ModelAttribute_변환_실패는_내부_타입_정보_없이_안전한_형식_오류로_반환한다() throws Exception {
+        mockMvc.perform(get("/test/errors/binding")
+                        .param("amount", "not-a-long"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.message").value("요청값이 올바르지 않습니다."))
+                .andExpect(jsonPath("$.traceId").value(matchesPattern(".*\\S.*")))
+                .andExpect(jsonPath("$.errors.length()").value(1))
+                .andExpect(jsonPath("$.errors[0].field").value("amount"))
+                .andExpect(jsonPath("$.errors[0].reason").value("형식이 올바르지 않습니다."))
+                .andExpect(content().string(not(containsString("java."))))
+                .andExpect(content().string(not(containsString("org.springframework"))))
+                .andExpect(content().string(not(containsString("com.toadzip"))))
+                .andExpect(content().string(not(containsString("Failed to convert"))))
+                .andExpect(content().string(not(containsString("For input string"))));
     }
 
     @Test
@@ -138,6 +158,10 @@ class GlobalExceptionAdviceTest {
         void requireParameter(@RequestParam String requiredCode) {
         }
 
+        @GetMapping("/binding")
+        void bind(@Valid @ModelAttribute BindingRequest request) {
+        }
+
         @GetMapping("/unexpected")
         void failUnexpectedly() {
             throw new IllegalStateException("database password must not be exposed");
@@ -153,5 +177,8 @@ class GlobalExceptionAdviceTest {
             @NotBlank(message = "필수 값입니다.") String title,
             @NotBlank(message = "필수 값입니다.") String sourceUrl
     ) {
+    }
+
+    record BindingRequest(Long amount) {
     }
 }

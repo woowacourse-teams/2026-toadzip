@@ -10,6 +10,7 @@ import com.toadzip.backend.ingest.domain.UtmKCoordinate;
 import com.toadzip.backend.ingest.repository.RoadAddressCoordinateRepository;
 import java.math.BigDecimal;
 import java.net.URI;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -27,20 +28,35 @@ public class JusoRoadAddressCoordinateRepository implements RoadAddressCoordinat
 
     private static final String SUCCESS_CODE = "0";
 
+    private static final String TOO_MANY_REQUESTS_CODE = "E0007";
+
+    private static final List<Duration> RETRY_DELAYS = List.of(
+            Duration.ofSeconds(1),
+            Duration.ofSeconds(2),
+            Duration.ofSeconds(4)
+    );
+
     private final RestClient restClient;
 
     private final JusoGeocodingProperties properties;
 
-    private final JusoCoordinateRequestRateLimiter rateLimiter;
+    private final Sleeper sleeper;
 
     public JusoRoadAddressCoordinateRepository(
             RestClient restClient,
+            JusoGeocodingProperties properties
+    ) {
+        this(restClient, properties, duration -> Thread.sleep(duration.toMillis()));
+    }
+
+    JusoRoadAddressCoordinateRepository(
+            RestClient restClient,
             JusoGeocodingProperties properties,
-            JusoCoordinateRequestRateLimiter rateLimiter
+            Sleeper sleeper
     ) {
         this.restClient = restClient;
         this.properties = properties;
-        this.rateLimiter = rateLimiter;
+        this.sleeper = sleeper;
     }
 
     @Override
@@ -57,7 +73,6 @@ public class JusoRoadAddressCoordinateRepository implements RoadAddressCoordinat
     @Override
     public Optional<UtmKCoordinate> findCoordinate(JusoAddressCode addressCode) {
         requireConfigured(properties.coordinateKey(), "좌표제공 검색 API");
-        rateLimiter.acquire();
         MultiValueMap<String, String> form = commonForm(properties.coordinateKey());
         form.add("admCd", addressCode.administrativeCode());
         form.add("rnMgtSn", addressCode.roadNameCode());
@@ -69,6 +84,20 @@ public class JusoRoadAddressCoordinateRepository implements RoadAddressCoordinat
     }
 
     private JsonNode request(String path, MultiValueMap<String, String> form) {
+        for (int attempt = 0; ; attempt++) {
+            try {
+                return requestOnce(path, form);
+            }
+            catch (JusoApiException exception) {
+                if (!exception.isRetryable() || attempt >= RETRY_DELAYS.size()) {
+                    throw exception;
+                }
+                sleep(RETRY_DELAYS.get(attempt));
+            }
+        }
+    }
+
+    private JsonNode requestOnce(String path, MultiValueMap<String, String> form) {
         try {
             JsonNode body = restClient.post()
                     .uri(endpoint(path))
@@ -85,8 +114,21 @@ public class JusoRoadAddressCoordinateRepository implements RoadAddressCoordinat
         catch (JusoApiException exception) {
             throw exception;
         }
-        catch (HttpClientErrorException | HttpServerErrorException | ResourceAccessException exception) {
-            throw new JusoApiException(EXTERNAL_API_ERROR, "주소 API 호출에 실패했습니다.", exception);
+        catch (HttpClientErrorException exception) {
+            throw new JusoApiException(
+                    EXTERNAL_API_ERROR,
+                    "주소 API 호출에 실패했습니다.",
+                    exception,
+                    exception.getStatusCode().value() == 429
+            );
+        }
+        catch (HttpServerErrorException | ResourceAccessException exception) {
+            throw new JusoApiException(
+                    EXTERNAL_API_ERROR,
+                    "주소 API 호출에 실패했습니다.",
+                    exception,
+                    true
+            );
         }
         catch (RuntimeException exception) {
             throw new JusoApiException(
@@ -169,7 +211,12 @@ public class JusoRoadAddressCoordinateRepository implements RoadAddressCoordinat
             return;
         }
         String message = common.path("errorMessage").asString("");
-        throw externalFailure("주소 API 원천 오류가 발생했습니다: code=" + code + ", " + message);
+        throw new JusoApiException(
+                EXTERNAL_API_ERROR,
+                "주소 API 원천 오류가 발생했습니다: code=" + code + ", " + message,
+                null,
+                TOO_MANY_REQUESTS_CODE.equals(code)
+        );
     }
 
     private String requiredText(JsonNode row, String fieldName) {
@@ -188,5 +235,25 @@ public class JusoRoadAddressCoordinateRepository implements RoadAddressCoordinat
 
     private JusoApiException externalFailure(String message) {
         return new JusoApiException(EXTERNAL_API_ERROR, message);
+    }
+
+    private void sleep(Duration duration) {
+        try {
+            sleeper.sleep(duration);
+        }
+        catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new JusoApiException(
+                    EXTERNAL_API_ERROR,
+                    "주소 API 재시도 대기가 중단되었습니다.",
+                    exception
+            );
+        }
+    }
+
+    @FunctionalInterface
+    interface Sleeper {
+
+        void sleep(Duration duration) throws InterruptedException;
     }
 }

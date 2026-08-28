@@ -15,12 +15,15 @@ import com.toadzip.backend.housing.exception.HousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.InvalidComplexCursorException;
 import com.toadzip.backend.housing.exception.InvalidComplexRequestException;
 import com.toadzip.backend.housing.exception.InvalidMapBoundsException;
+import com.toadzip.backend.housing.exception.InvalidRegionCodeException;
 
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice
 public class HousingComplexExceptionAdvice {
 
     private static final String INVALID_MAP_BOUNDS = "INVALID_MAP_BOUNDS";
+
+    private static final String INVALID_REGION_CODE = "INVALID_REGION_CODE";
 
     private static final String INVALID_CURSOR = "INVALID_CURSOR";
 
@@ -36,6 +39,14 @@ public class HousingComplexExceptionAdvice {
             HttpServletRequest request
     ) {
         return response(HttpStatus.BAD_REQUEST, INVALID_MAP_BOUNDS, exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(InvalidRegionCodeException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidRegionCode(
+            InvalidRegionCodeException exception,
+            HttpServletRequest request
+    ) {
+        return response(HttpStatus.BAD_REQUEST, INVALID_REGION_CODE, exception.getMessage(), request);
     }
 
     @ExceptionHandler(InvalidComplexCursorException.class)
