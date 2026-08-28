@@ -1,12 +1,12 @@
 package com.toadzip.backend.announcement.domain;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class AnnouncementValidationTest {
@@ -26,19 +26,25 @@ class AnnouncementValidationTest {
         );
     }
 
-    @ParameterizedTest
-    @NullSource
-    @ValueSource(strings = {"", " "})
-    void 접수처_연락처는_비어_있을_수_없다(String contact) {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> ReceptionPlace.create(
+    @Test
+    void 접수처와_문의처는_비어_있을_수_있다() {
+        assertAll(
+                () -> assertDoesNotThrow(() -> ReceptionPlace.create(
                         "LH 청약센터",
                         "인터넷",
                         null,
-                        contact,
+                        null,
                         "https://apply.lh.or.kr"
-                )
+                )),
+                () -> assertDoesNotThrow(() -> createAnnouncement(
+                        validStringFields(),
+                        LocalDate.of(2026, 8, 1),
+                        LocalDate.of(2026, 8, 10),
+                        LocalDate.of(2026, 8, 14),
+                        LocalDate.of(2026, 9, 1),
+                        100L,
+                        null
+                ))
         );
     }
 
@@ -63,7 +69,7 @@ class AnnouncementValidationTest {
     }
 
     @Test
-    void 게시일과_접수일과_발표일과_접수처는_필수다() {
+    void 게시일과_접수일과_발표일은_필수다() {
         String[] fields = validStringFields();
         LocalDate postedDate = LocalDate.of(2026, 8, 1);
         LocalDate applicationStartDate = LocalDate.of(2026, 8, 10);
@@ -91,11 +97,6 @@ class AnnouncementValidationTest {
                         IllegalArgumentException.class,
                         () -> createAnnouncement(fields, postedDate, applicationStartDate, applicationEndDate,
                                 null, 100L, receptionPlace)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createAnnouncement(fields, postedDate, applicationStartDate, applicationEndDate,
-                                winnerAnnouncementDate, 100L, null)
                 )
         );
     }

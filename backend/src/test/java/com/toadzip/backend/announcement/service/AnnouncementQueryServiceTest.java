@@ -698,6 +698,33 @@ class AnnouncementQueryServiceTest {
     }
 
     @Test
+    void 접수처가_없는_공고_상세는_빈_접수처_목록을_반환한다() {
+        Announcement announcement = persist(Announcement.create(
+                "without-reception-place",
+                null,
+                null,
+                "접수처 없는 공고",
+                AnnouncementPublicationType.ORIGINAL,
+                RentalType.HAPPY_HOUSING,
+                RecruitmentType.NEW,
+                AgencyCode.LH,
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 8, 10),
+                LocalDate.of(2026, 9, 1),
+                "https://example.com/announcements/without-reception-place",
+                null,
+                0L,
+                null
+        ));
+        entityManager.flush();
+
+        AnnouncementDetailResponse response = announcementQueryService.getAnnouncement(announcement.getId());
+
+        assertEquals(List.of(), response.receptionPlaces());
+    }
+
+    @Test
     void 없는_공고_상세는_기능_예외로_실패한다() {
         AnnouncementNotFoundException exception = assertThrows(
                 AnnouncementNotFoundException.class,

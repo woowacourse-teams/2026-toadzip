@@ -204,6 +204,28 @@ class MyHomeAnnouncementMappingServiceTest {
                 .isEqualTo(MyHomeAnnouncementMappingFailureReason.INVALID_VALUE);
     }
 
+    @Test
+    void 문의처가_없어도_공고와_공급행을_매핑한다() {
+        MyHomeAnnouncementSourceData withoutContact = withContact(
+                data("21026", 1, "부산도시공사", "동삼2"),
+                null
+        );
+        sourceRepository.save(source(0, withoutContact));
+
+        var report = service.mapAll();
+
+        assertThat(report.createdAnnouncementCount()).isOne();
+        assertThat(report.createdSupplyRowCount()).isOne();
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement ->
+                assertThat(announcement.getReceptionPlace().getContact()).isNull()
+        );
+
+        var repeatedReport = service.mapAll();
+
+        assertThat(repeatedReport.unchangedAnnouncementCount()).isOne();
+        assertThat(repeatedReport.unchangedSupplyRowCount()).isOne();
+    }
+
     private void saveMappedComplex() {
         Address address = Address.create(
                 "서울특별시 종로구 테스트로 1",
@@ -314,6 +336,17 @@ class MyHomeAnnouncementMappingServiceTest {
                 data.pblancId(), data.houseSn(), data.sttusNm(), data.pblancNm(), data.suplyInsttNm(),
                 data.houseTyNm(), data.suplyTyNm(), data.beforePblancId(), postedDate,
                 data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), data.refrnc(), data.url(),
+                data.pcUrl(), data.mobileUrl(), data.hsmpNm(), data.brtcNm(), data.signguNm(),
+                data.fullAdres(), data.rnCodeNm(), data.refrnLegaldongNm(), data.pnu(), data.heatMthdNm(),
+                data.totHshldCo(), data.sumSuplyCo(), data.rentGtn(), data.enty(), data.surlus(), data.mtRntchrg()
+        );
+    }
+
+    private MyHomeAnnouncementSourceData withContact(MyHomeAnnouncementSourceData data, String contact) {
+        return new MyHomeAnnouncementSourceData(
+                data.pblancId(), data.houseSn(), data.sttusNm(), data.pblancNm(), data.suplyInsttNm(),
+                data.houseTyNm(), data.suplyTyNm(), data.beforePblancId(), data.rcritPblancDe(),
+                data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), contact, data.url(),
                 data.pcUrl(), data.mobileUrl(), data.hsmpNm(), data.brtcNm(), data.signguNm(),
                 data.fullAdres(), data.rnCodeNm(), data.refrnLegaldongNm(), data.pnu(), data.heatMthdNm(),
                 data.totHshldCo(), data.sumSuplyCo(), data.rentGtn(), data.enty(), data.surlus(), data.mtRntchrg()

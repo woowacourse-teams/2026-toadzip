@@ -106,13 +106,10 @@ public class Announcement {
 
     @Embedded
     @AttributeOverrides({
-            @AttributeOverride(name = "name", column = @Column(name = "reception_place_name", nullable = false)),
-            @AttributeOverride(name = "method", column = @Column(name = "reception_method", nullable = false)),
+            @AttributeOverride(name = "name", column = @Column(name = "reception_place_name")),
+            @AttributeOverride(name = "method", column = @Column(name = "reception_method")),
             @AttributeOverride(name = "address", column = @Column(name = "reception_address")),
-            @AttributeOverride(
-                    name = "contact",
-                    column = @Column(name = "reception_contact", nullable = false)
-            ),
+            @AttributeOverride(name = "contact", column = @Column(name = "reception_contact")),
             @AttributeOverride(name = "url", column = @Column(name = "reception_url"))
     })
     private ReceptionPlace receptionPlace;
@@ -153,7 +150,6 @@ public class Announcement {
         validateNonNegative(viewCount, "조회수");
         validateNonNegativeIfPresent(actualCompetitionRate, "실제 경쟁률");
         validateNonNegativeIfPresent(predictedCompetitionRate, "예상 경쟁률");
-        validateRequired(receptionPlace, "접수처");
         this.sourceAnnouncementIdentifier = sourceAnnouncementIdentifier;
         this.previousSourceAnnouncementIdentifier = previousSourceAnnouncementIdentifier;
         this.previousAnnouncement = previousAnnouncement;
@@ -271,7 +267,14 @@ public class Announcement {
                 && winnerAnnouncementDate.equals(incoming.winnerAnnouncementDate)
                 && originalUrl.equals(incoming.originalUrl)
                 && Objects.equals(correctionCancellationReason, incoming.correctionCancellationReason)
-                && receptionPlace.hasSameValues(incoming.receptionPlace);
+                && hasSameReceptionPlace(incoming.receptionPlace);
+    }
+
+    private boolean hasSameReceptionPlace(ReceptionPlace incoming) {
+        if (receptionPlace == null) {
+            return incoming == null;
+        }
+        return receptionPlace.hasSameValues(incoming);
     }
 
     private void applySourceValues(Announcement incoming) {

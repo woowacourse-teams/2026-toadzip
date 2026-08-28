@@ -65,7 +65,7 @@ public class MyHomeAnnouncementSourceMapper {
                 "이전 공고 식별자"
         );
         String originalUrl = requiredText(sources, this::originalUrlOf, "원문 URL");
-        String contact = requiredText(sources, MyHomeAnnouncementSource::getRefrnc, "문의처");
+        String contact = optionalText(sources, MyHomeAnnouncementSource::getRefrnc, "문의처");
         AnnouncementPublicationType publicationType = publicationTypeOf(sourceStatus, previousIdentifier);
         RentalType rentalType = rentalTypeOf(sourceSupplyType);
         LocalDate postedDate = commonDate(sources, MyHomeAnnouncementSource::getRcritPblancDe, "모집 공고일");
