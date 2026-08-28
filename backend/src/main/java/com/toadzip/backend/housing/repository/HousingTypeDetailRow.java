@@ -8,7 +8,7 @@ public record HousingTypeDetailRow(
         BigDecimal exclusiveArea,
         BigDecimal supplyArea,
         String floorPlanImageUrl,
-        boolean isDuplex,
+        Boolean isDuplex,
         BigDecimal maintenanceFee
 ) {
 }

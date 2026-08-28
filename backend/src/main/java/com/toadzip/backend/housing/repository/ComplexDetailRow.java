@@ -16,7 +16,7 @@ public record ComplexDetailRow(
         BigDecimal longitude,
         LocalDate completionDate,
         String buildingType,
-        boolean hasElevator,
+        Boolean hasElevator,
         String heatingType,
         String corridorType,
         Integer moveOutCountLastYear,

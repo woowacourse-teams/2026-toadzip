@@ -158,6 +158,43 @@ class HousingComplexDetailQueryTest {
     }
 
     @Test
+    void 주택형_복층_여부가_없으면_null로_반환한다() {
+        stubDetail(new ComplexDetailRow(
+                COMPLEX_ID,
+                "행복 단지",
+                null,
+                "11",
+                "11140",
+                "서울특별시 중구 세종대로 110",
+                "HAPPY_HOUSING",
+                "LH",
+                new BigDecimal("37.500000"),
+                new BigDecimal("126.900000"),
+                null,
+                "APARTMENT",
+                null,
+                null,
+                null,
+                null,
+                100,
+                80
+        ));
+        when(detailRepository.findHousingTypes(COMPLEX_ID)).thenReturn(List.of(new HousingTypeDetailRow(
+                101L,
+                "46A",
+                new BigDecimal("46.8000"),
+                null,
+                null,
+                null,
+                null
+        )));
+
+        HousingComplexDetailResponse response = getExistingComplex();
+
+        assertNull(response.housingTypes().getFirst().isDuplex());
+    }
+
+    @Test
     void 서울_오늘로_현재공고_상태와_D_Day와_대상순서를_계산한다() {
         HousingComplexDetailResponse response = getExistingComplex();
         CurrentAnnouncementResponse beforeApplication = response.currentAnnouncements().getFirst();

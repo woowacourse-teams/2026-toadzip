@@ -1241,7 +1241,7 @@ class HousingComplexApiIntegrationTest {
             String exclusiveArea,
             String supplyArea,
             String floorPlanUrl,
-            boolean duplex,
+            Boolean duplex,
             String maintenanceFee
     ) {
         HousingType housingType = HousingType.create(
