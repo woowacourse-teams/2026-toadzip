@@ -110,6 +110,7 @@ export function HousingAnnouncementCard({
           className={styles.primaryAction}
           type="button"
           aria-label={`${title} 상세 보기`}
+          data-announcement-detail-trigger={announcement.announcementId}
           onClick={() => onSelect(announcement.announcementId)}
         >
           <span className={styles.visuallyHidden}>상세 보기</span>

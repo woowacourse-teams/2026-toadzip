@@ -147,15 +147,73 @@ describe('HousingComplexCard', () => {
 
   it('단지 선택과 대표 공고 이동을 서로 다른 버튼 동작으로 제공한다', () => {
     const { onOpenAnnouncement, onSelect } = renderCard()
+    const complexAction = screen.getByRole('button', {
+      name: `${BASE_COMPLEX.name} 단지 상세 보기`,
+    })
+    const announcementAction = screen.getByRole('button', {
+      name: '대표 공고 상세 보기',
+    })
 
-    fireEvent.click(
-      screen.getByRole('button', { name: `${BASE_COMPLEX.name} 단지 상세 보기` }),
+    expect(complexAction).toHaveAttribute(
+      'data-complex-detail-trigger',
+      BASE_COMPLEX.complexId,
     )
+    expect(complexAction).not.toHaveAttribute('aria-haspopup')
+    expect(announcementAction).toHaveAttribute(
+      'data-representative-announcement-detail-trigger',
+      BASE_ANNOUNCEMENT.announcementId,
+    )
+    expect(announcementAction).not.toHaveAttribute('aria-haspopup')
+
+    fireEvent.click(complexAction)
     expect(onSelect).toHaveBeenCalledWith(BASE_COMPLEX.complexId)
 
-    fireEvent.click(screen.getByRole('button', { name: '대표 공고 상세 보기' }))
+    fireEvent.click(announcementAction)
     expect(onOpenAnnouncement).toHaveBeenCalledWith('117')
     expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+
+  it('mouse와 keyboard focus로 같은 hover ID를 전달하고 내부 focus 이동을 유지한다', () => {
+    const onHover = vi.fn()
+    render(
+      <HousingComplexCard
+        complex={BASE_COMPLEX}
+        onHover={onHover}
+        onSelect={vi.fn()}
+        onOpenAnnouncement={vi.fn()}
+      />,
+    )
+    const card = screen.getByRole('article')
+    const complexAction = screen.getByRole('button', {
+      name: `${BASE_COMPLEX.name} 단지 상세 보기`,
+    })
+    const announcementAction = screen.getByRole('button', {
+      name: '대표 공고 상세 보기',
+    })
+
+    fireEvent.mouseEnter(card)
+    fireEvent.mouseLeave(card)
+    expect(onHover.mock.calls).toEqual([
+      [BASE_COMPLEX.complexId],
+      [null],
+    ])
+
+    onHover.mockClear()
+    complexAction.focus()
+    expect(onHover).toHaveBeenLastCalledWith(BASE_COMPLEX.complexId)
+
+    onHover.mockClear()
+    fireEvent.mouseEnter(card)
+    fireEvent.mouseLeave(card)
+    expect(onHover).toHaveBeenLastCalledWith(BASE_COMPLEX.complexId)
+
+    onHover.mockClear()
+    announcementAction.focus()
+    expect(onHover.mock.calls).toEqual([[BASE_COMPLEX.complexId]])
+
+    onHover.mockClear()
+    announcementAction.blur()
+    expect(onHover.mock.calls).toEqual([[null]])
   })
 
   it.each([

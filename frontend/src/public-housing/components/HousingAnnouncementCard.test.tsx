@@ -209,6 +209,11 @@ describe('HousingAnnouncementCard', () => {
 
     button.focus()
     expect(button).toHaveFocus()
+    expect(button).toHaveAttribute(
+      'data-announcement-detail-trigger',
+      BASE_ANNOUNCEMENT.announcementId,
+    )
+    expect(button).not.toHaveAttribute('aria-haspopup')
     fireEvent.click(button)
     expect(onSelect).toHaveBeenCalledWith('201')
   })

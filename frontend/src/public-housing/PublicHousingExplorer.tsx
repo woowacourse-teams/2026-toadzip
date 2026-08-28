@@ -3,6 +3,7 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -182,7 +183,10 @@ export function PublicHousingExplorer({
   const [selectedComplexId, setSelectedComplexId] = useState<string | null>(
     null,
   )
-  const [hoveredComplexId, setHoveredComplexId] = useState<string | null>(null)
+  const [cardHighlightedComplexId, setCardHighlightedComplexId] =
+    useState<string | null>(null)
+  const [markerHighlightedComplexId, setMarkerHighlightedComplexId] =
+    useState<string | null>(null)
   const [complexDetail, setComplexDetail] =
     useState<ComplexDetailState>(INITIAL_COMPLEX_DETAIL)
   const [announcementDetail, setAnnouncementDetail] =
@@ -214,6 +218,7 @@ export function PublicHousingExplorer({
   const previousDetailReturnFocusStackRef = useRef(detailReturnFocusStack)
   const pendingDetailReturnFocusRef = useRef<DetailReturnFocus | null>(null)
   const pendingListFocusRef = useRef<PendingListFocus | null>(null)
+  const pendingMarkerScrollRef = useRef<string | null>(null)
   const complexCardRefsRef = useRef(new Map<string, HTMLElement>())
   const announcementCardRefsRef = useRef(new Map<string, HTMLElement>())
   const detailLocationSearch = useMemo(
@@ -552,6 +557,26 @@ export function PublicHousingExplorer({
     [openDetail],
   )
 
+  const openComplexMarker = useCallback((complexId: string) => {
+    if (activeResultTabRef.current !== 'complexes') {
+      pendingMarkerScrollRef.current = complexId
+    }
+    setActiveResultTab('complexes')
+    if (pendingMarkerScrollRef.current === null) {
+      revealComplexCard(complexCardRefsRef.current, complexId)
+    }
+    openComplexDetail(complexId)
+  }, [openComplexDetail])
+
+  useLayoutEffect(() => {
+    const complexId = pendingMarkerScrollRef.current
+    if (activeResultTab !== 'complexes' || complexId === null) {
+      return
+    }
+    pendingMarkerScrollRef.current = null
+    revealComplexCard(complexCardRefsRef.current, complexId)
+  }, [activeResultTab])
+
   const openAnnouncementDetail = useCallback(
     (announcementId: string) => openDetail('announcements', announcementId),
     [openDetail],
@@ -677,7 +702,8 @@ export function PublicHousingExplorer({
             nextCursor: page.nextCursor,
             status: 'ready',
           })
-          setHoveredComplexId(null)
+          setCardHighlightedComplexId(null)
+          setMarkerHighlightedComplexId(null)
           if (complexResultsScrollRef.current) {
             complexResultsScrollRef.current.scrollTop = 0
           }
@@ -740,6 +766,33 @@ export function PublicHousingExplorer({
     }
   }, [])
 
+  useEffect(() => {
+    if (
+      detailLocation.kind !== 'none'
+      || selectedComplexId === null
+      || mapResults.status !== 'ready'
+      || complexResults.status !== 'ready'
+    ) {
+      return
+    }
+    const selectedInMap = mapResults.items.some(
+      ({ complexId }) => complexId === selectedComplexId,
+    )
+    const selectedInList = complexResults.items.some(
+      ({ complexId }) => complexId === selectedComplexId,
+    )
+    if (!selectedInMap && !selectedInList) {
+      setSelectedComplexId(null)
+    }
+  }, [
+    complexResults.items,
+    complexResults.status,
+    detailLocation.kind,
+    mapResults.items,
+    mapResults.status,
+    selectedComplexId,
+  ])
+
   const loadMore = useCallback((retryFailedCursor = false) => {
     const cursor = retryFailedCursor
       ? failedPaginationCursorRef.current
@@ -797,6 +850,17 @@ export function PublicHousingExplorer({
       })
   }, [appliedViewport, complexResults, repository])
 
+  const retryComplexResults = useCallback(() => {
+    if (failedPaginationCursorRef.current) {
+      loadMore(true)
+      return
+    }
+    const failedViewport = failedViewportRef.current
+    if (failedViewport) {
+      applyViewport(failedViewport, true)
+    }
+  }, [applyViewport, loadMore])
+
   const viewportDecision = viewport
     ? evaluateViewportRequest(viewport)
     : null
@@ -814,18 +878,25 @@ export function PublicHousingExplorer({
         zoom: DEFAULT_MAP_LOCATION.zoom,
       }
   const activeMapTarget = detailMapTarget ?? urlMapTarget
+  const highlightedComplexIds = useMemo(() => new Set([
+    cardHighlightedComplexId,
+    markerHighlightedComplexId,
+  ].filter((complexId): complexId is string => complexId !== null)), [
+    cardHighlightedComplexId,
+    markerHighlightedComplexId,
+  ])
   const markers = useMemo(
     () => requestBlocked
       ? []
       : toNaverMapMarkers(
           mapResults.items,
           selectedComplexId,
-          hoveredComplexId,
+          highlightedComplexIds,
           complexDetail.detail,
         ),
     [
       complexDetail.detail,
-      hoveredComplexId,
+      highlightedComplexIds,
       mapResults.items,
       requestBlocked,
       selectedComplexId,
@@ -835,6 +906,7 @@ export function PublicHousingExplorer({
     activeResultTab,
     complexResults,
     announcementResults.state,
+    requestBlocked,
   )
   const hasDetail = complexDetail.status !== 'closed'
     || announcementDetail.status !== 'closed'
@@ -858,7 +930,6 @@ export function PublicHousingExplorer({
           <span
             className="housing-results__count"
             aria-label={resultCount.accessibleLabel}
-            aria-live="polite"
           >
             {resultCount.visibleLabel}
           </span>
@@ -868,6 +939,13 @@ export function PublicHousingExplorer({
           announcementsActive={activeResultTab === 'announcements'}
           decision={viewportDecision}
         />
+
+        {!requestBlocked && (
+          <ComplexRequestFeedback
+            state={complexResults}
+            onRetry={retryComplexResults}
+          />
+        )}
 
         <ResultTabs activeTab={activeResultTab} onSelect={selectResultTab} />
 
@@ -881,23 +959,13 @@ export function PublicHousingExplorer({
             {!requestBlocked && <ComplexResultContent
               state={complexResults}
               selectedComplexId={selectedComplexId}
-              hoveredComplexId={hoveredComplexId}
+              highlightedComplexIds={highlightedComplexIds}
               scrollRef={complexResultsScrollRef}
               onSelect={openComplexDetail}
               onOpenAnnouncement={openAnnouncementDetail}
-              onHover={setHoveredComplexId}
+              onHover={setCardHighlightedComplexId}
               onCardRef={(complexId, node) => {
                 setComplexCardRef(complexCardRefsRef.current, complexId, node)
-              }}
-              onRetry={() => {
-                if (failedPaginationCursorRef.current) {
-                  loadMore(true)
-                  return
-                }
-                const failedViewport = failedViewportRef.current
-                if (failedViewport) {
-                  applyViewport(failedViewport, true)
-                }
               }}
             />}
 
@@ -956,16 +1024,12 @@ export function PublicHousingExplorer({
       <main className="housing-map-workspace">
         <NaverMap
           cameraTarget={activeMapTarget}
+          dataBusy={!requestBlocked && mapResults.status === 'loading'}
           markers={markers}
-          onMarkerSelect={openComplexDetail}
+          onMarkerHighlight={setMarkerHighlightedComplexId}
+          onMarkerSelect={openComplexMarker}
           onViewportChange={handleViewportChange}
         />
-        {!requestBlocked && mapResults.status === 'error' && (
-          <div className="housing-map-notice" role="alert">
-            <strong>단지 마커를 갱신하지 못했습니다.</strong>
-            <span>{mapResults.errorMessage}</span>
-          </div>
-        )}
         <ComplexDetailLayer
           state={complexDetail}
           onClose={closeDetail}
@@ -1321,6 +1385,7 @@ function resultCountLabel(
   activeTab: ResultTab,
   complexes: ComplexResultsState,
   announcements: AnnouncementResultsState,
+  requestBlocked: boolean,
 ) {
   if (
     activeTab === 'announcements'
@@ -1343,15 +1408,37 @@ function resultCountLabel(
   }
   if (activeTab === 'announcements') {
     const count = announcements.items.length
+    const suffix = announcements.hasNext ? '건 이상' : '건'
     return {
-      accessibleLabel: `현재 불러온 공고 ${count}건`,
-      visibleLabel: `${count}건`,
+      accessibleLabel: `현재 불러온 공고 ${count}${suffix}`,
+      visibleLabel: `${count}${suffix}`,
+    }
+  }
+  if (requestBlocked) {
+    return {
+      accessibleLabel: '단지 조회를 위한 지도 확대 필요',
+      visibleLabel: '확대 필요',
+    }
+  }
+  if (complexes.status === 'idle' || (
+    complexes.status === 'loading' && complexes.items.length === 0
+  )) {
+    return {
+      accessibleLabel: '단지 목록 불러오는 중',
+      visibleLabel: '불러오는 중',
+    }
+  }
+  if (complexes.status === 'error' && complexes.items.length === 0) {
+    return {
+      accessibleLabel: '단지 목록 불러오기 실패',
+      visibleLabel: '불러오기 실패',
     }
   }
   const count = complexes.items.length
+  const suffix = complexes.hasNext ? '곳 이상' : '곳'
   return {
-    accessibleLabel: `현재 불러온 단지 ${count}곳`,
-    visibleLabel: `${count}곳`,
+    accessibleLabel: `현재 불러온 단지 ${count}${suffix}`,
+    visibleLabel: `${count}${suffix}`,
   }
 }
 
@@ -1373,30 +1460,73 @@ function ViewportAction({
   return null
 }
 
+function ComplexRequestFeedback({
+  state,
+  onRetry,
+}: {
+  state: ComplexResultsState
+  onRetry: () => void
+}) {
+  if (state.status === 'error') {
+    return (
+      <div className="housing-results__inline-error" role="alert">
+        <strong>단지 목록을 불러오지 못했습니다.</strong>
+        <span>{state.errorMessage}</span>
+        <button type="button" onClick={onRetry}>다시 시도</button>
+      </div>
+    )
+  }
+
+  return (
+    <p
+      className="visually-hidden"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      {complexRequestStatusMessage(state)}
+    </p>
+  )
+}
+
+function complexRequestStatusMessage(state: ComplexResultsState) {
+  if (state.status === 'idle') {
+    return '지도와 단지 목록을 준비하고 있습니다.'
+  }
+  if (state.status === 'loading') {
+    return state.items.length === 0
+      ? '단지 목록을 불러오고 있습니다.'
+      : '기존 결과를 유지하면서 새 지역을 확인하고 있습니다.'
+  }
+  if (state.status === 'loading-more') {
+    return '단지 목록을 추가로 불러오고 있습니다.'
+  }
+  const suffix = state.hasNext ? '곳 이상' : '곳'
+  return `단지 목록 갱신 완료, ${state.items.length}${suffix}`
+}
+
 function ComplexResultContent({
   state,
   selectedComplexId,
-  hoveredComplexId,
+  highlightedComplexIds,
   scrollRef,
   onSelect,
   onOpenAnnouncement,
   onHover,
   onCardRef,
-  onRetry,
 }: {
   state: ComplexResultsState
   selectedComplexId: string | null
-  hoveredComplexId: string | null
+  highlightedComplexIds: ReadonlySet<string>
   scrollRef: RefObject<HTMLDivElement | null>
   onSelect: (complexId: string) => void
   onOpenAnnouncement: (announcementId: string) => void
   onHover: (complexId: string | null) => void
   onCardRef: (complexId: string, node: HTMLElement | null) => void
-  onRetry: () => void
 }) {
   if (state.status === 'idle') {
     return (
-      <div className="housing-results__state" role="status">
+      <div className="housing-results__state">
         <strong>지도를 준비하고 있습니다.</strong>
         <span>지도가 열리면 현재 영역의 단지를 확인할 수 있습니다.</span>
       </div>
@@ -1405,7 +1535,7 @@ function ComplexResultContent({
 
   if (state.status === 'loading' && state.items.length === 0) {
     return (
-      <div className="housing-results__state" role="status">
+      <div className="housing-results__state">
         <strong>단지를 불러오고 있습니다.</strong>
         <span>현재 지도 영역을 확인하고 있습니다.</span>
       </div>
@@ -1413,18 +1543,12 @@ function ComplexResultContent({
   }
 
   if (state.status === 'error' && state.items.length === 0) {
-    return (
-      <div className="housing-results__state housing-results__state--error" role="alert">
-        <strong>단지 목록을 불러오지 못했습니다.</strong>
-        <span>{state.errorMessage}</span>
-        <button type="button" onClick={onRetry}>다시 시도</button>
-      </div>
-    )
+    return null
   }
 
   if (state.status === 'ready' && state.items.length === 0) {
     return (
-      <div className="housing-results__state" role="status">
+      <div className="housing-results__state">
         <strong>이 지역에서 확인되는 단지가 없습니다.</strong>
         <span>지도를 다른 지역으로 옮기거나 조금 더 넓게 확인해 주세요.</span>
       </div>
@@ -1438,15 +1562,9 @@ function ComplexResultContent({
       aria-busy={state.status === 'loading'}
     >
       {state.status === 'loading' && (
-        <p className="housing-results__refreshing" role="status">
+        <p className="housing-results__refreshing">
           기존 결과를 유지하면서 새 지역을 확인하고 있습니다.
         </p>
-      )}
-      {state.status === 'error' && (
-        <div className="housing-results__inline-error" role="alert">
-          <span>{state.errorMessage}</span>
-          <button type="button" onClick={onRetry}>다시 시도</button>
-        </div>
       )}
       <ul className="housing-results__list">
         {state.items.map((complex) => (
@@ -1454,7 +1572,7 @@ function ComplexResultContent({
             <HousingComplexCard
               complex={toComplexCardData(complex)}
               selected={selectedComplexId === complex.complexId}
-              hovered={hoveredComplexId === complex.complexId}
+              hovered={highlightedComplexIds.has(complex.complexId)}
               cardRef={(node) => onCardRef(complex.complexId, node)}
               onSelect={onSelect}
               onOpenAnnouncement={onOpenAnnouncement}
@@ -1512,11 +1630,11 @@ function rentalTypeLabel(rentalType: string | null) {
 function toNaverMapMarkers(
   complexes: readonly MapComplex[],
   selectedComplexId: string | null,
-  hoveredComplexId: string | null,
+  highlightedComplexIds: ReadonlySet<string>,
   detail: ComplexDetail | null,
 ): NaverMapMarker[] {
   const markers = complexes.map((complex) => ({
-    highlighted: complex.complexId === hoveredComplexId,
+    highlighted: highlightedComplexIds.has(complex.complexId),
     id: complex.complexId,
     latitude: complex.latitude,
     longitude: complex.longitude,
@@ -1535,7 +1653,7 @@ function toNaverMapMarkers(
   return [
     ...markers,
     {
-      highlighted: detail.complexId === hoveredComplexId,
+      highlighted: highlightedComplexIds.has(detail.complexId),
       id: detail.complexId,
       latitude: target.latitude,
       longitude: target.longitude,
@@ -1823,6 +1941,13 @@ function restoreDetailListFocus({
   })
 }
 
+function revealComplexCard(
+  cards: ReadonlyMap<string, HTMLElement>,
+  complexId: string,
+) {
+  cards.get(complexId)?.scrollIntoView?.({ block: 'nearest' })
+}
+
 function restoreAnnouncementFocus(
   cards: ReadonlyMap<string, HTMLElement>,
   announcementId: string | null,
@@ -1834,7 +1959,9 @@ function restoreAnnouncementFocus(
   }
   const button = announcementId === null
     ? null
-    : cards.get(announcementId)?.querySelector<HTMLButtonElement>('button')
+    : cards.get(announcementId)?.querySelector<HTMLButtonElement>(
+        'button[data-announcement-detail-trigger]',
+      )
   if (isAvailableFocusTarget(button)) {
     button.focus()
     return
@@ -1876,13 +2003,13 @@ function restoreComplexFocus({
 
 function findComplexMarker(complexId: string) {
   return [...document.querySelectorAll<HTMLButtonElement>(
-    '.housing-map-marker[data-complex-id]',
+    '[data-map-complex-marker][data-complex-id]',
   )].find((marker) => marker.dataset.complexId === complexId)
 }
 
 function focusComplexCard(card: HTMLElement | undefined) {
   const button = card?.querySelector<HTMLButtonElement>(
-    'button[aria-haspopup="dialog"]',
+    'button[data-complex-detail-trigger]',
   )
   if (!isAvailableFocusTarget(button)) {
     return false

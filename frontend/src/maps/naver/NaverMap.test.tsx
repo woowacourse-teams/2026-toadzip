@@ -94,6 +94,12 @@ function createFakeSdk(): FakeSdk {
     _element: string | HTMLElement,
     _options?: naver.maps.MapOptions,
   ) {
+    if (_options?.center) {
+      currentCenter = _options.center as unknown as typeof currentCenter
+    }
+    if (typeof _options?.zoom === 'number') {
+      currentZoom = _options.zoom
+    }
     return mapInstance
   })
   const latLngConstructor = vi.fn(function FakeLatLngConstructor(
@@ -113,8 +119,25 @@ function createFakeSdk(): FakeSdk {
       y: (latitude - 37.5) * scale,
     }
   })
-  const markerConstructor = vi.fn(function FakeMarkerConstructor() {
-    return { setMap: markerSetMap }
+  const markerConstructor = vi.fn(function FakeMarkerConstructor(
+    options?: naver.maps.MarkerOptions,
+  ) {
+    const icon = options?.icon
+    const content = typeof icon === 'object' && icon !== null
+      && 'content' in icon
+      ? icon.content
+      : null
+    if (content instanceof HTMLElement) {
+      document.body.append(content)
+    }
+    return {
+      setMap: (map: naver.maps.Map | null) => {
+        markerSetMap(map)
+        if (map === null && content instanceof HTMLElement) {
+          content.remove()
+        }
+      },
+    }
   })
   const pointConstructor = vi.fn(function FakePointConstructor(
     x: number,
@@ -243,6 +266,18 @@ describe('NaverMap', () => {
     ).toHaveAttribute('aria-busy', 'true')
   })
 
+  it('지도 데이터 갱신 중에도 지도 영역을 busy로 표시한다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+
+    render(<NaverMap dataBusy />)
+
+    await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
+    expect(
+      screen.getByRole('region', { name: '공공임대주택 지도' }),
+    ).toHaveAttribute('aria-busy', 'true')
+  })
+
   it('GL 지도 옵션으로 초기화하고 unmount에서 지도 인스턴스를 해제한다', async () => {
     const fakeSdk = createFakeSdk()
     const observe = vi.fn()
@@ -293,50 +328,60 @@ describe('NaverMap', () => {
     expect(fakeSdk.destroyMap).toHaveBeenCalledOnce()
   })
 
-  it('camera target에서 실제로 달라진 위치와 zoom만 적용한다', async () => {
+  it('초기 camera target으로 지도를 만들고 이후 달라진 값만 적용한다', async () => {
     const fakeSdk = createFakeSdk()
+    const onViewportChange = vi.fn()
     loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
 
     const { rerender } = render(
       <NaverMap
         cameraTarget={{ latitude: 37.51, longitude: 127.02, zoom: 15 }}
+        onViewportChange={onViewportChange}
       />,
     )
 
-    await waitFor(() => expect(fakeSdk.panToMap).toHaveBeenCalledOnce())
-    expect(fakeSdk.panToMap).toHaveBeenLastCalledWith({
-      latitude: 37.51,
-      longitude: 127.02,
-    })
-    expect(fakeSdk.setZoomMap).toHaveBeenCalledOnce()
-    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(15)
+    await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
+    expect(fakeSdk.latLngConstructor).toHaveBeenCalledWith(37.51, 127.02)
+    expect(fakeSdk.mapConstructor.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ zoom: 15 }),
+    )
+    expect(fakeSdk.panToMap).not.toHaveBeenCalled()
+    expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
+    act(() => fakeSdk.emitIdle())
+    expect(onViewportChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      center: { latitude: 37.51, longitude: 127.02 },
+      zoom: 15,
+    }))
 
     rerender(
       <NaverMap
         cameraTarget={{ latitude: 37.51, longitude: 127.02, zoom: 15 }}
+        onViewportChange={onViewportChange}
+      />,
+    )
+
+    expect(fakeSdk.panToMap).not.toHaveBeenCalled()
+    expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
+
+    rerender(
+      <NaverMap
+        cameraTarget={{ latitude: 37.52, longitude: 127.02, zoom: 15 }}
+        onViewportChange={onViewportChange}
+      />,
+    )
+
+    expect(fakeSdk.panToMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
+
+    rerender(
+      <NaverMap
+        cameraTarget={{ latitude: 37.52, longitude: 127.02, zoom: 16 }}
+        onViewportChange={onViewportChange}
       />,
     )
 
     expect(fakeSdk.panToMap).toHaveBeenCalledOnce()
     expect(fakeSdk.setZoomMap).toHaveBeenCalledOnce()
-
-    rerender(
-      <NaverMap
-        cameraTarget={{ latitude: 37.52, longitude: 127.02, zoom: 15 }}
-      />,
-    )
-
-    expect(fakeSdk.panToMap).toHaveBeenCalledTimes(2)
-    expect(fakeSdk.setZoomMap).toHaveBeenCalledOnce()
-
-    rerender(
-      <NaverMap
-        cameraTarget={{ latitude: 37.52, longitude: 127.02, zoom: 16 }}
-      />,
-    )
-
-    expect(fakeSdk.panToMap).toHaveBeenCalledTimes(2)
-    expect(fakeSdk.setZoomMap).toHaveBeenCalledTimes(2)
     expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(16)
     expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce()
   })
@@ -355,8 +400,9 @@ describe('NaverMap', () => {
       />,
     )
 
-    await waitFor(() => expect(fakeSdk.panToMap).toHaveBeenCalledOnce())
-    expect(fakeSdk.setZoomMap).toHaveBeenCalledOnce()
+    await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
+    expect(fakeSdk.panToMap).not.toHaveBeenCalled()
+    expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
 
     rerender(
       <NaverMap
@@ -368,8 +414,8 @@ describe('NaverMap', () => {
       />,
     )
 
-    expect(fakeSdk.panToMap).toHaveBeenCalledOnce()
-    expect(fakeSdk.setZoomMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.panToMap).not.toHaveBeenCalled()
+    expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
 
     rerender(
       <NaverMap
@@ -381,8 +427,8 @@ describe('NaverMap', () => {
       />,
     )
 
-    expect(fakeSdk.panToMap).toHaveBeenCalledTimes(2)
-    expect(fakeSdk.setZoomMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.panToMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
 
     rerender(
       <NaverMap
@@ -394,8 +440,8 @@ describe('NaverMap', () => {
       />,
     )
 
-    expect(fakeSdk.panToMap).toHaveBeenCalledTimes(3)
-    expect(fakeSdk.setZoomMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.panToMap).toHaveBeenCalledTimes(2)
+    expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
 
     rerender(
       <NaverMap
@@ -407,8 +453,8 @@ describe('NaverMap', () => {
       />,
     )
 
-    expect(fakeSdk.panToMap).toHaveBeenCalledTimes(3)
-    expect(fakeSdk.setZoomMap).toHaveBeenCalledTimes(2)
+    expect(fakeSdk.panToMap).toHaveBeenCalledTimes(2)
+    expect(fakeSdk.setZoomMap).toHaveBeenCalledOnce()
   })
 
   it('잘못된 camera target은 지도에 전달하지 않는다', async () => {
@@ -472,11 +518,9 @@ describe('NaverMap', () => {
       },
       zoom: 14,
     })
-    await waitFor(() =>
-      expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2),
-    )
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
 
-    const markerButton = createdMarkerButton(fakeSdk, 1)
+    const markerButton = createdMarkerButton(fakeSdk, 0)
     expect(markerButton).toHaveAttribute('data-complex-id', '101')
     fireEvent.click(markerButton)
 
@@ -492,13 +536,70 @@ describe('NaverMap', () => {
     )
 
     expect(fakeSdk.panToMap).toHaveBeenCalledOnce()
-    expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2)
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
 
     unmount()
 
-    expect(fakeSdk.markerSetMap).toHaveBeenCalledTimes(2)
+    expect(fakeSdk.markerSetMap).toHaveBeenCalledOnce()
     expect(fakeSdk.markerSetMap).toHaveBeenCalledWith(null)
     expect(fakeSdk.removeListener).toHaveBeenCalledOnce()
+  })
+
+  it('개별 marker hover와 focus를 카드에 전달하고 강조만 바뀌면 DOM을 유지한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const onMarkerHighlight = vi.fn()
+    const nextMarkerHighlight = vi.fn()
+    const marker = {
+      id: '101',
+      latitude: 37.6,
+      longitude: 127,
+      name: '테스트 단지',
+    } satisfies NaverMapMarker
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+
+    const { rerender } = render(
+      <NaverMap markers={[marker]} onMarkerHighlight={onMarkerHighlight} />,
+    )
+
+    await waitFor(() =>
+      expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce(),
+    )
+    const markerButton = createdMarkerButton(fakeSdk, 0)
+
+    fireEvent.mouseEnter(markerButton)
+    markerButton.focus()
+    fireEvent.mouseLeave(markerButton)
+
+    expect(onMarkerHighlight).toHaveBeenLastCalledWith('101')
+
+    rerender(
+      <NaverMap
+        markers={[{ ...marker, highlighted: true }]}
+        onMarkerHighlight={nextMarkerHighlight}
+      />,
+    )
+
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
+    expect(markerButton).toHaveClass('is-highlighted')
+    act(() => fakeSdk.emitIdle())
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
+    expect(markerButton).toHaveFocus()
+
+    markerButton.blur()
+
+    expect(nextMarkerHighlight).toHaveBeenLastCalledWith(null)
+
+    nextMarkerHighlight.mockClear()
+    fireEvent.mouseEnter(markerButton)
+    rerender(
+      <NaverMap
+        markers={[{ ...marker, latitude: 37.61 }]}
+        onMarkerHighlight={nextMarkerHighlight}
+      />,
+    )
+
+    expect(nextMarkerHighlight).toHaveBeenLastCalledWith(null)
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2)
   })
 
   it('화면에서 가까운 단지만 64px cluster로 묶는다', async () => {
@@ -607,7 +708,7 @@ describe('NaverMap', () => {
     expect(selectedButton).toHaveClass('is-selected')
   })
 
-  it('cluster 선택 시 72px 여백과 현재 zoom 기준 상한으로 bounds를 맞춘다', async () => {
+  it('cluster 선택 시 bounds를 맞추고 분리된 marker로 focus를 복원한다', async () => {
     const fakeSdk = createFakeSdk()
     const markers = [
       {
@@ -647,10 +748,6 @@ describe('NaverMap', () => {
         top: 72,
       },
     )
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      '2곳 단지 묶음을 확대했습니다.',
-    )
-
     fakeSdk.setCurrentZoom(20)
     fireEvent.click(clusterButton)
 
@@ -658,6 +755,54 @@ describe('NaverMap', () => {
       maxZoom: 21,
     })
     expect(fakeSdk.getMaxZoomMap).toHaveBeenCalledTimes(2)
+
+    const focus = vi.spyOn(HTMLButtonElement.prototype, 'focus')
+    act(() => {
+      fakeSdk.setCurrentZoom(15)
+      fakeSdk.emitIdle()
+    })
+
+    await waitFor(() => expect(focus).toHaveBeenCalledOnce())
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      '2곳 단지 묶음을 확대해 개별 단지를 표시했습니다.',
+    )
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(3)
+    expect(document.activeElement).toHaveAttribute('data-complex-id', '101')
+    focus.mockRestore()
+  })
+
+  it('확대 뒤에도 묶인 cluster에 focus를 복원하고 한 번만 안내한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const markers = [
+      { id: '101', latitude: 37.5, longitude: 127, name: '첫 단지' },
+      { id: '102', latitude: 37.5, longitude: 127, name: '둘째 단지' },
+    ] satisfies NaverMapMarker[]
+    const focus = vi.spyOn(HTMLButtonElement.prototype, 'focus')
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+
+    render(<NaverMap markers={markers} />)
+
+    await waitFor(() =>
+      expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce(),
+    )
+    fireEvent.click(createdMarkerButton(fakeSdk, 0))
+    act(() => {
+      fakeSdk.setCurrentZoom(15)
+      fakeSdk.emitIdle()
+    })
+
+    await waitFor(() => expect(focus).toHaveBeenCalledOnce())
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+    expect(screen.getByRole('status')).toHaveTextContent(
+      '2곳 단지 묶음을 확대했지만 아직 함께 표시됩니다.',
+    )
+    expect(document.activeElement).toBe(createdMarkerButton(fakeSdk, 0))
+
+    act(() => fakeSdk.emitIdle())
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
+    expect(focus).toHaveBeenCalledOnce()
+    expect(document.activeElement).toBe(createdMarkerButton(fakeSdk, 0))
+    focus.mockRestore()
   })
 
   it('idle에서 zoom이 바뀌면 화면 거리를 다시 계산해 분리하고 재결합한다', async () => {

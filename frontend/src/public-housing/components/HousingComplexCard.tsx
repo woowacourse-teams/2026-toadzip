@@ -1,4 +1,4 @@
-import type { FocusEvent } from 'react'
+import { useRef, type FocusEvent } from 'react'
 import styles from './HousingComplexCard.module.css'
 
 export interface HousingComplexCardAnnouncement {
@@ -44,17 +44,40 @@ export function HousingComplexCard({
 }: HousingComplexCardProps) {
   const titleId = `housing-complex-card-title-${complex.complexId}`
   const announcement = complex.representativeAnnouncement
+  const focusInsideRef = useRef(false)
+  const pointerInsideRef = useRef(false)
   const cardClassName = [
     styles.card,
     selected ? styles.selected : '',
     hovered ? styles.hovered : '',
   ].filter(Boolean).join(' ')
 
+  function updateHover() {
+    const active = focusInsideRef.current || pointerInsideRef.current
+    onHover?.(active ? complex.complexId : null)
+  }
+
   function handleBlur(event: FocusEvent<HTMLElement>) {
     if (event.currentTarget.contains(event.relatedTarget)) {
       return
     }
-    onHover?.(null)
+    focusInsideRef.current = false
+    updateHover()
+  }
+
+  function handleFocus() {
+    focusInsideRef.current = true
+    updateHover()
+  }
+
+  function handleMouseEnter() {
+    pointerInsideRef.current = true
+    updateHover()
+  }
+
+  function handleMouseLeave() {
+    pointerInsideRef.current = false
+    updateHover()
   }
 
   return (
@@ -63,16 +86,17 @@ export function HousingComplexCard({
       className={cardClassName}
       aria-current={selected ? 'true' : undefined}
       aria-labelledby={titleId}
-      onMouseEnter={() => onHover?.(complex.complexId)}
-      onMouseLeave={() => onHover?.(null)}
-      onFocus={() => onHover?.(complex.complexId)}
+      data-hovered={hovered || undefined}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onFocus={handleFocus}
       onBlur={handleBlur}
     >
       <button
         type="button"
         className={styles.primaryAction}
         aria-label={`${complex.name} 단지 상세 보기`}
-        aria-haspopup="dialog"
+        data-complex-detail-trigger={complex.complexId}
         onClick={() => onSelect(complex.complexId)}
       />
 
@@ -179,7 +203,9 @@ function RepresentativeAnnouncement({
           type="button"
           className={styles.announcementAction}
           aria-label="대표 공고 상세 보기"
-          aria-haspopup="dialog"
+          data-representative-announcement-detail-trigger={
+            announcement.announcementId
+          }
           onClick={() => onOpenAnnouncement(announcement.announcementId)}
         >
           공고 확인

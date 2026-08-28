@@ -169,6 +169,9 @@ describe('PublicHousingExplorer', () => {
     expect(
       screen.getByText('요청 범위가 넓습니다. 지도를 조금 더 확대해 주세요.'),
     ).toBeVisible()
+    expect(screen.getByLabelText(
+      '단지 조회를 위한 지도 확대 필요',
+    )).toHaveTextContent('확대 필요')
     expect(screen.queryByRole('heading', {
       name: '서울가람 행복주택',
     })).not.toBeInTheDocument()
@@ -270,8 +273,12 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     await screen.findByRole('heading', { name: '서울가람 행복주택' })
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
-    await screen.findAllByText('지도 조회 실패')
+    await screen.findByText('지도 조회 실패')
 
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    fireEvent.click(screen.getByRole('tab', { name: '공고 목록' }))
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    fireEvent.click(screen.getByRole('tab', { name: '단지 목록' }))
     expect(screen.getByRole('heading', {
       name: '서울가람 행복주택',
     })).toBeVisible()
@@ -361,6 +368,139 @@ describe('PublicHousingExplorer', () => {
       '17',
       expect.any(AbortSignal),
     )
+  })
+
+  it('단지 초기 조회와 다음 페이지 존재를 count와 지도 busy에 반영한다', async () => {
+    const repository = createRepository()
+    const mapDeferred = createDeferred<readonly MapComplex[]>()
+    const pageDeferred = createDeferred<ComplexPage>()
+    repository.findMapComplexes.mockReturnValueOnce(mapDeferred.promise)
+    repository.findComplexPage.mockReturnValueOnce(pageDeferred.promise)
+    renderExplorer(repository)
+
+    expect(screen.getByLabelText('단지 목록 불러오는 중')).toHaveTextContent(
+      '불러오는 중',
+    )
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+
+    await waitFor(() => expect(repository.findMapComplexes).toHaveBeenCalled())
+    expect(
+      screen.getByRole('region', { name: '공공임대주택 지도' }),
+    ).toHaveAttribute('aria-busy', 'true')
+
+    await act(async () => {
+      mapDeferred.resolve([mapComplex()])
+      pageDeferred.resolve(complexPageWithNext())
+    })
+
+    expect(await screen.findByLabelText(
+      '현재 불러온 단지 1곳 이상',
+    )).toHaveTextContent('1곳 이상')
+    expect(
+      screen.getByRole('region', { name: '공공임대주택 지도' }),
+    ).toHaveAttribute('aria-busy', 'false')
+    expect(within(screen.getByRole('complementary', {
+      name: '공공임대주택 검색 결과',
+    })).getAllByRole('status')).toHaveLength(1)
+  })
+
+  it('카드와 marker hover 및 focus를 연결하고 marker 선택만 카드를 노출한다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository)
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+
+    const card = await screen.findByRole('article', {
+      name: '서울가람 행복주택',
+    })
+    const marker = screen.getByRole('button', {
+      name: '서울가람 행복주택 지도 마커 선택',
+    })
+    const cardAction = within(card).getByRole('button', {
+      name: '서울가람 행복주택 단지 상세 보기',
+    })
+    let panelHiddenAtScroll: boolean | null = null
+    const scrollIntoView = vi.fn()
+    scrollIntoView.mockImplementation(() => {
+      panelHiddenAtScroll = card.closest('[role="tabpanel"]')
+        ?.hasAttribute('hidden') ?? null
+    })
+    card.scrollIntoView = scrollIntoView
+
+    fireEvent.mouseEnter(card)
+    expect(marker).toHaveAttribute('data-highlighted', 'true')
+    fireEvent.focus(cardAction)
+    fireEvent.mouseLeave(card)
+    expect(marker).toHaveAttribute('data-highlighted', 'true')
+
+    fireEvent.mouseEnter(marker)
+    expect(card).toHaveAttribute('data-hovered', 'true')
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    fireEvent.mouseLeave(marker)
+    expect(card).toHaveAttribute('data-hovered', 'true')
+    expect(marker).toHaveAttribute('data-highlighted', 'true')
+    fireEvent.blur(cardAction)
+    expect(card).not.toHaveAttribute('data-hovered')
+    expect(marker).not.toHaveAttribute('data-highlighted')
+    fireEvent.focus(marker)
+    expect(card).toHaveAttribute('data-hovered', 'true')
+    fireEvent.blur(marker)
+    expect(card).not.toHaveAttribute('data-hovered')
+
+    fireEvent.click(screen.getByRole('tab', { name: '공고 목록' }))
+    expect(screen.getByRole('tab', { name: '공고 목록' }))
+      .toHaveAttribute('aria-selected', 'true')
+    fireEvent.click(marker)
+
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({
+      block: 'nearest',
+    }))
+    expect(panelHiddenAtScroll).toBe(false)
+    expect(scrollIntoView.mock.invocationCallOrder[0]).toBeLessThan(
+      repository.findComplexDetail.mock.invocationCallOrder[0],
+    )
+    expect(await screen.findByRole('complementary', {
+      name: '서울가람 행복주택 단지 상세 정보',
+    })).toBeVisible()
+  })
+
+  it('상세가 열린 선택 단지는 영역 밖에 유지하고 닫힌 뒤 새 결과에서 정리한다', async () => {
+    const repository = createRepository()
+    repository.findMapComplexes
+      .mockResolvedValueOnce([mapComplex()])
+      .mockResolvedValueOnce([mapComplexFor(18, '서울마루 국민임대')])
+      .mockResolvedValueOnce([mapComplex()])
+    repository.findComplexPage
+      .mockResolvedValueOnce(complexPage())
+      .mockResolvedValueOnce(complexPageFor(18, '서울마루 국민임대'))
+      .mockResolvedValueOnce(complexPage())
+    renderExplorer(repository)
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+
+    const initialMarker = await screen.findByRole('button', {
+      name: '서울가람 행복주택 지도 마커 선택',
+    })
+    fireEvent.click(initialMarker)
+    await screen.findByRole('complementary', {
+      name: '서울가람 행복주택 단지 상세 정보',
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
+
+    await screen.findByRole('heading', { name: '서울마루 국민임대' })
+    expect(screen.getByRole('button', {
+      name: '서울가람 행복주택 지도 마커 선택',
+    })).toHaveAttribute('data-selected', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
+    await waitFor(() => expect(screen.queryByRole('complementary', {
+      name: '서울가람 행복주택 단지 상세 정보',
+    })).not.toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+
+    const returnedMarker = await screen.findByRole('button', {
+      name: '서울가람 행복주택 지도 마커 선택',
+    })
+    expect(returnedMarker).not.toHaveAttribute('data-selected')
   })
 
   it('로컬 mock도 운영 marker 경로와 boolean badge만 사용한다', async () => {
@@ -1245,7 +1385,9 @@ function LocationSearch() {
 
 function FakeNaverMap({
   cameraTarget,
+  dataBusy = false,
   markers = [],
+  onMarkerHighlight,
   onMarkerSelect,
   onViewportChange,
 }: NaverMapProps) {
@@ -1256,7 +1398,7 @@ function FakeNaverMap({
   }
 
   return (
-    <section aria-label="공공임대주택 지도">
+    <section aria-label="공공임대주택 지도" aria-busy={dataBusy}>
       {cameraTarget && (
         <output>
           카메라 {cameraTarget.latitude},{cameraTarget.longitude}
@@ -1332,8 +1474,16 @@ function FakeNaverMap({
       {markers.map((marker) => (
         <button
           key={`complex-${marker.id}`}
+          className="housing-map-marker"
           type="button"
+          data-complex-id={marker.id}
           data-highlighted={marker.highlighted || undefined}
+          data-map-complex-marker="true"
+          data-selected={marker.selected || undefined}
+          onMouseEnter={() => onMarkerHighlight?.(marker.id)}
+          onMouseLeave={() => onMarkerHighlight?.(null)}
+          onFocus={() => onMarkerHighlight?.(marker.id)}
+          onBlur={() => onMarkerHighlight?.(null)}
           onClick={() => {
             onMarkerSelect?.(marker.id)
             setRevision((current) => current + 1)
