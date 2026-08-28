@@ -161,6 +161,22 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     @Test
+    void 단지명_표기를_보정해_여러_단지_후보_중_하나를_확정한다() {
+        HousingComplex matched = saveMappedComplex("동삼2", "123:NATIONAL_RENTAL");
+        saveMappedComplex("동삼3", "124:NATIONAL_RENTAL");
+        sourceRepository.save(source(0, data("21026", 1, "부산도시공사", "동삼 2단지")));
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getHousingComplex().getId()).isEqualTo(matched.getId());
+            assertThat(row.getHousingType()).isNotNull();
+            assertThat(row.getMatchingFailureReason()).isNull();
+        });
+    }
+
+    @Test
     void 주택형을_하나로_확정할_수_없으면_단지만_연결하고_실패_사유를_기록한다() {
         saveMappedComplex();
         HousingComplex complex = complexRepository.findAll().getFirst();
@@ -184,6 +200,65 @@ class MyHomeAnnouncementMappingServiceTest {
         assertThat(failureRepository.findAll()).singleElement()
                 .extracting(failure -> failure.getReason())
                 .isEqualTo(MyHomeAnnouncementMappingFailureReason.AMBIGUOUS_HOUSING_TYPE);
+    }
+
+    @Test
+    void 주택형명_표기를_보정해_여러_주택형_중_하나를_확정한다() {
+        saveMappedComplex();
+        HousingComplex complex = complexRepository.findAll().getFirst();
+        HousingType expected = housingTypeRepository.findAllByHousingComplex(complex).getFirst();
+        housingTypeRepository.save(HousingType.createFromMyHome(
+                complex,
+                "second-source-housing-type-id",
+                "59A",
+                new BigDecimal("59.9500"),
+                new BigDecimal("84.0500")
+        ));
+        MyHomeAnnouncementSourceData sourceData = withHousingType(
+                data("21026", 1, "부산도시공사", "동삼2"),
+                "46-A형"
+        );
+        sourceRepository.save(source(0, sourceData));
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getHousingType().getId()).isEqualTo(expected.getId());
+            assertThat(row.getMatchingFailureReason()).isNull();
+        });
+    }
+
+    @Test
+    void 미확정_공급행은_원천_주택형명이_보정되면_재매핑하여_연결한다() {
+        saveMappedComplex();
+        HousingComplex complex = complexRepository.findAll().getFirst();
+        HousingType expected = housingTypeRepository.findAllByHousingComplex(complex).getFirst();
+        housingTypeRepository.save(HousingType.createFromMyHome(
+                complex,
+                "second-source-housing-type-id",
+                "59A",
+                new BigDecimal("59.9500"),
+                new BigDecimal("84.0500")
+        ));
+        sourceRepository.save(source(0, data("21026", 1, "부산도시공사", "동삼2")));
+        service.mapAll();
+        MyHomeAnnouncementSource source = sourceRepository.findAll().getFirst();
+        source.replaceWith(withHousingType(
+                data("21026", 1, "부산도시공사", "동삼2"),
+                "46 A 타입"
+        ));
+        source.markCollectedAt(COLLECTED_AT.plusSeconds(60));
+        sourceRepository.save(source);
+
+        var report = service.mapAll();
+
+        assertThat(report.updatedSupplyRowCount()).isOne();
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getHousingType().getId()).isEqualTo(expected.getId());
+            assertThat(row.getMatchingFailureReason()).isNull();
+        });
     }
 
     @Test
@@ -227,6 +302,10 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     private void saveMappedComplex() {
+        saveMappedComplex("동삼2", "123:NATIONAL_RENTAL");
+    }
+
+    private HousingComplex saveMappedComplex(String name, String sourceIdentifier) {
         Address address = Address.create(
                 "서울특별시 종로구 테스트로 1",
                 PNU,
@@ -237,8 +316,8 @@ class MyHomeAnnouncementMappingServiceTest {
                 new BigDecimal("126.977706")
         );
         HousingComplex complex = complexRepository.save(HousingComplex.createFromMyHome(
-                "동삼2",
-                "123:NATIONAL_RENTAL",
+                name,
+                sourceIdentifier,
                 "NATIONAL_RENTAL",
                 address,
                 100,
@@ -252,11 +331,12 @@ class MyHomeAnnouncementMappingServiceTest {
         ));
         housingTypeRepository.save(HousingType.createFromMyHome(
                 complex,
-                "source-housing-type-id",
+                "source-housing-type-id:" + sourceIdentifier,
                 "46A",
                 new BigDecimal("46.8000"),
                 new BigDecimal("67.0000")
         ));
+        return complex;
     }
 
     private MyHomeAnnouncementSource source(int order, MyHomeAnnouncementSourceData data) {
@@ -347,6 +427,17 @@ class MyHomeAnnouncementMappingServiceTest {
                 data.pblancId(), data.houseSn(), data.sttusNm(), data.pblancNm(), data.suplyInsttNm(),
                 data.houseTyNm(), data.suplyTyNm(), data.beforePblancId(), data.rcritPblancDe(),
                 data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), contact, data.url(),
+                data.pcUrl(), data.mobileUrl(), data.hsmpNm(), data.brtcNm(), data.signguNm(),
+                data.fullAdres(), data.rnCodeNm(), data.refrnLegaldongNm(), data.pnu(), data.heatMthdNm(),
+                data.totHshldCo(), data.sumSuplyCo(), data.rentGtn(), data.enty(), data.surlus(), data.mtRntchrg()
+        );
+    }
+
+    private MyHomeAnnouncementSourceData withHousingType(MyHomeAnnouncementSourceData data, String housingType) {
+        return new MyHomeAnnouncementSourceData(
+                data.pblancId(), data.houseSn(), data.sttusNm(), data.pblancNm(), data.suplyInsttNm(),
+                housingType, data.suplyTyNm(), data.beforePblancId(), data.rcritPblancDe(),
+                data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), data.refrnc(), data.url(),
                 data.pcUrl(), data.mobileUrl(), data.hsmpNm(), data.brtcNm(), data.signguNm(),
                 data.fullAdres(), data.rnCodeNm(), data.refrnLegaldongNm(), data.pnu(), data.heatMthdNm(),
                 data.totHshldCo(), data.sumSuplyCo(), data.rentGtn(), data.enty(), data.surlus(), data.mtRntchrg()

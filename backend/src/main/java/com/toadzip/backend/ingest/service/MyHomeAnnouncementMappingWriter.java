@@ -187,13 +187,32 @@ public class MyHomeAnnouncementMappingWriter {
             );
         }
         if (complexes.size() > 1) {
-            return SupplyMatchResult.failure(
-                    data,
-                    MyHomeAnnouncementMappingFailureReason.AMBIGUOUS_COMPLEX,
-                    "PNU와 공급유형이 일치하는 단지가 여러 개입니다."
-            );
+            HousingComplex matched = uniqueComplexByName(complexes, data.sourceComplexName());
+            if (matched == null) {
+                return SupplyMatchResult.failure(
+                        data,
+                        MyHomeAnnouncementMappingFailureReason.AMBIGUOUS_COMPLEX,
+                        "PNU와 공급유형이 일치하는 단지를 단지명으로도 하나로 확정할 수 없습니다."
+                );
+            }
+            return matchHousingType(data, matched);
         }
-        HousingComplex complex = complexes.getFirst();
+        return matchHousingType(data, complexes.getFirst());
+    }
+
+    private HousingComplex uniqueComplexByName(List<HousingComplex> complexes, String sourceName) {
+        String normalizedSourceName = MyHomeSupplyNameNormalizer.complexName(sourceName);
+        List<HousingComplex> matched = complexes.stream()
+                .filter(complex -> MyHomeSupplyNameNormalizer.complexName(complex.getName())
+                        .equals(normalizedSourceName))
+                .toList();
+        if (matched.size() != 1) {
+            return null;
+        }
+        return matched.getFirst();
+    }
+
+    private SupplyMatchResult matchHousingType(MyHomeSupplyRowMappingData data, HousingComplex complex) {
         List<HousingType> housingTypes = housingTypeRepository.findAllByHousingComplex(complex);
         if (housingTypes.isEmpty()) {
             return SupplyMatchResult.failure(
@@ -204,14 +223,30 @@ public class MyHomeAnnouncementMappingWriter {
             );
         }
         if (housingTypes.size() > 1) {
-            return SupplyMatchResult.failure(
-                    data,
-                    complex,
-                    MyHomeAnnouncementMappingFailureReason.AMBIGUOUS_HOUSING_TYPE,
-                    "공고 원본만으로 주택형 하나를 확정할 수 없습니다."
-            );
+            HousingType matched = uniqueHousingTypeByName(housingTypes, data.sourceHousingTypeName());
+            if (matched == null) {
+                return SupplyMatchResult.failure(
+                        data,
+                        complex,
+                        MyHomeAnnouncementMappingFailureReason.AMBIGUOUS_HOUSING_TYPE,
+                        "공고 원본의 주택형명을 보정해도 주택형 하나를 확정할 수 없습니다."
+                );
+            }
+            return SupplyMatchResult.matched(complex, matched);
         }
         return SupplyMatchResult.matched(complex, housingTypes.getFirst());
+    }
+
+    private HousingType uniqueHousingTypeByName(List<HousingType> housingTypes, String sourceName) {
+        String normalizedSourceName = MyHomeSupplyNameNormalizer.housingTypeName(sourceName);
+        List<HousingType> matched = housingTypes.stream()
+                .filter(housingType -> MyHomeSupplyNameNormalizer.housingTypeName(housingType.getName())
+                        .equals(normalizedSourceName))
+                .toList();
+        if (matched.size() != 1) {
+            return null;
+        }
+        return matched.getFirst();
     }
 
     private MyHomeAnnouncementMappingReport reportOf(
