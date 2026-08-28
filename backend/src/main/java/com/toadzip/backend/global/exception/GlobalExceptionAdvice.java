@@ -185,6 +185,9 @@ public class GlobalExceptionAdvice {
     }
 
     private ValidationError validationErrorOf(FieldError error) {
+        if (error.isBindingFailure()) {
+            return new ValidationError(error.getField(), "형식이 올바르지 않습니다.");
+        }
         return new ValidationError(error.getField(), publicReason(error.getDefaultMessage()));
     }
 

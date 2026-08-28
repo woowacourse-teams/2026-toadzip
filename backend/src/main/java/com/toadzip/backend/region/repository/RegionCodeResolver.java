@@ -19,4 +19,8 @@ public interface RegionCodeResolver {
     default Optional<Set<String>> filterCodes(String regionCode) {
         return equivalentCodes(regionCode);
     }
+
+    default boolean isRegisteredProvinceCode(String provinceCode) {
+        return false;
+    }
 }

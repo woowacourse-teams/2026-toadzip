@@ -61,11 +61,13 @@ class HousingComplexDetailQueryTest {
         };
         HousingComplexCodeMapper codeMapper = new HousingComplexCodeMapper();
         HousingComplexDetailMapper detailMapper = new HousingComplexDetailMapper(codeMapper, regionCodeResolver);
+        RegionCodeResolver noOpSearchRegionCodeResolver = (provinceCode, cityCountyDistrictCode) -> Optional.empty();
         service = new HousingComplexQueryService(
                 summaryRepository,
                 summaryMapper,
                 detailRepository,
                 detailMapper,
+                noOpSearchRegionCodeResolver,
                 CLOCK
         );
         stubDetail(complexRow("https://example.com/complex.png", "INDIVIDUAL", "APARTMENT", "STAIR"));
