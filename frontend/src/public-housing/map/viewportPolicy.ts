@@ -12,6 +12,10 @@ const BOUNDS_SIGNATURE_PRECISION = 5
 
 export interface ViewportSnapshot {
   readonly bounds: MapBounds
+  readonly center: {
+    readonly latitude: number
+    readonly longitude: number
+  }
   readonly zoom: number
 }
 

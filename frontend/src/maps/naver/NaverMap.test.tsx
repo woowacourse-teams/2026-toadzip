@@ -27,7 +27,9 @@ interface FakeSdk {
   emitIdle: () => void
   fitBoundsMap: ReturnType<typeof vi.fn>
   fromCoordToOffset: ReturnType<typeof vi.fn>
+  getCenterMap: ReturnType<typeof vi.fn>
   getMaxZoomMap: ReturnType<typeof vi.fn>
+  getMinZoomMap: ReturnType<typeof vi.fn>
   latLngConstructor: ReturnType<typeof vi.fn>
   mapConstructor: ReturnType<typeof vi.fn>
   markerConstructor: ReturnType<typeof vi.fn>
@@ -40,15 +42,26 @@ interface FakeSdk {
 }
 
 function createFakeSdk(): FakeSdk {
+  let currentCenter = {
+    latitude: 37.5666103,
+    longitude: 126.9783882,
+  }
   let currentZoom = 14
   const destroyMap = vi.fn()
   const autoResizeMap = vi.fn()
-  const panToMap = vi.fn()
+  const panToMap = vi.fn((coordinate: unknown) => {
+    currentCenter = coordinate as typeof currentCenter
+  })
   const setZoomMap = vi.fn((zoom: number) => {
     currentZoom = zoom
   })
   const fitBoundsMap = vi.fn()
+  const getCenterMap = vi.fn(() => ({
+    lat: () => currentCenter.latitude,
+    lng: () => currentCenter.longitude,
+  }))
   const getMaxZoomMap = vi.fn(() => 21)
+  const getMinZoomMap = vi.fn(() => 6)
   const markerSetMap = vi.fn()
   const removeListener = vi.fn()
   let idleListener: (() => void) | null = null
@@ -69,7 +82,9 @@ function createFakeSdk(): FakeSdk {
       getNE: () => ({ lat: () => 37.7, lng: () => 127.1 }),
       getSW: () => ({ lat: () => 37.5, lng: () => 126.8 }),
     }),
+    getCenter: getCenterMap,
     getMaxZoom: getMaxZoomMap,
+    getMinZoom: getMinZoomMap,
     getProjection: () => ({ fromCoordToOffset }),
     getZoom: () => currentZoom,
     panTo: panToMap,
@@ -121,7 +136,9 @@ function createFakeSdk(): FakeSdk {
     emitIdle: () => idleListener?.(),
     fitBoundsMap,
     fromCoordToOffset,
+    getCenterMap,
     getMaxZoomMap,
+    getMinZoomMap,
     latLngConstructor,
     mapConstructor,
     markerConstructor,
@@ -324,6 +341,76 @@ describe('NaverMap', () => {
     expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce()
   })
 
+  it('URL 직렬화 정밀도 안의 camera 차이는 무시하고 더 큰 차이만 적용한다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+
+    const { rerender } = render(
+      <NaverMap
+        cameraTarget={{
+          latitude: 37.510001,
+          longitude: 127.020001,
+          zoom: 15.001,
+        }}
+      />,
+    )
+
+    await waitFor(() => expect(fakeSdk.panToMap).toHaveBeenCalledOnce())
+    expect(fakeSdk.setZoomMap).toHaveBeenCalledOnce()
+
+    rerender(
+      <NaverMap
+        cameraTarget={{
+          latitude: 37.510004,
+          longitude: 127.020004,
+          zoom: 15.004,
+        }}
+      />,
+    )
+
+    expect(fakeSdk.panToMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.setZoomMap).toHaveBeenCalledOnce()
+
+    rerender(
+      <NaverMap
+        cameraTarget={{
+          latitude: 37.51002,
+          longitude: 127.020004,
+          zoom: 15.004,
+        }}
+      />,
+    )
+
+    expect(fakeSdk.panToMap).toHaveBeenCalledTimes(2)
+    expect(fakeSdk.setZoomMap).toHaveBeenCalledOnce()
+
+    rerender(
+      <NaverMap
+        cameraTarget={{
+          latitude: 37.51002,
+          longitude: 127.02002,
+          zoom: 15.004,
+        }}
+      />,
+    )
+
+    expect(fakeSdk.panToMap).toHaveBeenCalledTimes(3)
+    expect(fakeSdk.setZoomMap).toHaveBeenCalledOnce()
+
+    rerender(
+      <NaverMap
+        cameraTarget={{
+          latitude: 37.51002,
+          longitude: 127.02002,
+          zoom: 15.02,
+        }}
+      />,
+    )
+
+    expect(fakeSdk.panToMap).toHaveBeenCalledTimes(3)
+    expect(fakeSdk.setZoomMap).toHaveBeenCalledTimes(2)
+  })
+
   it('잘못된 camera target은 지도에 전달하지 않는다', async () => {
     const fakeSdk = createFakeSdk()
     loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
@@ -378,6 +465,10 @@ describe('NaverMap', () => {
         southWestLng: 126.8,
         northEastLat: 37.7,
         northEastLng: 127.1,
+      },
+      center: {
+        latitude: 37.5666103,
+        longitude: 126.9783882,
       },
       zoom: 14,
     })

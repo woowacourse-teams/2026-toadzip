@@ -28,6 +28,8 @@ const INITIAL_CENTER = {
   latitude: 37.5666103,
   longitude: 126.9783882,
 }
+const CAMERA_COORDINATE_PRECISION = 5
+const CAMERA_ZOOM_PRECISION = 2
 
 export interface NaverMapComplexMarker {
   id: string
@@ -227,7 +229,10 @@ export default function NaverMap({
           mapInstance = createdMap
           mapInstanceRef.current = createdMap
           mapsRef.current = maps
-          appliedCameraTargetRef.current = null
+          appliedCameraTargetRef.current = {
+            ...INITIAL_CENTER,
+            zoom: 14,
+          }
 
           const emitViewport = () => {
             setProjectionRevision((current) => current + 1)
@@ -328,7 +333,6 @@ export default function NaverMap({
       cameraLongitude === undefined ||
       !isValidCameraTarget(cameraLatitude, cameraLongitude, cameraZoom)
     ) {
-      appliedCameraTargetRef.current = null
       return
     }
 
@@ -343,11 +347,17 @@ export default function NaverMap({
       mapInstance.panTo(new maps.LatLng(cameraLatitude, cameraLongitude))
     }
 
-    if (cameraZoom !== undefined && previousTarget?.zoom !== cameraZoom) {
+    if (
+      cameraZoom !== undefined
+      && cameraZoomChanged(previousTarget?.zoom, cameraZoom)
+    ) {
       mapInstance.setZoom(cameraZoom)
     }
 
-    appliedCameraTargetRef.current = nextTarget
+    appliedCameraTargetRef.current = {
+      ...nextTarget,
+      zoom: cameraZoom ?? previousTarget?.zoom,
+    }
   }, [cameraLatitude, cameraLongitude, cameraZoom, status.kind])
 
   const retry = () => {
@@ -416,18 +426,47 @@ function cameraCoordinatesChanged(
 ): boolean {
   return (
     previousTarget === null ||
-    previousTarget.latitude !== nextTarget.latitude ||
-    previousTarget.longitude !== nextTarget.longitude
+    fixedValueChanged(
+      previousTarget.latitude,
+      nextTarget.latitude,
+      CAMERA_COORDINATE_PRECISION,
+    ) ||
+    fixedValueChanged(
+      previousTarget.longitude,
+      nextTarget.longitude,
+      CAMERA_COORDINATE_PRECISION,
+    )
   )
+}
+
+function cameraZoomChanged(
+  previousZoom: number | undefined,
+  nextZoom: number,
+) {
+  return previousZoom === undefined || fixedValueChanged(
+    previousZoom,
+    nextZoom,
+    CAMERA_ZOOM_PRECISION,
+  )
+}
+
+function fixedValueChanged(
+  previousValue: number,
+  nextValue: number,
+  fractionDigits: number,
+) {
+  return previousValue.toFixed(fractionDigits)
+    !== nextValue.toFixed(fractionDigits)
 }
 
 function readViewport(mapInstance: naver.maps.Map): ViewportSnapshot | null {
   const bounds = mapInstance.getBounds()
   const southWest = readCoordinate(bounds, 'getSW')
   const northEast = readCoordinate(bounds, 'getNE')
+  const center = readCoordinateValue(mapInstance.getCenter())
   const zoom = mapInstance.getZoom()
 
-  if (!southWest || !northEast || !Number.isFinite(zoom)) {
+  if (!southWest || !northEast || !center || !Number.isFinite(zoom)) {
     return null
   }
 
@@ -438,6 +477,7 @@ function readViewport(mapInstance: naver.maps.Map): ViewportSnapshot | null {
       northEastLat: northEast.latitude,
       northEastLng: northEast.longitude,
     },
+    center,
     zoom,
   }
 }
@@ -452,6 +492,12 @@ function readCoordinate(
   }
 
   const coordinate: unknown = Reflect.apply(method, bounds, [])
+  return readCoordinateValue(coordinate)
+}
+
+function readCoordinateValue(
+  coordinate: unknown,
+): { latitude: number; longitude: number } | null {
   if (typeof coordinate !== 'object' || coordinate === null) {
     return null
   }

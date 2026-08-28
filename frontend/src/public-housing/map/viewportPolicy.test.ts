@@ -12,6 +12,7 @@ const allowedBounds: MapBounds = {
   northEastLat: 37.25,
   northEastLng: 126.35,
 }
+const center = { latitude: 37.125, longitude: 126.175 }
 
 describe('evaluateViewportRequest', () => {
   it('zoom과 지도 범위가 허용 경계값이면 요청을 허용한다', () => {
@@ -23,7 +24,7 @@ describe('evaluateViewportRequest', () => {
     }
 
     expect(
-      evaluateViewportRequest({ bounds: thresholdBounds, zoom: 13 }),
+      evaluateViewportRequest({ bounds: thresholdBounds, center, zoom: 13 }),
     ).toEqual({
       allowed: true,
       boundsSignature: createBoundsSignature(thresholdBounds),
@@ -32,7 +33,7 @@ describe('evaluateViewportRequest', () => {
 
   it('zoom을 반올림하지 않고 13 미만 요청을 차단한다', () => {
     expect(
-      evaluateViewportRequest({ bounds: allowedBounds, zoom: 12.99 }),
+      evaluateViewportRequest({ bounds: allowedBounds, center, zoom: 12.99 }),
     ).toEqual({
       allowed: false,
       reason: 'zoom-too-low',
@@ -43,7 +44,7 @@ describe('evaluateViewportRequest', () => {
   it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
     '유한하지 않은 zoom %s을 잘못된 값으로 차단한다',
     (zoom) => {
-      expect(evaluateViewportRequest({ bounds: allowedBounds, zoom })).toEqual({
+      expect(evaluateViewportRequest({ bounds: allowedBounds, center, zoom })).toEqual({
         allowed: false,
         reason: 'invalid-zoom',
         boundsSignature: createBoundsSignature(allowedBounds),
@@ -55,6 +56,7 @@ describe('evaluateViewportRequest', () => {
     expect(
       evaluateViewportRequest({
         bounds: { ...allowedBounds, northEastLat: 37.250_000_1 },
+        center,
         zoom: 13,
       }),
     ).toMatchObject({
@@ -67,6 +69,7 @@ describe('evaluateViewportRequest', () => {
     expect(
       evaluateViewportRequest({
         bounds: { ...allowedBounds, northEastLng: 126.350_000_1 },
+        center,
         zoom: 13,
       }),
     ).toMatchObject({
@@ -79,6 +82,7 @@ describe('evaluateViewportRequest', () => {
     expect(
       evaluateViewportRequest({
         bounds: { ...allowedBounds, southWestLat: Number.NaN },
+        center,
         zoom: 13,
       }),
     ).toEqual({
@@ -102,7 +106,7 @@ describe('evaluateViewportRequest', () => {
     { ...allowedBounds, northEastLat: allowedBounds.southWestLat },
     { ...allowedBounds, northEastLng: allowedBounds.southWestLng },
   ])('역전되거나 너비가 없는 범위를 차단한다', (bounds) => {
-    expect(evaluateViewportRequest({ bounds, zoom: 13 })).toEqual({
+    expect(evaluateViewportRequest({ bounds, center, zoom: 13 })).toEqual({
       allowed: false,
       reason: 'invalid-bounds',
       boundsSignature: null,
@@ -115,7 +119,7 @@ describe('evaluateViewportRequest', () => {
     { ...allowedBounds, southWestLng: -180.000_001 },
     { ...allowedBounds, northEastLng: 180.000_001 },
   ])('지리 좌표 범위를 벗어난 bounds를 차단한다', (bounds) => {
-    expect(evaluateViewportRequest({ bounds, zoom: 13 })).toEqual({
+    expect(evaluateViewportRequest({ bounds, center, zoom: 13 })).toEqual({
       allowed: false,
       reason: 'invalid-bounds',
       boundsSignature: null,

@@ -44,12 +44,24 @@ import {
   setAnnouncementIdQuery,
   setComplexIdQuery,
 } from './navigation/detailLocation.ts'
+import {
+  clearMapLocationQuery,
+  parseMapLocation,
+  setMapLocationQuery,
+} from './navigation/mapLocation.ts'
 import { toHousingAnnouncementDetailData } from './presentation/announcementDetailPresentation.ts'
 import { toHousingComplexDetailData } from './presentation/complexDetailPresentation.ts'
 import { toHousingAnnouncementCardData } from './presentation/announcementPresentation.ts'
 
 const PAGE_SIZE = 20
 const VIEWPORT_DEBOUNCE_MS = 300
+const DEFAULT_MAP_LOCATION = {
+  center: {
+    latitude: 37.5666103,
+    longitude: 126.9783882,
+  },
+  zoom: 14,
+}
 const DETAIL_HISTORY_STATE_KEY = 'toadzipDetailEntry'
 const DETAIL_RETURN_FOCUS_STACK_KEY = 'toadzipDetailReturnFocusStack'
 
@@ -159,6 +171,8 @@ export function PublicHousingExplorer({
     useState(false)
   const activeResultTabRef = useRef<ResultTab>(activeResultTab)
   activeResultTabRef.current = activeResultTab
+  const locationSearchRef = useRef(location.search)
+  locationSearchRef.current = location.search
   const [appliedViewport, setAppliedViewport] =
     useState<AppliedViewport | null>(null)
   const [mapResults, setMapResults] =
@@ -202,8 +216,16 @@ export function PublicHousingExplorer({
   const pendingListFocusRef = useRef<PendingListFocus | null>(null)
   const complexCardRefsRef = useRef(new Map<string, HTMLElement>())
   const announcementCardRefsRef = useRef(new Map<string, HTMLElement>())
+  const detailLocationSearch = useMemo(
+    () => pickDetailLocationQuery(location.search),
+    [location.search],
+  )
   const detailLocation = useMemo(
-    () => parseDetailLocation(new URLSearchParams(location.search)),
+    () => parseDetailLocation(new URLSearchParams(detailLocationSearch)),
+    [detailLocationSearch],
+  )
+  const mapLocation = useMemo(
+    () => parseMapLocation(new URLSearchParams(location.search)),
     [location.search],
   )
   const announcementResults = useAnnouncementResults(
@@ -212,6 +234,27 @@ export function PublicHousingExplorer({
       && activeResultTab === 'announcements'
       && detailLocation.kind !== 'announcement',
   )
+
+  useEffect(() => {
+    if (mapLocation.kind !== 'invalid') {
+      return
+    }
+    const nextSearch = clearMapLocationQuery(
+      new URLSearchParams(location.search),
+    )
+    navigate({
+      hash: location.hash,
+      pathname: location.pathname,
+      search: toSearchString(nextSearch),
+    }, { replace: true, state: location.state })
+  }, [
+    location.hash,
+    location.pathname,
+    location.search,
+    location.state,
+    mapLocation.kind,
+    navigate,
+  ])
 
   useEffect(() => {
     if (detailLocation.kind === 'none') {
@@ -277,7 +320,7 @@ export function PublicHousingExplorer({
         complexDetailOpenerWasMarkerRef,
       })
       const nextSearch = clearDetailQuery(
-        new URLSearchParams(location.search),
+        new URLSearchParams(locationSearchRef.current),
       )
       navigate({
         hash: location.hash,
@@ -373,7 +416,6 @@ export function PublicHousingExplorer({
     detailRetryRevision,
     location.hash,
     location.pathname,
-    location.search,
     location.state,
     navigate,
     repository,
@@ -537,6 +579,36 @@ export function PublicHousingExplorer({
     navigate,
   ])
 
+  const replaceMapLocation = useCallback(
+    (nextViewport: ViewportSnapshot) => {
+      const currentSearch = new URLSearchParams(location.search)
+      let nextSearch: URLSearchParams
+      try {
+        nextSearch = setMapLocationQuery(currentSearch, {
+          center: nextViewport.center,
+          zoom: nextViewport.zoom,
+        })
+      } catch {
+        return
+      }
+      if (nextSearch.toString() === currentSearch.toString()) {
+        return
+      }
+      navigate({
+        hash: location.hash,
+        pathname: location.pathname,
+        search: toSearchString(nextSearch),
+      }, { replace: true, state: location.state })
+    },
+    [
+      location.hash,
+      location.pathname,
+      location.search,
+      location.state,
+      navigate,
+    ],
+  )
+
   const applyViewport = useCallback(
     (nextViewport: ViewportSnapshot, force = false) => {
       const decision = evaluateViewportRequest(nextViewport)
@@ -636,6 +708,7 @@ export function PublicHousingExplorer({
   const handleViewportChange = useCallback(
     (nextViewport: ViewportSnapshot) => {
       setViewport(nextViewport)
+      replaceMapLocation(nextViewport)
       if (viewportDebounceRef.current !== null) {
         window.clearTimeout(viewportDebounceRef.current)
         viewportDebounceRef.current = null
@@ -654,7 +727,7 @@ export function PublicHousingExplorer({
         applyViewport(nextViewport)
       }, VIEWPORT_DEBOUNCE_MS)
     },
-    [applyViewport],
+    [applyViewport, replaceMapLocation],
   )
 
   useEffect(() => {
@@ -729,6 +802,18 @@ export function PublicHousingExplorer({
     : null
   const requestBlocked = viewportDecision !== null && !viewportDecision.allowed
   const detailMapTarget = toDetailMapTarget(complexDetail.detail)
+  const urlMapTarget = mapLocation.kind === 'valid'
+    ? {
+        latitude: mapLocation.center.latitude,
+        longitude: mapLocation.center.longitude,
+        zoom: mapLocation.zoom,
+      }
+    : {
+        latitude: DEFAULT_MAP_LOCATION.center.latitude,
+        longitude: DEFAULT_MAP_LOCATION.center.longitude,
+        zoom: DEFAULT_MAP_LOCATION.zoom,
+      }
+  const activeMapTarget = detailMapTarget ?? urlMapTarget
   const markers = useMemo(
     () => requestBlocked
       ? []
@@ -870,7 +955,7 @@ export function PublicHousingExplorer({
 
       <main className="housing-map-workspace">
         <NaverMap
-          cameraTarget={detailMapTarget}
+          cameraTarget={activeMapTarget}
           markers={markers}
           onMarkerSelect={openComplexDetail}
           onViewportChange={handleViewportChange}
@@ -1540,6 +1625,16 @@ function isNotFoundError(error: unknown) {
 function toSearchString(searchParams: URLSearchParams) {
   const search = searchParams.toString()
   return search ? `?${search}` : ''
+}
+
+function pickDetailLocationQuery(search: string) {
+  const detailSearch = new URLSearchParams()
+  new URLSearchParams(search).forEach((value, key) => {
+    if (key === 'complexId' || key === 'announcementId') {
+      detailSearch.append(key, value)
+    }
+  })
+  return detailSearch.toString()
 }
 
 function withDetailHistoryState(

@@ -6,7 +6,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NaverMapProps } from '../maps/naver/NaverMap.tsx'
@@ -49,6 +49,26 @@ const NEXT_BOUNDS: MapBounds = {
   southWestLng: 126.8,
   northEastLat: 37.55,
   northEastLng: 127,
+}
+
+const INITIAL_CENTER = {
+  latitude: 37.56,
+  longitude: 127,
+}
+
+const NEXT_CENTER = {
+  latitude: 37.475,
+  longitude: 126.9,
+}
+
+const PRECISION_CENTER = {
+  latitude: 37.5666103,
+  longitude: 126.9783882,
+}
+
+const SEOUL_CITY_HALL_CENTER = {
+  latitude: 37.5666103,
+  longitude: 126.9783882,
 }
 
 afterEach(() => {
@@ -358,6 +378,191 @@ describe('PublicHousingExplorer', () => {
     expect(screen.getByText('로컬 mock')).toBeVisible()
   })
 
+  it('유효한 지도 query를 최초 카메라 위치와 zoom으로 복원한다', () => {
+    const repository = createRepository()
+    renderExplorer(
+      repository,
+      '/?source=shared&mapLat=37.58123&mapLng=126.99123&mapZoom=15.75',
+    )
+
+    expect(screen.getByText('카메라 37.58123,126.99123')).toBeVisible()
+    expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('15.75')
+    expectCurrentSearch({
+      mapLat: '37.58123',
+      mapLng: '126.99123',
+      mapZoom: '15.75',
+      source: 'shared',
+    })
+  })
+
+  it.each([
+    '?source=shared&mapLat=37.5#map',
+    '?source=shared&mapLat=37.5&mapLat=37.6&mapLng=127&mapZoom=14#map',
+    '?source=shared&mapLat=91&mapLng=127&mapZoom=14#map',
+  ])(
+    '부분, 중복 또는 범위 밖 지도 query %s는 모두 제거하고 기본 카메라로 복구한다',
+    async (initialEntry) => {
+      const repository = createRepository()
+      renderExplorer(repository, initialEntry)
+
+      await waitFor(() => {
+        expectCurrentSearch({ source: 'shared' })
+      })
+      expect(screen.getByTestId('location-hash')).toHaveTextContent('#map')
+      expect(screen.getByText(
+        `카메라 ${SEOUL_CITY_HALL_CENTER.latitude},${SEOUL_CITY_HALL_CENTER.longitude}`,
+      )).toBeVisible()
+      expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('14')
+    },
+  )
+
+  it('지도 idle은 5/5/2자리 query로 replace하며 무관 query, hash, state를 보존한다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository, '/?source=shared#results')
+    fireEvent.click(screen.getByRole('button', { name: '공유 상태 설정' }))
+    await waitFor(() => {
+      expect(screen.getByTestId('location-state')).toHaveTextContent(
+        'shared-state',
+      )
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '정밀 영역 알림' }))
+
+    await waitFor(() => {
+      expectCurrentSearch({
+        mapLat: '37.56661',
+        mapLng: '126.97839',
+        mapZoom: '14.26',
+        source: 'shared',
+      })
+    })
+    expect(screen.getByTestId('location-hash')).toHaveTextContent('#results')
+    expect(screen.getByTestId('location-state')).toHaveTextContent(
+      'shared-state',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' }))
+    await act(async () => Promise.resolve())
+    expectCurrentSearch({
+      mapLat: '37.56661',
+      mapLng: '126.97839',
+      mapZoom: '14.26',
+      source: 'shared',
+    })
+  })
+
+  it('URL과 같은 정밀도의 camera idle은 history와 조회 세대를 반복하지 않는다', async () => {
+    const repository = createRepository()
+    renderExplorer(
+      repository,
+      '/?mapLat=37.56661&mapLng=126.97839&mapZoom=14.26',
+    )
+    const locationKey = screen.getByTestId('location-key').textContent
+
+    fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
+    await waitFor(() => {
+      expect(repository.findMapComplexes).toHaveBeenCalledOnce()
+    })
+    expect(screen.getByTestId('location-key').textContent).toBe(locationKey)
+
+    fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
+    await act(async () => new Promise((resolve) => {
+      window.setTimeout(resolve, 350)
+    }))
+    expect(repository.findMapComplexes).toHaveBeenCalledOnce()
+    expectCurrentSearch({
+      mapLat: '37.56661',
+      mapLng: '126.97839',
+      mapZoom: '14.26',
+    })
+  })
+
+  it('상세 entry만 이동 위치로 replace하고 닫기와 앞뒤 이동은 각 지도 위치를 복원한다', async () => {
+    const repository = createRepository()
+    renderExplorer(
+      repository,
+      '/?source=shared&mapLat=37.58123&mapLng=126.99123&mapZoom=15.50#results',
+    )
+    fireEvent.click(screen.getByRole('button', { name: '공유 상태 설정' }))
+    fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
+    const openButton = await screen.findByRole('button', {
+      name: '서울가람 행복주택 단지 상세 보기',
+    })
+    const listLocationKey = screen.getByTestId('location-key').textContent
+
+    fireEvent.click(openButton)
+
+    expect(await screen.findByRole('complementary', {
+      name: '서울가람 행복주택 단지 상세 정보',
+    })).toBeVisible()
+    expectCurrentSearch({
+      complexId: '17',
+      mapLat: '37.58123',
+      mapLng: '126.99123',
+      mapZoom: '15.50',
+      source: 'shared',
+    })
+    expect(screen.getByTestId('location-key').textContent)
+      .not.toBe(listLocationKey)
+    expect(screen.getByTestId('location-hash')).toHaveTextContent('#results')
+    expect(screen.getByTestId('location-state')).toHaveTextContent(
+      'shared-state',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
+    await waitFor(() => {
+      expectCurrentSearch({
+        complexId: '17',
+        mapLat: '37.50000',
+        mapLng: '126.90000',
+        mapZoom: '15.50',
+        source: 'shared',
+      })
+    })
+    expect(repository.findComplexDetail).toHaveBeenCalledOnce()
+    const detailLocationKey = screen.getByTestId('location-key').textContent
+
+    fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
+
+    await waitFor(() => {
+      expectCurrentSearch({
+        mapLat: '37.58123',
+        mapLng: '126.99123',
+        mapZoom: '15.50',
+        source: 'shared',
+      })
+    })
+    expect(screen.getByTestId('location-key').textContent)
+      .toBe(listLocationKey)
+    expect(screen.getByText('카메라 37.58123,126.99123')).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: '브라우저 앞으로' }))
+
+    await waitFor(() => {
+      expectCurrentSearch({
+        complexId: '17',
+        mapLat: '37.50000',
+        mapLng: '126.90000',
+        mapZoom: '15.50',
+        source: 'shared',
+      })
+    })
+    expect(screen.getByTestId('location-key').textContent)
+      .toBe(detailLocationKey)
+    expect(screen.getByText('카메라 37.5,126.9')).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' }))
+    await waitFor(() => {
+      expect(screen.getByText('카메라 37.58123,126.99123')).toBeVisible()
+      expectCurrentSearch({
+        mapLat: '37.58123',
+        mapLng: '126.99123',
+        mapZoom: '15.50',
+        source: 'shared',
+      })
+    })
+  })
+
   it('단지 카드에서 상세 A를 열고 닫으면 URL과 focus가 원래 카드로 돌아간다', async () => {
     const repository = createRepository()
     renderExplorer(repository)
@@ -374,9 +579,12 @@ describe('PublicHousingExplorer', () => {
       level: 2,
     })
     await waitFor(() => expect(detailHeading).toHaveFocus())
-    expect(screen.getByTestId('location-search')).toHaveTextContent(
-      '?complexId=17',
-    )
+    expectCurrentSearch({
+      complexId: '17',
+      mapLat: '37.56000',
+      mapLng: '127.00000',
+      mapZoom: '14.00',
+    })
     expect(screen.getByText('카메라 37.5,126.9')).toBeVisible()
 
     fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
@@ -385,7 +593,11 @@ describe('PublicHousingExplorer', () => {
     expect(screen.queryByRole('complementary', {
       name: '서울가람 행복주택 단지 상세 정보',
     })).not.toBeInTheDocument()
-    expect(screen.getByTestId('location-search')).toBeEmptyDOMElement()
+    expectCurrentSearch({
+      mapLat: '37.56000',
+      mapLng: '127.00000',
+      mapZoom: '14.00',
+    })
   })
 
   it('단지 상세를 연 카드가 숨겨지면 닫을 때 현재 결과 탭으로 focus가 돌아간다', async () => {
@@ -427,16 +639,23 @@ describe('PublicHousingExplorer', () => {
     expect(await screen.findByRole('complementary', {
       name: '성남 청년 행복주택 입주자 모집 공고 상세 정보',
     })).toBeVisible()
-    expect(screen.getByTestId('location-search')).toHaveTextContent(
-      '?announcementId=117',
-    )
+    expectCurrentSearch({
+      announcementId: '117',
+      mapLat: '37.56000',
+      mapLng: '127.00000',
+      mapZoom: '14.00',
+    })
 
     fireEvent.click(screen.getByRole('button', { name: '공고 상세 닫기' }))
 
     await waitFor(() => expect(openAnnouncement).toHaveFocus())
     expect(screen.getByRole('tab', { name: '단지 목록' }))
       .toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('location-search')).toBeEmptyDOMElement()
+    expectCurrentSearch({
+      mapLat: '37.56000',
+      mapLng: '127.00000',
+      mapZoom: '14.00',
+    })
     expect(repository.findAnnouncementPage).not.toHaveBeenCalled()
   })
 
@@ -455,20 +674,31 @@ describe('PublicHousingExplorer', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' }))
     await waitFor(() => {
-      expect(screen.getByTestId('location-search')).toBeEmptyDOMElement()
+      expectCurrentSearch({
+        mapLat: '37.56000',
+        mapLng: '127.00000',
+        mapZoom: '14.00',
+      })
     })
     fireEvent.click(screen.getByRole('button', { name: '브라우저 앞으로' }))
     await waitFor(() => {
-      expect(screen.getByTestId('location-search')).toHaveTextContent(
-        '?complexId=17',
-      )
+      expectCurrentSearch({
+        complexId: '17',
+        mapLat: '37.56000',
+        mapLng: '127.00000',
+        mapZoom: '14.00',
+      })
     })
 
     fireEvent.click(await screen.findByRole('button', {
       name: '단지 상세 닫기',
     }))
     await waitFor(() => {
-      expect(screen.getByTestId('location-search')).toBeEmptyDOMElement()
+      expectCurrentSearch({
+        mapLat: '37.56000',
+        mapLng: '127.00000',
+        mapZoom: '14.00',
+      })
     })
   })
 
@@ -986,8 +1216,26 @@ function LocationSearch() {
   return (
     <div>
       <output data-testid="location-search">{location.search}</output>
+      <output data-testid="location-hash">{location.hash}</output>
+      <output data-testid="location-key">{location.key}</output>
+      <output data-testid="location-state">
+        {JSON.stringify(location.state)}
+      </output>
       <button type="button" onClick={() => navigate(-1)}>브라우저 뒤로</button>
       <button type="button" onClick={() => navigate(1)}>브라우저 앞으로</button>
+      <button
+        type="button"
+        onClick={() => navigate({
+          hash: location.hash,
+          pathname: location.pathname,
+          search: location.search,
+        }, {
+          replace: true,
+          state: { source: 'shared-state' },
+        })}
+      >
+        공유 상태 설정
+      </button>
       <button type="button" onClick={() => navigate('/?complexId=18')}>
         단지 18 직접 열기
       </button>
@@ -1002,6 +1250,10 @@ function FakeNaverMap({
   onViewportChange,
 }: NaverMapProps) {
   const [, setRevision] = useState(0)
+  const currentZoomRef = useRef(14)
+  if (cameraTarget?.zoom !== undefined) {
+    currentZoomRef.current = cameraTarget.zoom
+  }
 
   return (
     <section aria-label="공공임대주택 지도">
@@ -1010,19 +1262,55 @@ function FakeNaverMap({
           카메라 {cameraTarget.latitude},{cameraTarget.longitude}
         </output>
       )}
+      <output data-testid="map-camera-zoom">
+        {cameraTarget?.zoom ?? currentZoomRef.current}
+      </output>
       <button
         type="button"
         onClick={() =>
-          onViewportChange?.({ bounds: INITIAL_BOUNDS, zoom: 14 })
+          onViewportChange?.({
+            bounds: INITIAL_BOUNDS,
+            center: INITIAL_CENTER,
+            zoom: 14,
+          })
         }
       >
         초기 영역 알림
       </button>
       <button
         type="button"
-        onClick={() => onViewportChange?.({ bounds: NEXT_BOUNDS, zoom: 14 })}
+        onClick={() => onViewportChange?.({
+          bounds: NEXT_BOUNDS,
+          center: NEXT_CENTER,
+          zoom: 14,
+        })}
       >
         다음 영역 알림
+      </button>
+      <button
+        type="button"
+        onClick={() => onViewportChange?.({
+          bounds: INITIAL_BOUNDS,
+          center: PRECISION_CENTER,
+          zoom: 14.256,
+        })}
+      >
+        정밀 영역 알림
+      </button>
+      <button
+        type="button"
+        onClick={() => onViewportChange?.({
+          bounds: INITIAL_BOUNDS,
+          center: cameraTarget
+            ? {
+                latitude: cameraTarget.latitude,
+                longitude: cameraTarget.longitude,
+              }
+            : INITIAL_CENTER,
+          zoom: currentZoomRef.current,
+        })}
+      >
+        현재 카메라 idle
       </button>
       <button
         type="button"
@@ -1034,6 +1322,7 @@ function FakeNaverMap({
               northEastLat: 38,
               northEastLng: 128,
             },
+            center: { latitude: 37, longitude: 126.5 },
             zoom: 14,
           })
         }
@@ -1055,6 +1344,11 @@ function FakeNaverMap({
       ))}
     </section>
   )
+}
+
+function expectCurrentSearch(expected: Record<string, string>) {
+  const search = screen.getByTestId('location-search').textContent ?? ''
+  expect(Object.fromEntries(new URLSearchParams(search))).toEqual(expected)
 }
 
 function createRepository(): PublicHousingRepository & {
