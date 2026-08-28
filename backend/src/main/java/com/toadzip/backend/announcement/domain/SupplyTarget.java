@@ -21,6 +21,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = PROTECTED)
 public class SupplyTarget {
 
+    private static final String SOURCE_APPLICATION_CONDITION = "공고문 참조";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -48,6 +50,8 @@ public class SupplyTarget {
 
     @Column(nullable = false)
     private int displayOrder;
+
+    private String sourceSupplyTargetIdentifier;
 
     private SupplyTarget(
             SupplyRow supplyRow,
@@ -107,6 +111,53 @@ public class SupplyTarget {
                 applicationCondition,
                 displayOrder
         );
+    }
+
+    public static SupplyTarget createFromSource(
+            SupplyRow supplyRow,
+            String sourceSupplyTargetIdentifier,
+            String target,
+            String supplyRank,
+            Integer supplyHouseholdCount,
+            BigDecimal rentalDeposit,
+            BigDecimal monthlyRent,
+            int displayOrder
+    ) {
+        SupplyTarget supplyTarget = create(
+                supplyRow, target, supplyRank, supplyHouseholdCount, null,
+                rentalDeposit, monthlyRent, null, SOURCE_APPLICATION_CONDITION, displayOrder
+        );
+        supplyTarget.sourceSupplyTargetIdentifier = sourceSupplyTargetIdentifier;
+        return supplyTarget;
+    }
+
+    public boolean updateFromSource(
+            String target,
+            String supplyRank,
+            Integer supplyHouseholdCount,
+            BigDecimal rentalDeposit,
+            BigDecimal monthlyRent,
+            int displayOrder
+    ) {
+        SupplyTarget incoming = createFromSource(
+                supplyRow, sourceSupplyTargetIdentifier, target, supplyRank,
+                supplyHouseholdCount, rentalDeposit, monthlyRent, displayOrder
+        );
+        if (this.target.equals(incoming.target)
+                && this.supplyRank.equals(incoming.supplyRank)
+                && java.util.Objects.equals(this.supplyHouseholdCount, incoming.supplyHouseholdCount)
+                && java.util.Objects.equals(this.rentalDeposit, incoming.rentalDeposit)
+                && java.util.Objects.equals(this.monthlyRent, incoming.monthlyRent)
+                && this.displayOrder == incoming.displayOrder) {
+            return false;
+        }
+        this.target = incoming.target;
+        this.supplyRank = incoming.supplyRank;
+        this.supplyHouseholdCount = incoming.supplyHouseholdCount;
+        this.rentalDeposit = incoming.rentalDeposit;
+        this.monthlyRent = incoming.monthlyRent;
+        this.displayOrder = incoming.displayOrder;
+        return true;
     }
 
     private void validateRequired(Object value, String fieldName) {

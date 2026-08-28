@@ -95,6 +95,8 @@ public class Announcement {
 
     private String correctionCancellationReason;
 
+    private String lhPanId;
+
     @Column(nullable = false)
     private long viewCount;
 
@@ -292,6 +294,18 @@ public class Announcement {
         originalUrl = incoming.originalUrl;
         correctionCancellationReason = incoming.correctionCancellationReason;
         receptionPlace = incoming.receptionPlace;
+    }
+
+    public boolean enrichFromLh(String panId, String correctionReason, ReceptionPlace receptionPlace) {
+        if (Objects.equals(lhPanId, panId)
+                && Objects.equals(correctionCancellationReason, correctionReason)
+                && hasSameReceptionPlace(receptionPlace)) {
+            return false;
+        }
+        lhPanId = panId;
+        correctionCancellationReason = correctionReason;
+        this.receptionPlace = receptionPlace;
+        return true;
     }
 
     public static Announcement create(
