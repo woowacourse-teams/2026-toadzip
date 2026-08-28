@@ -200,6 +200,18 @@ class CsvRegionCodeResolverTest {
     }
 
     @Test
+    void 정본_시도와_겹치는_과거_접두어의_지역은_다른_시도_필터에_섞지_않는다() {
+        CsvRegionCodeResolver resolver = resolverWithContentsAndAliases(
+                HEADER + "\n12210,전남광주통합특별시,동구,전남광주통합특별시 동구"
+                        + "\n29110,광역시,중구,광역시 중구",
+                ALIAS_HEADER + "\n29140,12210"
+        );
+
+        assertEquals(Set.of("12210", "29140"), resolver.filterCodes("12").orElseThrow());
+        assertEquals(Set.of("29110"), resolver.filterCodes("29").orElseThrow());
+    }
+
+    @Test
     void 하나의_과거_시도코드가_여러_현재_시도코드에_매핑되면_초기화에_실패한다() {
         IllegalStateException exception = assertThrows(
                 IllegalStateException.class,
@@ -351,6 +363,46 @@ class CsvRegionCodeResolverTest {
         );
 
         assertEquals(Set.of("12210", "29110"), resolver.equivalentCodes("29110").orElseThrow());
+    }
+
+    @Test
+    void 시도_전체_필터는_소속_정본과_과거_시군구코드를_모두_반환한다() {
+        CsvRegionCodeResolver resolver = resolverWithContentsAndAliases(
+                HEADER + "\n12210,전남광주통합특별시,동구,전남광주통합특별시 동구"
+                        + "\n12240,전남광주통합특별시,서구,전남광주통합특별시 서구",
+                ALIAS_HEADER + "\n29110,12210\n29140,12240\n46110,12210\n46140,12240"
+        );
+
+        assertEquals(
+                Set.of("12210", "12240", "29110", "29140", "46110", "46140"),
+                resolver.filterCodes("12").orElseThrow()
+        );
+    }
+
+    @Test
+    void 하위_구가_있는_시_필터는_자신과_소속_구의_정본과_과거코드를_반환한다() {
+        CsvRegionCodeResolver resolver = resolverWithContentsAndAliases(
+                HEADER + "\n41110,경기도,수원시,경기도 수원시"
+                        + "\n41111,경기도,수원시 장안구,경기도 수원시 장안구"
+                        + "\n41113,경기도,수원시 권선구,경기도 수원시 권선구"
+                        + "\n41130,경기도,성남시,경기도 성남시",
+                ALIAS_HEADER + "\n41112,41111"
+        );
+
+        assertEquals(
+                Set.of("41110", "41111", "41112", "41113"),
+                resolver.filterCodes("41110").orElseThrow()
+        );
+    }
+
+    @Test
+    void 코드_접두사가_같아도_이름이_다른_시군구는_하위_지역으로_포함하지_않는다() {
+        CsvRegionCodeResolver resolver = resolver(
+                "43740,충청북도,영동군,충청북도 영동군",
+                "43745,충청북도,증평군,충청북도 증평군"
+        );
+
+        assertEquals(Set.of("43740"), resolver.filterCodes("43740").orElseThrow());
     }
 
     @Test

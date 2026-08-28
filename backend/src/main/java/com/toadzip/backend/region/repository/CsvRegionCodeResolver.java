@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
@@ -99,6 +100,45 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver, RegionSe
         }
         String currentRegionCode = regionCodeAliases.getOrDefault(regionCode, regionCode);
         return Optional.ofNullable(equivalentRegionCodes.get(currentRegionCode));
+    }
+
+    @Override
+    public Optional<Set<String>> filterCodes(String regionCode) {
+        if (regionCode != null && regionCode.length() == 2) {
+            return provinceFilterCodes(regionCode);
+        }
+        return districtFilterCodes(regionCode);
+    }
+
+    private Optional<Set<String>> provinceFilterCodes(String provinceCode) {
+        return equivalentProvinceCodes(provinceCode).map(provinceCodes -> canonicalRegions.keySet().stream()
+                .filter(code -> provinceCodes.contains(provinceCode(code)))
+                .map(equivalentRegionCodes::get)
+                .flatMap(Set::stream)
+                .collect(Collectors.toUnmodifiableSet()));
+    }
+
+    private Optional<Set<String>> districtFilterCodes(String regionCode) {
+        if (regionCode == null) {
+            return Optional.empty();
+        }
+        String currentRegionCode = regionCodeAliases.getOrDefault(regionCode, regionCode);
+        if (!equivalentRegionCodes.containsKey(currentRegionCode)) {
+            return Optional.empty();
+        }
+        RegionSearchResult selectedRegion = canonicalRegions.get(currentRegionCode);
+        return Optional.of(canonicalRegions.values().stream()
+                .filter(candidate -> candidate.equals(selectedRegion) || isChildRegion(selectedRegion, candidate))
+                .map(RegionSearchResult::regionCode)
+                .map(equivalentRegionCodes::get)
+                .flatMap(Set::stream)
+                .collect(Collectors.toUnmodifiableSet()));
+    }
+
+    private static boolean isChildRegion(RegionSearchResult parent, RegionSearchResult candidate) {
+        return parent.regionCode().endsWith("0")
+                && candidate.regionCode().startsWith(parent.regionCode().substring(0, 4))
+                && candidate.districtName().startsWith(parent.districtName() + " ");
     }
 
     private static Map<String, Set<String>> buildEquivalentRegionCodes(

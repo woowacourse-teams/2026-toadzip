@@ -15,4 +15,8 @@ public interface RegionCodeResolver {
     default Optional<Set<String>> equivalentCodes(String regionCode) {
         return Optional.empty();
     }
+
+    default Optional<Set<String>> filterCodes(String regionCode) {
+        return equivalentCodes(regionCode);
+    }
 }
