@@ -155,11 +155,20 @@ describe('createBoundsSignature', () => {
     )
   })
 
-  it('좌표가 달라지면 다른 signature를 만든다', () => {
+  it('소수점 5자리로 정규화한 좌표가 같으면 같은 signature를 만든다', () => {
     expect(
       createBoundsSignature({
         ...allowedBounds,
         northEastLat: allowedBounds.northEastLat - 0.000_000_1,
+      }),
+    ).toBe(createBoundsSignature(allowedBounds))
+  })
+
+  it('소수점 5자리 정규화 결과가 달라지는 이동은 다른 signature를 만든다', () => {
+    expect(
+      createBoundsSignature({
+        ...allowedBounds,
+        northEastLat: allowedBounds.northEastLat - 0.000_01,
       }),
     ).not.toBe(createBoundsSignature(allowedBounds))
   })

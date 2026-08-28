@@ -8,6 +8,7 @@ const MINIMUM_LATITUDE = -90
 const MAXIMUM_LATITUDE = 90
 const MINIMUM_LONGITUDE = -180
 const MAXIMUM_LONGITUDE = 180
+const BOUNDS_SIGNATURE_PRECISION = 5
 
 export interface ViewportSnapshot {
   readonly bounds: MapBounds
@@ -59,6 +60,12 @@ function isValidBounds(bounds: MapBounds): boolean {
   )
 }
 
+function normalizeSignatureCoordinate(coordinate: number): string {
+  return Number(coordinate.toFixed(BOUNDS_SIGNATURE_PRECISION)).toFixed(
+    BOUNDS_SIGNATURE_PRECISION,
+  )
+}
+
 export function createBoundsSignature(bounds: MapBounds): string | null {
   if (!isValidBounds(bounds)) {
     return null
@@ -70,7 +77,7 @@ export function createBoundsSignature(bounds: MapBounds): string | null {
     bounds.northEastLat,
     bounds.northEastLng,
   ]
-    .map((coordinate) => coordinate.toString())
+    .map((coordinate) => normalizeSignatureCoordinate(coordinate))
     .join(':')
 }
 
