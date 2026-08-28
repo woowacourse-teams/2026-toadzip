@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.toadzip.backend.global.exception.ErrorResponse;
+import com.toadzip.backend.housing.exception.AdminHousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.HousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.InvalidComplexCursorException;
 import com.toadzip.backend.housing.exception.InvalidComplexRequestException;
@@ -29,6 +30,8 @@ public class HousingComplexExceptionAdvice {
     private static final String INVALID_REQUEST = "INVALID_REQUEST";
 
     private static final String COMPLEX_NOT_FOUND = "COMPLEX_NOT_FOUND";
+
+    private static final String HOUSING_COMPLEX_NOT_FOUND = "HOUSING_COMPLEX_NOT_FOUND";
 
     @ExceptionHandler(InvalidMapBoundsException.class)
     public ResponseEntity<ErrorResponse> handleInvalidMapBounds(
@@ -68,6 +71,14 @@ public class HousingComplexExceptionAdvice {
             HttpServletRequest request
     ) {
         return response(HttpStatus.NOT_FOUND, COMPLEX_NOT_FOUND, exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(AdminHousingComplexNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleAdminHousingComplexNotFound(
+            AdminHousingComplexNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return response(HttpStatus.NOT_FOUND, HOUSING_COMPLEX_NOT_FOUND, exception.getMessage(), request);
     }
 
     private ResponseEntity<ErrorResponse> response(
