@@ -11,12 +11,13 @@ PRIMARY_DB_PASSWORD=
 SHARED_DB_HOST=<DB 서버 사설 IP>
 SHARED_DB_PORT=5434
 SHARED_DB_PASSWORD=
+VITE_NAVER_MAPS_CLIENT_ID=
 ```
 
 ## 실행
 
 ```shell
-docker compose up -d --build backend
+docker compose up -d --build
 ```
 
 ## 종료
