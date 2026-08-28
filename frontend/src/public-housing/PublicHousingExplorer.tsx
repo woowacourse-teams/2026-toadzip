@@ -31,10 +31,6 @@ import {
   type ViewportBlockReason,
   type ViewportSnapshot,
 } from './map/viewportPolicy.ts'
-import {
-  resolveLocalMapMarkers,
-  type LocalMapSnapshot,
-} from './map/localMapMarkerResolver.ts'
 import type {
   AnnouncementDetail,
   ComplexDetail,
@@ -118,7 +114,7 @@ interface PendingListFocus {
 }
 
 export interface PublicHousingExplorerProps {
-  localMapSnapshot?: LocalMapSnapshot
+  localMockEnabled?: boolean
   repository?: PublicHousingRepository
 }
 
@@ -151,7 +147,7 @@ const INITIAL_ANNOUNCEMENT_DETAIL: AnnouncementDetailState = {
 }
 
 export function PublicHousingExplorer({
-  localMapSnapshot,
+  localMockEnabled = false,
   repository = defaultPublicHousingRepository,
 }: PublicHousingExplorerProps) {
   const location = useLocation()
@@ -173,11 +169,6 @@ export function PublicHousingExplorer({
     null,
   )
   const [hoveredComplexId, setHoveredComplexId] = useState<string | null>(null)
-  const [expandedRegionCode, setExpandedRegionCode] = useState<string | null>(
-    null,
-  )
-  const [clusterFocusRegionCode, setClusterFocusRegionCode] =
-    useState<string | null>(null)
   const [complexDetail, setComplexDetail] =
     useState<ComplexDetailState>(INITIAL_COMPLEX_DETAIL)
   const [announcementDetail, setAnnouncementDetail] =
@@ -221,24 +212,6 @@ export function PublicHousingExplorer({
       && activeResultTab === 'announcements'
       && detailLocation.kind !== 'announcement',
   )
-
-  useEffect(() => {
-    setExpandedRegionCode(null)
-    setClusterFocusRegionCode(null)
-  }, [localMapSnapshot])
-
-  useEffect(() => {
-    if (localMapSnapshot === undefined || selectedComplexId === null) {
-      return
-    }
-    const selectedComplex = localMapSnapshot.complexes.find(
-      (complex) => complex.complexId === selectedComplexId,
-    )
-    if (selectedComplex !== undefined) {
-      setExpandedRegionCode(selectedComplex.regionCode)
-      setClusterFocusRegionCode(null)
-    }
-  }, [localMapSnapshot, selectedComplexId])
 
   useEffect(() => {
     if (detailLocation.kind === 'none') {
@@ -542,11 +515,6 @@ export function PublicHousingExplorer({
     [openDetail],
   )
 
-  const expandRegionCluster = useCallback((regionCode: string) => {
-    setExpandedRegionCode(regionCode)
-    setClusterFocusRegionCode(regionCode)
-  }, [])
-
   const closeDetail = useCallback(() => {
     if (isDetailHistoryState(location.state)) {
       navigate(-1)
@@ -764,21 +732,15 @@ export function PublicHousingExplorer({
   const markers = useMemo(
     () => requestBlocked
       ? []
-      : localMapSnapshot === undefined
-      ? toNaverMapMarkers(
+      : toNaverMapMarkers(
           mapResults.items,
           selectedComplexId,
+          hoveredComplexId,
           complexDetail.detail,
-        )
-      : resolveLocalMapMarkers(
-          localMapSnapshot,
-          expandedRegionCode,
-          selectedComplexId,
         ),
     [
       complexDetail.detail,
-      expandedRegionCode,
-      localMapSnapshot,
+      hoveredComplexId,
       mapResults.items,
       requestBlocked,
       selectedComplexId,
@@ -804,7 +766,7 @@ export function PublicHousingExplorer({
           <div>
             <p className="housing-results__eyebrow">지도 기반 탐색</p>
             <h1>공공임대주택</h1>
-            {localMapSnapshot !== undefined && (
+            {localMockEnabled && (
               <span className="housing-results__local-badge">로컬 mock</span>
             )}
           </div>
@@ -909,9 +871,7 @@ export function PublicHousingExplorer({
       <main className="housing-map-workspace">
         <NaverMap
           cameraTarget={detailMapTarget}
-          focusRegionCode={clusterFocusRegionCode ?? undefined}
           markers={markers}
-          onClusterSelect={expandRegionCluster}
           onMarkerSelect={openComplexDetail}
           onViewportChange={handleViewportChange}
         />
@@ -1467,10 +1427,11 @@ function rentalTypeLabel(rentalType: string | null) {
 function toNaverMapMarkers(
   complexes: readonly MapComplex[],
   selectedComplexId: string | null,
+  hoveredComplexId: string | null,
   detail: ComplexDetail | null,
 ): NaverMapMarker[] {
   const markers = complexes.map((complex) => ({
-    kind: 'complex' as const,
+    highlighted: complex.complexId === hoveredComplexId,
     id: complex.complexId,
     latitude: complex.latitude,
     longitude: complex.longitude,
@@ -1489,7 +1450,7 @@ function toNaverMapMarkers(
   return [
     ...markers,
     {
-      kind: 'complex',
+      highlighted: detail.complexId === hoveredComplexId,
       id: detail.complexId,
       latitude: target.latitude,
       longitude: target.longitude,

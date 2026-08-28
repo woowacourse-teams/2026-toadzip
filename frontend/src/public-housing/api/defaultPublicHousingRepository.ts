@@ -2,7 +2,6 @@ import {
   publicHousingRepository,
   type PublicHousingRepository,
 } from './publicHousingRepository.ts'
-import { decodeLocalPublicHousingMapSnapshot } from '../map/localPublicHousingMapSnapshot.ts'
 import {
   createSnapshotPublicHousingRepository,
   decodePublicHousingSnapshot,
@@ -57,7 +56,6 @@ export function createLocalPublicHousingMockLoader(
 
 function validateLocalPublicHousingSnapshot(value: unknown) {
   decodePublicHousingSnapshot(value)
-  decodeLocalPublicHousingMapSnapshot(value)
 }
 
 export const localPublicHousingMockEnabled = import.meta.env.DEV

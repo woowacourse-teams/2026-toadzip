@@ -528,55 +528,41 @@ a {
   background: #d63d4a;
 }
 
+.housing-map-marker.is-highlighted {
+  box-shadow:
+    0 2px 6px rgb(0 0 0 / 22%),
+    0 0 0 6px rgb(37 110 244 / 34%);
+}
+
 .housing-map-marker:focus-visible {
   outline: 4px solid #256ef4;
   outline-offset: 3px;
 }
 
 .housing-map-cluster {
-  display: flex;
-  width: 76px;
-  height: 62px;
+  display: grid;
+  width: 60px;
+  height: 52px;
   padding: 0;
-  align-items: stretch;
   border: 3px solid rgb(255 255 255 / 94%);
-  border-radius: 17px;
+  border-radius: 26px;
   background: #172b4d;
   box-shadow: 0 7px 16px rgb(18 37 47 / 28%);
   color: #ffffff;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.housing-map-cluster span,
-.housing-map-cluster strong {
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  padding: 0 5px;
   place-items: center;
 }
 
-.housing-map-cluster span {
-  display: block;
-  height: 23px;
-  flex: 0 0 23px;
-  overflow: hidden;
-  border-bottom: 1px solid rgb(255 255 255 / 18%);
-  background: rgb(37 110 244 / 32%);
-  color: #e8f1ff;
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 22px;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .housing-map-cluster strong {
-  flex: 1;
+  display: block;
   font-size: 16px;
   font-weight: 900;
+}
+
+.housing-map-cluster.is-highlighted {
+  background: #256ef4;
+  box-shadow:
+    0 7px 16px rgb(18 37 47 / 28%),
+    0 0 0 7px rgb(37 110 244 / 30%);
 }
 
 .housing-map-cluster:focus-visible {

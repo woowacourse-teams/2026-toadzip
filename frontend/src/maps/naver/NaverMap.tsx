@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ViewportSnapshot } from '../../public-housing/map/viewportPolicy.ts'
 import {
+  clusterScreenMarkers,
+  type ClusteredScreenMarkers,
+} from './screenMarkerClustering.ts'
+import {
   loadNaverMapsSdk,
   NaverMapsSdkError,
   subscribeToNaverMapsAuthenticationFailure,
@@ -26,28 +30,15 @@ const INITIAL_CENTER = {
 }
 
 export interface NaverMapComplexMarker {
-  readonly kind: 'complex'
   id: string
+  highlighted?: boolean
   latitude: number
   longitude: number
   name: string
-  regionCode?: string
-  regionName?: string
   selected?: boolean
 }
 
-export interface NaverMapRegionClusterMarker {
-  readonly kind: 'region-cluster'
-  readonly latitude: number
-  readonly longitude: number
-  readonly regionCode: string
-  readonly regionName: string
-  readonly uniqueComplexCount: number
-}
-
-export type NaverMapMarker =
-  | NaverMapComplexMarker
-  | NaverMapRegionClusterMarker
+export type NaverMapMarker = NaverMapComplexMarker
 
 export interface NaverMapCameraTarget {
   readonly latitude: number
@@ -57,9 +48,7 @@ export interface NaverMapCameraTarget {
 
 export interface NaverMapProps {
   cameraTarget?: NaverMapCameraTarget
-  focusRegionCode?: string | null
   markers?: NaverMapMarker[]
-  onClusterSelect?: (regionCode: string) => void
   onMarkerSelect?: (complexId: string) => void
   onViewportChange?: (viewport: ViewportSnapshot) => void
 }
@@ -149,9 +138,7 @@ function MapUnavailable({ onRetry, reason }: MapUnavailableProps) {
 
 export default function NaverMap({
   cameraTarget,
-  focusRegionCode,
   markers = [],
-  onClusterSelect,
   onMarkerSelect,
   onViewportChange,
 }: NaverMapProps) {
@@ -160,20 +147,15 @@ export default function NaverMap({
   const mapsRef = useRef<typeof naver.maps | null>(null)
   const markerOverlaysRef = useRef<naver.maps.Marker[]>([])
   const appliedCameraTargetRef = useRef<NaverMapCameraTarget | null>(null)
-  const completedFocusRegionCodeRef = useRef<string | null>(null)
-  const onClusterSelectRef = useRef(onClusterSelect)
   const onMarkerSelectRef = useRef(onMarkerSelect)
   const onViewportChangeRef = useRef(onViewportChange)
   const [attempt, setAttempt] = useState(0)
   const [markerAnnouncement, setMarkerAnnouncement] = useState('')
+  const [projectionRevision, setProjectionRevision] = useState(0)
   const [status, setStatus] = useState<MapStatus>({ kind: 'loading' })
   const cameraLatitude = cameraTarget?.latitude
   const cameraLongitude = cameraTarget?.longitude
   const cameraZoom = cameraTarget?.zoom
-
-  useEffect(() => {
-    onClusterSelectRef.current = onClusterSelect
-  }, [onClusterSelect])
 
   useEffect(() => {
     onMarkerSelectRef.current = onMarkerSelect
@@ -218,7 +200,6 @@ export default function NaverMap({
       mapInstanceRef.current = null
       mapsRef.current = null
       appliedCameraTargetRef.current = null
-      completedFocusRegionCodeRef.current = null
       setMarkerAnnouncement('')
       setStatus({ kind: 'unavailable', reason: 'authentication' })
       destroyMapSafely(failedMap)
@@ -247,25 +228,26 @@ export default function NaverMap({
           mapInstanceRef.current = createdMap
           mapsRef.current = maps
           appliedCameraTargetRef.current = null
-          completedFocusRegionCodeRef.current = null
 
           const emitViewport = () => {
+            setProjectionRevision((current) => current + 1)
             const viewport = readViewport(createdMap)
             if (viewport) {
               onViewportChangeRef.current?.(viewport)
             }
           }
 
-          if (onViewportChangeRef.current) {
-            idleListener = maps.Event.addListener(
-              createdMap,
-              'idle',
-              emitViewport,
-            )
-          }
+          idleListener = maps.Event.addListener(
+            createdMap,
+            'idle',
+            emitViewport,
+          )
 
           if (typeof ResizeObserver === 'function') {
-            resizeObserver = new ResizeObserver(() => createdMap.autoResize())
+            resizeObserver = new ResizeObserver(() => {
+              createdMap.autoResize()
+              setProjectionRevision((current) => current + 1)
+            })
             resizeObserver.observe(mapContainerRef.current)
           }
 
@@ -279,7 +261,6 @@ export default function NaverMap({
           mapInstanceRef.current = null
           mapsRef.current = null
           appliedCameraTargetRef.current = null
-          completedFocusRegionCodeRef.current = null
           setStatus({ kind: 'unavailable', reason: 'initialization' })
           destroyMapSafely(failedMap)
         }
@@ -300,7 +281,6 @@ export default function NaverMap({
       mapInstanceRef.current = null
       mapsRef.current = null
       appliedCameraTargetRef.current = null
-      completedFocusRegionCodeRef.current = null
       destroyMapSafely(mapInstance)
     }
   }, [attempt])
@@ -314,54 +294,26 @@ export default function NaverMap({
     }
 
     clearMarkers(markerOverlaysRef.current)
-    const createdMarkers = markers.map((marker) =>
-      createMarker(maps, mapInstance, marker, () => selectMarker(
-        marker,
-        onClusterSelectRef.current,
-        onMarkerSelectRef.current,
-      )),
-    )
+    const clusteredMarkers = toRenderedMarkers(maps, mapInstance, markers)
+    const createdMarkers = clusteredMarkers.map((marker) => createMarker(
+      maps,
+      mapInstance,
+      marker,
+      onMarkerSelectRef.current,
+      (cluster) => {
+        fitClusterBounds(maps, mapInstance, cluster)
+        setMarkerAnnouncement(
+          `${cluster.members.length}곳 단지 묶음을 확대했습니다.`,
+        )
+      },
+    ))
     markerOverlaysRef.current = createdMarkers.map(({ overlay }) => overlay)
-    const focusTarget = findRegionFocusTarget(
-      createdMarkers,
-      markers,
-      focusRegionCode,
-    )
-    let focusTimeout: number | null = null
-
-    if (focusRegionCode === undefined || focusRegionCode === null) {
-      completedFocusRegionCodeRef.current = null
-      setMarkerAnnouncement('')
-    }
-    if (
-      focusRegionCode !== undefined
-      && focusRegionCode !== null
-      && focusTarget === null
-      && completedFocusRegionCodeRef.current !== focusRegionCode
-    ) {
-      setMarkerAnnouncement('')
-    }
-    if (
-      focusTarget !== null
-      && completedFocusRegionCodeRef.current !== focusRegionCode
-    ) {
-      setMarkerAnnouncement(
-        `${focusTarget.regionName}의 개별 단지 ${focusTarget.count}곳을 지도에 표시했습니다.`,
-      )
-      focusTimeout = window.setTimeout(() => {
-        focusTarget.button.focus()
-        completedFocusRegionCodeRef.current = focusRegionCode ?? null
-      }, 0)
-    }
 
     return () => {
-      if (focusTimeout !== null) {
-        window.clearTimeout(focusTimeout)
-      }
       clearMarkers(markerOverlaysRef.current)
       markerOverlaysRef.current = []
     }
-  }, [focusRegionCode, markers, status.kind])
+  }, [markers, projectionRevision, status.kind])
 
   useEffect(() => {
     const mapInstance = mapInstanceRef.current
@@ -527,61 +479,117 @@ interface CreatedMarker {
   readonly overlay: naver.maps.Marker
 }
 
-interface RegionFocusTarget {
-  readonly button: HTMLButtonElement
-  readonly count: number
-  readonly regionName: string
+interface RenderedComplexMarker {
+  readonly kind: 'complex'
+  readonly marker: NaverMapComplexMarker
 }
 
-function selectMarker(
-  marker: NaverMapMarker,
-  onClusterSelect: ((regionCode: string) => void) | undefined,
-  onMarkerSelect: ((complexId: string) => void) | undefined,
-) {
-  if (marker.kind === 'region-cluster') {
-    onClusterSelect?.(marker.regionCode)
-    return
-  }
-  onMarkerSelect?.(marker.id)
+interface RenderedClusterMarker {
+  readonly cluster: ClusteredScreenMarkers
+  readonly highlighted: boolean
+  readonly kind: 'cluster'
+  readonly members: readonly NaverMapComplexMarker[]
 }
 
-function findRegionFocusTarget(
-  createdMarkers: readonly CreatedMarker[],
+type RenderedMarker = RenderedComplexMarker | RenderedClusterMarker
+
+function toRenderedMarkers(
+  maps: typeof naver.maps,
+  mapInstance: naver.maps.Map,
   markers: readonly NaverMapMarker[],
-  focusRegionCode: string | null | undefined,
-): RegionFocusTarget | null {
-  if (focusRegionCode === undefined || focusRegionCode === null) {
-    return null
+): RenderedMarker[] {
+  const uniqueMarkers = uniqueSortedMarkers(markers)
+  const selectedMarkers = uniqueMarkers.filter((marker) => marker.selected)
+  const candidates = uniqueMarkers.filter((marker) => !marker.selected)
+  const markerById = new Map(candidates.map((marker) => [marker.id, marker]))
+
+  try {
+    const projection = mapInstance.getProjection()
+    const projected = candidates.map((marker) => {
+      const point = projection.fromCoordToOffset(
+        new maps.LatLng(marker.latitude, marker.longitude),
+      )
+      return {
+        id: marker.id,
+        latitude: marker.latitude,
+        longitude: marker.longitude,
+        x: point.x,
+        y: point.y,
+      }
+    })
+    const clustered = clusterScreenMarkers(projected).map((result) => {
+      if (result.kind === 'singleton') {
+        return {
+          kind: 'complex' as const,
+          marker: markerById.get(result.marker.id)!,
+        }
+      }
+      const members = result.markers.map((marker) => markerById.get(marker.id)!)
+      return {
+        cluster: result,
+        highlighted: members.some((marker) => marker.highlighted),
+        kind: 'cluster' as const,
+        members,
+      }
+    })
+    return sortRenderedMarkers([
+      ...clustered,
+      ...selectedMarkers.map((marker) => ({
+        kind: 'complex' as const,
+        marker,
+      })),
+    ])
+  } catch {
+    return uniqueMarkers.map((marker) => ({ kind: 'complex', marker }))
   }
-  const markerIndex = markers.findIndex((marker) =>
-    marker.kind === 'complex' && marker.regionCode === focusRegionCode,
+}
+
+function uniqueSortedMarkers(markers: readonly NaverMapMarker[]) {
+  const uniqueMarkers = new Map<string, NaverMapMarker>()
+  markers.forEach((marker) => {
+    if (!uniqueMarkers.has(marker.id)) {
+      uniqueMarkers.set(marker.id, marker)
+    }
+  })
+  return [...uniqueMarkers.values()].sort((left, right) =>
+    left.id.localeCompare(right.id),
   )
-  const marker = markers[markerIndex]
-  const createdMarker = createdMarkers[markerIndex]
-  if (marker?.kind !== 'complex' || createdMarker === undefined) {
-    return null
+}
+
+function sortRenderedMarkers(markers: readonly RenderedMarker[]) {
+  return [...markers].sort((left, right) =>
+    renderedMarkerId(left).localeCompare(renderedMarkerId(right)),
+  )
+}
+
+function renderedMarkerId(marker: RenderedMarker) {
+  if (marker.kind === 'complex') {
+    return marker.marker.id
   }
-  const count = markers.filter((candidate) =>
-    candidate.kind === 'complex'
-      && candidate.regionCode === focusRegionCode,
-  ).length
-  return {
-    button: createdMarker.button,
-    count,
-    regionName: marker.regionName?.trim() || '선택한 지역',
-  }
+  return marker.cluster.id
 }
 
 function createMarker(
   maps: typeof naver.maps,
   mapInstance: naver.maps.Map,
-  marker: NaverMapMarker,
-  onSelect: () => void,
+  marker: RenderedMarker,
+  onMarkerSelect: ((complexId: string) => void) | undefined,
+  onClusterSelect: (cluster: RenderedClusterMarker) => void,
 ): CreatedMarker {
-  if (marker.kind === 'region-cluster') {
-    return createRegionClusterMarker(maps, mapInstance, marker, onSelect)
+  if (marker.kind === 'cluster') {
+    return createClusterMarker(
+      maps,
+      mapInstance,
+      marker,
+      () => onClusterSelect(marker),
+    )
   }
-  return createComplexMarker(maps, mapInstance, marker, onSelect)
+  return createComplexMarker(
+    maps,
+    mapInstance,
+    marker.marker,
+    () => onMarkerSelect?.(marker.marker.id),
+  )
 }
 
 function createComplexMarker(
@@ -592,14 +600,9 @@ function createComplexMarker(
 ): CreatedMarker {
   const button = document.createElement('button')
   button.type = 'button'
-  button.className = marker.selected
-    ? 'housing-map-marker is-selected'
-    : 'housing-map-marker'
+  button.className = markerClassName(marker)
   button.setAttribute('aria-label', `${marker.name} 단지 상세 보기`)
   button.dataset.complexId = marker.id
-  if (marker.regionCode !== undefined) {
-    button.dataset.regionCode = marker.regionCode
-  }
   button.title = marker.name
   button.textContent = marker.selected ? '●' : '•'
   button.addEventListener('click', onSelect)
@@ -619,39 +622,74 @@ function createComplexMarker(
   return { button, overlay }
 }
 
-function createRegionClusterMarker(
+function markerClassName(marker: NaverMapComplexMarker) {
+  return [
+    'housing-map-marker',
+    marker.selected ? 'is-selected' : '',
+    marker.highlighted ? 'is-highlighted' : '',
+  ].filter(Boolean).join(' ')
+}
+
+function createClusterMarker(
   maps: typeof naver.maps,
   mapInstance: naver.maps.Map,
-  marker: NaverMapRegionClusterMarker,
+  marker: RenderedClusterMarker,
   onSelect: () => void,
 ): CreatedMarker {
   const button = document.createElement('button')
-  const regionName = document.createElement('span')
   const count = document.createElement('strong')
-  const title = `${marker.regionName}, 공공임대 단지 ${marker.uniqueComplexCount}곳`
+  const complexCount = marker.members.length
+  const title = `공공임대 단지 ${complexCount}곳 모여 있음`
   button.type = 'button'
-  button.className = 'housing-map-cluster'
-  button.dataset.regionCode = marker.regionCode
-  button.setAttribute('aria-label', `${title}, 개별 단지 보기`)
+  button.className = marker.highlighted
+    ? 'housing-map-cluster is-highlighted'
+    : 'housing-map-cluster'
+  button.dataset.clusterId = marker.cluster.id
+  button.dataset.complexIds = marker.members.map(({ id }) => id).join(',')
+  button.setAttribute('aria-label', `${complexCount}곳 단지 묶음, 확대해서 보기`)
   button.title = title
-  regionName.textContent = marker.regionName
-  count.textContent = `${marker.uniqueComplexCount}곳`
-  button.append(regionName, count)
+  count.textContent = `${complexCount}곳`
+  button.append(count)
   button.addEventListener('click', onSelect)
 
   const overlay = new maps.Marker({
     clickable: true,
     cursor: 'pointer',
     icon: {
-      anchor: new maps.Point(38, 31),
+      anchor: new maps.Point(30, 26),
       content: button,
-      size: new maps.Size(76, 62),
+      size: new maps.Size(60, 52),
     },
     map: mapInstance,
-    position: new maps.LatLng(marker.latitude, marker.longitude),
+    position: new maps.LatLng(
+      marker.cluster.latitude,
+      marker.cluster.longitude,
+    ),
     title,
   })
   return { button, overlay }
+}
+
+function fitClusterBounds(
+  maps: typeof naver.maps,
+  mapInstance: naver.maps.Map,
+  cluster: RenderedClusterMarker,
+) {
+  const coordinates = cluster.members.map((marker) => new maps.LatLng(
+    marker.latitude,
+    marker.longitude,
+  ))
+  const maximumZoom = Math.min(
+    mapInstance.getZoom() + 2,
+    mapInstance.getMaxZoom(),
+  )
+  mapInstance.fitBounds(coordinates, {
+    bottom: 72,
+    left: 72,
+    maxZoom: maximumZoom,
+    right: 72,
+    top: 72,
+  })
 }
 
 function clearMarkers(markers: naver.maps.Marker[]) {

@@ -98,15 +98,5 @@ describe('createLocalPublicHousingMockLoader', () => {
 })
 
 function localSnapshot() {
-  return {
-    ...MINIMAL_PUBLIC_HOUSING_SNAPSHOT,
-    mapRegions: [
-      {
-        regionCode: '11140',
-        name: '서울 중구',
-        anchor: { latitude: 37.5636, longitude: 126.9976 },
-        complexIds: [17],
-      },
-    ],
-  }
+  return MINIMAL_PUBLIC_HOUSING_SNAPSHOT
 }

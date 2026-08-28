@@ -9,17 +9,7 @@ vi.mock('../maps/naver/NaverMap.tsx', () => ({
   default: () => <section aria-label="공공임대주택 지도" />,
 }))
 
-const SNAPSHOT = {
-  ...MINIMAL_PUBLIC_HOUSING_SNAPSHOT,
-  mapRegions: [
-    {
-      regionCode: '11140',
-      name: '서울 중구',
-      anchor: { latitude: 37.5636, longitude: 126.9976 },
-      complexIds: [17],
-    },
-  ],
-}
+const SNAPSHOT = MINIMAL_PUBLIC_HOUSING_SNAPSHOT
 
 describe('LocalPublicHousingExplorer', () => {
   it('snapshot 검증이 끝나기 전에는 Explorer를 열지 않는다', async () => {

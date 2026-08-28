@@ -25,6 +25,9 @@ interface FakeSdk {
   autoResizeMap: ReturnType<typeof vi.fn>
   destroyMap: ReturnType<typeof vi.fn>
   emitIdle: () => void
+  fitBoundsMap: ReturnType<typeof vi.fn>
+  fromCoordToOffset: ReturnType<typeof vi.fn>
+  getMaxZoomMap: ReturnType<typeof vi.fn>
   latLngConstructor: ReturnType<typeof vi.fn>
   mapConstructor: ReturnType<typeof vi.fn>
   markerConstructor: ReturnType<typeof vi.fn>
@@ -32,14 +35,20 @@ interface FakeSdk {
   maps: typeof naver.maps
   panToMap: ReturnType<typeof vi.fn>
   removeListener: ReturnType<typeof vi.fn>
+  setCurrentZoom: (zoom: number) => void
   setZoomMap: ReturnType<typeof vi.fn>
 }
 
 function createFakeSdk(): FakeSdk {
+  let currentZoom = 14
   const destroyMap = vi.fn()
   const autoResizeMap = vi.fn()
   const panToMap = vi.fn()
-  const setZoomMap = vi.fn()
+  const setZoomMap = vi.fn((zoom: number) => {
+    currentZoom = zoom
+  })
+  const fitBoundsMap = vi.fn()
+  const getMaxZoomMap = vi.fn(() => 21)
   const markerSetMap = vi.fn()
   const removeListener = vi.fn()
   let idleListener: (() => void) | null = null
@@ -55,11 +64,14 @@ function createFakeSdk(): FakeSdk {
   const mapInstance = {
     autoResize: autoResizeMap,
     destroy: destroyMap,
+    fitBounds: fitBoundsMap,
     getBounds: () => ({
       getNE: () => ({ lat: () => 37.7, lng: () => 127.1 }),
       getSW: () => ({ lat: () => 37.5, lng: () => 126.8 }),
     }),
-    getZoom: () => 14,
+    getMaxZoom: getMaxZoomMap,
+    getProjection: () => ({ fromCoordToOffset }),
+    getZoom: () => currentZoom,
     panTo: panToMap,
     setZoom: setZoomMap,
   }
@@ -74,6 +86,17 @@ function createFakeSdk(): FakeSdk {
     longitude: number,
   ) {
     return { latitude, longitude }
+  })
+  const fromCoordToOffset = vi.fn((coordinate: unknown) => {
+    const { latitude, longitude } = coordinate as {
+      latitude: number
+      longitude: number
+    }
+    const scale = 50_000 * 2 ** (currentZoom - 14)
+    return {
+      x: (longitude - 127) * scale,
+      y: (latitude - 37.5) * scale,
+    }
   })
   const markerConstructor = vi.fn(function FakeMarkerConstructor() {
     return { setMap: markerSetMap }
@@ -96,6 +119,9 @@ function createFakeSdk(): FakeSdk {
     autoResizeMap,
     destroyMap,
     emitIdle: () => idleListener?.(),
+    fitBoundsMap,
+    fromCoordToOffset,
+    getMaxZoomMap,
     latLngConstructor,
     mapConstructor,
     markerConstructor,
@@ -113,6 +139,9 @@ function createFakeSdk(): FakeSdk {
     } as unknown as typeof naver.maps,
     panToMap,
     removeListener,
+    setCurrentZoom: (zoom) => {
+      currentZoom = zoom
+    },
     setZoomMap,
   }
 }
@@ -127,6 +156,19 @@ function createDeferred<T>() {
   })
 
   return { promise, resolve: resolvePromise }
+}
+
+function createdMarkerButton(
+  fakeSdk: FakeSdk,
+  callIndex: number,
+): HTMLButtonElement {
+  const markerOptions = fakeSdk.markerConstructor.mock.calls[callIndex]?.[0]
+  const markerButton = markerOptions?.icon?.content
+  if (!(markerButton instanceof HTMLButtonElement)) {
+    throw new Error(`${callIndex + 1}번째 marker 버튼을 찾을 수 없습니다.`)
+  }
+
+  return markerButton
 }
 
 const loadNaverMapsSdkMock = vi.mocked(loadNaverMapsSdk)
@@ -303,7 +345,6 @@ describe('NaverMap', () => {
     const onViewportChange = vi.fn()
     const markers = [
       {
-        kind: 'complex',
         id: '101',
         latitude: 37.6,
         longitude: 127,
@@ -329,7 +370,7 @@ describe('NaverMap', () => {
       expect.any(Function),
     )
 
-    fakeSdk.emitIdle()
+    act(() => fakeSdk.emitIdle())
 
     expect(onViewportChange).toHaveBeenCalledWith({
       bounds: {
@@ -340,12 +381,11 @@ describe('NaverMap', () => {
       },
       zoom: 14,
     })
+    await waitFor(() =>
+      expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2),
+    )
 
-    const markerOptions = fakeSdk.markerConstructor.mock.calls[0]?.[0]
-    const markerButton = markerOptions?.icon?.content
-    if (!(markerButton instanceof HTMLButtonElement)) {
-      throw new Error('단지 marker 버튼을 찾을 수 없습니다.')
-    }
+    const markerButton = createdMarkerButton(fakeSdk, 1)
     expect(markerButton).toHaveAttribute('data-complex-id', '101')
     fireEvent.click(markerButton)
 
@@ -361,128 +401,228 @@ describe('NaverMap', () => {
     )
 
     expect(fakeSdk.panToMap).toHaveBeenCalledOnce()
-    expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2)
 
     unmount()
 
-    expect(fakeSdk.markerSetMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.markerSetMap).toHaveBeenCalledTimes(2)
     expect(fakeSdk.markerSetMap).toHaveBeenCalledWith(null)
     expect(fakeSdk.removeListener).toHaveBeenCalledOnce()
   })
 
-  it('행정구역 cluster를 안전한 버튼으로 렌더링하고 개별 단지 callback과 분리한다', async () => {
+  it('화면에서 가까운 단지만 64px cluster로 묶는다', async () => {
     const fakeSdk = createFakeSdk()
-    const onClusterSelect = vi.fn()
-    const onMarkerSelect = vi.fn()
-    const focusSpy = vi.spyOn(HTMLButtonElement.prototype, 'focus')
-    const clusterMarkers = [
+    const markers = [
       {
-        kind: 'region-cluster',
-        latitude: 37.5636,
-        longitude: 126.9976,
-        regionCode: '11140',
-        regionName: '서울 중구',
-        uniqueComplexCount: 2,
+        id: 'near-a',
+        latitude: 37.5,
+        longitude: 127,
+        name: '가까운 첫 단지',
+      },
+      {
+        id: 'near-b',
+        latitude: 37.5,
+        longitude: 127.001,
+        name: '가까운 둘째 단지',
+      },
+      {
+        id: 'far',
+        latitude: 37.5,
+        longitude: 127.0025,
+        name: '먼 단지',
       },
     ] satisfies NaverMapMarker[]
     loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
 
-    const { rerender } = render(
-      <NaverMap
-        markers={clusterMarkers}
-        onClusterSelect={onClusterSelect}
-        onMarkerSelect={onMarkerSelect}
-      />,
+    render(<NaverMap markers={markers} />)
+
+    await waitFor(() =>
+      expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2),
     )
+    const buttons = [
+      createdMarkerButton(fakeSdk, 0),
+      createdMarkerButton(fakeSdk, 1),
+    ]
+    const clusterButton = buttons.find((button) =>
+      button.classList.contains('housing-map-cluster'),
+    )
+    const farMarkerButton = buttons.find(
+      (button) => button.dataset.complexId === 'far',
+    )
+
+    expect(clusterButton).toBeInstanceOf(HTMLButtonElement)
+    expect(clusterButton).toHaveAttribute('type', 'button')
+    expect(clusterButton).toHaveAttribute(
+      'data-complex-ids',
+      'near-a,near-b',
+    )
+    expect(clusterButton).toHaveAccessibleName('2곳 단지 묶음, 확대해서 보기')
+    expect(clusterButton).toHaveTextContent('2곳')
+    expect(farMarkerButton).toHaveAccessibleName('먼 단지 단지 상세 보기')
+    expect(fakeSdk.fromCoordToOffset).toHaveBeenCalledTimes(3)
+  })
+
+  it('선택 marker는 cluster에서 제외하고 강조 단지가 든 cluster를 강조한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const markers = [
+      {
+        id: 'selected',
+        latitude: 37.5,
+        longitude: 127,
+        name: '선택 단지',
+        selected: true,
+      },
+      {
+        id: 'cluster-a',
+        latitude: 37.5,
+        longitude: 127,
+        name: '묶음 첫 단지',
+      },
+      {
+        highlighted: true,
+        id: 'cluster-b',
+        latitude: 37.5,
+        longitude: 127.001,
+        name: '묶음 둘째 단지',
+      },
+    ] satisfies NaverMapMarker[]
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+
+    render(<NaverMap markers={markers} />)
+
+    await waitFor(() =>
+      expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2),
+    )
+    const buttons = [
+      createdMarkerButton(fakeSdk, 0),
+      createdMarkerButton(fakeSdk, 1),
+    ]
+    const clusterButton = buttons.find((button) =>
+      button.classList.contains('housing-map-cluster'),
+    )
+    const selectedButton = buttons.find(
+      (button) => button.dataset.complexId === 'selected',
+    )
+
+    expect(clusterButton).toHaveClass('is-highlighted')
+    expect(clusterButton).toHaveAttribute(
+      'data-complex-ids',
+      'cluster-a,cluster-b',
+    )
+    expect(clusterButton).not.toHaveAttribute(
+      'data-complex-ids',
+      expect.stringContaining('selected'),
+    )
+    expect(selectedButton).toHaveClass('is-selected')
+  })
+
+  it('cluster 선택 시 72px 여백과 현재 zoom 기준 상한으로 bounds를 맞춘다', async () => {
+    const fakeSdk = createFakeSdk()
+    const markers = [
+      {
+        id: '101',
+        latitude: 37.5,
+        longitude: 127,
+        name: '첫 단지',
+      },
+      {
+        id: '102',
+        latitude: 37.5,
+        longitude: 127.001,
+        name: '둘째 단지',
+      },
+    ] satisfies NaverMapMarker[]
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+
+    render(<NaverMap markers={markers} />)
 
     await waitFor(() =>
       expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce(),
     )
-    const clusterOptions = fakeSdk.markerConstructor.mock.calls[0]?.[0]
-    const clusterButton = clusterOptions?.icon?.content
-    if (!(clusterButton instanceof HTMLButtonElement)) {
-      throw new Error('행정구역 cluster 버튼을 찾을 수 없습니다.')
-    }
-
-    expect(clusterButton).toHaveClass('housing-map-cluster')
-    expect(clusterButton).toHaveAttribute('type', 'button')
-    expect(clusterButton).toHaveAttribute('data-region-code', '11140')
-    expect(clusterButton).toHaveAccessibleName(
-      '서울 중구, 공공임대 단지 2곳, 개별 단지 보기',
-    )
-    expect(clusterButton).toHaveTextContent('서울 중구2곳')
-    expect(clusterOptions?.icon?.anchor).toEqual({ x: 38, y: 31 })
-    expect(clusterOptions?.icon?.size).toEqual({ height: 62, width: 76 })
+    const clusterButton = createdMarkerButton(fakeSdk, 0)
 
     fireEvent.click(clusterButton)
 
-    expect(onClusterSelect).toHaveBeenCalledWith('11140')
-    expect(onMarkerSelect).not.toHaveBeenCalled()
-
-    const individualMarkers = [
+    expect(fakeSdk.fitBoundsMap).toHaveBeenLastCalledWith(
+      [
+        { latitude: 37.5, longitude: 127 },
+        { latitude: 37.5, longitude: 127.001 },
+      ],
       {
-        kind: 'complex',
+        bottom: 72,
+        left: 72,
+        maxZoom: 16,
+        right: 72,
+        top: 72,
+      },
+    )
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      '2곳 단지 묶음을 확대했습니다.',
+    )
+
+    fakeSdk.setCurrentZoom(20)
+    fireEvent.click(clusterButton)
+
+    expect(fakeSdk.fitBoundsMap.mock.calls.at(-1)?.[1]).toMatchObject({
+      maxZoom: 21,
+    })
+    expect(fakeSdk.getMaxZoomMap).toHaveBeenCalledTimes(2)
+  })
+
+  it('idle에서 zoom이 바뀌면 화면 거리를 다시 계산해 분리하고 재결합한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const markers = [
+      {
         id: '101',
-        latitude: 37.5666,
-        longitude: 126.9784,
-        name: '서울가람 행복주택',
-        regionCode: '11140',
-        regionName: '서울 중구',
+        latitude: 37.5,
+        longitude: 127,
+        name: '첫 단지',
       },
       {
-        kind: 'complex',
         id: '102',
-        latitude: 37.564,
-        longitude: 126.99,
-        name: '서울마루 국민임대',
-        regionCode: '11140',
-        regionName: '서울 중구',
+        latitude: 37.5,
+        longitude: 127.001,
+        name: '둘째 단지',
       },
     ] satisfies NaverMapMarker[]
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
 
-    rerender(
-      <NaverMap
-        focusRegionCode="11140"
-        markers={individualMarkers}
-        onClusterSelect={onClusterSelect}
-        onMarkerSelect={onMarkerSelect}
-      />,
-    )
-
-    await waitFor(() => expect(focusSpy).toHaveBeenCalledOnce())
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      '서울 중구의 개별 단지 2곳을 지도에 표시했습니다.',
-    )
-    const firstComplexOptions = fakeSdk.markerConstructor.mock.calls[1]?.[0]
-    const firstComplexButton = firstComplexOptions?.icon?.content
-    if (!(firstComplexButton instanceof HTMLButtonElement)) {
-      throw new Error('첫 개별 단지 marker 버튼을 찾을 수 없습니다.')
-    }
-    expect(focusSpy.mock.instances[0]).toBe(firstComplexButton)
-    expect(firstComplexButton).toHaveAttribute('data-region-code', '11140')
-
-    fireEvent.click(firstComplexButton)
-
-    expect(onMarkerSelect).toHaveBeenCalledWith('101')
-    expect(onClusterSelect).toHaveBeenCalledOnce()
-
-    rerender(
-      <NaverMap
-        focusRegionCode="11140"
-        markers={individualMarkers.map((marker) => ({
-          ...marker,
-          selected: marker.kind === 'complex' && marker.id === '101',
-        }))}
-        onClusterSelect={onClusterSelect}
-        onMarkerSelect={onMarkerSelect}
-      />,
-    )
+    render(<NaverMap markers={markers} />)
 
     await waitFor(() =>
-      expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(5),
+      expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce(),
     )
-    expect(focusSpy).toHaveBeenCalledOnce()
-    focusSpy.mockRestore()
+    expect(createdMarkerButton(fakeSdk, 0)).toHaveClass(
+      'housing-map-cluster',
+    )
+
+    fakeSdk.markerConstructor.mockClear()
+    act(() => {
+      fakeSdk.setCurrentZoom(15)
+      fakeSdk.emitIdle()
+    })
+
+    await waitFor(() =>
+      expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2),
+    )
+    expect(
+      [createdMarkerButton(fakeSdk, 0), createdMarkerButton(fakeSdk, 1)].map(
+        (button) => button.dataset.complexId,
+      ),
+    ).toEqual(['101', '102'])
+
+    fakeSdk.markerConstructor.mockClear()
+    act(() => {
+      fakeSdk.setCurrentZoom(14)
+      fakeSdk.emitIdle()
+    })
+
+    await waitFor(() =>
+      expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce(),
+    )
+    expect(createdMarkerButton(fakeSdk, 0)).toHaveClass(
+      'housing-map-cluster',
+    )
   })
 
   it('인증 실패에는 재시도 없이 설정 확인을 안내한다', async () => {

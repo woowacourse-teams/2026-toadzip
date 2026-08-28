@@ -6,13 +6,11 @@ import {
 } from './api/defaultPublicHousingRepository.ts'
 import type { PublicHousingRepository } from './api/publicHousingRepository.ts'
 import { decodePublicHousingSnapshot } from './api/snapshotPublicHousingRepository.ts'
-import { decodeLocalPublicHousingMapSnapshot } from './map/localPublicHousingMapSnapshot.ts'
-import type { LocalMapSnapshot } from './map/localMapMarkerResolver.ts'
 import { PublicHousingExplorer } from './PublicHousingExplorer.tsx'
 
 type LocalSnapshotState =
   | { readonly status: 'loading' }
-  | { readonly status: 'ready'; readonly snapshot: LocalMapSnapshot }
+  | { readonly status: 'ready' }
   | { readonly status: 'error' }
 
 interface LocalPublicHousingExplorerProps {
@@ -40,10 +38,10 @@ export function LocalPublicHousingExplorer({
     let active = true
     setState({ status: 'loading' })
     loadSnapshot()
-      .then(decodeLocalRuntimeMapSnapshot)
-      .then((snapshot) => {
+      .then(decodePublicHousingSnapshot)
+      .then(() => {
         if (active) {
-          setState({ status: 'ready', snapshot })
+          setState({ status: 'ready' })
         }
       })
       .catch(() => {
@@ -59,7 +57,7 @@ export function LocalPublicHousingExplorer({
   if (state.status === 'ready') {
     return (
       <PublicHousingExplorer
-        localMapSnapshot={state.snapshot}
+        localMockEnabled
         repository={repository}
       />
     )
@@ -85,11 +83,6 @@ export function LocalPublicHousingExplorer({
       <strong>로컬 mock 데이터를 준비하고 있습니다.</strong>
     </LocalMockState>
   )
-}
-
-function decodeLocalRuntimeMapSnapshot(value: unknown) {
-  decodePublicHousingSnapshot(value)
-  return decodeLocalPublicHousingMapSnapshot(value)
 }
 
 function LocalMockState({
