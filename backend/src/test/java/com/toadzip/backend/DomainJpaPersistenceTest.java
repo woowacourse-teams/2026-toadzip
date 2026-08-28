@@ -43,6 +43,7 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -66,19 +67,55 @@ class DomainJpaPersistenceTest {
         }
     }
 
-    @Test
-    void 접수처_연락처_컬럼은_null을_허용하지_않는다() {
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "previous_source_announcement_identifier",
+            "previous_announcement_id",
+            "correction_cancellation_reason",
+            "actual_competition_rate",
+            "predicted_competition_rate",
+            "reception_place_name",
+            "reception_method",
+            "reception_address",
+            "reception_contact",
+            "reception_url"
+    })
+    void 공고의_선택_컬럼은_null을_허용한다(String columnName) {
         Object isNullable = entityManager.createNativeQuery(
                         """
                         SELECT is_nullable
                         FROM information_schema.columns
                         WHERE LOWER(table_name) = 'announcements'
-                          AND LOWER(column_name) = 'reception_contact'
+                          AND LOWER(column_name) = :columnName
                         """
                 )
+                .setParameter("columnName", columnName)
                 .getSingleResult();
 
-        assertEquals("NO", isNullable);
+        assertEquals("YES", isNullable);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "housing_complex_id",
+            "housing_type_id",
+            "expected_move_in_month",
+            "matching_failure_reason",
+            "total_supply_household_count"
+    })
+    void 공급행의_선택_컬럼은_null을_허용한다(String columnName) {
+        Object isNullable = entityManager.createNativeQuery(
+                        """
+                        SELECT is_nullable
+                        FROM information_schema.columns
+                        WHERE LOWER(table_name) = 'supply_rows'
+                          AND LOWER(column_name) = :columnName
+                        """
+                )
+                .setParameter("columnName", columnName)
+                .getSingleResult();
+
+        assertEquals("YES", isNullable);
     }
 
     @ParameterizedTest

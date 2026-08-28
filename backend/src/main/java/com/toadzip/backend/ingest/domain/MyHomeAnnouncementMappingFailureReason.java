@@ -1,0 +1,13 @@
+package com.toadzip.backend.ingest.domain;
+
+public enum MyHomeAnnouncementMappingFailureReason {
+    MISSING_REQUIRED_VALUE,
+    INVALID_VALUE,
+    CONFLICTING_SOURCE_VALUE,
+    PREVIOUS_ANNOUNCEMENT_NOT_FOUND,
+    CYCLIC_ANNOUNCEMENT_REVISION,
+    COMPLEX_NOT_FOUND,
+    AMBIGUOUS_COMPLEX,
+    HOUSING_TYPE_NOT_FOUND,
+    AMBIGUOUS_HOUSING_TYPE
+}

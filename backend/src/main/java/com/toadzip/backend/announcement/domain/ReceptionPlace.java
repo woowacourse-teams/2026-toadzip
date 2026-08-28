@@ -6,6 +6,7 @@ import com.toadzip.backend.global.persistence.LegacyEnumVarcharJdbcType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Embeddable;
+import java.util.Objects;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcType;
@@ -25,7 +26,6 @@ public class ReceptionPlace {
 
     private String address;
 
-    @Column(nullable = false)
     private String contact;
 
     private String url;
@@ -33,7 +33,6 @@ public class ReceptionPlace {
     private ReceptionPlace(String name, ReceptionMethod method, String address, String contact, String url) {
         validateNotBlank(name, "접수처명");
         validateRequired(method, "접수방식");
-        validateNotBlank(contact, "연락처");
         this.name = name;
         this.method = method;
         this.address = address;
@@ -47,6 +46,15 @@ public class ReceptionPlace {
 
     public static ReceptionPlace create(String name, String method, String address, String contact, String url) {
         return create(name, ReceptionMethod.fromStoredValue(method), address, contact, url);
+    }
+
+    boolean hasSameValues(ReceptionPlace other) {
+        return other != null
+                && name.equals(other.name)
+                && method == other.method
+                && Objects.equals(address, other.address)
+                && Objects.equals(contact, other.contact)
+                && Objects.equals(url, other.url);
     }
 
     private void validateNotBlank(String value, String fieldName) {

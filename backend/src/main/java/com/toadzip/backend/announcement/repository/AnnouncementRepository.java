@@ -8,6 +8,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface AnnouncementRepository extends JpaRepository<Announcement, Long> {
 
+    Optional<Announcement> findBySourceAnnouncementIdentifier(String sourceAnnouncementIdentifier);
+
     @Query("""
             SELECT announcement
             FROM Announcement announcement
