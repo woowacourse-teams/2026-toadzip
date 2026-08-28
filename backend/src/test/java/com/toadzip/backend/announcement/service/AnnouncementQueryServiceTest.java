@@ -6,7 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
@@ -22,6 +24,7 @@ import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.domain.SupplyType;
+import com.toadzip.backend.announcement.dto.request.AnnouncementSearchRequest;
 import com.toadzip.backend.announcement.dto.response.AnnouncementDetailResponse;
 import com.toadzip.backend.announcement.dto.response.AnnouncementListItemResponse;
 import com.toadzip.backend.announcement.dto.response.AnnouncementListResponse;
@@ -29,9 +32,12 @@ import com.toadzip.backend.announcement.dto.response.SupplyRowResponse;
 import com.toadzip.backend.announcement.dto.response.SupplyTargetResponse;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestException;
+import com.toadzip.backend.announcement.exception.InvalidRegionCodeException;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementSearchCondition;
+import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.Address;
@@ -39,6 +45,7 @@ import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.RentalType;
+import com.toadzip.backend.region.repository.RegionCodeResolver;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.math.BigDecimal;
@@ -48,8 +55,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -194,7 +205,7 @@ class AnnouncementQueryServiceTest {
         persist(createSupplyRow(beforeApplication, null, null, "known-zero", 0, 0));
         entityManager.flush();
 
-        AnnouncementListResponse response = announcementQueryService.getAnnouncements(null, 20);
+        AnnouncementListResponse response = announcementQueryService.getAnnouncements(noFilters(), null, 20);
 
         assertFalse(response.hasNext());
         assertNull(response.nextCursor());
@@ -310,8 +321,10 @@ class AnnouncementQueryServiceTest {
         ));
         entityManager.flush();
 
-        AnnouncementListResponse firstPage = announcementQueryService.getAnnouncements(null, 1);
-        AnnouncementListResponse secondPage = announcementQueryService.getAnnouncements(firstPage.nextCursor(), 1);
+        AnnouncementListResponse firstPage = announcementQueryService.getAnnouncements(noFilters(), null, 1);
+        AnnouncementListResponse secondPage = announcementQueryService.getAnnouncements(
+                noFilters(), firstPage.nextCursor(), 1
+        );
 
         assertTrue(firstPage.hasNext());
         assertEquals(second.getId(), firstPage.items().getFirst().announcementId());
@@ -327,21 +340,131 @@ class AnnouncementQueryServiceTest {
     @Test
     void 잘못된_목록_크기는_저장소_접근_전에_거부한다() {
         AnnouncementRepository announcementRepository = mock(AnnouncementRepository.class);
+        AnnouncementSearchRepository announcementSearchRepository = mock(AnnouncementSearchRepository.class);
         AnnouncementResponseMapper announcementResponseMapper = mock(AnnouncementResponseMapper.class);
         AnnouncementQueryService service = new AnnouncementQueryService(
                 announcementRepository,
+                announcementSearchRepository,
                 mock(AnnouncementScheduleRepository.class),
                 mock(AnnouncementAttachmentRepository.class),
                 mock(SupplyRowRepository.class),
                 mock(SupplyTargetRepository.class),
                 announcementResponseMapper,
                 new AnnouncementCursorCodec(),
-                fixedClock()
+                fixedClock(),
+                mock(RegionCodeResolver.class)
         );
 
-        assertThrows(InvalidAnnouncementRequestException.class, () -> service.getAnnouncements(null, 0));
-        assertThrows(InvalidAnnouncementRequestException.class, () -> service.getAnnouncements(null, 51));
-        verifyNoInteractions(announcementRepository, announcementResponseMapper);
+        assertThrows(InvalidAnnouncementRequestException.class, () -> service.getAnnouncements(noFilters(), null, 0));
+        assertThrows(InvalidAnnouncementRequestException.class, () -> service.getAnnouncements(noFilters(), null, 51));
+        verifyNoInteractions(announcementRepository, announcementSearchRepository, announcementResponseMapper);
+    }
+
+    @Test
+    void 검색_요청의_교차_검증은_저장소_검색_전에_수행한다() {
+        AnnouncementSearchRepository announcementSearchRepository = mock(AnnouncementSearchRepository.class);
+        RegionCodeResolver regionCodeResolver = mock(RegionCodeResolver.class);
+        AnnouncementQueryService service = searchService(announcementSearchRepository, regionCodeResolver);
+
+        assertThrows(InvalidAnnouncementRequestException.class, () -> service.getAnnouncements(
+                requestWithPeriod(LocalDate.of(2026, 8, 31), LocalDate.of(2026, 8, 1)), null, 20
+        ));
+        assertThrows(InvalidAnnouncementRequestException.class, () -> service.getAnnouncements(
+                requestWithPublicationTypes(List.of(AnnouncementPublicationType.CANCELLATION)), null, 20
+        ));
+        assertThrows(InvalidAnnouncementRequestException.class, () -> service.getAnnouncements(
+                requestWithApplicationStatuses(List.of(ApplicationStatus.CANCELLED)), null, 20
+        ));
+        assertThrows(InvalidAnnouncementRequestException.class, () -> service.getAnnouncements(
+                new AnnouncementSearchRequest("   ", null, null, null, null, null, null, null, null), null, 20
+        ));
+        when(regionCodeResolver.filterCodes("99999")).thenReturn(Optional.empty());
+        assertThrows(InvalidRegionCodeException.class, () -> service.getAnnouncements(
+                requestWithRegion("99999"), null, 20
+        ));
+
+        verifyNoInteractions(announcementSearchRepository);
+    }
+
+    @Test
+    void 직접_호출의_빈_enum_목록값은_저장소_검색_전에_거부한다() {
+        AnnouncementSearchRepository announcementSearchRepository = mock(AnnouncementSearchRepository.class);
+        AnnouncementQueryService service = searchService(announcementSearchRepository, mock(RegionCodeResolver.class));
+        List<AgencyCode> agencyCodes = new ArrayList<>();
+        agencyCodes.add(AgencyCode.LH);
+        agencyCodes.add(null);
+
+        assertThrows(InvalidAnnouncementRequestException.class, () -> service.getAnnouncements(
+                new AnnouncementSearchRequest(null, null, null, null, null, agencyCodes, null, null, null),
+                null,
+                20
+        ));
+
+        verifyNoInteractions(announcementSearchRepository);
+    }
+
+    @Test
+    void 유효한_지역과_검색조건과_서울_오늘을_검색과_응답변환에_같이_전달한다() {
+        Announcement first = persist(createAnnouncement(
+                "first", null, null, AnnouncementPublicationType.ORIGINAL, LocalDate.of(2026, 8, 5),
+                LocalDate.of(2026, 8, 10), LocalDate.of(2026, 8, 11), null, null, 0L
+        ));
+        Announcement second = persist(createAnnouncement(
+                "second", null, null, AnnouncementPublicationType.ORIGINAL, LocalDate.of(2026, 8, 4),
+                LocalDate.of(2026, 8, 10), LocalDate.of(2026, 8, 11), null, null, 0L
+        ));
+        entityManager.flush();
+        AnnouncementSearchRepository announcementSearchRepository = mock(AnnouncementSearchRepository.class);
+        RegionCodeResolver regionCodeResolver = mock(RegionCodeResolver.class);
+        AnnouncementResponseMapper announcementResponseMapper = mock(AnnouncementResponseMapper.class);
+        when(regionCodeResolver.filterCodes("11140")).thenReturn(Optional.of(Set.of("11140", "11000")));
+        when(announcementSearchRepository.findLatestLeaves(
+                org.mockito.ArgumentMatchers.any(AnnouncementSearchCondition.class),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(2)
+        )).thenReturn(List.of(first, second));
+        when(announcementResponseMapper.toListItemResponses(
+                org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.any(LocalDate.class)
+        )).thenReturn(List.of());
+        AnnouncementQueryService service = searchService(
+                announcementSearchRepository, regionCodeResolver, announcementResponseMapper
+        );
+
+        AnnouncementListResponse response = service.getAnnouncements(
+                new AnnouncementSearchRequest(
+                        "  행복  ", "11140", List.of(RentalType.HAPPY_HOUSING),
+                        List.of(ApplicationStatus.APPLYING), List.of(AnnouncementPublicationType.ORIGINAL),
+                        List.of(AgencyCode.LH), List.of(RecruitmentType.NEW),
+                        LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31)
+                ), null, 1
+        );
+
+        ArgumentCaptor<AnnouncementSearchCondition> conditionCaptor = ArgumentCaptor.forClass(
+                AnnouncementSearchCondition.class
+        );
+        ArgumentCaptor<LocalDate> mapperTodayCaptor = ArgumentCaptor.forClass(LocalDate.class);
+        verify(announcementSearchRepository).findLatestLeaves(
+                conditionCaptor.capture(),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(2)
+        );
+        verify(announcementResponseMapper).toListItemResponses(
+                org.mockito.ArgumentMatchers.eq(List.of(first)),
+                org.mockito.ArgumentMatchers.eq(List.of()),
+                mapperTodayCaptor.capture()
+        );
+        AnnouncementSearchCondition condition = conditionCaptor.getValue();
+        assertEquals("행복", condition.keyword());
+        assertEquals(Set.of("11140", "11000"), condition.regionCodes());
+        assertEquals(Set.of(RentalType.HAPPY_HOUSING), condition.rentalTypes());
+        assertEquals(LocalDate.of(2026, 8, 10), condition.today());
+        assertEquals(condition.today(), mapperTodayCaptor.getValue());
+        assertTrue(response.hasNext());
+        assertEquals(announcementCursorCodec.encode(first.getPostedDate(), first.getId()), response.nextCursor());
     }
 
     @Test
@@ -766,6 +889,56 @@ class AnnouncementQueryServiceTest {
 
     private Clock fixedClock() {
         return Clock.fixed(Instant.parse("2026-08-09T15:00:00Z"), SEOUL);
+    }
+
+    private AnnouncementSearchRequest noFilters() {
+        return new AnnouncementSearchRequest(null, null, null, null, null, null, null, null, null);
+    }
+
+    private AnnouncementSearchRequest requestWithPeriod(LocalDate applicationFrom, LocalDate applicationTo) {
+        return new AnnouncementSearchRequest(
+                null, null, null, null, null, null, null, applicationFrom, applicationTo
+        );
+    }
+
+    private AnnouncementSearchRequest requestWithPublicationTypes(
+            List<AnnouncementPublicationType> publicationTypes
+    ) {
+        return new AnnouncementSearchRequest(null, null, null, null, publicationTypes, null, null, null, null);
+    }
+
+    private AnnouncementSearchRequest requestWithApplicationStatuses(List<ApplicationStatus> applicationStatuses) {
+        return new AnnouncementSearchRequest(null, null, null, applicationStatuses, null, null, null, null, null);
+    }
+
+    private AnnouncementSearchRequest requestWithRegion(String regionCode) {
+        return new AnnouncementSearchRequest(null, regionCode, null, null, null, null, null, null, null);
+    }
+
+    private AnnouncementQueryService searchService(
+            AnnouncementSearchRepository announcementSearchRepository,
+            RegionCodeResolver regionCodeResolver
+    ) {
+        return searchService(announcementSearchRepository, regionCodeResolver, mock(AnnouncementResponseMapper.class));
+    }
+
+    private AnnouncementQueryService searchService(
+            AnnouncementSearchRepository announcementSearchRepository,
+            RegionCodeResolver regionCodeResolver,
+            AnnouncementResponseMapper announcementResponseMapper
+    ) {
+        return new AnnouncementQueryService(
+                mock(AnnouncementRepository.class),
+                announcementSearchRepository,
+                mock(AnnouncementScheduleRepository.class),
+                mock(AnnouncementAttachmentRepository.class),
+                mock(SupplyRowRepository.class),
+                mock(SupplyTargetRepository.class),
+                announcementResponseMapper,
+                new AnnouncementCursorCodec(),
+                fixedClock(),
+                regionCodeResolver
+        );
     }
 
     private <T> T persist(T entity) {
