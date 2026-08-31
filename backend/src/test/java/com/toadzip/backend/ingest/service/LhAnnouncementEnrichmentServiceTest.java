@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
@@ -226,6 +227,63 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(enrichmentFailureRepository.findAll()).singleElement()
                 .extracting(failure -> failure.getReason())
                 .isEqualTo(LhAnnouncementEnrichmentFailureReason.HOUSING_TYPE_NOT_FOUND);
+    }
+
+    @Test
+    void LH_공급행_순서가_바뀌어도_주택형을_다시_확인해_올바른_공급행을_보강한다() {
+        saveComplex();
+        HousingComplex complex = housingComplexRepository.findAll().getFirst();
+        HousingType secondType = housingTypeRepository.save(HousingType.createFromMyHome(
+                complex, "source-housing-type-id-59B", "59B", new BigDecimal("59.8000"), new BigDecimal("84.0000")
+        ));
+        myHomeSourceRepository.save(myHomeSource());
+        mappingService.mapAll();
+        Announcement announcement = announcementRepository.findAll().getFirst();
+        SupplyRow mappedRow = supplyRowRepository.findAll().getFirst();
+        HousingType firstType = housingTypeRepository.findAll().stream()
+                .filter(type -> type.getName().equals("46A"))
+                .findFirst()
+                .orElseThrow();
+        supplyRowRepository.deleteAll();
+        supplyRowRepository.saveAll(List.of(
+                SupplyRow.create(
+                        announcement, complex, firstType, "manual-46A", 1, "동삼2", "46A", PNU,
+                        null, mappedRow.getSupplyCategory(), null, null
+                ),
+                SupplyRow.create(
+                        announcement, complex, secondType, "manual-59B", 2, "동삼2", "59B", PNU,
+                        null, mappedRow.getSupplyCategory(), null, null
+                )
+        ));
+        saveLhSources("10,000,000", "200,000");
+        supplySourceRepository.save(new LhAnnouncementSupplySource(1, PAN_ID,
+                new LhAnnouncementSupplySourceData(
+                        "동삼2", "59B", "59.8", "84.0", "80", "10", "20,000,000", "300,000"
+                )));
+        enrichmentService.enrichAll();
+
+        supplySourceRepository.deleteAll();
+        supplySourceRepository.saveAll(List.of(
+                new LhAnnouncementSupplySource(0, PAN_ID, new LhAnnouncementSupplySourceData(
+                        "동삼2", "59B", "59.8", "84.0", "80", "10", "21,000,000", "310,000"
+                )),
+                new LhAnnouncementSupplySource(1, PAN_ID, new LhAnnouncementSupplySourceData(
+                        "동삼2", "46A", "46.8", "67.0", "100", "20", "11,000,000", "210,000"
+                ))
+        ));
+
+        enrichmentService.enrichAll();
+
+        assertThat(supplyRowRepository.findAll())
+                .filteredOn(row -> row.getSourceHousingTypeName().equals("46A"))
+                .singleElement()
+                .extracting(SupplyRow::getLhSourceSupplyRowIdentifier)
+                .isEqualTo("LH:" + PAN_ID + ":SUPPLY:1");
+        assertThat(supplyRowRepository.findAll())
+                .filteredOn(row -> row.getSourceHousingTypeName().equals("59B"))
+                .singleElement()
+                .extracting(SupplyRow::getLhSourceSupplyRowIdentifier)
+                .isEqualTo("LH:" + PAN_ID + ":SUPPLY:0");
     }
 
     private void saveComplex() {

@@ -167,21 +167,21 @@ public class LhAnnouncementEnrichmentWriter {
 
     private SupplyMatchResult match(List<SupplyRow> rows, LhSupplyData source) {
         for (SupplyRow row : rows) {
-            if (source.sourceIdentifier().equals(row.getLhSourceSupplyRowIdentifier())) {
+            if (source.sourceIdentifier().equals(row.getLhSourceSupplyRowIdentifier())
+                    && matchesComplex(row, source)
+                    && matchesHousingType(row, source)) {
                 return SupplyMatchResult.matched(row);
             }
         }
         List<SupplyRow> complexMatches = rows.stream()
-                .filter(row -> same(row.getSourceComplexName(), source.complexName())
-                        || row.getHousingComplex() != null && same(row.getHousingComplex().getName(), source.complexName()))
+                .filter(row -> matchesComplex(row, source))
                 .toList();
         if (complexMatches.isEmpty()) {
             return SupplyMatchResult.failure(source, LhAnnouncementEnrichmentFailureReason.COMPLEX_NOT_FOUND,
                     "LH 공급 원본과 일치하는 기존 공급 단지가 없습니다.");
         }
         List<SupplyRow> typeMatches = complexMatches.stream()
-                .filter(row -> same(row.getSourceHousingTypeName(), source.housingTypeName())
-                        || row.getHousingType() != null && same(row.getHousingType().getName(), source.housingTypeName()))
+                .filter(row -> matchesHousingType(row, source))
                 .toList();
         if (typeMatches.size() == 1) {
             return SupplyMatchResult.matched(typeMatches.getFirst());
@@ -196,6 +196,22 @@ public class LhAnnouncementEnrichmentWriter {
         }
         return SupplyMatchResult.failure(source, LhAnnouncementEnrichmentFailureReason.AMBIGUOUS_COMPLEX,
                 "LH 공급 원본에 일치하는 기존 공급 단지가 여러 개입니다.");
+    }
+
+    private boolean matchesComplex(SupplyRow row, LhSupplyData source) {
+        if (same(row.getSourceComplexName(), source.complexName())) {
+            return true;
+        }
+        return row.getHousingComplex() != null
+                && same(row.getHousingComplex().getName(), source.complexName());
+    }
+
+    private boolean matchesHousingType(SupplyRow row, LhSupplyData source) {
+        if (same(row.getSourceHousingTypeName(), source.housingTypeName())) {
+            return true;
+        }
+        return row.getHousingType() != null
+                && same(row.getHousingType().getName(), source.housingTypeName());
     }
 
     private Map<String, AnnouncementSchedule> schedulesBySource(Announcement announcement) {
