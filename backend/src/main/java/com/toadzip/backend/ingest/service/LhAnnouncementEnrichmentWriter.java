@@ -191,7 +191,8 @@ public class LhAnnouncementEnrichmentWriter {
                     "LH 공급 원본에 일치하는 주택형 공급행이 여러 개입니다.");
         }
         if (complexMatches.size() == 1) {
-            return SupplyMatchResult.matched(complexMatches.getFirst());
+            return SupplyMatchResult.failure(source, LhAnnouncementEnrichmentFailureReason.HOUSING_TYPE_NOT_FOUND,
+                    "LH 공급 원본과 일치하는 기존 주택형 공급행이 없습니다.");
         }
         return SupplyMatchResult.failure(source, LhAnnouncementEnrichmentFailureReason.AMBIGUOUS_COMPLEX,
                 "LH 공급 원본에 일치하는 기존 공급 단지가 여러 개입니다.");

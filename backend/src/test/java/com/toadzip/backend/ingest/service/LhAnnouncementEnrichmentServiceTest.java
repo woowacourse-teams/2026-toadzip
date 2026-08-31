@@ -209,6 +209,25 @@ class LhAnnouncementEnrichmentServiceTest {
         );
     }
 
+    @Test
+    void 단지만_일치하고_주택형이_다르면_공급행을_보강하지_않고_실패를_기록한다() {
+        saveComplex();
+        myHomeSourceRepository.save(myHomeSource());
+        mappingService.mapAll();
+        saveLhSources("10,000,000", "200,000", "LH 현장접수처", "99Z");
+
+        var report = enrichmentService.enrichAll();
+
+        assertThat(report.failedSourceCount()).isOne();
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row ->
+                assertThat(row.getLhSourceSupplyRowIdentifier()).isNull()
+        );
+        assertThat(supplyTargetRepository.count()).isZero();
+        assertThat(enrichmentFailureRepository.findAll()).singleElement()
+                .extracting(failure -> failure.getReason())
+                .isEqualTo(LhAnnouncementEnrichmentFailureReason.HOUSING_TYPE_NOT_FOUND);
+    }
+
     private void saveComplex() {
         Address address = Address.create(
                 "서울특별시 종로구 테스트로 1", PNU, PNU.substring(0, 10), "11", "11110",
@@ -240,6 +259,10 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     private void saveLhSources(String deposit, String rent, String receptionGuidance) {
+        saveLhSources(deposit, rent, receptionGuidance, "46A");
+    }
+
+    private void saveLhSources(String deposit, String rent, String receptionGuidance, String housingTypeName) {
         detailSourceRepository.saveAll(List.of(
                 detail(0, "ETC_INFO", null, null, null, null, null, null, null, "정정 사유"),
                 detail(1, "SCHEDULE", "2026.08.24 10:00 ~ 2026.08.31 17:00", null, null, null, null, null, null, null),
@@ -248,7 +271,9 @@ class LhAnnouncementEnrichmentServiceTest {
                 detail(4, "COMPLEX", null, null, null, null, null, null, null, null)
         ));
         supplySourceRepository.save(new LhAnnouncementSupplySource(0, PAN_ID,
-                new LhAnnouncementSupplySourceData("동삼2", "46A", "46.8", "67.0", "100", "20", deposit, rent)));
+                new LhAnnouncementSupplySourceData(
+                        "동삼2", housingTypeName, "46.8", "67.0", "100", "20", deposit, rent
+                )));
     }
 
     private LhAnnouncementDetailSource detail(
