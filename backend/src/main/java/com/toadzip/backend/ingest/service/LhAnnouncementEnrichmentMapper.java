@@ -35,9 +35,9 @@ public class LhAnnouncementEnrichmentMapper {
     ) {
         List<LhScheduleData> schedules = new ArrayList<>();
         List<LhAttachmentData> attachments = new ArrayList<>();
+        List<LhComplexData> complexes = new ArrayList<>();
         String correctionReason = null;
         ReceptionPlace receptionPlace = null;
-        YearMonth expectedMoveInMonth = null;
         for (LhAnnouncementDetailSource detail : details) {
             if ("ETC_INFO".equals(detail.getDatasetType()) && detail.getCorrectionReason() != null) {
                 correctionReason = detail.getCorrectionReason();
@@ -51,15 +51,43 @@ public class LhAnnouncementEnrichmentMapper {
             if ("ANNOUNCEMENT_FILE".equals(detail.getDatasetType())) {
                 attachments.add(attachmentOf(panId, detail));
             }
-            if ("COMPLEX".equals(detail.getDatasetType()) && expectedMoveInMonth == null) {
-                expectedMoveInMonth = yearMonthOf(detail.getExpectedMoveInYearMonth(), "입주예정월");
+            if ("COMPLEX".equals(detail.getDatasetType())) {
+                complexes.add(new LhComplexData(detail.getComplexName(), detail.getExpectedMoveInYearMonth()));
             }
         }
-        YearMonth resolvedExpectedMoveInMonth = expectedMoveInMonth;
         return new LhAnnouncementEnrichmentData(
                 panId, correctionReason, receptionPlace, schedules, attachments,
-                supplies.stream().map(source -> supplyOf(panId, source, resolvedExpectedMoveInMonth)).toList()
+                supplies.stream()
+                        .map(source -> supplyOf(panId, source, expectedMoveInMonthOf(source, complexes)))
+                        .toList()
         );
+    }
+
+    private YearMonth expectedMoveInMonthOf(
+            LhAnnouncementSupplySource supply,
+            List<LhComplexData> complexes
+    ) {
+        List<LhComplexData> matches = complexes.stream()
+                .filter(complex -> sameComplex(complex.name(), supply.getComplexLabel()))
+                .toList();
+        if (matches.size() == 1) {
+            return yearMonthOf(matches.getFirst().expectedMoveInYearMonth(), "입주예정월");
+        }
+        if (matches.isEmpty() && complexes.size() == 1) {
+            return yearMonthOf(complexes.getFirst().expectedMoveInYearMonth(), "입주예정월");
+        }
+        return null;
+    }
+
+    private boolean sameComplex(String left, String right) {
+        return normalizedName(left).equals(normalizedName(right));
+    }
+
+    private String normalizedName(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replaceAll("\\s+", "").replace("-", "").strip().toLowerCase();
     }
 
     private ReceptionPlace receptionOf(LhAnnouncementDetailSource detail) {
@@ -327,6 +355,9 @@ record LhScheduleData(
 }
 
 record LhAttachmentData(String sourceIdentifier, String name, AttachmentType type, String url) {
+}
+
+record LhComplexData(String name, String expectedMoveInYearMonth) {
 }
 
 record LhSupplyData(
