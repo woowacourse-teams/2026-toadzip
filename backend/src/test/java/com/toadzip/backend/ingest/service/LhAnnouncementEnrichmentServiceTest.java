@@ -196,6 +196,26 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     @Test
+    void 저장했던_임대료가_공고문_참조로_바뀌면_기존_공급대상을_삭제한다() {
+        saveComplex();
+        myHomeSourceRepository.save(myHomeSource());
+        mappingService.mapAll();
+        saveLhSources("10,000,000", "200,000");
+        enrichmentService.enrichAll();
+        assertThat(supplyTargetRepository.count()).isOne();
+
+        supplySourceRepository.deleteAll();
+        supplySourceRepository.save(new LhAnnouncementSupplySource(0, PAN_ID,
+                new LhAnnouncementSupplySourceData(
+                        "동삼2", "46A", "46.8", "67.0", "100", "20", "공고문 참조", "공고문 참조"
+                )));
+
+        enrichmentService.enrichAll();
+
+        assertThat(supplyTargetRepository.count()).isZero();
+    }
+
+    @Test
     void 긴_접수_안내문은_접수처명으로_저장하지_않고_기본명을_사용한다() {
         saveComplex();
         myHomeSourceRepository.save(myHomeSource());

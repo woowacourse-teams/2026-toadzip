@@ -145,13 +145,16 @@ public class LhAnnouncementEnrichmentWriter {
 
     private SupplyTargetWriteResult writeTarget(SupplyRow row, LhSupplyData source) {
         String identifier = source.sourceIdentifier() + ":TARGET";
-        if (source.rentalDeposit() == null || source.monthlyRent() == null) {
-            return new SupplyTargetWriteResult(identifier, 0, 0);
-        }
         SupplyTarget stored = supplyTargetRepository.findAllBySupplyRow(row).stream()
                 .filter(target -> identifier.equals(target.getSourceSupplyTargetIdentifier()))
                 .findFirst()
                 .orElse(null);
+        if (source.rentalDeposit() == null || source.monthlyRent() == null) {
+            if (stored != null) {
+                supplyTargetRepository.delete(stored);
+            }
+            return new SupplyTargetWriteResult(identifier, 0, 0);
+        }
         if (stored == null) {
             supplyTargetRepository.save(SupplyTarget.createFromSource(
                     row, identifier, ALL_TARGET, ALL_RANK, source.supplyHouseholdCount(),
