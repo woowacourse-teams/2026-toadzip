@@ -3,11 +3,14 @@ package com.toadzip.backend.announcement.repository;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import java.util.Collection;
 import java.util.List;
+import com.toadzip.backend.announcement.domain.Announcement;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface AnnouncementScheduleRepository extends JpaRepository<AnnouncementSchedule, Long> {
+
+    List<AnnouncementSchedule> findAllByAnnouncement(Announcement announcement);
 
     @Query("""
             SELECT schedule

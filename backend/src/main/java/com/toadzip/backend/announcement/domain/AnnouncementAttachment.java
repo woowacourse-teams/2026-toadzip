@@ -45,6 +45,8 @@ public class AnnouncementAttachment {
     @Column(nullable = false)
     private int displayOrder;
 
+    private String sourceAttachmentIdentifier;
+
     private AnnouncementAttachment(
             Announcement announcement,
             String fileName,
@@ -72,6 +74,34 @@ public class AnnouncementAttachment {
             int displayOrder
     ) {
         return new AnnouncementAttachment(announcement, fileName, fileType, fileUrl, displayOrder);
+    }
+
+    public static AnnouncementAttachment createFromSource(
+            Announcement announcement,
+            String sourceAttachmentIdentifier,
+            String fileName,
+            AttachmentType fileType,
+            String fileUrl,
+            int displayOrder
+    ) {
+        AnnouncementAttachment attachment = create(announcement, fileName, fileType, fileUrl, displayOrder);
+        attachment.sourceAttachmentIdentifier = sourceAttachmentIdentifier;
+        return attachment;
+    }
+
+    public boolean updateFromSource(String fileName, AttachmentType fileType, String fileUrl, int displayOrder) {
+        AnnouncementAttachment incoming = create(announcement, fileName, fileType, fileUrl, displayOrder);
+        if (this.fileName.equals(incoming.fileName)
+                && this.fileType == incoming.fileType
+                && this.fileUrl.equals(incoming.fileUrl)
+                && this.displayOrder == incoming.displayOrder) {
+            return false;
+        }
+        this.fileName = incoming.fileName;
+        this.fileType = incoming.fileType;
+        this.fileUrl = incoming.fileUrl;
+        this.displayOrder = incoming.displayOrder;
+        return true;
     }
 
     public static AnnouncementAttachment create(

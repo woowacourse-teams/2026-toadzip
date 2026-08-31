@@ -15,6 +15,8 @@ public interface SupplyTargetRepository extends JpaRepository<SupplyTarget, Long
     @Query("DELETE FROM SupplyTarget target WHERE target.supplyRow IN :supplyRows")
     int deleteAllBySupplyRowIn(@Param("supplyRows") Collection<SupplyRow> supplyRows);
 
+    List<SupplyTarget> findAllBySupplyRow(SupplyRow supplyRow);
+
     @Query("""
             SELECT target
             FROM SupplyTarget target

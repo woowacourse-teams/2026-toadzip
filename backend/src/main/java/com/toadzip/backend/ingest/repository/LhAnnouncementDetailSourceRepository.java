@@ -12,5 +12,7 @@ public interface LhAnnouncementDetailSourceRepository extends JpaRepository<LhAn
     @Query("select distinct source.panId from LhAnnouncementDetailSource source where source.panId in :panIds")
     List<String> findStoredPanIds(Collection<String> panIds);
 
+    List<LhAnnouncementDetailSource> findAllByPanIdOrderBySourceOrderAsc(String panId);
+
     void deleteByPanId(String panId);
 }

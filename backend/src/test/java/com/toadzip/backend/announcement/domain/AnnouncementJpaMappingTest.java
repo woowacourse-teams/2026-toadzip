@@ -42,6 +42,7 @@ class AnnouncementJpaMappingTest {
                         "winnerAnnouncementDate",
                         "originalUrl",
                         "correctionCancellationReason",
+                        "lhPanId",
                         "viewCount",
                         "actualCompetitionRate",
                         "predictedCompetitionRate",
@@ -63,7 +64,8 @@ class AnnouncementJpaMappingTest {
                         "expectedMoveInMonth",
                         "supplyCategory",
                         "matchingFailureReason",
-                        "totalSupplyHouseholdCount"
+                        "totalSupplyHouseholdCount",
+                        "lhSourceSupplyRowIdentifier"
                 )
         );
         assertEntityAttributes(
@@ -79,16 +81,23 @@ class AnnouncementJpaMappingTest {
                         "monthlyRent",
                         "convertedDeposit",
                         "applicationCondition",
-                        "displayOrder"
+                        "displayOrder",
+                        "sourceSupplyTargetIdentifier"
                 )
         );
         assertEntityAttributes(
                 "AnnouncementSchedule",
-                Set.of("id", "announcement", "scheduleType", "name", "startAt", "endAt", "displayOrder")
+                Set.of(
+                        "id", "announcement", "scheduleType", "name", "startAt", "endAt", "displayOrder",
+                        "sourceScheduleIdentifier"
+                )
         );
         assertEntityAttributes(
                 "AnnouncementAttachment",
-                Set.of("id", "announcement", "fileName", "fileType", "fileUrl", "displayOrder")
+                Set.of(
+                        "id", "announcement", "fileName", "fileType", "fileUrl", "displayOrder",
+                        "sourceAttachmentIdentifier"
+                )
         );
         assertEmbeddableAttributes(
                 "ReceptionPlace",

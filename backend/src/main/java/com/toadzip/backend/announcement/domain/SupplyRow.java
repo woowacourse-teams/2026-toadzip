@@ -76,6 +76,8 @@ public class SupplyRow {
 
     private Integer totalSupplyHouseholdCount;
 
+    private String lhSourceSupplyRowIdentifier;
+
     private SupplyRow(
             Announcement announcement,
             HousingComplex housingComplex,
@@ -200,6 +202,22 @@ public class SupplyRow {
         supplyCategory = incoming.supplyCategory;
         matchingFailureReason = incoming.matchingFailureReason;
         totalSupplyHouseholdCount = incoming.totalSupplyHouseholdCount;
+    }
+
+    public boolean enrichFromLh(
+            String sourceSupplyRowIdentifier,
+            YearMonth expectedMoveInMonth,
+            Integer totalSupplyHouseholdCount
+    ) {
+        if (Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier)
+                && Objects.equals(this.expectedMoveInMonth, expectedMoveInMonth)
+                && Objects.equals(this.totalSupplyHouseholdCount, totalSupplyHouseholdCount)) {
+            return false;
+        }
+        lhSourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
+        this.expectedMoveInMonth = expectedMoveInMonth;
+        this.totalSupplyHouseholdCount = totalSupplyHouseholdCount;
+        return true;
     }
 
     private void validateRequired(Object value, String fieldName) {

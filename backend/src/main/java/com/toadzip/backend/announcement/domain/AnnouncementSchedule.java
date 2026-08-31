@@ -49,6 +49,8 @@ public class AnnouncementSchedule {
     @Column(nullable = false)
     private int displayOrder;
 
+    private String sourceScheduleIdentifier;
+
     private AnnouncementSchedule(
             Announcement announcement,
             ScheduleType scheduleType,
@@ -81,6 +83,43 @@ public class AnnouncementSchedule {
             int displayOrder
     ) {
         return new AnnouncementSchedule(announcement, scheduleType, name, startAt, endAt, displayOrder);
+    }
+
+    public static AnnouncementSchedule createFromSource(
+            Announcement announcement,
+            String sourceScheduleIdentifier,
+            ScheduleType scheduleType,
+            String name,
+            LocalDateTime startAt,
+            LocalDateTime endAt,
+            int displayOrder
+    ) {
+        AnnouncementSchedule schedule = create(announcement, scheduleType, name, startAt, endAt, displayOrder);
+        schedule.sourceScheduleIdentifier = sourceScheduleIdentifier;
+        return schedule;
+    }
+
+    public boolean updateFromSource(
+            ScheduleType scheduleType,
+            String name,
+            LocalDateTime startAt,
+            LocalDateTime endAt,
+            int displayOrder
+    ) {
+        AnnouncementSchedule incoming = create(announcement, scheduleType, name, startAt, endAt, displayOrder);
+        if (this.scheduleType == incoming.scheduleType
+                && this.name.equals(incoming.name)
+                && this.startAt.equals(incoming.startAt)
+                && this.endAt.equals(incoming.endAt)
+                && this.displayOrder == incoming.displayOrder) {
+            return false;
+        }
+        this.scheduleType = incoming.scheduleType;
+        this.name = incoming.name;
+        this.startAt = incoming.startAt;
+        this.endAt = incoming.endAt;
+        this.displayOrder = incoming.displayOrder;
+        return true;
     }
 
     public static AnnouncementSchedule create(
