@@ -14,6 +14,7 @@ import {
   PublicHousingHttpError,
   type PublicHousingRepository,
 } from './api/publicHousingRepository.ts'
+import type { PublicHousingRegionRepository } from './api/publicHousingRegionRepository.ts'
 import type {
   AnnouncementDetail,
   AnnouncementListItem,
@@ -71,6 +72,39 @@ const SEOUL_CITY_HALL_CENTER = {
   longitude: 126.9783882,
 }
 
+const TEST_REGIONS = [
+  {
+    regionCode: '11',
+    provinceName: '서울특별시',
+    districtName: null,
+    displayName: '서울특별시 전체',
+  },
+  {
+    regionCode: '11140',
+    provinceName: '서울특별시',
+    districtName: '중구',
+    displayName: '서울특별시 중구',
+  },
+  {
+    regionCode: '41',
+    provinceName: '경기도',
+    districtName: null,
+    displayName: '경기도 전체',
+  },
+  {
+    regionCode: '41130',
+    provinceName: '경기도',
+    districtName: '성남시',
+    displayName: '경기도 성남시',
+  },
+  {
+    regionCode: '41135',
+    provinceName: '경기도',
+    districtName: '성남시 분당구',
+    displayName: '경기도 성남시 분당구',
+  },
+] as const
+
 afterEach(() => {
   vi.restoreAllMocks()
 })
@@ -117,6 +151,460 @@ describe('PublicHousingExplorer', () => {
       await screen.findByRole('heading', { name: '서울가람 행복주택' }),
     ).toBeVisible()
     expect(screen.getByText('1곳')).toBeVisible()
+  })
+
+  it('단지 필터는 지도 우상단의 토픽별 도구모음으로 공고 탭에서도 유지한다', () => {
+    const repository = createRepository()
+    renderExplorer(repository)
+
+    const complexFilter = screen.getByRole('toolbar', {
+      name: '단지 검색 필터',
+    })
+    expect(complexFilter.closest('main')).toHaveClass(
+      'housing-map-workspace',
+    )
+    expect(within(complexFilter).getAllByRole('button').map(
+      (button) => button.getAttribute('aria-label'),
+    )).toEqual([
+      '지역 필터 열기',
+      '임대유형 필터 열기',
+      '모집상태 필터 열기',
+      '공급기관 필터 열기',
+      '모집유형 필터 열기',
+      '가격 필터 열기',
+      '전용면적 필터 열기',
+      '준공년도 필터 열기',
+    ])
+    expect(within(screen.getByRole('complementary', {
+      name: '공공임대주택 검색 결과',
+    })).queryByRole('toolbar', {
+      name: '단지 검색 필터',
+    })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: '공고 목록' }))
+
+    expect(complexFilter).toBeVisible()
+    expect(within(screen.getByRole('tabpanel', {
+      name: '공고 목록',
+    })).getByRole('region', {
+      name: '공고 검색 필터',
+    })).toBeVisible()
+  })
+
+  it('가격 토픽만 적용해도 기존 지역·임대유형 조건을 보존한다', async () => {
+    const repository = createRepository()
+    renderExplorer(
+      repository,
+      '/?complexRegionCode=11&complexRentalTypes=NATIONAL_RENTAL',
+    )
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    await screen.findByRole('heading', { name: '서울가람 행복주택' })
+
+    fireEvent.click(screen.getByRole('button', { name: '가격 필터 열기' }))
+    fireEvent.change(screen.getByRole('slider', {
+      name: '임대보증금 최솟값',
+    }), { target: { value: '100000000' } })
+    fireEvent.change(screen.getByRole('slider', {
+      name: '임대보증금 최댓값',
+    }), { target: { value: '200000000' } })
+    fireEvent.click(screen.getByRole('button', { name: '가격 필터 적용' }))
+
+    await waitFor(() => {
+      expect(repository.findMapComplexes).toHaveBeenCalledTimes(2)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
+    })
+    expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
+      INITIAL_BOUNDS,
+      expect.any(AbortSignal),
+      {
+        maxDeposit: 200_000_000,
+        minDeposit: 100_000_000,
+        regionCode: '11',
+        rentalTypes: ['NATIONAL_RENTAL'],
+      },
+    )
+    const search = new URLSearchParams(
+      screen.getByTestId('location-search').textContent ?? '',
+    )
+    expect(search.get('complexRegionCode')).toBe('11')
+    expect(search.getAll('complexRentalTypes')).toEqual(['NATIONAL_RENTAL'])
+    expect(search.get('complexMinDeposit')).toBe('100000000')
+    expect(search.get('complexMaxDeposit')).toBe('200000000')
+  })
+
+  it('단지 필터는 적용한 조건을 URL에 보존하고 지도와 단지 목록에 함께 전달한다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository)
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    await screen.findByRole('heading', { name: '서울가람 행복주택' })
+
+    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
+    fireEvent.change(screen.getByLabelText('시·도'), {
+      target: { value: '11' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '국민임대' }))
+    fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 적용' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '모집상태 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '접수중' }))
+    fireEvent.click(screen.getByRole('button', { name: '모집상태 필터 적용' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '공급기관 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'LH' }))
+    fireEvent.click(screen.getByRole('button', { name: '공급기관 필터 적용' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '모집유형 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '신규 모집' }))
+    fireEvent.click(screen.getByRole('button', { name: '모집유형 필터 적용' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '가격 필터 열기' }))
+    fireEvent.change(screen.getByRole('slider', {
+      name: '임대보증금 최솟값',
+    }), {
+      target: { value: '100000000' },
+    })
+    fireEvent.change(screen.getByRole('slider', {
+      name: '임대보증금 최댓값',
+    }), {
+      target: { value: '300000000' },
+    })
+    fireEvent.change(screen.getByRole('slider', {
+      name: '월 임대료 최솟값',
+    }), {
+      target: { value: '100000' },
+    })
+    fireEvent.change(screen.getByRole('slider', {
+      name: '월 임대료 최댓값',
+    }), {
+      target: { value: '500000' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '가격 필터 적용' }))
+
+    fireEvent.click(screen.getByRole('button', { name: '전용면적 필터 열기' }))
+    fireEvent.change(screen.getByRole('slider', {
+      name: '전용면적 최솟값',
+    }), {
+      target: { value: '33' },
+    })
+    fireEvent.change(screen.getByRole('slider', {
+      name: '전용면적 최댓값',
+    }), {
+      target: { value: '66' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '전용면적 필터 적용' }))
+
+    await waitFor(() => {
+      expect(repository.findMapComplexes).toHaveBeenCalledTimes(8)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(8)
+    })
+    repository.findComplexPage
+      .mockResolvedValueOnce(complexPageWithNext())
+      .mockResolvedValueOnce(complexPageFor(18, '서울마루 국민임대'))
+
+    fireEvent.click(screen.getByRole('button', { name: '준공년도 필터 열기' }))
+    fireEvent.change(screen.getByLabelText('최소 준공년도'), {
+      target: { value: '2015' },
+    })
+    fireEvent.change(screen.getByLabelText('최대 준공년도'), {
+      target: { value: '2026' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '준공년도 필터 적용' }))
+
+    const expectedFilters = {
+      agencyCodes: ['LH'],
+      applicationStatuses: ['APPLYING'],
+      builtYearFrom: 2015,
+      builtYearTo: 2026,
+      maxDeposit: 300_000_000,
+      maxExclusiveArea: 66,
+      maxMonthlyRent: 500_000,
+      minDeposit: 100_000_000,
+      minExclusiveArea: 33,
+      minMonthlyRent: 100_000,
+      recruitmentTypes: ['NEW'],
+      regionCode: '11',
+      rentalTypes: ['NATIONAL_RENTAL'],
+    }
+    await waitFor(() => {
+      expect(repository.findMapComplexes).toHaveBeenCalledTimes(9)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(9)
+    })
+    expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
+      INITIAL_BOUNDS,
+      expect.any(AbortSignal),
+      expectedFilters,
+    )
+    expect(repository.findComplexPage).toHaveBeenLastCalledWith(
+      INITIAL_BOUNDS,
+      null,
+      20,
+      expect.any(AbortSignal),
+      expectedFilters,
+    )
+    const search = new URLSearchParams(
+      screen.getByTestId('location-search').textContent ?? '',
+    )
+    expect(search.get('complexRegionCode')).toBe('11')
+    expect(search.getAll('complexRentalTypes')).toEqual(['NATIONAL_RENTAL'])
+    expect(search.get('complexMinDeposit')).toBe('100000000')
+    expect(search.get('complexBuiltYearTo')).toBe('2026')
+
+    fireEvent.click(screen.getByRole('button', { name: '단지 더 보기' }))
+    expect(await screen.findByRole('heading', {
+      name: '서울마루 국민임대',
+    })).toBeVisible()
+    expect(repository.findComplexPage).toHaveBeenLastCalledWith(
+      INITIAL_BOUNDS,
+      'cursor-2',
+      20,
+      expect.any(AbortSignal),
+      expectedFilters,
+    )
+
+    fireEvent.click(screen.getByRole('tab', { name: '공고 목록' }))
+    fireEvent.click(screen.getByRole('tab', { name: '단지 목록' }))
+    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
+    expect(within(screen.getByRole('region', {
+      name: '지역 필터',
+    })).getByLabelText('시·도')).toHaveValue('11')
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 열기' }))
+    const rentalFilter = screen.getByRole('region', {
+      name: '임대유형 필터',
+    })
+    expect(within(rentalFilter).getByRole('checkbox', { name: '국민임대' }))
+      .toBeChecked()
+    fireEvent.click(within(rentalFilter).getByRole('button', {
+      name: '임대유형 필터 초기화',
+    }))
+    await waitFor(() => {
+      expect(repository.findMapComplexes).toHaveBeenCalledTimes(10)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(11)
+    })
+    const resetSearch = new URLSearchParams(
+      screen.getByTestId('location-search').textContent ?? '',
+    )
+    expect(resetSearch.get('complexRegionCode')).toBe('11')
+    expect(resetSearch.getAll('complexRentalTypes')).toEqual([])
+    expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
+      INITIAL_BOUNDS,
+      expect.any(AbortSignal),
+      {
+        agencyCodes: ['LH'],
+        applicationStatuses: ['APPLYING'],
+        builtYearFrom: 2015,
+        builtYearTo: 2026,
+        maxDeposit: 300_000_000,
+        maxExclusiveArea: 66,
+        maxMonthlyRent: 500_000,
+        minDeposit: 100_000_000,
+        minExclusiveArea: 33,
+        minMonthlyRent: 100_000,
+        recruitmentTypes: ['NEW'],
+        regionCode: '11',
+      },
+    )
+  })
+
+  it('공유 URL의 시군구와 복수 조건을 폼에서 다시 적용해도 보존한다', async () => {
+    const repository = createRepository()
+    renderExplorer(
+      repository,
+      '/?complexRegionCode=41135'
+        + '&complexRentalTypes=NATIONAL_RENTAL'
+        + '&complexRentalTypes=HAPPY_HOUSING'
+        + '&complexAgencyCodes=LH'
+        + '&complexAgencyCodes=GH',
+    )
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    await screen.findByRole('heading', { name: '서울가람 행복주택' })
+
+    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
+    const regionFilter = screen.getByRole('region', {
+      name: '지역 필터',
+    })
+    expect(within(regionFilter).getByLabelText('시·도')).toHaveValue('41')
+    await waitFor(() => {
+      expect(within(regionFilter).getByLabelText('시·군·구'))
+        .toHaveValue('41135')
+    })
+    fireEvent.click(within(regionFilter).getByRole('button', {
+      name: '지역 필터 적용',
+    }))
+
+    fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 열기' }))
+    const rentalFilter = screen.getByRole('region', {
+      name: '임대유형 필터',
+    })
+    expect(within(rentalFilter).getByRole('checkbox', {
+      name: '국민임대',
+    })).toBeChecked()
+    expect(within(rentalFilter).getByRole('checkbox', {
+      name: '행복주택',
+    })).toBeChecked()
+    fireEvent.click(within(rentalFilter).getByRole('button', {
+      name: '임대유형 필터 적용',
+    }))
+
+    fireEvent.click(screen.getByRole('button', { name: '공급기관 필터 열기' }))
+    const agencyFilter = screen.getByRole('region', {
+      name: '공급기관 필터',
+    })
+    expect(within(agencyFilter).getByRole('checkbox', { name: 'LH' }))
+      .toBeChecked()
+    expect(within(agencyFilter).getByRole('checkbox', { name: 'GH' }))
+      .toBeChecked()
+    fireEvent.click(within(agencyFilter).getByRole('button', {
+      name: '공급기관 필터 적용',
+    }))
+
+    const search = new URLSearchParams(
+      screen.getByTestId('location-search').textContent ?? '',
+    )
+    expect(search.get('complexRegionCode')).toBe('41135')
+    expect(new Set(search.getAll('complexRentalTypes'))).toEqual(new Set([
+      'NATIONAL_RENTAL',
+      'HAPPY_HOUSING',
+    ]))
+    expect(search.getAll('complexAgencyCodes')).toEqual(['LH', 'GH'])
+  })
+
+  it('지도 idle 대기 중 단지 필터를 바꿔도 이전 조건 요청이 덮어쓰지 않는다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository)
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    await screen.findByRole('heading', { name: '서울가람 행복주택' })
+
+    fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
+    fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '국민임대' }))
+    fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 적용' }))
+
+    await waitFor(() => {
+      expect(repository.findMapComplexes).toHaveBeenCalledTimes(2)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
+    })
+    await act(async () => new Promise((resolve) => {
+      window.setTimeout(resolve, 350)
+    }))
+
+    const filters = { rentalTypes: ['NATIONAL_RENTAL'] }
+    expect(repository.findMapComplexes).toHaveBeenCalledTimes(2)
+    expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
+      NEXT_BOUNDS,
+      expect.any(AbortSignal),
+      filters,
+    )
+    expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
+    expect(repository.findComplexPage).toHaveBeenLastCalledWith(
+      NEXT_BOUNDS,
+      null,
+      20,
+      expect.any(AbortSignal),
+      filters,
+    )
+  })
+
+  it('단지 범위 손잡이는 서로 교차하지 않도록 상대 값에 맞춘다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository)
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    await screen.findByRole('heading', { name: '서울가람 행복주택' })
+    fireEvent.click(screen.getByRole('button', { name: '가격 필터 열기' }))
+    const minimum = screen.getByRole('slider', {
+      name: '임대보증금 최솟값',
+    })
+    const maximum = screen.getByRole('slider', {
+      name: '임대보증금 최댓값',
+    })
+    fireEvent.change(maximum, { target: { value: '100000000' } })
+    fireEvent.change(minimum, { target: { value: '300000000' } })
+
+    expect(minimum).toHaveValue('100000000')
+    expect(screen.getByRole('status', {
+      name: '임대보증금 선택 범위',
+    })).toHaveTextContent('1억 ~ 1억')
+
+    fireEvent.click(screen.getByRole('button', { name: '가격 필터 적용' }))
+    await waitFor(() => {
+      expect(repository.findMapComplexes).toHaveBeenCalledTimes(2)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
+    })
+    expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
+      INITIAL_BOUNDS,
+      expect.any(AbortSignal),
+      { maxDeposit: 100_000_000, minDeposit: 100_000_000 },
+    )
+    const search = new URLSearchParams(
+      screen.getByTestId('location-search').textContent ?? '',
+    )
+    expect(search.get('complexMinDeposit')).toBe('100000000')
+    expect(search.get('complexMaxDeposit')).toBe('100000000')
+  })
+
+  it('공고 필터는 단지 필터와 독립적으로 공고 목록에만 적용한다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository)
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    await screen.findByRole('heading', { name: '서울가람 행복주택' })
+    fireEvent.click(screen.getByRole('tab', { name: '공고 목록' }))
+    await screen.findByRole('heading', {
+      name: '성남 청년 행복주택 입주자 모집 공고',
+    })
+    const complexRequestCount = repository.findComplexPage.mock.calls.length
+    const mapRequestCount = repository.findMapComplexes.mock.calls.length
+
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    const announcementFilter = screen.getByRole('region', {
+      name: '공고 검색 필터',
+    })
+    fireEvent.change(within(announcementFilter).getByLabelText('시·도'), {
+      target: { value: '41' },
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: '행복주택' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '접수예정' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'GH' }))
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: '예비입주자 모집',
+    }))
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
+
+    await waitFor(() => {
+      expect(repository.findAnnouncementPage).toHaveBeenCalledTimes(2)
+    })
+    expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(
+      null,
+      20,
+      expect.any(AbortSignal),
+      {
+        agencyCodes: ['GH'],
+        applicationStatuses: ['BEFORE_APPLICATION'],
+        recruitmentTypes: ['WAITLIST'],
+        regionCode: '41',
+        rentalTypes: ['HAPPY_HOUSING'],
+      },
+    )
+    expect(repository.findComplexPage).toHaveBeenCalledTimes(complexRequestCount)
+    expect(repository.findMapComplexes).toHaveBeenCalledTimes(mapRequestCount)
+    const search = new URLSearchParams(
+      screen.getByTestId('location-search').textContent ?? '',
+    )
+    expect(search.get('announcementRegionCode')).toBe('41')
+    expect(search.get('complexRegionCode')).toBeNull()
+
+    fireEvent.click(screen.getByRole('tab', { name: '단지 목록' }))
+    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
+    expect(within(screen.getByRole('region', {
+      name: '지역 필터',
+    })).getByLabelText('시·도')).toHaveValue('')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent.click(screen.getByRole('tab', { name: '공고 목록' }))
+    expect(within(announcementFilter).getByLabelText('시·도'))
+      .toHaveValue('41')
   })
 
   it('지도 응답의 임대 조건을 정보형 마커 표시값으로 변환한다', async () => {
@@ -1353,16 +1841,26 @@ function renderExplorer(
   repository: PublicHousingRepository,
   initialEntry = '/',
   localMockEnabled = false,
+  regionRepository = createRegionRepository(),
 ) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <PublicHousingExplorer
         localMockEnabled={localMockEnabled}
+        regionRepository={regionRepository}
         repository={repository}
       />
       <LocationSearch />
     </MemoryRouter>,
   )
+}
+
+function createRegionRepository(): PublicHousingRegionRepository {
+  return {
+    search: vi.fn().mockImplementation((keyword: string) => Promise.resolve(
+      TEST_REGIONS.filter(({ provinceName }) => provinceName === keyword),
+    )),
+  }
 }
 
 function LocationSearch() {

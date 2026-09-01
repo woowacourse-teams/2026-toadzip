@@ -2,6 +2,9 @@ import type { PublicHousingSnapshotV1 } from '../api/snapshotPublicHousingReposi
 
 export const MINIMAL_PUBLIC_HOUSING_SNAPSHOT = {
   version: 1,
+  complexRegionCodes: { 17: '11140' },
+  announcementRegionCodes: { 201: ['11140'] },
+  regionCodeDescendants: {},
   complexListItems: [
     {
       complexId: 17,

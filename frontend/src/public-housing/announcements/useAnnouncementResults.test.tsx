@@ -1,6 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { PublicHousingRepository } from '../api/publicHousingRepository.ts'
+import type {
+  AnnouncementSearchFilters,
+  PublicHousingRepository,
+} from '../api/publicHousingRepository.ts'
 import type {
   AnnouncementListItem,
   AnnouncementPage,
@@ -33,6 +36,26 @@ describe('useAnnouncementResults', () => {
     expect(screen.getByText('101')).toBeVisible()
   })
 
+  it('진행 중인 첫 페이지 요청을 탭을 닫을 때 취소하고 다시 열면 다시 요청한다', async () => {
+    const firstPage = deferred<AnnouncementPage>()
+    const repeatedFirstPage = deferred<AnnouncementPage>()
+    const repository = createRepository()
+    repository.findAnnouncementPage
+      .mockReturnValueOnce(firstPage.promise)
+      .mockReturnValueOnce(repeatedFirstPage.promise)
+    const { rerender } = render(<Harness enabled repository={repository} />)
+    const firstSignal = repository.findAnnouncementPage.mock.calls[0][2]
+
+    rerender(<Harness enabled={false} repository={repository} />)
+
+    expect(firstSignal.aborted).toBe(true)
+    rerender(<Harness enabled repository={repository} />)
+    expect(repository.findAnnouncementPage).toHaveBeenCalledTimes(2)
+
+    repeatedFirstPage.resolve(announcementPage(['201'], null, false))
+    expect(await screen.findByText('201')).toBeVisible()
+  })
+
   it('공고 전용 cursor로 다음 페이지를 이어 붙이고 중복 ID는 제거한다', async () => {
     const repository = createRepository()
     repository.findAnnouncementPage
@@ -50,6 +73,108 @@ describe('useAnnouncementResults', () => {
       20,
       expect.any(AbortSignal),
     )
+  })
+
+  it('진행 중인 다음 페이지 요청을 탭을 닫을 때 취소하고 기존 첫 페이지를 유지한다', async () => {
+    const nextPage = deferred<AnnouncementPage>()
+    const repository = createRepository()
+    repository.findAnnouncementPage
+      .mockResolvedValueOnce(announcementPage(['101'], 'next', true))
+      .mockReturnValueOnce(nextPage.promise)
+    const { rerender } = render(<Harness enabled repository={repository} />)
+    await screen.findByText('101')
+
+    fireEvent.click(screen.getByRole('button', { name: '더 보기' }))
+    const paginationSignal = repository.findAnnouncementPage.mock.calls[1][2]
+    rerender(<Harness enabled={false} repository={repository} />)
+
+    expect(paginationSignal.aborted).toBe(true)
+    expect(screen.getByText('ready')).toBeVisible()
+    rerender(<Harness enabled repository={repository} />)
+    expect(repository.findAnnouncementPage).toHaveBeenCalledTimes(2)
+    expect(screen.getByText('101')).toBeVisible()
+  })
+
+  it('필터를 다음 페이지에도 유지하고 변경 시 cursor 없이 다시 시작한다', async () => {
+    const repository = createRepository()
+    repository.findAnnouncementPage
+      .mockResolvedValueOnce(announcementPage(['101'], 'next', true))
+      .mockResolvedValueOnce(announcementPage(['102'], null, false))
+      .mockResolvedValueOnce(announcementPage(['201'], null, false))
+    const seoulFilters: AnnouncementSearchFilters = {
+      regionCode: '11',
+      rentalTypes: ['HAPPY_HOUSING'],
+    }
+    const gyeonggiFilters: AnnouncementSearchFilters = {
+      regionCode: '41',
+      rentalTypes: ['NATIONAL_RENTAL'],
+    }
+    const { rerender } = render(
+      <Harness
+        enabled
+        filters={seoulFilters}
+        repository={repository}
+      />,
+    )
+    await screen.findByText('101')
+
+    fireEvent.click(screen.getByRole('button', { name: '더 보기' }))
+
+    expect(await screen.findByText('102')).toBeVisible()
+    expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(
+      'next',
+      20,
+      expect.any(AbortSignal),
+      seoulFilters,
+    )
+
+    rerender(
+      <Harness
+        enabled
+        filters={gyeonggiFilters}
+        repository={repository}
+      />,
+    )
+
+    expect(await screen.findByText('201')).toBeVisible()
+    expect(screen.queryByText('101')).not.toBeInTheDocument()
+    expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(
+      null,
+      20,
+      expect.any(AbortSignal),
+      gyeonggiFilters,
+    )
+  })
+
+  it('필터 변경 뒤 첫 페이지가 실패해도 이전 필터의 공고를 표시하지 않는다', async () => {
+    const nextFiltersPage = deferred<AnnouncementPage>()
+    const repository = createRepository()
+    repository.findAnnouncementPage
+      .mockResolvedValueOnce(announcementPage(['101'], null, false))
+      .mockReturnValueOnce(nextFiltersPage.promise)
+    const { rerender } = render(
+      <Harness
+        enabled
+        filters={{ regionCode: '11' }}
+        repository={repository}
+      />,
+    )
+    await screen.findByText('101')
+
+    rerender(
+      <Harness
+        enabled
+        filters={{ regionCode: '41' }}
+        repository={repository}
+      />,
+    )
+
+    expect(screen.getByText('loading')).toBeVisible()
+    expect(screen.queryByText('101')).not.toBeInTheDocument()
+    nextFiltersPage.reject(new Error('새 공고 연결 실패'))
+
+    expect(await screen.findByText('새 공고 연결 실패')).toBeVisible()
+    expect(screen.queryByText('101')).not.toBeInTheDocument()
   })
 
   it('첫 페이지 오류는 다시 시도하고 성공한 결과로 교체한다', async () => {
@@ -91,14 +216,17 @@ describe('useAnnouncementResults', () => {
 
 function Harness({
   enabled,
+  filters = {},
   repository,
 }: {
   enabled: boolean
+  filters?: AnnouncementSearchFilters
   repository: PublicHousingRepository
 }) {
   const { loadMore, retry, state } = useAnnouncementResults(
     repository,
     enabled,
+    filters,
   )
   return (
     <section>
@@ -161,4 +289,14 @@ function announcementListItem(announcementId: string): AnnouncementListItem {
     viewCount: 0,
   }
   return { ...raw, announcementId, raw }
+}
+
+function deferred<T>() {
+  let reject: (reason?: unknown) => void = () => undefined
+  let resolve: (value: T) => void = () => undefined
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve
+    reject = nextReject
+  })
+  return { promise, reject, resolve }
 }

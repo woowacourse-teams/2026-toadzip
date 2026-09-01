@@ -37,16 +37,57 @@ interface ErrorBody {
   readonly traceId: string | null
 }
 
+export type RentalTypeFilter =
+  | 'HAPPY_HOUSING'
+  | 'NATIONAL_RENTAL'
+  | 'PERMANENT_RENTAL'
+  | 'PUBLIC_RENTAL_50Y'
+  | 'INTEGRATED_PUBLIC_RENTAL'
+  | 'REDEVELOPMENT_RENTAL'
+  | 'ETC'
+
+export type ApplicationStatusFilter =
+  | 'BEFORE_APPLICATION'
+  | 'APPLYING'
+  | 'CLOSED'
+
+export type AgencyCodeFilter = 'LH' | 'SH' | 'GH' | 'ETC'
+
+export type RecruitmentTypeFilter = 'NEW' | 'WAITLIST' | 'ETC'
+
+export interface SharedSearchFilters {
+  readonly agencyCodes?: readonly AgencyCodeFilter[]
+  readonly applicationStatuses?: readonly ApplicationStatusFilter[]
+  readonly recruitmentTypes?: readonly RecruitmentTypeFilter[]
+  readonly regionCode?: string | null
+  readonly rentalTypes?: readonly RentalTypeFilter[]
+}
+
+export interface ComplexSearchFilters extends SharedSearchFilters {
+  readonly builtYearFrom?: number | null
+  readonly builtYearTo?: number | null
+  readonly maxDeposit?: number | null
+  readonly maxExclusiveArea?: number | null
+  readonly maxMonthlyRent?: number | null
+  readonly minDeposit?: number | null
+  readonly minExclusiveArea?: number | null
+  readonly minMonthlyRent?: number | null
+}
+
+export type AnnouncementSearchFilters = SharedSearchFilters
+
 export interface PublicHousingRepository {
   findComplexPage(
     bounds: MapBounds,
     cursor: string | null,
     size: number,
     signal: AbortSignal,
+    filters?: ComplexSearchFilters,
   ): Promise<ComplexPage>
   findMapComplexes(
     bounds: MapBounds,
     signal: AbortSignal,
+    filters?: ComplexSearchFilters,
   ): Promise<readonly MapComplex[]>
   findComplexDetail(
     complexId: string,
@@ -56,6 +97,7 @@ export interface PublicHousingRepository {
     cursor: string | null,
     size: number,
     signal: AbortSignal,
+    filters?: AnnouncementSearchFilters,
   ): Promise<AnnouncementPage>
   findAnnouncementDetail(
     announcementId: string,
@@ -84,9 +126,10 @@ export function createHttpPublicHousingRepository(
   const fetcher = options.fetcher ?? globalThis.fetch
 
   return {
-    async findComplexPage(bounds, cursor, size, signal) {
+    async findComplexPage(bounds, cursor, size, signal, filters = {}) {
       validatePageSize(size)
       const search = boundsSearchParams(bounds)
+      appendComplexFilters(search, filters)
       if (cursor !== null) {
         search.set('cursor', cursor)
       }
@@ -100,8 +143,9 @@ export function createHttpPublicHousingRepository(
       return toComplexPage(decodeComplexPageEnvelope(payload))
     },
 
-    async findMapComplexes(bounds, signal) {
+    async findMapComplexes(bounds, signal, filters = {}) {
       const search = boundsSearchParams(bounds)
+      appendComplexFilters(search, filters)
       const payload = await requestJson(
         fetcher,
         `${apiBaseUrl}${COMPLEXES_PATH}/map?${search.toString()}`,
@@ -120,9 +164,10 @@ export function createHttpPublicHousingRepository(
       return toComplexDetail(decodeComplexDetailEnvelope(payload))
     },
 
-    async findAnnouncementPage(cursor, size, signal) {
+    async findAnnouncementPage(cursor, size, signal, filters = {}) {
       validatePageSize(size)
       const search = new URLSearchParams({ size: String(size) })
+      appendSharedFilters(search, filters)
       if (cursor !== null) {
         search.set('cursor', cursor)
       }
@@ -210,6 +255,56 @@ function boundsSearchParams(bounds: MapBounds): URLSearchParams {
     northEastLat: String(bounds.northEastLat),
     northEastLng: String(bounds.northEastLng),
   })
+}
+
+function appendComplexFilters(
+  search: URLSearchParams,
+  filters: ComplexSearchFilters,
+) {
+  appendSharedFilters(search, filters)
+  appendOptionalNumber(search, 'minDeposit', filters.minDeposit)
+  appendOptionalNumber(search, 'maxDeposit', filters.maxDeposit)
+  appendOptionalNumber(search, 'minMonthlyRent', filters.minMonthlyRent)
+  appendOptionalNumber(search, 'maxMonthlyRent', filters.maxMonthlyRent)
+  appendOptionalNumber(search, 'minExclusiveArea', filters.minExclusiveArea)
+  appendOptionalNumber(search, 'maxExclusiveArea', filters.maxExclusiveArea)
+  appendOptionalNumber(search, 'builtYearFrom', filters.builtYearFrom)
+  appendOptionalNumber(search, 'builtYearTo', filters.builtYearTo)
+}
+
+function appendSharedFilters(
+  search: URLSearchParams,
+  filters: SharedSearchFilters,
+) {
+  if (filters.regionCode) {
+    search.set('regionCode', filters.regionCode)
+  }
+  appendRepeated(search, 'rentalTypes', filters.rentalTypes)
+  appendRepeated(
+    search,
+    'applicationStatuses',
+    filters.applicationStatuses,
+  )
+  appendRepeated(search, 'agencyCodes', filters.agencyCodes)
+  appendRepeated(search, 'recruitmentTypes', filters.recruitmentTypes)
+}
+
+function appendRepeated(
+  search: URLSearchParams,
+  key: string,
+  values: readonly string[] | undefined,
+) {
+  values?.forEach((value) => search.append(key, value))
+}
+
+function appendOptionalNumber(
+  search: URLSearchParams,
+  key: string,
+  value: number | null | undefined,
+) {
+  if (value !== null && value !== undefined) {
+    search.set(key, String(value))
+  }
 }
 
 function validateBounds(bounds: MapBounds) {

@@ -14,8 +14,16 @@ import NaverMap, {
   type NaverMapMarker,
 } from '../maps/naver/NaverMap.tsx'
 import { defaultPublicHousingRepository } from './api/defaultPublicHousingRepository.ts'
-import { PublicHousingHttpError } from './api/publicHousingRepository.ts'
-import type { PublicHousingRepository } from './api/publicHousingRepository.ts'
+import {
+  type PublicHousingRegionRepository,
+  publicHousingRegionRepository,
+} from './api/publicHousingRegionRepository.ts'
+import {
+  type AnnouncementSearchFilters,
+  type ComplexSearchFilters,
+  PublicHousingHttpError,
+  type PublicHousingRepository,
+} from './api/publicHousingRepository.ts'
 import {
   type AnnouncementResultsState,
   useAnnouncementResults,
@@ -27,6 +35,16 @@ import {
   type HousingComplexCardData,
 } from './components/HousingComplexCard.tsx'
 import { HousingComplexDetailPanel } from './components/HousingComplexDetailPanel.tsx'
+import { ComplexFilterToolbar } from './filters/ComplexFilterToolbar.tsx'
+import { SearchFilterPanel } from './filters/SearchFilterPanel.tsx'
+import {
+  hasSearchFilters,
+  parseAnnouncementSearchFilters,
+  parseComplexSearchFilters,
+  searchFiltersSignature,
+  setAnnouncementSearchFilters,
+  setComplexSearchFilters,
+} from './filters/searchFilterLocation.ts'
 import {
   evaluateViewportRequest,
   type ViewportBlockReason,
@@ -132,6 +150,7 @@ interface PendingListFocus {
 
 export interface PublicHousingExplorerProps {
   localMockEnabled?: boolean
+  regionRepository?: PublicHousingRegionRepository
   repository?: PublicHousingRepository
 }
 
@@ -165,6 +184,7 @@ const INITIAL_ANNOUNCEMENT_DETAIL: AnnouncementDetailState = {
 
 export function PublicHousingExplorer({
   localMockEnabled = false,
+  regionRepository = publicHousingRegionRepository,
   repository = defaultPublicHousingRepository,
 }: PublicHousingExplorerProps) {
   const location = useLocation()
@@ -237,11 +257,29 @@ export function PublicHousingExplorer({
     () => parseMapLocation(new URLSearchParams(location.search)),
     [location.search],
   )
+  const complexFilters = useMemo(
+    () => parseComplexSearchFilters(new URLSearchParams(location.search)),
+    [location.search],
+  )
+  const announcementFilters = useMemo(
+    () => parseAnnouncementSearchFilters(new URLSearchParams(location.search)),
+    [location.search],
+  )
+  const complexFiltersKey = useMemo(
+    () => searchFiltersSignature(complexFilters),
+    [complexFilters],
+  )
+  const announcementFiltersKey = useMemo(
+    () => searchFiltersSignature(announcementFilters),
+    [announcementFilters],
+  )
   const announcementResults = useAnnouncementResults(
     repository,
     announcementListRequested
       && activeResultTab === 'announcements'
       && detailLocation.kind !== 'announcement',
+    announcementFilters,
+    announcementFiltersKey,
   )
 
   useEffect(() => {
@@ -556,6 +594,46 @@ export function PublicHousingExplorer({
     setActiveResultTab(tab)
   }, [detailLocation])
 
+  const applyComplexFilters = useCallback((filters: ComplexSearchFilters) => {
+    const currentSearch = new URLSearchParams(location.search)
+    const nextSearch = setComplexSearchFilters(currentSearch, filters)
+    if (nextSearch.toString() === currentSearch.toString()) {
+      return
+    }
+    navigate({
+      hash: location.hash,
+      pathname: location.pathname,
+      search: toSearchString(nextSearch),
+    }, { state: location.state })
+  }, [
+    location.hash,
+    location.pathname,
+    location.search,
+    location.state,
+    navigate,
+  ])
+
+  const applyAnnouncementFilters = useCallback((
+    filters: AnnouncementSearchFilters,
+  ) => {
+    const currentSearch = new URLSearchParams(location.search)
+    const nextSearch = setAnnouncementSearchFilters(currentSearch, filters)
+    if (nextSearch.toString() === currentSearch.toString()) {
+      return
+    }
+    navigate({
+      hash: location.hash,
+      pathname: location.pathname,
+      search: toSearchString(nextSearch),
+    }, { state: location.state })
+  }, [
+    location.hash,
+    location.pathname,
+    location.search,
+    location.state,
+    navigate,
+  ])
+
   const openComplexDetail = useCallback(
     (complexId: string) => openDetail('complexes', complexId),
     [openDetail],
@@ -644,7 +722,7 @@ export function PublicHousingExplorer({
       if (!decision.allowed) {
         return
       }
-      const signature = decision.boundsSignature
+      const signature = `${decision.boundsSignature}|${complexFiltersKey}`
       if (!force && pendingViewportSignatureRef.current === signature) {
         return
       }
@@ -676,15 +754,29 @@ export function PublicHousingExplorer({
         status: 'loading',
       }))
 
-      Promise.all([
-        repository.findMapComplexes(nextViewport.bounds, controller.signal),
-        repository.findComplexPage(
-          nextViewport.bounds,
-          null,
-          PAGE_SIZE,
-          controller.signal,
-        ),
-      ])
+      const mapRequest = hasSearchFilters(complexFilters)
+        ? repository.findMapComplexes(
+            nextViewport.bounds,
+            controller.signal,
+            complexFilters,
+          )
+        : repository.findMapComplexes(nextViewport.bounds, controller.signal)
+      const complexRequest = hasSearchFilters(complexFilters)
+        ? repository.findComplexPage(
+            nextViewport.bounds,
+            null,
+            PAGE_SIZE,
+            controller.signal,
+            complexFilters,
+          )
+        : repository.findComplexPage(
+            nextViewport.bounds,
+            null,
+            PAGE_SIZE,
+            controller.signal,
+          )
+
+      Promise.all([mapRequest, complexRequest])
         .then(([mapItems, page]) => {
           if (requestRevisionRef.current !== revision) {
             return
@@ -732,8 +824,24 @@ export function PublicHousingExplorer({
           }))
         })
     },
-    [repository],
+    [complexFilters, complexFiltersKey, repository],
   )
+
+  const previousComplexFiltersKeyRef = useRef(complexFiltersKey)
+
+  useEffect(() => {
+    if (previousComplexFiltersKeyRef.current === complexFiltersKey) {
+      return
+    }
+    previousComplexFiltersKeyRef.current = complexFiltersKey
+    if (viewportDebounceRef.current !== null) {
+      window.clearTimeout(viewportDebounceRef.current)
+      viewportDebounceRef.current = null
+    }
+    if (viewport !== null) {
+      applyViewport(viewport, true)
+    }
+  }, [applyViewport, complexFiltersKey, viewport])
 
   const handleViewportChange = useCallback(
     (nextViewport: ViewportSnapshot) => {
@@ -821,13 +929,22 @@ export function PublicHousingExplorer({
       status: 'loading-more',
     }))
 
-    repository
-      .findComplexPage(
-        appliedViewport.bounds,
-        cursor,
-        PAGE_SIZE,
-        controller.signal,
-      )
+    const request = hasSearchFilters(complexFilters)
+      ? repository.findComplexPage(
+          appliedViewport.bounds,
+          cursor,
+          PAGE_SIZE,
+          controller.signal,
+          complexFilters,
+        )
+      : repository.findComplexPage(
+          appliedViewport.bounds,
+          cursor,
+          PAGE_SIZE,
+          controller.signal,
+        )
+
+    request
       .then((page) => {
         if (requestRevisionRef.current !== revision) {
           return
@@ -852,7 +969,7 @@ export function PublicHousingExplorer({
           status: 'error',
         }))
       })
-  }, [appliedViewport, complexResults, repository])
+  }, [appliedViewport, complexFilters, complexResults, repository])
 
   const retryComplexResults = useCallback(() => {
     if (failedPaginationCursorRef.current) {
@@ -997,6 +1114,12 @@ export function PublicHousingExplorer({
           aria-labelledby="announcement-results-tab"
           hidden={activeResultTab !== 'announcements'}
         >
+            <SearchFilterPanel
+              filters={announcementFilters}
+              kind="announcement"
+              onApply={applyAnnouncementFilters}
+              regionRepository={regionRepository}
+            />
             <AnnouncementResultContent
               state={announcementResults.state}
               selectedAnnouncementId={selectedAnnouncementId}
@@ -1026,6 +1149,13 @@ export function PublicHousingExplorer({
       </aside>
 
       <main className="housing-map-workspace">
+        <div className="housing-map-filter">
+          <ComplexFilterToolbar
+            filters={complexFilters}
+            onApply={applyComplexFilters}
+            regionRepository={regionRepository}
+          />
+        </div>
         <NaverMap
           cameraTarget={activeMapTarget}
           dataBusy={!requestBlocked && mapResults.status === 'loading'}

@@ -177,6 +177,110 @@ describe('local public housing snapshot repository', () => {
     }, signal)).resolves.toEqual([])
   })
 
+  it('applies the same filters to local snapshot maps, complexes and announcements', async () => {
+    const repository = createSnapshotPublicHousingRepository(
+      snapshotWithSecondScenario(),
+    )
+    const signal = new AbortController().signal
+    const complexFilters = {
+      agencyCodes: ['GH'],
+      applicationStatuses: ['BEFORE_APPLICATION'],
+      builtYearFrom: 2018,
+      builtYearTo: 2018,
+      maxDeposit: 25_000_000,
+      maxExclusiveArea: 55,
+      maxMonthlyRent: 230_000,
+      minDeposit: 15_000_000,
+      minExclusiveArea: 45,
+      minMonthlyRent: 210_000,
+      recruitmentTypes: ['WAITLIST'],
+      regionCode: '41135',
+      rentalTypes: ['NATIONAL_RENTAL'],
+    } as const
+
+    const [mapItems, complexPage, announcementPage] = await Promise.all([
+      repository.findMapComplexes(BOUNDS, signal, complexFilters),
+      repository.findComplexPage(BOUNDS, null, 20, signal, complexFilters),
+      repository.findAnnouncementPage(null, 20, signal, {
+        agencyCodes: ['GH'],
+        applicationStatuses: ['BEFORE_APPLICATION'],
+        recruitmentTypes: ['WAITLIST'],
+        regionCode: '41135',
+        rentalTypes: ['NATIONAL_RENTAL'],
+      }),
+    ])
+
+    expect(mapItems.map((item) => item.complexId)).toEqual(['18'])
+    expect(complexPage.items.map((item) => item.complexId)).toEqual(['18'])
+    expect(announcementPage.items.map((item) => item.announcementId))
+      .toEqual(['202'])
+
+    await expect(repository.findComplexPage(BOUNDS, null, 20, signal, {
+      regionCode: '41110',
+    })).resolves.toMatchObject({ items: [] })
+    await expect(repository.findComplexPage(BOUNDS, null, 20, signal, {
+      minExclusiveArea: 52,
+      maxExclusiveArea: 55,
+    })).resolves.toMatchObject({ items: [] })
+    await expect(repository.findComplexPage(BOUNDS, null, 20, signal, {
+      minDeposit: 90_000_000,
+      minMonthlyRent: 900_000,
+    })).resolves.toMatchObject({ items: [] })
+  })
+
+  it('includes child districts when a snapshot parent city is selected', async () => {
+    const snapshot = {
+      ...snapshotWithSecondScenario(),
+      regionCodeDescendants: {
+        41130: ['41131', '41133', '41135', '41137', '41139'],
+      },
+    } as unknown as PublicHousingSnapshotV1
+    const repository = createSnapshotPublicHousingRepository(snapshot)
+    const signal = new AbortController().signal
+
+    const [mapItems, complexPage, announcementPage] = await Promise.all([
+      repository.findMapComplexes(BOUNDS, signal, { regionCode: '41130' }),
+      repository.findComplexPage(BOUNDS, null, 20, signal, {
+        regionCode: '41130',
+      }),
+      repository.findAnnouncementPage(null, 20, signal, {
+        regionCode: '41130',
+      }),
+    ])
+
+    expect(mapItems.map((item) => item.complexId)).toEqual(['18'])
+    expect(complexPage.items.map((item) => item.complexId)).toEqual(['18'])
+    expect(announcementPage.items.map((item) => item.announcementId))
+      .toEqual(['202'])
+  })
+
+  it('includes legacy district codes when a snapshot province is selected', async () => {
+    const baseSnapshot = snapshotWithSecondScenario()
+    const snapshot = {
+      ...baseSnapshot,
+      complexRegionCodes: {
+        ...baseSnapshot.complexRegionCodes,
+        18: '29110',
+      },
+      regionCodeDescendants: {
+        ...baseSnapshot.regionCodeDescendants,
+        12: ['12110', '12210', '29110', '46110'],
+      },
+    } as PublicHousingSnapshotV1
+    const repository = createSnapshotPublicHousingRepository(snapshot)
+    const signal = new AbortController().signal
+
+    const [mapItems, complexPage] = await Promise.all([
+      repository.findMapComplexes(BOUNDS, signal, { regionCode: '12' }),
+      repository.findComplexPage(BOUNDS, null, 20, signal, {
+        regionCode: '12',
+      }),
+    ])
+
+    expect(mapItems.map((item) => item.complexId)).toEqual(['18'])
+    expect(complexPage.items.map((item) => item.complexId)).toEqual(['18'])
+  })
+
   it('returns the same 404 contract as the HTTP repository', async () => {
     const repository = createSnapshotPublicHousingRepository(
       MINIMAL_PUBLIC_HOUSING_SNAPSHOT,
@@ -268,9 +372,35 @@ function snapshotWithSecondScenario(): PublicHousingSnapshotV1 {
 
   return {
     ...MINIMAL_PUBLIC_HOUSING_SNAPSHOT,
+    complexRegionCodes: {
+      17: '11140',
+      18: '41135',
+    },
+    announcementRegionCodes: {
+      201: ['11140'],
+      202: ['41135'],
+    },
     complexListItems: [
       complexListItem,
-      { ...complexListItem, complexId: 18, name: '두 번째 단지' },
+      {
+        ...complexListItem,
+        complexId: 18,
+        name: '두 번째 단지',
+        regionName: '경기도 성남시',
+        rentalType: 'NATIONAL_RENTAL',
+        agency: { code: 'GH', name: '경기주택도시공사' },
+        exclusiveAreaMin: 46,
+        exclusiveAreaMax: 59,
+        depositMin: 20_000_000,
+        depositMax: 30_000_000,
+        monthlyRentMin: 220_000,
+        monthlyRentMax: 320_000,
+        representativeAnnouncement: {
+          ...complexListItem.representativeAnnouncement,
+          announcementId: 202,
+          applicationStatus: 'BEFORE_APPLICATION',
+        },
+      },
     ] as readonly RawComplexListItem[],
     mapComplexItems: [
       mapComplexItem,
@@ -280,11 +410,39 @@ function snapshotWithSecondScenario(): PublicHousingSnapshotV1 {
         name: '두 번째 단지',
         latitude: 37.57,
         longitude: 126.99,
+        rentalType: 'NATIONAL_RENTAL',
+        agency: { code: 'GH', name: '경기주택도시공사' },
+        exclusiveAreaMin: 46,
+        exclusiveAreaMax: 59,
+        depositMin: 20_000_000,
+        depositMax: 30_000_000,
+        monthlyRentMin: 220_000,
+        monthlyRentMax: 320_000,
       },
     ] as readonly RawMapComplex[],
     complexDetails: [
       complexDetail,
-      { ...complexDetail, complexId: 18, name: '두 번째 단지' },
+      {
+        ...complexDetail,
+        complexId: 18,
+        name: '두 번째 단지',
+        rentalType: 'NATIONAL_RENTAL',
+        agency: { code: 'GH', name: '경기주택도시공사' },
+        address: {
+          ...complexDetail.address,
+          regionName: '경기도 성남시',
+        },
+        completionDate: '2018-03-01',
+        housingTypes: [{
+          ...complexDetail.housingTypes[0],
+          exclusiveArea: 50,
+          currentSupplyConditions: [{
+            ...complexDetail.housingTypes[0].currentSupplyConditions[0],
+            deposit: 90_000_000,
+            monthlyRent: 900_000,
+          }],
+        }],
+      },
     ] as readonly RawComplexDetail[],
     announcementListItems: [
       announcementListItem,
@@ -292,6 +450,11 @@ function snapshotWithSecondScenario(): PublicHousingSnapshotV1 {
         ...announcementListItem,
         announcementId: 202,
         title: '두 번째 공고',
+        applicationStatus: 'BEFORE_APPLICATION',
+        rentalType: 'NATIONAL_RENTAL',
+        recruitmentType: 'WAITLIST',
+        regionNames: ['경기도 성남시'],
+        agency: { code: 'GH', name: '경기주택도시공사' },
       },
     ] as readonly RawAnnouncementListItem[],
     announcementDetails: [
@@ -300,6 +463,28 @@ function snapshotWithSecondScenario(): PublicHousingSnapshotV1 {
         ...announcementDetail,
         announcementId: 202,
         title: '두 번째 공고',
+        supplyRows: [{
+          ...announcementDetail.supplyRows[0],
+          supplyRowId: 402,
+          complex: {
+            ...announcementDetail.supplyRows[0].complex,
+            complexId: 18,
+            name: '두 번째 단지',
+            address: '경기도 성남시 분당구 두꺼비로 1',
+          },
+          housingType: {
+            ...announcementDetail.supplyRows[0].housingType,
+            housingTypeId: 302,
+            name: '50A',
+            exclusiveArea: 50,
+          },
+          targets: [{
+            ...announcementDetail.supplyRows[0].targets[0],
+            supplyTargetId: 602,
+            deposit: 20_000_000,
+            monthlyRent: 220_000,
+          }],
+        }],
       },
     ] as readonly RawAnnouncementDetail[],
   }

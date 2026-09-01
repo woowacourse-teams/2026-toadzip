@@ -6,6 +6,7 @@ import type {
   RawComplexListItem,
   RawMapComplex,
 } from '../model/publicHousing.ts'
+import { provinceNameForRegionCode } from '../model/publicHousingRegion.ts'
 import {
   decodeAnnouncementDetailEnvelope,
   decodeAnnouncementPageEnvelope,
@@ -25,6 +26,13 @@ const ANNOUNCEMENT_CURSOR_PREFIX = 'snapshot-announcement:'
 
 export interface PublicHousingSnapshotV1 {
   readonly version: 1
+  readonly complexRegionCodes: Readonly<Record<string, string>>
+  readonly announcementRegionCodes: Readonly<
+    Record<string, readonly string[]>
+  >
+  readonly regionCodeDescendants: Readonly<
+    Record<string, readonly string[]>
+  >
   readonly complexListItems: readonly RawComplexListItem[]
   readonly mapComplexItems: readonly RawMapComplex[]
   readonly complexDetails: readonly RawComplexDetail[]
@@ -117,9 +125,12 @@ function mapResponse(snapshot: PublicHousingSnapshotV1, url: URL): Response {
     return invalidBoundsResponse()
   }
 
-  const items = snapshot.mapComplexItems.filter((item) =>
-    isInsideBounds(item, bounds),
-  )
+  const matchingIds = complexIdsMatchingFilters(snapshot, url)
+  const filterRequested = hasComplexSearchFilters(url)
+  const items = snapshot.mapComplexItems.filter((item) => (
+    isInsideBounds(item, bounds)
+    && (!filterRequested || matchingIds.has(item.complexId))
+  ))
   return successResponse({ items })
 }
 
@@ -144,9 +155,10 @@ function complexPageResponse(
       .filter((item) => isInsideBounds(item, bounds))
       .map((item) => item.complexId),
   )
-  const items = snapshot.complexListItems.filter((item) =>
-    visibleIds.has(item.complexId),
-  )
+  const items = snapshot.complexListItems.filter((item) => (
+    visibleIds.has(item.complexId)
+    && complexMatchesFilters(snapshot, item, url)
+  ))
   return successResponse(page(
     items,
     cursor.offset,
@@ -167,8 +179,11 @@ function announcementPageResponse(
     return invalidCursorResponse()
   }
 
+  const items = snapshot.announcementListItems.filter((item) => (
+    announcementMatchesFilters(snapshot, item, url)
+  ))
   return successResponse(page(
-    snapshot.announcementListItems,
+    items,
     cursor.offset,
     pageSize(url),
     ANNOUNCEMENT_CURSOR_PREFIX,
@@ -285,6 +300,255 @@ function isInsideBounds(item: RawMapComplex, bounds: MapBounds): boolean {
   )
 }
 
+const COMPLEX_SEARCH_FILTER_KEYS = [
+  'regionCode',
+  'rentalTypes',
+  'applicationStatuses',
+  'agencyCodes',
+  'recruitmentTypes',
+  'minDeposit',
+  'maxDeposit',
+  'minMonthlyRent',
+  'maxMonthlyRent',
+  'minExclusiveArea',
+  'maxExclusiveArea',
+  'builtYearFrom',
+  'builtYearTo',
+] as const
+
+function hasComplexSearchFilters(url: URL) {
+  return COMPLEX_SEARCH_FILTER_KEYS.some((key) => url.searchParams.has(key))
+}
+
+function complexIdsMatchingFilters(
+  snapshot: PublicHousingSnapshotV1,
+  url: URL,
+) {
+  return new Set(snapshot.complexListItems
+    .filter((item) => complexMatchesFilters(snapshot, item, url))
+    .map((item) => item.complexId))
+}
+
+function complexMatchesFilters(
+  snapshot: PublicHousingSnapshotV1,
+  item: RawComplexListItem,
+  url: URL,
+) {
+  const representative = item.representativeAnnouncement
+  const announcement = representative === null
+    ? undefined
+    : snapshot.announcementListItems.find(
+        (candidate) => candidate.announcementId
+          === representative.announcementId,
+      )
+  const announcementDetail = representative === null
+    ? undefined
+    : snapshot.announcementDetails.find(
+        (candidate) => candidate.announcementId
+          === representative.announcementId,
+      )
+  const detail = snapshot.complexDetails.find(
+    (candidate) => candidate.complexId === item.complexId,
+  )
+  const completionYear = detail?.completionDate === null
+    || detail?.completionDate === undefined
+    ? null
+    : Number(detail.completionDate.slice(0, 4))
+  const search = url.searchParams
+
+  const regionCode = snapshot.complexRegionCodes[String(item.complexId)]
+  return matchesRegion(
+    search.get('regionCode'),
+    [item.regionName],
+    regionCode === undefined ? [] : [regionCode],
+    snapshot.regionCodeDescendants,
+  )
+    && matchesRepeated(search, 'rentalTypes', item.rentalType)
+    && matchesRepeated(
+      search,
+      'applicationStatuses',
+      representative?.applicationStatus ?? null,
+    )
+    && matchesRepeated(search, 'agencyCodes', item.agency?.code ?? null)
+    && matchesRepeated(
+      search,
+      'recruitmentTypes',
+      announcement?.recruitmentType ?? null,
+    )
+    && matchesHousingFilters(
+      search,
+      item.complexId,
+      detail,
+      announcementDetail,
+    )
+    && matchesYearRange(search, completionYear)
+}
+
+function announcementMatchesFilters(
+  snapshot: PublicHousingSnapshotV1,
+  item: RawAnnouncementListItem,
+  url: URL,
+) {
+  const search = url.searchParams
+  return matchesRegion(
+    search.get('regionCode'),
+    item.regionNames,
+    snapshot.announcementRegionCodes[String(item.announcementId)] ?? [],
+    snapshot.regionCodeDescendants,
+  )
+    && matchesRepeated(search, 'rentalTypes', item.rentalType)
+    && matchesRepeated(
+      search,
+      'applicationStatuses',
+      item.applicationStatus,
+    )
+    && matchesRepeated(search, 'agencyCodes', item.agency?.code ?? null)
+    && matchesRepeated(search, 'recruitmentTypes', item.recruitmentType)
+}
+
+function matchesRegion(
+  regionCode: string | null,
+  regionNames: readonly (string | null)[],
+  itemRegionCodes: readonly string[],
+  regionCodeDescendants: Readonly<Record<string, readonly string[]>>,
+) {
+  if (regionCode === null) {
+    return true
+  }
+  const matchingCodes = [
+    regionCode,
+    ...(regionCodeDescendants[regionCode] ?? []),
+  ]
+  const matchesRegionCode = matchingCodes.some((matchingCode) =>
+    itemRegionCodes.some((itemRegionCode) => matchingCode.length === 2
+      ? itemRegionCode.startsWith(matchingCode)
+      : itemRegionCode === matchingCode),
+  )
+  if (matchesRegionCode || regionCode.length === 5) {
+    return matchesRegionCode
+  }
+  const provinceName = provinceNameForRegionCode(regionCode)
+  return provinceName !== null && regionNames.some(
+      (name) => name?.startsWith(provinceName) ?? false,
+    )
+}
+
+function matchesRepeated(
+  search: URLSearchParams,
+  key: string,
+  value: string | null,
+) {
+  const expected = search.getAll(key)
+  return expected.length === 0 || (value !== null && expected.includes(value))
+}
+
+function matchesHousingFilters(
+  search: URLSearchParams,
+  complexId: number,
+  detail: RawComplexDetail | undefined,
+  representativeDetail: RawAnnouncementDetail | undefined,
+) {
+  const areaRequested = rangeRequested(
+    search,
+    'minExclusiveArea',
+    'maxExclusiveArea',
+  )
+  const depositRequested = rangeRequested(
+    search,
+    'minDeposit',
+    'maxDeposit',
+  )
+  const monthlyRentRequested = rangeRequested(
+    search,
+    'minMonthlyRent',
+    'maxMonthlyRent',
+  )
+  if (!areaRequested && !depositRequested && !monthlyRentRequested) {
+    return true
+  }
+  if (!depositRequested && !monthlyRentRequested) {
+    return detail?.housingTypes.some((housingType) => matchesValueRange(
+      search,
+      'minExclusiveArea',
+      'maxExclusiveArea',
+      housingType.exclusiveArea,
+    )) ?? false
+  }
+  if (representativeDetail === undefined) {
+    return false
+  }
+  return representativeDetail.supplyRows.some((supplyRow) => (
+    supplyRow.complex?.complexId === complexId
+    && matchesValueRange(
+      search,
+      'minExclusiveArea',
+      'maxExclusiveArea',
+      supplyRow.housingType?.exclusiveArea ?? null,
+    )
+    && supplyRow.targets.some((target) => (
+      matchesValueRange(
+        search,
+        'minDeposit',
+        'maxDeposit',
+        target.deposit,
+      )
+      && matchesValueRange(
+        search,
+        'minMonthlyRent',
+        'maxMonthlyRent',
+        target.monthlyRent,
+      )
+    ))
+  ))
+}
+
+function rangeRequested(
+  search: URLSearchParams,
+  minimumKey: string,
+  maximumKey: string,
+) {
+  return search.has(minimumKey) || search.has(maximumKey)
+}
+
+function matchesValueRange(
+  search: URLSearchParams,
+  minimumKey: string,
+  maximumKey: string,
+  value: number | null,
+) {
+  const expectedMinimum = searchNumber(search, minimumKey)
+  const expectedMaximum = searchNumber(search, maximumKey)
+  if (expectedMinimum === null && expectedMaximum === null) {
+    return true
+  }
+  return value !== null
+    && (expectedMinimum === null || value >= expectedMinimum)
+    && (expectedMaximum === null || value <= expectedMaximum)
+}
+
+function matchesYearRange(
+  search: URLSearchParams,
+  completionYear: number | null,
+) {
+  const from = searchNumber(search, 'builtYearFrom')
+  const to = searchNumber(search, 'builtYearTo')
+  if (from === null && to === null) {
+    return true
+  }
+  return completionYear !== null
+    && (from === null || completionYear >= from)
+    && (to === null || completionYear <= to)
+}
+
+function searchNumber(search: URLSearchParams, key: string) {
+  const value = search.get(key)
+  if (value === null) {
+    return null
+  }
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
 export function decodePublicHousingSnapshot(
   value: unknown,
 ): PublicHousingSnapshotV1 {
@@ -295,6 +559,18 @@ export function decodePublicHousingSnapshot(
 
   return {
     version: 1,
+    complexRegionCodes: optionalRegionCodeRecord(
+      snapshot,
+      'complexRegionCodes',
+    ),
+    announcementRegionCodes: optionalRegionCodeArrayRecord(
+      snapshot,
+      'announcementRegionCodes',
+    ),
+    regionCodeDescendants: optionalRegionCodeArrayRecord(
+      snapshot,
+      'regionCodeDescendants',
+    ),
     complexListItems: decodeComplexPageEnvelope({
       data: {
         items: arrayField(snapshot, 'complexListItems'),
@@ -337,6 +613,44 @@ function arrayField(
     throw new PublicHousingContractError(`$.${field}`)
   }
   return value
+}
+
+function optionalRegionCodeRecord(
+  record: Record<string, unknown>,
+  field: string,
+): Readonly<Record<string, string>> {
+  if (!Object.hasOwn(record, field)) {
+    return {}
+  }
+
+  const source = recordAt(record[field], `$.${field}`)
+  return Object.fromEntries(Object.entries(source).map(([key, value]) => {
+    if (!isRegionCode(value)) {
+      throw new PublicHousingContractError(`$.${field}.${key}`)
+    }
+    return [key, value]
+  }))
+}
+
+function optionalRegionCodeArrayRecord(
+  record: Record<string, unknown>,
+  field: string,
+): Readonly<Record<string, readonly string[]>> {
+  if (!Object.hasOwn(record, field)) {
+    return {}
+  }
+
+  const source = recordAt(record[field], `$.${field}`)
+  return Object.fromEntries(Object.entries(source).map(([key, value]) => {
+    if (!Array.isArray(value) || !value.every(isRegionCode)) {
+      throw new PublicHousingContractError(`$.${field}.${key}`)
+    }
+    return [key, value]
+  }))
+}
+
+function isRegionCode(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{5}$/.test(value)
 }
 
 function requestSignal(
