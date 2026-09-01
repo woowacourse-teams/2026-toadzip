@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
@@ -13,6 +14,37 @@ import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 
 class HousingTypeTest {
+
+    @Test
+    void LH_주택형_세대수만_보강하고_같은_값은_변경하지_않는다() {
+        HousingType housingType = HousingType.createFromMyHome(
+                createHousingComplex(),
+                "source-housing-type-id",
+                "46A",
+                new BigDecimal("46.8000"),
+                null
+        );
+
+        assertTrue(housingType.enrichHouseholdCountFromLh(125));
+        assertEquals(125, housingType.getTotalHouseholdCount());
+        assertFalse(housingType.enrichHouseholdCountFromLh(125));
+    }
+
+    @Test
+    void LH_주택형_세대수는_음수로_보강할_수_없다() {
+        HousingType housingType = HousingType.createFromMyHome(
+                createHousingComplex(),
+                "source-housing-type-id",
+                "46A",
+                new BigDecimal("46.8000"),
+                null
+        );
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> housingType.enrichHouseholdCountFromLh(-1)
+        );
+    }
 
     @Test
     void 마이홈에_없는_주택형_정보는_미확정으로_생성한다() {
