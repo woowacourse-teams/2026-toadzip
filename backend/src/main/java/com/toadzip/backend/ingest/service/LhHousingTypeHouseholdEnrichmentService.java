@@ -54,7 +54,9 @@ public class LhHousingTypeHouseholdEnrichmentService {
             }
             matchedSources.add(matchedSource.get());
         }
-        return report.plus(writeUniqueMatches(matchedSources));
+        report = report.plus(writeUniqueMatches(matchedSources));
+        logCompleted(report);
+        return report;
     }
 
     private Optional<MatchedSource> match(
@@ -66,8 +68,8 @@ public class LhHousingTypeHouseholdEnrichmentService {
             List<HousingComplex> matches = matcher.findMatches(complexes, source);
             if (matches.size() != 1) {
                 log.warn(
-                        "LH 주택형 세대수 보강 단지를 확정하지 못했습니다: "
-                                + "areaName={}, complexName={}, candidateCount={}",
+                        "event=lh_household.match.unresolved result=skipped source=lh_catalog "
+                                + "area={} sourceName={} candidates={}",
                         source.areaName(),
                         source.complexName(),
                         matches.size()
@@ -79,7 +81,8 @@ public class LhHousingTypeHouseholdEnrichmentService {
         catch (IllegalArgumentException exception) {
             LhCatalogSource first = sources.getFirst();
             log.warn(
-                    "LH 주택형 세대수 원천을 해석하지 못했습니다: sourceOrder={}, detail={}",
+                    "event=lh_household.map.failed result=skipped source=lh_catalog "
+                            + "sourceOrder={} detail={}",
                     first.getSourceOrder(),
                     exception.getMessage()
             );
@@ -118,11 +121,22 @@ public class LhHousingTypeHouseholdEnrichmentService {
 
     private void logDuplicateMatch(MatchedSource matchedSource, int sourceGroupCount) {
         log.warn(
-                "여러 LH 주택형 세대수 원천 그룹이 같은 단지에 매칭되어 보강하지 않았습니다: "
-                        + "sourceComplexName={}, targetComplexIdentifier={}, sourceGroupCount={}",
+                "event=lh_household.match.duplicate result=skipped source=lh_catalog "
+                        + "sourceName={} targetId={} groups={}",
                 matchedSource.source().complexName(),
                 matchedSource.complex().getSourceComplexIdentifier(),
                 sourceGroupCount
+        );
+    }
+
+    private void logCompleted(LhHousingTypeHouseholdEnrichmentReport report) {
+        log.info(
+                "event=lh_household.enrich.completed result=success source=lh_catalog "
+                        + "sources={} matched={} failed={} updatedTypes={}",
+                report.sourceComplexCount(),
+                report.matchedComplexCount(),
+                report.failedSourceComplexCount(),
+                report.updatedHousingTypeCount()
         );
     }
 

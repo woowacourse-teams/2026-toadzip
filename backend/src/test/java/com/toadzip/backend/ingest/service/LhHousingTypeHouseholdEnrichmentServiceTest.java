@@ -146,6 +146,37 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
     }
 
     @Test
+    void 수기_등록한_주택형만_일치하면_LH_값으로_덮어쓰지_않는다() {
+        HousingComplex complex = saveComplex("동삼2", "NATIONAL_RENTAL", 120);
+        HousingType manualType = saveManualType(complex, "46A", "46.8000", 20);
+        saveCatalog(0, "국민임대", "46.8", 120, 70);
+
+        var report = service.enrichAll();
+
+        assertThat(report.updatedHousingTypeCount()).isZero();
+        assertThat(report.unmatchedHousingTypeCount()).isOne();
+        assertThat(housingTypeRepository.findById(manualType.getId()).orElseThrow().getTotalHouseholdCount())
+                .isEqualTo(20);
+    }
+
+    @Test
+    void 같은_면적의_수기_주택형이_있어도_마이홈_주택형은_보강한다() {
+        HousingComplex complex = saveComplex("동삼2", "NATIONAL_RENTAL", 120);
+        HousingType myHomeType = saveType(complex, "46A", "46.8000");
+        HousingType manualType = saveManualType(complex, "46A 수기", "46.8000", 20);
+        saveCatalog(0, "국민임대", "46.8", 120, 70);
+
+        var report = service.enrichAll();
+
+        assertThat(report.updatedHousingTypeCount()).isOne();
+        assertThat(report.unmatchedHousingTypeCount()).isZero();
+        assertThat(housingTypeRepository.findById(myHomeType.getId()).orElseThrow().getTotalHouseholdCount())
+                .isEqualTo(70);
+        assertThat(housingTypeRepository.findById(manualType.getId()).orElseThrow().getTotalHouseholdCount())
+                .isEqualTo(20);
+    }
+
+    @Test
     void 같은_LH_값으로_다시_보강하면_변경하지_않는다() {
         HousingComplex complex = saveComplex("동삼2", "NATIONAL_RENTAL", 120);
         saveType(complex, "46A", "46.8000");
@@ -181,6 +212,24 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
                 complex.getSourceComplexIdentifier() + ":" + name,
                 name,
                 new BigDecimal(area),
+                null
+        ));
+    }
+
+    private HousingType saveManualType(
+            HousingComplex complex,
+            String name,
+            String area,
+            int totalHouseholdCount
+    ) {
+        return housingTypeRepository.save(HousingType.create(
+                complex,
+                name,
+                new BigDecimal(area),
+                null,
+                totalHouseholdCount,
+                "https://example.com/floor-plan.png",
+                false,
                 null
         ));
     }

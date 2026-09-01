@@ -20,7 +20,9 @@ public class LhHousingTypeHouseholdWriter {
             HousingComplex complex,
             List<LhHousingTypeHousehold> sources
     ) {
-        List<HousingType> housingTypes = housingTypeRepository.findAllByHousingComplex(complex);
+        List<HousingType> housingTypes = housingTypeRepository.findAllByHousingComplex(complex).stream()
+                .filter(type -> type.getSourceHousingTypeIdentifier() != null)
+                .toList();
         int updatedCount = 0;
         int unchangedCount = 0;
         int unmatchedCount = 0;
