@@ -431,15 +431,18 @@ export default function NaverMap({
       zoom: cameraZoom,
     }
     const previousTarget = appliedCameraTargetRef.current
-
-    if (cameraCoordinatesChanged(previousTarget, nextTarget)) {
-      mapInstance.panTo(new maps.LatLng(cameraLatitude, cameraLongitude))
-    }
-
-    if (
-      cameraZoom !== undefined
+    const coordinatesChanged = cameraCoordinatesChanged(previousTarget, nextTarget)
+    const zoomChanged = cameraZoom !== undefined
       && cameraZoomChanged(previousTarget?.zoom, cameraZoom)
-    ) {
+
+    if (coordinatesChanged && zoomChanged) {
+      mapInstance.morph(
+        new maps.LatLng(cameraLatitude, cameraLongitude),
+        cameraZoom,
+      )
+    } else if (coordinatesChanged) {
+      mapInstance.panTo(new maps.LatLng(cameraLatitude, cameraLongitude))
+    } else if (zoomChanged) {
       mapInstance.setZoom(cameraZoom)
     }
 
