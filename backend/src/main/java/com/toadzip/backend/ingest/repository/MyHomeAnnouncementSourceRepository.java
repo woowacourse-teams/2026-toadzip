@@ -12,6 +12,14 @@ public interface MyHomeAnnouncementSourceRepository extends JpaRepository<MyHome
 
     List<MyHomeAnnouncementSource> findAllBySourceKeyIn(Collection<String> sourceKeys);
 
+    @Query("""
+            select source
+            from MyHomeAnnouncementSource source
+            where source.active = true
+              and (source.lastSeenRunId is null or source.lastSeenRunId <> :runId)
+            """)
+    List<MyHomeAnnouncementSource> findAllActiveNotSeenInRun(String runId);
+
     List<MyHomeAnnouncementSource> findByIdGreaterThanOrderByIdAsc(Long id, Pageable pageable);
 
     @Query("select coalesce(max(source.sourceOrder), -1) from MyHomeAnnouncementSource source")

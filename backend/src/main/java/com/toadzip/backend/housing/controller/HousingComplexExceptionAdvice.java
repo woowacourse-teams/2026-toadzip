@@ -1,7 +1,6 @@
 package com.toadzip.backend.housing.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
-import java.util.UUID;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -10,6 +9,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.toadzip.backend.global.exception.ErrorResponse;
+import com.toadzip.backend.global.exception.RequestTraceIdResolver;
 import com.toadzip.backend.housing.exception.AdminHousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.HousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.InvalidComplexCursorException;
@@ -92,10 +92,6 @@ public class HousingComplexExceptionAdvice {
     }
 
     private String traceIdOf(HttpServletRequest request) {
-        String requestId = request.getRequestId();
-        if (requestId == null || requestId.isBlank()) {
-            return UUID.randomUUID().toString();
-        }
-        return requestId;
+        return RequestTraceIdResolver.resolve(request);
     }
 }

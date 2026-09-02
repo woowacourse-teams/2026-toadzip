@@ -79,11 +79,17 @@ class HousingComplexListQueryTest {
         repository = mock(ComplexSummaryQueryRepository.class);
         regionCodeResolver = mock(RegionCodeResolver.class);
         when(regionCodeResolver.resolve("11", "11140")).thenReturn(Optional.of("서울특별시 중구"));
-        when(regionCodeResolver.isRegisteredProvinceCode("11")).thenReturn(true);
-        when(regionCodeResolver.equivalentCodes("12210"))
+        when(regionCodeResolver.filterCodes("11"))
+                .thenReturn(Optional.of(Set.of("11110", "11140")));
+        when(regionCodeResolver.filterCodes("12"))
+                .thenReturn(Optional.of(Set.of("12110", "12210", "29110", "46110")));
+        when(regionCodeResolver.filterCodes("12210"))
                 .thenReturn(Optional.of(Set.of("12210", "29110")));
-        when(regionCodeResolver.equivalentCodes("29110"))
-                .thenReturn(Optional.of(Set.of("12210", "29110")));
+        when(regionCodeResolver.equivalentCodes("41110"))
+                .thenReturn(Optional.of(Set.of("41110")));
+        when(regionCodeResolver.filterCodes("41110"))
+                .thenReturn(Optional.of(Set.of("41110", "41111", "41113")));
+        when(regionCodeResolver.filterCodes("99")).thenReturn(Optional.empty());
         HousingComplexSummaryMapper summaryMapper = new HousingComplexSummaryMapper(
                 new HousingComplexCodeMapper(),
                 regionCodeResolver
@@ -114,8 +120,8 @@ class HousingComplexListQueryTest {
         assertAll(
                 () -> assertEquals(BOUNDS, condition.bounds()),
                 () -> assertEquals("행복 단지", condition.keyword()),
-                () -> assertEquals("11", condition.provinceCode()),
-                () -> assertEquals(Set.of(), condition.cityCountyDistrictCodes()),
+                () -> assertNull(condition.provinceCode()),
+                () -> assertEquals(Set.of("11110", "11140"), condition.cityCountyDistrictCodes()),
                 () -> assertEquals(Set.of(RentalType.HAPPY_HOUSING, RentalType.NATIONAL_RENTAL),
                         condition.rentalTypes()),
                 () -> assertEquals(Set.of(ApplicationStatus.APPLYING, ApplicationStatus.CLOSED),
@@ -139,6 +145,29 @@ class HousingComplexListQueryTest {
     }
 
     @Test
+    void 통합_시도_지역은_현행과_과거_시군구_코드_집합으로_정규화한다() {
+        when(repository.findPage(any(), any(), any(), eq(21))).thenReturn(List.of());
+
+        service.getComplexes(fullSearchRequest("12"), null, null, 20);
+
+        ArgumentCaptor<HousingComplexSearchCondition> conditionCaptor =
+                ArgumentCaptor.forClass(HousingComplexSearchCondition.class);
+        verify(repository).findPage(
+                conditionCaptor.capture(),
+                eq(ComplexSort.LATEST_ANNOUNCEMENT),
+                isNull(),
+                eq(21)
+        );
+        assertAll(
+                () -> assertNull(conditionCaptor.getValue().provinceCode()),
+                () -> assertEquals(
+                        Set.of("12110", "12210", "29110", "46110"),
+                        conditionCaptor.getValue().cityCountyDistrictCodes()
+                )
+        );
+    }
+
+    @Test
     void 다섯자리_지역은_동등한_시군구_코드_집합으로_정규화한다() {
         when(repository.findPage(any(), any(), any(), eq(21))).thenReturn(List.of());
 
@@ -155,6 +184,27 @@ class HousingComplexListQueryTest {
         assertAll(
                 () -> assertNull(conditionCaptor.getValue().provinceCode()),
                 () -> assertEquals(Set.of("12210", "29110"),
+                        conditionCaptor.getValue().cityCountyDistrictCodes())
+        );
+    }
+
+    @Test
+    void 상위_시_지역은_하위_구를_포함하고_다른_시는_제외한다() {
+        when(repository.findPage(any(), any(), any(), eq(21))).thenReturn(List.of());
+
+        service.getComplexes(fullSearchRequest("41110"), null, null, 20);
+
+        ArgumentCaptor<HousingComplexSearchCondition> conditionCaptor =
+                ArgumentCaptor.forClass(HousingComplexSearchCondition.class);
+        verify(repository).findPage(
+                conditionCaptor.capture(),
+                eq(ComplexSort.LATEST_ANNOUNCEMENT),
+                isNull(),
+                eq(21)
+        );
+        assertAll(
+                () -> assertNull(conditionCaptor.getValue().provinceCode()),
+                () -> assertEquals(Set.of("41110", "41111", "41113"),
                         conditionCaptor.getValue().cityCountyDistrictCodes())
         );
     }

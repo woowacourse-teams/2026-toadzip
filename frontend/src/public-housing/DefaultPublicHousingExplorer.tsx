@@ -5,12 +5,17 @@ import {
   localPublicHousingMockEnabled,
 } from './api/defaultPublicHousingRepository.ts'
 import type { PublicHousingRepository } from './api/publicHousingRepository.ts'
+import type { PublicHousingRegionRepository } from './api/publicHousingRegionRepository.ts'
 import { decodePublicHousingSnapshot } from './api/snapshotPublicHousingRepository.ts'
+import { createSnapshotPublicHousingRegionRepository } from './api/snapshotPublicHousingRegionRepository.ts'
 import { PublicHousingExplorer } from './PublicHousingExplorer.tsx'
 
 type LocalSnapshotState =
   | { readonly status: 'loading' }
-  | { readonly status: 'ready' }
+  | {
+    readonly regionRepository: PublicHousingRegionRepository
+    readonly status: 'ready'
+  }
   | { readonly status: 'error' }
 
 interface LocalPublicHousingExplorerProps {
@@ -39,9 +44,13 @@ export function LocalPublicHousingExplorer({
     setState({ status: 'loading' })
     loadSnapshot()
       .then(decodePublicHousingSnapshot)
-      .then(() => {
+      .then((snapshot) => {
         if (active) {
-          setState({ status: 'ready' })
+          setState({
+            regionRepository:
+              createSnapshotPublicHousingRegionRepository(snapshot),
+            status: 'ready',
+          })
         }
       })
       .catch(() => {
@@ -58,6 +67,7 @@ export function LocalPublicHousingExplorer({
     return (
       <PublicHousingExplorer
         localMockEnabled
+        regionRepository={state.regionRepository}
         repository={repository}
       />
     )

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockHttpServletRequest;
 
+import com.toadzip.backend.global.exception.RequestTraceIdResolver;
 import com.toadzip.backend.housing.exception.HousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.InvalidComplexCursorException;
 import com.toadzip.backend.housing.exception.InvalidComplexRequestException;
@@ -51,6 +52,17 @@ class HousingComplexExceptionAdviceTest {
 
         assertError(response, BAD_REQUEST, "INVALID_REGION_CODE");
         assertThat(response.getBody().message()).isEqualTo("지역 코드를 확인해 주세요.");
+    }
+
+    @Test
+    void 공통_요청_추적_식별자를_오류_응답에_사용한다() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        String traceId = RequestTraceIdResolver.resolve(request);
+
+        var response = advice.handleInvalidMapBounds(new InvalidMapBoundsException(), request);
+
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().traceId()).isEqualTo(traceId);
     }
 
     private void assertError(

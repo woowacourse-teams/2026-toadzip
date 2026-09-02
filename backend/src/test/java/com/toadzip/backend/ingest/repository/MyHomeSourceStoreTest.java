@@ -72,9 +72,9 @@ class MyHomeSourceStoreTest {
 
     @Test
     void 같은_마이홈_공고_식별자는_새_행을_추가하지_않고_컬럼을_갱신한다() {
-        store.storeAnnouncements(List.of(announcement("공고명")));
+        store.storeAnnouncements("run-1", List.of(announcement("공고명")));
 
-        store.storeAnnouncements(List.of(announcement("변경 공고명")));
+        store.storeAnnouncements("run-2", List.of(announcement("변경 공고명")));
 
         assertThat(announcementRepository.findAll()).singleElement().satisfies(source -> {
             assertThat(source.getPblancId()).isEqualTo("21026");
@@ -85,7 +85,7 @@ class MyHomeSourceStoreTest {
 
     @Test
     void 새_마이홈_공고의_원천_순서는_기존_행_다음부터_이어진다() {
-        store.storeAnnouncements(List.of(announcement("첫 공고")));
+        store.storeAnnouncements("run-1", List.of(announcement("첫 공고")));
 
         MyHomeAnnouncementSourceItem second = new MyHomeAnnouncementSourceItem(
                 "21027", 2, "일반공고", "두 번째 공고", "부산도시공사", "아파트", "영구임대",
@@ -94,7 +94,7 @@ class MyHomeSourceStoreTest {
                 "부산광역시 영도구", null, null, "2620012100105100000", "중앙난방", null,
                 300, 2_160_000L, 432_000L, 1_728_000L, 42_800L
         );
-        store.storeAnnouncements(List.of(second));
+        store.storeAnnouncements("run-2", List.of(second));
 
         assertThat(announcementRepository.findAll())
                 .extracting(source -> source.getSourceOrder())
@@ -103,7 +103,7 @@ class MyHomeSourceStoreTest {
 
     @Test
     void 마이홈_공고를_ID_키셋_방식으로_일정한_크기만큼_조회한다() {
-        store.storeAnnouncements(List.of(
+        store.storeAnnouncements("run-1", List.of(
                 announcement("21026", 1, "첫 공고"),
                 announcement("21027", 2, "둘째 공고"),
                 announcement("21028", 3, "셋째 공고")
@@ -124,6 +124,50 @@ class MyHomeSourceStoreTest {
                 .containsExactly("21028");
     }
 
+    @Test
+    void 마이홈_공고는_한_번_미조회되면_활성_상태를_유지한다() {
+        store.storeAnnouncements("run-1", List.of(announcement("공고명")));
+
+        store.completeAnnouncementCollection("run-2");
+
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(source -> {
+            assertThat(source.isActive()).isTrue();
+            assertThat(source.getConsecutiveMissCount()).isOne();
+            assertThat(source.getLastSeenRunId()).isEqualTo("run-1");
+            assertThat(source.getCollectedAt()).isEqualTo(COLLECTED_AT);
+        });
+    }
+
+    @Test
+    void 마이홈_공고는_두_번_연속_미조회되면_비활성화한다() {
+        store.storeAnnouncements("run-1", List.of(announcement("공고명")));
+        store.completeAnnouncementCollection("run-2");
+
+        store.completeAnnouncementCollection("run-3");
+
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(source -> {
+            assertThat(source.isActive()).isFalse();
+            assertThat(source.getConsecutiveMissCount()).isEqualTo(2);
+        });
+    }
+
+    @Test
+    void 비활성화된_마이홈_공고가_다시_조회되면_활성화하고_최신_원천값을_반영한다() {
+        store.storeAnnouncements("run-1", List.of(announcement("공고명")));
+        store.completeAnnouncementCollection("run-2");
+        store.completeAnnouncementCollection("run-3");
+
+        store.storeAnnouncements("run-4", List.of(announcement("취소공고", "취소된 공고")));
+
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(source -> {
+            assertThat(source.isActive()).isTrue();
+            assertThat(source.getConsecutiveMissCount()).isZero();
+            assertThat(source.getLastSeenRunId()).isEqualTo("run-4");
+            assertThat(source.getSttusNm()).isEqualTo("취소공고");
+            assertThat(source.getPblancNm()).isEqualTo("취소된 공고");
+        });
+    }
+
     private MyHomeComplexSourceItem complex(Long hsmpSn, String styleName, BigDecimal exclusiveArea) {
         return new MyHomeComplexSourceItem(
                 hsmpSn, "LH서울", "11", "서울특별시", "140", "중구", "서울특별시 중구",
@@ -138,8 +182,16 @@ class MyHomeSourceStoreTest {
     }
 
     private MyHomeAnnouncementSourceItem announcement(String pblancId, int houseSn, String name) {
+        return announcement(pblancId, houseSn, "일반공고", name);
+    }
+
+    private MyHomeAnnouncementSourceItem announcement(String status, String name) {
+        return announcement("21026", 1, status, name);
+    }
+
+    private MyHomeAnnouncementSourceItem announcement(String pblancId, int houseSn, String status, String name) {
         return new MyHomeAnnouncementSourceItem(
-                pblancId, houseSn, "일반공고", name, "부산도시공사", "아파트", "영구임대",
+                pblancId, houseSn, status, name, "부산도시공사", "아파트", "영구임대",
                 null, "20260813", "20261106", "20260824", "20260831", null,
                 "https://example.com", null, null, "동삼2", "부산광역시", "영도구",
                 "부산광역시 영도구", null, null, "2620012100105100000", "중앙난방", null,

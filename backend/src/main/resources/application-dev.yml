@@ -1,3 +1,8 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: update
+
 logging:
   level:
     root: INFO

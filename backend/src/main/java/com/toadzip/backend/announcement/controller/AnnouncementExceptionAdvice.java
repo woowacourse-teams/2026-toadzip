@@ -5,8 +5,8 @@ import com.toadzip.backend.announcement.exception.InvalidAnnouncementCursorExcep
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestException;
 import com.toadzip.backend.announcement.exception.InvalidRegionCodeException;
 import com.toadzip.backend.global.exception.ErrorResponse;
+import com.toadzip.backend.global.exception.RequestTraceIdResolver;
 import jakarta.servlet.http.HttpServletRequest;
-import java.util.UUID;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -62,10 +62,6 @@ public class AnnouncementExceptionAdvice {
     }
 
     private String traceIdOf(HttpServletRequest request) {
-        String requestId = request.getRequestId();
-        if (requestId == null || requestId.isBlank()) {
-            return UUID.randomUUID().toString();
-        }
-        return requestId;
+        return RequestTraceIdResolver.resolve(request);
     }
 }

@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { PublicHousingRepository } from '../api/publicHousingRepository.ts'
+import type {
+  AnnouncementSearchFilters,
+  PublicHousingRepository,
+} from '../api/publicHousingRepository.ts'
+import {
+  hasSearchFilters,
+  searchFiltersSignature,
+} from '../filters/searchFilterLocation.ts'
 import type { AnnouncementListItem } from '../model/publicHousing.ts'
 
 const PAGE_SIZE = 20
@@ -30,31 +37,65 @@ const INITIAL_STATE: AnnouncementResultsState = {
 export function useAnnouncementResults(
   repository: PublicHousingRepository,
   enabled: boolean,
+  filters: AnnouncementSearchFilters = {},
+  filtersKey = searchFiltersSignature(filters),
 ) {
   const [state, setState] = useState<AnnouncementResultsState>(INITIAL_STATE)
-  const initialRequestStartedRef = useRef(false)
+  const requestedFiltersKeyRef = useRef<string | null>(null)
   const requestRevisionRef = useRef(0)
   const firstPageAbortRef = useRef<AbortController | null>(null)
   const paginationAbortRef = useRef<AbortController | null>(null)
 
+  const cancelInFlightRequests = useCallback((restorePaginationStatus = false) => {
+    const firstPageController = firstPageAbortRef.current
+    const paginationController = paginationAbortRef.current
+    if (firstPageController === null && paginationController === null) {
+      return false
+    }
+
+    requestRevisionRef.current += 1
+    firstPageController?.abort()
+    paginationController?.abort()
+    firstPageAbortRef.current = null
+    paginationAbortRef.current = null
+    if (restorePaginationStatus && paginationController !== null) {
+      setState((current) => current.status === 'loading-more'
+        ? { ...current, status: 'ready' }
+        : current)
+    }
+    return firstPageController !== null
+  }, [])
+
   const loadFirstPage = useCallback(() => {
-    firstPageAbortRef.current?.abort()
-    paginationAbortRef.current?.abort()
+    cancelInFlightRequests()
     const controller = new AbortController()
     const revision = requestRevisionRef.current + 1
     requestRevisionRef.current = revision
     firstPageAbortRef.current = controller
+    requestedFiltersKeyRef.current = filtersKey
     setState((current) => ({
       ...current,
       errorMessage: null,
       hasNext: false,
+      items: [],
       nextCursor: null,
       status: 'loading',
     }))
 
-    repository
-      .findAnnouncementPage(null, PAGE_SIZE, controller.signal)
+    const request = hasSearchFilters(filters)
+      ? repository.findAnnouncementPage(
+          null,
+          PAGE_SIZE,
+          controller.signal,
+          filters,
+        )
+      : repository.findAnnouncementPage(null, PAGE_SIZE, controller.signal)
+
+    request
       .then((page) => {
+        if (firstPageAbortRef.current === controller) {
+          firstPageAbortRef.current = null
+        }
         if (requestRevisionRef.current !== revision) {
           return
         }
@@ -67,6 +108,9 @@ export function useAnnouncementResults(
         })
       })
       .catch((error: unknown) => {
+        if (firstPageAbortRef.current === controller) {
+          firstPageAbortRef.current = null
+        }
         if (isAbortError(error) || requestRevisionRef.current !== revision) {
           return
         }
@@ -76,13 +120,14 @@ export function useAnnouncementResults(
           status: 'error',
         }))
       })
-  }, [repository])
+  }, [cancelInFlightRequests, filters, filtersKey, repository])
 
   const loadMore = useCallback(() => {
     if (
-      !state.hasNext ||
-      !state.nextCursor ||
-      state.status === 'loading-more'
+      !enabled
+      || !state.hasNext
+      || !state.nextCursor
+      || state.status === 'loading-more'
     ) {
       return
     }
@@ -97,9 +142,24 @@ export function useAnnouncementResults(
       status: 'loading-more',
     }))
 
-    repository
-      .findAnnouncementPage(state.nextCursor, PAGE_SIZE, controller.signal)
+    const request = hasSearchFilters(filters)
+      ? repository.findAnnouncementPage(
+          state.nextCursor,
+          PAGE_SIZE,
+          controller.signal,
+          filters,
+        )
+      : repository.findAnnouncementPage(
+          state.nextCursor,
+          PAGE_SIZE,
+          controller.signal,
+        )
+
+    request
       .then((page) => {
+        if (paginationAbortRef.current === controller) {
+          paginationAbortRef.current = null
+        }
         if (requestRevisionRef.current !== revision) {
           return
         }
@@ -112,6 +172,9 @@ export function useAnnouncementResults(
         }))
       })
       .catch((error: unknown) => {
+        if (paginationAbortRef.current === controller) {
+          paginationAbortRef.current = null
+        }
         if (isAbortError(error) || requestRevisionRef.current !== revision) {
           return
         }
@@ -121,22 +184,27 @@ export function useAnnouncementResults(
           status: 'error',
         }))
       })
-  }, [repository, state])
+  }, [enabled, filters, repository, state])
 
   useEffect(() => {
-    if (!enabled || initialRequestStartedRef.current) {
+    if (!enabled) {
+      const firstPageWasInFlight = cancelInFlightRequests(true)
+      if (firstPageWasInFlight) {
+        requestedFiltersKeyRef.current = null
+      }
       return
     }
-    initialRequestStartedRef.current = true
+    if (requestedFiltersKeyRef.current === filtersKey) {
+      return
+    }
     loadFirstPage()
-  }, [enabled, loadFirstPage])
+  }, [cancelInFlightRequests, enabled, filtersKey, loadFirstPage])
 
   useEffect(() => {
     return () => {
-      firstPageAbortRef.current?.abort()
-      paginationAbortRef.current?.abort()
+      cancelInFlightRequests()
     }
-  }, [])
+  }, [cancelInFlightRequests])
 
   const retry = state.items.length > 0 && state.nextCursor
     ? loadMore
