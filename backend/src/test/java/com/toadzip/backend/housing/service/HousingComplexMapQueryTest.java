@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
@@ -17,6 +18,7 @@ import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.dto.request.HousingComplexSearchRequest;
 import com.toadzip.backend.housing.dto.response.HousingComplexMapItemResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexMapResponse;
+import com.toadzip.backend.housing.exception.InvalidRegionCodeException;
 import com.toadzip.backend.housing.repository.ComplexSummaryQueryRepository;
 import com.toadzip.backend.housing.repository.ComplexSummaryRow;
 import com.toadzip.backend.housing.repository.HousingComplexSearchCondition;
@@ -61,8 +63,15 @@ class HousingComplexMapQueryTest {
         repository = mock(ComplexSummaryQueryRepository.class);
         regionCodeResolver = mock(RegionCodeResolver.class);
         when(regionCodeResolver.resolve("11", "11140")).thenReturn(Optional.of("서울특별시 중구"));
-        when(regionCodeResolver.equivalentCodes("12210"))
+        when(regionCodeResolver.filterCodes("12"))
+                .thenReturn(Optional.of(Set.of("12110", "12210", "29110", "46110")));
+        when(regionCodeResolver.filterCodes("12210"))
                 .thenReturn(Optional.of(Set.of("12210", "29110")));
+        when(regionCodeResolver.equivalentCodes("41110"))
+                .thenReturn(Optional.of(Set.of("41110")));
+        when(regionCodeResolver.filterCodes("41110"))
+                .thenReturn(Optional.of(Set.of("41110", "41111", "41113")));
+        when(regionCodeResolver.filterCodes("99")).thenReturn(Optional.empty());
         HousingComplexCodeMapper codeMapper = new HousingComplexCodeMapper();
         HousingComplexSummaryMapper summaryMapper = new HousingComplexSummaryMapper(codeMapper);
         service = new HousingComplexQueryService(repository, summaryMapper, regionCodeResolver, CLOCK);
@@ -72,7 +81,7 @@ class HousingComplexMapQueryTest {
     void 목록과_같은_정규화로_지도_검색조건을_조립해_repository에_전달한다() {
         when(repository.findAll(any(HousingComplexSearchCondition.class))).thenReturn(List.of());
 
-        service.getComplexesForMap(fullSearchRequest());
+        service.getComplexesForMap(fullSearchRequest("12210"));
 
         ArgumentCaptor<HousingComplexSearchCondition> conditionCaptor =
                 ArgumentCaptor.forClass(HousingComplexSearchCondition.class);
@@ -100,6 +109,51 @@ class HousingComplexMapQueryTest {
                 () -> assertEquals(2026, condition.builtYearTo()),
                 () -> assertEquals(true, condition.hasElevator()),
                 () -> assertEquals(LocalDate.of(2026, 8, 27), condition.today())
+        );
+    }
+
+    @Test
+    void 통합_시도_지역은_현행과_과거_시군구_코드_집합으로_지도_검색조건에_전달한다() {
+        when(repository.findAll(any(HousingComplexSearchCondition.class))).thenReturn(List.of());
+
+        service.getComplexesForMap(fullSearchRequest("12"));
+
+        ArgumentCaptor<HousingComplexSearchCondition> conditionCaptor =
+                ArgumentCaptor.forClass(HousingComplexSearchCondition.class);
+        verify(repository).findAll(conditionCaptor.capture());
+        HousingComplexSearchCondition condition = conditionCaptor.getValue();
+        assertAll(
+                () -> assertNull(condition.provinceCode()),
+                () -> assertEquals(
+                        Set.of("12110", "12210", "29110", "46110"),
+                        condition.cityCountyDistrictCodes()
+                )
+        );
+    }
+
+    @Test
+    void 등록되지_않은_시도_지역은_repository_호출_전에_거부한다() {
+        assertThrows(
+                InvalidRegionCodeException.class,
+                () -> service.getComplexesForMap(fullSearchRequest("99"))
+        );
+
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void 상위_시_지역은_하위_구를_포함하고_다른_시는_제외해_지도_검색조건으로_전달한다() {
+        when(repository.findAll(any(HousingComplexSearchCondition.class))).thenReturn(List.of());
+
+        service.getComplexesForMap(fullSearchRequest("41110"));
+
+        ArgumentCaptor<HousingComplexSearchCondition> conditionCaptor =
+                ArgumentCaptor.forClass(HousingComplexSearchCondition.class);
+        verify(repository).findAll(conditionCaptor.capture());
+        HousingComplexSearchCondition condition = conditionCaptor.getValue();
+        assertAll(
+                () -> assertNull(condition.provinceCode()),
+                () -> assertEquals(Set.of("41110", "41111", "41113"), condition.cityCountyDistrictCodes())
         );
     }
 
@@ -289,10 +343,10 @@ class HousingComplexMapQueryTest {
         assertThrows(ArithmeticException.class, () -> service.getComplexesForMap(baseSearchRequest()));
     }
 
-    private HousingComplexSearchRequest fullSearchRequest() {
+    private HousingComplexSearchRequest fullSearchRequest(String regionCode) {
         return new HousingComplexSearchRequest(
                 " 행복 단지 ",
-                "12210",
+                regionCode,
                 List.of(RentalType.HAPPY_HOUSING, RentalType.NATIONAL_RENTAL),
                 List.of(ApplicationStatus.APPLYING, ApplicationStatus.CLOSED),
                 List.of(AgencyCode.LH, AgencyCode.SH),

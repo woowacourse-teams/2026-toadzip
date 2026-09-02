@@ -19,6 +19,30 @@ const BOUNDS: MapBounds = {
   northEastLng: 127.1,
 }
 
+const COMPLEX_FILTERS = {
+  agencyCodes: ['LH'],
+  applicationStatuses: ['APPLYING'],
+  builtYearFrom: 2015,
+  builtYearTo: 2026,
+  maxDeposit: 30_000_000,
+  maxExclusiveArea: 60,
+  maxMonthlyRent: 500_000,
+  minDeposit: 1_000_000,
+  minExclusiveArea: 20,
+  minMonthlyRent: 100_000,
+  recruitmentTypes: ['NEW', 'WAITLIST'],
+  regionCode: '11',
+  rentalTypes: ['NATIONAL_RENTAL', 'HAPPY_HOUSING'],
+} as const
+
+const ANNOUNCEMENT_FILTERS = {
+  agencyCodes: ['SH'],
+  applicationStatuses: ['BEFORE_APPLICATION'],
+  recruitmentTypes: ['WAITLIST'],
+  regionCode: '11110',
+  rentalTypes: ['NATIONAL_RENTAL'],
+} as const
+
 const LIST_ITEM = {
   complexId: 17,
   thumbnailImageUrl: null,
@@ -222,6 +246,30 @@ afterEach(() => {
 })
 
 describe('공공주택 HTTP repository', () => {
+  it('공고 목록은 공고 전용 필터를 반복 query key로 직렬화한다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ data: { items: [], nextCursor: null, hasNext: false } }),
+    )
+    const repository = createRepository(fetchMock, 'https://api.example.test')
+
+    await repository.findAnnouncementPage(
+      null,
+      20,
+      new AbortController().signal,
+      ANNOUNCEMENT_FILTERS,
+    )
+
+    const [requestUrl] = fetchMock.mock.calls[0] ?? []
+    const search = new URL(String(requestUrl)).searchParams
+    expect(search.get('regionCode')).toBe('11110')
+    expect(search.getAll('rentalTypes')).toEqual(['NATIONAL_RENTAL'])
+    expect(search.getAll('applicationStatuses')).toEqual([
+      'BEFORE_APPLICATION',
+    ])
+    expect(search.getAll('agencyCodes')).toEqual(['SH'])
+    expect(search.getAll('recruitmentTypes')).toEqual(['WAITLIST'])
+  })
+
   it('공고 목록은 지도 bounds 없이 opaque cursor, size와 AbortSignal로 조회한다', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({
@@ -585,6 +633,45 @@ describe('공공주택 HTTP repository', () => {
       },
     })
     expect(page.raw.items[0]).toEqual(LIST_ITEM)
+  })
+
+  it('단지 목록과 지도는 같은 단지 필터를 query로 직렬화한다', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ data: { items: [], nextCursor: null, hasNext: false } }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ data: { items: [] } }))
+    const repository = createRepository(fetchMock, 'https://api.example.test')
+    const signal = new AbortController().signal
+
+    await repository.findComplexPage(
+      BOUNDS,
+      null,
+      20,
+      signal,
+      COMPLEX_FILTERS,
+    )
+    await repository.findMapComplexes(BOUNDS, signal, COMPLEX_FILTERS)
+
+    for (const [requestUrl] of fetchMock.mock.calls) {
+      const search = new URL(String(requestUrl)).searchParams
+      expect(search.get('regionCode')).toBe('11')
+      expect(search.getAll('rentalTypes')).toEqual([
+        'NATIONAL_RENTAL',
+        'HAPPY_HOUSING',
+      ])
+      expect(search.getAll('applicationStatuses')).toEqual(['APPLYING'])
+      expect(search.getAll('agencyCodes')).toEqual(['LH'])
+      expect(search.getAll('recruitmentTypes')).toEqual(['NEW', 'WAITLIST'])
+      expect(search.get('minDeposit')).toBe('1000000')
+      expect(search.get('maxDeposit')).toBe('30000000')
+      expect(search.get('minMonthlyRent')).toBe('100000')
+      expect(search.get('maxMonthlyRent')).toBe('500000')
+      expect(search.get('minExclusiveArea')).toBe('20')
+      expect(search.get('maxExclusiveArea')).toBe('60')
+      expect(search.get('builtYearFrom')).toBe('2015')
+      expect(search.get('builtYearTo')).toBe('2026')
+    }
   })
 
   it('지도 응답 순서를 보존하되 범위를 벗어난 개별 좌표만 제외한다', async () => {

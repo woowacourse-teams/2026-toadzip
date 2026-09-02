@@ -1,0 +1,293 @@
+.panel {
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
+}
+
+.toggle {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px;
+  border: 0;
+  background: #ffffff;
+  color: #1e2124;
+  font-weight: 750;
+  text-align: left;
+}
+
+.toggleMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--brand-dark);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  max-height: min(52vh, 520px);
+  overflow: hidden;
+  border-top: 1px solid #e7e9ec;
+}
+
+.fields {
+  min-height: 0;
+  padding: 14px 16px;
+  overflow-y: auto;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.regionFields {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.regionMessage,
+.regionError {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.regionMessage {
+  color: #58616a;
+}
+
+.regionError {
+  color: #8a240f;
+}
+
+.field,
+.choiceGroup,
+.range label {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 6px;
+  color: #3b4148;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.choiceGroup {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choiceGroup legend {
+  margin-bottom: 0;
+  padding: 0;
+  color: #1e2124;
+  font-weight: 800;
+}
+
+.choiceOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #d7dce1;
+}
+
+.choice {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.choice input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.choice span {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  padding: 7px 10px;
+  border: 1px solid #aeb5bd;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #3b4148;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.choice input:checked + span {
+  border-color: var(--brand);
+  background: #eaf2ff;
+  color: var(--brand-dark);
+}
+
+.choice input:checked + span::before {
+  content: '✓';
+  margin-right: 4px;
+  font-weight: 900;
+}
+
+.choice input:focus-visible + span {
+  outline: 3px solid rgb(37 110 244 / 24%);
+  outline-offset: 1px;
+}
+
+.field select,
+.range input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid #aeb5bd;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #1e2124;
+}
+
+.field select:focus,
+.range input:focus {
+  border-color: var(--focus);
+  outline: 3px solid rgb(37 110 244 / 18%);
+}
+
+.ranges {
+  display: grid;
+  margin-top: 16px;
+  gap: 12px;
+}
+
+.range {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #d7dce1;
+  border-radius: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.range legend {
+  padding: 0 5px;
+  color: #1e2124;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.inputWithUnit {
+  position: relative;
+  display: block;
+}
+
+.inputWithUnit input {
+  padding-right: 32px;
+}
+
+.inputWithUnit small {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  color: #58616a;
+  font-size: 12px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.error {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 10px 12px;
+  border-top: 1px solid #f2c9c1;
+  background: #fdefec;
+  color: #8a240f;
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px 16px;
+  border-top: 1px solid #e1e5e9;
+  background: #f8fafc;
+}
+
+.actions button {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 7px;
+  font-weight: 750;
+}
+
+.reset {
+  border: 1px solid #8a949e;
+  background: #ffffff;
+  color: #1e2124;
+}
+
+.apply {
+  border: 1px solid var(--brand);
+  background: var(--brand);
+  color: #ffffff;
+}
+
+@media (max-width: 767px) {
+  .form {
+    max-height: 34vh;
+  }
+
+  .fields {
+    padding: 12px;
+  }
+
+  .grid {
+    gap: 10px;
+  }
+
+  .range {
+    padding: 10px;
+  }
+
+  .field select,
+  .range input,
+  .choice span {
+    font-size: 16px;
+  }
+
+  .choice span,
+  .actions button {
+    min-height: 44px;
+  }
+
+  .choice span {
+    min-width: 44px;
+    justify-content: center;
+  }
+
+  .actions {
+    padding: 10px 12px 12px;
+  }
+}
+
+@media (max-width: 420px) {
+  .grid,
+  .range,
+  .regionFields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

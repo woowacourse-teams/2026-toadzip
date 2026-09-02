@@ -266,24 +266,14 @@ public class HousingComplexQueryService {
         if (regionCode.isBlank()) {
             throw new InvalidRegionCodeException();
         }
-        if (regionCode.matches("[0-9]{2}")) {
-            return provinceSelection(regionCode);
-        }
-        if (regionCode.matches("[0-9]{5}")) {
-            return districtSelection(regionCode);
+        if (regionCode.matches("[0-9]{2}") || regionCode.matches("[0-9]{5}")) {
+            return filterSelection(regionCode);
         }
         throw new InvalidRegionCodeException();
     }
 
-    private RegionSelection provinceSelection(String provinceCode) {
-        if (!regionCodeResolver.isRegisteredProvinceCode(provinceCode)) {
-            throw new InvalidRegionCodeException();
-        }
-        return new RegionSelection(provinceCode, Set.of());
-    }
-
-    private RegionSelection districtSelection(String regionCode) {
-        Set<String> districtCodes = regionCodeResolver.equivalentCodes(regionCode)
+    private RegionSelection filterSelection(String regionCode) {
+        Set<String> districtCodes = regionCodeResolver.filterCodes(regionCode)
                 .orElseThrow(InvalidRegionCodeException::new);
         return new RegionSelection(null, districtCodes);
     }

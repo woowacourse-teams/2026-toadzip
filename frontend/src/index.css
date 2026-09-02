@@ -371,6 +371,29 @@ a {
   min-height: 0;
 }
 
+.housing-map-filter {
+  position: absolute;
+  z-index: 200;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  pointer-events: none;
+}
+
+.housing-map-filter > section {
+  height: 100%;
+}
+
+.housing-map-filter > section > * {
+  pointer-events: auto;
+}
+
+.housing-explorer.has-detail .housing-map-filter {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .housing-map-notice {
   position: absolute;
   z-index: 4;
@@ -394,7 +417,7 @@ a {
 
 .housing-detail-layer {
   position: absolute;
-  z-index: 6;
+  z-index: 300;
   top: 14px;
   bottom: 14px;
   left: 14px;
@@ -839,6 +862,13 @@ a {
     border-bottom: 1px solid var(--border);
   }
 
+  .housing-map-filter {
+    top: 12px;
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+  }
+
   .housing-results__header {
     padding: 12px 16px 8px;
   }
@@ -857,7 +887,7 @@ a {
 
   .housing-detail-layer {
     position: fixed;
-    z-index: 20;
+    z-index: 300;
     top: 64px;
     right: 8px;
     bottom: 8px;

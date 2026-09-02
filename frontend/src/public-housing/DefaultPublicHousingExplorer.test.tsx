@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import type { PublicHousingRepository } from './api/publicHousingRepository.ts'
@@ -61,6 +67,23 @@ describe('LocalPublicHousingExplorer', () => {
       '로컬 mock 데이터를 불러오지 못했습니다.',
     )
     expect(screen.queryByRole('heading', { name: '공공임대주택' }))
+      .not.toBeInTheDocument()
+  })
+
+  it('로컬 snapshot의 지역 정보로 2단계 지역 선택을 제공한다', async () => {
+    const loadSnapshot = vi.fn().mockResolvedValue(SNAPSHOT)
+    renderLocalExplorer(loadSnapshot)
+
+    await screen.findByRole('heading', { name: '공공임대주택' })
+    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
+    fireEvent.change(screen.getByLabelText('시·도'), {
+      target: { value: '11' },
+    })
+
+    const districtSelect = await screen.findByLabelText('시·군·구')
+    expect(await within(districtSelect).findByRole('option', { name: '중구' }))
+      .toHaveValue('11140')
+    expect(screen.queryByText('세부 지역을 불러오지 못했습니다.'))
       .not.toBeInTheDocument()
   })
 })
