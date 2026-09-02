@@ -24,6 +24,7 @@ services:
       context: ./backend
     image: toadzip-backend:latest
     environment:
+      SPRING_PROFILES_ACTIVE: "${SPRING_PROFILES_ACTIVE:-prod}"
       SPRING_DATASOURCE_URL: "jdbc:postgresql://${PRIMARY_DB_HOST:?PRIMARY_DB_HOST is required}:${PRIMARY_DB_PORT:-5432}/${PRIMARY_DB_NAME:-toadzip}"
       SPRING_DATASOURCE_USERNAME: "${PRIMARY_DB_USERNAME:-toadzip}"
       SPRING_DATASOURCE_PASSWORD: "${PRIMARY_DB_PASSWORD:?PRIMARY_DB_PASSWORD is required}"
