@@ -32,8 +32,9 @@ public class DataPipelineExecutionLock {
         if (!locallyLocked.compareAndSet(false, true)) {
             return Optional.empty();
         }
+        Connection connection = null;
         try {
-            Connection connection = dataSource.getConnection();
+            connection = dataSource.getConnection();
             if (!executeLockQuery(connection, TRY_LOCK_SQL)) {
                 connection.close();
                 locallyLocked.set(false);
@@ -42,6 +43,7 @@ public class DataPipelineExecutionLock {
             return Optional.of(new JdbcLease(connection));
         }
         catch (SQLException exception) {
+            closeConnectionAfterAcquireFailure(connection, exception);
             locallyLocked.set(false);
             throw new IllegalStateException("데이터 수집·정제 실행 잠금을 처리하지 못했습니다.", exception);
         }
@@ -59,6 +61,18 @@ public class DataPipelineExecutionLock {
             try (ResultSet result = statement.executeQuery()) {
                 return result.next() && result.getBoolean(1);
             }
+        }
+    }
+
+    private void closeConnectionAfterAcquireFailure(Connection connection, SQLException cause) {
+        if (connection == null) {
+            return;
+        }
+        try {
+            connection.close();
+        }
+        catch (SQLException closeException) {
+            cause.addSuppressed(closeException);
         }
     }
 

@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -9,6 +10,7 @@ import static org.mockito.Mockito.when;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.concurrent.Executors;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,5 +67,20 @@ class DataPipelineExecutionLockTest {
 
         assertThat(executionLock.tryAcquire()).isPresent();
         verify(statement, times(3)).setLong(1, 8_432_026_090_100_001L);
+    }
+
+    @Test
+    void 잠금_쿼리가_실패하면_연결을_닫고_로컬_잠금을_반납한다() throws Exception {
+        when(statement.executeQuery())
+                .thenThrow(new SQLException("lock query failed"))
+                .thenReturn(resultSet);
+
+        assertThatThrownBy(executionLock::tryAcquire)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("데이터 수집·정제 실행 잠금을 처리하지 못했습니다.");
+        verify(connection).close();
+
+        var lease = executionLock.tryAcquire().orElseThrow();
+        lease.close();
     }
 }
