@@ -1,5 +1,6 @@
 package com.toadzip.backend.global.exception;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.not;
@@ -10,9 +11,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -35,6 +43,23 @@ class GlobalExceptionAdviceTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    private Logger logger;
+    private ListAppender<ILoggingEvent> appender;
+
+    @BeforeEach
+    void attachLogAppender() {
+        logger = (Logger) LoggerFactory.getLogger(GlobalExceptionAdvice.class);
+        appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+    }
+
+    @AfterEach
+    void detachLogAppender() {
+        logger.detachAppender(appender);
+        appender.stop();
+    }
 
     @Test
     void DTO의_모든_필드_검증_실패를_오류_목록으로_반환한다() throws Exception {
@@ -134,6 +159,46 @@ class GlobalExceptionAdviceTest {
                 .andExpect(jsonPath("$.message").value("서버 내부 오류가 발생했습니다."))
                 .andExpect(jsonPath("$.traceId").isNotEmpty())
                 .andExpect(content().string(not(containsString("database password"))));
+    }
+
+    @Test
+    void 예상한_요청_예외는_오류코드와_함께_WARN으로_기록한다() throws Exception {
+        mockMvc.perform(post("/test/errors")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{invalid"))
+                .andExpect(status().isBadRequest());
+
+        assertThat(appender.list).singleElement().satisfies(event -> {
+            assertThat(event.getLevel()).isEqualTo(Level.WARN);
+            assertThat(event.getFormattedMessage())
+                    .contains("event=http.request.rejected")
+                    .contains("result=failure")
+                    .contains("errorCode=INVALID_REQUEST")
+                    .contains("method=POST")
+                    .contains("uri=/test/errors")
+                    .contains("status=400");
+            assertThat(event.getThrowableProxy()).isNull();
+        });
+    }
+
+    @Test
+    void 예상하지_못한_예외는_오류코드와_스택트레이스를_ERROR로_기록한다() throws Exception {
+        mockMvc.perform(get("/test/errors/unexpected"))
+                .andExpect(status().isInternalServerError());
+
+        assertThat(appender.list).singleElement().satisfies(event -> {
+            assertThat(event.getLevel()).isEqualTo(Level.ERROR);
+            assertThat(event.getFormattedMessage())
+                    .contains("event=http.request.failed")
+                    .contains("result=failure")
+                    .contains("errorCode=INTERNAL_SERVER_ERROR")
+                    .contains("method=GET")
+                    .contains("uri=/test/errors/unexpected")
+                    .contains("status=500");
+            assertThat(event.getThrowableProxy()).isNotNull();
+            assertThat(event.getThrowableProxy().getClassName())
+                    .isEqualTo(IllegalStateException.class.getName());
+        });
     }
 
     @Test

@@ -146,13 +146,7 @@ public class GlobalExceptionAdvice {
             HttpServletRequest request
     ) {
         String traceId = RequestTraceIdResolver.resolve(request);
-        LOGGER.error(
-                "Unexpected server error: traceId={}, method={}, path={}",
-                traceId,
-                request.getMethod(),
-                request.getRequestURI(),
-                exception
-        );
+        logUnexpectedException(exception, request);
         ErrorResponse errorResponse = new ErrorResponse(
                 INTERNAL_SERVER_ERROR,
                 "서버 내부 오류가 발생했습니다.",
@@ -165,6 +159,7 @@ public class GlobalExceptionAdvice {
             List<ValidationError> errors,
             HttpServletRequest request
     ) {
+        logExpectedException(HttpStatus.BAD_REQUEST, VALIDATION_FAILED, request);
         ErrorResponse errorResponse = new ErrorResponse(
                 VALIDATION_FAILED,
                 "요청값이 올바르지 않습니다.",
@@ -180,8 +175,30 @@ public class GlobalExceptionAdvice {
             String message,
             HttpServletRequest request
     ) {
+        logExpectedException(status, code, request);
         ErrorResponse errorResponse = new ErrorResponse(code, message, RequestTraceIdResolver.resolve(request));
         return ResponseEntity.status(status).body(errorResponse);
+    }
+
+    private void logExpectedException(HttpStatus status, String code, HttpServletRequest request) {
+        LOGGER.warn(
+                "event=http.request.rejected result=failure errorCode={} method={} uri={} status={}",
+                code,
+                request.getMethod(),
+                request.getRequestURI(),
+                status.value()
+        );
+    }
+
+    private void logUnexpectedException(Exception exception, HttpServletRequest request) {
+        LOGGER.error(
+                "event=http.request.failed result=failure errorCode={} method={} uri={} status={}",
+                INTERNAL_SERVER_ERROR,
+                request.getMethod(),
+                request.getRequestURI(),
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                exception
+        );
     }
 
     private ValidationError validationErrorOf(FieldError error) {
