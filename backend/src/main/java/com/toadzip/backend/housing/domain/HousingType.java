@@ -160,6 +160,15 @@ public class HousingType {
         return true;
     }
 
+    public boolean enrichHouseholdCountFromLh(int totalHouseholdCount) {
+        validateNonNegative(totalHouseholdCount, "LH 주택형 세대수");
+        if (java.util.Objects.equals(this.totalHouseholdCount, totalHouseholdCount)) {
+            return false;
+        }
+        this.totalHouseholdCount = totalHouseholdCount;
+        return true;
+    }
+
     public boolean isDuplex() {
         return Boolean.TRUE.equals(duplex);
     }
