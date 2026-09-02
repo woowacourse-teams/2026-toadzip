@@ -23,6 +23,8 @@ public class DataPipelineExecutionService {
             "데이터 수집·정제 작업이 이미 실행 중입니다.";
     private static final String INTERNAL_FAILURE_MESSAGE =
             "현재 단계를 처리하는 중 서버 오류가 발생했습니다.";
+    private static final String COMPLETION_PERSISTENCE_FAILURE_MESSAGE =
+            "완료 결과를 저장하는 중 서버 오류가 발생했습니다.";
 
     private final DataPipelineRunner runner;
     private final DataPipelineExecutionLock executionLock;
@@ -132,6 +134,10 @@ public class DataPipelineExecutionService {
             String message,
             Object serverResponse
     ) {
+        if (execution.isCompleted()) {
+            recordCompletionPersistenceFailure(execution);
+            return;
+        }
         if (!execution.isRunning()) {
             return;
         }
@@ -149,6 +155,23 @@ public class DataPipelineExecutionService {
                     "데이터 수집·정제 실패 상태를 저장하지 못했습니다: type={}, step={}",
                     execution.getType(),
                     failedStep,
+                    exception
+            );
+        }
+    }
+
+    private void recordCompletionPersistenceFailure(DataPipelineExecution execution) {
+        try {
+            execution.failCompletionPersistence(
+                    COMPLETION_PERSISTENCE_FAILURE_MESSAGE,
+                    Instant.now(clock)
+            );
+            persist(execution);
+        }
+        catch (RuntimeException exception) {
+            log.error(
+                    "데이터 수집·정제 완료 저장 실패 상태를 저장하지 못했습니다: type={}",
+                    execution.getType(),
                     exception
             );
         }

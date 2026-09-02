@@ -142,6 +142,19 @@ public class DataPipelineExecution {
         return status == DataPipelineExecutionStatus.RUNNING;
     }
 
+    public boolean isCompleted() {
+        return status == DataPipelineExecutionStatus.COMPLETED;
+    }
+
+    public void failCompletionPersistence(String message, Instant failedAt) {
+        if (!isCompleted()) {
+            throw new IllegalStateException("완료된 파이프라인만 완료 저장 실패로 전환할 수 있습니다.");
+        }
+        status = DataPipelineExecutionStatus.FAILED;
+        failureMessage = message;
+        finishedAt = failedAt;
+    }
+
     private void requireRunning() {
         if (status != DataPipelineExecutionStatus.RUNNING) {
             throw new IllegalStateException(

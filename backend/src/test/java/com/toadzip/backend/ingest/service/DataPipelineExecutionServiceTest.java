@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -155,6 +156,36 @@ class DataPipelineExecutionServiceTest {
         assertThat(status.failure().stepName()).isEqualTo("마이홈 공고 정제");
         assertThat(status.failure().serverResponse()).isEqualTo(serverResponse);
         verify(lease).close();
+    }
+
+    @Test
+    void 완료_상태_저장에_실패하면_실패_상태로_종료한다() {
+        AtomicInteger saveAttemptCount = new AtomicInteger();
+        AtomicReference<DataPipelineExecutionStatus> lastPersistedStatus = new AtomicReference<>();
+        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
+        when(executionRepository.saveAndFlush(any())).thenAnswer(invocation -> {
+            DataPipelineExecution execution = invocation.getArgument(0);
+            int attempt = saveAttemptCount.incrementAndGet();
+            if (attempt == 12) {
+                throw new IllegalStateException("final status write failed");
+            }
+            lastPersistedStatus.set(execution.getStatus());
+            return execution;
+        });
+        doAnswer(invocation -> {
+            DataPipelineType type = invocation.getArgument(0);
+            DataPipelineProgressListener listener = invocation.getArgument(1);
+            type.steps().forEach(step -> {
+                listener.started(step);
+                listener.completed(step);
+            });
+            return null;
+        }).when(runner).run(any(), any());
+
+        service.start(DataPipelineType.COLLECTION);
+
+        assertThat(saveAttemptCount).hasValue(13);
+        assertThat(lastPersistedStatus).hasValue(DataPipelineExecutionStatus.FAILED);
     }
 
     private void configureStoredExecution() {
