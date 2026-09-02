@@ -18,6 +18,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = PROTECTED)
 public class MyHomeAnnouncementSource {
 
+    private static final int INACTIVE_AFTER_CONSECUTIVE_MISSES = 2;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -26,6 +28,15 @@ public class MyHomeAnnouncementSource {
     private String sourceKey;
 
     private Instant collectedAt;
+
+    @Column(length = 100)
+    private String lastSeenRunId;
+
+    @Column(nullable = false)
+    private int consecutiveMissCount;
+
+    @Column(nullable = false)
+    private boolean active;
 
     private Integer sourceOrder;
 
@@ -74,6 +85,8 @@ public class MyHomeAnnouncementSource {
 
     private MyHomeAnnouncementSource(int sourceOrder, MyHomeAnnouncementSourceData data) {
         this.sourceOrder = sourceOrder;
+        consecutiveMissCount = 0;
+        active = true;
         sourceKey = sourceKeyOf(data);
         replaceWith(data);
     }
@@ -124,6 +137,26 @@ public class MyHomeAnnouncementSource {
             throw new IllegalArgumentException("수집 시각은 필수입니다.");
         }
         this.collectedAt = collectedAt;
+    }
+
+    public void markSeen(String runId, Instant seenAt) {
+        if (runId == null || runId.isBlank()) {
+            throw new IllegalArgumentException("수집 실행 ID는 필수입니다.");
+        }
+        if (seenAt == null) {
+            throw new IllegalArgumentException("마지막 확인 시각은 필수입니다.");
+        }
+        lastSeenRunId = runId;
+        consecutiveMissCount = 0;
+        active = true;
+        markCollectedAt(seenAt);
+    }
+
+    public void markMissed() {
+        consecutiveMissCount++;
+        if (consecutiveMissCount >= INACTIVE_AFTER_CONSECUTIVE_MISSES) {
+            active = false;
+        }
     }
 
     private static String keyPart(Object raw) {

@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
+import com.toadzip.backend.announcement.domain.ApplicationStatus;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
+import com.toadzip.backend.announcement.service.AnnouncementQueryService;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
@@ -54,6 +56,9 @@ class MyHomeAnnouncementMappingServiceTest {
 
     @Autowired
     private AnnouncementRepository announcementRepository;
+
+    @Autowired
+    private AnnouncementQueryService announcementQueryService;
 
     @Autowired
     private SupplyRowRepository supplyRowRepository;
@@ -163,6 +168,40 @@ class MyHomeAnnouncementMappingServiceTest {
         assertThat(correction.getStatus()).isEqualTo(AnnouncementPublicationType.CORRECTION);
         assertThat(correction.getPreviousSourceAnnouncementIdentifier()).isEqualTo("21026");
         assertThat(correction.getPreviousAnnouncement()).isNotNull();
+    }
+
+    @Test
+    void 비활성화된_원공고의_상세를_유지하고_재수집된_취소공고를_반영한다() {
+        saveMappedComplex();
+        MyHomeAnnouncementSource originalSource = source(
+                0,
+                data("21026", 1, "LH서울", "동삼2")
+        );
+        sourceRepository.save(originalSource);
+        service.mapAll();
+        Announcement original = announcementRepository
+                .findBySourceAnnouncementIdentifier("21026")
+                .orElseThrow();
+        originalSource.markMissed();
+        originalSource.markMissed();
+        sourceRepository.save(originalSource);
+        sourceRepository.save(source(
+                1,
+                withCancellation(data("21027", 2, "LH서울", "동삼2"), "21026")
+        ));
+
+        service.mapAll();
+
+        Announcement cancellation = announcementRepository
+                .findBySourceAnnouncementIdentifier("21027")
+                .orElseThrow();
+        assertThat(sourceRepository.findById(originalSource.getId()).orElseThrow().isActive()).isFalse();
+        assertThat(cancellation.getStatus()).isEqualTo(AnnouncementPublicationType.CANCELLATION);
+        assertThat(cancellation.getPreviousSourceAnnouncementIdentifier()).isEqualTo("21026");
+        assertThat(announcementQueryService.getAnnouncement(cancellation.getId()).applicationStatus())
+                .isEqualTo(ApplicationStatus.CANCELLED);
+        assertThat(announcementQueryService.getAnnouncement(original.getId()).announcementId())
+                .isEqualTo(original.getId());
     }
 
     @Test
@@ -577,6 +616,20 @@ class MyHomeAnnouncementMappingServiceTest {
     private MyHomeAnnouncementSourceData withPrevious(MyHomeAnnouncementSourceData data, String previousIdentifier) {
         return new MyHomeAnnouncementSourceData(
                 data.pblancId(), data.houseSn(), "정정공고", data.pblancNm(), data.suplyInsttNm(),
+                data.houseTyNm(), data.suplyTyNm(), previousIdentifier, data.rcritPblancDe(),
+                data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), data.refrnc(), data.url(),
+                data.pcUrl(), data.mobileUrl(), data.hsmpNm(), data.brtcNm(), data.signguNm(),
+                data.fullAdres(), data.rnCodeNm(), data.refrnLegaldongNm(), data.pnu(), data.heatMthdNm(),
+                data.totHshldCo(), data.sumSuplyCo(), data.rentGtn(), data.enty(), data.surlus(), data.mtRntchrg()
+        );
+    }
+
+    private MyHomeAnnouncementSourceData withCancellation(
+            MyHomeAnnouncementSourceData data,
+            String previousIdentifier
+    ) {
+        return new MyHomeAnnouncementSourceData(
+                data.pblancId(), data.houseSn(), "취소공고", data.pblancNm(), data.suplyInsttNm(),
                 data.houseTyNm(), data.suplyTyNm(), previousIdentifier, data.rcritPblancDe(),
                 data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), data.refrnc(), data.url(),
                 data.pcUrl(), data.mobileUrl(), data.hsmpNm(), data.brtcNm(), data.signguNm(),
