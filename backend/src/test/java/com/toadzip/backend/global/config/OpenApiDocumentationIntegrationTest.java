@@ -49,6 +49,8 @@ class OpenApiDocumentationIntegrationTest {
 
     private static final Set<String> LIST_ONLY_PARAMETERS = Set.of("sort", "cursor", "size");
 
+    private static final Set<String> V2_MAP_ONLY_PARAMETERS = Set.of("zoom", "previousResolvedStage");
+
     @LocalServerPort
     private int port;
 
@@ -86,6 +88,7 @@ class OpenApiDocumentationIntegrationTest {
         assertAll(
                 () -> assertNotNull(JsonPath.read(response.body(), "$.paths['/api/v1/complexes'].get")),
                 () -> assertNotNull(JsonPath.read(response.body(), "$.paths['/api/v1/complexes/map'].get")),
+                () -> assertNotNull(JsonPath.read(response.body(), "$.paths['/api/v2/complexes/map'].get")),
                 () -> assertNotNull(JsonPath.read(
                         response.body(),
                         "$.paths['/api/v1/complexes/{complexId}'].get"
@@ -136,10 +139,24 @@ class OpenApiDocumentationIntegrationTest {
         expectedListParameters.addAll(LIST_ONLY_PARAMETERS);
         List<Map<String, Object>> listParameters = parameters(response.body(), "/api/v1/complexes");
         List<Map<String, Object>> mapParameters = parameters(response.body(), "/api/v1/complexes/map");
+        Set<String> expectedV2MapParameters = new HashSet<>(COMMON_SEARCH_PARAMETERS);
+        expectedV2MapParameters.addAll(V2_MAP_ONLY_PARAMETERS);
+        List<Map<String, Object>> v2MapParameters = parameters(response.body(), "/api/v2/complexes/map");
         assertAll(
                 () -> assertExactQueryParameters(listParameters, expectedListParameters),
-                () -> assertExactQueryParameters(mapParameters, COMMON_SEARCH_PARAMETERS)
+                () -> assertExactQueryParameters(mapParameters, COMMON_SEARCH_PARAMETERS),
+                () -> assertExactQueryParameters(v2MapParameters, expectedV2MapParameters)
         );
+    }
+
+    @Test
+    void v2_지도_OpenAPI는_zoom과_node_판별_계약을_제공한다() throws Exception {
+        HttpResponse<String> response = TestHttpClient.get(port, "/v3/api-docs");
+
+        assertEquals(200, response.statusCode());
+        assertRequiredQueryParameter(response.body(), "/api/v2/complexes/map", "zoom");
+        assertOptionalQueryParameter(response.body(), "/api/v2/complexes/map", "previousResolvedStage");
+        assertMapNodeDiscriminator(response.body());
     }
 
     @Test
@@ -176,6 +193,33 @@ class OpenApiDocumentationIntegrationTest {
                         + "' && @.in == 'query')].required"
         );
         assertEquals(List.of(true), requiredValues);
+    }
+
+    private void assertOptionalQueryParameter(String document, String path, String parameterName) {
+        Map<String, Object> parameter = queryParameter(document, path, parameterName);
+        assertEquals(false, parameter.get("required"));
+    }
+
+    private void assertMapNodeDiscriminator(String document) {
+        String schemaPath = "$.components.schemas.HousingMapNodeResponse";
+        List<String> variants = JsonPath.read(document, schemaPath + ".oneOf[*]['$ref']");
+        Map<String, String> mapping = JsonPath.read(document, schemaPath + ".discriminator.mapping");
+        assertEquals(Set.of(
+                "#/components/schemas/HousingMapAggregateNodeResponse",
+                "#/components/schemas/HousingMapIndividualNodeResponse"
+        ), Set.copyOf(variants));
+        assertEquals("type", JsonPath.read(document, schemaPath + ".discriminator.propertyName"));
+        assertEquals(Map.of(
+                "AGGREGATE", "#/components/schemas/HousingMapAggregateNodeResponse",
+                "INDIVIDUAL", "#/components/schemas/HousingMapIndividualNodeResponse"
+        ), mapping);
+        assertEquals(List.of("AGGREGATE"), mapNodeTypeValues(document, "HousingMapAggregateNodeResponse"));
+        assertEquals(List.of("INDIVIDUAL"), mapNodeTypeValues(document, "HousingMapIndividualNodeResponse"));
+    }
+
+    private List<String> mapNodeTypeValues(String document, String schemaName) {
+        String schemaPath = "$.components.schemas." + schemaName;
+        return JsonPath.read(document, schemaPath + ".properties.type.enum");
     }
 
     private List<Map<String, Object>> parameters(String document, String path) {
