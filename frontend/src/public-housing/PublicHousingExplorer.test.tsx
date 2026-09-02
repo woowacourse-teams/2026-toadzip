@@ -1944,16 +1944,17 @@ function createRegionRepository(): PublicHousingRegionRepository {
 }
 
 function searchRepository(
-  housingInformation: readonly SearchResultItem[],
-  locations: readonly SearchResultItem[],
+  results: readonly SearchResultItem[],
+  regions: readonly SearchResultItem[],
 ): IntegratedSearchRepository {
   const response: IntegratedSearchResponse = {
+    announcements: results.filter(({ type }) => type === 'ANNOUNCEMENT'),
+    complexes: results.filter(({ type }) => type === 'COMPLEX'),
     failures: [],
     hasNext: false,
-    housingInformation,
-    locations,
     page: 0,
     query: '서울',
+    regions,
     size: 8,
   }
   return { search: vi.fn().mockResolvedValue(response) }
@@ -1967,10 +1968,7 @@ function searchItem(
   longitude: number | null,
 ): SearchResultItem {
   return {
-    address: '서울특별시',
     applicationStatus: null,
-    cancelled: false,
-    category: type,
     id,
     latitude,
     longitude,

@@ -38,13 +38,13 @@ export function IntegratedSearch({
   }, [active, onActiveChange])
 
   useEffect(() => {
+    const revision = requestRevision.current + 1
+    requestRevision.current = revision
     if (!active) {
       setState({ kind: 'before' })
       return
     }
     const controller = new AbortController()
-    const revision = requestRevision.current + 1
-    requestRevision.current = revision
     setState({ kind: 'loading' })
     const timer = window.setTimeout(() => {
       repository.search(normalizedQuery, preview, page, controller.signal)
@@ -135,7 +135,9 @@ function SearchContent({
     return <SearchError title="검색 결과를 불러오지 못했습니다." onRetry={onRetry} />
   }
   const { response } = state
-  const resultCount = response.housingInformation.length + response.locations.length
+  const resultCount = response.announcements.length
+    + response.complexes.length
+    + response.regions.length
   if (resultCount === 0 && response.failures.length === 3) {
     return <SearchError title="전체 검색에 실패했습니다." onRetry={onRetry} />
   }
@@ -144,17 +146,17 @@ function SearchContent({
       {resultCount === 0 && <p role="status">검색 결과가 없습니다.</p>}
       <SearchGroup
         title="공고"
-        items={response.housingInformation.filter((item) => item.type === 'ANNOUNCEMENT')}
+        items={response.announcements}
         onSelect={onSelect}
       />
       <SearchGroup
         title="단지"
-        items={response.housingInformation.filter((item) => item.type === 'COMPLEX')}
+        items={response.complexes}
         onSelect={onSelect}
       />
       <SearchGroup
         title="지역"
-        items={response.locations.filter((item) => item.type === 'REGION')}
+        items={response.regions}
         onSelect={onSelect}
       />
       {response.failures.map((failure) => (
@@ -187,11 +189,9 @@ function SearchGroup({
           <li key={`${item.type}-${item.id}`}>
             <button type="button" onClick={() => onSelect(item)}>
               <strong>{item.title}</strong>
-              <span>{typeLabel(item.type)}</span>
               {item.subtitle && <span>{item.subtitle}</span>}
               {item.publishedAt && <time dateTime={item.publishedAt}>{item.publishedAt}</time>}
               {item.applicationStatus && <span>{statusLabel(item.applicationStatus)}</span>}
-              {item.cancelled && <span>취소 공고</span>}
             </button>
           </li>
         ))}

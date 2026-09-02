@@ -4,16 +4,18 @@ import java.util.List;
 
 public record IntegratedSearchResponse(
         String query,
-        List<SearchResultItemResponse> housingInformation,
-        List<SearchResultItemResponse> locations,
+        List<SearchResultItemResponse> announcements,
+        List<SearchResultItemResponse> complexes,
+        List<SearchResultItemResponse> regions,
         List<SearchFailureResponse> failures,
         int page,
         int size,
         boolean hasNext
 ) {
     public IntegratedSearchResponse {
-        housingInformation = List.copyOf(housingInformation);
-        locations = List.copyOf(locations);
+        announcements = List.copyOf(announcements);
+        complexes = List.copyOf(complexes);
+        regions = List.copyOf(regions);
         failures = List.copyOf(failures);
     }
 }

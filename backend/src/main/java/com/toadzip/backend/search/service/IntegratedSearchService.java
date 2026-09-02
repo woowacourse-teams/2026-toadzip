@@ -22,15 +22,19 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class IntegratedSearchService {
 
+    private static final Logger log = LoggerFactory.getLogger(IntegratedSearchService.class);
     private static final ZoneId SEOUL_ZONE = ZoneId.of("Asia/Seoul");
     private static final int PREVIEW_TOTAL_LIMIT = 8;
     private static final int PREVIEW_TYPE_LIMIT = 3;
     private static final int PAGE_SIZE = 20;
+    private static final int MAX_PAGE = 100;
 
     private final InternalSearchRepository internalSearchRepository;
     private final RegionSearchRepository regionSearchRepository;
@@ -48,7 +52,7 @@ public class IntegratedSearchService {
 
     public IntegratedSearchResponse search(IntegratedSearchRequest request) {
         SearchInput input = input(request);
-        int fetchLimit = input.preview() ? PREVIEW_TYPE_LIMIT : (input.page() + 1) * PAGE_SIZE + 1;
+        int fetchLimit = input.preview() ? PREVIEW_TYPE_LIMIT + 1 : (input.page() + 1) * PAGE_SIZE + 1;
         IntegratedSearchCondition condition = new IntegratedSearchCondition(
                 input.match(),
                 input.rentalTypes(),
@@ -64,14 +68,19 @@ public class IntegratedSearchService {
 
         List<SearchResultItemResponse> ranked = results.stream()
                 .filter(item -> input.match().matches(item.title(), item.subtitle(), item.address()))
-                .map(item -> response(item, input.match()))
+                .map(item -> new RankedItem(
+                        item,
+                        input.match().rank(item.title(), item.subtitle(), item.address())
+                ))
                 .sorted(resultOrder())
+                .map(item -> response(item.source()))
                 .toList();
         Page page = input.preview() ? preview(ranked) : page(ranked, input.page());
         return new IntegratedSearchResponse(
                 input.match().normalizedQuery(),
-                page.items().stream().filter(this::isHousingInformation).toList(),
-                page.items().stream().filter(item -> !isHousingInformation(item)).toList(),
+                itemsOfType(page, SearchType.ANNOUNCEMENT),
+                itemsOfType(page, SearchType.COMPLEX),
+                itemsOfType(page, SearchType.REGION),
                 failures,
                 input.page(),
                 input.preview() ? PREVIEW_TOTAL_LIMIT : PAGE_SIZE,
@@ -88,6 +97,7 @@ public class IntegratedSearchService {
         try {
             results.addAll(internalSearchRepository.findAnnouncements(condition, limit));
         } catch (RuntimeException exception) {
+            log.error("공고 통합 검색에 실패했습니다.", exception);
             failures.add(failure(SearchType.ANNOUNCEMENT));
         }
     }
@@ -101,6 +111,7 @@ public class IntegratedSearchService {
         try {
             results.addAll(internalSearchRepository.findComplexes(condition, limit));
         } catch (RuntimeException exception) {
+            log.error("단지 통합 검색에 실패했습니다.", exception);
             failures.add(failure(SearchType.COMPLEX));
         }
     }
@@ -114,6 +125,7 @@ public class IntegratedSearchService {
             List<SearchSourceItem> regions = matchingRegions(match);
             results.addAll(regions);
         } catch (RuntimeException exception) {
+            log.error("지역 통합 검색에 실패했습니다.", exception);
             failures.add(failure(SearchType.REGION));
         }
     }
@@ -147,12 +159,10 @@ public class IntegratedSearchService {
                         region.displayName(),
                         region.provinceName(),
                         region.displayName(),
-                        "행정구역",
                         null,
                         null,
                         null,
                         null,
-                        false,
                         region.regionCode()
                 ))
                 .toList();
@@ -170,29 +180,25 @@ public class IntegratedSearchService {
         };
     }
 
-    private SearchResultItemResponse response(SearchSourceItem item, SearchMatch match) {
+    private SearchResultItemResponse response(SearchSourceItem item) {
         return new SearchResultItemResponse(
                 item.type(),
                 item.id(),
                 item.title(),
                 item.subtitle(),
-                item.address(),
-                item.category(),
                 item.latitude(),
                 item.longitude(),
                 item.publishedAt(),
                 item.applicationStatus(),
-                item.cancelled(),
-                item.regionCode(),
-                match.rank(item.title(), item.subtitle(), item.address())
+                item.regionCode()
         );
     }
 
-    private Comparator<SearchResultItemResponse> resultOrder() {
-        return Comparator.comparingInt(SearchResultItemResponse::matchRank)
-                .thenComparingInt(item -> item.type().ordinal())
-                .thenComparing(SearchResultItemResponse::title)
-                .thenComparing(SearchResultItemResponse::id);
+    private Comparator<RankedItem> resultOrder() {
+        return Comparator.comparingInt(RankedItem::rank)
+                .thenComparingInt(item -> item.source().type().ordinal())
+                .thenComparing(item -> item.source().title())
+                .thenComparing(item -> item.source().id());
     }
 
     private Page preview(List<SearchResultItemResponse> ranked) {
@@ -218,8 +224,8 @@ public class IntegratedSearchService {
         return new Page(ranked.subList(start, end), end < ranked.size());
     }
 
-    private boolean isHousingInformation(SearchResultItemResponse item) {
-        return item.type() == SearchType.ANNOUNCEMENT || item.type() == SearchType.COMPLEX;
+    private List<SearchResultItemResponse> itemsOfType(Page page, SearchType type) {
+        return page.items().stream().filter(item -> item.type() == type).toList();
     }
 
     private SearchInput input(IntegratedSearchRequest request) {
@@ -234,8 +240,8 @@ public class IntegratedSearchService {
         }
         boolean preview = request.preview() == null || request.preview();
         int page = request.page() == null ? 0 : request.page();
-        if (page < 0) {
-            throw new InvalidSearchRequestException("페이지는 0 이상이어야 합니다.");
+        if (page < 0 || page > MAX_PAGE) {
+            throw new InvalidSearchRequestException("페이지는 0부터 100 사이여야 합니다.");
         }
         if (request.size() != null && request.size() != PAGE_SIZE) {
             throw new InvalidSearchRequestException("전체 검색은 페이지당 20개를 제공합니다.");
@@ -269,5 +275,8 @@ public class IntegratedSearchService {
         private Page {
             items = List.copyOf(items);
         }
+    }
+
+    private record RankedItem(SearchSourceItem source, int rank) {
     }
 }

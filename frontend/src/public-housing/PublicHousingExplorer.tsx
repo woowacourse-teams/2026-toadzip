@@ -38,7 +38,6 @@ import { HousingComplexDetailPanel } from './components/HousingComplexDetailPane
 import { ComplexFilterToolbar } from './filters/ComplexFilterToolbar.tsx'
 import { SearchFilterPanel } from './filters/SearchFilterPanel.tsx'
 import {
-  hasSearchFilters,
   parseAnnouncementSearchFilters,
   parseComplexSearchFilters,
   searchFiltersSignature,
@@ -209,6 +208,7 @@ export function PublicHousingExplorer({
   const [viewport, setViewport] = useState<ViewportSnapshot | null>(null)
   const [searchContext, setSearchContext] = useState<SearchContext>({ kind: 'none' })
   const [searchMapTarget, setSearchMapTarget] = useState<NaverMapCameraTarget | null>(null)
+  const [cameraRequestId, setCameraRequestId] = useState(0)
   const [selectedSearchComplex, setSelectedSearchComplex] =
     useState<SearchResultItem | null>(null)
   const [integratedSearchActive, setIntegratedSearchActive] = useState(false)
@@ -821,13 +821,6 @@ export function PublicHousingExplorer({
           })
           setCardHighlightedComplexId(null)
           setMarkerHighlightedComplexId(null)
-          if (options.regionCode && mapItems[0]) {
-            setSearchMapTarget({
-              latitude: mapItems[0].latitude,
-              longitude: mapItems[0].longitude,
-              zoom: 13,
-            })
-          }
           if (complexResultsScrollRef.current) {
             complexResultsScrollRef.current.scrollTop = 0
           }
@@ -862,10 +855,6 @@ export function PublicHousingExplorer({
       return
     }
     previousComplexFiltersKeyRef.current = complexFiltersKey
-    if (viewportDebounceRef.current !== null) {
-      window.clearTimeout(viewportDebounceRef.current)
-      viewportDebounceRef.current = null
-    }
     if (viewport !== null) {
       applyViewport(viewport, true)
     }
@@ -897,6 +886,7 @@ export function PublicHousingExplorer({
           longitude: item.longitude,
           zoom: 14,
         })
+        setCameraRequestId((current) => current + 1)
       }
       openAnnouncementDetail(item.id)
       return
@@ -910,6 +900,7 @@ export function PublicHousingExplorer({
           longitude: item.longitude,
           zoom: 16,
         })
+        setCameraRequestId((current) => current + 1)
       }
       openComplexDetail(item.id)
       return
@@ -919,6 +910,7 @@ export function PublicHousingExplorer({
       const options = { ...complexFilters, regionCode: item.regionCode }
       setSearchContext({ kind: 'region', regionCode: item.regionCode })
       setSearchMapTarget({ ...DEFAULT_MAP_LOCATION.center, zoom: 7 })
+      setCameraRequestId((current) => current + 1)
       applyViewport(viewportForBounds(KOREA_BOUNDS), true, options)
     }
   }, [applyViewport, complexFilters, openAnnouncementDetail, openComplexDetail])
@@ -1052,6 +1044,9 @@ export function PublicHousingExplorer({
     ? evaluateViewportRequest(viewport)
     : null
   const requestBlocked = viewportDecision !== null && !viewportDecision.allowed
+  const currentViewportSignature = viewportDecision?.allowed
+    ? `${viewportDecision.boundsSignature}|${complexFiltersKey}`
+    : null
   const detailMapTarget = toDetailMapTarget(complexDetail.detail)
   const urlMapTarget = mapLocation.kind === 'valid'
     ? {
@@ -1140,9 +1135,9 @@ export function PublicHousingExplorer({
           decision={viewportDecision}
           onSearch={searchCurrentViewport}
           searchAvailable={Boolean(
-            viewportDecision?.allowed
+            currentViewportSignature
             && appliedViewport
-            && viewportDecision.boundsSignature !== appliedViewport.signature
+            && currentViewportSignature !== appliedViewport.signature
           )}
           />
 
@@ -1244,6 +1239,7 @@ export function PublicHousingExplorer({
           />
         </div>
         <NaverMap
+          cameraRequestId={cameraRequestId}
           cameraTarget={activeMapTarget}
           dataBusy={!requestBlocked && mapResults.status === 'loading'}
           markers={markers}

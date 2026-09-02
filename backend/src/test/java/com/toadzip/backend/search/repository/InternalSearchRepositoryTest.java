@@ -57,7 +57,7 @@ class InternalSearchRepositoryTest {
 
         assertThat(results).extracting(SearchSourceItem::id)
                 .containsExactlyInAnyOrder(correction.getId().toString(), cancellation.getId().toString());
-        assertThat(results).filteredOn(SearchSourceItem::cancelled)
+        assertThat(results).filteredOn(result -> "CANCELLED".equals(result.applicationStatus()))
                 .singleElement()
                 .extracting(SearchSourceItem::applicationStatus)
                 .isEqualTo("CANCELLED");

@@ -49,7 +49,6 @@ public class InternalSearchRepository {
                        announcement.posted_date,
                        announcement.application_start_date,
                        announcement.application_end_date,
-                       announcement.status,
                        CASE
                            WHEN announcement.status IN ('CANCELLATION', '취소공고') THEN 'CANCELLED'
                            WHEN announcement.application_start_date > :today THEN 'BEFORE_APPLICATION'
@@ -264,20 +263,16 @@ public class InternalSearchRepository {
     }
 
     private SearchSourceItem mapAnnouncement(ResultSet resultSet, int rowNumber) throws SQLException {
-        String publicationType = resultSet.getString("status");
-        boolean cancelled = "CANCELLATION".equals(publicationType) || "취소공고".equals(publicationType);
         return new SearchSourceItem(
                 SearchType.ANNOUNCEMENT,
                 resultSet.getString("id"),
                 resultSet.getString("name"),
                 providerName(resultSet.getString("provider")),
                 resultSet.getString("region_names"),
-                "공고",
                 resultSet.getBigDecimal("latitude"),
                 resultSet.getBigDecimal("longitude"),
                 resultSet.getObject("posted_date", java.time.LocalDate.class),
                 resultSet.getString("application_status"),
-                cancelled,
                 null
         );
     }
@@ -289,12 +284,10 @@ public class InternalSearchRepository {
                 resultSet.getString("name"),
                 resultSet.getString("road_address"),
                 resultSet.getString("road_address"),
-                "단지",
                 resultSet.getBigDecimal("latitude"),
                 resultSet.getBigDecimal("longitude"),
                 null,
                 null,
-                false,
                 resultSet.getString("city_county_district_code")
         );
     }

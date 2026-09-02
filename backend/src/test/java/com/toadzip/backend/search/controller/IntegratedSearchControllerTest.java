@@ -37,20 +37,17 @@ class IntegratedSearchControllerTest {
         when(service.search(any())).thenReturn(new IntegratedSearchResponse(
                 "서울",
                 List.of(),
+                List.of(),
                 List.of(new SearchResultItemResponse(
                         SearchType.REGION,
                         "11",
                         "서울특별시 전체",
                         "서울특별시",
-                        "서울특별시 전체",
-                        "행정구역",
                         null,
                         null,
                         null,
                         null,
-                        false,
-                        "11",
-                        0
+                        "11"
                 )),
                 List.of(),
                 0,
@@ -65,10 +62,11 @@ class IntegratedSearchControllerTest {
                         .param("size", "20"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.query").value("서울"))
-                .andExpect(jsonPath("$.data.housingInformation.length()").value(0))
-                .andExpect(jsonPath("$.data.locations[0].type").value("REGION"))
-                .andExpect(jsonPath("$.data.locations[0].title").value("서울특별시 전체"))
-                .andExpect(jsonPath("$.data.locations[0].regionCode").value("11"))
+                .andExpect(jsonPath("$.data.announcements.length()").value(0))
+                .andExpect(jsonPath("$.data.complexes.length()").value(0))
+                .andExpect(jsonPath("$.data.regions[0].type").value("REGION"))
+                .andExpect(jsonPath("$.data.regions[0].title").value("서울특별시 전체"))
+                .andExpect(jsonPath("$.data.regions[0].regionCode").value("11"))
                 .andExpect(jsonPath("$.data.failures.length()").value(0))
                 .andExpect(jsonPath("$.data.size").value(8));
     }

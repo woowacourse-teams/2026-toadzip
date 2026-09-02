@@ -1,10 +1,7 @@
 export type SearchType = 'ANNOUNCEMENT' | 'COMPLEX' | 'REGION'
 
 export interface SearchResultItem {
-  readonly address: string | null
   readonly applicationStatus: string | null
-  readonly cancelled: boolean
-  readonly category: string | null
   readonly id: string
   readonly latitude: number | null
   readonly longitude: number | null
@@ -21,12 +18,13 @@ export interface SearchFailure {
 }
 
 export interface IntegratedSearchResponse {
+  readonly announcements: readonly SearchResultItem[]
+  readonly complexes: readonly SearchResultItem[]
   readonly failures: readonly SearchFailure[]
   readonly hasNext: boolean
-  readonly housingInformation: readonly SearchResultItem[]
-  readonly locations: readonly SearchResultItem[]
   readonly page: number
   readonly query: string
+  readonly regions: readonly SearchResultItem[]
   readonly size: number
 }
 
@@ -68,15 +66,13 @@ function decodeResponse(value: unknown): IntegratedSearchResponse {
   const envelope = record(value, '$')
   const data = record(envelope.data, '$.data')
   return {
+    announcements: array(data.announcements, '$.data.announcements').map(decodeItem),
+    complexes: array(data.complexes, '$.data.complexes').map(decodeItem),
     failures: array(data.failures, '$.data.failures').map(decodeFailure),
     hasNext: boolean(data.hasNext, '$.data.hasNext'),
-    housingInformation: array(
-      data.housingInformation,
-      '$.data.housingInformation',
-    ).map(decodeItem),
-    locations: array(data.locations, '$.data.locations').map(decodeItem),
     page: number(data.page, '$.data.page'),
     query: string(data.query, '$.data.query'),
+    regions: array(data.regions, '$.data.regions').map(decodeItem),
     size: number(data.size, '$.data.size'),
   }
 }
@@ -88,10 +84,7 @@ function decodeItem(value: unknown, index: number): SearchResultItem {
     throw new Error('통합 검색 결과 유형이 올바르지 않습니다.')
   }
   return {
-    address: nullableString(item.address),
     applicationStatus: nullableString(item.applicationStatus),
-    cancelled: boolean(item.cancelled, 'item.cancelled'),
-    category: nullableString(item.category),
     id: string(item.id, 'item.id'),
     latitude: nullableNumber(item.latitude),
     longitude: nullableNumber(item.longitude),

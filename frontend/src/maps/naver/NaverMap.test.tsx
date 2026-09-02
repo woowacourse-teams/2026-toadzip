@@ -426,6 +426,25 @@ describe('NaverMap', () => {
     expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
   })
 
+  it('같은 검색 결과를 다시 선택하면 동일한 위치로 카메라를 다시 이동한다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const cameraTarget = { latitude: 37.51, longitude: 127.02, zoom: 16 }
+
+    const { rerender } = render(
+      <NaverMap cameraRequestId={1} cameraTarget={cameraTarget} />,
+    )
+    await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
+
+    rerender(<NaverMap cameraRequestId={2} cameraTarget={cameraTarget} />)
+
+    expect(fakeSdk.morphMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.morphMap).toHaveBeenCalledWith(
+      expect.objectContaining({ latitude: 37.51, longitude: 127.02 }),
+      16,
+    )
+  })
+
   it('URL 직렬화 정밀도 안의 camera 차이는 무시하고 더 큰 차이만 적용한다', async () => {
     const fakeSdk = createFakeSdk()
     loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)

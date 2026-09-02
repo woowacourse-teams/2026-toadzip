@@ -2,6 +2,7 @@ package com.toadzip.backend.search.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -62,11 +63,11 @@ class IntegratedSearchServiceTest {
 
         IntegratedSearchResponse response = service.search(request("서울"));
 
-        assertEquals(8, response.housingInformation().size() + response.locations().size());
+        assertEquals(8, response.announcements().size() + response.complexes().size() + response.regions().size());
         assertTrue(count(response, SearchType.ANNOUNCEMENT) <= 3);
         assertTrue(count(response, SearchType.COMPLEX) <= 3);
         assertTrue(count(response, SearchType.REGION) <= 3);
-        assertEquals("서울", response.housingInformation().getFirst().title());
+        assertEquals("서울", response.announcements().getFirst().title());
     }
 
     @Test
@@ -78,9 +79,29 @@ class IntegratedSearchServiceTest {
 
         IntegratedSearchResponse response = service.search(request("서울"));
 
-        assertEquals(1, response.housingInformation().size());
+        assertEquals(1, response.announcements().size());
         assertEquals(1, response.failures().size());
         assertEquals(SearchType.REGION, response.failures().getFirst().type());
+    }
+
+    @Test
+    void 한_유형에_미리보기_제한보다_결과가_많으면_전체_결과가_있음을_알린다() {
+        when(internalRepository.findAnnouncements(any(), anyInt())).thenReturn(List.of());
+        List<SearchSourceItem> complexes = List.of(
+                item(SearchType.COMPLEX, "1", "서울 단지 1"),
+                item(SearchType.COMPLEX, "2", "서울 단지 2"),
+                item(SearchType.COMPLEX, "3", "서울 단지 3"),
+                item(SearchType.COMPLEX, "4", "서울 단지 4")
+        );
+        when(internalRepository.findComplexes(any(), anyInt())).thenAnswer(invocation -> {
+            int limit = invocation.getArgument(1);
+            return complexes.subList(0, Math.min(limit, complexes.size()));
+        });
+
+        IntegratedSearchResponse response = service.search(request("서울"));
+
+        assertEquals(3, response.complexes().size());
+        assertTrue(response.hasNext());
     }
 
     @Test
@@ -94,10 +115,18 @@ class IntegratedSearchServiceTest {
         IntegratedSearchResponse first = service.search(fullRequest("서울", 0));
         IntegratedSearchResponse second = service.search(fullRequest("서울", 1));
 
-        assertEquals(20, first.housingInformation().size());
+        assertEquals(20, first.announcements().size());
         assertTrue(first.hasNext());
-        assertEquals(5, second.housingInformation().size());
+        assertEquals(5, second.announcements().size());
         assertFalse(second.hasNext());
+    }
+
+    @Test
+    void 과도한_페이지_요청을_거부한다() {
+        assertThrows(
+                com.toadzip.backend.search.exception.InvalidSearchRequestException.class,
+                () -> service.search(fullRequest("서울", Integer.MAX_VALUE))
+        );
     }
 
     private IntegratedSearchRequest request(String query) {
@@ -110,7 +139,7 @@ class IntegratedSearchServiceTest {
 
     private SearchSourceItem item(SearchType type, String id, String title) {
         return new SearchSourceItem(
-                type, id, title, "대한민국", "대한민국", type.name(), null, null, null, null, false, null
+                type, id, title, "대한민국", "대한민국", null, null, null, null, null
         );
     }
 
@@ -119,9 +148,8 @@ class IntegratedSearchServiceTest {
     }
 
     private long count(IntegratedSearchResponse response, SearchType type) {
-        return java.util.stream.Stream.concat(
-                response.housingInformation().stream(),
-                response.locations().stream()
-        ).filter(item -> item.type() == type).count();
+        return java.util.stream.Stream.of(
+                response.announcements(), response.complexes(), response.regions()
+        ).flatMap(List::stream).filter(item -> item.type() == type).count();
     }
 }

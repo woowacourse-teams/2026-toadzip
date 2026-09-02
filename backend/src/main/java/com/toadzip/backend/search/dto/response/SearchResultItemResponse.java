@@ -9,14 +9,10 @@ public record SearchResultItemResponse(
         String id,
         String title,
         String subtitle,
-        String address,
-        String category,
         BigDecimal latitude,
         BigDecimal longitude,
         LocalDate publishedAt,
         String applicationStatus,
-        boolean cancelled,
-        String regionCode,
-        int matchRank
+        String regionCode
 ) {
 }
