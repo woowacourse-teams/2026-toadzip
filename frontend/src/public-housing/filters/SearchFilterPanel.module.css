@@ -118,11 +118,11 @@
 
 .choice span {
   display: inline-flex;
-  min-height: 38px;
+  min-height: 36px;
   align-items: center;
   padding: 7px 10px;
   border: 1px solid #aeb5bd;
-  border-radius: 999px;
+  border-radius: 9px;
   background: #ffffff;
   color: #3b4148;
   font-size: 13px;

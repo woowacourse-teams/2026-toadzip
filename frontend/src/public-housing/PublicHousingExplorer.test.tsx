@@ -527,7 +527,7 @@ describe('PublicHousingExplorer', () => {
     expect(minimum).toHaveValue('100000000')
     expect(screen.getByRole('status', {
       name: '임대보증금 선택 범위',
-    })).toHaveTextContent('1억 ~ 1억')
+    })).toHaveTextContent('1억~1억')
 
     fireEvent.click(screen.getByRole('button', { name: '가격 필터 적용' }))
     await waitFor(() => {
@@ -899,6 +899,11 @@ describe('PublicHousingExplorer', () => {
     expect(await screen.findByLabelText(
       '현재 불러온 단지 1곳 이상',
     )).toHaveTextContent('1곳 이상')
+    fireEvent.click(within(screen.getByRole('toolbar', {
+      name: '모바일 단지 검색 필터',
+    })).getByRole('button', { name: /^전체 단지 필터 열기/ }))
+    expect(screen.getByRole('button', { name: '단지 1곳 보기' }))
+      .toBeInTheDocument()
     expect(
       screen.getByRole('region', { name: '공공임대주택 지도' }),
     ).toHaveAttribute('aria-busy', 'false')

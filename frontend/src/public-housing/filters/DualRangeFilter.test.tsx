@@ -134,7 +134,7 @@ describe('DualRangeFilter', () => {
       label: '양끝을 선택하면 구간으로 표시한다',
       initialMinimum: 20,
       initialMaximum: 60,
-      expectedOutput: '2000만 원 ~ 6000만 원',
+      expectedOutput: '2000만 원~6000만 원',
       expectedMinimum: '20',
       expectedMaximum: '60',
     },
@@ -171,13 +171,13 @@ describe('DualRangeFilter', () => {
     expect(minimumInput).toHaveAttribute('max', '60')
     expect(minimumInput).toHaveAttribute('aria-valuemax', '60')
     expect(hiddenMinimum).toHaveValue('50')
-    expect(output).toHaveTextContent('5000만 원 ~ 6000만 원')
+    expect(output).toHaveTextContent('5000만 원~6000만 원')
 
     fireEvent.change(minimumInput, { target: { value: '90' } })
 
     expect(minimumInput).toHaveValue('60')
     expect(hiddenMinimum).toHaveValue('60')
-    expect(output).toHaveTextContent('6000만 원 ~ 6000만 원')
+    expect(output).toHaveTextContent('6000만 원~6000만 원')
   })
 
   it('최댓값 손잡이는 선택값을 갱신하되 최솟값 아래로 내려가지 않는다', () => {
@@ -193,13 +193,13 @@ describe('DualRangeFilter', () => {
     expect(maximumInput).toHaveAttribute('min', '20')
     expect(maximumInput).toHaveAttribute('aria-valuemin', '20')
     expect(hiddenMaximum).toHaveValue('40')
-    expect(output).toHaveTextContent('2000만 원 ~ 4000만 원')
+    expect(output).toHaveTextContent('2000만 원~4000만 원')
 
     fireEvent.change(maximumInput, { target: { value: '10' } })
 
     expect(maximumInput).toHaveValue('20')
     expect(hiddenMaximum).toHaveValue('20')
-    expect(output).toHaveTextContent('2000만 원 ~ 2000만 원')
+    expect(output).toHaveTextContent('2000만 원~2000만 원')
   })
 
   it('한 손잡이를 조작하면 같은 범위의 양끝을 정규화해 제출한다', () => {
@@ -383,7 +383,7 @@ describe('DualRangeFilter', () => {
 
     fireEvent.change(minimumInput, { target: { value: '50' } })
     fireEvent.change(maximumInput, { target: { value: '80' } })
-    expect(output).toHaveTextContent('5000만 원 ~ 8000만 원')
+    expect(output).toHaveTextContent('5000만 원~8000만 원')
 
     fireEvent.click(screen.getByRole('button', { name: '초기화' }))
 
@@ -391,7 +391,7 @@ describe('DualRangeFilter', () => {
     expect(maximumInput).toHaveValue('60')
     expect(hiddenMinimum).toHaveValue('20')
     expect(hiddenMaximum).toHaveValue('60')
-    expect(output).toHaveTextContent('2000만 원 ~ 6000만 원')
+    expect(output).toHaveTextContent('2000만 원~6000만 원')
   })
 
   it('majorStep 눈금 라벨과 선택 구간 track 위치를 계산한다', () => {
@@ -585,7 +585,7 @@ describe('DualRangeFilter', () => {
     )
   })
 
-  it('빠른 선택을 한 줄로 유지하고 44px 터치 영역 안에 36px 칩을 보인다', () => {
+  it('빠른 선택을 한 줄로 유지하고 44px 터치 영역 안에 36px 둥근 사각형을 보인다', () => {
     const filterStyles = readFileSync(
       resolve(
         process.cwd(),
@@ -601,7 +601,7 @@ describe('DualRangeFilter', () => {
       /\.preset\s*\{[\s\S]*?flex:\s*0 0 auto;[\s\S]*?min-width:\s*44px;[\s\S]*?min-height:\s*44px;[\s\S]*?white-space:\s*nowrap;/,
     )
     expect(filterStyles).toMatch(
-      /\.preset::before\s*\{[\s\S]*?height:\s*36px;[\s\S]*?border-radius:\s*999px;/,
+      /\.preset::before\s*\{[\s\S]*?height:\s*36px;[\s\S]*?border-radius:\s*9px;/,
     )
     expect(filterStyles).toMatch(
       /\.preset:focus-visible::before\s*\{[\s\S]*?outline:\s*3px solid/,

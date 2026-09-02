@@ -16,6 +16,7 @@ const searchFilterPanelStylesheet = scopeCssModule(
     'utf8',
   ),
   {
+    choice: searchFilterPanelClasses.choice,
     choiceGroup: searchFilterPanelClasses.choiceGroup,
     choiceOptions: searchFilterPanelClasses.choiceOptions,
   },
@@ -72,10 +73,14 @@ describe('SearchFilterPanel', () => {
       name: '행복주택',
     })
     const valueArea = firstChoice.closest('div')
+    const choiceVisual = firstChoice.nextElementSibling
     const legend = within(rentalTypeGroup).getByText('임대유형')
 
-    if (!(valueArea instanceof HTMLElement)) {
-      throw new Error('임대유형 선택값 영역을 찾을 수 없습니다.')
+    if (
+      !(valueArea instanceof HTMLElement)
+      || !(choiceVisual instanceof HTMLElement)
+    ) {
+      throw new Error('임대유형 선택값 영역과 버튼을 찾을 수 없습니다.')
     }
     expect(getComputedStyle(valueArea).borderTopStyle)
       .toBe('solid')
@@ -83,6 +88,8 @@ describe('SearchFilterPanel', () => {
       .toBe('1px')
     expect(getComputedStyle(valueArea).paddingTop).toBe('8px')
     expect(getComputedStyle(legend).fontWeight).toBe('800')
+    expect(getComputedStyle(choiceVisual).minHeight).toBe('36px')
+    expect(getComputedStyle(choiceVisual).borderRadius).toBe('9px')
   })
 
   it('시도를 선택하면 직속 시군구를 불러오고 시도만 또는 시군구까지 적용한다', async () => {
@@ -181,7 +188,7 @@ describe('SearchFilterPanel', () => {
     fireEvent.change(depositMaximum, { target: { value: '300000000' } })
     expect(screen.getByRole('status', {
       name: '임대보증금 선택 범위',
-    })).toHaveTextContent('1억 ~ 3억')
+    })).toHaveTextContent('1억~3억')
 
     fireEvent.click(screen.getByRole('button', { name: '10평대' }))
     fireEvent.click(screen.getByRole('button', { name: '단지 필터 적용' }))

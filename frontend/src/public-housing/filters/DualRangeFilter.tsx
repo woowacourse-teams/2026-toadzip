@@ -63,7 +63,7 @@ export function DualRangeFilter({
       : `${formatValue(selectedMaximum)} 이하`
     : selectedMaximum === maximum
       ? `${formatValue(selectedMinimum)} 이상`
-      : `${formatValue(selectedMinimum)} ~ ${formatValue(selectedMaximum)}`
+      : `${formatValue(selectedMinimum)}~${formatValue(selectedMaximum)}`
   const startPercentage = rangePercentage(selectedMinimum, minimum, maximum)
   const endPercentage = rangePercentage(selectedMaximum, minimum, maximum)
   const rangeStyle = {
@@ -98,14 +98,19 @@ export function DualRangeFilter({
   return (
     <fieldset ref={fieldsetRef} className={styles.filter} style={rangeStyle}>
       <legend className={styles.legend}>{legend}</legend>
-      <output
-        className={styles.output}
-        role="status"
-        aria-atomic="true"
-        aria-label={`${legend} 선택 범위`}
-      >
-        {rangeText}
-      </output>
+      <div className={styles.header}>
+        <span className={styles.label} aria-hidden="true">
+          {legend}
+        </span>
+        <output
+          className={styles.output}
+          role="status"
+          aria-atomic="true"
+          aria-label={`${legend} 선택 범위`}
+        >
+          {rangeText}
+        </output>
+      </div>
 
       {presets.length > 0 && (
         <div

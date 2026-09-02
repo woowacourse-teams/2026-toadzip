@@ -1029,6 +1029,10 @@ export function PublicHousingExplorer({
     announcementResults.state,
     requestBlocked,
   )
+  const complexFilterResultCountLabel = !requestBlocked
+    && mapResults.status === 'ready'
+    ? `${mapResults.items.length}곳`
+    : undefined
   const hasDetail = complexDetail.status !== 'closed'
     || announcementDetail.status !== 'closed'
   const selectedAnnouncementId = detailLocation.kind === 'announcement'
@@ -1154,6 +1158,7 @@ export function PublicHousingExplorer({
             filters={complexFilters}
             onApply={applyComplexFilters}
             regionRepository={regionRepository}
+            resultCountLabel={complexFilterResultCountLabel}
           />
         </div>
         <NaverMap

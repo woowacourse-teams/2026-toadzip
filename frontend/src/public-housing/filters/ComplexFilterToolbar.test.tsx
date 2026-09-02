@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -41,7 +43,27 @@ const BASE_FILTERS: ComplexSearchFilters = {
   builtYearTo: 2024,
 }
 
+const TOOLBAR_STYLES = readFileSync(
+  resolve(
+    process.cwd(),
+    'src/public-housing/filters/ComplexFilterToolbar.module.css',
+  ),
+  'utf8',
+)
+
 describe('ComplexFilterToolbar', () => {
+  it('데스크톱 트리거와 선택값을 36px 높이의 둥근 사각형으로 통일한다', () => {
+    const triggerRule = TOOLBAR_STYLES.match(/\.trigger\s*\{([^}]*)\}/)?.[1]
+    const choiceRule = TOOLBAR_STYLES.match(
+      /\.choice\s*>\s*span\s*\{([^}]*)\}/,
+    )?.[1]
+
+    expect(triggerRule).toMatch(/height:\s*36px;/)
+    expect(triggerRule).toMatch(/border-radius:\s*9px;/)
+    expect(choiceRule).toMatch(/min-height:\s*36px;/)
+    expect(choiceRule).toMatch(/border-radius:\s*9px;/)
+  })
+
   it('8개 토픽을 독립 버튼으로 보이고 한 번에 하나의 팝오버만 연다', () => {
     renderToolbar()
 
@@ -86,19 +108,20 @@ describe('ComplexFilterToolbar', () => {
     const price = screen.getByRole('button', { name: '가격 필터 열기' })
     if (root === null) throw new Error('필터 root를 찾을 수 없습니다.')
     vi.spyOn(root, 'getBoundingClientRect').mockReturnValue(
-      domRect({ left: 100, width: 800 }),
+      domRect({ left: 100, top: 40, width: 800 }),
     )
     vi.spyOn(price, 'getBoundingClientRect').mockReturnValue(
-      domRect({ left: 570, width: 100 }),
+      domRect({ height: 36, left: 300, top: 90, width: 100 }),
     )
 
     fireEvent.click(price)
 
     const popover = screen.getByRole('region', { name: '가격 필터' })
     expect(popover).toHaveAttribute('data-topic', 'price')
-    expect(popover.style.getPropertyValue('--popover-anchor-x')).toBe('520px')
-    expect(popover.style.getPropertyValue('--popover-width')).toBe('400px')
-    expect(popover.style.getPropertyValue('--popover-left')).toBe('320px')
+    expect(popover.style.getPropertyValue('--popover-anchor-x')).toBe('250px')
+    expect(popover.style.getPropertyValue('--popover-width')).toBe('420px')
+    expect(popover.style.getPropertyValue('--popover-left')).toBe('200px')
+    expect(popover.style.getPropertyValue('--popover-top')).toBe('94px')
   })
 
   it('필터 행을 가로 스크롤하면 열린 팝오버의 연결 위치를 갱신한다', () => {
@@ -122,13 +145,13 @@ describe('ComplexFilterToolbar', () => {
     const popover = screen.getByRole('region', { name: '지역 필터' })
     expect(popover.style.getPropertyValue('--popover-anchor-x')).toBe('120px')
     expect(popover.style.getPropertyValue('--popover-width')).toBe('320px')
-    expect(popover.style.getPropertyValue('--popover-left')).toBe('0px')
+    expect(popover.style.getPropertyValue('--popover-left')).toBe('80px')
 
     triggerLeft = 260
     fireEvent.scroll(scroller)
 
     expect(popover.style.getPropertyValue('--popover-anchor-x')).toBe('200px')
-    expect(popover.style.getPropertyValue('--popover-left')).toBe('40px')
+    expect(popover.style.getPropertyValue('--popover-left')).toBe('160px')
   })
 
   it('좁은 화면에서도 지역 팝오버를 전체 폭으로 늘리지 않고 경계 안에 둔다', () => {
@@ -284,6 +307,29 @@ describe('ComplexFilterToolbar', () => {
       minMonthlyRent: 400_000,
       maxMonthlyRent: 590_000,
     })
+  })
+
+  it('가격 빠른 선택은 전체 중복 없이 범위별 4~5개만 한 번에 제공한다', () => {
+    renderToolbar()
+
+    fireEvent.click(screen.getByRole('button', { name: '가격 필터 열기' }))
+    const popover = screen.getByRole('region', { name: '가격 필터' })
+    const depositPresets = within(popover).getByRole('group', {
+      name: '임대보증금 빠른 선택',
+    })
+    const rentPresets = within(popover).getByRole('group', {
+      name: '월 임대료 빠른 선택',
+    })
+
+    expect(within(depositPresets).getAllByRole('button').map(
+      (button) => button.textContent,
+    )).toEqual(['1억 이하', '1~2억', '2~3억', '3~5억', '5억 이상'])
+    expect(within(rentPresets).getAllByRole('button').map(
+      (button) => button.textContent,
+    )).toEqual(['10만 이하', '10~20만', '20~30만', '30~40만', '40~60만'])
+    expect(within(popover).getAllByRole('status', {
+      name: /선택 범위/,
+    }).map((output) => output.textContent)).toEqual(['전체', '전체'])
   })
 
   it('URL의 endpoint·domain 초과·step 비정렬 범위를 무변경 적용하면 그대로 보존한다', () => {
@@ -496,12 +542,12 @@ describe('ComplexFilterToolbar', () => {
     renderToolbar({ filters: BASE_FILTERS })
 
     const expectedSummaries = [
-      ['지역', '서울특별시'],
+      ['지역', '서울'],
       ['임대유형', '국민임대'],
       ['모집상태', '접수중'],
       ['공급기관', 'LH'],
       ['모집유형', '신규 모집'],
-      ['가격', '보증금 1억~2억 · 월세 20만~30만'],
+      ['가격', '1억~2억 · 월 20만~30만'],
       ['전용면적', '10~19평'],
       ['준공년도', '2019~2024년'],
     ] as const
@@ -511,9 +557,18 @@ describe('ComplexFilterToolbar', () => {
         name: `${topic} 필터 열기`,
       })
       expect(button).toHaveAttribute('data-active', 'true')
-      expect(button).toHaveTextContent(summary)
+      expect(button.textContent).toBe(summary)
       expect(button).toHaveAccessibleDescription(`적용됨: ${summary}`)
     })
+  })
+
+  it('적용값이 없는 토픽은 분류명을 그대로 보인다', () => {
+    renderToolbar()
+
+    expect(screen.getByRole('button', { name: '지역 필터 열기' }).textContent)
+      .toBe('지역')
+    expect(screen.getByRole('button', { name: '가격 필터 열기' }).textContent)
+      .toBe('가격')
   })
 
   it('다섯 자리 지역은 실제 시군구 이름을 active 요약으로 보인다', async () => {
@@ -524,9 +579,140 @@ describe('ComplexFilterToolbar', () => {
 
     const region = screen.getByRole('button', { name: '지역 필터 열기' })
     await waitFor(() => {
-      expect(region).toHaveTextContent('경기도 수원시')
-      expect(region).toHaveAccessibleDescription('적용됨: 경기도 수원시')
+      expect(region).toHaveTextContent('경기 수원시')
+      expect(region).toHaveAccessibleDescription('적용됨: 경기 수원시')
     })
+  })
+
+  it('모바일 핵심 조건은 적용값을 읽어 주고 하나의 전체 필터 시트에서 초기화한다', async () => {
+    const onApply = vi.fn()
+    renderToolbar({
+      filters: {
+        regionCode: '11',
+        rentalTypes: ['NATIONAL_RENTAL'],
+        minDeposit: 100_000_000,
+        maxDeposit: 200_000_000,
+      },
+      onApply,
+      resultCountLabel: '12곳',
+    })
+    const mobileToolbar = screen.getByRole('toolbar', {
+      name: '모바일 단지 검색 필터',
+    })
+
+    expect(within(mobileToolbar).getAllByRole('button').map(
+      (button) => button.textContent,
+    )).toEqual(['서울', '국민임대', '1억~2억', '필터 3'])
+    expect(within(mobileToolbar).getByRole('button', {
+      name: '가격 1억~2억, 전체 단지 필터 열기',
+    })).toBeInTheDocument()
+
+    fireEvent.click(within(mobileToolbar).getByRole('button', {
+      name: '가격 1억~2억, 전체 단지 필터 열기',
+    }))
+
+    expect(screen.queryByRole('region', { name: '가격 필터' }))
+      .not.toBeInTheDocument()
+    const sheet = screen.getByRole('dialog', { name: '단지 필터' })
+    expect(within(sheet).getByRole('button', {
+      name: '단지 필터 닫기',
+    })).toHaveFocus()
+    expect(within(sheet).getByRole('button', {
+      name: '단지 12곳 보기',
+    })).toBeInTheDocument()
+    expect(within(sheet).getByRole('slider', {
+      name: '임대보증금 최솟값',
+    })).toBeInTheDocument()
+    expect(within(sheet).getByRole('slider', {
+      name: '전용면적 최댓값',
+    })).toBeInTheDocument()
+
+    fireEvent.click(within(sheet).getByRole('button', {
+      name: '전체 필터 초기화',
+    }))
+    expect(onApply).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(within(sheet).getByRole('button', {
+        name: '전체 필터 초기화',
+      })).toHaveFocus()
+    })
+
+    fireEvent.click(within(sheet).getByRole('button', {
+      name: '단지 보기',
+    }))
+    expect(onApply).toHaveBeenCalledWith({})
+    expect(screen.queryByRole('dialog', { name: '단지 필터' }))
+      .not.toBeInTheDocument()
+  })
+
+  it('모바일 시트가 열린 동안 외부 필터가 바뀌면 stale draft를 닫는다', () => {
+    const onApply = vi.fn()
+    const regionRepository = { search: vi.fn().mockResolvedValue([]) }
+    const { rerender } = render(
+      <ComplexFilterToolbar
+        filters={{ regionCode: '11' }}
+        onApply={onApply}
+        regionRepository={regionRepository}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', {
+      name: '전체 단지 필터 열기, 1개 적용',
+    }))
+    expect(screen.getByRole('dialog', { name: '단지 필터' }))
+      .toBeInTheDocument()
+
+    rerender(
+      <ComplexFilterToolbar
+        filters={{ regionCode: '41' }}
+        onApply={onApply}
+        regionRepository={regionRepository}
+      />,
+    )
+
+    expect(screen.queryByRole('dialog', { name: '단지 필터' }))
+      .not.toBeInTheDocument()
+    expect(onApply).not.toHaveBeenCalled()
+  })
+
+  it('모바일 시트는 배경 스크롤을 잠그고 내부 토픽만 직접 이동한다', () => {
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    })
+    renderToolbar({ filters: { minDeposit: 100_000_000 } })
+
+    fireEvent.click(screen.getByRole('button', {
+      name: '가격 1억 이상, 전체 단지 필터 열기',
+    }))
+
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(document.documentElement.style.overflow).toBe('hidden')
+    expect(document.body.style.overflow).toBe('hidden')
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(document.documentElement.style.overflow).toBe('')
+    expect(document.body.style.overflow).toBe('')
+    Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView')
+  })
+
+  it('모바일 시트가 열린 채 데스크톱 너비가 되면 숨은 dialog를 종료한다', () => {
+    const innerWidth = vi.spyOn(window, 'innerWidth', 'get')
+      .mockReturnValue(390)
+    renderToolbar()
+    fireEvent.click(screen.getByRole('button', {
+      name: '전체 단지 필터 열기',
+    }))
+    expect(screen.getByRole('dialog', { name: '단지 필터' }))
+      .toBeInTheDocument()
+
+    innerWidth.mockReturnValue(768)
+    fireEvent(window, new Event('resize'))
+
+    expect(screen.queryByRole('dialog', { name: '단지 필터' }))
+      .not.toBeInTheDocument()
+    innerWidth.mockRestore()
   })
 
   it('시군구 로딩 실패를 즉시 알리고 관련 select와 연결한다', async () => {
@@ -573,38 +759,45 @@ function renderToolbar({
   filters = {},
   onApply = vi.fn(),
   regionRepository = { search: vi.fn().mockResolvedValue([]) },
+  resultCountLabel,
 }: {
   readonly filters?: ComplexSearchFilters
   readonly onApply?: ComponentProps<typeof ComplexFilterToolbar>['onApply']
   readonly regionRepository?: ComponentProps<
     typeof ComplexFilterToolbar
   >['regionRepository']
+  readonly resultCountLabel?: string
 } = {}) {
   return render(
     <ComplexFilterToolbar
       filters={filters}
       onApply={onApply}
       regionRepository={regionRepository}
+      resultCountLabel={resultCountLabel}
     />,
   )
 }
 
 function domRect({
+  height = 0,
   left,
+  top = 0,
   width,
 }: {
+  readonly height?: number
   readonly left: number
+  readonly top?: number
   readonly width: number
 }): DOMRect {
   return {
-    bottom: 0,
-    height: 0,
+    bottom: top + height,
+    height,
     left,
     right: left + width,
-    top: 0,
+    top,
     width,
     x: left,
-    y: 0,
+    y: top,
     toJSON: () => ({}),
   }
 }

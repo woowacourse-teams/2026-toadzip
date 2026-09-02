@@ -1,5 +1,6 @@
 import {
   type CSSProperties,
+  Fragment,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   useEffect,
@@ -62,7 +63,6 @@ const RECRUITMENT_TYPE_OPTIONS = [
 ] as const satisfies readonly (readonly [RecruitmentTypeFilter, string])[]
 
 const DEPOSIT_PRESETS = [
-  { label: '전체', minimum: null, maximum: null },
   { label: '1억 이하', minimum: null, maximum: 100_000_000 },
   { label: '1~2억', minimum: 100_000_000, maximum: 200_000_000 },
   { label: '2~3억', minimum: 200_000_000, maximum: 300_000_000 },
@@ -71,17 +71,14 @@ const DEPOSIT_PRESETS = [
 ] as const satisfies readonly DualRangeFilterPreset[]
 
 const MONTHLY_RENT_PRESETS = [
-  { label: '전체', minimum: null, maximum: null },
   { label: '10만 이하', minimum: null, maximum: 100_000 },
   { label: '10~20만', minimum: 100_000, maximum: 200_000 },
   { label: '20~30만', minimum: 200_000, maximum: 300_000 },
   { label: '30~40만', minimum: 300_000, maximum: 400_000 },
   { label: '40~60만', minimum: 400_000, maximum: 590_000 },
-  { label: '60만 이상', minimum: 600_000, maximum: null },
 ] as const satisfies readonly DualRangeFilterPreset[]
 
 const AREA_PRESETS = [
-  { label: '전체', minimum: null, maximum: null },
   { label: '10평 미만', minimum: null, maximum: 29.7 },
   { label: '10평대', minimum: 33, maximum: 62.7 },
   { label: '20평대', minimum: 66, maximum: 95.7 },
@@ -109,14 +106,31 @@ const TOPICS = [
   ['builtYear', '준공년도'],
 ] as const satisfies readonly (readonly [FilterTopic, string])[]
 
+const MOBILE_PRIMARY_TOPICS = [
+  ['region', '지역'],
+  ['rentalType', '임대유형'],
+  ['price', '가격'],
+] as const satisfies readonly (readonly [FilterTopic, string])[]
+
+const MOBILE_SHEET_TOPICS = [
+  ['region', '지역'],
+  ['rentalType', '임대유형'],
+  ['price', '가격'],
+  ['exclusiveArea', '전용면적'],
+  ['applicationStatus', '모집상태'],
+  ['agency', '공급기관'],
+  ['recruitmentType', '모집유형'],
+  ['builtYear', '준공년도'],
+] as const satisfies readonly (readonly [FilterTopic, string])[]
+
 const POPOVER_WIDTHS = {
   region: 320,
-  rentalType: 300,
-  applicationStatus: 300,
-  agency: 300,
-  recruitmentType: 300,
-  price: 400,
-  exclusiveArea: 360,
+  rentalType: 280,
+  applicationStatus: 280,
+  agency: 280,
+  recruitmentType: 280,
+  price: 420,
+  exclusiveArea: 380,
   builtYear: 320,
 } as const satisfies Record<FilterTopic, number>
 
@@ -143,23 +157,34 @@ export interface ComplexFilterToolbarProps {
   readonly filters: ComplexSearchFilters
   readonly onApply: (filters: ComplexSearchFilters) => void
   readonly regionRepository?: PublicHousingRegionRepository
+  readonly resultCountLabel?: string
 }
 
 export function ComplexFilterToolbar({
   filters,
   onApply,
   regionRepository = publicHousingRegionRepository,
+  resultCountLabel,
 }: ComplexFilterToolbarProps) {
+  const filtersSignature = searchFiltersSignature(filters)
   const [openTopic, setOpenTopic] = useState<FilterTopic | null>(null)
+  const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
+  const [mobileDraftFilters, setMobileDraftFilters] = useState(filters)
+  const [mobileDraftDirty, setMobileDraftDirty] = useState(false)
+  const [mobileFormRevision, setMobileFormRevision] = useState(0)
+  const [mobileInitialTopic, setMobileInitialTopic] =
+    useState<FilterTopic | null>(null)
   const [rovingTopic, setRovingTopic] = useState<FilterTopic>('region')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [popoverPlacement, setPopoverPlacement] = useState<{
     readonly anchorX: number
     readonly left: number
+    readonly top: number
     readonly width: number
   }>({
     anchorX: 0,
     left: 0,
+    top: 0,
     width: POPOVER_WIDTHS.region,
   })
   const [resolvedRegionSummary, setResolvedRegionSummary] = useState<{
@@ -168,6 +193,13 @@ export function ComplexFilterToolbar({
   } | null>(null)
   const rootRef = useRef<HTMLElement>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
+  const mobileSheetRef = useRef<HTMLElement>(null)
+  const mobileSheetBodyRef = useRef<HTMLDivElement>(null)
+  const mobileCloseRef = useRef<HTMLButtonElement>(null)
+  const mobileResetRef = useRef<HTMLButtonElement>(null)
+  const mobileResetFocusPendingRef = useRef(false)
+  const mobileTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const mobileOpenedFiltersSignatureRef = useRef(filtersSignature)
   const triggerRefs = useRef<Partial<Record<FilterTopic, HTMLButtonElement>>>(
     {},
   )
@@ -205,6 +237,104 @@ export function ComplexFilterToolbar({
     }
   }, [openTopic])
 
+  useEffect(() => {
+    if (!mobileSheetOpen) {
+      return
+    }
+    const opener = mobileTriggerRef.current
+    const html = document.documentElement
+    const body = document.body
+    const previousHtmlOverflow = html.style.overflow
+    const previousBodyOverflow = body.style.overflow
+    const close = () => {
+      setMobileSheetOpen(false)
+      setMobileInitialTopic(null)
+      setErrorMessage(null)
+      opener?.focus()
+    }
+    const closeAtDesktopBreakpoint = () => {
+      if (window.innerWidth <= 767) {
+        return
+      }
+      const desktopTopic = mobileInitialTopic ?? 'region'
+      setMobileSheetOpen(false)
+      setMobileInitialTopic(null)
+      setErrorMessage(null)
+      window.requestAnimationFrame(() => {
+        triggerRefs.current[desktopTopic]?.focus()
+      })
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        close()
+        return
+      }
+      if (event.key !== 'Tab' || mobileSheetRef.current === null) {
+        return
+      }
+      const focusable = focusableElements(mobileSheetRef.current)
+      const first = focusable[0]
+      const last = focusable.at(-1)
+      if (first === undefined || last === undefined) {
+        return
+      }
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown, true)
+    window.addEventListener('resize', closeAtDesktopBreakpoint)
+    html.style.overflow = 'hidden'
+    body.style.overflow = 'hidden'
+    mobileCloseRef.current?.focus()
+    if (mobileInitialTopic !== null) {
+      const scrollContainer = mobileSheetBodyRef.current
+      const target = mobileSheetRef.current?.querySelector<HTMLElement>(
+        `[data-mobile-topic="${mobileInitialTopic}"]`,
+      )
+      if (scrollContainer !== null && target !== null && target !== undefined) {
+        const containerTop = scrollContainer.getBoundingClientRect().top
+        const targetTop = target.getBoundingClientRect().top
+        scrollContainer.scrollTop += targetTop - containerTop - 12
+      }
+    }
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true)
+      window.removeEventListener('resize', closeAtDesktopBreakpoint)
+      html.style.overflow = previousHtmlOverflow
+      body.style.overflow = previousBodyOverflow
+    }
+  }, [mobileInitialTopic, mobileSheetOpen])
+
+  useLayoutEffect(() => {
+    if (!mobileSheetOpen || !mobileResetFocusPendingRef.current) {
+      return
+    }
+    mobileResetFocusPendingRef.current = false
+    mobileResetRef.current?.focus()
+  }, [mobileFormRevision, mobileSheetOpen])
+
+  useEffect(() => {
+    if (
+      !mobileSheetOpen
+      || mobileOpenedFiltersSignatureRef.current === filtersSignature
+    ) {
+      return
+    }
+    const opener = mobileTriggerRef.current
+    setMobileSheetOpen(false)
+    setMobileInitialTopic(null)
+    setErrorMessage(null)
+    opener?.focus()
+  }, [filtersSignature, mobileSheetOpen])
+
   useLayoutEffect(() => {
     if (openTopic === null) {
       return
@@ -226,12 +356,17 @@ export function ComplexFilterToolbar({
         ? rootRect.width
         : requestedWidth
       const anchorX = Math.max(0, Math.min(triggerCenter, availableWidth))
-      const width = Math.min(requestedWidth, availableWidth)
+      const width = Math.min(
+        Math.max(280, Math.min(420, requestedWidth)),
+        availableWidth,
+      )
+      const triggerLeft = triggerRect.left - rootRect.left
       const left = Math.max(
         0,
-        Math.min(anchorX - (width / 2), availableWidth - width),
+        Math.min(triggerLeft, availableWidth - width),
       )
-      setPopoverPlacement({ anchorX, left, width })
+      const top = Math.max(0, triggerRect.bottom - rootRect.top + 8)
+      setPopoverPlacement({ anchorX, left, top, width })
     }
 
     updateAnchor()
@@ -241,7 +376,7 @@ export function ComplexFilterToolbar({
       window.removeEventListener('resize', updateAnchor)
       scroller.removeEventListener('scroll', updateAnchor)
     }
-  }, [openTopic])
+  }, [openTopic, resolvedRegionSummary])
 
   useEffect(() => {
     const regionCode = filters.regionCode
@@ -297,6 +432,53 @@ export function ComplexFilterToolbar({
     triggerRefs.current[nextTopic]?.focus()
   }
 
+  function openMobileSheet(
+    topic: FilterTopic | null,
+    trigger: HTMLButtonElement,
+  ) {
+    mobileTriggerRef.current = trigger
+    mobileOpenedFiltersSignatureRef.current = filtersSignature
+    setOpenTopic(null)
+    setErrorMessage(null)
+    setMobileDraftFilters(filters)
+    setMobileDraftDirty(false)
+    setMobileFormRevision((current) => current + 1)
+    setMobileInitialTopic(topic)
+    setMobileSheetOpen(true)
+  }
+
+  function closeMobileSheet() {
+    const opener = mobileTriggerRef.current
+    setMobileSheetOpen(false)
+    setMobileInitialTopic(null)
+    setErrorMessage(null)
+    opener?.focus()
+  }
+
+  function submitMobileSheet(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    const next = MOBILE_SHEET_TOPICS.reduce<ComplexSearchFilters>(
+      (draft, [topic]) => ({ ...draft, ...topicDraftFromForm(topic, data) }),
+      {},
+    )
+    const rangeError = topicRangeError('builtYear', next)
+    if (rangeError !== null) {
+      setErrorMessage(rangeError)
+      return
+    }
+    onApply(next)
+    closeMobileSheet()
+  }
+
+  function resetMobileSheet() {
+    setErrorMessage(null)
+    mobileResetFocusPendingRef.current = true
+    setMobileDraftFilters({})
+    setMobileDraftDirty(filtersSignature !== '')
+    setMobileFormRevision((current) => current + 1)
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (openTopic === null) {
@@ -322,124 +504,267 @@ export function ComplexFilterToolbar({
   const headingId = openTopic === null
     ? undefined
     : `complex-${openTopic}-filter-heading`
+  const resolvedRegionName = resolvedRegionSummary !== null
+    && resolvedRegionSummary.regionCode === filters.regionCode
+    ? resolvedRegionSummary.label
+    : null
+  const appliedTopicCount = TOPICS.reduce(
+    (count, [topic]) => count + (
+      topicSummary(filters, topic, resolvedRegionName) === null ? 0 : 1
+    ),
+    0,
+  )
+  const mobileResultAction = !mobileDraftDirty
+    && resultCountLabel !== undefined
+    && /^\d+곳(?: 이상)?$/.test(resultCountLabel)
+    ? `단지 ${resultCountLabel} 보기`
+    : '단지 보기'
 
   return (
     <section ref={rootRef} className={styles.root}>
-      <div ref={scrollerRef} className={styles.scroller}>
-        <div
-          className={styles.toolbar}
-          role="toolbar"
-          aria-label="단지 검색 필터"
-          onKeyDown={moveToolbarFocus}
-        >
-          {TOPICS.map(([topic, label]) => {
-            const expanded = topic === openTopic
-            const summary = topicSummary(
-              filters,
-              topic,
-              resolvedRegionSummary !== null
-                && resolvedRegionSummary.regionCode === filters.regionCode
-                ? resolvedRegionSummary.label
-                : null,
-            )
-            const summaryId = `complex-${topic}-filter-summary`
-            return (
-              <button
-                ref={(node) => {
-                  if (node === null) {
-                    delete triggerRefs.current[topic]
-                  } else {
-                    triggerRefs.current[topic] = node
-                  }
-                }}
-                key={topic}
-                className={styles.trigger}
-                type="button"
-                tabIndex={rovingTopic === topic ? 0 : -1}
-                aria-controls={`complex-${topic}-filter-popover`}
-                aria-describedby={summary === null ? undefined : summaryId}
-                aria-expanded={expanded}
-                aria-label={`${label} 필터 ${expanded ? '닫기' : '열기'}`}
-                data-active={summary === null ? 'false' : 'true'}
-                onFocus={() => setRovingTopic(topic)}
-                onClick={() => {
-                  setErrorMessage(null)
-                  setOpenTopic((current) => current === topic ? null : topic)
-                }}
-              >
-                <span className={styles.triggerText}>
-                  <span>{label}</span>
+      <div className={styles.desktopFilters}>
+        <div ref={scrollerRef} className={styles.scroller}>
+          <div
+            className={styles.toolbar}
+            role="toolbar"
+            aria-label="단지 검색 필터"
+            onKeyDown={moveToolbarFocus}
+          >
+            {TOPICS.map(([topic, label]) => {
+              const expanded = topic === openTopic
+              const summary = topicSummary(
+                filters,
+                topic,
+                resolvedRegionName,
+              )
+              const summaryId = `complex-${topic}-filter-summary`
+              return (
+                <Fragment key={topic}>
+                  <button
+                    ref={(node) => {
+                      if (node === null) {
+                        delete triggerRefs.current[topic]
+                      } else {
+                        triggerRefs.current[topic] = node
+                      }
+                    }}
+                    className={styles.trigger}
+                    type="button"
+                    title={summary ?? label}
+                    tabIndex={rovingTopic === topic ? 0 : -1}
+                    aria-controls={`complex-${topic}-filter-popover`}
+                    aria-describedby={summary === null ? undefined : summaryId}
+                    aria-expanded={expanded}
+                    aria-label={`${label} 필터 ${expanded ? '닫기' : '열기'}`}
+                    data-active={summary === null ? 'false' : 'true'}
+                    onFocus={() => setRovingTopic(topic)}
+                    onClick={() => {
+                      setErrorMessage(null)
+                      setOpenTopic((current) => current === topic ? null : topic)
+                    }}
+                  >
+                    <span className={styles.triggerText} aria-hidden="true">
+                      {summary ?? label}
+                    </span>
+                    <span
+                      className={`${styles.chevron}${
+                        expanded ? ` ${styles.chevronExpanded}` : ''
+                      }`}
+                      aria-hidden="true"
+                    />
+                  </button>
                   {summary !== null && (
-                    <>
-                      <span className={styles.visuallyHidden} id={summaryId}>
-                        적용됨: {summary}
-                      </span>
-                      <span className={styles.triggerSummary} aria-hidden="true">
-                        {summary}
-                      </span>
-                    </>
+                    <span className={styles.visuallyHidden} id={summaryId}>
+                      적용됨: {summary}
+                    </span>
                   )}
-                </span>
-                <span
-                  className={`${styles.chevron}${
-                    expanded ? ` ${styles.chevronExpanded}` : ''
-                  }`}
-                  aria-hidden="true"
-                />
-              </button>
-            )
-          })}
+                </Fragment>
+              )
+            })}
+          </div>
         </div>
+
+        {openTopic !== null && openLabel !== null && headingId !== undefined && (
+          <section
+            className={styles.popover}
+            id={`complex-${openTopic}-filter-popover`}
+            aria-labelledby={headingId}
+            data-topic={openTopic}
+            style={{
+              '--popover-anchor-x': `${popoverPlacement.anchorX}px`,
+              '--popover-left': `${popoverPlacement.left}px`,
+              '--popover-top': `${popoverPlacement.top}px`,
+              '--popover-width': `${popoverPlacement.width}px`,
+            } as CSSProperties}
+          >
+            <form
+              key={`${openTopic}-${searchFiltersSignature(filters)}`}
+              className={styles.form}
+              onSubmit={submit}
+            >
+              <h2 className={styles.popoverHeading} id={headingId}>
+                {openLabel} 필터
+              </h2>
+              <div className={styles.fields}>
+                <TopicFields
+                  filters={filters}
+                  regionRepository={regionRepository}
+                  topic={openTopic}
+                />
+              </div>
+              {errorMessage !== null && (
+                <p className={styles.error} role="alert">{errorMessage}</p>
+              )}
+              <div className={styles.actions}>
+                <button
+                  className={styles.reset}
+                  type="button"
+                  aria-label={`${openLabel} 필터 초기화`}
+                  onClick={() => applyAndClose(
+                    openTopic,
+                    replaceTopic(filters, openTopic, {}),
+                  )}
+                >초기화</button>
+                <button
+                  className={styles.apply}
+                  type="submit"
+                  aria-label={`${openLabel} 필터 적용`}
+                >적용</button>
+              </div>
+            </form>
+          </section>
+        )}
       </div>
 
-      {openTopic !== null && openLabel !== null && headingId !== undefined && (
-        <section
-          className={styles.popover}
-          id={`complex-${openTopic}-filter-popover`}
-          aria-labelledby={headingId}
-          data-topic={openTopic}
-          style={{
-            '--popover-anchor-x': `${popoverPlacement.anchorX}px`,
-            '--popover-left': `${popoverPlacement.left}px`,
-            '--popover-width': `${popoverPlacement.width}px`,
-          } as CSSProperties}
+      <div
+        className={styles.mobileToolbar}
+        role="toolbar"
+        aria-label="모바일 단지 검색 필터"
+      >
+        {MOBILE_PRIMARY_TOPICS.map(([topic, label]) => {
+          const summary = topicSummary(filters, topic, resolvedRegionName)
+          return (
+            <button
+              key={topic}
+              className={styles.mobileTrigger}
+              type="button"
+              title={summary ?? label}
+              aria-controls="mobile-complex-filter-sheet"
+              aria-expanded={mobileSheetOpen}
+              aria-label={summary === null
+                ? `${label} 조건으로 전체 단지 필터 열기`
+                : `${label} ${summary}, 전체 단지 필터 열기`}
+              data-active={summary === null ? 'false' : 'true'}
+              onClick={(event) => openMobileSheet(topic, event.currentTarget)}
+            >
+              <span>{summary ?? label}</span>
+            </button>
+          )
+        })}
+        <button
+          className={styles.mobileAllTrigger}
+          type="button"
+          aria-controls="mobile-complex-filter-sheet"
+          aria-expanded={mobileSheetOpen}
+          aria-label={appliedTopicCount > 0
+            ? `전체 단지 필터 열기, ${appliedTopicCount}개 적용`
+            : '전체 단지 필터 열기'}
+          data-active={appliedTopicCount > 0 ? 'true' : 'false'}
+          onClick={(event) => openMobileSheet(null, event.currentTarget)}
         >
-          <form
-            key={`${openTopic}-${searchFiltersSignature(filters)}`}
-            className={styles.form}
-            onSubmit={submit}
+          필터{appliedTopicCount > 0 ? ` ${appliedTopicCount}` : ''}
+        </button>
+      </div>
+
+      {mobileSheetOpen && (
+        <div
+          className={styles.mobileBackdrop}
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeMobileSheet()
+            }
+          }}
+        >
+          <section
+            ref={mobileSheetRef}
+            className={styles.mobileSheet}
+            id="mobile-complex-filter-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mobile-complex-filter-heading"
           >
-            <h2 className={styles.popoverHeading} id={headingId}>
-              {openLabel} 필터
-            </h2>
-            <div className={styles.fields}>
-              <TopicFields
-                filters={filters}
-                regionRepository={regionRepository}
-                topic={openTopic}
-              />
-            </div>
-            {errorMessage !== null && (
-              <p className={styles.error} role="alert">{errorMessage}</p>
-            )}
-            <div className={styles.actions}>
-              <button
-                className={styles.reset}
-                type="button"
-                aria-label={`${openLabel} 필터 초기화`}
-                onClick={() => applyAndClose(
-                  openTopic,
-                  replaceTopic(filters, openTopic, {}),
+            <form
+              key={`mobile-${mobileFormRevision}-${searchFiltersSignature(mobileDraftFilters)}`}
+              className={styles.mobileForm}
+              aria-label="단지 필터 조건"
+              onSubmit={submitMobileSheet}
+            >
+              <header className={styles.mobileSheetHeader}>
+                <h2 id="mobile-complex-filter-heading">단지 필터</h2>
+                <div className={styles.mobileHeaderActions}>
+                  <button
+                    ref={mobileResetRef}
+                    className={styles.mobileReset}
+                    type="button"
+                    aria-label="전체 필터 초기화"
+                    onClick={resetMobileSheet}
+                  >초기화</button>
+                  <button
+                    ref={mobileCloseRef}
+                    className={styles.mobileClose}
+                    type="button"
+                    aria-label="단지 필터 닫기"
+                    onClick={closeMobileSheet}
+                  >×</button>
+                </div>
+              </header>
+
+              <div
+                ref={mobileSheetBodyRef}
+                className={styles.mobileSheetBody}
+                onClickCapture={(event) => {
+                  if (
+                    event.target instanceof Element
+                    && event.target.closest('button') !== null
+                  ) {
+                    setMobileDraftDirty(true)
+                  }
+                }}
+                onChange={() => setMobileDraftDirty(true)}
+              >
+                {MOBILE_SHEET_TOPICS.map(([topic, label]) => (
+                  <section
+                    key={topic}
+                    className={styles.mobileTopic}
+                    data-mobile-topic={topic}
+                  >
+                    {(topic === 'region' || topic === 'price') && (
+                      <h3>{label}</h3>
+                    )}
+                    <TopicFields
+                      filters={mobileDraftFilters}
+                      regionRepository={regionRepository}
+                      topic={topic}
+                    />
+                  </section>
+                ))}
+                {errorMessage !== null && (
+                  <p className={styles.mobileError} role="alert">
+                    {errorMessage}
+                  </p>
                 )}
-              >초기화</button>
-              <button
-                className={styles.apply}
-                type="submit"
-                aria-label={`${openLabel} 필터 적용`}
-              >적용</button>
-            </div>
-          </form>
-        </section>
+              </div>
+
+              <div className={styles.mobileFooter}>
+                <button
+                  className={styles.mobileApply}
+                  type="submit"
+                  aria-label={mobileResultAction}
+                >{mobileResultAction}</button>
+              </div>
+            </form>
+          </section>
+        </div>
       )}
     </section>
   )
@@ -788,11 +1113,12 @@ function topicSummary(
     case 'region': {
       if (!filters.regionCode) return null
       const name = provinceNameForRegionCode(filters.regionCode)
-      return name === null
+      const label = name === null
         ? filters.regionCode
         : filters.regionCode.length === 5
           ? resolvedRegionName ?? `${name} ${filters.regionCode}`
           : name
+      return compactRegionLabel(label)
     }
     case 'rentalType':
       return optionsSummary(filters.rentalTypes, RENTAL_TYPE_OPTIONS)
@@ -806,8 +1132,8 @@ function topicSummary(
       const deposit = rangeSummary(filters.minDeposit, filters.maxDeposit, formatDeposit)
       const rent = rangeSummary(filters.minMonthlyRent, filters.maxMonthlyRent, formatRentSummary)
       return [
-        deposit === null ? null : `보증금 ${deposit}`,
-        rent === null ? null : `월세 ${rent}`,
+        deposit,
+        rent === null ? null : `월 ${rent}`,
       ].filter((value): value is string => value !== null).join(' · ') || null
     }
     case 'exclusiveArea':
@@ -836,8 +1162,39 @@ function optionsSummary(
   options: readonly (readonly [string, string])[],
 ) {
   if (!values?.length) return null
-  if (values.length > 1) return `${values.length}개 선택`
-  return options.find(([value]) => value === values[0])?.[1] ?? values[0]
+  const labels = values.map((selected) =>
+    options.find(([value]) => value === selected)?.[1] ?? selected)
+  return labels.length > 1 ? `${labels[0]} 외 ${labels.length - 1}` : labels[0]
+}
+
+const COMPACT_PROVINCE_NAMES = new Map<string, string>([
+  ['서울특별시', '서울'],
+  ['전남광주통합특별시', '광주'],
+  ['부산광역시', '부산'],
+  ['대구광역시', '대구'],
+  ['인천광역시', '인천'],
+  ['대전광역시', '대전'],
+  ['울산광역시', '울산'],
+  ['세종특별자치시', '세종'],
+  ['경기도', '경기'],
+  ['충청북도', '충북'],
+  ['충청남도', '충남'],
+  ['경상북도', '경북'],
+  ['경상남도', '경남'],
+  ['제주특별자치도', '제주'],
+  ['강원특별자치도', '강원'],
+  ['전북특별자치도', '전북'],
+])
+
+function compactRegionLabel(label: string) {
+  const province = [...COMPACT_PROVINCE_NAMES.entries()].find(
+    ([fullName]) => label === fullName || label.startsWith(`${fullName} `),
+  )
+  if (province === undefined) {
+    return label
+  }
+  const [fullName, compactName] = province
+  return `${compactName}${label.slice(fullName.length)}`
 }
 
 function rangeSummary(
@@ -944,6 +1301,12 @@ function formatAreaTick(value: number) {
 
 function compact(value: number) {
   return String(Number(value.toFixed(1)))
+}
+
+function focusableElements(container: HTMLElement) {
+  return [...container.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), select:not([disabled]), input:not([type="hidden"]):not([disabled]), [tabindex]:not([tabindex="-1"])',
+  )].filter((element) => !element.hasAttribute('hidden'))
 }
 
 function isAbortError(error: unknown) {

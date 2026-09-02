@@ -1,35 +1,57 @@
 .filter {
   min-width: 0;
   margin: 0;
-  padding: 10px;
-  border: 1px solid #d7dce1;
-  border-radius: 10px;
-  background: #ffffff;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .legend {
-  padding: 0 5px;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.label {
   color: #1e2124;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 850;
+  line-height: 1.5;
 }
 
 .output {
-  display: block;
-  min-height: 20px;
+  min-width: 0;
+  margin-left: auto;
   color: var(--brand-dark, #174a91);
-  font-size: 13px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
   font-weight: 850;
   line-height: 1.5;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .presets {
   display: flex;
   flex-wrap: nowrap;
   gap: 8px;
-  margin-top: 2px;
-  padding: 0 4px;
+  margin-top: 8px;
+  padding: 0;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
@@ -61,7 +83,7 @@
   z-index: -1;
   height: 36px;
   border: 1px solid #aeb5bd;
-  border-radius: 999px;
+  border-radius: 9px;
   background: #ffffff;
   content: '';
   transform: translateY(-50%);
@@ -265,12 +287,6 @@
 
 .tick:last-child::before {
   margin-right: 0;
-}
-
-@media (max-width: 767px) {
-  .filter {
-    padding: 12px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
