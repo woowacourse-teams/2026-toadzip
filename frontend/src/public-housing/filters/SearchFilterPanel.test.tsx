@@ -1,7 +1,32 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { type ComponentProps, createElement } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import searchFilterPanelClasses from './SearchFilterPanel.module.css'
 import { SearchFilterPanel } from './SearchFilterPanel.tsx'
+
+const styleElement = document.createElement('style')
+const searchFilterPanelStylesheet = scopeCssModule(
+  readFileSync(
+    resolve(
+      process.cwd(),
+      'src/public-housing/filters/SearchFilterPanel.module.css',
+    ),
+    'utf8',
+  ),
+  {
+    choiceGroup: searchFilterPanelClasses.choiceGroup,
+    choiceOptions: searchFilterPanelClasses.choiceOptions,
+  },
+)
+
+beforeAll(() => {
+  styleElement.textContent = searchFilterPanelStylesheet
+  document.head.append(styleElement)
+})
+
+afterAll(() => styleElement.remove())
 
 const GYEONGGI_REGIONS = [
   {
@@ -37,6 +62,29 @@ const GYEONGGI_REGIONS = [
 ] as const
 
 describe('SearchFilterPanel', () => {
+  it('공고 필터 항목명과 선택값을 구분선과 간격으로 분리한다', () => {
+    renderFilter({ kind: 'announcement' })
+
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+
+    const rentalTypeGroup = screen.getByRole('group', { name: '임대유형' })
+    const firstChoice = within(rentalTypeGroup).getByRole('checkbox', {
+      name: '행복주택',
+    })
+    const valueArea = firstChoice.closest('div')
+    const legend = within(rentalTypeGroup).getByText('임대유형')
+
+    if (!(valueArea instanceof HTMLElement)) {
+      throw new Error('임대유형 선택값 영역을 찾을 수 없습니다.')
+    }
+    expect(getComputedStyle(valueArea).borderTopStyle)
+      .toBe('solid')
+    expect(getComputedStyle(valueArea).borderTopWidth)
+      .toBe('1px')
+    expect(getComputedStyle(valueArea).paddingTop).toBe('8px')
+    expect(getComputedStyle(legend).fontWeight).toBe('800')
+  })
+
   it('시도를 선택하면 직속 시군구를 불러오고 시도만 또는 시군구까지 적용한다', async () => {
     const onApply = vi.fn()
     const regionRepository = {
@@ -149,10 +197,12 @@ describe('SearchFilterPanel', () => {
 
 function renderFilter({
   filters = {},
+  kind = 'complex',
   onApply = vi.fn(),
   regionRepository = { search: vi.fn().mockResolvedValue([]) },
 }: {
   readonly filters?: ComponentProps<typeof SearchFilterPanel>['filters']
+  readonly kind?: ComponentProps<typeof SearchFilterPanel>['kind']
   readonly onApply?: ComponentProps<typeof SearchFilterPanel>['onApply']
   readonly regionRepository?: {
     readonly search: (
@@ -163,9 +213,22 @@ function renderFilter({
 } = {}) {
   const props = {
     filters,
-    kind: 'complex',
+    kind,
     onApply,
     regionRepository,
   } as ComponentProps<typeof SearchFilterPanel>
   return render(createElement(SearchFilterPanel, props))
+}
+
+function scopeCssModule(
+  stylesheet: string,
+  classNames: Readonly<Record<string, string>>,
+) {
+  return Object.entries(classNames).reduce(
+    (scopedStylesheet, [className, scopedClassName]) => scopedStylesheet.replace(
+      new RegExp(`\\.${className}(?![\\w-])`, 'g'),
+      `.${scopedClassName}`,
+    ),
+    stylesheet,
+  )
 }

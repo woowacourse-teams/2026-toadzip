@@ -89,14 +89,18 @@
 }
 
 .choiceGroup legend {
-  margin-bottom: 6px;
+  margin-bottom: 0;
   padding: 0;
+  color: #1e2124;
+  font-weight: 800;
 }
 
 .choiceOptions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #d7dce1;
 }
 
 .choice {
