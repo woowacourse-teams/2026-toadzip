@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -11,6 +12,8 @@ import com.toadzip.backend.ingest.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.dto.MyHomeAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.dto.MyHomeAnnouncementSourceItem;
 import com.toadzip.backend.ingest.dto.MyHomeAnnouncementSupplyType;
+import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.repository.MyHomeAnnouncementCollectionExecutionLock;
 import com.toadzip.backend.ingest.repository.MyHomeAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.repository.external.DataGoKrOpenApiClient;
@@ -28,6 +31,8 @@ public class MyHomeAnnouncementCollectionService {
 
     private final MyHomeAnnouncementExternalRepository externalRepository;
 
+    private final MyHomeAnnouncementCollectionExecutionLock executionLock;
+
     private final MyHomeSourceStore sourceStore;
 
     private final ExternalDataFailureRecorder failureRecorder;
@@ -37,30 +42,43 @@ public class MyHomeAnnouncementCollectionService {
     public MyHomeAnnouncementCollectionService(
             ObjectMapper objectMapper,
             MyHomeAnnouncementExternalRepository externalRepository,
+            MyHomeAnnouncementCollectionExecutionLock executionLock,
             MyHomeSourceStore sourceStore,
             ExternalDataFailureRecorder failureRecorder,
             ExternalDataRetryExecutor retryExecutor
     ) {
         this.objectMapper = objectMapper;
         this.externalRepository = externalRepository;
+        this.executionLock = executionLock;
         this.sourceStore = sourceStore;
         this.failureRecorder = failureRecorder;
         this.retryExecutor = retryExecutor;
     }
 
     public ExternalDataCollectionReport collect(MyHomeAnnouncementCollectionRequest request) {
+        return executionLock.tryRun(() -> collectUnlocked(request))
+                .orElseThrow(this::alreadyRunning);
+    }
+
+    private ExternalDataCollectionReport collectUnlocked(MyHomeAnnouncementCollectionRequest request) {
+        String runId = UUID.randomUUID().toString();
         log.info(
-                "마이홈 공고 수집을 시작합니다: pageSize={}, maxPages={}",
+                "마이홈 공고 수집을 시작합니다: runId={}, pageSize={}, maxPages={}",
+                runId,
                 request.pageSize(),
                 request.maxPages()
         );
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty("myhome-announcement");
         for (MyHomeAnnouncementSupplyType supplyType : MyHomeAnnouncementSupplyType.values()) {
-            report = report.plus(collectSupplyType(supplyType, request));
+            report = report.plus(collectSupplyType(runId, supplyType, request));
+        }
+        if (report.failedRequestCount() == 0) {
+            sourceStore.completeAnnouncementCollection(runId);
         }
         log.info(
-                "마이홈 공고 수집을 완료했습니다: storedRowCount={}, failedRequestCount={}, "
+                "마이홈 공고 수집을 완료했습니다: runId={}, storedRowCount={}, failedRequestCount={}, "
                         + "externalApiCallCount={}",
+                runId,
                 report.storedRowCount(),
                 report.failedRequestCount(),
                 report.externalApiCallCount()
@@ -68,7 +86,13 @@ public class MyHomeAnnouncementCollectionService {
         return report;
     }
 
+    private IngestAlreadyRunningException alreadyRunning() {
+        log.warn("마이홈 공고 수집이 이미 실행 중이므로 중복 실행을 건너뜁니다.");
+        return new IngestAlreadyRunningException("마이홈 공고 수집이 이미 실행 중입니다.");
+    }
+
     private ExternalDataCollectionReport collectSupplyType(
+            String runId,
             MyHomeAnnouncementSupplyType supplyType,
             MyHomeAnnouncementCollectionRequest request
     ) {
@@ -87,7 +111,7 @@ public class MyHomeAnnouncementCollectionService {
             );
             return new ExternalDataCollectionReport("myhome-announcement", 0, 1, callCounter.count());
         }
-        int storedRowCount = sourceStore.storeAnnouncements(items);
+        int storedRowCount = sourceStore.storeAnnouncements(runId, items);
         return new ExternalDataCollectionReport("myhome-announcement", storedRowCount, 0, callCounter.count());
     }
 
