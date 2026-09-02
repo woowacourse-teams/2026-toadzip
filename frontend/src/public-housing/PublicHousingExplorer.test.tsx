@@ -1026,20 +1026,17 @@ describe('PublicHousingExplorer', () => {
     expect(screen.getByText('로컬 mock')).toBeVisible()
   })
 
-  it('유효한 지도 query를 최초 카메라 위치와 zoom으로 복원한다', () => {
+  it('기존 지도 query는 최초 카메라에 한 번 반영하고 URL에서 제거한다', async () => {
     const repository = createRepository()
     renderExplorer(
       repository,
       '/?source=shared&mapLat=37.58123&mapLng=126.99123&mapZoom=15.75',
     )
 
-    expect(screen.getByText('카메라 37.58123,126.99123')).toBeVisible()
-    expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('15.75')
-    expectCurrentSearch({
-      mapLat: '37.58123',
-      mapLng: '126.99123',
-      mapZoom: '15.75',
-      source: 'shared',
+    await waitFor(() => {
+      expect(screen.getByText('카메라 37.58123,126.99123')).toBeVisible()
+      expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('15.75')
+      expectCurrentSearch({ source: 'shared' })
     })
   })
 
@@ -1064,7 +1061,7 @@ describe('PublicHousingExplorer', () => {
     },
   )
 
-  it('지도 idle은 5/5/2자리 query로 replace하며 무관 query, hash, state를 보존한다', async () => {
+  it('지도 idle은 URL을 바꾸지 않고 무관 query, hash, state를 보존한다', async () => {
     const repository = createRepository()
     renderExplorer(repository, '/?source=shared#results')
     fireEvent.click(screen.getByRole('button', { name: '공유 상태 설정' }))
@@ -1077,12 +1074,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '정밀 영역 알림' }))
 
     await waitFor(() => {
-      expectCurrentSearch({
-        mapLat: '37.56661',
-        mapLng: '126.97839',
-        mapZoom: '14.26',
-        source: 'shared',
-      })
+      expectCurrentSearch({ source: 'shared' })
     })
     expect(screen.getByTestId('location-hash')).toHaveTextContent('#results')
     expect(screen.getByTestId('location-state')).toHaveTextContent(
@@ -1091,15 +1083,10 @@ describe('PublicHousingExplorer', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' }))
     await act(async () => Promise.resolve())
-    expectCurrentSearch({
-      mapLat: '37.56661',
-      mapLng: '126.97839',
-      mapZoom: '14.26',
-      source: 'shared',
-    })
+    expectCurrentSearch({ source: 'shared' })
   })
 
-  it('URL과 같은 정밀도의 camera idle은 history와 조회 세대를 반복하지 않는다', async () => {
+  it('동일한 camera idle은 URL과 history, 조회 세대를 반복하지 않는다', async () => {
     const repository = createRepository()
     renderExplorer(
       repository,
@@ -1110,6 +1097,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
     await waitFor(() => {
       expect(repository.findMapComplexes).toHaveBeenCalledOnce()
+      expect(repository.findComplexPage).toHaveBeenCalledOnce()
     })
     expect(screen.getByTestId('location-key').textContent).toBe(locationKey)
 
@@ -1118,14 +1106,11 @@ describe('PublicHousingExplorer', () => {
       window.setTimeout(resolve, 350)
     }))
     expect(repository.findMapComplexes).toHaveBeenCalledOnce()
-    expectCurrentSearch({
-      mapLat: '37.56661',
-      mapLng: '126.97839',
-      mapZoom: '14.26',
-    })
+    expect(repository.findComplexPage).toHaveBeenCalledOnce()
+    expectCurrentSearch({})
   })
 
-  it('상세 entry만 이동 위치로 replace하고 닫기와 앞뒤 이동은 각 지도 위치를 복원한다', async () => {
+  it('상세 entry만 URL에 추가하고 닫기와 앞뒤 이동은 로컬 지도 위치를 복원한다', async () => {
     const repository = createRepository()
     renderExplorer(
       repository,
@@ -1145,9 +1130,6 @@ describe('PublicHousingExplorer', () => {
     })).toBeVisible()
     expectCurrentSearch({
       complexId: '17',
-      mapLat: '37.58123',
-      mapLng: '126.99123',
-      mapZoom: '15.50',
       source: 'shared',
     })
     expect(screen.getByTestId('location-key').textContent)
@@ -1161,9 +1143,6 @@ describe('PublicHousingExplorer', () => {
     await waitFor(() => {
       expectCurrentSearch({
         complexId: '17',
-        mapLat: '37.50000',
-        mapLng: '126.90000',
-        mapZoom: '15.50',
         source: 'shared',
       })
     })
@@ -1173,12 +1152,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
 
     await waitFor(() => {
-      expectCurrentSearch({
-        mapLat: '37.58123',
-        mapLng: '126.99123',
-        mapZoom: '15.50',
-        source: 'shared',
-      })
+      expectCurrentSearch({ source: 'shared' })
     })
     expect(screen.getByTestId('location-key').textContent)
       .toBe(listLocationKey)
@@ -1189,9 +1163,6 @@ describe('PublicHousingExplorer', () => {
     await waitFor(() => {
       expectCurrentSearch({
         complexId: '17',
-        mapLat: '37.50000',
-        mapLng: '126.90000',
-        mapZoom: '15.50',
         source: 'shared',
       })
     })
@@ -1202,12 +1173,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' }))
     await waitFor(() => {
       expect(screen.getByText('카메라 37.58123,126.99123')).toBeVisible()
-      expectCurrentSearch({
-        mapLat: '37.58123',
-        mapLng: '126.99123',
-        mapZoom: '15.50',
-        source: 'shared',
-      })
+      expectCurrentSearch({ source: 'shared' })
     })
   })
 
@@ -1215,6 +1181,9 @@ describe('PublicHousingExplorer', () => {
     const repository = createRepository()
     renderExplorer(repository)
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+
+    expect(screen.getByText('카메라 37.56,127')).toBeVisible()
+    expectCurrentSearch({})
 
     const openButton = await screen.findByRole('button', {
       name: '서울가람 행복주택 단지 상세 보기',
@@ -1227,12 +1196,7 @@ describe('PublicHousingExplorer', () => {
       level: 2,
     })
     await waitFor(() => expect(detailHeading).toHaveFocus())
-    expectCurrentSearch({
-      complexId: '17',
-      mapLat: '37.56000',
-      mapLng: '127.00000',
-      mapZoom: '14.00',
-    })
+    expectCurrentSearch({ complexId: '17' })
     expect(screen.getByText('카메라 37.5,126.9')).toBeVisible()
 
     fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
@@ -1241,11 +1205,8 @@ describe('PublicHousingExplorer', () => {
     expect(screen.queryByRole('complementary', {
       name: '서울가람 행복주택 단지 상세 정보',
     })).not.toBeInTheDocument()
-    expectCurrentSearch({
-      mapLat: '37.56000',
-      mapLng: '127.00000',
-      mapZoom: '14.00',
-    })
+    expectCurrentSearch({})
+    expect(screen.getByText('카메라 37.56,127')).toBeVisible()
   })
 
   it('단지 상세를 연 카드가 숨겨지면 닫을 때 현재 결과 탭으로 focus가 돌아간다', async () => {
@@ -1287,23 +1248,14 @@ describe('PublicHousingExplorer', () => {
     expect(await screen.findByRole('complementary', {
       name: '성남 청년 행복주택 입주자 모집 공고 상세 정보',
     })).toBeVisible()
-    expectCurrentSearch({
-      announcementId: '117',
-      mapLat: '37.56000',
-      mapLng: '127.00000',
-      mapZoom: '14.00',
-    })
+    expectCurrentSearch({ announcementId: '117' })
 
     fireEvent.click(screen.getByRole('button', { name: '공고 상세 닫기' }))
 
     await waitFor(() => expect(openAnnouncement).toHaveFocus())
     expect(screen.getByRole('tab', { name: '단지 목록' }))
       .toHaveAttribute('aria-selected', 'true')
-    expectCurrentSearch({
-      mapLat: '37.56000',
-      mapLng: '127.00000',
-      mapZoom: '14.00',
-    })
+    expectCurrentSearch({})
     expect(repository.findAnnouncementPage).not.toHaveBeenCalled()
   })
 
@@ -1322,31 +1274,18 @@ describe('PublicHousingExplorer', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' }))
     await waitFor(() => {
-      expectCurrentSearch({
-        mapLat: '37.56000',
-        mapLng: '127.00000',
-        mapZoom: '14.00',
-      })
+      expectCurrentSearch({})
     })
     fireEvent.click(screen.getByRole('button', { name: '브라우저 앞으로' }))
     await waitFor(() => {
-      expectCurrentSearch({
-        complexId: '17',
-        mapLat: '37.56000',
-        mapLng: '127.00000',
-        mapZoom: '14.00',
-      })
+      expectCurrentSearch({ complexId: '17' })
     })
 
     fireEvent.click(await screen.findByRole('button', {
       name: '단지 상세 닫기',
     }))
     await waitFor(() => {
-      expectCurrentSearch({
-        mapLat: '37.56000',
-        mapLng: '127.00000',
-        mapZoom: '14.00',
-      })
+      expectCurrentSearch({})
     })
   })
 

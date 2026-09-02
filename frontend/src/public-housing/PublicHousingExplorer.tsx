@@ -66,7 +66,6 @@ import {
 import {
   clearMapLocationQuery,
   parseMapLocation,
-  setMapLocationQuery,
 } from './navigation/mapLocation.ts'
 import { toHousingAnnouncementDetailData } from './presentation/announcementDetailPresentation.ts'
 import { toHousingComplexDetailData } from './presentation/complexDetailPresentation.ts'
@@ -189,6 +188,25 @@ export function PublicHousingExplorer({
 }: PublicHousingExplorerProps) {
   const location = useLocation()
   const navigate = useNavigate()
+  const [mapCameraTarget, setMapCameraTarget] = useState<NaverMapCameraTarget>(
+    () => {
+      const initialMapLocation = parseMapLocation(
+        new URLSearchParams(location.search),
+      )
+      if (initialMapLocation.kind === 'valid') {
+        return {
+          latitude: initialMapLocation.center.latitude,
+          longitude: initialMapLocation.center.longitude,
+          zoom: initialMapLocation.zoom,
+        }
+      }
+      return {
+        latitude: DEFAULT_MAP_LOCATION.center.latitude,
+        longitude: DEFAULT_MAP_LOCATION.center.longitude,
+        zoom: DEFAULT_MAP_LOCATION.zoom,
+      }
+    },
+  )
   const [viewport, setViewport] = useState<ViewportSnapshot | null>(null)
   const [activeResultTab, setActiveResultTab] =
     useState<ResultTab>('complexes')
@@ -283,7 +301,7 @@ export function PublicHousingExplorer({
   )
 
   useEffect(() => {
-    if (mapLocation.kind !== 'invalid') {
+    if (mapLocation.kind === 'absent') {
       return
     }
     const nextSearch = clearMapLocationQuery(
@@ -686,36 +704,6 @@ export function PublicHousingExplorer({
     navigate,
   ])
 
-  const replaceMapLocation = useCallback(
-    (nextViewport: ViewportSnapshot) => {
-      const currentSearch = new URLSearchParams(location.search)
-      let nextSearch: URLSearchParams
-      try {
-        nextSearch = setMapLocationQuery(currentSearch, {
-          center: nextViewport.center,
-          zoom: nextViewport.zoom,
-        })
-      } catch {
-        return
-      }
-      if (nextSearch.toString() === currentSearch.toString()) {
-        return
-      }
-      navigate({
-        hash: location.hash,
-        pathname: location.pathname,
-        search: toSearchString(nextSearch),
-      }, { replace: true, state: location.state })
-    },
-    [
-      location.hash,
-      location.pathname,
-      location.search,
-      location.state,
-      navigate,
-    ],
-  )
-
   const applyViewport = useCallback(
     (nextViewport: ViewportSnapshot, force = false) => {
       const decision = evaluateViewportRequest(nextViewport)
@@ -846,7 +834,13 @@ export function PublicHousingExplorer({
   const handleViewportChange = useCallback(
     (nextViewport: ViewportSnapshot) => {
       setViewport(nextViewport)
-      replaceMapLocation(nextViewport)
+      if (detailLocation.kind === 'none') {
+        setMapCameraTarget({
+          latitude: nextViewport.center.latitude,
+          longitude: nextViewport.center.longitude,
+          zoom: nextViewport.zoom,
+        })
+      }
       if (viewportDebounceRef.current !== null) {
         window.clearTimeout(viewportDebounceRef.current)
         viewportDebounceRef.current = null
@@ -865,7 +859,7 @@ export function PublicHousingExplorer({
         applyViewport(nextViewport)
       }, VIEWPORT_DEBOUNCE_MS)
     },
-    [applyViewport, replaceMapLocation],
+    [applyViewport, detailLocation.kind],
   )
 
   useEffect(() => {
@@ -987,18 +981,7 @@ export function PublicHousingExplorer({
     : null
   const requestBlocked = viewportDecision !== null && !viewportDecision.allowed
   const detailMapTarget = toDetailMapTarget(complexDetail.detail)
-  const urlMapTarget = mapLocation.kind === 'valid'
-    ? {
-        latitude: mapLocation.center.latitude,
-        longitude: mapLocation.center.longitude,
-        zoom: mapLocation.zoom,
-      }
-    : {
-        latitude: DEFAULT_MAP_LOCATION.center.latitude,
-        longitude: DEFAULT_MAP_LOCATION.center.longitude,
-        zoom: DEFAULT_MAP_LOCATION.zoom,
-      }
-  const activeMapTarget = detailMapTarget ?? urlMapTarget
+  const activeMapTarget = detailMapTarget ?? mapCameraTarget
   const highlightedComplexIds = useMemo(() => new Set([
     cardHighlightedComplexId,
     markerHighlightedComplexId,
