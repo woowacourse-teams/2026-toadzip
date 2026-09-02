@@ -150,7 +150,6 @@ public class HousingComplexQueryService {
         Set<ApplicationStatus> applicationStatuses = immutableSet(request.applicationStatuses());
         Set<AgencyCode> agencyCodes = immutableSet(request.agencyCodes());
         Set<RecruitmentType> recruitmentTypes = immutableSet(request.recruitmentTypes());
-        requireAllowedApplicationStatuses(applicationStatuses);
         requireNonNegative(request.minDeposit());
         requireNonNegative(request.maxDeposit());
         requireNonNegative(request.minMonthlyRent());
@@ -182,6 +181,7 @@ public class HousingComplexQueryService {
                 request.builtYearFrom(),
                 request.builtYearTo(),
                 request.hasElevator(),
+                request.hasActiveAnnouncement(),
                 today()
         );
     }
@@ -227,12 +227,6 @@ public class HousingComplexQueryService {
             throw new InvalidComplexRequestException();
         }
         return Set.copyOf(values);
-    }
-
-    private void requireAllowedApplicationStatuses(Set<ApplicationStatus> statuses) {
-        if (statuses.contains(ApplicationStatus.CANCELLED)) {
-            throw new InvalidComplexRequestException();
-        }
     }
 
     private void requireNonNegative(Long value) {

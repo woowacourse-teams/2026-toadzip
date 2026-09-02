@@ -171,6 +171,26 @@ class ComplexSummaryQueryRepositoryTest {
     }
 
     @Test
+    void 취소_상태로_검색하면_최신_취소_공고가_연결된_단지만_조회한다() {
+        HousingComplex cancelled = persistComplex("취소 단지", "37.500000", "126.900000");
+        HousingComplex active = persistComplex("정상 단지", "37.510000", "126.910000");
+        Announcement original = persistRepresentative(
+                cancelled, "ORIGINAL", LocalDate.of(2026, 8, 1), "cancel-filter-original"
+        );
+        Announcement cancellation = persistAnnouncement(
+                original, "CANCELLATION", LocalDate.of(2026, 8, 2), "cancel-filter-leaf"
+        );
+        persistSupplyRow(cancellation, cancelled, null, "cancel-filter-row", 1);
+        persistRepresentative(active, "ORIGINAL", LocalDate.of(2026, 8, 1), "active-filter");
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                integratedSearchCondition(Set.of(ApplicationStatus.CANCELLED), null),
+                cancelled.getId()
+        );
+    }
+
+    @Test
     void 최신_대표공고_게시일과_단지_ID로_안정적으로_페이지를_나눈다() {
         HousingComplex noAnnouncement = persistComplex("공고 없는 단지", "37.500000", "126.900000");
         HousingComplex cancelled = persistComplex("취소 단지", "37.500000", "126.900000");
@@ -1681,6 +1701,33 @@ class ComplexSummaryQueryRepositoryTest {
                 null,
                 null,
                 null,
+                LocalDate.of(2026, 8, 27)
+        );
+    }
+
+    private HousingComplexSearchCondition integratedSearchCondition(
+            Set<ApplicationStatus> applicationStatuses,
+            Boolean hasActiveAnnouncement
+    ) {
+        return new HousingComplexSearchCondition(
+                SEOUL_BOUNDS,
+                null,
+                null,
+                Set.of(),
+                Set.of(),
+                applicationStatuses,
+                Set.of(),
+                Set.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                hasActiveAnnouncement,
                 LocalDate.of(2026, 8, 27)
         );
     }

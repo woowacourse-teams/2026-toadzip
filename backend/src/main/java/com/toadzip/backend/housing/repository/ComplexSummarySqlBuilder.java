@@ -121,6 +121,20 @@ final class ComplexSummarySqlBuilder {
               AND housing_complex.elevator_installed = :hasElevator
             """;
 
+    private static final String ACTIVE_ANNOUNCEMENT_FILTER = """
+              AND representative.announcement_id IS NOT NULL
+              AND representative.application_start_date <= :today
+              AND representative.application_end_date >= :today
+            """;
+
+    private static final String NO_ACTIVE_ANNOUNCEMENT_FILTER = """
+              AND (
+                    representative.announcement_id IS NULL
+                    OR representative.application_start_date > :today
+                    OR representative.application_end_date < :today
+              )
+            """;
+
     private static final String REPRESENTATIVE_REQUIRED_FILTER = """
               AND representative.announcement_id IS NOT NULL
             """;
@@ -141,6 +155,22 @@ final class ComplexSummarySqlBuilder {
 
     private static final String CLOSED_FILTER =
             "representative.application_end_date < :today";
+
+    private static final String CANCELLED_FILTER = """
+            EXISTS (
+                SELECT 1
+                FROM supply_rows cancelled_supply_row
+                JOIN announcements cancelled_announcement
+                  ON cancelled_announcement.id = cancelled_supply_row.announcement_id
+                WHERE cancelled_supply_row.housing_complex_id = housing_complex.id
+                  AND cancelled_announcement.status IN ('CANCELLATION', '취소공고')
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM announcements cancelled_successor
+                      WHERE cancelled_successor.previous_announcement_id = cancelled_announcement.id
+                  )
+            )
+            """.strip();
 
     private static final String AREA_EXISTS_START = """
               AND EXISTS (
@@ -317,6 +347,23 @@ final class ComplexSummarySqlBuilder {
         addFilter(condition.builtYearFrom(), BUILT_YEAR_FROM_FILTER, "builtYearFrom", filters, parameters);
         addFilter(condition.builtYearTo(), BUILT_YEAR_TO_FILTER, "builtYearTo", filters, parameters);
         addFilter(condition.hasElevator(), ELEVATOR_FILTER, "hasElevator", filters, parameters);
+        addActiveAnnouncementFilter(condition, filters, parameters);
+    }
+
+    private void addActiveAnnouncementFilter(
+            HousingComplexSearchCondition condition,
+            StringBuilder filters,
+            Map<String, Object> parameters
+    ) {
+        if (condition.hasActiveAnnouncement() == null) {
+            return;
+        }
+        if (condition.hasActiveAnnouncement()) {
+            filters.append(ACTIVE_ANNOUNCEMENT_FILTER);
+        } else {
+            filters.append(NO_ACTIVE_ANNOUNCEMENT_FILTER);
+        }
+        parameters.put("today", condition.today());
     }
 
     private void addAnnouncementFilters(
@@ -327,14 +374,16 @@ final class ComplexSummarySqlBuilder {
         if (condition.recruitmentTypes().isEmpty() && condition.applicationStatuses().isEmpty()) {
             return;
         }
-        filters.append(REPRESENTATIVE_REQUIRED_FILTER);
-        addCollectionFilter(
-                storedValues(condition.recruitmentTypes()),
-                RECRUITMENT_TYPE_FILTER,
-                "recruitmentTypeValues",
-                filters,
-                parameters
-        );
+        if (!condition.recruitmentTypes().isEmpty()) {
+            filters.append(REPRESENTATIVE_REQUIRED_FILTER);
+            addCollectionFilter(
+                    storedValues(condition.recruitmentTypes()),
+                    RECRUITMENT_TYPE_FILTER,
+                    "recruitmentTypeValues",
+                    filters,
+                    parameters
+            );
+        }
         addApplicationStatusFilter(condition, filters, parameters);
     }
 
@@ -363,9 +412,7 @@ final class ComplexSummarySqlBuilder {
             case BEFORE_APPLICATION -> BEFORE_APPLICATION_FILTER;
             case APPLYING -> APPLYING_FILTER;
             case CLOSED -> CLOSED_FILTER;
-            case CANCELLED -> throw new IllegalArgumentException(
-                    "취소 상태는 단지 검색 조건으로 사용할 수 없다."
-            );
+            case CANCELLED -> CANCELLED_FILTER;
         };
     }
 

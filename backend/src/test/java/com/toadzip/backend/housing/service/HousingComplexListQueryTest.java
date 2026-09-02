@@ -644,9 +644,7 @@ class HousingComplexListQueryTest {
                 Arguments.of("agency null element", requestWithLists(
                         null, null, java.util.Arrays.asList(AgencyCode.LH, null), null)),
                 Arguments.of("recruitment type null element", requestWithLists(
-                        null, null, null, java.util.Arrays.asList(RecruitmentType.NEW, null))),
-                Arguments.of("cancelled status", requestWithLists(
-                        null, List.of(ApplicationStatus.CANCELLED), null, null))
+                        null, null, null, java.util.Arrays.asList(RecruitmentType.NEW, null)))
         );
     }
 

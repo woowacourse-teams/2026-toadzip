@@ -40,6 +40,7 @@ class OpenApiDocumentationIntegrationTest {
             "builtYearFrom",
             "builtYearTo",
             "hasElevator",
+            "hasActiveAnnouncement",
             "southWestLat",
             "southWestLng",
             "northEastLat",
