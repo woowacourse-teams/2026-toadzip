@@ -4,6 +4,21 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App.tsx'
 
+vi.mock('./admin/ingest/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./admin/ingest/api')>()),
+  getDataPipelineStatus: vi.fn((type: 'COLLECTION' | 'REFINEMENT') => Promise.resolve({
+    executionId: null,
+    type,
+    status: 'IDLE',
+    currentStepName: null,
+    currentStepIndex: 0,
+    totalStepCount: type === 'COLLECTION' ? 5 : 4,
+    completedSteps: [],
+    failure: null,
+  })),
+  startDataPipeline: vi.fn(),
+}))
+
 beforeEach(() => {
   vi.stubEnv('VITE_NAVER_MAPS_CLIENT_ID', '')
 })
