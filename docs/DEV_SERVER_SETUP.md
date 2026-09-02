@@ -5,6 +5,7 @@
 `.env.example`을 참고해서 `.env`를 생성한다.
 
 ```dotenv
+SPRING_PROFILES_ACTIVE=dev
 PRIMARY_DB_HOST=<DB 서버 사설 IP>
 PRIMARY_DB_PORT=5432
 PRIMARY_DB_PASSWORD=
