@@ -105,6 +105,9 @@ public class LhHousingTypeHouseholdMatcher {
         if (source.equals(candidate)) {
             return 9_000;
         }
+        if (hasConflictingNumbers(source, candidate)) {
+            return 0;
+        }
 
         int shorterLength = Math.min(source.length(), candidate.length());
         int longerLength = Math.max(source.length(), candidate.length());
@@ -165,18 +168,31 @@ public class LhHousingTypeHouseholdMatcher {
     }
 
     private boolean sharesNumber(String left, String right) {
-        Set<String> leftNumbers = new HashSet<>();
-        Matcher leftMatcher = NUMBER.matcher(left);
-        while (leftMatcher.find()) {
-            leftNumbers.add(leftMatcher.group());
+        Set<String> leftNumbers = numbers(left);
+        return numbers(right).stream().anyMatch(leftNumbers::contains);
+    }
+
+    private boolean hasConflictingNumbers(String left, String right) {
+        Set<String> leftNumbers = numbers(left);
+        Set<String> rightNumbers = numbers(right);
+        return !leftNumbers.isEmpty() && !rightNumbers.isEmpty() && !leftNumbers.equals(rightNumbers);
+    }
+
+    private Set<String> numbers(String value) {
+        Set<String> result = new HashSet<>();
+        Matcher matcher = NUMBER.matcher(value);
+        while (matcher.find()) {
+            result.add(withoutLeadingZeros(matcher.group()));
         }
-        Matcher rightMatcher = NUMBER.matcher(right);
-        while (rightMatcher.find()) {
-            if (leftNumbers.contains(rightMatcher.group())) {
-                return true;
-            }
+        return result;
+    }
+
+    private String withoutLeadingZeros(String number) {
+        int firstDigit = 0;
+        while (firstDigit < number.length() - 1 && number.charAt(firstDigit) == '0') {
+            firstDigit++;
         }
-        return false;
+        return number.substring(firstDigit);
     }
 
     private boolean regionMatches(HousingComplex complex, String areaName) {

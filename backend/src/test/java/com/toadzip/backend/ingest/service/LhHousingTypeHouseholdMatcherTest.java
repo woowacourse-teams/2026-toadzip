@@ -39,6 +39,14 @@ class LhHousingTypeHouseholdMatcherTest {
     }
 
     @Test
+    void 단지_번호가_다르면_이름이_유사해도_매칭하지_않는다() {
+        HousingComplex complex = complex("문산선유2단지", "NATIONAL_RENTAL", 504);
+        LhHousingTypeHouseholdSource source = source("문산선유3단지", "국민임대", 504);
+
+        assertThat(matcher.findMatches(List.of(complex), source)).isEmpty();
+    }
+
+    @Test
     void 부분_일치_후보가_여러_개이면_이름_유사도가_가장_높은_후보만_선택한다() {
         HousingComplex expected = complex("강릉송정주공아파트", "NATIONAL_RENTAL", 623);
         HousingComplex other = complex("강릉송정타운아파트", "NATIONAL_RENTAL", 623);
