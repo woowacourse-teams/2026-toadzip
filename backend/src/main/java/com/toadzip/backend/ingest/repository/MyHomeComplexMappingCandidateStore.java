@@ -33,4 +33,11 @@ public class MyHomeComplexMappingCandidateStore {
     public void delete(MyHomeComplexMappingCandidate candidate) {
         repository.delete(candidate);
     }
+
+    @Transactional
+    public long invalidateAll() {
+        long count = repository.count();
+        repository.deleteAllInBatch();
+        return count;
+    }
 }
