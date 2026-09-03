@@ -96,12 +96,13 @@ describe('LocalPublicHousingExplorer', () => {
     renderLocalExplorer(loadSnapshot)
 
     await screen.findByRole('heading', { name: '공공임대주택' })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
+    fireEvent.click(screen.getByRole('button', { name: '상세 필터 열기' }))
+    const detailFilter = screen.getByRole('region', { name: '상세 필터' })
+    fireEvent.change(within(detailFilter).getByLabelText('시·도'), {
       target: { value: '11' },
     })
 
-    const districtSelect = await screen.findByLabelText('시·군·구')
+    const districtSelect = await within(detailFilter).findByLabelText('시·군·구')
     expect(await within(districtSelect).findByRole('option', { name: '중구' }))
       .toHaveValue('11140')
     expect(screen.queryByText('세부 지역을 불러오지 못했습니다.'))

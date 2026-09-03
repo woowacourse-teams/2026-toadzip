@@ -206,11 +206,7 @@ describe('PublicHousingExplorer', () => {
     })
 
     fireEvent.click(marker)
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '41' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('41')
 
     expect(mapRepository.findMap).toHaveBeenCalledOnce()
     fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
@@ -342,11 +338,7 @@ describe('PublicHousingExplorer', () => {
     await screen.findByRole('heading', { name: '서울가람 행복주택' })
     expect(repository.findComplexPage).toHaveBeenCalledOnce()
 
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '41' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('41')
 
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(2))
     expect(repository.findComplexPage).toHaveBeenCalledOnce()
@@ -374,11 +366,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     await waitFor(() => expect(repository.findComplexPage).toHaveBeenCalledOnce())
 
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '41' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('41')
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(2))
     const filteredSignal = mapRepository.findMap.mock.calls[1]?.[1]
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
@@ -407,11 +395,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     await waitFor(() => expect(repository.findComplexPage).toHaveBeenCalledOnce())
 
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '41' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('41')
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(2))
     fireEvent.click(screen.getByRole('button', { name: '미세 이동 영역 알림' }))
 
@@ -442,18 +426,10 @@ describe('PublicHousingExplorer', () => {
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(2))
     await act(async () => Promise.resolve())
 
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '41' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('41')
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(3))
     const filteredSignal = mapRepository.findMap.mock.calls[2]?.[1]
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('')
 
     expect(filteredSignal?.aborted).toBe(true)
     expect(mapRepository.findMap).toHaveBeenCalledTimes(3)
@@ -477,18 +453,10 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     await screen.findByRole('button', { name: '서울 0곳 지역 마커 선택' })
 
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '41' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('41')
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(2))
     const filteredSignal = mapRepository.findMap.mock.calls[1]?.[1]
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('')
 
     expect(filteredSignal?.aborted).toBe(true)
     expect(mapRepository.findMap).toHaveBeenCalledTimes(2)
@@ -551,11 +519,7 @@ describe('PublicHousingExplorer', () => {
       expect.any(AbortSignal),
     ))
 
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '11' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('11')
 
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -590,9 +554,12 @@ describe('PublicHousingExplorer', () => {
       expect.any(AbortSignal),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    expect(screen.getByLabelText('시·도')).toHaveValue('41')
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    fireEvent.click(screen.getByRole('button', { name: '상세 필터 열기' }))
+    const detailFilter = screen.getByRole('region', { name: '상세 필터' })
+    expect(within(detailFilter).getByLabelText('시·도')).toHaveValue('41')
+    fireEvent.click(within(detailFilter).getByRole('button', {
+      name: '상세 필터 적용',
+    }))
 
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(3))
     expect(mapRepository.findMap).toHaveBeenLastCalledWith(
@@ -720,14 +687,12 @@ describe('PublicHousingExplorer', () => {
     expect(within(complexFilter).getAllByRole('button').map(
       (button) => button.getAttribute('aria-label'),
     )).toEqual([
-      '지역 필터 열기',
       '임대유형 필터 열기',
       '모집상태 필터 열기',
-      '공급기관 필터 열기',
-      '모집유형 필터 열기',
       '가격 필터 열기',
       '전용면적 필터 열기',
       '준공년도 필터 열기',
+      '상세 필터 열기',
     ])
     expect(within(screen.getByRole('complementary', {
       name: '공공임대주택 검색 결과',
@@ -792,11 +757,18 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     await screen.findByRole('heading', { name: '서울가람 행복주택' })
 
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
+    fireEvent.click(screen.getByRole('button', { name: '상세 필터 열기' }))
+    const detailFilter = screen.getByRole('region', { name: '상세 필터' })
+    fireEvent.change(within(detailFilter).getByLabelText('시·도'), {
       target: { value: '11' },
     })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    fireEvent.click(within(detailFilter).getByRole('checkbox', { name: 'LH' }))
+    fireEvent.click(within(detailFilter).getByRole('checkbox', {
+      name: '신규 모집',
+    }))
+    fireEvent.click(within(detailFilter).getByRole('button', {
+      name: '상세 필터 적용',
+    }))
 
     fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 열기' }))
     fireEvent.click(screen.getByRole('checkbox', { name: '국민임대' }))
@@ -805,14 +777,6 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '모집상태 필터 열기' }))
     fireEvent.click(screen.getByRole('checkbox', { name: '접수중' }))
     fireEvent.click(screen.getByRole('button', { name: '모집상태 필터 적용' }))
-
-    fireEvent.click(screen.getByRole('button', { name: '공급기관 필터 열기' }))
-    fireEvent.click(screen.getByRole('checkbox', { name: 'LH' }))
-    fireEvent.click(screen.getByRole('button', { name: '공급기관 필터 적용' }))
-
-    fireEvent.click(screen.getByRole('button', { name: '모집유형 필터 열기' }))
-    fireEvent.click(screen.getByRole('checkbox', { name: '신규 모집' }))
-    fireEvent.click(screen.getByRole('button', { name: '모집유형 필터 적용' }))
 
     fireEvent.click(screen.getByRole('button', { name: '가격 필터 열기' }))
     fireEvent.change(screen.getByRole('slider', {
@@ -851,8 +815,8 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '전용면적 필터 적용' }))
 
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(8)
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(8)
+      expect(repository.findMapComplexes).toHaveBeenCalledTimes(6)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(6)
     })
     repository.findComplexPage
       .mockResolvedValueOnce(complexPageWithNext())
@@ -883,8 +847,8 @@ describe('PublicHousingExplorer', () => {
       rentalTypes: ['NATIONAL_RENTAL'],
     }
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(9)
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(9)
+      expect(repository.findMapComplexes).toHaveBeenCalledTimes(7)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(7)
     })
     expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
       INITIAL_BOUNDS,
@@ -920,9 +884,9 @@ describe('PublicHousingExplorer', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: '공고 목록' }))
     fireEvent.click(screen.getByRole('tab', { name: '단지 목록' }))
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
+    fireEvent.click(screen.getByRole('button', { name: '상세 필터 열기' }))
     expect(within(screen.getByRole('region', {
-      name: '지역 필터',
+      name: '상세 필터',
     })).getByLabelText('시·도')).toHaveValue('11')
     fireEvent.keyDown(document, { key: 'Escape' })
 
@@ -936,8 +900,8 @@ describe('PublicHousingExplorer', () => {
       name: '임대유형 필터 초기화',
     }))
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(10)
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(11)
+      expect(repository.findMapComplexes).toHaveBeenCalledTimes(8)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(9)
     })
     const resetSearch = new URLSearchParams(
       screen.getByTestId('location-search').textContent ?? '',
@@ -977,17 +941,21 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     await screen.findByRole('heading', { name: '서울가람 행복주택' })
 
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    const regionFilter = screen.getByRole('region', {
-      name: '지역 필터',
+    fireEvent.click(screen.getByRole('button', { name: '상세 필터 열기' }))
+    const detailFilter = screen.getByRole('region', {
+      name: '상세 필터',
     })
-    expect(within(regionFilter).getByLabelText('시·도')).toHaveValue('41')
+    expect(within(detailFilter).getByLabelText('시·도')).toHaveValue('41')
     await waitFor(() => {
-      expect(within(regionFilter).getByLabelText('시·군·구'))
+      expect(within(detailFilter).getByLabelText('시·군·구'))
         .toHaveValue('41135')
     })
-    fireEvent.click(within(regionFilter).getByRole('button', {
-      name: '지역 필터 적용',
+    expect(within(detailFilter).getByRole('checkbox', { name: 'LH' }))
+      .toBeChecked()
+    expect(within(detailFilter).getByRole('checkbox', { name: 'GH' }))
+      .toBeChecked()
+    fireEvent.click(within(detailFilter).getByRole('button', {
+      name: '상세 필터 적용',
     }))
 
     fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 열기' }))
@@ -1002,18 +970,6 @@ describe('PublicHousingExplorer', () => {
     })).toBeChecked()
     fireEvent.click(within(rentalFilter).getByRole('button', {
       name: '임대유형 필터 적용',
-    }))
-
-    fireEvent.click(screen.getByRole('button', { name: '공급기관 필터 열기' }))
-    const agencyFilter = screen.getByRole('region', {
-      name: '공급기관 필터',
-    })
-    expect(within(agencyFilter).getByRole('checkbox', { name: 'LH' }))
-      .toBeChecked()
-    expect(within(agencyFilter).getByRole('checkbox', { name: 'GH' }))
-      .toBeChecked()
-    fireEvent.click(within(agencyFilter).getByRole('button', {
-      name: '공급기관 필터 적용',
     }))
 
     const search = new URLSearchParams(
@@ -1151,9 +1107,9 @@ describe('PublicHousingExplorer', () => {
     expect(search.get('complexRegionCode')).toBeNull()
 
     fireEvent.click(screen.getByRole('tab', { name: '단지 목록' }))
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
+    fireEvent.click(screen.getByRole('button', { name: '상세 필터 열기' }))
     expect(within(screen.getByRole('region', {
-      name: '지역 필터',
+      name: '상세 필터',
     })).getByLabelText('시·도')).toHaveValue('')
     fireEvent.keyDown(document, { key: 'Escape' })
     fireEvent.click(screen.getByRole('tab', { name: '공고 목록' }))
@@ -2449,6 +2405,17 @@ describe('PublicHousingExplorer', () => {
     })).toBeVisible()
   })
 })
+
+function applyProvinceFilter(provinceCode: string) {
+  fireEvent.click(screen.getByRole('button', { name: '상세 필터 열기' }))
+  const detailFilter = screen.getByRole('region', { name: '상세 필터' })
+  fireEvent.change(within(detailFilter).getByLabelText('시·도'), {
+    target: { value: provinceCode },
+  })
+  fireEvent.click(within(detailFilter).getByRole('button', {
+    name: '상세 필터 적용',
+  }))
+}
 
 function renderExplorer(
   repository: PublicHousingRepository,
