@@ -1178,6 +1178,83 @@ button {
   white-space: pre-wrap;
 }
 
+.location-summary-card {
+  display: grid;
+  gap: 20px;
+}
+
+.location-summary-card h2,
+.location-summary-card p {
+  margin: 0;
+}
+
+.location-summary-card p {
+  margin-top: 8px;
+}
+
+.location-summary-form {
+  display: flex;
+  align-items: end;
+  gap: 16px;
+}
+
+.location-summary-file {
+  display: grid;
+  flex: 1;
+  gap: 8px;
+  color: #263331;
+  font-weight: 700;
+}
+
+.location-summary-file input {
+  min-height: 44px;
+  padding: 8px;
+  border: 1px solid #94a3b8;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.location-summary-file input:focus-visible {
+  border-color: var(--focus);
+  outline: 2px solid rgb(29 78 216 / 20%);
+}
+
+.admin-content .location-summary-progress {
+  margin: 0;
+  color: #155e75;
+  font-weight: 600;
+}
+
+.location-summary-result {
+  padding: 16px;
+  border-radius: 9px;
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.location-summary-result dl {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 0;
+}
+
+.location-summary-result dl div {
+  min-width: 0;
+}
+
+.location-summary-result dt {
+  color: #475569;
+  font-size: 13px;
+}
+
+.location-summary-result dd {
+  margin: 4px 0 0;
+  color: #065f46;
+  font-size: 18px;
+  font-weight: 800;
+}
+
 .registration-form {
   display: grid;
   gap: 20px;
@@ -1332,5 +1409,14 @@ button {
 
   .data-pipeline-results {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .location-summary-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .location-summary-result dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
