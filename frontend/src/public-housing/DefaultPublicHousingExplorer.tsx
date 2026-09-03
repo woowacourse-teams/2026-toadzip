@@ -4,6 +4,7 @@ import {
   loadLocalPublicHousingMock,
   localPublicHousingMockEnabled,
 } from './api/defaultPublicHousingRepository.ts'
+import { housingMapRepository } from './api/housingMapRepository.ts'
 import type { PublicHousingRepository } from './api/publicHousingRepository.ts'
 import type { PublicHousingRegionRepository } from './api/publicHousingRegionRepository.ts'
 import { decodePublicHousingSnapshot } from './api/snapshotPublicHousingRepository.ts'
@@ -25,7 +26,12 @@ interface LocalPublicHousingExplorerProps {
 
 export function DefaultPublicHousingExplorer() {
   if (!localPublicHousingMockEnabled) {
-    return <PublicHousingExplorer repository={defaultPublicHousingRepository} />
+    return (
+      <PublicHousingExplorer
+        mapRepository={housingMapRepository}
+        repository={defaultPublicHousingRepository}
+      />
+    )
   }
   return <LocalPublicHousingExplorer />
 }

@@ -46,20 +46,61 @@ export interface NaverMapComplexMarker {
 
 export type NaverMapMarker = NaverMapComplexMarker
 
+export interface NaverMapAggregateMarker {
+  readonly expansionZoom: number
+  readonly groupKey: string
+  readonly groupLabel: string
+  readonly latitude: number
+  readonly longitude: number
+  readonly nextStage: number
+  readonly uniqueComplexCount: number
+}
+
 export interface NaverMapCameraTarget {
   readonly latitude: number
   readonly longitude: number
   readonly zoom?: number
 }
 
-export interface NaverMapProps {
+interface NaverMapCommonProps {
+  cameraRequestId?: number
   cameraTarget?: NaverMapCameraTarget
   dataBusy?: boolean
-  markers?: NaverMapMarker[]
   onMarkerHighlight?: (complexId: string | null) => void
   onMarkerSelect?: (complexId: string) => void
+  onTransitionInterrupt?: () => void
   onViewportChange?: (viewport: ViewportSnapshot) => void
+  transitioning?: boolean
 }
+
+interface NaverMapLegacyProps extends NaverMapCommonProps {
+  aggregateMarkers?: never
+  markerRenderMode?: 'legacy'
+  markers?: readonly NaverMapMarker[]
+  onAggregateMarkerSelect?: never
+  representation?: never
+}
+
+interface NaverMapServerAggregateProps extends NaverMapCommonProps {
+  aggregateMarkers: readonly NaverMapAggregateMarker[]
+  markerRenderMode: 'server'
+  markers?: never
+  onAggregateMarkerSelect: (marker: NaverMapAggregateMarker) => void
+  representation: 'AGGREGATE'
+}
+
+interface NaverMapServerIndividualProps extends NaverMapCommonProps {
+  aggregateMarkers?: never
+  markerRenderMode: 'server'
+  markers: readonly NaverMapMarker[]
+  onAggregateMarkerSelect?: never
+  representation: 'INDIVIDUAL'
+}
+
+export type NaverMapProps =
+  | NaverMapLegacyProps
+  | NaverMapServerAggregateProps
+  | NaverMapServerIndividualProps
 
 interface PendingClusterFocus {
   readonly memberIds: readonly string[]
@@ -67,6 +108,7 @@ interface PendingClusterFocus {
 }
 
 interface MarkerFocusTarget {
+  readonly aggregateMarkerId?: string
   readonly memberIds: readonly string[]
   readonly preferredComplexId: string | null
 }
@@ -116,6 +158,14 @@ function destroyMapSafely(mapInstance: naver.maps.Map | null) {
   }
 }
 
+function stopMapSafely(mapInstance: naver.maps.Map) {
+  try {
+    mapInstance.stop()
+  } catch {
+    // 사용자 입력 시점에 NAVER SDK가 전환을 이미 끝냈을 수 있습니다.
+  }
+}
+
 function MapLoading() {
   return (
     <div className="map-state-layer">
@@ -155,27 +205,54 @@ function MapUnavailable({ onRetry, reason }: MapUnavailableProps) {
 }
 
 export default function NaverMap({
+  aggregateMarkers = [],
+  cameraRequestId,
   cameraTarget,
   dataBusy = false,
+  markerRenderMode = 'legacy',
   markers = [],
+  onAggregateMarkerSelect,
   onMarkerHighlight,
   onMarkerSelect,
+  onTransitionInterrupt,
   onViewportChange,
+  representation,
+  transitioning = false,
 }: NaverMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<naver.maps.Map | null>(null)
   const mapsRef = useRef<typeof naver.maps | null>(null)
   const cameraTargetRef = useRef(cameraTarget)
   cameraTargetRef.current = cameraTarget
+  const cameraRequestIdRef = useRef(cameraRequestId)
+  cameraRequestIdRef.current = cameraRequestId
   const createdMarkersRef = useRef<CreatedMarker[]>([])
+  const aggregateMarkersRef = useRef(aggregateMarkers)
+  aggregateMarkersRef.current = aggregateMarkers
+  const markerRenderModeRef = useRef(markerRenderMode)
+  markerRenderModeRef.current = markerRenderMode
   const markersRef = useRef(markers)
   markersRef.current = markers
+  const representationRef = useRef(representation)
+  representationRef.current = representation
+  const dataBusyRef = useRef(dataBusy)
+  dataBusyRef.current = dataBusy
+  const transitioningRef = useRef(transitioning)
+  const transitionInterruptedRef = useRef(false)
+  const wasTransitioning = transitioningRef.current
+  transitioningRef.current = transitioning
+  if (!transitioning || !wasTransitioning) {
+    transitionInterruptedRef.current = false
+  }
   const markerOverlaysRef = useRef<naver.maps.Marker[]>([])
   const markerFocusTimerRef = useRef<number | undefined>(undefined)
   const appliedCameraTargetRef = useRef<NaverMapCameraTarget | null>(null)
+  const appliedCameraRequestIdRef = useRef<number | undefined>(undefined)
   const pendingClusterFocusRef = useRef<PendingClusterFocus | null>(null)
+  const onAggregateMarkerSelectRef = useRef(onAggregateMarkerSelect)
   const onMarkerHighlightRef = useRef(onMarkerHighlight)
   const onMarkerSelectRef = useRef(onMarkerSelect)
+  const onTransitionInterruptRef = useRef(onTransitionInterrupt)
   const onViewportChangeRef = useRef(onViewportChange)
   const [attempt, setAttempt] = useState(0)
   const [markerAnnouncement, setMarkerAnnouncement] = useState('')
@@ -184,7 +261,16 @@ export default function NaverMap({
   const cameraLatitude = cameraTarget?.latitude
   const cameraLongitude = cameraTarget?.longitude
   const cameraZoom = cameraTarget?.zoom
-  const markerGeometryKey = createMarkerGeometryKey(markers)
+  const markerGeometryKey = createMarkerGeometryKey({
+    aggregateMarkers,
+    markerRenderMode,
+    markers,
+    representation,
+  })
+
+  useEffect(() => {
+    onAggregateMarkerSelectRef.current = onAggregateMarkerSelect
+  }, [onAggregateMarkerSelect])
 
   useEffect(() => {
     onMarkerHighlightRef.current = onMarkerHighlight
@@ -193,6 +279,10 @@ export default function NaverMap({
   useEffect(() => {
     onMarkerSelectRef.current = onMarkerSelect
   }, [onMarkerSelect])
+
+  useEffect(() => {
+    onTransitionInterruptRef.current = onTransitionInterrupt
+  }, [onTransitionInterrupt])
 
   useEffect(() => {
     onViewportChangeRef.current = onViewportChange
@@ -209,7 +299,10 @@ export default function NaverMap({
     let cancelled = false
     let mapInstance: naver.maps.Map | null = null
     let resizeObserver: ResizeObserver | null = null
+    let dragStartListener: naver.maps.MapEventListener | null = null
     let idleListener: naver.maps.MapEventListener | null = null
+    let mapSurface: HTMLDivElement | null = null
+    let wheelListener: (() => void) | null = null
     setStatus({ kind: 'loading' })
 
     const removeIdleListener = () => {
@@ -220,6 +313,18 @@ export default function NaverMap({
       idleListener = null
     }
 
+    const removeTransitionInterruptListeners = () => {
+      if (dragStartListener && mapsRef.current) {
+        mapsRef.current.Event.removeListener(dragStartListener)
+        dragStartListener = null
+      }
+      if (mapSurface && wheelListener) {
+        mapSurface.removeEventListener('wheel', wheelListener)
+      }
+      mapSurface = null
+      wheelListener = null
+    }
+
     const handleAuthenticationFailure = () => {
       if (cancelled) {
         return
@@ -228,6 +333,7 @@ export default function NaverMap({
       resizeObserver?.disconnect()
       resizeObserver = null
       removeIdleListener()
+      removeTransitionInterruptListeners()
       const failedMap = mapInstance
       mapInstance = null
       mapInstanceRef.current = null
@@ -269,11 +375,18 @@ export default function NaverMap({
           mapInstanceRef.current = createdMap
           mapsRef.current = maps
           appliedCameraTargetRef.current = initialCamera
+          appliedCameraRequestIdRef.current = cameraRequestIdRef.current
 
           const emitViewport = () => {
+            transitionInterruptedRef.current = false
             setProjectionRevision((current) => current + 1)
             const viewport = readViewport(createdMap)
             if (viewport) {
+              appliedCameraTargetRef.current = {
+                latitude: viewport.center.latitude,
+                longitude: viewport.center.longitude,
+                zoom: viewport.zoom,
+              }
               onViewportChangeRef.current?.(viewport)
             }
           }
@@ -283,6 +396,25 @@ export default function NaverMap({
             'idle',
             emitViewport,
           )
+          const interruptTransition = () => {
+            if (
+              !transitioningRef.current ||
+              transitionInterruptedRef.current
+            ) {
+              return
+            }
+            transitionInterruptedRef.current = true
+            onTransitionInterruptRef.current?.()
+            stopMapSafely(createdMap)
+          }
+          dragStartListener = maps.Event.addListener(
+            createdMap,
+            'dragstart',
+            interruptTransition,
+          )
+          mapSurface = mapContainerRef.current
+          wheelListener = interruptTransition
+          mapSurface.addEventListener('wheel', wheelListener, { passive: true })
 
           if (typeof ResizeObserver === 'function') {
             resizeObserver = new ResizeObserver(() => {
@@ -297,11 +429,13 @@ export default function NaverMap({
           resizeObserver?.disconnect()
           resizeObserver = null
           removeIdleListener()
+          removeTransitionInterruptListeners()
           const failedMap = mapInstance
           mapInstance = null
           mapInstanceRef.current = null
           mapsRef.current = null
           appliedCameraTargetRef.current = null
+          appliedCameraRequestIdRef.current = undefined
           setStatus({ kind: 'unavailable', reason: 'initialization' })
           destroyMapSafely(failedMap)
         }
@@ -317,6 +451,7 @@ export default function NaverMap({
       unsubscribeAuthenticationFailure()
       resizeObserver?.disconnect()
       removeIdleListener()
+      removeTransitionInterruptListeners()
       clearMarkers(markerOverlaysRef.current)
       markerOverlaysRef.current = []
       createdMarkersRef.current = []
@@ -325,6 +460,7 @@ export default function NaverMap({
       mapInstanceRef.current = null
       mapsRef.current = null
       appliedCameraTargetRef.current = null
+      appliedCameraRequestIdRef.current = undefined
       pendingClusterFocusRef.current = null
       destroyMapSafely(mapInstance)
     }
@@ -348,7 +484,10 @@ export default function NaverMap({
     const clusteredMarkers = toRenderedMarkers(
       maps,
       mapInstance,
+      aggregateMarkersRef.current,
+      markerRenderModeRef.current,
       markersRef.current,
+      representationRef.current,
     )
     const previousMarkers = createdMarkersRef.current
     const previousFocus = readMarkerFocus(previousMarkers)
@@ -372,6 +511,12 @@ export default function NaverMap({
       mapInstance,
       maps,
       marker,
+      onAggregateMarkerSelect: (aggregateMarker) => {
+        if (dataBusyRef.current || transitioningRef.current) {
+          return
+        }
+        onAggregateMarkerSelectRef.current?.(aggregateMarker)
+      },
       onClusterSelect: (cluster) => {
         pendingClusterFocusRef.current = {
           memberIds: cluster.members.map(({ id }) => id),
@@ -387,6 +532,10 @@ export default function NaverMap({
         onMarkerSelectRef.current?.(complexId)
       },
     }))
+    updateAggregateMarkerAvailability(
+      createdMarkers,
+      dataBusyRef.current || transitioningRef.current,
+    )
     applyMarkerHighlights(createdMarkers, markersRef.current)
     createdMarkersRef.current = createdMarkers
     markerOverlaysRef.current = createdMarkers.map(({ overlay }) => overlay)
@@ -410,6 +559,13 @@ export default function NaverMap({
   }, [markers])
 
   useEffect(() => {
+    updateAggregateMarkerAvailability(
+      createdMarkersRef.current,
+      dataBusy || transitioning,
+    )
+  }, [dataBusy, markerGeometryKey, status.kind, transitioning])
+
+  useEffect(() => {
     const mapInstance = mapInstanceRef.current
     const maps = mapsRef.current
 
@@ -431,15 +587,32 @@ export default function NaverMap({
       zoom: cameraZoom,
     }
     const previousTarget = appliedCameraTargetRef.current
-
-    if (cameraCoordinatesChanged(previousTarget, nextTarget)) {
-      mapInstance.panTo(new maps.LatLng(cameraLatitude, cameraLongitude))
-    }
-
-    if (
-      cameraZoom !== undefined
+    const cameraRequested = cameraRequestId !== undefined
+      && cameraRequestId !== appliedCameraRequestIdRef.current
+    const coordinatesChanged = cameraCoordinatesChanged(previousTarget, nextTarget)
+    const zoomChanged = cameraZoom !== undefined
       && cameraZoomChanged(previousTarget?.zoom, cameraZoom)
-    ) {
+    const currentViewport = cameraRequested ? readViewport(mapInstance) : null
+    const cameraRequestDidNotMove = currentViewport !== null
+      && !cameraCoordinatesChanged(currentViewport.center, nextTarget)
+      && (cameraZoom === undefined
+        || !cameraZoomChanged(currentViewport.zoom, cameraZoom))
+
+    if (cameraRequested && cameraZoom !== undefined) {
+      mapInstance.morph(
+        new maps.LatLng(cameraLatitude, cameraLongitude),
+        cameraZoom,
+      )
+    } else if (cameraRequested) {
+      mapInstance.panTo(new maps.LatLng(cameraLatitude, cameraLongitude))
+    } else if (coordinatesChanged && zoomChanged) {
+      mapInstance.morph(
+        new maps.LatLng(cameraLatitude, cameraLongitude),
+        cameraZoom,
+      )
+    } else if (coordinatesChanged) {
+      mapInstance.panTo(new maps.LatLng(cameraLatitude, cameraLongitude))
+    } else if (zoomChanged) {
       mapInstance.setZoom(cameraZoom)
     }
 
@@ -447,7 +620,12 @@ export default function NaverMap({
       ...nextTarget,
       zoom: cameraZoom ?? previousTarget?.zoom,
     }
-  }, [cameraLatitude, cameraLongitude, cameraZoom, status.kind])
+    appliedCameraRequestIdRef.current = cameraRequestId
+    if (cameraRequestDidNotMove) {
+      transitionInterruptedRef.current = false
+      onViewportChangeRef.current?.(currentViewport)
+    }
+  }, [cameraLatitude, cameraLongitude, cameraRequestId, cameraZoom, status.kind])
 
   const retry = () => {
     setStatus({ kind: 'loading' })
@@ -633,9 +811,25 @@ interface CreatedMarker {
   readonly rendered: RenderedMarker
 }
 
+function updateAggregateMarkerAvailability(
+  markers: readonly CreatedMarker[],
+  disabled: boolean,
+) {
+  markers.forEach(({ button, rendered }) => {
+    if (rendered.kind === 'aggregate') {
+      button.disabled = disabled
+    }
+  })
+}
+
 interface RenderedComplexMarker {
   readonly kind: 'complex'
   readonly marker: NaverMapComplexMarker
+}
+
+interface RenderedAggregateMarker {
+  readonly kind: 'aggregate'
+  readonly marker: NaverMapAggregateMarker
 }
 
 interface RenderedClusterMarker {
@@ -645,9 +839,47 @@ interface RenderedClusterMarker {
   readonly members: readonly NaverMapComplexMarker[]
 }
 
-type RenderedMarker = RenderedComplexMarker | RenderedClusterMarker
+type RenderedMarker =
+  | RenderedAggregateMarker
+  | RenderedComplexMarker
+  | RenderedClusterMarker
 
 function toRenderedMarkers(
+  maps: typeof naver.maps,
+  mapInstance: naver.maps.Map,
+  aggregateMarkers: readonly NaverMapAggregateMarker[],
+  markerRenderMode: 'legacy' | 'server',
+  markers: readonly NaverMapMarker[],
+  representation: 'AGGREGATE' | 'INDIVIDUAL' | undefined,
+): RenderedMarker[] {
+  if (markerRenderMode === 'server') {
+    return toServerRenderedMarkers(
+      aggregateMarkers,
+      markers,
+      representation,
+    )
+  }
+  return toLegacyRenderedMarkers(maps, mapInstance, markers)
+}
+
+function toServerRenderedMarkers(
+  aggregateMarkers: readonly NaverMapAggregateMarker[],
+  markers: readonly NaverMapMarker[],
+  representation: 'AGGREGATE' | 'INDIVIDUAL' | undefined,
+): RenderedMarker[] {
+  if (representation === 'AGGREGATE') {
+    return uniqueSortedAggregateMarkers(aggregateMarkers).map((marker) => ({
+      kind: 'aggregate',
+      marker,
+    }))
+  }
+  return uniqueSortedMarkers(markers).map((marker) => ({
+    kind: 'complex',
+    marker,
+  }))
+}
+
+function toLegacyRenderedMarkers(
   maps: typeof naver.maps,
   mapInstance: naver.maps.Map,
   markers: readonly NaverMapMarker[],
@@ -698,6 +930,20 @@ function toRenderedMarkers(
   }
 }
 
+function uniqueSortedAggregateMarkers(
+  markers: readonly NaverMapAggregateMarker[],
+) {
+  const uniqueMarkers = new Map<string, NaverMapAggregateMarker>()
+  markers.forEach((marker) => {
+    if (!uniqueMarkers.has(marker.groupKey)) {
+      uniqueMarkers.set(marker.groupKey, marker)
+    }
+  })
+  return [...uniqueMarkers.values()].sort((left, right) =>
+    left.groupKey.localeCompare(right.groupKey),
+  )
+}
+
 function uniqueSortedMarkers(markers: readonly NaverMapMarker[]) {
   const uniqueMarkers = new Map<string, NaverMapMarker>()
   markers.forEach((marker) => {
@@ -717,6 +963,9 @@ function sortRenderedMarkers(markers: readonly RenderedMarker[]) {
 }
 
 function renderedMarkerId(marker: RenderedMarker) {
+  if (marker.kind === 'aggregate') {
+    return marker.marker.groupKey
+  }
   if (marker.kind === 'complex') {
     return marker.marker.id
   }
@@ -727,6 +976,9 @@ interface CreateMarkerOptions {
   readonly mapInstance: naver.maps.Map
   readonly maps: typeof naver.maps
   readonly marker: RenderedMarker
+  readonly onAggregateMarkerSelect: (
+    marker: NaverMapAggregateMarker,
+  ) => void
   readonly onClusterSelect: (cluster: RenderedClusterMarker) => void
   readonly onMarkerHighlight: ((complexId: string | null) => void) | undefined
   readonly onMarkerSelect: ((complexId: string) => void) | undefined
@@ -736,10 +988,20 @@ function createMarker({
   mapInstance,
   maps,
   marker,
+  onAggregateMarkerSelect,
   onClusterSelect,
   onMarkerHighlight,
   onMarkerSelect,
 }: CreateMarkerOptions): CreatedMarker {
+  if (marker.kind === 'aggregate') {
+    const created = createAggregateMarker(
+      maps,
+      mapInstance,
+      marker.marker,
+      () => onAggregateMarkerSelect(marker.marker),
+    )
+    return { ...created, rendered: marker }
+  }
   if (marker.kind === 'cluster') {
     const created = createClusterMarker(
       maps,
@@ -763,6 +1025,60 @@ interface CreatedMarkerOverlay {
   readonly button: HTMLButtonElement
   readonly isInteracting: () => boolean
   readonly overlay: naver.maps.Marker
+}
+
+function createAggregateMarker(
+  maps: typeof naver.maps,
+  mapInstance: naver.maps.Map,
+  marker: NaverMapAggregateMarker,
+  onSelect: () => void,
+): CreatedMarkerOverlay {
+  const button = aggregateMarkerButton(marker)
+  button.addEventListener('click', onSelect)
+  const title = aggregateMarkerTitle(marker)
+  const overlay = new maps.Marker({
+    clickable: true,
+    cursor: 'pointer',
+    icon: {
+      anchor: new maps.Point(52, 68),
+      content: button,
+      size: new maps.Size(104, 68),
+    },
+    map: mapInstance,
+    position: new maps.LatLng(marker.latitude, marker.longitude),
+    title,
+  })
+  return { button, isInteracting: () => false, overlay }
+}
+
+function aggregateMarkerButton(marker: NaverMapAggregateMarker) {
+  const button = document.createElement('button')
+  const label = document.createElement('span')
+  const count = document.createElement('strong')
+  button.type = 'button'
+  button.className = 'housing-map-aggregate'
+  button.dataset.aggregateMarkerId = marker.groupKey
+  button.dataset.expansionZoom = String(marker.expansionZoom)
+  button.dataset.groupKey = marker.groupKey
+  button.dataset.mapAggregateMarker = 'true'
+  button.dataset.nextStage = String(marker.nextStage)
+  button.dataset.uniqueComplexCount = String(marker.uniqueComplexCount)
+  button.setAttribute('aria-label', aggregateMarkerAriaLabel(marker))
+  button.title = aggregateMarkerTitle(marker)
+  label.className = 'housing-map-aggregate__label'
+  label.textContent = marker.groupLabel
+  count.className = 'housing-map-aggregate__count'
+  count.textContent = `${marker.uniqueComplexCount}곳`
+  button.append(label, count)
+  return button
+}
+
+function aggregateMarkerAriaLabel(marker: NaverMapAggregateMarker) {
+  return `${aggregateMarkerTitle(marker)}, 다음 지역 단계로 확대해서 보기`
+}
+
+function aggregateMarkerTitle(marker: NaverMapAggregateMarker) {
+  return `${marker.groupLabel} ${marker.uniqueComplexCount}곳`
 }
 
 function createComplexMarker(
@@ -935,18 +1251,49 @@ function clearMarkers(markers: naver.maps.Marker[]) {
   markers.forEach((marker) => marker.setMap(null))
 }
 
-function createMarkerGeometryKey(markers: readonly NaverMapMarker[]) {
-  return JSON.stringify(uniqueSortedMarkers(markers).map((marker) => [
-    marker.id,
-    marker.latitude,
-    marker.longitude,
-    marker.name,
-    marker.agencyLabel,
-    marker.rentalTypeLabel,
-    marker.areaLabel,
-    marker.monthlyRentLabel,
-    Boolean(marker.selected),
-  ]))
+interface MarkerGeometryInput {
+  readonly aggregateMarkers: readonly NaverMapAggregateMarker[]
+  readonly markerRenderMode: 'legacy' | 'server'
+  readonly markers: readonly NaverMapMarker[]
+  readonly representation: 'AGGREGATE' | 'INDIVIDUAL' | undefined
+}
+
+function createMarkerGeometryKey({
+  aggregateMarkers,
+  markerRenderMode,
+  markers,
+  representation,
+}: MarkerGeometryInput) {
+  if (representation === 'AGGREGATE') {
+    return JSON.stringify([
+      markerRenderMode,
+      representation,
+      ...uniqueSortedAggregateMarkers(aggregateMarkers).map((marker) => [
+        marker.groupKey,
+        marker.groupLabel,
+        marker.latitude,
+        marker.longitude,
+        marker.uniqueComplexCount,
+        marker.nextStage,
+        marker.expansionZoom,
+      ]),
+    ])
+  }
+  return JSON.stringify([
+    markerRenderMode,
+    representation,
+    ...uniqueSortedMarkers(markers).map((marker) => [
+      marker.id,
+      marker.latitude,
+      marker.longitude,
+      marker.name,
+      marker.agencyLabel,
+      marker.rentalTypeLabel,
+      marker.areaLabel,
+      marker.monthlyRentLabel,
+      Boolean(marker.selected),
+    ]),
+  ])
 }
 
 function applyMarkerHighlights(
@@ -957,12 +1304,23 @@ function applyMarkerHighlights(
     markers.filter(({ highlighted }) => highlighted).map(({ id }) => id),
   )
   createdMarkers.forEach(({ button, overlay, rendered }) => {
-    const highlighted = rendered.kind === 'complex'
-      ? highlightedIds.has(rendered.marker.id)
-      : rendered.members.some(({ id }) => highlightedIds.has(id))
+    const highlighted = markerIsHighlighted(rendered, highlightedIds)
     button.classList.toggle('is-highlighted', highlighted)
     overlay.setZIndex(markerZIndex(rendered, highlighted))
   })
+}
+
+function markerIsHighlighted(
+  marker: RenderedMarker,
+  highlightedIds: ReadonlySet<string>,
+) {
+  if (marker.kind === 'aggregate') {
+    return false
+  }
+  if (marker.kind === 'complex') {
+    return highlightedIds.has(marker.marker.id)
+  }
+  return marker.members.some(({ id }) => highlightedIds.has(id))
 }
 
 function markerZIndex(marker: RenderedMarker, highlighted: boolean) {
@@ -971,6 +1329,9 @@ function markerZIndex(marker: RenderedMarker, highlighted: boolean) {
   }
   if (highlighted) {
     return 20
+  }
+  if (marker.kind === 'aggregate') {
+    return 0
   }
   return marker.kind === 'complex' ? 10 : 0
 }
@@ -991,6 +1352,18 @@ function sameRenderedMarkers(
 function renderedMarkerGeometryKey(marker: RenderedMarker | undefined) {
   if (!marker) {
     return ''
+  }
+  if (marker.kind === 'aggregate') {
+    return JSON.stringify([
+      marker.kind,
+      marker.marker.groupKey,
+      marker.marker.groupLabel,
+      marker.marker.latitude,
+      marker.marker.longitude,
+      marker.marker.uniqueComplexCount,
+      marker.marker.nextStage,
+      marker.marker.expansionZoom,
+    ])
   }
   if (marker.kind === 'complex') {
     return JSON.stringify([
@@ -1024,6 +1397,13 @@ function readMarkerFocus(
   if (!focused) {
     return null
   }
+  if (focused.rendered.kind === 'aggregate') {
+    return {
+      aggregateMarkerId: focused.rendered.marker.groupKey,
+      memberIds: [],
+      preferredComplexId: null,
+    }
+  }
   if (focused.rendered.kind === 'complex') {
     return {
       memberIds: [focused.rendered.marker.id],
@@ -1053,6 +1433,13 @@ function findMarkerFocusTarget(
   createdMarkers: readonly CreatedMarker[],
   focus: MarkerFocusTarget,
 ) {
+  const aggregate = createdMarkers.find(({ rendered }) =>
+    rendered.kind === 'aggregate'
+      && rendered.marker.groupKey === focus.aggregateMarkerId,
+  )
+  if (aggregate) {
+    return aggregate
+  }
   const memberIds = new Set(focus.memberIds)
   const preferred = createdMarkers.find(({ rendered }) =>
     rendered.kind === 'complex'

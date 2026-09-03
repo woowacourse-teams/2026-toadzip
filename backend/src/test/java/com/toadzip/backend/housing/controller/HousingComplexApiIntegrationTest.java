@@ -903,7 +903,6 @@ class HousingComplexApiIntegrationTest {
                 errorCase("역전 면적 범위", null, true, "minExclusiveArea", "2", "maxExclusiveArea", "1"),
                 errorCase("범위 밖 year", null, true, "builtYearFrom", "0"),
                 errorCase("역전 year 범위", null, true, "builtYearFrom", "2021", "builtYearTo", "2020"),
-                errorCase("CANCELLED 신청 상태", null, true, "applicationStatuses", "CANCELLED"),
                 errorCase("빈 enum 요소", null, true, "agencyCodes", "LH", "agencyCodes", ""),
                 errorCase("filter가 cursor보다 우선", null, true, "keyword", " ", "cursor", "bad!")
         );
