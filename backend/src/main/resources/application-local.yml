@@ -13,10 +13,3 @@ springdoc:
     enabled: true
   swagger-ui:
     enabled: true
-
-app:
-  admin:
-    bootstrap:
-      enabled: ${ADMIN_BOOTSTRAP_ENABLED:false}
-      login-identifier: ${ADMIN_LOGIN_IDENTIFIER:}
-      password: ${ADMIN_PASSWORD:}
