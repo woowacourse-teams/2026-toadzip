@@ -643,6 +643,52 @@ describe('PublicHousingExplorer', () => {
     })).not.toBeInTheDocument()
   })
 
+  it('새 영역 재조회 중 기존 단지 목록 레이아웃을 유지한다', async () => {
+    const repository = createRepository()
+    const nextMap = createDeferred<readonly MapComplex[]>()
+    const nextPage = createDeferred<ComplexPage>()
+    repository.findMapComplexes
+      .mockResolvedValueOnce([mapComplex()])
+      .mockReturnValueOnce(nextMap.promise)
+    repository.findComplexPage
+      .mockResolvedValueOnce(complexPage())
+      .mockReturnValueOnce(nextPage.promise)
+    renderExplorer(repository)
+
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    const initialCard = await screen.findByRole('article', {
+      name: '서울가람 행복주택',
+    })
+    const initialList = screen.getByRole('list')
+    const scrollContainer = initialList.parentElement
+    expect(scrollContainer).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
+    await waitFor(() => {
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
+    })
+
+    expect(initialCard).toBeVisible()
+    expect(screen.getByRole('list')).toBe(initialList)
+    expect(scrollContainer).toHaveAttribute('aria-busy', 'true')
+    expect(scrollContainer?.children).toHaveLength(1)
+    expect(scrollContainer?.firstElementChild).toBe(initialList)
+    expect(within(scrollContainer as HTMLElement).queryByText(
+      '기존 결과를 유지하면서 새 지역을 확인하고 있습니다.',
+    )).not.toBeInTheDocument()
+    expect(within(screen.getByRole('complementary', {
+      name: '공공임대주택 검색 결과',
+    })).getByRole('status')).toHaveTextContent(
+      '기존 결과를 유지하면서 새 지역을 확인하고 있습니다.',
+    )
+
+    nextMap.resolve([mapComplexFor(18, '서울마루 국민임대')])
+    nextPage.resolve(complexPageFor(18, '서울마루 국민임대'))
+    expect(await screen.findByRole('heading', {
+      name: '서울마루 국민임대',
+    })).toBeVisible()
+  })
+
   it('이미 적용한 동일 request key는 다시 요청하지 않는다', async () => {
     const repository = createRepository()
     renderExplorer(repository)

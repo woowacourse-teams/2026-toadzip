@@ -1683,11 +1683,6 @@ function ComplexResultContent({
       className="housing-results__scroll"
       aria-busy={state.status === 'loading'}
     >
-      {state.status === 'loading' && (
-        <p className="housing-results__refreshing">
-          기존 결과를 유지하면서 새 지역을 확인하고 있습니다.
-        </p>
-      )}
       <ul className="housing-results__list">
         {state.items.map((complex) => (
           <li key={complex.complexId}>
