@@ -206,11 +206,7 @@ describe('PublicHousingExplorer', () => {
     })
 
     fireEvent.click(marker)
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '41' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('41')
 
     expect(mapRepository.findMap).toHaveBeenCalledOnce()
     fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
@@ -342,11 +338,7 @@ describe('PublicHousingExplorer', () => {
     await screen.findByRole('heading', { name: '서울가람 행복주택' })
     expect(repository.findComplexPage).toHaveBeenCalledOnce()
 
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '41' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('41')
 
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(2))
     expect(repository.findComplexPage).toHaveBeenCalledOnce()
@@ -374,11 +366,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     await waitFor(() => expect(repository.findComplexPage).toHaveBeenCalledOnce())
 
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '41' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('41')
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(2))
     const filteredSignal = mapRepository.findMap.mock.calls[1]?.[1]
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
@@ -407,11 +395,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     await waitFor(() => expect(repository.findComplexPage).toHaveBeenCalledOnce())
 
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '41' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('41')
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(2))
     fireEvent.click(screen.getByRole('button', { name: '미세 이동 영역 알림' }))
 
@@ -442,18 +426,10 @@ describe('PublicHousingExplorer', () => {
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(2))
     await act(async () => Promise.resolve())
 
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '41' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('41')
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(3))
     const filteredSignal = mapRepository.findMap.mock.calls[2]?.[1]
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('')
 
     expect(filteredSignal?.aborted).toBe(true)
     expect(mapRepository.findMap).toHaveBeenCalledTimes(3)
@@ -477,18 +453,10 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     await screen.findByRole('button', { name: '서울 0곳 지역 마커 선택' })
 
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '41' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('41')
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(2))
     const filteredSignal = mapRepository.findMap.mock.calls[1]?.[1]
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('')
 
     expect(filteredSignal?.aborted).toBe(true)
     expect(mapRepository.findMap).toHaveBeenCalledTimes(2)
@@ -551,11 +519,7 @@ describe('PublicHousingExplorer', () => {
       expect.any(AbortSignal),
     ))
 
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    fireEvent.change(screen.getByLabelText('시·도'), {
-      target: { value: '11' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    applyProvinceFilter('11')
 
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -590,9 +554,12 @@ describe('PublicHousingExplorer', () => {
       expect.any(AbortSignal),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
-    expect(screen.getByLabelText('시·도')).toHaveValue('41')
-    fireEvent.click(screen.getByRole('button', { name: '지역 필터 적용' }))
+    fireEvent.click(screen.getByRole('button', { name: '상세 필터 열기' }))
+    const detailFilter = screen.getByRole('region', { name: '상세 필터' })
+    expect(within(detailFilter).getByLabelText('시·도')).toHaveValue('41')
+    fireEvent.click(within(detailFilter).getByRole('button', {
+      name: '상세 필터 적용',
+    }))
 
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(3))
     expect(mapRepository.findMap).toHaveBeenLastCalledWith(
@@ -1270,6 +1237,7 @@ describe('PublicHousingExplorer', () => {
     expect(scrollContainer).not.toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
+    fireEvent.click(screen.getByRole('button', { name: '이 지역에서 검색' }))
     await waitFor(() => {
       expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
     })
@@ -2437,6 +2405,17 @@ describe('PublicHousingExplorer', () => {
     })).toBeVisible()
   })
 })
+
+function applyProvinceFilter(provinceCode: string) {
+  fireEvent.click(screen.getByRole('button', { name: '상세 필터 열기' }))
+  const detailFilter = screen.getByRole('region', { name: '상세 필터' })
+  fireEvent.change(within(detailFilter).getByLabelText('시·도'), {
+    target: { value: provinceCode },
+  })
+  fireEvent.click(within(detailFilter).getByRole('button', {
+    name: '상세 필터 적용',
+  }))
+}
 
 function renderExplorer(
   repository: PublicHousingRepository,
