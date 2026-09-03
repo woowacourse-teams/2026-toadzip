@@ -207,7 +207,10 @@ export function DataPipelineControl() {
       <div className="data-pipeline-heading">
         <div>
           <h2 id="data-pipeline-title">데이터 수집·정제</h2>
-          <p>수집을 완료한 뒤 정제를 실행해 주세요. 실패하면 이후 단계는 실행되지 않습니다.</p>
+          <p>
+            수집을 완료한 뒤 정제를 실행해 주세요.
+            일부 행 실패는 사유를 남기고 뒤의 LH 단계까지 계속 실행합니다.
+          </p>
         </div>
       </div>
       <div className="data-pipeline-groups">

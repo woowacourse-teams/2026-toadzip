@@ -35,6 +35,19 @@ export type DataPipelineExecution = {
   failure: DataPipelineFailure | null
 }
 
+export type LocationSummaryImportReport = {
+  sourceFileName: string
+  textFileCount: number
+  scannedRowCount: number
+  targetRoadAddressCount: number
+  matchedRoadAddressCount: number
+  unmatchedRoadAddressCount: number
+  storedLocationCount: number
+  replacedRowCount: number
+  invalidatedMappingCandidateCount: number
+  provinceCodes: readonly string[]
+}
+
 type CsrfToken = {
   token: string
   headerName: string
@@ -75,6 +88,30 @@ export async function getDataPipelineStatus(
     credentials: 'include',
   })
   return readExecutionResponse(response)
+}
+
+export async function uploadLocationSummary(
+  file: File,
+): Promise<LocationSummaryImportReport> {
+  const csrfToken = await requestCsrfToken()
+  const formData = new FormData()
+  formData.append('file', file)
+  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/juso/location-summaries`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      [csrfToken.headerName]: csrfToken.token,
+    },
+    body: formData,
+  })
+  const body = await readJson(response)
+  if (!response.ok) {
+    throw apiError(response.status, body)
+  }
+  if (!isLocationSummaryImportReport(body)) {
+    throw new Error('위치정보요약DB 적재 응답 형식이 올바르지 않습니다.')
+  }
+  return body
 }
 
 async function requestCsrfToken(): Promise<CsrfToken> {
@@ -154,6 +191,22 @@ function isCsrfToken(value: unknown): value is CsrfToken {
   return isRecord(value)
     && typeof value.token === 'string'
     && typeof value.headerName === 'string'
+}
+
+function isLocationSummaryImportReport(value: unknown): value is LocationSummaryImportReport {
+  if (!isRecord(value) || !Array.isArray(value.provinceCodes)) {
+    return false
+  }
+  return typeof value.sourceFileName === 'string'
+    && typeof value.textFileCount === 'number'
+    && typeof value.scannedRowCount === 'number'
+    && typeof value.targetRoadAddressCount === 'number'
+    && typeof value.matchedRoadAddressCount === 'number'
+    && typeof value.unmatchedRoadAddressCount === 'number'
+    && typeof value.storedLocationCount === 'number'
+    && typeof value.replacedRowCount === 'number'
+    && typeof value.invalidatedMappingCandidateCount === 'number'
+    && value.provinceCodes.every((provinceCode) => typeof provinceCode === 'string')
 }
 
 function isDataPipelineType(value: unknown): value is DataPipelineType {

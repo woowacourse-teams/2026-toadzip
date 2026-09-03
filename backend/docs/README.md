@@ -28,6 +28,7 @@
 | 테스트 | [testing.md](testing.md) | 테스트 범위와 대역 기준 |
 | 보안 변경 | [security.md](security.md) | 인증, 인가, 개인정보, 비밀 |
 | 운영 변경 | [observability.md](observability.md) | 로그, 메트릭, 트레이스 |
+| 단지 도로명주소 좌표 적재 | [road-address-reference-data.md](road-address-reference-data.md) | 위치정보요약DB 전체분에서 단지 주소 일치분만 선별 적재하는 흐름 |
 | 작업 위임 | [agent-collaboration.md](agent-collaboration.md) | 역할과 읽기 범위 |
 | 완료 판단 | [quality-gates.md](quality-gates.md) | 실행할 검사와 보고 증거 |
 
