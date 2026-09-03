@@ -38,7 +38,11 @@ import org.springframework.test.context.ActiveProfiles;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("test")
-@Import({ComplexSummaryQueryRepository.class, ComplexSummarySqlBuilder.class})
+@Import({
+        ComplexSummaryQueryRepository.class,
+        ComplexSummarySqlBuilder.class,
+        HousingComplexFilterPredicateBuilder.class
+})
 class ComplexSummaryQueryRepositoryTest {
 
     private static final MapBounds SEOUL_BOUNDS = MapBounds.of(
@@ -187,6 +191,36 @@ class ComplexSummaryQueryRepositoryTest {
         assertBothQueryPaths(
                 integratedSearchCondition(Set.of(ApplicationStatus.CANCELLED), null),
                 cancelled.getId()
+        );
+    }
+
+    @Test
+    void 모집_시작일과_종료일은_모집중에_포함한다() {
+        ActiveAnnouncementFixture fixture = persistActiveAnnouncementFixture();
+        entityManager.flush();
+
+        assertBothQueryPaths(integratedSearchCondition(Set.of(), true), fixture.activeComplexIds());
+    }
+
+    @Test
+    void 모집중_공고가_없는_단지는_지도와_목록에서_동일하게_조회한다() {
+        ActiveAnnouncementFixture fixture = persistActiveAnnouncementFixture();
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                integratedSearchCondition(Set.of(), false),
+                fixture.inactiveComplexIds()
+        );
+    }
+
+    @Test
+    void 모집중_공고_조건이_null이면_지도와_목록_모두_제한하지_않는다() {
+        ActiveAnnouncementFixture fixture = persistActiveAnnouncementFixture();
+        entityManager.flush();
+
+        assertBothQueryPaths(
+                integratedSearchCondition(Set.of(), null),
+                fixture.allComplexIds()
         );
     }
 
@@ -1121,6 +1155,67 @@ class ComplexSummaryQueryRepositoryTest {
         );
     }
 
+    private ActiveAnnouncementFixture persistActiveAnnouncementFixture() {
+        return new ActiveAnnouncementFixture(
+                persistActiveBoundaryComplexes(),
+                persistInactiveAnnouncementComplexes()
+        );
+    }
+
+    private List<Long> persistActiveBoundaryComplexes() {
+        HousingComplex startBoundary = persistComplex("모집 시작일 경계", "37.500000", "126.900000");
+        HousingComplex endBoundary = persistComplex("모집 종료일 경계", "37.505000", "126.905000");
+        persistApplicationPeriod(startBoundary, LocalDate.of(2026, 8, 27),
+                LocalDate.of(2026, 8, 30), "start-boundary-announcement");
+        persistApplicationPeriod(endBoundary, LocalDate.of(2026, 8, 20),
+                LocalDate.of(2026, 8, 27), "end-boundary-announcement");
+        return List.of(startBoundary.getId(), endBoundary.getId());
+    }
+
+    private List<Long> persistInactiveAnnouncementComplexes() {
+        HousingComplex beforeApplication = persistComplex("접수 전", "37.510000", "126.910000");
+        HousingComplex closed = persistComplex("접수 종료", "37.520000", "126.920000");
+        HousingComplex withoutAnnouncement = persistComplex("공고 없음", "37.530000", "126.930000");
+        HousingComplex cancelled = persistComplex("취소 공고", "37.540000", "126.940000");
+        persistApplicationPeriod(beforeApplication, LocalDate.of(2026, 8, 28),
+                LocalDate.of(2026, 8, 31), "before-announcement");
+        persistApplicationPeriod(closed, LocalDate.of(2026, 8, 20),
+                LocalDate.of(2026, 8, 26), "closed-announcement");
+        persistCancelledAnnouncement(cancelled);
+        return List.of(
+                beforeApplication.getId(),
+                closed.getId(),
+                withoutAnnouncement.getId(),
+                cancelled.getId()
+        );
+    }
+
+    private void persistCancelledAnnouncement(HousingComplex complex) {
+        Announcement original = persistRepresentative(
+                complex, "ORIGINAL", LocalDate.of(2026, 8, 1), "inactive-original"
+        );
+        Announcement cancellation = persistAnnouncement(
+                original, "CANCELLATION", LocalDate.of(2026, 8, 2), "inactive-cancellation"
+        );
+        persistSupplyRow(cancellation, complex, null, "inactive-cancellation-row", 1);
+    }
+
+    private void persistApplicationPeriod(
+            HousingComplex complex,
+            LocalDate applicationStartDate,
+            LocalDate applicationEndDate,
+            String suffix
+    ) {
+        persistRepresentativeWithApplicationPeriod(
+                complex,
+                "NEW",
+                LocalDate.of(2026, 8, 1),
+                applicationStartDate,
+                applicationEndDate,
+                suffix
+        );
+    }
+
     private HousingComplex persistComplex(String name, String latitude, String longitude) {
         return persistComplex(
                 name,
@@ -1685,23 +1780,26 @@ class ComplexSummaryQueryRepositoryTest {
     private HousingComplexSearchCondition noFilters(MapBounds bounds) {
         return new HousingComplexSearchCondition(
                 bounds,
-                null,
-                null,
-                Set.of(),
-                Set.of(),
-                Set.of(),
-                Set.of(),
-                Set.of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                LocalDate.of(2026, 8, 27)
+                new HousingComplexFilterCondition(
+                        null,
+                        null,
+                        Set.of(),
+                        Set.of(),
+                        Set.of(),
+                        Set.of(),
+                        Set.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        LocalDate.of(2026, 8, 27)
+                )
         );
     }
 
@@ -1711,24 +1809,26 @@ class ComplexSummaryQueryRepositoryTest {
     ) {
         return new HousingComplexSearchCondition(
                 SEOUL_BOUNDS,
-                null,
-                null,
-                Set.of(),
-                Set.of(),
-                applicationStatuses,
-                Set.of(),
-                Set.of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                hasActiveAnnouncement,
-                LocalDate.of(2026, 8, 27)
+                new HousingComplexFilterCondition(
+                        null,
+                        null,
+                        Set.of(),
+                        Set.of(),
+                        applicationStatuses,
+                        Set.of(),
+                        Set.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        hasActiveAnnouncement,
+                        LocalDate.of(2026, 8, 27)
+                )
         );
     }
 
@@ -1744,23 +1844,26 @@ class ComplexSummaryQueryRepositoryTest {
     ) {
         return new HousingComplexSearchCondition(
                 SEOUL_BOUNDS,
-                keyword,
-                provinceCode,
-                cityCountyDistrictCodes,
-                rentalTypes,
-                Set.of(),
-                agencyCodes,
-                Set.of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                builtYearFrom,
-                builtYearTo,
-                hasElevator,
-                LocalDate.of(2026, 8, 27)
+                new HousingComplexFilterCondition(
+                        keyword,
+                        provinceCode,
+                        cityCountyDistrictCodes,
+                        rentalTypes,
+                        Set.of(),
+                        agencyCodes,
+                        Set.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        builtYearFrom,
+                        builtYearTo,
+                        hasElevator,
+                        null,
+                        LocalDate.of(2026, 8, 27)
+                )
         );
     }
 
@@ -1770,23 +1873,26 @@ class ComplexSummaryQueryRepositoryTest {
     ) {
         return new HousingComplexSearchCondition(
                 SEOUL_BOUNDS,
-                null,
-                null,
-                Set.of(),
-                Set.of(),
-                applicationStatuses,
-                Set.of(),
-                recruitmentTypes,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                LocalDate.of(2026, 8, 27)
+                new HousingComplexFilterCondition(
+                        null,
+                        null,
+                        Set.of(),
+                        Set.of(),
+                        applicationStatuses,
+                        Set.of(),
+                        recruitmentTypes,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        LocalDate.of(2026, 8, 27)
+                )
         );
     }
 
@@ -1800,36 +1906,43 @@ class ComplexSummaryQueryRepositoryTest {
     ) {
         return new HousingComplexSearchCondition(
                 SEOUL_BOUNDS,
-                null,
-                null,
-                Set.of(),
-                Set.of(),
-                Set.of(),
-                Set.of(),
-                Set.of(),
-                minDeposit,
-                maxDeposit,
-                minMonthlyRent,
-                maxMonthlyRent,
-                minExclusiveArea,
-                maxExclusiveArea,
-                null,
-                null,
-                null,
-                LocalDate.of(2026, 8, 27)
+                new HousingComplexFilterCondition(
+                        null,
+                        null,
+                        Set.of(),
+                        Set.of(),
+                        Set.of(),
+                        Set.of(),
+                        Set.of(),
+                        minDeposit,
+                        maxDeposit,
+                        minMonthlyRent,
+                        maxMonthlyRent,
+                        minExclusiveArea,
+                        maxExclusiveArea,
+                        null,
+                        null,
+                        null,
+                        null,
+                        LocalDate.of(2026, 8, 27)
+                )
         );
     }
 
     private void assertBothQueryPaths(HousingComplexSearchCondition condition, Long... expectedIds) {
+        assertBothQueryPaths(condition, List.of(expectedIds));
+    }
+
+    private void assertBothQueryPaths(HousingComplexSearchCondition condition, List<Long> expectedIds) {
         List<Long> mapIds = ids(repository.findAll(condition));
         List<Long> listIds = ids(repository.findPage(condition, ComplexSort.LATEST_ANNOUNCEMENT, null, 100));
-        Set<Long> expected = Set.of(expectedIds);
+        Set<Long> expected = Set.copyOf(expectedIds);
 
         assertAll(
                 () -> assertEquals(expected, Set.copyOf(mapIds)),
-                () -> assertEquals(expectedIds.length, mapIds.size()),
+                () -> assertEquals(expectedIds.size(), mapIds.size()),
                 () -> assertEquals(expected, Set.copyOf(listIds)),
-                () -> assertEquals(expectedIds.length, listIds.size())
+                () -> assertEquals(expectedIds.size(), listIds.size())
         );
     }
 
@@ -1867,5 +1980,16 @@ class ComplexSummaryQueryRepositoryTest {
             HousingComplexSearchCondition condition,
             Long expectedComplexId
     ) {
+    }
+
+    private record ActiveAnnouncementFixture(
+            List<Long> activeComplexIds,
+            List<Long> inactiveComplexIds
+    ) {
+        private List<Long> allComplexIds() {
+            List<Long> allComplexIds = new ArrayList<>(activeComplexIds);
+            allComplexIds.addAll(inactiveComplexIds);
+            return List.copyOf(allComplexIds);
+        }
     }
 }
