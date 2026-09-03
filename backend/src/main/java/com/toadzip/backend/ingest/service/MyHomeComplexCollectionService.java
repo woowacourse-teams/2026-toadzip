@@ -2,10 +2,13 @@ package com.toadzip.backend.ingest.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -94,23 +97,35 @@ public class MyHomeComplexCollectionService {
     ) {
         MyHomeComplexCollectionReport report = MyHomeComplexCollectionReport.empty();
         ExecutorService executor = Executors.newFixedThreadPool(MAX_CONCURRENT_REGIONS);
+        AtomicBoolean rateLimitReached = new AtomicBoolean();
+        CompletionService<MyHomeComplexCollectionReport> completionService =
+                new ExecutorCompletionService<>(executor);
+        List<Future<MyHomeComplexCollectionReport>> futures = regions.stream()
+                .map(region -> completionService.submit(
+                        () -> collectRegion(region, request, rateLimitReached)
+                ))
+                .toList();
         try {
-            List<Future<MyHomeComplexCollectionReport>> futures = regions.stream()
-                    .map(region -> executor.submit(() -> collectRegion(region, request)))
-                    .toList();
-            for (Future<MyHomeComplexCollectionReport> future : futures) {
-                report = report.plus(await(future));
+            for (int completedCount = 0; completedCount < regions.size(); completedCount++) {
+                MyHomeComplexCollectionReport regionReport = await(completionService);
+                report = report.plus(regionReport);
+                if (regionReport.rateLimitedRequestCount() > 0) {
+                    cancel(futures);
+                    return report;
+                }
             }
             return report;
         }
         finally {
-            executor.shutdown();
+            shutdown(executor, rateLimitReached.get());
         }
     }
 
-    private MyHomeComplexCollectionReport await(Future<MyHomeComplexCollectionReport> future) {
+    private MyHomeComplexCollectionReport await(
+            CompletionService<MyHomeComplexCollectionReport> completionService
+    ) {
         try {
-            return future.get();
+            return completionService.take().get();
         }
         catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -121,16 +136,46 @@ public class MyHomeComplexCollectionService {
         }
     }
 
+    private void cancel(List<Future<MyHomeComplexCollectionReport>> futures) {
+        futures.forEach(future -> future.cancel(true));
+    }
+
+    private void shutdown(ExecutorService executor, boolean immediately) {
+        if (immediately) {
+            executor.shutdownNow();
+            return;
+        }
+        executor.shutdown();
+    }
+
     private MyHomeComplexCollectionReport collectRegion(
             MyHomeRegion region,
             MyHomeComplexCollectionRequest request
     ) {
+        return collectRegion(region, request, new AtomicBoolean());
+    }
+
+    private MyHomeComplexCollectionReport collectRegion(
+            MyHomeRegion region,
+            MyHomeComplexCollectionRequest request,
+            AtomicBoolean rateLimitReached
+    ) {
+        if (rateLimitReached.get()) {
+            return MyHomeComplexCollectionReport.empty();
+        }
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
         List<MyHomeComplexSourceItem> items;
         try {
-            items = fetchCompleteRegion(region, request, callCounter);
+            items = fetchCompleteRegion(region, request, callCounter, rateLimitReached);
+        }
+        catch (RateLimitCollectionCancelledException exception) {
+            return MyHomeComplexCollectionReport.empty();
         }
         catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
+            int rateLimitedRequestCount = ExternalDataRateLimit.count(exception);
+            if (rateLimitedRequestCount > 0) {
+                rateLimitReached.set(true);
+            }
             failureRecorder.record(
                     ExternalDataSource.MYHOME_COMPLEX,
                     request.requestDescription(region, 1),
@@ -143,7 +188,7 @@ public class MyHomeComplexCollectionService {
                     0,
                     1,
                     callCounter.count(),
-                    ExternalDataRateLimit.count(exception)
+                    rateLimitedRequestCount
             );
         }
         int storedRowCount = sourceStore.replaceComplexRegion(region, items);
@@ -153,10 +198,14 @@ public class MyHomeComplexCollectionService {
     private List<MyHomeComplexSourceItem> fetchCompleteRegion(
             MyHomeRegion region,
             MyHomeComplexCollectionRequest request,
-            ExternalDataCallCounter callCounter
+            ExternalDataCallCounter callCounter,
+            AtomicBoolean rateLimitReached
     ) {
         List<MyHomeComplexSourceItem> items = new ArrayList<>();
         for (int page = 1; page <= request.maxPages(); page++) {
+            if (rateLimitReached.get()) {
+                throw new RateLimitCollectionCancelledException();
+            }
             int currentPage = page;
             String requestDescription = request.requestDescription(region, currentPage);
             CollectedPage collectedPage = retryExecutor.execute(
@@ -269,5 +318,9 @@ public class MyHomeComplexCollectionService {
     }
 
     private record CollectedPage(ExternalDataResponse response, List<JsonNode> rows) {
+    }
+
+    private static final class RateLimitCollectionCancelledException
+            extends RuntimeException {
     }
 }

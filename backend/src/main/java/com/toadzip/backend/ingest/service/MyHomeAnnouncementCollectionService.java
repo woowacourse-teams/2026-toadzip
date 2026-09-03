@@ -70,7 +70,15 @@ public class MyHomeAnnouncementCollectionService {
         );
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty("myhome-announcement");
         for (MyHomeAnnouncementSupplyType supplyType : MyHomeAnnouncementSupplyType.values()) {
-            report = report.plus(collectSupplyType(runId, supplyType, request));
+            ExternalDataCollectionReport supplyTypeReport = collectSupplyType(
+                    runId,
+                    supplyType,
+                    request
+            );
+            report = report.plus(supplyTypeReport);
+            if (supplyTypeReport.rateLimitedRequestCount() > 0) {
+                return report;
+            }
         }
         if (report.failedRequestCount() == 0) {
             sourceStore.completeAnnouncementCollection(runId);

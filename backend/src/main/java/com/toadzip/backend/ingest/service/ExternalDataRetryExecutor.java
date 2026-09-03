@@ -60,7 +60,9 @@ public class ExternalDataRetryExecutor {
     }
 
     private boolean canRetry(ExternalDataRequestException exception, int attempt) {
-        return exception.isRetryable() && attempt < MAX_ATTEMPTS;
+        return !exception.isRateLimited()
+                && exception.isRetryable()
+                && attempt < MAX_ATTEMPTS;
     }
 
     private void waitBeforeRetry(int attempt) {

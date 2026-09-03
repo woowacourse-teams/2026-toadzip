@@ -92,12 +92,16 @@ public class LhAnnouncementExternalCollectionService {
                 return report;
             }
             lastSeenId = sources.getLast().getId();
-            report = report.plus(collectBatch(
+            ExternalDataCollectionReport batchReport = collectBatch(
                     targetSource,
                     sources,
                     visitedSourceAnnouncements,
                     attemptedRequests
-            ));
+            );
+            report = report.plus(batchReport);
+            if (batchReport.rateLimitedRequestCount() > 0) {
+                return report;
+            }
         }
     }
 
@@ -164,13 +168,17 @@ public class LhAnnouncementExternalCollectionService {
         Set<String> historyPanIds = new HashSet<>(progress.historyPanIds());
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(operation(targetSource));
         for (CollectionCandidate candidate : candidates) {
-            report = report.plus(collectCandidate(
+            ExternalDataCollectionReport candidateReport = collectCandidate(
                     targetSource,
                     candidate,
                     progress,
                     storedPanIds,
                     historyPanIds
-            ));
+            );
+            report = report.plus(candidateReport);
+            if (candidateReport.rateLimitedRequestCount() > 0) {
+                return report;
+            }
         }
         return report;
     }
