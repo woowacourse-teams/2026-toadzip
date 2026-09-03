@@ -18,11 +18,11 @@ VITE_NAVER_MAPS_CLIENT_ID=
 ## 실행
 
 ```shell
-docker compose up -d --build
+docker compose -f compose.yaml -f compose.monitoring.yaml up -d --build
 ```
 
 ## 종료
 
 ```shell
-docker compose down
+docker compose -f compose.yaml -f compose.monitoring.yaml down
 ```
