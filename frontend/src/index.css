@@ -771,6 +771,76 @@ a {
     0 0 0 6px var(--focus);
 }
 
+.housing-map-aggregate {
+  position: relative;
+  display: grid;
+  width: 104px;
+  min-height: 60px;
+  padding: 0;
+  overflow: visible;
+  border: 2px solid rgb(255 255 255 / 96%);
+  border-radius: 12px;
+  background: #172b4d;
+  box-shadow: 0 7px 16px rgb(18 37 47 / 28%);
+  color: #ffffff;
+  line-height: 1;
+  place-items: center;
+  transform: translateY(-4px);
+  transition: box-shadow 130ms ease, transform 130ms ease;
+}
+
+.housing-map-aggregate::after {
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  transform: translateX(-50%) rotate(45deg);
+  border-right: 2px solid rgb(255 255 255 / 96%);
+  border-bottom: 2px solid rgb(255 255 255 / 96%);
+  border-radius: 0 0 3px;
+  background: #172b4d;
+  content: "";
+}
+
+.housing-map-aggregate:hover {
+  box-shadow: 0 10px 20px rgb(18 37 47 / 34%);
+  transform: translateY(-7px);
+}
+
+.housing-map-aggregate__label,
+.housing-map-aggregate__count {
+  position: relative;
+  z-index: 1;
+}
+
+.housing-map-aggregate__label {
+  max-width: 92px;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.housing-map-aggregate__count {
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.housing-map-aggregate:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 2px;
+  box-shadow:
+    0 7px 16px rgb(18 37 47 / 28%),
+    0 0 0 6px var(--focus);
+}
+
+.housing-map-aggregate:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
 .housing-viewport-action button:focus-visible,
 .housing-results button:focus-visible {
   outline: 4px solid var(--focus);
