@@ -11,29 +11,8 @@ import com.toadzip.backend.housing.domain.MapBounds;
 @Component
 final class ComplexSummarySqlBuilder {
 
-    private static final String BASE_SUMMARY_QUERY = """
-            WITH latest_leaf AS (
-                SELECT announcement.*
-                FROM announcements announcement
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM announcements successor
-                    WHERE successor.previous_announcement_id = announcement.id
-                )
-                  AND announcement.status NOT IN ('CANCELLATION', '취소공고')
-            ), representative AS (
-                SELECT DISTINCT ON (supply_row.housing_complex_id)
-                       supply_row.housing_complex_id,
-                       announcement.id AS announcement_id,
-                       announcement.status AS publication_type,
-                       announcement.recruitment_type,
-                       announcement.posted_date,
-                       announcement.application_start_date,
-                       announcement.application_end_date
-                FROM supply_rows supply_row
-                JOIN latest_leaf announcement ON announcement.id = supply_row.announcement_id
-                WHERE supply_row.housing_complex_id IS NOT NULL
-                ORDER BY supply_row.housing_complex_id, announcement.posted_date DESC, announcement.id DESC
-            ), area_range AS (
+    private static final String BASE_SUMMARY_QUERY = HousingComplexRepresentativeSql.WITH_CLAUSE + """
+            , area_range AS (
                 SELECT housing_complex_id,
                        MIN(exclusive_area) AS exclusive_area_min,
                        MAX(exclusive_area) AS exclusive_area_max
@@ -74,7 +53,7 @@ final class ComplexSummarySqlBuilder {
                    representative.application_end_date,
                    housing_complex.completion_date
             FROM housing_complexes housing_complex
-            LEFT JOIN representative ON representative.housing_complex_id = housing_complex.id
+            """ + HousingComplexRepresentativeSql.LEFT_JOIN + """
             LEFT JOIN area_range ON area_range.housing_complex_id = housing_complex.id
             LEFT JOIN price_range ON price_range.housing_complex_id = housing_complex.id
             WHERE housing_complex.latitude BETWEEN :southWestLat AND :northEastLat

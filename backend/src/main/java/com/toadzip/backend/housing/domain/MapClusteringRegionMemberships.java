@@ -3,6 +3,7 @@ package com.toadzip.backend.housing.domain;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
@@ -27,6 +28,28 @@ final class MapClusteringRegionMemberships {
             return Optional.empty();
         }
         return Optional.ofNullable(groupKeyByRegionCode.get(canonicalRegionCode));
+    }
+
+    List<MapClusteringRegionAssignment> assignmentsAt(
+            MapClusteringStage stage,
+            MapClusteringRegionGroups groups
+    ) {
+        if (stage == MapClusteringStage.INDIVIDUAL) {
+            return List.of();
+        }
+        return groupKeyByRegionCode.entrySet().stream()
+                .sorted(Entry.comparingByKey())
+                .map(entry -> assignmentAt(entry, stage, groups))
+                .toList();
+    }
+
+    private MapClusteringRegionAssignment assignmentAt(
+            Entry<String, MapClusteringGroupKey> entry,
+            MapClusteringStage stage,
+            MapClusteringRegionGroups groups
+    ) {
+        MapClusteringGroupKey groupKey = groups.ancestorAt(entry.getValue(), stage).key();
+        return new MapClusteringRegionAssignment(entry.getKey(), groupKey);
     }
 
     private Map<String, MapClusteringGroupKey> index(List<MapClusteringRegionMembership> memberships) {
