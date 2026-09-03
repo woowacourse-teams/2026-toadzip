@@ -18,7 +18,7 @@ VITE_NAVER_MAPS_CLIENT_ID=
 ## 실행
 
 ```shell
-docker compose -f compose.yaml -f compose.local.yaml up -d --build
+docker compose -f compose.yaml -f compose.local.yaml -f compose.monitoring.yaml up -d --build
 ```
 
 ## 관리자 데이터 등록 수동 검증
@@ -81,5 +81,5 @@ docker compose -f compose.yaml -f compose.local.yaml exec db \
 ## 종료
 
 ```shell
-docker compose -f compose.yaml -f compose.local.yaml down
+docker compose -f compose.yaml -f compose.local.yaml -f compose.monitoring.yaml down
 ```
