@@ -52,7 +52,20 @@ public class DataPipelineRunner {
     }
 
     public void run(DataPipelineType type, DataPipelineProgressListener progressListener) {
-        type.steps().forEach(step -> runStep(step, progressListener));
+        DataPipelinePartialFailureException firstPartialFailure = null;
+        for (DataPipelineStep step : type.steps()) {
+            try {
+                runStep(step, progressListener);
+            }
+            catch (DataPipelinePartialFailureException exception) {
+                if (firstPartialFailure == null) {
+                    firstPartialFailure = exception;
+                }
+            }
+        }
+        if (firstPartialFailure != null) {
+            throw firstPartialFailure;
+        }
     }
 
     private void runStep(DataPipelineStep step, DataPipelineProgressListener progressListener) {
