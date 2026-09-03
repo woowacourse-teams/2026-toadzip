@@ -10,10 +10,13 @@ import {
 } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import NaverMap, {
+  type NaverMapAggregateMarker,
   type NaverMapCameraTarget,
   type NaverMapMarker,
+  type NaverMapProps,
 } from '../maps/naver/NaverMap.tsx'
 import { defaultPublicHousingRepository } from './api/defaultPublicHousingRepository.ts'
+import type { HousingMapRepository } from './api/housingMapRepository.ts'
 import {
   type PublicHousingRegionRepository,
   publicHousingRegionRepository,
@@ -45,10 +48,13 @@ import {
   setComplexSearchFilters,
 } from './filters/searchFilterLocation.ts'
 import {
+  createBoundsSignature,
+  evaluateServerMapRequest,
   evaluateViewportRequest,
   type ViewportBlockReason,
   type ViewportSnapshot,
 } from './map/viewportPolicy.ts'
+import { useHousingMapResults } from './map/useHousingMapResults.ts'
 import type {
   AnnouncementDetail,
   ComplexDetail,
@@ -56,6 +62,7 @@ import type {
   MapBounds,
   MapComplex,
 } from './model/publicHousing.ts'
+import type { HousingMapResult } from './model/housingMap.ts'
 import {
   clearDetailQuery,
   parseDetailLocation,
@@ -164,6 +171,7 @@ interface PendingListFocus {
 
 export interface PublicHousingExplorerProps {
   localMockEnabled?: boolean
+  mapRepository?: HousingMapRepository
   regionRepository?: PublicHousingRegionRepository
   repository?: PublicHousingRepository
   searchRepository?: IntegratedSearchRepository
@@ -199,6 +207,7 @@ const INITIAL_ANNOUNCEMENT_DETAIL: AnnouncementDetailState = {
 
 export function PublicHousingExplorer({
   localMockEnabled = false,
+  mapRepository,
   regionRepository = publicHousingRegionRepository,
   repository = defaultPublicHousingRepository,
   searchRepository,
@@ -208,6 +217,9 @@ export function PublicHousingExplorer({
   const [viewport, setViewport] = useState<ViewportSnapshot | null>(null)
   const [searchContext, setSearchContext] = useState<SearchContext>({ kind: 'none' })
   const [searchMapTarget, setSearchMapTarget] = useState<NaverMapCameraTarget | null>(null)
+  const [clusterMapTarget, setClusterMapTarget] =
+    useState<NaverMapCameraTarget | null>(null)
+  const [clusterTransitioning, setClusterTransitioning] = useState(false)
   const [cameraRequestId, setCameraRequestId] = useState(0)
   const [selectedSearchComplex, setSelectedSearchComplex] =
     useState<SearchResultItem | null>(null)
@@ -216,6 +228,20 @@ export function PublicHousingExplorer({
     useState<ResultTab>('complexes')
   const [announcementListRequested, setAnnouncementListRequested] =
     useState(false)
+  const serverMapEnabled = mapRepository !== undefined
+  const {
+    cancel: cancelServerMapRequest,
+    request: requestServerMap,
+    retry: retryServerMap,
+    state: serverMapState,
+  } = useHousingMapResults(mapRepository)
+  const clusterTransitionRef = useRef(false)
+  const transitionWaitingForIdleRef = useRef(false)
+  const previousServerRepresentationRef =
+    useRef<'AGGREGATE' | 'INDIVIDUAL' | null>(null)
+  const handledServerMapResultRef = useRef<object | null>(null)
+  const refreshListAfterMapRef = useRef<string | null>(null)
+  const searchRegionWaitingForIdleRef = useRef(false)
   const activeResultTabRef = useRef<ResultTab>(activeResultTab)
   activeResultTabRef.current = activeResultTab
   const locationSearchRef = useRef(location.search)
@@ -241,6 +267,7 @@ export function PublicHousingExplorer({
   const appliedViewportRef = useRef<AppliedViewport | null>(null)
   const complexResultsScrollRef = useRef<HTMLDivElement | null>(null)
   const failedViewportRef = useRef<ViewportSnapshot | null>(null)
+  const failedViewportOptionsRef = useRef<ComplexSearchFilters>({})
   const failedPaginationCursorRef = useRef<string | null>(null)
   const pendingViewportSignatureRef = useRef<string | null>(null)
   const requestRevisionRef = useRef(0)
@@ -282,14 +309,27 @@ export function PublicHousingExplorer({
     () => parseComplexSearchFilters(new URLSearchParams(location.search)),
     [location.search],
   )
-  const announcementFilters = useMemo(
-    () => parseAnnouncementSearchFilters(new URLSearchParams(location.search)),
-    [location.search],
-  )
   const complexFiltersKey = useMemo(
     () => searchFiltersSignature(complexFilters),
     [complexFilters],
   )
+  const effectiveMapFilters = useMemo(() => {
+    if (searchContext.kind !== 'region') {
+      return complexFilters
+    }
+    return { ...complexFilters, regionCode: searchContext.regionCode }
+  }, [complexFilters, searchContext])
+  const announcementFilters = useMemo(
+    () => parseAnnouncementSearchFilters(new URLSearchParams(location.search)),
+    [location.search],
+  )
+  const effectiveMapFiltersKey = useMemo(
+    () => searchFiltersSignature(effectiveMapFilters),
+    [effectiveMapFilters],
+  )
+  const activeComplexFiltersKey = serverMapEnabled
+    ? effectiveMapFiltersKey
+    : complexFiltersKey
   const announcementFiltersKey = useMemo(
     () => searchFiltersSignature(announcementFilters),
     [announcementFilters],
@@ -616,6 +656,10 @@ export function PublicHousingExplorer({
   }, [detailLocation])
 
   const applyComplexFilters = useCallback((filters: ComplexSearchFilters) => {
+    if (searchContext.kind === 'region'
+      && filters.regionCode !== searchContext.regionCode) {
+      setSearchContext({ kind: 'none' })
+    }
     const currentSearch = new URLSearchParams(location.search)
     const nextSearch = setComplexSearchFilters(currentSearch, filters)
     if (nextSearch.toString() === currentSearch.toString()) {
@@ -632,6 +676,7 @@ export function PublicHousingExplorer({
     location.search,
     location.state,
     navigate,
+    searchContext,
   ])
 
   const applyAnnouncementFilters = useCallback((
@@ -737,12 +782,95 @@ export function PublicHousingExplorer({
     ],
   )
 
+  const applyComplexListViewport = useCallback((
+    nextViewport: ViewportSnapshot,
+    force = false,
+    options: ComplexSearchFilters = complexFilters,
+  ) => {
+    const decision = evaluateViewportRequest(nextViewport)
+    if (!decision.allowed && !options.regionCode) {
+      return
+    }
+    const boundsSignature = decision.allowed
+      ? decision.boundsSignature
+      : JSON.stringify(nextViewport.bounds)
+    const signature = `${boundsSignature}|${searchFiltersSignature(options)}`
+    if (!force && pendingViewportSignatureRef.current === signature) {
+      return
+    }
+    if (!force && appliedViewportRef.current?.signature === signature) {
+      return
+    }
+
+    searchAbortRef.current?.abort()
+    paginationAbortRef.current?.abort()
+    const controller = new AbortController()
+    const revision = requestRevisionRef.current + 1
+    requestRevisionRef.current = revision
+    searchAbortRef.current = controller
+    pendingViewportSignatureRef.current = signature
+    failedPaginationCursorRef.current = null
+    setComplexResults((current) => ({
+      ...current,
+      errorMessage: null,
+      status: 'loading',
+    }))
+
+    findComplexPage(
+      repository,
+      nextViewport.bounds,
+      null,
+      PAGE_SIZE,
+      controller.signal,
+      options,
+    )
+      .then((page) => {
+        if (requestRevisionRef.current !== revision) {
+          return
+        }
+        const applied = { bounds: nextViewport.bounds, options, signature }
+        appliedViewportRef.current = applied
+        failedViewportRef.current = null
+        pendingViewportSignatureRef.current = null
+        setAppliedViewport(applied)
+        setComplexResults({
+          errorMessage: null,
+          hasNext: page.hasNext,
+          items: page.items,
+          nextCursor: page.nextCursor,
+          status: 'ready',
+        })
+        setCardHighlightedComplexId(null)
+        setMarkerHighlightedComplexId(null)
+        if (complexResultsScrollRef.current) {
+          complexResultsScrollRef.current.scrollTop = 0
+        }
+      })
+      .catch((error: unknown) => {
+        if (isAbortError(error) || requestRevisionRef.current !== revision) {
+          return
+        }
+        failedViewportRef.current = nextViewport
+        failedViewportOptionsRef.current = options
+        pendingViewportSignatureRef.current = null
+        setComplexResults((current) => ({
+          ...current,
+          errorMessage: requestErrorMessage(error),
+          status: 'error',
+        }))
+      })
+  }, [complexFilters, repository])
+
   const applyViewport = useCallback(
     (
       nextViewport: ViewportSnapshot,
       force = false,
       options: ComplexSearchFilters = complexFilters,
     ) => {
+      if (serverMapEnabled) {
+        applyComplexListViewport(nextViewport, force, options)
+        return
+      }
       const decision = evaluateViewportRequest(nextViewport)
       if (!decision.allowed && !options.regionCode) {
         return
@@ -831,6 +959,7 @@ export function PublicHousingExplorer({
           }
           controller.abort()
           failedViewportRef.current = nextViewport
+          failedViewportOptionsRef.current = options
           pendingViewportSignatureRef.current = null
           const errorMessage = requestErrorMessage(error)
           setMapResults((current) => ({
@@ -845,25 +974,190 @@ export function PublicHousingExplorer({
           }))
         })
     },
-    [complexFilters, repository],
+    [
+      applyComplexListViewport,
+      complexFilters,
+      repository,
+      serverMapEnabled,
+    ],
   )
 
-  const previousComplexFiltersKeyRef = useRef(complexFiltersKey)
+  const previousComplexFiltersKeyRef = useRef(activeComplexFiltersKey)
+
+  const requestServerMapWithListIntent = useCallback((
+    nextViewport: ViewportSnapshot,
+    filters: ComplexSearchFilters,
+    refreshList: boolean,
+  ) => {
+    if (refreshList) {
+      refreshListAfterMapRef.current = mapListRefreshKey(
+        nextViewport.bounds,
+        filters,
+      )
+    }
+    const outcome = requestServerMap(nextViewport, filters)
+    if (!refreshList || outcome === 'started' || outcome === 'pending') {
+      return outcome
+    }
+    refreshListAfterMapRef.current = null
+    if (outcome === 'applied'
+      && serverMapState.applied?.result.representation === 'AGGREGATE') {
+      searchAbortRef.current?.abort()
+      paginationAbortRef.current?.abort()
+      requestRevisionRef.current += 1
+      pendingViewportSignatureRef.current = null
+      return outcome
+    }
+    applyViewport(nextViewport, true, filters)
+    return outcome
+  }, [applyViewport, requestServerMap, serverMapState.applied])
 
   useEffect(() => {
-    if (previousComplexFiltersKeyRef.current === complexFiltersKey) {
+    if (previousComplexFiltersKeyRef.current === activeComplexFiltersKey) {
       return
     }
-    previousComplexFiltersKeyRef.current = complexFiltersKey
-    if (viewport !== null) {
-      applyViewport(viewport, true)
+    previousComplexFiltersKeyRef.current = activeComplexFiltersKey
+    if (viewport === null) {
+      return
     }
-  }, [applyViewport, complexFiltersKey, viewport])
+    if (searchRegionWaitingForIdleRef.current) {
+      return
+    }
+    if (!serverMapEnabled) {
+      applyViewport(viewport, true)
+      return
+    }
+    refreshListAfterMapRef.current = mapListRefreshKey(
+      viewport.bounds,
+      effectiveMapFilters,
+    )
+    if (clusterTransitionRef.current
+      && transitionWaitingForIdleRef.current) {
+      return
+    }
+    requestServerMapWithListIntent(viewport, effectiveMapFilters, true)
+  }, [
+    activeComplexFiltersKey,
+    applyViewport,
+    effectiveMapFilters,
+    requestServerMapWithListIntent,
+    serverMapEnabled,
+    viewport,
+  ])
+
+  useEffect(() => {
+    if (!serverMapEnabled || serverMapState.applied === null) {
+      return
+    }
+    if (handledServerMapResultRef.current === serverMapState.applied) {
+      return
+    }
+    handledServerMapResultRef.current = serverMapState.applied
+    const representation = serverMapState.applied.result.representation
+    const previousRepresentation = previousServerRepresentationRef.current
+    previousServerRepresentationRef.current = representation
+    const query = serverMapState.applied.query
+    const appliedListRefreshKey = mapListRefreshKey(
+      query.bounds,
+      query.filters ?? {},
+    )
+    const listRefreshRequested = refreshListAfterMapRef.current
+      === appliedListRefreshKey
+    if (representation === 'AGGREGATE') {
+      if (listRefreshRequested) {
+        refreshListAfterMapRef.current = null
+      }
+      searchAbortRef.current?.abort()
+      paginationAbortRef.current?.abort()
+      requestRevisionRef.current += 1
+      pendingViewportSignatureRef.current = null
+      return
+    }
+    if (listRefreshRequested) {
+      refreshListAfterMapRef.current = null
+    }
+    if (!listRefreshRequested
+      && previousRepresentation !== 'AGGREGATE'
+      && appliedViewportRef.current !== null) {
+      return
+    }
+    applyViewport(
+      viewportForMapQuery(query.bounds, query.zoom),
+      true,
+      query.filters ?? {},
+    )
+  }, [applyViewport, serverMapEnabled, serverMapState.applied])
+
+  const finishClusterTransition = useCallback(() => {
+    clusterTransitionRef.current = false
+    transitionWaitingForIdleRef.current = false
+    setClusterTransitioning(false)
+    setClusterMapTarget(null)
+  }, [])
+
+  useEffect(() => {
+    if (!clusterTransitionRef.current
+      || transitionWaitingForIdleRef.current) {
+      return
+    }
+    if (serverMapState.status === 'ready'
+      || serverMapState.status === 'error') {
+      finishClusterTransition()
+    }
+  }, [finishClusterTransition, serverMapState.status])
+
+  const selectAggregateMarker = useCallback((
+    marker: NaverMapAggregateMarker,
+  ) => {
+    if (clusterTransitionRef.current) {
+      return
+    }
+    clusterTransitionRef.current = true
+    transitionWaitingForIdleRef.current = true
+    setClusterTransitioning(true)
+    cancelServerMapRequest()
+    setSearchMapTarget(null)
+    setClusterMapTarget({
+      latitude: marker.latitude,
+      longitude: marker.longitude,
+      zoom: marker.expansionZoom,
+    })
+    setCameraRequestId((current) => current + 1)
+  }, [cancelServerMapRequest])
+
+  const interruptClusterTransition = useCallback(() => {
+    if (!clusterTransitionRef.current) {
+      return
+    }
+    transitionWaitingForIdleRef.current = true
+    cancelServerMapRequest()
+  }, [cancelServerMapRequest])
 
   const handleViewportChange = useCallback(
     (nextViewport: ViewportSnapshot) => {
       setViewport(nextViewport)
       replaceMapLocation(nextViewport)
+      if (serverMapEnabled) {
+        const searchRegionWasWaiting = searchRegionWaitingForIdleRef.current
+        searchRegionWaitingForIdleRef.current = false
+        const refreshList = searchRegionWasWaiting
+          || refreshListAfterMapRef.current !== null
+        const transitionWasWaiting = clusterTransitionRef.current
+          && transitionWaitingForIdleRef.current
+        if (transitionWasWaiting) {
+          transitionWaitingForIdleRef.current = false
+        }
+        const outcome = requestServerMapWithListIntent(
+          nextViewport,
+          effectiveMapFilters,
+          refreshList,
+        )
+        if (transitionWasWaiting
+          && (outcome === 'applied' || outcome === 'ignored')) {
+          finishClusterTransition()
+        }
+        return
+      }
       const decision = evaluateViewportRequest(nextViewport)
       if (!decision.allowed) {
         viewportWasBlockedRef.current = true
@@ -874,12 +1168,24 @@ export function PublicHousingExplorer({
         applyViewport(nextViewport)
       }
     },
-    [applyViewport, replaceMapLocation],
+    [
+      applyViewport,
+      effectiveMapFilters,
+      finishClusterTransition,
+      replaceMapLocation,
+      requestServerMapWithListIntent,
+      serverMapEnabled,
+    ],
   )
 
   const handleIntegratedSearchSelect = useCallback((item: SearchResultItem) => {
+    if (serverMapEnabled) {
+      cancelServerMapRequest()
+      finishClusterTransition()
+    }
     if (item.type === 'ANNOUNCEMENT') {
       setSelectedSearchComplex(null)
+      setClusterMapTarget(null)
       if (item.latitude !== null && item.longitude !== null) {
         setSearchMapTarget({
           latitude: item.latitude,
@@ -894,6 +1200,7 @@ export function PublicHousingExplorer({
     if (item.type === 'COMPLEX') {
       setSelectedSearchComplex(item)
       setSearchContext({ kind: 'none' })
+      setClusterMapTarget(null)
       if (item.latitude !== null && item.longitude !== null) {
         setSearchMapTarget({
           latitude: item.latitude,
@@ -908,24 +1215,52 @@ export function PublicHousingExplorer({
     if (item.type === 'REGION' && item.regionCode) {
       setSelectedSearchComplex(null)
       const options = { ...complexFilters, regionCode: item.regionCode }
+      if (serverMapEnabled) {
+        searchRegionWaitingForIdleRef.current = true
+      }
       setSearchContext({ kind: 'region', regionCode: item.regionCode })
       setSearchMapTarget({ ...DEFAULT_MAP_LOCATION.center, zoom: 7 })
       setCameraRequestId((current) => current + 1)
-      applyViewport(viewportForBounds(KOREA_BOUNDS), true, options)
+      if (!serverMapEnabled) {
+        applyViewport(viewportForBounds(KOREA_BOUNDS), true, options)
+      }
     }
-  }, [applyViewport, complexFilters, openAnnouncementDetail, openComplexDetail])
+  }, [
+    applyViewport,
+    cancelServerMapRequest,
+    complexFilters,
+    finishClusterTransition,
+    openAnnouncementDetail,
+    openComplexDetail,
+    serverMapEnabled,
+  ])
 
   const searchCurrentViewport = useCallback(() => {
     if (viewport === null) {
       return
     }
     setSearchContext({ kind: 'none' })
+    if (serverMapEnabled) {
+      requestServerMapWithListIntent(
+        viewport,
+        complexFilters,
+        true,
+      )
+      return
+    }
     applyViewport(viewport, true, complexFilters)
-  }, [applyViewport, complexFilters, viewport])
+  }, [
+    applyViewport,
+    complexFilters,
+    requestServerMapWithListIntent,
+    serverMapEnabled,
+    viewport,
+  ])
 
   useEffect(() => {
     if (
       searchContext.kind !== 'region'
+      || serverMapEnabled
       || mapResults.status !== 'ready'
       || appliedViewport?.options.regionCode !== searchContext.regionCode
     ) {
@@ -935,7 +1270,13 @@ export function PublicHousingExplorer({
     if (target !== null) {
       setSearchMapTarget(target)
     }
-  }, [appliedViewport, mapResults.items, mapResults.status, searchContext])
+  }, [
+    appliedViewport,
+    mapResults.items,
+    mapResults.status,
+    searchContext,
+    serverMapEnabled,
+  ])
 
   useEffect(() => {
     return () => {
@@ -946,6 +1287,8 @@ export function PublicHousingExplorer({
 
   useEffect(() => {
     if (
+      serverMapEnabled
+      ||
       detailLocation.kind !== 'none'
       || selectedComplexId === null
       || mapResults.status !== 'ready'
@@ -969,6 +1312,7 @@ export function PublicHousingExplorer({
     mapResults.items,
     mapResults.status,
     selectedComplexId,
+    serverMapEnabled,
   ])
 
   const loadMore = useCallback((retryFailedCursor = false) => {
@@ -1036,16 +1380,32 @@ export function PublicHousingExplorer({
     }
     const failedViewport = failedViewportRef.current
     if (failedViewport) {
-      applyViewport(failedViewport, true)
+      applyViewport(failedViewport, true, failedViewportOptionsRef.current)
     }
   }, [applyViewport, loadMore])
 
+  const serverMapResult = serverMapState.applied?.result ?? null
+  const aggregateMapResult = serverMapResult?.representation === 'AGGREGATE'
+    ? serverMapResult
+    : null
+  const aggregateMapEmpty = aggregateMapResult !== null
+    && aggregateMapResult.nodes.length === 0
+  const serverMapItems = serverMapResult?.representation === 'INDIVIDUAL'
+    ? serverMapResult.nodes
+    : []
+  const mapItems = serverMapEnabled ? serverMapItems : mapResults.items
+  const aggregateMapActive = aggregateMapResult !== null
   const viewportDecision = viewport
-    ? evaluateViewportRequest(viewport)
+    ? serverMapEnabled
+      ? evaluateServerMapRequest(viewport)
+      : evaluateViewportRequest(viewport)
     : null
   const requestBlocked = viewportDecision !== null && !viewportDecision.allowed
-  const currentViewportSignature = viewportDecision?.allowed
-    ? `${viewportDecision.boundsSignature}|${complexFiltersKey}`
+  const listViewportDecision = viewport
+    ? evaluateViewportRequest(viewport)
+    : null
+  const currentViewportSignature = listViewportDecision?.allowed
+    ? `${listViewportDecision.boundsSignature}|${effectiveMapFiltersKey}`
     : null
   const detailMapTarget = toDetailMapTarget(complexDetail.detail)
   const urlMapTarget = mapLocation.kind === 'valid'
@@ -1059,7 +1419,10 @@ export function PublicHousingExplorer({
         longitude: DEFAULT_MAP_LOCATION.center.longitude,
         zoom: DEFAULT_MAP_LOCATION.zoom,
       }
-  const activeMapTarget = detailMapTarget ?? searchMapTarget ?? urlMapTarget
+  const activeMapTarget = detailMapTarget
+    ?? clusterMapTarget
+    ?? searchMapTarget
+    ?? urlMapTarget
   const highlightedComplexIds = useMemo(() => new Set([
     cardHighlightedComplexId,
     markerHighlightedComplexId,
@@ -1071,7 +1434,7 @@ export function PublicHousingExplorer({
     () => requestBlocked
       ? []
       : toNaverMapMarkers(
-          mapResults.items,
+          mapItems,
           selectedComplexId,
           highlightedComplexIds,
           complexDetail.detail,
@@ -1080,7 +1443,7 @@ export function PublicHousingExplorer({
     [
       complexDetail.detail,
       highlightedComplexIds,
-      mapResults.items,
+      mapItems,
       requestBlocked,
       selectedComplexId,
       selectedSearchComplex,
@@ -1091,11 +1454,52 @@ export function PublicHousingExplorer({
     complexResults,
     announcementResults.state,
     requestBlocked,
+    aggregateMapActive,
+    aggregateMapEmpty,
   )
-  const complexFilterResultCountLabel = !requestBlocked
-    && mapResults.status === 'ready'
-    ? `${mapResults.items.length}곳`
-    : undefined
+  const complexFilterResultCountLabel = mapFilterResultCountLabel({
+    aggregateMapActive,
+    legacyMapResults: mapResults,
+    requestBlocked,
+    serverMapEnabled,
+    serverMapResult,
+  })
+  const naverMapProps: NaverMapProps = serverMapEnabled
+    ? aggregateMapResult !== null
+      ? {
+          aggregateMarkers: aggregateMapResult.nodes,
+          cameraRequestId,
+          cameraTarget: activeMapTarget,
+          dataBusy: serverMapState.status === 'loading',
+          markerRenderMode: 'server',
+          onAggregateMarkerSelect: selectAggregateMarker,
+          onTransitionInterrupt: interruptClusterTransition,
+          onViewportChange: handleViewportChange,
+          representation: 'AGGREGATE',
+          transitioning: clusterTransitioning,
+        }
+      : {
+          cameraRequestId,
+          cameraTarget: activeMapTarget,
+          dataBusy: serverMapState.status === 'loading',
+          markerRenderMode: 'server',
+          markers,
+          onMarkerHighlight: setMarkerHighlightedComplexId,
+          onMarkerSelect: openComplexMarker,
+          onTransitionInterrupt: interruptClusterTransition,
+          onViewportChange: handleViewportChange,
+          representation: 'INDIVIDUAL',
+          transitioning: clusterTransitioning,
+        }
+    : {
+        cameraRequestId,
+        cameraTarget: activeMapTarget,
+        dataBusy: !requestBlocked && mapResults.status === 'loading',
+        markers,
+        onMarkerHighlight: setMarkerHighlightedComplexId,
+        onMarkerSelect: openComplexMarker,
+        onViewportChange: handleViewportChange,
+      }
   const hasDetail = complexDetail.status !== 'closed'
     || announcementDetail.status !== 'closed'
   const selectedAnnouncementId = detailLocation.kind === 'announcement'
@@ -1134,14 +1538,22 @@ export function PublicHousingExplorer({
           announcementsActive={activeResultTab === 'announcements'}
           decision={viewportDecision}
           onSearch={searchCurrentViewport}
-          searchAvailable={Boolean(
+          searchAvailable={!aggregateMapActive && Boolean(
             currentViewportSignature
             && appliedViewport
             && currentViewportSignature !== appliedViewport.signature
           )}
           />
 
-          {!requestBlocked && (
+          {serverMapEnabled && (
+          <HousingMapRequestFeedback
+            errorMessage={serverMapState.errorMessage}
+            onRetry={retryServerMap}
+            status={serverMapState.status}
+          />
+          )}
+
+          {!requestBlocked && !aggregateMapActive && (
           <ComplexRequestFeedback
             state={complexResults}
             onRetry={retryComplexResults}
@@ -1157,7 +1569,14 @@ export function PublicHousingExplorer({
           aria-labelledby="complex-results-tab"
           hidden={activeResultTab !== 'complexes'}
         >
-            {!requestBlocked && <ComplexResultContent
+            {aggregateMapActive && (
+              <div className="housing-results__state" role="status">
+                <strong>{aggregateMapEmpty
+                  ? '현재 지도 영역에 표시할 지역 마커가 없습니다.'
+                  : '지역 마커를 선택해 지도를 확대해 주세요.'}</strong>
+              </div>
+            )}
+            {!requestBlocked && !aggregateMapActive && <ComplexResultContent
               state={complexResults}
               selectedComplexId={selectedComplexId}
               highlightedComplexIds={highlightedComplexIds}
@@ -1171,6 +1590,7 @@ export function PublicHousingExplorer({
             />}
 
             {!requestBlocked
+              && !aggregateMapActive
               && complexResults.hasNext
               && (complexResults.status === 'ready'
                 || complexResults.status === 'loading-more') && (
@@ -1238,15 +1658,7 @@ export function PublicHousingExplorer({
             resultCountLabel={complexFilterResultCountLabel}
           />
         </div>
-        <NaverMap
-          cameraRequestId={cameraRequestId}
-          cameraTarget={activeMapTarget}
-          dataBusy={!requestBlocked && mapResults.status === 'loading'}
-          markers={markers}
-          onMarkerHighlight={setMarkerHighlightedComplexId}
-          onMarkerSelect={openComplexMarker}
-          onViewportChange={handleViewportChange}
-        />
+        <NaverMap {...naverMapProps} />
         <ComplexDetailLayer
           state={complexDetail}
           onClose={closeDetail}
@@ -1603,6 +2015,8 @@ function resultCountLabel(
   complexes: ComplexResultsState,
   announcements: AnnouncementResultsState,
   requestBlocked: boolean,
+  aggregateMapActive: boolean,
+  aggregateMapEmpty: boolean,
 ) {
   if (
     activeTab === 'announcements'
@@ -1629,6 +2043,18 @@ function resultCountLabel(
     return {
       accessibleLabel: `현재 불러온 공고 ${count}${suffix}`,
       visibleLabel: `${count}${suffix}`,
+    }
+  }
+  if (aggregateMapActive) {
+    if (aggregateMapEmpty) {
+      return {
+        accessibleLabel: '현재 지도 영역에 표시할 지역 마커 없음',
+        visibleLabel: '0곳',
+      }
+    }
+    return {
+      accessibleLabel: '지역 마커를 선택해 지도 확대',
+      visibleLabel: '지역 선택',
     }
   }
   if (requestBlocked) {
@@ -1659,6 +2085,33 @@ function resultCountLabel(
   }
 }
 
+function mapFilterResultCountLabel({
+  aggregateMapActive,
+  legacyMapResults,
+  requestBlocked,
+  serverMapEnabled,
+  serverMapResult,
+}: {
+  aggregateMapActive: boolean
+  legacyMapResults: MapResultsState
+  requestBlocked: boolean
+  serverMapEnabled: boolean
+  serverMapResult: HousingMapResult | null
+}) {
+  if (requestBlocked || aggregateMapActive) {
+    return undefined
+  }
+  if (serverMapEnabled) {
+    return serverMapResult?.representation === 'INDIVIDUAL'
+      ? `${serverMapResult.nodes.length}곳`
+      : undefined
+  }
+  if (legacyMapResults.status !== 'ready') {
+    return undefined
+  }
+  return `${legacyMapResults.items.length}곳`
+}
+
 function ViewportAction({
   announcementsActive,
   decision,
@@ -1687,6 +2140,27 @@ function ViewportAction({
   }
 
   return null
+}
+
+function HousingMapRequestFeedback({
+  errorMessage,
+  onRetry,
+  status,
+}: {
+  errorMessage: string | null
+  onRetry: () => boolean
+  status: 'idle' | 'loading' | 'ready' | 'error'
+}) {
+  if (status !== 'error') {
+    return null
+  }
+  return (
+    <div className="housing-results__inline-error" role="alert">
+      <strong>지도 정보를 불러오지 못했습니다.</strong>
+      <span>{errorMessage}</span>
+      <button type="button" onClick={onRetry}>지도 다시 시도</button>
+    </div>
+  )
 }
 
 function ComplexRequestFeedback({
@@ -2329,6 +2803,24 @@ function viewportForBounds(bounds: MapBounds): ViewportSnapshot {
     },
     zoom: 14,
   }
+}
+
+function viewportForMapQuery(
+  bounds: MapBounds,
+  zoom: number,
+): ViewportSnapshot {
+  return { ...viewportForBounds(bounds), zoom }
+}
+
+function mapListRefreshKey(
+  bounds: MapBounds,
+  filters: ComplexSearchFilters,
+) {
+  const boundsSignature = createBoundsSignature(bounds)
+  if (boundsSignature === null) {
+    return null
+  }
+  return `${boundsSignature}|${searchFiltersSignature(filters)}`
 }
 
 function mapTargetForComplexes(
