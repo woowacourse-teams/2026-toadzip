@@ -416,18 +416,12 @@ a {
   color: #8a240f;
 }
 
-.housing-results__refreshing,
 .housing-results__inline-error {
   margin: 0 0 12px;
   padding: 12px 14px;
   border-radius: 8px;
   font-size: 14px;
   line-height: 1.5;
-}
-
-.housing-results__refreshing {
-  background: #ecf2fe;
-  color: #0b50d0;
 }
 
 .housing-results__inline-error {
