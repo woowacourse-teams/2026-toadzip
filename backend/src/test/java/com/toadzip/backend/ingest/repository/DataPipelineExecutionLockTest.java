@@ -83,4 +83,21 @@ class DataPipelineExecutionLockTest {
         var lease = executionLock.tryAcquire().orElseThrow();
         lease.close();
     }
+
+    @Test
+    void 다른_인스턴스가_잠금을_보유하면_잠김_상태를_반환한다() throws Exception {
+        when(resultSet.getBoolean(1)).thenReturn(false);
+
+        assertThat(executionLock.isHeld()).isTrue();
+
+        verify(connection).close();
+    }
+
+    @Test
+    void 잠금이_비어_있으면_확인용_잠금을_즉시_반납한다() throws Exception {
+        assertThat(executionLock.isHeld()).isFalse();
+
+        verify(statement, times(2)).executeQuery();
+        verify(connection).close();
+    }
 }

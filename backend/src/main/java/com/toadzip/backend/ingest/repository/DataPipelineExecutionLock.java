@@ -45,7 +45,33 @@ public class DataPipelineExecutionLock {
         catch (SQLException exception) {
             closeConnectionAfterAcquireFailure(connection, exception);
             locallyLocked.set(false);
-            throw new IllegalStateException("데이터 수집·정제 실행 잠금을 처리하지 못했습니다.", exception);
+            throw new IllegalStateException(
+                    "데이터 수집·정제 실행 잠금을 처리하지 못했습니다.",
+                    exception
+            );
+        }
+    }
+
+    public boolean isHeld() {
+        if (locallyLocked.get()) {
+            return true;
+        }
+        try (Connection connection = dataSource.getConnection()) {
+            if (!executeLockQuery(connection, TRY_LOCK_SQL)) {
+                return true;
+            }
+            if (!executeLockQuery(connection, UNLOCK_SQL)) {
+                throw new IllegalStateException(
+                        "데이터 수집·정제 실행 잠금 확인 후 해제하지 못했습니다."
+                );
+            }
+            return false;
+        }
+        catch (SQLException exception) {
+            throw new IllegalStateException(
+                    "데이터 수집·정제 실행 잠금 상태를 확인하지 못했습니다.",
+                    exception
+            );
         }
     }
 
@@ -96,7 +122,8 @@ public class DataPipelineExecutionLock {
             }
             catch (SQLException exception) {
                 log.error(
-                        "데이터 수집·정제 실행 잠금 해제에 실패했습니다. DB 연결 종료 시 잠금이 해제됩니다.",
+                        "데이터 수집·정제 실행 잠금 해제에 실패했습니다. "
+                                + "DB 연결 종료 시 잠금이 해제됩니다.",
                         exception
                 );
             }

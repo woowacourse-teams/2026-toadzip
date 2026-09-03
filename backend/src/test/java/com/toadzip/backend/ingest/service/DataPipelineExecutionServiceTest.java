@@ -3,7 +3,10 @@ package com.toadzip.backend.ingest.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -20,6 +23,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,17 +49,30 @@ class DataPipelineExecutionServiceTest {
     @Mock
     private DataPipelineExecutionRepository executionRepository;
 
+    @Mock
+    private ScheduledExecutorService heartbeatExecutor;
+
+    @Mock
+    private ScheduledFuture<?> heartbeatTask;
+
     private DataPipelineExecutionService service;
 
     @BeforeEach
     void setUp() {
         Executor directExecutor = Runnable::run;
         Clock clock = Clock.fixed(Instant.parse("2026-09-02T12:00:00Z"), ZoneOffset.UTC);
+        lenient().doReturn(heartbeatTask).when(heartbeatExecutor).scheduleWithFixedDelay(
+                any(Runnable.class),
+                anyLong(),
+                anyLong(),
+                any()
+        );
         service = new DataPipelineExecutionService(
                 runner,
                 executionLock,
                 executionRepository,
                 directExecutor,
+                heartbeatExecutor,
                 clock,
                 executionMapper()
         );
@@ -104,6 +122,7 @@ class DataPipelineExecutionServiceTest {
                 executionLock,
                 executionRepository,
                 Runnable::run,
+                heartbeatExecutor,
                 Clock.fixed(Instant.parse("2026-09-02T12:00:00Z"), ZoneOffset.UTC),
                 executionMapper()
         );
@@ -186,6 +205,39 @@ class DataPipelineExecutionServiceTest {
 
         assertThat(saveAttemptCount).hasValue(13);
         assertThat(lastPersistedStatus).hasValue(DataPipelineExecutionStatus.FAILED);
+    }
+
+    @Test
+    void 오래_갱신되지_않은_실행은_실패_상태로_복구한다() {
+        DataPipelineExecution staleExecution = DataPipelineExecution.start(
+                java.util.UUID.randomUUID(),
+                DataPipelineType.COLLECTION,
+                Instant.parse("2026-09-02T11:00:00Z")
+        );
+        when(executionRepository.findFirstByTypeOrderByStartedAtDescIdDesc(any()))
+                .thenReturn(Optional.of(staleExecution));
+
+        var status = service.findLatest(DataPipelineType.COLLECTION);
+
+        assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
+        assertThat(status.failure().message()).contains("중단");
+    }
+
+    @Test
+    void 오래_갱신되지_않았어도_실행_잠금이_유지되면_복구하지_않는다() {
+        DataPipelineExecution activeExecution = DataPipelineExecution.start(
+                java.util.UUID.randomUUID(),
+                DataPipelineType.COLLECTION,
+                Instant.parse("2026-09-02T11:00:00Z")
+        );
+        when(executionRepository.findFirstByTypeOrderByStartedAtDescIdDesc(any()))
+                .thenReturn(Optional.of(activeExecution));
+        when(executionLock.isHeld()).thenReturn(true);
+
+        var status = service.findLatest(DataPipelineType.COLLECTION);
+
+        assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
+        verify(executionRepository, never()).saveAndFlush(any());
     }
 
     private void configureStoredExecution() {

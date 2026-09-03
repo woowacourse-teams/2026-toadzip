@@ -10,8 +10,18 @@ CREATE TABLE IF NOT EXISTS data_pipeline_executions (
     failure_message VARCHAR(500),
     failure_server_response TEXT,
     started_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    heartbeat_at TIMESTAMP WITH TIME ZONE NOT NULL,
     finished_at TIMESTAMP WITH TIME ZONE
 );
+
+ALTER TABLE data_pipeline_executions
+    ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMP WITH TIME ZONE;
+
+UPDATE data_pipeline_executions
+SET heartbeat_at = COALESCE(heartbeat_at, started_at);
+
+ALTER TABLE data_pipeline_executions
+    ALTER COLUMN heartbeat_at SET NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_data_pipeline_execution_type_started_at
     ON data_pipeline_executions (type, started_at, id);

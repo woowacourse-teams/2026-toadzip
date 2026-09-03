@@ -77,6 +77,9 @@ public class DataPipelineExecution {
     @Column(nullable = false)
     private Instant startedAt;
 
+    @Column(nullable = false)
+    private Instant heartbeatAt;
+
     private Instant finishedAt;
 
     private DataPipelineExecution(UUID executionId, DataPipelineType type, Instant startedAt) {
@@ -84,6 +87,7 @@ public class DataPipelineExecution {
         this.type = type;
         this.status = DataPipelineExecutionStatus.RUNNING;
         this.startedAt = startedAt;
+        this.heartbeatAt = startedAt;
     }
 
     public static DataPipelineExecution start(
@@ -148,7 +152,9 @@ public class DataPipelineExecution {
 
     public void failCompletionPersistence(String message, Instant failedAt) {
         if (!isCompleted()) {
-            throw new IllegalStateException("완료된 파이프라인만 완료 저장 실패로 전환할 수 있습니다.");
+            throw new IllegalStateException(
+                    "완료된 파이프라인만 완료 저장 실패로 전환할 수 있습니다."
+            );
         }
         status = DataPipelineExecutionStatus.FAILED;
         failureMessage = message;
