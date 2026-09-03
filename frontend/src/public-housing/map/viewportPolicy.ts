@@ -124,3 +124,16 @@ export function evaluateViewportRequest(
 
   return { allowed: true, boundsSignature }
 }
+
+export function evaluateServerMapRequest(
+  snapshot: ViewportSnapshot,
+): ViewportRequestDecision {
+  const boundsSignature = createBoundsSignature(snapshot.bounds)
+  if (boundsSignature === null) {
+    return { allowed: false, reason: 'invalid-bounds', boundsSignature: null }
+  }
+  if (!Number.isFinite(snapshot.zoom) || snapshot.zoom < 0) {
+    return { allowed: false, reason: 'invalid-zoom', boundsSignature }
+  }
+  return { allowed: true, boundsSignature }
+}
