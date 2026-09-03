@@ -98,7 +98,7 @@ public class DataPipelineExecutionService {
     }
 
     public DataPipelineExecutionResponse findLatest(DataPipelineType type) {
-        return executionRepository.findFirstByTypeOrderByStartedAtDescIdDesc(type)
+        return executionRepository.findFirstByTypeOrderByIdDesc(type)
                 .map(this::recoverInterruptedExecution)
                 .map(executionMapper::response)
                 .orElseGet(() -> DataPipelineExecutionResponse.idle(type));

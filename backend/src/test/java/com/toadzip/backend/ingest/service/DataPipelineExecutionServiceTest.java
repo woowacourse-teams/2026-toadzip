@@ -214,7 +214,7 @@ class DataPipelineExecutionServiceTest {
                 DataPipelineType.COLLECTION,
                 Instant.parse("2026-09-02T11:00:00Z")
         );
-        when(executionRepository.findFirstByTypeOrderByStartedAtDescIdDesc(any()))
+        when(executionRepository.findFirstByTypeOrderByIdDesc(any()))
                 .thenReturn(Optional.of(staleExecution));
 
         var status = service.findLatest(DataPipelineType.COLLECTION);
@@ -230,7 +230,7 @@ class DataPipelineExecutionServiceTest {
                 DataPipelineType.COLLECTION,
                 Instant.parse("2026-09-02T11:00:00Z")
         );
-        when(executionRepository.findFirstByTypeOrderByStartedAtDescIdDesc(any()))
+        when(executionRepository.findFirstByTypeOrderByIdDesc(any()))
                 .thenReturn(Optional.of(activeExecution));
         when(executionLock.isHeld()).thenReturn(true);
 
@@ -247,7 +247,7 @@ class DataPipelineExecutionServiceTest {
             savedExecution.set(execution);
             return execution;
         });
-        when(executionRepository.findFirstByTypeOrderByStartedAtDescIdDesc(any()))
+        when(executionRepository.findFirstByTypeOrderByIdDesc(any()))
                 .thenAnswer(invocation -> Optional.ofNullable(savedExecution.get()));
     }
 

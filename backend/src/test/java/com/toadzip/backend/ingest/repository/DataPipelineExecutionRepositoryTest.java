@@ -28,7 +28,7 @@ class DataPipelineExecutionRepositoryTest {
 
     @Test
     void 다른_영속성_컨텍스트에서도_최신_실행의_단계와_상태를_조회한다() {
-        DataPipelineExecution olderExecution = executionAt("2026-09-03T02:00:00Z");
+        DataPipelineExecution olderExecution = executionAt("2026-09-03T03:00:00Z");
         executionRepository.saveAndFlush(olderExecution);
         DataPipelineExecution latestExecution = executionAt("2026-09-03T02:00:00Z");
         latestExecution.startStep(DataPipelineStep.MAP_MYHOME_COMPLEXES);
@@ -38,7 +38,7 @@ class DataPipelineExecutionRepositoryTest {
         entityManager.clear();
 
         var found = executionRepository
-                .findFirstByTypeOrderByStartedAtDescIdDesc(DataPipelineType.REFINEMENT)
+                .findFirstByTypeOrderByIdDesc(DataPipelineType.REFINEMENT)
                 .orElseThrow();
 
         assertThat(found.getExecutionId()).isEqualTo(latestExecution.getExecutionId());

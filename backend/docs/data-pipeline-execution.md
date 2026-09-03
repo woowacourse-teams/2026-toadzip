@@ -23,7 +23,7 @@ psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
 ```
 
 SQL은 신규 테이블만 생성하므로 이전 애플리케이션과 함께 적용할 수 있다. 배포 후 실행 테이블과
-완료 단계 테이블, `idx_data_pipeline_execution_type_started_at` 인덱스를 확인한다.
+완료 단계 테이블, `idx_data_pipeline_execution_type_id` 인덱스를 확인한다.
 
 롤백 시에는 이전 애플리케이션을 다시 배포하고 실행 이력 테이블은 보존한다. 테이블 삭제는 실행
 이력 손실을 수반하므로 별도 백업과 승인 없이 수행하지 않는다.

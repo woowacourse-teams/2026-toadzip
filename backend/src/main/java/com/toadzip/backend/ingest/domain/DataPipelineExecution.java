@@ -28,8 +28,8 @@ import lombok.NoArgsConstructor;
 @Table(
         name = "data_pipeline_executions",
         indexes = @Index(
-                name = "idx_data_pipeline_execution_type_started_at",
-                columnList = "type, started_at, id"
+                name = "idx_data_pipeline_execution_type_id",
+                columnList = "type, id"
         )
 )
 @NoArgsConstructor(access = PROTECTED)

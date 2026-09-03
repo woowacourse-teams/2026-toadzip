@@ -23,8 +23,8 @@ SET heartbeat_at = COALESCE(heartbeat_at, started_at);
 ALTER TABLE data_pipeline_executions
     ALTER COLUMN heartbeat_at SET NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_data_pipeline_execution_type_started_at
-    ON data_pipeline_executions (type, started_at, id);
+CREATE INDEX IF NOT EXISTS idx_data_pipeline_execution_type_id
+    ON data_pipeline_executions (type, id);
 
 CREATE TABLE IF NOT EXISTS data_pipeline_execution_completed_steps (
     data_pipeline_execution_id BIGINT NOT NULL,

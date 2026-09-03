@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 public interface DataPipelineExecutionRepository
         extends JpaRepository<DataPipelineExecution, Long> {
 
-    Optional<DataPipelineExecution> findFirstByTypeOrderByStartedAtDescIdDesc(
+    Optional<DataPipelineExecution> findFirstByTypeOrderByIdDesc(
             DataPipelineType type
     );
 
