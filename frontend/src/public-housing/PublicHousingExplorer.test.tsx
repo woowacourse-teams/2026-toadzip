@@ -732,6 +732,7 @@ describe('PublicHousingExplorer', () => {
     expect(scrollContainer).not.toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
+    fireEvent.click(screen.getByRole('button', { name: '이 지역에서 검색' }))
     await waitFor(() => {
       expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
     })
