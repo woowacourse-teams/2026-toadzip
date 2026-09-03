@@ -3,16 +3,17 @@ import { StrictMode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App.tsx'
+import type { DataPipelineType } from './admin/ingest/api.ts'
 
 vi.mock('./admin/ingest/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./admin/ingest/api')>()),
-  getDataPipelineStatus: vi.fn((type: 'COLLECTION' | 'REFINEMENT') => Promise.resolve({
+  getDataPipelineStatus: vi.fn((type: DataPipelineType) => Promise.resolve({
     executionId: null,
     type,
     status: 'IDLE',
     currentStepName: null,
     currentStepIndex: 0,
-    totalStepCount: type === 'COLLECTION' ? 5 : 4,
+    totalStepCount: type === 'ANNOUNCEMENT_COLLECTION' ? 3 : 2,
     completedSteps: [],
     failure: null,
   })),

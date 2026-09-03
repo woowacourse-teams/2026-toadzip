@@ -31,28 +31,28 @@ class DataPipelineExecutionRepositoryTest {
         DataPipelineExecution olderExecution = executionAt("2026-09-03T03:00:00Z");
         executionRepository.saveAndFlush(olderExecution);
         DataPipelineExecution latestExecution = executionAt("2026-09-03T02:00:00Z");
-        latestExecution.startStep(DataPipelineStep.MAP_MYHOME_COMPLEXES);
-        latestExecution.completeStep(DataPipelineStep.MAP_MYHOME_COMPLEXES);
-        latestExecution.startStep(DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS);
+        latestExecution.startStep(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+        latestExecution.completeStep(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+        latestExecution.startStep(DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS);
         executionRepository.saveAndFlush(latestExecution);
         entityManager.clear();
 
         var found = executionRepository
-                .findFirstByTypeOrderByIdDesc(DataPipelineType.REFINEMENT)
+                .findFirstByTypeOrderByIdDesc(DataPipelineType.ANNOUNCEMENT_REFINEMENT)
                 .orElseThrow();
 
         assertThat(found.getExecutionId()).isEqualTo(latestExecution.getExecutionId());
         assertThat(found.getStatus()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
         assertThat(found.getCurrentStep())
-                .isEqualTo(DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS);
+                .isEqualTo(DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS);
         assertThat(found.getCompletedSteps())
-                .containsExactly(DataPipelineStep.MAP_MYHOME_COMPLEXES);
+                .containsExactly(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
     }
 
     private DataPipelineExecution executionAt(String startedAt) {
         return DataPipelineExecution.start(
                 UUID.randomUUID(),
-                DataPipelineType.REFINEMENT,
+                DataPipelineType.ANNOUNCEMENT_REFINEMENT,
                 Instant.parse(startedAt)
         );
     }

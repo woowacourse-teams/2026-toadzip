@@ -3,7 +3,7 @@ BEGIN;
 CREATE TABLE IF NOT EXISTS data_pipeline_executions (
     id BIGSERIAL PRIMARY KEY,
     execution_id UUID NOT NULL UNIQUE,
-    type VARCHAR(20) NOT NULL,
+    type VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL,
     current_step VARCHAR(60),
     failed_step VARCHAR(60),
@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS data_pipeline_executions (
 
 ALTER TABLE data_pipeline_executions
     ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE data_pipeline_executions
+    ALTER COLUMN type TYPE VARCHAR(40);
 
 UPDATE data_pipeline_executions
 SET heartbeat_at = COALESCE(heartbeat_at, started_at);

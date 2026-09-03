@@ -92,15 +92,15 @@ class DataPipelineExecutionServiceTest {
             return null;
         }).when(runner).run(any(), any());
 
-        var started = service.start(DataPipelineType.COLLECTION);
-        var status = service.findLatest(DataPipelineType.COLLECTION);
+        var started = service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+        var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(started.executionId()).isNotNull();
         assertThat(started.status()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
-        assertThat(status.completedSteps()).hasSize(5);
+        assertThat(status.completedSteps()).hasSize(3);
         verify(lease).close();
-        verify(executionRepository, times(12)).saveAndFlush(any());
+        verify(executionRepository, times(8)).saveAndFlush(any());
     }
 
     @Test
@@ -116,7 +116,7 @@ class DataPipelineExecutionServiceTest {
             });
             return null;
         }).when(runner).run(any(), any());
-        service.start(DataPipelineType.COLLECTION);
+        service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
         DataPipelineExecutionService otherInstance = new DataPipelineExecutionService(
                 runner,
                 executionLock,
@@ -127,7 +127,7 @@ class DataPipelineExecutionServiceTest {
                 executionMapper()
         );
 
-        var status = otherInstance.findLatest(DataPipelineType.COLLECTION);
+        var status = otherInstance.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
     }
@@ -136,7 +136,7 @@ class DataPipelineExecutionServiceTest {
     void 다른_파이프라인이_실행_중이면_새_실행을_거부한다() {
         when(executionLock.tryAcquire()).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.start(DataPipelineType.REFINEMENT))
+        assertThatThrownBy(() -> service.start(DataPipelineType.ANNOUNCEMENT_REFINEMENT))
                 .isInstanceOf(IngestAlreadyRunningException.class)
                 .hasMessage("데이터 수집·정제 작업이 이미 실행 중입니다.");
     }
@@ -147,7 +147,7 @@ class DataPipelineExecutionServiceTest {
         when(executionRepository.saveAndFlush(any()))
                 .thenThrow(new IllegalStateException("database unavailable"));
 
-        assertThatThrownBy(() -> service.start(DataPipelineType.COLLECTION))
+        assertThatThrownBy(() -> service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("database unavailable");
 
@@ -168,8 +168,8 @@ class DataPipelineExecutionServiceTest {
             );
         }).when(runner).run(any(), any());
 
-        service.start(DataPipelineType.REFINEMENT);
-        var status = service.findLatest(DataPipelineType.REFINEMENT);
+        service.start(DataPipelineType.ANNOUNCEMENT_REFINEMENT);
+        var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_REFINEMENT);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         assertThat(status.failure().stepName()).isEqualTo("마이홈 공고 정제");
@@ -185,7 +185,7 @@ class DataPipelineExecutionServiceTest {
         when(executionRepository.saveAndFlush(any())).thenAnswer(invocation -> {
             DataPipelineExecution execution = invocation.getArgument(0);
             int attempt = saveAttemptCount.incrementAndGet();
-            if (attempt == 12) {
+            if (attempt == 8) {
                 throw new IllegalStateException("final status write failed");
             }
             lastPersistedStatus.set(execution.getStatus());
@@ -201,9 +201,9 @@ class DataPipelineExecutionServiceTest {
             return null;
         }).when(runner).run(any(), any());
 
-        service.start(DataPipelineType.COLLECTION);
+        service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
-        assertThat(saveAttemptCount).hasValue(13);
+        assertThat(saveAttemptCount).hasValue(9);
         assertThat(lastPersistedStatus).hasValue(DataPipelineExecutionStatus.FAILED);
     }
 
@@ -211,13 +211,13 @@ class DataPipelineExecutionServiceTest {
     void 오래_갱신되지_않은_실행은_실패_상태로_복구한다() {
         DataPipelineExecution staleExecution = DataPipelineExecution.start(
                 java.util.UUID.randomUUID(),
-                DataPipelineType.COLLECTION,
+                DataPipelineType.ANNOUNCEMENT_COLLECTION,
                 Instant.parse("2026-09-02T11:00:00Z")
         );
         when(executionRepository.findFirstByTypeOrderByIdDesc(any()))
                 .thenReturn(Optional.of(staleExecution));
 
-        var status = service.findLatest(DataPipelineType.COLLECTION);
+        var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         assertThat(status.failure().message()).contains("중단");
@@ -227,14 +227,14 @@ class DataPipelineExecutionServiceTest {
     void 오래_갱신되지_않았어도_실행_잠금이_유지되면_복구하지_않는다() {
         DataPipelineExecution activeExecution = DataPipelineExecution.start(
                 java.util.UUID.randomUUID(),
-                DataPipelineType.COLLECTION,
+                DataPipelineType.ANNOUNCEMENT_COLLECTION,
                 Instant.parse("2026-09-02T11:00:00Z")
         );
         when(executionRepository.findFirstByTypeOrderByIdDesc(any()))
                 .thenReturn(Optional.of(activeExecution));
         when(executionLock.isHeld()).thenReturn(true);
 
-        var status = service.findLatest(DataPipelineType.COLLECTION);
+        var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
         verify(executionRepository, never()).saveAndFlush(any());

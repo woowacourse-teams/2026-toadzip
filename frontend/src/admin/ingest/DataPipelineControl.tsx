@@ -14,18 +14,52 @@ type PipelineViewState = {
 }
 
 const pollIntervalMilliseconds = 1_000
-const pipelineTypes: readonly DataPipelineType[] = ['COLLECTION', 'REFINEMENT']
+const pipelineTypes: readonly DataPipelineType[] = [
+  'COMPLEX_COLLECTION',
+  'COMPLEX_REFINEMENT',
+  'ANNOUNCEMENT_COLLECTION',
+  'ANNOUNCEMENT_REFINEMENT',
+]
 const pipelineLabels: Record<DataPipelineType, string> = {
-  COLLECTION: '수집',
-  REFINEMENT: '정제',
+  COMPLEX_COLLECTION: '단지 수집',
+  COMPLEX_REFINEMENT: '단지 정제',
+  ANNOUNCEMENT_COLLECTION: '공고 수집',
+  ANNOUNCEMENT_REFINEMENT: '공고 정제',
 }
+const pipelineStepCounts: Record<DataPipelineType, number> = {
+  COMPLEX_COLLECTION: 2,
+  COMPLEX_REFINEMENT: 2,
+  ANNOUNCEMENT_COLLECTION: 3,
+  ANNOUNCEMENT_REFINEMENT: 2,
+}
+const pipelineGroups = [
+  {
+    id: 'complex-pipelines',
+    title: '단지 데이터',
+    description: '단지 원천과 주택형 정보를 갱신합니다.',
+    types: ['COMPLEX_COLLECTION', 'COMPLEX_REFINEMENT'],
+  },
+  {
+    id: 'announcement-pipelines',
+    title: '공고 데이터',
+    description: '공고 원천과 상세·공급 정보를 갱신합니다.',
+    types: ['ANNOUNCEMENT_COLLECTION', 'ANNOUNCEMENT_REFINEMENT'],
+  },
+] as const satisfies readonly {
+  id: string
+  title: string
+  description: string
+  types: readonly DataPipelineType[]
+}[]
 
 export function DataPipelineControl() {
   const [pipelineStates, setPipelineStates] = useState(initialPipelineStates)
   const pollTimers = useRef<Partial<Record<DataPipelineType, number>>>({})
   const stateGenerations = useRef<Record<DataPipelineType, number>>({
-    COLLECTION: 0,
-    REFINEMENT: 0,
+    COMPLEX_COLLECTION: 0,
+    COMPLEX_REFINEMENT: 0,
+    ANNOUNCEMENT_COLLECTION: 0,
+    ANNOUNCEMENT_REFINEMENT: 0,
   })
   const mounted = useRef(true)
   const isAnyPipelineRunning = Object.values(pipelineStates)
@@ -175,22 +209,38 @@ export function DataPipelineControl() {
           <h2 id="data-pipeline-title">데이터 수집·정제</h2>
           <p>수집을 완료한 뒤 정제를 실행해 주세요. 실패하면 이후 단계는 실행되지 않습니다.</p>
         </div>
-        <div className="data-pipeline-actions">
-          {pipelineTypes.map((type) => (
-            <button
-              disabled={isAnyPipelineRunning}
-              key={type}
-              onClick={() => handleRun(type)}
-              type="button"
-            >
-              {buttonLabel(type, pipelineStates[type].execution.status)}
-            </button>
-          ))}
-        </div>
       </div>
-      <div className="data-pipeline-results">
-        {pipelineTypes.map((type) => (
-          <PipelineResult key={type} type={type} state={pipelineStates[type]} />
+      <div className="data-pipeline-groups">
+        {pipelineGroups.map((group) => (
+          <section
+            aria-labelledby={group.id}
+            className="data-pipeline-group"
+            key={group.id}
+          >
+            <div className="data-pipeline-group-heading">
+              <div>
+                <h3 id={group.id}>{group.title}</h3>
+                <p>{group.description}</p>
+              </div>
+              <div className="data-pipeline-actions">
+                {group.types.map((type) => (
+                  <button
+                    disabled={isAnyPipelineRunning}
+                    key={type}
+                    onClick={() => handleRun(type)}
+                    type="button"
+                  >
+                    {buttonLabel(type, pipelineStates[type].execution.status)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="data-pipeline-results">
+              {group.types.map((type) => (
+                <PipelineResult key={type} type={type} state={pipelineStates[type]} />
+              ))}
+            </div>
+          </section>
         ))}
       </div>
     </section>
@@ -207,7 +257,7 @@ function PipelineResult({ type, state }: { type: DataPipelineType, state: Pipeli
 
   return (
     <article className="data-pipeline-result">
-      <h3>{label} 상태</h3>
+      <h4>{label} 상태</h4>
       {execution.status === 'IDLE' ? <p>아직 실행하지 않았습니다.</p> : null}
       {execution.status === 'RUNNING' ? (
         <p role="status">{runningMessage(execution)}</p>
@@ -234,8 +284,10 @@ function PipelineResult({ type, state }: { type: DataPipelineType, state: Pipeli
 
 function initialPipelineStates(): Record<DataPipelineType, PipelineViewState> {
   return {
-    COLLECTION: viewState(idleExecution('COLLECTION', 5)),
-    REFINEMENT: viewState(idleExecution('REFINEMENT', 4)),
+    COMPLEX_COLLECTION: viewState(idleExecution('COMPLEX_COLLECTION')),
+    COMPLEX_REFINEMENT: viewState(idleExecution('COMPLEX_REFINEMENT')),
+    ANNOUNCEMENT_COLLECTION: viewState(idleExecution('ANNOUNCEMENT_COLLECTION')),
+    ANNOUNCEMENT_REFINEMENT: viewState(idleExecution('ANNOUNCEMENT_REFINEMENT')),
   }
 }
 
@@ -243,23 +295,22 @@ function viewState(execution: DataPipelineExecution): PipelineViewState {
   return { execution, requestError: null, errorResponse: null }
 }
 
-function idleExecution(type: DataPipelineType, totalStepCount: number): DataPipelineExecution {
+function idleExecution(type: DataPipelineType): DataPipelineExecution {
   return {
     executionId: null,
     type,
     status: 'IDLE',
     currentStepName: null,
     currentStepIndex: 0,
-    totalStepCount,
+    totalStepCount: pipelineStepCounts[type],
     completedSteps: [],
     failure: null,
   }
 }
 
 function optimisticRunningExecution(type: DataPipelineType): DataPipelineExecution {
-  const totalStepCount = type === 'COLLECTION' ? 5 : 4
   return {
-    ...idleExecution(type, totalStepCount),
+    ...idleExecution(type),
     status: 'RUNNING',
   }
 }

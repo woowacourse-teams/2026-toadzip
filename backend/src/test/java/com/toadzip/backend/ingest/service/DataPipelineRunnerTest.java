@@ -73,41 +73,65 @@ class DataPipelineRunnerTest {
     }
 
     @Test
-    void 수집_단계를_의존_순서대로_실행한다() {
-        givenSuccessfulCollectionReports();
+    void 단지_수집_단계를_의존_순서대로_실행한다() {
+        givenSuccessfulComplexCollectionReports();
 
-        runner.run(DataPipelineType.COLLECTION, progressListener);
+        runner.run(DataPipelineType.COMPLEX_COLLECTION, progressListener);
 
         InOrder order = inOrder(
                 myHomeComplexCollectionService,
-                lhLeaseCatalogCollectionService,
+                lhLeaseCatalogCollectionService
+        );
+        order.verify(myHomeComplexCollectionService).collect(any());
+        order.verify(lhLeaseCatalogCollectionService).collect(any());
+        verify(myHomeAnnouncementCollectionService, never()).collect(any());
+    }
+
+    @Test
+    void 공고_수집_단계를_의존_순서대로_실행한다() {
+        givenSuccessfulAnnouncementCollectionReports();
+
+        runner.run(DataPipelineType.ANNOUNCEMENT_COLLECTION, progressListener);
+
+        InOrder order = inOrder(
                 myHomeAnnouncementCollectionService,
                 lhAnnouncementSupplyCollectionService,
                 lhAnnouncementDetailCollectionService
         );
-        order.verify(myHomeComplexCollectionService).collect(any());
-        order.verify(lhLeaseCatalogCollectionService).collect(any());
         order.verify(myHomeAnnouncementCollectionService).collect(any());
         order.verify(lhAnnouncementSupplyCollectionService).collect();
         order.verify(lhAnnouncementDetailCollectionService).collect();
+        verify(myHomeComplexCollectionService, never()).collect(any());
     }
 
     @Test
-    void 정제_단계를_의존_순서대로_실행한다() {
-        givenSuccessfulRefinementReports();
+    void 단지_정제_단계를_의존_순서대로_실행한다() {
+        givenSuccessfulComplexRefinementReports();
 
-        runner.run(DataPipelineType.REFINEMENT, progressListener);
+        runner.run(DataPipelineType.COMPLEX_REFINEMENT, progressListener);
 
         InOrder order = inOrder(
                 myHomeComplexMappingService,
-                householdEnrichmentService,
-                myHomeAnnouncementMappingService,
-                announcementEnrichmentService
+                householdEnrichmentService
         );
         order.verify(myHomeComplexMappingService).mapAll();
         order.verify(householdEnrichmentService).enrichAll();
+        verify(myHomeAnnouncementMappingService, never()).mapAll();
+    }
+
+    @Test
+    void 공고_정제_단계를_의존_순서대로_실행한다() {
+        givenSuccessfulAnnouncementRefinementReports();
+
+        runner.run(DataPipelineType.ANNOUNCEMENT_REFINEMENT, progressListener);
+
+        InOrder order = inOrder(
+                myHomeAnnouncementMappingService,
+                announcementEnrichmentService
+        );
         order.verify(myHomeAnnouncementMappingService).mapAll();
         order.verify(announcementEnrichmentService).enrichAll();
+        verify(myHomeComplexMappingService, never()).mapAll();
     }
 
     @Test
@@ -116,13 +140,11 @@ class DataPipelineRunnerTest {
         when(householdEnrichmentService.enrichAll())
                 .thenReturn(new LhHousingTypeHouseholdEnrichmentReport(1, 0, 0, 0, 1, 0));
 
-        assertThatThrownBy(() -> runner.run(DataPipelineType.REFINEMENT, progressListener))
+        assertThatThrownBy(() -> runner.run(DataPipelineType.COMPLEX_REFINEMENT, progressListener))
                 .isInstanceOf(DataPipelinePartialFailureException.class)
                 .extracting("step")
                 .isEqualTo(DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS);
 
-        verify(myHomeAnnouncementMappingService, never()).mapAll();
-        verify(announcementEnrichmentService, never()).enrichAll();
     }
 
     @Test
@@ -130,7 +152,7 @@ class DataPipelineRunnerTest {
         when(myHomeComplexCollectionService.collect(any()))
                 .thenReturn(new MyHomeComplexCollectionReport("myhome-complex", 10, 1, 20));
 
-        assertThatThrownBy(() -> runner.run(DataPipelineType.COLLECTION, progressListener))
+        assertThatThrownBy(() -> runner.run(DataPipelineType.COMPLEX_COLLECTION, progressListener))
                 .isInstanceOf(DataPipelinePartialFailureException.class)
                 .extracting("step")
                 .isEqualTo(DataPipelineStep.COLLECT_MYHOME_COMPLEXES);
@@ -142,7 +164,7 @@ class DataPipelineRunnerTest {
     void 원천_행_실패_건수가_있으면_다음_정제를_실행하지_않는다() {
         when(myHomeComplexMappingService.mapAll()).thenReturn(complexMappingReport(2));
 
-        assertThatThrownBy(() -> runner.run(DataPipelineType.REFINEMENT, progressListener))
+        assertThatThrownBy(() -> runner.run(DataPipelineType.COMPLEX_REFINEMENT, progressListener))
                 .isInstanceOf(DataPipelinePartialFailureException.class)
                 .extracting("step")
                 .isEqualTo(DataPipelineStep.MAP_MYHOME_COMPLEXES);
@@ -152,25 +174,25 @@ class DataPipelineRunnerTest {
 
     @Test
     void 공고_보강_원천_실패_건수를_전체_성공으로_처리하지_않는다() {
-        when(myHomeComplexMappingService.mapAll()).thenReturn(complexMappingReport(0));
-        when(householdEnrichmentService.enrichAll())
-                .thenReturn(new LhHousingTypeHouseholdEnrichmentReport(1, 1, 1, 0, 0, 0));
         when(myHomeAnnouncementMappingService.mapAll())
                 .thenReturn(new MyHomeAnnouncementMappingReport(1, 0, 0, 1, 0, 0, 0, 0));
         when(announcementEnrichmentService.enrichAll())
                 .thenReturn(LhAnnouncementEnrichmentReport.failed());
 
-        assertThatThrownBy(() -> runner.run(DataPipelineType.REFINEMENT, progressListener))
+        assertThatThrownBy(() -> runner.run(DataPipelineType.ANNOUNCEMENT_REFINEMENT, progressListener))
                 .isInstanceOf(DataPipelinePartialFailureException.class)
                 .extracting("step")
                 .isEqualTo(DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS);
     }
 
-    private void givenSuccessfulCollectionReports() {
+    private void givenSuccessfulComplexCollectionReports() {
         when(myHomeComplexCollectionService.collect(any()))
                 .thenReturn(new MyHomeComplexCollectionReport("myhome-complex", 1, 0, 1));
         when(lhLeaseCatalogCollectionService.collect(any()))
                 .thenReturn(collectionReport("lh-lease-catalog"));
+    }
+
+    private void givenSuccessfulAnnouncementCollectionReports() {
         when(myHomeAnnouncementCollectionService.collect(any()))
                 .thenReturn(collectionReport("myhome-announcement"));
         when(lhAnnouncementSupplyCollectionService.collect())
@@ -179,10 +201,13 @@ class DataPipelineRunnerTest {
                 .thenReturn(collectionReport("lh-announcement-detail"));
     }
 
-    private void givenSuccessfulRefinementReports() {
+    private void givenSuccessfulComplexRefinementReports() {
         when(myHomeComplexMappingService.mapAll()).thenReturn(complexMappingReport(0));
         when(householdEnrichmentService.enrichAll())
                 .thenReturn(new LhHousingTypeHouseholdEnrichmentReport(1, 1, 1, 0, 0, 0));
+    }
+
+    private void givenSuccessfulAnnouncementRefinementReports() {
         when(myHomeAnnouncementMappingService.mapAll())
                 .thenReturn(new MyHomeAnnouncementMappingReport(1, 0, 0, 1, 0, 0, 0, 0));
         when(announcementEnrichmentService.enrichAll())

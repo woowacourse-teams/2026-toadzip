@@ -1,4 +1,8 @@
-export type DataPipelineType = 'COLLECTION' | 'REFINEMENT'
+export type DataPipelineType =
+  | 'COMPLEX_COLLECTION'
+  | 'COMPLEX_REFINEMENT'
+  | 'ANNOUNCEMENT_COLLECTION'
+  | 'ANNOUNCEMENT_REFINEMENT'
 
 export type DataPipelineExecutionStatus = 'IDLE' | 'RUNNING' | 'COMPLETED' | 'FAILED'
 
@@ -130,7 +134,10 @@ function isCsrfToken(value: unknown): value is CsrfToken {
 }
 
 function isDataPipelineType(value: unknown): value is DataPipelineType {
-  return value === 'COLLECTION' || value === 'REFINEMENT'
+  return value === 'COMPLEX_COLLECTION'
+    || value === 'COMPLEX_REFINEMENT'
+    || value === 'ANNOUNCEMENT_COLLECTION'
+    || value === 'ANNOUNCEMENT_REFINEMENT'
 }
 
 function isExecutionStatus(value: unknown): value is DataPipelineExecutionStatus {
@@ -142,10 +149,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function pipelinePath(type: DataPipelineType): string {
-  if (type === 'COLLECTION') {
-    return '/api/admin/ingest/pipelines/collection'
+  const paths: Record<DataPipelineType, string> = {
+    COMPLEX_COLLECTION: 'complex-collection',
+    COMPLEX_REFINEMENT: 'complex-refinement',
+    ANNOUNCEMENT_COLLECTION: 'announcement-collection',
+    ANNOUNCEMENT_REFINEMENT: 'announcement-refinement',
   }
-  return '/api/admin/ingest/pipelines/refinement'
+  return `/api/admin/ingest/pipelines/${paths[type]}`
 }
 
 function resolveApiBaseUrl(): string {

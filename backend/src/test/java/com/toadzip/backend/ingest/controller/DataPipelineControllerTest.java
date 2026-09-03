@@ -10,6 +10,8 @@ import com.toadzip.backend.ingest.domain.DataPipelineType;
 import com.toadzip.backend.ingest.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.service.DataPipelineExecutionService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -26,19 +28,26 @@ class DataPipelineControllerTest {
     @MockitoBean
     private DataPipelineExecutionService executionService;
 
-    @Test
-    void 수집_실행을_접수하고_진행_상태를_조회한다() throws Exception {
-        DataPipelineExecutionResponse response = DataPipelineExecutionResponse.idle(
-                DataPipelineType.COLLECTION
-        );
-        when(executionService.start(DataPipelineType.COLLECTION)).thenReturn(response);
-        when(executionService.findLatest(DataPipelineType.COLLECTION)).thenReturn(response);
+    @ParameterizedTest
+    @CsvSource({
+            "complex-collection, COMPLEX_COLLECTION",
+            "complex-refinement, COMPLEX_REFINEMENT",
+            "announcement-collection, ANNOUNCEMENT_COLLECTION",
+            "announcement-refinement, ANNOUNCEMENT_REFINEMENT"
+    })
+    void 분리된_실행을_접수하고_진행_상태를_조회한다(
+            String pathValue,
+            DataPipelineType type
+    ) throws Exception {
+        DataPipelineExecutionResponse response = DataPipelineExecutionResponse.idle(type);
+        when(executionService.start(type)).thenReturn(response);
+        when(executionService.findLatest(type)).thenReturn(response);
 
-        mockMvc.perform(post("/api/admin/ingest/pipelines/collection"))
+        mockMvc.perform(post("/api/admin/ingest/pipelines/{type}", pathValue))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.type").value("COLLECTION"));
+                .andExpect(jsonPath("$.type").value(type.name()));
 
-        mockMvc.perform(get("/api/admin/ingest/pipelines/collection"))
+        mockMvc.perform(get("/api/admin/ingest/pipelines/{type}", pathValue))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("IDLE"));
     }

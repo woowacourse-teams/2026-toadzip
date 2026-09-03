@@ -5,8 +5,10 @@ import java.util.Arrays;
 import java.util.List;
 
 public enum DataPipelineType {
-    COLLECTION("collection"),
-    REFINEMENT("refinement");
+    COMPLEX_COLLECTION("complex-collection"),
+    COMPLEX_REFINEMENT("complex-refinement"),
+    ANNOUNCEMENT_COLLECTION("announcement-collection"),
+    ANNOUNCEMENT_REFINEMENT("announcement-refinement");
 
     private final String pathValue;
 

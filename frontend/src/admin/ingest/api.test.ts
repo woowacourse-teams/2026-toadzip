@@ -8,11 +8,11 @@ afterEach(() => {
 
 describe('관리자 데이터 수집·정제 API', () => {
   it('동적 CSRF 헤더와 세션 쿠키를 포함해 수집 실행을 요청한다', async () => {
-    const fetchMock = prepareFetch(execution('COLLECTION', 'RUNNING'))
+    const fetchMock = prepareFetch(execution('ANNOUNCEMENT_COLLECTION', 'RUNNING'))
     const { startDataPipeline } = await import('./api.ts')
 
-    await expect(startDataPipeline('COLLECTION')).resolves.toMatchObject({
-      type: 'COLLECTION',
+    await expect(startDataPipeline('ANNOUNCEMENT_COLLECTION')).resolves.toMatchObject({
+      type: 'ANNOUNCEMENT_COLLECTION',
       status: 'RUNNING',
     })
 
@@ -23,7 +23,7 @@ describe('관리자 데이터 수집·정제 API', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'http://localhost:8080/api/admin/ingest/pipelines/collection',
+      'http://localhost:8080/api/admin/ingest/pipelines/announcement-collection',
       {
         method: 'POST',
         credentials: 'include',
@@ -35,14 +35,16 @@ describe('관리자 데이터 수집·정제 API', () => {
   it('세션 쿠키를 포함해 정제 진행 상태를 조회한다', async () => {
     vi.stubEnv('DEV', true)
     vi.stubEnv('VITE_API_BASE_URL', '')
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(execution('REFINEMENT', 'COMPLETED')))
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(execution('COMPLEX_REFINEMENT', 'COMPLETED')),
+    )
     vi.stubGlobal('fetch', fetchMock)
     const { getDataPipelineStatus } = await import('./api.ts')
 
-    await getDataPipelineStatus('REFINEMENT')
+    await getDataPipelineStatus('COMPLEX_REFINEMENT')
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:8080/api/admin/ingest/pipelines/refinement',
+      'http://localhost:8080/api/admin/ingest/pipelines/complex-refinement',
       { credentials: 'include' },
     )
   })
@@ -61,7 +63,7 @@ describe('관리자 데이터 수집·정제 API', () => {
     vi.stubGlobal('fetch', fetchMock)
     const { DataPipelineApiError, startDataPipeline } = await import('./api.ts')
 
-    const error = await startDataPipeline('COLLECTION').catch((caught) => caught)
+    const error = await startDataPipeline('COMPLEX_COLLECTION').catch((caught) => caught)
 
     expect(error).toBeInstanceOf(DataPipelineApiError)
     expect(error).toMatchObject({ status: 409, serverResponse: errorBody })
@@ -81,14 +83,17 @@ function prepareFetch(data: unknown) {
   return fetchMock
 }
 
-function execution(type: 'COLLECTION' | 'REFINEMENT', status: string) {
+function execution(
+  type: 'COMPLEX_COLLECTION' | 'COMPLEX_REFINEMENT' | 'ANNOUNCEMENT_COLLECTION',
+  status: string,
+) {
   return {
     executionId: '01991a11-65d2-7000-8000-000000000001',
     type,
     status,
     currentStepName: null,
     currentStepIndex: 0,
-    totalStepCount: type === 'COLLECTION' ? 5 : 4,
+    totalStepCount: type === 'ANNOUNCEMENT_COLLECTION' ? 3 : 2,
     completedSteps: [],
     failure: null,
   }

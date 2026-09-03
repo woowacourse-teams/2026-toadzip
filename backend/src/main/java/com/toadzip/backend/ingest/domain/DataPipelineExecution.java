@@ -43,7 +43,7 @@ public class DataPipelineExecution {
     private UUID executionId;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false, length = 40)
     private DataPipelineType type;
 
     @Enumerated(EnumType.STRING)

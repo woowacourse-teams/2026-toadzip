@@ -5,6 +5,7 @@ import {
   type AnnouncementCreateResponse,
   type HousingComplexCreateResponse,
 } from '../registration/api'
+import type { DataPipelineType } from '../ingest/api'
 import { AdminHome } from './AdminHome'
 
 const apiMocks = vi.hoisted(() => ({
@@ -30,14 +31,14 @@ beforeEach(() => {
   apiMocks.createHousingComplex.mockReset()
   apiMocks.getDataPipelineStatus.mockReset()
   apiMocks.startDataPipeline.mockReset()
-  apiMocks.getDataPipelineStatus.mockImplementation((type: 'COLLECTION' | 'REFINEMENT') => (
+  apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => (
     Promise.resolve({
       executionId: null,
       type,
       status: 'IDLE',
       currentStepName: null,
       currentStepIndex: 0,
-      totalStepCount: type === 'COLLECTION' ? 5 : 4,
+      totalStepCount: type === 'ANNOUNCEMENT_COLLECTION' ? 3 : 2,
       completedSteps: [],
       failure: null,
     })

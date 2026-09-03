@@ -58,7 +58,7 @@ class IngestExecutionLockInterceptorTest {
     void 자체적으로_잠금을_보유하는_파이프라인_POST는_통과시킨다() {
         MockHttpServletRequest request = request(
                 "POST",
-                "/api/admin/ingest/pipelines/collection"
+                "/api/admin/ingest/pipelines/announcement-collection"
         );
 
         assertThat(interceptor.preHandle(request, response(), new Object())).isTrue();

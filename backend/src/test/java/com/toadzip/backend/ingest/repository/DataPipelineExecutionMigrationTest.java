@@ -34,6 +34,8 @@ class DataPipelineExecutionMigrationTest {
                 assertThat(tableExists(connection, "data_pipeline_executions")).isTrue();
                 assertThat(tableExists(connection, "data_pipeline_execution_completed_steps"))
                         .isTrue();
+                assertThat(columnLength(connection, "data_pipeline_executions", "type"))
+                        .isEqualTo(40);
             }
             finally {
                 dropTestSchema(connection);
@@ -60,6 +62,29 @@ class DataPipelineExecutionMigrationTest {
             statement.setString(1, tableName);
             try (ResultSet result = statement.executeQuery()) {
                 return result.next() && result.getBoolean(1);
+            }
+        }
+    }
+
+    private int columnLength(
+            Connection connection,
+            String tableName,
+            String columnName
+    ) throws Exception {
+        try (var statement = connection.prepareStatement("""
+                SELECT character_maximum_length
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = ?
+                  AND column_name = ?
+                """)) {
+            statement.setString(1, tableName);
+            statement.setString(2, columnName);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) {
+                    throw new IllegalStateException("컬럼을 찾지 못했습니다.");
+                }
+                return result.getInt(1);
             }
         }
     }
