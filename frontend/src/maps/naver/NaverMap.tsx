@@ -53,6 +53,7 @@ export interface NaverMapCameraTarget {
 }
 
 export interface NaverMapProps {
+  cameraRequestId?: number
   cameraTarget?: NaverMapCameraTarget
   dataBusy?: boolean
   markers?: NaverMapMarker[]
@@ -155,6 +156,7 @@ function MapUnavailable({ onRetry, reason }: MapUnavailableProps) {
 }
 
 export default function NaverMap({
+  cameraRequestId,
   cameraTarget,
   dataBusy = false,
   markers = [],
@@ -167,12 +169,15 @@ export default function NaverMap({
   const mapsRef = useRef<typeof naver.maps | null>(null)
   const cameraTargetRef = useRef(cameraTarget)
   cameraTargetRef.current = cameraTarget
+  const cameraRequestIdRef = useRef(cameraRequestId)
+  cameraRequestIdRef.current = cameraRequestId
   const createdMarkersRef = useRef<CreatedMarker[]>([])
   const markersRef = useRef(markers)
   markersRef.current = markers
   const markerOverlaysRef = useRef<naver.maps.Marker[]>([])
   const markerFocusTimerRef = useRef<number | undefined>(undefined)
   const appliedCameraTargetRef = useRef<NaverMapCameraTarget | null>(null)
+  const appliedCameraRequestIdRef = useRef<number | undefined>(undefined)
   const pendingClusterFocusRef = useRef<PendingClusterFocus | null>(null)
   const onMarkerHighlightRef = useRef(onMarkerHighlight)
   const onMarkerSelectRef = useRef(onMarkerSelect)
@@ -269,6 +274,7 @@ export default function NaverMap({
           mapInstanceRef.current = createdMap
           mapsRef.current = maps
           appliedCameraTargetRef.current = initialCamera
+          appliedCameraRequestIdRef.current = cameraRequestIdRef.current
 
           const emitViewport = () => {
             setProjectionRevision((current) => current + 1)
@@ -307,6 +313,7 @@ export default function NaverMap({
           mapInstanceRef.current = null
           mapsRef.current = null
           appliedCameraTargetRef.current = null
+          appliedCameraRequestIdRef.current = undefined
           setStatus({ kind: 'unavailable', reason: 'initialization' })
           destroyMapSafely(failedMap)
         }
@@ -330,6 +337,7 @@ export default function NaverMap({
       mapInstanceRef.current = null
       mapsRef.current = null
       appliedCameraTargetRef.current = null
+      appliedCameraRequestIdRef.current = undefined
       pendingClusterFocusRef.current = null
       destroyMapSafely(mapInstance)
     }
@@ -436,15 +444,27 @@ export default function NaverMap({
       zoom: cameraZoom,
     }
     const previousTarget = appliedCameraTargetRef.current
-
-    if (cameraCoordinatesChanged(previousTarget, nextTarget)) {
-      mapInstance.panTo(new maps.LatLng(cameraLatitude, cameraLongitude))
-    }
-
-    if (
-      cameraZoom !== undefined
+    const cameraRequested = cameraRequestId !== undefined
+      && cameraRequestId !== appliedCameraRequestIdRef.current
+    const coordinatesChanged = cameraCoordinatesChanged(previousTarget, nextTarget)
+    const zoomChanged = cameraZoom !== undefined
       && cameraZoomChanged(previousTarget?.zoom, cameraZoom)
-    ) {
+
+    if (cameraRequested && cameraZoom !== undefined) {
+      mapInstance.morph(
+        new maps.LatLng(cameraLatitude, cameraLongitude),
+        cameraZoom,
+      )
+    } else if (cameraRequested) {
+      mapInstance.panTo(new maps.LatLng(cameraLatitude, cameraLongitude))
+    } else if (coordinatesChanged && zoomChanged) {
+      mapInstance.morph(
+        new maps.LatLng(cameraLatitude, cameraLongitude),
+        cameraZoom,
+      )
+    } else if (coordinatesChanged) {
+      mapInstance.panTo(new maps.LatLng(cameraLatitude, cameraLongitude))
+    } else if (zoomChanged) {
       mapInstance.setZoom(cameraZoom)
     }
 
@@ -452,7 +472,8 @@ export default function NaverMap({
       ...nextTarget,
       zoom: cameraZoom ?? previousTarget?.zoom,
     }
-  }, [cameraLatitude, cameraLongitude, cameraZoom, status.kind])
+    appliedCameraRequestIdRef.current = cameraRequestId
+  }, [cameraLatitude, cameraLongitude, cameraRequestId, cameraZoom, status.kind])
 
   const retry = () => {
     setStatus({ kind: 'loading' })

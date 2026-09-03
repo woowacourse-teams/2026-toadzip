@@ -67,7 +67,7 @@ class HousingComplexDetailQueryTest {
                 summaryMapper,
                 detailRepository,
                 detailMapper,
-                noOpSearchRegionCodeResolver,
+                new HousingComplexSearchRequestNormalizer(noOpSearchRegionCodeResolver, CLOCK),
                 CLOCK
         );
         stubDetail(complexRow("https://example.com/complex.png", "INDIVIDUAL", "APARTMENT", "STAIR"));

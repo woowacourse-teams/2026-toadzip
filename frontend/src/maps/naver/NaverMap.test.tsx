@@ -36,6 +36,7 @@ interface FakeSdk {
   markerSetMap: ReturnType<typeof vi.fn>
   markerSetZIndex: ReturnType<typeof vi.fn>
   maps: typeof naver.maps
+  morphMap: ReturnType<typeof vi.fn>
   panToMap: ReturnType<typeof vi.fn>
   removeListener: ReturnType<typeof vi.fn>
   setCurrentCenter: (latitude: number, longitude: number) => void
@@ -53,6 +54,10 @@ function createFakeSdk(): FakeSdk {
   const autoResizeMap = vi.fn()
   const panToMap = vi.fn((coordinate: unknown) => {
     currentCenter = coordinate as typeof currentCenter
+  })
+  const morphMap = vi.fn((coordinate: unknown, zoom: number) => {
+    currentCenter = coordinate as typeof currentCenter
+    currentZoom = zoom
   })
   const setZoomMap = vi.fn((zoom: number) => {
     currentZoom = zoom
@@ -90,6 +95,7 @@ function createFakeSdk(): FakeSdk {
     getMinZoom: getMinZoomMap,
     getProjection: () => ({ fromCoordToOffset }),
     getZoom: () => currentZoom,
+    morph: morphMap,
     panTo: panToMap,
     setZoom: setZoomMap,
   }
@@ -171,6 +177,7 @@ function createFakeSdk(): FakeSdk {
     markerConstructor,
     markerSetMap,
     markerSetZIndex,
+    morphMap,
     maps: {
       Event: {
         addListener,
@@ -400,6 +407,29 @@ describe('NaverMap', () => {
     expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce()
   })
 
+  it('좌표와 확대 수준이 함께 바뀌면 한 번의 카메라 이동으로 적용한다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+
+    const { rerender } = render(
+      <NaverMap
+        cameraTarget={{ latitude: 37.51, longitude: 127.02, zoom: 14 }}
+      />,
+    )
+
+    await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
+
+    rerender(
+      <NaverMap
+        cameraTarget={{ latitude: 35.18, longitude: 129.08, zoom: 16 }}
+      />,
+    )
+
+    expect(fakeSdk.morphMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.panToMap).not.toHaveBeenCalled()
+    expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
+  })
+
   it('idle로 반영한 현재 카메라는 다시 지도 이동 명령으로 적용하지 않는다', async () => {
     const fakeSdk = createFakeSdk()
     loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
@@ -437,6 +467,25 @@ describe('NaverMap', () => {
 
     expect(fakeSdk.panToMap).not.toHaveBeenCalled()
     expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
+  })
+
+  it('같은 검색 결과를 다시 선택하면 동일한 위치로 카메라를 다시 이동한다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const cameraTarget = { latitude: 37.51, longitude: 127.02, zoom: 16 }
+
+    const { rerender } = render(
+      <NaverMap cameraRequestId={1} cameraTarget={cameraTarget} />,
+    )
+    await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
+
+    rerender(<NaverMap cameraRequestId={2} cameraTarget={cameraTarget} />)
+
+    expect(fakeSdk.morphMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.morphMap).toHaveBeenCalledWith(
+      expect.objectContaining({ latitude: 37.51, longitude: 127.02 }),
+      16,
+    )
   })
 
   it('URL 직렬화 정밀도 안의 camera 차이는 무시하고 더 큰 차이만 적용한다', async () => {
