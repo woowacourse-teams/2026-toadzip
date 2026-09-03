@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.service;
 import lombok.Getter;
 
 import com.toadzip.backend.ingest.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.repository.external.ExternalDataRequestException;
 
 @Getter
 public class ExternalDataCallFailureException extends RuntimeException {
@@ -21,5 +22,10 @@ public class ExternalDataCallFailureException extends RuntimeException {
         this.source = source;
         this.requestDescription = requestDescription;
         this.attemptCount = attemptCount;
+    }
+
+    public boolean isRateLimited() {
+        return getCause() instanceof ExternalDataRequestException exception
+                && exception.isRateLimited();
     }
 }

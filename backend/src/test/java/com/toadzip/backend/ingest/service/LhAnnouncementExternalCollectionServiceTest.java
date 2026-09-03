@@ -108,6 +108,24 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void 호출_제한이_발생하면_남은_LH_공고를_조회하지_않는다() {
+        source(announcementSource(), integratedLhAnnouncementSource());
+        when(externalRepository.fetchDetail(any()))
+                .thenThrow(ExternalDataRequestException.rateLimited(
+                        "resultCode=22, 일일 요청 한도 초과",
+                        null,
+                        false
+                ));
+
+        ExternalDataCollectionReport result = service.collect(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL
+        );
+
+        assertThat(result.rateLimitedRequestCount()).isOne();
+        verify(externalRepository, times(1)).fetchDetail(any());
+    }
+
+    @Test
     void LH_공급_수집은_공급_행만_저장한다() {
         source(announcementSource());
         when(externalRepository.fetchSupply(any())).thenReturn(supplyResponse());

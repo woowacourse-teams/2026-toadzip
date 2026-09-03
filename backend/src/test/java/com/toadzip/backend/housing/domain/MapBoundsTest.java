@@ -1,7 +1,9 @@
 package com.toadzip.backend.housing.domain;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.math.BigDecimal;
 import java.util.stream.Stream;
@@ -22,6 +24,18 @@ class MapBoundsTest {
         assertEquals(decimal("126.0"), bounds.southWestLng());
         assertEquals(decimal("38.0"), bounds.northEastLat());
         assertEquals(decimal("127.0"), bounds.northEastLng());
+    }
+
+    @Test
+    void 내부와_경계의_좌표를_포함하고_외부_좌표는_포함하지_않는다() {
+        MapBounds bounds = MapBounds.of(
+                decimal("37.0"), decimal("126.0"), decimal("38.0"), decimal("127.0")
+        );
+
+        assertTrue(bounds.contains(new MapCoordinate(decimal("37.5"), decimal("126.5"))));
+        assertTrue(bounds.contains(new MapCoordinate(decimal("38.0"), decimal("127.0"))));
+        assertFalse(bounds.contains(new MapCoordinate(decimal("38.1"), decimal("127.0"))));
+        assertFalse(bounds.contains(null));
     }
 
     @ParameterizedTest

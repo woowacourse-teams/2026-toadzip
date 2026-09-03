@@ -3,6 +3,23 @@ import { StrictMode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App.tsx'
+import type { DataPipelineType } from './admin/ingest/api.ts'
+
+vi.mock('./admin/ingest/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./admin/ingest/api')>()),
+  getDataPipelineStatus: vi.fn((type: DataPipelineType) => Promise.resolve({
+    executionId: null,
+    type,
+    status: 'IDLE',
+    currentStepName: null,
+    currentStepIndex: 0,
+    totalStepCount: type === 'ANNOUNCEMENT_COLLECTION' ? 3 : 2,
+    completedSteps: [],
+    skippedSteps: [],
+    failure: null,
+  })),
+  startDataPipeline: vi.fn(),
+}))
 
 beforeEach(() => {
   vi.stubEnv('VITE_NAVER_MAPS_CLIENT_ID', '')
@@ -26,6 +43,9 @@ describe('App', () => {
 
     expect(screen.getByRole('banner', { name: '서비스 헤더' })).toBeVisible()
     expect(screen.getByRole('link', { name: '두꺼비집 홈' })).toBeVisible()
+    expect(
+      screen.getByRole('searchbox', { name: '공고, 단지, 지역 검색' }),
+    ).toBeVisible()
     expect(
       screen.getByRole('region', { name: '공공임대주택 지도' }),
     ).toBeVisible()

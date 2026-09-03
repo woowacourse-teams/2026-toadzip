@@ -15,6 +15,7 @@ import com.toadzip.backend.ingest.dto.MyHomeComplexMappingPreparationReport;
 import com.toadzip.backend.ingest.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingException;
+import com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.repository.MyHomeComplexMappingCandidateRepository;
 import com.toadzip.backend.ingest.repository.MyHomeComplexMappingCandidateStore;
 import com.toadzip.backend.ingest.repository.MyHomeComplexMappingExecutionLock;
@@ -235,13 +236,19 @@ public class MyHomeComplexMappingService {
         catch (RoadAddressGeocodingException exception) {
             candidate.failGeocoding(exception.getReason());
             candidateStore.save(candidate);
-            return recordFailure(
+            MyHomeComplexMappingReport failureReport = recordFailure(
                     candidate.getSourceComplexIdentifier(),
                     sources,
                     MyHomeComplexMappingFailureReason.GEOCODING_ERROR,
                     "도로명주소 좌표 변환 실패: " + exception.getReason() + ", " + exception.getMessage(),
                     occurredAt
             );
+            if (exception.getReason() == RoadAddressGeocodingFailureReason.RATE_LIMIT_EXCEEDED) {
+                return MyHomeComplexMappingReport.rateLimitedRows(
+                        failureReport.failedSourceRowCount()
+                );
+            }
+            return failureReport;
         }
         catch (RuntimeException exception) {
             log.warn(
