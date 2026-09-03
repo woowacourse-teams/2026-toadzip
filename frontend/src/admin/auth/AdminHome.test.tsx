@@ -5,11 +5,14 @@ import {
   type AnnouncementCreateResponse,
   type HousingComplexCreateResponse,
 } from '../registration/api'
+import type { DataPipelineType } from '../ingest/api'
 import { AdminHome } from './AdminHome'
 
 const apiMocks = vi.hoisted(() => ({
   createAnnouncement: vi.fn(),
   createHousingComplex: vi.fn(),
+  getDataPipelineStatus: vi.fn(),
+  startDataPipeline: vi.fn(),
 }))
 
 vi.mock('../registration/api', async (importOriginal) => ({
@@ -17,9 +20,30 @@ vi.mock('../registration/api', async (importOriginal) => ({
   ...apiMocks,
 }))
 
+vi.mock('../ingest/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../ingest/api')>()),
+  getDataPipelineStatus: apiMocks.getDataPipelineStatus,
+  startDataPipeline: apiMocks.startDataPipeline,
+}))
+
 beforeEach(() => {
   apiMocks.createAnnouncement.mockReset()
   apiMocks.createHousingComplex.mockReset()
+  apiMocks.getDataPipelineStatus.mockReset()
+  apiMocks.startDataPipeline.mockReset()
+  apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => (
+    Promise.resolve({
+      executionId: null,
+      type,
+      status: 'IDLE',
+      currentStepName: null,
+      currentStepIndex: 0,
+      totalStepCount: type === 'ANNOUNCEMENT_COLLECTION' ? 3 : 2,
+      completedSteps: [],
+      skippedSteps: [],
+      failure: null,
+    })
+  ))
 })
 
 describe('AdminHome', () => {

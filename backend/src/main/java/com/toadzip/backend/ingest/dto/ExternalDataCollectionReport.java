@@ -5,7 +5,8 @@ public record ExternalDataCollectionReport(
         int storedRowCount,
         int failedRequestCount,
         int externalApiCallCount,
-        int skippedRequestCount
+        int skippedRequestCount,
+        int rateLimitedRequestCount
 ) {
 
     public ExternalDataCollectionReport(
@@ -14,7 +15,17 @@ public record ExternalDataCollectionReport(
             int failedRequestCount,
             int externalApiCallCount
     ) {
-        this(operation, storedRowCount, failedRequestCount, externalApiCallCount, 0);
+        this(operation, storedRowCount, failedRequestCount, externalApiCallCount, 0, 0);
+    }
+
+    public ExternalDataCollectionReport(
+            String operation,
+            int storedRowCount,
+            int failedRequestCount,
+            int externalApiCallCount,
+            int skippedRequestCount
+    ) {
+        this(operation, storedRowCount, failedRequestCount, externalApiCallCount, skippedRequestCount, 0);
     }
 
     public ExternalDataCollectionReport {
@@ -22,7 +33,8 @@ public record ExternalDataCollectionReport(
             throw new IllegalArgumentException("수집 작업명은 필수입니다.");
         }
         if (storedRowCount < 0 || failedRequestCount < 0 || externalApiCallCount < 0
-                || skippedRequestCount < 0) {
+                || skippedRequestCount < 0 || rateLimitedRequestCount < 0
+                || rateLimitedRequestCount > failedRequestCount) {
             throw new IllegalArgumentException("수집 결과 개수는 음수일 수 없습니다.");
         }
     }
@@ -40,7 +52,8 @@ public record ExternalDataCollectionReport(
                 storedRowCount + other.storedRowCount,
                 failedRequestCount + other.failedRequestCount,
                 externalApiCallCount + other.externalApiCallCount,
-                skippedRequestCount + other.skippedRequestCount
+                skippedRequestCount + other.skippedRequestCount,
+                rateLimitedRequestCount + other.rateLimitedRequestCount
         );
     }
 }

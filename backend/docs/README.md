@@ -23,6 +23,8 @@
 | HTTP API | [api-conventions.md](api-conventions.md) | 요청, 응답, 호환성 |
 | 예외 처리 | [exception-handling.md](exception-handling.md) | 예외 소유권, Advice, 오류 계약 |
 | DB 변경 | [persistence.md](persistence.md) | 모델, 쿼리, 트랜잭션 |
+| 관리자 데이터 파이프라인 | [data-pipeline-execution.md](data-pipeline-execution.md) | 실행 상태와 스키마 배포 |
+| 공고 원천 수명주기 | [announcement-source-lifecycle.md](announcement-source-lifecycle.md) | 미조회 정책과 스키마 배포 |
 | 테스트 | [testing.md](testing.md) | 테스트 범위와 대역 기준 |
 | 보안 변경 | [security.md](security.md) | 인증, 인가, 개인정보, 비밀 |
 | 운영 변경 | [observability.md](observability.md) | 로그, 메트릭, 트레이스 |
