@@ -28,6 +28,35 @@ public record HousingComplexSearchRequest(
         @Parameter(required = true) BigDecimal southWestLat,
         @Parameter(required = true) BigDecimal southWestLng,
         @Parameter(required = true) BigDecimal northEastLat,
-        @Parameter(required = true) BigDecimal northEastLng
+        @Parameter(required = true) BigDecimal northEastLng,
+        Boolean hasActiveAnnouncement
 ) {
+    public HousingComplexSearchRequest(
+            String keyword,
+            String regionCode,
+            List<RentalType> rentalTypes,
+            List<ApplicationStatus> applicationStatuses,
+            List<AgencyCode> agencyCodes,
+            List<RecruitmentType> recruitmentTypes,
+            Long minDeposit,
+            Long maxDeposit,
+            Long minMonthlyRent,
+            Long maxMonthlyRent,
+            BigDecimal minExclusiveArea,
+            BigDecimal maxExclusiveArea,
+            Integer builtYearFrom,
+            Integer builtYearTo,
+            Boolean hasElevator,
+            BigDecimal southWestLat,
+            BigDecimal southWestLng,
+            BigDecimal northEastLat,
+            BigDecimal northEastLng
+    ) {
+        this(
+                keyword, regionCode, rentalTypes, applicationStatuses, agencyCodes, recruitmentTypes,
+                minDeposit, maxDeposit, minMonthlyRent, maxMonthlyRent, minExclusiveArea, maxExclusiveArea,
+                builtYearFrom, builtYearTo, hasElevator, southWestLat, southWestLng, northEastLat, northEastLng,
+                null
+        );
+    }
 }

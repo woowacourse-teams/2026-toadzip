@@ -15,6 +15,7 @@
 ## 📚 문서
 
 - [개발 환경 설정 및 실행](docs/SETUP.md)
+- [통합 검색 API](docs/INTEGRATED_SEARCH.md)
 - [기여 가이드](CONTRIBUTING.md)
 - [백엔드 코드 컨벤션](backend/CODE_CONVENTION.md)
 

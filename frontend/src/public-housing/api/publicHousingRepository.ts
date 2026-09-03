@@ -75,7 +75,6 @@ export interface ComplexSearchFilters extends SharedSearchFilters {
 }
 
 export type AnnouncementSearchFilters = SharedSearchFilters
-
 export interface PublicHousingRepository {
   findComplexPage(
     bounds: MapBounds,
@@ -134,7 +133,6 @@ export function createHttpPublicHousingRepository(
         search.set('cursor', cursor)
       }
       search.set('size', String(size))
-
       const payload = await requestJson(
         fetcher,
         `${apiBaseUrl}${COMPLEXES_PATH}?${search.toString()}`,

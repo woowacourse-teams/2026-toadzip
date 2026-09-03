@@ -28,6 +28,7 @@ public record HousingComplexSearchCondition(
         Integer builtYearFrom,
         Integer builtYearTo,
         Boolean hasElevator,
+        Boolean hasActiveAnnouncement,
         LocalDate today
 ) {
     public HousingComplexSearchCondition {
@@ -36,5 +37,33 @@ public record HousingComplexSearchCondition(
         applicationStatuses = Set.copyOf(applicationStatuses);
         agencyCodes = Set.copyOf(agencyCodes);
         recruitmentTypes = Set.copyOf(recruitmentTypes);
+    }
+
+    public HousingComplexSearchCondition(
+            MapBounds bounds,
+            String keyword,
+            String provinceCode,
+            Set<String> cityCountyDistrictCodes,
+            Set<RentalType> rentalTypes,
+            Set<ApplicationStatus> applicationStatuses,
+            Set<AgencyCode> agencyCodes,
+            Set<RecruitmentType> recruitmentTypes,
+            BigDecimal minDeposit,
+            BigDecimal maxDeposit,
+            BigDecimal minMonthlyRent,
+            BigDecimal maxMonthlyRent,
+            BigDecimal minExclusiveArea,
+            BigDecimal maxExclusiveArea,
+            Integer builtYearFrom,
+            Integer builtYearTo,
+            Boolean hasElevator,
+            LocalDate today
+    ) {
+        this(
+                bounds, keyword, provinceCode, cityCountyDistrictCodes, rentalTypes, applicationStatuses,
+                agencyCodes, recruitmentTypes, minDeposit, maxDeposit, minMonthlyRent, maxMonthlyRent,
+                minExclusiveArea, maxExclusiveArea, builtYearFrom, builtYearTo, hasElevator,
+                null, today
+        );
     }
 }

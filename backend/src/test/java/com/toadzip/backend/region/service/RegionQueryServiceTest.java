@@ -35,6 +35,16 @@ class RegionQueryServiceTest {
         ));
     }
 
+    @Test
+    void 검색어의_연속_공백을_하나로_정규화한다() {
+        RecordingRegionSearchRepository repository = new RecordingRegionSearchRepository();
+        RegionQueryService service = new RegionQueryService(repository);
+
+        service.searchRegions("  서울    중구  ");
+
+        assertEquals("서울 중구", repository.keyword);
+    }
+
     private static class SeoulOnlyRegionSearchRepository implements RegionSearchRepository {
 
         @Override
@@ -45,6 +55,17 @@ class RegionQueryServiceTest {
                         new RegionSearchResult("11110", "서울특별시", "종로구", "서울특별시 종로구")
                 );
             }
+            return List.of();
+        }
+    }
+
+    private static class RecordingRegionSearchRepository implements RegionSearchRepository {
+
+        private String keyword;
+
+        @Override
+        public List<RegionSearchResult> findByKeyword(String normalizedKeyword) {
+            keyword = normalizedKeyword;
             return List.of();
         }
     }
