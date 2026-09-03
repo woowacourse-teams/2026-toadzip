@@ -5,6 +5,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Optional;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.sql.DataSource;
 import lombok.extern.slf4j.Slf4j;
@@ -19,6 +20,8 @@ public class DataPipelineExecutionLock {
     private static final String TRY_LOCK_SQL = "SELECT pg_try_advisory_lock(?)";
 
     private static final String UNLOCK_SQL = "SELECT pg_advisory_unlock(?)";
+
+    private static final Executor DIRECT_EXECUTOR = Runnable::run;
 
     private final AtomicBoolean locallyLocked = new AtomicBoolean();
 
@@ -43,7 +46,7 @@ public class DataPipelineExecutionLock {
             return Optional.of(new JdbcLease(connection));
         }
         catch (SQLException exception) {
-            closeConnectionAfterAcquireFailure(connection, exception);
+            abortConnectionAfterLockFailure(connection, exception);
             locallyLocked.set(false);
             throw new IllegalStateException(
                     "데이터 수집·정제 실행 잠금을 처리하지 못했습니다.",
@@ -56,7 +59,9 @@ public class DataPipelineExecutionLock {
         if (locallyLocked.get()) {
             return true;
         }
-        try (Connection connection = dataSource.getConnection()) {
+        Connection connection = null;
+        try {
+            connection = dataSource.getConnection();
             if (!executeLockQuery(connection, TRY_LOCK_SQL)) {
                 return true;
             }
@@ -68,10 +73,15 @@ public class DataPipelineExecutionLock {
             return false;
         }
         catch (SQLException exception) {
+            abortConnectionAfterLockFailure(connection, exception);
+            connection = null;
             throw new IllegalStateException(
                     "데이터 수집·정제 실행 잠금 상태를 확인하지 못했습니다.",
                     exception
             );
+        }
+        finally {
+            closeConnection(connection);
         }
     }
 
@@ -90,15 +100,27 @@ public class DataPipelineExecutionLock {
         }
     }
 
-    private void closeConnectionAfterAcquireFailure(Connection connection, SQLException cause) {
+    private void abortConnectionAfterLockFailure(Connection connection, SQLException cause) {
+        if (connection == null) {
+            return;
+        }
+        try {
+            connection.abort(DIRECT_EXECUTOR);
+        }
+        catch (SQLException abortException) {
+            cause.addSuppressed(abortException);
+        }
+    }
+
+    private void closeConnection(Connection connection) {
         if (connection == null) {
             return;
         }
         try {
             connection.close();
         }
-        catch (SQLException closeException) {
-            cause.addSuppressed(closeException);
+        catch (SQLException exception) {
+            log.error("데이터 수집·정제 잠금 연결을 닫지 못했습니다.", exception);
         }
     }
 
@@ -117,28 +139,23 @@ public class DataPipelineExecutionLock {
             if (!closed.compareAndSet(false, true)) {
                 return;
             }
+            boolean unlockFailed = false;
             try {
                 executeLockQuery(connection, UNLOCK_SQL);
             }
             catch (SQLException exception) {
+                unlockFailed = true;
                 log.error(
-                        "데이터 수집·정제 실행 잠금 해제에 실패했습니다. "
-                                + "DB 연결 종료 시 잠금이 해제됩니다.",
+                        "데이터 수집·정제 실행 잠금 해제에 실패해 DB 연결을 폐기합니다.",
                         exception
                 );
+                abortConnectionAfterLockFailure(connection, exception);
             }
             finally {
-                closeConnection();
+                if (!unlockFailed) {
+                    DataPipelineExecutionLock.this.closeConnection(connection);
+                }
                 locallyLocked.set(false);
-            }
-        }
-
-        private void closeConnection() {
-            try {
-                connection.close();
-            }
-            catch (SQLException exception) {
-                log.error("데이터 수집·정제 잠금 연결을 닫지 못했습니다.", exception);
             }
         }
     }

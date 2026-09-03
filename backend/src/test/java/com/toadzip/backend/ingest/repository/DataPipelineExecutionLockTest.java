@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -70,7 +71,7 @@ class DataPipelineExecutionLockTest {
     }
 
     @Test
-    void 잠금_쿼리가_실패하면_연결을_닫고_로컬_잠금을_반납한다() throws Exception {
+    void 잠금_획득_쿼리가_실패하면_물리_연결을_폐기하고_로컬_잠금을_반납한다() throws Exception {
         when(statement.executeQuery())
                 .thenThrow(new SQLException("lock query failed"))
                 .thenReturn(resultSet);
@@ -78,10 +79,22 @@ class DataPipelineExecutionLockTest {
         assertThatThrownBy(executionLock::tryAcquire)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("데이터 수집·정제 실행 잠금을 처리하지 못했습니다.");
-        verify(connection).close();
+        verify(connection).abort(any());
 
         var lease = executionLock.tryAcquire().orElseThrow();
         lease.close();
+    }
+
+    @Test
+    void 잠금_해제_쿼리가_실패하면_물리_연결을_폐기한다() throws Exception {
+        when(statement.executeQuery())
+                .thenReturn(resultSet)
+                .thenThrow(new SQLException("unlock query failed"));
+        var lease = executionLock.tryAcquire().orElseThrow();
+
+        lease.close();
+
+        verify(connection).abort(any());
     }
 
     @Test
@@ -99,5 +112,17 @@ class DataPipelineExecutionLockTest {
 
         verify(statement, times(2)).executeQuery();
         verify(connection).close();
+    }
+
+    @Test
+    void 잠금_확인_후_해제에_실패하면_물리_연결을_폐기한다() throws Exception {
+        when(statement.executeQuery())
+                .thenReturn(resultSet)
+                .thenThrow(new SQLException("probe unlock failed"));
+
+        assertThatThrownBy(executionLock::isHeld)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("데이터 수집·정제 실행 잠금 상태를 확인하지 못했습니다.");
+        verify(connection).abort(any());
     }
 }
