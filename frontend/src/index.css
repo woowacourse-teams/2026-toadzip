@@ -1056,6 +1056,128 @@ button {
   font-size: 22px;
 }
 
+.data-pipeline-card {
+  display: grid;
+  gap: 20px;
+}
+
+.data-pipeline-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.data-pipeline-card .data-pipeline-heading h2 {
+  margin-bottom: 0;
+}
+
+.data-pipeline-groups,
+.data-pipeline-group {
+  display: grid;
+  gap: 16px;
+}
+
+.data-pipeline-group {
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.data-pipeline-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.data-pipeline-group-heading h3,
+.data-pipeline-group-heading p {
+  margin: 0;
+}
+
+.data-pipeline-group-heading p {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.data-pipeline-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.data-pipeline-actions button {
+  min-width: 92px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 8px;
+  background: #0f766e;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.data-pipeline-actions button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.data-pipeline-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.data-pipeline-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.data-pipeline-result {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.data-pipeline-result h4 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.data-pipeline-steps {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0 0;
+  padding-left: 22px;
+  color: #334155;
+}
+
+.admin-content .data-pipeline-success {
+  color: #047857;
+  font-weight: 700;
+}
+
+.data-pipeline-error {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  color: #b91c1c;
+}
+
+.data-pipeline-error pre {
+  max-height: 220px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border-radius: 6px;
+  background: #1e293b;
+  color: #f8fafc;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
 .registration-form {
   display: grid;
   gap: 20px;
@@ -1192,5 +1314,23 @@ button {
 
   .registration-grid {
     grid-template-columns: 1fr;
+  }
+
+  .data-pipeline-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .data-pipeline-group-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .data-pipeline-actions button {
+    flex: 1;
+  }
+
+  .data-pipeline-results {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

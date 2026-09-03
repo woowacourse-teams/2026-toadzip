@@ -57,6 +57,33 @@ class ExternalDataRetryExecutorTest {
         assertThat(callCounter.count()).isOne();
     }
 
+    @Test
+    @DisplayName("호출 제한은 재시도 가능 응답이어도 즉시 중단한다")
+    void doesNotRetryRateLimitFailure() {
+        AtomicInteger executions = new AtomicInteger();
+        ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
+        ExternalDataRequestException failure = ExternalDataRequestException.rateLimited(
+                "초당 요청 한도 초과",
+                null,
+                true
+        );
+
+        assertThatThrownBy(() -> executor.execute(
+                ExternalDataSource.MYHOME_COMPLEX,
+                "pageNo=1",
+                () -> {
+                    executions.incrementAndGet();
+                    throw failure;
+                },
+                callCounter
+        )).isInstanceOfSatisfying(ExternalDataCallFailureException.class, exception -> {
+            assertThat(exception.getAttemptCount()).isOne();
+            assertThat(exception.isRateLimited()).isTrue();
+        });
+        assertThat(executions).hasValue(1);
+        assertThat(callCounter.count()).isOne();
+    }
+
     private String responseAfterTwoFailures(AtomicInteger executions) {
         if (executions.incrementAndGet() < 3) {
             throw ExternalDataRequestException.retryable("일시적 실패", new IllegalStateException("504"));

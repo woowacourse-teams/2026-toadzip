@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -146,6 +147,25 @@ class MyHomeAnnouncementCollectionServiceTest {
 
         verify(sourceStore, never()).completeAnnouncementCollection(anyString());
         assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
+    @DisplayName("호출 제한이 발생하면 남은 공급유형을 조회하지 않는다")
+    void stopsRemainingSupplyTypesAfterRateLimit() {
+        MyHomeAnnouncementCollectionRequest request =
+                new MyHomeAnnouncementCollectionRequest(2, 10);
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenThrow(ExternalDataRequestException.rateLimited(
+                        "resultCode=22, 일일 요청 한도 초과",
+                        null,
+                        false
+                ));
+
+        var result = service.collect(request);
+
+        assertThat(result.rateLimitedRequestCount()).isOne();
+        verify(externalRepository, times(1)).fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt());
+        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
     }
 
     @Test
