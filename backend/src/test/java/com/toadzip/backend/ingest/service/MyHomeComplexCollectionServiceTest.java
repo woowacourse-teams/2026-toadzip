@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atMost;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -263,6 +264,34 @@ class MyHomeComplexCollectionServiceTest {
                 .hasMessage("DB 저장 실패");
 
         verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("전국 수집 중 호출 제한이 발생하면 재시도와 대기 지역 요청을 중단한다")
+    void stopsConcurrentRegionsAfterRateLimit() {
+        List<MyHomeRegion> regions = java.util.stream.IntStream.rangeClosed(1, 8)
+                .mapToObj(index -> new MyHomeRegion(
+                        "11",
+                        "%03d".formatted(index),
+                        "서울특별시",
+                        "테스트구" + index
+                ))
+                .toList();
+        MyHomeComplexCollectionRequest request =
+                MyHomeComplexCollectionRequest.allRegions(2, 10);
+        when(regionCatalog.findAll()).thenReturn(regions);
+        when(externalRepository.fetch(any(), eq(request), eq(1)))
+                .thenThrow(ExternalDataRequestException.rateLimited(
+                        "resultCode=23, 초당 요청 한도 초과",
+                        null,
+                        true
+                ));
+
+        var result = service.collect(request);
+
+        assertThat(result.rateLimitedRequestCount()).isOne();
+        verify(externalRepository, atMost(4)).fetch(any(), eq(request), eq(1));
+        verify(sourceStore, never()).replaceComplexRegion(any(), any());
     }
 
     private MyHomeComplexCollectionRequest request() {

@@ -435,6 +435,21 @@ class MyHomeComplexMappingServiceTest {
         });
     }
 
+    @Test
+    void 주소_API_호출_제한은_실패_원천과_별도로_집계한다() {
+        sourceRepository.save(source("46A", "46.8000", "20.2000"));
+        when(geocodingService.geocode(anyString())).thenThrow(new RoadAddressGeocodingException(
+                RoadAddressGeocodingFailureReason.RATE_LIMIT_EXCEEDED,
+                "주소 API 호출 제한에 도달했습니다."
+        ));
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isOne();
+        assertThat(report.rateLimitedSourceRowCount()).isOne();
+        assertThat(complexRepository.findAll()).isEmpty();
+    }
+
     private MyHomeComplexSource source(String styleName, String exclusiveArea, String commonArea) {
         return source(data(
                 123L, styleName, exclusiveArea, commonArea, "서울주택도시공사", "20200101"

@@ -2,11 +2,13 @@ package com.toadzip.backend.ingest.repository.external;
 
 import static com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingFailureReason.EXTERNAL_API_ERROR;
 import static com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingFailureReason.NOT_CONFIGURED;
+import static com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingFailureReason.RATE_LIMIT_EXCEEDED;
 
 import com.toadzip.backend.ingest.configuration.JusoGeocodingProperties;
 import com.toadzip.backend.ingest.domain.JusoAddressCode;
 import com.toadzip.backend.ingest.domain.RoadAddressCandidate;
 import com.toadzip.backend.ingest.domain.UtmKCoordinate;
+import com.toadzip.backend.ingest.exception.exception.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.repository.RoadAddressCoordinateRepository;
 import java.math.BigDecimal;
 import java.net.URI;
@@ -115,11 +117,19 @@ public class JusoRoadAddressCoordinateRepository implements RoadAddressCoordinat
             throw exception;
         }
         catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode().value() == 429) {
+                throw new JusoApiException(
+                        RATE_LIMIT_EXCEEDED,
+                        "주소 API 호출 제한에 도달했습니다.",
+                        exception,
+                        true
+                );
+            }
             throw new JusoApiException(
                     EXTERNAL_API_ERROR,
                     "주소 API 호출에 실패했습니다.",
                     exception,
-                    exception.getStatusCode().value() == 429
+                    false
             );
         }
         catch (HttpServerErrorException | ResourceAccessException exception) {
@@ -212,11 +222,18 @@ public class JusoRoadAddressCoordinateRepository implements RoadAddressCoordinat
         }
         String message = common.path("errorMessage").asString("");
         throw new JusoApiException(
-                EXTERNAL_API_ERROR,
+                failureReason(code),
                 "주소 API 원천 오류가 발생했습니다: code=" + code + ", " + message,
                 null,
                 TOO_MANY_REQUESTS_CODE.equals(code)
         );
+    }
+
+    private RoadAddressGeocodingFailureReason failureReason(String code) {
+        if (TOO_MANY_REQUESTS_CODE.equals(code)) {
+            return RATE_LIMIT_EXCEEDED;
+        }
+        return EXTERNAL_API_ERROR;
     }
 
     private String requiredText(JsonNode row, String fieldName) {

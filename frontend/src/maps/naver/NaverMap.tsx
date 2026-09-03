@@ -382,6 +382,11 @@ export default function NaverMap({
             setProjectionRevision((current) => current + 1)
             const viewport = readViewport(createdMap)
             if (viewport) {
+              appliedCameraTargetRef.current = {
+                latitude: viewport.center.latitude,
+                longitude: viewport.center.longitude,
+                zoom: viewport.zoom,
+              }
               onViewportChangeRef.current?.(viewport)
             }
           }

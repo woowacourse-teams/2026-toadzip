@@ -1,4 +1,4 @@
-import { StrictMode } from 'react'
+import { StrictMode, useState } from 'react'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import NaverMap, {
@@ -43,6 +43,7 @@ interface FakeSdk {
   morphMap: ReturnType<typeof vi.fn>
   panToMap: ReturnType<typeof vi.fn>
   removeListener: ReturnType<typeof vi.fn>
+  setCurrentCenter: (latitude: number, longitude: number) => void
   setCurrentZoom: (zoom: number) => void
   setZoomMap: ReturnType<typeof vi.fn>
   stopMap: ReturnType<typeof vi.fn>
@@ -202,6 +203,9 @@ function createFakeSdk(): FakeSdk {
     } as unknown as typeof naver.maps,
     panToMap,
     removeListener,
+    setCurrentCenter: (latitude, longitude) => {
+      currentCenter = { latitude, longitude }
+    },
     setCurrentZoom: (zoom) => {
       currentZoom = zoom
     },
@@ -444,6 +448,45 @@ describe('NaverMap', () => {
     )
 
     expect(fakeSdk.morphMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.panToMap).not.toHaveBeenCalled()
+    expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
+  })
+
+  it('idle로 반영한 현재 카메라는 다시 지도 이동 명령으로 적용하지 않는다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+
+    function ReflectingCameraTargetMap() {
+      const [cameraTarget, setCameraTarget] = useState<{
+        latitude: number
+        longitude: number
+        zoom: number
+      }>()
+
+      return (
+        <NaverMap
+          cameraTarget={cameraTarget}
+          onViewportChange={(nextViewport) => {
+            setCameraTarget({
+              latitude: nextViewport.center.latitude,
+              longitude: nextViewport.center.longitude,
+              zoom: nextViewport.zoom,
+            })
+          }}
+        />
+      )
+    }
+
+    render(<ReflectingCameraTargetMap />)
+
+    await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
+
+    act(() => {
+      fakeSdk.setCurrentCenter(37.61, 127.01)
+      fakeSdk.setCurrentZoom(15)
+      fakeSdk.emitIdle()
+    })
+
     expect(fakeSdk.panToMap).not.toHaveBeenCalled()
     expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
   })

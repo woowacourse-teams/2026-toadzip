@@ -130,6 +130,36 @@ class JusoRoadAddressCoordinateRepositoryTest {
     }
 
     @Test
+    void 재시도_후에도_다량_요청_오류이면_호출_제한으로_분류한다() {
+        List<Duration> delays = new ArrayList<>();
+        RestClient.Builder builder = RestClient.builder();
+        server = MockRestServiceServer.bindTo(builder).build();
+        repository = new JusoRoadAddressCoordinateRepository(
+                builder.build(),
+                new JusoGeocodingProperties("https://example.com", "address-key", "coordinate-key"),
+                delays::add
+        );
+        for (int attempt = 0; attempt < 4; attempt++) {
+            server.expect(request -> assertThat(request.getURI())
+                            .hasToString("https://example.com/addrLinkApi.do"))
+                    .andRespond(withSuccess(tooManyRequestsPayload(), MediaType.APPLICATION_JSON));
+        }
+
+        assertThatThrownBy(() -> repository.search("서울특별시 중구 세종대로 110"))
+                .isInstanceOfSatisfying(
+                        JusoApiException.class,
+                        exception -> assertThat(exception.getReason())
+                                .isEqualTo(RoadAddressGeocodingFailureReason.RATE_LIMIT_EXCEEDED)
+                );
+        assertThat(delays).containsExactly(
+                Duration.ofSeconds(1),
+                Duration.ofSeconds(2),
+                Duration.ofSeconds(4)
+        );
+        server.verify();
+    }
+
+    @Test
     void 승인키_오류는_재시도하지_않는다() {
         List<Duration> delays = new ArrayList<>();
         RestClient.Builder builder = RestClient.builder();

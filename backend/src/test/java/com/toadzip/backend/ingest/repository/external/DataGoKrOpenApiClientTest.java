@@ -115,6 +115,7 @@ class DataGoKrOpenApiClientTest {
                         ExternalDataRequestException.class,
                         exception -> {
                             assertThat(exception.isRetryable()).isTrue();
+                            assertThat(exception.isRateLimited()).isFalse();
                             assertThat(exception).hasMessageContaining("HTTP 504");
                         }
                 );
@@ -136,6 +137,7 @@ class DataGoKrOpenApiClientTest {
                         ExternalDataRequestException.class,
                         exception -> {
                             assertThat(exception.isRetryable()).isTrue();
+                            assertThat(exception.isRateLimited()).isTrue();
                             assertThat(exception).hasMessageContaining("HTTP 429");
                         }
                 );
@@ -161,6 +163,7 @@ class DataGoKrOpenApiClientTest {
                         ExternalDataRequestException.class,
                         exception -> {
                             assertThat(exception.isRetryable()).isFalse();
+                            assertThat(exception.isRateLimited()).isTrue();
                             assertThat(exception).hasMessageContaining("resultCode=22");
                         }
                 );
@@ -184,7 +187,10 @@ class DataGoKrOpenApiClientTest {
         assertThatThrownBy(() -> client.get("list", new LinkedMultiValueMap<>()))
                 .isInstanceOfSatisfying(
                         ExternalDataRequestException.class,
-                        exception -> assertThat(exception.isRetryable()).isTrue()
+                        exception -> {
+                            assertThat(exception.isRetryable()).isTrue();
+                            assertThat(exception.isRateLimited()).isTrue();
+                        }
                 );
         server.verify();
     }
@@ -206,7 +212,10 @@ class DataGoKrOpenApiClientTest {
         assertThatThrownBy(() -> client.get("list", new LinkedMultiValueMap<>()))
                 .isInstanceOfSatisfying(
                         ExternalDataRequestException.class,
-                        exception -> assertThat(exception.isRetryable()).isFalse()
+                        exception -> {
+                            assertThat(exception.isRetryable()).isFalse();
+                            assertThat(exception.isRateLimited()).isTrue();
+                        }
                 );
         server.verify();
     }

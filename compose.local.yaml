@@ -41,6 +41,7 @@ services:
 
   backend:
     environment:
+      SPRING_PROFILES_ACTIVE: local
       ADMIN_BOOTSTRAP_ENABLED: "${ADMIN_BOOTSTRAP_ENABLED:-false}"
       ADMIN_LOGIN_IDENTIFIER: "${ADMIN_LOGIN_IDENTIFIER:-}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
