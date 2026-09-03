@@ -24,6 +24,10 @@ public class DataGoKrOpenApiClient {
 
     private static final List<String> RETRYABLE_RESULT_CODES = List.of("01", "05", "23");
 
+    private static final String DAILY_RATE_LIMIT_CODE = "22";
+
+    private static final String PER_SECOND_RATE_LIMIT_CODE = "23";
+
     private static final String LH_SUCCESS = "Y";
 
     private final RestClient restClient;
@@ -152,10 +156,10 @@ public class DataGoKrOpenApiClient {
         if (!code.isBlank()) {
             reason += ", resultCode=" + code + ", " + message;
         }
-        if ("22".equals(code)) {
-            return new ExternalDataRequestException(reason, exception);
+        if (DAILY_RATE_LIMIT_CODE.equals(code)) {
+            return ExternalDataRequestException.rateLimited(reason, exception, false);
         }
-        return ExternalDataRequestException.retryable(reason, exception);
+        return ExternalDataRequestException.rateLimited(reason, exception, true);
     }
 
     private JsonNode gatewayErrorHeader(String responseBody) {
@@ -188,6 +192,12 @@ public class DataGoKrOpenApiClient {
         }
         String message = header.path("resultMsg").asString("");
         String reason = "원천 오류 resultCode=" + code + ", " + message;
+        if (DAILY_RATE_LIMIT_CODE.equals(code)) {
+            throw ExternalDataRequestException.rateLimited(reason);
+        }
+        if (PER_SECOND_RATE_LIMIT_CODE.equals(code)) {
+            throw ExternalDataRequestException.rateLimited(reason, null, true);
+        }
         if (RETRYABLE_RESULT_CODES.contains(code)) {
             throw ExternalDataRequestException.retryable(reason);
         }

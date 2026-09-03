@@ -185,6 +185,69 @@ class DataPipelineRunnerTest {
                 .isEqualTo(DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS);
     }
 
+    @Test
+    void 호출_제한으로만_실패한_수집_단계는_건너뛰고_다음_단계를_실행한다() {
+        ExternalDataCollectionReport rateLimited = new ExternalDataCollectionReport(
+                "myhome-announcement",
+                0,
+                1,
+                3,
+                0,
+                1
+        );
+        when(myHomeAnnouncementCollectionService.collect(any())).thenReturn(rateLimited);
+        when(lhAnnouncementSupplyCollectionService.collect())
+                .thenReturn(collectionReport("lh-announcement-supply"));
+        when(lhAnnouncementDetailCollectionService.collect())
+                .thenReturn(collectionReport("lh-announcement-detail"));
+
+        runner.run(DataPipelineType.ANNOUNCEMENT_COLLECTION, progressListener);
+
+        verify(progressListener).skipped(
+                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                "외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.",
+                rateLimited
+        );
+        verify(lhAnnouncementSupplyCollectionService).collect();
+        verify(lhAnnouncementDetailCollectionService).collect();
+    }
+
+    @Test
+    void 호출_제한과_다른_실패가_섞이면_이후_단계를_실행하지_않는다() {
+        when(myHomeAnnouncementCollectionService.collect(any()))
+                .thenReturn(new ExternalDataCollectionReport(
+                        "myhome-announcement",
+                        0,
+                        2,
+                        4,
+                        0,
+                        1
+                ));
+
+        assertThatThrownBy(() -> runner.run(DataPipelineType.ANNOUNCEMENT_COLLECTION, progressListener))
+                .isInstanceOf(DataPipelinePartialFailureException.class);
+
+        verify(lhAnnouncementSupplyCollectionService, never()).collect();
+    }
+
+    @Test
+    void 주소_API_호출_제한으로만_실패한_단지_정제는_건너뛴다() {
+        MyHomeComplexMappingReport rateLimited =
+                MyHomeComplexMappingReport.rateLimitedRows(2);
+        when(myHomeComplexMappingService.mapAll()).thenReturn(rateLimited);
+        when(householdEnrichmentService.enrichAll())
+                .thenReturn(new LhHousingTypeHouseholdEnrichmentReport(1, 1, 1, 0, 0, 0));
+
+        runner.run(DataPipelineType.COMPLEX_REFINEMENT, progressListener);
+
+        verify(progressListener).skipped(
+                DataPipelineStep.MAP_MYHOME_COMPLEXES,
+                "외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.",
+                rateLimited
+        );
+        verify(householdEnrichmentService).enrichAll();
+    }
+
     private void givenSuccessfulComplexCollectionReports() {
         when(myHomeComplexCollectionService.collect(any()))
                 .thenReturn(new MyHomeComplexCollectionReport("myhome-complex", 1, 0, 1));

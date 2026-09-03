@@ -4,6 +4,7 @@ import com.toadzip.backend.ingest.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.domain.DataPipelineType;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -16,6 +17,8 @@ public interface DataPipelineExecutionRepository
     Optional<DataPipelineExecution> findFirstByTypeOrderByIdDesc(
             DataPipelineType type
     );
+
+    Optional<DataPipelineExecution> findByExecutionId(UUID executionId);
 
     @Modifying
     @Transactional

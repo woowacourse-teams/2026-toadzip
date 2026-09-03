@@ -15,6 +15,7 @@ vi.mock('./admin/ingest/api', async (importOriginal) => ({
     currentStepIndex: 0,
     totalStepCount: type === 'ANNOUNCEMENT_COLLECTION' ? 3 : 2,
     completedSteps: [],
+    skippedSteps: [],
     failure: null,
   })),
   startDataPipeline: vi.fn(),

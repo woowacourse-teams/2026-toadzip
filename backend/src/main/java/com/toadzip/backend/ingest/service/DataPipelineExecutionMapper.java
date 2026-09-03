@@ -4,6 +4,7 @@ import com.toadzip.backend.ingest.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.dto.DataPipelineFailureResponse;
+import com.toadzip.backend.ingest.dto.DataPipelineSkippedStepResponse;
 import java.util.List;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
@@ -33,10 +34,24 @@ public class DataPipelineExecutionMapper {
                 currentStepIndex(currentStep),
                 execution.getType().steps().size(),
                 completedSteps,
+                skippedStepResponses(execution),
                 failureResponse(execution),
                 execution.getStartedAt(),
                 execution.getFinishedAt()
         );
+    }
+
+    private List<DataPipelineSkippedStepResponse> skippedStepResponses(
+            DataPipelineExecution execution
+    ) {
+        return execution.getSkippedSteps()
+                .stream()
+                .map(skippedStep -> new DataPipelineSkippedStepResponse(
+                        skippedStep.getStep().displayName(),
+                        skippedStep.getReason(),
+                        deserializeServerResponse(skippedStep.getServerResponse())
+                ))
+                .toList();
     }
 
     public String serializeServerResponse(Object serverResponse) {

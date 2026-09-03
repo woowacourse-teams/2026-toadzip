@@ -138,6 +138,33 @@ describe('DataPipelineControl', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '단지 수집' })).toBeEnabled())
     expect(screen.getByRole('status')).toHaveTextContent('단지 수집 작업을 완료했습니다.')
   })
+
+  it('호출 제한으로 건너뛴 단계와 응답을 부분 완료로 표시한다', async () => {
+    apiMocks.startDataPipeline.mockResolvedValue(execution(
+      'ANNOUNCEMENT_COLLECTION',
+      'COMPLETED_WITH_SKIPS',
+      {
+        completedSteps: ['LH 공고 공급 원본 수집', 'LH 공고 상세 원본 수집'],
+        skippedSteps: [{
+          stepName: '마이홈 공고 수집',
+          reason: '외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.',
+          serverResponse: { failedRequestCount: 1, rateLimitedRequestCount: 1 },
+        }],
+      },
+    ))
+    render(<DataPipelineControl />)
+
+    fireEvent.click(screen.getByRole('button', { name: '공고 수집' }))
+
+    expect(await screen.findByText(
+      '공고 수집 작업을 일부 단계 건너뜀으로 완료했습니다.',
+    )).toBeVisible()
+    expect(screen.getByText('마이홈 공고 수집 건너뜀')).toBeVisible()
+    expect(screen.getByLabelText('마이홈 공고 수집 건너뜀 응답')).toHaveTextContent(
+      '"rateLimitedRequestCount": 1',
+    )
+    expect(screen.getByRole('button', { name: '공고 수집' })).toBeEnabled()
+  })
 })
 
 function execution(
@@ -153,6 +180,7 @@ function execution(
     currentStepIndex: 0,
     totalStepCount: stepCount(type),
     completedSteps: [],
+    skippedSteps: [],
     failure: null,
     ...overrides,
   }

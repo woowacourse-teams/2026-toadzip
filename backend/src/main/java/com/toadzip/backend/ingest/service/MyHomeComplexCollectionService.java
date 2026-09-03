@@ -138,7 +138,13 @@ public class MyHomeComplexCollectionService {
                     log,
                     "마이홈 단지 지역 수집에 실패했습니다"
             );
-            return new MyHomeComplexCollectionReport("myhome-complex", 0, 1, callCounter.count());
+            return new MyHomeComplexCollectionReport(
+                    "myhome-complex",
+                    0,
+                    1,
+                    callCounter.count(),
+                    ExternalDataRateLimit.count(exception)
+            );
         }
         int storedRowCount = sourceStore.replaceComplexRegion(region, items);
         return new MyHomeComplexCollectionReport("myhome-complex", storedRowCount, 0, callCounter.count());

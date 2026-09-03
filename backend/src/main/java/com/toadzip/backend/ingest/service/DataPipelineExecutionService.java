@@ -27,8 +27,6 @@ public class DataPipelineExecutionService {
             "데이터 수집·정제 작업이 이미 실행 중입니다.";
     private static final String INTERNAL_FAILURE_MESSAGE =
             "현재 단계를 처리하는 중 서버 오류가 발생했습니다.";
-    private static final String COMPLETION_PERSISTENCE_FAILURE_MESSAGE =
-            "완료 결과를 저장하는 중 서버 오류가 발생했습니다.";
     private static final String INTERRUPTED_FAILURE_MESSAGE =
             "서버 실행이 중단되어 데이터 수집·정제 작업을 종료했습니다.";
     private static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(30);
@@ -37,6 +35,7 @@ public class DataPipelineExecutionService {
     private final DataPipelineRunner runner;
     private final DataPipelineExecutionLock executionLock;
     private final DataPipelineExecutionRepository executionRepository;
+    private final DataPipelineExecutionStateService executionStateService;
     private final Executor executor;
     private final ScheduledExecutorService heartbeatExecutor;
     private final Clock clock;
@@ -46,6 +45,7 @@ public class DataPipelineExecutionService {
             DataPipelineRunner runner,
             DataPipelineExecutionLock executionLock,
             DataPipelineExecutionRepository executionRepository,
+            DataPipelineExecutionStateService executionStateService,
             @Qualifier("dataPipelineExecutor") Executor executor,
             @Qualifier("dataPipelineHeartbeatExecutor") ScheduledExecutorService heartbeatExecutor,
             Clock clock,
@@ -54,6 +54,7 @@ public class DataPipelineExecutionService {
         this.runner = runner;
         this.executionLock = executionLock;
         this.executionRepository = executionRepository;
+        this.executionStateService = executionStateService;
         this.executor = executor;
         this.heartbeatExecutor = heartbeatExecutor;
         this.clock = clock;
@@ -63,13 +64,10 @@ public class DataPipelineExecutionService {
     public DataPipelineExecutionResponse start(DataPipelineType type) {
         DataPipelineExecutionLock.Lease lease = executionLock.tryAcquire()
                 .orElseThrow(() -> new IngestAlreadyRunningException(ALREADY_RUNNING_MESSAGE));
-        DataPipelineExecution execution = DataPipelineExecution.start(
-                UUID.randomUUID(),
-                type,
-                Instant.now(clock)
-        );
+        UUID executionId = UUID.randomUUID();
+        DataPipelineExecution execution;
         try {
-            persist(execution);
+            execution = executionStateService.create(executionId, type, Instant.now(clock));
         }
         catch (RuntimeException exception) {
             lease.close();
@@ -82,16 +80,16 @@ public class DataPipelineExecutionService {
         }
         catch (RuntimeException exception) {
             lease.close();
-            recordFailure(execution, null, INTERNAL_FAILURE_MESSAGE, null);
+            recordFailure(executionId, type, null, INTERNAL_FAILURE_MESSAGE, null);
             throw exception;
         }
         try {
-            executor.execute(() -> execute(execution, type, lease, heartbeatTask));
+            executor.execute(() -> execute(executionId, type, lease, heartbeatTask));
         }
         catch (RuntimeException exception) {
             heartbeatTask.cancel(false);
             lease.close();
-            recordFailure(execution, null, INTERNAL_FAILURE_MESSAGE, null);
+            recordFailure(executionId, type, null, INTERNAL_FAILURE_MESSAGE, null);
             throw exception;
         }
         return acceptedResponse;
@@ -105,27 +103,27 @@ public class DataPipelineExecutionService {
     }
 
     private void execute(
-            DataPipelineExecution execution,
+            UUID executionId,
             DataPipelineType type,
             DataPipelineExecutionLock.Lease lease,
             ScheduledFuture<?> heartbeatTask
     ) {
         try (lease) {
-            runner.run(type, progressListener(execution));
-            execution.complete(Instant.now(clock));
-            persist(execution);
+            runner.run(type, progressListener(executionId));
+            executionStateService.complete(executionId, Instant.now(clock));
         }
         catch (DataPipelinePartialFailureException exception) {
             recordFailure(
-                    execution,
+                    executionId,
+                    type,
                     exception.getStep(),
                     exception.getMessage(),
                     exception.getServerResponse()
             );
         }
         catch (RuntimeException exception) {
-            DataPipelineStep failedStep = execution.getCurrentStep();
-            recordFailure(execution, failedStep, INTERNAL_FAILURE_MESSAGE, null);
+            DataPipelineStep failedStep = findCurrentStep(executionId);
+            recordFailure(executionId, type, failedStep, INTERNAL_FAILURE_MESSAGE, null);
             log.error(
                     "데이터 수집·정제 단계 실행에 실패했습니다: type={}, step={}",
                     type,
@@ -138,73 +136,68 @@ public class DataPipelineExecutionService {
         }
     }
 
-    private DataPipelineProgressListener progressListener(DataPipelineExecution execution) {
+    private DataPipelineProgressListener progressListener(UUID executionId) {
         return new DataPipelineProgressListener() {
             @Override
             public void started(DataPipelineStep step) {
-                execution.startStep(step);
-                persist(execution);
+                executionStateService.startStep(executionId, step);
             }
 
             @Override
             public void completed(DataPipelineStep step) {
-                execution.completeStep(step);
-                persist(execution);
+                executionStateService.completeStep(executionId, step);
+            }
+
+            @Override
+            public void skipped(DataPipelineStep step, String reason, Object serverResponse) {
+                executionStateService.skipStep(
+                        executionId,
+                        step,
+                        reason,
+                        executionMapper.serializeServerResponse(serverResponse)
+                );
             }
         };
     }
 
     private void recordFailure(
-            DataPipelineExecution execution,
+            UUID executionId,
+            DataPipelineType type,
             DataPipelineStep failedStep,
             String message,
             Object serverResponse
     ) {
-        if (execution.isCompleted()) {
-            recordCompletionPersistenceFailure(execution);
-            return;
-        }
-        if (!execution.isRunning()) {
-            return;
-        }
         try {
-            execution.fail(
+            executionStateService.fail(
+                    executionId,
                     failedStep,
                     message,
                     executionMapper.serializeServerResponse(serverResponse),
                     Instant.now(clock)
             );
-            persist(execution);
         }
         catch (RuntimeException exception) {
             log.error(
                     "데이터 수집·정제 실패 상태를 저장하지 못했습니다: type={}, step={}",
-                    execution.getType(),
+                    type,
                     failedStep,
                     exception
             );
         }
     }
 
-    private void recordCompletionPersistenceFailure(DataPipelineExecution execution) {
+    private DataPipelineStep findCurrentStep(UUID executionId) {
         try {
-            execution.failCompletionPersistence(
-                    COMPLETION_PERSISTENCE_FAILURE_MESSAGE,
-                    Instant.now(clock)
-            );
-            persist(execution);
+            return executionStateService.findCurrentStep(executionId);
         }
         catch (RuntimeException exception) {
             log.error(
-                    "데이터 수집·정제 완료 저장 실패 상태를 저장하지 못했습니다: type={}",
-                    execution.getType(),
+                    "데이터 수집·정제 현재 단계를 조회하지 못했습니다: executionId={}",
+                    executionId,
                     exception
             );
+            return null;
         }
-    }
-
-    private void persist(DataPipelineExecution execution) {
-        executionRepository.saveAndFlush(execution);
     }
 
     private ScheduledFuture<?> scheduleHeartbeat(DataPipelineExecution execution) {
@@ -234,9 +227,15 @@ public class DataPipelineExecutionService {
         if (!isLeaseExpired(execution) || executionLock.isHeld()) {
             return execution;
         }
-        execution.fail(null, INTERRUPTED_FAILURE_MESSAGE, null, Instant.now(clock));
-        persist(execution);
-        return execution;
+        recordFailure(
+                execution.getExecutionId(),
+                execution.getType(),
+                null,
+                INTERRUPTED_FAILURE_MESSAGE,
+                null
+        );
+        return executionRepository.findByExecutionId(execution.getExecutionId())
+                .orElse(execution);
     }
 
     private boolean isLeaseExpired(DataPipelineExecution execution) {

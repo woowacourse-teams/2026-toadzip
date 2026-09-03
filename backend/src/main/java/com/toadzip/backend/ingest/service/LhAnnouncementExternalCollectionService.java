@@ -262,7 +262,14 @@ public class LhAnnouncementExternalCollectionService {
                 log,
                 "LH 외부 API 수집에 실패했습니다"
         );
-        return new ExternalDataCollectionReport(operation(targetSource), 0, 1, callCounter.count());
+        return new ExternalDataCollectionReport(
+                operation(targetSource),
+                0,
+                1,
+                callCounter.count(),
+                0,
+                ExternalDataRateLimit.count(exception)
+        );
     }
 
     private int store(ExternalDataSource targetSource, String panId, ExternalDataResponse response) {

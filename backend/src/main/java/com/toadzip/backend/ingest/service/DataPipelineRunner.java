@@ -16,6 +16,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class DataPipelineRunner {
 
+    private static final String RATE_LIMIT_SKIP_REASON =
+            "외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.";
+
     private final MyHomeComplexCollectionService myHomeComplexCollectionService;
     private final LhLeaseCatalogCollectionService lhLeaseCatalogCollectionService;
     private final MyHomeAnnouncementCollectionService myHomeAnnouncementCollectionService;
@@ -55,8 +58,24 @@ public class DataPipelineRunner {
     private void runStep(DataPipelineStep step, DataPipelineProgressListener progressListener) {
         progressListener.started(step);
         Object report = execute(step);
+        if (hasOnlyRateLimitedFailures(report)) {
+            progressListener.skipped(step, RATE_LIMIT_SKIP_REASON, report);
+            return;
+        }
         rejectPartialFailure(step, report);
         progressListener.completed(step);
+    }
+
+    private boolean hasOnlyRateLimitedFailures(Object report) {
+        return switch (report) {
+            case MyHomeComplexCollectionReport result -> result.failedRequestCount() > 0
+                    && result.failedRequestCount() == result.rateLimitedRequestCount();
+            case ExternalDataCollectionReport result -> result.failedRequestCount() > 0
+                    && result.failedRequestCount() == result.rateLimitedRequestCount();
+            case MyHomeComplexMappingReport result -> result.failedSourceRowCount() > 0
+                    && result.failedSourceRowCount() == result.rateLimitedSourceRowCount();
+            default -> false;
+        };
     }
 
     private Object execute(DataPipelineStep step) {

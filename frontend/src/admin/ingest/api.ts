@@ -4,7 +4,18 @@ export type DataPipelineType =
   | 'ANNOUNCEMENT_COLLECTION'
   | 'ANNOUNCEMENT_REFINEMENT'
 
-export type DataPipelineExecutionStatus = 'IDLE' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+export type DataPipelineExecutionStatus =
+  | 'IDLE'
+  | 'RUNNING'
+  | 'COMPLETED'
+  | 'COMPLETED_WITH_SKIPS'
+  | 'FAILED'
+
+export type DataPipelineSkippedStep = {
+  stepName: string
+  reason: string
+  serverResponse: unknown
+}
 
 export type DataPipelineFailure = {
   stepName: string | null
@@ -20,6 +31,7 @@ export type DataPipelineExecution = {
   currentStepIndex: number
   totalStepCount: number
   completedSteps: readonly string[]
+  skippedSteps: readonly DataPipelineSkippedStep[]
   failure: DataPipelineFailure | null
 }
 
@@ -113,11 +125,22 @@ function isDataPipelineExecution(value: unknown): value is DataPipelineExecution
     || !value.completedSteps.every((step) => typeof step === 'string')) {
     return false
   }
+  if (!Array.isArray(value.skippedSteps)
+    || !value.skippedSteps.every(isPipelineSkippedStep)) {
+    return false
+  }
   return (typeof value.executionId === 'string' || value.executionId === null)
     && (typeof value.currentStepName === 'string' || value.currentStepName === null)
     && typeof value.currentStepIndex === 'number'
     && typeof value.totalStepCount === 'number'
     && (value.failure === null || isPipelineFailure(value.failure))
+}
+
+function isPipelineSkippedStep(value: unknown): value is DataPipelineSkippedStep {
+  return isRecord(value)
+    && typeof value.stepName === 'string'
+    && typeof value.reason === 'string'
+    && 'serverResponse' in value
 }
 
 function isPipelineFailure(value: unknown): value is DataPipelineFailure {
@@ -141,7 +164,11 @@ function isDataPipelineType(value: unknown): value is DataPipelineType {
 }
 
 function isExecutionStatus(value: unknown): value is DataPipelineExecutionStatus {
-  return value === 'IDLE' || value === 'RUNNING' || value === 'COMPLETED' || value === 'FAILED'
+  return value === 'IDLE'
+    || value === 'RUNNING'
+    || value === 'COMPLETED'
+    || value === 'COMPLETED_WITH_SKIPS'
+    || value === 'FAILED'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

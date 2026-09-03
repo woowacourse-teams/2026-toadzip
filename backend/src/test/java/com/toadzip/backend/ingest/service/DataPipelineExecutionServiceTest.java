@@ -25,7 +25,6 @@ import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,6 +49,9 @@ class DataPipelineExecutionServiceTest {
     private DataPipelineExecutionRepository executionRepository;
 
     @Mock
+    private DataPipelineExecutionStateService executionStateService;
+
+    @Mock
     private ScheduledExecutorService heartbeatExecutor;
 
     @Mock
@@ -71,6 +73,7 @@ class DataPipelineExecutionServiceTest {
                 runner,
                 executionLock,
                 executionRepository,
+                executionStateService,
                 directExecutor,
                 heartbeatExecutor,
                 clock,
@@ -100,7 +103,9 @@ class DataPipelineExecutionServiceTest {
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
         assertThat(status.completedSteps()).hasSize(3);
         verify(lease).close();
-        verify(executionRepository, times(8)).saveAndFlush(any());
+        verify(executionStateService, times(3)).startStep(any(), any());
+        verify(executionStateService, times(3)).completeStep(any(), any());
+        verify(executionStateService).complete(any(), any());
     }
 
     @Test
@@ -121,6 +126,7 @@ class DataPipelineExecutionServiceTest {
                 runner,
                 executionLock,
                 executionRepository,
+                executionStateService,
                 Runnable::run,
                 heartbeatExecutor,
                 Clock.fixed(Instant.parse("2026-09-02T12:00:00Z"), ZoneOffset.UTC),
@@ -144,7 +150,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 최초_실행_상태를_저장하지_못하면_실행_잠금을_반납한다() {
         when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
-        when(executionRepository.saveAndFlush(any()))
+        when(executionStateService.create(any(), any(), any()))
                 .thenThrow(new IllegalStateException("database unavailable"));
 
         assertThatThrownBy(() -> service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION))
@@ -178,19 +184,44 @@ class DataPipelineExecutionServiceTest {
     }
 
     @Test
-    void 완료_상태_저장에_실패하면_실패_상태로_종료한다() {
-        AtomicInteger saveAttemptCount = new AtomicInteger();
-        AtomicReference<DataPipelineExecutionStatus> lastPersistedStatus = new AtomicReference<>();
+    void 호출_제한으로_건너뛴_단계가_있으면_부분_완료_상태와_사유를_보존한다() {
+        configureStoredExecution();
         when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
-        when(executionRepository.saveAndFlush(any())).thenAnswer(invocation -> {
-            DataPipelineExecution execution = invocation.getArgument(0);
-            int attempt = saveAttemptCount.incrementAndGet();
-            if (attempt == 8) {
-                throw new IllegalStateException("final status write failed");
-            }
-            lastPersistedStatus.set(execution.getStatus());
-            return execution;
+        java.util.Map<String, Integer> report = java.util.Map.of("rateLimitedRequestCount", 1);
+        doAnswer(invocation -> {
+            DataPipelineProgressListener listener = invocation.getArgument(1);
+            listener.started(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+            listener.skipped(
+                    DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                    "외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.",
+                    report
+            );
+            listener.started(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
+            listener.completed(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
+            listener.started(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
+            listener.completed(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
+            return null;
+        }).when(runner).run(any(), any());
+
+        service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+        var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+
+        assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS);
+        assertThat(status.completedSteps()).hasSize(2);
+        assertThat(status.skippedSteps()).singleElement().satisfies(skipped -> {
+            assertThat(skipped.stepName()).isEqualTo("마이홈 공고 수집");
+            assertThat(skipped.reason()).contains("호출 제한");
+            assertThat(skipped.serverResponse()).isEqualTo(report);
         });
+    }
+
+    @Test
+    void 완료_상태_저장에_실패하면_실패_상태로_종료한다() {
+        configureStoredExecution();
+        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
+        doAnswer(invocation -> {
+            throw new IllegalStateException("final status write failed");
+        }).when(executionStateService).complete(any(), any());
         doAnswer(invocation -> {
             DataPipelineType type = invocation.getArgument(0);
             DataPipelineProgressListener listener = invocation.getArgument(1);
@@ -203,8 +234,13 @@ class DataPipelineExecutionServiceTest {
 
         service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
-        assertThat(saveAttemptCount).hasValue(9);
-        assertThat(lastPersistedStatus).hasValue(DataPipelineExecutionStatus.FAILED);
+        verify(executionStateService).fail(
+                any(),
+                org.mockito.ArgumentMatchers.isNull(),
+                any(),
+                org.mockito.ArgumentMatchers.isNull(),
+                any()
+        );
     }
 
     @Test
@@ -216,6 +252,22 @@ class DataPipelineExecutionServiceTest {
         );
         when(executionRepository.findFirstByTypeOrderByIdDesc(any()))
                 .thenReturn(Optional.of(staleExecution));
+        doAnswer(invocation -> {
+            staleExecution.fail(
+                    invocation.getArgument(1),
+                    invocation.getArgument(2),
+                    invocation.getArgument(3),
+                    invocation.getArgument(4)
+            );
+            return null;
+        }).when(executionStateService).fail(
+                any(),
+                org.mockito.ArgumentMatchers.nullable(DataPipelineStep.class),
+                any(),
+                org.mockito.ArgumentMatchers.nullable(String.class),
+                any()
+        );
+        when(executionRepository.findByExecutionId(any())).thenReturn(Optional.of(staleExecution));
 
         var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
@@ -237,17 +289,64 @@ class DataPipelineExecutionServiceTest {
         var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
-        verify(executionRepository, never()).saveAndFlush(any());
+        verify(executionStateService, never()).fail(any(), any(), any(), any(), any());
     }
 
     private void configureStoredExecution() {
         AtomicReference<DataPipelineExecution> savedExecution = new AtomicReference<>();
-        when(executionRepository.saveAndFlush(any())).thenAnswer(invocation -> {
-            DataPipelineExecution execution = invocation.getArgument(0);
+        lenient().when(executionStateService.create(any(), any(), any())).thenAnswer(invocation -> {
+            DataPipelineExecution execution = DataPipelineExecution.start(
+                    invocation.getArgument(0),
+                    invocation.getArgument(1),
+                    invocation.getArgument(2)
+            );
             savedExecution.set(execution);
             return execution;
         });
-        when(executionRepository.findFirstByTypeOrderByIdDesc(any()))
+        lenient().doAnswer(invocation -> {
+            savedExecution.get().startStep(invocation.getArgument(1));
+            return null;
+        }).when(executionStateService).startStep(any(), any());
+        lenient().doAnswer(invocation -> {
+            savedExecution.get().completeStep(invocation.getArgument(1));
+            return null;
+        }).when(executionStateService).completeStep(any(), any());
+        lenient().doAnswer(invocation -> {
+            savedExecution.get().skipStep(
+                    invocation.getArgument(1),
+                    invocation.getArgument(2),
+                    invocation.getArgument(3)
+            );
+            return null;
+        }).when(executionStateService).skipStep(any(), any(), any(), any());
+        lenient().doAnswer(invocation -> {
+            savedExecution.get().complete(invocation.getArgument(1));
+            return null;
+        }).when(executionStateService).complete(any(), any());
+        lenient().doAnswer(invocation -> {
+            DataPipelineExecution execution = savedExecution.get();
+            if (execution != null && execution.isRunning()) {
+                execution.fail(
+                        invocation.getArgument(1),
+                        invocation.getArgument(2),
+                        invocation.getArgument(3),
+                        invocation.getArgument(4)
+                );
+            }
+            return null;
+        }).when(executionStateService).fail(
+                any(),
+                org.mockito.ArgumentMatchers.nullable(DataPipelineStep.class),
+                any(),
+                org.mockito.ArgumentMatchers.nullable(String.class),
+                any()
+        );
+        lenient().when(executionStateService.findCurrentStep(any())).thenAnswer(
+                invocation -> savedExecution.get().getCurrentStep()
+        );
+        lenient().when(executionRepository.findFirstByTypeOrderByIdDesc(any()))
+                .thenAnswer(invocation -> Optional.ofNullable(savedExecution.get()));
+        lenient().when(executionRepository.findByExecutionId(any()))
                 .thenAnswer(invocation -> Optional.ofNullable(savedExecution.get()));
     }
 

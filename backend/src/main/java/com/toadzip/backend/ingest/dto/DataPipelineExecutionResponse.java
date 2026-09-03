@@ -16,6 +16,7 @@ public record DataPipelineExecutionResponse(
         int currentStepIndex,
         int totalStepCount,
         List<String> completedSteps,
+        List<DataPipelineSkippedStepResponse> skippedSteps,
         DataPipelineFailureResponse failure,
         Instant startedAt,
         Instant finishedAt
@@ -23,6 +24,7 @@ public record DataPipelineExecutionResponse(
 
     public DataPipelineExecutionResponse {
         completedSteps = List.copyOf(completedSteps);
+        skippedSteps = List.copyOf(skippedSteps);
     }
 
     public static DataPipelineExecutionResponse idle(DataPipelineType type) {
@@ -34,6 +36,7 @@ public record DataPipelineExecutionResponse(
                 null,
                 0,
                 type.steps().size(),
+                List.of(),
                 List.of(),
                 null,
                 null,

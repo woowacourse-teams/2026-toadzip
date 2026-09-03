@@ -109,7 +109,14 @@ public class MyHomeAnnouncementCollectionService {
                     log,
                     "마이홈 공고 공급유형 수집에 실패했습니다"
             );
-            return new ExternalDataCollectionReport("myhome-announcement", 0, 1, callCounter.count());
+            return new ExternalDataCollectionReport(
+                    "myhome-announcement",
+                    0,
+                    1,
+                    callCounter.count(),
+                    0,
+                    ExternalDataRateLimit.count(exception)
+            );
         }
         int storedRowCount = sourceStore.storeAnnouncements(runId, items);
         return new ExternalDataCollectionReport("myhome-announcement", storedRowCount, 0, callCounter.count());

@@ -265,10 +265,28 @@ function PipelineResult({ type, state }: { type: DataPipelineType, state: Pipeli
       {execution.status === 'COMPLETED' ? (
         <p className="data-pipeline-success" role="status">{label} 작업을 완료했습니다.</p>
       ) : null}
+      {execution.status === 'COMPLETED_WITH_SKIPS' ? (
+        <p role="status">{label} 작업을 일부 단계 건너뜀으로 완료했습니다.</p>
+      ) : null}
       {execution.completedSteps.length > 0 ? (
         <ol className="data-pipeline-steps">
           {execution.completedSteps.map((step) => <li key={step}>{step} 완료</li>)}
         </ol>
+      ) : null}
+      {execution.skippedSteps.length > 0 ? (
+        <ul className="data-pipeline-steps">
+          {execution.skippedSteps.map((step) => (
+            <li key={step.stepName}>
+              <strong>{step.stepName} 건너뜀</strong>
+              <p>{step.reason}</p>
+              {step.serverResponse !== null && step.serverResponse !== undefined ? (
+                <pre aria-label={`${step.stepName} 건너뜀 응답`}>
+                  {JSON.stringify(step.serverResponse, null, 2)}
+                </pre>
+              ) : null}
+            </li>
+          ))}
+        </ul>
       ) : null}
       {(execution.status === 'FAILED' || state.requestError !== null) && failureMessage ? (
         <div className="data-pipeline-error" role="alert">
@@ -304,6 +322,7 @@ function idleExecution(type: DataPipelineType): DataPipelineExecution {
     currentStepIndex: 0,
     totalStepCount: pipelineStepCounts[type],
     completedSteps: [],
+    skippedSteps: [],
     failure: null,
   }
 }

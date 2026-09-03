@@ -57,7 +57,14 @@ public class LhLeaseCatalogCollectionService {
                     log,
                     "LH 임대 카탈로그 수집에 실패했습니다"
             );
-            return new ExternalDataCollectionReport("lh-lease-catalog", 0, 1, callCounter.count());
+            return new ExternalDataCollectionReport(
+                    "lh-lease-catalog",
+                    0,
+                    1,
+                    callCounter.count(),
+                    0,
+                    ExternalDataRateLimit.count(exception)
+            );
         }
         int storedRowCount = sourceStore.replaceCatalog(items);
         ExternalDataCollectionReport report = new ExternalDataCollectionReport(

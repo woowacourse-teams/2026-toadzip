@@ -20,6 +20,8 @@ class DataPipelineExecutionMigrationTest {
     private static final String SCHEMA = "data_pipeline_execution_migration_test";
     private static final String MIGRATION =
             "db/migration/V20260903_01__create_data_pipeline_executions.sql";
+    private static final String SKIPPED_STEPS_MIGRATION =
+            "db/migration/V20260903_02__add_data_pipeline_skipped_steps.sql";
 
     @Autowired
     private DataSource dataSource;
@@ -30,9 +32,15 @@ class DataPipelineExecutionMigrationTest {
             prepareSchema(connection);
             try {
                 ScriptUtils.executeSqlScript(connection, new ClassPathResource(MIGRATION));
+                ScriptUtils.executeSqlScript(
+                        connection,
+                        new ClassPathResource(SKIPPED_STEPS_MIGRATION)
+                );
 
                 assertThat(tableExists(connection, "data_pipeline_executions")).isTrue();
                 assertThat(tableExists(connection, "data_pipeline_execution_completed_steps"))
+                        .isTrue();
+                assertThat(tableExists(connection, "data_pipeline_execution_skipped_steps"))
                         .isTrue();
                 assertThat(columnLength(connection, "data_pipeline_executions", "type"))
                         .isEqualTo(40);

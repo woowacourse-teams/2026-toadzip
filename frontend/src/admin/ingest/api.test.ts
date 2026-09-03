@@ -95,6 +95,7 @@ function execution(
     currentStepIndex: 0,
     totalStepCount: type === 'ANNOUNCEMENT_COLLECTION' ? 3 : 2,
     completedSteps: [],
+    skippedSteps: [],
     failure: null,
   }
 }

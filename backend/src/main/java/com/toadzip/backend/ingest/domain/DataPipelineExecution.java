@@ -64,6 +64,14 @@ public class DataPipelineExecution {
     @Column(name = "completed_step", nullable = false, length = 60)
     private List<DataPipelineStep> completedSteps = new ArrayList<>();
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "data_pipeline_execution_skipped_steps",
+            joinColumns = @JoinColumn(name = "data_pipeline_execution_id")
+    )
+    @OrderColumn(name = "step_order")
+    private List<DataPipelineSkippedStep> skippedSteps = new ArrayList<>();
+
     @Enumerated(EnumType.STRING)
     @Column(length = 60)
     private DataPipelineStep failedStep;
@@ -115,14 +123,23 @@ public class DataPipelineExecution {
         currentStep = null;
     }
 
+    public void skipStep(DataPipelineStep step, String reason, String serverResponse) {
+        requireRunning();
+        if (currentStep != step) {
+            throw new IllegalStateException("현재 실행 중인 단계만 건너뛸 수 있습니다.");
+        }
+        skippedSteps.add(DataPipelineSkippedStep.of(step, reason, serverResponse));
+        currentStep = null;
+    }
+
     public void complete(Instant completedAt) {
         requireRunning();
-        if (completedSteps.size() != type.steps().size()) {
+        if (completedSteps.size() + skippedSteps.size() != type.steps().size()) {
             throw new IllegalStateException(
-                    "모든 단계를 완료한 뒤 파이프라인을 완료할 수 있습니다."
+                    "모든 단계를 완료하거나 건너뛴 뒤 파이프라인을 완료할 수 있습니다."
             );
         }
-        status = DataPipelineExecutionStatus.COMPLETED;
+        status = completionStatus();
         currentStep = null;
         finishedAt = completedAt;
     }
@@ -147,18 +164,8 @@ public class DataPipelineExecution {
     }
 
     public boolean isCompleted() {
-        return status == DataPipelineExecutionStatus.COMPLETED;
-    }
-
-    public void failCompletionPersistence(String message, Instant failedAt) {
-        if (!isCompleted()) {
-            throw new IllegalStateException(
-                    "완료된 파이프라인만 완료 저장 실패로 전환할 수 있습니다."
-            );
-        }
-        status = DataPipelineExecutionStatus.FAILED;
-        failureMessage = message;
-        finishedAt = failedAt;
+        return status == DataPipelineExecutionStatus.COMPLETED
+                || status == DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS;
     }
 
     private void requireRunning() {
@@ -167,5 +174,12 @@ public class DataPipelineExecution {
                     "실행 중인 데이터 파이프라인만 상태를 변경할 수 있습니다."
             );
         }
+    }
+
+    private DataPipelineExecutionStatus completionStatus() {
+        if (skippedSteps.isEmpty()) {
+            return DataPipelineExecutionStatus.COMPLETED;
+        }
+        return DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS;
     }
 }
