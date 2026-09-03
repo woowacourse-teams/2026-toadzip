@@ -12,6 +12,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.Test;
@@ -45,6 +46,9 @@ class LocationSummaryFileParserTest {
         assertThat(result.missingCoordinateRowCount()).isOne();
         assertThat(result.entryNames()).containsExactlyInAnyOrder("entrc_seoul.txt", "entrc_jeju.txt");
         assertThat(result.provinceCodes()).containsExactlyInAnyOrder("11", "50");
+        assertThat(result.provinceCodesByEntry())
+                .containsEntry("entrc_seoul.txt", Set.of("11"))
+                .containsEntry("entrc_jeju.txt", Set.of("50"));
         assertThat(records).extracting(LocationSummaryRecord::roadAddress)
                 .containsExactly(
                         "서울특별시 중구 세종대로 110",
@@ -70,6 +74,23 @@ class LocationSummaryFileParserTest {
         assertThatThrownBy(() -> parser.parse(new ByteArrayInputStream(zip), ignored -> { }))
                 .isInstanceOf(InvalidIngestRequestException.class)
                 .hasMessageContaining("TXT가 없습니다");
+    }
+
+    @Test
+    void 비어_있는_지역_TXT는_빈_시도코드_집합으로_기록한다() throws IOException {
+        byte[] zip = zip(List.of(
+                new Entry("entrc_seoul.txt", "", MS949),
+                new Entry("entrc_jeju.txt", row(
+                        "50130", "2", "5013010100", "제주특별자치도", "서귀포시", "성산읍",
+                        "501302000001", "일출로", "0", "42", "3", "", ""
+                ), MS949)
+        ));
+
+        LocationSummaryFileParseResult result = parser.parse(new ByteArrayInputStream(zip), ignored -> { });
+
+        assertThat(result.provinceCodesByEntry())
+                .containsEntry("entrc_seoul.txt", Set.of())
+                .containsEntry("entrc_jeju.txt", Set.of("50"));
     }
 
     private String row(

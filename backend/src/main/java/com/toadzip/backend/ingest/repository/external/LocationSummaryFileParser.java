@@ -13,8 +13,10 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.zip.ZipEntry;
@@ -65,8 +67,9 @@ public class LocationSummaryFileParser {
             if (!isLocationSummaryEntry(entry)) {
                 continue;
             }
-            state.startEntry(baseName(entry.getName()));
-            parseText(zip, entry.getName(), consumer, state);
+            String entryName = baseName(entry.getName());
+            state.startEntry(entryName);
+            parseText(zip, entryName, consumer, state);
         }
         return state.result();
     }
@@ -88,7 +91,7 @@ public class LocationSummaryFileParser {
             }
             LocationSummaryRecord record = parseLine(stripBom(line), entryName, rowNumber);
             consumer.accept(record);
-            state.accept(record);
+            state.accept(entryName, record);
         }
     }
 
@@ -219,6 +222,8 @@ public class LocationSummaryFileParser {
 
         private final Set<String> entryNames = new HashSet<>();
 
+        private final Map<String, Set<String>> provinceCodesByEntry = new HashMap<>();
+
         private final Set<String> provinceCodes = new HashSet<>();
 
         private void startEntry(String entryName) {
@@ -229,9 +234,10 @@ public class LocationSummaryFileParser {
             if (!entryNames.add(entryName)) {
                 throw new InvalidIngestRequestException("위치정보요약DB TXT 파일명이 중복되었습니다: " + entryName);
             }
+            provinceCodesByEntry.put(entryName, new HashSet<>());
         }
 
-        private void accept(LocationSummaryRecord record) {
+        private void accept(String entryName, LocationSummaryRecord record) {
             rowCount++;
             if (rowCount > MAX_ROW_COUNT) {
                 throw new InvalidIngestRequestException("위치정보요약DB 행 수가 허용 범위를 초과했습니다.");
@@ -240,6 +246,7 @@ public class LocationSummaryFileParser {
                 coordinateRowCount++;
             }
             provinceCodes.add(record.provinceCode());
+            provinceCodesByEntry.get(entryName).add(record.provinceCode());
         }
 
         private LocationSummaryFileParseResult result() {
@@ -251,6 +258,7 @@ public class LocationSummaryFileParser {
                     rowCount,
                     coordinateRowCount,
                     entryNames,
+                    provinceCodesByEntry,
                     provinceCodes
             );
         }

@@ -15,6 +15,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.springframework.stereotype.Service;
@@ -25,23 +26,23 @@ public class LocationSummaryImportService {
 
     private static final int MAX_SELECTED_ROW_COUNT = 500_000;
 
-    private static final Set<String> NATIONWIDE_ENTRY_NAMES = Set.of(
-            "entrc_busan.txt",
-            "entrc_chungbuk.txt",
-            "entrc_chungnam.txt",
-            "entrc_daegu.txt",
-            "entrc_daejeon.txt",
-            "entrc_gangwon.txt",
-            "entrc_gyeongbuk.txt",
-            "entrc_gyeongnam.txt",
-            "entrc_gyunggi.txt",
-            "entrc_incheon.txt",
-            "entrc_jeju.txt",
-            "entrc_jeonbuk.txt",
-            "entrc_jeonnamgwangju.txt",
-            "entrc_sejong.txt",
-            "entrc_seoul.txt",
-            "entrc_ulsan.txt"
+    private static final Map<String, Set<String>> NATIONWIDE_ENTRY_PROVINCE_CODES = Map.ofEntries(
+            Map.entry("entrc_busan.txt", Set.of("26")),
+            Map.entry("entrc_chungbuk.txt", Set.of("43")),
+            Map.entry("entrc_chungnam.txt", Set.of("44")),
+            Map.entry("entrc_daegu.txt", Set.of("27")),
+            Map.entry("entrc_daejeon.txt", Set.of("30")),
+            Map.entry("entrc_gangwon.txt", Set.of("51")),
+            Map.entry("entrc_gyeongbuk.txt", Set.of("47")),
+            Map.entry("entrc_gyeongnam.txt", Set.of("48")),
+            Map.entry("entrc_gyunggi.txt", Set.of("41")),
+            Map.entry("entrc_incheon.txt", Set.of("28")),
+            Map.entry("entrc_jeju.txt", Set.of("50")),
+            Map.entry("entrc_jeonbuk.txt", Set.of("52")),
+            Map.entry("entrc_jeonnamgwangju.txt", Set.of("12")),
+            Map.entry("entrc_sejong.txt", Set.of("36")),
+            Map.entry("entrc_seoul.txt", Set.of("11")),
+            Map.entry("entrc_ulsan.txt", Set.of("31"))
     );
 
     private final LocationSummaryFileParser parser;
@@ -95,7 +96,8 @@ public class LocationSummaryImportService {
                 matchedAddresses,
                 selectedRecords
         ));
-        validateNationwide(parseResult.entryNames());
+        validateNationwide(parseResult);
+        validateMatchedAddresses(matchedAddresses);
 
         ReplacementResult replacement = Objects.requireNonNull(transactionTemplate.execute(
                 status -> replaceLocations(selectedRecords)
@@ -165,16 +167,45 @@ public class LocationSummaryImportService {
         );
     }
 
-    private void validateNationwide(Set<String> actualEntryNames) {
-        if (NATIONWIDE_ENTRY_NAMES.equals(actualEntryNames)) {
+    private void validateNationwide(LocationSummaryFileParseResult parseResult) {
+        Map<String, Set<String>> actualEntries = parseResult.provinceCodesByEntry();
+        if (NATIONWIDE_ENTRY_PROVINCE_CODES.equals(actualEntries)) {
             return;
         }
-        Set<String> missing = new HashSet<>(NATIONWIDE_ENTRY_NAMES);
-        missing.removeAll(actualEntryNames);
-        Set<String> unknown = new HashSet<>(actualEntryNames);
-        unknown.removeAll(NATIONWIDE_ENTRY_NAMES);
         throw new InvalidIngestRequestException(
-                "전국 월전체분이 아닙니다. 누락 파일=" + missing + ", 알 수 없는 파일=" + unknown
+                "전국 월전체분이 아닙니다. 누락 파일=" + missingEntries(actualEntries)
+                        + ", 알 수 없는 파일=" + unknownEntries(actualEntries)
+                        + ", 비어 있거나 시도코드가 다른 파일=" + invalidEntries(actualEntries)
+        );
+    }
+
+    private Set<String> missingEntries(Map<String, Set<String>> actualEntries) {
+        Set<String> missing = new HashSet<>(NATIONWIDE_ENTRY_PROVINCE_CODES.keySet());
+        missing.removeAll(actualEntries.keySet());
+        return missing;
+    }
+
+    private Set<String> unknownEntries(Map<String, Set<String>> actualEntries) {
+        Set<String> unknown = new HashSet<>(actualEntries.keySet());
+        unknown.removeAll(NATIONWIDE_ENTRY_PROVINCE_CODES.keySet());
+        return unknown;
+    }
+
+    private Set<String> invalidEntries(Map<String, Set<String>> actualEntries) {
+        Set<String> invalid = new HashSet<>(NATIONWIDE_ENTRY_PROVINCE_CODES.keySet());
+        invalid.retainAll(actualEntries.keySet());
+        invalid.removeIf(entryName -> NATIONWIDE_ENTRY_PROVINCE_CODES.get(entryName)
+                .equals(actualEntries.get(entryName)));
+        return invalid;
+    }
+
+    private void validateMatchedAddresses(Set<String> matchedAddresses) {
+        if (!matchedAddresses.isEmpty()) {
+            return;
+        }
+        throw new InvalidIngestRequestException(
+                "위치정보요약DB에서 단지 도로명주소와 일치하는 "
+                        + "좌표 대상을 찾지 못했습니다."
         );
     }
 

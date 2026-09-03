@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.toadzip.backend.ingest.domain.MyHomeComplexMappingCandidate;
 import com.toadzip.backend.ingest.domain.MyHomeComplexSource;
 import com.toadzip.backend.ingest.domain.MyHomeComplexSourceData;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
@@ -14,8 +15,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.charset.Charset;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.BeforeEach;
@@ -85,26 +88,118 @@ class LocationSummaryImportServiceTest {
                 .isEqualTo("서울특별시 종로구 테스트로 1");
     }
 
+    @Test
+    void 대상과_불일치한_ZIP은_거절하고_기존데이터를_유지한다() throws IOException {
+        service.importMatches("full.zip", nationwideZip());
+        saveCandidate();
+
+        assertThatThrownBy(() -> service.importMatches("wrong.zip", nationwideZipWithoutTargetAddress()))
+                .isInstanceOf(InvalidIngestRequestException.class)
+                .hasMessageContaining("일치하는 좌표 대상을 찾지 못했습니다");
+        assertThat(locationRepository.count()).isOne();
+        assertThat(candidateRepository.count()).isOne();
+    }
+
+    @Test
+    void 빈_지역_TXT가_있는_ZIP은_거절하고_기존데이터를_유지한다() throws IOException {
+        service.importMatches("full.zip", nationwideZip());
+        saveCandidate();
+
+        assertThatThrownBy(() -> service.importMatches(
+                "empty-region.zip",
+                nationwideZipWithEmptyRegions()
+        ))
+                .isInstanceOf(InvalidIngestRequestException.class)
+                .hasMessageContaining("비어 있거나 시도코드가 다른 파일");
+        assertThat(locationRepository.count()).isOne();
+        assertThat(candidateRepository.count()).isOne();
+    }
+
+    @Test
+    void 잘못된_시도코드의_ZIP은_거절하고_기존데이터를_유지한다() throws IOException {
+        service.importMatches("full.zip", nationwideZip());
+        saveCandidate();
+
+        assertThatThrownBy(() -> service.importMatches(
+                "wrong-region.zip",
+                nationwideZipWithWrongProvince()
+        ))
+                .isInstanceOf(InvalidIngestRequestException.class)
+                .hasMessageContaining("entrc_busan.txt")
+                .hasMessageContaining("entrc_daegu.txt");
+        assertThat(locationRepository.count()).isOne();
+        assertThat(candidateRepository.count()).isOne();
+    }
+
+    @Test
+    void 같은_전국_ZIP을_반복_적재하면_기존_행을_안전하게_교체한다() throws IOException {
+        service.importMatches("first.zip", nationwideZip());
+
+        var report = service.importMatches("second.zip", nationwideZip());
+
+        assertThat(report.replacedRowCount()).isOne();
+        assertThat(report.storedLocationCount()).isOne();
+        assertThat(locationRepository.count()).isOne();
+    }
+
     private ByteArrayInputStream nationwideZip() throws IOException {
         return zip(ENTRIES);
     }
 
+    private ByteArrayInputStream nationwideZipWithoutTargetAddress() throws IOException {
+        return zip(ENTRIES, Set.of(), "다른로");
+    }
+
+    private ByteArrayInputStream nationwideZipWithEmptyRegions() throws IOException {
+        Set<String> emptyEntries = new HashSet<>(ENTRIES.keySet());
+        emptyEntries.remove("entrc_seoul.txt");
+        return zip(ENTRIES, emptyEntries, "테스트로");
+    }
+
+    private ByteArrayInputStream nationwideZipWithWrongProvince() throws IOException {
+        Map<String, Province> entries = new LinkedHashMap<>(ENTRIES);
+        entries.put("entrc_busan.txt", new Province("27", "대구광역시"));
+        entries.put("entrc_daegu.txt", new Province("26", "부산광역시"));
+        return zip(entries);
+    }
+
     private ByteArrayInputStream zip(Map<String, Province> entries) throws IOException {
+        return zip(entries, Set.of(), "테스트로");
+    }
+
+    private ByteArrayInputStream zip(
+            Map<String, Province> entries,
+            Set<String> emptyEntries,
+            String seoulRoadName
+    ) throws IOException {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(output)) {
             for (Map.Entry<String, Province> entry : entries.entrySet()) {
                 zip.putNextEntry(new ZipEntry(entry.getKey()));
-                zip.write(row(entry.getValue().code(), entry.getValue().name()).getBytes(MS949));
+                writeEntry(zip, entry, emptyEntries, seoulRoadName);
                 zip.closeEntry();
             }
         }
         return new ByteArrayInputStream(output.toByteArray());
     }
 
-    private String row(String provinceCode, String provinceName) {
+    private void writeEntry(
+            ZipOutputStream zip,
+            Map.Entry<String, Province> entry,
+            Set<String> emptyEntries,
+            String seoulRoadName
+    ) throws IOException {
+        if (emptyEntries.contains(entry.getKey())) {
+            return;
+        }
+        Province province = entry.getValue();
+        zip.write(row(province.code(), province.name(), seoulRoadName).getBytes(MS949));
+    }
+
+    private String row(String provinceCode, String provinceName, String seoulRoadName) {
         String districtCode = provinceCode.equals("11") ? "11110" : provinceCode + "000";
         String districtName = provinceCode.equals("11") ? "종로구" : "테스트시";
-        String roadName = provinceCode.equals("11") ? "테스트로" : "비대상로";
+        String roadName = roadName(provinceCode, seoulRoadName);
         return String.join("|",
                 districtCode,
                 "1",
@@ -125,6 +220,20 @@ class LocationSummaryImportServiceTest {
                 "953875.044172",
                 "1951999.498732"
         );
+    }
+
+    private String roadName(String provinceCode, String seoulRoadName) {
+        if (provinceCode.equals("11")) {
+            return seoulRoadName;
+        }
+        return "비대상로";
+    }
+
+    private void saveCandidate() {
+        candidateRepository.save(MyHomeComplexMappingCandidate.pending(
+                "existing-complex",
+                "서울특별시 종로구 테스트로 1"
+        ));
     }
 
     private MyHomeComplexSource source(String roadAddress) {
