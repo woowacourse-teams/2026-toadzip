@@ -1,0 +1,6 @@
+policyVersion,regionDatasetVersion,fromStage,toStage,boundaryZoom,hysteresis,expansionZoom
+# source=https://github.com/woowacourse-teams/2026-toadzip/issues/95
+# status=provisional-until-desktop-map-validation
+2026-09-02-v1,2026-07-01,1,2,7.50,0.20,8.50
+2026-09-02-v1,2026-07-01,2,3,10.00,0.20,11.00
+2026-09-02-v1,2026-07-01,3,4,13.00,0.20,14.00

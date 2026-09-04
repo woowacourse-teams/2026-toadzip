@@ -3,8 +3,11 @@ package com.toadzip.backend.housing.domain;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import jakarta.persistence.Column;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
@@ -12,6 +15,30 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class AddressTest {
+
+    @Test
+    void 위도와_경도_컬럼은_null을_허용하지_않는다() throws NoSuchFieldException {
+        Field latitude = Address.class.getDeclaredField("latitude");
+        Field longitude = Address.class.getDeclaredField("longitude");
+
+        assertAll(
+                () -> assertFalse(latitude.getAnnotation(Column.class).nullable()),
+                () -> assertFalse(longitude.getAnnotation(Column.class).nullable())
+        );
+    }
+
+    @Test
+    void 위도와_경도를_컬럼_정밀도로_반올림한다() {
+        Address address = createAddress(
+                new BigDecimal("37.56620552"),
+                new BigDecimal("126.97770648")
+        );
+
+        assertAll(
+                () -> assertEquals(new BigDecimal("37.566206"), address.getLatitude()),
+                () -> assertEquals(new BigDecimal("126.977706"), address.getLongitude())
+        );
+    }
 
     @Test
     void 단지_주소를_생성한다() {
@@ -48,8 +75,8 @@ class AddressTest {
         assertEquals("1114010100", address.getLegalDongCode());
         assertEquals("11", address.getProvinceCode());
         assertEquals("11140", address.getCityCountyDistrictCode());
-        assertEquals(latitude, address.getLatitude());
-        assertEquals(longitude, address.getLongitude());
+        assertEquals(latitude.setScale(6), address.getLatitude());
+        assertEquals(longitude.setScale(6), address.getLongitude());
     }
 
     @ParameterizedTest

@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: toadzip_test
+      POSTGRES_USER: toadzip_test
+      POSTGRES_PASSWORD: toadzip_test
+    ports:
+      - "127.0.0.1:${TEST_POSTGRES_PORT:-55432}:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: "no"
+
+  db-shared:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: toadzip_shared_test
+      POSTGRES_USER: toadzip_shared_test
+      POSTGRES_PASSWORD: toadzip_shared_test
+    ports:
+      - "127.0.0.1:${TEST_SHARED_POSTGRES_PORT:-55433}:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: "no"

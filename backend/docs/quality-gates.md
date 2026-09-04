@@ -18,9 +18,10 @@
 ```text
 1. 변경한 테스트 또는 가장 가까운 Gradle task
 2. 영향 기능 테스트 묶음
-3. ./gradlew check
-4. 존재하는 계층 의존성 검사 또는 수동 구조 검토
-5. git diff --check와 최종 diff 리뷰
+3. compose.test.yaml의 PostgreSQL에서 ./gradlew --rerun-tasks check
+4. 테스트 PostgreSQL 정리
+5. 존재하는 계층 의존성 검사 또는 수동 구조 검토
+6. git diff --check와 최종 diff 리뷰
 ```
 
 - 존재하는 검사를 삭제하거나 완화해 통과시키지 않는다.

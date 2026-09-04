@@ -32,7 +32,7 @@ class HousingComplexTest {
                         String.class,
                         String.class,
                         String.class,
-                        boolean.class,
+                        Boolean.class,
                         int.class,
                         String.class,
                         Integer.class
@@ -69,15 +69,15 @@ class HousingComplexTest {
         assertEquals("개별난방", housingComplex.getHeatingType());
         assertEquals("아파트", housingComplex.getHousingType());
         assertEquals("계단식", housingComplex.getCorridorType());
-        assertTrue(housingComplex.isElevatorInstalled());
+        assertTrue(housingComplex.getElevatorInstalled());
         assertEquals(420, housingComplex.getParkingSpaceCount());
         assertEquals("https://example.com/complex.png", housingComplex.getImageUrl());
         assertEquals(25, housingComplex.getRecentOneYearMoveOutCount());
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {0, 1, 2, 3, 4, 5, 6})
-    void 단지의_문자열_정보는_비어_있을_수_없다(int blankFieldIndex) {
+    @ValueSource(ints = {0, 1, 2, 3})
+    void 단지의_필수_문자열_정보는_비어_있을_수_없다(int blankFieldIndex) {
         String[] fields = {
                 "두꺼비 행복주택",
                 "source-complex-id",
@@ -103,19 +103,23 @@ class HousingComplexTest {
     }
 
     @Test
-    void 주소와_준공일은_필수다() {
+    void 주소는_필수다() {
         String[] fields = validStringFields();
 
-        assertAll(
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createHousingComplex(fields, null, 500, LocalDate.of(2020, 6, 30), 420, 25)
-                ),
-                () -> assertThrows(
-                        IllegalArgumentException.class,
-                        () -> createHousingComplex(fields, createAddress(), 500, null, 420, 25)
-                )
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> createHousingComplex(fields, null, 500, LocalDate.of(2020, 6, 30), 420, 25)
         );
+    }
+
+    @Test
+    void 선택_정보가_없어도_단지를_생성한다() {
+        String[] fields = validStringFields();
+
+        assertDoesNotThrow(() -> HousingComplex.create(
+                fields[0], fields[1], fields[2], createAddress(), 500, fields[3],
+                null, null, null, null, null, 420, null, null
+        ));
     }
 
     @Test

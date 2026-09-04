@@ -1,0 +1,14 @@
+package com.toadzip.backend.ingest.domain;
+
+public enum LhAnnouncementEnrichmentFailureReason {
+    ANNOUNCEMENT_NOT_FOUND,
+    PAN_ID_NOT_FOUND,
+    LH_DETAIL_SOURCE_NOT_FOUND,
+    LH_SUPPLY_SOURCE_NOT_FOUND,
+    UNSUPPORTED_SUPPLY_TYPE,
+    INVALID_VALUE,
+    COMPLEX_NOT_FOUND,
+    AMBIGUOUS_COMPLEX,
+    HOUSING_TYPE_NOT_FOUND,
+    AMBIGUOUS_HOUSING_TYPE
+}

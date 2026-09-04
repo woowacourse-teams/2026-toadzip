@@ -36,12 +36,49 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
-      - name: Verify backend
+      - name: Start test PostgreSQL
+        id: start-postgres
         if: ${{ hashFiles('gradlew', 'backend/gradlew') != '' }}
+        run: >-
+          docker compose --project-name toadzip-test --file compose.test.yaml
+          up --detach --wait --wait-timeout 60 --force-recreate db db-shared
+      - name: Verify backend against PostgreSQL
+        if: ${{ hashFiles('gradlew', 'backend/gradlew') != '' }}
+        working-directory: backend
+        run: ./gradlew --rerun-tasks check
+      - name: Show PostgreSQL logs on failure
+        if: ${{ failure() && steps.start-postgres.outcome == 'success' }}
+        run: >-
+          docker compose --project-name toadzip-test --file compose.test.yaml
+          logs --no-color db db-shared
+      - name: Stop test PostgreSQL
+        if: >-
+          ${{ always() &&
+          (steps.start-postgres.outcome == 'success' || steps.start-postgres.outcome == 'failure') }}
+        run: >-
+          docker compose --project-name toadzip-test --file compose.test.yaml
+          down --volumes --remove-orphans
+
+  frontend:
+    name: Frontend Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Show runtime versions
         run: |
-          if [ -x ./gradlew ]; then
-            ./gradlew check
-          else
-            cd backend
-            ./gradlew check
-          fi
+          node --version
+          npm --version
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Check frontend
+        run: npm run check

@@ -4,14 +4,15 @@
   "version": "0.0.0",
   "type": "module",
   "engines": {
-    "node": "24.19.0",
-    "npm": "11.17.0"
+    "node": "24.19.0"
   },
   "packageManager": "npm@11.17.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test": "vitest run",
+    "check": "npm run lint && npm run test && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -20,12 +21,18 @@
     "react-router": "8.3.0"
   },
   "devDependencies": {
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.2",
+    "@types/navermaps": "3.9.2",
     "@types/node": "24.13.3",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@vitejs/plugin-react": "6.0.5",
+    "jsdom": "30.0.1",
     "oxlint": "1.76.0",
     "typescript": "6.0.3",
-    "vite": "8.2.1"
+    "vite": "8.2.1",
+    "vitest": "4.1.11"
   }
 }

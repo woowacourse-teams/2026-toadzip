@@ -11,8 +11,10 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest
+@ActiveProfiles("test")
 class InterestJpaMappingTest {
 
     private static final String DOMAIN_PACKAGE = "com.toadzip.backend.interest.domain.";
@@ -23,8 +25,8 @@ class InterestJpaMappingTest {
     @Test
     void 관심_도메인을_JPA_엔티티로_등록한다() {
         assertEntityAttributes(
-                "FavoriteNotice",
-                Set.of("id", "user", "notice", "createdAt")
+                "FavoriteAnnouncement",
+                Set.of("id", "user", "announcement", "createdAt")
         );
         assertEntityAttributes(
                 "FavoriteHousingComplex",
