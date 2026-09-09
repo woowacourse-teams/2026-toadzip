@@ -20,6 +20,7 @@ import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementCollec
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.repository.external.MyHomeAnnouncementResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import java.time.Duration;
 import java.util.List;
@@ -59,7 +60,7 @@ class MyHomeAnnouncementCollectionServiceTest {
             return Optional.of(operation.get());
         });
         service = new MyHomeAnnouncementCollectionService(
-                JsonMapper.builder().build(),
+                new MyHomeAnnouncementResponseParser(JsonMapper.builder().build()),
                 externalRepository,
                 executionLock,
                 sourceStore,

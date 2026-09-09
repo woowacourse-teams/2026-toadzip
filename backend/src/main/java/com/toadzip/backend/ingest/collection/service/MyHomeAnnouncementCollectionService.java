@@ -9,24 +9,21 @@ import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSupplyType;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementCollectionExecutionLock;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
-import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.repository.external.MyHomeAnnouncementResponseParser;
+import com.toadzip.backend.ingest.collection.repository.external.MyHomeAnnouncementResponseParser.ParsedPage;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 
 @Slf4j
 @Service
 public class MyHomeAnnouncementCollectionService {
 
-    private static final String LIST_POINTER = "/response/body/item";
-
-    private final ObjectMapper objectMapper;
+    private final MyHomeAnnouncementResponseParser responseParser;
 
     private final MyHomeAnnouncementExternalRepository externalRepository;
 
@@ -39,14 +36,14 @@ public class MyHomeAnnouncementCollectionService {
     private final ExternalDataRetryExecutor retryExecutor;
 
     public MyHomeAnnouncementCollectionService(
-            ObjectMapper objectMapper,
+            MyHomeAnnouncementResponseParser responseParser,
             MyHomeAnnouncementExternalRepository externalRepository,
             MyHomeAnnouncementCollectionExecutionLock executionLock,
             MyHomeSourceStore sourceStore,
             ExternalDataFailureRecorder failureRecorder,
             ExternalDataRetryExecutor retryExecutor
     ) {
-        this.objectMapper = objectMapper;
+        this.responseParser = responseParser;
         this.externalRepository = externalRepository;
         this.executionLock = executionLock;
         this.sourceStore = sourceStore;
@@ -145,11 +142,9 @@ public class MyHomeAnnouncementCollectionService {
                     callCounter
             );
             failureRecorder.resolve(ExternalDataSource.MYHOME_ANNOUNCEMENT, requestDescription);
-            List<JsonNode> rows = DataGoKrOpenApiClient.findRows(response.body(), LIST_POINTER);
-            rows.stream()
-                    .map(this::sourceItemOf)
-                    .forEach(items::add);
-            if (collectionCompleted(response.body(), items.size(), rows.size(), request.pageSize())) {
+            ParsedPage parsedPage = responseParser.parse(response);
+            items.addAll(parsedPage.items());
+            if (parsedPage.completesCollection(items.size(), request.pageSize())) {
                 return items;
             }
         }
@@ -158,25 +153,4 @@ public class MyHomeAnnouncementCollectionService {
         );
     }
 
-    private MyHomeAnnouncementSourceItem sourceItemOf(JsonNode row) {
-        try {
-            return objectMapper.convertValue(row, MyHomeAnnouncementSourceItem.class);
-        }
-        catch (RuntimeException exception) {
-            throw new ExternalDataRequestException("마이홈 공고 응답 항목 형식이 올바르지 않습니다.", exception);
-        }
-    }
-
-    private boolean collectionCompleted(
-            JsonNode responseBody,
-            int collectedCount,
-            int rowCount,
-            int pageSize
-    ) {
-        int totalCount = responseBody.at("/response/body/totalCount").asInt(-1);
-        if (totalCount >= 0) {
-            return collectedCount >= totalCount;
-        }
-        return rowCount == 0 || rowCount < pageSize;
-    }
 }
