@@ -80,12 +80,14 @@ export function IntegratedSearch({
           }}
         />
       </label>
-      <SearchContent
-        state={state}
-        preview={preview}
-        onSelect={onSelect}
-        onRetry={() => setRetryRevision((current) => current + 1)}
-      />
+      <div className="integrated-search__body" aria-busy={state.kind === 'loading'}>
+        <SearchContent
+          state={state}
+          preview={preview}
+          onSelect={onSelect}
+          onRetry={() => setRetryRevision((current) => current + 1)}
+        />
+      </div>
       {state.kind === 'ready' && preview && state.response.hasNext && (
         <button type="button" onClick={() => { setPreview(false); setPage(0) }}>
           전체 결과 보기

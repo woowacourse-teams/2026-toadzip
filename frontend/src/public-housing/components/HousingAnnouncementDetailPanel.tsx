@@ -127,7 +127,7 @@ export function HousingAnnouncementDetailPanel({
   const tabRefs = useRef(new Map<string, HTMLButtonElement>())
 
   useEffect(() => {
-    headingRef.current?.focus()
+    headingRef.current?.focus({ preventScroll: true })
   }, [detail.announcementId])
 
   function selectGroup(group: HousingAnnouncementSupplyComplexGroup) {

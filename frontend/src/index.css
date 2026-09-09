@@ -16,6 +16,7 @@
 
 .integrated-search {
   display: grid;
+  flex: 0 0 auto;
   gap: 0.65rem;
   padding: 0 1rem 1rem;
 }
@@ -40,16 +41,16 @@
   font-size: 0.8rem;
 }
 
-.integrated-search__results {
-  max-height: 22rem;
+.integrated-search__body {
+  min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.integrated-search__results {
   border: 1px solid #e2e8f0;
   border-radius: 0.75rem;
   background: #fff;
-}
-
-.integrated-search.is-active .integrated-search__results {
-  max-height: none;
 }
 
 .integrated-search__results h2 {
@@ -124,10 +125,11 @@ a {
 }
 
 .app-shell {
-  display: flex;
-  min-height: 100vh;
-  min-height: 100dvh;
-  flex-direction: column;
+  display: grid;
+  height: 100vh;
+  height: 100dvh;
+  grid-template-rows: 56px minmax(0, 1fr);
+  overflow: hidden;
   background: #eef4f3;
 }
 
@@ -201,6 +203,7 @@ a {
   min-width: 0;
   min-height: 0;
   grid-template-columns: minmax(360px, 440px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .housing-results {
@@ -216,6 +219,7 @@ a {
 
 .housing-results__header {
   display: flex;
+  flex: 0 0 auto;
   align-items: end;
   justify-content: space-between;
   gap: 16px;
@@ -294,6 +298,7 @@ a {
 
 .housing-viewport-action {
   display: flex;
+  flex: 0 0 auto;
   min-height: 48px;
   align-items: center;
   justify-content: space-between;
@@ -326,6 +331,7 @@ a {
 
 .housing-results__tabs {
   display: grid;
+  flex: 0 0 auto;
   padding: 0 16px;
   border-bottom: 1px solid var(--border);
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -350,7 +356,9 @@ a {
   cursor: not-allowed;
 }
 
-.housing-results__panel {
+.housing-results__browse,
+.housing-results__panel,
+.housing-results__body {
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -358,7 +366,8 @@ a {
   flex-direction: column;
 }
 
-.housing-results__panel[hidden] {
+.housing-results__panel[hidden],
+.housing-results__browse[hidden] {
   display: none;
 }
 
@@ -366,6 +375,7 @@ a {
   min-height: 0;
   padding: 16px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   flex: 1;
 }
 
@@ -434,6 +444,7 @@ a {
 }
 
 .housing-results__more {
+  flex: 0 0 auto;
   min-height: 48px;
   margin: 0 16px 16px;
   border: 1px solid #58616a;

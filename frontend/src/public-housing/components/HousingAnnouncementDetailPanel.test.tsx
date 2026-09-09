@@ -17,6 +17,17 @@ import {
 } from './HousingAnnouncementDetailPanel.tsx'
 
 describe('HousingAnnouncementDetailPanel', () => {
+  it('상세 제목에 focus를 옮길 때 목록과 페이지를 스크롤하지 않는다', () => {
+    const focus = vi.spyOn(HTMLHeadingElement.prototype, 'focus')
+    renderPanel()
+    expect(screen.getByRole('heading', {
+      name: '성남 행복주택 예비입주자 모집',
+    })).toHaveFocus()
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true })
+    focus.mockRestore()
+  })
+
+
   it('확정 시안 B의 판단 정보와 단지·주택형 공급 단위를 구분해 표시한다', async () => {
     renderPanel()
 

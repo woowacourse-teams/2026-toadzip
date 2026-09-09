@@ -1425,7 +1425,7 @@ function restoreMarkerFocus(
   }
   const target = findMarkerFocusTarget(createdMarkers, focus)
   return target
-    ? window.setTimeout(() => target.button.focus())
+    ? window.setTimeout(() => target.button.focus({ preventScroll: true }))
     : undefined
 }
 
@@ -1474,5 +1474,5 @@ function restoreClusterFocus(
     : `${pending.memberIds.length}곳 단지 묶음을 확대했지만 아직 함께 표시됩니다.`
 
   onRestore(message)
-  return window.setTimeout(() => target.button.focus())
+  return window.setTimeout(() => target.button.focus({ preventScroll: true }))
 }

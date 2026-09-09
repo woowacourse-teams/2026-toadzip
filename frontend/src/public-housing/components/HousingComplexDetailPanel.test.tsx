@@ -185,7 +185,8 @@ describe('HousingComplexDetailPanel', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('마운트와 단지 ID 교체 때 해당 상세 제목으로 focus를 이동한다', () => {
+  it('마운트와 단지 ID 교체 때 스크롤 없이 상세 제목으로 focus를 이동한다', () => {
+    const focus = vi.spyOn(HTMLHeadingElement.prototype, 'focus')
     const { rerender } = renderPanel()
     const firstHeading = screen.getByRole('heading', { name: BASE_DETAIL.name })
 
@@ -203,6 +204,9 @@ describe('HousingComplexDetailPanel', () => {
     )
 
     expect(screen.getByRole('heading', { name: nextDetail.name })).toHaveFocus()
+    expect(focus).toHaveBeenCalledTimes(2)
+    expect(focus.mock.calls).toEqual([[{ preventScroll: true }], [{ preventScroll: true }]])
+    focus.mockRestore()
   })
 
   it('null은 속성별 정보 확인 중 또는 미표시하고 0과 false는 실제 값으로 표시한다', () => {
