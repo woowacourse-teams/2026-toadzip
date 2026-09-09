@@ -144,7 +144,7 @@ class DataPipelineRunnerTest {
     }
 
     @Test
-    void 부분_실패_응답이면_이후_단계를_실행하지_않는다() {
+    void 마지막_단계가_부분_실패면_파이프라인_실패로_처리한다() {
         when(myHomeComplexMappingService.mapAll()).thenReturn(complexMappingReport(0));
         when(householdEnrichmentService.enrichAll())
                 .thenReturn(new LhHousingTypeHouseholdEnrichmentReport(1, 0, 0, 0, 1, 0));
@@ -153,7 +153,6 @@ class DataPipelineRunnerTest {
                 .isInstanceOf(DataPipelinePartialFailureException.class)
                 .extracting("step")
                 .isEqualTo(DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS);
-
     }
 
     @Test
@@ -265,6 +264,42 @@ class DataPipelineRunnerTest {
 
         verify(lhAnnouncementSupplyCollectionService).collect();
         verify(lhAnnouncementDetailCollectionService).collect();
+    }
+
+    @Test
+    void 여러_단계가_부분_실패해도_모두_실행하고_최초_실패를_대표로_반환한다() {
+        when(myHomeAnnouncementCollectionService.collect(any()))
+                .thenReturn(new ExternalDataCollectionReport("myhome-announcement", 0, 1, 1));
+        when(lhAnnouncementSupplyCollectionService.collect())
+                .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 0, 1, 1));
+        when(lhAnnouncementDetailCollectionService.collect())
+                .thenReturn(new ExternalDataCollectionReport("lh-announcement-detail", 0, 1, 1));
+
+        assertThatThrownBy(() -> runner.run(DataPipelineType.ANNOUNCEMENT_COLLECTION, progressListener))
+                .isInstanceOf(DataPipelinePartialFailureException.class)
+                .extracting("step")
+                .isEqualTo(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+
+        InOrder order = inOrder(
+                myHomeAnnouncementCollectionService,
+                lhAnnouncementSupplyCollectionService,
+                lhAnnouncementDetailCollectionService
+        );
+        order.verify(myHomeAnnouncementCollectionService).collect(any());
+        order.verify(lhAnnouncementSupplyCollectionService).collect();
+        order.verify(lhAnnouncementDetailCollectionService).collect();
+    }
+
+    @Test
+    void 예상하지_못한_예외가_발생하면_이후_단계를_실행하지_않는다() {
+        when(myHomeComplexCollectionService.collect(any()))
+                .thenThrow(new IllegalStateException("DB 저장 실패"));
+
+        assertThatThrownBy(() -> runner.run(DataPipelineType.COMPLEX_COLLECTION, progressListener))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("DB 저장 실패");
+
+        verify(lhLeaseCatalogCollectionService, never()).collect(any());
     }
 
     @Test
