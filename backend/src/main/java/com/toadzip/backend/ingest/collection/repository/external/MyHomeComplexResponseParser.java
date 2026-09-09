@@ -4,20 +4,18 @@ import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexSourceItem;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
+@RequiredArgsConstructor
 public class MyHomeComplexResponseParser {
 
     private static final String LIST_POINTER = "/response/body/item";
 
     private final ObjectMapper objectMapper;
-
-    public MyHomeComplexResponseParser(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
 
     public ValidatedPage validate(ExternalDataResponse response, int collectedCount) {
         JsonNode root = response.body();

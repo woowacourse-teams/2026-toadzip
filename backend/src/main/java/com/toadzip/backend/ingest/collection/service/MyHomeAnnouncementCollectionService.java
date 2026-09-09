@@ -8,11 +8,13 @@ import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementCollec
 import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class MyHomeAnnouncementCollectionService {
 
     private final MyHomeAnnouncementCollectionExecutionLock executionLock;
@@ -20,16 +22,6 @@ public class MyHomeAnnouncementCollectionService {
     private final MyHomeSourceStore sourceStore;
 
     private final MyHomeAnnouncementSupplyTypeCollector supplyTypeCollector;
-
-    public MyHomeAnnouncementCollectionService(
-            MyHomeAnnouncementCollectionExecutionLock executionLock,
-            MyHomeSourceStore sourceStore,
-            MyHomeAnnouncementSupplyTypeCollector supplyTypeCollector
-    ) {
-        this.executionLock = executionLock;
-        this.sourceStore = sourceStore;
-        this.supplyTypeCollector = supplyTypeCollector;
-    }
 
     public ExternalDataCollectionReport collect(MyHomeAnnouncementCollectionRequest request) {
         return executionLock.tryRun(() -> collectUnlocked(request))

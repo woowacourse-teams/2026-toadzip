@@ -5,21 +5,15 @@ import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollection
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore.BatchProgress;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class LhAnnouncementCollectionProgressManager {
 
     private final LhAnnouncementCollectionProgressStore progressStore;
     private final ExternalDataFailureRecorder failureRecorder;
-
-    public LhAnnouncementCollectionProgressManager(
-            LhAnnouncementCollectionProgressStore progressStore,
-            ExternalDataFailureRecorder failureRecorder
-    ) {
-        this.progressStore = progressStore;
-        this.failureRecorder = failureRecorder;
-    }
 
     public BatchProgress findBatch(ExternalDataSource targetSource, List<Candidate> candidates) {
         return progressStore.findBatch(

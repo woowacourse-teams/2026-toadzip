@@ -13,11 +13,13 @@ import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementD
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class LhAnnouncementCandidateCollector {
 
     private final LhAnnouncementExternalRepository externalRepository;
@@ -27,24 +29,6 @@ public class LhAnnouncementCandidateCollector {
     private final ExternalDataFailureRecorder failureRecorder;
     private final ExternalDataRetryExecutor retryExecutor;
     private final LhAnnouncementCollectionProgressManager progressManager;
-
-    public LhAnnouncementCandidateCollector(
-            LhAnnouncementExternalRepository externalRepository,
-            LhSourceStore sourceStore,
-            LhAnnouncementDetailResponseParser detailResponseParser,
-            LhAnnouncementSupplyResponseParser supplyResponseParser,
-            ExternalDataFailureRecorder failureRecorder,
-            ExternalDataRetryExecutor retryExecutor,
-            LhAnnouncementCollectionProgressManager progressManager
-    ) {
-        this.externalRepository = externalRepository;
-        this.sourceStore = sourceStore;
-        this.detailResponseParser = detailResponseParser;
-        this.supplyResponseParser = supplyResponseParser;
-        this.failureRecorder = failureRecorder;
-        this.retryExecutor = retryExecutor;
-        this.progressManager = progressManager;
-    }
 
     public ExternalDataCollectionReport collect(ExternalDataSource targetSource, Candidate candidate) {
         LhAnnouncementRequest request = candidate.request();

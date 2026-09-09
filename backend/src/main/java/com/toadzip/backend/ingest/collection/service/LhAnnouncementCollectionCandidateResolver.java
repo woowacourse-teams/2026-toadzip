@@ -4,9 +4,11 @@ import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import java.net.URI;
 import java.util.Optional;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class LhAnnouncementCollectionCandidateResolver {
 
     private static final String NON_LH_PROVIDER_REASON =
@@ -15,10 +17,6 @@ public class LhAnnouncementCollectionCandidateResolver {
             "LH 공고 조회 조건을 지원하지 않아 건너뛰었습니다.";
 
     private final LhSupplyInfoTypeCodeResolver supplyTypeCodeResolver;
-
-    public LhAnnouncementCollectionCandidateResolver(LhSupplyInfoTypeCodeResolver supplyTypeCodeResolver) {
-        this.supplyTypeCodeResolver = supplyTypeCodeResolver;
-    }
 
     public Resolution resolve(MyHomeAnnouncementSource source) {
         String sourceAnnouncementKey = sourceAnnouncementKey(source);

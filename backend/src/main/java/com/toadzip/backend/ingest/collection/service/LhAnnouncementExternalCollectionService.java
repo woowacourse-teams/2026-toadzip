@@ -14,12 +14,14 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class LhAnnouncementExternalCollectionService {
 
     private static final int ANNOUNCEMENT_BATCH_SIZE = 500;
@@ -30,22 +32,6 @@ public class LhAnnouncementExternalCollectionService {
     private final ExternalDataFailureRecorder failureRecorder;
     private final LhAnnouncementCollectionCandidateResolver candidateResolver;
     private final LhAnnouncementCandidateCollector candidateCollector;
-
-    public LhAnnouncementExternalCollectionService(
-            MyHomeAnnouncementSourceRepository myHomeAnnouncementRepository,
-            LhAnnouncementCollectionExecutionLock executionLock,
-            LhAnnouncementCollectionProgressManager progressManager,
-            ExternalDataFailureRecorder failureRecorder,
-            LhAnnouncementCollectionCandidateResolver candidateResolver,
-            LhAnnouncementCandidateCollector candidateCollector
-    ) {
-        this.myHomeAnnouncementRepository = myHomeAnnouncementRepository;
-        this.executionLock = executionLock;
-        this.progressManager = progressManager;
-        this.failureRecorder = failureRecorder;
-        this.candidateResolver = candidateResolver;
-        this.candidateCollector = candidateCollector;
-    }
 
     public ExternalDataCollectionReport collect(ExternalDataSource targetSource) {
         validateTargetSource(targetSource);

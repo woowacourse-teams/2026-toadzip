@@ -12,11 +12,13 @@ import com.toadzip.backend.ingest.collection.repository.external.ExternalDataReq
 import com.toadzip.backend.ingest.collection.repository.external.LhLeaseCatalogResponseParser;
 import java.util.ArrayList;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class LhLeaseCatalogCollectionService {
 
     private final LhLeaseCatalogExternalRepository externalRepository;
@@ -28,20 +30,6 @@ public class LhLeaseCatalogCollectionService {
     private final ExternalDataFailureRecorder failureRecorder;
 
     private final ExternalDataRetryExecutor retryExecutor;
-
-    public LhLeaseCatalogCollectionService(
-            LhLeaseCatalogExternalRepository externalRepository,
-            LhLeaseCatalogResponseParser responseParser,
-            LhSourceStore sourceStore,
-            ExternalDataFailureRecorder failureRecorder,
-            ExternalDataRetryExecutor retryExecutor
-    ) {
-        this.externalRepository = externalRepository;
-        this.responseParser = responseParser;
-        this.sourceStore = sourceStore;
-        this.failureRecorder = failureRecorder;
-        this.retryExecutor = retryExecutor;
-    }
 
     public ExternalDataCollectionReport collect(LhLeaseCatalogCollectionRequest request) {
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();

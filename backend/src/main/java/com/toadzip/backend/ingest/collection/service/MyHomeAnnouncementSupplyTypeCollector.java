@@ -13,11 +13,13 @@ import com.toadzip.backend.ingest.collection.repository.external.ExternalDataReq
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeAnnouncementResponseParser;
 import java.util.ArrayList;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class MyHomeAnnouncementSupplyTypeCollector {
 
     private final MyHomeAnnouncementResponseParser responseParser;
@@ -25,20 +27,6 @@ public class MyHomeAnnouncementSupplyTypeCollector {
     private final MyHomeSourceStore sourceStore;
     private final ExternalDataFailureRecorder failureRecorder;
     private final ExternalDataRetryExecutor retryExecutor;
-
-    public MyHomeAnnouncementSupplyTypeCollector(
-            MyHomeAnnouncementResponseParser responseParser,
-            MyHomeAnnouncementExternalRepository externalRepository,
-            MyHomeSourceStore sourceStore,
-            ExternalDataFailureRecorder failureRecorder,
-            ExternalDataRetryExecutor retryExecutor
-    ) {
-        this.responseParser = responseParser;
-        this.externalRepository = externalRepository;
-        this.sourceStore = sourceStore;
-        this.failureRecorder = failureRecorder;
-        this.retryExecutor = retryExecutor;
-    }
 
     public ExternalDataCollectionReport collect(
             String runId,

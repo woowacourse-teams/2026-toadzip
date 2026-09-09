@@ -14,11 +14,13 @@ import com.toadzip.backend.ingest.collection.repository.external.MyHomeComplexRe
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class MyHomeComplexRegionCollector {
 
     private final MyHomeComplexResponseParser responseParser;
@@ -26,20 +28,6 @@ public class MyHomeComplexRegionCollector {
     private final MyHomeSourceStore sourceStore;
     private final ExternalDataFailureRecorder failureRecorder;
     private final ExternalDataRetryExecutor retryExecutor;
-
-    public MyHomeComplexRegionCollector(
-            MyHomeComplexResponseParser responseParser,
-            MyHomeComplexExternalRepository externalRepository,
-            MyHomeSourceStore sourceStore,
-            ExternalDataFailureRecorder failureRecorder,
-            ExternalDataRetryExecutor retryExecutor
-    ) {
-        this.responseParser = responseParser;
-        this.externalRepository = externalRepository;
-        this.sourceStore = sourceStore;
-        this.failureRecorder = failureRecorder;
-        this.retryExecutor = retryExecutor;
-    }
 
     public MyHomeComplexCollectionReport collect(
             MyHomeRegion region,

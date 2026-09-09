@@ -12,11 +12,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class MyHomeComplexCollectionService {
 
     private static final int MAX_CONCURRENT_REGIONS = 4;
@@ -24,14 +26,6 @@ public class MyHomeComplexCollectionService {
     private final MyHomeRegionCatalog regionCatalog;
 
     private final MyHomeComplexRegionCollector regionCollector;
-
-    public MyHomeComplexCollectionService(
-            MyHomeRegionCatalog regionCatalog,
-            MyHomeComplexRegionCollector regionCollector
-    ) {
-        this.regionCatalog = regionCatalog;
-        this.regionCollector = regionCollector;
-    }
 
     public MyHomeComplexCollectionReport collect(MyHomeComplexCollectionRequest request) {
         log.info(
