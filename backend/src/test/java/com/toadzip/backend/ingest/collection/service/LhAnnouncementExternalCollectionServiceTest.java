@@ -79,12 +79,14 @@ class LhAnnouncementExternalCollectionServiceTest {
                 });
         lenient().when(progressStore.findBatch(any(), any(), any()))
                 .thenReturn(BatchProgress.empty());
+        LhAnnouncementCollectionProgressManager progressManager =
+                new LhAnnouncementCollectionProgressManager(progressStore, failureRecorder);
         service = new LhAnnouncementExternalCollectionService(
                 myHomeAnnouncementRepository,
                 externalRepository,
                 executionLock,
                 sourceStore,
-                progressStore,
+                progressManager,
                 new LhAnnouncementDetailResponseParser(),
                 new LhAnnouncementSupplyResponseParser(),
                 failureRecorder,
