@@ -7,7 +7,7 @@ import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
 import com.toadzip.backend.ingest.collection.repository.MyHomeComplexSourceRepository;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
-import com.toadzip.backend.ingest.location.dto.GeocodedRoadAddress;
+import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.location.service.RoadAddressGeocodingService;

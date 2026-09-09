@@ -6,7 +6,7 @@ import static com.toadzip.backend.ingest.location.exception.RoadAddressGeocoding
 
 import com.toadzip.backend.ingest.location.domain.NormalizedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.RoadAddressLocation;
-import com.toadzip.backend.ingest.location.dto.GeocodedRoadAddress;
+import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.repository.RoadAddressLocationRepository;
 import java.util.List;

@@ -2,7 +2,7 @@ package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
-import com.toadzip.backend.ingest.location.dto.GeocodedRoadAddress;
+import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
