@@ -69,7 +69,7 @@ public class LhAnnouncementCandidateCollector {
             return failedReport(targetSource, request, exception, callCounter);
         }
         progressManager.complete(targetSource, candidate);
-        return new ExternalDataCollectionReport(operation(targetSource), storedRowCount, 0, callCounter.count());
+        return new ExternalDataCollectionReport(targetSource.operation(), storedRowCount, 0, callCounter.count());
     }
 
     private ExternalDataCollectionReport failedReport(
@@ -86,7 +86,7 @@ public class LhAnnouncementCandidateCollector {
                 "LH 외부 API 수집에 실패했습니다"
         );
         return new ExternalDataCollectionReport(
-                operation(targetSource),
+                targetSource.operation(),
                 0,
                 1,
                 callCounter.count(),
@@ -111,10 +111,4 @@ public class LhAnnouncementCandidateCollector {
         return externalRepository.fetchSupply(request);
     }
 
-    private String operation(ExternalDataSource targetSource) {
-        if (targetSource == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL) {
-            return "lh-announcement-detail";
-        }
-        return "lh-announcement-supply";
-    }
 }

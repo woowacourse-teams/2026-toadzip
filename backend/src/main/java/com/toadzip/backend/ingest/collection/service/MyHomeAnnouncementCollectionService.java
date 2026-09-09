@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.collection.service;
 
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSupplyType;
@@ -43,7 +44,9 @@ public class MyHomeAnnouncementCollectionService {
                 request.pageSize(),
                 request.maxPages()
         );
-        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty("myhome-announcement");
+        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(
+                ExternalDataSource.MYHOME_ANNOUNCEMENT.operation()
+        );
         for (MyHomeAnnouncementSupplyType supplyType : MyHomeAnnouncementSupplyType.values()) {
             ExternalDataCollectionReport supplyTypeReport = supplyTypeCollector.collect(
                     runId,

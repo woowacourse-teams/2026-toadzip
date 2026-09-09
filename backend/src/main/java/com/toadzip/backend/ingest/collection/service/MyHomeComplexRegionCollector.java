@@ -68,7 +68,12 @@ public class MyHomeComplexRegionCollector {
             return failedReport(region, request, rateLimitReached, callCounter, exception);
         }
         int storedRowCount = sourceStore.replaceComplexRegion(region, items);
-        return new MyHomeComplexCollectionReport("myhome-complex", storedRowCount, 0, callCounter.count());
+        return new MyHomeComplexCollectionReport(
+                ExternalDataSource.MYHOME_COMPLEX.operation(),
+                storedRowCount,
+                0,
+                callCounter.count()
+        );
     }
 
     private MyHomeComplexCollectionReport failedReport(
@@ -90,7 +95,7 @@ public class MyHomeComplexRegionCollector {
                 "마이홈 단지 지역 수집에 실패했습니다"
         );
         return new MyHomeComplexCollectionReport(
-                "myhome-complex",
+                ExternalDataSource.MYHOME_COMPLEX.operation(),
                 0,
                 1,
                 callCounter.count(),

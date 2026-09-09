@@ -49,13 +49,13 @@ public class LhAnnouncementExternalCollectionService {
 
     public ExternalDataCollectionReport collect(ExternalDataSource targetSource) {
         validateTargetSource(targetSource);
-        log.info("{} 수집을 시작합니다.", operation(targetSource));
+        log.info("{} 수집을 시작합니다.", targetSource.operation());
         ExternalDataCollectionReport report = executionLock
                 .tryRun(targetSource, () -> collectAnnouncements(targetSource))
                 .orElseThrow(() -> alreadyRunning(targetSource));
         log.info(
                 "{} 수집을 완료했습니다: storedRowCount={}, failedRequestCount={}, externalApiCallCount={}, skippedRequestCount={}",
-                operation(targetSource),
+                targetSource.operation(),
                 report.storedRowCount(),
                 report.failedRequestCount(),
                 report.externalApiCallCount(),
@@ -65,7 +65,7 @@ public class LhAnnouncementExternalCollectionService {
     }
 
     private ExternalDataCollectionReport collectAnnouncements(ExternalDataSource targetSource) {
-        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(operation(targetSource));
+        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
         Set<String> visitedSourceAnnouncements = new HashSet<>();
         Set<String> attemptedRequests = new HashSet<>();
         long lastSeenId = 0L;
@@ -101,7 +101,7 @@ public class LhAnnouncementExternalCollectionService {
             Set<String> visitedSourceAnnouncements,
             Set<String> attemptedRequests
     ) {
-        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(operation(targetSource));
+        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
         List<Candidate> candidates = new ArrayList<>();
         for (MyHomeAnnouncementSource source : sources) {
             Resolution resolution = candidateResolver.resolve(source);
@@ -130,12 +130,12 @@ public class LhAnnouncementExternalCollectionService {
             List<Candidate> candidates
     ) {
         if (candidates.isEmpty()) {
-            return ExternalDataCollectionReport.empty(operation(targetSource));
+            return ExternalDataCollectionReport.empty(targetSource.operation());
         }
         BatchProgress progress = progressManager.findBatch(targetSource, candidates);
         Set<String> storedPanIds = new HashSet<>(progress.storedPanIds());
         Set<String> historyPanIds = new HashSet<>(progress.historyPanIds());
-        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(operation(targetSource));
+        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
         for (Candidate candidate : candidates) {
             ExternalDataCollectionReport candidateReport = collectCandidate(
                     targetSource,
@@ -160,12 +160,12 @@ public class LhAnnouncementExternalCollectionService {
             Set<String> historyPanIds
     ) {
         if (progress.isCompleted(candidate.requestDescription())) {
-            return ExternalDataCollectionReport.empty(operation(targetSource));
+            return ExternalDataCollectionReport.empty(targetSource.operation());
         }
         if (storedPanIds.contains(candidate.panId()) && !historyPanIds.contains(candidate.panId())) {
             progressManager.complete(targetSource, candidate);
             historyPanIds.add(candidate.panId());
-            return ExternalDataCollectionReport.empty(operation(targetSource));
+            return ExternalDataCollectionReport.empty(targetSource.operation());
         }
         ExternalDataCollectionReport report = candidateCollector.collect(targetSource, candidate);
         if (report.failedRequestCount() == 0) {
@@ -181,14 +181,7 @@ public class LhAnnouncementExternalCollectionService {
             String skipReason
     ) {
         failureRecorder.skip(targetSource, requestDescription, skipReason);
-        return new ExternalDataCollectionReport(operation(targetSource), 0, 0, 0, 1);
-    }
-
-    private String operation(ExternalDataSource targetSource) {
-        if (targetSource == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL) {
-            return "lh-announcement-detail";
-        }
-        return "lh-announcement-supply";
+        return new ExternalDataCollectionReport(targetSource.operation(), 0, 0, 0, 1);
     }
 
     private void validateTargetSource(ExternalDataSource targetSource) {
@@ -200,8 +193,8 @@ public class LhAnnouncementExternalCollectionService {
     }
 
     private IngestAlreadyRunningException alreadyRunning(ExternalDataSource targetSource) {
-        log.warn("{} 수집이 이미 실행 중이므로 중복 실행을 건너뜁니다.", operation(targetSource));
-        return new IngestAlreadyRunningException(operation(targetSource) + " 수집이 이미 실행 중입니다.");
+        log.warn("{} 수집이 이미 실행 중이므로 중복 실행을 건너뜁니다.", targetSource.operation());
+        return new IngestAlreadyRunningException(targetSource.operation() + " 수집이 이미 실행 중입니다.");
     }
 
 }

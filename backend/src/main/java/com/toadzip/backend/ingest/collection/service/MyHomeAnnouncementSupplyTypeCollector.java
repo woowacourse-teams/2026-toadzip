@@ -59,7 +59,7 @@ public class MyHomeAnnouncementSupplyTypeCollector {
                     "마이홈 공고 공급유형 수집에 실패했습니다"
             );
             return new ExternalDataCollectionReport(
-                    "myhome-announcement",
+                    ExternalDataSource.MYHOME_ANNOUNCEMENT.operation(),
                     0,
                     1,
                     callCounter.count(),
@@ -68,7 +68,12 @@ public class MyHomeAnnouncementSupplyTypeCollector {
             );
         }
         int storedRowCount = sourceStore.storeAnnouncements(runId, items);
-        return new ExternalDataCollectionReport("myhome-announcement", storedRowCount, 0, callCounter.count());
+        return new ExternalDataCollectionReport(
+                ExternalDataSource.MYHOME_ANNOUNCEMENT.operation(),
+                storedRowCount,
+                0,
+                callCounter.count()
+        );
     }
 
     private List<MyHomeAnnouncementSourceItem> fetchCompleteSupplyType(
