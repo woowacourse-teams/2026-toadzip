@@ -49,13 +49,16 @@ class MyHomeComplexCollectionServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new MyHomeComplexCollectionService(
+        MyHomeComplexRegionCollector regionCollector = new MyHomeComplexRegionCollector(
                 new MyHomeComplexResponseParser(JsonMapper.builder().build()),
                 externalRepository,
-                regionCatalog,
                 sourceStore,
                 failureRecorder,
                 new ExternalDataRetryExecutor(Duration.ZERO)
+        );
+        service = new MyHomeComplexCollectionService(
+                regionCatalog,
+                regionCollector
         );
     }
 
