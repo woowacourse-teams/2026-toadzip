@@ -37,7 +37,7 @@ public class MyHomeComplexResponseParser {
         if (!item.isArray() && !item.isObject()) {
             throw invalidResponseSchema();
         }
-        List<JsonNode> rows = DataGoKrOpenApiClient.findRows(response.body(), LIST_POINTER);
+        List<JsonNode> rows = ExternalResponseRows.at(response.body(), LIST_POINTER);
         if (rows.isEmpty() && collectedCount == 0 && totalCount != 0) {
             throw invalidResponseSchema();
         }

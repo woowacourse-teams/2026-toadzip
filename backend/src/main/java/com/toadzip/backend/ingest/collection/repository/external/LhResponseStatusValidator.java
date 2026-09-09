@@ -11,7 +11,7 @@ public class LhResponseStatusValidator implements ExternalDataResponseStatusVali
 
     @Override
     public void validate(JsonNode root) {
-        List<JsonNode> headers = DataGoKrOpenApiClient.findRows(root, "resHeader");
+        List<JsonNode> headers = ExternalResponseRows.find(root, "resHeader");
         if (headers.isEmpty()) {
             throw new ExternalDataRequestException("원천 응답에 resHeader가 없습니다.");
         }
@@ -23,4 +23,5 @@ public class LhResponseStatusValidator implements ExternalDataResponseStatusVali
         String message = header.path("RS_MSG").asString("");
         throw new ExternalDataRequestException("원천 오류 SS_CODE=" + code + ", " + message);
     }
+
 }

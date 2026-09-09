@@ -50,7 +50,7 @@ public class LhAnnouncementDetailResponseParser {
     }
 
     private void addEtcInfo(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
-        for (JsonNode row : DataGoKrOpenApiClient.findRows(root, "dsEtcInfo")) {
+        for (JsonNode row : ExternalResponseRows.find(root, "dsEtcInfo")) {
             sources.add(detail(sources.size(), panId, "ETC_INFO")
                     .correctionReason(text(row, "CRC_RSN"))
                     .etcContents(text(row, "ETC_CTS"))
@@ -59,7 +59,7 @@ public class LhAnnouncementDetailResponseParser {
     }
 
     private void addComplexes(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
-        for (JsonNode row : DataGoKrOpenApiClient.findRows(root, "dsSbd")) {
+        for (JsonNode row : ExternalResponseRows.find(root, "dsSbd")) {
             sources.add(detail(sources.size(), panId, "COMPLEX")
                     .complexName(text(row, "LCC_NT_NM"))
                     .address(text(row, "LGDN_ADR"))
@@ -74,7 +74,7 @@ public class LhAnnouncementDetailResponseParser {
     }
 
     private void addSchedules(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
-        for (JsonNode row : DataGoKrOpenApiClient.findRows(root, "dsSplScdl")) {
+        for (JsonNode row : ExternalResponseRows.find(root, "dsSplScdl")) {
             sources.add(detail(sources.size(), panId, "SCHEDULE")
                     .complexName(text(row, "SBD_LGO_NM"))
                     .applicationPeriod(text(row, "ACP_DTTM"))
@@ -88,7 +88,7 @@ public class LhAnnouncementDetailResponseParser {
     }
 
     private void addReceptions(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
-        for (JsonNode row : DataGoKrOpenApiClient.findRows(root, "dsCtrtPlc")) {
+        for (JsonNode row : ExternalResponseRows.find(root, "dsCtrtPlc")) {
             sources.add(detail(sources.size(), panId, "RECEPTION")
                     .receptionAddress(text(row, "CTRT_PLC_ADR"))
                     .receptionDetailAddress(text(row, "CTRT_PLC_DTL_ADR"))
@@ -101,7 +101,7 @@ public class LhAnnouncementDetailResponseParser {
     }
 
     private void addAnnouncementFiles(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
-        for (JsonNode row : DataGoKrOpenApiClient.findRows(root, "dsAhflInfo")) {
+        for (JsonNode row : ExternalResponseRows.find(root, "dsAhflInfo")) {
             sources.add(detail(sources.size(), panId, "ANNOUNCEMENT_FILE")
                     .kind(text(row, "SL_PAN_AHFL_DS_CD_NM"))
                     .name(text(row, "CMN_AHFL_NM"))
@@ -111,7 +111,7 @@ public class LhAnnouncementDetailResponseParser {
     }
 
     private void addComplexImages(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
-        for (JsonNode row : DataGoKrOpenApiClient.findRows(root, "dsSbdAhfl")) {
+        for (JsonNode row : ExternalResponseRows.find(root, "dsSbdAhfl")) {
             sources.add(detail(sources.size(), panId, "COMPLEX_IMAGE")
                     .kind(text(row, "LS_SPL_INF_UPL_FL_DS_CD_NM"))
                     .name(text(row, "CMN_AHFL_NM"))

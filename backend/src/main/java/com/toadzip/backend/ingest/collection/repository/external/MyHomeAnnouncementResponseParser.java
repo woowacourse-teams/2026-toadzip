@@ -20,8 +20,7 @@ public class MyHomeAnnouncementResponseParser {
     }
 
     public ExternalDataPage<MyHomeAnnouncementSourceItem> parse(ExternalDataResponse response) {
-        List<MyHomeAnnouncementSourceItem> items = DataGoKrOpenApiClient
-                .findRows(response.body(), LIST_POINTER)
+        List<MyHomeAnnouncementSourceItem> items = ExternalResponseRows.at(response.body(), LIST_POINTER)
                 .stream()
                 .map(this::sourceItemOf)
                 .toList();
@@ -37,4 +36,5 @@ public class MyHomeAnnouncementResponseParser {
             throw new ExternalDataRequestException("마이홈 공고 응답 항목 형식이 올바르지 않습니다.", exception);
         }
     }
+
 }

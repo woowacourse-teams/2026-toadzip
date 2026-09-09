@@ -4,8 +4,6 @@ import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
@@ -67,22 +65,6 @@ public class DataGoKrOpenApiClient {
             return URI.create(uri);
         }
         return URI.create(uri + "&" + query);
-    }
-
-    public static List<JsonNode> findRows(JsonNode root, String locator) {
-        JsonNode found = findByKey(root, locator);
-        if (locator.startsWith("/")) {
-            found = root.at(locator);
-        }
-        if (found.isArray()) {
-            List<JsonNode> rows = new ArrayList<>(found.size());
-            found.forEach(rows::add);
-            return rows;
-        }
-        if (found.isObject()) {
-            return List.of(found);
-        }
-        return List.of();
     }
 
     private String requestRawPayload(URI requestUri) {
@@ -167,19 +149,6 @@ public class DataGoKrOpenApiClient {
         catch (RuntimeException exception) {
             return objectMapper.createObjectNode();
         }
-    }
-
-    private static JsonNode findByKey(JsonNode root, String key) {
-        if (!root.isArray()) {
-            return root.path(key);
-        }
-        for (JsonNode element : root) {
-            JsonNode found = element.path(key);
-            if (!found.isMissingNode()) {
-                return found;
-            }
-        }
-        return root.path(key);
     }
 
     private static String encodeServiceKey(String raw) {

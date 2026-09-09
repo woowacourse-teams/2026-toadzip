@@ -12,10 +12,11 @@ public class LhLeaseCatalogResponseParser {
     private static final String LIST_KEY = "dsList";
 
     public ExternalDataPage<LhCatalogSourceItem> parse(ExternalDataResponse response) {
-        List<LhCatalogSourceItem> items = DataGoKrOpenApiClient.findRows(response.body(), LIST_KEY)
+        List<LhCatalogSourceItem> items = ExternalResponseRows.find(response.body(), LIST_KEY)
                 .stream()
                 .map(LhCatalogSourceItem::from)
                 .toList();
         return new ExternalDataPage<>(items, -1);
     }
+
 }

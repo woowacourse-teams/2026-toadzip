@@ -18,8 +18,8 @@ import tools.jackson.databind.json.JsonMapper;
 class DataGoKrOpenApiClientTest {
 
     @Test
-    @DisplayName("외부 응답 원문을 보존하고 응답 행을 탐색한다")
-    void keepsRawResponseAndFindsRows() {
+    @DisplayName("외부 응답 원문과 JSON 응답을 보존한다")
+    void keepsRawAndJsonResponse() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"},"
@@ -41,9 +41,7 @@ class DataGoKrOpenApiClientTest {
         var response = client.get("list", params);
 
         assertThat(response.rawPayload()).isEqualTo(payload);
-        assertThat(DataGoKrOpenApiClient.findRows(response.body(), "/response/body/item"))
-                .singleElement()
-                .satisfies(row -> assertThat(row.path("id").asString()).isEqualTo("001"));
+        assertThat(response.body().at("/response/body/item/0/id").asString()).isEqualTo("001");
         server.verify();
     }
 

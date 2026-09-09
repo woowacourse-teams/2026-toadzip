@@ -14,7 +14,7 @@ public class LhAnnouncementSupplyResponseParser {
 
     public List<LhAnnouncementSupplySource> parse(String panId, JsonNode root) {
         requireDataset(root);
-        List<JsonNode> rows = DataGoKrOpenApiClient.findRows(root, DATASET_KEY);
+        List<JsonNode> rows = ExternalResponseRows.find(root, DATASET_KEY);
         List<LhAnnouncementSupplySource> sources = new ArrayList<>();
         for (int sourceOrder = 0; sourceOrder < rows.size(); sourceOrder++) {
             sources.add(new LhAnnouncementSupplySource(
@@ -43,4 +43,5 @@ public class LhAnnouncementSupplyResponseParser {
         }
         return false;
     }
+
 }
