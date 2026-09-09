@@ -1,8 +1,6 @@
 package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementSupplySourceItem;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import java.util.ArrayList;
@@ -22,8 +20,6 @@ public class LhAnnouncementSourceMapper {
             "dsSbdAhfl"
     );
 
-    private static final String SUPPLY_DATASET_KEY = "dsList01";
-
     public List<LhAnnouncementDetailSource> details(String panId, JsonNode root) {
         requireAnyDataset(root, DETAIL_DATASET_KEYS, "LH 공고 상세");
         List<LhAnnouncementDetailSource> sources = new ArrayList<>();
@@ -33,20 +29,6 @@ public class LhAnnouncementSourceMapper {
         addReceptions(sources, panId, root);
         addAnnouncementFiles(sources, panId, root);
         addComplexImages(sources, panId, root);
-        return sources;
-    }
-
-    public List<LhAnnouncementSupplySource> supplies(String panId, JsonNode root) {
-        requireAnyDataset(root, List.of(SUPPLY_DATASET_KEY), "LH 공고 공급");
-        List<JsonNode> rows = DataGoKrOpenApiClient.findRows(root, SUPPLY_DATASET_KEY);
-        List<LhAnnouncementSupplySource> sources = new ArrayList<>();
-        for (int sourceOrder = 0; sourceOrder < rows.size(); sourceOrder++) {
-            sources.add(new LhAnnouncementSupplySource(
-                    sourceOrder,
-                    panId,
-                    LhAnnouncementSupplySourceItem.from(rows.get(sourceOrder)).toSourceData()
-            ));
-        }
         return sources;
     }
 

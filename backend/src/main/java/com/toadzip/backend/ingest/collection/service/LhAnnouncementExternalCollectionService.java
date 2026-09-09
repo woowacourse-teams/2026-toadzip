@@ -14,6 +14,7 @@ import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRe
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import java.net.URI;
 import java.util.ArrayList;
@@ -37,6 +38,7 @@ public class LhAnnouncementExternalCollectionService {
     private final LhSourceStore sourceStore;
     private final LhAnnouncementCollectionProgressStore progressStore;
     private final LhAnnouncementSourceMapper sourceMapper;
+    private final LhAnnouncementSupplyResponseParser supplyResponseParser;
     private final ExternalDataFailureRecorder failureRecorder;
     private final LhSupplyInfoTypeCodeResolver supplyTypeCodeResolver;
     private final ExternalDataRetryExecutor retryExecutor;
@@ -48,6 +50,7 @@ public class LhAnnouncementExternalCollectionService {
             LhSourceStore sourceStore,
             LhAnnouncementCollectionProgressStore progressStore,
             LhAnnouncementSourceMapper sourceMapper,
+            LhAnnouncementSupplyResponseParser supplyResponseParser,
             ExternalDataFailureRecorder failureRecorder,
             LhSupplyInfoTypeCodeResolver supplyTypeCodeResolver,
             ExternalDataRetryExecutor retryExecutor
@@ -58,6 +61,7 @@ public class LhAnnouncementExternalCollectionService {
         this.sourceStore = sourceStore;
         this.progressStore = progressStore;
         this.sourceMapper = sourceMapper;
+        this.supplyResponseParser = supplyResponseParser;
         this.failureRecorder = failureRecorder;
         this.supplyTypeCodeResolver = supplyTypeCodeResolver;
         this.retryExecutor = retryExecutor;
@@ -284,7 +288,7 @@ public class LhAnnouncementExternalCollectionService {
             List<LhAnnouncementDetailSource> sources = sourceMapper.details(panId, response.body());
             return sourceStore.replaceDetails(panId, sources);
         }
-        List<LhAnnouncementSupplySource> sources = sourceMapper.supplies(panId, response.body());
+        List<LhAnnouncementSupplySource> sources = supplyResponseParser.parse(panId, response.body());
         return sourceStore.replaceSupplies(panId, sources);
     }
 
