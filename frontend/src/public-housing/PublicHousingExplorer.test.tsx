@@ -1067,6 +1067,10 @@ describe('PublicHousingExplorer', () => {
     })
     const complexRequestCount = repository.findComplexPage.mock.calls.length
     const mapRequestCount = repository.findMapComplexes.mock.calls.length
+    const scroll = screen.getByRole('tabpanel', { name: '공고 목록' })
+      .querySelector<HTMLElement>('.housing-results__scroll')
+    if (!scroll) throw new Error('공고 목록 스크롤 영역 없음')
+    scroll.scrollTop = 120
 
     fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
     const announcementFilter = screen.getByRole('region', {
@@ -1105,6 +1109,12 @@ describe('PublicHousingExplorer', () => {
     )
     expect(search.get('announcementRegionCode')).toBe('41')
     expect(search.get('complexRegionCode')).toBeNull()
+    expect(scroll.scrollTop).toBe(0)
+
+    scroll.scrollTop = 80
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
+    expect(scroll.scrollTop).toBe(80)
+    expect(repository.findAnnouncementPage).toHaveBeenCalledTimes(2)
 
     fireEvent.click(screen.getByRole('tab', { name: '단지 목록' }))
     fireEvent.click(screen.getByRole('button', { name: '상세 필터 열기' }))
@@ -1152,6 +1162,54 @@ describe('PublicHousingExplorer', () => {
     )
     expect(screen.queryByRole('button', { name: '이 지역에서 검색' }))
       .not.toBeInTheDocument()
+  })
+
+  it('통합 검색을 시작하고 종료해도 두 목록의 컨테이너와 읽던 위치를 유지한다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository, '/', false, searchRepository([], []))
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    await screen.findByRole('article', { name: '서울가람 행복주택' })
+    const complexScroll = screen.getByRole('tabpanel', { name: '단지 목록' })
+      .querySelector<HTMLElement>('.housing-results__scroll')
+    if (!complexScroll) throw new Error('단지 목록 스크롤 영역 없음')
+    complexScroll.scrollTop = 240
+    fireEvent.click(screen.getByRole('tab', { name: '공고 목록' }))
+    await screen.findByRole('heading', { name: '성남 청년 행복주택 입주자 모집 공고' })
+    const announcementScroll = screen.getByRole('tabpanel', { name: '공고 목록' })
+      .querySelector<HTMLElement>('.housing-results__scroll')
+    if (!announcementScroll) throw new Error('공고 목록 스크롤 영역 없음')
+    announcementScroll.scrollTop = 360
+
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })
+    expect(complexScroll.isConnected).toBe(true)
+    expect(announcementScroll.isConnected).toBe(true)
+    expect(screen.queryByRole('tab', { name: '공고 목록' })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '' } })
+
+    expect(announcementScroll.scrollTop).toBe(360)
+    fireEvent.click(screen.getByRole('tab', { name: '단지 목록' }))
+    expect(complexScroll.scrollTop).toBe(240)
+    expect(repository.findComplexPage).toHaveBeenCalledOnce()
+    expect(repository.findAnnouncementPage).toHaveBeenCalledOnce()
+  })
+
+  it('공고의 최초 로딩과 빈 결과 사이에도 같은 본문 스크롤 영역을 유지한다', async () => {
+    const pending = createDeferred<AnnouncementPage>()
+    const repository = createRepository()
+    repository.findAnnouncementPage.mockReturnValue(pending.promise)
+    renderExplorer(repository)
+    fireEvent.click(screen.getByRole('tab', { name: '공고 목록' }))
+    const panel = screen.getByRole('tabpanel', { name: '공고 목록' })
+    const scroll = panel.querySelector('.housing-results__scroll')
+    expect(scroll).not.toBeNull()
+    await act(() => pending.resolve({
+      ...announcementPage(),
+      items: [],
+      hasNext: false,
+      nextCursor: null,
+    }))
+    expect(await screen.findByText('현재 확인되는 공고가 없습니다.')).toBeVisible()
+    expect(panel.querySelector('.housing-results__scroll')).toBe(scroll)
   })
 
   it('검색 중에는 왼쪽 패널 전체에 통합 검색 결과만 표시한다', async () => {
@@ -1548,12 +1606,24 @@ describe('PublicHousingExplorer', () => {
     const cardAction = within(card).getByRole('button', {
       name: '서울가람 행복주택 단지 상세 보기',
     })
+    const scroll = card.closest<HTMLElement>('.housing-results__scroll')
+    if (!scroll) throw new Error('단지 목록 스크롤 영역 없음')
+    const pageScrollTop = document.documentElement.scrollTop
+    Object.defineProperty(scroll, 'clientHeight', { configurable: true, value: 300 })
+    vi.spyOn(scroll, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 200, 440, 300))
+    vi.spyOn(card, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 600, 400, 180))
     let panelHiddenAtScroll: boolean | null = null
-    const scrollIntoView = vi.fn()
-    scrollIntoView.mockImplementation(() => {
-      panelHiddenAtScroll = card.closest('[role="tabpanel"]')
-        ?.hasAttribute('hidden') ?? null
+    let listScrollTop = 0
+    const updateScroll = vi.fn((value: number) => {
+      listScrollTop = value
+      panelHiddenAtScroll = card.closest('[role="tabpanel"]')?.hasAttribute('hidden') ?? null
     })
+    Object.defineProperty(scroll, 'scrollTop', {
+      configurable: true,
+      get: () => listScrollTop,
+      set: updateScroll,
+    })
+    const scrollIntoView = vi.fn()
     card.scrollIntoView = scrollIntoView
 
     fireEvent.mouseEnter(card)
@@ -1564,7 +1634,7 @@ describe('PublicHousingExplorer', () => {
 
     fireEvent.mouseEnter(marker)
     expect(card).toHaveAttribute('data-hovered', 'true')
-    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(updateScroll).not.toHaveBeenCalled()
     fireEvent.mouseLeave(marker)
     expect(card).toHaveAttribute('data-hovered', 'true')
     expect(marker).toHaveAttribute('data-highlighted', 'true')
@@ -1581,16 +1651,43 @@ describe('PublicHousingExplorer', () => {
       .toHaveAttribute('aria-selected', 'true')
     fireEvent.click(marker)
 
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({
-      block: 'nearest',
-    }))
+    await waitFor(() => expect(scroll.scrollTop).toBe(280))
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(document.documentElement.scrollTop).toBe(pageScrollTop)
     expect(panelHiddenAtScroll).toBe(false)
-    expect(scrollIntoView.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(updateScroll.mock.invocationCallOrder[0]).toBeLessThan(
       repository.findComplexDetail.mock.invocationCallOrder[0],
     )
     expect(await screen.findByRole('complementary', {
       name: '서울가람 행복주택 단지 상세 정보',
     })).toBeVisible()
+  })
+
+  it.each([
+    ['이미 보이는 카드', 250, 180, 300],
+    ['위쪽에 가려진 카드', 150, 180, 250],
+    ['목록보다 큰 카드', 600, 400, 700],
+  ])('marker 선택 시 %s는 목록 내부에서만 필요한 만큼 노출한다', async (
+    _label, top, height, expectedScrollTop,
+  ) => {
+    const repository = createRepository()
+    renderExplorer(repository)
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    const card = await screen.findByRole('article', { name: '서울가람 행복주택' })
+    const scroll = card.closest<HTMLElement>('.housing-results__scroll')
+    if (!scroll) throw new Error('단지 목록 스크롤 영역 없음')
+    scroll.scrollTop = 300
+    Object.defineProperty(scroll, 'clientHeight', { configurable: true, value: 300 })
+    vi.spyOn(scroll, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 200, 440, 300))
+    vi.spyOn(card, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, top, 400, height))
+    const scrollIntoView = vi.fn()
+    card.scrollIntoView = scrollIntoView
+
+    fireEvent.click(screen.getByRole('button', { name: '서울가람 행복주택 지도 마커 선택' }))
+    await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
+
+    expect(scroll.scrollTop).toBe(expectedScrollTop)
+    expect(scrollIntoView).not.toHaveBeenCalled()
   })
 
   it('상세가 열린 선택 단지는 영역 밖에 유지하고 닫힌 뒤 새 결과에서 정리한다', async () => {
@@ -1812,6 +1909,7 @@ describe('PublicHousingExplorer', () => {
     const openButton = await screen.findByRole('button', {
       name: '서울가람 행복주택 단지 상세 보기',
     })
+    const focus = vi.spyOn(openButton, 'focus')
     openButton.focus()
     fireEvent.click(openButton)
 
@@ -1826,6 +1924,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
 
     await waitFor(() => expect(openButton).toHaveFocus())
+    expect(focus).toHaveBeenLastCalledWith({ preventScroll: true })
     expect(screen.queryByRole('complementary', {
       name: '서울가람 행복주택 단지 상세 정보',
     })).not.toBeInTheDocument()

@@ -8,6 +8,23 @@ import type {
 } from './integratedSearchRepository.ts'
 
 describe('IntegratedSearch', () => {
+  it('로딩과 오류, 빈 결과 사이에 본문 컨테이너를 유지한다', async () => {
+    const search = vi.fn()
+      .mockRejectedValueOnce(new Error('검색 실패'))
+      .mockResolvedValueOnce(response([], [], []))
+    render(<IntegratedSearch repository={{ search }} onSelect={vi.fn()} />)
+    const body = screen.getByRole('region', { name: '통합 검색' })
+      .querySelector('.integrated-search__body')
+    expect(body).not.toBeNull()
+
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })
+    expect(body).toContainElement(screen.getByText('검색 중입니다.'))
+    expect(body).toContainElement(await screen.findByRole('alert'))
+    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+    expect(body).toContainElement(await screen.findByText('검색 결과가 없습니다.'))
+  })
+
+
   it('두 글자를 입력하면 공고 단지 지역으로 구분하고 선택한 공고를 전달한다', async () => {
     const announcement = item('ANNOUNCEMENT', '1', '서울 행복주택 공고')
     const complex = item('COMPLEX', '2', '서울 행복주택 단지')

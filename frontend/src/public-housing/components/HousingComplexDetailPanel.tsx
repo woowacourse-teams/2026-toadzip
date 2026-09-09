@@ -93,7 +93,7 @@ export function HousingComplexDetailPanel({
   const titleId = `complex-detail-title-${detail.complexId}`
 
   useEffect(() => {
-    headingRef.current?.focus()
+    headingRef.current?.focus({ preventScroll: true })
   }, [detail.complexId])
 
   function selectHousingType(housingTypeId: string) {

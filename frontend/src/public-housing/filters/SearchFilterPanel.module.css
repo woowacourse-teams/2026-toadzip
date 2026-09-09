@@ -1,11 +1,16 @@
 .panel {
+  display: flex;
+  min-height: 0;
+  max-height: 50%;
   flex: 0 0 auto;
+  flex-direction: column;
   border-bottom: 1px solid var(--border);
   background: #f8fafc;
 }
 
 .toggle {
   display: flex;
+  flex: 0 0 auto;
   width: 100%;
   min-height: 48px;
   align-items: center;
@@ -30,8 +35,8 @@
 
 .form {
   display: flex;
+  min-height: 0;
   flex-direction: column;
-  max-height: min(52vh, 520px);
   overflow: hidden;
   border-top: 1px solid #e7e9ec;
 }
@@ -40,6 +45,7 @@
   min-height: 0;
   padding: 14px 16px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .grid {
