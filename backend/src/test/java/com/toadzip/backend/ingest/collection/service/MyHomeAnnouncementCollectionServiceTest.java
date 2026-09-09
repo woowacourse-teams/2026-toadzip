@@ -59,13 +59,17 @@ class MyHomeAnnouncementCollectionServiceTest {
             Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(0);
             return Optional.of(operation.get());
         });
-        service = new MyHomeAnnouncementCollectionService(
+        MyHomeAnnouncementSupplyTypeCollector supplyTypeCollector = new MyHomeAnnouncementSupplyTypeCollector(
                 new MyHomeAnnouncementResponseParser(JsonMapper.builder().build()),
                 externalRepository,
-                executionLock,
                 sourceStore,
                 failureRecorder,
                 new ExternalDataRetryExecutor(Duration.ZERO)
+        );
+        service = new MyHomeAnnouncementCollectionService(
+                executionLock,
+                sourceStore,
+                supplyTypeCollector
         );
     }
 
