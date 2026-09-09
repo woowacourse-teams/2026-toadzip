@@ -14,6 +14,7 @@ import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRe
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import java.net.URI;
@@ -37,7 +38,7 @@ public class LhAnnouncementExternalCollectionService {
     private final LhAnnouncementCollectionExecutionLock executionLock;
     private final LhSourceStore sourceStore;
     private final LhAnnouncementCollectionProgressStore progressStore;
-    private final LhAnnouncementSourceMapper sourceMapper;
+    private final LhAnnouncementDetailResponseParser detailResponseParser;
     private final LhAnnouncementSupplyResponseParser supplyResponseParser;
     private final ExternalDataFailureRecorder failureRecorder;
     private final LhSupplyInfoTypeCodeResolver supplyTypeCodeResolver;
@@ -49,7 +50,7 @@ public class LhAnnouncementExternalCollectionService {
             LhAnnouncementCollectionExecutionLock executionLock,
             LhSourceStore sourceStore,
             LhAnnouncementCollectionProgressStore progressStore,
-            LhAnnouncementSourceMapper sourceMapper,
+            LhAnnouncementDetailResponseParser detailResponseParser,
             LhAnnouncementSupplyResponseParser supplyResponseParser,
             ExternalDataFailureRecorder failureRecorder,
             LhSupplyInfoTypeCodeResolver supplyTypeCodeResolver,
@@ -60,7 +61,7 @@ public class LhAnnouncementExternalCollectionService {
         this.executionLock = executionLock;
         this.sourceStore = sourceStore;
         this.progressStore = progressStore;
-        this.sourceMapper = sourceMapper;
+        this.detailResponseParser = detailResponseParser;
         this.supplyResponseParser = supplyResponseParser;
         this.failureRecorder = failureRecorder;
         this.supplyTypeCodeResolver = supplyTypeCodeResolver;
@@ -285,7 +286,7 @@ public class LhAnnouncementExternalCollectionService {
 
     private int store(ExternalDataSource targetSource, String panId, ExternalDataResponse response) {
         if (targetSource == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL) {
-            List<LhAnnouncementDetailSource> sources = sourceMapper.details(panId, response.body());
+            List<LhAnnouncementDetailSource> sources = detailResponseParser.parse(panId, response.body());
             return sourceStore.replaceDetails(panId, sources);
         }
         List<LhAnnouncementSupplySource> sources = supplyResponseParser.parse(panId, response.body());

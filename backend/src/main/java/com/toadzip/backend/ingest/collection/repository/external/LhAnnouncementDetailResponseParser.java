@@ -1,15 +1,13 @@
-package com.toadzip.backend.ingest.collection.service;
+package com.toadzip.backend.ingest.collection.repository.external;
 
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
-import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 
 @Component
-public class LhAnnouncementSourceMapper {
+public class LhAnnouncementDetailResponseParser {
 
     private static final List<String> DETAIL_DATASET_KEYS = List.of(
             "dsEtcInfo",
@@ -20,7 +18,7 @@ public class LhAnnouncementSourceMapper {
             "dsSbdAhfl"
     );
 
-    public List<LhAnnouncementDetailSource> details(String panId, JsonNode root) {
+    public List<LhAnnouncementDetailSource> parse(String panId, JsonNode root) {
         requireAnyDataset(root, DETAIL_DATASET_KEYS, "LH 공고 상세");
         List<LhAnnouncementDetailSource> sources = new ArrayList<>();
         addEtcInfo(sources, panId, root);

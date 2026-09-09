@@ -26,6 +26,7 @@ import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRe
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import java.time.Duration;
@@ -84,7 +85,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                 executionLock,
                 sourceStore,
                 progressStore,
-                new LhAnnouncementSourceMapper(),
+                new LhAnnouncementDetailResponseParser(),
                 new LhAnnouncementSupplyResponseParser(),
                 failureRecorder,
                 new LhSupplyInfoTypeCodeResolver(),
