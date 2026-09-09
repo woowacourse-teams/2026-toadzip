@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.repository.external;
 
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
+import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexSourceItem;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -43,10 +44,11 @@ public class MyHomeComplexResponseParser {
         return new ValidatedPage(rows, totalCount);
     }
 
-    public List<MyHomeComplexSourceItem> parseItems(ValidatedPage page) {
-        return page.rows().stream()
+    public ExternalDataPage<MyHomeComplexSourceItem> parseItems(ValidatedPage page) {
+        List<MyHomeComplexSourceItem> items = page.rows().stream()
                 .map(this::sourceItemOf)
                 .toList();
+        return new ExternalDataPage<>(items, page.totalCount());
     }
 
     private ValidatedPage emptyPageOrThrow(int totalCount) {
@@ -100,12 +102,5 @@ public class MyHomeComplexResponseParser {
     }
 
     public record ValidatedPage(List<JsonNode> rows, int totalCount) {
-
-        public boolean completesCollection(int collectedCount, int pageSize) {
-            if (totalCount >= 0) {
-                return collectedCount >= totalCount;
-            }
-            return rows.size() < pageSize;
-        }
     }
 }

@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
+import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSourceItem;
@@ -11,7 +12,6 @@ import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementExtern
 import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeAnnouncementResponseParser;
-import com.toadzip.backend.ingest.collection.repository.external.MyHomeAnnouncementResponseParser.ParsedPage;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import java.util.ArrayList;
 import java.util.List;
@@ -142,7 +142,7 @@ public class MyHomeAnnouncementCollectionService {
                     callCounter
             );
             failureRecorder.resolve(ExternalDataSource.MYHOME_ANNOUNCEMENT, requestDescription);
-            ParsedPage parsedPage = responseParser.parse(response);
+            ExternalDataPage<MyHomeAnnouncementSourceItem> parsedPage = responseParser.parse(response);
             items.addAll(parsedPage.items());
             if (parsedPage.completesCollection(items.size(), request.pageSize())) {
                 return items;

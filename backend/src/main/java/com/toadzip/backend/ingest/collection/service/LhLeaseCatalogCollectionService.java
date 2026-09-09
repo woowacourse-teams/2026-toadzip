@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
+import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.LhCatalogSourceItem;
 import com.toadzip.backend.ingest.collection.dto.LhLeaseCatalogCollectionRequest;
@@ -9,7 +10,6 @@ import com.toadzip.backend.ingest.collection.repository.LhLeaseCatalogExternalRe
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.LhLeaseCatalogResponseParser;
-import com.toadzip.backend.ingest.collection.repository.external.LhLeaseCatalogResponseParser.ParsedPage;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
@@ -97,9 +97,9 @@ public class LhLeaseCatalogCollectionService {
                     callCounter
             );
             failureRecorder.resolve(ExternalDataSource.LH_LEASE_CATALOG, requestDescription);
-            ParsedPage parsedPage = responseParser.parse(response);
+            ExternalDataPage<LhCatalogSourceItem> parsedPage = responseParser.parse(response);
             items.addAll(parsedPage.items());
-            if (parsedPage.completesCollection(request.pageSize())) {
+            if (parsedPage.completesCollection(items.size(), request.pageSize())) {
                 return items;
             }
         }

@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexSourceItem;
@@ -212,9 +213,10 @@ public class MyHomeComplexCollectionService {
                     ),
                     callCounter
             );
-            items.addAll(responseParser.parseItems(validatedPage));
+            ExternalDataPage<MyHomeComplexSourceItem> parsedPage = responseParser.parseItems(validatedPage);
+            items.addAll(parsedPage.items());
             failureRecorder.resolve(ExternalDataSource.MYHOME_COMPLEX, requestDescription);
-            if (validatedPage.completesCollection(items.size(), request.pageSize())) {
+            if (parsedPage.completesCollection(items.size(), request.pageSize())) {
                 return items;
             }
         }
