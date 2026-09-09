@@ -16,12 +16,13 @@ import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSource
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Resolution;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Skipped;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -41,7 +42,7 @@ public class LhAnnouncementExternalCollectionService {
     private final LhAnnouncementDetailResponseParser detailResponseParser;
     private final LhAnnouncementSupplyResponseParser supplyResponseParser;
     private final ExternalDataFailureRecorder failureRecorder;
-    private final LhSupplyInfoTypeCodeResolver supplyTypeCodeResolver;
+    private final LhAnnouncementCollectionCandidateResolver candidateResolver;
     private final ExternalDataRetryExecutor retryExecutor;
 
     public LhAnnouncementExternalCollectionService(
@@ -53,7 +54,7 @@ public class LhAnnouncementExternalCollectionService {
             LhAnnouncementDetailResponseParser detailResponseParser,
             LhAnnouncementSupplyResponseParser supplyResponseParser,
             ExternalDataFailureRecorder failureRecorder,
-            LhSupplyInfoTypeCodeResolver supplyTypeCodeResolver,
+            LhAnnouncementCollectionCandidateResolver candidateResolver,
             ExternalDataRetryExecutor retryExecutor
     ) {
         this.myHomeAnnouncementRepository = myHomeAnnouncementRepository;
@@ -64,7 +65,7 @@ public class LhAnnouncementExternalCollectionService {
         this.detailResponseParser = detailResponseParser;
         this.supplyResponseParser = supplyResponseParser;
         this.failureRecorder = failureRecorder;
-        this.supplyTypeCodeResolver = supplyTypeCodeResolver;
+        this.candidateResolver = candidateResolver;
         this.retryExecutor = retryExecutor;
     }
 
@@ -123,55 +124,45 @@ public class LhAnnouncementExternalCollectionService {
             Set<String> attemptedRequests
     ) {
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(operation(targetSource));
-        List<CollectionCandidate> candidates = new ArrayList<>();
+        List<Candidate> candidates = new ArrayList<>();
         for (MyHomeAnnouncementSource source : sources) {
-            String sourceAnnouncementKey = sourceAnnouncementKey(source);
-            if (!visitedSourceAnnouncements.add(sourceAnnouncementKey)) {
+            Resolution resolution = candidateResolver.resolve(source);
+            if (!visitedSourceAnnouncements.add(resolution.sourceAnnouncementKey())) {
                 continue;
             }
-            String sourceDescription = sourceDescription(source);
-            if (!isLhProvider(source)) {
+            if (resolution instanceof Skipped skipped) {
                 report = report.plus(skipReport(
                         targetSource,
-                        sourceDescription,
-                        "LH 공급기관이 아닌 마이홈 공고라서 수집 대상이 아닙니다."
+                        skipped.sourceDescription(),
+                        skipped.reason()
                 ));
                 continue;
             }
-            Optional<LhAnnouncementRequest> request = requestOf(source);
-            if (request.isEmpty()) {
-                report = report.plus(skipReport(
-                        targetSource,
-                        sourceDescription,
-                        "LH 공고 조회 조건을 지원하지 않아 건너뛰었습니다."
-                ));
+            Candidate candidate = (Candidate) resolution;
+            if (!attemptedRequests.add(candidate.requestDescription())) {
                 continue;
             }
-            LhAnnouncementRequest resolved = request.orElseThrow();
-            if (!attemptedRequests.add(resolved.requestDescription())) {
-                continue;
-            }
-            candidates.add(new CollectionCandidate(sourceAnnouncementKey, sourceDescription, resolved));
+            candidates.add(candidate);
         }
         return report.plus(collectCandidates(targetSource, candidates));
     }
 
     private ExternalDataCollectionReport collectCandidates(
             ExternalDataSource targetSource,
-            List<CollectionCandidate> candidates
+            List<Candidate> candidates
     ) {
         if (candidates.isEmpty()) {
             return ExternalDataCollectionReport.empty(operation(targetSource));
         }
         BatchProgress progress = progressStore.findBatch(
                 targetSource,
-                candidates.stream().map(CollectionCandidate::requestDescription).toList(),
-                candidates.stream().map(CollectionCandidate::panId).toList()
+                candidates.stream().map(Candidate::requestDescription).toList(),
+                candidates.stream().map(Candidate::panId).toList()
         );
         Set<String> storedPanIds = new HashSet<>(progress.storedPanIds());
         Set<String> historyPanIds = new HashSet<>(progress.historyPanIds());
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(operation(targetSource));
-        for (CollectionCandidate candidate : candidates) {
+        for (Candidate candidate : candidates) {
             ExternalDataCollectionReport candidateReport = collectCandidate(
                     targetSource,
                     candidate,
@@ -189,7 +180,7 @@ public class LhAnnouncementExternalCollectionService {
 
     private ExternalDataCollectionReport collectCandidate(
             ExternalDataSource targetSource,
-            CollectionCandidate candidate,
+            Candidate candidate,
             BatchProgress progress,
             Set<String> storedPanIds,
             Set<String> historyPanIds
@@ -215,7 +206,7 @@ public class LhAnnouncementExternalCollectionService {
         return report;
     }
 
-    private void complete(ExternalDataSource targetSource, CollectionCandidate candidate) {
+    private void complete(ExternalDataSource targetSource, Candidate candidate) {
         resolveFailures(targetSource, candidate.requestDescription(), candidate.sourceDescription());
         progressStore.complete(
                 targetSource,
@@ -313,55 +304,11 @@ public class LhAnnouncementExternalCollectionService {
         }
     }
 
-    private boolean isLhProvider(MyHomeAnnouncementSource source) {
-        String provider = source.getSuplyInsttNm();
-        if (provider == null) {
-            return false;
-        }
-        String normalized = provider.strip();
-        return "LH".equalsIgnoreCase(normalized) || "한국토지주택공사".equals(normalized);
-    }
-
-    private Optional<LhAnnouncementRequest> requestOf(MyHomeAnnouncementSource source) {
-        Optional<String> supplyTypeCode = supplyTypeCodeResolver.resolve(source.getSuplyTyNm());
-        if (supplyTypeCode.isEmpty()) {
-            return Optional.empty();
-        }
-        String url = source.getUrl();
-        if (url == null || url.isBlank()) {
-            url = source.getPcUrl();
-        }
-        if (url == null || url.isBlank()) {
-            return Optional.empty();
-        }
-        try {
-            return LhAnnouncementRequest.from(URI.create(url), supplyTypeCode.orElseThrow());
-        }
-        catch (IllegalArgumentException exception) {
-            return Optional.empty();
-        }
-    }
-
     private ExternalDataResponse fetch(ExternalDataSource targetSource, LhAnnouncementRequest request) {
         if (targetSource == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL) {
             return externalRepository.fetchDetail(request);
         }
         return externalRepository.fetchSupply(request);
-    }
-
-    private String sourceDescription(MyHomeAnnouncementSource source) {
-        if (source.getId() == null) {
-            return source.getSourceKey();
-        }
-        return "myhomeAnnouncementSourceId=" + source.getId();
-    }
-
-    private String sourceAnnouncementKey(MyHomeAnnouncementSource source) {
-        String pblancId = source.getPblancId();
-        if (pblancId == null || pblancId.isBlank()) {
-            return "source:" + source.getSourceKey();
-        }
-        return pblancId;
     }
 
     private String operation(ExternalDataSource targetSource) {
@@ -384,18 +331,4 @@ public class LhAnnouncementExternalCollectionService {
         return new IngestAlreadyRunningException(operation(targetSource) + " 수집이 이미 실행 중입니다.");
     }
 
-    private record CollectionCandidate(
-            String sourceAnnouncementKey,
-            String sourceDescription,
-            LhAnnouncementRequest request
-    ) {
-
-        private String requestDescription() {
-            return request.requestDescription();
-        }
-
-        private String panId() {
-            return request.panId();
-        }
-    }
 }

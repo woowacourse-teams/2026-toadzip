@@ -88,7 +88,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                 new LhAnnouncementDetailResponseParser(),
                 new LhAnnouncementSupplyResponseParser(),
                 failureRecorder,
-                new LhSupplyInfoTypeCodeResolver(),
+                new LhAnnouncementCollectionCandidateResolver(new LhSupplyInfoTypeCodeResolver()),
                 new ExternalDataRetryExecutor(Duration.ZERO)
         );
     }
