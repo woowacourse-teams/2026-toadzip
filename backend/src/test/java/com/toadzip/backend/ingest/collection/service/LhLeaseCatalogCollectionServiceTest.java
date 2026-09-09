@@ -12,6 +12,7 @@ import com.toadzip.backend.ingest.collection.dto.LhLeaseCatalogCollectionRequest
 import com.toadzip.backend.ingest.collection.repository.LhLeaseCatalogExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.repository.external.LhLeaseCatalogResponseParser;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -39,6 +40,7 @@ class LhLeaseCatalogCollectionServiceTest {
     void setUp() {
         service = new LhLeaseCatalogCollectionService(
                 externalRepository,
+                new LhLeaseCatalogResponseParser(),
                 sourceStore,
                 failureRecorder,
                 new ExternalDataRetryExecutor(java.time.Duration.ZERO)

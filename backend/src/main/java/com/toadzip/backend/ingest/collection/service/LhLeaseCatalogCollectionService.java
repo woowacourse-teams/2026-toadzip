@@ -7,21 +7,21 @@ import com.toadzip.backend.ingest.collection.dto.LhCatalogSourceItem;
 import com.toadzip.backend.ingest.collection.dto.LhLeaseCatalogCollectionRequest;
 import com.toadzip.backend.ingest.collection.repository.LhLeaseCatalogExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
-import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.repository.external.LhLeaseCatalogResponseParser;
+import com.toadzip.backend.ingest.collection.repository.external.LhLeaseCatalogResponseParser.ParsedPage;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import tools.jackson.databind.JsonNode;
 
 @Slf4j
 @Service
 public class LhLeaseCatalogCollectionService {
 
-    private static final String LIST_KEY = "dsList";
-
     private final LhLeaseCatalogExternalRepository externalRepository;
+
+    private final LhLeaseCatalogResponseParser responseParser;
 
     private final LhSourceStore sourceStore;
 
@@ -31,11 +31,13 @@ public class LhLeaseCatalogCollectionService {
 
     public LhLeaseCatalogCollectionService(
             LhLeaseCatalogExternalRepository externalRepository,
+            LhLeaseCatalogResponseParser responseParser,
             LhSourceStore sourceStore,
             ExternalDataFailureRecorder failureRecorder,
             ExternalDataRetryExecutor retryExecutor
     ) {
         this.externalRepository = externalRepository;
+        this.responseParser = responseParser;
         this.sourceStore = sourceStore;
         this.failureRecorder = failureRecorder;
         this.retryExecutor = retryExecutor;
@@ -95,10 +97,9 @@ public class LhLeaseCatalogCollectionService {
                     callCounter
             );
             failureRecorder.resolve(ExternalDataSource.LH_LEASE_CATALOG, requestDescription);
-            List<JsonNode> rows = DataGoKrOpenApiClient.findRows(response.body(), LIST_KEY);
-            rows.stream().map(LhCatalogSourceItem::from).forEach(items::add);
-            int rowCount = rows.size();
-            if (rowCount < request.pageSize()) {
+            ParsedPage parsedPage = responseParser.parse(response);
+            items.addAll(parsedPage.items());
+            if (parsedPage.completesCollection(request.pageSize())) {
                 return items;
             }
         }
