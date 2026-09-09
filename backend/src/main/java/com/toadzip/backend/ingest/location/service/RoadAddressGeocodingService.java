@@ -1,8 +1,8 @@
 package com.toadzip.backend.ingest.location.service;
 
-import static com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingFailureReason.ADDRESS_NOT_FOUND;
-import static com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingFailureReason.COORDINATE_NOT_FOUND;
-import static com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingFailureReason.INVALID_ADDRESS;
+import static com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason.ADDRESS_NOT_FOUND;
+import static com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason.COORDINATE_NOT_FOUND;
+import static com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason.INVALID_ADDRESS;
 
 import com.toadzip.backend.ingest.location.domain.NormalizedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.RoadAddressLocation;
