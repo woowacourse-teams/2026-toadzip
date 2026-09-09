@@ -32,7 +32,8 @@ class DataGoKrOpenApiClientTest {
                 JsonMapper.builder().build(),
                 "https://example.com",
                 "key",
-                "마이홈 단지"
+                "마이홈 단지",
+                new MyHomeResponseStatusValidator()
         );
         LinkedMultiValueMap<String, String> params = new LinkedMultiValueMap<>();
         params.add("pageNo", "1");
@@ -56,14 +57,16 @@ class DataGoKrOpenApiClientTest {
                 JsonMapper.builder().build(),
                 "https://example.com",
                 "a+b/c==",
-                "마이홈 단지"
+                "마이홈 단지",
+                new MyHomeResponseStatusValidator()
         );
         DataGoKrOpenApiClient encoded = new DataGoKrOpenApiClient(
                 null,
                 JsonMapper.builder().build(),
                 "https://example.com",
                 "a%2Bb%2Fc%3D%3D",
-                "마이홈 단지"
+                "마이홈 단지",
+                new MyHomeResponseStatusValidator()
         );
 
         URI decodedUri = decoded.buildUri("list", params);
@@ -89,7 +92,8 @@ class DataGoKrOpenApiClientTest {
                 JsonMapper.builder().build(),
                 "https://example.com",
                 "key",
-                "마이홈 단지"
+                "마이홈 단지",
+                new MyHomeResponseStatusValidator()
         );
 
         assertThatThrownBy(() -> client.get("list", new LinkedMultiValueMap<>()))
@@ -225,7 +229,8 @@ class DataGoKrOpenApiClientTest {
                 JsonMapper.builder().build(),
                 "https://example.com",
                 "key",
-                "마이홈 단지"
+                "마이홈 단지",
+                new MyHomeResponseStatusValidator()
         );
     }
 }
