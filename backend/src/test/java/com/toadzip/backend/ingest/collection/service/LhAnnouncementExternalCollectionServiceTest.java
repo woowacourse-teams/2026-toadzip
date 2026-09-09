@@ -81,17 +81,22 @@ class LhAnnouncementExternalCollectionServiceTest {
                 .thenReturn(BatchProgress.empty());
         LhAnnouncementCollectionProgressManager progressManager =
                 new LhAnnouncementCollectionProgressManager(progressStore, failureRecorder);
-        service = new LhAnnouncementExternalCollectionService(
-                myHomeAnnouncementRepository,
+        LhAnnouncementCandidateCollector candidateCollector = new LhAnnouncementCandidateCollector(
                 externalRepository,
-                executionLock,
                 sourceStore,
-                progressManager,
                 new LhAnnouncementDetailResponseParser(),
                 new LhAnnouncementSupplyResponseParser(),
                 failureRecorder,
+                new ExternalDataRetryExecutor(Duration.ZERO),
+                progressManager
+        );
+        service = new LhAnnouncementExternalCollectionService(
+                myHomeAnnouncementRepository,
+                executionLock,
+                progressManager,
+                failureRecorder,
                 new LhAnnouncementCollectionCandidateResolver(new LhSupplyInfoTypeCodeResolver()),
-                new ExternalDataRetryExecutor(Duration.ZERO)
+                candidateCollector
         );
     }
 

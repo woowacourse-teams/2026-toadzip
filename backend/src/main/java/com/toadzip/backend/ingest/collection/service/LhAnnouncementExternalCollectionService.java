@@ -1,20 +1,11 @@
 package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionExecutionLock;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore.BatchProgress;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRepository;
-import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
-import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Resolution;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Skipped;
@@ -34,38 +25,26 @@ public class LhAnnouncementExternalCollectionService {
     private static final int ANNOUNCEMENT_BATCH_SIZE = 500;
 
     private final MyHomeAnnouncementSourceRepository myHomeAnnouncementRepository;
-    private final LhAnnouncementExternalRepository externalRepository;
     private final LhAnnouncementCollectionExecutionLock executionLock;
-    private final LhSourceStore sourceStore;
     private final LhAnnouncementCollectionProgressManager progressManager;
-    private final LhAnnouncementDetailResponseParser detailResponseParser;
-    private final LhAnnouncementSupplyResponseParser supplyResponseParser;
     private final ExternalDataFailureRecorder failureRecorder;
     private final LhAnnouncementCollectionCandidateResolver candidateResolver;
-    private final ExternalDataRetryExecutor retryExecutor;
+    private final LhAnnouncementCandidateCollector candidateCollector;
 
     public LhAnnouncementExternalCollectionService(
             MyHomeAnnouncementSourceRepository myHomeAnnouncementRepository,
-            LhAnnouncementExternalRepository externalRepository,
             LhAnnouncementCollectionExecutionLock executionLock,
-            LhSourceStore sourceStore,
             LhAnnouncementCollectionProgressManager progressManager,
-            LhAnnouncementDetailResponseParser detailResponseParser,
-            LhAnnouncementSupplyResponseParser supplyResponseParser,
             ExternalDataFailureRecorder failureRecorder,
             LhAnnouncementCollectionCandidateResolver candidateResolver,
-            ExternalDataRetryExecutor retryExecutor
+            LhAnnouncementCandidateCollector candidateCollector
     ) {
         this.myHomeAnnouncementRepository = myHomeAnnouncementRepository;
-        this.externalRepository = externalRepository;
         this.executionLock = executionLock;
-        this.sourceStore = sourceStore;
         this.progressManager = progressManager;
-        this.detailResponseParser = detailResponseParser;
-        this.supplyResponseParser = supplyResponseParser;
         this.failureRecorder = failureRecorder;
         this.candidateResolver = candidateResolver;
-        this.retryExecutor = retryExecutor;
+        this.candidateCollector = candidateCollector;
     }
 
     public ExternalDataCollectionReport collect(ExternalDataSource targetSource) {
@@ -188,73 +167,12 @@ public class LhAnnouncementExternalCollectionService {
             historyPanIds.add(candidate.panId());
             return ExternalDataCollectionReport.empty(operation(targetSource));
         }
-        ExternalDataCollectionReport report = fetchAndStore(targetSource, candidate);
+        ExternalDataCollectionReport report = candidateCollector.collect(targetSource, candidate);
         if (report.failedRequestCount() == 0) {
             storedPanIds.add(candidate.panId());
             historyPanIds.add(candidate.panId());
         }
         return report;
-    }
-
-    private ExternalDataCollectionReport fetchAndStore(
-            ExternalDataSource targetSource,
-            Candidate candidate
-    ) {
-        LhAnnouncementRequest request = candidate.request();
-        ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
-        ExternalDataResponse response;
-        try {
-            response = retryExecutor.execute(
-                    targetSource,
-                    request.requestDescription(),
-                    () -> fetch(targetSource, request),
-                    callCounter
-            );
-        }
-        catch (ExternalDataCallFailureException exception) {
-            return failedReport(targetSource, request, exception, callCounter);
-        }
-        int storedRowCount;
-        try {
-            storedRowCount = store(targetSource, request.panId(), response);
-        }
-        catch (ExternalDataRequestException exception) {
-            return failedReport(targetSource, request, exception, callCounter);
-        }
-        progressManager.complete(targetSource, candidate);
-        return new ExternalDataCollectionReport(operation(targetSource), storedRowCount, 0, callCounter.count());
-    }
-
-    private ExternalDataCollectionReport failedReport(
-            ExternalDataSource targetSource,
-            LhAnnouncementRequest request,
-            RuntimeException exception,
-            ExternalDataCallCounter callCounter
-    ) {
-        failureRecorder.record(
-                targetSource,
-                request.requestDescription(),
-                exception,
-                log,
-                "LH 외부 API 수집에 실패했습니다"
-        );
-        return new ExternalDataCollectionReport(
-                operation(targetSource),
-                0,
-                1,
-                callCounter.count(),
-                0,
-                ExternalDataRateLimit.count(exception)
-        );
-    }
-
-    private int store(ExternalDataSource targetSource, String panId, ExternalDataResponse response) {
-        if (targetSource == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL) {
-            List<LhAnnouncementDetailSource> sources = detailResponseParser.parse(panId, response.body());
-            return sourceStore.replaceDetails(panId, sources);
-        }
-        List<LhAnnouncementSupplySource> sources = supplyResponseParser.parse(panId, response.body());
-        return sourceStore.replaceSupplies(panId, sources);
     }
 
     private ExternalDataCollectionReport skipReport(
@@ -264,13 +182,6 @@ public class LhAnnouncementExternalCollectionService {
     ) {
         failureRecorder.skip(targetSource, requestDescription, skipReason);
         return new ExternalDataCollectionReport(operation(targetSource), 0, 0, 0, 1);
-    }
-
-    private ExternalDataResponse fetch(ExternalDataSource targetSource, LhAnnouncementRequest request) {
-        if (targetSource == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL) {
-            return externalRepository.fetchDetail(request);
-        }
-        return externalRepository.fetchSupply(request);
     }
 
     private String operation(ExternalDataSource targetSource) {
