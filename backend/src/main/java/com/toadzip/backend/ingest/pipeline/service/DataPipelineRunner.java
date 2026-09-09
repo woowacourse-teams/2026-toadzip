@@ -61,19 +61,19 @@ public class DataPipelineRunner {
     }
 
     public void run(DataPipelineType type, DataPipelineProgressListener progressListener) {
-        DataPipelinePartialFailureException firstPartialFailure = null;
+        DataPipelinePartialFailureException firstReportedPartialFailure = null;
         for (DataPipelineStep step : type.steps()) {
             try {
                 runStep(step, progressListener);
             }
             catch (DataPipelinePartialFailureException exception) {
-                if (firstPartialFailure == null) {
-                    firstPartialFailure = exception;
+                if (firstReportedPartialFailure == null) {
+                    firstReportedPartialFailure = exception;
                 }
             }
         }
-        if (firstPartialFailure != null) {
-            throw firstPartialFailure;
+        if (firstReportedPartialFailure != null) {
+            throw firstReportedPartialFailure;
         }
     }
 
