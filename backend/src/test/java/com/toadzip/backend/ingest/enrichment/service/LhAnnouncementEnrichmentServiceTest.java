@@ -17,9 +17,9 @@ import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceData;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceData;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
@@ -163,7 +163,7 @@ class LhAnnouncementEnrichmentServiceTest {
     void 마이홈_URL에_panId가_없으면_공고를_새로_생성하지_않고_실패를_기록한다() {
         saveComplex();
         MyHomeAnnouncementSource source = myHomeSource();
-        source.replaceWith(new MyHomeAnnouncementSourceData(
+        source.replaceWith(new MyHomeAnnouncementSourceSnapshot(
                 "21026", 1, "모집중", "국민임대 입주자 모집공고", "LH서울", "아파트", "국민임대", null,
                 "20260813", "20261106", "20260824", "20260831", "1600-1004",
                 "https://example.com/announcements", null, null, "동삼2", "서울특별시", "종로구",
@@ -207,7 +207,7 @@ class LhAnnouncementEnrichmentServiceTest {
 
         supplySourceRepository.deleteAll();
         supplySourceRepository.save(new LhAnnouncementSupplySource(0, PAN_ID,
-                new LhAnnouncementSupplySourceData(
+                new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "46A", "46.8", "67.0", "100", "20", "공고문 참조", "공고문 참조"
                 )));
 
@@ -278,17 +278,17 @@ class LhAnnouncementEnrichmentServiceTest {
         ));
         saveLhSources("10,000,000", "200,000");
         supplySourceRepository.save(new LhAnnouncementSupplySource(1, PAN_ID,
-                new LhAnnouncementSupplySourceData(
+                new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "59B", "59.8", "84.0", "80", "10", "20,000,000", "300,000"
                 )));
         enrichmentService.enrichAll();
 
         supplySourceRepository.deleteAll();
         supplySourceRepository.saveAll(List.of(
-                new LhAnnouncementSupplySource(0, PAN_ID, new LhAnnouncementSupplySourceData(
+                new LhAnnouncementSupplySource(0, PAN_ID, new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "59B", "59.8", "84.0", "80", "10", "21,000,000", "310,000"
                 )),
-                new LhAnnouncementSupplySource(1, PAN_ID, new LhAnnouncementSupplySourceData(
+                new LhAnnouncementSupplySource(1, PAN_ID, new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "46A", "46.8", "67.0", "100", "20", "11,000,000", "210,000"
                 ))
         ));
@@ -322,7 +322,7 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     private MyHomeAnnouncementSource myHomeSource() {
-        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, new MyHomeAnnouncementSourceData(
+        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, new MyHomeAnnouncementSourceSnapshot(
                 "21026", 1, "모집중", "국민임대 입주자 모집공고", "LH서울", "아파트", "국민임대", null,
                 "20260813", "20261106", "20260824", "20260831", "1600-1004",
                 "https://example.com/announcements?panId=" + PAN_ID, null, null, "동삼2", "서울특별시", "종로구",
@@ -350,7 +350,7 @@ class LhAnnouncementEnrichmentServiceTest {
                 detail(4, "COMPLEX", null, null, null, null, null, null, null, null)
         ));
         supplySourceRepository.save(new LhAnnouncementSupplySource(0, PAN_ID,
-                new LhAnnouncementSupplySourceData(
+                new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", housingTypeName, "46.8", "67.0", "100", "20", deposit, rent
                 )));
     }

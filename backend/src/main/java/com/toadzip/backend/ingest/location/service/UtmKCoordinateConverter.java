@@ -3,7 +3,7 @@ package com.toadzip.backend.ingest.location.service;
 import com.toadzip.backend.ingest.location.domain.UtmKCoordinate;
 import com.toadzip.backend.ingest.location.domain.Wgs84Coordinate;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
-import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingFailureReason;
+import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import org.locationtech.proj4j.CRSFactory;

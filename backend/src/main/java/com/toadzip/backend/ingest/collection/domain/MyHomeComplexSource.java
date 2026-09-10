@@ -58,48 +58,48 @@ public class MyHomeComplexSource {
     private Long bassMtRntchrg;
     private Long bassCnvrsGtnLmt;
 
-    private MyHomeComplexSource(MyHomeComplexSourceData data) {
-        sourceKey = sourceKeyOf(data);
-        replaceWith(data);
+    private MyHomeComplexSource(MyHomeComplexSourceSnapshot snapshot) {
+        sourceKey = sourceKeyOf(snapshot);
+        replaceWith(snapshot);
     }
 
-    public static MyHomeComplexSource from(MyHomeComplexSourceData data) {
-        return new MyHomeComplexSource(data);
+    public static MyHomeComplexSource from(MyHomeComplexSourceSnapshot snapshot) {
+        return new MyHomeComplexSource(snapshot);
     }
 
-    public static String sourceKeyOf(MyHomeComplexSourceData data) {
-        return keyPart(data.hsmpSn())
-                + keyPart(data.pnu())
-                + keyPart(data.suplyTyNm())
-                + keyPart(data.styleNm())
-                + keyPart(data.suplyPrvuseAr())
-                + keyPart(data.suplyCmnuseAr());
+    public static String sourceKeyOf(MyHomeComplexSourceSnapshot snapshot) {
+        return keyPart(snapshot.hsmpSn())
+                + keyPart(snapshot.pnu())
+                + keyPart(snapshot.suplyTyNm())
+                + keyPart(snapshot.styleNm())
+                + keyPart(snapshot.suplyPrvuseAr())
+                + keyPart(snapshot.suplyCmnuseAr());
     }
 
-    public void replaceWith(MyHomeComplexSourceData data) {
-        hsmpSn = data.hsmpSn();
-        insttNm = trim(data.insttNm());
-        brtcCode = trim(data.brtcCode());
-        brtcNm = trim(data.brtcNm());
-        signguCode = trim(data.signguCode());
-        signguNm = trim(data.signguNm());
-        hsmpNm = trim(data.hsmpNm());
-        rnAdres = trim(data.rnAdres());
-        pnu = trim(data.pnu());
-        competDe = trim(data.competDe());
-        hshldCo = data.hshldCo();
-        suplyTyNm = trim(data.suplyTyNm());
-        styleNm = trim(data.styleNm());
-        suplyPrvuseAr = area(data.suplyPrvuseAr());
-        suplyCmnuseAr = area(data.suplyCmnuseAr());
-        houseTyNm = trim(data.houseTyNm());
-        heatMthdDetailNm = trim(data.heatMthdDetailNm());
-        buldStleNm = trim(data.buldStleNm());
-        elvtrInstlAtNm = trim(data.elvtrInstlAtNm());
-        parkngCo = data.parkngCo();
-        bassRentGtn = data.bassRentGtn();
-        bassMtRntchrg = data.bassMtRntchrg();
-        bassCnvrsGtnLmt = data.bassCnvrsGtnLmt();
+    public void replaceWith(MyHomeComplexSourceSnapshot snapshot) {
+        hsmpSn = snapshot.hsmpSn();
+        insttNm = trim(snapshot.insttNm());
+        brtcCode = trim(snapshot.brtcCode());
+        brtcNm = trim(snapshot.brtcNm());
+        signguCode = trim(snapshot.signguCode());
+        signguNm = trim(snapshot.signguNm());
+        hsmpNm = trim(snapshot.hsmpNm());
+        rnAdres = trim(snapshot.rnAdres());
+        pnu = trim(snapshot.pnu());
+        competDe = trim(snapshot.competDe());
+        hshldCo = snapshot.hshldCo();
+        suplyTyNm = trim(snapshot.suplyTyNm());
+        styleNm = trim(snapshot.styleNm());
+        suplyPrvuseAr = area(snapshot.suplyPrvuseAr());
+        suplyCmnuseAr = area(snapshot.suplyCmnuseAr());
+        houseTyNm = trim(snapshot.houseTyNm());
+        heatMthdDetailNm = trim(snapshot.heatMthdDetailNm());
+        buldStleNm = trim(snapshot.buldStleNm());
+        elvtrInstlAtNm = trim(snapshot.elvtrInstlAtNm());
+        parkngCo = snapshot.parkngCo();
+        bassRentGtn = snapshot.bassRentGtn();
+        bassMtRntchrg = snapshot.bassMtRntchrg();
+        bassCnvrsGtnLmt = snapshot.bassCnvrsGtnLmt();
     }
 
     public void markCollectedAt(Instant collectedAt) {

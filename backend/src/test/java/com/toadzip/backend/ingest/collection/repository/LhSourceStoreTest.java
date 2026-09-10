@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementSupplySourceItem;
-import com.toadzip.backend.ingest.collection.dto.LhCatalogSourceItem;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -48,12 +48,12 @@ class LhSourceStoreTest {
 
     @Test
     void LH_카탈로그_응답_항목을_각각_테이블_행으로_저장한다() {
-        List<LhCatalogSourceItem> items = List.of(
+        List<LhCatalogSourceSnapshot> snapshots = List.of(
                 catalog("강릉교동 행복주택", "36.97"),
                 catalog("강릉교동 행복주택", "44.12")
         );
 
-        int storedRowCount = store.replaceCatalog(items);
+        int storedRowCount = store.replaceCatalog(snapshots);
 
         assertThat(storedRowCount).isEqualTo(2);
         assertThat(catalogRepository.findAll())
@@ -81,7 +81,7 @@ class LhSourceStoreTest {
         LhAnnouncementSupplySource supply = new LhAnnouncementSupplySource(
                 0,
                 "PAN-1",
-                new LhAnnouncementSupplySourceItem(
+                new LhAnnouncementSupplySourceSnapshot(
                         "순천선평3",
                         "24(일반)",
                         "24.71",
@@ -90,7 +90,7 @@ class LhSourceStoreTest {
                         "50",
                         null,
                         null
-                ).toSourceData()
+                )
         );
 
         store.replaceDetails("PAN-1", List.of(detail));
@@ -104,8 +104,8 @@ class LhSourceStoreTest {
                 .isEqualTo("순천선평3");
     }
 
-    private LhCatalogSourceItem catalog(String label, String area) {
-        return new LhCatalogSourceItem(
+    private LhCatalogSourceSnapshot catalog(String label, String area) {
+        return new LhCatalogSourceSnapshot(
                 "강원특별자치도 강릉시", "행복주택", label, "180", area, "72", "0", "0"
         );
     }

@@ -18,11 +18,11 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceData;
+import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.MyHomeComplexSourceRepository;
-import com.toadzip.backend.ingest.location.dto.GeocodedRoadAddress;
+import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
-import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingFailureReason;
+import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.location.service.RoadAddressGeocodingService;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingCandidateRepository;
@@ -499,13 +499,13 @@ class MyHomeComplexMappingServiceTest {
         );
     }
 
-    private MyHomeComplexSource source(MyHomeComplexSourceData data) {
+    private MyHomeComplexSource source(MyHomeComplexSourceSnapshot data) {
         MyHomeComplexSource source = MyHomeComplexSource.from(data);
         source.markCollectedAt(COLLECTED_AT);
         return source;
     }
 
-    private MyHomeComplexSourceData data(
+    private MyHomeComplexSourceSnapshot data(
             Long hsmpSn,
             String styleName,
             String exclusiveArea,
@@ -519,7 +519,7 @@ class MyHomeComplexMappingServiceTest {
         );
     }
 
-    private MyHomeComplexSourceData dataWith(
+    private MyHomeComplexSourceSnapshot dataWith(
             Long hsmpSn,
             String styleName,
             String exclusiveArea,
@@ -533,7 +533,7 @@ class MyHomeComplexMappingServiceTest {
             String corridorType,
             String elevatorInstalled
     ) {
-        return new MyHomeComplexSourceData(
+        return new MyHomeComplexSourceSnapshot(
                 hsmpSn,
                 provider,
                 "11",

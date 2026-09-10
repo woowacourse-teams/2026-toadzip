@@ -3,7 +3,7 @@ package com.toadzip.backend.ingest.collection.repository;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSource;
-import com.toadzip.backend.ingest.collection.dto.LhCatalogSourceItem;
+import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -35,14 +35,14 @@ public class LhSourceStore {
     }
 
     @Transactional
-    public int replaceCatalog(List<LhCatalogSourceItem> items) {
-        if (items.isEmpty()) {
+    public int replaceCatalog(List<LhCatalogSourceSnapshot> snapshots) {
+        if (snapshots.isEmpty()) {
             throw new IllegalArgumentException("LH 카탈로그 원천 행이 비어 있습니다.");
         }
         List<LhCatalogSource> sources = new ArrayList<>();
         Instant collectedAt = clock.instant();
-        for (int sourceOrder = 0; sourceOrder < items.size(); sourceOrder++) {
-            LhCatalogSource source = new LhCatalogSource(sourceOrder, items.get(sourceOrder).toSourceData());
+        for (int sourceOrder = 0; sourceOrder < snapshots.size(); sourceOrder++) {
+            LhCatalogSource source = new LhCatalogSource(sourceOrder, snapshots.get(sourceOrder));
             source.markCollectedAt(collectedAt);
             sources.add(source);
         }

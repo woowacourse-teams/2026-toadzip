@@ -10,14 +10,15 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionRequest;
-import com.toadzip.backend.ingest.collection.dto.MyHomeComplexSourceItem;
 import com.toadzip.backend.ingest.collection.dto.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.repository.MyHomeComplexExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeRegionCatalog;
 import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.repository.external.MyHomeComplexResponseParser;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,13 +49,16 @@ class MyHomeComplexCollectionServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new MyHomeComplexCollectionService(
-                JsonMapper.builder().build(),
+        MyHomeComplexRegionCollector regionCollector = new MyHomeComplexRegionCollector(
+                new MyHomeComplexResponseParser(JsonMapper.builder().build()),
                 externalRepository,
-                regionCatalog,
                 sourceStore,
                 failureRecorder,
                 new ExternalDataRetryExecutor(Duration.ZERO)
+        );
+        service = new MyHomeComplexCollectionService(
+                regionCatalog,
+                regionCollector
         );
     }
 
@@ -70,9 +74,9 @@ class MyHomeComplexCollectionServiceTest {
 
         var result = service.collect(request());
 
-        ArgumentCaptor<List<MyHomeComplexSourceItem>> items = ArgumentCaptor.captor();
-        verify(sourceStore).replaceComplexRegion(eq(region), items.capture());
-        assertThat(items.getValue()).extracting(MyHomeComplexSourceItem::hsmpSn)
+        ArgumentCaptor<List<MyHomeComplexSourceSnapshot>> snapshots = ArgumentCaptor.captor();
+        verify(sourceStore).replaceComplexRegion(eq(region), snapshots.capture());
+        assertThat(snapshots.getValue()).extracting(MyHomeComplexSourceSnapshot::hsmpSn)
                 .containsExactly(1L, 2L, 3L);
         assertThat(result.storedRowCount()).isEqualTo(3);
         assertThat(result.failedRequestCount()).isZero();
@@ -227,6 +231,24 @@ class MyHomeComplexCollectionServiceTest {
 
         verify(sourceStore).replaceComplexRegion(region, List.of());
         assertThat(result.failedRequestCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("응답 항목 변환 실패는 외부 API 재시도 실패로 감싸지 않는다")
+    void doesNotWrapItemMappingFailureAsApiRetryFailure() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1))
+                .thenReturn(response("[{\"hsmpSn\":{}}]"));
+
+        service.collect(request());
+
+        ArgumentCaptor<RuntimeException> failure = ArgumentCaptor.captor();
+        verify(failureRecorder).record(any(), any(), failure.capture(), any(), any());
+        assertThat(failure.getValue())
+                .isExactlyInstanceOf(ExternalDataRequestException.class)
+                .hasMessage("마이홈 단지 응답 항목 형식이 올바르지 않습니다.");
+        verify(externalRepository).fetch(region, request(), 1);
     }
 
     @Test

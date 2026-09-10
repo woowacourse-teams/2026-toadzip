@@ -1,5 +1,7 @@
 package com.toadzip.backend.ingest.collection.dto;
 
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+
 public record MyHomeComplexCollectionReport(
         String operation,
         int storedRowCount,
@@ -28,7 +30,7 @@ public record MyHomeComplexCollectionReport(
     }
 
     public static MyHomeComplexCollectionReport empty() {
-        return new MyHomeComplexCollectionReport("myhome-complex", 0, 0, 0, 0);
+        return new MyHomeComplexCollectionReport(ExternalDataSource.MYHOME_COMPLEX.operation(), 0, 0, 0, 0);
     }
 
     public MyHomeComplexCollectionReport plus(MyHomeComplexCollectionReport other) {

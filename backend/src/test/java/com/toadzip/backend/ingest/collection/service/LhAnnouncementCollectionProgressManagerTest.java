@@ -1,0 +1,79 @@
+package com.toadzip.backend.ingest.collection.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
+import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore.BatchProgress;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+class LhAnnouncementCollectionProgressManagerTest {
+
+    @Mock
+    private LhAnnouncementCollectionProgressStore progressStore;
+
+    @Mock
+    private ExternalDataFailureRecorder failureRecorder;
+
+    private LhAnnouncementCollectionProgressManager progressManager;
+
+    @BeforeEach
+    void setUp() {
+        progressManager = new LhAnnouncementCollectionProgressManager(progressStore, failureRecorder);
+    }
+
+    @Test
+    void 후보의_요청과_PAN_ID로_배치_진행_상태를_조회한다() {
+        Candidate candidate = candidate();
+        BatchProgress expected = BatchProgress.empty();
+        when(progressStore.findBatch(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                List.of(candidate.requestDescription()),
+                List.of(candidate.panId())
+        )).thenReturn(expected);
+
+        BatchProgress result = progressManager.findBatch(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                List.of(candidate)
+        );
+
+        assertThat(result).isSameAs(expected);
+    }
+
+    @Test
+    void 수집_완료_시_실패_이력을_정리하고_체크포인트를_기록한다() {
+        Candidate candidate = candidate();
+
+        progressManager.complete(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, candidate);
+
+        verify(failureRecorder).resolve(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                candidate.requestDescription()
+        );
+        verify(failureRecorder).resolve(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                candidate.sourceDescription()
+        );
+        verify(progressStore).complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                candidate.sourceAnnouncementKey(),
+                candidate.requestDescription(),
+                candidate.panId()
+        );
+    }
+
+    private Candidate candidate() {
+        LhAnnouncementRequest request = new LhAnnouncementRequest("100", "03", "06", "48", "063");
+        return new Candidate("announcement-1", "myhomeAnnouncementSourceId=1", request);
+    }
+}

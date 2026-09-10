@@ -1,9 +1,9 @@
 package com.toadzip.backend.ingest.collection.repository;
 
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
-import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSourceItem;
-import com.toadzip.backend.ingest.collection.dto.MyHomeComplexSourceItem;
+import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.MyHomeRegion;
 import java.time.Clock;
 import java.time.Instant;
@@ -36,25 +36,25 @@ public class MyHomeSourceStore {
     }
 
     @Transactional
-    public int replaceComplexRegion(MyHomeRegion region, List<MyHomeComplexSourceItem> items) {
+    public int replaceComplexRegion(MyHomeRegion region, List<MyHomeComplexSourceSnapshot> snapshots) {
         Instant collectedAt = clock.instant();
-        validateRegion(region, items);
-        Map<String, MyHomeComplexSourceItem> unique = new LinkedHashMap<>();
-        for (MyHomeComplexSourceItem item : items) {
-            unique.put(MyHomeComplexSource.sourceKeyOf(item.toSourceData()), item);
+        validateRegion(region, snapshots);
+        Map<String, MyHomeComplexSourceSnapshot> unique = new LinkedHashMap<>();
+        for (MyHomeComplexSourceSnapshot snapshot : snapshots) {
+            unique.put(MyHomeComplexSource.sourceKeyOf(snapshot), snapshot);
         }
         Map<String, MyHomeComplexSource> stored = complexRepository.findAllBySourceKeyIn(unique.keySet())
                 .stream()
                 .collect(Collectors.toMap(MyHomeComplexSource::getSourceKey, Function.identity()));
         List<MyHomeComplexSource> sources = new ArrayList<>();
-        for (Map.Entry<String, MyHomeComplexSourceItem> entry : unique.entrySet()) {
+        for (Map.Entry<String, MyHomeComplexSourceSnapshot> entry : unique.entrySet()) {
             String sourceKey = entry.getKey();
-            MyHomeComplexSourceItem item = entry.getValue();
+            MyHomeComplexSourceSnapshot snapshot = entry.getValue();
             MyHomeComplexSource source = stored.get(sourceKey);
             if (source == null) {
-                source = MyHomeComplexSource.from(item.toSourceData());
+                source = MyHomeComplexSource.from(snapshot);
             }
-            source.replaceWith(item.toSourceData());
+            source.replaceWith(snapshot);
             source.markCollectedAt(collectedAt);
             sources.add(source);
         }
@@ -69,25 +69,25 @@ public class MyHomeSourceStore {
     }
 
     @Transactional
-    public int storeAnnouncements(String runId, List<MyHomeAnnouncementSourceItem> items) {
+    public int storeAnnouncements(String runId, List<MyHomeAnnouncementSourceSnapshot> snapshots) {
         Instant seenAt = clock.instant();
-        Map<String, MyHomeAnnouncementSourceItem> unique = new LinkedHashMap<>();
-        for (MyHomeAnnouncementSourceItem item : items) {
-            unique.put(MyHomeAnnouncementSource.sourceKeyOf(item.toSourceData()), item);
+        Map<String, MyHomeAnnouncementSourceSnapshot> unique = new LinkedHashMap<>();
+        for (MyHomeAnnouncementSourceSnapshot snapshot : snapshots) {
+            unique.put(MyHomeAnnouncementSource.sourceKeyOf(snapshot), snapshot);
         }
         Map<String, MyHomeAnnouncementSource> stored = announcementRepository.findAllBySourceKeyIn(unique.keySet())
                 .stream()
                 .collect(Collectors.toMap(MyHomeAnnouncementSource::getSourceKey, Function.identity()));
         List<MyHomeAnnouncementSource> sources = new ArrayList<>();
         int sourceOrder = announcementRepository.findMaxSourceOrder() + 1;
-        for (Map.Entry<String, MyHomeAnnouncementSourceItem> entry : unique.entrySet()) {
+        for (Map.Entry<String, MyHomeAnnouncementSourceSnapshot> entry : unique.entrySet()) {
             String sourceKey = entry.getKey();
-            MyHomeAnnouncementSourceItem item = entry.getValue();
+            MyHomeAnnouncementSourceSnapshot snapshot = entry.getValue();
             MyHomeAnnouncementSource source = stored.get(sourceKey);
             if (source == null) {
-                source = MyHomeAnnouncementSource.from(sourceOrder, item.toSourceData());
+                source = MyHomeAnnouncementSource.from(sourceOrder, snapshot);
             }
-            source.replaceWith(item.toSourceData());
+            source.replaceWith(snapshot);
             source.markSeen(runId, seenAt);
             sources.add(source);
             sourceOrder++;
@@ -103,10 +103,10 @@ public class MyHomeSourceStore {
         missedSources.forEach(MyHomeAnnouncementSource::markMissed);
     }
 
-    private void validateRegion(MyHomeRegion region, List<MyHomeComplexSourceItem> items) {
-        boolean containsOtherRegion = items.stream()
-                .anyMatch(item -> !region.provinceCode().equals(item.brtcCode())
-                        || !region.districtCode().equals(item.signguCode()));
+    private void validateRegion(MyHomeRegion region, List<MyHomeComplexSourceSnapshot> snapshots) {
+        boolean containsOtherRegion = snapshots.stream()
+                .anyMatch(snapshot -> !region.provinceCode().equals(snapshot.brtcCode())
+                        || !region.districtCode().equals(snapshot.signguCode()));
         if (containsOtherRegion) {
             throw new IllegalArgumentException(
                     "지역 스냅샷에 다른 지역의 원천 행이 포함되어 있습니다."

@@ -1,6 +1,5 @@
-package com.toadzip.backend.ingest.location.dto;
+package com.toadzip.backend.ingest.location.domain;
 
-import com.toadzip.backend.ingest.location.domain.Wgs84Coordinate;
 import java.math.BigDecimal;
 
 public record GeocodedRoadAddress(String roadAddress, BigDecimal latitude, BigDecimal longitude) {

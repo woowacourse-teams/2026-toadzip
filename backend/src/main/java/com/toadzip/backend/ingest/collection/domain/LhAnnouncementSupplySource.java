@@ -37,17 +37,17 @@ public class LhAnnouncementSupplySource {
     private String depositText;
     private String monthlyRentText;
 
-    public LhAnnouncementSupplySource(int sourceOrder, String panId, LhAnnouncementSupplySourceData data) {
+    public LhAnnouncementSupplySource(int sourceOrder, String panId, LhAnnouncementSupplySourceSnapshot snapshot) {
         this.sourceOrder = sourceOrder;
         this.panId = trim(panId);
-        complexLabel = trim(data.complexLabel());
-        typeName = trim(data.typeName());
-        exclusiveArea = trim(data.exclusiveArea());
-        supplyArea = trim(data.supplyArea());
-        totalUnitCount = trim(data.totalUnitCount());
-        suppliedUnitCount = trim(data.suppliedUnitCount());
-        depositText = trim(data.depositText());
-        monthlyRentText = trim(data.monthlyRentText());
+        complexLabel = trim(snapshot.complexLabel());
+        typeName = trim(snapshot.typeName());
+        exclusiveArea = trim(snapshot.exclusiveArea());
+        supplyArea = trim(snapshot.supplyArea());
+        totalUnitCount = trim(snapshot.totalUnitCount());
+        suppliedUnitCount = trim(snapshot.suppliedUnitCount());
+        depositText = trim(snapshot.depositText());
+        monthlyRentText = trim(snapshot.monthlyRentText());
     }
 
     public void markCollectedAt(Instant collectedAt) {

@@ -11,15 +11,16 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementCollectionRequest;
-import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSourceItem;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSupplyType;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementCollectionExecutionLock;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.repository.external.MyHomeAnnouncementResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import java.time.Duration;
 import java.util.List;
@@ -58,13 +59,17 @@ class MyHomeAnnouncementCollectionServiceTest {
             Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(0);
             return Optional.of(operation.get());
         });
-        service = new MyHomeAnnouncementCollectionService(
-                JsonMapper.builder().build(),
+        MyHomeAnnouncementSupplyTypeCollector supplyTypeCollector = new MyHomeAnnouncementSupplyTypeCollector(
+                new MyHomeAnnouncementResponseParser(JsonMapper.builder().build()),
                 externalRepository,
-                executionLock,
                 sourceStore,
                 failureRecorder,
                 new ExternalDataRetryExecutor(Duration.ZERO)
+        );
+        service = new MyHomeAnnouncementCollectionService(
+                executionLock,
+                sourceStore,
+                supplyTypeCollector
         );
     }
 
@@ -99,16 +104,16 @@ class MyHomeAnnouncementCollectionServiceTest {
         var result = service.collect(request);
 
         ArgumentCaptor<String> runIds = ArgumentCaptor.captor();
-        ArgumentCaptor<List<MyHomeAnnouncementSourceItem>> items = ArgumentCaptor.captor();
+        ArgumentCaptor<List<MyHomeAnnouncementSourceSnapshot>> snapshots = ArgumentCaptor.captor();
         verify(sourceStore, org.mockito.Mockito.times(MyHomeAnnouncementSupplyType.values().length))
-                .storeAnnouncements(runIds.capture(), items.capture());
+                .storeAnnouncements(runIds.capture(), snapshots.capture());
         String runId = runIds.getAllValues().getFirst();
         assertThat(runIds.getAllValues()).containsOnly(runId);
         verify(sourceStore).completeAnnouncementCollection(runId);
-        assertThat(items.getAllValues()).filteredOn(value -> !value.isEmpty())
+        assertThat(snapshots.getAllValues()).filteredOn(value -> !value.isEmpty())
                 .singleElement()
                 .extracting(List::getFirst)
-                .extracting(value -> ((MyHomeAnnouncementSourceItem) value).pblancId())
+                .extracting(value -> ((MyHomeAnnouncementSourceSnapshot) value).pblancId())
                 .isEqualTo("1");
         assertThat(result.storedRowCount()).isOne();
         assertThat(result.failedRequestCount()).isZero();

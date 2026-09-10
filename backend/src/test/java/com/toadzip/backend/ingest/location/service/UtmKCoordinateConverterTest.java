@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.ingest.location.domain.UtmKCoordinate;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
-import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingFailureReason;
+import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 

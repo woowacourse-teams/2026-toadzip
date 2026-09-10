@@ -1,6 +1,8 @@
 package com.toadzip.backend.ingest.collection.configuration;
 
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
+import com.toadzip.backend.ingest.collection.repository.external.LhResponseStatusValidator;
+import com.toadzip.backend.ingest.collection.repository.external.MyHomeResponseStatusValidator;
 import java.time.Duration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -25,14 +27,16 @@ public class ExternalDataIngestConfiguration {
     DataGoKrOpenApiClient myHomeComplexOpenApiClient(
             RestClient externalDataRestClient,
             ObjectMapper objectMapper,
-            ExternalDataIngestProperties properties
+            ExternalDataIngestProperties properties,
+            MyHomeResponseStatusValidator responseStatusValidator
     ) {
         return new DataGoKrOpenApiClient(
                 externalDataRestClient,
                 objectMapper,
                 properties.baseUrl().myhomeComplex(),
                 properties.serviceKey(),
-                "마이홈 단지"
+                "마이홈 단지",
+                responseStatusValidator
         );
     }
 
@@ -40,14 +44,16 @@ public class ExternalDataIngestConfiguration {
     DataGoKrOpenApiClient myHomeAnnouncementOpenApiClient(
             RestClient externalDataRestClient,
             ObjectMapper objectMapper,
-            ExternalDataIngestProperties properties
+            ExternalDataIngestProperties properties,
+            MyHomeResponseStatusValidator responseStatusValidator
     ) {
         return new DataGoKrOpenApiClient(
                 externalDataRestClient,
                 objectMapper,
                 properties.baseUrl().myhomeAnnouncement(),
                 properties.serviceKey(),
-                "마이홈 공고"
+                "마이홈 공고",
+                responseStatusValidator
         );
     }
 
@@ -55,14 +61,16 @@ public class ExternalDataIngestConfiguration {
     DataGoKrOpenApiClient lhOpenApiClient(
             RestClient externalDataRestClient,
             ObjectMapper objectMapper,
-            ExternalDataIngestProperties properties
+            ExternalDataIngestProperties properties,
+            LhResponseStatusValidator responseStatusValidator
     ) {
         return new DataGoKrOpenApiClient(
                 externalDataRestClient,
                 objectMapper,
                 properties.baseUrl().lh(),
                 properties.serviceKey(),
-                "LH"
+                "LH",
+                responseStatusValidator
         );
     }
 }

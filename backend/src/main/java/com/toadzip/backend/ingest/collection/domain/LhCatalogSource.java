@@ -32,16 +32,16 @@ public class LhCatalogSource {
     private String depositText;
     private String monthlyRentText;
 
-    public LhCatalogSource(int sourceOrder, LhCatalogSourceData data) {
+    public LhCatalogSource(int sourceOrder, LhCatalogSourceSnapshot snapshot) {
         this.sourceOrder = sourceOrder;
-        areaName = trim(data.areaName());
-        supplyTypeName = trim(data.supplyTypeName());
-        complexLabel = trim(data.complexLabel());
-        complexTotalUnitCount = trim(data.complexTotalUnitCount());
-        exclusiveArea = trim(data.exclusiveArea());
-        totalUnitCount = trim(data.totalUnitCount());
-        depositText = trim(data.depositText());
-        monthlyRentText = trim(data.monthlyRentText());
+        areaName = trim(snapshot.areaName());
+        supplyTypeName = trim(snapshot.supplyTypeName());
+        complexLabel = trim(snapshot.complexLabel());
+        complexTotalUnitCount = trim(snapshot.complexTotalUnitCount());
+        exclusiveArea = trim(snapshot.exclusiveArea());
+        totalUnitCount = trim(snapshot.totalUnitCount());
+        depositText = trim(snapshot.depositText());
+        monthlyRentText = trim(snapshot.monthlyRentText());
     }
 
     public void markCollectedAt(Instant collectedAt) {
