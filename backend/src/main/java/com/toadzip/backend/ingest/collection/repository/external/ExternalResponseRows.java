@@ -17,16 +17,28 @@ final class ExternalResponseRows {
         return rowsOf(findByKey(root, key));
     }
 
+    static boolean contains(JsonNode root, String key) {
+        return !findByKey(root, key).isMissingNode();
+    }
+
     private static List<JsonNode> rowsOf(JsonNode found) {
+        if (found.isMissingNode()) {
+            return List.of();
+        }
         if (found.isArray()) {
             List<JsonNode> rows = new ArrayList<>(found.size());
-            found.forEach(rows::add);
+            for (JsonNode row : found) {
+                if (!row.isObject()) {
+                    throw new ExternalDataRequestException("외부 응답 dataset의 행은 객체여야 합니다.");
+                }
+                rows.add(row);
+            }
             return rows;
         }
         if (found.isObject()) {
             return List.of(found);
         }
-        return List.of();
+        throw new ExternalDataRequestException("외부 응답 dataset은 배열 또는 객체여야 합니다.");
     }
 
     private static JsonNode findByKey(JsonNode root, String key) {

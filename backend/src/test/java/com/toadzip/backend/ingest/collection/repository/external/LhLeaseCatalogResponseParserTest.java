@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.repository.external;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
@@ -26,6 +27,29 @@ class LhLeaseCatalogResponseParserTest {
             assertThat(item.complexLabel()).isEqualTo("가 단지");
         });
         assertThat(page.completesCollection(1, 2)).isTrue();
+    }
+
+    @Test
+    @DisplayName("LH 임대 카탈로그 dataset이 빈 배열이면 정상 빈 페이지로 처리한다")
+    void parsesEmptyCatalogDataset() {
+        ExternalDataPage<LhCatalogSourceSnapshot> page = parser.parse(response("""
+                [{"resHeader":[{"SS_CODE":"Y"}]},{"dsList":[]}]
+                """));
+
+        assertThat(page.items()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("LH 임대 카탈로그 dataset이 없거나 타입이 잘못되면 실패한다")
+    void rejectsMissingOrInvalidCatalogDataset() {
+        ExternalDataResponse missing = response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]}]");
+        ExternalDataResponse scalar = response("[{\"dsList\":\"invalid\"}]");
+
+        assertThatThrownBy(() -> parser.parse(missing))
+                .isInstanceOf(ExternalDataRequestException.class)
+                .hasMessage("LH 임대 카탈로그 응답에 예상 dataset이 없습니다.");
+        assertThatThrownBy(() -> parser.parse(scalar))
+                .isInstanceOf(ExternalDataRequestException.class);
     }
 
     private ExternalDataResponse response(String payload) {

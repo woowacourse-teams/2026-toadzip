@@ -33,15 +33,7 @@ public class LhAnnouncementSupplyResponseParser {
     }
 
     private boolean containsDataset(JsonNode root) {
-        if (!root.isArray()) {
-            return root.has(DATASET_KEY);
-        }
-        for (JsonNode element : root) {
-            if (element.has(DATASET_KEY)) {
-                return true;
-            }
-        }
-        return false;
+        return ExternalResponseRows.contains(root, DATASET_KEY);
     }
 
     private LhAnnouncementSupplySourceSnapshot sourceSnapshotOf(JsonNode row) {

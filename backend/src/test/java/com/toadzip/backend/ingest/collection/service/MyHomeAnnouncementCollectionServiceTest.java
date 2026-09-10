@@ -154,6 +154,103 @@ class MyHomeAnnouncementCollectionServiceTest {
     }
 
     @Test
+    @DisplayName("성공 코드에 body가 없으면 원천 저장과 미조회 공고 판정을 하지 않는다")
+    void preservesSourcesWhenSuccessfulResponseSchemaIsInvalid() {
+        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
+        String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"}}}";
+        ExternalDataResponse invalidResponse = new ExternalDataResponse(
+                payload,
+                JsonMapper.builder().build().readTree(payload)
+        );
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(invalidResponse);
+
+        var result = service.collect(request);
+
+        verify(sourceStore, never()).storeAnnouncements(anyString(), any());
+        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        assertThat(result.failedRequestCount()).isEqualTo(MyHomeAnnouncementSupplyType.values().length);
+    }
+
+    @Test
+    @DisplayName(
+            "일부 페이지 수집 후 데이터 없음 응답이 오면 해당 공급유형을 저장하거나 미조회 판정하지 않는다"
+    )
+    void rejectsPrematureNoDataResponseAfterPartialCollection() {
+        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(1, 10);
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
+            MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
+            int page = invocation.getArgument(2);
+            if (supplyType != MyHomeAnnouncementSupplyType.HAPPY_HOUSE) {
+                return response("[]");
+            }
+            if (page == 1) {
+                return responseWithTotalCount("[{\"pblancId\":\"1\"}]", 2);
+            }
+            return noDataResponse();
+        });
+
+        var result = service.collect(request);
+
+        verify(sourceStore, times(MyHomeAnnouncementSupplyType.values().length - 1))
+                .storeAnnouncements(anyString(), any());
+        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
+    @DisplayName(
+            "일부 페이지 수집 후 전체 건수 0의 빈 응답이 오면 해당 공급유형을 저장하지 않는다"
+    )
+    void rejectsPrematureEmptyResponseAfterPartialCollection() {
+        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(1, 10);
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
+            MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
+            int page = invocation.getArgument(2);
+            if (supplyType != MyHomeAnnouncementSupplyType.HAPPY_HOUSE) {
+                return response("[]");
+            }
+            if (page == 1) {
+                return responseWithTotalCount("[{\"pblancId\":\"1\"}]", 2);
+            }
+            return response("[]");
+        });
+
+        var result = service.collect(request);
+
+        verify(sourceStore, times(MyHomeAnnouncementSupplyType.values().length - 1))
+                .storeAnnouncements(anyString(), any());
+        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
+    @DisplayName(
+            "후속 페이지의 전체 건수가 첫 페이지와 다르면 해당 공급유형을 저장하지 않는다"
+    )
+    void rejectsChangedTotalCountBetweenPages() {
+        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(1, 10);
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
+            MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
+            int page = invocation.getArgument(2);
+            if (supplyType != MyHomeAnnouncementSupplyType.HAPPY_HOUSE) {
+                return response("[]");
+            }
+            if (page == 1) {
+                return responseWithTotalCount("[{\"pblancId\":\"1\"}]", 3);
+            }
+            return responseWithTotalCount("[{\"pblancId\":\"2\"}]", 2);
+        });
+
+        var result = service.collect(request);
+
+        verify(sourceStore, times(MyHomeAnnouncementSupplyType.values().length - 1))
+                .storeAnnouncements(anyString(), any());
+        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
     @DisplayName("호출 제한이 발생하면 남은 공급유형을 조회하지 않는다")
     void stopsRemainingSupplyTypesAfterRateLimit() {
         MyHomeAnnouncementCollectionRequest request =
@@ -188,8 +285,24 @@ class MyHomeAnnouncementCollectionServiceTest {
     }
 
     private ExternalDataResponse response(String items) {
+        return responseWithTotalCount(items, totalCountOf(items));
+    }
+
+    private ExternalDataResponse responseWithTotalCount(String items, int totalCount) {
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"},"
-                + "\"body\":{\"item\":" + items + "}}}";
+                + "\"body\":{\"totalCount\":" + totalCount + ",\"item\":" + items + "}}}";
         return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+    }
+
+    private ExternalDataResponse noDataResponse() {
+        String payload = "{\"response\":{\"header\":{\"resultCode\":\"03\"}}}";
+        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+    }
+
+    private int totalCountOf(String items) {
+        if ("[]".equals(items)) {
+            return 0;
+        }
+        return 1;
     }
 }

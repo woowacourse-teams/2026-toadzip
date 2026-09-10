@@ -13,11 +13,18 @@ public class LhLeaseCatalogResponseParser {
     private static final String LIST_KEY = "dsList";
 
     public ExternalDataPage<LhCatalogSourceSnapshot> parse(ExternalDataResponse response) {
+        requireDataset(response.body());
         List<LhCatalogSourceSnapshot> snapshots = ExternalResponseRows.find(response.body(), LIST_KEY)
                 .stream()
                 .map(this::sourceSnapshotOf)
                 .toList();
         return new ExternalDataPage<>(snapshots, -1);
+    }
+
+    private void requireDataset(JsonNode root) {
+        if (!ExternalResponseRows.contains(root, LIST_KEY)) {
+            throw new ExternalDataRequestException("LH 임대 카탈로그 응답에 예상 dataset이 없습니다.");
+        }
     }
 
     private LhCatalogSourceSnapshot sourceSnapshotOf(JsonNode row) {
