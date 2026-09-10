@@ -1898,7 +1898,7 @@ describe('PublicHousingExplorer', () => {
     })
   })
 
-  it('단지 카드에서 상세 A를 열고 닫으면 URL과 focus가 원래 카드로 돌아간다', async () => {
+  it.each(['단지 상세 닫기', '브라우저 뒤로'])('%s 후 선택을 해제하고 URL과 focus를 복원한다', async (closeAction) => {
     const repository = createRepository()
     renderExplorer(repository)
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
@@ -1920,8 +1920,12 @@ describe('PublicHousingExplorer', () => {
     await waitFor(() => expect(detailHeading).toHaveFocus())
     expectCurrentSearch({ complexId: '17' })
     expect(screen.getByText('카메라 37.5,126.9')).toBeVisible()
+    const marker = screen.getByRole('button', {
+      name: '서울가람 행복주택 지도 마커 선택',
+    })
+    expect(marker).toHaveAttribute('data-selected', 'true')
 
-    fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
+    fireEvent.click(screen.getByRole('button', { name: closeAction }))
 
     await waitFor(() => expect(openButton).toHaveFocus())
     expect(focus).toHaveBeenLastCalledWith({ preventScroll: true })
@@ -1930,6 +1934,9 @@ describe('PublicHousingExplorer', () => {
     })).not.toBeInTheDocument()
     expectCurrentSearch({})
     expect(screen.getByText('카메라 37.56,127')).toBeVisible()
+    expect(marker).not.toHaveAttribute('data-selected')
+    expect(screen.getByRole('article', { name: '서울가람 행복주택' }))
+      .not.toHaveAttribute('aria-current', 'true')
   })
 
   it('단지 상세를 연 카드가 숨겨지면 닫을 때 현재 결과 탭으로 focus가 돌아간다', async () => {
