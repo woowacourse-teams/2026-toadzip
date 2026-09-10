@@ -10,9 +10,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionRequest;
-import com.toadzip.backend.ingest.collection.dto.MyHomeComplexSourceItem;
 import com.toadzip.backend.ingest.collection.dto.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.repository.MyHomeComplexExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeRegionCatalog;
@@ -74,9 +74,9 @@ class MyHomeComplexCollectionServiceTest {
 
         var result = service.collect(request());
 
-        ArgumentCaptor<List<MyHomeComplexSourceItem>> items = ArgumentCaptor.captor();
-        verify(sourceStore).replaceComplexRegion(eq(region), items.capture());
-        assertThat(items.getValue()).extracting(MyHomeComplexSourceItem::hsmpSn)
+        ArgumentCaptor<List<MyHomeComplexSourceSnapshot>> snapshots = ArgumentCaptor.captor();
+        verify(sourceStore).replaceComplexRegion(eq(region), snapshots.capture());
+        assertThat(snapshots.getValue()).extracting(MyHomeComplexSourceSnapshot::hsmpSn)
                 .containsExactly(1L, 2L, 3L);
         assertThat(result.storedRowCount()).isEqualTo(3);
         assertThat(result.failedRequestCount()).isZero();

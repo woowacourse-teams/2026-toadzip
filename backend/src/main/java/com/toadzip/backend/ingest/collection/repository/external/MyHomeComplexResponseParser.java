@@ -1,8 +1,8 @@
 package com.toadzip.backend.ingest.collection.repository.external;
 
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
+import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
-import com.toadzip.backend.ingest.collection.dto.MyHomeComplexSourceItem;
+import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -42,11 +42,11 @@ public class MyHomeComplexResponseParser {
         return new ValidatedPage(rows, totalCount);
     }
 
-    public ExternalDataPage<MyHomeComplexSourceItem> parseItems(ValidatedPage page) {
-        List<MyHomeComplexSourceItem> items = page.rows().stream()
-                .map(this::sourceItemOf)
+    public ExternalDataPage<MyHomeComplexSourceSnapshot> parseItems(ValidatedPage page) {
+        List<MyHomeComplexSourceSnapshot> snapshots = page.rows().stream()
+                .map(this::sourceSnapshotOf)
                 .toList();
-        return new ExternalDataPage<>(items, page.totalCount());
+        return new ExternalDataPage<>(snapshots, page.totalCount());
     }
 
     private ValidatedPage emptyPageOrThrow(int totalCount) {
@@ -56,9 +56,9 @@ public class MyHomeComplexResponseParser {
         throw invalidResponseSchema();
     }
 
-    private MyHomeComplexSourceItem sourceItemOf(JsonNode row) {
+    private MyHomeComplexSourceSnapshot sourceSnapshotOf(JsonNode row) {
         try {
-            return objectMapper.convertValue(row, MyHomeComplexSourceItem.class);
+            return objectMapper.convertValue(row, MyHomeComplexSourceSnapshot.class);
         }
         catch (RuntimeException exception) {
             throw new ExternalDataRequestException("마이홈 단지 응답 항목 형식이 올바르지 않습니다.", exception);

@@ -3,7 +3,7 @@ package com.toadzip.backend.ingest.collection.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSourceItem;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Skipped;
 import org.junit.jupiter.api.Test;
@@ -49,11 +49,11 @@ class LhAnnouncementCollectionCandidateResolverTest {
     }
 
     private MyHomeAnnouncementSource source(String provider, String supplyType, String url) {
-        MyHomeAnnouncementSourceItem item = new MyHomeAnnouncementSourceItem(
+        MyHomeAnnouncementSourceSnapshot snapshot = new MyHomeAnnouncementSourceSnapshot(
                 "100", 1, null, "공고", provider, null, supplyType, null, null, null,
                 null, null, null, url, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null
         );
-        return MyHomeAnnouncementSource.from(0, item.toSourceData());
+        return MyHomeAnnouncementSource.from(0, snapshot);
     }
 }

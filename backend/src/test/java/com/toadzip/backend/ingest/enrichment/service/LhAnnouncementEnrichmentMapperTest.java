@@ -5,7 +5,7 @@ import static org.assertj.core.groups.Tuple.tuple;
 
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceData;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import java.time.YearMonth;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -62,7 +62,7 @@ class LhAnnouncementEnrichmentMapperTest {
     }
 
     private LhAnnouncementSupplySource supply(int order, String complexName, String housingTypeName) {
-        return new LhAnnouncementSupplySource(order, PAN_ID, new LhAnnouncementSupplySourceData(
+        return new LhAnnouncementSupplySource(order, PAN_ID, new LhAnnouncementSupplySourceSnapshot(
                 complexName, housingTypeName, null, null, "100", "20", "10,000,000", "200,000"
         ));
     }

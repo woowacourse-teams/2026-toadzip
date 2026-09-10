@@ -2,8 +2,8 @@ package com.toadzip.backend.ingest.collection.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSourceItem;
-import com.toadzip.backend.ingest.collection.dto.MyHomeComplexSourceItem;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.MyHomeRegion;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -45,8 +45,8 @@ class MyHomeSourceStoreTest {
     @Test
     void 마이홈_단지_API_항목을_각각_테이블_행으로_저장한다() {
         MyHomeRegion region = new MyHomeRegion("11", "140", "서울특별시", "중구");
-        MyHomeComplexSourceItem first = complex(31845188L, "14", new BigDecimal("14.5400"));
-        MyHomeComplexSourceItem second = complex(31845188L, "19", new BigDecimal("19.7000"));
+        MyHomeComplexSourceSnapshot first = complex(31845188L, "14", new BigDecimal("14.5400"));
+        MyHomeComplexSourceSnapshot second = complex(31845188L, "19", new BigDecimal("19.7000"));
 
         int storedRowCount = store.replaceComplexRegion(region, List.of(first, second));
 
@@ -61,7 +61,7 @@ class MyHomeSourceStoreTest {
     @Test
     void 동일한_마이홈_단지_원천_행은_한_번만_저장한다() {
         MyHomeRegion region = new MyHomeRegion("11", "140", "서울특별시", "중구");
-        MyHomeComplexSourceItem duplicate = complex(31845188L, "14", new BigDecimal("14.5400"));
+        MyHomeComplexSourceSnapshot duplicate = complex(31845188L, "14", new BigDecimal("14.5400"));
 
         int storedRowCount = store.replaceComplexRegion(region, List.of(duplicate, duplicate));
 
@@ -86,7 +86,7 @@ class MyHomeSourceStoreTest {
     void 새_마이홈_공고의_원천_순서는_기존_행_다음부터_이어진다() {
         store.storeAnnouncements("run-1", List.of(announcement("첫 공고")));
 
-        MyHomeAnnouncementSourceItem second = new MyHomeAnnouncementSourceItem(
+        MyHomeAnnouncementSourceSnapshot second = new MyHomeAnnouncementSourceSnapshot(
                 "21027", 2, "일반공고", "두 번째 공고", "부산도시공사", "아파트", "영구임대",
                 null, "20260813", "20261106", "20260824", "20260831", null,
                 "https://example.com/2", null, null, "동삼2", "부산광역시", "영도구",
@@ -167,8 +167,8 @@ class MyHomeSourceStoreTest {
         });
     }
 
-    private MyHomeComplexSourceItem complex(Long hsmpSn, String styleName, BigDecimal exclusiveArea) {
-        return new MyHomeComplexSourceItem(
+    private MyHomeComplexSourceSnapshot complex(Long hsmpSn, String styleName, BigDecimal exclusiveArea) {
+        return new MyHomeComplexSourceSnapshot(
                 hsmpSn, "LH서울", "11", "서울특별시", "140", "중구", "서울특별시 중구",
                 "서울특별시 중구 퇴계로", "1114016200102510073", null, 1, "매입임대",
                 styleName, exclusiveArea, new BigDecimal("10.1800"), "다가구주택", null, null,
@@ -176,20 +176,20 @@ class MyHomeSourceStoreTest {
         );
     }
 
-    private MyHomeAnnouncementSourceItem announcement(String name) {
+    private MyHomeAnnouncementSourceSnapshot announcement(String name) {
         return announcement("21026", 1, name);
     }
 
-    private MyHomeAnnouncementSourceItem announcement(String pblancId, int houseSn, String name) {
+    private MyHomeAnnouncementSourceSnapshot announcement(String pblancId, int houseSn, String name) {
         return announcement(pblancId, houseSn, "일반공고", name);
     }
 
-    private MyHomeAnnouncementSourceItem announcement(String status, String name) {
+    private MyHomeAnnouncementSourceSnapshot announcement(String status, String name) {
         return announcement("21026", 1, status, name);
     }
 
-    private MyHomeAnnouncementSourceItem announcement(String pblancId, int houseSn, String status, String name) {
-        return new MyHomeAnnouncementSourceItem(
+    private MyHomeAnnouncementSourceSnapshot announcement(String pblancId, int houseSn, String status, String name) {
+        return new MyHomeAnnouncementSourceSnapshot(
                 pblancId, houseSn, status, name, "부산도시공사", "아파트", "영구임대",
                 null, "20260813", "20261106", "20260824", "20260831", null,
                 "https://example.com", null, null, "동삼2", "부산광역시", "영도구",

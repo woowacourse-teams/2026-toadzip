@@ -1,11 +1,11 @@
 package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementCollectionRequest;
-import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSourceItem;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSupplyType;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
@@ -34,9 +34,9 @@ public class MyHomeAnnouncementSupplyTypeCollector {
             MyHomeAnnouncementCollectionRequest request
     ) {
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
-        List<MyHomeAnnouncementSourceItem> items;
+        List<MyHomeAnnouncementSourceSnapshot> snapshots;
         try {
-            items = fetchCompleteSupplyType(supplyType, request, callCounter);
+            snapshots = fetchCompleteSupplyType(supplyType, request, callCounter);
         }
         catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
             failureRecorder.record(
@@ -55,7 +55,7 @@ public class MyHomeAnnouncementSupplyTypeCollector {
                     ExternalDataRateLimit.count(exception)
             );
         }
-        int storedRowCount = sourceStore.storeAnnouncements(runId, items);
+        int storedRowCount = sourceStore.storeAnnouncements(runId, snapshots);
         return new ExternalDataCollectionReport(
                 ExternalDataSource.MYHOME_ANNOUNCEMENT.operation(),
                 storedRowCount,
@@ -64,12 +64,12 @@ public class MyHomeAnnouncementSupplyTypeCollector {
         );
     }
 
-    private List<MyHomeAnnouncementSourceItem> fetchCompleteSupplyType(
+    private List<MyHomeAnnouncementSourceSnapshot> fetchCompleteSupplyType(
             MyHomeAnnouncementSupplyType supplyType,
             MyHomeAnnouncementCollectionRequest request,
             ExternalDataCallCounter callCounter
     ) {
-        List<MyHomeAnnouncementSourceItem> items = new ArrayList<>();
+        List<MyHomeAnnouncementSourceSnapshot> snapshots = new ArrayList<>();
         for (int page = 1; page <= request.maxPages(); page++) {
             int currentPage = page;
             String requestDescription = request.requestDescription(supplyType, currentPage);
@@ -80,10 +80,10 @@ public class MyHomeAnnouncementSupplyTypeCollector {
                     callCounter
             );
             failureRecorder.resolve(ExternalDataSource.MYHOME_ANNOUNCEMENT, requestDescription);
-            ExternalDataPage<MyHomeAnnouncementSourceItem> parsedPage = responseParser.parse(response);
-            items.addAll(parsedPage.items());
-            if (parsedPage.completesCollection(items.size(), request.pageSize())) {
-                return items;
+            ExternalDataPage<MyHomeAnnouncementSourceSnapshot> parsedPage = responseParser.parse(response);
+            snapshots.addAll(parsedPage.items());
+            if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
+                return snapshots;
             }
         }
         throw new ExternalDataRequestException("마이홈 공고 조회가 최대 페이지 안에 끝나지 않았습니다.");

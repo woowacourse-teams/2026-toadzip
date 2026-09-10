@@ -1,8 +1,8 @@
 package com.toadzip.backend.ingest.collection.repository.external;
 
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
-import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSourceItem;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -17,18 +17,18 @@ public class MyHomeAnnouncementResponseParser {
 
     private final ObjectMapper objectMapper;
 
-    public ExternalDataPage<MyHomeAnnouncementSourceItem> parse(ExternalDataResponse response) {
-        List<MyHomeAnnouncementSourceItem> items = ExternalResponseRows.at(response.body(), LIST_POINTER)
+    public ExternalDataPage<MyHomeAnnouncementSourceSnapshot> parse(ExternalDataResponse response) {
+        List<MyHomeAnnouncementSourceSnapshot> snapshots = ExternalResponseRows.at(response.body(), LIST_POINTER)
                 .stream()
-                .map(this::sourceItemOf)
+                .map(this::sourceSnapshotOf)
                 .toList();
         int totalCount = response.body().at("/response/body/totalCount").asInt(-1);
-        return new ExternalDataPage<>(items, totalCount);
+        return new ExternalDataPage<>(snapshots, totalCount);
     }
 
-    private MyHomeAnnouncementSourceItem sourceItemOf(JsonNode row) {
+    private MyHomeAnnouncementSourceSnapshot sourceSnapshotOf(JsonNode row) {
         try {
-            return objectMapper.convertValue(row, MyHomeAnnouncementSourceItem.class);
+            return objectMapper.convertValue(row, MyHomeAnnouncementSourceSnapshot.class);
         }
         catch (RuntimeException exception) {
             throw new ExternalDataRequestException("마이홈 공고 응답 항목 형식이 올바르지 않습니다.", exception);

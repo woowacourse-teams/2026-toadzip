@@ -8,7 +8,7 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSource;
-import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceData;
+import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.LhCatalogSourceRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -252,7 +252,7 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
             int typeCount,
             String complexName
     ) {
-        LhCatalogSource source = new LhCatalogSource(order, new LhCatalogSourceData(
+        LhCatalogSource source = new LhCatalogSource(order, new LhCatalogSourceSnapshot(
                 "서울", supplyType, complexName, String.valueOf(complexCount), area,
                 String.valueOf(typeCount), null, null
         ));

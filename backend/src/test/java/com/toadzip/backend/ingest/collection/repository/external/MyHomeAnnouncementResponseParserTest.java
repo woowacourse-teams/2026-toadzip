@@ -2,9 +2,9 @@ package com.toadzip.backend.ingest.collection.repository.external;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
-import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSourceItem;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -21,7 +21,7 @@ class MyHomeAnnouncementResponseParserTest {
                 {"response":{"body":{"totalCount":1,"item":[{"pblancId":"A-1","pblancNm":"행복주택"}]}}}
                 """);
 
-        ExternalDataPage<MyHomeAnnouncementSourceItem> page = parser.parse(response);
+        ExternalDataPage<MyHomeAnnouncementSourceSnapshot> page = parser.parse(response);
 
         assertThat(page.items()).singleElement().satisfies(item -> {
             assertThat(item.pblancId()).isEqualTo("A-1");
@@ -33,7 +33,7 @@ class MyHomeAnnouncementResponseParserTest {
     @Test
     @DisplayName("전체 건수가 없으면 페이지 크기로 마지막 페이지를 판단한다")
     void completesByPageSizeWhenTotalCountIsMissing() {
-        ExternalDataPage<MyHomeAnnouncementSourceItem> page = parser.parse(response("""
+        ExternalDataPage<MyHomeAnnouncementSourceSnapshot> page = parser.parse(response("""
                 {"response":{"body":{"item":[{"pblancId":"A-1"}]}}}
                 """));
 

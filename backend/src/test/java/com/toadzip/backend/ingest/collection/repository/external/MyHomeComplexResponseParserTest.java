@@ -3,9 +3,9 @@ package com.toadzip.backend.ingest.collection.repository.external;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
-import com.toadzip.backend.ingest.collection.dto.MyHomeComplexSourceItem;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -23,7 +23,7 @@ class MyHomeComplexResponseParserTest {
                 """);
 
         MyHomeComplexResponseParser.ValidatedPage page = parser.validate(response, 0);
-        ExternalDataPage<MyHomeComplexSourceItem> parsedPage = parser.parseItems(page);
+        ExternalDataPage<MyHomeComplexSourceSnapshot> parsedPage = parser.parseItems(page);
 
         assertThat(parsedPage.items()).singleElement().satisfies(item -> {
             assertThat(item.hsmpSn()).isEqualTo(10L);

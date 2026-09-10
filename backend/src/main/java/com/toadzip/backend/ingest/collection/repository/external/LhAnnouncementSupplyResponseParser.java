@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.repository.external;
 
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementSupplySourceItem;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -20,7 +20,7 @@ public class LhAnnouncementSupplyResponseParser {
             sources.add(new LhAnnouncementSupplySource(
                         sourceOrder,
                         panId,
-                        LhAnnouncementSupplySourceItem.from(rows.get(sourceOrder)).toSourceData()
+                        sourceSnapshotOf(rows.get(sourceOrder))
             ));
         }
         return sources;
@@ -42,6 +42,23 @@ public class LhAnnouncementSupplyResponseParser {
             }
         }
         return false;
+    }
+
+    private LhAnnouncementSupplySourceSnapshot sourceSnapshotOf(JsonNode row) {
+        return new LhAnnouncementSupplySourceSnapshot(
+                text(row, "SBD_LGO_NM"),
+                text(row, "HTY_NNA"),
+                text(row, "DDO_AR"),
+                text(row, "SPL_AR"),
+                text(row, "HSH_CNT"),
+                text(row, "NOW_HSH_CNT"),
+                text(row, "LS_GMY"),
+                text(row, "RFE")
+        );
+    }
+
+    private String text(JsonNode row, String field) {
+        return row.path(field).asString(null);
     }
 
 }

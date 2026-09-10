@@ -19,9 +19,9 @@ import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceData;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceData;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionCheckpointRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
@@ -135,7 +135,7 @@ class MyHomeAnnouncementMappingServiceTest {
         sourceRepository.save(source(0, data("21026", 1, "부산도시공사", "동삼2")));
         service.mapAll();
         MyHomeAnnouncementSource source = sourceRepository.findAll().getFirst();
-        MyHomeAnnouncementSourceData changed = data("21026", 1, "서울주택도시공사", "동삼2 변경");
+        MyHomeAnnouncementSourceSnapshot changed = data("21026", 1, "서울주택도시공사", "동삼2 변경");
         source.replaceWith(withNameAndSupplyCount(changed, "변경된 국민임대 모집공고", 35));
         source.markCollectedAt(COLLECTED_AT.plusSeconds(60));
         sourceRepository.save(source);
@@ -277,7 +277,7 @@ class MyHomeAnnouncementMappingServiceTest {
                 new BigDecimal("59.9500"),
                 new BigDecimal("84.0500")
         ));
-        MyHomeAnnouncementSourceData sourceData = withHousingType(
+        MyHomeAnnouncementSourceSnapshot sourceData = withHousingType(
                 data("21026", 1, "부산도시공사", "동삼2"),
                 "46-A형"
         );
@@ -436,7 +436,7 @@ class MyHomeAnnouncementMappingServiceTest {
 
     @Test
     void 필수_날짜를_변환할_수_없으면_공고를_만들지_않고_실패를_기록한다() {
-        MyHomeAnnouncementSourceData invalid = withPostedDate(
+        MyHomeAnnouncementSourceSnapshot invalid = withPostedDate(
                 data("21026", 1, "부산도시공사", "동삼2"),
                 "20260230"
         );
@@ -454,7 +454,7 @@ class MyHomeAnnouncementMappingServiceTest {
 
     @Test
     void 문의처가_없어도_공고와_공급행을_매핑한다() {
-        MyHomeAnnouncementSourceData withoutContact = withContact(
+        MyHomeAnnouncementSourceSnapshot withoutContact = withContact(
                 data("21026", 1, "부산도시공사", "동삼2"),
                 null
         );
@@ -512,7 +512,7 @@ class MyHomeAnnouncementMappingServiceTest {
         return complex;
     }
 
-    private MyHomeAnnouncementSource source(int order, MyHomeAnnouncementSourceData data) {
+    private MyHomeAnnouncementSource source(int order, MyHomeAnnouncementSourceSnapshot data) {
         MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(order, data);
         source.markCollectedAt(COLLECTED_AT);
         return source;
@@ -543,7 +543,7 @@ class MyHomeAnnouncementMappingServiceTest {
         LhAnnouncementSupplySource source = new LhAnnouncementSupplySource(
                 sourceOrder,
                 panId,
-                new LhAnnouncementSupplySourceData(
+                new LhAnnouncementSupplySourceSnapshot(
                         complexLabel,
                         typeName,
                         exclusiveArea,
@@ -558,13 +558,13 @@ class MyHomeAnnouncementMappingServiceTest {
         return source;
     }
 
-    private MyHomeAnnouncementSourceData data(
+    private MyHomeAnnouncementSourceSnapshot data(
             String pblancId,
             int houseSn,
             String provider,
             String complexName
     ) {
-        return new MyHomeAnnouncementSourceData(
+        return new MyHomeAnnouncementSourceSnapshot(
                 pblancId,
                 houseSn,
                 "모집중",
@@ -598,12 +598,12 @@ class MyHomeAnnouncementMappingServiceTest {
         );
     }
 
-    private MyHomeAnnouncementSourceData withNameAndSupplyCount(
-            MyHomeAnnouncementSourceData data,
+    private MyHomeAnnouncementSourceSnapshot withNameAndSupplyCount(
+            MyHomeAnnouncementSourceSnapshot data,
             String name,
             int supplyCount
     ) {
-        return new MyHomeAnnouncementSourceData(
+        return new MyHomeAnnouncementSourceSnapshot(
                 data.pblancId(), data.houseSn(), data.sttusNm(), name, data.suplyInsttNm(),
                 data.houseTyNm(), data.suplyTyNm(), data.beforePblancId(), data.rcritPblancDe(),
                 data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), data.refrnc(), data.url(),
@@ -613,8 +613,8 @@ class MyHomeAnnouncementMappingServiceTest {
         );
     }
 
-    private MyHomeAnnouncementSourceData withPrevious(MyHomeAnnouncementSourceData data, String previousIdentifier) {
-        return new MyHomeAnnouncementSourceData(
+    private MyHomeAnnouncementSourceSnapshot withPrevious(MyHomeAnnouncementSourceSnapshot data, String previousIdentifier) {
+        return new MyHomeAnnouncementSourceSnapshot(
                 data.pblancId(), data.houseSn(), "정정공고", data.pblancNm(), data.suplyInsttNm(),
                 data.houseTyNm(), data.suplyTyNm(), previousIdentifier, data.rcritPblancDe(),
                 data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), data.refrnc(), data.url(),
@@ -624,11 +624,11 @@ class MyHomeAnnouncementMappingServiceTest {
         );
     }
 
-    private MyHomeAnnouncementSourceData withCancellation(
-            MyHomeAnnouncementSourceData data,
+    private MyHomeAnnouncementSourceSnapshot withCancellation(
+            MyHomeAnnouncementSourceSnapshot data,
             String previousIdentifier
     ) {
-        return new MyHomeAnnouncementSourceData(
+        return new MyHomeAnnouncementSourceSnapshot(
                 data.pblancId(), data.houseSn(), "취소공고", data.pblancNm(), data.suplyInsttNm(),
                 data.houseTyNm(), data.suplyTyNm(), previousIdentifier, data.rcritPblancDe(),
                 data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), data.refrnc(), data.url(),
@@ -638,8 +638,8 @@ class MyHomeAnnouncementMappingServiceTest {
         );
     }
 
-    private MyHomeAnnouncementSourceData withPostedDate(MyHomeAnnouncementSourceData data, String postedDate) {
-        return new MyHomeAnnouncementSourceData(
+    private MyHomeAnnouncementSourceSnapshot withPostedDate(MyHomeAnnouncementSourceSnapshot data, String postedDate) {
+        return new MyHomeAnnouncementSourceSnapshot(
                 data.pblancId(), data.houseSn(), data.sttusNm(), data.pblancNm(), data.suplyInsttNm(),
                 data.houseTyNm(), data.suplyTyNm(), data.beforePblancId(), postedDate,
                 data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), data.refrnc(), data.url(),
@@ -649,8 +649,8 @@ class MyHomeAnnouncementMappingServiceTest {
         );
     }
 
-    private MyHomeAnnouncementSourceData withContact(MyHomeAnnouncementSourceData data, String contact) {
-        return new MyHomeAnnouncementSourceData(
+    private MyHomeAnnouncementSourceSnapshot withContact(MyHomeAnnouncementSourceSnapshot data, String contact) {
+        return new MyHomeAnnouncementSourceSnapshot(
                 data.pblancId(), data.houseSn(), data.sttusNm(), data.pblancNm(), data.suplyInsttNm(),
                 data.houseTyNm(), data.suplyTyNm(), data.beforePblancId(), data.rcritPblancDe(),
                 data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), contact, data.url(),
@@ -660,8 +660,8 @@ class MyHomeAnnouncementMappingServiceTest {
         );
     }
 
-    private MyHomeAnnouncementSourceData withHousingType(MyHomeAnnouncementSourceData data, String housingType) {
-        return new MyHomeAnnouncementSourceData(
+    private MyHomeAnnouncementSourceSnapshot withHousingType(MyHomeAnnouncementSourceSnapshot data, String housingType) {
+        return new MyHomeAnnouncementSourceSnapshot(
                 data.pblancId(), data.houseSn(), data.sttusNm(), data.pblancNm(), data.suplyInsttNm(),
                 housingType, data.suplyTyNm(), data.beforePblancId(), data.rcritPblancDe(),
                 data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), data.refrnc(), data.url(),

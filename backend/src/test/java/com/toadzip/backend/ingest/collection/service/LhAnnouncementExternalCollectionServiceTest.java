@@ -18,7 +18,7 @@ import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSourceItem;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionExecutionLock;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore.BatchProgress;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
@@ -394,7 +394,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                 "행복주택",
                 "https://apply.lh.or.kr/panDetail?panId=100"
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"
-        ).toSourceData());
+        ));
         ReflectionTestUtils.setField(source, "id", ++nextSourceId);
         return source;
     }
@@ -406,7 +406,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                 "행복주택",
                 "https://apply.lh.or.kr/panDetail?panId=100"
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"
-        ).toSourceData());
+        ));
         ReflectionTestUtils.setField(source, "id", ++nextSourceId);
         return source;
     }
@@ -417,7 +417,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                 "지원하지 않는 유형",
                 "https://apply.lh.or.kr/panDetail?panId=100"
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"
-        ).toSourceData());
+        ));
         ReflectionTestUtils.setField(source, "id", ++nextSourceId);
         return source;
     }
@@ -428,30 +428,30 @@ class LhAnnouncementExternalCollectionServiceTest {
                 "통합공공임대",
                 "https://apply.lh.or.kr/panDetail?panId=2015122300020531"
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=48"
-        ).toSourceData());
+        ));
         ReflectionTestUtils.setField(source, "id", ++nextSourceId);
         return source;
     }
 
-    private MyHomeAnnouncementSourceItem item(String supplyType, String url) {
+    private MyHomeAnnouncementSourceSnapshot item(String supplyType, String url) {
         return item("100", supplyType, url);
     }
 
-    private MyHomeAnnouncementSourceItem item(String pblancId, String supplyType, String url) {
-        return new MyHomeAnnouncementSourceItem(
+    private MyHomeAnnouncementSourceSnapshot item(String pblancId, String supplyType, String url) {
+        return new MyHomeAnnouncementSourceSnapshot(
                 pblancId, 1, null, "공고", "LH", null, supplyType, null, null, null,
                 null, null, null, url, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null
         );
     }
 
-    private MyHomeAnnouncementSourceItem itemWithProvider(
+    private MyHomeAnnouncementSourceSnapshot itemWithProvider(
             String pblancId,
             String provider,
             String supplyType,
             String url
     ) {
-        return new MyHomeAnnouncementSourceItem(
+        return new MyHomeAnnouncementSourceSnapshot(
                 pblancId, 1, null, "공고", provider, null, supplyType, null, null, null,
                 null, null, null, url, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null

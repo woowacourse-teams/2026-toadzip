@@ -1,10 +1,10 @@
 package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
-import com.toadzip.backend.ingest.collection.dto.LhCatalogSourceItem;
 import com.toadzip.backend.ingest.collection.dto.LhLeaseCatalogCollectionRequest;
 import com.toadzip.backend.ingest.collection.repository.LhLeaseCatalogExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
@@ -34,9 +34,9 @@ public class LhLeaseCatalogCollectionService {
     public ExternalDataCollectionReport collect(LhLeaseCatalogCollectionRequest request) {
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
         log.info("LH 임대 카탈로그 수집을 시작합니다: pageSize={}, maxPages={}", request.pageSize(), request.maxPages());
-        List<LhCatalogSourceItem> items;
+        List<LhCatalogSourceSnapshot> snapshots;
         try {
-            items = fetchCompleteCatalog(request, callCounter);
+            snapshots = fetchCompleteCatalog(request, callCounter);
         }
         catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
             failureRecorder.record(
@@ -55,7 +55,7 @@ public class LhLeaseCatalogCollectionService {
                     ExternalDataRateLimit.count(exception)
             );
         }
-        int storedRowCount = sourceStore.replaceCatalog(items);
+        int storedRowCount = sourceStore.replaceCatalog(snapshots);
         ExternalDataCollectionReport report = new ExternalDataCollectionReport(
                 ExternalDataSource.LH_LEASE_CATALOG.operation(),
                 storedRowCount,
@@ -70,11 +70,11 @@ public class LhLeaseCatalogCollectionService {
         return report;
     }
 
-    private List<LhCatalogSourceItem> fetchCompleteCatalog(
+    private List<LhCatalogSourceSnapshot> fetchCompleteCatalog(
             LhLeaseCatalogCollectionRequest request,
             ExternalDataCallCounter callCounter
     ) {
-        List<LhCatalogSourceItem> items = new ArrayList<>();
+        List<LhCatalogSourceSnapshot> snapshots = new ArrayList<>();
         for (int page = 1; page <= request.maxPages(); page++) {
             int currentPage = page;
             String requestDescription = request.requestDescription(currentPage);
@@ -85,10 +85,10 @@ public class LhLeaseCatalogCollectionService {
                     callCounter
             );
             failureRecorder.resolve(ExternalDataSource.LH_LEASE_CATALOG, requestDescription);
-            ExternalDataPage<LhCatalogSourceItem> parsedPage = responseParser.parse(response);
-            items.addAll(parsedPage.items());
-            if (parsedPage.completesCollection(items.size(), request.pageSize())) {
-                return items;
+            ExternalDataPage<LhCatalogSourceSnapshot> parsedPage = responseParser.parse(response);
+            snapshots.addAll(parsedPage.items());
+            if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
+                return snapshots;
             }
         }
         throw new ExternalDataRequestException("LH 임대 카탈로그 조회가 최대 페이지 안에 끝나지 않았습니다.");

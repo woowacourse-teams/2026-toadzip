@@ -1,10 +1,10 @@
 package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionRequest;
-import com.toadzip.backend.ingest.collection.dto.MyHomeComplexSourceItem;
 import com.toadzip.backend.ingest.collection.dto.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.repository.MyHomeComplexExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
@@ -45,9 +45,9 @@ public class MyHomeComplexRegionCollector {
             return MyHomeComplexCollectionReport.empty();
         }
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
-        List<MyHomeComplexSourceItem> items;
+        List<MyHomeComplexSourceSnapshot> snapshots;
         try {
-            items = fetchCompleteRegion(region, request, callCounter, rateLimitReached);
+            snapshots = fetchCompleteRegion(region, request, callCounter, rateLimitReached);
         }
         catch (RateLimitCollectionCancelledException exception) {
             return MyHomeComplexCollectionReport.empty();
@@ -55,7 +55,7 @@ public class MyHomeComplexRegionCollector {
         catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
             return failedReport(region, request, rateLimitReached, callCounter, exception);
         }
-        int storedRowCount = sourceStore.replaceComplexRegion(region, items);
+        int storedRowCount = sourceStore.replaceComplexRegion(region, snapshots);
         return new MyHomeComplexCollectionReport(
                 ExternalDataSource.MYHOME_COMPLEX.operation(),
                 storedRowCount,
@@ -91,13 +91,13 @@ public class MyHomeComplexRegionCollector {
         );
     }
 
-    private List<MyHomeComplexSourceItem> fetchCompleteRegion(
+    private List<MyHomeComplexSourceSnapshot> fetchCompleteRegion(
             MyHomeRegion region,
             MyHomeComplexCollectionRequest request,
             ExternalDataCallCounter callCounter,
             AtomicBoolean rateLimitReached
     ) {
-        List<MyHomeComplexSourceItem> items = new ArrayList<>();
+        List<MyHomeComplexSourceSnapshot> snapshots = new ArrayList<>();
         for (int page = 1; page <= request.maxPages(); page++) {
             if (rateLimitReached.get()) {
                 throw new RateLimitCollectionCancelledException();
@@ -109,15 +109,15 @@ public class MyHomeComplexRegionCollector {
                     requestDescription,
                     () -> responseParser.validate(
                             externalRepository.fetch(region, request, currentPage),
-                            items.size()
+                            snapshots.size()
                     ),
                     callCounter
             );
-            ExternalDataPage<MyHomeComplexSourceItem> parsedPage = responseParser.parseItems(validatedPage);
-            items.addAll(parsedPage.items());
+            ExternalDataPage<MyHomeComplexSourceSnapshot> parsedPage = responseParser.parseItems(validatedPage);
+            snapshots.addAll(parsedPage.items());
             failureRecorder.resolve(ExternalDataSource.MYHOME_COMPLEX, requestDescription);
-            if (parsedPage.completesCollection(items.size(), request.pageSize())) {
-                return items;
+            if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
+                return snapshots;
             }
         }
         throw new ExternalDataRequestException("마이홈 단지 조회가 최대 페이지 안에 끝나지 않았습니다.");
