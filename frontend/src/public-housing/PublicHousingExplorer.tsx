@@ -392,6 +392,7 @@ export function PublicHousingExplorer({
     if (detailLocation.kind === 'none') {
       const previousKind = previousDetailKindRef.current
       previousDetailKindRef.current = null
+      setSelectedComplexId(null)
       setComplexDetail(INITIAL_COMPLEX_DETAIL)
       setAnnouncementDetail(INITIAL_ANNOUNCEMENT_DETAIL)
       const complexOpener = complexDetailOpenerRef.current
