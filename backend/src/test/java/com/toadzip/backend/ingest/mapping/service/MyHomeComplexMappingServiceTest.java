@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -449,6 +450,23 @@ class MyHomeComplexMappingServiceTest {
         assertThat(report.failedSourceRowCount()).isOne();
         assertThat(report.rateLimitedSourceRowCount()).isOne();
         assertThat(complexRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void 좌표_조회의_일반_오류는_같은_후보를_재선택하지_않고_실행을_중단한다() {
+        sourceRepository.save(source("46A", "46.8000", "20.2000"));
+        when(geocodingService.geocode(anyString()))
+                .thenThrow(new IllegalStateException("좌표 저장소 연결 실패"))
+                .thenThrow(new AssertionError("같은 후보를 다시 선택했습니다."));
+
+        assertThatThrownBy(service::mapAll)
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("좌표 저장소 연결 실패");
+
+        verify(geocodingService).geocode(anyString());
+        assertThat(candidateRepository.findAll()).singleElement().satisfies(candidate ->
+                assertThat(candidate.getStatus().name()).isEqualTo("PENDING")
+        );
     }
 
     private MyHomeComplexSource source(String styleName, String exclusiveArea, String commonArea) {

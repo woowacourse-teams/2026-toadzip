@@ -238,25 +238,22 @@ public class MyHomeAnnouncementMappingWriter {
                     "단지에 연결된 주택형이 없습니다."
             );
         }
-        if (housingTypes.size() > 1) {
-            HousingType matched = uniqueHousingTypeByName(housingTypes, data.sourceHousingTypeName());
-            if (matched == null) {
-                matched = uniqueHousingTypeByExclusiveArea(housingTypes, data.exclusiveArea());
-            }
-            if (matched == null) {
-                matched = uniqueHousingTypeBySupplyArea(housingTypes, data.supplyArea());
-            }
-            if (matched == null) {
-                return SupplyMatchResult.failure(
-                        data,
-                        complex,
-                        MyHomeAnnouncementMappingFailureReason.AMBIGUOUS_HOUSING_TYPE,
-                        "LH 공급행의 주택형명과 면적으로도 주택형 하나를 확정할 수 없습니다."
-                );
-            }
-            return SupplyMatchResult.matched(complex, matched);
+        HousingType matched = uniqueHousingTypeByName(housingTypes, data.sourceHousingTypeName());
+        if (matched == null) {
+            matched = uniqueHousingTypeByExclusiveArea(housingTypes, data.exclusiveArea());
         }
-        return SupplyMatchResult.matched(complex, housingTypes.getFirst());
+        if (matched == null) {
+            matched = uniqueHousingTypeBySupplyArea(housingTypes, data.supplyArea());
+        }
+        if (matched == null) {
+            return SupplyMatchResult.failure(
+                    data,
+                    complex,
+                    MyHomeAnnouncementMappingFailureReason.AMBIGUOUS_HOUSING_TYPE,
+                    "원천 주택형명과 면적으로도 주택형 하나를 확정할 수 없습니다."
+            );
+        }
+        return SupplyMatchResult.matched(complex, matched);
     }
 
     private HousingType uniqueHousingTypeByName(List<HousingType> housingTypes, String sourceName) {
