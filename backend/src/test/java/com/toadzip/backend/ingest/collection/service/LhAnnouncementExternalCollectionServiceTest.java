@@ -77,7 +77,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                     Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(1);
                     return Optional.of(operation.get());
                 });
-        lenient().when(progressStore.findBatch(any(), any(), any()))
+        lenient().when(progressStore.findBatch(any(), any(), any(), any()))
                 .thenReturn(BatchProgress.empty());
         LhAnnouncementCollectionProgressManager progressManager =
                 new LhAnnouncementCollectionProgressManager(progressStore, failureRecorder);
@@ -232,7 +232,7 @@ class LhAnnouncementExternalCollectionServiceTest {
     @Test
     void 완료된_동일_요청은_외부_API를_재호출하지_않는다() {
         source(announcementSource());
-        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY), any(), any()))
+        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY), any(), any(), any()))
                 .thenReturn(progressWithCompletedRequest(announcementRequestDescription()));
 
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
@@ -269,7 +269,7 @@ class LhAnnouncementExternalCollectionServiceTest {
     @Test
     void 기존_적재_행은_첫_증분_실행에서_호출하지_않고_체크포인트만_생성한다() {
         source(announcementSource());
-        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any()))
+        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any(), any()))
                 .thenReturn(new BatchProgress(Set.of(), Set.of("100"), Set.of()));
 
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
@@ -287,7 +287,7 @@ class LhAnnouncementExternalCollectionServiceTest {
     @Test
     void 수집_이력이_있는_panId의_조회_조건이_바뀌면_다시_호출한다() {
         source(announcementSource());
-        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any()))
+        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any(), any()))
                 .thenReturn(new BatchProgress(Set.of(), Set.of("100"), Set.of("100")));
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
         when(sourceStore.replaceDetails(eq("100"), any())).thenReturn(1);
@@ -312,6 +312,27 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void 동일한_LH_요청을_공유하는_공고마다_연결을_기록한다() {
+        MyHomeAnnouncementSource first = announcementSource("announcement-100");
+        MyHomeAnnouncementSource second = announcementSource("announcement-101");
+        source(first, second);
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("100"), any())).thenReturn(1);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        verify(externalRepository, times(1)).fetchDetail(any());
+        verify(progressStore, times(2)).complete(
+                eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
+                any(),
+                any(),
+                eq("100")
+        );
+        assertThat(result.storedRowCount()).isOne();
+        assertThat(result.failedRequestCount()).isZero();
+    }
+
+    @Test
     void 마이홈_공고를_ID_기준_500개씩_조회한다() {
         MyHomeAnnouncementSource source = announcementSource();
         source(source);
@@ -326,7 +347,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                 .findByIdGreaterThanOrderByIdAsc(cursor.capture(), pageable.capture());
         assertThat(cursor.getAllValues()).containsExactly(0L, source.getId());
         assertThat(pageable.getAllValues()).allSatisfy(value -> assertThat(value.getPageSize()).isEqualTo(500));
-        verify(progressStore).findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any());
+        verify(progressStore).findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any(), any());
     }
 
     @Test

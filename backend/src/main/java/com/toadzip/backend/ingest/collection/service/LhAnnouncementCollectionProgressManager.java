@@ -19,7 +19,8 @@ public class LhAnnouncementCollectionProgressManager {
         return progressStore.findBatch(
                 targetSource,
                 candidates.stream().map(Candidate::requestDescription).toList(),
-                candidates.stream().map(Candidate::panId).toList()
+                candidates.stream().map(Candidate::panId).toList(),
+                candidates.stream().map(Candidate::sourceAnnouncementKey).toList()
         );
     }
 

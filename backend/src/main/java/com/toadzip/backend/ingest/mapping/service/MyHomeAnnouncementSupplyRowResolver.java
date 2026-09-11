@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.mapping.service;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionCheckpointRepository;
+import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionLinkRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -10,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -19,13 +21,17 @@ public class MyHomeAnnouncementSupplyRowResolver {
 
     private final LhAnnouncementCollectionCheckpointRepository checkpointRepository;
 
+    private final LhAnnouncementCollectionLinkRepository linkRepository;
+
     private final LhAnnouncementSupplySourceRepository lhSupplyRepository;
 
     public MyHomeAnnouncementSupplyRowResolver(
             LhAnnouncementCollectionCheckpointRepository checkpointRepository,
+            LhAnnouncementCollectionLinkRepository linkRepository,
             LhAnnouncementSupplySourceRepository lhSupplyRepository
     ) {
         this.checkpointRepository = checkpointRepository;
+        this.linkRepository = linkRepository;
         this.lhSupplyRepository = lhSupplyRepository;
     }
 
@@ -59,12 +65,20 @@ public class MyHomeAnnouncementSupplyRowResolver {
     }
 
     private List<LhAnnouncementSupplySource> findLhSupplies(String announcementIdentifier) {
-        return checkpointRepository
-                .findFirstBySourceAndSourceAnnouncementKeyOrderByIdDesc(
+        Optional<String> panId = linkRepository
+                .findBySourceAndSourceAnnouncementKey(
                         ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
                         announcementIdentifier
                 )
-                .map(checkpoint -> lhSupplyRepository.findAllByPanIdOrderBySourceOrderAsc(checkpoint.getPanId()))
+                .map(link -> link.getPanId())
+                .or(() -> checkpointRepository
+                        .findFirstBySourceAndSourceAnnouncementKeyOrderByIdDesc(
+                                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                                announcementIdentifier
+                        )
+                        .map(checkpoint -> checkpoint.getPanId()));
+        return panId
+                .map(lhSupplyRepository::findAllByPanIdOrderBySourceOrderAsc)
                 .orElseGet(List::of);
     }
 

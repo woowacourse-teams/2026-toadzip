@@ -12,8 +12,11 @@ import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCan
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -53,7 +56,6 @@ public class LhAnnouncementExternalCollectionService {
     private ExternalDataCollectionReport collectAnnouncements(ExternalDataSource targetSource) {
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
         Set<String> visitedSourceAnnouncements = new HashSet<>();
-        Set<String> attemptedRequests = new HashSet<>();
         long lastSeenId = 0L;
         while (true) {
             List<MyHomeAnnouncementSource> sources = findNextBatch(lastSeenId);
@@ -64,8 +66,7 @@ public class LhAnnouncementExternalCollectionService {
             ExternalDataCollectionReport batchReport = collectBatch(
                     targetSource,
                     sources,
-                    visitedSourceAnnouncements,
-                    attemptedRequests
+                    visitedSourceAnnouncements
             );
             report = report.plus(batchReport);
             if (batchReport.rateLimitedRequestCount() > 0) {
@@ -84,8 +85,7 @@ public class LhAnnouncementExternalCollectionService {
     private ExternalDataCollectionReport collectBatch(
             ExternalDataSource targetSource,
             List<MyHomeAnnouncementSource> sources,
-            Set<String> visitedSourceAnnouncements,
-            Set<String> attemptedRequests
+            Set<String> visitedSourceAnnouncements
     ) {
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
         List<Candidate> candidates = new ArrayList<>();
@@ -103,9 +103,6 @@ public class LhAnnouncementExternalCollectionService {
                 continue;
             }
             Candidate candidate = (Candidate) resolution;
-            if (!attemptedRequests.add(candidate.requestDescription())) {
-                continue;
-            }
             candidates.add(candidate);
         }
         return report.plus(collectCandidates(targetSource, candidates));
@@ -121,11 +118,18 @@ public class LhAnnouncementExternalCollectionService {
         BatchProgress progress = progressManager.findBatch(targetSource, candidates);
         Set<String> storedPanIds = new HashSet<>(progress.storedPanIds());
         Set<String> historyPanIds = new HashSet<>(progress.historyPanIds());
+        Map<String, List<Candidate>> candidatesByRequest = candidates.stream()
+                .collect(Collectors.groupingBy(
+                        Candidate::requestDescription,
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
-        for (Candidate candidate : candidates) {
+        for (List<Candidate> requestCandidates : candidatesByRequest.values()) {
+            Candidate primary = requestCandidates.getFirst();
             ExternalDataCollectionReport candidateReport = collectCandidate(
                     targetSource,
-                    candidate,
+                    primary,
                     progress,
                     storedPanIds,
                     historyPanIds
@@ -133,6 +137,11 @@ public class LhAnnouncementExternalCollectionService {
             report = report.plus(candidateReport);
             if (candidateReport.rateLimitedRequestCount() > 0) {
                 return report;
+            }
+            if (candidateReport.failedRequestCount() == 0) {
+                for (Candidate linkedCandidate : requestCandidates.subList(1, requestCandidates.size())) {
+                    progressManager.complete(targetSource, linkedCandidate);
+                }
             }
         }
         return report;
@@ -146,6 +155,9 @@ public class LhAnnouncementExternalCollectionService {
             Set<String> historyPanIds
     ) {
         if (progress.isCompleted(candidate.requestDescription())) {
+            if (!progress.isLinked(candidate.sourceAnnouncementKey())) {
+                progressManager.complete(targetSource, candidate);
+            }
             return ExternalDataCollectionReport.empty(targetSource.operation());
         }
         if (storedPanIds.contains(candidate.panId()) && !historyPanIds.contains(candidate.panId())) {

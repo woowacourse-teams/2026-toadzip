@@ -39,7 +39,8 @@ class LhAnnouncementCollectionProgressManagerTest {
         when(progressStore.findBatch(
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
                 List.of(candidate.requestDescription()),
-                List.of(candidate.panId())
+                List.of(candidate.panId()),
+                List.of(candidate.sourceAnnouncementKey())
         )).thenReturn(expected);
 
         BatchProgress result = progressManager.findBatch(

@@ -8,6 +8,8 @@
 - 한 번 미조회된 원천은 활성 상태를 유지하고, 두 번 연속 미조회되면 비활성화한다.
 - 비활성 원천이 다시 조회되면 활성화하고 미조회 횟수를 0으로 초기화한다.
 - 비활성화는 원천과 정제 공고를 삭제하지 않으며 과거 공고 상세 조회를 유지한다.
+- 동일한 LH 요청 설명은 한 번만 외부 API를 호출하되, 해당 요청을 참조하는 마이홈 공고별 연결을 각각 보존한다.
+- 요청 설명이 바뀌면 새로운 요청으로 간주하여 다시 수집하고, 기존 공고 연결은 최신 LH 공고 식별자로 갱신한다.
 
 ## 스키마 배포
 
@@ -15,16 +17,21 @@
 
 ```text
 src/main/resources/db/migration/V20260902_01__add_myhome_announcement_source_lifecycle.sql
+src/main/resources/db/migration/V20260911_01__create_lh_announcement_collection_links.sql
 ```
 
 ```bash
 psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
   --file src/main/resources/db/migration/V20260902_01__add_myhome_announcement_source_lifecycle.sql
+psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
+  --file src/main/resources/db/migration/V20260911_01__create_lh_announcement_collection_links.sql
 ```
 
 SQL은 기존 행을 활성·미조회 0회로 backfill한다. 이전 애플리케이션은 추가 컬럼을 사용하지 않으므로
 SQL을 먼저 적용하는 동안 호환된다.
 
 배포 후 `last_seen_run_id`, `consecutive_miss_count`, `active` 컬럼과 `NOT NULL` 제약을 확인한다.
+또한 `lh_announcement_collection_links` 테이블과 공고 연결 유일성 제약,
+`idx_lh_announcement_link_source_request_hash` 인덱스를 확인한다.
 롤백 시에는 이전 애플리케이션을 다시 배포하고 추가 컬럼은 보존한다. 컬럼 삭제는 이력 손실을
 수반하므로 별도 백업과 승인 없이 수행하지 않는다.
