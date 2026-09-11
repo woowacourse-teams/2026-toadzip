@@ -214,6 +214,7 @@ public class MyHomeComplexMappingService {
             return MyHomeComplexMappingReport.failedRows(0);
         }
         Instant occurredAt = clock.instant();
+        boolean needsGeocoding = candidate.needsGeocoding();
         try {
             MyHomeComplexMappingData data = sourceMapper.map(candidate.getSourceComplexIdentifier(), sources);
             resolveCoordinates(candidate);
@@ -252,6 +253,9 @@ public class MyHomeComplexMappingService {
             return failureReport;
         }
         catch (RuntimeException exception) {
+            if (needsGeocoding && candidate.needsGeocoding()) {
+                throw exception;
+            }
             log.warn(
                     "마이홈 단지 매핑 저장에 실패했습니다: sourceComplexIdentifier={}, sourceRowCount={}",
                     candidate.getSourceComplexIdentifier(),

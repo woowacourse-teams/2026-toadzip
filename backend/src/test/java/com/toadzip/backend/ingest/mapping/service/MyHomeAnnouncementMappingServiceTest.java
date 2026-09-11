@@ -250,7 +250,32 @@ class MyHomeAnnouncementMappingServiceTest {
                 new BigDecimal("59.9500"),
                 new BigDecimal("84.0500")
         ));
-        sourceRepository.save(source(0, data("21026", 1, "부산도시공사", "동삼2")));
+        sourceRepository.save(source(0, withHousingType(
+                data("21026", 1, "부산도시공사", "동삼2"),
+                "77A"
+        )));
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isOne();
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getHousingComplex()).isNotNull();
+            assertThat(row.getHousingType()).isNull();
+            assertThat(row.getMatchingFailureReason()).contains("주택형 하나를 확정할 수 없습니다");
+        });
+        assertThat(failureRepository.findAll()).singleElement()
+                .extracting(failure -> failure.getReason())
+                .isEqualTo(MyHomeAnnouncementMappingFailureReason.AMBIGUOUS_HOUSING_TYPE);
+    }
+
+    @Test
+    void 단일_주택형_후보가_원천_주택형명과_다르면_연결하지_않는다() {
+        saveMappedComplex();
+        MyHomeAnnouncementSourceSnapshot sourceData = withHousingType(
+                data("21026", 1, "부산도시공사", "동삼2"),
+                "59A"
+        );
+        sourceRepository.save(source(0, sourceData));
 
         var report = service.mapAll();
 
@@ -570,7 +595,7 @@ class MyHomeAnnouncementMappingServiceTest {
                 "모집중",
                 "국민임대 입주자 모집공고",
                 provider,
-                "아파트",
+                "46A",
                 "국민임대",
                 null,
                 "20260813",

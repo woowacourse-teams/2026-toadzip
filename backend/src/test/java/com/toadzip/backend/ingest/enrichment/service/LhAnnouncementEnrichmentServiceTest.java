@@ -323,7 +323,7 @@ class LhAnnouncementEnrichmentServiceTest {
 
     private MyHomeAnnouncementSource myHomeSource() {
         MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, new MyHomeAnnouncementSourceSnapshot(
-                "21026", 1, "모집중", "국민임대 입주자 모집공고", "LH서울", "아파트", "국민임대", null,
+                "21026", 1, "모집중", "국민임대 입주자 모집공고", "LH서울", "46A", "국민임대", null,
                 "20260813", "20261106", "20260824", "20260831", "1600-1004",
                 "https://example.com/announcements?panId=" + PAN_ID, null, null, "동삼2", "서울특별시", "종로구",
                 "서울특별시 종로구 테스트로 1", "테스트로", "테스트동", PNU, "지역난방", "100", 20,
