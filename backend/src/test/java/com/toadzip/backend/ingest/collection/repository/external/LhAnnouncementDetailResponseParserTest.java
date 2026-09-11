@@ -44,4 +44,21 @@ class LhAnnouncementDetailResponseParserTest {
                 .isInstanceOf(ExternalDataRequestException.class)
                 .hasMessage("LH 공고 상세 응답에 예상 dataset이 없습니다.");
     }
+
+    @Test
+    @DisplayName("LH 공고 상세 dataset이 빈 배열이면 정상 빈 결과로 처리한다")
+    void parsesEmptyDetailDataset() {
+        var root = objectMapper.readTree("[{\"dsEtcInfo\":[]}]");
+
+        assertThat(parser.parse("PAN-1", root)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("존재하는 LH 공고 상세 dataset 중 하나라도 타입이 잘못되면 실패한다")
+    void rejectsInvalidDetailDatasetType() {
+        var root = objectMapper.readTree("[{\"dsEtcInfo\":[]},{\"dsSbd\":\"invalid\"}]");
+
+        assertThatThrownBy(() -> parser.parse("PAN-1", root))
+                .isInstanceOf(ExternalDataRequestException.class);
+    }
 }

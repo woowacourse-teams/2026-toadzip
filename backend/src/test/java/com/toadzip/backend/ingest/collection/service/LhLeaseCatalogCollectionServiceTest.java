@@ -78,6 +78,23 @@ class LhLeaseCatalogCollectionServiceTest {
     }
 
     @Test
+    @DisplayName("LH 임대 카탈로그 dataset 타입이 잘못되면 기존 원천을 교체하지 않는다")
+    void preservesCatalogWhenDatasetTypeIsInvalid() {
+        LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
+        String payload = "[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsList\":1}]";
+        when(externalRepository.fetch(request, 1)).thenReturn(new ExternalDataResponse(
+                payload,
+                JsonMapper.builder().build().readTree(payload)
+        ));
+
+        var result = service.collect(request);
+
+        verify(sourceStore, never()).replaceCatalog(any());
+        verify(failureRecorder).record(any(), any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
     @DisplayName("LH 임대 카탈로그 저장 실패는 외부 API 실패로 기록하지 않는다")
     void propagatesCatalogStoreFailure() {
         LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);

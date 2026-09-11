@@ -38,4 +38,24 @@ class LhAnnouncementSupplyResponseParserTest {
                 .isInstanceOf(ExternalDataRequestException.class)
                 .hasMessage("LH 공고 공급 응답에 예상 dataset이 없습니다.");
     }
+
+    @Test
+    @DisplayName("LH 공고 공급 dataset이 빈 배열이면 정상 빈 결과로 처리한다")
+    void parsesEmptySupplyDataset() {
+        var root = objectMapper.readTree("[{\"dsList01\":[]}]");
+
+        assertThat(parser.parse("PAN-1", root)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("LH 공고 공급 dataset이 null 또는 스칼라이면 실패한다")
+    void rejectsInvalidSupplyDatasetType() {
+        var nullDataset = objectMapper.readTree("[{\"dsList01\":null}]");
+        var scalarDataset = objectMapper.readTree("[{\"dsList01\":1}]");
+
+        assertThatThrownBy(() -> parser.parse("PAN-1", nullDataset))
+                .isInstanceOf(ExternalDataRequestException.class);
+        assertThatThrownBy(() -> parser.parse("PAN-1", scalarDataset))
+                .isInstanceOf(ExternalDataRequestException.class);
+    }
 }

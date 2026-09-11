@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.repository.external;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,12 +32,32 @@ class ExternalResponseRowsTest {
     }
 
     @Test
-    @DisplayName("dataset이 없거나 행 구조가 아니면 빈 결과를 반환한다")
-    void returnsEmptyRowsForMissingOrScalarDataset() {
+    @DisplayName("dataset이 없으면 빈 결과를 반환한다")
+    void returnsEmptyRowsForMissingDataset() {
         var missing = objectMapper.readTree("{}");
-        var scalar = objectMapper.readTree("{\"dsList\":\"invalid\"}");
 
         assertThat(ExternalResponseRows.find(missing, "dsList")).isEmpty();
-        assertThat(ExternalResponseRows.find(scalar, "dsList")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("dataset이 null 또는 스칼라이면 실패한다")
+    void rejectsNullOrScalarDataset() {
+        var nullDataset = objectMapper.readTree("{\"dsList\":null}");
+        var scalarDataset = objectMapper.readTree("{\"dsList\":\"invalid\"}");
+
+        assertThatThrownBy(() -> ExternalResponseRows.find(nullDataset, "dsList"))
+                .isInstanceOf(ExternalDataRequestException.class);
+        assertThatThrownBy(() -> ExternalResponseRows.find(scalarDataset, "dsList"))
+                .isInstanceOf(ExternalDataRequestException.class);
+    }
+
+    @Test
+    @DisplayName("dataset 배열의 행이 객체가 아니면 실패한다")
+    void rejectsScalarDatasetRow() {
+        var root = objectMapper.readTree("{\"dsList\":[{\"id\":1},2]}");
+
+        assertThatThrownBy(() -> ExternalResponseRows.find(root, "dsList"))
+                .isInstanceOf(ExternalDataRequestException.class)
+                .hasMessage("외부 응답 dataset의 행은 객체여야 합니다.");
     }
 }

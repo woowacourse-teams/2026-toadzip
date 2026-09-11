@@ -70,6 +70,7 @@ public class MyHomeAnnouncementSupplyTypeCollector {
             ExternalDataCallCounter callCounter
     ) {
         List<MyHomeAnnouncementSourceSnapshot> snapshots = new ArrayList<>();
+        int expectedTotalCount = -1;
         for (int page = 1; page <= request.maxPages(); page++) {
             int currentPage = page;
             String requestDescription = request.requestDescription(supplyType, currentPage);
@@ -80,12 +81,25 @@ public class MyHomeAnnouncementSupplyTypeCollector {
                     callCounter
             );
             failureRecorder.resolve(ExternalDataSource.MYHOME_ANNOUNCEMENT, requestDescription);
-            ExternalDataPage<MyHomeAnnouncementSourceSnapshot> parsedPage = responseParser.parse(response);
+            ExternalDataPage<MyHomeAnnouncementSourceSnapshot> parsedPage = responseParser.parse(
+                    response,
+                    snapshots.size()
+            );
+            expectedTotalCount = requireConsistentTotalCount(expectedTotalCount, parsedPage.totalCount());
             snapshots.addAll(parsedPage.items());
             if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
                 return snapshots;
             }
         }
         throw new ExternalDataRequestException("마이홈 공고 조회가 최대 페이지 안에 끝나지 않았습니다.");
+    }
+
+    private int requireConsistentTotalCount(int expectedTotalCount, int actualTotalCount) {
+        if (expectedTotalCount < 0 || expectedTotalCount == actualTotalCount) {
+            return actualTotalCount;
+        }
+        throw new ExternalDataRequestException(
+                "마이홈 공고 응답의 totalCount가 페이지마다 다릅니다."
+        );
     }
 }

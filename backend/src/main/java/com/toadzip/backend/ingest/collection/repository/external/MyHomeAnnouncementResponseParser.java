@@ -14,16 +14,84 @@ import tools.jackson.databind.ObjectMapper;
 public class MyHomeAnnouncementResponseParser {
 
     private static final String LIST_POINTER = "/response/body/item";
+    private static final String SUCCESS = "00";
+    private static final String NO_DATA = "03";
 
     private final ObjectMapper objectMapper;
 
-    public ExternalDataPage<MyHomeAnnouncementSourceSnapshot> parse(ExternalDataResponse response) {
-        List<MyHomeAnnouncementSourceSnapshot> snapshots = ExternalResponseRows.at(response.body(), LIST_POINTER)
+    public ExternalDataPage<MyHomeAnnouncementSourceSnapshot> parse(
+            ExternalDataResponse response,
+            int collectedCount
+    ) {
+        JsonNode root = response.body();
+        String resultCode = root.at("/response/header/resultCode").asString("");
+        if (NO_DATA.equals(resultCode)) {
+            return emptyPageOrThrow(collectedCount, 0);
+        }
+        if (!SUCCESS.equals(resultCode)) {
+            throw invalidResponseSchema();
+        }
+        JsonNode body = root.at("/response/body");
+        if (!body.isObject()) {
+            throw invalidResponseSchema();
+        }
+        int totalCount = totalCountOf(body);
+        JsonNode item = body.path("item");
+        if (item.isMissingNode() || item.isNull()) {
+            return emptyPageOrThrow(collectedCount, totalCount);
+        }
+        if (!item.isArray() && !item.isObject()) {
+            throw invalidResponseSchema();
+        }
+        List<JsonNode> rows = ExternalResponseRows.at(root, LIST_POINTER);
+        if (rows.isEmpty()) {
+            return emptyPageOrThrow(collectedCount, totalCount);
+        }
+        if (collectedCount + rows.size() > totalCount) {
+            throw invalidResponseSchema();
+        }
+        List<MyHomeAnnouncementSourceSnapshot> snapshots = rows
                 .stream()
                 .map(this::sourceSnapshotOf)
                 .toList();
-        int totalCount = response.body().at("/response/body/totalCount").asInt(-1);
         return new ExternalDataPage<>(snapshots, totalCount);
+    }
+
+    private ExternalDataPage<MyHomeAnnouncementSourceSnapshot> emptyPageOrThrow(
+            int collectedCount,
+            int totalCount
+    ) {
+        if (collectedCount == 0 && totalCount == 0) {
+            return new ExternalDataPage<>(List.of(), totalCount);
+        }
+        throw invalidResponseSchema();
+    }
+
+    private int totalCountOf(JsonNode body) {
+        JsonNode totalCount = body.path("totalCount");
+        if (totalCount.isIntegralNumber() && totalCount.canConvertToInt()) {
+            return requireNonNegativeTotalCount(totalCount.intValue());
+        }
+        if (totalCount.isTextual()) {
+            return textualTotalCount(totalCount.textValue());
+        }
+        throw invalidResponseSchema();
+    }
+
+    private int textualTotalCount(String totalCount) {
+        try {
+            return requireNonNegativeTotalCount(Integer.parseInt(totalCount));
+        }
+        catch (NumberFormatException exception) {
+            throw invalidResponseSchema();
+        }
+    }
+
+    private int requireNonNegativeTotalCount(int totalCount) {
+        if (totalCount < 0) {
+            throw invalidResponseSchema();
+        }
+        return totalCount;
     }
 
     private MyHomeAnnouncementSourceSnapshot sourceSnapshotOf(JsonNode row) {
@@ -31,8 +99,17 @@ public class MyHomeAnnouncementResponseParser {
             return objectMapper.convertValue(row, MyHomeAnnouncementSourceSnapshot.class);
         }
         catch (RuntimeException exception) {
-            throw new ExternalDataRequestException("마이홈 공고 응답 항목 형식이 올바르지 않습니다.", exception);
+            throw new ExternalDataRequestException(
+                    "마이홈 공고 응답 항목 형식이 올바르지 않습니다.",
+                    exception
+            );
         }
+    }
+
+    private ExternalDataRequestException invalidResponseSchema() {
+        return new ExternalDataRequestException(
+                "마이홈 공고 응답에 body, item 또는 totalCount 구조가 올바르지 않습니다."
+        );
     }
 
 }

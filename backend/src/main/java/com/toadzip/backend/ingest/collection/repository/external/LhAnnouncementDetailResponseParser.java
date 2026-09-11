@@ -20,6 +20,7 @@ public class LhAnnouncementDetailResponseParser {
 
     public List<LhAnnouncementDetailSource> parse(String panId, JsonNode root) {
         requireAnyDataset(root, DETAIL_DATASET_KEYS, "LH 공고 상세");
+        validateDatasetTypes(root);
         List<LhAnnouncementDetailSource> sources = new ArrayList<>();
         addEtcInfo(sources, panId, root);
         addComplexes(sources, panId, root);
@@ -38,15 +39,11 @@ public class LhAnnouncementDetailResponseParser {
     }
 
     private boolean containsDataset(JsonNode root, String datasetKey) {
-        if (!root.isArray()) {
-            return root.has(datasetKey);
-        }
-        for (JsonNode element : root) {
-            if (element.has(datasetKey)) {
-                return true;
-            }
-        }
-        return false;
+        return ExternalResponseRows.contains(root, datasetKey);
+    }
+
+    private void validateDatasetTypes(JsonNode root) {
+        DETAIL_DATASET_KEYS.forEach(key -> ExternalResponseRows.find(root, key));
     }
 
     private void addEtcInfo(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {

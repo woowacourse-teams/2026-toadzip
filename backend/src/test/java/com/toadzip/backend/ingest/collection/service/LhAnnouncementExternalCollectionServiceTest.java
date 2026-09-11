@@ -177,6 +177,31 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void LH_상세_dataset_타입이_잘못되면_기존_snapshot과_체크포인트를_보존한다() {
+        source(announcementSource());
+        when(externalRepository.fetchDetail(any()))
+                .thenReturn(response("[{\"dsEtcInfo\":[]},{\"dsSbd\":\"invalid\"}]"));
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        verify(sourceStore, never()).replaceDetails(any(), any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
+    void LH_공급_dataset_타입이_잘못되면_기존_snapshot과_체크포인트를_보존한다() {
+        source(announcementSource());
+        when(externalRepository.fetchSupply(any())).thenReturn(response("[{\"dsList01\":1}]"));
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+
+        verify(sourceStore, never()).replaceSupplies(any(), any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
     void LH_상세_저장_실패는_외부_API_실패로_기록하지_않는다() {
         source(announcementSource());
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
