@@ -5,13 +5,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atMost;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
+import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.collection.dto.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.repository.MyHomeComplexExternalRepository;
@@ -21,6 +24,14 @@ import com.toadzip.backend.ingest.collection.repository.external.ExternalDataReq
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeComplexResponseParser;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -310,13 +321,194 @@ class MyHomeComplexCollectionServiceTest {
 
         var result = service.collect(request);
 
-        assertThat(result.rateLimitedRequestCount()).isOne();
+        assertThat(result.rateLimitedRequestCount()).isBetween(1, 4);
+        assertThat(result.failedRequestCount()).isEqualTo(result.rateLimitedRequestCount());
         verify(externalRepository, atMost(4)).fetch(any(), eq(request), eq(1));
         verify(sourceStore, never()).replaceComplexRegion(any(), any());
     }
 
+    @Test
+    @DisplayName("호출 제한 취소 후 실행 중인 worker 종료를 기다리고 완료 결과를 집계한다")
+    void waitsForRunningWorkerAndReportsItsCompletedResultAfterRateLimit() throws Exception {
+        MyHomeRegion rateLimitedRegion = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        MyHomeRegion slowRegion = new MyHomeRegion("26", "110", "부산광역시", "중구");
+        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexRegionCollector concurrentCollector = mock(MyHomeComplexRegionCollector.class);
+        MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
+                regionCatalog,
+                concurrentCollector
+        );
+        CountDownLatch slowWorkerStarted = new CountDownLatch(1);
+        CountDownLatch slowWorkerInterrupted = new CountDownLatch(1);
+        CountDownLatch allowSlowWorkerToFinish = new CountDownLatch(1);
+        when(regionCatalog.findAll()).thenReturn(List.of(rateLimitedRegion, slowRegion));
+        when(concurrentCollector.collect(eq(rateLimitedRegion), eq(request), any(AtomicBoolean.class)))
+                .thenAnswer(invocation -> {
+                    slowWorkerStarted.await(2, TimeUnit.SECONDS);
+                    return new MyHomeComplexCollectionReport(
+                            ExternalDataSource.MYHOME_COMPLEX.operation(),
+                            0,
+                            1,
+                            1,
+                            1
+                    );
+                });
+        when(concurrentCollector.collect(eq(slowRegion), eq(request), any(AtomicBoolean.class)))
+                .thenAnswer(invocation -> {
+                    slowWorkerStarted.countDown();
+                    awaitIgnoringInterrupt(allowSlowWorkerToFinish, slowWorkerInterrupted);
+                    return new MyHomeComplexCollectionReport(
+                            ExternalDataSource.MYHOME_COMPLEX.operation(),
+                            3,
+                            0,
+                            1
+                    );
+                });
+        ExecutorService caller = Executors.newSingleThreadExecutor();
+
+        try {
+            Future<MyHomeComplexCollectionReport> collection = caller.submit(
+                    () -> concurrentService.collect(request)
+            );
+
+            assertThat(slowWorkerInterrupted.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(collection.isDone()).isFalse();
+            allowSlowWorkerToFinish.countDown();
+
+            MyHomeComplexCollectionReport report = collection.get(2, TimeUnit.SECONDS);
+            assertThat(report.storedRowCount()).isEqualTo(3);
+            assertThat(report.failedRequestCount()).isOne();
+            assertThat(report.rateLimitedRequestCount()).isOne();
+            assertThat(report.externalApiCallCount()).isEqualTo(2);
+        }
+        finally {
+            allowSlowWorkerToFinish.countDown();
+            caller.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("호출 제한으로 재시도 대기 worker를 취소해도 수집 실패로 바꾸지 않는다")
+    void treatsInterruptedRetryWaitAsRateLimitCancellation() throws Exception {
+        MyHomeRegion retryingRegion = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        MyHomeRegion rateLimitedRegion = new MyHomeRegion("26", "110", "부산광역시", "중구");
+        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexRegionCollector retryingCollector = new MyHomeComplexRegionCollector(
+                new MyHomeComplexResponseParser(JsonMapper.builder().build()),
+                externalRepository,
+                sourceStore,
+                failureRecorder,
+                new ExternalDataRetryExecutor(Duration.ofSeconds(30))
+        );
+        MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
+                regionCatalog,
+                retryingCollector
+        );
+        CountDownLatch retryRequestStarted = new CountDownLatch(1);
+        when(regionCatalog.findAll()).thenReturn(List.of(retryingRegion, rateLimitedRegion));
+        when(externalRepository.fetch(retryingRegion, request, 1))
+                .thenAnswer(invocation -> {
+                    retryRequestStarted.countDown();
+                    throw ExternalDataRequestException.retryable(
+                            "일시적 실패",
+                            new IllegalStateException("504")
+                    );
+                });
+        when(externalRepository.fetch(rateLimitedRegion, request, 1))
+                .thenAnswer(invocation -> {
+                    retryRequestStarted.await(2, TimeUnit.SECONDS);
+                    throw ExternalDataRequestException.rateLimited(
+                            "resultCode=23, 초당 요청 한도 초과",
+                            null,
+                            true
+                    );
+                });
+
+        MyHomeComplexCollectionReport report = concurrentService.collect(request);
+
+        assertThat(report.rateLimitedRequestCount()).isOne();
+        assertThat(report.failedRequestCount()).isOne();
+        assertThat(report.externalApiCallCount()).isEqualTo(2);
+        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+    }
+
+    @Test
+    @DisplayName("worker 예외 시 다른 worker를 취소하고 실제 종료된 뒤 예외를 전파한다")
+    void waitsForRunningWorkerBeforePropagatingWorkerFailure() throws Exception {
+        MyHomeRegion failedRegion = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        MyHomeRegion slowRegion = new MyHomeRegion("26", "110", "부산광역시", "중구");
+        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexRegionCollector concurrentCollector = mock(MyHomeComplexRegionCollector.class);
+        MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
+                regionCatalog,
+                concurrentCollector
+        );
+        CountDownLatch slowWorkerStarted = new CountDownLatch(1);
+        CountDownLatch slowWorkerInterrupted = new CountDownLatch(1);
+        CountDownLatch allowSlowWorkerToFinish = new CountDownLatch(1);
+        AtomicReference<Thread> serviceThread = new AtomicReference<>();
+        when(regionCatalog.findAll()).thenReturn(List.of(failedRegion, slowRegion));
+        when(concurrentCollector.collect(eq(failedRegion), eq(request), any(AtomicBoolean.class)))
+                .thenAnswer(invocation -> {
+                    slowWorkerStarted.await(2, TimeUnit.SECONDS);
+                    throw new IllegalStateException("DB 저장 실패");
+                });
+        when(concurrentCollector.collect(eq(slowRegion), eq(request), any(AtomicBoolean.class)))
+                .thenAnswer(invocation -> {
+                    slowWorkerStarted.countDown();
+                    awaitIgnoringInterrupt(allowSlowWorkerToFinish, slowWorkerInterrupted);
+                    return MyHomeComplexCollectionReport.empty();
+                });
+        ExecutorService caller = Executors.newSingleThreadExecutor();
+
+        try {
+            Future<MyHomeComplexCollectionReport> collection = caller.submit(() -> {
+                serviceThread.set(Thread.currentThread());
+                return concurrentService.collect(request);
+            });
+
+            assertThat(slowWorkerInterrupted.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(collection.isDone()).isFalse();
+            serviceThread.get().interrupt();
+            allowSlowWorkerToFinish.countDown();
+
+            assertThatThrownBy(() -> collection.get(2, TimeUnit.SECONDS))
+                    .isInstanceOfSatisfying(ExecutionException.class, exception -> {
+                        assertThat(exception.getCause())
+                                .isInstanceOf(IllegalStateException.class)
+                                .hasMessage("DB 저장 실패");
+                        assertThat(exception.getCause().getSuppressed())
+                                .singleElement()
+                                .satisfies(suppressed -> assertThat(suppressed)
+                                        .isInstanceOf(IllegalStateException.class)
+                                        .hasMessage("마이홈 단지 수집이 중단되었습니다."));
+                    });
+        }
+        finally {
+            allowSlowWorkerToFinish.countDown();
+            caller.shutdownNow();
+        }
+    }
+
     private MyHomeComplexCollectionRequest request() {
         return new MyHomeComplexCollectionRequest("11", "110", 2, 10);
+    }
+
+    private void awaitIgnoringInterrupt(CountDownLatch release, CountDownLatch interrupted) {
+        boolean restoreInterrupt = false;
+        while (true) {
+            try {
+                release.await();
+                break;
+            }
+            catch (InterruptedException exception) {
+                interrupted.countDown();
+                restoreInterrupt = true;
+            }
+        }
+        if (restoreInterrupt) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private ExternalDataResponse response(String items) {

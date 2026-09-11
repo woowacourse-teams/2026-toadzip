@@ -50,7 +50,13 @@ public class MyHomeComplexRegionCollector {
             snapshots = fetchCompleteRegion(region, request, callCounter, rateLimitReached);
         }
         catch (RateLimitCollectionCancelledException exception) {
-            return MyHomeComplexCollectionReport.empty();
+            return cancelledReport(callCounter);
+        }
+        catch (ExternalDataRetryInterruptedException exception) {
+            if (rateLimitReached.get()) {
+                return cancelledReport(callCounter);
+            }
+            throw exception;
         }
         catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
             return failedReport(region, request, rateLimitReached, callCounter, exception);
@@ -59,6 +65,15 @@ public class MyHomeComplexRegionCollector {
         return new MyHomeComplexCollectionReport(
                 ExternalDataSource.MYHOME_COMPLEX.operation(),
                 storedRowCount,
+                0,
+                callCounter.count()
+        );
+    }
+
+    private MyHomeComplexCollectionReport cancelledReport(ExternalDataCallCounter callCounter) {
+        return new MyHomeComplexCollectionReport(
+                ExternalDataSource.MYHOME_COMPLEX.operation(),
+                0,
                 0,
                 callCounter.count()
         );
