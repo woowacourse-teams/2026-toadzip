@@ -9,9 +9,12 @@ import java.io.InputStreamReader;
 import java.io.PushbackInputStream;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
+import java.nio.charset.CoderResult;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -29,6 +32,8 @@ public class LocationSummaryFileParser {
     private static final int COLUMN_COUNT = 18;
 
     private static final int CHARSET_SAMPLE_SIZE = 8_192;
+
+    private static final int MAX_CHARSET_LOOKAHEAD_SIZE = 3;
 
     private static final int MAX_ENTRY_COUNT = 30;
 
@@ -80,18 +85,29 @@ public class LocationSummaryFileParser {
             Consumer<LocationSummaryRecord> consumer,
             ParseState state
     ) throws IOException {
-        PushbackInputStream source = new PushbackInputStream(input, CHARSET_SAMPLE_SIZE);
-        Charset charset = detectCharset(source);
-        BufferedReader reader = new BufferedReader(new InputStreamReader(source, charset));
+        PushbackInputStream source = new PushbackInputStream(
+                input,
+                CHARSET_SAMPLE_SIZE + MAX_CHARSET_LOOKAHEAD_SIZE
+        );
+        Charset charset = detectCharset(source, entryName);
+        BufferedReader reader = new BufferedReader(new InputStreamReader(source, decoder(charset)));
         int rowNumber = 0;
-        for (String line = reader.readLine(); line != null; line = reader.readLine()) {
-            rowNumber++;
-            if (line.isBlank()) {
-                continue;
+        try {
+            for (String line = reader.readLine(); line != null; line = reader.readLine()) {
+                rowNumber++;
+                if (line.isBlank()) {
+                    continue;
+                }
+                LocationSummaryRecord record = parseLine(stripBom(line), entryName, rowNumber);
+                consumer.accept(record);
+                state.accept(entryName, record);
             }
-            LocationSummaryRecord record = parseLine(stripBom(line), entryName, rowNumber);
-            consumer.accept(record);
-            state.accept(entryName, record);
+        }
+        catch (CharacterCodingException exception) {
+            throw new InvalidIngestRequestException(
+                    entryName + "의 본문 인코딩이 UTF-8 또는 CP949가 아닙니다.",
+                    exception
+            );
         }
     }
 
@@ -122,19 +138,47 @@ public class LocationSummaryFileParser {
         }
     }
 
-    private Charset detectCharset(PushbackInputStream source) throws IOException {
-        byte[] sample = source.readNBytes(CHARSET_SAMPLE_SIZE);
-        source.unread(sample);
-        try {
-            StandardCharsets.UTF_8.newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(sample));
+    private Charset detectCharset(PushbackInputStream source, String entryName) throws IOException {
+        byte[] probed = source.readNBytes(CHARSET_SAMPLE_SIZE + MAX_CHARSET_LOOKAHEAD_SIZE);
+        source.unread(probed);
+        boolean endOfInput = probed.length < CHARSET_SAMPLE_SIZE + MAX_CHARSET_LOOKAHEAD_SIZE;
+        if (canDecode(probed, StandardCharsets.UTF_8, endOfInput)) {
             return StandardCharsets.UTF_8;
         }
-        catch (CharacterCodingException exception) {
+        if (canDecode(probed, MS949, endOfInput)) {
             return MS949;
         }
+        throw new InvalidIngestRequestException(
+                entryName + "의 인코딩이 UTF-8 또는 CP949가 아닙니다."
+        );
+    }
+
+    private boolean canDecode(byte[] probed, Charset charset, boolean endOfInput) {
+        CharsetDecoder decoder = decoder(charset);
+        int sampleLength = Math.min(probed.length, CHARSET_SAMPLE_SIZE);
+        ByteBuffer input = ByteBuffer.wrap(probed);
+        input.limit(sampleLength);
+        CharBuffer output = CharBuffer.allocate(probed.length);
+        CoderResult result = decoder.decode(
+                input,
+                output,
+                endOfInput && input.limit() == probed.length
+        );
+        while (!result.isError() && input.hasRemaining() && input.limit() < probed.length) {
+            input.limit(input.limit() + 1);
+            result = decoder.decode(
+                    input,
+                    output,
+                    endOfInput && input.limit() == probed.length
+            );
+        }
+        return !result.isError();
+    }
+
+    private CharsetDecoder decoder(Charset charset) {
+        return charset.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT);
     }
 
     private int integer(String value, String fieldName) {
