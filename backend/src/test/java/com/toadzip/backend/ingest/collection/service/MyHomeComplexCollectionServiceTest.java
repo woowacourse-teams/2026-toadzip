@@ -216,6 +216,37 @@ class MyHomeComplexCollectionServiceTest {
     }
 
     @Test
+    @DisplayName("후속 페이지 파싱 실패는 실제 페이지와 시도 횟수로 기록하고 성공 처리하지 않는다")
+    void recordsActualComplexParseFailurePageAndAttemptCount() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        MyHomeComplexCollectionRequest request = request();
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request, 1))
+                .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]", 3));
+        when(externalRepository.fetch(region, request, 2))
+                .thenReturn(response("[{\"hsmpSn\":{}}]", 3));
+
+        MyHomeComplexCollectionReport result = service.collect(request);
+
+        ArgumentCaptor<RuntimeException> failure = ArgumentCaptor.captor();
+        verify(failureRecorder).record(any(), any(), failure.capture(), any(), any());
+        assertThat(failure.getValue()).isInstanceOfSatisfying(
+                ExternalDataCallFailureException.class,
+                exception -> {
+                    assertThat(exception.getRequestDescription())
+                            .isEqualTo("brtcCode=11&signguCode=110&pageNo=2&numOfRows=2");
+                    assertThat(exception.getAttemptCount()).isOne();
+                }
+        );
+        verify(failureRecorder, never()).resolve(
+                ExternalDataSource.MYHOME_COMPLEX,
+                "brtcCode=11&signguCode=110&pageNo=2&numOfRows=2"
+        );
+        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
     @DisplayName("정상 코드에 body와 totalCount가 없으면 기존 지역 snapshot을 교체하지 않는다")
     void doesNotReplaceRegionWhenSuccessfulResponseHasNoBody() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
@@ -245,8 +276,8 @@ class MyHomeComplexCollectionServiceTest {
     }
 
     @Test
-    @DisplayName("응답 항목 변환 실패는 외부 API 재시도 실패로 감싸지 않는다")
-    void doesNotWrapItemMappingFailureAsApiRetryFailure() {
+    @DisplayName("응답 항목 변환 실패도 실제 페이지와 시도 횟수로 기록한다")
+    void recordsItemMappingFailureAsPageFailure() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
         when(externalRepository.fetch(region, request(), 1))
@@ -256,9 +287,16 @@ class MyHomeComplexCollectionServiceTest {
 
         ArgumentCaptor<RuntimeException> failure = ArgumentCaptor.captor();
         verify(failureRecorder).record(any(), any(), failure.capture(), any(), any());
-        assertThat(failure.getValue())
-                .isExactlyInstanceOf(ExternalDataRequestException.class)
-                .hasMessage("마이홈 단지 응답 항목 형식이 올바르지 않습니다.");
+        assertThat(failure.getValue()).isInstanceOfSatisfying(
+                ExternalDataCallFailureException.class,
+                exception -> {
+                    assertThat(exception.getRequestDescription())
+                            .isEqualTo("brtcCode=11&signguCode=110&pageNo=1&numOfRows=2");
+                    assertThat(exception.getAttemptCount()).isOne();
+                    assertThat(exception.getCause())
+                            .hasMessage("마이홈 단지 응답 항목 형식이 올바르지 않습니다.");
+                }
+        );
         verify(externalRepository).fetch(region, request(), 1);
     }
 

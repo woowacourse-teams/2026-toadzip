@@ -10,7 +10,6 @@ import com.toadzip.backend.ingest.collection.repository.MyHomeComplexExternalRep
 import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeComplexResponseParser;
-import com.toadzip.backend.ingest.collection.repository.external.MyHomeComplexResponseParser.ValidatedPage;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -119,16 +118,15 @@ public class MyHomeComplexRegionCollector {
             }
             int currentPage = page;
             String requestDescription = request.requestDescription(region, currentPage);
-            ValidatedPage validatedPage = retryExecutor.execute(
+            ExternalDataPage<MyHomeComplexSourceSnapshot> parsedPage = retryExecutor.execute(
                     ExternalDataSource.MYHOME_COMPLEX,
                     requestDescription,
-                    () -> responseParser.validate(
+                    () -> responseParser.parseItems(responseParser.validate(
                             externalRepository.fetch(region, request, currentPage),
                             snapshots.size()
-                    ),
+                    )),
                     callCounter
             );
-            ExternalDataPage<MyHomeComplexSourceSnapshot> parsedPage = responseParser.parseItems(validatedPage);
             snapshots.addAll(parsedPage.items());
             failureRecorder.resolve(ExternalDataSource.MYHOME_COMPLEX, requestDescription);
             if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {

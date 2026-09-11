@@ -4,7 +4,6 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSupplyType;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementExternalRepository;
@@ -74,18 +73,17 @@ public class MyHomeAnnouncementSupplyTypeCollector {
         for (int page = 1; page <= request.maxPages(); page++) {
             int currentPage = page;
             String requestDescription = request.requestDescription(supplyType, currentPage);
-            ExternalDataResponse response = retryExecutor.execute(
+            ExternalDataPage<MyHomeAnnouncementSourceSnapshot> parsedPage = retryExecutor.execute(
                     ExternalDataSource.MYHOME_ANNOUNCEMENT,
                     requestDescription,
-                    () -> externalRepository.fetch(supplyType, request, currentPage),
+                    () -> responseParser.parse(
+                            externalRepository.fetch(supplyType, request, currentPage),
+                            snapshots.size()
+                    ),
                     callCounter
             );
-            failureRecorder.resolve(ExternalDataSource.MYHOME_ANNOUNCEMENT, requestDescription);
-            ExternalDataPage<MyHomeAnnouncementSourceSnapshot> parsedPage = responseParser.parse(
-                    response,
-                    snapshots.size()
-            );
             expectedTotalCount = requireConsistentTotalCount(expectedTotalCount, parsedPage.totalCount());
+            failureRecorder.resolve(ExternalDataSource.MYHOME_ANNOUNCEMENT, requestDescription);
             snapshots.addAll(parsedPage.items());
             if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
                 return snapshots;

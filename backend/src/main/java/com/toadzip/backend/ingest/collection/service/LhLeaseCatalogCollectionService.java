@@ -4,7 +4,6 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.LhLeaseCatalogCollectionRequest;
 import com.toadzip.backend.ingest.collection.repository.LhLeaseCatalogExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
@@ -78,14 +77,13 @@ public class LhLeaseCatalogCollectionService {
         for (int page = 1; page <= request.maxPages(); page++) {
             int currentPage = page;
             String requestDescription = request.requestDescription(currentPage);
-            ExternalDataResponse response = retryExecutor.execute(
+            ExternalDataPage<LhCatalogSourceSnapshot> parsedPage = retryExecutor.execute(
                     ExternalDataSource.LH_LEASE_CATALOG,
                     requestDescription,
-                    () -> externalRepository.fetch(request, currentPage),
+                    () -> responseParser.parse(externalRepository.fetch(request, currentPage)),
                     callCounter
             );
             failureRecorder.resolve(ExternalDataSource.LH_LEASE_CATALOG, requestDescription);
-            ExternalDataPage<LhCatalogSourceSnapshot> parsedPage = responseParser.parse(response);
             snapshots.addAll(parsedPage.items());
             if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
                 return snapshots;
