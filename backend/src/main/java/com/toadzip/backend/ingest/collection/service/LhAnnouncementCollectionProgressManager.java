@@ -25,13 +25,13 @@ public class LhAnnouncementCollectionProgressManager {
     }
 
     public void complete(ExternalDataSource targetSource, Candidate candidate) {
-        resolveFailures(targetSource, candidate);
         progressStore.complete(
                 targetSource,
                 candidate.sourceAnnouncementKey(),
                 candidate.requestDescription(),
                 candidate.panId()
         );
+        resolveFailures(targetSource, candidate);
     }
 
     private void resolveFailures(ExternalDataSource targetSource, Candidate candidate) {

@@ -299,6 +299,25 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void 완료된_이전_요청과_다른_조회_조건은_다시_호출한다() {
+        source(announcementSource());
+        String previousRequest = announcementRequestDescription() + "&AIS_TP_CD=05";
+        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any(), any()))
+                .thenReturn(new BatchProgress(
+                        Set.of(LhAnnouncementCollectionCheckpoint.requestHashOf(previousRequest)),
+                        Set.of(),
+                        Set.of()
+                ));
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("100"), any())).thenReturn(1);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        verify(externalRepository).fetchDetail(any());
+        assertThat(result.externalApiCallCount()).isOne();
+    }
+
+    @Test
     void 한_실행에서는_동일한_LH_요청을_한_번만_호출한다() {
         MyHomeAnnouncementSource first = announcementSource("announcement-100");
         MyHomeAnnouncementSource second = announcementSource("announcement-101");
