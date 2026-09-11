@@ -6,6 +6,7 @@ import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
@@ -177,8 +178,7 @@ public class LhAnnouncementEnrichmentService {
     }
 
     private boolean isLh(MyHomeAnnouncementSource source) {
-        String provider = source.getSuplyInsttNm();
-        return provider != null && (provider.startsWith("LH") || provider.equals("한국토지주택공사"));
+        return LhProviderPolicy.isLh(source.getSuplyInsttNm());
     }
 
     private String panIdOf(MyHomeAnnouncementSource source) {
