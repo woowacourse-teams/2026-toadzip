@@ -1,9 +1,7 @@
 package com.toadzip.backend.ingest.collection.repository;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
+import com.toadzip.backend.global.persistence.PostgresAdvisoryLock;
 import java.sql.SQLException;
 import java.util.EnumMap;
 import java.util.Map;
@@ -11,10 +9,8 @@ import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
-@Slf4j
 @Repository
 public class LhAnnouncementCollectionExecutionLock {
 
@@ -23,16 +19,12 @@ public class LhAnnouncementCollectionExecutionLock {
             ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, 8_432_026_082_400_002L
     );
 
-    private static final String TRY_LOCK_SQL = "SELECT pg_try_advisory_lock(?)";
-
-    private static final String UNLOCK_SQL = "SELECT pg_advisory_unlock(?)";
-
     private final Map<ExternalDataSource, ReentrantLock> localLocks = new EnumMap<>(ExternalDataSource.class);
 
-    private final DataSource dataSource;
+    private final PostgresAdvisoryLock databaseLock;
 
     public LhAnnouncementCollectionExecutionLock(DataSource dataSource) {
-        this.dataSource = dataSource;
+        this.databaseLock = new PostgresAdvisoryLock(dataSource);
         LOCK_KEYS.keySet().forEach(source -> localLocks.put(source, new ReentrantLock()));
     }
 
@@ -41,15 +33,16 @@ public class LhAnnouncementCollectionExecutionLock {
         if (!localLock.tryLock()) {
             return Optional.empty();
         }
-        try (Connection connection = dataSource.getConnection()) {
-            if (!executeLockQuery(connection, TRY_LOCK_SQL, lockKey(source))) {
+        try {
+            Optional<PostgresAdvisoryLock.Lease> lease = databaseLock.tryAcquire(
+                    lockKey(source),
+                    "LH 공고 수집 실행"
+            );
+            if (lease.isEmpty()) {
                 return Optional.empty();
             }
-            try {
+            try (PostgresAdvisoryLock.Lease ignored = lease.orElseThrow()) {
                 return Optional.of(operation.get());
-            }
-            finally {
-                releaseDatabaseLock(connection, lockKey(source));
             }
         }
         catch (SQLException exception) {
@@ -77,31 +70,5 @@ public class LhAnnouncementCollectionExecutionLock {
             throw new IllegalArgumentException("LH 공고 API가 아닙니다.");
         }
         return lockKey;
-    }
-
-    private boolean executeLockQuery(
-            Connection connection,
-            String sql,
-            long lockKey
-    ) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, lockKey);
-            try (ResultSet result = statement.executeQuery()) {
-                return result.next() && result.getBoolean(1);
-            }
-        }
-    }
-
-    private void releaseDatabaseLock(Connection connection, long lockKey) {
-        try {
-            executeLockQuery(connection, UNLOCK_SQL, lockKey);
-        }
-        catch (SQLException exception) {
-            log.error(
-                    "LH 공고 수집 실행 잠금 해제에 실패했습니다. "
-                            + "DB 연결 종료 시 잠금이 해제됩니다.",
-                    exception
-            );
-        }
     }
 }
