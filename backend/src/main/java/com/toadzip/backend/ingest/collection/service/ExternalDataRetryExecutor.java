@@ -70,7 +70,7 @@ public class ExternalDataRetryExecutor {
         }
         catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("외부 API 재시도 대기가 중단되었습니다.", exception);
+            throw new ExternalDataRetryInterruptedException(exception);
         }
     }
 }
