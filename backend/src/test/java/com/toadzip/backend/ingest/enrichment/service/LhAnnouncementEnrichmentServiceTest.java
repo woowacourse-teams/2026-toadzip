@@ -217,6 +217,32 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     @Test
+    void 임대료가_허용되지_않은_형식이면_기존_공급대상을_보존하고_실패를_기록한다() {
+        saveComplex();
+        myHomeSourceRepository.save(myHomeSource());
+        mappingService.mapAll();
+        saveLhSources("10,000,000", "200,000");
+        enrichmentService.enrichAll();
+
+        supplySourceRepository.deleteAll();
+        supplySourceRepository.save(new LhAnnouncementSupplySource(0, PAN_ID,
+                new LhAnnouncementSupplySourceSnapshot(
+                        "동삼2", "46A", "46.8", "67.0", "100", "20", "10~20만원", "200,000"
+                )));
+
+        var report = enrichmentService.enrichAll();
+
+        assertThat(report.failedSourceCount()).isOne();
+        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
+            assertThat(target.getRentalDeposit()).isEqualByComparingTo("10000000");
+            assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000");
+        });
+        assertThat(enrichmentFailureRepository.findAll()).singleElement()
+                .extracting(failure -> failure.getReason())
+                .isEqualTo(LhAnnouncementEnrichmentFailureReason.INVALID_VALUE);
+    }
+
+    @Test
     void 긴_접수_안내문은_접수처명으로_저장하지_않고_기본명을_사용한다() {
         saveComplex();
         myHomeSourceRepository.save(myHomeSource());

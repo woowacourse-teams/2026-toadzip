@@ -26,6 +26,8 @@ public class LhAnnouncementEnrichmentMapper {
 
     private static final Pattern YEAR_MONTH = Pattern.compile("((?:19|20)\\d{2})\\D*(\\d{1,2})");
 
+    private static final Pattern UNSIGNED_INTEGER = Pattern.compile("(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)");
+
     private static final int MAX_RECEPTION_NAME_LENGTH = 255;
 
     public LhAnnouncementEnrichmentData map(
@@ -267,13 +269,10 @@ public class LhAnnouncementEnrichmentMapper {
     }
 
     private Integer integerOf(String value, String fieldName) {
-        if (unavailable(value)) {
+        if (numericUnavailable(value)) {
             return null;
         }
-        String digits = value.replaceAll("[^0-9]", "");
-        if (digits.isEmpty()) {
-            throw invalid(fieldName + " 형식이 올바르지 않습니다.");
-        }
+        String digits = integerDigitsOf(value, fieldName);
         try {
             return Integer.valueOf(digits);
         }
@@ -283,14 +282,25 @@ public class LhAnnouncementEnrichmentMapper {
     }
 
     private BigDecimal amountOf(String value, String fieldName) {
-        if (unavailable(value)) {
+        if (numericUnavailable(value)) {
             return null;
         }
-        String digits = value.replaceAll("[^0-9]", "");
-        if (digits.isEmpty()) {
+        BigDecimal amount = new BigDecimal(integerDigitsOf(value, fieldName));
+        try {
+            amount.longValueExact();
+            return amount;
+        }
+        catch (ArithmeticException exception) {
             throw invalid(fieldName + " 형식이 올바르지 않습니다.");
         }
-        return new BigDecimal(digits);
+    }
+
+    private String integerDigitsOf(String value, String fieldName) {
+        String normalized = value.strip();
+        if (!UNSIGNED_INTEGER.matcher(normalized).matches()) {
+            throw invalid(fieldName + " 형식이 올바르지 않습니다.");
+        }
+        return normalized.replace(",", "");
     }
 
     private String identifier(String panId, String datasetType, Integer sourceOrder, String suffix) {
@@ -320,9 +330,20 @@ public class LhAnnouncementEnrichmentMapper {
             return true;
         }
         String normalized = value.replaceAll("\\s+", "").strip();
+        return normalized.startsWith("9999") || unavailableMarker(normalized);
+    }
+
+    private boolean numericUnavailable(String value) {
+        if (blank(value)) {
+            return true;
+        }
+        String normalized = value.replaceAll("\\s+", "").strip();
+        return unavailableMarker(normalized);
+    }
+
+    private boolean unavailableMarker(String normalized) {
         return normalized.equals("~")
                 || normalized.equals("-")
-                || normalized.startsWith("9999")
                 || normalized.contains("공고문참조")
                 || normalized.contains("미정")
                 || normalized.contains("별도 안내");
