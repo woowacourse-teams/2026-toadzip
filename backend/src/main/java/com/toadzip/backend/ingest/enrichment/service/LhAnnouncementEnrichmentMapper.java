@@ -8,27 +8,19 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import java.math.BigDecimal;
-import java.time.DateTimeException;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 @Component
 public class LhAnnouncementEnrichmentMapper {
 
-    private static final Pattern DATE_TIME = Pattern.compile(
-            "(20\\d{2})\\D*(\\d{1,2})\\D*(\\d{1,2})(?:\\D+(\\d{1,2})\\D*(\\d{2}))?"
-    );
-
-    private static final Pattern YEAR_MONTH = Pattern.compile("((?:19|20)\\d{2})\\D*(\\d{1,2})");
-
-    private static final Pattern UNSIGNED_INTEGER = Pattern.compile("(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)");
-
     private static final int MAX_RECEPTION_NAME_LENGTH = 255;
+
+    private final LhAnnouncementValueParser parser = new LhAnnouncementValueParser();
+    private final LhAttachmentTypePolicy attachmentTypePolicy = new LhAttachmentTypePolicy();
 
     public LhAnnouncementEnrichmentData map(
             String panId,
@@ -73,10 +65,10 @@ public class LhAnnouncementEnrichmentMapper {
                 .filter(complex -> sameComplex(complex.name(), supply.getComplexLabel()))
                 .toList();
         if (matches.size() == 1) {
-            return yearMonthOf(matches.getFirst().expectedMoveInYearMonth(), "입주예정월");
+            return parser.yearMonth(matches.getFirst().expectedMoveInYearMonth(), "입주예정월");
         }
         if (matches.isEmpty() && complexes.size() == 1) {
-            return yearMonthOf(complexes.getFirst().expectedMoveInYearMonth(), "입주예정월");
+            return parser.yearMonth(complexes.getFirst().expectedMoveInYearMonth(), "입주예정월");
         }
         return null;
     }
@@ -111,12 +103,27 @@ public class LhAnnouncementEnrichmentMapper {
     private List<LhScheduleData> schedulesOf(String panId, LhAnnouncementDetailSource source) {
         List<LhScheduleData> schedules = new ArrayList<>();
         addRange(schedules, panId, source, ScheduleType.APPLICATION, "접수", source.getApplicationPeriod());
-        addDate(schedules, panId, source, ScheduleType.WINNER_ANNOUNCEMENT, "당첨자 발표", source.getDocumentTargetAnnouncementDate());
+        addDate(
+                schedules,
+                panId,
+                source,
+                ScheduleType.WINNER_ANNOUNCEMENT,
+                "당첨자 발표",
+                source.getDocumentTargetAnnouncementDate()
+        );
         addRange(
                 schedules, panId, source, ScheduleType.DOCUMENT_SUBMISSION, "서류제출",
                 source.getDocumentSubmissionBeginDate(), source.getDocumentSubmissionEndDate()
         );
-        addRange(schedules, panId, source, ScheduleType.CONTRACT, "계약", source.getContractBeginDate(), source.getContractEndDate());
+        addRange(
+                schedules,
+                panId,
+                source,
+                ScheduleType.CONTRACT,
+                "계약",
+                source.getContractBeginDate(),
+                source.getContractEndDate()
+        );
         return schedules;
     }
 
@@ -128,12 +135,12 @@ public class LhAnnouncementEnrichmentMapper {
             String name,
             String range
     ) {
-        if (unavailable(range)) {
+        if (parser.unavailable(range)) {
             return;
         }
-        List<LocalDateTime> values = dateTimes(range, name);
+        List<LocalDateTime> values = parser.dateTimes(range, name);
         if (values.size() < 2) {
-            throw invalid(name + " 기간의 시작·종료 시각을 해석할 수 없습니다.");
+            throw parser.invalid(name + " 기간의 시작·종료 시각을 해석할 수 없습니다.");
         }
         schedules.add(schedule(panId, source, type, name, values.getFirst(), values.get(1)));
     }
@@ -147,13 +154,20 @@ public class LhAnnouncementEnrichmentMapper {
             String begin,
             String end
     ) {
-        if (unavailable(begin) && unavailable(end)) {
+        if (parser.unavailable(begin) && parser.unavailable(end)) {
             return;
         }
-        if (unavailable(begin) || unavailable(end)) {
-            throw invalid(name + " 기간의 시작 또는 종료 시각이 없습니다.");
+        if (parser.unavailable(begin) || parser.unavailable(end)) {
+            throw parser.invalid(name + " 기간의 시작 또는 종료 시각이 없습니다.");
         }
-        schedules.add(schedule(panId, source, type, name, dateTime(begin, name), dateTime(end, name)));
+        schedules.add(schedule(
+                panId,
+                source,
+                type,
+                name,
+                parser.dateTime(begin, name),
+                parser.dateTime(end, name)
+        ));
     }
 
     private void addDate(
@@ -164,8 +178,8 @@ public class LhAnnouncementEnrichmentMapper {
             String name,
             String value
     ) {
-        if (!unavailable(value)) {
-            LocalDateTime at = dateTime(value, name);
+        if (!parser.unavailable(value)) {
+            LocalDateTime at = parser.dateTime(value, name);
             schedules.add(schedule(panId, source, type, name, at, at));
         }
     }
@@ -179,7 +193,7 @@ public class LhAnnouncementEnrichmentMapper {
             LocalDateTime endAt
     ) {
         if (endAt.isBefore(startAt)) {
-            throw invalid(name + " 종료 시각이 시작 시각보다 빠릅니다.");
+            throw parser.invalid(name + " 종료 시각이 시작 시각보다 빠릅니다.");
         }
         return new LhScheduleData(
                 identifier(panId, "SCHEDULE", source.getSourceOrder(), type.name()), type, name, startAt, endAt
@@ -187,120 +201,28 @@ public class LhAnnouncementEnrichmentMapper {
     }
 
     private LhAttachmentData attachmentOf(String panId, LhAnnouncementDetailSource source) {
-        if (blank(source.getName()) || blank(source.getUrl())) {
-            throw invalid("첨부파일명 또는 URL이 없습니다.");
+        if (parser.blank(source.getName()) || parser.blank(source.getUrl())) {
+            throw parser.invalid("첨부파일명 또는 URL이 없습니다.");
         }
         return new LhAttachmentData(
                 identifier(panId, "ANNOUNCEMENT_FILE", source.getSourceOrder(), null), source.getName(),
-                attachmentTypeOf(source.getKind()), source.getUrl()
+                attachmentTypePolicy.classify(source.getKind()), source.getUrl()
         );
     }
 
     private LhSupplyData supplyOf(String panId, LhAnnouncementSupplySource source, YearMonth expectedMoveInMonth) {
-        if (blank(source.getComplexLabel()) || blank(source.getTypeName())) {
-            throw invalid("LH 공급 원본의 단지명 또는 주택형명이 없습니다.");
+        if (parser.blank(source.getComplexLabel()) || parser.blank(source.getTypeName())) {
+            throw parser.invalid("LH 공급 원본의 단지명 또는 주택형명이 없습니다.");
         }
         return new LhSupplyData(
                 identifier(panId, "SUPPLY", source.getSourceOrder(), null), source.getComplexLabel(),
-                source.getTypeName(), expectedMoveInMonth, integerOf(source.getTotalUnitCount(), "전체 세대수"),
-                integerOf(source.getSuppliedUnitCount(), "공급 세대수"), amountOf(source.getDepositText(), "임대보증금"),
-                amountOf(source.getMonthlyRentText(), "월 임대료")
+                source.getTypeName(),
+                expectedMoveInMonth,
+                parser.integer(source.getTotalUnitCount(), "전체 세대수"),
+                parser.integer(source.getSuppliedUnitCount(), "공급 세대수"),
+                parser.amount(source.getDepositText(), "임대보증금"),
+                parser.amount(source.getMonthlyRentText(), "월 임대료")
         );
-    }
-
-    private AttachmentType attachmentTypeOf(String kind) {
-        if (kind != null && kind.contains("취소")) {
-            return AttachmentType.CANCELLATION;
-        }
-        if (kind != null && kind.contains("정정")) {
-            return AttachmentType.CORRECTION;
-        }
-        if (kind != null && kind.contains("공고")) {
-            return AttachmentType.ANNOUNCEMENT;
-        }
-        return AttachmentType.REFERENCE;
-    }
-
-    private List<LocalDateTime> dateTimes(String value, String fieldName) {
-        List<LocalDateTime> values = new ArrayList<>();
-        Matcher matcher = DATE_TIME.matcher(value);
-        while (matcher.find()) {
-            values.add(dateTime(matcher, fieldName));
-        }
-        return values;
-    }
-
-    private LocalDateTime dateTime(String value, String fieldName) {
-        Matcher matcher = DATE_TIME.matcher(value);
-        if (!matcher.find()) {
-            throw invalid(fieldName + " 형식이 올바르지 않습니다.");
-        }
-        return dateTime(matcher, fieldName);
-    }
-
-    private LocalDateTime dateTime(Matcher matcher, String fieldName) {
-        try {
-            int hour = matcher.group(4) == null ? 0 : Integer.parseInt(matcher.group(4));
-            int minute = matcher.group(5) == null ? 0 : Integer.parseInt(matcher.group(5));
-            return LocalDateTime.of(
-                    Integer.parseInt(matcher.group(1)), Integer.parseInt(matcher.group(2)),
-                    Integer.parseInt(matcher.group(3)), hour, minute
-            );
-        }
-        catch (DateTimeException | NumberFormatException exception) {
-            throw invalid(fieldName + " 형식이 올바르지 않습니다.");
-        }
-    }
-
-    private YearMonth yearMonthOf(String value, String fieldName) {
-        if (unavailable(value)) {
-            return null;
-        }
-        Matcher matcher = YEAR_MONTH.matcher(value);
-        if (!matcher.find()) {
-            throw invalid(fieldName + " 형식이 올바르지 않습니다.");
-        }
-        try {
-            return YearMonth.of(Integer.parseInt(matcher.group(1)), Integer.parseInt(matcher.group(2)));
-        }
-        catch (DateTimeException | NumberFormatException exception) {
-            throw invalid(fieldName + " 형식이 올바르지 않습니다.");
-        }
-    }
-
-    private Integer integerOf(String value, String fieldName) {
-        if (numericUnavailable(value)) {
-            return null;
-        }
-        String digits = integerDigitsOf(value, fieldName);
-        try {
-            return Integer.valueOf(digits);
-        }
-        catch (NumberFormatException exception) {
-            throw invalid(fieldName + " 형식이 올바르지 않습니다.");
-        }
-    }
-
-    private BigDecimal amountOf(String value, String fieldName) {
-        if (numericUnavailable(value)) {
-            return null;
-        }
-        BigDecimal amount = new BigDecimal(integerDigitsOf(value, fieldName));
-        try {
-            amount.longValueExact();
-            return amount;
-        }
-        catch (ArithmeticException exception) {
-            throw invalid(fieldName + " 형식이 올바르지 않습니다.");
-        }
-    }
-
-    private String integerDigitsOf(String value, String fieldName) {
-        String normalized = value.strip();
-        if (!UNSIGNED_INTEGER.matcher(normalized).matches()) {
-            throw invalid(fieldName + " 형식이 올바르지 않습니다.");
-        }
-        return normalized.replace(",", "");
     }
 
     private String identifier(String panId, String datasetType, Integer sourceOrder, String suffix) {
@@ -312,47 +234,13 @@ public class LhAnnouncementEnrichmentMapper {
     }
 
     private String joined(String first, String second) {
-        if (blank(first)) {
+        if (parser.blank(first)) {
             return second;
         }
-        if (blank(second)) {
+        if (parser.blank(second)) {
             return first;
         }
         return first + " " + second;
-    }
-
-    private boolean blank(String value) {
-        return value == null || value.isBlank();
-    }
-
-    private boolean unavailable(String value) {
-        if (blank(value)) {
-            return true;
-        }
-        String normalized = value.replaceAll("\\s+", "").strip();
-        return normalized.startsWith("9999") || unavailableMarker(normalized);
-    }
-
-    private boolean numericUnavailable(String value) {
-        if (blank(value)) {
-            return true;
-        }
-        String normalized = value.replaceAll("\\s+", "").strip();
-        return unavailableMarker(normalized);
-    }
-
-    private boolean unavailableMarker(String normalized) {
-        return normalized.equals("~")
-                || normalized.equals("-")
-                || normalized.contains("공고문참조")
-                || normalized.contains("미정")
-                || normalized.contains("별도 안내");
-    }
-
-    private LhAnnouncementEnrichmentRejectedException invalid(String detail) {
-        return new LhAnnouncementEnrichmentRejectedException(
-                LhAnnouncementEnrichmentFailureReason.INVALID_VALUE, detail
-        );
     }
 }
 
