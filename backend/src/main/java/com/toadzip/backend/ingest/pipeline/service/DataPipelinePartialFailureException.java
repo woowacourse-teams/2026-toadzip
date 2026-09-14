@@ -6,9 +6,9 @@ class DataPipelinePartialFailureException extends RuntimeException {
 
     private final DataPipelineStep step;
 
-    private final Object serverResponse;
+    private final String serverResponse;
 
-    DataPipelinePartialFailureException(DataPipelineStep step, Object serverResponse) {
+    DataPipelinePartialFailureException(DataPipelineStep step, String serverResponse) {
         super(step.displayName() + " 단계가 일부 실패했습니다.");
         this.step = step;
         this.serverResponse = serverResponse;
@@ -18,7 +18,7 @@ class DataPipelinePartialFailureException extends RuntimeException {
         return step;
     }
 
-    Object getServerResponse() {
+    String getServerResponse() {
         return serverResponse;
     }
 }

@@ -1,21 +1,15 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
-import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.LhLeaseCatalogCollectionRequest;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementCollectionRequest;
-import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementDetailCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementSupplyCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhLeaseCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.service.MyHomeAnnouncementCollectionService;
 import com.toadzip.backend.ingest.collection.service.MyHomeComplexCollectionService;
-import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
-import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
-import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
-import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
@@ -37,6 +31,7 @@ public class DataPipelineRunner {
     private final LhHousingTypeHouseholdEnrichmentService householdEnrichmentService;
     private final MyHomeAnnouncementMappingService myHomeAnnouncementMappingService;
     private final LhAnnouncementEnrichmentService announcementEnrichmentService;
+    private final DataPipelineStepResultAdapter resultAdapter;
 
     public DataPipelineRunner(
             MyHomeComplexCollectionService myHomeComplexCollectionService,
@@ -47,7 +42,8 @@ public class DataPipelineRunner {
             MyHomeComplexMappingService myHomeComplexMappingService,
             LhHousingTypeHouseholdEnrichmentService householdEnrichmentService,
             MyHomeAnnouncementMappingService myHomeAnnouncementMappingService,
-            LhAnnouncementEnrichmentService announcementEnrichmentService
+            LhAnnouncementEnrichmentService announcementEnrichmentService,
+            DataPipelineStepResultAdapter resultAdapter
     ) {
         this.myHomeComplexCollectionService = myHomeComplexCollectionService;
         this.lhLeaseCatalogCollectionService = lhLeaseCatalogCollectionService;
@@ -58,6 +54,7 @@ public class DataPipelineRunner {
         this.householdEnrichmentService = householdEnrichmentService;
         this.myHomeAnnouncementMappingService = myHomeAnnouncementMappingService;
         this.announcementEnrichmentService = announcementEnrichmentService;
+        this.resultAdapter = resultAdapter;
     }
 
     public void run(DataPipelineType type, DataPipelineProgressListener progressListener) {
@@ -79,59 +76,48 @@ public class DataPipelineRunner {
 
     private void runStep(DataPipelineStep step, DataPipelineProgressListener progressListener) {
         progressListener.started(step);
-        Object report = execute(step);
-        if (hasOnlyRateLimitedFailures(report)) {
-            progressListener.skipped(step, RATE_LIMIT_SKIP_REASON, report);
+        DataPipelineStepResult result = execute(step);
+        if (result.failedOnlyByRateLimit()) {
+            progressListener.skipped(step, RATE_LIMIT_SKIP_REASON, result.serverResponse());
             return;
         }
-        rejectPartialFailure(step, report);
+        rejectPartialFailure(step, result);
         progressListener.completed(step);
     }
 
-    private boolean hasOnlyRateLimitedFailures(Object report) {
-        return switch (report) {
-            case MyHomeComplexCollectionReport result -> result.failedRequestCount() > 0
-                    && result.failedRequestCount() == result.rateLimitedRequestCount();
-            case ExternalDataCollectionReport result -> result.failedRequestCount() > 0
-                    && result.failedRequestCount() == result.rateLimitedRequestCount();
-            case MyHomeComplexMappingReport result -> result.failedSourceRowCount() > 0
-                    && result.failedSourceRowCount() == result.rateLimitedSourceRowCount();
-            default -> false;
-        };
-    }
-
-    private Object execute(DataPipelineStep step) {
+    private DataPipelineStepResult execute(DataPipelineStep step) {
         return switch (step) {
-            case COLLECT_MYHOME_COMPLEXES -> myHomeComplexCollectionService.collect(
+            case COLLECT_MYHOME_COMPLEXES -> resultAdapter.adapt(myHomeComplexCollectionService.collect(
                     MyHomeComplexCollectionRequest.allRegions(500, 1_000)
-            );
-            case COLLECT_LH_LEASE_CATALOG -> lhLeaseCatalogCollectionService.collect(
+            ));
+            case COLLECT_LH_LEASE_CATALOG -> resultAdapter.adapt(lhLeaseCatalogCollectionService.collect(
                     new LhLeaseCatalogCollectionRequest(9_999, 1)
-            );
-            case COLLECT_MYHOME_ANNOUNCEMENTS -> myHomeAnnouncementCollectionService.collect(
+            ));
+            case COLLECT_MYHOME_ANNOUNCEMENTS -> resultAdapter.adapt(myHomeAnnouncementCollectionService.collect(
                     new MyHomeAnnouncementCollectionRequest(10, 1_000)
+            ));
+            case COLLECT_LH_ANNOUNCEMENT_SUPPLIES -> resultAdapter.adapt(
+                    lhAnnouncementSupplyCollectionService.collect()
             );
-            case COLLECT_LH_ANNOUNCEMENT_SUPPLIES -> lhAnnouncementSupplyCollectionService.collect();
-            case COLLECT_LH_ANNOUNCEMENT_DETAILS -> lhAnnouncementDetailCollectionService.collect();
-            case MAP_MYHOME_COMPLEXES -> myHomeComplexMappingService.mapAll();
-            case ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS -> householdEnrichmentService.enrichAll();
-            case MAP_MYHOME_ANNOUNCEMENTS -> myHomeAnnouncementMappingService.mapAll();
-            case ENRICH_LH_ANNOUNCEMENTS -> announcementEnrichmentService.enrichAll();
+            case COLLECT_LH_ANNOUNCEMENT_DETAILS -> resultAdapter.adapt(
+                    lhAnnouncementDetailCollectionService.collect()
+            );
+            case MAP_MYHOME_COMPLEXES -> resultAdapter.adapt(myHomeComplexMappingService.mapAll());
+            case ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS -> resultAdapter.adapt(
+                    householdEnrichmentService.enrichAll()
+            );
+            case MAP_MYHOME_ANNOUNCEMENTS -> resultAdapter.adapt(
+                    myHomeAnnouncementMappingService.mapAll()
+            );
+            case ENRICH_LH_ANNOUNCEMENTS -> resultAdapter.adapt(
+                    announcementEnrichmentService.enrichAll()
+            );
         };
     }
 
-    private void rejectPartialFailure(DataPipelineStep step, Object report) {
-        boolean failed = switch (report) {
-            case MyHomeComplexCollectionReport result -> result.failedRequestCount() > 0;
-            case ExternalDataCollectionReport result -> result.failedRequestCount() > 0;
-            case MyHomeComplexMappingReport result -> result.failedSourceRowCount() > 0;
-            case LhHousingTypeHouseholdEnrichmentReport result -> result.failedSourceComplexCount() > 0;
-            case MyHomeAnnouncementMappingReport result -> result.failedSourceRowCount() > 0;
-            case LhAnnouncementEnrichmentReport result -> result.failedSourceCount() > 0;
-            default -> throw new IllegalStateException("지원하지 않는 데이터 수집·정제 결과입니다.");
-        };
-        if (failed) {
-            throw new DataPipelinePartialFailureException(step, report);
+    private void rejectPartialFailure(DataPipelineStep step, DataPipelineStepResult result) {
+        if (result.failed()) {
+            throw new DataPipelinePartialFailureException(step, result.serverResponse());
         }
     }
 }
