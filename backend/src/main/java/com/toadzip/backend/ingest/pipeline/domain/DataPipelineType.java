@@ -26,8 +26,32 @@ public enum DataPipelineType {
     }
 
     public List<DataPipelineStep> steps() {
-        return Arrays.stream(DataPipelineStep.values())
-                .filter(step -> step.belongsTo(this))
-                .toList();
+        return switch (this) {
+            case COMPLEX_COLLECTION -> List.of(
+                    DataPipelineStep.COLLECT_MYHOME_COMPLEXES,
+                    DataPipelineStep.COLLECT_LH_LEASE_CATALOG
+            );
+            case COMPLEX_REFINEMENT -> List.of(
+                    DataPipelineStep.MAP_MYHOME_COMPLEXES,
+                    DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS
+            );
+            case ANNOUNCEMENT_COLLECTION -> List.of(
+                    DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                    DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
+                    DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS
+            );
+            case ANNOUNCEMENT_REFINEMENT -> List.of(
+                    DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS,
+                    DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS
+            );
+        };
+    }
+
+    int sequenceOf(DataPipelineStep step) {
+        int index = steps().indexOf(step);
+        if (index < 0) {
+            throw new IllegalArgumentException("파이프라인 유형에 속하지 않는 단계입니다.");
+        }
+        return index + 1;
     }
 }
