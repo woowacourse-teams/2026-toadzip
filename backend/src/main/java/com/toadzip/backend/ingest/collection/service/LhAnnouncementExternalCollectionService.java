@@ -155,7 +155,7 @@ public class LhAnnouncementExternalCollectionService {
             Set<String> historyPanIds
     ) {
         if (progress.isCompleted(candidate.requestDescription())) {
-            if (!progress.isLinked(candidate.sourceAnnouncementKey())) {
+            if (!progress.isLinkedTo(candidate.sourceAnnouncementKey(), candidate.requestDescription())) {
                 progressManager.complete(targetSource, candidate);
             }
             return ExternalDataCollectionReport.empty(targetSource.operation());

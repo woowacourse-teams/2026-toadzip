@@ -31,6 +31,7 @@ import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementS
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -241,6 +242,31 @@ class LhAnnouncementExternalCollectionServiceTest {
         verify(sourceStore, never()).replaceSupplies(any(), any());
         assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isZero();
+        assertThat(result.externalApiCallCount()).isZero();
+    }
+
+    @Test
+    void 현재_요청이_완료됐어도_공고_링크가_이전_요청이면_갱신한다() {
+        source(announcementSource());
+        String currentRequest = announcementRequestDescription();
+        String previousRequest = currentRequest + "&PREVIOUS=true";
+        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY), any(), any(), any()))
+                .thenReturn(new BatchProgress(
+                        Set.of(LhAnnouncementCollectionCheckpoint.requestHashOf(currentRequest)),
+                        Set.of(),
+                        Set.of(),
+                        Map.of("100", LhAnnouncementCollectionCheckpoint.requestHashOf(previousRequest))
+                ));
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+
+        verify(externalRepository, never()).fetchSupply(any());
+        verify(progressStore).complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "100",
+                currentRequest,
+                "100"
+        );
         assertThat(result.externalApiCallCount()).isZero();
     }
 

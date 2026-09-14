@@ -5,6 +5,7 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionChec
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionLink;
 import java.time.Clock;
 import java.util.Collection;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
@@ -58,7 +59,7 @@ public class LhAnnouncementCollectionProgressStore {
         );
         Set<String> storedPanIds = findStoredPanIds(source, panIds);
         Set<String> historyPanIds = Set.copyOf(checkpointRepository.findHistoryPanIds(source, panIds));
-        Set<String> linkedSourceAnnouncementKeys = findLinkedSourceAnnouncementKeys(
+        Map<String, String> linkedRequestHashes = findLinkedRequestHashes(
                 source,
                 sourceAnnouncementKeys
         );
@@ -66,7 +67,7 @@ public class LhAnnouncementCollectionProgressStore {
                 completedRequestHashes,
                 storedPanIds,
                 historyPanIds,
-                linkedSourceAnnouncementKeys
+                linkedRequestHashes
         );
     }
 
@@ -117,21 +118,26 @@ public class LhAnnouncementCollectionProgressStore {
         throw new IllegalArgumentException("LH 공고 상세·공급 원천만 확인할 수 있습니다.");
     }
 
-    private Set<String> findLinkedSourceAnnouncementKeys(
+    private Map<String, String> findLinkedRequestHashes(
             ExternalDataSource source,
             Collection<String> sourceAnnouncementKeys
     ) {
         if (sourceAnnouncementKeys.isEmpty()) {
-            return Set.of();
+            return Map.of();
         }
-        return Set.copyOf(linkRepository.findLinkedSourceAnnouncementKeys(source, sourceAnnouncementKeys));
+        return linkRepository.findAllBySourceAndSourceAnnouncementKeyIn(source, sourceAnnouncementKeys)
+                .stream()
+                .collect(Collectors.toUnmodifiableMap(
+                        LhAnnouncementCollectionLink::getSourceAnnouncementKey,
+                        LhAnnouncementCollectionLink::getRequestHash
+                ));
     }
 
     public record BatchProgress(
             Set<String> completedRequestHashes,
             Set<String> storedPanIds,
             Set<String> historyPanIds,
-            Set<String> linkedSourceAnnouncementKeys
+            Map<String, String> linkedRequestHashes
     ) {
 
         public BatchProgress(
@@ -139,14 +145,14 @@ public class LhAnnouncementCollectionProgressStore {
                 Set<String> storedPanIds,
                 Set<String> historyPanIds
         ) {
-            this(completedRequestHashes, storedPanIds, historyPanIds, Set.of());
+            this(completedRequestHashes, storedPanIds, historyPanIds, Map.of());
         }
 
         public BatchProgress {
             completedRequestHashes = Set.copyOf(completedRequestHashes);
             storedPanIds = Set.copyOf(storedPanIds);
             historyPanIds = Set.copyOf(historyPanIds);
-            linkedSourceAnnouncementKeys = Set.copyOf(linkedSourceAnnouncementKeys);
+            linkedRequestHashes = Map.copyOf(linkedRequestHashes);
         }
 
         public static BatchProgress empty() {
@@ -159,8 +165,9 @@ public class LhAnnouncementCollectionProgressStore {
             );
         }
 
-        public boolean isLinked(String sourceAnnouncementKey) {
-            return linkedSourceAnnouncementKeys.contains(sourceAnnouncementKey);
+        public boolean isLinkedTo(String sourceAnnouncementKey, String requestDescription) {
+            String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescription);
+            return requestHash.equals(linkedRequestHashes.get(sourceAnnouncementKey));
         }
     }
 }

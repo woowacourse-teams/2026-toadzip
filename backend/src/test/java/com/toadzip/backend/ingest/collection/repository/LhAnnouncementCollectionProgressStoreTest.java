@@ -82,8 +82,30 @@ class LhAnnouncementCollectionProgressStoreTest {
         );
 
         assertThat(progress.isCompleted(request)).isTrue();
-        assertThat(progress.linkedSourceAnnouncementKeys())
-                .containsExactlyInAnyOrder("announcement-100", "announcement-101");
+        assertThat(progress.isLinkedTo("announcement-100", request)).isTrue();
+        assertThat(progress.isLinkedTo("announcement-101", request)).isTrue();
+    }
+
+    @Test
+    void 공고_링크가_현재_요청과_다르면_완료된_연결로_판정하지_않는다() {
+        LhAnnouncementCollectionProgressStore store = store();
+        String previousRequest = "PAN_ID=100&SPL_INF_TP_CD=063";
+        String currentRequest = "PAN_ID=200&SPL_INF_TP_CD=063";
+        store.complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "announcement-100",
+                previousRequest,
+                "100"
+        );
+
+        var progress = store.findBatch(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                List.of(currentRequest),
+                List.of("200"),
+                List.of("announcement-100")
+        );
+
+        assertThat(progress.isLinkedTo("announcement-100", currentRequest)).isFalse();
     }
 
     @Test
