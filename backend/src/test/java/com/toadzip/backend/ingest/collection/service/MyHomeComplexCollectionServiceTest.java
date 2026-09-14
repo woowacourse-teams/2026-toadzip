@@ -314,6 +314,7 @@ class MyHomeComplexCollectionServiceTest {
                 .hasMessage("DB 저장 실패");
 
         verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+        verify(failureRecorder, never()).resolve(any(), any());
     }
 
     @Test

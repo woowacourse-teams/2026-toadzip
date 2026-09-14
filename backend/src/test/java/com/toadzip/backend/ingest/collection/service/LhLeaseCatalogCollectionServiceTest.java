@@ -140,6 +140,7 @@ class LhLeaseCatalogCollectionServiceTest {
                 .hasMessage("DB 저장 실패");
 
         verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+        verify(failureRecorder, never()).resolve(any(), any());
     }
 
     private ExternalDataResponse response(String rows) {

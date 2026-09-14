@@ -33,9 +33,9 @@ public class LhLeaseCatalogCollectionService {
     public ExternalDataCollectionReport collect(LhLeaseCatalogCollectionRequest request) {
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
         log.info("LH 임대 카탈로그 수집을 시작합니다: pageSize={}, maxPages={}", request.pageSize(), request.maxPages());
-        List<LhCatalogSourceSnapshot> snapshots;
+        FetchedCatalog fetchedCatalog;
         try {
-            snapshots = fetchCompleteCatalog(request, callCounter);
+            fetchedCatalog = fetchCompleteCatalog(request, callCounter);
         }
         catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
             failureRecorder.record(
@@ -54,7 +54,8 @@ public class LhLeaseCatalogCollectionService {
                     ExternalDataRateLimit.count(exception)
             );
         }
-        int storedRowCount = sourceStore.replaceCatalog(snapshots);
+        int storedRowCount = sourceStore.replaceCatalog(fetchedCatalog.snapshots());
+        resolveFailures(fetchedCatalog.requestDescriptions());
         ExternalDataCollectionReport report = new ExternalDataCollectionReport(
                 ExternalDataSource.LH_LEASE_CATALOG.operation(),
                 storedRowCount,
@@ -69,11 +70,12 @@ public class LhLeaseCatalogCollectionService {
         return report;
     }
 
-    private List<LhCatalogSourceSnapshot> fetchCompleteCatalog(
+    private FetchedCatalog fetchCompleteCatalog(
             LhLeaseCatalogCollectionRequest request,
             ExternalDataCallCounter callCounter
     ) {
         List<LhCatalogSourceSnapshot> snapshots = new ArrayList<>();
+        List<String> requestDescriptions = new ArrayList<>();
         for (int page = 1; page <= request.maxPages(); page++) {
             int currentPage = page;
             String requestDescription = request.requestDescription(currentPage);
@@ -83,12 +85,25 @@ public class LhLeaseCatalogCollectionService {
                     () -> responseParser.parse(externalRepository.fetch(request, currentPage)),
                     callCounter
             );
-            failureRecorder.resolve(ExternalDataSource.LH_LEASE_CATALOG, requestDescription);
+            requestDescriptions.add(requestDescription);
             snapshots.addAll(parsedPage.items());
             if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
-                return snapshots;
+                return new FetchedCatalog(snapshots, requestDescriptions);
             }
         }
         throw new ExternalDataRequestException("LH 임대 카탈로그 조회가 최대 페이지 안에 끝나지 않았습니다.");
+    }
+
+    private void resolveFailures(List<String> requestDescriptions) {
+        requestDescriptions.forEach(requestDescription -> failureRecorder.resolve(
+                ExternalDataSource.LH_LEASE_CATALOG,
+                requestDescription
+        ));
+    }
+
+    private record FetchedCatalog(
+            List<LhCatalogSourceSnapshot> snapshots,
+            List<String> requestDescriptions
+    ) {
     }
 }
