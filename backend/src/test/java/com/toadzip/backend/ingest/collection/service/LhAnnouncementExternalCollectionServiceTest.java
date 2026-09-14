@@ -378,6 +378,61 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void 동일한_완료_요청의_공고_링크가_모두_최신이면_다시_저장하지_않는다() {
+        MyHomeAnnouncementSource first = announcementSource("announcement-100");
+        MyHomeAnnouncementSource second = announcementSource("announcement-101");
+        source(first, second);
+        String request = announcementRequestDescription();
+        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(request);
+        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any(), any()))
+                .thenReturn(new BatchProgress(
+                        Set.of(requestHash),
+                        Set.of(),
+                        Set.of(),
+                        Map.of("announcement-100", requestHash, "announcement-101", requestHash)
+                ));
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        verify(externalRepository, never()).fetchDetail(any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        assertThat(result.externalApiCallCount()).isZero();
+    }
+
+    @Test
+    void 동일한_완료_요청을_공유해도_이전_요청을_가리키는_링크만_갱신한다() {
+        MyHomeAnnouncementSource first = announcementSource("announcement-100");
+        MyHomeAnnouncementSource second = announcementSource("announcement-101");
+        source(first, second);
+        String currentRequest = announcementRequestDescription();
+        String currentRequestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(currentRequest);
+        String previousRequestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(
+                currentRequest + "&PREVIOUS=true"
+        );
+        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any(), any()))
+                .thenReturn(new BatchProgress(
+                        Set.of(currentRequestHash),
+                        Set.of(),
+                        Set.of(),
+                        Map.of(
+                                "announcement-100", currentRequestHash,
+                                "announcement-101", previousRequestHash
+                        )
+                ));
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        verify(externalRepository, never()).fetchDetail(any());
+        verify(progressStore).complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                "announcement-101",
+                currentRequest,
+                "100"
+        );
+        assertThat(result.externalApiCallCount()).isZero();
+    }
+
+    @Test
     void 마이홈_공고를_ID_기준_500개씩_조회한다() {
         MyHomeAnnouncementSource source = announcementSource();
         source(source);

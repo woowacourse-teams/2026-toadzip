@@ -140,7 +140,12 @@ public class LhAnnouncementExternalCollectionService {
             }
             if (candidateReport.failedRequestCount() == 0) {
                 for (Candidate linkedCandidate : requestCandidates.subList(1, requestCandidates.size())) {
-                    progressManager.complete(targetSource, linkedCandidate);
+                    if (!progress.isLinkedTo(
+                            linkedCandidate.sourceAnnouncementKey(),
+                            linkedCandidate.requestDescription()
+                    )) {
+                        progressManager.complete(targetSource, linkedCandidate);
+                    }
                 }
             }
         }
