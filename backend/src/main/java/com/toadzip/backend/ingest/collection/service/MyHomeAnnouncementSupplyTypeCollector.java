@@ -4,7 +4,6 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSupplyType;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementExternalRepository;
@@ -34,9 +33,9 @@ public class MyHomeAnnouncementSupplyTypeCollector {
             MyHomeAnnouncementCollectionRequest request
     ) {
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
-        List<MyHomeAnnouncementSourceSnapshot> snapshots;
+        FetchedSupplyType fetchedSupplyType;
         try {
-            snapshots = fetchCompleteSupplyType(supplyType, request, callCounter);
+            fetchedSupplyType = fetchCompleteSupplyType(supplyType, request, callCounter);
         }
         catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
             failureRecorder.record(
@@ -55,7 +54,8 @@ public class MyHomeAnnouncementSupplyTypeCollector {
                     ExternalDataRateLimit.count(exception)
             );
         }
-        int storedRowCount = sourceStore.storeAnnouncements(runId, snapshots);
+        int storedRowCount = sourceStore.storeAnnouncements(runId, fetchedSupplyType.snapshots());
+        resolveFailures(fetchedSupplyType.requestDescriptions());
         return new ExternalDataCollectionReport(
                 ExternalDataSource.MYHOME_ANNOUNCEMENT.operation(),
                 storedRowCount,
@@ -64,42 +64,74 @@ public class MyHomeAnnouncementSupplyTypeCollector {
         );
     }
 
-    private List<MyHomeAnnouncementSourceSnapshot> fetchCompleteSupplyType(
+    private FetchedSupplyType fetchCompleteSupplyType(
             MyHomeAnnouncementSupplyType supplyType,
             MyHomeAnnouncementCollectionRequest request,
             ExternalDataCallCounter callCounter
     ) {
         List<MyHomeAnnouncementSourceSnapshot> snapshots = new ArrayList<>();
+        List<String> requestDescriptions = new ArrayList<>();
         int expectedTotalCount = -1;
         for (int page = 1; page <= request.maxPages(); page++) {
             int currentPage = page;
+            int expectedTotalCountForPage = expectedTotalCount;
             String requestDescription = request.requestDescription(supplyType, currentPage);
-            ExternalDataResponse response = retryExecutor.execute(
+            ExternalDataPage<MyHomeAnnouncementSourceSnapshot> parsedPage = retryExecutor.execute(
                     ExternalDataSource.MYHOME_ANNOUNCEMENT,
                     requestDescription,
-                    () -> externalRepository.fetch(supplyType, request, currentPage),
+                    () -> parsePage(
+                            supplyType,
+                            request,
+                            currentPage,
+                            snapshots.size(),
+                            expectedTotalCountForPage
+                    ),
                     callCounter
             );
-            failureRecorder.resolve(ExternalDataSource.MYHOME_ANNOUNCEMENT, requestDescription);
-            ExternalDataPage<MyHomeAnnouncementSourceSnapshot> parsedPage = responseParser.parse(
-                    response,
-                    snapshots.size()
-            );
-            expectedTotalCount = requireConsistentTotalCount(expectedTotalCount, parsedPage.totalCount());
+            expectedTotalCount = parsedPage.totalCount();
+            requestDescriptions.add(requestDescription);
             snapshots.addAll(parsedPage.items());
             if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
-                return snapshots;
+                return new FetchedSupplyType(snapshots, requestDescriptions);
             }
         }
         throw new ExternalDataRequestException("마이홈 공고 조회가 최대 페이지 안에 끝나지 않았습니다.");
     }
 
-    private int requireConsistentTotalCount(int expectedTotalCount, int actualTotalCount) {
+    private ExternalDataPage<MyHomeAnnouncementSourceSnapshot> parsePage(
+            MyHomeAnnouncementSupplyType supplyType,
+            MyHomeAnnouncementCollectionRequest request,
+            int page,
+            int collectedCount,
+            int expectedTotalCount
+    ) {
+        ExternalDataPage<MyHomeAnnouncementSourceSnapshot> parsedPage = responseParser.parse(
+                externalRepository.fetch(supplyType, request, page),
+                collectedCount
+        );
+        validateConsistentTotalCount(expectedTotalCount, parsedPage.totalCount());
+        return parsedPage;
+    }
+
+    private void validateConsistentTotalCount(int expectedTotalCount, int actualTotalCount) {
         if (expectedTotalCount < 0 || expectedTotalCount == actualTotalCount) {
-            return actualTotalCount;
+            return;
         }
         throw new ExternalDataRequestException(
                 "마이홈 공고 응답의 totalCount가 페이지마다 다릅니다."
         );
+    }
+
+    private void resolveFailures(List<String> requestDescriptions) {
+        requestDescriptions.forEach(requestDescription -> failureRecorder.resolve(
+                ExternalDataSource.MYHOME_ANNOUNCEMENT,
+                requestDescription
+        ));
+    }
+
+    private record FetchedSupplyType(
+            List<MyHomeAnnouncementSourceSnapshot> snapshots,
+            List<String> requestDescriptions
+    ) {
     }
 }

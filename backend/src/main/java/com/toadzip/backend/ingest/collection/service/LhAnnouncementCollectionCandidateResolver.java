@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import java.net.URI;
 import java.util.Optional;
@@ -32,12 +33,7 @@ public class LhAnnouncementCollectionCandidateResolver {
     }
 
     private boolean isLhProvider(MyHomeAnnouncementSource source) {
-        String provider = source.getSuplyInsttNm();
-        if (provider == null) {
-            return false;
-        }
-        String normalized = provider.strip();
-        return "LH".equalsIgnoreCase(normalized) || "한국토지주택공사".equals(normalized);
+        return LhProviderPolicy.isLh(source.getSuplyInsttNm());
     }
 
     private Optional<LhAnnouncementRequest> requestOf(MyHomeAnnouncementSource source) {

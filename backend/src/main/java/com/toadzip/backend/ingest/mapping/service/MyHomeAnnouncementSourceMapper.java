@@ -8,6 +8,7 @@ import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -212,7 +213,7 @@ public class MyHomeAnnouncementSourceMapper {
     }
 
     private AgencyCode providerOf(String value) {
-        if (value.startsWith("LH") || value.equals("한국토지주택공사")) {
+        if (LhProviderPolicy.isLh(value)) {
             return AgencyCode.LH;
         }
         if (Set.of("SH공사", "서울주택도시공사").contains(value)) {

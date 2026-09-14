@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import java.math.BigDecimal;
@@ -292,7 +293,7 @@ public class MyHomeComplexSourceMapper {
     }
 
     private String providerOf(String value) {
-        if (value.startsWith("LH") || value.equals("한국토지주택공사")) {
+        if (LhProviderPolicy.isLh(value)) {
             return "LH";
         }
         if (Set.of("SH공사", "서울주택도시공사").contains(value)) {

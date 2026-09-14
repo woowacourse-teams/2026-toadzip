@@ -10,7 +10,6 @@ import com.toadzip.backend.ingest.collection.repository.MyHomeComplexExternalRep
 import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeComplexResponseParser;
-import com.toadzip.backend.ingest.collection.repository.external.MyHomeComplexResponseParser.ValidatedPage;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -45,9 +44,9 @@ public class MyHomeComplexRegionCollector {
             return MyHomeComplexCollectionReport.empty();
         }
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
-        List<MyHomeComplexSourceSnapshot> snapshots;
+        FetchedRegion fetchedRegion;
         try {
-            snapshots = fetchCompleteRegion(region, request, callCounter, rateLimitReached);
+            fetchedRegion = fetchCompleteRegion(region, request, callCounter, rateLimitReached);
         }
         catch (RateLimitCollectionCancelledException exception) {
             return cancelledReport(callCounter);
@@ -61,7 +60,8 @@ public class MyHomeComplexRegionCollector {
         catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
             return failedReport(region, request, rateLimitReached, callCounter, exception);
         }
-        int storedRowCount = sourceStore.replaceComplexRegion(region, snapshots);
+        int storedRowCount = sourceStore.replaceComplexRegion(region, fetchedRegion.snapshots());
+        resolveFailures(fetchedRegion.requestDescriptions());
         return new MyHomeComplexCollectionReport(
                 ExternalDataSource.MYHOME_COMPLEX.operation(),
                 storedRowCount,
@@ -106,38 +106,51 @@ public class MyHomeComplexRegionCollector {
         );
     }
 
-    private List<MyHomeComplexSourceSnapshot> fetchCompleteRegion(
+    private FetchedRegion fetchCompleteRegion(
             MyHomeRegion region,
             MyHomeComplexCollectionRequest request,
             ExternalDataCallCounter callCounter,
             AtomicBoolean rateLimitReached
     ) {
         List<MyHomeComplexSourceSnapshot> snapshots = new ArrayList<>();
+        List<String> requestDescriptions = new ArrayList<>();
         for (int page = 1; page <= request.maxPages(); page++) {
             if (rateLimitReached.get()) {
                 throw new RateLimitCollectionCancelledException();
             }
             int currentPage = page;
             String requestDescription = request.requestDescription(region, currentPage);
-            ValidatedPage validatedPage = retryExecutor.execute(
+            ExternalDataPage<MyHomeComplexSourceSnapshot> parsedPage = retryExecutor.execute(
                     ExternalDataSource.MYHOME_COMPLEX,
                     requestDescription,
-                    () -> responseParser.validate(
+                    () -> responseParser.parseItems(responseParser.validate(
                             externalRepository.fetch(region, request, currentPage),
                             snapshots.size()
-                    ),
+                    )),
                     callCounter
             );
-            ExternalDataPage<MyHomeComplexSourceSnapshot> parsedPage = responseParser.parseItems(validatedPage);
             snapshots.addAll(parsedPage.items());
-            failureRecorder.resolve(ExternalDataSource.MYHOME_COMPLEX, requestDescription);
+            requestDescriptions.add(requestDescription);
             if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
-                return snapshots;
+                return new FetchedRegion(snapshots, requestDescriptions);
             }
         }
         throw new ExternalDataRequestException("마이홈 단지 조회가 최대 페이지 안에 끝나지 않았습니다.");
     }
 
+    private void resolveFailures(List<String> requestDescriptions) {
+        requestDescriptions.forEach(requestDescription -> failureRecorder.resolve(
+                ExternalDataSource.MYHOME_COMPLEX,
+                requestDescription
+        ));
+    }
+
     private static final class RateLimitCollectionCancelledException extends RuntimeException {
+    }
+
+    private record FetchedRegion(
+            List<MyHomeComplexSourceSnapshot> snapshots,
+            List<String> requestDescriptions
+    ) {
     }
 }

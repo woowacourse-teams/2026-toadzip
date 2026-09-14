@@ -1,6 +1,9 @@
 package com.toadzip.backend.ingest.collection.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -39,7 +42,8 @@ class LhAnnouncementCollectionProgressManagerTest {
         when(progressStore.findBatch(
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
                 List.of(candidate.requestDescription()),
-                List.of(candidate.panId())
+                List.of(candidate.panId()),
+                List.of(candidate.sourceAnnouncementKey())
         )).thenReturn(expected);
 
         BatchProgress result = progressManager.findBatch(
@@ -69,6 +73,32 @@ class LhAnnouncementCollectionProgressManagerTest {
                 candidate.sourceAnnouncementKey(),
                 candidate.requestDescription(),
                 candidate.panId()
+        );
+    }
+
+    @Test
+    void 체크포인트_기록이_실패하면_실패_이력을_해소하지_않는다() {
+        Candidate candidate = candidate();
+        doThrow(new IllegalStateException("체크포인트 기록 실패")).when(progressStore).complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                candidate.sourceAnnouncementKey(),
+                candidate.requestDescription(),
+                candidate.panId()
+        );
+
+        assertThatThrownBy(() -> progressManager.complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                candidate
+        ))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("체크포인트 기록 실패");
+        verify(failureRecorder, never()).resolve(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                candidate.requestDescription()
+        );
+        verify(failureRecorder, never()).resolve(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                candidate.sourceDescription()
         );
     }
 

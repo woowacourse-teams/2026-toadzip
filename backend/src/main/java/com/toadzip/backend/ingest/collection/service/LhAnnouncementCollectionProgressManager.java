@@ -19,18 +19,19 @@ public class LhAnnouncementCollectionProgressManager {
         return progressStore.findBatch(
                 targetSource,
                 candidates.stream().map(Candidate::requestDescription).toList(),
-                candidates.stream().map(Candidate::panId).toList()
+                candidates.stream().map(Candidate::panId).toList(),
+                candidates.stream().map(Candidate::sourceAnnouncementKey).toList()
         );
     }
 
     public void complete(ExternalDataSource targetSource, Candidate candidate) {
-        resolveFailures(targetSource, candidate);
         progressStore.complete(
                 targetSource,
                 candidate.sourceAnnouncementKey(),
                 candidate.requestDescription(),
                 candidate.panId()
         );
+        resolveFailures(targetSource, candidate);
     }
 
     private void resolveFailures(ExternalDataSource targetSource, Candidate candidate) {
