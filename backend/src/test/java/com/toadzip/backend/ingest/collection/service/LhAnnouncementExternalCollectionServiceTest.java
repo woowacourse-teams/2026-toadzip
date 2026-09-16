@@ -271,13 +271,15 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
-    void LH_API가_동일한_전체_페이지를_반복하면_즉시_실패하고_기존_원천을_보존한다() {
+    void LH_API가_출력시각만_바꾼_동일한_전체_페이지를_반복하면_즉시_실패하고_기존_원천을_보존한다() {
         source(announcementSource());
-        ExternalDataResponse repeatedPage = supplyResponse(0, 100);
         when(externalRepository.fetchSupply(any())).thenAnswer(invocation -> {
             LhAnnouncementRequest request = invocation.getArgument(0);
-            if (request.page() <= 2) {
-                return repeatedPage;
+            if (request.page() == 1) {
+                return supplyResponse("20260917010000", 0, 100);
+            }
+            if (request.page() == 2) {
+                return supplyResponse("20260917010001", 0, 100);
             }
             throw new ExternalDataRequestException("세 번째 페이지를 호출하면 안 됩니다.");
         });
@@ -824,10 +826,23 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     private ExternalDataResponse supplyResponse(int start, int count) {
+        return supplyResponse(null, start, count);
+    }
+
+    private ExternalDataResponse supplyResponse(String responseDateTime, int start, int count) {
         String rows = java.util.stream.IntStream.range(start, start + count)
                 .mapToObj(index -> "{\"SBD_LGO_NM\":\"단지-" + index + "\"}")
                 .collect(java.util.stream.Collectors.joining(","));
-        return response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsList01\":[" + rows + "]}]");
+        String responseDateTimeField = responseDateTimeField(responseDateTime);
+        return response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"" + responseDateTimeField
+                + "}]},{\"dsList01\":[" + rows + "]}]");
+    }
+
+    private String responseDateTimeField(String responseDateTime) {
+        if (responseDateTime == null) {
+            return "";
+        }
+        return ",\"RS_DTTM\":\"" + responseDateTime + "\"";
     }
 
     private ExternalDataResponse response(String payload) {

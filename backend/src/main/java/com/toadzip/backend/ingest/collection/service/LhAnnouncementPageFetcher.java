@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.function.Function;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 @Component
 public class LhAnnouncementPageFetcher {
@@ -73,7 +74,7 @@ public class LhAnnouncementPageFetcher {
     ) {
         List<T> items = new ArrayList<>();
         List<String> requestDescriptions = new ArrayList<>();
-        String previousRawPayload = null;
+        JsonNode previousPageContent = null;
         for (int page = 1; page <= MAX_PAGES; page++) {
             LhAnnouncementRequest pageRequest = request.withPage(page);
             FetchedResponsePage<T> fetchedPage = fetchPage(
@@ -85,7 +86,7 @@ public class LhAnnouncementPageFetcher {
                     parser
             );
             LhAnnouncementResponsePage<T> responsePage = fetchedPage.page();
-            if (repeatsFullPage(previousRawPayload, fetchedPage, pageRequest.pageSize())) {
+            if (repeatsFullPage(previousPageContent, fetchedPage, pageRequest.pageSize())) {
                 throw repeatedPage(source, pageRequest);
             }
             items.addAll(responsePage.items());
@@ -93,7 +94,7 @@ public class LhAnnouncementPageFetcher {
             if (responsePage.maximumDatasetRowCount() < pageRequest.pageSize()) {
                 return new FetchedPages<>(items, requestDescriptions);
             }
-            previousRawPayload = fetchedPage.rawPayload();
+            previousPageContent = fetchedPage.pageContent();
         }
         throw maximumPagesExceeded(source, request);
     }
@@ -125,16 +126,29 @@ public class LhAnnouncementPageFetcher {
         if (page.maximumDatasetRowCount() > request.pageSize()) {
             throw new ExternalDataRequestException("LH 공고 응답 행 수가 요청한 페이지 크기를 초과했습니다.");
         }
-        return new FetchedResponsePage<>(page, response.rawPayload());
+        return new FetchedResponsePage<>(page, pageContentOf(response.body()));
     }
 
     private <T> boolean repeatsFullPage(
-            String previousRawPayload,
+            JsonNode previousPageContent,
             FetchedResponsePage<T> currentPage,
             int pageSize
     ) {
         return currentPage.page().maximumDatasetRowCount() == pageSize
-                && currentPage.rawPayload().equals(previousRawPayload);
+                && currentPage.pageContent().equals(previousPageContent);
+    }
+
+    private JsonNode pageContentOf(JsonNode responseBody) {
+        JsonNode pageContent = responseBody.deepCopy();
+        removeResponseHeaders(pageContent);
+        return pageContent;
+    }
+
+    private void removeResponseHeaders(JsonNode node) {
+        if (node instanceof ObjectNode objectNode) {
+            objectNode.remove("resHeader");
+        }
+        node.forEach(this::removeResponseHeaders);
     }
 
     private ExternalDataCallFailureException repeatedPage(
@@ -176,7 +190,7 @@ public class LhAnnouncementPageFetcher {
 
     private record FetchedResponsePage<T>(
             LhAnnouncementResponsePage<T> page,
-            String rawPayload
+            JsonNode pageContent
     ) {
     }
 
