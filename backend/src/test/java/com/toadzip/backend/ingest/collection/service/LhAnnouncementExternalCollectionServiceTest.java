@@ -14,6 +14,8 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
@@ -82,13 +84,16 @@ class LhAnnouncementExternalCollectionServiceTest {
                 .thenReturn(BatchProgress.empty());
         LhAnnouncementCollectionProgressManager progressManager =
                 new LhAnnouncementCollectionProgressManager(progressStore, failureRecorder);
-        LhAnnouncementCandidateCollector candidateCollector = new LhAnnouncementCandidateCollector(
+        LhAnnouncementPageFetcher pageFetcher = new LhAnnouncementPageFetcher(
                 externalRepository,
-                sourceStore,
                 new LhAnnouncementDetailResponseParser(),
                 new LhAnnouncementSupplyResponseParser(),
+                new ExternalDataRetryExecutor(Duration.ZERO)
+        );
+        LhAnnouncementCandidateCollector candidateCollector = new LhAnnouncementCandidateCollector(
+                pageFetcher,
+                sourceStore,
                 failureRecorder,
-                new ExternalDataRetryExecutor(Duration.ZERO),
                 progressManager
         );
         service = new LhAnnouncementExternalCollectionService(
@@ -115,6 +120,46 @@ class LhAnnouncementExternalCollectionServiceTest {
         verify(externalRepository, never()).fetchSupply(any());
         assertThat(result.storedRowCount()).isOne();
         assertThat(result.failedRequestCount()).isZero();
+    }
+
+    @Test
+    void LH_상세가_100건을_초과하면_마지막_페이지까지_수집한_뒤_저장한다() {
+        source(announcementSource());
+        when(externalRepository.fetchDetail(any())).thenAnswer(invocation -> {
+            LhAnnouncementRequest request = invocation.getArgument(0);
+            if (request.page() == 1) {
+                return detailResponse(0, 100);
+            }
+            return detailResponse(100, 1);
+        });
+        when(sourceStore.replaceDetails(eq("100"), any())).thenReturn(101);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        ArgumentCaptor<LhAnnouncementRequest> requests = ArgumentCaptor.captor();
+        ArgumentCaptor<List<LhAnnouncementDetailSource>> sources = ArgumentCaptor.captor();
+        verify(externalRepository, times(2)).fetchDetail(requests.capture());
+        verify(sourceStore).replaceDetails(eq("100"), sources.capture());
+        assertThat(requests.getAllValues()).extracting(LhAnnouncementRequest::page).containsExactly(1, 2);
+        assertThat(sources.getValue()).hasSize(101);
+        assertThat(sources.getValue()).extracting(LhAnnouncementDetailSource::getSourceOrder)
+                .containsExactlyElementsOf(java.util.stream.IntStream.range(0, 101).boxed().toList());
+        assertThat(result.storedRowCount()).isEqualTo(101);
+        assertThat(result.externalApiCallCount()).isEqualTo(2);
+    }
+
+    @Test
+    void LH_상세는_여러_dataset의_합계가_100건을_넘어도_각_dataset이_페이지를_채우지_않으면_종료한다() {
+        source(announcementSource());
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponseWithTwoDatasets(60));
+        when(sourceStore.replaceDetails(eq("100"), any())).thenReturn(120);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        verify(externalRepository).fetchDetail(any());
+        verify(sourceStore).replaceDetails(eq("100"), any());
+        assertThat(result.storedRowCount()).isEqualTo(120);
+        assertThat(result.externalApiCallCount()).isOne();
     }
 
     @Test
@@ -149,6 +194,79 @@ class LhAnnouncementExternalCollectionServiceTest {
         verify(externalRepository, never()).fetchDetail(any());
         assertThat(result.storedRowCount()).isOne();
         assertThat(result.failedRequestCount()).isZero();
+    }
+
+    @Test
+    void LH_공급이_100건을_초과하면_마지막_페이지까지_수집한_뒤_저장한다() {
+        source(announcementSource());
+        when(externalRepository.fetchSupply(any())).thenAnswer(invocation -> {
+            LhAnnouncementRequest request = invocation.getArgument(0);
+            if (request.page() == 1) {
+                return supplyResponse(0, 100);
+            }
+            return supplyResponse(100, 1);
+        });
+        when(sourceStore.replaceSupplies(eq("100"), any())).thenReturn(101);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+
+        ArgumentCaptor<LhAnnouncementRequest> requests = ArgumentCaptor.captor();
+        ArgumentCaptor<List<LhAnnouncementSupplySource>> sources = ArgumentCaptor.captor();
+        verify(externalRepository, times(2)).fetchSupply(requests.capture());
+        verify(sourceStore).replaceSupplies(eq("100"), sources.capture());
+        assertThat(requests.getAllValues()).extracting(LhAnnouncementRequest::page).containsExactly(1, 2);
+        assertThat(sources.getValue()).hasSize(101);
+        assertThat(sources.getValue()).extracting(LhAnnouncementSupplySource::getSourceOrder)
+                .containsExactlyElementsOf(java.util.stream.IntStream.range(0, 101).boxed().toList());
+        assertThat(result.storedRowCount()).isEqualTo(101);
+        assertThat(result.externalApiCallCount()).isEqualTo(2);
+    }
+
+    @Test
+    void LH_공급의_중간_페이지가_실패하면_기존_원천과_완료_체크포인트를_보존한다() {
+        source(announcementSource());
+        when(externalRepository.fetchSupply(any())).thenAnswer(invocation -> {
+            LhAnnouncementRequest request = invocation.getArgument(0);
+            if (request.page() == 1) {
+                return supplyResponse(0, 100);
+            }
+            throw ExternalDataRequestException.retryable("두 번째 페이지 조회 실패");
+        });
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+
+        ArgumentCaptor<RuntimeException> failure = ArgumentCaptor.captor();
+        verify(failureRecorder).record(any(), any(), failure.capture(), any(), any());
+        assertThat(failure.getValue()).isInstanceOfSatisfying(
+                ExternalDataCallFailureException.class,
+                exception -> {
+                    assertThat(exception.getRequestDescription()).endsWith("&PG_SZ=100&PAGE=2");
+                    assertThat(exception.getAttemptCount()).isEqualTo(3);
+                }
+        );
+        verify(externalRepository, times(4)).fetchSupply(any());
+        verify(sourceStore, never()).replaceSupplies(any(), any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.externalApiCallCount()).isEqualTo(4);
+    }
+
+    @Test
+    void LH_공급_응답이_요청한_페이지_크기를_초과하면_기존_원천을_보존한다() {
+        source(announcementSource());
+        when(externalRepository.fetchSupply(any())).thenReturn(supplyResponse(0, 101));
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+
+        ArgumentCaptor<RuntimeException> failure = ArgumentCaptor.captor();
+        verify(failureRecorder).record(any(), any(), failure.capture(), any(), any());
+        assertThat(failure.getValue()).isInstanceOfSatisfying(
+                ExternalDataCallFailureException.class,
+                exception -> assertThat(exception.getRequestDescription()).endsWith("&PG_SZ=100&PAGE=1")
+        );
+        verify(sourceStore, never()).replaceSupplies(any(), any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isOne();
     }
 
     @Test
@@ -612,6 +730,31 @@ class LhAnnouncementExternalCollectionServiceTest {
     private ExternalDataResponse supplyResponse() {
         return response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},"
                 + "{\"dsList01\":[{\"SBD_LGO_NM\":\"행복주택\"}]}]");
+    }
+
+    private ExternalDataResponse detailResponse(int start, int count) {
+        String rows = java.util.stream.IntStream.range(start, start + count)
+                .mapToObj(index -> "{\"LCC_NT_NM\":\"단지-" + index + "\"}")
+                .collect(java.util.stream.Collectors.joining(","));
+        return response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsSbd\":[" + rows + "]}]");
+    }
+
+    private ExternalDataResponse detailResponseWithTwoDatasets(int countPerDataset) {
+        String complexes = java.util.stream.IntStream.range(0, countPerDataset)
+                .mapToObj(index -> "{\"LCC_NT_NM\":\"단지-" + index + "\"}")
+                .collect(java.util.stream.Collectors.joining(","));
+        String attachments = java.util.stream.IntStream.range(0, countPerDataset)
+                .mapToObj(index -> "{\"CMN_AHFL_NM\":\"첨부-" + index + "\"}")
+                .collect(java.util.stream.Collectors.joining(","));
+        return response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsSbd\":[" + complexes
+                + "]},{\"dsAhflInfo\":[" + attachments + "]}]");
+    }
+
+    private ExternalDataResponse supplyResponse(int start, int count) {
+        String rows = java.util.stream.IntStream.range(start, start + count)
+                .mapToObj(index -> "{\"SBD_LGO_NM\":\"단지-" + index + "\"}")
+                .collect(java.util.stream.Collectors.joining(","));
+        return response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsList01\":[" + rows + "]}]");
     }
 
     private ExternalDataResponse response(String payload) {

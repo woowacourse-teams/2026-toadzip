@@ -4,14 +4,10 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
-import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementPageFetcher.FetchedPages;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,38 +18,29 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class LhAnnouncementCandidateCollector {
 
-    private final LhAnnouncementExternalRepository externalRepository;
+    private final LhAnnouncementPageFetcher pageFetcher;
     private final LhSourceStore sourceStore;
-    private final LhAnnouncementDetailResponseParser detailResponseParser;
-    private final LhAnnouncementSupplyResponseParser supplyResponseParser;
     private final ExternalDataFailureRecorder failureRecorder;
-    private final ExternalDataRetryExecutor retryExecutor;
     private final LhAnnouncementCollectionProgressManager progressManager;
 
     public ExternalDataCollectionReport collect(ExternalDataSource targetSource, Candidate candidate) {
         LhAnnouncementRequest request = candidate.request();
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
-        ExternalDataResponse response;
+        StoredPages storedPages;
         try {
-            response = retryExecutor.execute(
-                    targetSource,
-                    request.requestDescription(),
-                    () -> fetch(targetSource, request),
-                    callCounter
-            );
+            storedPages = collectAndStore(targetSource, request, callCounter);
         }
         catch (ExternalDataCallFailureException exception) {
             return failedReport(targetSource, request, exception, callCounter);
         }
-        int storedRowCount;
-        try {
-            storedRowCount = store(targetSource, request.panId(), response);
-        }
-        catch (ExternalDataRequestException exception) {
-            return failedReport(targetSource, request, exception, callCounter);
-        }
         progressManager.complete(targetSource, candidate);
-        return new ExternalDataCollectionReport(targetSource.operation(), storedRowCount, 0, callCounter.count());
+        storedPages.requestDescriptions().forEach(description -> failureRecorder.resolve(targetSource, description));
+        return new ExternalDataCollectionReport(
+                targetSource.operation(),
+                storedPages.storedRowCount(),
+                0,
+                callCounter.count()
+        );
     }
 
     private ExternalDataCollectionReport failedReport(
@@ -79,20 +66,22 @@ public class LhAnnouncementCandidateCollector {
         );
     }
 
-    private int store(ExternalDataSource targetSource, String panId, ExternalDataResponse response) {
+    private StoredPages collectAndStore(
+            ExternalDataSource targetSource,
+            LhAnnouncementRequest request,
+            ExternalDataCallCounter callCounter
+    ) {
         if (targetSource == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL) {
-            List<LhAnnouncementDetailSource> sources = detailResponseParser.parse(panId, response.body());
-            return sourceStore.replaceDetails(panId, sources);
+            FetchedPages<LhAnnouncementDetailSource> pages = pageFetcher.fetchDetails(request, callCounter);
+            int storedRowCount = sourceStore.replaceDetails(request.panId(), pages.items());
+            return new StoredPages(storedRowCount, pages.requestDescriptions());
         }
-        List<LhAnnouncementSupplySource> sources = supplyResponseParser.parse(panId, response.body());
-        return sourceStore.replaceSupplies(panId, sources);
+        FetchedPages<LhAnnouncementSupplySource> pages = pageFetcher.fetchSupplies(request, callCounter);
+        int storedRowCount = sourceStore.replaceSupplies(request.panId(), pages.items());
+        return new StoredPages(storedRowCount, pages.requestDescriptions());
     }
 
-    private ExternalDataResponse fetch(ExternalDataSource targetSource, LhAnnouncementRequest request) {
-        if (targetSource == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL) {
-            return externalRepository.fetchDetail(request);
-        }
-        return externalRepository.fetchSupply(request);
+    private record StoredPages(int storedRowCount, List<String> requestDescriptions) {
     }
 
 }
