@@ -1,6 +1,10 @@
 package com.toadzip.backend.ingest.mapping.domain;
 
 public enum MyHomeAnnouncementMappingFailureReason {
+    LH_COLLECTION_REQUEST_UNSUPPORTED,
+    LH_COLLECTION_LINK_NOT_FOUND,
+    LH_COLLECTION_LINK_MISMATCH,
+    LH_SUPPLY_SOURCE_NOT_FOUND,
     MISSING_REQUIRED_VALUE,
     INVALID_VALUE,
     CONFLICTING_SOURCE_VALUE,

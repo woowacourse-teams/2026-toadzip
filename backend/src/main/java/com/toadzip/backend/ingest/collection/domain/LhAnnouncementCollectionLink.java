@@ -105,6 +105,11 @@ public class LhAnnouncementCollectionLink {
         this.completedAt = completedAt;
     }
 
+    public boolean matches(String requestDescription, String panId) {
+        return requestHash.equals(LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescription))
+                && this.panId.equals(panId);
+    }
+
     private static void validateSource(ExternalDataSource source) {
         boolean supported = source == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL
                 || source == ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY;

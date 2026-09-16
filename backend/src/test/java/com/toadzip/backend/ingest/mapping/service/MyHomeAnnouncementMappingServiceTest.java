@@ -17,25 +17,29 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionCheckpointRepository;
+import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionLinkRepository;
+import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -79,10 +83,20 @@ class MyHomeAnnouncementMappingServiceTest {
     private LhAnnouncementSupplySourceRepository lhSupplyRepository;
 
     @Autowired
+    private LhAnnouncementCollectionLinkRepository linkRepository;
+
+    @Autowired
+    private LhAnnouncementCollectionProgressStore progressStore;
+
+    @Autowired
+    private LhAnnouncementCollectionCandidateResolver candidateResolver;
+
+    @Autowired
     private LhSourceStore lhSourceStore;
 
     @BeforeEach
-    void setUp() {
+    @AfterEach
+    void cleanUp() {
         supplyTargetRepository.deleteAll();
         supplyRowRepository.deleteAll();
         announcementRepository.deleteAll();
@@ -91,6 +105,7 @@ class MyHomeAnnouncementMappingServiceTest {
         failureRepository.deleteAll();
         sourceRepository.deleteAll();
         checkpointRepository.deleteAll();
+        linkRepository.deleteAll();
         lhSupplyRepository.deleteAll();
     }
 
@@ -156,6 +171,8 @@ class MyHomeAnnouncementMappingServiceTest {
     @Test
     void 이전_공고_식별자로_정정공고를_연결한다() {
         saveMappedComplex();
+        saveDefaultLhSupply("21026");
+        saveDefaultLhSupply("21027");
         sourceRepository.saveAll(List.of(
                 source(1, withPrevious(data("21027", 2, "LH서울", "동삼2"), "21026")),
                 source(0, data("21026", 1, "LH서울", "동삼2"))
@@ -173,6 +190,8 @@ class MyHomeAnnouncementMappingServiceTest {
     @Test
     void 비활성화된_원공고의_상세를_유지하고_재수집된_취소공고를_반영한다() {
         saveMappedComplex();
+        saveDefaultLhSupply("21026");
+        saveDefaultLhSupply("21027");
         MyHomeAnnouncementSource originalSource = source(
                 0,
                 data("21026", 1, "LH서울", "동삼2")
@@ -369,8 +388,9 @@ class MyHomeAnnouncementMappingServiceTest {
                 new BigDecimal("50.0000")
         ));
         sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
+        saveDefaultLhSupply("21026");
         service.mapAll();
-        saveLhSupplyCheckpoint("21026", "PAN-1");
+        saveLhSupplyLink("21026", "PAN-1");
         lhSupplyRepository.saveAll(List.of(
                 lhSupply(0, "PAN-1", "동삼 2단지 국민임대", "46-A형", "99.0000", "99.0000"),
                 lhSupply(1, "PAN-1", "동삼 2단지 국민임대", "59형", "59.9500", "99.0000"),
@@ -403,7 +423,7 @@ class MyHomeAnnouncementMappingServiceTest {
     void 최신_lh_공급_스냅샷에서_사라진_공급행을_삭제한다() {
         saveMappedComplex();
         sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
-        saveLhSupplyCheckpoint("21026", "PAN-1");
+        saveLhSupplyLink("21026", "PAN-1");
         lhSourceStore.replaceSupplies("PAN-1", List.of(
                 lhSupply(0, "PAN-1", "동삼2", "46A", "46.8000", "67.0000"),
                 lhSupply(1, "PAN-1", "동삼2", "46A", "46.8000", "67.0000"),
@@ -439,14 +459,14 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     @Test
-    void 최신_체크포인트의_lh_공급행만_매핑한다() {
+    void 현재_성공_연결의_lh_공급행만_매핑한다() {
         saveMappedComplex();
         sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
-        saveLhSupplyCheckpoint("21026", "PAN-OLD");
+        saveLhSupplyLink("21026", "PAN-OLD");
         lhSourceStore.replaceSupplies("PAN-OLD", List.of(
                 lhSupply(0, "PAN-OLD", "동삼2", "과거형", "99.0000", "99.0000")
         ));
-        saveLhSupplyCheckpoint("21026", "PAN-CURRENT");
+        saveLhSupplyLink("21026", "PAN-CURRENT");
         lhSourceStore.replaceSupplies("PAN-CURRENT", List.of(
                 lhSupply(0, "PAN-CURRENT", "동삼2", "46A", "46.8000", "67.0000")
         ));
@@ -547,14 +567,29 @@ class MyHomeAnnouncementMappingServiceTest {
         return supplyRowRepository.findBySourceSupplyRowIdentifier(sourceIdentifier).orElseThrow();
     }
 
-    private void saveLhSupplyCheckpoint(String announcementIdentifier, String panId) {
-        checkpointRepository.save(LhAnnouncementCollectionCheckpoint.complete(
-                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
-                announcementIdentifier,
-                "PAN_ID=" + panId + "&UPP_AIS_TP_CD=06&AIS_TP_CD=07",
-                panId,
-                COLLECTED_AT
-        ));
+    private void saveDefaultLhSupply(String identifier) {
+        MyHomeAnnouncementSource source = source(0, data(identifier, 1, "LH", "동삼2"));
+        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
+        completeLinks(identifier, candidate);
+        lhSupplyRepository.save(lhSupply(0, identifier, "동삼2", "46A", "46.8000", "67.0000"));
+    }
+
+    private void saveLhSupplyLink(String announcementIdentifier, String panId) {
+        MyHomeAnnouncementSource source = sourceRepository.findAll().stream()
+                .filter(row -> row.getPblancId().equals(announcementIdentifier))
+                .findFirst().orElseThrow();
+        ReflectionTestUtils.setField(source, "url", "https://example.com/announcements?panId=" + panId
+                + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07");
+        sourceRepository.save(source);
+        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
+        completeLinks(announcementIdentifier, candidate);
+    }
+
+    private void completeLinks(String identifier, LhAnnouncementCollectionCandidateResolver.Candidate candidate) {
+        for (ExternalDataSource target : List.of(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
+            progressStore.complete(target, identifier, candidate.requestDescription(), candidate.panId());
+        }
     }
 
     private LhAnnouncementSupplySource lhSupply(
@@ -603,7 +638,8 @@ class MyHomeAnnouncementMappingServiceTest {
                 "20260824",
                 "20260831",
                 "1600-1004",
-                "https://example.com/announcements/" + pblancId,
+                "https://example.com/announcements?panId=" + pblancId
+                        + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07",
                 null,
                 null,
                 complexName,
