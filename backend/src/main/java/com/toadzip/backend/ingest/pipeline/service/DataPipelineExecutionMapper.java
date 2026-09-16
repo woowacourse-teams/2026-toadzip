@@ -54,18 +54,6 @@ public class DataPipelineExecutionMapper {
                 .toList();
     }
 
-    public String serializeServerResponse(Object serverResponse) {
-        if (serverResponse == null) {
-            return null;
-        }
-        try {
-            return objectMapper.writeValueAsString(serverResponse);
-        }
-        catch (JacksonException exception) {
-            throw new IllegalStateException("파이프라인 실패 응답을 저장할 수 없습니다.", exception);
-        }
-    }
-
     private DataPipelineFailureResponse failureResponse(DataPipelineExecution execution) {
         if (execution.getFailureMessage() == null) {
             return null;

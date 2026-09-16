@@ -164,7 +164,7 @@ class DataPipelineExecutionServiceTest {
     void 부분_실패한_단계와_서버_응답을_실패_상태에_보존한다() {
         configureStoredExecution();
         when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
-        Object serverResponse = java.util.Map.of("failedSourceRowCount", 3);
+        String serverResponse = "{\"failedSourceRowCount\":3}";
         doAnswer(invocation -> {
             DataPipelineProgressListener listener = invocation.getArgument(1);
             listener.started(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
@@ -179,7 +179,8 @@ class DataPipelineExecutionServiceTest {
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         assertThat(status.failure().stepName()).isEqualTo("마이홈 공고 정제");
-        assertThat(status.failure().serverResponse()).isEqualTo(serverResponse);
+        assertThat(status.failure().serverResponse())
+                .isEqualTo(java.util.Map.of("failedSourceRowCount", 3));
         verify(lease).close();
     }
 
@@ -187,14 +188,14 @@ class DataPipelineExecutionServiceTest {
     void 호출_제한으로_건너뛴_단계가_있으면_부분_완료_상태와_사유를_보존한다() {
         configureStoredExecution();
         when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
-        java.util.Map<String, Integer> report = java.util.Map.of("rateLimitedRequestCount", 1);
+        String serverResponse = "{\"rateLimitedRequestCount\":1}";
         doAnswer(invocation -> {
             DataPipelineProgressListener listener = invocation.getArgument(1);
             listener.started(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
             listener.skipped(
                     DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
                     "외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.",
-                    report
+                    serverResponse
             );
             listener.started(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
             listener.completed(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
@@ -211,7 +212,8 @@ class DataPipelineExecutionServiceTest {
         assertThat(status.skippedSteps()).singleElement().satisfies(skipped -> {
             assertThat(skipped.stepName()).isEqualTo("마이홈 공고 수집");
             assertThat(skipped.reason()).contains("호출 제한");
-            assertThat(skipped.serverResponse()).isEqualTo(report);
+            assertThat(skipped.serverResponse())
+                    .isEqualTo(java.util.Map.of("rateLimitedRequestCount", 1));
         });
     }
 

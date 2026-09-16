@@ -33,19 +33,22 @@ public class LhAnnouncementEnrichmentWriter {
     private final AnnouncementAttachmentRepository attachmentRepository;
     private final SupplyRowRepository supplyRowRepository;
     private final SupplyTargetRepository supplyTargetRepository;
+    private final LhAnnouncementSupplyMatcher supplyMatcher;
 
     public LhAnnouncementEnrichmentWriter(
             AnnouncementScheduleRepository scheduleRepository,
             AnnouncementRepository announcementRepository,
             AnnouncementAttachmentRepository attachmentRepository,
             SupplyRowRepository supplyRowRepository,
-            SupplyTargetRepository supplyTargetRepository
+            SupplyTargetRepository supplyTargetRepository,
+            LhAnnouncementSupplyMatcher supplyMatcher
     ) {
         this.scheduleRepository = scheduleRepository;
         this.announcementRepository = announcementRepository;
         this.attachmentRepository = attachmentRepository;
         this.supplyRowRepository = supplyRowRepository;
         this.supplyTargetRepository = supplyTargetRepository;
+        this.supplyMatcher = supplyMatcher;
     }
 
     @Transactional
@@ -125,7 +128,7 @@ public class LhAnnouncementEnrichmentWriter {
         int createdTargets = 0;
         int updatedTargets = 0;
         for (LhSupplyData source : data.supplies()) {
-            SupplyMatchResult match = match(rows, source);
+            LhSupplyMatchResult match = supplyMatcher.match(rows, source);
             if (match.failure() != null) {
                 failures.add(match.failure());
                 continue;
@@ -166,55 +169,6 @@ public class LhAnnouncementEnrichmentWriter {
                 ALL_TARGET, ALL_RANK, source.supplyHouseholdCount(), source.rentalDeposit(), source.monthlyRent(), 1
         );
         return new SupplyTargetWriteResult(identifier, 0, updated ? 1 : 0);
-    }
-
-    private SupplyMatchResult match(List<SupplyRow> rows, LhSupplyData source) {
-        for (SupplyRow row : rows) {
-            if (source.sourceIdentifier().equals(row.getLhSourceSupplyRowIdentifier())
-                    && matchesComplex(row, source)
-                    && matchesHousingType(row, source)) {
-                return SupplyMatchResult.matched(row);
-            }
-        }
-        List<SupplyRow> complexMatches = rows.stream()
-                .filter(row -> matchesComplex(row, source))
-                .toList();
-        if (complexMatches.isEmpty()) {
-            return SupplyMatchResult.failure(source, LhAnnouncementEnrichmentFailureReason.COMPLEX_NOT_FOUND,
-                    "LH 공급 원본과 일치하는 기존 공급 단지가 없습니다.");
-        }
-        List<SupplyRow> typeMatches = complexMatches.stream()
-                .filter(row -> matchesHousingType(row, source))
-                .toList();
-        if (typeMatches.size() == 1) {
-            return SupplyMatchResult.matched(typeMatches.getFirst());
-        }
-        if (typeMatches.size() > 1) {
-            return SupplyMatchResult.failure(source, LhAnnouncementEnrichmentFailureReason.AMBIGUOUS_HOUSING_TYPE,
-                    "LH 공급 원본에 일치하는 주택형 공급행이 여러 개입니다.");
-        }
-        if (complexMatches.size() == 1) {
-            return SupplyMatchResult.failure(source, LhAnnouncementEnrichmentFailureReason.HOUSING_TYPE_NOT_FOUND,
-                    "LH 공급 원본과 일치하는 기존 주택형 공급행이 없습니다.");
-        }
-        return SupplyMatchResult.failure(source, LhAnnouncementEnrichmentFailureReason.AMBIGUOUS_COMPLEX,
-                "LH 공급 원본에 일치하는 기존 공급 단지가 여러 개입니다.");
-    }
-
-    private boolean matchesComplex(SupplyRow row, LhSupplyData source) {
-        if (same(row.getSourceComplexName(), source.complexName())) {
-            return true;
-        }
-        return row.getHousingComplex() != null
-                && same(row.getHousingComplex().getName(), source.complexName());
-    }
-
-    private boolean matchesHousingType(SupplyRow row, LhSupplyData source) {
-        if (same(row.getSourceHousingTypeName(), source.housingTypeName())) {
-            return true;
-        }
-        return row.getHousingType() != null
-                && same(row.getHousingType().getName(), source.housingTypeName());
     }
 
     private Map<String, AnnouncementSchedule> schedulesBySource(Announcement announcement) {
@@ -279,17 +233,6 @@ public class LhAnnouncementEnrichmentWriter {
         return identifier != null && identifier.startsWith("LH:" + panId + ":");
     }
 
-    private boolean same(String left, String right) {
-        return normalized(left).equals(normalized(right));
-    }
-
-    private String normalized(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replaceAll("\\s+", "").replace("-", "").strip().toLowerCase();
-    }
-
     private record SchedulesWriteResult(int created, int updated) {
     }
 
@@ -307,20 +250,6 @@ public class LhAnnouncementEnrichmentWriter {
     private record SupplyTargetWriteResult(String sourceIdentifier, int created, int updated) {
     }
 
-    private record SupplyMatchResult(SupplyRow row, LhSupplyMatchingFailureData failure) {
-
-        static SupplyMatchResult matched(SupplyRow row) {
-            return new SupplyMatchResult(row, null);
-        }
-
-        static SupplyMatchResult failure(
-                LhSupplyData source,
-                LhAnnouncementEnrichmentFailureReason reason,
-                String detail
-        ) {
-            return new SupplyMatchResult(null, new LhSupplyMatchingFailureData(source, reason, detail));
-        }
-    }
 }
 
 record LhAnnouncementEnrichmentWriteResult(
