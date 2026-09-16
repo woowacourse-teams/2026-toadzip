@@ -18,6 +18,7 @@ public record LhAnnouncementRequest(
 ) {
 
     private static final int DEFAULT_PAGE_SIZE = 100;
+    private static final int COLLECTION_VERSION = 2;
 
     public LhAnnouncementRequest(
             String panId,
@@ -90,6 +91,10 @@ public record LhAnnouncementRequest(
     }
 
     public String requestDescription() {
+        return unversionedRequestDescription() + "&COLLECTION_VERSION=" + COLLECTION_VERSION;
+    }
+
+    private String unversionedRequestDescription() {
         String description = legacyRequestDescription();
         if (announcementTypeCode == null) {
             return description;
@@ -99,11 +104,12 @@ public record LhAnnouncementRequest(
 
     public List<String> compatibleRequestDescriptions() {
         String currentDescription = requestDescription();
+        String unversionedDescription = unversionedRequestDescription();
         String legacyDescription = legacyRequestDescription();
-        if (currentDescription.equals(legacyDescription)) {
-            return List.of(currentDescription);
+        if (unversionedDescription.equals(legacyDescription)) {
+            return List.of(currentDescription, legacyDescription);
         }
-        return List.of(currentDescription, legacyDescription);
+        return List.of(currentDescription, unversionedDescription, legacyDescription);
     }
 
     public String pageRequestDescription() {

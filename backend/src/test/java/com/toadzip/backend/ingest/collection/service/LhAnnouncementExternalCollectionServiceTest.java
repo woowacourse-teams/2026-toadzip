@@ -364,6 +364,27 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void 페이지네이션_도입_전_완료_요청은_전체_페이지를_다시_수집한다() {
+        source(announcementSource());
+        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY), any(), any(), any()))
+                .thenReturn(progressWithCompletedRequest(legacyAnnouncementRequestDescription()));
+        when(externalRepository.fetchSupply(any())).thenReturn(supplyResponse());
+        when(sourceStore.replaceSupplies(eq("100"), any())).thenReturn(1);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+
+        verify(externalRepository).fetchSupply(any());
+        verify(sourceStore).replaceSupplies(eq("100"), any());
+        verify(progressStore).complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "100",
+                announcementRequestDescription(),
+                "100"
+        );
+        assertThat(result.externalApiCallCount()).isOne();
+    }
+
+    @Test
     void 현재_요청이_완료됐어도_공고_링크가_이전_요청이면_갱신한다() {
         source(announcementSource());
         String currentRequest = announcementRequestDescription();
@@ -770,6 +791,11 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     private String announcementRequestDescription() {
+        return "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06"
+                + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=2";
+    }
+
+    private String legacyAnnouncementRequestDescription() {
         return "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06"
                 + "&SPL_INF_TP_CD=063&AIS_TP_CD=06";
     }
