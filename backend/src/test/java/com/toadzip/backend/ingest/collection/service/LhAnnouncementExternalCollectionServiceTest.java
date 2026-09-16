@@ -270,6 +270,36 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void LH_API가_동일한_전체_페이지를_반복하면_즉시_실패하고_기존_원천을_보존한다() {
+        source(announcementSource());
+        ExternalDataResponse repeatedPage = supplyResponse(0, 100);
+        when(externalRepository.fetchSupply(any())).thenAnswer(invocation -> {
+            LhAnnouncementRequest request = invocation.getArgument(0);
+            if (request.page() <= 2) {
+                return repeatedPage;
+            }
+            throw new ExternalDataRequestException("세 번째 페이지를 호출하면 안 됩니다.");
+        });
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+
+        ArgumentCaptor<RuntimeException> failure = ArgumentCaptor.captor();
+        verify(failureRecorder).record(any(), any(), failure.capture(), any(), any());
+        assertThat(failure.getValue()).isInstanceOfSatisfying(
+                ExternalDataCallFailureException.class,
+                exception -> {
+                    assertThat(exception.getRequestDescription()).endsWith("&PG_SZ=100&PAGE=2");
+                    assertThat(exception.getMessage()).isEqualTo("LH 공고 API가 동일한 페이지를 반복 응답했습니다.");
+                }
+        );
+        verify(externalRepository, times(2)).fetchSupply(any());
+        verify(sourceStore, never()).replaceSupplies(any(), any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.externalApiCallCount()).isEqualTo(2);
+    }
+
+    @Test
     void LH_상세_응답에_상세_dataset이_없으면_기존_snapshot과_체크포인트를_보존한다() {
         source(announcementSource());
         when(externalRepository.fetchDetail(any())).thenReturn(response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]}]"));

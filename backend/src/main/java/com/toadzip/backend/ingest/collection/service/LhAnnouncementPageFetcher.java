@@ -73,9 +73,10 @@ public class LhAnnouncementPageFetcher {
     ) {
         List<T> items = new ArrayList<>();
         List<String> requestDescriptions = new ArrayList<>();
+        String previousRawPayload = null;
         for (int page = 1; page <= MAX_PAGES; page++) {
             LhAnnouncementRequest pageRequest = request.withPage(page);
-            LhAnnouncementResponsePage<T> responsePage = fetchPage(
+            FetchedResponsePage<T> fetchedPage = fetchPage(
                     source,
                     pageRequest,
                     items.size(),
@@ -83,16 +84,21 @@ public class LhAnnouncementPageFetcher {
                     fetch,
                     parser
             );
+            LhAnnouncementResponsePage<T> responsePage = fetchedPage.page();
+            if (repeatsFullPage(previousRawPayload, fetchedPage, pageRequest.pageSize())) {
+                throw repeatedPage(source, pageRequest);
+            }
             items.addAll(responsePage.items());
             requestDescriptions.add(pageRequest.pageRequestDescription());
             if (responsePage.maximumDatasetRowCount() < pageRequest.pageSize()) {
                 return new FetchedPages<>(items, requestDescriptions);
             }
+            previousRawPayload = fetchedPage.rawPayload();
         }
         throw maximumPagesExceeded(source, request);
     }
 
-    private <T> LhAnnouncementResponsePage<T> fetchPage(
+    private <T> FetchedResponsePage<T> fetchPage(
             ExternalDataSource source,
             LhAnnouncementRequest request,
             int sourceOrderOffset,
@@ -108,7 +114,7 @@ public class LhAnnouncementPageFetcher {
         );
     }
 
-    private <T> LhAnnouncementResponsePage<T> parsePage(
+    private <T> FetchedResponsePage<T> parsePage(
             LhAnnouncementRequest request,
             int sourceOrderOffset,
             Function<LhAnnouncementRequest, ExternalDataResponse> fetch,
@@ -119,7 +125,31 @@ public class LhAnnouncementPageFetcher {
         if (page.maximumDatasetRowCount() > request.pageSize()) {
             throw new ExternalDataRequestException("LH 공고 응답 행 수가 요청한 페이지 크기를 초과했습니다.");
         }
-        return page;
+        return new FetchedResponsePage<>(page, response.rawPayload());
+    }
+
+    private <T> boolean repeatsFullPage(
+            String previousRawPayload,
+            FetchedResponsePage<T> currentPage,
+            int pageSize
+    ) {
+        return currentPage.page().maximumDatasetRowCount() == pageSize
+                && currentPage.rawPayload().equals(previousRawPayload);
+    }
+
+    private ExternalDataCallFailureException repeatedPage(
+            ExternalDataSource source,
+            LhAnnouncementRequest request
+    ) {
+        ExternalDataRequestException cause = new ExternalDataRequestException(
+                "LH 공고 API가 동일한 페이지를 반복 응답했습니다."
+        );
+        return new ExternalDataCallFailureException(
+                source,
+                request.pageRequestDescription(),
+                1,
+                cause
+        );
     }
 
     private ExternalDataCallFailureException maximumPagesExceeded(
@@ -142,6 +172,12 @@ public class LhAnnouncementPageFetcher {
     private interface PageParser<T> {
 
         LhAnnouncementResponsePage<T> parse(String panId, JsonNode root, int sourceOrderOffset);
+    }
+
+    private record FetchedResponsePage<T>(
+            LhAnnouncementResponsePage<T> page,
+            String rawPayload
+    ) {
     }
 
     public record FetchedPages<T>(List<T> items, List<String> requestDescriptions) {
