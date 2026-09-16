@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.repository.external;
 
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementResponsePage;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -19,16 +20,24 @@ public class LhAnnouncementDetailResponseParser {
     );
 
     public List<LhAnnouncementDetailSource> parse(String panId, JsonNode root) {
+        return parsePage(panId, root, 0).items();
+    }
+
+    public LhAnnouncementResponsePage<LhAnnouncementDetailSource> parsePage(
+            String panId,
+            JsonNode root,
+            int sourceOrderOffset
+    ) {
         requireAnyDataset(root, DETAIL_DATASET_KEYS, "LH 공고 상세");
         validateDatasetTypes(root);
         List<LhAnnouncementDetailSource> sources = new ArrayList<>();
-        addEtcInfo(sources, panId, root);
-        addComplexes(sources, panId, root);
-        addSchedules(sources, panId, root);
-        addReceptions(sources, panId, root);
-        addAnnouncementFiles(sources, panId, root);
-        addComplexImages(sources, panId, root);
-        return sources;
+        addEtcInfo(sources, panId, root, sourceOrderOffset);
+        addComplexes(sources, panId, root, sourceOrderOffset);
+        addSchedules(sources, panId, root, sourceOrderOffset);
+        addReceptions(sources, panId, root, sourceOrderOffset);
+        addAnnouncementFiles(sources, panId, root, sourceOrderOffset);
+        addComplexImages(sources, panId, root, sourceOrderOffset);
+        return new LhAnnouncementResponsePage<>(sources, maximumDatasetRowCount(root));
     }
 
     private void requireAnyDataset(JsonNode root, List<String> datasetKeys, String sourceName) {
@@ -46,18 +55,35 @@ public class LhAnnouncementDetailResponseParser {
         DETAIL_DATASET_KEYS.forEach(key -> ExternalResponseRows.find(root, key));
     }
 
-    private void addEtcInfo(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
+    private int maximumDatasetRowCount(JsonNode root) {
+        return DETAIL_DATASET_KEYS.stream()
+                .mapToInt(key -> ExternalResponseRows.find(root, key).size())
+                .max()
+                .orElse(0);
+    }
+
+    private void addEtcInfo(
+            List<LhAnnouncementDetailSource> sources,
+            String panId,
+            JsonNode root,
+            int sourceOrderOffset
+    ) {
         for (JsonNode row : ExternalResponseRows.find(root, "dsEtcInfo")) {
-            sources.add(detail(sources.size(), panId, "ETC_INFO")
+            sources.add(detail(sourceOrderOffset + sources.size(), panId, "ETC_INFO")
                     .correctionReason(text(row, "CRC_RSN"))
                     .etcContents(text(row, "ETC_CTS"))
                     .build());
         }
     }
 
-    private void addComplexes(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
+    private void addComplexes(
+            List<LhAnnouncementDetailSource> sources,
+            String panId,
+            JsonNode root,
+            int sourceOrderOffset
+    ) {
         for (JsonNode row : ExternalResponseRows.find(root, "dsSbd")) {
-            sources.add(detail(sources.size(), panId, "COMPLEX")
+            sources.add(detail(sourceOrderOffset + sources.size(), panId, "COMPLEX")
                     .complexName(text(row, "LCC_NT_NM"))
                     .address(text(row, "LGDN_ADR"))
                     .detailAddress(text(row, "LGDN_DTL_ADR"))
@@ -70,9 +96,14 @@ public class LhAnnouncementDetailResponseParser {
         }
     }
 
-    private void addSchedules(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
+    private void addSchedules(
+            List<LhAnnouncementDetailSource> sources,
+            String panId,
+            JsonNode root,
+            int sourceOrderOffset
+    ) {
         for (JsonNode row : ExternalResponseRows.find(root, "dsSplScdl")) {
-            sources.add(detail(sources.size(), panId, "SCHEDULE")
+            sources.add(detail(sourceOrderOffset + sources.size(), panId, "SCHEDULE")
                     .complexName(text(row, "SBD_LGO_NM"))
                     .applicationPeriod(text(row, "ACP_DTTM"))
                     .documentTargetAnnouncementDate(text(row, "PPR_SBM_OPE_ANC_DT"))
@@ -84,9 +115,14 @@ public class LhAnnouncementDetailResponseParser {
         }
     }
 
-    private void addReceptions(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
+    private void addReceptions(
+            List<LhAnnouncementDetailSource> sources,
+            String panId,
+            JsonNode root,
+            int sourceOrderOffset
+    ) {
         for (JsonNode row : ExternalResponseRows.find(root, "dsCtrtPlc")) {
-            sources.add(detail(sources.size(), panId, "RECEPTION")
+            sources.add(detail(sourceOrderOffset + sources.size(), panId, "RECEPTION")
                     .receptionAddress(text(row, "CTRT_PLC_ADR"))
                     .receptionDetailAddress(text(row, "CTRT_PLC_DTL_ADR"))
                     .operationBegin(text(row, "TSK_ST_DTTM"))
@@ -97,9 +133,14 @@ public class LhAnnouncementDetailResponseParser {
         }
     }
 
-    private void addAnnouncementFiles(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
+    private void addAnnouncementFiles(
+            List<LhAnnouncementDetailSource> sources,
+            String panId,
+            JsonNode root,
+            int sourceOrderOffset
+    ) {
         for (JsonNode row : ExternalResponseRows.find(root, "dsAhflInfo")) {
-            sources.add(detail(sources.size(), panId, "ANNOUNCEMENT_FILE")
+            sources.add(detail(sourceOrderOffset + sources.size(), panId, "ANNOUNCEMENT_FILE")
                     .kind(text(row, "SL_PAN_AHFL_DS_CD_NM"))
                     .name(text(row, "CMN_AHFL_NM"))
                     .url(text(row, "AHFL_URL"))
@@ -107,9 +148,14 @@ public class LhAnnouncementDetailResponseParser {
         }
     }
 
-    private void addComplexImages(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
+    private void addComplexImages(
+            List<LhAnnouncementDetailSource> sources,
+            String panId,
+            JsonNode root,
+            int sourceOrderOffset
+    ) {
         for (JsonNode row : ExternalResponseRows.find(root, "dsSbdAhfl")) {
-            sources.add(detail(sources.size(), panId, "COMPLEX_IMAGE")
+            sources.add(detail(sourceOrderOffset + sources.size(), panId, "COMPLEX_IMAGE")
                     .kind(text(row, "LS_SPL_INF_UPL_FL_DS_CD_NM"))
                     .name(text(row, "CMN_AHFL_NM"))
                     .url(text(row, "AHFL_URL"))

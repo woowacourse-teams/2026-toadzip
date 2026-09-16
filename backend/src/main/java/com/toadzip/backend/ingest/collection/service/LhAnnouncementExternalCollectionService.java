@@ -116,8 +116,6 @@ public class LhAnnouncementExternalCollectionService {
             return ExternalDataCollectionReport.empty(targetSource.operation());
         }
         BatchProgress progress = progressManager.findBatch(targetSource, candidates);
-        Set<String> storedPanIds = new HashSet<>(progress.storedPanIds());
-        Set<String> historyPanIds = new HashSet<>(progress.historyPanIds());
         Map<String, List<Candidate>> candidatesByRequest = candidates.stream()
                 .collect(Collectors.groupingBy(
                         Candidate::requestDescription,
@@ -130,9 +128,7 @@ public class LhAnnouncementExternalCollectionService {
             ExternalDataCollectionReport candidateReport = collectCandidate(
                     targetSource,
                     primary,
-                    progress,
-                    storedPanIds,
-                    historyPanIds
+                    progress
             );
             report = report.plus(candidateReport);
             if (candidateReport.rateLimitedRequestCount() > 0) {
@@ -155,9 +151,7 @@ public class LhAnnouncementExternalCollectionService {
     private ExternalDataCollectionReport collectCandidate(
             ExternalDataSource targetSource,
             Candidate candidate,
-            BatchProgress progress,
-            Set<String> storedPanIds,
-            Set<String> historyPanIds
+            BatchProgress progress
     ) {
         if (progress.isCompleted(candidate.requestDescription())) {
             if (!progress.isLinkedTo(candidate.sourceAnnouncementKey(), candidate.requestDescription())) {
@@ -165,17 +159,7 @@ public class LhAnnouncementExternalCollectionService {
             }
             return ExternalDataCollectionReport.empty(targetSource.operation());
         }
-        if (storedPanIds.contains(candidate.panId()) && !historyPanIds.contains(candidate.panId())) {
-            progressManager.complete(targetSource, candidate);
-            historyPanIds.add(candidate.panId());
-            return ExternalDataCollectionReport.empty(targetSource.operation());
-        }
-        ExternalDataCollectionReport report = candidateCollector.collect(targetSource, candidate);
-        if (report.failedRequestCount() == 0) {
-            storedPanIds.add(candidate.panId());
-            historyPanIds.add(candidate.panId());
-        }
-        return report;
+        return candidateCollector.collect(targetSource, candidate);
     }
 
     private ExternalDataCollectionReport skipReport(

@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.collection.repository.external;
 
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementResponsePage;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -13,17 +14,25 @@ public class LhAnnouncementSupplyResponseParser {
     private static final String DATASET_KEY = "dsList01";
 
     public List<LhAnnouncementSupplySource> parse(String panId, JsonNode root) {
+        return parsePage(panId, root, 0).items();
+    }
+
+    public LhAnnouncementResponsePage<LhAnnouncementSupplySource> parsePage(
+            String panId,
+            JsonNode root,
+            int sourceOrderOffset
+    ) {
         requireDataset(root);
         List<JsonNode> rows = ExternalResponseRows.find(root, DATASET_KEY);
         List<LhAnnouncementSupplySource> sources = new ArrayList<>();
-        for (int sourceOrder = 0; sourceOrder < rows.size(); sourceOrder++) {
+        for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
             sources.add(new LhAnnouncementSupplySource(
-                        sourceOrder,
-                        panId,
-                        sourceSnapshotOf(rows.get(sourceOrder))
+                    sourceOrderOffset + rowIndex,
+                    panId,
+                    sourceSnapshotOf(rows.get(rowIndex))
             ));
         }
-        return sources;
+        return new LhAnnouncementResponsePage<>(sources, rows.size());
     }
 
     private void requireDataset(JsonNode root) {
