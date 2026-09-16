@@ -1,6 +1,9 @@
 package com.toadzip.backend.ingest.enrichment.domain;
 
 public enum LhAnnouncementEnrichmentFailureReason {
+    LH_COLLECTION_REQUEST_UNSUPPORTED,
+    LH_COLLECTION_LINK_NOT_FOUND,
+    LH_COLLECTION_LINK_MISMATCH,
     ANNOUNCEMENT_NOT_FOUND,
     PAN_ID_NOT_FOUND,
     LH_DETAIL_SOURCE_NOT_FOUND,

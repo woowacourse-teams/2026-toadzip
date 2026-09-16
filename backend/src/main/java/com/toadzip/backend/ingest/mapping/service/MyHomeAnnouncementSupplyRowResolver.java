@@ -1,17 +1,18 @@
 package com.toadzip.backend.ingest.mapping.service;
 
-import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionCheckpointRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionLinkRepository;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutionException;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
+import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -19,27 +20,23 @@ public class MyHomeAnnouncementSupplyRowResolver {
 
     private static final int AREA_SCALE = 4;
 
-    private final LhAnnouncementCollectionCheckpointRepository checkpointRepository;
-
-    private final LhAnnouncementCollectionLinkRepository linkRepository;
+    private final LhAnnouncementLinkResolver linkResolver;
 
     private final LhAnnouncementSupplySourceRepository lhSupplyRepository;
 
     public MyHomeAnnouncementSupplyRowResolver(
-            LhAnnouncementCollectionCheckpointRepository checkpointRepository,
-            LhAnnouncementCollectionLinkRepository linkRepository,
+            LhAnnouncementLinkResolver linkResolver,
             LhAnnouncementSupplySourceRepository lhSupplyRepository
     ) {
-        this.checkpointRepository = checkpointRepository;
-        this.linkRepository = linkRepository;
+        this.linkResolver = linkResolver;
         this.lhSupplyRepository = lhSupplyRepository;
     }
 
     public MyHomeAnnouncementMappingData resolve(MyHomeAnnouncementMappingData data) {
-        List<LhAnnouncementSupplySource> lhSupplies = findLhSupplies(data.sourceAnnouncementIdentifier());
-        if (lhSupplies.isEmpty()) {
+        if (data.provider() != AgencyCode.LH) {
             return data;
         }
+        List<LhAnnouncementSupplySource> lhSupplies = findLhSupplies(data.supplyRows().getFirst().source());
         Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matched = matchByComplex(
                 data.supplyRows(),
                 lhSupplies
@@ -64,22 +61,27 @@ public class MyHomeAnnouncementSupplyRowResolver {
         return data.withSupplyRows(List.copyOf(resolved));
     }
 
-    private List<LhAnnouncementSupplySource> findLhSupplies(String announcementIdentifier) {
-        Optional<String> panId = linkRepository
-                .findBySourceAndSourceAnnouncementKey(
-                        ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
-                        announcementIdentifier
-                )
-                .map(link -> link.getPanId())
-                .or(() -> checkpointRepository
-                        .findFirstBySourceAndSourceAnnouncementKeyOrderByIdDesc(
-                                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
-                                announcementIdentifier
-                        )
-                        .map(checkpoint -> checkpoint.getPanId()));
-        return panId
-                .map(lhSupplyRepository::findAllByPanIdOrderBySourceOrderAsc)
-                .orElseGet(List::of);
+    private List<LhAnnouncementSupplySource> findLhSupplies(MyHomeAnnouncementSource source) {
+        String panId;
+        try {
+            panId = linkResolver.resolve(source);
+        }
+        catch (LhAnnouncementLinkResolutionException exception) {
+            MyHomeAnnouncementMappingFailureReason reason = switch (exception.reason()) {
+                case REQUEST_UNSUPPORTED -> MyHomeAnnouncementMappingFailureReason.LH_COLLECTION_REQUEST_UNSUPPORTED;
+                case LINK_NOT_FOUND -> MyHomeAnnouncementMappingFailureReason.LH_COLLECTION_LINK_NOT_FOUND;
+                case LINK_MISMATCH -> MyHomeAnnouncementMappingFailureReason.LH_COLLECTION_LINK_MISMATCH;
+            };
+            throw new MyHomeAnnouncementMappingRejectedException(reason, exception.getMessage());
+        }
+        List<LhAnnouncementSupplySource> supplies = lhSupplyRepository.findAllByPanIdOrderBySourceOrderAsc(panId);
+        if (supplies.isEmpty()) {
+            throw new MyHomeAnnouncementMappingRejectedException(
+                    MyHomeAnnouncementMappingFailureReason.LH_SUPPLY_SOURCE_NOT_FOUND,
+                    "연결된 LH 공고 공급 원본이 없습니다."
+            );
+        }
+        return supplies;
     }
 
     private Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matchByComplex(

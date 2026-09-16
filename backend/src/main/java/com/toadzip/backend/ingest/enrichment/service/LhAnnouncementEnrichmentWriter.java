@@ -54,12 +54,17 @@ public class LhAnnouncementEnrichmentWriter {
     @Transactional
     public LhAnnouncementEnrichmentWriteResult write(Announcement announcement, LhAnnouncementEnrichmentData data) {
         Announcement managedAnnouncement = announcementRepository.save(announcement);
+        Set<String> replacedPanIds = new HashSet<>();
+        replacedPanIds.add(data.panId());
+        if (managedAnnouncement.getLhPanId() != null) {
+            replacedPanIds.add(managedAnnouncement.getLhPanId());
+        }
         int updatedAnnouncements = managedAnnouncement.enrichFromLh(
                 data.panId(), valueOrCurrent(data.correctionReason(), managedAnnouncement.getCorrectionCancellationReason()),
                 receptionOrCurrent(data.receptionPlace(), managedAnnouncement.getReceptionPlace())
         ) ? 1 : 0;
-        SchedulesWriteResult schedules = writeSchedules(managedAnnouncement, data);
-        AttachmentsWriteResult attachments = writeAttachments(managedAnnouncement, data);
+        SchedulesWriteResult schedules = writeSchedules(managedAnnouncement, data, replacedPanIds);
+        AttachmentsWriteResult attachments = writeAttachments(managedAnnouncement, data, replacedPanIds);
         SupplyWriteResult supplies = writeSupplies(managedAnnouncement, data);
         return new LhAnnouncementEnrichmentWriteResult(
                 new LhAnnouncementEnrichmentReport(
@@ -71,7 +76,9 @@ public class LhAnnouncementEnrichmentWriter {
         );
     }
 
-    private SchedulesWriteResult writeSchedules(Announcement announcement, LhAnnouncementEnrichmentData data) {
+    private SchedulesWriteResult writeSchedules(
+            Announcement announcement, LhAnnouncementEnrichmentData data, Set<String> replacedPanIds
+    ) {
         Map<String, AnnouncementSchedule> stored = schedulesBySource(announcement);
         Set<String> retained = new HashSet<>();
         int created = 0;
@@ -92,11 +99,13 @@ public class LhAnnouncementEnrichmentWriter {
                 updated++;
             }
         }
-        scheduleRepository.deleteAll(staleSchedules(announcement, retained, data.panId()));
+        scheduleRepository.deleteAll(staleSchedules(announcement, retained, replacedPanIds));
         return new SchedulesWriteResult(created, updated);
     }
 
-    private AttachmentsWriteResult writeAttachments(Announcement announcement, LhAnnouncementEnrichmentData data) {
+    private AttachmentsWriteResult writeAttachments(
+            Announcement announcement, LhAnnouncementEnrichmentData data, Set<String> replacedPanIds
+    ) {
         Map<String, AnnouncementAttachment> stored = attachmentsBySource(announcement);
         Set<String> retained = new HashSet<>();
         int created = 0;
@@ -116,7 +125,7 @@ public class LhAnnouncementEnrichmentWriter {
                 updated++;
             }
         }
-        attachmentRepository.deleteAll(staleAttachments(announcement, retained, data.panId()));
+        attachmentRepository.deleteAll(staleAttachments(announcement, retained, replacedPanIds));
         return new AttachmentsWriteResult(created, updated);
     }
 
@@ -134,16 +143,28 @@ public class LhAnnouncementEnrichmentWriter {
                 continue;
             }
             SupplyRow row = match.row();
+            String previousSourceIdentifier = row.getLhSourceSupplyRowIdentifier();
             if (row.enrichFromLh(source.sourceIdentifier(), source.expectedMoveInMonth(), source.totalHouseholdCount())) {
                 updatedRows++;
             }
             SupplyTargetWriteResult target = writeTarget(row, source);
+            deletePreviousTarget(row, previousSourceIdentifier, source.sourceIdentifier());
             retainedTargetIdentifiers.add(target.sourceIdentifier());
             createdTargets += target.created();
             updatedTargets += target.updated();
         }
-        deleteStaleTargets(rows, retainedTargetIdentifiers, data.panId());
+        deleteStaleTargets(rows, retainedTargetIdentifiers, Set.of(data.panId()));
         return new SupplyWriteResult(updatedRows, createdTargets, updatedTargets, failures);
+    }
+
+    private void deletePreviousTarget(SupplyRow row, String previousIdentifier, String currentIdentifier) {
+        if (previousIdentifier == null || previousIdentifier.equals(currentIdentifier)) {
+            return;
+        }
+        List<SupplyTarget> previousTargets = supplyTargetRepository.findAllBySupplyRow(row).stream()
+                .filter(target -> (previousIdentifier + ":TARGET").equals(target.getSourceSupplyTargetIdentifier()))
+                .toList();
+        supplyTargetRepository.deleteAll(previousTargets);
     }
 
     private SupplyTargetWriteResult writeTarget(SupplyRow row, LhSupplyData source) {
@@ -191,24 +212,28 @@ public class LhAnnouncementEnrichmentWriter {
         return attachments;
     }
 
-    private List<AnnouncementSchedule> staleSchedules(Announcement announcement, Set<String> retained, String panId) {
+    private List<AnnouncementSchedule> staleSchedules(
+            Announcement announcement, Set<String> retained, Set<String> replacedPanIds
+    ) {
         return scheduleRepository.findAllByAnnouncement(announcement).stream()
-                .filter(schedule -> lhSourceForPan(schedule.getSourceScheduleIdentifier(), panId))
+                .filter(schedule -> lhSourceForAnyPan(schedule.getSourceScheduleIdentifier(), replacedPanIds))
                 .filter(schedule -> !retained.contains(schedule.getSourceScheduleIdentifier()))
                 .toList();
     }
 
-    private List<AnnouncementAttachment> staleAttachments(Announcement announcement, Set<String> retained, String panId) {
+    private List<AnnouncementAttachment> staleAttachments(
+            Announcement announcement, Set<String> retained, Set<String> replacedPanIds
+    ) {
         return attachmentRepository.findAllByAnnouncement(announcement).stream()
-                .filter(attachment -> lhSourceForPan(attachment.getSourceAttachmentIdentifier(), panId))
+                .filter(attachment -> lhSourceForAnyPan(attachment.getSourceAttachmentIdentifier(), replacedPanIds))
                 .filter(attachment -> !retained.contains(attachment.getSourceAttachmentIdentifier()))
                 .toList();
     }
 
-    private void deleteStaleTargets(List<SupplyRow> rows, Set<String> retained, String panId) {
+    private void deleteStaleTargets(List<SupplyRow> rows, Set<String> retained, Set<String> replacedPanIds) {
         for (SupplyRow row : rows) {
             List<SupplyTarget> stale = supplyTargetRepository.findAllBySupplyRow(row).stream()
-                    .filter(target -> lhSourceForPan(target.getSourceSupplyTargetIdentifier(), panId))
+                    .filter(target -> lhSourceForAnyPan(target.getSourceSupplyTargetIdentifier(), replacedPanIds))
                     .filter(target -> !retained.contains(target.getSourceSupplyTargetIdentifier()))
                     .toList();
             supplyTargetRepository.deleteAll(stale);
@@ -229,8 +254,8 @@ public class LhAnnouncementEnrichmentWriter {
         return value;
     }
 
-    private boolean lhSourceForPan(String identifier, String panId) {
-        return identifier != null && identifier.startsWith("LH:" + panId + ":");
+    private boolean lhSourceForAnyPan(String identifier, Set<String> panIds) {
+        return identifier != null && panIds.stream().anyMatch(panId -> identifier.startsWith("LH:" + panId + ":"));
     }
 
     private record SchedulesWriteResult(int created, int updated) {
