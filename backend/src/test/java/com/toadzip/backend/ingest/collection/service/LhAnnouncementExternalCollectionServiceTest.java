@@ -481,21 +481,24 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
-    void 기존_적재_행은_첫_증분_실행에서_호출하지_않고_체크포인트만_생성한다() {
+    void 완료_이력이_없는_기존_적재_행도_새_수집_계약으로_다시_호출한다() {
         source(announcementSource());
         when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any(), any()))
                 .thenReturn(new BatchProgress(Set.of(), Set.of("100"), Set.of()));
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("100"), any())).thenReturn(1);
 
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
-        verify(externalRepository, never()).fetchDetail(any());
+        verify(externalRepository).fetchDetail(any());
+        verify(sourceStore).replaceDetails(eq("100"), any());
         verify(progressStore).complete(
                 eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
                 eq("100"),
                 any(),
                 eq("100")
         );
-        assertThat(result.externalApiCallCount()).isZero();
+        assertThat(result.externalApiCallCount()).isOne();
     }
 
     @Test
