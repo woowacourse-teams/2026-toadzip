@@ -33,8 +33,8 @@ public class LhAnnouncementCandidateCollector {
         catch (ExternalDataCallFailureException exception) {
             return failedReport(targetSource, request, exception, callCounter);
         }
-        progressManager.complete(targetSource, candidate);
         storedPages.requestDescriptions().forEach(description -> failureRecorder.resolve(targetSource, description));
+        progressManager.complete(targetSource, candidate);
         return new ExternalDataCollectionReport(
                 targetSource.operation(),
                 storedPages.storedRowCount(),

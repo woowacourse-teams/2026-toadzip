@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -297,6 +298,24 @@ class LhAnnouncementExternalCollectionServiceTest {
         verify(progressStore, never()).complete(any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
         assertThat(result.externalApiCallCount()).isEqualTo(2);
+    }
+
+    @Test
+    void 페이지_실패_기록을_해결하지_못하면_완료_체크포인트를_남기지_않는다() {
+        source(announcementSource());
+        when(externalRepository.fetchSupply(any())).thenReturn(supplyResponse());
+        when(sourceStore.replaceSupplies(eq("100"), any())).thenReturn(1);
+        String pageRequest = announcementRequestDescription() + "&PG_SZ=100&PAGE=1";
+        doThrow(new IllegalStateException("실패 기록 갱신 실패"))
+                .when(failureRecorder)
+                .resolve(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, pageRequest);
+
+        assertThatThrownBy(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("실패 기록 갱신 실패");
+
+        verify(sourceStore).replaceSupplies(eq("100"), any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
     }
 
     @Test
