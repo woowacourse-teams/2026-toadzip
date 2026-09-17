@@ -136,10 +136,6 @@ public class LhAnnouncementEnrichmentService {
                     "연결된 LH 공고 상세 원본이 없습니다.", failures, occurredAt);
         }
         List<LhAnnouncementSupplySource> supplies = supplySourceRepository.findAllByPanIdOrderBySourceOrderAsc(panId);
-        if (supplies.isEmpty() && requiresLhSupplySource(announcement.getSupplyType())) {
-            return reject(source, panId, LhAnnouncementEnrichmentFailureReason.LH_SUPPLY_SOURCE_NOT_FOUND,
-                    "연결된 LH 공고 공급 원본이 없습니다.", failures, occurredAt);
-        }
         try {
             LhAnnouncementEnrichmentData data = mapper.map(panId, details, supplies);
             LhAnnouncementEnrichmentWriteResult result = writer.write(announcement, data);
@@ -149,11 +145,6 @@ public class LhAnnouncementEnrichmentService {
         catch (LhAnnouncementEnrichmentRejectedException exception) {
             return reject(source, panId, exception.reason(), exception.getMessage(), failures, occurredAt);
         }
-    }
-
-    private boolean requiresLhSupplySource(RentalType rentalType) {
-        return rentalType != RentalType.PUBLIC_RENTAL_5Y
-                && rentalType != RentalType.PUBLIC_RENTAL_10Y;
     }
 
     private void addSupplyFailures(

@@ -1,7 +1,6 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.housing.domain.AgencyCode;
-import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
@@ -37,10 +36,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
         if (data.provider() != AgencyCode.LH) {
             return data;
         }
-        List<LhAnnouncementSupplySource> lhSupplies = findLhSupplies(
-                data.supplyRows().getFirst().source(),
-                data.rentalType()
-        );
+        List<LhAnnouncementSupplySource> lhSupplies = findLhSupplies(data.supplyRows().getFirst().source());
         Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matched = matchByComplex(
                 data.supplyRows(),
                 lhSupplies
@@ -65,10 +61,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
         return data.withSupplyRows(List.copyOf(resolved));
     }
 
-    private List<LhAnnouncementSupplySource> findLhSupplies(
-            MyHomeAnnouncementSource source,
-            RentalType rentalType
-    ) {
+    private List<LhAnnouncementSupplySource> findLhSupplies(MyHomeAnnouncementSource source) {
         String panId;
         try {
             panId = linkResolver.resolve(source);
@@ -81,19 +74,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
             };
             throw new MyHomeAnnouncementMappingRejectedException(reason, exception.getMessage());
         }
-        List<LhAnnouncementSupplySource> supplies = lhSupplyRepository.findAllByPanIdOrderBySourceOrderAsc(panId);
-        if (supplies.isEmpty() && requiresLhSupplySource(rentalType)) {
-            throw new MyHomeAnnouncementMappingRejectedException(
-                    MyHomeAnnouncementMappingFailureReason.LH_SUPPLY_SOURCE_NOT_FOUND,
-                    "연결된 LH 공고 공급 원본이 없습니다."
-            );
-        }
-        return supplies;
-    }
-
-    private boolean requiresLhSupplySource(RentalType rentalType) {
-        return rentalType != RentalType.PUBLIC_RENTAL_5Y
-                && rentalType != RentalType.PUBLIC_RENTAL_10Y;
+        return lhSupplyRepository.findAllByPanIdOrderBySourceOrderAsc(panId);
     }
 
     private Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matchByComplex(

@@ -57,6 +57,19 @@ class LhAnnouncementEnrichmentMapperTest {
     }
 
     @Test
+    void LH가_2999년으로_표시한_미정_입주예정월은_매핑하지_않는다() {
+        LhAnnouncementEnrichmentData result = mapper.map(
+                PAN_ID,
+                List.of(complexDetail(0, "동삼2", "2999.01")),
+                List.of(supply(0, "동삼2", "46A"))
+        );
+
+        assertThat(result.supplies()).singleElement()
+                .extracting(LhSupplyData::expectedMoveInMonth)
+                .isNull();
+    }
+
+    @Test
     void 쉼표가_올바른_세대수와_금액은_단일_숫자로_매핑한다() {
         LhAnnouncementSupplySource supply = supply(
                 0, "동삼2", "46A", "1,000", "20", "10,000,000", "200,000"

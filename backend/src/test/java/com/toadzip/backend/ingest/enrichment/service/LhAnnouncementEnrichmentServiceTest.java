@@ -242,10 +242,12 @@ class LhAnnouncementEnrichmentServiceTest {
 
     @ParameterizedTest
     @CsvSource({
+            "국민임대, NATIONAL_RENTAL",
+            "영구임대, PERMANENT_RENTAL",
             "5년임대, PUBLIC_RENTAL_5Y",
             "10년임대, PUBLIC_RENTAL_10Y"
     })
-    void 공공임대_공급_API가_빈_응답이어도_마이홈_공급행을_매핑하고_LH_상세로_보강한다(
+    void LH_공급_API가_빈_응답이어도_마이홈_공급행을_매핑하고_LH_상세로_보강한다(
             String sourceSupplyType,
             RentalType expectedType
     ) {
@@ -571,7 +573,7 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     @Test
-    void 연결된_공급_원천이_없으면_기존_공급행을_삭제하지_않고_연결_누락과_구분한다() {
+    void 연결된_공급_원천이_없어도_기존_공급행을_보존하고_보강을_계속한다() {
         saveComplex();
         MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
         saveLhSources("10,000,000", "200,000");
@@ -580,15 +582,11 @@ class LhAnnouncementEnrichmentServiceTest {
         enrichmentService.enrichAll();
         supplySourceRepository.deleteAll();
 
-        assertThat(mappingService.mapAll().failedSourceRowCount()).isOne();
-        assertThat(enrichmentService.enrichAll().failedSourceCount()).isOne();
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
 
-        assertThat(mappingFailureRepository.findAll()).singleElement().satisfies(failure ->
-                assertThat(failure.getReason()).isEqualTo(
-                        MyHomeAnnouncementMappingFailureReason.LH_SUPPLY_SOURCE_NOT_FOUND));
-        assertThat(enrichmentFailureRepository.findAll()).singleElement().satisfies(failure ->
-                assertThat(failure.getReason()).isEqualTo(
-                        LhAnnouncementEnrichmentFailureReason.LH_SUPPLY_SOURCE_NOT_FOUND));
+        assertThat(mappingFailureRepository.count()).isZero();
+        assertThat(enrichmentFailureRepository.count()).isZero();
         assertThat(supplyRowRepository.count()).isOne();
         assertThat(supplyTargetRepository.count()).isOne();
     }
