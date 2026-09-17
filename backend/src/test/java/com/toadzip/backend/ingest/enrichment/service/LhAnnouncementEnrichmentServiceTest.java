@@ -20,6 +20,7 @@ import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
@@ -59,6 +60,8 @@ import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -212,6 +215,29 @@ class LhAnnouncementEnrichmentServiceTest {
             assertThat(target.getRentalDeposit()).isEqualByComparingTo("12000000");
             assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000");
         });
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "5년임대, PUBLIC_RENTAL_5Y",
+            "10년임대, PUBLIC_RENTAL_10Y"
+    })
+    void 공공임대_기간을_보존한_LH_공고를_상세와_공급정보로_보강한다(
+            String sourceSupplyType,
+            RentalType expectedType
+    ) {
+        saveComplex(expectedType.name());
+        myHomeSourceRepository.save(myHomeSource("21026", sourceSupplyType));
+        mapMyHomeSource();
+        saveLhSources("10,000,000", "200,000");
+
+        var report = enrichmentService.enrichAll();
+
+        assertThat(report.failedSourceCount()).isZero();
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement ->
+                assertThat(announcement.getSupplyType()).isEqualTo(expectedType));
+        assertThat(supplyTargetRepository.count()).isOne();
+        assertThat(enrichmentFailureRepository.count()).isZero();
     }
 
     @Test
@@ -673,12 +699,16 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     private void saveComplex() {
+        saveComplex("NATIONAL_RENTAL");
+    }
+
+    private void saveComplex(String supplyType) {
         Address address = Address.create(
                 "서울특별시 종로구 테스트로 1", PNU, PNU.substring(0, 10), "11", "11110",
                 new BigDecimal("37.566206"), new BigDecimal("126.977706")
         );
         HousingComplex complex = housingComplexRepository.save(HousingComplex.createFromMyHome(
-                "동삼2", "123:NATIONAL_RENTAL", "NATIONAL_RENTAL", address, 100, "LH", null,
+                "동삼2", "123:" + supplyType, supplyType, address, 100, "LH", null,
                 "DISTRICT", "APARTMENT", "CORRIDOR", true, 80
         ));
         housingTypeRepository.save(HousingType.createFromMyHome(
@@ -687,12 +717,16 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     private MyHomeAnnouncementSource myHomeSource() {
-        return myHomeSource("21026");
+        return myHomeSource("21026", "국민임대");
     }
 
     private MyHomeAnnouncementSource myHomeSource(String identifier) {
+        return myHomeSource(identifier, "국민임대");
+    }
+
+    private MyHomeAnnouncementSource myHomeSource(String identifier, String supplyType) {
         MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, new MyHomeAnnouncementSourceSnapshot(
-                identifier, 1, "모집중", "국민임대 입주자 모집공고", "LH서울", "46A", "국민임대", null,
+                identifier, 1, "모집중", supplyType + " 입주자 모집공고", "LH서울", "46A", supplyType, null,
                 "20260813", "20261106", "20260824", "20260831", "1600-1004",
                 "https://example.com/announcements?panId=" + PAN_ID
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07", null, null, "동삼2", "서울특별시", "종로구",

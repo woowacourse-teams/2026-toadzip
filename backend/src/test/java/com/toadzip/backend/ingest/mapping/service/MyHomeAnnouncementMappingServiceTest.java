@@ -14,6 +14,7 @@ import com.toadzip.backend.announcement.service.AnnouncementQueryService;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
@@ -36,6 +37,8 @@ import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -128,6 +131,48 @@ class MyHomeAnnouncementMappingServiceTest {
             assertThat(row.getHousingType()).isNotNull();
             assertThat(row.getMatchingFailureReason()).isNull();
         });
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "5년임대, PUBLIC_RENTAL_5Y",
+            "10년임대, PUBLIC_RENTAL_10Y"
+    })
+    void 공공임대_기간을_공고_임대유형으로_보존하고_단지와_연결한다(String sourceSupplyType, RentalType expectedType) {
+        saveMappedComplex("동삼2", "123:" + expectedType.name(), expectedType.name());
+        sourceRepository.save(source(0, withSupplyType(
+                data("21026", 1, "부산도시공사", "동삼2"),
+                sourceSupplyType
+        )));
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement ->
+                assertThat(announcement.getSupplyType()).isEqualTo(expectedType));
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getHousingComplex()).isNotNull();
+            assertThat(row.getHousingType()).isNotNull();
+        });
+    }
+
+    @Test
+    void 기존에_기타로_저장된_5년임대_공고를_재매핑하면_정식_임대유형으로_교정한다() {
+        saveMappedComplex("동삼2", "123:PUBLIC_RENTAL_5Y", "PUBLIC_RENTAL_5Y");
+        sourceRepository.save(source(0, withSupplyType(
+                data("21026", 1, "부산도시공사", "동삼2"),
+                "5년임대"
+        )));
+        service.mapAll();
+        Announcement stored = announcementRepository.findAll().getFirst();
+        ReflectionTestUtils.setField(stored, "supplyType", RentalType.ETC);
+        announcementRepository.save(stored);
+
+        var report = service.mapAll();
+
+        assertThat(report.updatedAnnouncementCount()).isOne();
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement ->
+                assertThat(announcement.getSupplyType()).isEqualTo(RentalType.PUBLIC_RENTAL_5Y));
     }
 
     @Test
@@ -524,6 +569,10 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     private HousingComplex saveMappedComplex(String name, String sourceIdentifier) {
+        return saveMappedComplex(name, sourceIdentifier, "NATIONAL_RENTAL");
+    }
+
+    private HousingComplex saveMappedComplex(String name, String sourceIdentifier, String supplyType) {
         Address address = Address.create(
                 "서울특별시 종로구 테스트로 1",
                 PNU,
@@ -536,7 +585,7 @@ class MyHomeAnnouncementMappingServiceTest {
         HousingComplex complex = complexRepository.save(HousingComplex.createFromMyHome(
                 name,
                 sourceIdentifier,
-                "NATIONAL_RENTAL",
+                supplyType,
                 address,
                 100,
                 "LH",
@@ -671,6 +720,20 @@ class MyHomeAnnouncementMappingServiceTest {
                 data.pcUrl(), data.mobileUrl(), data.hsmpNm(), data.brtcNm(), data.signguNm(),
                 data.fullAdres(), data.rnCodeNm(), data.refrnLegaldongNm(), data.pnu(), data.heatMthdNm(),
                 data.totHshldCo(), supplyCount, data.rentGtn(), data.enty(), data.surlus(), data.mtRntchrg()
+        );
+    }
+
+    private MyHomeAnnouncementSourceSnapshot withSupplyType(
+            MyHomeAnnouncementSourceSnapshot data,
+            String supplyType
+    ) {
+        return new MyHomeAnnouncementSourceSnapshot(
+                data.pblancId(), data.houseSn(), data.sttusNm(), supplyType + " 입주자 모집공고",
+                data.suplyInsttNm(), data.houseTyNm(), supplyType, data.beforePblancId(), data.rcritPblancDe(),
+                data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), data.refrnc(), data.url(),
+                data.pcUrl(), data.mobileUrl(), data.hsmpNm(), data.brtcNm(), data.signguNm(),
+                data.fullAdres(), data.rnCodeNm(), data.refrnLegaldongNm(), data.pnu(), data.heatMthdNm(),
+                data.totHshldCo(), data.sumSuplyCo(), data.rentGtn(), data.enty(), data.surlus(), data.mtRntchrg()
         );
     }
 
