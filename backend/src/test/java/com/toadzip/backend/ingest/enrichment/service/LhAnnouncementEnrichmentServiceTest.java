@@ -240,6 +240,40 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(enrichmentFailureRepository.count()).isZero();
     }
 
+    @ParameterizedTest
+    @CsvSource({
+            "5년임대, PUBLIC_RENTAL_5Y",
+            "10년임대, PUBLIC_RENTAL_10Y"
+    })
+    void 공공임대_공급_API가_빈_응답이어도_마이홈_공급행을_매핑하고_LH_상세로_보강한다(
+            String sourceSupplyType,
+            RentalType expectedType
+    ) {
+        saveComplex(expectedType.name());
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(
+                myHomeSource("21026", sourceSupplyType)
+        );
+        completeLinks(source);
+        saveLhSources("10,000,000", "200,000");
+        supplySourceRepository.deleteAll();
+
+        var mappingReport = mappingService.mapAll();
+        var enrichmentReport = enrichmentService.enrichAll();
+
+        assertThat(mappingReport.failedSourceRowCount()).isZero();
+        assertThat(enrichmentReport.failedSourceCount()).isZero();
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement -> {
+            assertThat(announcement.getSupplyType()).isEqualTo(expectedType);
+            assertThat(announcement.getLhPanId()).isEqualTo(PAN_ID);
+        });
+        assertThat(supplyRowRepository.count()).isOne();
+        assertThat(scheduleRepository.count()).isOne();
+        assertThat(attachmentRepository.count()).isOne();
+        assertThat(supplyTargetRepository.count()).isZero();
+        assertThat(mappingFailureRepository.count()).isZero();
+        assertThat(enrichmentFailureRepository.count()).isZero();
+    }
+
     @Test
     void 마이홈_URL에_panId가_없으면_공고를_새로_생성하지_않고_실패를_기록한다() {
         saveComplex();
