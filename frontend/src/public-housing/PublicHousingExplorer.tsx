@@ -2321,15 +2321,17 @@ function toNaverMapMarkers(
   return [
     ...markersWithDetail,
     {
-      agencyLabel: '기관 확인 중',
-      areaLabel: '면적 확인 중',
+      agencyLabel: '미상',
+      agencyName: '기관 정보 없음',
+      deposit: null,
       highlighted: false,
       id: searchComplex.id,
       latitude: searchComplex.latitude,
       longitude: searchComplex.longitude,
-      monthlyRentLabel: '정보 확인 중',
+      monthlyRent: null,
       name: searchComplex.title,
-      rentalTypeLabel: '임대유형 확인 중',
+      rentalTypeLabel: '미상',
+      rentalTypeName: '임대유형 정보 없음',
       selected: true,
     },
   ]
