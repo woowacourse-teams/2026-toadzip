@@ -77,6 +77,22 @@ class DataPipelineExecutionTest {
     }
 
     @Test
+    void 부분_실패_후_완료한_단계의_다음_단계를_시작할_수_있다() {
+        DataPipelineExecution execution = execution(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+        execution.startStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+        execution.startStepAfterPartialFailure(
+                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES
+        );
+        execution.completeStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
+
+        execution.startStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
+
+        assertThat(execution.getCurrentStep())
+                .isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
+    }
+
+    @Test
     void 부분_실패한_단계를_건너뛰어_다음다음_단계를_시작할_수_없다() {
         DataPipelineExecution execution = execution(DataPipelineType.ANNOUNCEMENT_COLLECTION);
         execution.startStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);

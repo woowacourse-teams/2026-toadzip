@@ -211,11 +211,20 @@ public class DataPipelineExecution {
     }
 
     private DataPipelineStep nextStep() {
-        int completedStepCount = completedSteps.size() + skippedSteps.size();
-        if (completedStepCount >= type.steps().size()) {
+        int lastCompletedSequence = completedSteps.stream()
+                .mapToInt(DataPipelineStep::sequence)
+                .max()
+                .orElse(0);
+        int lastSkippedSequence = skippedSteps.stream()
+                .map(DataPipelineSkippedStep::getStep)
+                .mapToInt(DataPipelineStep::sequence)
+                .max()
+                .orElse(0);
+        int nextStepIndex = Math.max(lastCompletedSequence, lastSkippedSequence);
+        if (nextStepIndex >= type.steps().size()) {
             return null;
         }
-        return type.steps().get(completedStepCount);
+        return type.steps().get(nextStepIndex);
     }
 
     private DataPipelineStep nextStepAfter(DataPipelineStep step) {

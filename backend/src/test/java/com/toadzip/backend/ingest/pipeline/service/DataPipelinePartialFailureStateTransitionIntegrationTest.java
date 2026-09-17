@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementDetailCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementSupplyCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhLeaseCatalogCollectionService;
@@ -66,23 +67,8 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 LhHousingTypeHouseholdEnrichmentReport.matched(1, 0, 0)
         );
         DataPipelineRunner runner = runner(mappingService, enrichmentService);
-        DataPipelineExecutionLock executionLock = mock(DataPipelineExecutionLock.class);
         DataPipelineExecutionLock.Lease lease = mock(DataPipelineExecutionLock.Lease.class);
-        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
-        ScheduledExecutorService heartbeatExecutor = mock(ScheduledExecutorService.class);
-        ScheduledFuture<?> heartbeatTask = mock(ScheduledFuture.class);
-        doReturn(heartbeatTask).when(heartbeatExecutor)
-                .scheduleWithFixedDelay(any(), anyLong(), anyLong(), any());
-        DataPipelineExecutionService service = new DataPipelineExecutionService(
-                runner,
-                executionLock,
-                executionRepository,
-                executionStateService,
-                Runnable::run,
-                heartbeatExecutor,
-                Clock.fixed(STARTED_AT, ZoneOffset.UTC),
-                new DataPipelineExecutionMapper(JsonMapper.builder().build())
-        );
+        DataPipelineExecutionService service = service(runner, lease);
 
         service.start(DataPipelineType.COMPLEX_REFINEMENT);
 
@@ -99,6 +85,68 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         verify(lease).close();
     }
 
+    @Test
+    void 세_단계_파이프라인의_첫_단계가_부분_실패해도_나머지_단계를_모두_완료한다() {
+        MyHomeAnnouncementCollectionService myHomeService =
+                mock(MyHomeAnnouncementCollectionService.class);
+        LhAnnouncementSupplyCollectionService supplyService =
+                mock(LhAnnouncementSupplyCollectionService.class);
+        LhAnnouncementDetailCollectionService detailService =
+                mock(LhAnnouncementDetailCollectionService.class);
+        when(myHomeService.collect(any())).thenReturn(
+                new ExternalDataCollectionReport("myhome-announcement", 2, 1, 3)
+        );
+        when(supplyService.collect()).thenReturn(
+                ExternalDataCollectionReport.empty("lh-announcement-supply")
+        );
+        when(detailService.collect()).thenReturn(
+                ExternalDataCollectionReport.empty("lh-announcement-detail")
+        );
+        DataPipelineRunner runner = runner(myHomeService, supplyService, detailService);
+        DataPipelineExecutionLock.Lease lease = mock(DataPipelineExecutionLock.Lease.class);
+        DataPipelineExecutionService service = service(runner, lease);
+
+        service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+
+        var execution = executionRepository
+                .findFirstByTypeOrderByIdDesc(DataPipelineType.ANNOUNCEMENT_COLLECTION)
+                .orElseThrow();
+        assertThat(execution.getStatus()).isEqualTo(DataPipelineExecutionStatus.FAILED);
+        assertThat(execution.getFailedStep())
+                .isEqualTo(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+        assertThat(execution.getFailureServerResponse())
+                .contains("\"failedRequestCount\":1");
+        assertThat(execution.getCompletedSteps()).containsExactly(
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS
+        );
+        verify(supplyService).collect();
+        verify(detailService).collect();
+        verify(lease).close();
+    }
+
+    private DataPipelineExecutionService service(
+            DataPipelineRunner runner,
+            DataPipelineExecutionLock.Lease lease
+    ) {
+        DataPipelineExecutionLock executionLock = mock(DataPipelineExecutionLock.class);
+        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
+        ScheduledExecutorService heartbeatExecutor = mock(ScheduledExecutorService.class);
+        ScheduledFuture<?> heartbeatTask = mock(ScheduledFuture.class);
+        doReturn(heartbeatTask).when(heartbeatExecutor)
+                .scheduleWithFixedDelay(any(), anyLong(), anyLong(), any());
+        return new DataPipelineExecutionService(
+                runner,
+                executionLock,
+                executionRepository,
+                executionStateService,
+                Runnable::run,
+                heartbeatExecutor,
+                Clock.fixed(STARTED_AT, ZoneOffset.UTC),
+                new DataPipelineExecutionMapper(JsonMapper.builder().build())
+        );
+    }
+
     private DataPipelineRunner runner(
             MyHomeComplexMappingService mappingService,
             LhHousingTypeHouseholdEnrichmentService enrichmentService
@@ -111,6 +159,26 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 mock(LhAnnouncementDetailCollectionService.class),
                 mappingService,
                 enrichmentService,
+                mock(MyHomeAnnouncementMappingService.class),
+                mock(LhAnnouncementEnrichmentService.class),
+                new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
+                new SimpleMeterRegistry()
+        );
+    }
+
+    private DataPipelineRunner runner(
+            MyHomeAnnouncementCollectionService myHomeService,
+            LhAnnouncementSupplyCollectionService supplyService,
+            LhAnnouncementDetailCollectionService detailService
+    ) {
+        return new DataPipelineRunner(
+                mock(MyHomeComplexCollectionService.class),
+                mock(LhLeaseCatalogCollectionService.class),
+                myHomeService,
+                supplyService,
+                detailService,
+                mock(MyHomeComplexMappingService.class),
+                mock(LhHousingTypeHouseholdEnrichmentService.class),
                 mock(MyHomeAnnouncementMappingService.class),
                 mock(LhAnnouncementEnrichmentService.class),
                 new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
