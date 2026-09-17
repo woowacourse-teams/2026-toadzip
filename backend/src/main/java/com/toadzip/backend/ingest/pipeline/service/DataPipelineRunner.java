@@ -94,7 +94,7 @@ public class DataPipelineRunner {
                     new LhLeaseCatalogCollectionRequest(9_999, 1)
             ));
             case COLLECT_MYHOME_ANNOUNCEMENTS -> resultAdapter.adapt(myHomeAnnouncementCollectionService.collect(
-                    new MyHomeAnnouncementCollectionRequest(10, 1_000)
+                    new MyHomeAnnouncementCollectionRequest(500, 1_000)
             ));
             case COLLECT_LH_ANNOUNCEMENT_SUPPLIES -> resultAdapter.adapt(
                     lhAnnouncementSupplyCollectionService.collect()

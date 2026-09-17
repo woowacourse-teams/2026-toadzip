@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionReport;
+import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementDetailCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementSupplyCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhLeaseCatalogCollectionService;
@@ -99,6 +100,15 @@ class DataPipelineRunnerTest {
         order.verify(myHomeComplexCollectionService).collect(any());
         order.verify(lhLeaseCatalogCollectionService).collect(any());
         verify(myHomeAnnouncementCollectionService, never()).collect(any());
+    }
+
+    @Test
+    void 마이홈_공고는_한_페이지에_500행씩_수집한다() {
+        givenSuccessfulAnnouncementCollectionReports();
+
+        runner.run(DataPipelineType.ANNOUNCEMENT_COLLECTION, progressListener);
+
+        verify(myHomeAnnouncementCollectionService).collect(new MyHomeAnnouncementCollectionRequest(500, 1_000));
     }
 
     @Test
