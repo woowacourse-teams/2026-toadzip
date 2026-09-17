@@ -38,6 +38,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.ArrayList;
+import org.slf4j.MDC;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -108,6 +116,156 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void 서로_다른_공고는_최대_2개씩_동시에_수집하고_모든_결과를_합산한다() throws Exception {
+        source(announcementSource("a", "100"), announcementSource("b", "200"),
+                announcementSource("c", "300"), announcementSource("d", "400"));
+        CountDownLatch firstPairStarted = new CountDownLatch(2);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger active = new AtomicInteger();
+        AtomicInteger peak = new AtomicInteger();
+        when(externalRepository.fetchDetail(any())).thenAnswer(invocation -> {
+            peak.accumulateAndGet(active.incrementAndGet(), Math::max);
+            firstPairStarted.countDown();
+            try {
+                assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
+                return detailResponse();
+            }
+            finally {
+                active.decrementAndGet();
+            }
+        });
+        when(sourceStore.replaceDetails(any(), any())).thenReturn(1);
+
+        try (var caller = Executors.newSingleThreadExecutor()) {
+            var result = caller.submit(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL));
+            try {
+                assertThat(firstPairStarted.await(2, TimeUnit.SECONDS)).isTrue();
+                verify(externalRepository, times(2)).fetchDetail(any());
+            }
+            finally {
+                release.countDown();
+            }
+            ExternalDataCollectionReport report = result.get(5, TimeUnit.SECONDS);
+            assertThat(peak.get()).isEqualTo(2);
+            assertThat(report.storedRowCount()).isEqualTo(4);
+            assertThat(report.externalApiCallCount()).isEqualTo(4);
+            assertThat(report.failedRequestCount()).isZero();
+            verify(progressStore, times(4)).complete(any(), any(), any(), any());
+        }
+    }
+
+    @Test
+    void 호출_제한과_동시에_진행하던_성공_공고는_저장하고_다음_묶음은_호출하지_않는다() throws Exception {
+        source(announcementSource("a", "100"), announcementSource("b", "200"),
+                announcementSource("c", "300"));
+        CountDownLatch firstPairStarted = new CountDownLatch(2);
+        when(externalRepository.fetchDetail(any())).thenAnswer(invocation -> {
+            LhAnnouncementRequest request = invocation.getArgument(0);
+            firstPairStarted.countDown();
+            assertThat(firstPairStarted.await(2, TimeUnit.SECONDS)).isTrue();
+            if (request.panId().equals("100")) {
+                throw ExternalDataRequestException.rateLimited("일일 요청 한도 초과", null, false);
+            }
+            return detailResponse();
+        });
+        when(sourceStore.replaceDetails(eq("200"), any())).thenReturn(1);
+
+        ExternalDataCollectionReport report = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        assertThat(report.storedRowCount()).isOne();
+        assertThat(report.externalApiCallCount()).isEqualTo(2);
+        assertThat(report.rateLimitedRequestCount()).isOne();
+        verify(externalRepository, times(2)).fetchDetail(any());
+        verify(sourceStore, never()).replaceDetails(eq("100"), any());
+        verify(progressStore).complete(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), eq("b"), any(), eq("200"));
+        verify(progressStore, never()).complete(any(), eq("a"), any(), any());
+    }
+
+    @Test
+    void 같은_panId의_다른_조회_조건은_저장과_체크포인트까지_순서대로_처리한다() {
+        MyHomeAnnouncementSource first = announcementSource("a", "100");
+        MyHomeAnnouncementSource second = announcementSource("b", "100");
+        ReflectionTestUtils.setField(second, "url", second.getUrl().replace("aisTpCd=06", "aisTpCd=07"));
+        source(first, announcementSource("c", "200"), second);
+        Set<String> stored = ConcurrentHashMap.newKeySet();
+        List<String> samePanConditions = new ArrayList<>();
+        when(externalRepository.fetchDetail(any())).thenAnswer(invocation -> {
+            LhAnnouncementRequest request = invocation.getArgument(0);
+            if (request.panId().equals("100")) {
+                if (request.announcementTypeCode().equals("07")) {
+                    assertThat(stored).contains("100");
+                    verify(progressStore).complete(any(), eq("a"), any(), eq("100"));
+                }
+                samePanConditions.add(request.announcementTypeCode());
+            }
+            return detailResponse();
+        });
+        when(sourceStore.replaceDetails(any(), any())).thenAnswer(invocation -> {
+            stored.add(invocation.getArgument(0));
+            return 1;
+        });
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        assertThat(samePanConditions).containsExactly("06", "07");
+        assertThat(result.storedRowCount()).isEqualTo(3);
+    }
+
+    @Test
+    void 저장_예외가_발생해도_진행_중인_다른_공고가_끝난_뒤_원래_예외를_전파한다() throws Exception {
+        source(announcementSource("a", "100"), announcementSource("b", "200"),
+                announcementSource("c", "300"));
+        CountDownLatch failingStoreEntered = new CountDownLatch(1);
+        CountDownLatch releaseOtherRequest = new CountDownLatch(1);
+        IllegalStateException failure = new IllegalStateException("DB 저장 실패");
+        when(externalRepository.fetchDetail(any())).thenAnswer(invocation -> {
+            LhAnnouncementRequest request = invocation.getArgument(0);
+            if (request.panId().equals("200")) {
+                assertThat(releaseOtherRequest.await(5, TimeUnit.SECONDS)).isTrue();
+            }
+            return detailResponse();
+        });
+        when(sourceStore.replaceDetails(eq("100"), any())).thenAnswer(invocation -> {
+            failingStoreEntered.countDown();
+            throw failure;
+        });
+        when(sourceStore.replaceDetails(eq("200"), any())).thenReturn(1);
+        try (var caller = Executors.newSingleThreadExecutor()) {
+            var result = caller.submit(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL));
+            try {
+                assertThat(failingStoreEntered.await(2, TimeUnit.SECONDS)).isTrue();
+                assertThatThrownBy(() -> result.get(100, TimeUnit.MILLISECONDS))
+                        .isInstanceOf(java.util.concurrent.TimeoutException.class);
+            }
+            finally {
+                releaseOtherRequest.countDown();
+            }
+            assertThatThrownBy(() -> result.get(5, TimeUnit.SECONDS))
+                    .isInstanceOf(ExecutionException.class).hasCause(failure);
+        }
+        verify(externalRepository, times(2)).fetchDetail(any());
+        verify(progressStore).complete(any(), eq("b"), any(), eq("200"));
+        verify(progressStore, never()).complete(any(), eq("a"), any(), any());
+    }
+
+    @Test
+    void 병렬_요청에도_실행_로그의_MDC를_전달한다() {
+        source(announcementSource("a", "100"), announcementSource("b", "200"));
+        when(externalRepository.fetchDetail(any())).thenAnswer(invocation -> {
+            assertThat(MDC.get("traceId")).isEqualTo("collection-155");
+            return detailResponse();
+        });
+        MDC.put("traceId", "collection-155");
+        try {
+            service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+            assertThat(MDC.get("traceId")).isEqualTo("collection-155");
+        }
+        finally {
+            MDC.clear();
+        }
+    }
+
+    @Test
     void LH_상세_수집은_상세_행만_저장한다() {
         source(announcementSource());
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
@@ -165,7 +323,8 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @Test
     void 호출_제한이_발생하면_남은_LH_공고를_조회하지_않는다() {
-        source(announcementSource(), integratedLhAnnouncementSource());
+        source(announcementSource("a", "100"), announcementSource("b", "200"),
+                announcementSource("c", "300"));
         when(externalRepository.fetchDetail(any()))
                 .thenThrow(ExternalDataRequestException.rateLimited(
                         "resultCode=22, 일일 요청 한도 초과",
@@ -177,8 +336,8 @@ class LhAnnouncementExternalCollectionServiceTest {
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL
         );
 
-        assertThat(result.rateLimitedRequestCount()).isOne();
-        verify(externalRepository, times(1)).fetchDetail(any());
+        assertThat(result.rateLimitedRequestCount()).isEqualTo(2);
+        verify(externalRepository, times(2)).fetchDetail(any());
     }
 
     @Test
@@ -728,10 +887,14 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     private MyHomeAnnouncementSource announcementSource(String pblancId) {
+        return announcementSource(pblancId, "100");
+    }
+
+    private MyHomeAnnouncementSource announcementSource(String pblancId, String panId) {
         MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, item(
                 pblancId,
                 "행복주택",
-                "https://apply.lh.or.kr/panDetail?panId=100"
+                "https://apply.lh.or.kr/panDetail?panId=" + panId
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"
         ));
         ReflectionTestUtils.setField(source, "id", ++nextSourceId);

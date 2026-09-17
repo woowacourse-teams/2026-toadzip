@@ -17,6 +17,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import org.slf4j.MDC;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -28,6 +34,7 @@ import org.springframework.stereotype.Service;
 public class LhAnnouncementExternalCollectionService {
 
     private static final int ANNOUNCEMENT_BATCH_SIZE = 500;
+    private static final int MAX_CONCURRENT_REQUESTS = 2;
 
     private final MyHomeAnnouncementSourceRepository myHomeAnnouncementRepository;
     private final LhAnnouncementCollectionExecutionLock executionLock;
@@ -122,27 +129,92 @@ public class LhAnnouncementExternalCollectionService {
                         LinkedHashMap::new,
                         Collectors.toList()
                 ));
+        return collectRequests(targetSource, new ArrayList<>(candidatesByRequest.values()), progress);
+    }
+
+    private ExternalDataCollectionReport collectRequests(
+            ExternalDataSource targetSource,
+            List<List<Candidate>> requests,
+            BatchProgress progress
+    ) {
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
-        for (List<Candidate> requestCandidates : candidatesByRequest.values()) {
-            Candidate primary = requestCandidates.getFirst();
-            ExternalDataCollectionReport candidateReport = collectCandidate(
-                    targetSource,
-                    primary,
-                    progress
-            );
-            report = report.plus(candidateReport);
-            if (candidateReport.rateLimitedRequestCount() > 0) {
-                return report;
-            }
-            if (candidateReport.failedRequestCount() == 0) {
-                for (Candidate linkedCandidate : requestCandidates.subList(1, requestCandidates.size())) {
-                    if (!progress.isLinkedTo(
-                            linkedCandidate.sourceAnnouncementKey(),
-                            linkedCandidate.requestDescription()
-                    )) {
-                        progressManager.complete(targetSource, linkedCandidate);
-                    }
+        try (ExecutorService executor = Executors.newFixedThreadPool(MAX_CONCURRENT_REQUESTS)) {
+            int nextRequest = 0;
+            while (nextRequest < requests.size()) {
+                List<List<Candidate>> window = nextWindow(requests, nextRequest);
+                List<Callable<ExternalDataCollectionReport>> tasks = window.stream()
+                        .map(request -> collectionTask(targetSource, request, progress))
+                        .toList();
+                nextRequest += window.size();
+                for (Future<ExternalDataCollectionReport> result : executor.invokeAll(tasks)) {
+                    report = report.plus(result.get());
                 }
+                if (report.rateLimitedRequestCount() > 0) {
+                    return report;
+                }
+            }
+        }
+        catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("LH 공고 수집 대기가 중단되었습니다.", exception);
+        }
+        catch (ExecutionException exception) {
+            if (exception.getCause() instanceof RuntimeException cause) {
+                throw cause;
+            }
+            if (exception.getCause() instanceof Error cause) {
+                throw cause;
+            }
+            throw new IllegalStateException("LH 공고 수집 작업이 실패했습니다.", exception.getCause());
+        }
+        return report;
+    }
+
+    private List<List<Candidate>> nextWindow(List<List<Candidate>> requests, int offset) {
+        List<List<Candidate>> window = new ArrayList<>();
+        Set<String> panIds = new HashSet<>();
+        for (int index = offset; index < requests.size() && window.size() < MAX_CONCURRENT_REQUESTS; index++) {
+            List<Candidate> request = requests.get(index);
+            // 조회 조건이 달라도 같은 panId의 원천을 교체하므로 다음 묶음에서 처리한다.
+            if (!panIds.add(request.getFirst().panId())) {
+                break;
+            }
+            window.add(request);
+        }
+        return window;
+    }
+
+    private Callable<ExternalDataCollectionReport> collectionTask(
+            ExternalDataSource targetSource,
+            List<Candidate> requestCandidates,
+            BatchProgress progress
+    ) {
+        Map<String, String> context = MDC.getCopyOfContextMap();
+        return () -> {
+            try {
+                if (context != null) {
+                    MDC.setContextMap(context);
+                }
+                return collectRequest(targetSource, requestCandidates, progress);
+            }
+            finally {
+                MDC.clear();
+            }
+        };
+    }
+
+    private ExternalDataCollectionReport collectRequest(
+            ExternalDataSource targetSource,
+            List<Candidate> requestCandidates,
+            BatchProgress progress
+    ) {
+        ExternalDataCollectionReport report = collectCandidate(targetSource, requestCandidates.getFirst(), progress);
+        if (report.failedRequestCount() > 0) {
+            return report;
+        }
+        for (Candidate linkedCandidate : requestCandidates.subList(1, requestCandidates.size())) {
+            if (!progress.isLinkedTo(linkedCandidate.sourceAnnouncementKey(), linkedCandidate.requestDescription())) {
+                progressManager.complete(targetSource, linkedCandidate);
             }
         }
         return report;
