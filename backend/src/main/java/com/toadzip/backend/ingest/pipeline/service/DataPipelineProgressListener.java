@@ -9,4 +9,6 @@ public interface DataPipelineProgressListener {
     void completed(DataPipelineStep step);
 
     void skipped(DataPipelineStep step, String reason, String serverResponse);
+
+    void partiallyFailed(DataPipelineStep step);
 }
