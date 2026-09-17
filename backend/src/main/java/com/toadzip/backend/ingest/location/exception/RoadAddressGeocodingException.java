@@ -1,5 +1,7 @@
 package com.toadzip.backend.ingest.location.exception;
 
+import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
+
 public class RoadAddressGeocodingException extends RuntimeException {
 
     private final RoadAddressGeocodingFailureReason reason;

@@ -38,6 +38,10 @@ interface FakeSdk {
   latLngConstructor: ReturnType<typeof vi.fn>
   mapConstructor: ReturnType<typeof vi.fn>
   markerConstructor: ReturnType<typeof vi.fn>
+  markerInstances: Array<{
+    setMap: ReturnType<typeof vi.fn>
+    setZIndex: ReturnType<typeof vi.fn>
+  }>
   markerSetMap: ReturnType<typeof vi.fn>
   markerSetZIndex: ReturnType<typeof vi.fn>
   maps: typeof naver.maps
@@ -77,6 +81,7 @@ function createFakeSdk(): FakeSdk {
   const getMinZoomMap = vi.fn(() => 6)
   const markerSetMap = vi.fn()
   const markerSetZIndex = vi.fn()
+  const markerInstances: FakeSdk['markerInstances'] = []
   const removeListener = vi.fn()
   const stopMap = vi.fn()
   let dragStartListener: (() => void) | null = null
@@ -158,15 +163,17 @@ function createFakeSdk(): FakeSdk {
     if (content instanceof HTMLElement) {
       document.body.append(content)
     }
-    return {
-      setMap: (map: naver.maps.Map | null) => {
+    const instance = {
+      setMap: vi.fn((map: naver.maps.Map | null) => {
         markerSetMap(map)
         if (map === null && content instanceof HTMLElement) {
           content.remove()
         }
-      },
-      setZIndex: markerSetZIndex,
+      }),
+      setZIndex: vi.fn((zIndex: number) => markerSetZIndex(zIndex)),
     }
+    markerInstances.push(instance)
+    return instance
   })
   const pointConstructor = vi.fn(function FakePointConstructor(
     x: number,
@@ -196,6 +203,7 @@ function createFakeSdk(): FakeSdk {
     latLngConstructor,
     mapConstructor,
     markerConstructor,
+    markerInstances,
     markerSetMap,
     markerSetZIndex,
     morphMap,
@@ -889,6 +897,147 @@ describe('NaverMap', () => {
 
     expect(nextMarkerHighlight).toHaveBeenLastCalledWith(null)
     expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['server', 'legacy'] as const)(
+    '%s 경로에서 선택만 변경하면 마커와 포커스를 유지하고 필요한 표시만 갱신한다',
+    async (mode) => {
+      const fakeSdk = createFakeSdk()
+      const onMarkerSelect = vi.fn()
+      const nextMarkerSelect = vi.fn()
+      const markers = ['a', 'b', 'c'].map((id, index) => ({
+        ...markerPresentation,
+        id,
+        latitude: 37.5,
+        longitude: 127 + index * 0.01,
+        name: `${id} 단지`,
+        highlighted: id === 'b',
+      }))
+      loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+      function renderMap(selectedId: string | null, onSelect = onMarkerSelect) {
+        const nextMarkers = markers.map((marker) => ({
+          ...marker,
+          selected: marker.id === selectedId,
+        }))
+        return mode === 'server'
+          ? <NaverMap
+              markerRenderMode="server"
+              representation="INDIVIDUAL"
+              markers={nextMarkers}
+              onMarkerSelect={onSelect}
+            />
+          : <NaverMap markers={nextMarkers} onMarkerSelect={onSelect} />
+      }
+      const { rerender, unmount } = render(renderMap(null))
+      await waitFor(() => expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(3))
+      const buttons = [0, 1, 2].map((index) => createdMarkerButton(fakeSdk, index))
+      const [a, b, c] = buttons
+      const [aOverlay, bOverlay, cOverlay] = fakeSdk.markerInstances
+      c.focus()
+      const focus = vi.spyOn(HTMLButtonElement.prototype, 'focus')
+      fakeSdk.markerInstances.forEach(({ setZIndex }) => setZIndex.mockClear())
+
+      rerender(renderMap('a'))
+      expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(3)
+      expect(fakeSdk.markerSetMap).not.toHaveBeenCalled()
+      expect(a).toHaveClass('is-selected')
+      expect(aOverlay.setZIndex).toHaveBeenLastCalledWith(30)
+      expect(bOverlay.setZIndex).not.toHaveBeenCalled()
+      expect(cOverlay.setZIndex).not.toHaveBeenCalled()
+
+      rerender(renderMap('b', nextMarkerSelect))
+      expect(a).not.toHaveClass('is-selected')
+      expect(aOverlay.setZIndex).toHaveBeenLastCalledWith(10)
+      expect(b).toHaveClass('is-selected', 'is-highlighted')
+      expect(bOverlay.setZIndex).toHaveBeenLastCalledWith(30)
+      fireEvent.click(b)
+      expect(nextMarkerSelect).toHaveBeenCalledExactlyOnceWith('b')
+      expect(onMarkerSelect).not.toHaveBeenCalled()
+
+      rerender(renderMap(null))
+      expect(b).not.toHaveClass('is-selected')
+      expect(b).toHaveClass('is-highlighted')
+      expect(bOverlay.setZIndex).toHaveBeenLastCalledWith(20)
+      const updateCount = fakeSdk.markerSetZIndex.mock.calls.length
+      rerender(renderMap(null))
+      act(() => fakeSdk.emitIdle())
+      expect(fakeSdk.markerSetZIndex).toHaveBeenCalledTimes(updateCount)
+      expect(cOverlay.setZIndex).not.toHaveBeenCalled()
+      expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(3)
+      expect(fakeSdk.markerSetMap).not.toHaveBeenCalled()
+      buttons.forEach((button) => expect(button).toBeInTheDocument())
+      expect(c).toHaveFocus()
+      expect(focus).not.toHaveBeenCalled()
+      focus.mockRestore()
+
+      unmount()
+      fakeSdk.markerInstances.forEach(({ setMap }) => {
+        expect(setMap).toHaveBeenCalledExactlyOnceWith(null)
+      })
+    },
+  )
+
+  it('선택 이후 idle과 동일 데이터에서는 마커를 유지하고 실제 데이터 변경은 반영한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const marker = {
+      ...markerPresentation,
+      id: 'a',
+      latitude: 37.5,
+      longitude: 127,
+      name: 'a 단지',
+      selected: true,
+    }
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { rerender } = render(
+      <NaverMap markerRenderMode="server" representation="INDIVIDUAL" markers={[marker]} />,
+    )
+    await waitFor(() => expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce())
+    const firstButton = createdMarkerButton(fakeSdk, 0)
+    expect(firstButton).toHaveClass('is-selected')
+    expect(fakeSdk.markerInstances[0].setZIndex).toHaveBeenLastCalledWith(30)
+    rerender(<NaverMap markerRenderMode="server" representation="INDIVIDUAL"
+      markers={[{ ...marker, selected: false }]} />)
+    rerender(<NaverMap markerRenderMode="server" representation="INDIVIDUAL"
+      markers={[{ ...marker }]} />)
+    act(() => fakeSdk.emitIdle())
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
+    expect(fakeSdk.markerSetMap).not.toHaveBeenCalled()
+    expect(firstButton).toHaveClass('is-selected')
+
+    rerender(<NaverMap markerRenderMode="server" representation="INDIVIDUAL"
+      markers={[{ ...marker, monthlyRentLabel: '새 임대료' }]} />)
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2)
+    expect(firstButton).not.toBeInTheDocument()
+    expect(createdMarkerButton(fakeSdk, 1)).toHaveTextContent('새 임대료')
+    expect(createdMarkerButton(fakeSdk, 1)).toHaveClass('is-selected')
+    expect(fakeSdk.markerInstances[1].setZIndex).toHaveBeenLastCalledWith(30)
+    rerender(<NaverMap markerRenderMode="server" representation="INDIVIDUAL" markers={[]} />)
+    expect(fakeSdk.markerSetMap).toHaveBeenCalledTimes(2)
+    expect(createdMarkerButton(fakeSdk, 1)).not.toBeInTheDocument()
+  })
+
+  it('기존 군집 경로에서 선택으로 묶음 구성이 바뀌면 분리와 재결합을 유지한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const markers = ['a', 'b'].map((id) => ({
+      ...markerPresentation,
+      id,
+      latitude: 37.5,
+      longitude: 127,
+      name: `${id} 단지`,
+    }))
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { rerender } = render(<NaverMap markers={markers} />)
+    await waitFor(() => expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce())
+    expect(createdMarkerButton(fakeSdk, 0)).toHaveClass('housing-map-cluster')
+    rerender(<NaverMap markers={markers.map((marker) => ({
+      ...marker, selected: marker.id === 'a',
+    }))} />)
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(3)
+    expect(createdMarkerButton(fakeSdk, 1)).toHaveClass('is-selected')
+    rerender(<NaverMap markers={markers} />)
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(4)
+    expect(createdMarkerButton(fakeSdk, 3)).toHaveClass('housing-map-cluster')
+    expect(fakeSdk.markerSetMap).toHaveBeenCalledTimes(3)
   })
 
   it('개별 marker에 공급기관·임대유형과 임대 요약을 항상 표시한다', async () => {

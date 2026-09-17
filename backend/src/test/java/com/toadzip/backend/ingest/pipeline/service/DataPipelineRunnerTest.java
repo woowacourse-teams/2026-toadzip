@@ -30,6 +30,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
 class DataPipelineRunnerTest {
@@ -66,8 +67,11 @@ class DataPipelineRunnerTest {
 
     private DataPipelineRunner runner;
 
+    private DataPipelineStepResultAdapter resultAdapter;
+
     @BeforeEach
     void setUp() {
+        resultAdapter = new DataPipelineStepResultAdapter(JsonMapper.builder().build());
         runner = new DataPipelineRunner(
                 myHomeComplexCollectionService,
                 lhLeaseCatalogCollectionService,
@@ -77,7 +81,8 @@ class DataPipelineRunnerTest {
                 myHomeComplexMappingService,
                 householdEnrichmentService,
                 myHomeAnnouncementMappingService,
-                announcementEnrichmentService
+                announcementEnrichmentService,
+                resultAdapter
         );
     }
 
@@ -237,7 +242,7 @@ class DataPipelineRunnerTest {
         verify(progressListener).skipped(
                 DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
                 "외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.",
-                rateLimited
+                resultAdapter.adapt(rateLimited).serverResponse()
         );
         verify(lhAnnouncementSupplyCollectionService).collect();
         verify(lhAnnouncementDetailCollectionService).collect();
@@ -315,7 +320,7 @@ class DataPipelineRunnerTest {
         verify(progressListener).skipped(
                 DataPipelineStep.MAP_MYHOME_COMPLEXES,
                 "외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.",
-                rateLimited
+                resultAdapter.adapt(rateLimited).serverResponse()
         );
         verify(householdEnrichmentService).enrichAll();
     }

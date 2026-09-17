@@ -6,10 +6,13 @@ import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutionException;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentFailureResponse;
@@ -18,7 +21,6 @@ import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichment
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
-import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -28,7 +30,6 @@ import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.util.UriComponentsBuilder;
 
 @Slf4j
 @Service
@@ -43,6 +44,7 @@ public class LhAnnouncementEnrichmentService {
     private final LhAnnouncementEnrichmentExecutionLock executionLock;
     private final LhAnnouncementEnrichmentMapper mapper;
     private final LhAnnouncementEnrichmentWriter writer;
+    private final LhAnnouncementLinkResolver linkResolver;
     private final Clock clock;
 
     public LhAnnouncementEnrichmentService(
@@ -55,6 +57,7 @@ public class LhAnnouncementEnrichmentService {
             LhAnnouncementEnrichmentExecutionLock executionLock,
             LhAnnouncementEnrichmentMapper mapper,
             LhAnnouncementEnrichmentWriter writer,
+            LhAnnouncementLinkResolver linkResolver,
             Clock clock
     ) {
         this.myHomeSourceRepository = myHomeSourceRepository;
@@ -66,6 +69,7 @@ public class LhAnnouncementEnrichmentService {
         this.executionLock = executionLock;
         this.mapper = mapper;
         this.writer = writer;
+        this.linkResolver = linkResolver;
         this.clock = clock;
     }
 
@@ -114,10 +118,17 @@ public class LhAnnouncementEnrichmentService {
             return reject(source, null, LhAnnouncementEnrichmentFailureReason.UNSUPPORTED_SUPPLY_TYPE,
                     "지원하지 않는 공급유형의 LH 공고입니다.", failures, occurredAt);
         }
-        String panId = panIdOf(source);
-        if (panId == null) {
-            return reject(source, null, LhAnnouncementEnrichmentFailureReason.PAN_ID_NOT_FOUND,
-                    "마이홈 공고 URL에서 panId를 찾을 수 없습니다.", failures, occurredAt);
+        String panId;
+        try {
+            panId = linkResolver.resolve(source);
+        }
+        catch (LhAnnouncementLinkResolutionException exception) {
+            LhAnnouncementEnrichmentFailureReason reason = switch (exception.reason()) {
+                case REQUEST_UNSUPPORTED -> LhAnnouncementEnrichmentFailureReason.LH_COLLECTION_REQUEST_UNSUPPORTED;
+                case LINK_NOT_FOUND -> LhAnnouncementEnrichmentFailureReason.LH_COLLECTION_LINK_NOT_FOUND;
+                case LINK_MISMATCH -> LhAnnouncementEnrichmentFailureReason.LH_COLLECTION_LINK_MISMATCH;
+            };
+            return reject(source, null, reason, exception.getMessage(), failures, occurredAt);
         }
         List<LhAnnouncementDetailSource> details = detailSourceRepository.findAllByPanIdOrderBySourceOrderAsc(panId);
         if (details.isEmpty()) {
@@ -125,10 +136,6 @@ public class LhAnnouncementEnrichmentService {
                     "연결된 LH 공고 상세 원본이 없습니다.", failures, occurredAt);
         }
         List<LhAnnouncementSupplySource> supplies = supplySourceRepository.findAllByPanIdOrderBySourceOrderAsc(panId);
-        if (supplies.isEmpty()) {
-            return reject(source, panId, LhAnnouncementEnrichmentFailureReason.LH_SUPPLY_SOURCE_NOT_FOUND,
-                    "연결된 LH 공고 공급 원본이 없습니다.", failures, occurredAt);
-        }
         try {
             LhAnnouncementEnrichmentData data = mapper.map(panId, details, supplies);
             LhAnnouncementEnrichmentWriteResult result = writer.write(announcement, data);
@@ -177,37 +184,7 @@ public class LhAnnouncementEnrichmentService {
     }
 
     private boolean isLh(MyHomeAnnouncementSource source) {
-        String provider = source.getSuplyInsttNm();
-        return provider != null && (provider.startsWith("LH") || provider.equals("한국토지주택공사"));
-    }
-
-    private String panIdOf(MyHomeAnnouncementSource source) {
-        String panId = panIdFromUrl(source.getUrl(), source.getSourceKey());
-        if (panId != null) {
-            return panId;
-        }
-        panId = panIdFromUrl(source.getPcUrl(), source.getSourceKey());
-        if (panId != null) {
-            return panId;
-        }
-        return panIdFromUrl(source.getMobileUrl(), source.getSourceKey());
-    }
-
-    private String panIdFromUrl(String url, String sourceKey) {
-        if (blank(url)) {
-            return null;
-        }
-        try {
-            String panId = UriComponentsBuilder.fromUri(URI.create(url)).build().getQueryParams().getFirst("panId");
-            if (blank(panId)) {
-                return null;
-            }
-            return panId.strip();
-        }
-        catch (IllegalArgumentException exception) {
-            log.debug("LH 공고 URL을 해석할 수 없습니다: sourceKey={}", sourceKey);
-            return null;
-        }
+        return LhProviderPolicy.isLh(source.getSuplyInsttNm());
     }
 
     private boolean blank(String value) {

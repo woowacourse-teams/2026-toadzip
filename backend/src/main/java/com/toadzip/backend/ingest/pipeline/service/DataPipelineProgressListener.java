@@ -8,5 +8,5 @@ public interface DataPipelineProgressListener {
 
     void completed(DataPipelineStep step);
 
-    void skipped(DataPipelineStep step, String reason, Object serverResponse);
+    void skipped(DataPipelineStep step, String reason, String serverResponse);
 }

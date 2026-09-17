@@ -24,6 +24,7 @@
 | 예외 처리 | [exception-handling.md](exception-handling.md) | 예외 소유권, Advice, 오류 계약 |
 | DB 변경 | [persistence.md](persistence.md) | 모델, 쿼리, 트랜잭션 |
 | 관리자 데이터 파이프라인 | [data-pipeline-execution.md](data-pipeline-execution.md) | 실행 상태와 스키마 배포 |
+| LH 공고 연결·복구 | [lh-announcement-link-resolution.md](lh-announcement-link-resolution.md) | 매핑·보강의 성공 연결 기준과 fallback 종료 |
 | 공고 원천 수명주기 | [announcement-source-lifecycle.md](announcement-source-lifecycle.md) | 미조회 정책과 스키마 배포 |
 | 테스트 | [testing.md](testing.md) | 테스트 범위와 대역 기준 |
 | 보안 변경 | [security.md](security.md) | 인증, 인가, 개인정보, 비밀 |

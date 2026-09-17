@@ -1,17 +1,14 @@
-package com.toadzip.backend.ingest.collection.service;
+package com.toadzip.backend.ingest.collection.repository.external;
 
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementSupplySourceItem;
-import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementResponsePage;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 
 @Component
-public class LhAnnouncementSourceMapper {
+public class LhAnnouncementDetailResponseParser {
 
     private static final List<String> DETAIL_DATASET_KEYS = List.of(
             "dsEtcInfo",
@@ -22,32 +19,25 @@ public class LhAnnouncementSourceMapper {
             "dsSbdAhfl"
     );
 
-    private static final String SUPPLY_DATASET_KEY = "dsList01";
-
-    public List<LhAnnouncementDetailSource> details(String panId, JsonNode root) {
-        requireAnyDataset(root, DETAIL_DATASET_KEYS, "LH 공고 상세");
-        List<LhAnnouncementDetailSource> sources = new ArrayList<>();
-        addEtcInfo(sources, panId, root);
-        addComplexes(sources, panId, root);
-        addSchedules(sources, panId, root);
-        addReceptions(sources, panId, root);
-        addAnnouncementFiles(sources, panId, root);
-        addComplexImages(sources, panId, root);
-        return sources;
+    public List<LhAnnouncementDetailSource> parse(String panId, JsonNode root) {
+        return parsePage(panId, root, 0).items();
     }
 
-    public List<LhAnnouncementSupplySource> supplies(String panId, JsonNode root) {
-        requireAnyDataset(root, List.of(SUPPLY_DATASET_KEY), "LH 공고 공급");
-        List<JsonNode> rows = DataGoKrOpenApiClient.findRows(root, SUPPLY_DATASET_KEY);
-        List<LhAnnouncementSupplySource> sources = new ArrayList<>();
-        for (int sourceOrder = 0; sourceOrder < rows.size(); sourceOrder++) {
-            sources.add(new LhAnnouncementSupplySource(
-                    sourceOrder,
-                    panId,
-                    LhAnnouncementSupplySourceItem.from(rows.get(sourceOrder)).toSourceData()
-            ));
-        }
-        return sources;
+    public LhAnnouncementResponsePage<LhAnnouncementDetailSource> parsePage(
+            String panId,
+            JsonNode root,
+            int sourceOrderOffset
+    ) {
+        requireAnyDataset(root, DETAIL_DATASET_KEYS, "LH 공고 상세");
+        validateDatasetTypes(root);
+        List<LhAnnouncementDetailSource> sources = new ArrayList<>();
+        addEtcInfo(sources, panId, root, sourceOrderOffset);
+        addComplexes(sources, panId, root, sourceOrderOffset);
+        addSchedules(sources, panId, root, sourceOrderOffset);
+        addReceptions(sources, panId, root, sourceOrderOffset);
+        addAnnouncementFiles(sources, panId, root, sourceOrderOffset);
+        addComplexImages(sources, panId, root, sourceOrderOffset);
+        return new LhAnnouncementResponsePage<>(sources, maximumDatasetRowCount(root));
     }
 
     private void requireAnyDataset(JsonNode root, List<String> datasetKeys, String sourceName) {
@@ -58,29 +48,42 @@ public class LhAnnouncementSourceMapper {
     }
 
     private boolean containsDataset(JsonNode root, String datasetKey) {
-        if (!root.isArray()) {
-            return root.has(datasetKey);
-        }
-        for (JsonNode element : root) {
-            if (element.has(datasetKey)) {
-                return true;
-            }
-        }
-        return false;
+        return ExternalResponseRows.contains(root, datasetKey);
     }
 
-    private void addEtcInfo(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
-        for (JsonNode row : DataGoKrOpenApiClient.findRows(root, "dsEtcInfo")) {
-            sources.add(detail(sources.size(), panId, "ETC_INFO")
+    private void validateDatasetTypes(JsonNode root) {
+        DETAIL_DATASET_KEYS.forEach(key -> ExternalResponseRows.find(root, key));
+    }
+
+    private int maximumDatasetRowCount(JsonNode root) {
+        return DETAIL_DATASET_KEYS.stream()
+                .mapToInt(key -> ExternalResponseRows.find(root, key).size())
+                .max()
+                .orElse(0);
+    }
+
+    private void addEtcInfo(
+            List<LhAnnouncementDetailSource> sources,
+            String panId,
+            JsonNode root,
+            int sourceOrderOffset
+    ) {
+        for (JsonNode row : ExternalResponseRows.find(root, "dsEtcInfo")) {
+            sources.add(detail(sourceOrderOffset + sources.size(), panId, "ETC_INFO")
                     .correctionReason(text(row, "CRC_RSN"))
                     .etcContents(text(row, "ETC_CTS"))
                     .build());
         }
     }
 
-    private void addComplexes(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
-        for (JsonNode row : DataGoKrOpenApiClient.findRows(root, "dsSbd")) {
-            sources.add(detail(sources.size(), panId, "COMPLEX")
+    private void addComplexes(
+            List<LhAnnouncementDetailSource> sources,
+            String panId,
+            JsonNode root,
+            int sourceOrderOffset
+    ) {
+        for (JsonNode row : ExternalResponseRows.find(root, "dsSbd")) {
+            sources.add(detail(sourceOrderOffset + sources.size(), panId, "COMPLEX")
                     .complexName(text(row, "LCC_NT_NM"))
                     .address(text(row, "LGDN_ADR"))
                     .detailAddress(text(row, "LGDN_DTL_ADR"))
@@ -93,9 +96,14 @@ public class LhAnnouncementSourceMapper {
         }
     }
 
-    private void addSchedules(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
-        for (JsonNode row : DataGoKrOpenApiClient.findRows(root, "dsSplScdl")) {
-            sources.add(detail(sources.size(), panId, "SCHEDULE")
+    private void addSchedules(
+            List<LhAnnouncementDetailSource> sources,
+            String panId,
+            JsonNode root,
+            int sourceOrderOffset
+    ) {
+        for (JsonNode row : ExternalResponseRows.find(root, "dsSplScdl")) {
+            sources.add(detail(sourceOrderOffset + sources.size(), panId, "SCHEDULE")
                     .complexName(text(row, "SBD_LGO_NM"))
                     .applicationPeriod(text(row, "ACP_DTTM"))
                     .documentTargetAnnouncementDate(text(row, "PPR_SBM_OPE_ANC_DT"))
@@ -107,9 +115,14 @@ public class LhAnnouncementSourceMapper {
         }
     }
 
-    private void addReceptions(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
-        for (JsonNode row : DataGoKrOpenApiClient.findRows(root, "dsCtrtPlc")) {
-            sources.add(detail(sources.size(), panId, "RECEPTION")
+    private void addReceptions(
+            List<LhAnnouncementDetailSource> sources,
+            String panId,
+            JsonNode root,
+            int sourceOrderOffset
+    ) {
+        for (JsonNode row : ExternalResponseRows.find(root, "dsCtrtPlc")) {
+            sources.add(detail(sourceOrderOffset + sources.size(), panId, "RECEPTION")
                     .receptionAddress(text(row, "CTRT_PLC_ADR"))
                     .receptionDetailAddress(text(row, "CTRT_PLC_DTL_ADR"))
                     .operationBegin(text(row, "TSK_ST_DTTM"))
@@ -120,9 +133,14 @@ public class LhAnnouncementSourceMapper {
         }
     }
 
-    private void addAnnouncementFiles(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
-        for (JsonNode row : DataGoKrOpenApiClient.findRows(root, "dsAhflInfo")) {
-            sources.add(detail(sources.size(), panId, "ANNOUNCEMENT_FILE")
+    private void addAnnouncementFiles(
+            List<LhAnnouncementDetailSource> sources,
+            String panId,
+            JsonNode root,
+            int sourceOrderOffset
+    ) {
+        for (JsonNode row : ExternalResponseRows.find(root, "dsAhflInfo")) {
+            sources.add(detail(sourceOrderOffset + sources.size(), panId, "ANNOUNCEMENT_FILE")
                     .kind(text(row, "SL_PAN_AHFL_DS_CD_NM"))
                     .name(text(row, "CMN_AHFL_NM"))
                     .url(text(row, "AHFL_URL"))
@@ -130,9 +148,14 @@ public class LhAnnouncementSourceMapper {
         }
     }
 
-    private void addComplexImages(List<LhAnnouncementDetailSource> sources, String panId, JsonNode root) {
-        for (JsonNode row : DataGoKrOpenApiClient.findRows(root, "dsSbdAhfl")) {
-            sources.add(detail(sources.size(), panId, "COMPLEX_IMAGE")
+    private void addComplexImages(
+            List<LhAnnouncementDetailSource> sources,
+            String panId,
+            JsonNode root,
+            int sourceOrderOffset
+    ) {
+        for (JsonNode row : ExternalResponseRows.find(root, "dsSbdAhfl")) {
+            sources.add(detail(sourceOrderOffset + sources.size(), panId, "COMPLEX_IMAGE")
                     .kind(text(row, "LS_SPL_INF_UPL_FL_DS_CD_NM"))
                     .name(text(row, "CMN_AHFL_NM"))
                     .url(text(row, "AHFL_URL"))

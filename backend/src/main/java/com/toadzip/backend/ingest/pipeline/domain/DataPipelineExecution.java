@@ -111,6 +111,14 @@ public class DataPipelineExecution {
         if (!step.belongsTo(type)) {
             throw new IllegalStateException("실행 유형에 속하지 않는 단계입니다.");
         }
+        if (currentStep != null) {
+            throw new IllegalStateException(
+                    "실행 중인 단계를 완료하거나 건너뛴 뒤 다음 단계를 시작할 수 있습니다."
+            );
+        }
+        if (step != nextStep()) {
+            throw new IllegalStateException("다음 순서의 단계만 시작할 수 있습니다.");
+        }
         currentStep = step;
     }
 
@@ -134,6 +142,11 @@ public class DataPipelineExecution {
 
     public void complete(Instant completedAt) {
         requireRunning();
+        if (currentStep != null) {
+            throw new IllegalStateException(
+                    "실행 중인 단계를 완료하거나 건너뛴 뒤 파이프라인을 완료할 수 있습니다."
+            );
+        }
         if (completedSteps.size() + skippedSteps.size() != type.steps().size()) {
             throw new IllegalStateException(
                     "모든 단계를 완료하거나 건너뛴 뒤 파이프라인을 완료할 수 있습니다."
@@ -181,5 +194,13 @@ public class DataPipelineExecution {
             return DataPipelineExecutionStatus.COMPLETED;
         }
         return DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS;
+    }
+
+    private DataPipelineStep nextStep() {
+        int completedStepCount = completedSteps.size() + skippedSteps.size();
+        if (completedStepCount >= type.steps().size()) {
+            return null;
+        }
+        return type.steps().get(completedStepCount);
     }
 }

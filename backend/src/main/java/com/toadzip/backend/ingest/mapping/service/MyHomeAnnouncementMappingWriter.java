@@ -5,14 +5,9 @@ import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
-import com.toadzip.backend.housing.domain.HousingComplex;
-import com.toadzip.backend.housing.domain.HousingType;
-import com.toadzip.backend.housing.repository.HousingComplexRepository;
-import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,22 +26,18 @@ public class MyHomeAnnouncementMappingWriter {
 
     private final SupplyTargetRepository supplyTargetRepository;
 
-    private final HousingComplexRepository housingComplexRepository;
-
-    private final HousingTypeRepository housingTypeRepository;
+    private final MyHomeAnnouncementSupplyMatcher supplyMatcher;
 
     public MyHomeAnnouncementMappingWriter(
             AnnouncementRepository announcementRepository,
             SupplyRowRepository supplyRowRepository,
             SupplyTargetRepository supplyTargetRepository,
-            HousingComplexRepository housingComplexRepository,
-            HousingTypeRepository housingTypeRepository
+            MyHomeAnnouncementSupplyMatcher supplyMatcher
     ) {
         this.announcementRepository = announcementRepository;
         this.supplyRowRepository = supplyRowRepository;
         this.supplyTargetRepository = supplyTargetRepository;
-        this.housingComplexRepository = housingComplexRepository;
-        this.housingTypeRepository = housingTypeRepository;
+        this.supplyMatcher = supplyMatcher;
     }
 
     @Transactional
@@ -127,7 +118,7 @@ public class MyHomeAnnouncementMappingWriter {
         List<MyHomeSupplyMatchingFailureData> failures = new ArrayList<>();
         for (int index = 0; index < rows.size(); index++) {
             MyHomeSupplyRowMappingData data = rows.get(index);
-            SupplyMatchResult match = match(data);
+            MyHomeSupplyMatchResult match = supplyMatcher.match(data);
             if (match.failure() != null) {
                 failures.add(match.failure());
             }
@@ -171,7 +162,7 @@ public class MyHomeAnnouncementMappingWriter {
     private SupplyRow createSupplyRow(
             Announcement announcement,
             MyHomeSupplyRowMappingData data,
-            SupplyMatchResult match,
+            MyHomeSupplyMatchResult match,
             int displayOrder
     ) {
         return SupplyRow.create(
@@ -188,133 +179,6 @@ public class MyHomeAnnouncementMappingWriter {
                 match.failureDetail(),
                 data.totalSupplyHouseholdCount()
         );
-    }
-
-    private SupplyMatchResult match(MyHomeSupplyRowMappingData data) {
-        List<HousingComplex> complexes = housingComplexRepository.findAllByPnuAndSupplyType(
-                data.pnu(),
-                data.complexSupplyType()
-        );
-        if (complexes.isEmpty()) {
-            return SupplyMatchResult.failure(
-                    data,
-                    MyHomeAnnouncementMappingFailureReason.COMPLEX_NOT_FOUND,
-                    "PNU와 공급유형이 일치하는 단지가 없습니다."
-            );
-        }
-        if (complexes.size() > 1) {
-            HousingComplex matched = uniqueComplexByName(complexes, data.sourceComplexName());
-            if (matched == null) {
-                return SupplyMatchResult.failure(
-                        data,
-                        MyHomeAnnouncementMappingFailureReason.AMBIGUOUS_COMPLEX,
-                        "PNU와 공급유형이 일치하는 단지를 단지명으로도 하나로 확정할 수 없습니다."
-                );
-            }
-            return matchHousingType(data, matched);
-        }
-        return matchHousingType(data, complexes.getFirst());
-    }
-
-    private HousingComplex uniqueComplexByName(List<HousingComplex> complexes, String sourceName) {
-        String normalizedSourceName = MyHomeSupplyNameNormalizer.complexName(sourceName);
-        List<HousingComplex> matched = complexes.stream()
-                .filter(complex -> MyHomeSupplyNameNormalizer.complexName(complex.getName())
-                        .equals(normalizedSourceName))
-                .toList();
-        if (matched.size() != 1) {
-            return null;
-        }
-        return matched.getFirst();
-    }
-
-    private SupplyMatchResult matchHousingType(MyHomeSupplyRowMappingData data, HousingComplex complex) {
-        List<HousingType> housingTypes = housingTypeRepository.findAllByHousingComplex(complex);
-        if (housingTypes.isEmpty()) {
-            return SupplyMatchResult.failure(
-                    data,
-                    complex,
-                    MyHomeAnnouncementMappingFailureReason.HOUSING_TYPE_NOT_FOUND,
-                    "단지에 연결된 주택형이 없습니다."
-            );
-        }
-        if (housingTypes.size() > 1) {
-            HousingType matched = uniqueHousingTypeByName(housingTypes, data.sourceHousingTypeName());
-            if (matched == null) {
-                matched = uniqueHousingTypeByExclusiveArea(housingTypes, data.exclusiveArea());
-            }
-            if (matched == null) {
-                matched = uniqueHousingTypeBySupplyArea(housingTypes, data.supplyArea());
-            }
-            if (matched == null) {
-                return SupplyMatchResult.failure(
-                        data,
-                        complex,
-                        MyHomeAnnouncementMappingFailureReason.AMBIGUOUS_HOUSING_TYPE,
-                        "LH 공급행의 주택형명과 면적으로도 주택형 하나를 확정할 수 없습니다."
-                );
-            }
-            return SupplyMatchResult.matched(complex, matched);
-        }
-        return SupplyMatchResult.matched(complex, housingTypes.getFirst());
-    }
-
-    private HousingType uniqueHousingTypeByName(List<HousingType> housingTypes, String sourceName) {
-        String normalizedSourceName = MyHomeSupplyNameNormalizer.housingTypeName(sourceName);
-        List<HousingType> matched = housingTypes.stream()
-                .filter(housingType -> MyHomeSupplyNameNormalizer.housingTypeName(housingType.getName())
-                        .equals(normalizedSourceName))
-                .toList();
-        if (matched.size() != 1) {
-            return null;
-        }
-        return matched.getFirst();
-    }
-
-    private HousingType uniqueHousingTypeByExclusiveArea(
-            List<HousingType> housingTypes,
-            BigDecimal exclusiveArea
-    ) {
-        if (exclusiveArea == null) {
-            return null;
-        }
-        return uniqueHousingTypeByArea(
-                housingTypes,
-                housingType -> housingType.getExclusiveArea(),
-                exclusiveArea
-        );
-    }
-
-    private HousingType uniqueHousingTypeBySupplyArea(
-            List<HousingType> housingTypes,
-            BigDecimal supplyArea
-    ) {
-        if (supplyArea == null) {
-            return null;
-        }
-        return uniqueHousingTypeByArea(
-                housingTypes,
-                HousingType::getSupplyArea,
-                supplyArea
-        );
-    }
-
-    private HousingType uniqueHousingTypeByArea(
-            List<HousingType> housingTypes,
-            Function<HousingType, BigDecimal> areaExtractor,
-            BigDecimal sourceArea
-    ) {
-        List<HousingType> matched = housingTypes.stream()
-                .filter(housingType -> sameArea(areaExtractor.apply(housingType), sourceArea))
-                .toList();
-        if (matched.size() != 1) {
-            return null;
-        }
-        return matched.getFirst();
-    }
-
-    private boolean sameArea(BigDecimal left, BigDecimal right) {
-        return left != null && right != null && left.compareTo(right) == 0;
     }
 
     private MyHomeAnnouncementMappingReport reportOf(
@@ -352,44 +216,6 @@ public class MyHomeAnnouncementMappingWriter {
     ) {
     }
 
-    private record SupplyMatchResult(
-            HousingComplex complex,
-            HousingType housingType,
-            MyHomeSupplyMatchingFailureData failure
-    ) {
-
-        static SupplyMatchResult matched(HousingComplex complex, HousingType housingType) {
-            return new SupplyMatchResult(complex, housingType, null);
-        }
-
-        static SupplyMatchResult failure(
-                MyHomeSupplyRowMappingData data,
-                MyHomeAnnouncementMappingFailureReason reason,
-                String detail
-        ) {
-            return failure(data, null, reason, detail);
-        }
-
-        static SupplyMatchResult failure(
-                MyHomeSupplyRowMappingData data,
-                HousingComplex complex,
-                MyHomeAnnouncementMappingFailureReason reason,
-                String detail
-        ) {
-            return new SupplyMatchResult(
-                    complex,
-                    null,
-                    new MyHomeSupplyMatchingFailureData(data.source(), reason, detail)
-            );
-        }
-
-        String failureDetail() {
-            if (failure == null) {
-                return null;
-            }
-            return failure.detail();
-        }
-    }
 }
 
 record MyHomeAnnouncementWriteResult(

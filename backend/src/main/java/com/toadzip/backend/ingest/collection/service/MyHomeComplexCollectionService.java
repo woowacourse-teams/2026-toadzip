@@ -1,65 +1,34 @@
 package com.toadzip.backend.ingest.collection.service;
 
-import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionRequest;
-import com.toadzip.backend.ingest.collection.dto.MyHomeComplexSourceItem;
 import com.toadzip.backend.ingest.collection.dto.MyHomeRegion;
-import com.toadzip.backend.ingest.collection.repository.MyHomeComplexExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeRegionCatalog;
-import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
-import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
-import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletionService;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class MyHomeComplexCollectionService {
-
-    private static final String LIST_POINTER = "/response/body/item";
 
     private static final int MAX_CONCURRENT_REGIONS = 4;
 
-    private final ObjectMapper objectMapper;
-
-    private final MyHomeComplexExternalRepository externalRepository;
-
     private final MyHomeRegionCatalog regionCatalog;
 
-    private final MyHomeSourceStore sourceStore;
-
-    private final ExternalDataFailureRecorder failureRecorder;
-
-    private final ExternalDataRetryExecutor retryExecutor;
-
-    public MyHomeComplexCollectionService(
-            ObjectMapper objectMapper,
-            MyHomeComplexExternalRepository externalRepository,
-            MyHomeRegionCatalog regionCatalog,
-            MyHomeSourceStore sourceStore,
-            ExternalDataFailureRecorder failureRecorder,
-            ExternalDataRetryExecutor retryExecutor
-    ) {
-        this.objectMapper = objectMapper;
-        this.externalRepository = externalRepository;
-        this.regionCatalog = regionCatalog;
-        this.sourceStore = sourceStore;
-        this.failureRecorder = failureRecorder;
-        this.retryExecutor = retryExecutor;
-    }
+    private final MyHomeComplexRegionCollector regionCollector;
 
     public MyHomeComplexCollectionReport collect(MyHomeComplexCollectionRequest request) {
         log.info(
@@ -85,7 +54,7 @@ public class MyHomeComplexCollectionService {
             MyHomeComplexCollectionRequest request
     ) {
         if (regions.size() == 1) {
-            return collectRegion(regions.getFirst(), request);
+            return regionCollector.collect(regions.getFirst(), request);
         }
         return collectRegionsConcurrently(regions, request);
     }
@@ -94,212 +63,135 @@ public class MyHomeComplexCollectionService {
             List<MyHomeRegion> regions,
             MyHomeComplexCollectionRequest request
     ) {
-        MyHomeComplexCollectionReport report = MyHomeComplexCollectionReport.empty();
         ExecutorService executor = Executors.newFixedThreadPool(MAX_CONCURRENT_REGIONS);
         AtomicBoolean rateLimitReached = new AtomicBoolean();
-        CompletionService<MyHomeComplexCollectionReport> completionService =
-                new ExecutorCompletionService<>(executor);
-        List<Future<MyHomeComplexCollectionReport>> futures = regions.stream()
-                .map(region -> completionService.submit(
-                        () -> collectRegion(region, request, rateLimitReached)
-                ))
-                .toList();
+        BlockingQueue<Future<MyHomeComplexCollectionReport>> completedTasks =
+                new LinkedBlockingQueue<>();
+        List<FutureTask<MyHomeComplexCollectionReport>> tasks = submit(
+                executor,
+                completedTasks,
+                regions,
+                request,
+                rateLimitReached
+        );
+        List<MyHomeComplexCollectionReport> reports = new ArrayList<>();
+        RuntimeException failure = null;
+        boolean interrupted = false;
+        int completedTaskCount = 0;
+        boolean cancelRemaining = false;
         try {
-            for (int completedCount = 0; completedCount < regions.size(); completedCount++) {
-                MyHomeComplexCollectionReport regionReport = await(completionService);
-                report = report.plus(regionReport);
-                if (regionReport.rateLimitedRequestCount() > 0) {
-                    cancel(futures);
-                    return report;
+            while (completedTaskCount < tasks.size()) {
+                Future<MyHomeComplexCollectionReport> completedTask = completedTasks.take();
+                completedTaskCount++;
+                try {
+                    MyHomeComplexCollectionReport report = completedTask.get();
+                    reports.add(report);
+                    if (report.rateLimitedRequestCount() > 0) {
+                        cancelRemaining = true;
+                        break;
+                    }
+                }
+                catch (ExecutionException exception) {
+                    failure = runtimeExceptionOf(exception.getCause());
+                    cancelRemaining = true;
+                    break;
                 }
             }
-            return report;
-        }
-        finally {
-            shutdown(executor, rateLimitReached.get());
-        }
-    }
-
-    private MyHomeComplexCollectionReport await(
-            CompletionService<MyHomeComplexCollectionReport> completionService
-    ) {
-        try {
-            return completionService.take().get();
         }
         catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("마이홈 단지 수집이 중단되었습니다.", exception);
+            failure = interruptedFailure(exception);
+            interrupted = true;
+            cancelRemaining = true;
         }
-        catch (ExecutionException exception) {
-            throw runtimeExceptionOf(exception.getCause());
-        }
-    }
-
-    private void cancel(List<Future<MyHomeComplexCollectionReport>> futures) {
-        futures.forEach(future -> future.cancel(true));
-    }
-
-    private void shutdown(ExecutorService executor, boolean immediately) {
-        if (immediately) {
-            executor.shutdownNow();
-            return;
-        }
-        executor.shutdown();
-    }
-
-    private MyHomeComplexCollectionReport collectRegion(
-            MyHomeRegion region,
-            MyHomeComplexCollectionRequest request
-    ) {
-        return collectRegion(region, request, new AtomicBoolean());
-    }
-
-    private MyHomeComplexCollectionReport collectRegion(
-            MyHomeRegion region,
-            MyHomeComplexCollectionRequest request,
-            AtomicBoolean rateLimitReached
-    ) {
-        if (rateLimitReached.get()) {
-            return MyHomeComplexCollectionReport.empty();
-        }
-        ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
-        List<MyHomeComplexSourceItem> items;
-        try {
-            items = fetchCompleteRegion(region, request, callCounter, rateLimitReached);
-        }
-        catch (RateLimitCollectionCancelledException exception) {
-            return MyHomeComplexCollectionReport.empty();
-        }
-        catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
-            int rateLimitedRequestCount = ExternalDataRateLimit.count(exception);
-            if (rateLimitedRequestCount > 0) {
-                rateLimitReached.set(true);
+        finally {
+            if (cancelRemaining) {
+                cancelNeverStarted(executor.shutdownNow());
             }
-            failureRecorder.record(
-                    ExternalDataSource.MYHOME_COMPLEX,
-                    request.requestDescription(region, 1),
-                    exception,
-                    log,
-                    "마이홈 단지 지역 수집에 실패했습니다"
-            );
-            return new MyHomeComplexCollectionReport(
-                    "myhome-complex",
-                    0,
-                    1,
-                    callCounter.count(),
-                    rateLimitedRequestCount
-            );
-        }
-        int storedRowCount = sourceStore.replaceComplexRegion(region, items);
-        return new MyHomeComplexCollectionReport("myhome-complex", storedRowCount, 0, callCounter.count());
-    }
-
-    private List<MyHomeComplexSourceItem> fetchCompleteRegion(
-            MyHomeRegion region,
-            MyHomeComplexCollectionRequest request,
-            ExternalDataCallCounter callCounter,
-            AtomicBoolean rateLimitReached
-    ) {
-        List<MyHomeComplexSourceItem> items = new ArrayList<>();
-        for (int page = 1; page <= request.maxPages(); page++) {
-            if (rateLimitReached.get()) {
-                throw new RateLimitCollectionCancelledException();
+            else {
+                executor.shutdown();
             }
-            int currentPage = page;
-            String requestDescription = request.requestDescription(region, currentPage);
-            CollectedPage collectedPage = retryExecutor.execute(
-                    ExternalDataSource.MYHOME_COMPLEX,
-                    requestDescription,
-                    () -> validatePage(
-                            externalRepository.fetch(region, request, currentPage),
-                            items.size()
-                    ),
-                    callCounter
-            );
-            List<JsonNode> rows = collectedPage.rows();
-            rows.stream()
-                    .map(this::sourceItemOf)
-                    .forEach(items::add);
-            failureRecorder.resolve(ExternalDataSource.MYHOME_COMPLEX, requestDescription);
-            if (collectionCompleted(collectedPage.response().body(), items.size(), rows.size(), request.pageSize())) {
-                return items;
+            InterruptedException terminationInterruption = awaitTermination(executor);
+            if (terminationInterruption != null) {
+                failure = appendFailure(failure, interruptedFailure(terminationInterruption));
+                interrupted = true;
             }
         }
-        throw new ExternalDataRequestException("마이홈 단지 조회가 최대 페이지 안에 끝나지 않았습니다.");
-    }
-
-    private MyHomeComplexSourceItem sourceItemOf(JsonNode row) {
-        try {
-            return objectMapper.convertValue(row, MyHomeComplexSourceItem.class);
-        }
-        catch (RuntimeException exception) {
-            throw new ExternalDataRequestException("마이홈 단지 응답 항목 형식이 올바르지 않습니다.", exception);
-        }
-    }
-
-    private CollectedPage validatePage(ExternalDataResponse response, int collectedCount) {
-        JsonNode root = response.body();
-        String resultCode = root.at("/response/header/resultCode").asString("");
-        if ("03".equals(resultCode)) {
-            return new CollectedPage(response, List.of());
-        }
-        JsonNode body = root.at("/response/body");
-        if (!body.isObject()) {
-            throw invalidResponseSchema();
-        }
-        int totalCount = totalCountOf(body);
-        JsonNode item = body.path("item");
-        if (item.isMissingNode() || item.isNull()) {
-            if (totalCount == 0) {
-                return new CollectedPage(response, List.of());
+        while (completedTaskCount < tasks.size()) {
+            Future<MyHomeComplexCollectionReport> completedTask = completedTasks.remove();
+            completedTaskCount++;
+            if (completedTask.isCancelled()) {
+                continue;
             }
-            throw invalidResponseSchema();
-        }
-        if (!item.isArray() && !item.isObject()) {
-            throw invalidResponseSchema();
-        }
-        List<JsonNode> rows = DataGoKrOpenApiClient.findRows(response.body(), LIST_POINTER);
-        if (rows.isEmpty() && collectedCount == 0 && totalCount != 0) {
-            throw invalidResponseSchema();
-        }
-        return new CollectedPage(response, rows);
-    }
-
-    private int totalCountOf(JsonNode body) {
-        JsonNode totalCount = body.path("totalCount");
-        if (totalCount.isMissingNode() || totalCount.isNull()) {
-            return -1;
-        }
-        if (totalCount.isIntegralNumber() && totalCount.canConvertToInt()) {
-            return requireNonNegativeTotalCount(totalCount.intValue());
-        }
-        if (totalCount.isTextual()) {
             try {
-                return requireNonNegativeTotalCount(Integer.parseInt(totalCount.textValue()));
-            } catch (NumberFormatException exception) {
-                throw invalidResponseSchema();
+                reports.add(completedTask.get());
+            }
+            catch (InterruptedException exception) {
+                failure = appendFailure(failure, interruptedFailure(exception));
+                interrupted = true;
+            }
+            catch (ExecutionException exception) {
+                RuntimeException additionalFailure = runtimeExceptionOf(exception.getCause());
+                failure = appendFailure(failure, additionalFailure);
             }
         }
-        throw invalidResponseSchema();
-    }
-
-    private int requireNonNegativeTotalCount(int totalCount) {
-        if (totalCount < 0) {
-            throw invalidResponseSchema();
+        if (interrupted) {
+            Thread.currentThread().interrupt();
         }
-        return totalCount;
-    }
-
-    private ExternalDataRequestException invalidResponseSchema() {
-        return new ExternalDataRequestException("마이홈 단지 응답에 body, item 또는 totalCount 구조가 올바르지 않습니다.");
-    }
-
-    private boolean collectionCompleted(JsonNode responseBody, int collectedCount, int rowCount, int pageSize) {
-        int totalCount = responseBody.at("/response/body/totalCount").asInt(-1);
-        if (totalCount >= 0) {
-            return collectedCount >= totalCount;
+        if (failure != null) {
+            throw failure;
         }
-        return rowCount < pageSize;
+        return reports.stream()
+                .reduce(MyHomeComplexCollectionReport.empty(), MyHomeComplexCollectionReport::plus);
+    }
+
+    private List<FutureTask<MyHomeComplexCollectionReport>> submit(
+            ExecutorService executor,
+            BlockingQueue<Future<MyHomeComplexCollectionReport>> completedTasks,
+            List<MyHomeRegion> regions,
+            MyHomeComplexCollectionRequest request,
+            AtomicBoolean rateLimitReached
+    ) {
+        List<FutureTask<MyHomeComplexCollectionReport>> tasks = new ArrayList<>();
+        for (MyHomeRegion region : regions) {
+            FutureTask<MyHomeComplexCollectionReport> task = new FutureTask<>(
+                    () -> regionCollector.collect(region, request, rateLimitReached)
+            ) {
+                @Override
+                protected void done() {
+                    completedTasks.add(this);
+                }
+            };
+            tasks.add(task);
+            executor.execute(task);
+        }
+        return tasks;
+    }
+
+    private void cancelNeverStarted(List<Runnable> neverStartedTasks) {
+        for (Runnable neverStartedTask : neverStartedTasks) {
+            if (neverStartedTask instanceof Future<?> future) {
+                future.cancel(false);
+            }
+        }
+    }
+
+    private InterruptedException awaitTermination(ExecutorService executor) {
+        InterruptedException interruption = null;
+        while (!executor.isTerminated()) {
+            try {
+                executor.awaitTermination(1, TimeUnit.DAYS);
+            }
+            catch (InterruptedException exception) {
+                executor.shutdownNow();
+                if (interruption == null) {
+                    interruption = exception;
+                }
+                else {
+                    interruption.addSuppressed(exception);
+                }
+            }
+        }
+        return interruption;
     }
 
     private List<MyHomeRegion> regionsFor(MyHomeComplexCollectionRequest request) {
@@ -316,10 +208,18 @@ public class MyHomeComplexCollectionService {
         return new IllegalStateException("마이홈 단지 수집 작업이 실패했습니다.", cause);
     }
 
-    private record CollectedPage(ExternalDataResponse response, List<JsonNode> rows) {
+    private RuntimeException interruptedFailure(InterruptedException cause) {
+        return new IllegalStateException("마이홈 단지 수집이 중단되었습니다.", cause);
     }
 
-    private static final class RateLimitCollectionCancelledException
-            extends RuntimeException {
+    private RuntimeException appendFailure(
+            RuntimeException primaryFailure,
+            RuntimeException additionalFailure
+    ) {
+        if (primaryFailure == null) {
+            return additionalFailure;
+        }
+        primaryFailure.addSuppressed(additionalFailure);
+        return primaryFailure;
     }
 }

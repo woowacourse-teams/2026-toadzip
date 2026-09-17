@@ -4,8 +4,6 @@ import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
@@ -17,17 +15,7 @@ import tools.jackson.databind.ObjectMapper;
 
 public class DataGoKrOpenApiClient {
 
-    private static final String SUCCESS = "00";
-
-    private static final String NO_DATA = "03";
-
-    private static final List<String> RETRYABLE_RESULT_CODES = List.of("01", "05", "23");
-
     private static final String DAILY_RATE_LIMIT_CODE = "22";
-
-    private static final String PER_SECOND_RATE_LIMIT_CODE = "23";
-
-    private static final String LH_SUCCESS = "Y";
 
     private final RestClient restClient;
 
@@ -39,18 +27,22 @@ public class DataGoKrOpenApiClient {
 
     private final String sourceName;
 
+    private final ExternalDataResponseStatusValidator responseStatusValidator;
+
     public DataGoKrOpenApiClient(
             RestClient restClient,
             ObjectMapper objectMapper,
             String baseUrl,
             String serviceKey,
-            String sourceName
+            String sourceName,
+            ExternalDataResponseStatusValidator responseStatusValidator
     ) {
         this.restClient = restClient;
         this.objectMapper = objectMapper;
         this.baseUrl = baseUrl;
         this.serviceKey = encodeServiceKey(serviceKey);
         this.sourceName = sourceName;
+        this.responseStatusValidator = responseStatusValidator;
     }
 
     public ExternalDataResponse get(String path, MultiValueMap<String, String> params) {
@@ -58,7 +50,7 @@ public class DataGoKrOpenApiClient {
         URI requestUri = buildUri(path, params);
         String rawPayload = requestRawPayload(requestUri);
         JsonNode body = parsePayload(rawPayload);
-        verifyResultCode(body);
+        responseStatusValidator.validate(body);
         return new ExternalDataResponse(rawPayload, body);
     }
 
@@ -73,22 +65,6 @@ public class DataGoKrOpenApiClient {
             return URI.create(uri);
         }
         return URI.create(uri + "&" + query);
-    }
-
-    public static List<JsonNode> findRows(JsonNode root, String locator) {
-        JsonNode found = findByKey(root, locator);
-        if (locator.startsWith("/")) {
-            found = root.at(locator);
-        }
-        if (found.isArray()) {
-            List<JsonNode> rows = new ArrayList<>(found.size());
-            found.forEach(rows::add);
-            return rows;
-        }
-        if (found.isObject()) {
-            return List.of(found);
-        }
-        return List.of();
     }
 
     private String requestRawPayload(URI requestUri) {
@@ -173,61 +149,6 @@ public class DataGoKrOpenApiClient {
         catch (RuntimeException exception) {
             return objectMapper.createObjectNode();
         }
-    }
-
-    private void verifyResultCode(JsonNode root) {
-        JsonNode header = root.path("response").path("header");
-        if (header.isObject()) {
-            verifyMolitHeader(header);
-            return;
-        }
-        verifyLhHeader(root);
-    }
-
-    private void verifyMolitHeader(JsonNode header) {
-        String code = header.path("resultCode").asString("");
-        if (SUCCESS.equals(code) || NO_DATA.equals(code)) {
-            return;
-        }
-        String message = header.path("resultMsg").asString("");
-        String reason = "원천 오류 resultCode=" + code + ", " + message;
-        if (DAILY_RATE_LIMIT_CODE.equals(code)) {
-            throw ExternalDataRequestException.rateLimited(reason);
-        }
-        if (PER_SECOND_RATE_LIMIT_CODE.equals(code)) {
-            throw ExternalDataRequestException.rateLimited(reason, null, true);
-        }
-        if (RETRYABLE_RESULT_CODES.contains(code)) {
-            throw ExternalDataRequestException.retryable(reason);
-        }
-        throw new ExternalDataRequestException(reason);
-    }
-
-    private void verifyLhHeader(JsonNode root) {
-        List<JsonNode> headers = findRows(root, "resHeader");
-        if (headers.isEmpty()) {
-            throw new ExternalDataRequestException("원천 응답에 resHeader가 없습니다.");
-        }
-        JsonNode header = headers.getFirst();
-        String code = header.path("SS_CODE").asString("");
-        if (LH_SUCCESS.equals(code)) {
-            return;
-        }
-        String message = header.path("RS_MSG").asString("");
-        throw new ExternalDataRequestException("원천 오류 SS_CODE=" + code + ", " + message);
-    }
-
-    private static JsonNode findByKey(JsonNode root, String key) {
-        if (!root.isArray()) {
-            return root.path(key);
-        }
-        for (JsonNode element : root) {
-            JsonNode found = element.path(key);
-            if (!found.isMissingNode()) {
-                return found;
-            }
-        }
-        return root.path(key);
     }
 
     private static String encodeServiceKey(String raw) {

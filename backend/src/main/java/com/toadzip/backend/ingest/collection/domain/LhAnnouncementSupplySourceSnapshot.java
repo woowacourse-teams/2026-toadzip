@@ -1,12 +1,12 @@
 package com.toadzip.backend.ingest.collection.domain;
 
-public record LhCatalogSourceData(
-        String areaName,
-        String supplyTypeName,
+public record LhAnnouncementSupplySourceSnapshot(
         String complexLabel,
-        String complexTotalUnitCount,
+        String typeName,
         String exclusiveArea,
+        String supplyArea,
         String totalUnitCount,
+        String suppliedUnitCount,
         String depositText,
         String monthlyRentText
 ) {

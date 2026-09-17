@@ -543,7 +543,7 @@ export default function NaverMap({
       createdMarkers,
       dataBusyRef.current || transitioningRef.current,
     )
-    applyMarkerHighlights(createdMarkers, markersRef.current)
+    applyMarkerPresentation(createdMarkers, markersRef.current)
     createdMarkersRef.current = createdMarkers
     markerOverlaysRef.current = createdMarkers.map(({ overlay }) => overlay)
     const clusterFocusTimer = restoreClusterFocus(
@@ -562,7 +562,7 @@ export default function NaverMap({
   }, [markerGeometryKey, projectionRevision, status.kind])
 
   useEffect(() => {
-    applyMarkerHighlights(createdMarkersRef.current, markers)
+    applyMarkerPresentation(createdMarkersRef.current, markers)
   }, [markers])
 
   useEffect(() => {
@@ -854,6 +854,13 @@ interface CreatedMarker {
   readonly isInteracting: () => boolean
   readonly overlay: naver.maps.Marker
   readonly rendered: RenderedMarker
+  presentation: MarkerPresentation | null
+}
+
+interface MarkerPresentation {
+  readonly selected: boolean
+  readonly highlighted: boolean
+  readonly zIndex: number
 }
 
 function updateAggregateMarkerAvailability(
@@ -1045,7 +1052,7 @@ function createMarker({
       marker.marker,
       () => onAggregateMarkerSelect(marker.marker),
     )
-    return { ...created, rendered: marker }
+    return { ...created, rendered: marker, presentation: null }
   }
   if (marker.kind === 'cluster') {
     const created = createClusterMarker(
@@ -1054,7 +1061,7 @@ function createMarker({
       marker,
       () => onClusterSelect(marker),
     )
-    return { ...created, rendered: marker }
+    return { ...created, rendered: marker, presentation: null }
   }
   const created = createComplexMarker(
     maps,
@@ -1063,7 +1070,7 @@ function createMarker({
     () => onMarkerSelect?.(marker.marker.id),
     (complexId) => onMarkerHighlight?.(complexId),
   )
-  return { ...created, rendered: marker }
+  return { ...created, rendered: marker, presentation: null }
 }
 
 interface CreatedMarkerOverlay {
@@ -1336,22 +1343,43 @@ function createMarkerGeometryKey({
       marker.rentalTypeLabel,
       marker.areaLabel,
       marker.monthlyRentLabel,
-      Boolean(marker.selected),
+      // 기존 군집은 선택 단지를 묶음에서 분리하므로 구성 재계산이 필요하다.
+      ...(markerRenderMode === 'legacy' ? [Boolean(marker.selected)] : []),
     ]),
   ])
 }
 
-function applyMarkerHighlights(
+function applyMarkerPresentation(
   createdMarkers: readonly CreatedMarker[],
   markers: readonly NaverMapMarker[],
 ) {
+  const selectedIds = new Set(
+    markers.filter(({ selected }) => selected).map(({ id }) => id),
+  )
   const highlightedIds = new Set(
     markers.filter(({ highlighted }) => highlighted).map(({ id }) => id),
   )
-  createdMarkers.forEach(({ button, overlay, rendered }) => {
+  createdMarkers.forEach((created) => {
+    const { button, overlay, rendered, presentation } = created
+    const selected = rendered.kind === 'complex'
+      && selectedIds.has(rendered.marker.id)
     const highlighted = markerIsHighlighted(rendered, highlightedIds)
-    button.classList.toggle('is-highlighted', highlighted)
-    overlay.setZIndex(markerZIndex(rendered, highlighted))
+    const zIndex = markerZIndex(rendered, selected, highlighted)
+    if (presentation?.selected === selected
+      && presentation.highlighted === highlighted
+      && presentation.zIndex === zIndex) {
+      return
+    }
+    if (presentation?.selected !== selected) {
+      button.classList.toggle('is-selected', selected)
+    }
+    if (presentation?.highlighted !== highlighted) {
+      button.classList.toggle('is-highlighted', highlighted)
+    }
+    if (presentation?.zIndex !== zIndex) {
+      overlay.setZIndex(zIndex)
+    }
+    created.presentation = { selected, highlighted, zIndex }
   })
 }
 
@@ -1368,8 +1396,8 @@ function markerIsHighlighted(
   return marker.members.some(({ id }) => highlightedIds.has(id))
 }
 
-function markerZIndex(marker: RenderedMarker, highlighted: boolean) {
-  if (marker.kind === 'complex' && marker.marker.selected) {
+function markerZIndex(marker: RenderedMarker, selected: boolean, highlighted: boolean) {
+  if (selected) {
     return 30
   }
   if (highlighted) {
@@ -1421,7 +1449,6 @@ function renderedMarkerGeometryKey(marker: RenderedMarker | undefined) {
       marker.marker.rentalTypeLabel,
       marker.marker.areaLabel,
       marker.marker.monthlyRentLabel,
-      Boolean(marker.marker.selected),
     ])
   }
   return JSON.stringify([

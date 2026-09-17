@@ -83,53 +83,53 @@ public class MyHomeAnnouncementSource {
     private Long surlus;
     private Long mtRntchrg;
 
-    private MyHomeAnnouncementSource(int sourceOrder, MyHomeAnnouncementSourceData data) {
+    private MyHomeAnnouncementSource(int sourceOrder, MyHomeAnnouncementSourceSnapshot snapshot) {
         this.sourceOrder = sourceOrder;
         consecutiveMissCount = 0;
         active = true;
-        sourceKey = sourceKeyOf(data);
-        replaceWith(data);
+        sourceKey = sourceKeyOf(snapshot);
+        replaceWith(snapshot);
     }
 
-    public static MyHomeAnnouncementSource from(int sourceOrder, MyHomeAnnouncementSourceData data) {
-        return new MyHomeAnnouncementSource(sourceOrder, data);
+    public static MyHomeAnnouncementSource from(int sourceOrder, MyHomeAnnouncementSourceSnapshot snapshot) {
+        return new MyHomeAnnouncementSource(sourceOrder, snapshot);
     }
 
-    public static String sourceKeyOf(MyHomeAnnouncementSourceData data) {
-        return keyPart(data.pblancId()) + keyPart(data.houseSn());
+    public static String sourceKeyOf(MyHomeAnnouncementSourceSnapshot snapshot) {
+        return keyPart(snapshot.pblancId()) + keyPart(snapshot.houseSn());
     }
 
-    public void replaceWith(MyHomeAnnouncementSourceData data) {
-        pblancId = trim(data.pblancId());
-        houseSn = data.houseSn();
-        sttusNm = trim(data.sttusNm());
-        pblancNm = trim(data.pblancNm());
-        suplyInsttNm = trim(data.suplyInsttNm());
-        houseTyNm = trim(data.houseTyNm());
-        suplyTyNm = trim(data.suplyTyNm());
-        beforePblancId = trim(data.beforePblancId());
-        rcritPblancDe = trim(data.rcritPblancDe());
-        przwnerPresnatnDe = trim(data.przwnerPresnatnDe());
-        beginDe = trim(data.beginDe());
-        endDe = trim(data.endDe());
-        refrnc = trim(data.refrnc());
-        url = trim(data.url());
-        pcUrl = trim(data.pcUrl());
-        mobileUrl = trim(data.mobileUrl());
-        hsmpNm = trim(data.hsmpNm());
-        brtcNm = trim(data.brtcNm());
-        signguNm = trim(data.signguNm());
-        fullAdres = trim(data.fullAdres());
-        rnCodeNm = trim(data.rnCodeNm());
-        refrnLegaldongNm = trim(data.refrnLegaldongNm());
-        pnu = trim(data.pnu());
-        heatMthdNm = trim(data.heatMthdNm());
-        totHshldCo = trim(data.totHshldCo());
-        sumSuplyCo = data.sumSuplyCo();
-        rentGtn = data.rentGtn();
-        enty = data.enty();
-        surlus = data.surlus();
-        mtRntchrg = data.mtRntchrg();
+    public void replaceWith(MyHomeAnnouncementSourceSnapshot snapshot) {
+        pblancId = trim(snapshot.pblancId());
+        houseSn = snapshot.houseSn();
+        sttusNm = trim(snapshot.sttusNm());
+        pblancNm = trim(snapshot.pblancNm());
+        suplyInsttNm = trim(snapshot.suplyInsttNm());
+        houseTyNm = trim(snapshot.houseTyNm());
+        suplyTyNm = trim(snapshot.suplyTyNm());
+        beforePblancId = trim(snapshot.beforePblancId());
+        rcritPblancDe = trim(snapshot.rcritPblancDe());
+        przwnerPresnatnDe = trim(snapshot.przwnerPresnatnDe());
+        beginDe = trim(snapshot.beginDe());
+        endDe = trim(snapshot.endDe());
+        refrnc = trim(snapshot.refrnc());
+        url = trim(snapshot.url());
+        pcUrl = trim(snapshot.pcUrl());
+        mobileUrl = trim(snapshot.mobileUrl());
+        hsmpNm = trim(snapshot.hsmpNm());
+        brtcNm = trim(snapshot.brtcNm());
+        signguNm = trim(snapshot.signguNm());
+        fullAdres = trim(snapshot.fullAdres());
+        rnCodeNm = trim(snapshot.rnCodeNm());
+        refrnLegaldongNm = trim(snapshot.refrnLegaldongNm());
+        pnu = trim(snapshot.pnu());
+        heatMthdNm = trim(snapshot.heatMthdNm());
+        totHshldCo = trim(snapshot.totHshldCo());
+        sumSuplyCo = snapshot.sumSuplyCo();
+        rentGtn = snapshot.rentGtn();
+        enty = snapshot.enty();
+        surlus = snapshot.surlus();
+        mtRntchrg = snapshot.mtRntchrg();
     }
 
     public void markCollectedAt(Instant collectedAt) {

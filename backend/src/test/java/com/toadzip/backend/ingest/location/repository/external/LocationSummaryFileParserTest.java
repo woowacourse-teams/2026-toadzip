@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.zip.ZipEntry;
@@ -93,6 +94,111 @@ class LocationSummaryFileParserTest {
                 .containsEntry("entrc_jeju.txt", Set.of("50"));
     }
 
+    @Test
+    void UTF8_한글이_8192바이트_표본_경계에_걸려도_UTF8로_파싱한다() throws IOException {
+        String prefix = String.join(
+                "|", "11140", "1", "1114010300", "서울특별시", "중구", ""
+        );
+        int fillerLength = 8_191 - prefix.getBytes(StandardCharsets.UTF_8).length;
+        String townName = "a".repeat(fillerLength) + "가";
+        String content = row(
+                "11140", "1", "1114010300", "서울특별시", "중구", townName,
+                "111402005001", "세종대로", "0", "110", "0", "953875.044172", "1951999.498732"
+        );
+        List<LocationSummaryRecord> records = new ArrayList<>();
+
+        parser.parse(
+                new ByteArrayInputStream(zip(List.of(new Entry(
+                        "entrc_seoul.txt", content, StandardCharsets.UTF_8
+                )))),
+                records::add
+        );
+
+        assertThat(records).singleElement()
+                .extracting(LocationSummaryRecord::townName)
+                .asString()
+                .contains("가");
+    }
+
+    @Test
+    void UTF8_4바이트_문자가_8192바이트_표본_경계에_걸려도_UTF8로_파싱한다() throws IOException {
+        String fourByteCharacter = "😀";
+        String prefix = String.join(
+                "|", "11140", "1", "1114010300", "province", "district", ""
+        );
+        int fillerLength = 8_191 - prefix.getBytes(StandardCharsets.UTF_8).length;
+        String townName = "a".repeat(fillerLength) + fourByteCharacter;
+        String content = row(
+                "11140", "1", "1114010300", "province", "district", townName,
+                "111402005001", "road", "0", "110", "0", "953875.044172", "1951999.498732"
+        );
+        List<LocationSummaryRecord> records = new ArrayList<>();
+
+        parser.parse(
+                new ByteArrayInputStream(zip(List.of(new Entry(
+                        "entrc_seoul.txt", content, StandardCharsets.UTF_8
+                )))),
+                records::add
+        );
+
+        assertThat(records).singleElement()
+                .extracting(LocationSummaryRecord::townName)
+                .asString()
+                .endsWith(fourByteCharacter);
+    }
+
+    @Test
+    void CP949_한글이_8192바이트_표본_경계에_걸려도_CP949로_파싱한다() throws IOException {
+        String cp949Character = new String(new byte[] {(byte) 0xE0, (byte) 0xA1}, MS949);
+        String prefix = String.join(
+                "|", "11140", "1", "1114010300", "province", "district", ""
+        );
+        int fillerLength = 8_191 - prefix.getBytes(MS949).length;
+        String townName = "a".repeat(fillerLength) + cp949Character;
+        String content = row(
+                "11140", "1", "1114010300", "province", "district", townName,
+                "111402005001", "road", "0", "110", "0", "953875.044172", "1951999.498732"
+        );
+        List<LocationSummaryRecord> records = new ArrayList<>();
+
+        parser.parse(
+                new ByteArrayInputStream(zip(List.of(new Entry(
+                        "entrc_seoul.txt", content, MS949
+                )))),
+                records::add
+        );
+
+        assertThat(records).singleElement()
+                .extracting(LocationSummaryRecord::townName)
+                .asString()
+                .endsWith(cp949Character);
+    }
+
+    @Test
+    void UTF8과_CP949_표본이_모두_유효하지_않으면_거절한다() throws IOException {
+        byte[] zip = zip(List.of(new Entry("entrc_seoul.txt", new byte[] {(byte) 0xFF, (byte) 0xFF})));
+
+        assertThatThrownBy(() -> parser.parse(new ByteArrayInputStream(zip), ignored -> { }))
+                .isInstanceOf(InvalidIngestRequestException.class)
+                .hasMessageContaining("인코딩");
+    }
+
+    @Test
+    void 표본_뒤의_본문에_잘못된_바이트가_있으면_거절한다() throws IOException {
+        String firstRow = row(
+                "11140", "1", "1114010300", "서울특별시", "중구", "a".repeat(8_192),
+                "111402005001", "세종대로", "0", "110", "0", "953875.044172", "1951999.498732"
+        ) + "\n";
+        byte[] validPrefix = firstRow.getBytes(StandardCharsets.UTF_8);
+        byte[] content = Arrays.copyOf(validPrefix, validPrefix.length + 1);
+        content[content.length - 1] = (byte) 0xFF;
+        byte[] zip = zip(List.of(new Entry("entrc_seoul.txt", content)));
+
+        assertThatThrownBy(() -> parser.parse(new ByteArrayInputStream(zip), ignored -> { }))
+                .isInstanceOf(InvalidIngestRequestException.class)
+                .hasMessageContaining("인코딩");
+    }
+
     private String row(
             String districtCode,
             String entranceSerial,
@@ -120,13 +226,17 @@ class LocationSummaryFileParserTest {
         try (ZipOutputStream zip = new ZipOutputStream(output)) {
             for (Entry entry : entries) {
                 zip.putNextEntry(new ZipEntry(entry.name()));
-                zip.write(entry.content().getBytes(entry.charset()));
+                zip.write(entry.content());
                 zip.closeEntry();
             }
         }
         return output.toByteArray();
     }
 
-    private record Entry(String name, String content, Charset charset) {
+    private record Entry(String name, byte[] content) {
+
+        private Entry(String name, String content, Charset charset) {
+            this(name, content.getBytes(charset));
+        }
     }
 }

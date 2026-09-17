@@ -14,28 +14,35 @@ import com.toadzip.backend.announcement.service.AnnouncementQueryService;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceData;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceData;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionCheckpointRepository;
+import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionLinkRepository;
+import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -79,10 +86,20 @@ class MyHomeAnnouncementMappingServiceTest {
     private LhAnnouncementSupplySourceRepository lhSupplyRepository;
 
     @Autowired
+    private LhAnnouncementCollectionLinkRepository linkRepository;
+
+    @Autowired
+    private LhAnnouncementCollectionProgressStore progressStore;
+
+    @Autowired
+    private LhAnnouncementCollectionCandidateResolver candidateResolver;
+
+    @Autowired
     private LhSourceStore lhSourceStore;
 
     @BeforeEach
-    void setUp() {
+    @AfterEach
+    void cleanUp() {
         supplyTargetRepository.deleteAll();
         supplyRowRepository.deleteAll();
         announcementRepository.deleteAll();
@@ -91,6 +108,7 @@ class MyHomeAnnouncementMappingServiceTest {
         failureRepository.deleteAll();
         sourceRepository.deleteAll();
         checkpointRepository.deleteAll();
+        linkRepository.deleteAll();
         lhSupplyRepository.deleteAll();
     }
 
@@ -115,6 +133,48 @@ class MyHomeAnnouncementMappingServiceTest {
         });
     }
 
+    @ParameterizedTest
+    @CsvSource({
+            "5년임대, PUBLIC_RENTAL_5Y",
+            "10년임대, PUBLIC_RENTAL_10Y"
+    })
+    void 공공임대_기간을_공고_임대유형으로_보존하고_단지와_연결한다(String sourceSupplyType, RentalType expectedType) {
+        saveMappedComplex("동삼2", "123:" + expectedType.name(), expectedType.name());
+        sourceRepository.save(source(0, withSupplyType(
+                data("21026", 1, "부산도시공사", "동삼2"),
+                sourceSupplyType
+        )));
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement ->
+                assertThat(announcement.getSupplyType()).isEqualTo(expectedType));
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getHousingComplex()).isNotNull();
+            assertThat(row.getHousingType()).isNotNull();
+        });
+    }
+
+    @Test
+    void 기존에_기타로_저장된_5년임대_공고를_재매핑하면_정식_임대유형으로_교정한다() {
+        saveMappedComplex("동삼2", "123:PUBLIC_RENTAL_5Y", "PUBLIC_RENTAL_5Y");
+        sourceRepository.save(source(0, withSupplyType(
+                data("21026", 1, "부산도시공사", "동삼2"),
+                "5년임대"
+        )));
+        service.mapAll();
+        Announcement stored = announcementRepository.findAll().getFirst();
+        ReflectionTestUtils.setField(stored, "supplyType", RentalType.ETC);
+        announcementRepository.save(stored);
+
+        var report = service.mapAll();
+
+        assertThat(report.updatedAnnouncementCount()).isOne();
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement ->
+                assertThat(announcement.getSupplyType()).isEqualTo(RentalType.PUBLIC_RENTAL_5Y));
+    }
+
     @Test
     void 같은_원본을_반복_매핑해도_공고와_공급행을_중복_생성하지_않는다() {
         saveMappedComplex();
@@ -135,7 +195,7 @@ class MyHomeAnnouncementMappingServiceTest {
         sourceRepository.save(source(0, data("21026", 1, "부산도시공사", "동삼2")));
         service.mapAll();
         MyHomeAnnouncementSource source = sourceRepository.findAll().getFirst();
-        MyHomeAnnouncementSourceData changed = data("21026", 1, "서울주택도시공사", "동삼2 변경");
+        MyHomeAnnouncementSourceSnapshot changed = data("21026", 1, "서울주택도시공사", "동삼2 변경");
         source.replaceWith(withNameAndSupplyCount(changed, "변경된 국민임대 모집공고", 35));
         source.markCollectedAt(COLLECTED_AT.plusSeconds(60));
         sourceRepository.save(source);
@@ -156,6 +216,8 @@ class MyHomeAnnouncementMappingServiceTest {
     @Test
     void 이전_공고_식별자로_정정공고를_연결한다() {
         saveMappedComplex();
+        saveDefaultLhSupply("21026");
+        saveDefaultLhSupply("21027");
         sourceRepository.saveAll(List.of(
                 source(1, withPrevious(data("21027", 2, "LH서울", "동삼2"), "21026")),
                 source(0, data("21026", 1, "LH서울", "동삼2"))
@@ -173,6 +235,8 @@ class MyHomeAnnouncementMappingServiceTest {
     @Test
     void 비활성화된_원공고의_상세를_유지하고_재수집된_취소공고를_반영한다() {
         saveMappedComplex();
+        saveDefaultLhSupply("21026");
+        saveDefaultLhSupply("21027");
         MyHomeAnnouncementSource originalSource = source(
                 0,
                 data("21026", 1, "LH서울", "동삼2")
@@ -250,7 +314,32 @@ class MyHomeAnnouncementMappingServiceTest {
                 new BigDecimal("59.9500"),
                 new BigDecimal("84.0500")
         ));
-        sourceRepository.save(source(0, data("21026", 1, "부산도시공사", "동삼2")));
+        sourceRepository.save(source(0, withHousingType(
+                data("21026", 1, "부산도시공사", "동삼2"),
+                "77A"
+        )));
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isOne();
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getHousingComplex()).isNotNull();
+            assertThat(row.getHousingType()).isNull();
+            assertThat(row.getMatchingFailureReason()).contains("주택형 하나를 확정할 수 없습니다");
+        });
+        assertThat(failureRepository.findAll()).singleElement()
+                .extracting(failure -> failure.getReason())
+                .isEqualTo(MyHomeAnnouncementMappingFailureReason.AMBIGUOUS_HOUSING_TYPE);
+    }
+
+    @Test
+    void 단일_주택형_후보가_원천_주택형명과_다르면_연결하지_않는다() {
+        saveMappedComplex();
+        MyHomeAnnouncementSourceSnapshot sourceData = withHousingType(
+                data("21026", 1, "부산도시공사", "동삼2"),
+                "59A"
+        );
+        sourceRepository.save(source(0, sourceData));
 
         var report = service.mapAll();
 
@@ -277,7 +366,7 @@ class MyHomeAnnouncementMappingServiceTest {
                 new BigDecimal("59.9500"),
                 new BigDecimal("84.0500")
         ));
-        MyHomeAnnouncementSourceData sourceData = withHousingType(
+        MyHomeAnnouncementSourceSnapshot sourceData = withHousingType(
                 data("21026", 1, "부산도시공사", "동삼2"),
                 "46-A형"
         );
@@ -344,8 +433,9 @@ class MyHomeAnnouncementMappingServiceTest {
                 new BigDecimal("50.0000")
         ));
         sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
+        saveDefaultLhSupply("21026");
         service.mapAll();
-        saveLhSupplyCheckpoint("21026", "PAN-1");
+        saveLhSupplyLink("21026", "PAN-1");
         lhSupplyRepository.saveAll(List.of(
                 lhSupply(0, "PAN-1", "동삼 2단지 국민임대", "46-A형", "99.0000", "99.0000"),
                 lhSupply(1, "PAN-1", "동삼 2단지 국민임대", "59형", "59.9500", "99.0000"),
@@ -378,7 +468,7 @@ class MyHomeAnnouncementMappingServiceTest {
     void 최신_lh_공급_스냅샷에서_사라진_공급행을_삭제한다() {
         saveMappedComplex();
         sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
-        saveLhSupplyCheckpoint("21026", "PAN-1");
+        saveLhSupplyLink("21026", "PAN-1");
         lhSourceStore.replaceSupplies("PAN-1", List.of(
                 lhSupply(0, "PAN-1", "동삼2", "46A", "46.8000", "67.0000"),
                 lhSupply(1, "PAN-1", "동삼2", "46A", "46.8000", "67.0000"),
@@ -414,14 +504,14 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     @Test
-    void 최신_체크포인트의_lh_공급행만_매핑한다() {
+    void 현재_성공_연결의_lh_공급행만_매핑한다() {
         saveMappedComplex();
         sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
-        saveLhSupplyCheckpoint("21026", "PAN-OLD");
+        saveLhSupplyLink("21026", "PAN-OLD");
         lhSourceStore.replaceSupplies("PAN-OLD", List.of(
                 lhSupply(0, "PAN-OLD", "동삼2", "과거형", "99.0000", "99.0000")
         ));
-        saveLhSupplyCheckpoint("21026", "PAN-CURRENT");
+        saveLhSupplyLink("21026", "PAN-CURRENT");
         lhSourceStore.replaceSupplies("PAN-CURRENT", List.of(
                 lhSupply(0, "PAN-CURRENT", "동삼2", "46A", "46.8000", "67.0000")
         ));
@@ -436,7 +526,7 @@ class MyHomeAnnouncementMappingServiceTest {
 
     @Test
     void 필수_날짜를_변환할_수_없으면_공고를_만들지_않고_실패를_기록한다() {
-        MyHomeAnnouncementSourceData invalid = withPostedDate(
+        MyHomeAnnouncementSourceSnapshot invalid = withPostedDate(
                 data("21026", 1, "부산도시공사", "동삼2"),
                 "20260230"
         );
@@ -454,7 +544,7 @@ class MyHomeAnnouncementMappingServiceTest {
 
     @Test
     void 문의처가_없어도_공고와_공급행을_매핑한다() {
-        MyHomeAnnouncementSourceData withoutContact = withContact(
+        MyHomeAnnouncementSourceSnapshot withoutContact = withContact(
                 data("21026", 1, "부산도시공사", "동삼2"),
                 null
         );
@@ -479,6 +569,10 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     private HousingComplex saveMappedComplex(String name, String sourceIdentifier) {
+        return saveMappedComplex(name, sourceIdentifier, "NATIONAL_RENTAL");
+    }
+
+    private HousingComplex saveMappedComplex(String name, String sourceIdentifier, String supplyType) {
         Address address = Address.create(
                 "서울특별시 종로구 테스트로 1",
                 PNU,
@@ -491,7 +585,7 @@ class MyHomeAnnouncementMappingServiceTest {
         HousingComplex complex = complexRepository.save(HousingComplex.createFromMyHome(
                 name,
                 sourceIdentifier,
-                "NATIONAL_RENTAL",
+                supplyType,
                 address,
                 100,
                 "LH",
@@ -512,7 +606,7 @@ class MyHomeAnnouncementMappingServiceTest {
         return complex;
     }
 
-    private MyHomeAnnouncementSource source(int order, MyHomeAnnouncementSourceData data) {
+    private MyHomeAnnouncementSource source(int order, MyHomeAnnouncementSourceSnapshot data) {
         MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(order, data);
         source.markCollectedAt(COLLECTED_AT);
         return source;
@@ -522,14 +616,29 @@ class MyHomeAnnouncementMappingServiceTest {
         return supplyRowRepository.findBySourceSupplyRowIdentifier(sourceIdentifier).orElseThrow();
     }
 
-    private void saveLhSupplyCheckpoint(String announcementIdentifier, String panId) {
-        checkpointRepository.save(LhAnnouncementCollectionCheckpoint.complete(
-                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
-                announcementIdentifier,
-                "PAN_ID=" + panId + "&UPP_AIS_TP_CD=06&AIS_TP_CD=07",
-                panId,
-                COLLECTED_AT
-        ));
+    private void saveDefaultLhSupply(String identifier) {
+        MyHomeAnnouncementSource source = source(0, data(identifier, 1, "LH", "동삼2"));
+        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
+        completeLinks(identifier, candidate);
+        lhSupplyRepository.save(lhSupply(0, identifier, "동삼2", "46A", "46.8000", "67.0000"));
+    }
+
+    private void saveLhSupplyLink(String announcementIdentifier, String panId) {
+        MyHomeAnnouncementSource source = sourceRepository.findAll().stream()
+                .filter(row -> row.getPblancId().equals(announcementIdentifier))
+                .findFirst().orElseThrow();
+        ReflectionTestUtils.setField(source, "url", "https://example.com/announcements?panId=" + panId
+                + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07");
+        sourceRepository.save(source);
+        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
+        completeLinks(announcementIdentifier, candidate);
+    }
+
+    private void completeLinks(String identifier, LhAnnouncementCollectionCandidateResolver.Candidate candidate) {
+        for (ExternalDataSource target : List.of(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)) {
+            progressStore.complete(target, identifier, candidate.requestDescription(), candidate.panId());
+        }
     }
 
     private LhAnnouncementSupplySource lhSupply(
@@ -543,7 +652,7 @@ class MyHomeAnnouncementMappingServiceTest {
         LhAnnouncementSupplySource source = new LhAnnouncementSupplySource(
                 sourceOrder,
                 panId,
-                new LhAnnouncementSupplySourceData(
+                new LhAnnouncementSupplySourceSnapshot(
                         complexLabel,
                         typeName,
                         exclusiveArea,
@@ -558,19 +667,19 @@ class MyHomeAnnouncementMappingServiceTest {
         return source;
     }
 
-    private MyHomeAnnouncementSourceData data(
+    private MyHomeAnnouncementSourceSnapshot data(
             String pblancId,
             int houseSn,
             String provider,
             String complexName
     ) {
-        return new MyHomeAnnouncementSourceData(
+        return new MyHomeAnnouncementSourceSnapshot(
                 pblancId,
                 houseSn,
                 "모집중",
                 "국민임대 입주자 모집공고",
                 provider,
-                "아파트",
+                "46A",
                 "국민임대",
                 null,
                 "20260813",
@@ -578,7 +687,8 @@ class MyHomeAnnouncementMappingServiceTest {
                 "20260824",
                 "20260831",
                 "1600-1004",
-                "https://example.com/announcements/" + pblancId,
+                "https://example.com/announcements?panId=" + pblancId
+                        + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07",
                 null,
                 null,
                 complexName,
@@ -598,12 +708,12 @@ class MyHomeAnnouncementMappingServiceTest {
         );
     }
 
-    private MyHomeAnnouncementSourceData withNameAndSupplyCount(
-            MyHomeAnnouncementSourceData data,
+    private MyHomeAnnouncementSourceSnapshot withNameAndSupplyCount(
+            MyHomeAnnouncementSourceSnapshot data,
             String name,
             int supplyCount
     ) {
-        return new MyHomeAnnouncementSourceData(
+        return new MyHomeAnnouncementSourceSnapshot(
                 data.pblancId(), data.houseSn(), data.sttusNm(), name, data.suplyInsttNm(),
                 data.houseTyNm(), data.suplyTyNm(), data.beforePblancId(), data.rcritPblancDe(),
                 data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), data.refrnc(), data.url(),
@@ -613,8 +723,22 @@ class MyHomeAnnouncementMappingServiceTest {
         );
     }
 
-    private MyHomeAnnouncementSourceData withPrevious(MyHomeAnnouncementSourceData data, String previousIdentifier) {
-        return new MyHomeAnnouncementSourceData(
+    private MyHomeAnnouncementSourceSnapshot withSupplyType(
+            MyHomeAnnouncementSourceSnapshot data,
+            String supplyType
+    ) {
+        return new MyHomeAnnouncementSourceSnapshot(
+                data.pblancId(), data.houseSn(), data.sttusNm(), supplyType + " 입주자 모집공고",
+                data.suplyInsttNm(), data.houseTyNm(), supplyType, data.beforePblancId(), data.rcritPblancDe(),
+                data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), data.refrnc(), data.url(),
+                data.pcUrl(), data.mobileUrl(), data.hsmpNm(), data.brtcNm(), data.signguNm(),
+                data.fullAdres(), data.rnCodeNm(), data.refrnLegaldongNm(), data.pnu(), data.heatMthdNm(),
+                data.totHshldCo(), data.sumSuplyCo(), data.rentGtn(), data.enty(), data.surlus(), data.mtRntchrg()
+        );
+    }
+
+    private MyHomeAnnouncementSourceSnapshot withPrevious(MyHomeAnnouncementSourceSnapshot data, String previousIdentifier) {
+        return new MyHomeAnnouncementSourceSnapshot(
                 data.pblancId(), data.houseSn(), "정정공고", data.pblancNm(), data.suplyInsttNm(),
                 data.houseTyNm(), data.suplyTyNm(), previousIdentifier, data.rcritPblancDe(),
                 data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), data.refrnc(), data.url(),
@@ -624,11 +748,11 @@ class MyHomeAnnouncementMappingServiceTest {
         );
     }
 
-    private MyHomeAnnouncementSourceData withCancellation(
-            MyHomeAnnouncementSourceData data,
+    private MyHomeAnnouncementSourceSnapshot withCancellation(
+            MyHomeAnnouncementSourceSnapshot data,
             String previousIdentifier
     ) {
-        return new MyHomeAnnouncementSourceData(
+        return new MyHomeAnnouncementSourceSnapshot(
                 data.pblancId(), data.houseSn(), "취소공고", data.pblancNm(), data.suplyInsttNm(),
                 data.houseTyNm(), data.suplyTyNm(), previousIdentifier, data.rcritPblancDe(),
                 data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), data.refrnc(), data.url(),
@@ -638,8 +762,8 @@ class MyHomeAnnouncementMappingServiceTest {
         );
     }
 
-    private MyHomeAnnouncementSourceData withPostedDate(MyHomeAnnouncementSourceData data, String postedDate) {
-        return new MyHomeAnnouncementSourceData(
+    private MyHomeAnnouncementSourceSnapshot withPostedDate(MyHomeAnnouncementSourceSnapshot data, String postedDate) {
+        return new MyHomeAnnouncementSourceSnapshot(
                 data.pblancId(), data.houseSn(), data.sttusNm(), data.pblancNm(), data.suplyInsttNm(),
                 data.houseTyNm(), data.suplyTyNm(), data.beforePblancId(), postedDate,
                 data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), data.refrnc(), data.url(),
@@ -649,8 +773,8 @@ class MyHomeAnnouncementMappingServiceTest {
         );
     }
 
-    private MyHomeAnnouncementSourceData withContact(MyHomeAnnouncementSourceData data, String contact) {
-        return new MyHomeAnnouncementSourceData(
+    private MyHomeAnnouncementSourceSnapshot withContact(MyHomeAnnouncementSourceSnapshot data, String contact) {
+        return new MyHomeAnnouncementSourceSnapshot(
                 data.pblancId(), data.houseSn(), data.sttusNm(), data.pblancNm(), data.suplyInsttNm(),
                 data.houseTyNm(), data.suplyTyNm(), data.beforePblancId(), data.rcritPblancDe(),
                 data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), contact, data.url(),
@@ -660,8 +784,8 @@ class MyHomeAnnouncementMappingServiceTest {
         );
     }
 
-    private MyHomeAnnouncementSourceData withHousingType(MyHomeAnnouncementSourceData data, String housingType) {
-        return new MyHomeAnnouncementSourceData(
+    private MyHomeAnnouncementSourceSnapshot withHousingType(MyHomeAnnouncementSourceSnapshot data, String housingType) {
+        return new MyHomeAnnouncementSourceSnapshot(
                 data.pblancId(), data.houseSn(), data.sttusNm(), data.pblancNm(), data.suplyInsttNm(),
                 housingType, data.suplyTyNm(), data.beforePblancId(), data.rcritPblancDe(),
                 data.przwnerPresnatnDe(), data.beginDe(), data.endDe(), data.refrnc(), data.url(),

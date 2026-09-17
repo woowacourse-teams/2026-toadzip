@@ -10,7 +10,7 @@ import static org.mockito.Mockito.when;
 import com.toadzip.backend.ingest.location.domain.LocationSummaryRecord;
 import com.toadzip.backend.ingest.location.domain.RoadAddressLocation;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
-import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingFailureReason;
+import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.location.repository.RoadAddressLocationRepository;
 import java.math.BigDecimal;
 import java.util.List;

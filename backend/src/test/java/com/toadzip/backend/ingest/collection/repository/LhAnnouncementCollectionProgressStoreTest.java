@@ -30,6 +30,9 @@ class LhAnnouncementCollectionProgressStoreTest {
     @Autowired
     private LhAnnouncementSupplySourceRepository supplyRepository;
 
+    @Autowired
+    private LhAnnouncementCollectionLinkRepository linkRepository;
+
     @Test
     void 완료한_동일_요청만_증분_수집에서_제외한다() {
         LhAnnouncementCollectionProgressStore store = store();
@@ -61,6 +64,48 @@ class LhAnnouncementCollectionProgressStoreTest {
         store.complete(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "another-source-key", request, "100");
 
         assertThat(checkpointRepository.count()).isOne();
+        assertThat(linkRepository.count()).isEqualTo(2);
+    }
+
+    @Test
+    void 요청을_공유하는_공고별_연결을_배치_상태에서_구분한다() {
+        LhAnnouncementCollectionProgressStore store = store();
+        String request = "PAN_ID=100&SPL_INF_TP_CD=063";
+        store.complete(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "announcement-100", request, "100");
+        store.complete(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "announcement-101", request, "100");
+
+        var progress = store.findBatch(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                List.of(request),
+                List.of("100"),
+                List.of("announcement-100", "announcement-101")
+        );
+
+        assertThat(progress.isCompleted(request)).isTrue();
+        assertThat(progress.isLinkedTo("announcement-100", request)).isTrue();
+        assertThat(progress.isLinkedTo("announcement-101", request)).isTrue();
+    }
+
+    @Test
+    void 공고_링크가_현재_요청과_다르면_완료된_연결로_판정하지_않는다() {
+        LhAnnouncementCollectionProgressStore store = store();
+        String previousRequest = "PAN_ID=100&SPL_INF_TP_CD=063";
+        String currentRequest = "PAN_ID=200&SPL_INF_TP_CD=063";
+        store.complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "announcement-100",
+                previousRequest,
+                "100"
+        );
+
+        var progress = store.findBatch(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                List.of(currentRequest),
+                List.of("200"),
+                List.of("announcement-100")
+        );
+
+        assertThat(progress.isLinkedTo("announcement-100", currentRequest)).isFalse();
     }
 
     @Test
@@ -92,6 +137,7 @@ class LhAnnouncementCollectionProgressStoreTest {
                 checkpointRepository,
                 detailRepository,
                 supplyRepository,
+                linkRepository,
                 Clock.fixed(COMPLETED_AT, ZoneOffset.UTC)
         );
     }

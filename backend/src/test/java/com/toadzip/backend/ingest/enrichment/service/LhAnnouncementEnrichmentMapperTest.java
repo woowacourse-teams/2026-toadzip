@@ -1,14 +1,17 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
 
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceData;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import java.time.YearMonth;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class LhAnnouncementEnrichmentMapperTest {
 
@@ -53,6 +56,99 @@ class LhAnnouncementEnrichmentMapperTest {
                 .isNull();
     }
 
+    @Test
+    void LH가_2999년으로_표시한_미정_입주예정월은_매핑하지_않는다() {
+        LhAnnouncementEnrichmentData result = mapper.map(
+                PAN_ID,
+                List.of(complexDetail(0, "동삼2", "2999.01")),
+                List.of(supply(0, "동삼2", "46A"))
+        );
+
+        assertThat(result.supplies()).singleElement()
+                .extracting(LhSupplyData::expectedMoveInMonth)
+                .isNull();
+    }
+
+    @Test
+    void 쉼표가_올바른_세대수와_금액은_단일_숫자로_매핑한다() {
+        LhAnnouncementSupplySource supply = supply(
+                0, "동삼2", "46A", "1,000", "20", "10,000,000", "200,000"
+        );
+
+        LhSupplyData result = mapper.map(PAN_ID, List.of(), List.of(supply)).supplies().getFirst();
+
+        assertThat(result.totalHouseholdCount()).isEqualTo(1_000);
+        assertThat(result.supplyHouseholdCount()).isEqualTo(20);
+        assertThat(result.rentalDeposit()).isEqualByComparingTo("10000000");
+        assertThat(result.monthlyRent()).isEqualByComparingTo("200000");
+    }
+
+    @Test
+    void 앞뒤_공백과_Long_최대값은_정상_숫자로_매핑한다() {
+        LhAnnouncementSupplySource supply = supply(
+                0, "동삼2", "46A", " 9999 ", " 20 ", "9223372036854775807", " 200,000 "
+        );
+
+        LhSupplyData result = mapper.map(PAN_ID, List.of(), List.of(supply)).supplies().getFirst();
+
+        assertThat(result.totalHouseholdCount()).isEqualTo(9_999);
+        assertThat(result.supplyHouseholdCount()).isEqualTo(20);
+        assertThat(result.rentalDeposit()).isEqualByComparingTo("9223372036854775807");
+        assertThat(result.monthlyRent()).isEqualByComparingTo("200000");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "-10", "10~20", "10세대", "1,00", "1 000", "+10", "10.5",
+            "9999세대", "9999~10000", "9999.5", "9999,99"
+    })
+    void 세대수가_허용된_단일_정수_형식이_아니면_실패한다(String invalidValue) {
+        LhAnnouncementSupplySource supply = supply(
+                0, "동삼2", "46A", invalidValue, "20", "10,000,000", "200,000"
+        );
+
+        assertThatThrownBy(() -> mapper.map(PAN_ID, List.of(), List.of(supply)))
+                .isInstanceOf(LhAnnouncementEnrichmentRejectedException.class)
+                .hasMessage("전체 세대수 형식이 올바르지 않습니다.");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "-10", "10~20만원", "10만원", "1,00", "1 000", "+10", "10.5",
+            "9999만원", "9999~10000", "9999.5", "9999,99", "9223372036854775808"
+    })
+    void 금액이_허용된_단일_정수_형식이_아니면_실패한다(String invalidValue) {
+        LhAnnouncementSupplySource supply = supply(
+                0, "동삼2", "46A", "100", "20", invalidValue, "200,000"
+        );
+
+        assertThatThrownBy(() -> mapper.map(PAN_ID, List.of(), List.of(supply)))
+                .isInstanceOf(LhAnnouncementEnrichmentRejectedException.class)
+                .hasMessage("임대보증금 형식이 올바르지 않습니다.");
+    }
+
+    @Test
+    void 공급_세대수의_형식이_잘못되면_실패한다() {
+        LhAnnouncementSupplySource supply = supply(
+                0, "동삼2", "46A", "100", "10~20", "10,000,000", "200,000"
+        );
+
+        assertThatThrownBy(() -> mapper.map(PAN_ID, List.of(), List.of(supply)))
+                .isInstanceOf(LhAnnouncementEnrichmentRejectedException.class)
+                .hasMessage("공급 세대수 형식이 올바르지 않습니다.");
+    }
+
+    @Test
+    void 월_임대료의_형식이_잘못되면_실패한다() {
+        LhAnnouncementSupplySource supply = supply(
+                0, "동삼2", "46A", "100", "20", "10,000,000", "10~20만원"
+        );
+
+        assertThatThrownBy(() -> mapper.map(PAN_ID, List.of(), List.of(supply)))
+                .isInstanceOf(LhAnnouncementEnrichmentRejectedException.class)
+                .hasMessage("월 임대료 형식이 올바르지 않습니다.");
+    }
+
     private LhAnnouncementDetailSource complexDetail(int order, String complexName, String expectedMoveInYearMonth) {
         return new LhAnnouncementDetailSource(
                 order, PAN_ID, "COMPLEX", complexName, null, null, null, null, null,
@@ -62,8 +158,20 @@ class LhAnnouncementEnrichmentMapperTest {
     }
 
     private LhAnnouncementSupplySource supply(int order, String complexName, String housingTypeName) {
-        return new LhAnnouncementSupplySource(order, PAN_ID, new LhAnnouncementSupplySourceData(
-                complexName, housingTypeName, null, null, "100", "20", "10,000,000", "200,000"
+        return supply(order, complexName, housingTypeName, "100", "20", "10,000,000", "200,000");
+    }
+
+    private LhAnnouncementSupplySource supply(
+            int order,
+            String complexName,
+            String housingTypeName,
+            String totalUnitCount,
+            String suppliedUnitCount,
+            String deposit,
+            String rent
+    ) {
+        return new LhAnnouncementSupplySource(order, PAN_ID, new LhAnnouncementSupplySourceSnapshot(
+                complexName, housingTypeName, null, null, totalUnitCount, suppliedUnitCount, deposit, rent
         ));
     }
 }

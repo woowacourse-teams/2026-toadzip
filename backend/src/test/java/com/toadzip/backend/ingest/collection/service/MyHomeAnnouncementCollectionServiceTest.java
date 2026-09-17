@@ -11,15 +11,17 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementCollectionRequest;
-import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSourceItem;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSupplyType;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementCollectionExecutionLock;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.repository.external.MyHomeAnnouncementResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import java.time.Duration;
 import java.util.List;
@@ -58,13 +60,17 @@ class MyHomeAnnouncementCollectionServiceTest {
             Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(0);
             return Optional.of(operation.get());
         });
-        service = new MyHomeAnnouncementCollectionService(
-                JsonMapper.builder().build(),
+        MyHomeAnnouncementSupplyTypeCollector supplyTypeCollector = new MyHomeAnnouncementSupplyTypeCollector(
+                new MyHomeAnnouncementResponseParser(JsonMapper.builder().build()),
                 externalRepository,
-                executionLock,
                 sourceStore,
                 failureRecorder,
                 new ExternalDataRetryExecutor(Duration.ZERO)
+        );
+        service = new MyHomeAnnouncementCollectionService(
+                executionLock,
+                sourceStore,
+                supplyTypeCollector
         );
     }
 
@@ -99,16 +105,16 @@ class MyHomeAnnouncementCollectionServiceTest {
         var result = service.collect(request);
 
         ArgumentCaptor<String> runIds = ArgumentCaptor.captor();
-        ArgumentCaptor<List<MyHomeAnnouncementSourceItem>> items = ArgumentCaptor.captor();
+        ArgumentCaptor<List<MyHomeAnnouncementSourceSnapshot>> snapshots = ArgumentCaptor.captor();
         verify(sourceStore, org.mockito.Mockito.times(MyHomeAnnouncementSupplyType.values().length))
-                .storeAnnouncements(runIds.capture(), items.capture());
+                .storeAnnouncements(runIds.capture(), snapshots.capture());
         String runId = runIds.getAllValues().getFirst();
         assertThat(runIds.getAllValues()).containsOnly(runId);
         verify(sourceStore).completeAnnouncementCollection(runId);
-        assertThat(items.getAllValues()).filteredOn(value -> !value.isEmpty())
+        assertThat(snapshots.getAllValues()).filteredOn(value -> !value.isEmpty())
                 .singleElement()
                 .extracting(List::getFirst)
-                .extracting(value -> ((MyHomeAnnouncementSourceItem) value).pblancId())
+                .extracting(value -> ((MyHomeAnnouncementSourceSnapshot) value).pblancId())
                 .isEqualTo("1");
         assertThat(result.storedRowCount()).isOne();
         assertThat(result.failedRequestCount()).isZero();
@@ -149,6 +155,173 @@ class MyHomeAnnouncementCollectionServiceTest {
     }
 
     @Test
+    @DisplayName("성공 코드에 body가 없으면 원천 저장과 미조회 공고 판정을 하지 않는다")
+    void preservesSourcesWhenSuccessfulResponseSchemaIsInvalid() {
+        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
+        String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"}}}";
+        ExternalDataResponse invalidResponse = new ExternalDataResponse(
+                payload,
+                JsonMapper.builder().build().readTree(payload)
+        );
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(invalidResponse);
+
+        var result = service.collect(request);
+
+        verify(sourceStore, never()).storeAnnouncements(anyString(), any());
+        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        assertThat(result.failedRequestCount()).isEqualTo(MyHomeAnnouncementSupplyType.values().length);
+    }
+
+    @Test
+    @DisplayName(
+            "일부 페이지 수집 후 데이터 없음 응답이 오면 해당 공급유형을 저장하거나 미조회 판정하지 않는다"
+    )
+    void rejectsPrematureNoDataResponseAfterPartialCollection() {
+        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(1, 10);
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
+            MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
+            int page = invocation.getArgument(2);
+            if (supplyType != MyHomeAnnouncementSupplyType.HAPPY_HOUSE) {
+                return response("[]");
+            }
+            if (page == 1) {
+                return responseWithTotalCount("[{\"pblancId\":\"1\"}]", 2);
+            }
+            return noDataResponse();
+        });
+
+        var result = service.collect(request);
+
+        verify(sourceStore, times(MyHomeAnnouncementSupplyType.values().length - 1))
+                .storeAnnouncements(anyString(), any());
+        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
+    @DisplayName(
+            "일부 페이지 수집 후 전체 건수 0의 빈 응답이 오면 해당 공급유형을 저장하지 않는다"
+    )
+    void rejectsPrematureEmptyResponseAfterPartialCollection() {
+        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(1, 10);
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
+            MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
+            int page = invocation.getArgument(2);
+            if (supplyType != MyHomeAnnouncementSupplyType.HAPPY_HOUSE) {
+                return response("[]");
+            }
+            if (page == 1) {
+                return responseWithTotalCount("[{\"pblancId\":\"1\"}]", 2);
+            }
+            return response("[]");
+        });
+
+        var result = service.collect(request);
+
+        verify(sourceStore, times(MyHomeAnnouncementSupplyType.values().length - 1))
+                .storeAnnouncements(anyString(), any());
+        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
+    @DisplayName(
+            "후속 페이지의 전체 건수가 첫 페이지와 다르면 해당 공급유형을 저장하지 않는다"
+    )
+    void rejectsChangedTotalCountBetweenPages() {
+        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(1, 10);
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
+            MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
+            int page = invocation.getArgument(2);
+            if (supplyType != MyHomeAnnouncementSupplyType.HAPPY_HOUSE) {
+                return response("[]");
+            }
+            if (page == 1) {
+                return responseWithTotalCount("[{\"pblancId\":\"1\"}]", 3);
+            }
+            return responseWithTotalCount("[{\"pblancId\":\"2\"}]", 2);
+        });
+
+        var result = service.collect(request);
+
+        verify(sourceStore, times(MyHomeAnnouncementSupplyType.values().length - 1))
+                .storeAnnouncements(anyString(), any());
+        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
+    @DisplayName("후속 페이지 파싱 실패는 실제 페이지와 시도 횟수로 기록하고 성공 처리하지 않는다")
+    void recordsActualAnnouncementParseFailurePageAndAttemptCount() {
+        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(1, 10);
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenAnswer(invocation -> {
+                    MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
+                    int page = invocation.getArgument(2);
+                    if (supplyType != MyHomeAnnouncementSupplyType.HAPPY_HOUSE) {
+                        return response("[]");
+                    }
+                    if (page == 1) {
+                        return responseWithTotalCount("[{\"pblancId\":\"1\"}]", 2);
+                    }
+                    return responseWithTotalCount("[{\"pblancId\":{}}]", 2);
+                });
+
+        ExternalDataCollectionReport result = service.collect(request);
+
+        ArgumentCaptor<RuntimeException> failure = ArgumentCaptor.captor();
+        verify(failureRecorder).record(any(), any(), failure.capture(), any(), any());
+        assertThat(failure.getValue()).isInstanceOfSatisfying(
+                ExternalDataCallFailureException.class,
+                exception -> {
+                    assertThat(exception.getRequestDescription())
+                            .isEqualTo("suplyTy=10&pageNo=2&numOfRows=1");
+                    assertThat(exception.getAttemptCount()).isOne();
+                }
+        );
+        verify(failureRecorder, never())
+                .resolve(ExternalDataSource.MYHOME_ANNOUNCEMENT, "suplyTy=10&pageNo=2&numOfRows=1");
+        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
+    @DisplayName("후속 페이지 totalCount 불일치는 실제 페이지와 시도 횟수로 기록한다")
+    void recordsActualAnnouncementTotalCountFailurePageAndAttemptCount() {
+        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(1, 10);
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenAnswer(invocation -> {
+                    MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
+                    int page = invocation.getArgument(2);
+                    if (supplyType != MyHomeAnnouncementSupplyType.HAPPY_HOUSE) {
+                        return response("[]");
+                    }
+                    if (page == 1) {
+                        return responseWithTotalCount("[{\"pblancId\":\"1\"}]", 2);
+                    }
+                    return responseWithTotalCount("[{\"pblancId\":\"2\"}]", 3);
+                });
+
+        ExternalDataCollectionReport result = service.collect(request);
+
+        ArgumentCaptor<RuntimeException> failure = ArgumentCaptor.captor();
+        verify(failureRecorder).record(any(), any(), failure.capture(), any(), any());
+        assertThat(failure.getValue()).isInstanceOfSatisfying(
+                ExternalDataCallFailureException.class,
+                exception -> {
+                    assertThat(exception.getRequestDescription())
+                            .isEqualTo("suplyTy=10&pageNo=2&numOfRows=1");
+                    assertThat(exception.getAttemptCount()).isOne();
+                }
+        );
+        verify(failureRecorder, never())
+                .resolve(ExternalDataSource.MYHOME_ANNOUNCEMENT, "suplyTy=10&pageNo=2&numOfRows=1");
+        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
     @DisplayName("호출 제한이 발생하면 남은 공급유형을 조회하지 않는다")
     void stopsRemainingSupplyTypesAfterRateLimit() {
         MyHomeAnnouncementCollectionRequest request =
@@ -180,11 +353,28 @@ class MyHomeAnnouncementCollectionServiceTest {
                 .hasMessage("DB 저장 실패");
 
         verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+        verify(failureRecorder, never()).resolve(any(), any());
     }
 
     private ExternalDataResponse response(String items) {
+        return responseWithTotalCount(items, totalCountOf(items));
+    }
+
+    private ExternalDataResponse responseWithTotalCount(String items, int totalCount) {
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"},"
-                + "\"body\":{\"item\":" + items + "}}}";
+                + "\"body\":{\"totalCount\":" + totalCount + ",\"item\":" + items + "}}}";
         return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+    }
+
+    private ExternalDataResponse noDataResponse() {
+        String payload = "{\"response\":{\"header\":{\"resultCode\":\"03\"}}}";
+        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+    }
+
+    private int totalCountOf(String items) {
+        if ("[]".equals(items)) {
+            return 0;
+        }
+        return 1;
     }
 }

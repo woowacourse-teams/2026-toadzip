@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.location.exception;
+package com.toadzip.backend.ingest.location.domain;
 
 public enum RoadAddressGeocodingFailureReason {
     INVALID_ADDRESS,

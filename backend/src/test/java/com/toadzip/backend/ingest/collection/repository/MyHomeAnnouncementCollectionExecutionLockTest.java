@@ -1,19 +1,24 @@
 package com.toadzip.backend.ingest.collection.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.InOrder;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
@@ -64,5 +69,36 @@ class MyHomeAnnouncementCollectionExecutionLockTest {
         assertThat(result).isEmpty();
         assertThat(operationExecuted).isFalse();
         verify(statement).setLong(1, 8_432_026_082_800_017L);
+    }
+
+    @Test
+    void 잠금_해제_쿼리가_실패하면_물리_연결을_폐기한다() throws Exception {
+        when(statement.executeQuery())
+                .thenReturn(resultSet)
+                .thenThrow(new SQLException("unlock query failed"));
+
+        var result = executionLock.tryRun(() -> "completed");
+
+        assertThat(result).contains("completed");
+        InOrder releaseOrder = inOrder(connection);
+        releaseOrder.verify(connection).abort(any());
+        releaseOrder.verify(connection).close();
+    }
+
+    @Test
+    void 작업과_잠금_해제가_모두_실패하면_작업_예외를_보존하고_연결을_폐기한다() throws Exception {
+        when(statement.executeQuery())
+                .thenReturn(resultSet)
+                .thenThrow(new SQLException("unlock query failed"));
+
+        assertThatThrownBy(() -> executionLock.tryRun(() -> {
+            throw new IllegalStateException("operation failed");
+        }))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("operation failed");
+
+        InOrder releaseOrder = inOrder(connection);
+        releaseOrder.verify(connection).abort(any());
+        releaseOrder.verify(connection).close();
     }
 }

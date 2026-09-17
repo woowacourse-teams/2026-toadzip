@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.collection.domain;
 
-public record MyHomeAnnouncementSourceData(
+public record MyHomeAnnouncementSourceSnapshot(
         String pblancId,
         Integer houseSn,
         String sttusNm,

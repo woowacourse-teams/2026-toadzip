@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -18,11 +19,11 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceData;
+import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.MyHomeComplexSourceRepository;
-import com.toadzip.backend.ingest.location.dto.GeocodedRoadAddress;
+import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
-import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingFailureReason;
+import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.location.service.RoadAddressGeocodingService;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingCandidateRepository;
@@ -451,6 +452,23 @@ class MyHomeComplexMappingServiceTest {
         assertThat(complexRepository.findAll()).isEmpty();
     }
 
+    @Test
+    void 좌표_조회의_일반_오류는_같은_후보를_재선택하지_않고_실행을_중단한다() {
+        sourceRepository.save(source("46A", "46.8000", "20.2000"));
+        when(geocodingService.geocode(anyString()))
+                .thenThrow(new IllegalStateException("좌표 저장소 연결 실패"))
+                .thenThrow(new AssertionError("같은 후보를 다시 선택했습니다."));
+
+        assertThatThrownBy(service::mapAll)
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("좌표 저장소 연결 실패");
+
+        verify(geocodingService).geocode(anyString());
+        assertThat(candidateRepository.findAll()).singleElement().satisfies(candidate ->
+                assertThat(candidate.getStatus().name()).isEqualTo("PENDING")
+        );
+    }
+
     private MyHomeComplexSource source(String styleName, String exclusiveArea, String commonArea) {
         return source(data(
                 123L, styleName, exclusiveArea, commonArea, "서울주택도시공사", "20200101"
@@ -499,13 +517,13 @@ class MyHomeComplexMappingServiceTest {
         );
     }
 
-    private MyHomeComplexSource source(MyHomeComplexSourceData data) {
+    private MyHomeComplexSource source(MyHomeComplexSourceSnapshot data) {
         MyHomeComplexSource source = MyHomeComplexSource.from(data);
         source.markCollectedAt(COLLECTED_AT);
         return source;
     }
 
-    private MyHomeComplexSourceData data(
+    private MyHomeComplexSourceSnapshot data(
             Long hsmpSn,
             String styleName,
             String exclusiveArea,
@@ -519,7 +537,7 @@ class MyHomeComplexMappingServiceTest {
         );
     }
 
-    private MyHomeComplexSourceData dataWith(
+    private MyHomeComplexSourceSnapshot dataWith(
             Long hsmpSn,
             String styleName,
             String exclusiveArea,
@@ -533,7 +551,7 @@ class MyHomeComplexMappingServiceTest {
             String corridorType,
             String elevatorInstalled
     ) {
-        return new MyHomeComplexSourceData(
+        return new MyHomeComplexSourceSnapshot(
                 hsmpSn,
                 provider,
                 "11",

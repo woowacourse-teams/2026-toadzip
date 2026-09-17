@@ -149,12 +149,12 @@ public class DataPipelineExecutionService {
             }
 
             @Override
-            public void skipped(DataPipelineStep step, String reason, Object serverResponse) {
+            public void skipped(DataPipelineStep step, String reason, String serverResponse) {
                 executionStateService.skipStep(
                         executionId,
                         step,
                         reason,
-                        executionMapper.serializeServerResponse(serverResponse)
+                        serverResponse
                 );
             }
         };
@@ -165,14 +165,14 @@ public class DataPipelineExecutionService {
             DataPipelineType type,
             DataPipelineStep failedStep,
             String message,
-            Object serverResponse
+            String serverResponse
     ) {
         try {
             executionStateService.fail(
                     executionId,
                     failedStep,
                     message,
-                    executionMapper.serializeServerResponse(serverResponse),
+                    serverResponse,
                     Instant.now(clock)
             );
         }

@@ -7,16 +7,20 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.LhLeaseCatalogCollectionRequest;
 import com.toadzip.backend.ingest.collection.repository.LhLeaseCatalogExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.repository.external.LhLeaseCatalogResponseParser;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.json.JsonMapper;
@@ -39,6 +43,7 @@ class LhLeaseCatalogCollectionServiceTest {
     void setUp() {
         service = new LhLeaseCatalogCollectionService(
                 externalRepository,
+                new LhLeaseCatalogResponseParser(),
                 sourceStore,
                 failureRecorder,
                 new ExternalDataRetryExecutor(java.time.Duration.ZERO)
@@ -76,6 +81,54 @@ class LhLeaseCatalogCollectionServiceTest {
     }
 
     @Test
+    @DisplayName("LH 임대 카탈로그 dataset 타입이 잘못되면 기존 원천을 교체하지 않는다")
+    void preservesCatalogWhenDatasetTypeIsInvalid() {
+        LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
+        String payload = "[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsList\":1}]";
+        when(externalRepository.fetch(request, 1)).thenReturn(new ExternalDataResponse(
+                payload,
+                JsonMapper.builder().build().readTree(payload)
+        ));
+
+        var result = service.collect(request);
+
+        verify(sourceStore, never()).replaceCatalog(any());
+        verify(failureRecorder).record(any(), any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
+    @DisplayName("후속 페이지 파싱 실패는 실제 페이지와 시도 횟수로 기록하고 성공 처리하지 않는다")
+    void recordsActualCatalogParseFailurePageAndAttemptCount() {
+        LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(1, 10);
+        when(externalRepository.fetch(request, 1))
+                .thenReturn(response("[{\"ARA_NM\":\"서울\"}]"));
+        String invalidPayload = "[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsList\":1}]";
+        when(externalRepository.fetch(request, 2)).thenReturn(new ExternalDataResponse(
+                invalidPayload,
+                JsonMapper.builder().build().readTree(invalidPayload)
+        ));
+
+        ExternalDataCollectionReport result = service.collect(request);
+
+        ArgumentCaptor<RuntimeException> failure = ArgumentCaptor.captor();
+        verify(failureRecorder).record(any(), any(), failure.capture(), any(), any());
+        assertThat(failure.getValue()).isInstanceOfSatisfying(
+                ExternalDataCallFailureException.class,
+                exception -> {
+                    assertThat(exception.getRequestDescription()).isEqualTo("PG_SZ=1&PAGE=2");
+                    assertThat(exception.getAttemptCount()).isOne();
+                }
+        );
+        verify(failureRecorder, never()).resolve(
+                ExternalDataSource.LH_LEASE_CATALOG,
+                "PG_SZ=1&PAGE=2"
+        );
+        verify(sourceStore, never()).replaceCatalog(any());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
     @DisplayName("LH 임대 카탈로그 저장 실패는 외부 API 실패로 기록하지 않는다")
     void propagatesCatalogStoreFailure() {
         LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
@@ -87,6 +140,7 @@ class LhLeaseCatalogCollectionServiceTest {
                 .hasMessage("DB 저장 실패");
 
         verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+        verify(failureRecorder, never()).resolve(any(), any());
     }
 
     private ExternalDataResponse response(String rows) {

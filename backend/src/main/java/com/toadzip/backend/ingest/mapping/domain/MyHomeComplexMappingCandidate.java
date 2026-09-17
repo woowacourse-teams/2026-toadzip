@@ -2,8 +2,8 @@ package com.toadzip.backend.ingest.mapping.domain;
 
 import static lombok.AccessLevel.PROTECTED;
 
-import com.toadzip.backend.ingest.location.dto.GeocodedRoadAddress;
-import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingFailureReason;
+import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
+import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
