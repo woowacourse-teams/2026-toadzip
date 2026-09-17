@@ -155,8 +155,19 @@ public class DataPipelineExecutionService {
 
     private DataPipelineProgressListener progressListener(UUID executionId) {
         return new DataPipelineProgressListener() {
+            private DataPipelineStep partiallyFailedStep;
+
             @Override
             public void started(DataPipelineStep step) {
+                if (partiallyFailedStep != null) {
+                    executionStateService.startStepAfterPartialFailure(
+                            executionId,
+                            partiallyFailedStep,
+                            step
+                    );
+                    partiallyFailedStep = null;
+                    return;
+                }
                 executionStateService.startStep(executionId, step);
             }
 
@@ -173,6 +184,14 @@ public class DataPipelineExecutionService {
                         reason,
                         serverResponse
                 );
+            }
+
+            @Override
+            public void partiallyFailed(DataPipelineStep step) {
+                if (partiallyFailedStep != null) {
+                    throw new IllegalStateException("부분 실패한 단계의 후속 단계가 시작되지 않았습니다.");
+                }
+                partiallyFailedStep = step;
             }
         };
     }

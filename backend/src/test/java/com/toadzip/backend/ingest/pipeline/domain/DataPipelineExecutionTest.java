@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.pipeline.domain;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
@@ -59,6 +60,33 @@ class DataPipelineExecutionTest {
         assertThatThrownBy(() -> execution.complete(STARTED_AT.plusSeconds(1)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("실행 중인 단계를 완료하거나 건너뛴 뒤 파이프라인을 완료할 수 있습니다.");
+    }
+
+    @Test
+    void 부분_실패한_단계의_바로_다음_단계를_시작할_수_있다() {
+        DataPipelineExecution execution = execution(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+        execution.startStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+
+        execution.startStepAfterPartialFailure(
+                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES
+        );
+
+        assertThat(execution.getCurrentStep())
+                .isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
+    }
+
+    @Test
+    void 부분_실패한_단계를_건너뛰어_다음다음_단계를_시작할_수_없다() {
+        DataPipelineExecution execution = execution(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+        execution.startStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+
+        assertThatThrownBy(() -> execution.startStepAfterPartialFailure(
+                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS
+        ))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("부분 실패한 단계의 바로 다음 단계만 시작할 수 있습니다.");
     }
 
     private DataPipelineExecution execution(DataPipelineType type) {

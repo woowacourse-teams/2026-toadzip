@@ -131,6 +131,20 @@ public class DataPipelineExecution {
         currentStep = null;
     }
 
+    public void startStepAfterPartialFailure(
+            DataPipelineStep partiallyFailedStep,
+            DataPipelineStep nextStep
+    ) {
+        requireRunning();
+        if (currentStep != partiallyFailedStep) {
+            throw new IllegalStateException("현재 실행 중인 단계만 부분 실패로 종료할 수 있습니다.");
+        }
+        if (nextStep != nextStepAfter(partiallyFailedStep)) {
+            throw new IllegalStateException("부분 실패한 단계의 바로 다음 단계만 시작할 수 있습니다.");
+        }
+        currentStep = nextStep;
+    }
+
     public void skipStep(DataPipelineStep step, String reason, String serverResponse) {
         requireRunning();
         if (currentStep != step) {
@@ -202,5 +216,13 @@ public class DataPipelineExecution {
             return null;
         }
         return type.steps().get(completedStepCount);
+    }
+
+    private DataPipelineStep nextStepAfter(DataPipelineStep step) {
+        int nextStepIndex = type.steps().indexOf(step) + 1;
+        if (nextStepIndex <= 0 || nextStepIndex >= type.steps().size()) {
+            return null;
+        }
+        return type.steps().get(nextStepIndex);
     }
 }

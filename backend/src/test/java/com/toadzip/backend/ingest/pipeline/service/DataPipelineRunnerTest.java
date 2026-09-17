@@ -295,6 +295,7 @@ class DataPipelineRunnerTest {
         assertThatThrownBy(() -> runner.run(DataPipelineType.ANNOUNCEMENT_COLLECTION, progressListener))
                 .isInstanceOf(DataPipelinePartialFailureException.class);
 
+        verify(progressListener).partiallyFailed(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
         verify(lhAnnouncementSupplyCollectionService).collect();
         verify(lhAnnouncementDetailCollectionService).collect();
     }

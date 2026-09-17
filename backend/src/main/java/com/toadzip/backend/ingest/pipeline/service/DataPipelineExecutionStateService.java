@@ -49,6 +49,17 @@ public class DataPipelineExecutionStateService {
     }
 
     @Transactional
+    public void startStepAfterPartialFailure(
+            UUID executionId,
+            DataPipelineStep partiallyFailedStep,
+            DataPipelineStep nextStep
+    ) {
+        DataPipelineExecution execution = find(executionId);
+        execution.startStepAfterPartialFailure(partiallyFailedStep, nextStep);
+        executionRepository.flush();
+    }
+
+    @Transactional
     public void skipStep(
             UUID executionId,
             DataPipelineStep step,

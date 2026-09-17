@@ -72,6 +72,7 @@ public class DataPipelineRunner {
                 runStep(step, progressListener);
             }
             catch (DataPipelinePartialFailureException exception) {
+                progressListener.partiallyFailed(exception.getStep());
                 if (firstReportedPartialFailure == null) {
                     firstReportedPartialFailure = exception;
                 }
