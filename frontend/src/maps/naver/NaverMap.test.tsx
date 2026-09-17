@@ -31,6 +31,7 @@ interface FakeSdk {
   emitIdle: () => void
   fitBoundsMap: ReturnType<typeof vi.fn>
   fromCoordToOffset: ReturnType<typeof vi.fn>
+  fromOffsetToCoord: ReturnType<typeof vi.fn>
   getCenterMap: ReturnType<typeof vi.fn>
   getMaxZoomMap: ReturnType<typeof vi.fn>
   getMinZoomMap: ReturnType<typeof vi.fn>
@@ -108,7 +109,7 @@ function createFakeSdk(): FakeSdk {
     getCenter: getCenterMap,
     getMaxZoom: getMaxZoomMap,
     getMinZoom: getMinZoomMap,
-    getProjection: () => ({ fromCoordToOffset }),
+    getProjection: () => ({ factor: (zoom: number) => 2 ** zoom, fromCoordToOffset, fromOffsetToCoord }),
     getZoom: () => currentZoom,
     morph: morphMap,
     panTo: panToMap,
@@ -142,6 +143,13 @@ function createFakeSdk(): FakeSdk {
     return {
       x: (longitude - 127) * scale,
       y: (latitude - 37.5) * scale,
+    }
+  })
+  const fromOffsetToCoord = vi.fn(({ x, y }: { x: number; y: number }) => {
+    const scale = 50_000 * 2 ** (currentZoom - 14)
+    return {
+      lat: () => 37.5 + y / scale,
+      lng: () => 127 + x / scale,
     }
   })
   const markerConstructor = vi.fn(function FakeMarkerConstructor(
@@ -188,6 +196,7 @@ function createFakeSdk(): FakeSdk {
     emitIdle: () => idleListener?.(),
     fitBoundsMap,
     fromCoordToOffset,
+    fromOffsetToCoord,
     getCenterMap,
     getMaxZoomMap,
     getMinZoomMap,
@@ -530,6 +539,135 @@ describe('NaverMap', () => {
     expect(onViewportChange).toHaveBeenCalledWith(expect.objectContaining({
       center: { latitude: 37.51, longitude: 127.02 },
       zoom: 16,
+    }))
+  })
+
+  it('같은 요청 ID에서 target이 바뀌거나 사용자가 지도를 움직여도 카메라를 되돌리지 않는다', async () => {
+    const fakeSdk = createFakeSdk()
+    const onViewportChange = vi.fn()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { rerender } = render(
+      <NaverMap
+        cameraRequestId={1}
+        cameraTarget={{ latitude: 37.51, longitude: 127.02, zoom: 14 }}
+        onViewportChange={onViewportChange}
+      />,
+    )
+    await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
+
+    act(() => {
+      fakeSdk.setCurrentCenter(37.6, 127.1)
+      fakeSdk.setCurrentZoom(15)
+      fakeSdk.emitIdle()
+    })
+    rerender(
+      <NaverMap
+        cameraRequestId={1}
+        cameraTarget={{ latitude: 37.52, longitude: 127.03, screenOffset: { x: 200, y: -60 }, zoom: 14 }}
+        onViewportChange={onViewportChange}
+      />,
+    )
+
+    expect(fakeSdk.panToMap).not.toHaveBeenCalled()
+    expect(fakeSdk.morphMap).not.toHaveBeenCalled()
+    expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
+    expect(onViewportChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      center: { latitude: 37.6, longitude: 127.1 }, zoom: 15,
+    }))
+  })
+
+  it('줌 유지 이동은 화면 offset만큼 보정한 중심으로 한 번 이동한다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { rerender } = render(<NaverMap cameraRequestId={1} />)
+    await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
+
+    rerender(
+      <NaverMap
+        cameraRequestId={2}
+        cameraTarget={{ latitude: 37.51, longitude: 127.02, screenOffset: { x: 200, y: -60 } }}
+      />,
+    )
+
+    expect(fakeSdk.panToMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.panToMap.mock.calls[0]?.[0]).toMatchObject({
+      latitude: expect.closeTo(37.5112), longitude: expect.closeTo(127.016),
+    })
+    expect(fakeSdk.morphMap).not.toHaveBeenCalled()
+    expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
+  })
+
+  it('줌 변경 이동은 도착 줌의 픽셀 크기로 offset을 보정해 한 번 이동한다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { rerender } = render(<NaverMap cameraRequestId={1} />)
+    await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
+
+    rerender(
+      <NaverMap
+        cameraRequestId={2}
+        cameraTarget={{ latitude: 37.51, longitude: 127.02, screenOffset: { x: 200, y: -60 }, zoom: 16 }}
+      />,
+    )
+
+    expect(fakeSdk.morphMap).toHaveBeenCalledExactlyOnceWith({
+      latitude: expect.closeTo(37.5103), longitude: expect.closeTo(127.019),
+    }, 16)
+    expect(fakeSdk.panToMap).not.toHaveBeenCalled()
+    expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
+  })
+
+  it('초기 offset을 한 번 적용하고 같은 요청 재렌더링과 사용자 idle에서는 반복하지 않는다', async () => {
+    const fakeSdk = createFakeSdk()
+    const onViewportChange = vi.fn()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const cameraTarget = {
+      latitude: 37.51, longitude: 127.02, screenOffset: { x: 200, y: -60 }, zoom: 14,
+    }
+    const { rerender } = render(
+      <NaverMap cameraRequestId={1} cameraTarget={cameraTarget} onViewportChange={onViewportChange} />,
+    )
+    await waitFor(() => expect(fakeSdk.morphMap).toHaveBeenCalledOnce())
+    expect(fakeSdk.morphMap.mock.calls[0]?.[0]).toMatchObject({
+      latitude: expect.closeTo(37.5112), longitude: expect.closeTo(127.016),
+    })
+    act(() => {
+      fakeSdk.setCurrentCenter(37.6, 127.1)
+      fakeSdk.emitIdle()
+    })
+    rerender(
+      <NaverMap cameraRequestId={1} cameraTarget={{ ...cameraTarget }} onViewportChange={onViewportChange} />,
+    )
+    expect(fakeSdk.morphMap).toHaveBeenCalledOnce()
+
+    rerender(
+      <NaverMap cameraRequestId={2} cameraTarget={cameraTarget} onViewportChange={onViewportChange} />,
+    )
+    expect(fakeSdk.morphMap).toHaveBeenCalledTimes(2)
+    act(() => fakeSdk.emitIdle())
+    expect(onViewportChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      center: { latitude: expect.closeTo(37.5112), longitude: expect.closeTo(127.016) }, zoom: 14,
+    }))
+  })
+
+  it('이미 offset이 반영된 위치를 다시 요청하면 현재 viewport를 즉시 알린다', async () => {
+    const fakeSdk = createFakeSdk()
+    const onViewportChange = vi.fn()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const cameraTarget = {
+      latitude: 37.51, longitude: 127.02, screenOffset: { x: 200, y: -60 }, zoom: 14,
+    }
+    const { rerender } = render(
+      <NaverMap cameraRequestId={1} cameraTarget={cameraTarget} onViewportChange={onViewportChange} />,
+    )
+    await waitFor(() => expect(fakeSdk.morphMap).toHaveBeenCalledOnce())
+
+    rerender(
+      <NaverMap cameraRequestId={2} cameraTarget={cameraTarget} onViewportChange={onViewportChange} />,
+    )
+
+    expect(onViewportChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      center: { latitude: expect.closeTo(37.5112), longitude: expect.closeTo(127.016) }, zoom: 14,
     }))
   })
 

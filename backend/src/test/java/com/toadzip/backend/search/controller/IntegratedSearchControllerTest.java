@@ -1,6 +1,8 @@
 package com.toadzip.backend.search.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -81,5 +83,38 @@ class IntegratedSearchControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_SEARCH_REQUEST"))
                 .andExpect(jsonPath("$.traceId").isNotEmpty());
+    }
+
+    @Test
+    void 유형별_검색_쿼리를_전달하고_기존_응답_구조로_지역_좌표를_반환한다() throws Exception {
+        when(service.search(any())).thenReturn(new IntegratedSearchResponse(
+                "수원", List.of(), List.of(), List.of(new SearchResultItemResponse(
+                        SearchType.REGION, "41110", "경기도 수원시", "경기도",
+                        new BigDecimal("37.27532584"), new BigDecimal("127.01641895"), null, null, "41110"
+                )), List.of(), 1, 5, true
+        ));
+
+        mockMvc.perform(get("/api/v1/search")
+                        .param("query", "수원")
+                        .param("type", "REGION")
+                        .param("preview", "false")
+                        .param("page", "1")
+                        .param("size", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.announcements.length()").value(0))
+                .andExpect(jsonPath("$.data.complexes.length()").value(0))
+                .andExpect(jsonPath("$.data.regions[0].latitude").value(37.27532584))
+                .andExpect(jsonPath("$.data.regions[0].longitude").value(127.01641895))
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.size").value(5))
+                .andExpect(jsonPath("$.data.hasNext").value(true));
+        verify(service).search(argThat(request -> request.type() == SearchType.REGION
+                && request.page() == 1 && request.size() == 5 && !request.preview()));
+    }
+
+    @Test
+    void 알_수_없는_검색_유형은_거부한다() throws Exception {
+        mockMvc.perform(get("/api/v1/search").param("query", "서울").param("type", "UNKNOWN"))
+                .andExpect(status().isBadRequest());
     }
 }

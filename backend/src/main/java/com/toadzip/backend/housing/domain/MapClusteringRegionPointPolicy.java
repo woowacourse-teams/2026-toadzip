@@ -2,6 +2,7 @@ package com.toadzip.backend.housing.domain;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 public final class MapClusteringRegionPointPolicy {
 
@@ -39,6 +40,11 @@ public final class MapClusteringRegionPointPolicy {
     public void validateGroups(List<MapClusteringRegionGroup> groups) {
         Objects.requireNonNull(groups, "groups");
         points.validateGroups(groups);
+    }
+
+    public Optional<MapCoordinate> coordinate(MapClusteringGroupKey groupKey) {
+        Objects.requireNonNull(groupKey, "groupKey");
+        return points.coordinate(groupKey);
     }
 
     public String policyVersion() {
