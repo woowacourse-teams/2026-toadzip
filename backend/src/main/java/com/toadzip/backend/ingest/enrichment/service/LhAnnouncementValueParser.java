@@ -112,7 +112,9 @@ class LhAnnouncementValueParser {
             return true;
         }
         String normalized = value.replaceAll("\\s+", "").strip();
-        return normalized.startsWith("9999") || unavailableMarker(normalized);
+        return normalized.startsWith("2999")
+                || normalized.startsWith("9999")
+                || unavailableMarker(normalized);
     }
 
     private boolean numericUnavailable(String value) {

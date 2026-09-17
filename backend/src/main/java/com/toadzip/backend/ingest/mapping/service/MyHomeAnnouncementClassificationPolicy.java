@@ -15,6 +15,8 @@ class MyHomeAnnouncementClassificationPolicy {
             Map.entry("행복주택", RentalType.HAPPY_HOUSING),
             Map.entry("국민임대", RentalType.NATIONAL_RENTAL),
             Map.entry("영구임대", RentalType.PERMANENT_RENTAL),
+            Map.entry("5년임대", RentalType.PUBLIC_RENTAL_5Y),
+            Map.entry("10년임대", RentalType.PUBLIC_RENTAL_10Y),
             Map.entry("50년임대", RentalType.PUBLIC_RENTAL_50Y),
             Map.entry("50년공공임대", RentalType.PUBLIC_RENTAL_50Y),
             Map.entry("통합공공임대", RentalType.INTEGRATED_PUBLIC_RENTAL),

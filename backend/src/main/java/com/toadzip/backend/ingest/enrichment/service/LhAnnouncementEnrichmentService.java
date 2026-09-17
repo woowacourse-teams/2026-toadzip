@@ -136,10 +136,6 @@ public class LhAnnouncementEnrichmentService {
                     "연결된 LH 공고 상세 원본이 없습니다.", failures, occurredAt);
         }
         List<LhAnnouncementSupplySource> supplies = supplySourceRepository.findAllByPanIdOrderBySourceOrderAsc(panId);
-        if (supplies.isEmpty()) {
-            return reject(source, panId, LhAnnouncementEnrichmentFailureReason.LH_SUPPLY_SOURCE_NOT_FOUND,
-                    "연결된 LH 공고 공급 원본이 없습니다.", failures, occurredAt);
-        }
         try {
             LhAnnouncementEnrichmentData data = mapper.map(panId, details, supplies);
             LhAnnouncementEnrichmentWriteResult result = writer.write(announcement, data);

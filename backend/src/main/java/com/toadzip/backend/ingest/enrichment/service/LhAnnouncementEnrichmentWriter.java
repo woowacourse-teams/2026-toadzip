@@ -130,6 +130,9 @@ public class LhAnnouncementEnrichmentWriter {
     }
 
     private SupplyWriteResult writeSupplies(Announcement announcement, LhAnnouncementEnrichmentData data) {
+        if (data.supplies().isEmpty()) {
+            return new SupplyWriteResult(0, 0, 0, List.of());
+        }
         List<SupplyRow> rows = supplyRowRepository.findAllByAnnouncement(announcement);
         List<LhSupplyMatchingFailureData> failures = new ArrayList<>();
         Set<String> retainedTargetIdentifiers = new HashSet<>();

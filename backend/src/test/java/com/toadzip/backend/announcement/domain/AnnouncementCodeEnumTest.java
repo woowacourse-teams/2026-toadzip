@@ -18,6 +18,8 @@ class AnnouncementCodeEnumTest {
         assertEquals(RentalType.HAPPY_HOUSING, RentalType.fromStoredValue("행복주택"));
         assertEquals(RentalType.NATIONAL_RENTAL, RentalType.fromStoredValue("국민임대"));
         assertEquals(RentalType.PERMANENT_RENTAL, RentalType.fromStoredValue("영구임대"));
+        assertEquals(RentalType.PUBLIC_RENTAL_5Y, RentalType.fromStoredValue("5년임대"));
+        assertEquals(RentalType.PUBLIC_RENTAL_10Y, RentalType.fromStoredValue("10년임대"));
         assertEquals(RentalType.PUBLIC_RENTAL_50Y, RentalType.fromStoredValue("50년공공임대"));
         assertEquals(RentalType.INTEGRATED_PUBLIC_RENTAL, RentalType.fromStoredValue("통합공공임대"));
         assertEquals(RentalType.REDEVELOPMENT_RENTAL, RentalType.fromStoredValue("재개발임대"));
@@ -54,7 +56,7 @@ class AnnouncementCodeEnumTest {
     @Test
     void 모든_정식_코드를_선언한다() {
         assertEquals(
-                7,
+                9,
                 RentalType.values().length
         );
         assertEquals(3, AnnouncementPublicationType.values().length);

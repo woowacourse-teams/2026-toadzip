@@ -6,6 +6,8 @@ public enum RentalType implements LegacyStoredValue {
     HAPPY_HOUSING("행복주택"),
     NATIONAL_RENTAL("국민임대"),
     PERMANENT_RENTAL("영구임대"),
+    PUBLIC_RENTAL_5Y("5년임대"),
+    PUBLIC_RENTAL_10Y("10년임대"),
     PUBLIC_RENTAL_50Y("50년공공임대"),
     INTEGRATED_PUBLIC_RENTAL("통합공공임대"),
     REDEVELOPMENT_RENTAL("재개발임대"),
@@ -22,6 +24,8 @@ public enum RentalType implements LegacyStoredValue {
             case "HAPPY_HOUSING", "행복주택" -> HAPPY_HOUSING;
             case "NATIONAL_RENTAL", "국민임대" -> NATIONAL_RENTAL;
             case "PERMANENT_RENTAL", "영구임대" -> PERMANENT_RENTAL;
+            case "PUBLIC_RENTAL_5Y", "5년임대" -> PUBLIC_RENTAL_5Y;
+            case "PUBLIC_RENTAL_10Y", "10년임대" -> PUBLIC_RENTAL_10Y;
             case "PUBLIC_RENTAL_50Y", "50년공공임대" -> PUBLIC_RENTAL_50Y;
             case "INTEGRATED_PUBLIC_RENTAL", "통합공공임대" -> INTEGRATED_PUBLIC_RENTAL;
             case "REDEVELOPMENT_RENTAL", "재개발임대" -> REDEVELOPMENT_RENTAL;

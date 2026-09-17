@@ -74,14 +74,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
             };
             throw new MyHomeAnnouncementMappingRejectedException(reason, exception.getMessage());
         }
-        List<LhAnnouncementSupplySource> supplies = lhSupplyRepository.findAllByPanIdOrderBySourceOrderAsc(panId);
-        if (supplies.isEmpty()) {
-            throw new MyHomeAnnouncementMappingRejectedException(
-                    MyHomeAnnouncementMappingFailureReason.LH_SUPPLY_SOURCE_NOT_FOUND,
-                    "연결된 LH 공고 공급 원본이 없습니다."
-            );
-        }
-        return supplies;
+        return lhSupplyRepository.findAllByPanIdOrderBySourceOrderAsc(panId);
     }
 
     private Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matchByComplex(
