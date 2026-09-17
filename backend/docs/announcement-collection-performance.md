@@ -66,6 +66,6 @@ Timer는 Prometheus에서 `*_seconds_count`, `*_seconds_sum`, `*_seconds_max`로
 `durationMs`로 DB 실행 이력과 연결한다. 실행 ID는 MDC의 `executionId`로 파이프라인과 병렬 작업에
 전달하고, 파이프라인을 시작한 HTTP 요청의 `traceId`와 구분한다. 메트릭 라벨에는 넣지 않는다.
 
-검증: Java 25와 격리 PostgreSQL에서 `./gradlew --rerun-tasks check`의 1,159개 테스트 통과.
+검증: Java 25와 격리 PostgreSQL에서 `./gradlew --rerun-tasks check`의 1,174개 테스트 통과.
 페이지 경계·빈 유형, 최대 동시성·같은 공고 순서, 실패 복구·실제 DB 저장, 메트릭 집계를 검증했다.
 하네스·커밋 메시지·PR 검증기 테스트, 하네스 검사와 `git diff --check`도 통과했다.
