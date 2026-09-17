@@ -138,7 +138,7 @@ export function HousingComplexDetailPanel({
           aria-label="단지 상세 닫기"
           onClick={onClose}
         >
-          <span aria-hidden="true">×</span>
+          <span aria-hidden="true">닫기 ×</span>
         </button>
       </header>
 

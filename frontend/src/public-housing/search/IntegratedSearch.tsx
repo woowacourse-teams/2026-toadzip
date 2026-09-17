@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import {
   integratedSearchRepository,
   type IntegratedSearchRepository,
@@ -6,12 +6,16 @@ import {
   type SearchResultItem,
   type SearchType,
 } from './integratedSearchRepository.ts'
+import styles from './IntegratedSearch.module.css'
 
-type SearchState =
-  | { readonly kind: 'before' }
-  | { readonly kind: 'loading' }
-  | { readonly kind: 'ready'; readonly response: IntegratedSearchResponse }
-  | { readonly kind: 'error' }
+interface GroupState {
+  readonly items: readonly SearchResultItem[]
+  readonly hasNext: boolean
+  readonly kind: 'loading' | 'ready' | 'error'
+  readonly error: string | null
+}
+
+const searchTypes: readonly SearchType[] = ['REGION', 'ANNOUNCEMENT', 'COMPLEX']
 
 export interface IntegratedSearchProps {
   readonly onActiveChange?: (active: boolean) => void
@@ -25,11 +29,7 @@ export function IntegratedSearch({
   repository = integratedSearchRepository,
 }: IntegratedSearchProps) {
   const [query, setQuery] = useState('')
-  const [preview, setPreview] = useState(true)
-  const [page, setPage] = useState(0)
-  const [retryRevision, setRetryRevision] = useState(0)
-  const [state, setState] = useState<SearchState>({ kind: 'before' })
-  const requestRevision = useRef(0)
+  const inputRef = useRef<HTMLInputElement>(null)
   const normalizedQuery = normalizeQuery(query)
   const active = normalizedQuery.replaceAll(' ', '').length >= 2
 
@@ -37,178 +37,184 @@ export function IntegratedSearch({
     onActiveChange?.(active)
   }, [active, onActiveChange])
 
-  useEffect(() => {
-    const revision = requestRevision.current + 1
-    requestRevision.current = revision
-    if (!active) {
-      setState({ kind: 'before' })
-      return
-    }
-    const controller = new AbortController()
-    setState({ kind: 'loading' })
-    const timer = window.setTimeout(() => {
-      repository.search(normalizedQuery, preview, page, controller.signal)
-        .then((response) => {
-          if (requestRevision.current === revision) {
-            setState({ kind: 'ready', response })
-          }
-        })
-        .catch((error: unknown) => {
-          if (!isAbortError(error) && requestRevision.current === revision) {
-            setState({ kind: 'error' })
-          }
-        })
-    }, 200)
-    return () => {
-      window.clearTimeout(timer)
-      controller.abort()
-    }
-  }, [active, normalizedQuery, page, preview, repository, retryRevision])
-
   return (
     <section className={`integrated-search${active ? ' is-active' : ''}`} aria-label="통합 검색">
-      <label className="integrated-search__input">
-        <span className="visually-hidden">공고, 단지, 지역 검색</span>
-        <input
-          type="search"
-          value={query}
-          placeholder="공고, 단지, 지역 검색"
-          onChange={(event) => {
-            setQuery(event.target.value)
-            setPage(0)
-            setPreview(true)
-          }}
-        />
-      </label>
-      <div className="integrated-search__body" aria-busy={state.kind === 'loading'}>
-        <SearchContent
-          state={state}
-          preview={preview}
-          onSelect={onSelect}
-          onRetry={() => setRetryRevision((current) => current + 1)}
-        />
+      <div className={styles.top}>
+        <label className="integrated-search__input">
+          <span className="visually-hidden">공고, 단지, 지역 검색</span>
+          <input
+            ref={inputRef}
+            type="search"
+            value={query}
+            placeholder="공고, 단지, 지역 검색"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+        {active && (
+          <div className={styles.header}>
+            <h2>검색결과</h2>
+            <button
+              className={styles.close}
+              type="button"
+              aria-label="검색결과 닫기"
+              onClick={() => {
+                setQuery('')
+                inputRef.current?.focus({ preventScroll: true })
+              }}
+            >
+              검색결과 닫기 <span aria-hidden="true">×</span>
+            </button>
+          </div>
+        )}
       </div>
-      {state.kind === 'ready' && preview && state.response.hasNext && (
-        <button type="button" onClick={() => { setPreview(false); setPage(0) }}>
-          전체 결과 보기
-        </button>
-      )}
-      {state.kind === 'ready' && !preview && (
-        <nav className="integrated-search__pagination" aria-label="검색 결과 페이지">
-          <button
-            type="button"
-            disabled={page === 0}
-            onClick={() => setPage((current) => Math.max(0, current - 1))}
-          >
-            이전
-          </button>
-          <span>{page + 1}페이지</span>
-          <button
-            type="button"
-            disabled={!state.response.hasNext}
-            onClick={() => setPage((current) => current + 1)}
-          >
-            다음
-          </button>
-        </nav>
-      )}
+      <div className="integrated-search__body">
+        {active ? (
+          <div className="integrated-search__results" key={normalizedQuery}>
+            {searchTypes.map((type) => (
+              <SearchGroup
+                key={type}
+                onSelect={onSelect}
+                query={normalizedQuery}
+                repository={repository}
+                type={type}
+              />
+            ))}
+          </div>
+        ) : <p className="integrated-search__hint">두 글자 이상 입력해 주세요.</p>}
+      </div>
     </section>
-  )
-}
-
-function SearchContent({
-  onRetry,
-  onSelect,
-  preview,
-  state,
-}: {
-  readonly onRetry: () => void
-  readonly onSelect: (item: SearchResultItem) => void
-  readonly preview: boolean
-  readonly state: SearchState
-}) {
-  if (state.kind === 'before') {
-    return <p className="integrated-search__hint">두 글자 이상 입력해 주세요.</p>
-  }
-  if (state.kind === 'loading') {
-    return <p role="status">검색 중입니다.</p>
-  }
-  if (state.kind === 'error') {
-    return <SearchError title="검색 결과를 불러오지 못했습니다." onRetry={onRetry} />
-  }
-  const { response } = state
-  const resultCount = response.announcements.length
-    + response.complexes.length
-    + response.regions.length
-  if (resultCount === 0 && response.failures.length === 3) {
-    return <SearchError title="전체 검색에 실패했습니다." onRetry={onRetry} />
-  }
-  return (
-    <div className="integrated-search__results" data-mode={preview ? 'preview' : 'all'}>
-      {resultCount === 0 && <p role="status">검색 결과가 없습니다.</p>}
-      <SearchGroup
-        title="공고"
-        items={response.announcements}
-        onSelect={onSelect}
-      />
-      <SearchGroup
-        title="단지"
-        items={response.complexes}
-        onSelect={onSelect}
-      />
-      <SearchGroup
-        title="지역"
-        items={response.regions}
-        onSelect={onSelect}
-      />
-      {response.failures.map((failure) => (
-        <div className="integrated-search__partial-error" key={failure.type} role="alert">
-          <span>{failure.message}</span>
-          <button type="button" onClick={onRetry}>{typeLabel(failure.type)} 다시 시도</button>
-        </div>
-      ))}
-    </div>
   )
 }
 
 function SearchGroup({
-  items,
   onSelect,
-  title,
+  query,
+  repository,
+  type,
 }: {
-  readonly items: readonly SearchResultItem[]
   readonly onSelect: (item: SearchResultItem) => void
-  readonly title: string
+  readonly query: string
+  readonly repository: IntegratedSearchRepository
+  readonly type: SearchType
 }) {
-  if (items.length === 0) {
-    return null
-  }
+  const [page, setPage] = useState(0)
+  const [retryRevision, setRetryRevision] = useState(0)
+  const [state, setState] = useState<GroupState>({
+    error: null, hasNext: false, items: [], kind: 'loading',
+  })
+  const headingId = useId()
+  const label = typeLabel(type)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setState((current) => ({ ...current, error: null, kind: 'loading' }))
+    const timer = window.setTimeout(() => {
+      repository.search(query, false, page, controller.signal, type)
+        .then((response) => {
+          // Some repositories can finish after abort; never apply their stale result.
+          if (controller.signal.aborted) {
+            return
+          }
+          const failure = response.failures.find((candidate) => candidate.type === type)
+          if (failure) {
+            setState((current) => ({ ...current, error: failure.message, kind: 'error' }))
+            return
+          }
+          setState((current) => ({
+            error: null,
+            hasNext: response.hasNext,
+            items: page === 0
+              ? responseItems(response, type)
+              : appendUnique(current.items, responseItems(response, type)),
+            kind: 'ready',
+          }))
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setState((current) => ({
+              ...current,
+              error: `${label} 검색 결과를 불러오지 못했습니다.`,
+              kind: 'error',
+            }))
+          }
+        })
+    }, page === 0 && retryRevision === 0 ? 200 : 0)
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [label, page, query, repository, retryRevision, type])
+
   return (
-    <section aria-labelledby={`search-${title}`}>
-      <h2 id={`search-${title}`}>{title}</h2>
+    <section className={styles.group} aria-labelledby={headingId} aria-busy={state.kind === 'loading'}>
+      <h3 className={styles.groupHeading} id={headingId}>{label}</h3>
       <ul>
-        {items.map((item) => (
-          <li key={`${item.type}-${item.id}`}>
-            <button type="button" onClick={() => onSelect(item)}>
-              <strong>{item.title}</strong>
-              {item.subtitle && <span>{item.subtitle}</span>}
-              {item.publishedAt && <time dateTime={item.publishedAt}>{item.publishedAt}</time>}
-              {item.applicationStatus && <span>{statusLabel(item.applicationStatus)}</span>}
-            </button>
-          </li>
-        ))}
+        {state.items.map((item) => {
+          const unavailable = item.type === 'REGION'
+            && (item.latitude === null || item.longitude === null)
+          return (
+            <li key={`${item.type}-${item.id}`}>
+              <button
+                type="button"
+                disabled={unavailable}
+                className={styles.result}
+                onClick={() => onSelect(item)}
+              >
+                <strong>{item.title}</strong>
+                {item.subtitle && <span>{item.subtitle}</span>}
+                {item.publishedAt && <time dateTime={item.publishedAt}>{item.publishedAt}</time>}
+                {item.applicationStatus && <span>{statusLabel(item.applicationStatus)}</span>}
+                {unavailable && <span className={styles.unavailable}>위치 정보 준비 중</span>}
+              </button>
+            </li>
+          )
+        })}
       </ul>
+      {state.kind === 'loading' && (
+        <p className={styles.message} role="status">
+          {label} {page === 0 ? '검색 중입니다.' : '결과를 더 불러오는 중입니다.'}
+        </p>
+      )}
+      {state.kind === 'ready' && state.items.length === 0 && (
+        <p className={styles.message} role="status">{label} 검색 결과가 없습니다.</p>
+      )}
+      {state.kind === 'error' && (
+        <div className="integrated-search__partial-error" role="alert">
+          <span>{state.error}</span>
+          <button type="button" onClick={() => setRetryRevision((current) => current + 1)}>
+            {label} 다시 시도
+          </button>
+        </div>
+      )}
+      {state.hasNext && state.kind !== 'error' && (
+        <button
+          className={styles.more}
+          type="button"
+          aria-label={`${label} 5개 더보기`}
+          disabled={state.kind === 'loading'}
+          onClick={() => setPage((current) => current + 1)}
+        >
+          5개 더보기 <span aria-hidden="true">⌄</span>
+        </button>
+      )}
+      {page === 100 && state.kind === 'ready' && (
+        <p className={styles.message}>더 많은 결과를 찾으려면 검색어를 구체적으로 입력해 주세요.</p>
+      )}
     </section>
   )
 }
 
-function SearchError({ title, onRetry }: { readonly title: string; readonly onRetry: () => void }) {
-  return (
-    <div role="alert">
-      <span>{title}</span>
-      <button type="button" onClick={onRetry}>다시 시도</button>
-    </div>
-  )
+function responseItems(response: IntegratedSearchResponse, type: SearchType) {
+  return {
+    ANNOUNCEMENT: response.announcements,
+    COMPLEX: response.complexes,
+    REGION: response.regions,
+  }[type]
+}
+
+function appendUnique(current: readonly SearchResultItem[], next: readonly SearchResultItem[]) {
+  const seen = new Set(current.map((item) => item.id))
+  return [...current, ...next.filter((item) => !seen.has(item.id))]
 }
 
 function normalizeQuery(value: string) {
@@ -226,8 +232,4 @@ function statusLabel(status: string) {
     CANCELLED: '취소',
     CLOSED: '접수 종료',
   }[status] ?? status
-}
-
-function isAbortError(error: unknown) {
-  return typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError'
 }

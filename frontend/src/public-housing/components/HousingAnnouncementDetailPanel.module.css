@@ -117,10 +117,10 @@
 
 .closeButton {
   display: grid;
-  width: 44px;
-  min-width: 44px;
+  width: auto;
+  min-width: 72px;
+  padding: 0 10px;
   height: 44px;
-  padding: 0;
   border: 1px solid var(--detail-line);
   border-radius: 10px;
   background: #ffffff;
@@ -130,7 +130,7 @@
 }
 
 .closeButton span {
-  font-size: 24px;
+  font-size: 16px;
   font-weight: 400;
   line-height: 1;
 }

@@ -513,6 +513,8 @@ a {
 }
 
 .housing-detail-layer {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
   position: absolute;
   z-index: 300;
   top: 14px;
@@ -521,6 +523,68 @@ a {
   width: min(480px, calc(100% - 28px));
   min-width: 0;
   min-height: 0;
+}
+
+.housing-detail-layer.has-back {
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+}
+
+.housing-detail-back {
+  justify-self: start;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--brand-dark);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.housing-recent {
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.housing-recent button {
+  width: 100%;
+  border: 0;
+  padding: 10px 12px;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.housing-recent .housing-recent__toggle {
+  display: flex;
+  justify-content: space-between;
+  background: #f4f5f6;
+  font-weight: 700;
+}
+
+.housing-recent ul {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.housing-recent li button {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.housing-recent li span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.housing-recent [aria-current="true"] {
+  background: #ecf2fe;
+  box-shadow: inset 3px 0 var(--brand);
 }
 
 .housing-detail-state {

@@ -59,6 +59,8 @@ export interface NaverMapAggregateMarker {
 export interface NaverMapCameraTarget {
   readonly latitude: number
   readonly longitude: number
+  /** Target position relative to the map center, in pixels at the destination zoom. */
+  readonly screenOffset?: { readonly x: number; readonly y: number }
   readonly zoom?: number
 }
 
@@ -260,6 +262,8 @@ export default function NaverMap({
   const [status, setStatus] = useState<MapStatus>({ kind: 'loading' })
   const cameraLatitude = cameraTarget?.latitude
   const cameraLongitude = cameraTarget?.longitude
+  const cameraOffsetX = cameraTarget?.screenOffset?.x
+  const cameraOffsetY = cameraTarget?.screenOffset?.y
   const cameraZoom = cameraTarget?.zoom
   const markerGeometryKey = createMarkerGeometryKey({
     aggregateMarkers,
@@ -375,7 +379,10 @@ export default function NaverMap({
           mapInstanceRef.current = createdMap
           mapsRef.current = maps
           appliedCameraTargetRef.current = initialCamera
-          appliedCameraRequestIdRef.current = cameraRequestIdRef.current
+          // Projection is available only after initialization; apply the offset once afterward.
+          appliedCameraRequestIdRef.current = cameraTargetRef.current?.screenOffset
+            ? undefined
+            : cameraRequestIdRef.current
 
           const emitViewport = () => {
             transitionInterruptedRef.current = false
@@ -581,11 +588,20 @@ export default function NaverMap({
       return
     }
 
-    const nextTarget: NaverMapCameraTarget = {
+    if (cameraRequestId !== undefined
+      && cameraRequestId === appliedCameraRequestIdRef.current) {
+      return
+    }
+
+    const nextTarget = offsetCameraTarget(maps, mapInstance, {
       latitude: cameraLatitude,
       longitude: cameraLongitude,
+      screenOffset: cameraOffsetX !== undefined && cameraOffsetY !== undefined
+        ? { x: cameraOffsetX, y: cameraOffsetY }
+        : undefined,
       zoom: cameraZoom,
-    }
+    })
+    const nextCenter = new maps.LatLng(nextTarget.latitude, nextTarget.longitude)
     const previousTarget = appliedCameraTargetRef.current
     const cameraRequested = cameraRequestId !== undefined
       && cameraRequestId !== appliedCameraRequestIdRef.current
@@ -600,18 +616,18 @@ export default function NaverMap({
 
     if (cameraRequested && cameraZoom !== undefined) {
       mapInstance.morph(
-        new maps.LatLng(cameraLatitude, cameraLongitude),
+        nextCenter,
         cameraZoom,
       )
     } else if (cameraRequested) {
-      mapInstance.panTo(new maps.LatLng(cameraLatitude, cameraLongitude))
+      mapInstance.panTo(nextCenter)
     } else if (coordinatesChanged && zoomChanged) {
       mapInstance.morph(
-        new maps.LatLng(cameraLatitude, cameraLongitude),
+        nextCenter,
         cameraZoom,
       )
     } else if (coordinatesChanged) {
-      mapInstance.panTo(new maps.LatLng(cameraLatitude, cameraLongitude))
+      mapInstance.panTo(nextCenter)
     } else if (zoomChanged) {
       mapInstance.setZoom(cameraZoom)
     }
@@ -625,7 +641,7 @@ export default function NaverMap({
       transitionInterruptedRef.current = false
       onViewportChangeRef.current?.(currentViewport)
     }
-  }, [cameraLatitude, cameraLongitude, cameraRequestId, cameraZoom, status.kind])
+  }, [cameraLatitude, cameraLongitude, cameraOffsetX, cameraOffsetY, cameraRequestId, cameraZoom, status.kind])
 
   const retry = () => {
     setStatus({ kind: 'loading' })
@@ -673,7 +689,7 @@ export default function NaverMap({
 
 function initialMapCamera(
   cameraTarget: NaverMapCameraTarget | undefined,
-): Required<NaverMapCameraTarget> {
+): Required<Omit<NaverMapCameraTarget, 'screenOffset'>> {
   if (cameraTarget && isValidCameraTarget(
     cameraTarget.latitude,
     cameraTarget.longitude,
@@ -686,6 +702,35 @@ function initialMapCamera(
     }
   }
   return { ...INITIAL_CENTER, zoom: 14 }
+}
+
+function offsetCameraTarget(
+  maps: typeof naver.maps,
+  mapInstance: naver.maps.Map,
+  target: NaverMapCameraTarget,
+): NaverMapCameraTarget {
+  const offset = target.screenOffset
+  if (!offset || !Number.isFinite(offset.x) || !Number.isFinite(offset.y)) {
+    return target
+  }
+  const projection = mapInstance.getProjection()
+  const currentZoom = mapInstance.getZoom()
+  const scaleRatio = projection.factor(currentZoom)
+    / projection.factor(target.zoom ?? currentZoom)
+  if (!Number.isFinite(scaleRatio) || scaleRatio <= 0) {
+    return target
+  }
+  const targetPoint = projection.fromCoordToOffset(
+    new maps.LatLng(target.latitude, target.longitude),
+  )
+  const center = readCoordinateValue(projection.fromOffsetToCoord(new maps.Point(
+    targetPoint.x - offset.x * scaleRatio,
+    targetPoint.y - offset.y * scaleRatio,
+  )))
+  if (!center || !isValidCameraTarget(center.latitude, center.longitude, target.zoom)) {
+    return target
+  }
+  return { ...center, zoom: target.zoom }
 }
 
 function isValidCameraTarget(

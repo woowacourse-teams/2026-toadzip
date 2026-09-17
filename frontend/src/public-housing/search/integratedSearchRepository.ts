@@ -34,6 +34,7 @@ export interface IntegratedSearchRepository {
     preview: boolean,
     page: number,
     signal: AbortSignal,
+    type?: SearchType,
   ): Promise<IntegratedSearchResponse>
 }
 
@@ -41,13 +42,16 @@ export function createIntegratedSearchRepository(
   fetcher: typeof globalThis.fetch = globalThis.fetch,
 ): IntegratedSearchRepository {
   return {
-    async search(query, preview, page, signal) {
+    async search(query, preview, page, signal, type) {
       const params = new URLSearchParams({
         page: String(page),
         preview: String(preview),
         query,
-        size: '20',
+        size: type ? '5' : '20',
       })
+      if (type) {
+        params.set('type', type)
+      }
       const response = await fetcher(`${apiBaseUrl()}/api/v1/search?${params}`, {
         headers: { Accept: 'application/json' },
         signal,

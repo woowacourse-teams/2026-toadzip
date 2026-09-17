@@ -26,6 +26,29 @@ describe('integratedSearchRepository', () => {
     expect(result.announcements).toHaveLength(1)
     expect(result.complexes).toHaveLength(1)
     expect(result.regions).toHaveLength(1)
+    expect(new URL(fetcher.mock.calls[0][0]).searchParams.get('type')).toBeNull()
+    expect(new URL(fetcher.mock.calls[0][0]).searchParams.get('size')).toBe('20')
+  })
+
+  it('유형별 검색은 5개씩 독립적인 페이지와 취소 신호를 전달한다', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: {
+        announcements: [], complexes: [], failures: [], hasNext: true,
+        page: 1, query: '수원', regions: [item('REGION', '41110')], size: 5,
+      },
+    }), { status: 200 }))
+    const controller = new AbortController()
+
+    const result = await createIntegratedSearchRepository(fetcher).search(
+      '수원', false, 1, controller.signal, 'REGION',
+    )
+
+    expect(Object.fromEntries(new URL(fetcher.mock.calls[0][0]).searchParams)).toEqual({
+      query: '수원', preview: 'false', page: '1', size: '5', type: 'REGION',
+    })
+    expect(fetcher.mock.calls[0][1].signal).toBe(controller.signal)
+    expect(result.hasNext).toBe(true)
+    expect(result.regions[0].id).toBe('41110')
   })
 })
 
