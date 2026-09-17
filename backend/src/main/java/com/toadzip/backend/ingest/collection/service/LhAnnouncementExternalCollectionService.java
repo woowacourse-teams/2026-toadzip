@@ -146,8 +146,17 @@ public class LhAnnouncementExternalCollectionService {
                         .map(request -> collectionTask(targetSource, request, progress))
                         .toList();
                 nextRequest += window.size();
+                Throwable failure = null;
                 for (Future<ExternalDataCollectionReport> result : executor.invokeAll(tasks)) {
-                    report = report.plus(result.get());
+                    try {
+                        report = report.plus(result.get());
+                    }
+                    catch (ExecutionException exception) {
+                        failure = appendFailure(failure, exception.getCause());
+                    }
+                }
+                if (failure != null) {
+                    throw propagate(failure);
                 }
                 if (report.rateLimitedRequestCount() > 0) {
                     return report;
@@ -158,16 +167,27 @@ public class LhAnnouncementExternalCollectionService {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("LH 공고 수집 대기가 중단되었습니다.", exception);
         }
-        catch (ExecutionException exception) {
-            if (exception.getCause() instanceof RuntimeException cause) {
-                throw cause;
-            }
-            if (exception.getCause() instanceof Error cause) {
-                throw cause;
-            }
-            throw new IllegalStateException("LH 공고 수집 작업이 실패했습니다.", exception.getCause());
-        }
         return report;
+    }
+
+    private Throwable appendFailure(Throwable failure, Throwable additionalFailure) {
+        if (failure == null) {
+            return additionalFailure;
+        }
+        if (failure != additionalFailure) {
+            failure.addSuppressed(additionalFailure);
+        }
+        return failure;
+    }
+
+    private RuntimeException propagate(Throwable failure) {
+        if (failure instanceof RuntimeException runtimeException) {
+            return runtimeException;
+        }
+        if (failure instanceof Error error) {
+            throw error;
+        }
+        return new IllegalStateException("LH 공고 수집 작업이 실패했습니다.", failure);
     }
 
     private List<List<Candidate>> nextWindow(List<List<Candidate>> requests, int offset) {

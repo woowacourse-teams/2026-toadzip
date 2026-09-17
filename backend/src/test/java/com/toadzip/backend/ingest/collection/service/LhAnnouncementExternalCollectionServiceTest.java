@@ -251,16 +251,36 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void 병렬_작업이_둘_다_실패하면_두번째_예외를_suppressed로_보존한다() {
+        source(announcementSource("a", "100"), announcementSource("b", "200"));
+        IllegalStateException firstFailure = new IllegalStateException("첫 번째 DB 저장 실패");
+        IllegalArgumentException secondFailure = new IllegalArgumentException("두 번째 DB 저장 실패");
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("100"), any())).thenThrow(firstFailure);
+        when(sourceStore.replaceDetails(eq("200"), any())).thenThrow(secondFailure);
+
+        assertThatThrownBy(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL))
+                .isSameAs(firstFailure)
+                .satisfies(exception -> assertThat(exception.getSuppressed()).containsExactly(secondFailure));
+
+        verify(externalRepository, times(2)).fetchDetail(any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+    }
+
+    @Test
     void 병렬_요청에도_실행_로그의_MDC를_전달한다() {
         source(announcementSource("a", "100"), announcementSource("b", "200"));
         when(externalRepository.fetchDetail(any())).thenAnswer(invocation -> {
-            assertThat(MDC.get("traceId")).isEqualTo("collection-155");
+            assertThat(MDC.get("traceId")).isEqualTo("request-trace");
+            assertThat(MDC.get("executionId")).isEqualTo("collection-155");
             return detailResponse();
         });
-        MDC.put("traceId", "collection-155");
+        MDC.put("traceId", "request-trace");
+        MDC.put("executionId", "collection-155");
         try {
             service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
-            assertThat(MDC.get("traceId")).isEqualTo("collection-155");
+            assertThat(MDC.get("traceId")).isEqualTo("request-trace");
+            assertThat(MDC.get("executionId")).isEqualTo("collection-155");
         }
         finally {
             MDC.clear();

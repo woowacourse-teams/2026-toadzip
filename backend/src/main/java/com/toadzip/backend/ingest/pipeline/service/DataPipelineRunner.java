@@ -102,7 +102,7 @@ public class DataPipelineRunner {
                     "ingest.pipeline.step", "step", step.name(), "result", outcome
             ));
             log.info("event=ingest.pipeline.step.finished executionId={} step={} result={} durationMs={}",
-                    MDC.get("traceId"), step, outcome, durationNanos / 1_000_000);
+                    MDC.get("executionId"), step, outcome, durationNanos / 1_000_000);
         }
     }
 
