@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.MDC;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
@@ -61,24 +62,62 @@ class DataPipelineExecutionServiceTest {
 
     @BeforeEach
     void setUp() {
-        Executor directExecutor = Runnable::run;
-        Clock clock = Clock.fixed(Instant.parse("2026-09-02T12:00:00Z"), ZoneOffset.UTC);
         lenient().doReturn(heartbeatTask).when(heartbeatExecutor).scheduleWithFixedDelay(
                 any(Runnable.class),
                 anyLong(),
                 anyLong(),
                 any()
         );
-        service = new DataPipelineExecutionService(
+        service = serviceWith(Runnable::run);
+    }
+
+    private DataPipelineExecutionService serviceWith(Executor executor) {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-02T12:00:00Z"), ZoneOffset.UTC);
+        return new DataPipelineExecutionService(
                 runner,
                 executionLock,
                 executionRepository,
                 executionStateService,
-                directExecutor,
+                executor,
                 heartbeatExecutor,
                 clock,
                 executionMapper()
         );
+    }
+
+    @Test
+    void 실행_ID를_별도_로그_맥락으로_전달하고_요청_traceId를_보존한다() {
+        configureStoredExecution();
+        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
+        service = serviceWith(task -> {
+            Thread worker = Thread.ofPlatform().start(task);
+            try {
+                worker.join();
+            }
+            catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(exception);
+            }
+        });
+        AtomicReference<String> observedExecutionId = new AtomicReference<>();
+        AtomicReference<String> observedTraceId = new AtomicReference<>();
+        doAnswer(invocation -> {
+            observedExecutionId.set(MDC.get("executionId"));
+            observedTraceId.set(MDC.get("traceId"));
+            throw new IllegalStateException("테스트 실패");
+        }).when(runner).run(any(), any());
+        MDC.put("traceId", "request-trace");
+        MDC.put("executionId", "previous-execution");
+        try {
+            var started = service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+            assertThat(observedExecutionId.get()).isEqualTo(started.executionId().toString());
+            assertThat(observedTraceId.get()).isEqualTo("request-trace");
+            assertThat(MDC.get("traceId")).isEqualTo("request-trace");
+            assertThat(MDC.get("executionId")).isEqualTo("previous-execution");
+        }
+        finally {
+            MDC.clear();
+        }
     }
 
     @Test

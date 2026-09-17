@@ -15,6 +15,7 @@ import com.toadzip.backend.ingest.collection.repository.LhLeaseCatalogExternalRe
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.LhLeaseCatalogResponseParser;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -46,7 +47,7 @@ class LhLeaseCatalogCollectionServiceTest {
                 new LhLeaseCatalogResponseParser(),
                 sourceStore,
                 failureRecorder,
-                new ExternalDataRetryExecutor(java.time.Duration.ZERO)
+                new ExternalDataRetryExecutor(java.time.Duration.ZERO, new SimpleMeterRegistry())
         );
     }
 

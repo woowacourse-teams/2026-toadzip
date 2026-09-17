@@ -22,6 +22,7 @@ import com.toadzip.backend.ingest.collection.repository.MyHomeRegionCatalog;
 import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeComplexResponseParser;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -65,7 +66,7 @@ class MyHomeComplexCollectionServiceTest {
                 externalRepository,
                 sourceStore,
                 failureRecorder,
-                new ExternalDataRetryExecutor(Duration.ZERO)
+                new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry())
         );
         service = new MyHomeComplexCollectionService(
                 regionCatalog,
@@ -437,7 +438,7 @@ class MyHomeComplexCollectionServiceTest {
                 externalRepository,
                 sourceStore,
                 failureRecorder,
-                new ExternalDataRetryExecutor(Duration.ofSeconds(30))
+                new ExternalDataRetryExecutor(Duration.ofSeconds(30), new SimpleMeterRegistry())
         );
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
                 regionCatalog,

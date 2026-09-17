@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
@@ -8,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
+import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementDetailCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementSupplyCollectionService;
@@ -24,6 +26,7 @@ import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingServi
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -68,6 +71,7 @@ class DataPipelineRunnerTest {
     private DataPipelineRunner runner;
 
     private DataPipelineStepResultAdapter resultAdapter;
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
     @BeforeEach
     void setUp() {
@@ -82,8 +86,21 @@ class DataPipelineRunnerTest {
                 householdEnrichmentService,
                 myHomeAnnouncementMappingService,
                 announcementEnrichmentService,
-                resultAdapter
+                resultAdapter,
+                meterRegistry
         );
+    }
+
+    @Test
+    void 완료된_공고_수집_단계별_시간을_기록한다() {
+        givenSuccessfulAnnouncementCollectionReports();
+
+        runner.run(DataPipelineType.ANNOUNCEMENT_COLLECTION, progressListener);
+
+        for (DataPipelineStep step : DataPipelineType.ANNOUNCEMENT_COLLECTION.steps()) {
+            assertThat(meterRegistry.find("ingest.pipeline.step")
+                    .tags("step", step.name(), "result", "completed").timer()).isNotNull();
+        }
     }
 
     @Test
@@ -99,6 +116,15 @@ class DataPipelineRunnerTest {
         order.verify(myHomeComplexCollectionService).collect(any());
         order.verify(lhLeaseCatalogCollectionService).collect(any());
         verify(myHomeAnnouncementCollectionService, never()).collect(any());
+    }
+
+    @Test
+    void 마이홈_공고는_한_페이지에_500행씩_수집한다() {
+        givenSuccessfulAnnouncementCollectionReports();
+
+        runner.run(DataPipelineType.ANNOUNCEMENT_COLLECTION, progressListener);
+
+        verify(myHomeAnnouncementCollectionService).collect(new MyHomeAnnouncementCollectionRequest(500, 1_000));
     }
 
     @Test
@@ -244,6 +270,8 @@ class DataPipelineRunnerTest {
                 "외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.",
                 resultAdapter.adapt(rateLimited).serverResponse()
         );
+        assertThat(meterRegistry.get("ingest.pipeline.step")
+                .tag("result", "rate_limited").timer().count()).isOne();
         verify(lhAnnouncementSupplyCollectionService).collect();
         verify(lhAnnouncementDetailCollectionService).collect();
     }
@@ -305,6 +333,8 @@ class DataPipelineRunnerTest {
                 .hasMessage("DB 저장 실패");
 
         verify(lhLeaseCatalogCollectionService, never()).collect(any());
+        assertThat(meterRegistry.get("ingest.pipeline.step")
+                .tags("step", "COLLECT_MYHOME_COMPLEXES", "result", "failed").timer().count()).isOne();
     }
 
     @Test
@@ -322,6 +352,8 @@ class DataPipelineRunnerTest {
                 "외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.",
                 resultAdapter.adapt(rateLimited).serverResponse()
         );
+        assertThat(meterRegistry.get("ingest.pipeline.step")
+                .tag("result", "rate_limited").timer().count()).isOne();
         verify(householdEnrichmentService).enrichAll();
     }
 

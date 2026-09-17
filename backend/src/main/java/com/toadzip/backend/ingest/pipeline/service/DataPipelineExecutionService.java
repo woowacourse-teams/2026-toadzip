@@ -16,6 +16,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
@@ -84,7 +85,8 @@ public class DataPipelineExecutionService {
             throw exception;
         }
         try {
-            executor.execute(() -> execute(executionId, type, lease, heartbeatTask));
+            String traceId = MDC.get("traceId");
+            executor.execute(() -> execute(executionId, type, lease, heartbeatTask, traceId));
         }
         catch (RuntimeException exception) {
             heartbeatTask.cancel(false);
@@ -106,8 +108,13 @@ public class DataPipelineExecutionService {
             UUID executionId,
             DataPipelineType type,
             DataPipelineExecutionLock.Lease lease,
-            ScheduledFuture<?> heartbeatTask
+            ScheduledFuture<?> heartbeatTask,
+            String traceId
     ) {
+        String previousTraceId = MDC.get("traceId");
+        String previousExecutionId = MDC.get("executionId");
+        setExecutionContext("traceId", traceId);
+        MDC.put("executionId", executionId.toString());
         try (lease) {
             runner.run(type, progressListener(executionId));
             executionStateService.complete(executionId, Instant.now(clock));
@@ -133,7 +140,17 @@ public class DataPipelineExecutionService {
         }
         finally {
             heartbeatTask.cancel(false);
+            setExecutionContext("traceId", previousTraceId);
+            setExecutionContext("executionId", previousExecutionId);
         }
+    }
+
+    private void setExecutionContext(String key, String value) {
+        if (value == null) {
+            MDC.remove(key);
+            return;
+        }
+        MDC.put(key, value);
     }
 
     private DataPipelineProgressListener progressListener(UUID executionId) {

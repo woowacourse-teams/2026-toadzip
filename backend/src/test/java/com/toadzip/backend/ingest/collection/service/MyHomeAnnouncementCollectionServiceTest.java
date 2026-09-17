@@ -23,10 +23,14 @@ import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeAnnouncementResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -65,13 +69,46 @@ class MyHomeAnnouncementCollectionServiceTest {
                 externalRepository,
                 sourceStore,
                 failureRecorder,
-                new ExternalDataRetryExecutor(Duration.ZERO)
+                new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry()),
+                new SimpleMeterRegistry()
         );
         service = new MyHomeAnnouncementCollectionService(
                 executionLock,
                 sourceStore,
                 supplyTypeCollector
         );
+    }
+
+    @Test
+    void 페이지를_확대해도_7개_공급유형의_모든_원천_행을_동일하게_저장한다() {
+        List<List<MyHomeAnnouncementSourceSnapshot>> storedBatches = new ArrayList<>();
+        when(sourceStore.storeAnnouncements(anyString(), any())).thenAnswer(invocation -> {
+            List<MyHomeAnnouncementSourceSnapshot> rows = invocation.getArgument(1);
+            storedBatches.add(List.copyOf(rows));
+            return rows.size();
+        });
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
+            MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
+            MyHomeAnnouncementCollectionRequest request = invocation.getArgument(1);
+            int page = invocation.getArgument(2);
+            int total = List.of(0, 1, 10, 194, 499, 500, 501).get(supplyType.ordinal());
+            int offset = (page - 1) * request.pageSize();
+            String items = IntStream.range(offset, Math.min(offset + request.pageSize(), total))
+                    .mapToObj(index -> "{\"pblancId\":\"" + supplyType.requestCode()
+                            + "\",\"houseSn\":" + index + "}")
+                    .collect(Collectors.joining(",", "[", "]"));
+            return responseWithTotalCount(items, total);
+        });
+
+        ExternalDataCollectionReport small = service.collect(new MyHomeAnnouncementCollectionRequest(10, 1_000));
+        ExternalDataCollectionReport large = service.collect(new MyHomeAnnouncementCollectionRequest(500, 1_000));
+
+        assertThat(storedBatches.subList(7, 14)).containsExactlyElementsOf(storedBatches.subList(0, 7));
+        assertThat(large.storedRowCount()).isEqualTo(1_705).isEqualTo(small.storedRowCount());
+        assertThat(large.failedRequestCount()).isZero();
+        assertThat(small.externalApiCallCount()).isEqualTo(174);
+        assertThat(large.externalApiCallCount()).isEqualTo(8);
+        verify(sourceStore, times(2)).completeAnnouncementCollection(anyString());
     }
 
     @Test
