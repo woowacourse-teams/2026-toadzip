@@ -16,6 +16,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
@@ -108,6 +109,8 @@ public class DataPipelineExecutionService {
             DataPipelineExecutionLock.Lease lease,
             ScheduledFuture<?> heartbeatTask
     ) {
+        String previousTraceId = MDC.get("traceId");
+        MDC.put("traceId", executionId.toString());
         try (lease) {
             runner.run(type, progressListener(executionId));
             executionStateService.complete(executionId, Instant.now(clock));
@@ -133,7 +136,16 @@ public class DataPipelineExecutionService {
         }
         finally {
             heartbeatTask.cancel(false);
+            restoreExecutionContext(previousTraceId);
         }
+    }
+
+    private void restoreExecutionContext(String previousTraceId) {
+        if (previousTraceId == null) {
+            MDC.remove("traceId");
+            return;
+        }
+        MDC.put("traceId", previousTraceId);
     }
 
     private DataPipelineProgressListener progressListener(UUID executionId) {

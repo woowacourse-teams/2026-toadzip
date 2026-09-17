@@ -10,6 +10,7 @@ import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementExtern
 import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeAnnouncementResponseParser;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ public class MyHomeAnnouncementSupplyTypeCollector {
     private final MyHomeSourceStore sourceStore;
     private final ExternalDataFailureRecorder failureRecorder;
     private final ExternalDataRetryExecutor retryExecutor;
+    private final MeterRegistry meterRegistry;
 
     public ExternalDataCollectionReport collect(
             String runId,
@@ -54,7 +56,9 @@ public class MyHomeAnnouncementSupplyTypeCollector {
                     ExternalDataRateLimit.count(exception)
             );
         }
-        int storedRowCount = sourceStore.storeAnnouncements(runId, fetchedSupplyType.snapshots());
+        int storedRowCount = meterRegistry.timer(
+                "ingest.announcement.store", "source", ExternalDataSource.MYHOME_ANNOUNCEMENT.name()
+        ).record(() -> sourceStore.storeAnnouncements(runId, fetchedSupplyType.snapshots()));
         resolveFailures(fetchedSupplyType.requestDescriptions());
         return new ExternalDataCollectionReport(
                 ExternalDataSource.MYHOME_ANNOUNCEMENT.operation(),

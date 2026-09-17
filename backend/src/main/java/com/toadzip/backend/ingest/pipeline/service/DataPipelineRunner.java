@@ -14,8 +14,13 @@ import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingServi
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 public class DataPipelineRunner {
 
@@ -32,6 +37,7 @@ public class DataPipelineRunner {
     private final MyHomeAnnouncementMappingService myHomeAnnouncementMappingService;
     private final LhAnnouncementEnrichmentService announcementEnrichmentService;
     private final DataPipelineStepResultAdapter resultAdapter;
+    private final MeterRegistry meterRegistry;
 
     public DataPipelineRunner(
             MyHomeComplexCollectionService myHomeComplexCollectionService,
@@ -43,7 +49,8 @@ public class DataPipelineRunner {
             LhHousingTypeHouseholdEnrichmentService householdEnrichmentService,
             MyHomeAnnouncementMappingService myHomeAnnouncementMappingService,
             LhAnnouncementEnrichmentService announcementEnrichmentService,
-            DataPipelineStepResultAdapter resultAdapter
+            DataPipelineStepResultAdapter resultAdapter,
+            MeterRegistry meterRegistry
     ) {
         this.myHomeComplexCollectionService = myHomeComplexCollectionService;
         this.lhLeaseCatalogCollectionService = lhLeaseCatalogCollectionService;
@@ -55,6 +62,7 @@ public class DataPipelineRunner {
         this.myHomeAnnouncementMappingService = myHomeAnnouncementMappingService;
         this.announcementEnrichmentService = announcementEnrichmentService;
         this.resultAdapter = resultAdapter;
+        this.meterRegistry = meterRegistry;
     }
 
     public void run(DataPipelineType type, DataPipelineProgressListener progressListener) {
@@ -75,14 +83,27 @@ public class DataPipelineRunner {
     }
 
     private void runStep(DataPipelineStep step, DataPipelineProgressListener progressListener) {
-        progressListener.started(step);
-        DataPipelineStepResult result = execute(step);
-        if (result.failedOnlyByRateLimit()) {
-            progressListener.skipped(step, RATE_LIMIT_SKIP_REASON, result.serverResponse());
-            return;
+        Timer.Sample sample = Timer.start(meterRegistry);
+        String outcome = "failed";
+        try {
+            progressListener.started(step);
+            DataPipelineStepResult result = execute(step);
+            if (result.failedOnlyByRateLimit()) {
+                progressListener.skipped(step, RATE_LIMIT_SKIP_REASON, result.serverResponse());
+                outcome = "rate_limited";
+                return;
+            }
+            rejectPartialFailure(step, result);
+            progressListener.completed(step);
+            outcome = "completed";
         }
-        rejectPartialFailure(step, result);
-        progressListener.completed(step);
+        finally {
+            long durationNanos = sample.stop(meterRegistry.timer(
+                    "ingest.pipeline.step", "step", step.name(), "result", outcome
+            ));
+            log.info("event=ingest.pipeline.step.finished executionId={} step={} result={} durationMs={}",
+                    MDC.get("traceId"), step, outcome, durationNanos / 1_000_000);
+        }
     }
 
     private DataPipelineStepResult execute(DataPipelineStep step) {

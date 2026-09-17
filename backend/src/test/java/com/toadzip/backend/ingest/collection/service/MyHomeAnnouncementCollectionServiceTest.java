@@ -23,13 +23,14 @@ import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeAnnouncementResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
-import java.util.List;
 import java.util.ArrayList;
-import java.util.stream.IntStream;
-import java.util.stream.Collectors;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -68,7 +69,8 @@ class MyHomeAnnouncementCollectionServiceTest {
                 externalRepository,
                 sourceStore,
                 failureRecorder,
-                new ExternalDataRetryExecutor(Duration.ZERO)
+                new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry()),
+                new SimpleMeterRegistry()
         );
         service = new MyHomeAnnouncementCollectionService(
                 executionLock,

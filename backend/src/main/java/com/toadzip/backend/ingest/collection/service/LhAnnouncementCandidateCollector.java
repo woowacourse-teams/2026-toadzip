@@ -8,6 +8,7 @@ import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementPageFetcher.FetchedPages;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +23,7 @@ public class LhAnnouncementCandidateCollector {
     private final LhSourceStore sourceStore;
     private final ExternalDataFailureRecorder failureRecorder;
     private final LhAnnouncementCollectionProgressManager progressManager;
+    private final MeterRegistry meterRegistry;
 
     public ExternalDataCollectionReport collect(ExternalDataSource targetSource, Candidate candidate) {
         LhAnnouncementRequest request = candidate.request();
@@ -73,11 +75,13 @@ public class LhAnnouncementCandidateCollector {
     ) {
         if (targetSource == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL) {
             FetchedPages<LhAnnouncementDetailSource> pages = pageFetcher.fetchDetails(request, callCounter);
-            int storedRowCount = sourceStore.replaceDetails(request.panId(), pages.items());
+            int storedRowCount = meterRegistry.timer("ingest.announcement.store", "source", targetSource.name())
+                    .record(() -> sourceStore.replaceDetails(request.panId(), pages.items()));
             return new StoredPages(storedRowCount, pages.requestDescriptions());
         }
         FetchedPages<LhAnnouncementSupplySource> pages = pageFetcher.fetchSupplies(request, callCounter);
-        int storedRowCount = sourceStore.replaceSupplies(request.panId(), pages.items());
+        int storedRowCount = meterRegistry.timer("ingest.announcement.store", "source", targetSource.name())
+                .record(() -> sourceStore.replaceSupplies(request.panId(), pages.items()));
         return new StoredPages(storedRowCount, pages.requestDescriptions());
     }
 

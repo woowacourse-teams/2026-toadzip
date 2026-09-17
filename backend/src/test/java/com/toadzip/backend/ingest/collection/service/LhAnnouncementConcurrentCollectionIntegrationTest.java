@@ -19,6 +19,7 @@ import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSour
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -52,6 +53,9 @@ class LhAnnouncementConcurrentCollectionIntegrationTest {
 
     @Autowired
     private ExternalDataCollectionFailureRepository failures;
+
+    @Autowired
+    private MeterRegistry meterRegistry;
 
     @MockitoBean
     private LhAnnouncementExternalRepository externalRepository;
@@ -101,6 +105,12 @@ class LhAnnouncementConcurrentCollectionIntegrationTest {
                 .containsExactlyInAnyOrder("100", "200");
         assertThat(checkpoints.count()).isEqualTo(2);
         assertThat(links.count()).isEqualTo(3);
+        assertThat(meterRegistry.get("ingest.announcement.store")
+                .tag("source", "LH_ANNOUNCEMENT_DETAIL").timer().count()).isEqualTo(2);
+        assertThat(meterRegistry.get("ingest.external.request")
+                .tags("source", "LH_ANNOUNCEMENT_DETAIL", "result", "completed").timer().count()).isEqualTo(2);
+        assertThat(meterRegistry.get("ingest.external.request")
+                .tags("source", "LH_ANNOUNCEMENT_DETAIL", "result", "failed").timer().count()).isOne();
         verify(externalRepository).fetchDetail(any());
     }
 

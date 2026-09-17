@@ -18,10 +18,10 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionChec
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionExecutionLock;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore.BatchProgress;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
@@ -32,26 +32,27 @@ import com.toadzip.backend.ingest.collection.repository.external.ExternalDataReq
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Supplier;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.ArrayList;
-import org.slf4j.MDC;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.MDC;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.json.JsonMapper;
@@ -97,13 +98,14 @@ class LhAnnouncementExternalCollectionServiceTest {
                 externalRepository,
                 new LhAnnouncementDetailResponseParser(),
                 new LhAnnouncementSupplyResponseParser(),
-                new ExternalDataRetryExecutor(Duration.ZERO)
+                new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry())
         );
         LhAnnouncementCandidateCollector candidateCollector = new LhAnnouncementCandidateCollector(
                 pageFetcher,
                 sourceStore,
                 failureRecorder,
-                progressManager
+                progressManager,
+                new SimpleMeterRegistry()
         );
         service = new LhAnnouncementExternalCollectionService(
                 myHomeAnnouncementRepository,

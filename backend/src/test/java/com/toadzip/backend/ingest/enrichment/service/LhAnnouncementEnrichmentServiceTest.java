@@ -53,6 +53,7 @@ import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichment
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -702,9 +703,11 @@ class LhAnnouncementEnrichmentServiceTest {
     private LhAnnouncementCandidateCollector collector(LhAnnouncementExternalRepository external) {
         LhAnnouncementPageFetcher fetcher = new LhAnnouncementPageFetcher(
                 external, new LhAnnouncementDetailResponseParser(), new LhAnnouncementSupplyResponseParser(),
-                new ExternalDataRetryExecutor()
+                new ExternalDataRetryExecutor(new SimpleMeterRegistry())
         );
-        return new LhAnnouncementCandidateCollector(fetcher, sourceStore, failureRecorder, progressManager);
+        return new LhAnnouncementCandidateCollector(
+                fetcher, sourceStore, failureRecorder, progressManager, new SimpleMeterRegistry()
+        );
     }
 
     private ExternalDataResponse response(String json) {

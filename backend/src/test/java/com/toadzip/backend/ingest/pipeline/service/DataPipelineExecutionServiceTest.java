@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.MDC;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
@@ -79,6 +80,26 @@ class DataPipelineExecutionServiceTest {
                 clock,
                 executionMapper()
         );
+    }
+
+    @Test
+    void 실행_ID를_작업에_전달하고_종료하면_이전_로그_맥락을_복원한다() {
+        configureStoredExecution();
+        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
+        AtomicReference<String> observedExecutionId = new AtomicReference<>();
+        doAnswer(invocation -> {
+            observedExecutionId.set(MDC.get("traceId"));
+            throw new IllegalStateException("테스트 실패");
+        }).when(runner).run(any(), any());
+        MDC.put("traceId", "previous");
+        try {
+            var started = service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+            assertThat(observedExecutionId.get()).isEqualTo(started.executionId().toString());
+            assertThat(MDC.get("traceId")).isEqualTo("previous");
+        }
+        finally {
+            MDC.clear();
+        }
     }
 
     @Test
