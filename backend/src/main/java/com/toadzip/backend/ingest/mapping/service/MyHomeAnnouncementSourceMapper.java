@@ -205,7 +205,7 @@ record MyHomeSupplyRowMappingData(
         BigDecimal exclusiveArea,
         BigDecimal supplyArea,
         Integer lhTotalSupplyHouseholdCount,
-        String resolvedLhPanId
+        String resolvedLhSourceIdentifier
 ) {
 }
 

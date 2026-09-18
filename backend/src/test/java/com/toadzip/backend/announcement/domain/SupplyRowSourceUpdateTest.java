@@ -72,6 +72,32 @@ class SupplyRowSourceUpdateTest {
         assertThat(supplyRow.getTotalSupplyHouseholdCount()).isEqualTo(100);
     }
 
+    @Test
+    void 같은_LH_공급행의_모집세대수는_상세_보강_전까지_변경을_반영한다() {
+        SupplyRow supplyRow = supplyRow("기존 단지");
+        supplyRow.resolveFromLhSupply("LH:100:SUPPLY:0", 20, 20);
+
+        boolean updated = supplyRow.resolveFromLhSupply("LH:100:SUPPLY:0", 30, 30);
+
+        assertThat(updated).isTrue();
+        assertThat(supplyRow.getTotalSupplyHouseholdCount()).isEqualTo(30);
+        assertThat(supplyRow.isLhTotalSupplyHouseholdCountOwned()).isTrue();
+        assertThat(supplyRow.isLhTotalSupplyHouseholdCountEnriched()).isFalse();
+    }
+
+    @Test
+    void LH_상세가_보강한_전체세대수는_공급행의_모집세대수로_덮지_않는다() {
+        SupplyRow supplyRow = supplyRow("기존 단지");
+        supplyRow.resolveFromLhSupply("LH:100:SUPPLY:0", 20, 20);
+        supplyRow.enrichFromLh("LH:100:SUPPLY:0", null, 100);
+
+        boolean updated = supplyRow.resolveFromLhSupply("LH:100:SUPPLY:0", 30, 30);
+
+        assertThat(updated).isFalse();
+        assertThat(supplyRow.getTotalSupplyHouseholdCount()).isEqualTo(100);
+        assertThat(supplyRow.isLhTotalSupplyHouseholdCountEnriched()).isTrue();
+    }
+
     private SupplyRow supplyRow(String complexName) {
         return SupplyRow.create(
                 new Announcement(),

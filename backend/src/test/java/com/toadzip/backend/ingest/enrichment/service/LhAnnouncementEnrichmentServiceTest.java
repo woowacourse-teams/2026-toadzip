@@ -498,7 +498,7 @@ class LhAnnouncementEnrichmentServiceTest {
 
         assertThat(report.failedSourceCount()).isOne();
         assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row ->
-                assertThat(row.getLhSourceSupplyRowIdentifier()).isNull()
+                assertThat(row.getLhSourceSupplyRowIdentifier()).isEqualTo("LH:" + PAN_ID + ":SUPPLY:0")
         );
         assertThat(supplyTargetRepository.count()).isZero();
         assertThat(enrichmentFailureRepository.findAll()).singleElement()
@@ -785,15 +785,20 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(supplyRowRepository.count()).isEqualTo(2);
         assertThat(supplyTargetRepository.count()).isEqualTo(2);
         assertThat(supplyRowRepository.findAll())
+                .allSatisfy(row -> {
+                    assertThat(row.getSupplyPnu()).isEqualTo(changedPnu);
+                    assertThat(row.getSourceComplexName()).isEqualTo("동삼2 변경");
+                    assertThat(row.getSupplyCategory()).isEqualTo(SupplyCategory.RESUPPLY);
+                })
+                .extracting(SupplyRow::getDisplayOrder)
+                .containsExactlyInAnyOrder(1, 2);
+        assertThat(supplyRowRepository.findAll())
                 .filteredOn(row -> row.getSourceSupplyRowIdentifier().equals(source.getSourceKey()))
                 .singleElement()
                 .satisfies(row -> {
                     assertThat(row.getSourceHousingTypeName()).isEqualTo("46A");
                     assertThat(row.getHousingType().getId()).isEqualTo(firstHousingTypeId);
                     assertThat(row.getMatchingFailureReason()).isNull();
-                    assertThat(row.getSupplyPnu()).isEqualTo(changedPnu);
-                    assertThat(row.getSourceComplexName()).isEqualTo("동삼2 변경");
-                    assertThat(row.getSupplyCategory()).isEqualTo(SupplyCategory.RESUPPLY);
                 });
     }
 

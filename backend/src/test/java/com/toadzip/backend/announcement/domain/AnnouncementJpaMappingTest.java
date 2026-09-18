@@ -67,7 +67,8 @@ class AnnouncementJpaMappingTest {
                         "matchingFailureReason",
                         "totalSupplyHouseholdCount",
                         "lhSourceSupplyRowIdentifier",
-                        "lhTotalSupplyHouseholdCountOwned"
+                        "lhTotalSupplyHouseholdCountOwned",
+                        "lhTotalSupplyHouseholdCountEnriched"
                 )
         );
         assertEntityAttributes(

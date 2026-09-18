@@ -132,8 +132,12 @@ public class MyHomeAnnouncementSupplyRowResolver {
                 area(lhSupply.getExclusiveArea()),
                 area(lhSupply.getSupplyArea()),
                 lhSupplyHouseholdCount,
-                lhSupply.getPanId()
+                lhSourceIdentifier(lhSupply)
         );
+    }
+
+    private String lhSourceIdentifier(LhAnnouncementSupplySource source) {
+        return "LH:" + source.getPanId() + ":SUPPLY:" + source.getSourceOrder();
     }
 
     private String sourceIdentifier(

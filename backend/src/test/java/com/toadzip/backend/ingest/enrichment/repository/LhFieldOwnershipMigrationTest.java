@@ -18,7 +18,10 @@ import org.springframework.test.context.ActiveProfiles;
 class LhFieldOwnershipMigrationTest {
 
     private static final String SCHEMA = "lh_field_ownership_migration_test";
-    private static final String MIGRATION = "db/migration/V20260918_01__add_lh_field_ownership.sql";
+    private static final String OWNERSHIP_MIGRATION =
+            "db/migration/V20260918_01__add_lh_field_ownership.sql";
+    private static final String CORRECTION_MIGRATION =
+            "db/migration/V20260918_02__correct_lh_household_count_ownership.sql";
 
     @Autowired
     private DataSource dataSource;
@@ -28,7 +31,8 @@ class LhFieldOwnershipMigrationTest {
         try (Connection connection = dataSource.getConnection()) {
             prepareLegacySchema(connection);
             try {
-                ScriptUtils.executeSqlScript(connection, new ClassPathResource(MIGRATION));
+                ScriptUtils.executeSqlScript(connection, new ClassPathResource(OWNERSHIP_MIGRATION));
+                ScriptUtils.executeSqlScript(connection, new ClassPathResource(CORRECTION_MIGRATION));
 
                 assertOwnershipValues(connection);
                 assertOwnershipConstraints(connection);
@@ -64,7 +68,32 @@ class LhFieldOwnershipMigrationTest {
                     """);
             statement.execute("""
                     INSERT INTO supply_rows (lh_source_supply_row_identifier, total_supply_household_count)
-                    VALUES ('LH:100:SUPPLY:0', 100), ('LH:100:SUPPLY:1', NULL), (NULL, 20)
+                    VALUES
+                        ('LH:100:SUPPLY:0', 100),
+                        ('LH:100:SUPPLY:1', 20),
+                        ('LH:100:SUPPLY:2', 10),
+                        ('LH:100:SUPPLY:0', 20),
+                        ('LH:100:SUPPLY:0', 50),
+                        ('LH:999:SUPPLY:0', 30),
+                        (NULL, 20)
+                    """);
+            statement.execute("""
+                    CREATE TABLE lh_announcement_supply_source (
+                        id BIGSERIAL PRIMARY KEY,
+                        pan_id VARCHAR(255),
+                        source_order INTEGER,
+                        total_unit_count VARCHAR(255),
+                        supplied_unit_count VARCHAR(255)
+                    )
+                    """);
+            statement.execute("""
+                    INSERT INTO lh_announcement_supply_source (
+                        pan_id, source_order, total_unit_count, supplied_unit_count
+                    )
+                    VALUES
+                        ('100', 0, '100', '20'),
+                        ('100', 1, NULL, NULL),
+                        ('100', 2, NULL, '10')
                     """);
         }
     }
@@ -85,16 +114,32 @@ class LhFieldOwnershipMigrationTest {
         }
         try (Statement statement = connection.createStatement();
                 ResultSet supplyRows = statement.executeQuery("""
-                        SELECT lh_total_supply_household_count_owned
+                        SELECT lh_total_supply_household_count_owned,
+                               lh_total_supply_household_count_enriched
                         FROM supply_rows
                         ORDER BY id
                         """)) {
             assertThat(supplyRows.next()).isTrue();
             assertThat(supplyRows.getBoolean(1)).isTrue();
+            assertThat(supplyRows.getBoolean(2)).isTrue();
             assertThat(supplyRows.next()).isTrue();
             assertThat(supplyRows.getBoolean(1)).isFalse();
+            assertThat(supplyRows.getBoolean(2)).isFalse();
+            assertThat(supplyRows.next()).isTrue();
+            assertThat(supplyRows.getBoolean(1)).isTrue();
+            assertThat(supplyRows.getBoolean(2)).isFalse();
+            assertThat(supplyRows.next()).isTrue();
+            assertThat(supplyRows.getBoolean(1)).isTrue();
+            assertThat(supplyRows.getBoolean(2)).isFalse();
             assertThat(supplyRows.next()).isTrue();
             assertThat(supplyRows.getBoolean(1)).isFalse();
+            assertThat(supplyRows.getBoolean(2)).isFalse();
+            assertThat(supplyRows.next()).isTrue();
+            assertThat(supplyRows.getBoolean(1)).isTrue();
+            assertThat(supplyRows.getBoolean(2)).isTrue();
+            assertThat(supplyRows.next()).isTrue();
+            assertThat(supplyRows.getBoolean(1)).isFalse();
+            assertThat(supplyRows.getBoolean(2)).isFalse();
         }
     }
 
@@ -106,12 +151,14 @@ class LhFieldOwnershipMigrationTest {
                         WHERE table_schema = current_schema()
                           AND column_name IN (
                               'lh_reception_place_owned',
-                              'lh_total_supply_household_count_owned'
+                              'lh_total_supply_household_count_owned',
+                              'lh_total_supply_household_count_enriched'
                           )
-                        ORDER BY table_name
+                        ORDER BY table_name, ordinal_position
                         """)) {
             assertOwnershipConstraint(result, "announcements", "lh_reception_place_owned");
             assertOwnershipConstraint(result, "supply_rows", "lh_total_supply_household_count_owned");
+            assertOwnershipConstraint(result, "supply_rows", "lh_total_supply_household_count_enriched");
         }
     }
 

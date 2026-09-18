@@ -15,6 +15,8 @@ import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -158,17 +160,54 @@ public class MyHomeAnnouncementMappingWriter {
         int created = 0;
         int updated = 0;
         int unchanged = 0;
+        int displayOrder = 1;
         List<MyHomeSupplyMatchingFailureData> failures = new ArrayList<>();
-        for (int index = 0; index < rows.size(); index++) {
-            MyHomeSupplyRowMappingData data = rows.get(index);
+        Map<String, List<SupplyRow>> storedGroups = storedGroupsByMyHomeSource(announcement, storedRows.values());
+        for (MyHomeSupplyRowMappingData data : rows) {
+            List<SupplyRow> storedGroup = storedGroups.get(data.sourceSupplyRowIdentifier());
+            if (preserveExistingLhResolvedRows && hasLhResolvedRows(announcement, storedGroup)) {
+                for (SupplyRow stored : storedGroup) {
+                    storedRows.remove(stored.getSourceSupplyRowIdentifier());
+                    Integer householdCount = stored.getSourceSupplyRowIdentifier()
+                            .equals(data.sourceSupplyRowIdentifier())
+                            ? data.totalSupplyHouseholdCount()
+                            : stored.getTotalSupplyHouseholdCount();
+                    boolean changed = stored.updateFromMyHome(
+                            stored.getHousingComplex(),
+                            stored.getHousingType(),
+                            displayOrder++,
+                            data.sourceComplexName(),
+                            stored.getSourceHousingTypeName(),
+                            data.pnu(),
+                            data.supplyCategory(),
+                            stored.getMatchingFailureReason(),
+                            householdCount
+                    );
+                    if (changed) {
+                        updated++;
+                        continue;
+                    }
+                    unchanged++;
+                }
+                continue;
+            }
             SupplyRow stored = storedRows.remove(data.sourceSupplyRowIdentifier());
-            if (preserveExistingLhResolvedRows
-                    && stored != null
-                    && stored.getLhSourceSupplyRowIdentifier() != null) {
+            MyHomeSupplyMatchResult match = supplyMatcher.match(data);
+            if (match.failure() != null) {
+                failures.add(match.failure());
+            }
+            if (stored == null) {
+                SupplyRow createdRow = createSupplyRow(announcement, data, match, displayOrder++);
+                applyLhResolution(createdRow, data, match);
+                supplyRowRepository.save(createdRow);
+                created++;
+                continue;
+            }
+            if (shouldPreservePreviousLhResolution(stored, data, match)) {
                 boolean changed = stored.updateFromMyHome(
                         stored.getHousingComplex(),
                         stored.getHousingType(),
-                        index + 1,
+                        displayOrder++,
                         data.sourceComplexName(),
                         stored.getSourceHousingTypeName(),
                         data.pnu(),
@@ -178,25 +217,15 @@ public class MyHomeAnnouncementMappingWriter {
                 );
                 if (changed) {
                     updated++;
+                    continue;
                 }
-                else {
-                    unchanged++;
-                }
-                continue;
-            }
-            MyHomeSupplyMatchResult match = supplyMatcher.match(data);
-            if (match.failure() != null) {
-                failures.add(match.failure());
-            }
-            if (stored == null) {
-                supplyRowRepository.save(createSupplyRow(announcement, data, match, index + 1));
-                created++;
+                unchanged++;
                 continue;
             }
             boolean changed = stored.updateFromMyHome(
                     match.complex(),
                     match.housingType(),
-                    index + 1,
+                    displayOrder++,
                     data.sourceComplexName(),
                     data.sourceHousingTypeName(),
                     data.pnu(),
@@ -204,43 +233,71 @@ public class MyHomeAnnouncementMappingWriter {
                     match.failureDetail(),
                     data.totalSupplyHouseholdCount()
             );
-            if (data.resolvedLhPanId() != null
-                    && (!hasLhSourceForPan(stored, data.resolvedLhPanId())
-                    || !stored.isLhTotalSupplyHouseholdCountOwned())) {
-                changed |= stored.enrichTotalSupplyHouseholdCountFromLh(data.lhTotalSupplyHouseholdCount());
-            }
+            changed |= applyLhResolution(stored, data, match);
             if (changed) {
                 updated++;
                 continue;
             }
             unchanged++;
         }
-        List<SupplyRow> staleRows = staleRows(
-                announcement,
-                storedRows,
-                preserveExistingLhResolvedRows
-        );
+        List<SupplyRow> staleRows = List.copyOf(storedRows.values());
         deleteStaleRows(staleRows);
         return new SupplyRowsWriteResult(created, updated, unchanged, staleRows.size(), failures);
     }
 
-    private boolean hasLhSourceForPan(SupplyRow row, String panId) {
-        String identifier = row.getLhSourceSupplyRowIdentifier();
-        return identifier != null && identifier.startsWith("LH:" + panId + ":");
+    private boolean applyLhResolution(
+            SupplyRow row,
+            MyHomeSupplyRowMappingData data,
+            MyHomeSupplyMatchResult match
+    ) {
+        if (data.resolvedLhSourceIdentifier() == null || match.failure() != null) {
+            return false;
+        }
+        return row.resolveFromLhSupply(
+                data.resolvedLhSourceIdentifier(),
+                data.totalSupplyHouseholdCount(),
+                data.lhTotalSupplyHouseholdCount()
+        );
     }
 
-    private List<SupplyRow> staleRows(
-            Announcement announcement,
-            Map<String, SupplyRow> storedRows,
-            boolean preserveExistingLhResolvedRows
+    private boolean shouldPreservePreviousLhResolution(
+            SupplyRow stored,
+            MyHomeSupplyRowMappingData data,
+            MyHomeSupplyMatchResult match
     ) {
-        if (!preserveExistingLhResolvedRows) {
-            return List.copyOf(storedRows.values());
-        }
-        String lhResolvedPrefix = announcement.getSourceAnnouncementIdentifier() + ":LH:";
-        return storedRows.values().stream()
-                .filter(row -> !row.getSourceSupplyRowIdentifier().startsWith(lhResolvedPrefix))
+        return match.failure() != null
+                && data.resolvedLhSourceIdentifier() != null
+                && stored.getLhSourceSupplyRowIdentifier() != null;
+    }
+
+    private Map<String, List<SupplyRow>> storedGroupsByMyHomeSource(
+            Announcement announcement,
+            Collection<SupplyRow> rows
+    ) {
+        String generatedIdentifierPrefix = announcement.getSourceAnnouncementIdentifier() + ":LH:";
+        List<SupplyRow> orderedRows = rows.stream()
+                .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
                 .toList();
+        Map<String, List<SupplyRow>> groups = new LinkedHashMap<>();
+        String myHomeSourceIdentifier = null;
+        for (SupplyRow row : orderedRows) {
+            if (!row.getSourceSupplyRowIdentifier().startsWith(generatedIdentifierPrefix)) {
+                myHomeSourceIdentifier = row.getSourceSupplyRowIdentifier();
+            }
+            if (myHomeSourceIdentifier != null) {
+                groups.computeIfAbsent(myHomeSourceIdentifier, ignored -> new ArrayList<>()).add(row);
+            }
+        }
+        return groups;
+    }
+
+    private boolean hasLhResolvedRows(Announcement announcement, List<SupplyRow> rows) {
+        if (rows == null) {
+            return false;
+        }
+        String generatedIdentifierPrefix = announcement.getSourceAnnouncementIdentifier() + ":LH:";
+        return rows.stream().anyMatch(row -> row.getLhSourceSupplyRowIdentifier() != null
+                || row.getSourceSupplyRowIdentifier().startsWith(generatedIdentifierPrefix));
     }
 
     private void deleteStaleRows(List<SupplyRow> staleRows) {

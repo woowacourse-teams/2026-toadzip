@@ -82,6 +82,9 @@ public class SupplyRow {
     @Column(nullable = false)
     private boolean lhTotalSupplyHouseholdCountOwned;
 
+    @Column(nullable = false)
+    private boolean lhTotalSupplyHouseholdCountEnriched;
+
     private SupplyRow(
             Announcement announcement,
             HousingComplex housingComplex,
@@ -190,7 +193,37 @@ public class SupplyRow {
         if (clearsLhOwnership) {
             lhSourceSupplyRowIdentifier = null;
             lhTotalSupplyHouseholdCountOwned = false;
+            lhTotalSupplyHouseholdCountEnriched = false;
         }
+        return true;
+    }
+
+    public boolean resolveFromLhSupply(
+            String sourceSupplyRowIdentifier,
+            Integer resolvedTotalSupplyHouseholdCount,
+            Integer lhSuppliedHouseholdCount
+    ) {
+        boolean sourceChanged = !Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier);
+        if (sourceChanged) {
+            boolean changed = !Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier)
+                    || !Objects.equals(totalSupplyHouseholdCount, resolvedTotalSupplyHouseholdCount)
+                    || lhTotalSupplyHouseholdCountOwned != (lhSuppliedHouseholdCount != null)
+                    || lhTotalSupplyHouseholdCountEnriched;
+            lhSourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
+            totalSupplyHouseholdCount = resolvedTotalSupplyHouseholdCount;
+            lhTotalSupplyHouseholdCountOwned = lhSuppliedHouseholdCount != null;
+            lhTotalSupplyHouseholdCountEnriched = false;
+            return changed;
+        }
+        if (lhSuppliedHouseholdCount == null || lhTotalSupplyHouseholdCountEnriched) {
+            return false;
+        }
+        if (Objects.equals(totalSupplyHouseholdCount, lhSuppliedHouseholdCount)
+                && lhTotalSupplyHouseholdCountOwned) {
+            return false;
+        }
+        totalSupplyHouseholdCount = lhSuppliedHouseholdCount;
+        lhTotalSupplyHouseholdCountOwned = true;
         return true;
     }
 
@@ -233,29 +266,20 @@ public class SupplyRow {
                 : totalSupplyHouseholdCount;
         boolean ownsTotalSupplyHouseholdCount = totalSupplyHouseholdCount != null
                 || lhTotalSupplyHouseholdCountOwned;
+        boolean enrichesTotalSupplyHouseholdCount = totalSupplyHouseholdCount != null
+                || lhTotalSupplyHouseholdCountEnriched;
         if (Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier)
                 && Objects.equals(this.expectedMoveInMonth, ownedExpectedMoveInMonth)
                 && Objects.equals(this.totalSupplyHouseholdCount, ownedTotalSupplyHouseholdCount)
-                && lhTotalSupplyHouseholdCountOwned == ownsTotalSupplyHouseholdCount) {
+                && lhTotalSupplyHouseholdCountOwned == ownsTotalSupplyHouseholdCount
+                && lhTotalSupplyHouseholdCountEnriched == enrichesTotalSupplyHouseholdCount) {
             return false;
         }
         lhSourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
         this.expectedMoveInMonth = ownedExpectedMoveInMonth;
         this.totalSupplyHouseholdCount = ownedTotalSupplyHouseholdCount;
         lhTotalSupplyHouseholdCountOwned = ownsTotalSupplyHouseholdCount;
-        return true;
-    }
-
-    public boolean enrichTotalSupplyHouseholdCountFromLh(Integer totalSupplyHouseholdCount) {
-        if (totalSupplyHouseholdCount == null) {
-            return false;
-        }
-        if (Objects.equals(this.totalSupplyHouseholdCount, totalSupplyHouseholdCount)
-                && lhTotalSupplyHouseholdCountOwned) {
-            return false;
-        }
-        this.totalSupplyHouseholdCount = totalSupplyHouseholdCount;
-        lhTotalSupplyHouseholdCountOwned = true;
+        lhTotalSupplyHouseholdCountEnriched = enrichesTotalSupplyHouseholdCount;
         return true;
     }
 

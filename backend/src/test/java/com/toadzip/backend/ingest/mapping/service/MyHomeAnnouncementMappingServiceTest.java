@@ -504,6 +504,124 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     @Test
+    void LH_매핑_후_공급_원천이_비어도_단일_공급행의_마지막_정상_연결을_보존한다() {
+        saveMappedComplex();
+        HousingComplex complex = complexRepository.findAll().getFirst();
+        HousingType lhType = housingTypeRepository.save(HousingType.createFromMyHome(
+                complex,
+                "source-housing-type-id:59A",
+                "59A",
+                new BigDecimal("59.9500"),
+                new BigDecimal("84.0500")
+        ));
+        sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
+        saveLhSupplyLink("21026", "PAN-1");
+        lhSourceStore.replaceSupplies("PAN-1", List.of(
+                lhSupply(0, "PAN-1", "동삼2", "59A", "59.9500", "84.0500")
+        ));
+        service.mapAll();
+        lhSourceStore.replaceSupplies("PAN-1", List.of());
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getHousingType().getId()).isEqualTo(lhType.getId());
+            assertThat(row.getSourceHousingTypeName()).isEqualTo("59A");
+            assertThat(row.getLhSourceSupplyRowIdentifier()).isEqualTo("LH:PAN-1:SUPPLY:0");
+        });
+    }
+
+    @Test
+    void LH_주택형_매칭이_실패한_뒤_공급_원천이_비면_마이홈_주택형으로_복구한다() {
+        saveMappedComplex();
+        HousingType myHomeType = housingTypeRepository.findAll().getFirst();
+        sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
+        saveLhSupplyLink("21026", "PAN-1");
+        lhSourceStore.replaceSupplies("PAN-1", List.of(
+                lhSupply(0, "PAN-1", "동삼2", "99Z", "99.0000", "120.0000")
+        ));
+        service.mapAll();
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getHousingType()).isNull();
+            assertThat(row.getLhSourceSupplyRowIdentifier()).isNull();
+        });
+        lhSourceStore.replaceSupplies("PAN-1", List.of());
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getHousingType().getId()).isEqualTo(myHomeType.getId());
+            assertThat(row.getSourceHousingTypeName()).isEqualTo("46A");
+            assertThat(row.getMatchingFailureReason()).isNull();
+        });
+    }
+
+    @Test
+    void 이전에_성공한_LH_주택형은_재수집_매칭_실패와_후속_빈_응답에도_보존한다() {
+        saveMappedComplex();
+        HousingComplex complex = complexRepository.findAll().getFirst();
+        HousingType lhType = housingTypeRepository.save(HousingType.createFromMyHome(
+                complex,
+                "source-housing-type-id:59A",
+                "59A",
+                new BigDecimal("59.9500"),
+                new BigDecimal("84.0500")
+        ));
+        sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
+        saveLhSupplyLink("21026", "PAN-1");
+        lhSourceStore.replaceSupplies("PAN-1", List.of(
+                lhSupply(0, "PAN-1", "동삼2", "59A", "59.9500", "84.0500")
+        ));
+        service.mapAll();
+
+        lhSourceStore.replaceSupplies("PAN-1", List.of(
+                lhSupply(0, "PAN-1", "동삼2", "99Z", "99.0000", "120.0000")
+        ));
+        var failed = service.mapAll();
+
+        assertThat(failed.failedSourceRowCount()).isOne();
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getHousingType().getId()).isEqualTo(lhType.getId());
+            assertThat(row.getSourceHousingTypeName()).isEqualTo("59A");
+            assertThat(row.getMatchingFailureReason()).isNull();
+            assertThat(row.getLhSourceSupplyRowIdentifier()).isEqualTo("LH:PAN-1:SUPPLY:0");
+        });
+
+        lhSourceStore.replaceSupplies("PAN-1", List.of());
+        assertThat(service.mapAll().failedSourceRowCount()).isZero();
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getHousingType().getId()).isEqualTo(lhType.getId());
+            assertThat(row.getSourceHousingTypeName()).isEqualTo("59A");
+            assertThat(row.getMatchingFailureReason()).isNull();
+        });
+    }
+
+    @Test
+    void 같은_LH_공급행의_모집세대수_변경을_상세_보강_전까지_반영한다() {
+        saveMappedComplex();
+        sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
+        saveLhSupplyLink("21026", "PAN-1");
+        lhSourceStore.replaceSupplies("PAN-1", List.of(
+                lhSupply(0, "PAN-1", "동삼2", "46A", "46.8000", "67.0000", "10")
+        ));
+        service.mapAll();
+
+        lhSourceStore.replaceSupplies("PAN-1", List.of(
+                lhSupply(0, "PAN-1", "동삼2", "46A", "46.8000", "67.0000", "15")
+        ));
+        var report = service.mapAll();
+
+        assertThat(report.updatedSupplyRowCount()).isOne();
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(15);
+            assertThat(row.isLhTotalSupplyHouseholdCountOwned()).isTrue();
+            assertThat(row.isLhTotalSupplyHouseholdCountEnriched()).isFalse();
+        });
+    }
+
+    @Test
     void 현재_성공_연결의_lh_공급행만_매핑한다() {
         saveMappedComplex();
         sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
@@ -649,6 +767,18 @@ class MyHomeAnnouncementMappingServiceTest {
             String exclusiveArea,
             String supplyArea
     ) {
+        return lhSupply(sourceOrder, panId, complexLabel, typeName, exclusiveArea, supplyArea, "10");
+    }
+
+    private LhAnnouncementSupplySource lhSupply(
+            int sourceOrder,
+            String panId,
+            String complexLabel,
+            String typeName,
+            String exclusiveArea,
+            String supplyArea,
+            String suppliedUnitCount
+    ) {
         LhAnnouncementSupplySource source = new LhAnnouncementSupplySource(
                 sourceOrder,
                 panId,
@@ -658,7 +788,7 @@ class MyHomeAnnouncementMappingServiceTest {
                         exclusiveArea,
                         supplyArea,
                         "100",
-                        "10",
+                        suppliedUnitCount,
                         null,
                         null
                 )
