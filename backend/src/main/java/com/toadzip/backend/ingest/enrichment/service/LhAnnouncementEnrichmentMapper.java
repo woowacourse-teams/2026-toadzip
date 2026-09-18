@@ -6,6 +6,7 @@ import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.ScheduleType;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -67,21 +68,17 @@ public class LhAnnouncementEnrichmentMapper {
         if (matches.size() == 1) {
             return parser.yearMonth(matches.getFirst().expectedMoveInYearMonth(), "입주예정월");
         }
-        if (matches.isEmpty() && complexes.size() == 1) {
+        if (matches.isEmpty()
+                && complexes.size() == 1
+                && !SupplyNameNormalizer.complexName(supply.getComplexLabel()).isEmpty()
+                && !SupplyNameNormalizer.complexName(complexes.getFirst().name()).isEmpty()) {
             return parser.yearMonth(complexes.getFirst().expectedMoveInYearMonth(), "입주예정월");
         }
         return null;
     }
 
     private boolean sameComplex(String left, String right) {
-        return normalizedName(left).equals(normalizedName(right));
-    }
-
-    private String normalizedName(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replaceAll("\\s+", "").replace("-", "").strip().toLowerCase();
+        return SupplyNameNormalizer.sameComplex(left, right);
     }
 
     private ReceptionPlace receptionOf(LhAnnouncementDetailSource detail) {
