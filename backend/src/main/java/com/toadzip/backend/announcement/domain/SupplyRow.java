@@ -4,6 +4,7 @@ import static jakarta.persistence.EnumType.STRING;
 import static jakarta.persistence.FetchType.LAZY;
 import static lombok.AccessLevel.PROTECTED;
 
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import jakarta.persistence.Column;
@@ -156,9 +157,13 @@ public class SupplyRow {
             String matchingFailureReason,
             Integer totalSupplyHouseholdCount
     ) {
-        Integer ownedTotalSupplyHouseholdCount = lhSourceSupplyRowIdentifier == null
-                ? totalSupplyHouseholdCount
-                : this.totalSupplyHouseholdCount;
+        boolean releasesLhEnrichment = announcement.getProvider() != null
+                && announcement.getProvider() != AgencyCode.LH;
+        boolean preserveLhEnrichment = !releasesLhEnrichment && lhSourceSupplyRowIdentifier != null;
+        YearMonth ownedExpectedMoveInMonth = releasesLhEnrichment ? null : expectedMoveInMonth;
+        Integer ownedTotalSupplyHouseholdCount = preserveLhEnrichment
+                ? this.totalSupplyHouseholdCount
+                : totalSupplyHouseholdCount;
         SupplyRow incoming = new SupplyRow(
                 announcement,
                 housingComplex,
@@ -168,15 +173,19 @@ public class SupplyRow {
                 sourceComplexName,
                 sourceHousingTypeName,
                 supplyPnu,
-                expectedMoveInMonth,
+                ownedExpectedMoveInMonth,
                 supplyCategory,
                 matchingFailureReason,
                 ownedTotalSupplyHouseholdCount
         );
-        if (hasSameSourceValues(incoming)) {
+        boolean clearsLhSource = releasesLhEnrichment && lhSourceSupplyRowIdentifier != null;
+        if (hasSameSourceValues(incoming) && !clearsLhSource) {
             return false;
         }
         applySourceValues(incoming);
+        if (clearsLhSource) {
+            lhSourceSupplyRowIdentifier = null;
+        }
         return true;
     }
 

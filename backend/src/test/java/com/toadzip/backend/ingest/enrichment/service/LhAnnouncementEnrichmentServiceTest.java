@@ -10,6 +10,7 @@ import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.AttachmentType;
 import com.toadzip.backend.announcement.domain.ScheduleType;
+import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
@@ -18,6 +19,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepositor
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.Address;
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.RentalType;
@@ -239,6 +241,52 @@ class LhAnnouncementEnrichmentServiceTest {
             assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(100);
         });
         assertThat(supplyTargetRepository.count()).isOne();
+    }
+
+    @Test
+    void 공급기관이_LH에서_SH로_바뀌면_LH_보강값만_정리하고_수기값을_보존한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        Announcement announcement = announcementRepository.findAll().getFirst();
+        SupplyRow supplyRow = supplyRowRepository.findAll().getFirst();
+        LocalDateTime start = LocalDateTime.of(2026, 9, 1, 10, 0);
+        Long scheduleId = scheduleRepository.save(AnnouncementSchedule.create(
+                announcement, ScheduleType.APPLICATION, "수동 일정", start, start.plusDays(1), 2
+        )).getId();
+        Long attachmentId = attachmentRepository.save(AnnouncementAttachment.create(
+                announcement, "수동 첨부.pdf", AttachmentType.REFERENCE, "https://example.com/manual.pdf", 2
+        )).getId();
+        Long targetId = supplyTargetRepository.save(SupplyTarget.create(
+                supplyRow, "수동 대상", null, 1, null,
+                new BigDecimal("3000000"), new BigDecimal("100000"), null, null, 2
+        )).getId();
+        ReflectionTestUtils.setField(source, "suplyInsttNm", "서울주택도시공사");
+        myHomeSourceRepository.save(source);
+
+        var report = mappingService.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(stored -> {
+            assertThat(stored.getProvider()).isEqualTo(AgencyCode.SH);
+            assertThat(stored.getLhPanId()).isNull();
+            assertThat(stored.getCorrectionCancellationReason()).isNull();
+            assertThat(stored.getReceptionPlace().getName()).isEqualTo("서울주택도시공사");
+        });
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(stored -> {
+            assertThat(stored.getLhSourceSupplyRowIdentifier()).isNull();
+            assertThat(stored.getExpectedMoveInMonth()).isNull();
+            assertThat(stored.getTotalSupplyHouseholdCount()).isEqualTo(20);
+        });
+        assertThat(scheduleRepository.findAll()).singleElement().satisfies(stored ->
+                assertThat(stored.getId()).isEqualTo(scheduleId));
+        assertThat(attachmentRepository.findAll()).singleElement().satisfies(stored ->
+                assertThat(stored.getId()).isEqualTo(attachmentId));
+        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(stored ->
+                assertThat(stored.getId()).isEqualTo(targetId));
     }
 
     @ParameterizedTest
@@ -688,6 +736,11 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(supplyTargetRepository.count()).isEqualTo(2);
 
         supplySourceRepository.deleteAll();
+        String changedPnu = "1111010100100020000";
+        ReflectionTestUtils.setField(source, "pnu", changedPnu);
+        ReflectionTestUtils.setField(source, "hsmpNm", "동삼2 변경");
+        ReflectionTestUtils.setField(source, "pblancNm", "국민임대 재공급 공고");
+        myHomeSourceRepository.save(source);
 
         assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
         assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
@@ -700,6 +753,9 @@ class LhAnnouncementEnrichmentServiceTest {
                     assertThat(row.getSourceHousingTypeName()).isEqualTo("46A");
                     assertThat(row.getHousingType().getId()).isEqualTo(firstHousingTypeId);
                     assertThat(row.getMatchingFailureReason()).isNull();
+                    assertThat(row.getSupplyPnu()).isEqualTo(changedPnu);
+                    assertThat(row.getSourceComplexName()).isEqualTo("동삼2 변경");
+                    assertThat(row.getSupplyCategory()).isEqualTo(SupplyCategory.RESUPPLY);
                 });
     }
 

@@ -1,10 +1,16 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
+import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.announcement.domain.SupplyTarget;
+import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
@@ -22,6 +28,10 @@ public class MyHomeAnnouncementMappingWriter {
 
     private final AnnouncementRepository announcementRepository;
 
+    private final AnnouncementScheduleRepository scheduleRepository;
+
+    private final AnnouncementAttachmentRepository attachmentRepository;
+
     private final SupplyRowRepository supplyRowRepository;
 
     private final SupplyTargetRepository supplyTargetRepository;
@@ -30,11 +40,15 @@ public class MyHomeAnnouncementMappingWriter {
 
     public MyHomeAnnouncementMappingWriter(
             AnnouncementRepository announcementRepository,
+            AnnouncementScheduleRepository scheduleRepository,
+            AnnouncementAttachmentRepository attachmentRepository,
             SupplyRowRepository supplyRowRepository,
             SupplyTargetRepository supplyTargetRepository,
             MyHomeAnnouncementSupplyMatcher supplyMatcher
     ) {
         this.announcementRepository = announcementRepository;
+        this.scheduleRepository = scheduleRepository;
+        this.attachmentRepository = attachmentRepository;
         this.supplyRowRepository = supplyRowRepository;
         this.supplyTargetRepository = supplyTargetRepository;
         this.supplyMatcher = supplyMatcher;
@@ -46,6 +60,9 @@ public class MyHomeAnnouncementMappingWriter {
             Announcement previousAnnouncement
     ) {
         AnnouncementWriteResult announcementResult = writeAnnouncement(data, previousAnnouncement);
+        if (announcementResult.releasedLhOwnership()) {
+            deleteLhEnrichment(announcementResult.announcement());
+        }
         SupplyRowsWriteResult supplyRowsResult = writeSupplyRows(
                 announcementResult.announcement(),
                 data.supplyRows(),
@@ -83,8 +100,9 @@ public class MyHomeAnnouncementMappingWriter {
                     0L,
                     data.receptionPlace()
             ));
-            return new AnnouncementWriteResult(created, true, false);
+            return new AnnouncementWriteResult(created, true, false, false);
         }
+        boolean releasesLhOwnership = stored.getLhPanId() != null && data.provider() != AgencyCode.LH;
         boolean updated = stored.updateFromMyHome(
                 data.previousSourceAnnouncementIdentifier(),
                 previousAnnouncement,
@@ -100,7 +118,28 @@ public class MyHomeAnnouncementMappingWriter {
                 data.originalUrl(),
                 data.receptionPlace()
         );
-        return new AnnouncementWriteResult(stored, false, updated);
+        return new AnnouncementWriteResult(stored, false, updated, releasesLhOwnership);
+    }
+
+    private void deleteLhEnrichment(Announcement announcement) {
+        List<AnnouncementSchedule> schedules = scheduleRepository.findAllByAnnouncement(announcement).stream()
+                .filter(schedule -> isLhSource(schedule.getSourceScheduleIdentifier()))
+                .toList();
+        scheduleRepository.deleteAll(schedules);
+        List<AnnouncementAttachment> attachments = attachmentRepository.findAllByAnnouncement(announcement).stream()
+                .filter(attachment -> isLhSource(attachment.getSourceAttachmentIdentifier()))
+                .toList();
+        attachmentRepository.deleteAll(attachments);
+        for (SupplyRow row : supplyRowRepository.findAllByAnnouncement(announcement)) {
+            List<SupplyTarget> targets = supplyTargetRepository.findAllBySupplyRow(row).stream()
+                    .filter(target -> isLhSource(target.getSourceSupplyTargetIdentifier()))
+                    .toList();
+            supplyTargetRepository.deleteAll(targets);
+        }
+    }
+
+    private boolean isLhSource(String identifier) {
+        return identifier != null && identifier.startsWith("LH:");
     }
 
     private SupplyRowsWriteResult writeSupplyRows(
@@ -126,7 +165,23 @@ public class MyHomeAnnouncementMappingWriter {
             if (preserveExistingLhResolvedRows
                     && stored != null
                     && stored.getLhSourceSupplyRowIdentifier() != null) {
-                unchanged++;
+                boolean changed = stored.updateFromMyHome(
+                        stored.getHousingComplex(),
+                        stored.getHousingType(),
+                        index + 1,
+                        data.sourceComplexName(),
+                        stored.getSourceHousingTypeName(),
+                        data.pnu(),
+                        data.supplyCategory(),
+                        stored.getMatchingFailureReason(),
+                        data.totalSupplyHouseholdCount()
+                );
+                if (changed) {
+                    updated++;
+                }
+                else {
+                    unchanged++;
+                }
                 continue;
             }
             MyHomeSupplyMatchResult match = supplyMatcher.match(data);
@@ -235,7 +290,12 @@ public class MyHomeAnnouncementMappingWriter {
         );
     }
 
-    private record AnnouncementWriteResult(Announcement announcement, boolean created, boolean updated) {
+    private record AnnouncementWriteResult(
+            Announcement announcement,
+            boolean created,
+            boolean updated,
+            boolean releasedLhOwnership
+    ) {
 
         boolean unchanged() {
             return !created && !updated;

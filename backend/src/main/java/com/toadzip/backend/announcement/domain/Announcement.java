@@ -227,7 +227,9 @@ public class Announcement {
             String originalUrl,
             ReceptionPlace receptionPlace
     ) {
-        ReceptionPlace ownedReceptionPlace = lhPanId == null ? receptionPlace : this.receptionPlace;
+        boolean preserveLhEnrichment = provider == AgencyCode.LH && lhPanId != null;
+        String ownedCorrectionReason = preserveLhEnrichment ? correctionCancellationReason : null;
+        ReceptionPlace ownedReceptionPlace = preserveLhEnrichment ? this.receptionPlace : receptionPlace;
         Announcement incoming = new Announcement(
                 sourceAnnouncementIdentifier,
                 previousSourceAnnouncementIdentifier,
@@ -242,16 +244,20 @@ public class Announcement {
                 applicationEndDate,
                 winnerAnnouncementDate,
                 originalUrl,
-                correctionCancellationReason,
+                ownedCorrectionReason,
                 viewCount,
                 actualCompetitionRate,
                 predictedCompetitionRate,
                 ownedReceptionPlace
         );
-        if (hasSameSourceValues(incoming)) {
+        boolean releasesLhEnrichment = !preserveLhEnrichment && lhPanId != null;
+        if (hasSameSourceValues(incoming) && !releasesLhEnrichment) {
             return false;
         }
         applySourceValues(incoming);
+        if (releasesLhEnrichment) {
+            lhPanId = null;
+        }
         return true;
     }
 
