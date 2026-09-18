@@ -4,6 +4,7 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import java.math.BigDecimal;
 import java.util.List;
@@ -52,10 +53,8 @@ class MyHomeAnnouncementSupplyMatcher {
     }
 
     private HousingComplex uniqueComplexByName(List<HousingComplex> complexes, String sourceName) {
-        String normalizedSourceName = MyHomeSupplyNameNormalizer.complexName(sourceName);
         List<HousingComplex> matched = complexes.stream()
-                .filter(complex -> MyHomeSupplyNameNormalizer.complexName(complex.getName())
-                        .equals(normalizedSourceName))
+                .filter(complex -> SupplyNameNormalizer.sameComplex(complex.getName(), sourceName))
                 .toList();
         if (matched.size() != 1) {
             return null;
@@ -92,10 +91,8 @@ class MyHomeAnnouncementSupplyMatcher {
     }
 
     private HousingType uniqueHousingTypeByName(List<HousingType> housingTypes, String sourceName) {
-        String normalizedSourceName = MyHomeSupplyNameNormalizer.housingTypeName(sourceName);
         List<HousingType> matched = housingTypes.stream()
-                .filter(housingType -> MyHomeSupplyNameNormalizer.housingTypeName(housingType.getName())
-                        .equals(normalizedSourceName))
+                .filter(housingType -> SupplyNameNormalizer.sameHousingType(housingType.getName(), sourceName))
                 .toList();
         if (matched.size() != 1) {
             return null;

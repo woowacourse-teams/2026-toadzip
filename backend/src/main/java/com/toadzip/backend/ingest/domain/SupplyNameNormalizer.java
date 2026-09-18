@@ -1,10 +1,10 @@
-package com.toadzip.backend.ingest.mapping.service;
+package com.toadzip.backend.ingest.domain;
 
 import java.text.Normalizer;
 import java.util.List;
 import java.util.Locale;
 
-final class MyHomeSupplyNameNormalizer {
+public final class SupplyNameNormalizer {
 
     private static final List<String> COMPLEX_NOISE_WORDS = List.of(
             "국민임대주택",
@@ -21,10 +21,10 @@ final class MyHomeSupplyNameNormalizer {
 
     private static final List<String> HOUSING_TYPE_SUFFIXES = List.of("주택형", "타입", "type", "형");
 
-    private MyHomeSupplyNameNormalizer() {
+    private SupplyNameNormalizer() {
     }
 
-    static String complexName(String value) {
+    public static String complexName(String value) {
         String normalized = alphanumeric(value).replace("블록", "bl");
         for (String noiseWord : COMPLEX_NOISE_WORDS) {
             normalized = normalized.replace(noiseWord, "");
@@ -32,20 +32,38 @@ final class MyHomeSupplyNameNormalizer {
         return normalized;
     }
 
-    static String housingTypeName(String value) {
+    public static String housingTypeName(String value) {
         return removeSuffixes(alphanumeric(value), HOUSING_TYPE_SUFFIXES);
     }
 
-    static boolean sameComplex(String left, String right) {
+    public static boolean sameComplex(String left, String right) {
         String normalizedLeft = complexName(left);
         String normalizedRight = complexName(right);
+        return !normalizedLeft.isEmpty() && normalizedLeft.equals(normalizedRight);
+    }
+
+    public static boolean compatibleComplex(String left, String right) {
+        String normalizedLeft = complexName(left);
+        String normalizedRight = complexName(right);
+        if (normalizedLeft.isEmpty() || normalizedRight.isEmpty()) {
+            return false;
+        }
         if (normalizedLeft.length() < 4 || normalizedRight.length() < 4) {
             return normalizedLeft.equals(normalizedRight);
         }
         return normalizedLeft.contains(normalizedRight) || normalizedRight.contains(normalizedLeft);
     }
 
+    public static boolean sameHousingType(String left, String right) {
+        String normalizedLeft = housingTypeName(left);
+        String normalizedRight = housingTypeName(right);
+        return !normalizedLeft.isEmpty() && normalizedLeft.equals(normalizedRight);
+    }
+
     private static String alphanumeric(String value) {
+        if (value == null) {
+            return "";
+        }
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
                 .toLowerCase(Locale.ROOT);
         StringBuilder result = new StringBuilder();

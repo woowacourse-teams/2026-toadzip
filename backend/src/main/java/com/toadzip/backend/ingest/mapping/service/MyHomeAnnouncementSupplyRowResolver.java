@@ -6,6 +6,7 @@ import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
+import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -97,7 +98,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
             String lhComplexLabel
     ) {
         List<MyHomeSupplyRowMappingData> matched = sourceRows.stream()
-                .filter(row -> MyHomeSupplyNameNormalizer.sameComplex(row.sourceComplexName(), lhComplexLabel))
+                .filter(row -> SupplyNameNormalizer.compatibleComplex(row.sourceComplexName(), lhComplexLabel))
                 .toList();
         if (matched.size() != 1) {
             return null;

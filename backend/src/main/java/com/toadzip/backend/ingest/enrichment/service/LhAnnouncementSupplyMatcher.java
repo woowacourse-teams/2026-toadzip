@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
 import com.toadzip.backend.announcement.domain.SupplyRow;
+import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -54,11 +55,11 @@ class LhAnnouncementSupplyMatcher {
     }
 
     private boolean matchesComplex(SupplyRow row, LhSupplyData source) {
-        if (same(row.getSourceComplexName(), source.complexName())) {
+        if (SupplyNameNormalizer.sameComplex(row.getSourceComplexName(), source.complexName())) {
             return true;
         }
         return row.getHousingComplex() != null
-                && same(row.getHousingComplex().getName(), source.complexName());
+                && SupplyNameNormalizer.sameComplex(row.getHousingComplex().getName(), source.complexName());
     }
 
     private boolean matchesHousingType(SupplyRow row, LhSupplyData source) {
