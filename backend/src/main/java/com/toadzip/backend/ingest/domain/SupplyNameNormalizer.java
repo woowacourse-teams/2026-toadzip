@@ -1,8 +1,11 @@
 package com.toadzip.backend.ingest.domain;
 
 import java.text.Normalizer;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class SupplyNameNormalizer {
 
@@ -21,6 +24,7 @@ public final class SupplyNameNormalizer {
     );
 
     private static final List<String> HOUSING_TYPE_SUFFIXES = List.of("주택형", "타입", "type", "형");
+    private static final Pattern NUMBER = Pattern.compile("[0-9]+");
 
     private SupplyNameNormalizer() {
     }
@@ -44,9 +48,12 @@ public final class SupplyNameNormalizer {
     }
 
     public static boolean compatibleComplex(String left, String right) {
-        String normalizedLeft = complexName(left);
-        String normalizedRight = complexName(right);
+        String normalizedLeft = canonicalNumbers(complexName(left));
+        String normalizedRight = canonicalNumbers(complexName(right));
         if (normalizedLeft.isEmpty() || normalizedRight.isEmpty()) {
+            return false;
+        }
+        if (!numbers(normalizedLeft).equals(numbers(normalizedRight))) {
             return false;
         }
         if (normalizedLeft.length() < 4 || normalizedRight.length() < 4) {
@@ -72,6 +79,33 @@ public final class SupplyNameNormalizer {
                 .filter(Character::isLetterOrDigit)
                 .forEach(result::appendCodePoint);
         return result.toString();
+    }
+
+    private static String canonicalNumbers(String value) {
+        Matcher matcher = NUMBER.matcher(value);
+        StringBuilder result = new StringBuilder();
+        while (matcher.find()) {
+            matcher.appendReplacement(result, withoutLeadingZeros(matcher.group()));
+        }
+        matcher.appendTail(result);
+        return result.toString();
+    }
+
+    private static List<String> numbers(String value) {
+        List<String> result = new ArrayList<>();
+        Matcher matcher = NUMBER.matcher(value);
+        while (matcher.find()) {
+            result.add(matcher.group());
+        }
+        return result;
+    }
+
+    private static String withoutLeadingZeros(String number) {
+        int firstDigit = 0;
+        while (firstDigit < number.length() - 1 && number.charAt(firstDigit) == '0') {
+            firstDigit++;
+        }
+        return number.substring(firstDigit);
     }
 
     private static String removeSuffixes(String value, List<String> suffixes) {
