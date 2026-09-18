@@ -38,6 +38,9 @@ public class MyHomeAnnouncementSupplyRowResolver {
             return data;
         }
         List<LhAnnouncementSupplySource> lhSupplies = findLhSupplies(data.supplyRows().getFirst().source());
+        if (lhSupplies.isEmpty()) {
+            return data.preservingExistingLhResolvedRows();
+        }
         Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matched = matchByComplex(
                 data.supplyRows(),
                 lhSupplies
@@ -113,6 +116,10 @@ public class MyHomeAnnouncementSupplyRowResolver {
             boolean preserveOriginalIdentifier
     ) {
         String sourceHousingTypeName = sourceHousingTypeName(sourceRow, lhSupply);
+        Integer lhSupplyHouseholdCount = nonNegativeInteger(lhSupply.getSuppliedUnitCount());
+        Integer totalSupplyHouseholdCount = lhSupplyHouseholdCount == null
+                ? sourceRow.totalSupplyHouseholdCount()
+                : lhSupplyHouseholdCount;
         return new MyHomeSupplyRowMappingData(
                 sourceRow.source(),
                 sourceIdentifier(announcementIdentifier, sourceRow, lhSupply, preserveOriginalIdentifier),
@@ -121,10 +128,16 @@ public class MyHomeAnnouncementSupplyRowResolver {
                 sourceRow.pnu(),
                 sourceRow.complexSupplyType(),
                 sourceRow.supplyCategory(),
-                nonNegativeInteger(lhSupply.getSuppliedUnitCount()),
+                totalSupplyHouseholdCount,
                 area(lhSupply.getExclusiveArea()),
-                area(lhSupply.getSupplyArea())
+                area(lhSupply.getSupplyArea()),
+                lhSupplyHouseholdCount,
+                lhSourceIdentifier(lhSupply)
         );
+    }
+
+    private String lhSourceIdentifier(LhAnnouncementSupplySource source) {
+        return "LH:" + source.getPanId() + ":SUPPLY:" + source.getSourceOrder();
     }
 
     private String sourceIdentifier(

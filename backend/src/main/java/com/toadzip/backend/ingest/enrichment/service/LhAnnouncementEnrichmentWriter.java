@@ -3,7 +3,6 @@ package com.toadzip.backend.ingest.enrichment.service;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
-import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.domain.SupplyTarget;
 import com.toadzip.backend.announcement.repository.AnnouncementAttachmentRepository;
@@ -54,17 +53,21 @@ public class LhAnnouncementEnrichmentWriter {
     @Transactional
     public LhAnnouncementEnrichmentWriteResult write(Announcement announcement, LhAnnouncementEnrichmentData data) {
         Announcement managedAnnouncement = announcementRepository.save(announcement);
+        String previousPanId = managedAnnouncement.getLhPanId();
         Set<String> replacedPanIds = new HashSet<>();
         replacedPanIds.add(data.panId());
-        if (managedAnnouncement.getLhPanId() != null) {
-            replacedPanIds.add(managedAnnouncement.getLhPanId());
+        if (previousPanId != null) {
+            replacedPanIds.add(previousPanId);
         }
         int updatedAnnouncements = managedAnnouncement.enrichFromLh(
-                data.panId(), valueOrCurrent(data.correctionReason(), managedAnnouncement.getCorrectionCancellationReason()),
-                receptionOrCurrent(data.receptionPlace(), managedAnnouncement.getReceptionPlace())
+                data.panId(), data.correctionReason(), data.receptionPlace()
         ) ? 1 : 0;
-        SchedulesWriteResult schedules = writeSchedules(managedAnnouncement, data, replacedPanIds);
-        AttachmentsWriteResult attachments = writeAttachments(managedAnnouncement, data, replacedPanIds);
+        SchedulesWriteResult schedules = writeSchedules(
+                managedAnnouncement, data, replacedPanIds, previousPanId
+        );
+        AttachmentsWriteResult attachments = writeAttachments(
+                managedAnnouncement, data, replacedPanIds, previousPanId
+        );
         SupplyWriteResult supplies = writeSupplies(managedAnnouncement, data);
         return new LhAnnouncementEnrichmentWriteResult(
                 new LhAnnouncementEnrichmentReport(
@@ -77,7 +80,10 @@ public class LhAnnouncementEnrichmentWriter {
     }
 
     private SchedulesWriteResult writeSchedules(
-            Announcement announcement, LhAnnouncementEnrichmentData data, Set<String> replacedPanIds
+            Announcement announcement,
+            LhAnnouncementEnrichmentData data,
+            Set<String> replacedPanIds,
+            String previousPanId
     ) {
         Map<String, AnnouncementSchedule> stored = schedulesBySource(announcement);
         Set<String> retained = new HashSet<>();
@@ -99,12 +105,20 @@ public class LhAnnouncementEnrichmentWriter {
                 updated++;
             }
         }
-        scheduleRepository.deleteAll(staleSchedules(announcement, retained, replacedPanIds));
+        if (!data.schedules().isEmpty()) {
+            scheduleRepository.deleteAll(staleSchedules(announcement, retained, replacedPanIds));
+        }
+        else if (previousPanId != null && !previousPanId.equals(data.panId())) {
+            scheduleRepository.deleteAll(staleSchedules(announcement, retained, Set.of(previousPanId)));
+        }
         return new SchedulesWriteResult(created, updated);
     }
 
     private AttachmentsWriteResult writeAttachments(
-            Announcement announcement, LhAnnouncementEnrichmentData data, Set<String> replacedPanIds
+            Announcement announcement,
+            LhAnnouncementEnrichmentData data,
+            Set<String> replacedPanIds,
+            String previousPanId
     ) {
         Map<String, AnnouncementAttachment> stored = attachmentsBySource(announcement);
         Set<String> retained = new HashSet<>();
@@ -125,7 +139,12 @@ public class LhAnnouncementEnrichmentWriter {
                 updated++;
             }
         }
-        attachmentRepository.deleteAll(staleAttachments(announcement, retained, replacedPanIds));
+        if (!data.attachments().isEmpty()) {
+            attachmentRepository.deleteAll(staleAttachments(announcement, retained, replacedPanIds));
+        }
+        else if (previousPanId != null && !previousPanId.equals(data.panId())) {
+            attachmentRepository.deleteAll(staleAttachments(announcement, retained, Set.of(previousPanId)));
+        }
         return new AttachmentsWriteResult(created, updated);
     }
 
@@ -150,49 +169,92 @@ public class LhAnnouncementEnrichmentWriter {
             if (row.enrichFromLh(source.sourceIdentifier(), source.expectedMoveInMonth(), source.totalHouseholdCount())) {
                 updatedRows++;
             }
-            SupplyTargetWriteResult target = writeTarget(row, source);
-            deletePreviousTarget(row, previousSourceIdentifier, source.sourceIdentifier());
+            SupplyTargetWriteResult target = writeTarget(row, source, previousSourceIdentifier);
+            if (target.replacesPrevious()) {
+                deleteOtherLhTargets(row, target.sourceIdentifier());
+            }
             retainedTargetIdentifiers.add(target.sourceIdentifier());
             createdTargets += target.created();
             updatedTargets += target.updated();
         }
-        deleteStaleTargets(rows, retainedTargetIdentifiers, Set.of(data.panId()));
+        if (failures.isEmpty()) {
+            deleteStaleTargets(rows, retainedTargetIdentifiers, Set.of(data.panId()));
+        }
         return new SupplyWriteResult(updatedRows, createdTargets, updatedTargets, failures);
     }
 
-    private void deletePreviousTarget(SupplyRow row, String previousIdentifier, String currentIdentifier) {
-        if (previousIdentifier == null || previousIdentifier.equals(currentIdentifier)) {
-            return;
-        }
+    private void deleteOtherLhTargets(SupplyRow row, String retainedIdentifier) {
         List<SupplyTarget> previousTargets = supplyTargetRepository.findAllBySupplyRow(row).stream()
-                .filter(target -> (previousIdentifier + ":TARGET").equals(target.getSourceSupplyTargetIdentifier()))
+                .filter(target -> isLhSource(target.getSourceSupplyTargetIdentifier()))
+                .filter(target -> !retainedIdentifier.equals(target.getSourceSupplyTargetIdentifier()))
                 .toList();
         supplyTargetRepository.deleteAll(previousTargets);
     }
 
-    private SupplyTargetWriteResult writeTarget(SupplyRow row, LhSupplyData source) {
+    private SupplyTargetWriteResult writeTarget(
+            SupplyRow row,
+            LhSupplyData source,
+            String previousSourceIdentifier
+    ) {
         String identifier = source.sourceIdentifier() + ":TARGET";
-        SupplyTarget stored = supplyTargetRepository.findAllBySupplyRow(row).stream()
+        List<SupplyTarget> storedTargets = supplyTargetRepository.findAllBySupplyRow(row);
+        SupplyTarget stored = storedTargets.stream()
                 .filter(target -> identifier.equals(target.getSourceSupplyTargetIdentifier()))
                 .findFirst()
                 .orElse(null);
         if (source.rentalDeposit() == null || source.monthlyRent() == null) {
             if (stored != null) {
-                supplyTargetRepository.delete(stored);
+                return new SupplyTargetWriteResult(identifier, 0, 0, false);
             }
-            return new SupplyTargetWriteResult(identifier, 0, 0);
+            String previousTargetIdentifier = previousTargetIdentifier(storedTargets, previousSourceIdentifier);
+            if (previousTargetIdentifier == null) {
+                previousTargetIdentifier = existingLhTargetIdentifier(storedTargets);
+            }
+            return new SupplyTargetWriteResult(
+                    previousTargetIdentifier == null ? identifier : previousTargetIdentifier,
+                    0,
+                    0,
+                    false
+            );
         }
         if (stored == null) {
             supplyTargetRepository.save(SupplyTarget.createFromSource(
                     row, identifier, ALL_TARGET, ALL_RANK, source.supplyHouseholdCount(),
                     source.rentalDeposit(), source.monthlyRent(), 1
             ));
-            return new SupplyTargetWriteResult(identifier, 1, 0);
+            return new SupplyTargetWriteResult(identifier, 1, 0, true);
         }
         boolean updated = stored.updateFromSource(
                 ALL_TARGET, ALL_RANK, source.supplyHouseholdCount(), source.rentalDeposit(), source.monthlyRent(), 1
         );
-        return new SupplyTargetWriteResult(identifier, 0, updated ? 1 : 0);
+        return new SupplyTargetWriteResult(identifier, 0, updated ? 1 : 0, true);
+    }
+
+    private String previousTargetIdentifier(
+            List<SupplyTarget> storedTargets,
+            String previousSourceIdentifier
+    ) {
+        if (previousSourceIdentifier == null) {
+            return null;
+        }
+        String identifier = previousSourceIdentifier + ":TARGET";
+        return storedTargets.stream()
+                .map(SupplyTarget::getSourceSupplyTargetIdentifier)
+                .filter(identifier::equals)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String existingLhTargetIdentifier(List<SupplyTarget> storedTargets) {
+        return storedTargets.stream()
+                .map(SupplyTarget::getSourceSupplyTargetIdentifier)
+                .filter(this::isLhSource)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private boolean isLhSource(String identifier) {
+        return identifier != null && identifier.startsWith("LH:");
     }
 
     private Map<String, AnnouncementSchedule> schedulesBySource(Announcement announcement) {
@@ -243,20 +305,6 @@ public class LhAnnouncementEnrichmentWriter {
         }
     }
 
-    private String valueOrCurrent(String value, String current) {
-        if (value == null) {
-            return current;
-        }
-        return value;
-    }
-
-    private ReceptionPlace receptionOrCurrent(ReceptionPlace value, ReceptionPlace current) {
-        if (value == null) {
-            return current;
-        }
-        return value;
-    }
-
     private boolean lhSourceForAnyPan(String identifier, Set<String> panIds) {
         return identifier != null && panIds.stream().anyMatch(panId -> identifier.startsWith("LH:" + panId + ":"));
     }
@@ -275,7 +323,12 @@ public class LhAnnouncementEnrichmentWriter {
     ) {
     }
 
-    private record SupplyTargetWriteResult(String sourceIdentifier, int created, int updated) {
+    private record SupplyTargetWriteResult(
+            String sourceIdentifier,
+            int created,
+            int updated,
+            boolean replacesPrevious
+    ) {
     }
 
 }

@@ -43,6 +43,8 @@ class MyHomeAnnouncementSupplyRowResolverTest {
                 SupplyCategory.NEW_SUPPLY,
                 null,
                 null,
+                null,
+                null,
                 null
         );
         MyHomeAnnouncementMappingData data = new MyHomeAnnouncementMappingData(
@@ -59,7 +61,8 @@ class MyHomeAnnouncementSupplyRowResolverTest {
                 null,
                 "https://example.com",
                 null,
-                List.of(sourceRow)
+                List.of(sourceRow),
+                false
         );
         when(linkResolver.resolve(source)).thenReturn("pan-id");
         when(supplyRepository.findAllByPanIdOrderBySourceOrderAsc("pan-id"))

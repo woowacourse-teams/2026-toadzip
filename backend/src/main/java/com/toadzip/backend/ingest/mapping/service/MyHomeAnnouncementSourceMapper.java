@@ -84,7 +84,8 @@ public class MyHomeAnnouncementSourceMapper {
                 winnerAnnouncementDate,
                 originalUrl,
                 ReceptionPlace.create(sourceProvider, ReceptionMethod.ONLINE, null, contact, originalUrl),
-                supplyRows
+                supplyRows,
+                false
         );
     }
 
@@ -106,6 +107,8 @@ public class MyHomeAnnouncementSourceMapper {
                 classification.complexSupplyType(sourceSupplyType),
                 classification.supplyCategory(announcementName),
                 parser.nonNegative(source.getSumSuplyCo(), "공급호수"),
+                null,
+                null,
                 null,
                 null
         );
@@ -145,7 +148,8 @@ record MyHomeAnnouncementMappingData(
         LocalDate winnerAnnouncementDate,
         String originalUrl,
         ReceptionPlace receptionPlace,
-        List<MyHomeSupplyRowMappingData> supplyRows
+        List<MyHomeSupplyRowMappingData> supplyRows,
+        boolean preserveExistingLhResolvedRows
 ) {
 
     MyHomeAnnouncementMappingData withSupplyRows(List<MyHomeSupplyRowMappingData> resolvedSupplyRows) {
@@ -163,7 +167,28 @@ record MyHomeAnnouncementMappingData(
                 winnerAnnouncementDate,
                 originalUrl,
                 receptionPlace,
-                resolvedSupplyRows
+                resolvedSupplyRows,
+                false
+        );
+    }
+
+    MyHomeAnnouncementMappingData preservingExistingLhResolvedRows() {
+        return new MyHomeAnnouncementMappingData(
+                sourceAnnouncementIdentifier,
+                previousSourceAnnouncementIdentifier,
+                name,
+                publicationType,
+                rentalType,
+                recruitmentType,
+                provider,
+                postedDate,
+                applicationStartDate,
+                applicationEndDate,
+                winnerAnnouncementDate,
+                originalUrl,
+                receptionPlace,
+                supplyRows,
+                true
         );
     }
 }
@@ -178,7 +203,9 @@ record MyHomeSupplyRowMappingData(
         SupplyCategory supplyCategory,
         Integer totalSupplyHouseholdCount,
         BigDecimal exclusiveArea,
-        BigDecimal supplyArea
+        BigDecimal supplyArea,
+        Integer lhTotalSupplyHouseholdCount,
+        String resolvedLhSourceIdentifier
 ) {
 }
 
