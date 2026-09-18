@@ -109,6 +109,7 @@ public class MyHomeAnnouncementSourceMapper {
                 parser.nonNegative(source.getSumSuplyCo(), "공급호수"),
                 null,
                 null,
+                null,
                 null
         );
     }
@@ -203,6 +204,7 @@ record MyHomeSupplyRowMappingData(
         Integer totalSupplyHouseholdCount,
         BigDecimal exclusiveArea,
         BigDecimal supplyArea,
+        Integer lhTotalSupplyHouseholdCount,
         String resolvedLhPanId
 ) {
 }

@@ -79,6 +79,9 @@ public class SupplyRow {
 
     private String lhSourceSupplyRowIdentifier;
 
+    @Column(nullable = false)
+    private boolean lhTotalSupplyHouseholdCountOwned;
+
     private SupplyRow(
             Announcement announcement,
             HousingComplex housingComplex,
@@ -159,9 +162,9 @@ public class SupplyRow {
     ) {
         boolean releasesLhEnrichment = announcement.getProvider() != null
                 && announcement.getProvider() != AgencyCode.LH;
-        boolean preserveLhEnrichment = !releasesLhEnrichment && lhSourceSupplyRowIdentifier != null;
+        boolean preserveLhHouseholdCount = !releasesLhEnrichment && lhTotalSupplyHouseholdCountOwned;
         YearMonth ownedExpectedMoveInMonth = releasesLhEnrichment ? null : expectedMoveInMonth;
-        Integer ownedTotalSupplyHouseholdCount = preserveLhEnrichment
+        Integer ownedTotalSupplyHouseholdCount = preserveLhHouseholdCount
                 ? this.totalSupplyHouseholdCount
                 : totalSupplyHouseholdCount;
         SupplyRow incoming = new SupplyRow(
@@ -178,13 +181,15 @@ public class SupplyRow {
                 matchingFailureReason,
                 ownedTotalSupplyHouseholdCount
         );
-        boolean clearsLhSource = releasesLhEnrichment && lhSourceSupplyRowIdentifier != null;
-        if (hasSameSourceValues(incoming) && !clearsLhSource) {
+        boolean clearsLhOwnership = releasesLhEnrichment
+                && (lhSourceSupplyRowIdentifier != null || lhTotalSupplyHouseholdCountOwned);
+        if (hasSameSourceValues(incoming) && !clearsLhOwnership) {
             return false;
         }
         applySourceValues(incoming);
-        if (clearsLhSource) {
+        if (clearsLhOwnership) {
             lhSourceSupplyRowIdentifier = null;
+            lhTotalSupplyHouseholdCountOwned = false;
         }
         return true;
     }
@@ -226,23 +231,31 @@ public class SupplyRow {
         Integer ownedTotalSupplyHouseholdCount = totalSupplyHouseholdCount == null
                 ? this.totalSupplyHouseholdCount
                 : totalSupplyHouseholdCount;
+        boolean ownsTotalSupplyHouseholdCount = totalSupplyHouseholdCount != null
+                || lhTotalSupplyHouseholdCountOwned;
         if (Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier)
                 && Objects.equals(this.expectedMoveInMonth, ownedExpectedMoveInMonth)
-                && Objects.equals(this.totalSupplyHouseholdCount, ownedTotalSupplyHouseholdCount)) {
+                && Objects.equals(this.totalSupplyHouseholdCount, ownedTotalSupplyHouseholdCount)
+                && lhTotalSupplyHouseholdCountOwned == ownsTotalSupplyHouseholdCount) {
             return false;
         }
         lhSourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
         this.expectedMoveInMonth = ownedExpectedMoveInMonth;
         this.totalSupplyHouseholdCount = ownedTotalSupplyHouseholdCount;
+        lhTotalSupplyHouseholdCountOwned = ownsTotalSupplyHouseholdCount;
         return true;
     }
 
     public boolean enrichTotalSupplyHouseholdCountFromLh(Integer totalSupplyHouseholdCount) {
-        if (totalSupplyHouseholdCount == null
-                || Objects.equals(this.totalSupplyHouseholdCount, totalSupplyHouseholdCount)) {
+        if (totalSupplyHouseholdCount == null) {
+            return false;
+        }
+        if (Objects.equals(this.totalSupplyHouseholdCount, totalSupplyHouseholdCount)
+                && lhTotalSupplyHouseholdCountOwned) {
             return false;
         }
         this.totalSupplyHouseholdCount = totalSupplyHouseholdCount;
+        lhTotalSupplyHouseholdCountOwned = true;
         return true;
     }
 

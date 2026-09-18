@@ -43,6 +43,7 @@ class AnnouncementJpaMappingTest {
                         "originalUrl",
                         "correctionCancellationReason",
                         "lhPanId",
+                        "lhReceptionPlaceOwned",
                         "viewCount",
                         "actualCompetitionRate",
                         "predictedCompetitionRate",
@@ -65,7 +66,8 @@ class AnnouncementJpaMappingTest {
                         "supplyCategory",
                         "matchingFailureReason",
                         "totalSupplyHouseholdCount",
-                        "lhSourceSupplyRowIdentifier"
+                        "lhSourceSupplyRowIdentifier",
+                        "lhTotalSupplyHouseholdCountOwned"
                 )
         );
         assertEntityAttributes(

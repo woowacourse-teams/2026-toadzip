@@ -244,6 +244,44 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     @Test
+    void LH가_세대수를_미제공하면_마이홈의_변경된_세대수를_반영한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSourcesWithMissingHouseholdCountAndReception();
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        ReflectionTestUtils.setField(source, "sumSuplyCo", 30);
+        myHomeSourceRepository.save(source);
+
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getLhSourceSupplyRowIdentifier()).isEqualTo("LH:" + PAN_ID + ":SUPPLY:0");
+            assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(30);
+        });
+    }
+
+    @Test
+    void LH가_접수처를_미제공하면_마이홈의_변경된_접수처를_반영한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSourcesWithMissingHouseholdCountAndReception();
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        ReflectionTestUtils.setField(source, "refrnc", "02-1234-5678");
+        myHomeSourceRepository.save(source);
+
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement -> {
+            assertThat(announcement.getLhPanId()).isEqualTo(PAN_ID);
+            assertThat(announcement.getReceptionPlace().getContact()).isEqualTo("02-1234-5678");
+        });
+    }
+
+    @Test
     void 공급기관이_LH에서_SH로_바뀌면_LH_보강값만_정리하고_수기값을_보존한다() {
         saveComplex();
         MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
@@ -996,6 +1034,16 @@ class LhAnnouncementEnrichmentServiceTest {
         supplySourceRepository.save(new LhAnnouncementSupplySource(0, PAN_ID,
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", housingTypeName, "46.8", "67.0", "100", "20", deposit, rent
+                )));
+    }
+
+    private void saveLhSourcesWithMissingHouseholdCountAndReception() {
+        detailSourceRepository.save(detail(
+                0, "ETC_INFO", null, null, null, null, null, null, null, "정정 사유"
+        ));
+        supplySourceRepository.save(new LhAnnouncementSupplySource(0, PAN_ID,
+                new LhAnnouncementSupplySourceSnapshot(
+                        "동삼2", "46A", "46.8", "67.0", null, null, null, null
                 )));
     }
 

@@ -116,6 +116,10 @@ public class MyHomeAnnouncementSupplyRowResolver {
             boolean preserveOriginalIdentifier
     ) {
         String sourceHousingTypeName = sourceHousingTypeName(sourceRow, lhSupply);
+        Integer lhSupplyHouseholdCount = nonNegativeInteger(lhSupply.getSuppliedUnitCount());
+        Integer totalSupplyHouseholdCount = lhSupplyHouseholdCount == null
+                ? sourceRow.totalSupplyHouseholdCount()
+                : lhSupplyHouseholdCount;
         return new MyHomeSupplyRowMappingData(
                 sourceRow.source(),
                 sourceIdentifier(announcementIdentifier, sourceRow, lhSupply, preserveOriginalIdentifier),
@@ -124,9 +128,10 @@ public class MyHomeAnnouncementSupplyRowResolver {
                 sourceRow.pnu(),
                 sourceRow.complexSupplyType(),
                 sourceRow.supplyCategory(),
-                nonNegativeInteger(lhSupply.getSuppliedUnitCount()),
+                totalSupplyHouseholdCount,
                 area(lhSupply.getExclusiveArea()),
                 area(lhSupply.getSupplyArea()),
+                lhSupplyHouseholdCount,
                 lhSupply.getPanId()
         );
     }

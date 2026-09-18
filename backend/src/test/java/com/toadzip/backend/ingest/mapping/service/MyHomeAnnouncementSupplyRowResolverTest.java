@@ -44,6 +44,7 @@ class MyHomeAnnouncementSupplyRowResolverTest {
                 null,
                 null,
                 null,
+                null,
                 null
         );
         MyHomeAnnouncementMappingData data = new MyHomeAnnouncementMappingData(

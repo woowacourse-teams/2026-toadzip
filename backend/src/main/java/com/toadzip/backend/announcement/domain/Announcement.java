@@ -98,6 +98,9 @@ public class Announcement {
     private String lhPanId;
 
     @Column(nullable = false)
+    private boolean lhReceptionPlaceOwned;
+
+    @Column(nullable = false)
     private long viewCount;
 
     @Column(precision = 12, scale = 4)
@@ -227,9 +230,11 @@ public class Announcement {
             String originalUrl,
             ReceptionPlace receptionPlace
     ) {
-        boolean preserveLhEnrichment = provider == AgencyCode.LH && lhPanId != null;
-        String ownedCorrectionReason = preserveLhEnrichment ? correctionCancellationReason : null;
-        ReceptionPlace ownedReceptionPlace = preserveLhEnrichment ? this.receptionPlace : receptionPlace;
+        boolean remainsLh = provider == AgencyCode.LH;
+        boolean preserveLhCorrection = remainsLh && lhPanId != null;
+        boolean preserveLhReceptionPlace = remainsLh && lhReceptionPlaceOwned;
+        String ownedCorrectionReason = preserveLhCorrection ? correctionCancellationReason : null;
+        ReceptionPlace ownedReceptionPlace = preserveLhReceptionPlace ? this.receptionPlace : receptionPlace;
         Announcement incoming = new Announcement(
                 sourceAnnouncementIdentifier,
                 previousSourceAnnouncementIdentifier,
@@ -250,13 +255,14 @@ public class Announcement {
                 predictedCompetitionRate,
                 ownedReceptionPlace
         );
-        boolean releasesLhEnrichment = !preserveLhEnrichment && lhPanId != null;
+        boolean releasesLhEnrichment = !remainsLh && (lhPanId != null || lhReceptionPlaceOwned);
         if (hasSameSourceValues(incoming) && !releasesLhEnrichment) {
             return false;
         }
         applySourceValues(incoming);
         if (releasesLhEnrichment) {
             lhPanId = null;
+            lhReceptionPlaceOwned = false;
         }
         return true;
     }
@@ -309,14 +315,17 @@ public class Announcement {
         ReceptionPlace ownedReceptionPlace = receptionPlace == null
                 ? this.receptionPlace
                 : receptionPlace;
+        boolean ownsReceptionPlace = receptionPlace != null || lhReceptionPlaceOwned;
         if (Objects.equals(lhPanId, panId)
                 && Objects.equals(correctionCancellationReason, ownedCorrectionReason)
-                && hasSameReceptionPlace(ownedReceptionPlace)) {
+                && hasSameReceptionPlace(ownedReceptionPlace)
+                && lhReceptionPlaceOwned == ownsReceptionPlace) {
             return false;
         }
         lhPanId = panId;
         correctionCancellationReason = ownedCorrectionReason;
         this.receptionPlace = ownedReceptionPlace;
+        lhReceptionPlaceOwned = ownsReceptionPlace;
         return true;
     }
 

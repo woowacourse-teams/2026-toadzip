@@ -204,8 +204,10 @@ public class MyHomeAnnouncementMappingWriter {
                     match.failureDetail(),
                     data.totalSupplyHouseholdCount()
             );
-            if (data.resolvedLhPanId() != null && !hasLhSourceForPan(stored, data.resolvedLhPanId())) {
-                changed |= stored.enrichTotalSupplyHouseholdCountFromLh(data.totalSupplyHouseholdCount());
+            if (data.resolvedLhPanId() != null
+                    && (!hasLhSourceForPan(stored, data.resolvedLhPanId())
+                    || !stored.isLhTotalSupplyHouseholdCountOwned())) {
+                changed |= stored.enrichTotalSupplyHouseholdCountFromLh(data.lhTotalSupplyHouseholdCount());
             }
             if (changed) {
                 updated++;
