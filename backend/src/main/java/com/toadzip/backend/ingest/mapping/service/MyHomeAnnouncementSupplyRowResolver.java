@@ -38,6 +38,9 @@ public class MyHomeAnnouncementSupplyRowResolver {
             return data;
         }
         List<LhAnnouncementSupplySource> lhSupplies = findLhSupplies(data.supplyRows().getFirst().source());
+        if (lhSupplies.isEmpty()) {
+            return data.preservingExistingLhResolvedRows();
+        }
         Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matched = matchByComplex(
                 data.supplyRows(),
                 lhSupplies
@@ -123,7 +126,8 @@ public class MyHomeAnnouncementSupplyRowResolver {
                 sourceRow.supplyCategory(),
                 nonNegativeInteger(lhSupply.getSuppliedUnitCount()),
                 area(lhSupply.getExclusiveArea()),
-                area(lhSupply.getSupplyArea())
+                area(lhSupply.getSupplyArea()),
+                lhSupply.getPanId()
         );
     }
 

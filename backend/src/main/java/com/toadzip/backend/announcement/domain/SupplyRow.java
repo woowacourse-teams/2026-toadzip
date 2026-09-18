@@ -145,18 +145,20 @@ public class SupplyRow {
         );
     }
 
-    public boolean updateFromSource(
+    public boolean updateFromMyHome(
             HousingComplex housingComplex,
             HousingType housingType,
             int displayOrder,
             String sourceComplexName,
             String sourceHousingTypeName,
             String supplyPnu,
-            YearMonth expectedMoveInMonth,
             SupplyCategory supplyCategory,
             String matchingFailureReason,
             Integer totalSupplyHouseholdCount
     ) {
+        Integer ownedTotalSupplyHouseholdCount = lhSourceSupplyRowIdentifier == null
+                ? totalSupplyHouseholdCount
+                : this.totalSupplyHouseholdCount;
         SupplyRow incoming = new SupplyRow(
                 announcement,
                 housingComplex,
@@ -169,7 +171,7 @@ public class SupplyRow {
                 expectedMoveInMonth,
                 supplyCategory,
                 matchingFailureReason,
-                totalSupplyHouseholdCount
+                ownedTotalSupplyHouseholdCount
         );
         if (hasSameSourceValues(incoming)) {
             return false;
@@ -209,13 +211,28 @@ public class SupplyRow {
             YearMonth expectedMoveInMonth,
             Integer totalSupplyHouseholdCount
     ) {
+        YearMonth ownedExpectedMoveInMonth = expectedMoveInMonth == null
+                ? this.expectedMoveInMonth
+                : expectedMoveInMonth;
+        Integer ownedTotalSupplyHouseholdCount = totalSupplyHouseholdCount == null
+                ? this.totalSupplyHouseholdCount
+                : totalSupplyHouseholdCount;
         if (Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier)
-                && Objects.equals(this.expectedMoveInMonth, expectedMoveInMonth)
-                && Objects.equals(this.totalSupplyHouseholdCount, totalSupplyHouseholdCount)) {
+                && Objects.equals(this.expectedMoveInMonth, ownedExpectedMoveInMonth)
+                && Objects.equals(this.totalSupplyHouseholdCount, ownedTotalSupplyHouseholdCount)) {
             return false;
         }
         lhSourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
-        this.expectedMoveInMonth = expectedMoveInMonth;
+        this.expectedMoveInMonth = ownedExpectedMoveInMonth;
+        this.totalSupplyHouseholdCount = ownedTotalSupplyHouseholdCount;
+        return true;
+    }
+
+    public boolean enrichTotalSupplyHouseholdCountFromLh(Integer totalSupplyHouseholdCount) {
+        if (totalSupplyHouseholdCount == null
+                || Objects.equals(this.totalSupplyHouseholdCount, totalSupplyHouseholdCount)) {
+            return false;
+        }
         this.totalSupplyHouseholdCount = totalSupplyHouseholdCount;
         return true;
     }

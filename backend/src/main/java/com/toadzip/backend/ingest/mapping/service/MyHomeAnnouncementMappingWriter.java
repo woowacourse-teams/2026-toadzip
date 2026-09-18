@@ -46,7 +46,11 @@ public class MyHomeAnnouncementMappingWriter {
             Announcement previousAnnouncement
     ) {
         AnnouncementWriteResult announcementResult = writeAnnouncement(data, previousAnnouncement);
-        SupplyRowsWriteResult supplyRowsResult = writeSupplyRows(announcementResult.announcement(), data.supplyRows());
+        SupplyRowsWriteResult supplyRowsResult = writeSupplyRows(
+                announcementResult.announcement(),
+                data.supplyRows(),
+                data.preserveExistingLhResolvedRows()
+        );
         return new MyHomeAnnouncementWriteResult(
                 reportOf(announcementResult, supplyRowsResult),
                 supplyRowsResult.failures()
@@ -81,7 +85,7 @@ public class MyHomeAnnouncementMappingWriter {
             ));
             return new AnnouncementWriteResult(created, true, false);
         }
-        boolean updated = stored.updateFromSource(
+        boolean updated = stored.updateFromMyHome(
                 data.previousSourceAnnouncementIdentifier(),
                 previousAnnouncement,
                 data.name(),
@@ -94,7 +98,6 @@ public class MyHomeAnnouncementMappingWriter {
                 data.applicationEndDate(),
                 data.winnerAnnouncementDate(),
                 data.originalUrl(),
-                null,
                 data.receptionPlace()
         );
         return new AnnouncementWriteResult(stored, false, updated);
@@ -102,7 +105,8 @@ public class MyHomeAnnouncementMappingWriter {
 
     private SupplyRowsWriteResult writeSupplyRows(
             Announcement announcement,
-            List<MyHomeSupplyRowMappingData> rows
+            List<MyHomeSupplyRowMappingData> rows,
+            boolean preserveExistingLhResolvedRows
     ) {
         Map<String, SupplyRow> storedRows = supplyRowRepository.findAllByAnnouncement(announcement)
                 .stream()
@@ -128,27 +132,52 @@ public class MyHomeAnnouncementMappingWriter {
                 created++;
                 continue;
             }
-            boolean changed = stored.updateFromSource(
+            boolean changed = stored.updateFromMyHome(
                     match.complex(),
                     match.housingType(),
                     index + 1,
                     data.sourceComplexName(),
                     data.sourceHousingTypeName(),
                     data.pnu(),
-                    null,
                     data.supplyCategory(),
                     match.failureDetail(),
                     data.totalSupplyHouseholdCount()
             );
+            if (data.resolvedLhPanId() != null && !hasLhSourceForPan(stored, data.resolvedLhPanId())) {
+                changed |= stored.enrichTotalSupplyHouseholdCountFromLh(data.totalSupplyHouseholdCount());
+            }
             if (changed) {
                 updated++;
                 continue;
             }
             unchanged++;
         }
-        List<SupplyRow> staleRows = List.copyOf(storedRows.values());
+        List<SupplyRow> staleRows = staleRows(
+                announcement,
+                storedRows,
+                preserveExistingLhResolvedRows
+        );
         deleteStaleRows(staleRows);
         return new SupplyRowsWriteResult(created, updated, unchanged, staleRows.size(), failures);
+    }
+
+    private boolean hasLhSourceForPan(SupplyRow row, String panId) {
+        String identifier = row.getLhSourceSupplyRowIdentifier();
+        return identifier != null && identifier.startsWith("LH:" + panId + ":");
+    }
+
+    private List<SupplyRow> staleRows(
+            Announcement announcement,
+            Map<String, SupplyRow> storedRows,
+            boolean preserveExistingLhResolvedRows
+    ) {
+        if (!preserveExistingLhResolvedRows) {
+            return List.copyOf(storedRows.values());
+        }
+        String lhResolvedPrefix = announcement.getSourceAnnouncementIdentifier() + ":LH:";
+        return storedRows.values().stream()
+                .filter(row -> !row.getSourceSupplyRowIdentifier().startsWith(lhResolvedPrefix))
+                .toList();
     }
 
     private void deleteStaleRows(List<SupplyRow> staleRows) {

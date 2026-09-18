@@ -212,7 +212,7 @@ public class Announcement {
         );
     }
 
-    public boolean updateFromSource(
+    public boolean updateFromMyHome(
             String previousSourceAnnouncementIdentifier,
             Announcement previousAnnouncement,
             String name,
@@ -225,9 +225,9 @@ public class Announcement {
             LocalDate applicationEndDate,
             LocalDate winnerAnnouncementDate,
             String originalUrl,
-            String correctionCancellationReason,
             ReceptionPlace receptionPlace
     ) {
+        ReceptionPlace ownedReceptionPlace = lhPanId == null ? receptionPlace : this.receptionPlace;
         Announcement incoming = new Announcement(
                 sourceAnnouncementIdentifier,
                 previousSourceAnnouncementIdentifier,
@@ -246,7 +246,7 @@ public class Announcement {
                 viewCount,
                 actualCompetitionRate,
                 predictedCompetitionRate,
-                receptionPlace
+                ownedReceptionPlace
         );
         if (hasSameSourceValues(incoming)) {
             return false;
@@ -297,14 +297,20 @@ public class Announcement {
     }
 
     public boolean enrichFromLh(String panId, String correctionReason, ReceptionPlace receptionPlace) {
+        String ownedCorrectionReason = correctionReason == null
+                ? correctionCancellationReason
+                : correctionReason;
+        ReceptionPlace ownedReceptionPlace = receptionPlace == null
+                ? this.receptionPlace
+                : receptionPlace;
         if (Objects.equals(lhPanId, panId)
-                && Objects.equals(correctionCancellationReason, correctionReason)
-                && hasSameReceptionPlace(receptionPlace)) {
+                && Objects.equals(correctionCancellationReason, ownedCorrectionReason)
+                && hasSameReceptionPlace(ownedReceptionPlace)) {
             return false;
         }
         lhPanId = panId;
-        correctionCancellationReason = correctionReason;
-        this.receptionPlace = receptionPlace;
+        correctionCancellationReason = ownedCorrectionReason;
+        this.receptionPlace = ownedReceptionPlace;
         return true;
     }
 
