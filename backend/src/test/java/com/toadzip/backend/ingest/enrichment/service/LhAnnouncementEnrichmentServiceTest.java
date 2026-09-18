@@ -668,11 +668,14 @@ class LhAnnouncementEnrichmentServiceTest {
     void 정상_빈_LH_공급_응답은_기존_확장_공급행과_금액을_보존한다() {
         saveComplex();
         HousingComplex complex = housingComplexRepository.findAll().getFirst();
+        Long firstHousingTypeId = housingTypeRepository.findAllByHousingComplex(complex).getFirst().getId();
         housingTypeRepository.save(HousingType.createFromMyHome(
                 complex, "source-housing-type-id-59B", "59B",
                 new BigDecimal("59.8000"), new BigDecimal("84.0000")
         ));
-        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        MyHomeAnnouncementSource source = myHomeSource();
+        ReflectionTestUtils.setField(source, "houseTyNm", "통합형");
+        myHomeSourceRepository.save(source);
         saveLhSources("10,000,000", "200,000");
         supplySourceRepository.save(new LhAnnouncementSupplySource(1, PAN_ID,
                 new LhAnnouncementSupplySourceSnapshot(
@@ -690,6 +693,14 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
         assertThat(supplyRowRepository.count()).isEqualTo(2);
         assertThat(supplyTargetRepository.count()).isEqualTo(2);
+        assertThat(supplyRowRepository.findAll())
+                .filteredOn(row -> row.getSourceSupplyRowIdentifier().equals(source.getSourceKey()))
+                .singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getSourceHousingTypeName()).isEqualTo("46A");
+                    assertThat(row.getHousingType().getId()).isEqualTo(firstHousingTypeId);
+                    assertThat(row.getMatchingFailureReason()).isNull();
+                });
     }
 
     @Test
@@ -786,7 +797,45 @@ class LhAnnouncementEnrichmentServiceTest {
         });
     }
 
+    @Test
+    void 새_연결이_금액을_미제공해도_반복_보존하고_유효한_금액으로_복구되면_교체한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        switchLhSource(source, "46A", null, null);
+
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
+            assertThat(target.getSourceSupplyTargetIdentifier()).isEqualTo("LH:" + PAN_ID + ":SUPPLY:0:TARGET");
+            assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000");
+        });
+
+        sourceStore.replaceSupplies("200", List.of(new LhAnnouncementSupplySource(0, "200",
+                new LhAnnouncementSupplySourceSnapshot(
+                        "동삼2", "46A", "46.8", "67.0", "100", "20", "12000000", "250000"
+                ))));
+
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
+            assertThat(target.getSourceSupplyTargetIdentifier()).isEqualTo("LH:200:SUPPLY:0:TARGET");
+            assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000");
+        });
+    }
+
     private void switchLhSource(MyHomeAnnouncementSource source, String housingType) {
+        switchLhSource(source, housingType, "12000000", "250000");
+    }
+
+    private void switchLhSource(
+            MyHomeAnnouncementSource source,
+            String housingType,
+            String deposit,
+            String rent
+    ) {
         ReflectionTestUtils.setField(source, "url", source.getUrl().replace("panId=100", "panId=200"));
         myHomeSourceRepository.save(source);
         LhAnnouncementDetailSource detail = detail(0, "ETC_INFO", null, null, null, null, null,
@@ -795,7 +844,7 @@ class LhAnnouncementEnrichmentServiceTest {
         detailSourceRepository.save(detail);
         supplySourceRepository.save(new LhAnnouncementSupplySource(0, "200",
                 new LhAnnouncementSupplySourceSnapshot(
-                        "동삼2", housingType, "46.8", "67.0", "100", "20", "12000000", "250000"
+                        "동삼2", housingType, "46.8", "67.0", "100", "20", deposit, rent
                 )));
         completeLinks(source);
     }

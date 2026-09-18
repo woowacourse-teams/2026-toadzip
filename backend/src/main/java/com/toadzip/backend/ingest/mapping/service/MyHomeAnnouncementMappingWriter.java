@@ -122,11 +122,17 @@ public class MyHomeAnnouncementMappingWriter {
         List<MyHomeSupplyMatchingFailureData> failures = new ArrayList<>();
         for (int index = 0; index < rows.size(); index++) {
             MyHomeSupplyRowMappingData data = rows.get(index);
+            SupplyRow stored = storedRows.remove(data.sourceSupplyRowIdentifier());
+            if (preserveExistingLhResolvedRows
+                    && stored != null
+                    && stored.getLhSourceSupplyRowIdentifier() != null) {
+                unchanged++;
+                continue;
+            }
             MyHomeSupplyMatchResult match = supplyMatcher.match(data);
             if (match.failure() != null) {
                 failures.add(match.failure());
             }
-            SupplyRow stored = storedRows.remove(data.sourceSupplyRowIdentifier());
             if (stored == null) {
                 supplyRowRepository.save(createSupplyRow(announcement, data, match, index + 1));
                 created++;

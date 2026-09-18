@@ -171,7 +171,7 @@ public class LhAnnouncementEnrichmentWriter {
             }
             SupplyTargetWriteResult target = writeTarget(row, source, previousSourceIdentifier);
             if (target.replacesPrevious()) {
-                deletePreviousTarget(row, previousSourceIdentifier, source.sourceIdentifier());
+                deleteOtherLhTargets(row, target.sourceIdentifier());
             }
             retainedTargetIdentifiers.add(target.sourceIdentifier());
             createdTargets += target.created();
@@ -183,12 +183,10 @@ public class LhAnnouncementEnrichmentWriter {
         return new SupplyWriteResult(updatedRows, createdTargets, updatedTargets, failures);
     }
 
-    private void deletePreviousTarget(SupplyRow row, String previousIdentifier, String currentIdentifier) {
-        if (previousIdentifier == null || previousIdentifier.equals(currentIdentifier)) {
-            return;
-        }
+    private void deleteOtherLhTargets(SupplyRow row, String retainedIdentifier) {
         List<SupplyTarget> previousTargets = supplyTargetRepository.findAllBySupplyRow(row).stream()
-                .filter(target -> (previousIdentifier + ":TARGET").equals(target.getSourceSupplyTargetIdentifier()))
+                .filter(target -> isLhSource(target.getSourceSupplyTargetIdentifier()))
+                .filter(target -> !retainedIdentifier.equals(target.getSourceSupplyTargetIdentifier()))
                 .toList();
         supplyTargetRepository.deleteAll(previousTargets);
     }
@@ -209,6 +207,9 @@ public class LhAnnouncementEnrichmentWriter {
                 return new SupplyTargetWriteResult(identifier, 0, 0, false);
             }
             String previousTargetIdentifier = previousTargetIdentifier(storedTargets, previousSourceIdentifier);
+            if (previousTargetIdentifier == null) {
+                previousTargetIdentifier = existingLhTargetIdentifier(storedTargets);
+            }
             return new SupplyTargetWriteResult(
                     previousTargetIdentifier == null ? identifier : previousTargetIdentifier,
                     0,
@@ -242,6 +243,18 @@ public class LhAnnouncementEnrichmentWriter {
                 .filter(identifier::equals)
                 .findFirst()
                 .orElse(null);
+    }
+
+    private String existingLhTargetIdentifier(List<SupplyTarget> storedTargets) {
+        return storedTargets.stream()
+                .map(SupplyTarget::getSourceSupplyTargetIdentifier)
+                .filter(this::isLhSource)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private boolean isLhSource(String identifier) {
+        return identifier != null && identifier.startsWith("LH:");
     }
 
     private Map<String, AnnouncementSchedule> schedulesBySource(Announcement announcement) {
