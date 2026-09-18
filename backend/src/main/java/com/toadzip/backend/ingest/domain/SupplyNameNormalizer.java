@@ -34,7 +34,7 @@ public final class SupplyNameNormalizer {
         for (String noiseWord : COMPLEX_NOISE_WORDS) {
             normalized = normalized.replace(noiseWord, "");
         }
-        return normalized;
+        return canonicalNumbers(normalized);
     }
 
     public static String housingTypeName(String value) {
@@ -44,16 +44,18 @@ public final class SupplyNameNormalizer {
     public static boolean sameComplex(String left, String right) {
         String normalizedLeft = complexName(left);
         String normalizedRight = complexName(right);
-        return !normalizedLeft.isEmpty() && normalizedLeft.equals(normalizedRight);
+        return !normalizedLeft.isEmpty()
+                && numberTokens(left).equals(numberTokens(right))
+                && normalizedLeft.equals(normalizedRight);
     }
 
     public static boolean compatibleComplex(String left, String right) {
-        String normalizedLeft = canonicalNumbers(complexName(left));
-        String normalizedRight = canonicalNumbers(complexName(right));
+        String normalizedLeft = complexName(left);
+        String normalizedRight = complexName(right);
         if (normalizedLeft.isEmpty() || normalizedRight.isEmpty()) {
             return false;
         }
-        if (!numbers(normalizedLeft).equals(numbers(normalizedRight))) {
+        if (!numberTokens(left).equals(numberTokens(right))) {
             return false;
         }
         if (normalizedLeft.length() < 4 || normalizedRight.length() < 4) {
@@ -69,16 +71,20 @@ public final class SupplyNameNormalizer {
     }
 
     private static String alphanumeric(String value) {
-        if (value == null) {
-            return "";
-        }
-        String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
-                .toLowerCase(Locale.ROOT);
+        String normalized = normalizedText(value);
         StringBuilder result = new StringBuilder();
         normalized.codePoints()
                 .filter(Character::isLetterOrDigit)
                 .forEach(result::appendCodePoint);
         return result.toString();
+    }
+
+    private static String normalizedText(String value) {
+        if (value == null) {
+            return "";
+        }
+        return Normalizer.normalize(value, Normalizer.Form.NFKC)
+                .toLowerCase(Locale.ROOT);
     }
 
     private static String canonicalNumbers(String value) {
@@ -91,11 +97,11 @@ public final class SupplyNameNormalizer {
         return result.toString();
     }
 
-    private static List<String> numbers(String value) {
+    private static List<String> numberTokens(String value) {
         List<String> result = new ArrayList<>();
-        Matcher matcher = NUMBER.matcher(value);
+        Matcher matcher = NUMBER.matcher(normalizedText(value));
         while (matcher.find()) {
-            result.add(matcher.group());
+            result.add(withoutLeadingZeros(matcher.group()));
         }
         return result;
     }

@@ -74,6 +74,31 @@ class LhAnnouncementSupplyMatcherTest {
     }
 
     @Test
+    void 숫자_토큰의_경계가_다른_단지는_매칭하지_않는다() {
+        LhSupplyMatchResult result = matcher.match(
+                List.of(row("광명1단지 10블록", "26A")),
+                source("광명110블록", "26A")
+        );
+
+        assertThat(result.row()).isNull();
+        assertThat(result.failure().reason())
+                .isEqualTo(LhAnnouncementEnrichmentFailureReason.COMPLEX_NOT_FOUND);
+    }
+
+    @Test
+    void 단지_번호의_선행_0만_다르면_같은_단지로_매칭한다() {
+        SupplyRow row = row("광명01단지", "26A");
+
+        LhSupplyMatchResult result = matcher.match(
+                List.of(row),
+                source("광명1 영구임대주택", "26A")
+        );
+
+        assertThat(result.row()).isSameAs(row);
+        assertThat(result.failure()).isNull();
+    }
+
+    @Test
     void 정규화한_LH_단지명이_비면_매칭하지_않는다() {
         LhSupplyMatchResult result = matcher.match(
                 List.of(row("영구임대주택", "26A")),

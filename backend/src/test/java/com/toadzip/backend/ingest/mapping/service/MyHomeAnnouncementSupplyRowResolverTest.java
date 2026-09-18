@@ -12,7 +12,8 @@ import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
 import java.util.List;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class MyHomeAnnouncementSupplyRowResolverTest {
 
@@ -22,13 +23,20 @@ class MyHomeAnnouncementSupplyRowResolverTest {
     private final MyHomeAnnouncementSupplyRowResolver resolver =
             new MyHomeAnnouncementSupplyRowResolver(linkResolver, supplyRepository);
 
-    @Test
-    void 단지_번호가_다른_LH_공급행을_유일한_마이홈_공급행에_연결하지_않는다() {
+    @ParameterizedTest
+    @CsvSource({
+            "중동한라1단지, 중동한라10단지 영구임대주택",
+            "광명1단지 10블록, 광명110블록"
+    })
+    void 번호_구성이나_숫자_토큰_경계가_다른_LH_공급행을_연결하지_않는다(
+            String myHomeComplexName,
+            String lhComplexName
+    ) {
         MyHomeAnnouncementSource source = mock(MyHomeAnnouncementSource.class);
         MyHomeSupplyRowMappingData sourceRow = new MyHomeSupplyRowMappingData(
                 source,
                 "myhome-row",
-                "중동한라1단지",
+                myHomeComplexName,
                 "기존 주택형",
                 "4119010800100010000",
                 "PERMANENT_RENTAL",
@@ -55,7 +63,7 @@ class MyHomeAnnouncementSupplyRowResolverTest {
         );
         when(linkResolver.resolve(source)).thenReturn("pan-id");
         when(supplyRepository.findAllByPanIdOrderBySourceOrderAsc("pan-id"))
-                .thenReturn(List.of(lhSupply("중동한라10단지 영구임대주택")));
+                .thenReturn(List.of(lhSupply(lhComplexName)));
 
         MyHomeAnnouncementMappingData result = resolver.resolve(data);
 

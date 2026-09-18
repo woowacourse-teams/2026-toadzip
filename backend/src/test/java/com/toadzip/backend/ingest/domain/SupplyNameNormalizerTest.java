@@ -45,6 +45,20 @@ class SupplyNameNormalizerTest {
     }
 
     @Test
+    void 숫자_토큰의_경계가_다르면_같은_문자열로_합쳐져도_일치하지_않는다() {
+        assertThat(SupplyNameNormalizer.sameComplex("광명1단지 10블록", "광명110블록"))
+                .isFalse();
+        assertThat(SupplyNameNormalizer.compatibleComplex("광명1단지 10블록", "광명110블록"))
+                .isFalse();
+    }
+
+    @Test
+    void 정확_일치에서도_숫자의_선행_0만_다르면_같은_단지로_판단한다() {
+        assertThat(SupplyNameNormalizer.sameComplex("광명01단지", "광명1 영구임대주택"))
+                .isTrue();
+    }
+
+    @Test
     void 주택형_구분은_보존하고_표기_접미어만_제거한다() {
         assertThat(SupplyNameNormalizer.sameHousingType("26A형", "26A 주택형"))
                 .isTrue();
