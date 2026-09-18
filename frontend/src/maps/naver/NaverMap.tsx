@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ViewportSnapshot } from '../../public-housing/map/viewportPolicy.ts'
+import type {
+  MapMarkerAmount,
+  MapMarkerPresentation,
+} from '../../public-housing/presentation/mapMarkerPresentation.ts'
 import {
   clusterScreenMarkers,
   type ClusteredScreenMarkers,
@@ -31,16 +35,12 @@ const INITIAL_CENTER = {
 const CAMERA_COORDINATE_PRECISION = 5
 const CAMERA_ZOOM_PRECISION = 2
 
-export interface NaverMapComplexMarker {
-  agencyLabel: string
-  areaLabel: string
+export interface NaverMapComplexMarker extends MapMarkerPresentation {
   id: string
   highlighted?: boolean
   latitude: number
   longitude: number
-  monthlyRentLabel: string
   name: string
-  rentalTypeLabel: string
   selected?: boolean
 }
 
@@ -1144,59 +1144,103 @@ function createComplexMarker(
   button.type = 'button'
   button.className = markerClassName(marker)
   button.setAttribute('aria-label', markerAriaLabel(marker))
+  button.setAttribute('aria-pressed', String(Boolean(marker.selected)))
   button.dataset.complexId = marker.id
   button.dataset.mapComplexMarker = 'true'
-  button.title = marker.name
+  button.title = markerSummary(marker)
   button.append(
     createMarkerTop(marker),
     createMarkerBody(marker),
   )
-  button.addEventListener('click', onSelect)
+  // Native keyboard clicks have no pointer coordinates for the SDK to process.
+  button.addEventListener('click', (event) => {
+    event.stopImmediatePropagation()
+    onSelect()
+  }, true)
+  const keepKeyboardOnMarker = (event: KeyboardEvent) => {
+    // Preserve native Enter/Space activation and keep both phases off the map.
+    event.stopPropagation()
+  }
+  button.addEventListener('keydown', keepKeyboardOnMarker)
+  button.addEventListener('keyup', keepKeyboardOnMarker)
   const isInteracting = bindMarkerHighlight(button, marker.id, onHighlight)
 
   const overlay = new maps.Marker({
     clickable: true,
     cursor: 'pointer',
     icon: {
-      anchor: new maps.Point(84, 70),
+      anchor: new maps.Point(48, 66),
       content: button,
-      size: new maps.Size(168, 70),
+      size: new maps.Size(96, 66),
     },
     map: mapInstance,
     position: new maps.LatLng(marker.latitude, marker.longitude),
-    title: marker.name,
+    title: markerSummary(marker),
   })
   return { button, isInteracting, overlay }
 }
 
 function markerAriaLabel(marker: NaverMapComplexMarker) {
+  return `${markerSummary(marker)}, 단지 상세 보기`
+}
+
+function markerSummary(marker: NaverMapComplexMarker) {
   return [
     marker.name,
-    `${marker.agencyLabel} · ${marker.rentalTypeLabel}`,
-    marker.areaLabel,
-    `월 ${marker.monthlyRentLabel}`,
-    '단지 상세 보기',
+    `${marker.agencyName} · ${marker.rentalTypeName}`,
+    `보증금 ${markerAmountSummary(marker.deposit)}`,
+    `월 임대료 ${markerAmountSummary(marker.monthlyRent)}`,
   ].join(', ')
+}
+
+function markerAmountSummary(amount: MapMarkerAmount | null) {
+  return amount === null ? '정보 없음' : `최소 ${amount.exactLabel}`
 }
 
 function createMarkerTop(marker: NaverMapComplexMarker) {
   const top = document.createElement('span')
   top.className = 'housing-map-marker__top'
-  top.textContent = `${marker.agencyLabel} · ${marker.rentalTypeLabel}`
+  top.append(
+    createMarkerText('name', marker.agencyLabel),
+    createMarkerText('name', marker.rentalTypeLabel),
+  )
   return top
 }
 
 function createMarkerBody(marker: NaverMapComplexMarker) {
   const body = document.createElement('span')
-  const area = document.createElement('strong')
-  const monthlyRent = document.createElement('b')
   body.className = 'housing-map-marker__body'
-  area.className = 'housing-map-marker__area'
-  area.textContent = marker.areaLabel
-  monthlyRent.className = 'housing-map-marker__rent'
-  monthlyRent.textContent = `월 ${marker.monthlyRentLabel}`
-  body.append(area, monthlyRent)
+  body.append(
+    createMarkerAmountRow('보', marker.deposit),
+    createMarkerAmountRow('월', marker.monthlyRent),
+  )
   return body
+}
+
+function createMarkerAmountRow(label: string, amount: MapMarkerAmount | null) {
+  const row = document.createElement('span')
+  row.className = 'housing-map-marker__row'
+  row.append(createMarkerText('label', label))
+  if (amount === null) {
+    row.append(createMarkerText('missing', '정보 없음'))
+    return row
+  }
+  const value = document.createElement('span')
+  value.className = 'housing-map-marker__amount'
+  value.append(
+    createMarkerText('digits', amount.digits),
+    createMarkerText('unit', amount.unit),
+    createMarkerText('from', '~'),
+  )
+  row.append(value)
+  return row
+}
+
+function createMarkerText(className: string, text: string) {
+  const node = document.createElement('span')
+  node.className = `housing-map-marker__${className}`
+  node.textContent = text
+  return node
 }
 
 function markerClassName(marker: NaverMapComplexMarker) {
@@ -1340,9 +1384,15 @@ function createMarkerGeometryKey({
       marker.longitude,
       marker.name,
       marker.agencyLabel,
+      marker.agencyName,
       marker.rentalTypeLabel,
-      marker.areaLabel,
-      marker.monthlyRentLabel,
+      marker.rentalTypeName,
+      marker.deposit?.digits,
+      marker.deposit?.unit,
+      marker.deposit?.exactLabel,
+      marker.monthlyRent?.digits,
+      marker.monthlyRent?.unit,
+      marker.monthlyRent?.exactLabel,
       // 기존 군집은 선택 단지를 묶음에서 분리하므로 구성 재계산이 필요하다.
       ...(markerRenderMode === 'legacy' ? [Boolean(marker.selected)] : []),
     ]),
@@ -1372,6 +1422,9 @@ function applyMarkerPresentation(
     }
     if (presentation?.selected !== selected) {
       button.classList.toggle('is-selected', selected)
+      if (rendered.kind === 'complex') {
+        button.setAttribute('aria-pressed', String(selected))
+      }
     }
     if (presentation?.highlighted !== highlighted) {
       button.classList.toggle('is-highlighted', highlighted)
@@ -1446,9 +1499,15 @@ function renderedMarkerGeometryKey(marker: RenderedMarker | undefined) {
       marker.marker.longitude,
       marker.marker.name,
       marker.marker.agencyLabel,
+      marker.marker.agencyName,
       marker.marker.rentalTypeLabel,
-      marker.marker.areaLabel,
-      marker.marker.monthlyRentLabel,
+      marker.marker.rentalTypeName,
+      marker.marker.deposit?.digits,
+      marker.marker.deposit?.unit,
+      marker.marker.deposit?.exactLabel,
+      marker.marker.monthlyRent?.digits,
+      marker.marker.monthlyRent?.unit,
+      marker.marker.monthlyRent?.exactLabel,
     ])
   }
   return JSON.stringify([

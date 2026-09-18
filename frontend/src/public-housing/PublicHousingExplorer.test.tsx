@@ -1247,9 +1247,9 @@ describe('PublicHousingExplorer', () => {
       name: '서울가람 행복주택 지도 마커 선택',
     })
     expect(marker).toHaveAttribute('data-agency-label', 'LH')
-    expect(marker).toHaveAttribute('data-rental-type-label', '행복주택')
-    expect(marker).toHaveAttribute('data-area-label', '36.12~44.87㎡')
-    expect(marker).toHaveAttribute('data-monthly-rent-label', '20만~30만 원')
+    expect(marker).toHaveAttribute('data-rental-type-label', '행복')
+    expect(marker).toHaveAttribute('data-deposit-label', '5000만~')
+    expect(marker).toHaveAttribute('data-monthly-rent-label', '20만~')
   })
 
   it('이후 지도 이동은 같은 영역을 지도와 목록에 자동 적용한다', async () => {
@@ -2215,9 +2215,12 @@ describe('PublicHousingExplorer', () => {
     expect(await screen.findByRole('complementary', {
       name: '서울가람 행복주택 단지 상세 정보',
     })).toBeVisible()
-    expect(screen.getByRole('button', {
+    const marker = screen.getByRole('button', {
       name: '서울가람 행복주택 지도 마커 선택',
-    })).toBeVisible()
+    })
+    expect(marker).toBeVisible()
+    expect(marker).toHaveAttribute('data-deposit-label', '정보 없음')
+    expect(marker).toHaveAttribute('data-monthly-rent-label', '정보 없음')
     expect(repository.findComplexPage).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
@@ -2931,8 +2934,10 @@ function FakeNaverMap({
           data-selected={marker.selected || undefined}
           data-agency-label={marker.agencyLabel}
           data-rental-type-label={marker.rentalTypeLabel}
-          data-area-label={marker.areaLabel}
-          data-monthly-rent-label={marker.monthlyRentLabel}
+          data-deposit-label={marker.deposit
+            ? `${marker.deposit.digits}${marker.deposit.unit}~` : '정보 없음'}
+          data-monthly-rent-label={marker.monthlyRent
+            ? `${marker.monthlyRent.digits}${marker.monthlyRent.unit}~` : '정보 없음'}
           onMouseEnter={() => onMarkerHighlight?.(marker.id)}
           onMouseLeave={() => onMarkerHighlight?.(null)}
           onFocus={() => onMarkerHighlight?.(marker.id)}
