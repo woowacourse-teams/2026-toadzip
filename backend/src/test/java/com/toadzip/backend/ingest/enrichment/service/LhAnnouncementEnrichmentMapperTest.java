@@ -41,6 +41,27 @@ class LhAnnouncementEnrichmentMapperTest {
     }
 
     @Test
+    void 다단지_공고는_단지명_접미어가_달라도_해당_입주예정월을_매핑한다() {
+        List<LhAnnouncementDetailSource> details = List.of(
+                complexDetail(0, "중동한라1", "202612"),
+                complexDetail(1, "중동덕유1", "202703")
+        );
+        List<LhAnnouncementSupplySource> supplies = List.of(
+                supply(0, "중동한라1 영구임대주택", "46A"),
+                supply(1, "중동덕유1 영구임대주택", "59B")
+        );
+
+        LhAnnouncementEnrichmentData result = mapper.map(PAN_ID, details, supplies);
+
+        assertThat(result.supplies())
+                .extracting(LhSupplyData::complexName, LhSupplyData::expectedMoveInMonth)
+                .containsExactly(
+                        tuple("중동한라1 영구임대주택", YearMonth.of(2026, 12)),
+                        tuple("중동덕유1 영구임대주택", YearMonth.of(2027, 3))
+                );
+    }
+
+    @Test
     void 다단지_공고에서_단지가_불일치하면_입주예정월을_매핑하지_않는다() {
         List<LhAnnouncementDetailSource> details = List.of(
                 complexDetail(0, "동삼2", "202612"),
@@ -49,6 +70,19 @@ class LhAnnouncementEnrichmentMapperTest {
 
         LhAnnouncementEnrichmentData result = mapper.map(
                 PAN_ID, details, List.of(supply(0, "매칭되지 않는 단지", "46A"))
+        );
+
+        assertThat(result.supplies()).singleElement()
+                .extracting(LhSupplyData::expectedMoveInMonth)
+                .isNull();
+    }
+
+    @Test
+    void 빈_단지명은_단일_후보에_입주예정월을_임의로_연결하지_않는다() {
+        LhAnnouncementEnrichmentData result = mapper.map(
+                PAN_ID,
+                List.of(complexDetail(0, "", "202612")),
+                List.of(supply(0, "동삼2", "46A"))
         );
 
         assertThat(result.supplies()).singleElement()
