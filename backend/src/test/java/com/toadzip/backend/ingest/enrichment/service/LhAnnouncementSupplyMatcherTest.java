@@ -61,6 +61,19 @@ class LhAnnouncementSupplyMatcherTest {
     }
 
     @Test
+    void 마이홈과_LH의_주택형_접미어_표기가_달라도_같은_주택형으로_매칭한다() {
+        SupplyRow row = row("중동한라1", "26A형");
+
+        LhSupplyMatchResult result = matcher.match(
+                List.of(row),
+                source("중동한라1 영구임대주택", "26A 주택형")
+        );
+
+        assertThat(result.row()).isSameAs(row);
+        assertThat(result.failure()).isNull();
+    }
+
+    @Test
     void 정규화한_LH_단지명이_비면_매칭하지_않는다() {
         LhSupplyMatchResult result = matcher.match(
                 List.of(row("영구임대주택", "26A")),

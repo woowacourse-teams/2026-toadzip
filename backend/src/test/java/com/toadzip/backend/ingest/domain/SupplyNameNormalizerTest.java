@@ -13,6 +13,12 @@ class SupplyNameNormalizerTest {
     }
 
     @Test
+    void 통합공공임대주택_접미어를_완전히_제거한다() {
+        assertThat(SupplyNameNormalizer.sameComplex("중동 통합공공임대주택", "중동"))
+                .isTrue();
+    }
+
+    @Test
     void 단지_번호와_블록_번호는_보존한다() {
         assertThat(SupplyNameNormalizer.sameComplex("중동한라1", "중동한라2 영구임대주택"))
                 .isFalse();

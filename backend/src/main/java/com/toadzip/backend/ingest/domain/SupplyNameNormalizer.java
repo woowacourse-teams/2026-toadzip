@@ -7,6 +7,7 @@ import java.util.Locale;
 public final class SupplyNameNormalizer {
 
     private static final List<String> COMPLEX_NOISE_WORDS = List.of(
+            "통합공공임대주택",
             "국민임대주택",
             "국민임대",
             "영구임대주택",
