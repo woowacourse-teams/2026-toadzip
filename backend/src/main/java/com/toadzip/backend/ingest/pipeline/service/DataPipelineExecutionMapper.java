@@ -2,8 +2,10 @@ package com.toadzip.backend.ingest.pipeline.service;
 
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
+import com.toadzip.backend.ingest.pipeline.dto.DataPipelineCompletedStepResponse;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineFailureResponse;
+import com.toadzip.backend.ingest.pipeline.dto.DataPipelinePartiallyFailedStepResponse;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineSkippedStepResponse;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -34,11 +36,39 @@ public class DataPipelineExecutionMapper {
                 currentStepIndex(currentStep),
                 execution.getType().steps().size(),
                 completedSteps,
+                completedStepResponses(execution),
                 skippedStepResponses(execution),
+                partiallyFailedStepResponses(execution),
                 failureResponse(execution),
                 execution.getStartedAt(),
                 execution.getFinishedAt()
         );
+    }
+
+    private List<DataPipelinePartiallyFailedStepResponse> partiallyFailedStepResponses(
+            DataPipelineExecution execution
+    ) {
+        return execution.getPartiallyFailedSteps()
+                .stream()
+                .map(partiallyFailedStep -> new DataPipelinePartiallyFailedStepResponse(
+                        partiallyFailedStep.getStep(),
+                        partiallyFailedStep.getStep().displayName(),
+                        deserializeReport(partiallyFailedStep.getReport())
+                ))
+                .toList();
+    }
+
+    private List<DataPipelineCompletedStepResponse> completedStepResponses(
+            DataPipelineExecution execution
+    ) {
+        return execution.getCompletedStepResults()
+                .stream()
+                .map(completedStep -> new DataPipelineCompletedStepResponse(
+                        completedStep.getStep(),
+                        completedStep.getStep().displayName(),
+                        deserializeReport(completedStep.getReport())
+                ))
+                .toList();
     }
 
     private List<DataPipelineSkippedStepResponse> skippedStepResponses(
@@ -49,7 +79,7 @@ public class DataPipelineExecutionMapper {
                 .map(skippedStep -> new DataPipelineSkippedStepResponse(
                         skippedStep.getStep().displayName(),
                         skippedStep.getReason(),
-                        deserializeServerResponse(skippedStep.getServerResponse())
+                        deserializeReport(skippedStep.getServerResponse())
                 ))
                 .toList();
     }
@@ -61,7 +91,7 @@ public class DataPipelineExecutionMapper {
         return new DataPipelineFailureResponse(
                 stepName(execution.getFailedStep()),
                 execution.getFailureMessage(),
-                deserializeServerResponse(execution.getFailureServerResponse())
+                deserializeReport(execution.getFailureServerResponse())
         );
     }
 
@@ -79,16 +109,16 @@ public class DataPipelineExecutionMapper {
         return step.displayName();
     }
 
-    private Object deserializeServerResponse(String serverResponse) {
-        if (serverResponse == null) {
+    private Object deserializeReport(String report) {
+        if (report == null) {
             return null;
         }
         try {
-            return objectMapper.readValue(serverResponse, Object.class);
+            return objectMapper.readValue(report, Object.class);
         }
         catch (JacksonException exception) {
             throw new IllegalStateException(
-                    "저장된 파이프라인 실패 응답을 읽을 수 없습니다.",
+                    "저장된 파이프라인 실행 보고서를 읽을 수 없습니다.",
                     exception
             );
         }

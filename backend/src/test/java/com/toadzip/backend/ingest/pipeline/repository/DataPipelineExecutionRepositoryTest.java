@@ -40,7 +40,10 @@ class DataPipelineExecutionRepositoryTest {
         executionRepository.saveAndFlush(olderExecution);
         DataPipelineExecution latestExecution = executionAt("2026-09-03T02:00:00Z");
         latestExecution.startStep(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
-        latestExecution.completeStep(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+        latestExecution.completeStep(
+                DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS,
+                "{\"mappedSourceRowCount\":3}"
+        );
         latestExecution.startStep(DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS);
         executionRepository.saveAndFlush(latestExecution);
         entityManager.clear();
@@ -55,6 +58,10 @@ class DataPipelineExecutionRepositoryTest {
                 .isEqualTo(DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS);
         assertThat(found.getCompletedSteps())
                 .containsExactly(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+        assertThat(found.getCompletedStepResults()).singleElement().satisfies(result -> {
+            assertThat(result.getStep()).isEqualTo(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+            assertThat(result.getReport()).isEqualTo("{\"mappedSourceRowCount\":3}");
+        });
     }
 
     @Test
@@ -64,9 +71,17 @@ class DataPipelineExecutionRepositoryTest {
         Instant startedAt = Instant.parse("2026-09-03T03:00:00Z");
         executionStateService.create(executionId, DataPipelineType.ANNOUNCEMENT_REFINEMENT, startedAt);
         executionStateService.startStep(executionId, DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
-        executionStateService.completeStep(executionId, DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+        executionStateService.completeStep(
+                executionId,
+                DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS,
+                "{\"mappedSourceRowCount\":1}"
+        );
         executionStateService.startStep(executionId, DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS);
-        executionStateService.completeStep(executionId, DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS);
+        executionStateService.completeStep(
+                executionId,
+                DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS,
+                "{\"enrichedAnnouncementCount\":1}"
+        );
         executionStateService.complete(executionId, startedAt.plusSeconds(10));
 
         DataPipelineExecution found = executionRepository.findByExecutionId(executionId).orElseThrow();
@@ -97,7 +112,8 @@ class DataPipelineExecutionRepositoryTest {
         );
         executionStateService.completeStep(
                 executionId,
-                DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS
+                DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS,
+                "{}"
         );
         executionStateService.complete(executionId, startedAt.plusSeconds(10));
 
@@ -111,6 +127,48 @@ class DataPipelineExecutionRepositoryTest {
             assertThat(skipped.getStep()).isEqualTo(DataPipelineStep.MAP_MYHOME_COMPLEXES);
             assertThat(skipped.getReason()).isEqualTo("외부 API 호출 제한");
         });
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 부분_실패한_단계별_보고서를_순서대로_보존한다() {
+        UUID executionId = UUID.randomUUID();
+        Instant startedAt = Instant.parse("2026-09-03T03:00:00Z");
+        executionStateService.create(executionId, DataPipelineType.ANNOUNCEMENT_COLLECTION, startedAt);
+        executionStateService.startStep(
+                executionId,
+                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS
+        );
+        executionStateService.recordPartialFailure(
+                executionId,
+                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                "{\"failedPageCount\":1}"
+        );
+        executionStateService.startStepAfterPartialFailure(
+                executionId,
+                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES
+        );
+        executionStateService.recordPartialFailure(
+                executionId,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
+                "{\"failedRequestCount\":2}"
+        );
+
+        DataPipelineExecution found = executionRepository.findByExecutionId(executionId).orElseThrow();
+
+        assertThat(found.getPartiallyFailedSteps())
+                .extracting(result -> result.getStep(), result -> result.getReport())
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(
+                                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                                "{\"failedPageCount\":1}"
+                        ),
+                        org.assertj.core.groups.Tuple.tuple(
+                                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
+                                "{\"failedRequestCount\":2}"
+                        )
+                );
     }
 
     private DataPipelineExecution executionAt(String startedAt) {

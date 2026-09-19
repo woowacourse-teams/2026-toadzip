@@ -43,7 +43,7 @@ class DataPipelineExecutionTest {
     void 완료한_단계를_다시_시작할_수_없다() {
         DataPipelineExecution execution = execution(DataPipelineType.ANNOUNCEMENT_COLLECTION);
         execution.startStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
-        execution.completeStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+        execution.completeStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS, "{}");
 
         assertThatThrownBy(() -> execution.startStep(
                 DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS
@@ -84,7 +84,7 @@ class DataPipelineExecutionTest {
                 DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
                 DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES
         );
-        execution.completeStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
+        execution.completeStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES, "{}");
 
         execution.startStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
 

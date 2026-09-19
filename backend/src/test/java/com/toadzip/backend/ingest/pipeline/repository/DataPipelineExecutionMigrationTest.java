@@ -22,6 +22,10 @@ class DataPipelineExecutionMigrationTest {
             "db/migration/V20260903_01__create_data_pipeline_executions.sql";
     private static final String SKIPPED_STEPS_MIGRATION =
             "db/migration/V20260903_02__add_data_pipeline_skipped_steps.sql";
+    private static final String COMPLETED_STEP_REPORTS_MIGRATION =
+            "db/migration/V20260919_01__add_data_pipeline_completed_step_reports.sql";
+    private static final String PARTIAL_FAILURE_REPORTS_MIGRATION =
+            "db/migration/V20260919_02__add_data_pipeline_partial_failure_reports.sql";
 
     @Autowired
     private DataSource dataSource;
@@ -36,14 +40,31 @@ class DataPipelineExecutionMigrationTest {
                         connection,
                         new ClassPathResource(SKIPPED_STEPS_MIGRATION)
                 );
+                ScriptUtils.executeSqlScript(
+                        connection,
+                        new ClassPathResource(COMPLETED_STEP_REPORTS_MIGRATION)
+                );
+                ScriptUtils.executeSqlScript(
+                        connection,
+                        new ClassPathResource(PARTIAL_FAILURE_REPORTS_MIGRATION)
+                );
 
                 assertThat(tableExists(connection, "data_pipeline_executions")).isTrue();
                 assertThat(tableExists(connection, "data_pipeline_execution_completed_steps"))
                         .isTrue();
                 assertThat(tableExists(connection, "data_pipeline_execution_skipped_steps"))
                         .isTrue();
+                assertThat(tableExists(
+                        connection,
+                        "data_pipeline_execution_partial_failures"
+                )).isTrue();
                 assertThat(columnLength(connection, "data_pipeline_executions", "type"))
                         .isEqualTo(40);
+                assertThat(columnExists(
+                        connection,
+                        "data_pipeline_execution_completed_steps",
+                        "completed_report"
+                )).isTrue();
             }
             finally {
                 dropTestSchema(connection);
@@ -93,6 +114,28 @@ class DataPipelineExecutionMigrationTest {
                     throw new IllegalStateException("컬럼을 찾지 못했습니다.");
                 }
                 return result.getInt(1);
+            }
+        }
+    }
+
+    private boolean columnExists(
+            Connection connection,
+            String tableName,
+            String columnName
+    ) throws Exception {
+        try (var statement = connection.prepareStatement("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = ?
+                      AND column_name = ?
+                )
+                """)) {
+            statement.setString(1, tableName);
+            statement.setString(2, columnName);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() && result.getBoolean(1);
             }
         }
     }

@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
@@ -22,6 +23,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -129,7 +131,7 @@ class DataPipelineExecutionServiceTest {
             DataPipelineProgressListener listener = invocation.getArgument(1);
             type.steps().forEach(step -> {
                 listener.started(step);
-                listener.completed(step);
+                listener.completed(step, "{\"processedCount\":1}");
             });
             return null;
         }).when(runner).run(any(), any());
@@ -143,7 +145,7 @@ class DataPipelineExecutionServiceTest {
         assertThat(status.completedSteps()).hasSize(3);
         verify(lease).close();
         verify(executionStateService, times(3)).startStep(any(), any());
-        verify(executionStateService, times(3)).completeStep(any(), any());
+        verify(executionStateService, times(3)).completeStep(any(), any(), any());
         verify(executionStateService).complete(any(), any());
     }
 
@@ -156,7 +158,7 @@ class DataPipelineExecutionServiceTest {
             DataPipelineProgressListener listener = invocation.getArgument(1);
             type.steps().forEach(step -> {
                 listener.started(step);
-                listener.completed(step);
+                listener.completed(step, "{\"processedCount\":1}");
             });
             return null;
         }).when(runner).run(any(), any());
@@ -175,6 +177,33 @@ class DataPipelineExecutionServiceTest {
         var status = otherInstance.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
+    }
+
+    @Test
+    void 실행_ID로_저장된_결과를_조회한다() {
+        UUID executionId = UUID.randomUUID();
+        DataPipelineExecution execution = DataPipelineExecution.start(
+                executionId,
+                DataPipelineType.ANNOUNCEMENT_REFINEMENT,
+                Instant.parse("2026-09-02T12:00:00Z")
+        );
+        when(executionRepository.findByExecutionId(executionId))
+                .thenReturn(Optional.of(execution));
+
+        var response = service.find(executionId);
+
+        assertThat(response.executionId()).isEqualTo(executionId);
+        assertThat(response.type()).isEqualTo(DataPipelineType.ANNOUNCEMENT_REFINEMENT);
+    }
+
+    @Test
+    void 존재하지_않는_실행_ID를_조회하면_명시적인_예외를_던진다() {
+        UUID executionId = UUID.randomUUID();
+        when(executionRepository.findByExecutionId(executionId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.find(executionId))
+                .isInstanceOf(DataPipelineExecutionNotFoundException.class)
+                .hasMessageContaining(executionId.toString());
     }
 
     @Test
@@ -207,6 +236,10 @@ class DataPipelineExecutionServiceTest {
         doAnswer(invocation -> {
             DataPipelineProgressListener listener = invocation.getArgument(1);
             listener.started(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+            listener.partiallyFailed(
+                    DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS,
+                    serverResponse
+            );
             throw new DataPipelinePartialFailureException(
                     DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS,
                     serverResponse
@@ -220,6 +253,11 @@ class DataPipelineExecutionServiceTest {
         assertThat(status.failure().stepName()).isEqualTo("마이홈 공고 정제");
         assertThat(status.failure().serverResponse())
                 .isEqualTo(java.util.Map.of("failedSourceRowCount", 3));
+        assertThat(status.partiallyFailedSteps()).singleElement().satisfies(failure -> {
+            assertThat(failure.step()).isEqualTo(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+            assertThat(failure.report())
+                    .isEqualTo(java.util.Map.of("failedSourceRowCount", 3));
+        });
         verify(lease).close();
     }
 
@@ -237,9 +275,15 @@ class DataPipelineExecutionServiceTest {
                     serverResponse
             );
             listener.started(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
-            listener.completed(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
+            listener.completed(
+                    DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
+                    "{\"collectedSourceRowCount\":1}"
+            );
             listener.started(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
-            listener.completed(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
+            listener.completed(
+                    DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS,
+                    "{\"collectedSourceRowCount\":1}"
+            );
             return null;
         }).when(runner).run(any(), any());
 
@@ -248,6 +292,9 @@ class DataPipelineExecutionServiceTest {
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS);
         assertThat(status.completedSteps()).hasSize(2);
+        assertThat(status.completedStepResults()).hasSize(2);
+        assertThat(status.completedStepResults().getFirst().report())
+                .isEqualTo(java.util.Map.of("collectedSourceRowCount", 1));
         assertThat(status.skippedSteps()).singleElement().satisfies(skipped -> {
             assertThat(skipped.stepName()).isEqualTo("마이홈 공고 수집");
             assertThat(skipped.reason()).contains("호출 제한");
@@ -268,7 +315,7 @@ class DataPipelineExecutionServiceTest {
             DataPipelineProgressListener listener = invocation.getArgument(1);
             type.steps().forEach(step -> {
                 listener.started(step);
-                listener.completed(step);
+                listener.completed(step, "{\"processedCount\":1}");
             });
             return null;
         }).when(runner).run(any(), any());
@@ -349,9 +396,12 @@ class DataPipelineExecutionServiceTest {
             return null;
         }).when(executionStateService).startStep(any(), any());
         lenient().doAnswer(invocation -> {
-            savedExecution.get().completeStep(invocation.getArgument(1));
+            savedExecution.get().completeStep(
+                    invocation.getArgument(1),
+                    invocation.getArgument(2)
+            );
             return null;
-        }).when(executionStateService).completeStep(any(), any());
+        }).when(executionStateService).completeStep(any(), any(), any());
         lenient().doAnswer(invocation -> {
             savedExecution.get().skipStep(
                     invocation.getArgument(1),
@@ -360,6 +410,13 @@ class DataPipelineExecutionServiceTest {
             );
             return null;
         }).when(executionStateService).skipStep(any(), any(), any(), any());
+        lenient().doAnswer(invocation -> {
+            savedExecution.get().recordPartialFailure(
+                    invocation.getArgument(1),
+                    invocation.getArgument(2)
+            );
+            return null;
+        }).when(executionStateService).recordPartialFailure(any(), any(), any());
         lenient().doAnswer(invocation -> {
             savedExecution.get().complete(invocation.getArgument(1));
             return null;
