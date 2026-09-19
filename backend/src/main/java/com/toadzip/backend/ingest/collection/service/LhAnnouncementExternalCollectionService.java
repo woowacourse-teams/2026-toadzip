@@ -234,7 +234,7 @@ public class LhAnnouncementExternalCollectionService {
         }
         for (Candidate linkedCandidate : requestCandidates.subList(1, requestCandidates.size())) {
             if (!progress.isLinkedTo(linkedCandidate.sourceAnnouncementKey(), linkedCandidate.requestDescription())) {
-                progressManager.complete(targetSource, linkedCandidate);
+                progressManager.link(targetSource, linkedCandidate);
             }
         }
         return report;
@@ -245,9 +245,9 @@ public class LhAnnouncementExternalCollectionService {
             Candidate candidate,
             BatchProgress progress
     ) {
-        if (progress.isCompleted(candidate.requestDescription())) {
+        if (progress.isFresh(candidate.requestDescription())) {
             if (!progress.isLinkedTo(candidate.sourceAnnouncementKey(), candidate.requestDescription())) {
-                progressManager.complete(targetSource, candidate);
+                progressManager.link(targetSource, candidate);
             }
             return ExternalDataCollectionReport.empty(targetSource.operation());
         }

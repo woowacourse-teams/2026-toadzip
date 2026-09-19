@@ -12,6 +12,10 @@ import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore.BatchProgress;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,6 +25,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class LhAnnouncementCollectionProgressManagerTest {
+
+    private static final Instant NOW = Instant.parse("2026-09-19T00:00:00Z");
+    private static final Duration REFRESH_TTL = Duration.ofHours(6);
 
     @Mock
     private LhAnnouncementCollectionProgressStore progressStore;
@@ -32,7 +39,12 @@ class LhAnnouncementCollectionProgressManagerTest {
 
     @BeforeEach
     void setUp() {
-        progressManager = new LhAnnouncementCollectionProgressManager(progressStore, failureRecorder);
+        progressManager = new LhAnnouncementCollectionProgressManager(
+                progressStore,
+                failureRecorder,
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                REFRESH_TTL
+        );
     }
 
     @Test
@@ -43,7 +55,8 @@ class LhAnnouncementCollectionProgressManagerTest {
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
                 List.of(candidate.requestDescription()),
                 List.of(candidate.panId()),
-                List.of(candidate.sourceAnnouncementKey())
+                List.of(candidate.sourceAnnouncementKey()),
+                NOW.minus(REFRESH_TTL)
         )).thenReturn(expected);
 
         BatchProgress result = progressManager.findBatch(
@@ -52,6 +65,18 @@ class LhAnnouncementCollectionProgressManagerTest {
         );
 
         assertThat(result).isSameAs(expected);
+    }
+
+    @Test
+    void 재수집_만료_시간은_0보다_커야_한다() {
+        assertThatThrownBy(() -> new LhAnnouncementCollectionProgressManager(
+                progressStore,
+                failureRecorder,
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                Duration.ZERO
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("LH 공고 재수집 만료 시간은 0보다 커야 합니다.");
     }
 
     @Test
@@ -73,6 +98,34 @@ class LhAnnouncementCollectionProgressManagerTest {
                 candidate.sourceAnnouncementKey(),
                 candidate.requestDescription(),
                 candidate.panId()
+        );
+    }
+
+    @Test
+    void 신선한_요청을_공고에_연결할_때는_체크포인트를_갱신하지_않는다() {
+        Candidate candidate = candidate();
+
+        progressManager.link(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, candidate);
+
+        verify(progressStore).link(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                candidate.sourceAnnouncementKey(),
+                candidate.requestDescription(),
+                candidate.panId()
+        );
+        verify(progressStore, never()).complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                candidate.sourceAnnouncementKey(),
+                candidate.requestDescription(),
+                candidate.panId()
+        );
+        verify(failureRecorder).resolve(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                candidate.requestDescription()
+        );
+        verify(failureRecorder).resolve(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                candidate.sourceDescription()
         );
     }
 
