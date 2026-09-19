@@ -29,4 +29,9 @@ public class LhAnnouncementEnrichmentController {
     public ResponseEntity<List<LhAnnouncementEnrichmentFailureResponse>> findFailures() {
         return ResponseEntity.ok(enrichmentService.findFailures());
     }
+
+    @GetMapping("/failures/history")
+    public ResponseEntity<List<LhAnnouncementEnrichmentFailureResponse>> findFailureHistory() {
+        return ResponseEntity.ok(enrichmentService.findFailureHistory());
+    }
 }

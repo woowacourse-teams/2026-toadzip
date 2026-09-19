@@ -29,4 +29,9 @@ public class MyHomeAnnouncementMappingController {
     public ResponseEntity<List<MyHomeAnnouncementMappingFailureResponse>> findFailures() {
         return ResponseEntity.ok(mappingService.findFailures());
     }
+
+    @GetMapping("/failures/history")
+    public ResponseEntity<List<MyHomeAnnouncementMappingFailureResponse>> findFailureHistory() {
+        return ResponseEntity.ok(mappingService.findFailureHistory());
+    }
 }

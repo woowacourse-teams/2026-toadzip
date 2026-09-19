@@ -47,4 +47,9 @@ public class MyHomeComplexMappingController {
     public ResponseEntity<List<MyHomeComplexMappingFailureResponse>> findFailures() {
         return ResponseEntity.ok(mappingService.findFailures());
     }
+
+    @GetMapping("/failures/history")
+    public ResponseEntity<List<MyHomeComplexMappingFailureResponse>> findFailureHistory() {
+        return ResponseEntity.ok(mappingService.findFailureHistory());
+    }
 }

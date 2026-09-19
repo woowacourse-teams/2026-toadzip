@@ -97,6 +97,10 @@ class MyHomeComplexMappingBatchProcessor {
     ) {
         if (sources == null || sources.isEmpty()) {
             candidateStore.delete(candidate);
+            failureStore.replaceForComplex(
+                    candidate.getSourceComplexIdentifier(),
+                    List.of()
+            );
             return MyHomeComplexMappingReport.failedRows(0);
         }
         Instant occurredAt = clock.instant();

@@ -1,5 +1,7 @@
 package com.toadzip.backend.ingest.mapping.service;
 
+import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
+
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
@@ -245,6 +247,14 @@ public class MyHomeAnnouncementMappingService {
 
     @Transactional(readOnly = true)
     public List<MyHomeAnnouncementMappingFailureResponse> findFailures() {
+        return failureRepository.findAllByStatusOrderBySourceKeyAsc(PENDING)
+                .stream()
+                .map(MyHomeAnnouncementMappingFailureResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<MyHomeAnnouncementMappingFailureResponse> findFailureHistory() {
         return failureRepository.findAllByOrderBySourceKeyAsc()
                 .stream()
                 .map(MyHomeAnnouncementMappingFailureResponse::from)

@@ -67,7 +67,7 @@ class MyHomeComplexMappingPreparer {
             );
         }
         synchronizeCandidates(storedCandidates, preparedCandidates);
-        failureStore.replaceAll(failures);
+        failureStore.replacePreparationFailures(failures);
         return new MyHomeComplexMappingPreparationReport(preparedCandidates.size(), failures.size());
     }
 

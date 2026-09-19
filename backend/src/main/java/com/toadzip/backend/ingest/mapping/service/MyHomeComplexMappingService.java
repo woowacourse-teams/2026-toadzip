@@ -52,6 +52,10 @@ public class MyHomeComplexMappingService {
         return failureQuery.findAll();
     }
 
+    public List<MyHomeComplexMappingFailureResponse> findFailureHistory() {
+        return failureQuery.findHistory();
+    }
+
     private MyHomeComplexMappingReport mapAllUnlocked() {
         MyHomeComplexMappingPreparationReport preparation = preparer.prepare();
         MyHomeComplexMappingReport report = MyHomeComplexMappingReport.failedRows(

@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.collection.repository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataCollectionFailure;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import java.time.Instant;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,7 +19,17 @@ public class ExternalDataFailureStore {
 
     @Transactional
     public void store(ExternalDataCollectionFailure failure) {
-        failureRepository.save(failure);
+        var executionId = IngestExecutionContext.currentExecutionId().orElse(null);
+        failureRepository.findFirstBySourceAndRequestDescriptionOrderByIdDesc(
+                failure.getSource(),
+                failure.getRequestDescription()
+        ).ifPresentOrElse(
+                stored -> stored.observe(failure, executionId),
+                () -> {
+                    failure.attachFirstExecution(executionId);
+                    failureRepository.save(failure);
+                }
+        );
     }
 
     @Transactional
@@ -27,7 +38,10 @@ public class ExternalDataFailureStore {
                 source,
                 requestDescription,
                 ExternalDataFailureStatus.PENDING
-        ).forEach(failure -> failure.resolve(resolvedAt));
+        ).forEach(failure -> failure.resolve(
+                resolvedAt,
+                IngestExecutionContext.currentExecutionId().orElse(null)
+        ));
     }
 
     @Transactional
@@ -41,6 +55,10 @@ public class ExternalDataFailureStore {
                 source,
                 requestDescription,
                 ExternalDataFailureStatus.PENDING
-        ).forEach(failure -> failure.skip(skippedAt, skipReason));
+        ).forEach(failure -> failure.skip(
+                skippedAt,
+                skipReason,
+                IngestExecutionContext.currentExecutionId().orElse(null)
+        ));
     }
 }

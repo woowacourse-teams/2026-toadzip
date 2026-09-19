@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.mapping.repository;
 
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
+import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -8,4 +9,8 @@ public interface MyHomeAnnouncementMappingFailureRepository
         extends JpaRepository<MyHomeAnnouncementMappingFailure, Long> {
 
     List<MyHomeAnnouncementMappingFailure> findAllByOrderBySourceKeyAsc();
+
+    List<MyHomeAnnouncementMappingFailure> findAllByStatusOrderBySourceKeyAsc(
+            IngestFailureStatus status
+    );
 }

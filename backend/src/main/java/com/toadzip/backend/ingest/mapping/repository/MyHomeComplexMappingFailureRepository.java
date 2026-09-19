@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.mapping.repository;
 
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailure;
+import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -9,5 +10,11 @@ public interface MyHomeComplexMappingFailureRepository
 
     List<MyHomeComplexMappingFailure> findAllByOrderBySourceKeyAsc();
 
-    void deleteAllBySourceComplexIdentifier(String sourceComplexIdentifier);
+    List<MyHomeComplexMappingFailure> findAllByStatusOrderBySourceKeyAsc(
+            IngestFailureStatus status
+    );
+
+    List<MyHomeComplexMappingFailure> findAllBySourceComplexIdentifier(
+            String sourceComplexIdentifier
+    );
 }

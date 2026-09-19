@@ -1,5 +1,7 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
+import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
+
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
@@ -178,6 +180,13 @@ public class LhAnnouncementEnrichmentService {
 
     @Transactional(readOnly = true)
     public List<LhAnnouncementEnrichmentFailureResponse> findFailures() {
+        return failureRepository.findAllByStatusOrderBySourceKeyAsc(PENDING).stream()
+                .map(LhAnnouncementEnrichmentFailureResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<LhAnnouncementEnrichmentFailureResponse> findFailureHistory() {
         return failureRepository.findAllByOrderBySourceKeyAsc().stream()
                 .map(LhAnnouncementEnrichmentFailureResponse::from)
                 .toList();
