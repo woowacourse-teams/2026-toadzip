@@ -11,7 +11,9 @@ import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCan
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Skipped;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -43,6 +45,7 @@ public class LhAnnouncementExternalCollectionService {
     private final ExternalDataFailureRecorder failureRecorder;
     private final LhAnnouncementCollectionCandidateResolver candidateResolver;
     private final LhAnnouncementCandidateCollector candidateCollector;
+    private final LhAnnouncementRefreshPolicy refreshPolicy;
 
     public ExternalDataCollectionReport collect(ExternalDataSource targetSource) {
         validateTargetSource(targetSource);
@@ -131,6 +134,7 @@ public class LhAnnouncementExternalCollectionService {
     ) {
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
         List<Candidate> candidates = new ArrayList<>();
+        Map<String, Duration> refreshTtlByRequest = new HashMap<>();
         for (MyHomeAnnouncementSource source : sources) {
             Resolution resolution = candidateResolver.resolve(source);
             if (!visitedSourceAnnouncements.add(resolution.sourceAnnouncementKey())) {
@@ -145,34 +149,76 @@ public class LhAnnouncementExternalCollectionService {
                 continue;
             }
             Candidate candidate = (Candidate) resolution;
+            if (!forceRefresh) {
+                var refreshTtl = refreshPolicy.scheduledRefreshTtl(source);
+                if (refreshTtl.isEmpty()) {
+                    continue;
+                }
+                refreshTtlByRequest.merge(
+                        candidate.requestDescription(),
+                        refreshTtl.orElseThrow(),
+                        (left, right) -> left.compareTo(right) <= 0 ? left : right
+                );
+            }
             candidates.add(candidate);
         }
-        return report.plus(collectCandidates(targetSource, candidates, forceRefresh));
+        return report.plus(collectCandidates(
+                targetSource,
+                candidates,
+                refreshTtlByRequest,
+                forceRefresh
+        ));
     }
 
     private ExternalDataCollectionReport collectCandidates(
             ExternalDataSource targetSource,
             List<Candidate> candidates,
+            Map<String, Duration> refreshTtlByRequest,
             boolean forceRefresh
     ) {
         if (candidates.isEmpty()) {
             return ExternalDataCollectionReport.empty(targetSource.operation());
         }
-        BatchProgress progress = forceRefresh
-                ? BatchProgress.empty()
-                : progressManager.findBatch(targetSource, candidates);
         Map<String, List<Candidate>> candidatesByRequest = candidates.stream()
                 .collect(Collectors.groupingBy(
                         Candidate::requestDescription,
                         LinkedHashMap::new,
                         Collectors.toList()
                 ));
+        List<List<Candidate>> requests = new ArrayList<>(candidatesByRequest.values());
+        BatchProgress progress = forceRefresh
+                ? BatchProgress.empty()
+                : findProgress(targetSource, requests, refreshTtlByRequest);
         return collectRequests(
                 targetSource,
-                new ArrayList<>(candidatesByRequest.values()),
+                requests,
                 progress,
                 forceRefresh
         );
+    }
+
+    private BatchProgress findProgress(
+            ExternalDataSource targetSource,
+            List<List<Candidate>> requests,
+            Map<String, Duration> refreshTtlByRequest
+    ) {
+        Map<Duration, List<Candidate>> candidatesByRefreshTtl = new LinkedHashMap<>();
+        for (List<Candidate> requestCandidates : requests) {
+            Duration refreshTtl = refreshTtlByRequest.get(
+                    requestCandidates.getFirst().requestDescription()
+            );
+            candidatesByRefreshTtl.computeIfAbsent(refreshTtl, ignored -> new ArrayList<>())
+                    .addAll(requestCandidates);
+        }
+        BatchProgress progress = BatchProgress.empty();
+        for (Map.Entry<Duration, List<Candidate>> entry : candidatesByRefreshTtl.entrySet()) {
+            progress = progress.plus(progressManager.findBatch(
+                    targetSource,
+                    entry.getValue(),
+                    entry.getKey()
+            ));
+        }
+        return progress;
     }
 
     private ExternalDataCollectionReport collectRequests(

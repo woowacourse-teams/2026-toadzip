@@ -34,12 +34,23 @@ public class LhAnnouncementCollectionProgressManager {
     }
 
     public BatchProgress findBatch(ExternalDataSource targetSource, List<Candidate> candidates) {
+        return findBatch(targetSource, candidates, refreshTtl);
+    }
+
+    public BatchProgress findBatch(
+            ExternalDataSource targetSource,
+            List<Candidate> candidates,
+            Duration candidateRefreshTtl
+    ) {
+        if (candidateRefreshTtl.isZero() || candidateRefreshTtl.isNegative()) {
+            throw new IllegalArgumentException("LH 공고 재수집 만료 시간은 0보다 커야 합니다.");
+        }
         return progressStore.findBatch(
                 targetSource,
                 candidates.stream().map(Candidate::requestDescription).toList(),
                 candidates.stream().map(Candidate::panId).toList(),
                 candidates.stream().map(Candidate::sourceAnnouncementKey).toList(),
-                clock.instant().minus(refreshTtl)
+                clock.instant().minus(candidateRefreshTtl)
         );
     }
 

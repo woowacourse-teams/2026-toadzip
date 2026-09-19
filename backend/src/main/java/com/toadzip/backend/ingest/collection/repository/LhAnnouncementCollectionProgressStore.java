@@ -6,6 +6,8 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionLink
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -175,6 +177,23 @@ public class LhAnnouncementCollectionProgressStore {
 
         public static BatchProgress empty() {
             return new BatchProgress(Set.of(), Set.of(), Set.of());
+        }
+
+        public BatchProgress plus(BatchProgress other) {
+            Set<String> mergedFreshRequestHashes = new HashSet<>(freshRequestHashes);
+            mergedFreshRequestHashes.addAll(other.freshRequestHashes);
+            Set<String> mergedStoredPanIds = new HashSet<>(storedPanIds);
+            mergedStoredPanIds.addAll(other.storedPanIds);
+            Set<String> mergedHistoryPanIds = new HashSet<>(historyPanIds);
+            mergedHistoryPanIds.addAll(other.historyPanIds);
+            Map<String, String> mergedLinkedRequestHashes = new HashMap<>(linkedRequestHashes);
+            mergedLinkedRequestHashes.putAll(other.linkedRequestHashes);
+            return new BatchProgress(
+                    mergedFreshRequestHashes,
+                    mergedStoredPanIds,
+                    mergedHistoryPanIds,
+                    mergedLinkedRequestHashes
+            );
         }
 
         public boolean isFresh(String requestDescription) {

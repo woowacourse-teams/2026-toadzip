@@ -37,6 +37,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.Period;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -118,13 +119,20 @@ class LhAnnouncementExternalCollectionServiceTest {
                 progressManager,
                 new SimpleMeterRegistry()
         );
+        LhAnnouncementRefreshPolicy refreshPolicy = new LhAnnouncementRefreshPolicy(
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                Duration.ofHours(6),
+                Duration.ofHours(24),
+                Period.ofDays(30)
+        );
         service = new LhAnnouncementExternalCollectionService(
                 myHomeAnnouncementRepository,
                 executionLock,
                 progressManager,
                 failureRecorder,
                 new LhAnnouncementCollectionCandidateResolver(new LhSupplyInfoTypeCodeResolver()),
-                candidateCollector
+                candidateCollector,
+                refreshPolicy
         );
     }
 
@@ -911,6 +919,7 @@ class LhAnnouncementExternalCollectionServiceTest {
     @Test
     void 강제_갱신은_최근_성공한_공고도_외부_API를_다시_호출한다() {
         MyHomeAnnouncementSource source = announcementSource("announcement-100");
+        ReflectionTestUtils.setField(source, "endDe", "20260801");
         when(myHomeAnnouncementRepository.findAllByPblancIdOrderByIdAsc("announcement-100"))
                 .thenReturn(List.of(source));
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
@@ -944,6 +953,97 @@ class LhAnnouncementExternalCollectionServiceTest {
                 .isInstanceOf(InvalidIngestRequestException.class)
                 .hasMessage("마이홈 공고 원천을 찾을 수 없습니다: pblancId=missing");
 
+        verify(externalRepository, never()).fetchDetail(any());
+    }
+
+    @Test
+    void 최근_종료_공고는_24시간_주기로_재수집한다() {
+        MyHomeAnnouncementSource source = announcementSource("announcement-100");
+        ReflectionTestUtils.setField(source, "endDe", "20260918");
+        source(source);
+        when(progressStore.findBatch(any(), any(), any(), any(), any()))
+                .thenReturn(progressWithCompletedRequest(announcementRequestDescription()));
+
+        service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        verify(progressStore).findBatch(
+                eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
+                any(),
+                any(),
+                any(),
+                eq(NOW.minus(Duration.ofHours(24)))
+        );
+    }
+
+    @Test
+    void 종료_후_30일이_지난_공고는_정기_수집에서_제외한다() {
+        MyHomeAnnouncementSource source = announcementSource("announcement-100");
+        ReflectionTestUtils.setField(source, "endDe", "20260819");
+        source(source);
+
+        ExternalDataCollectionReport result = service.collect(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL
+        );
+
+        verify(progressStore, never()).findBatch(any(), any(), any(), any(), any());
+        verify(externalRepository, never()).fetchDetail(any());
+        assertThat(result.externalApiCallCount()).isZero();
+    }
+
+    @Test
+    void 요청을_공유하면_가장_짧은_재수집_주기를_적용한다() {
+        MyHomeAnnouncementSource active = announcementSource("announcement-active", "100");
+        MyHomeAnnouncementSource recentlyEnded = announcementSource("announcement-ended", "100");
+        ReflectionTestUtils.setField(recentlyEnded, "endDe", "20260918");
+        source(active, recentlyEnded);
+        when(progressStore.findBatch(any(), any(), any(), any(), any()))
+                .thenReturn(progressWithCompletedRequest(announcementRequestDescription()));
+
+        service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        verify(progressStore).findBatch(
+                eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
+                any(),
+                any(),
+                any(),
+                eq(NOW.minus(Duration.ofHours(6)))
+        );
+        verify(progressStore, never()).findBatch(
+                eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
+                any(),
+                any(),
+                any(),
+                eq(NOW.minus(Duration.ofHours(24)))
+        );
+        verify(externalRepository, never()).fetchDetail(any());
+    }
+
+    @Test
+    void 서로_다른_주기의_신선한_요청을_합쳐서_외부_호출을_생략한다() {
+        MyHomeAnnouncementSource active = announcementSource("announcement-active", "100");
+        MyHomeAnnouncementSource recentlyEnded = announcementSource("announcement-ended", "200");
+        ReflectionTestUtils.setField(recentlyEnded, "endDe", "20260918");
+        source(active, recentlyEnded);
+        when(progressStore.findBatch(any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    List<?> requestDescriptions = invocation.getArgument(1);
+                    return progressWithCompletedRequest(requestDescriptions.getFirst().toString());
+                });
+
+        service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        ArgumentCaptor<Instant> cutoff = ArgumentCaptor.forClass(Instant.class);
+        verify(progressStore, times(2)).findBatch(
+                eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
+                any(),
+                any(),
+                any(),
+                cutoff.capture()
+        );
+        assertThat(cutoff.getAllValues()).containsExactlyInAnyOrder(
+                NOW.minus(Duration.ofHours(6)),
+                NOW.minus(Duration.ofHours(24))
+        );
         verify(externalRepository, never()).fetchDetail(any());
     }
 
