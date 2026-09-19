@@ -708,6 +708,68 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     @Test
+    void 동일_공고를_재수집하면_변경된_일정_첨부_공급정보를_정제_결과에_반영한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
+        LhAnnouncementExternalRepository external = mock(LhAnnouncementExternalRepository.class);
+        when(external.fetchDetail(any()))
+                .thenReturn(detailResponse(
+                        "초기 정정 사유",
+                        "2026.08.24 10:00 ~ 2026.08.31 17:00",
+                        "초기 공고문.pdf",
+                        "https://example.com/initial.pdf"
+                ))
+                .thenReturn(detailResponse(
+                        "변경 정정 사유",
+                        "2026.09.01 09:00 ~ 2026.09.07 18:00",
+                        "변경 공고문.pdf",
+                        "https://example.com/changed.pdf"
+                ));
+        when(external.fetchSupply(any()))
+                .thenReturn(supplyResponse("20", "10000000", "200000"))
+                .thenReturn(supplyResponse("30", "12000000", "250000"));
+        LhAnnouncementCandidateCollector collector = collector(external);
+
+        collector.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, candidate);
+        collector.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, candidate);
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        Long scheduleId = scheduleRepository.findAll().getFirst().getId();
+        Long attachmentId = attachmentRepository.findAll().getFirst().getId();
+        Long targetId = supplyTargetRepository.findAll().getFirst().getId();
+
+        collector.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, candidate);
+        collector.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, candidate);
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+
+        assertThat(scheduleRepository.findAll()).singleElement().satisfies(schedule -> {
+            assertThat(schedule.getId()).isEqualTo(scheduleId);
+            assertThat(schedule.getStartAt()).isEqualTo(LocalDateTime.of(2026, 9, 1, 9, 0));
+            assertThat(schedule.getEndAt()).isEqualTo(LocalDateTime.of(2026, 9, 7, 18, 0));
+        });
+        assertThat(attachmentRepository.findAll()).singleElement().satisfies(attachment -> {
+            assertThat(attachment.getId()).isEqualTo(attachmentId);
+            assertThat(attachment.getFileName()).isEqualTo("변경 공고문.pdf");
+            assertThat(attachment.getFileUrl()).isEqualTo("https://example.com/changed.pdf");
+        });
+        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
+            assertThat(target.getId()).isEqualTo(targetId);
+            assertThat(target.getSupplyHouseholdCount()).isEqualTo(30);
+            assertThat(target.getRentalDeposit()).isEqualByComparingTo("12000000");
+            assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000");
+        });
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement ->
+                assertThat(announcement.getCorrectionCancellationReason()).isEqualTo("변경 정정 사유")
+        );
+        assertThat(detailSourceRepository.count()).isEqualTo(4);
+        assertThat(supplySourceRepository.count()).isOne();
+        assertThat(checkpointRepository.count()).isEqualTo(2);
+        assertThat(linkRepository.count()).isEqualTo(2);
+    }
+
+    @Test
     void 연결이_없으면_체크포인트와_URL의_원천으로_우회하지_않고_두_단계가_누락을_기록한다() {
         saveComplex();
         MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
@@ -960,6 +1022,31 @@ class LhAnnouncementEnrichmentServiceTest {
 
     private ExternalDataResponse response(String json) {
         return new ExternalDataResponse(json, JsonMapper.builder().build().readTree(json));
+    }
+
+    private ExternalDataResponse detailResponse(
+            String correctionReason,
+            String applicationPeriod,
+            String fileName,
+            String fileUrl
+    ) {
+        return response("""
+                [{"resHeader":[{"SS_CODE":"Y"}]},
+                 {"dsEtcInfo":[{"CRC_RSN":"%s"}]},
+                 {"dsSbd":[{"LCC_NT_NM":"동삼2","MVIN_XPC_YM":"202612"}]},
+                 {"dsSplScdl":[{"ACP_DTTM":"%s"}]},
+                 {"dsAhflInfo":[{"SL_PAN_AHFL_DS_CD_NM":"공고문","CMN_AHFL_NM":"%s",
+                 "AHFL_URL":"%s"}]}]
+                """.formatted(correctionReason, applicationPeriod, fileName, fileUrl));
+    }
+
+    private ExternalDataResponse supplyResponse(String suppliedCount, String deposit, String rent) {
+        return response("""
+                [{"resHeader":[{"SS_CODE":"Y"}]},
+                 {"dsList01":[{"SBD_LGO_NM":"동삼2","HTY_NNA":"46A","DDO_AR":"46.8",
+                 "SPL_AR":"67.0","HSH_CNT":"100","NOW_HSH_CNT":"%s","LS_GMY":"%s",
+                 "RFE":"%s"}]}]
+                """.formatted(suppliedCount, deposit, rent));
     }
 
     private void mapMyHomeSource() {
