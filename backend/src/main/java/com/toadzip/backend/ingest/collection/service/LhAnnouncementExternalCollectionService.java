@@ -10,6 +10,7 @@ import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCan
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Resolution;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Skipped;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -60,6 +61,26 @@ public class LhAnnouncementExternalCollectionService {
         return report;
     }
 
+    public ExternalDataCollectionReport refresh(ExternalDataSource targetSource, String pblancId) {
+        validateTargetSource(targetSource);
+        validatePblancId(pblancId);
+        log.info("{} 강제 갱신을 시작합니다: pblancId={}", targetSource.operation(), pblancId);
+        ExternalDataCollectionReport report = executionLock
+                .tryRun(targetSource, () -> refreshAnnouncement(targetSource, pblancId.strip()))
+                .orElseThrow(() -> alreadyRunning(targetSource));
+        log.info(
+                "{} 강제 갱신을 완료했습니다: pblancId={}, storedRowCount={}, failedRequestCount={}, "
+                        + "externalApiCallCount={}, skippedRequestCount={}",
+                targetSource.operation(),
+                pblancId,
+                report.storedRowCount(),
+                report.failedRequestCount(),
+                report.externalApiCallCount(),
+                report.skippedRequestCount()
+        );
+        return report;
+    }
+
     private ExternalDataCollectionReport collectAnnouncements(ExternalDataSource targetSource) {
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
         Set<String> visitedSourceAnnouncements = new HashSet<>();
@@ -73,13 +94,26 @@ public class LhAnnouncementExternalCollectionService {
             ExternalDataCollectionReport batchReport = collectBatch(
                     targetSource,
                     sources,
-                    visitedSourceAnnouncements
+                    visitedSourceAnnouncements,
+                    false
             );
             report = report.plus(batchReport);
             if (batchReport.rateLimitedRequestCount() > 0) {
                 return report;
             }
         }
+    }
+
+    private ExternalDataCollectionReport refreshAnnouncement(
+            ExternalDataSource targetSource,
+            String pblancId
+    ) {
+        List<MyHomeAnnouncementSource> sources = myHomeAnnouncementRepository
+                .findAllByPblancIdOrderByIdAsc(pblancId);
+        if (sources.isEmpty()) {
+            throw new InvalidIngestRequestException("마이홈 공고 원천을 찾을 수 없습니다: pblancId=" + pblancId);
+        }
+        return collectBatch(targetSource, sources, new HashSet<>(), true);
     }
 
     private List<MyHomeAnnouncementSource> findNextBatch(long lastSeenId) {
@@ -92,7 +126,8 @@ public class LhAnnouncementExternalCollectionService {
     private ExternalDataCollectionReport collectBatch(
             ExternalDataSource targetSource,
             List<MyHomeAnnouncementSource> sources,
-            Set<String> visitedSourceAnnouncements
+            Set<String> visitedSourceAnnouncements,
+            boolean forceRefresh
     ) {
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
         List<Candidate> candidates = new ArrayList<>();
@@ -112,30 +147,39 @@ public class LhAnnouncementExternalCollectionService {
             Candidate candidate = (Candidate) resolution;
             candidates.add(candidate);
         }
-        return report.plus(collectCandidates(targetSource, candidates));
+        return report.plus(collectCandidates(targetSource, candidates, forceRefresh));
     }
 
     private ExternalDataCollectionReport collectCandidates(
             ExternalDataSource targetSource,
-            List<Candidate> candidates
+            List<Candidate> candidates,
+            boolean forceRefresh
     ) {
         if (candidates.isEmpty()) {
             return ExternalDataCollectionReport.empty(targetSource.operation());
         }
-        BatchProgress progress = progressManager.findBatch(targetSource, candidates);
+        BatchProgress progress = forceRefresh
+                ? BatchProgress.empty()
+                : progressManager.findBatch(targetSource, candidates);
         Map<String, List<Candidate>> candidatesByRequest = candidates.stream()
                 .collect(Collectors.groupingBy(
                         Candidate::requestDescription,
                         LinkedHashMap::new,
                         Collectors.toList()
                 ));
-        return collectRequests(targetSource, new ArrayList<>(candidatesByRequest.values()), progress);
+        return collectRequests(
+                targetSource,
+                new ArrayList<>(candidatesByRequest.values()),
+                progress,
+                forceRefresh
+        );
     }
 
     private ExternalDataCollectionReport collectRequests(
             ExternalDataSource targetSource,
             List<List<Candidate>> requests,
-            BatchProgress progress
+            BatchProgress progress,
+            boolean forceRefresh
     ) {
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
         try (ExecutorService executor = Executors.newFixedThreadPool(MAX_CONCURRENT_REQUESTS)) {
@@ -143,7 +187,7 @@ public class LhAnnouncementExternalCollectionService {
             while (nextRequest < requests.size()) {
                 List<List<Candidate>> window = nextWindow(requests, nextRequest);
                 List<Callable<ExternalDataCollectionReport>> tasks = window.stream()
-                        .map(request -> collectionTask(targetSource, request, progress))
+                        .map(request -> collectionTask(targetSource, request, progress, forceRefresh))
                         .toList();
                 nextRequest += window.size();
                 Throwable failure = null;
@@ -207,7 +251,8 @@ public class LhAnnouncementExternalCollectionService {
     private Callable<ExternalDataCollectionReport> collectionTask(
             ExternalDataSource targetSource,
             List<Candidate> requestCandidates,
-            BatchProgress progress
+            BatchProgress progress,
+            boolean forceRefresh
     ) {
         Map<String, String> context = MDC.getCopyOfContextMap();
         return () -> {
@@ -215,7 +260,7 @@ public class LhAnnouncementExternalCollectionService {
                 if (context != null) {
                     MDC.setContextMap(context);
                 }
-                return collectRequest(targetSource, requestCandidates, progress);
+                return collectRequest(targetSource, requestCandidates, progress, forceRefresh);
             }
             finally {
                 MDC.clear();
@@ -226,9 +271,15 @@ public class LhAnnouncementExternalCollectionService {
     private ExternalDataCollectionReport collectRequest(
             ExternalDataSource targetSource,
             List<Candidate> requestCandidates,
-            BatchProgress progress
+            BatchProgress progress,
+            boolean forceRefresh
     ) {
-        ExternalDataCollectionReport report = collectCandidate(targetSource, requestCandidates.getFirst(), progress);
+        ExternalDataCollectionReport report = collectCandidate(
+                targetSource,
+                requestCandidates.getFirst(),
+                progress,
+                forceRefresh
+        );
         if (report.failedRequestCount() > 0) {
             return report;
         }
@@ -243,9 +294,10 @@ public class LhAnnouncementExternalCollectionService {
     private ExternalDataCollectionReport collectCandidate(
             ExternalDataSource targetSource,
             Candidate candidate,
-            BatchProgress progress
+            BatchProgress progress,
+            boolean forceRefresh
     ) {
-        if (progress.isFresh(candidate.requestDescription())) {
+        if (!forceRefresh && progress.isFresh(candidate.requestDescription())) {
             if (!progress.isLinkedTo(candidate.sourceAnnouncementKey(), candidate.requestDescription())) {
                 progressManager.link(targetSource, candidate);
             }
@@ -268,6 +320,12 @@ public class LhAnnouncementExternalCollectionService {
                 || targetSource == ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY;
         if (!supported) {
             throw new IllegalArgumentException("LH 공고 API가 아닙니다.");
+        }
+    }
+
+    private void validatePblancId(String pblancId) {
+        if (pblancId == null || pblancId.isBlank()) {
+            throw new InvalidIngestRequestException("공고 식별자는 필수입니다.");
         }
     }
 

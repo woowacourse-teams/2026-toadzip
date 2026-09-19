@@ -16,4 +16,8 @@ public class LhAnnouncementSupplyCollectionService {
     public ExternalDataCollectionReport collect() {
         return collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
     }
+
+    public ExternalDataCollectionReport refresh(String pblancId) {
+        return collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, pblancId);
+    }
 }

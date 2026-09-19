@@ -71,4 +71,20 @@ class LhAnnouncementCollectionControllerTest {
                 .andExpect(jsonPath("$.storedRowCount").value(2))
                 .andExpect(jsonPath("$.failedRequestCount").value(1));
     }
+
+    @Test
+    void 공고_식별자로_LH_상세와_공급을_강제_갱신한다() throws Exception {
+        when(detailCollectionService.refresh("announcement-100"))
+                .thenReturn(new ExternalDataCollectionReport("lh-announcement-detail", 1, 0, 1));
+        when(supplyCollectionService.refresh("announcement-100"))
+                .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 2, 0, 1));
+
+        mockMvc.perform(post("/api/admin/ingest/lh/announcements/details/announcement-100/refresh"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.externalApiCallCount").value(1));
+
+        mockMvc.perform(post("/api/admin/ingest/lh/announcements/supplies/announcement-100/refresh"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.externalApiCallCount").value(1));
+    }
 }

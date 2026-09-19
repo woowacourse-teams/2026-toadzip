@@ -32,6 +32,7 @@ import com.toadzip.backend.ingest.collection.repository.external.ExternalDataReq
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
@@ -903,6 +904,45 @@ class LhAnnouncementExternalCollectionServiceTest {
 
         assertThatThrownBy(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL))
                 .isInstanceOf(IngestAlreadyRunningException.class);
+
+        verify(externalRepository, never()).fetchDetail(any());
+    }
+
+    @Test
+    void 강제_갱신은_최근_성공한_공고도_외부_API를_다시_호출한다() {
+        MyHomeAnnouncementSource source = announcementSource("announcement-100");
+        when(myHomeAnnouncementRepository.findAllByPblancIdOrderByIdAsc("announcement-100"))
+                .thenReturn(List.of(source));
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("100"), any())).thenReturn(1);
+
+        ExternalDataCollectionReport result = service.refresh(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                "announcement-100"
+        );
+
+        verify(progressStore, never()).findBatch(any(), any(), any(), any(), any());
+        verify(externalRepository).fetchDetail(any());
+        verify(progressStore).complete(
+                eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
+                eq("announcement-100"),
+                any(),
+                eq("100")
+        );
+        assertThat(result.externalApiCallCount()).isOne();
+    }
+
+    @Test
+    void 존재하지_않는_공고는_강제_갱신하지_않는다() {
+        when(myHomeAnnouncementRepository.findAllByPblancIdOrderByIdAsc("missing"))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.refresh(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                "missing"
+        ))
+                .isInstanceOf(InvalidIngestRequestException.class)
+                .hasMessage("마이홈 공고 원천을 찾을 수 없습니다: pblancId=missing");
 
         verify(externalRepository, never()).fetchDetail(any());
     }
