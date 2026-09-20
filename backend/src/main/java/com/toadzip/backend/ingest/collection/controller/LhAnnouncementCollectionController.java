@@ -5,6 +5,7 @@ import com.toadzip.backend.ingest.collection.service.LhAnnouncementDetailCollect
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementSupplyCollectionService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -33,6 +34,16 @@ public class LhAnnouncementCollectionController {
     @PostMapping("/supplies")
     public ResponseEntity<ExternalDataCollectionReport> collectSupplies() {
         return responseOf(supplyCollectionService.collect());
+    }
+
+    @PostMapping("/details/{pblancId}/refresh")
+    public ResponseEntity<ExternalDataCollectionReport> refreshDetails(@PathVariable String pblancId) {
+        return responseOf(detailCollectionService.refresh(pblancId));
+    }
+
+    @PostMapping("/supplies/{pblancId}/refresh")
+    public ResponseEntity<ExternalDataCollectionReport> refreshSupplies(@PathVariable String pblancId) {
+        return responseOf(supplyCollectionService.refresh(pblancId));
     }
 
     private ResponseEntity<ExternalDataCollectionReport> responseOf(ExternalDataCollectionReport report) {

@@ -16,11 +16,14 @@ public interface LhAnnouncementCollectionCheckpointRepository
     @Query("""
             select checkpoint.requestHash
             from LhAnnouncementCollectionCheckpoint checkpoint
-            where checkpoint.source = :source and checkpoint.requestHash in :requestHashes
+            where checkpoint.source = :source
+                and checkpoint.requestHash in :requestHashes
+                and checkpoint.completedAt > :freshCompletedAfter
             """)
-    List<String> findCompletedRequestHashes(
+    List<String> findFreshRequestHashes(
             @Param("source") ExternalDataSource source,
-            @Param("requestHashes") Collection<String> requestHashes
+            @Param("requestHashes") Collection<String> requestHashes,
+            @Param("freshCompletedAfter") Instant freshCompletedAfter
     );
 
     @Query("""
@@ -39,9 +42,13 @@ public interface LhAnnouncementCollectionCheckpointRepository
                 (source, source_announcement_key, request_hash, request_description, pan_id, completed_at)
             values
                 (:source, :sourceAnnouncementKey, :requestHash, :requestDescription, :panId, :completedAt)
-            on conflict (source, request_hash) do nothing
+            on conflict (source, request_hash) do update set
+                source_announcement_key = excluded.source_announcement_key,
+                request_description = excluded.request_description,
+                pan_id = excluded.pan_id,
+                completed_at = excluded.completed_at
             """, nativeQuery = true)
-    int insertIfAbsent(
+    int upsert(
             @Param("source") String source,
             @Param("sourceAnnouncementKey") String sourceAnnouncementKey,
             @Param("requestHash") String requestHash,

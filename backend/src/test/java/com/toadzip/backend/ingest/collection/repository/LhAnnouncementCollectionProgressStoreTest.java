@@ -43,12 +43,14 @@ class LhAnnouncementCollectionProgressStoreTest {
         var progress = store.findBatch(
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
                 List.of(request, request + "&AIS_TP_CD=06"),
-                List.of("100")
+                List.of("100"),
+                List.of(),
+                COMPLETED_AT.minusSeconds(1)
         );
 
-        assertThat(progress.isCompleted(request)).isTrue();
+        assertThat(progress.isFresh(request)).isTrue();
         assertThat(progress.historyPanIds()).containsExactly("100");
-        assertThat(progress.isCompleted(request + "&AIS_TP_CD=06")).isFalse();
+        assertThat(progress.isFresh(request + "&AIS_TP_CD=06")).isFalse();
         assertThat(checkpointRepository.findAll()).singleElement().satisfies(checkpoint -> {
             assertThat(checkpoint.getPanId()).isEqualTo("100");
             assertThat(checkpoint.getCompletedAt()).isEqualTo(COMPLETED_AT);
@@ -68,6 +70,72 @@ class LhAnnouncementCollectionProgressStoreTest {
     }
 
     @Test
+    void 같은_요청의_재수집이_성공하면_체크포인트_완료_시각을_갱신한다() {
+        String request = "PAN_ID=100&SPL_INF_TP_CD=063";
+        store().complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "announcement-100",
+                request,
+                "100"
+        );
+        Instant refreshedAt = COMPLETED_AT.plusSeconds(60);
+        store(refreshedAt).complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "announcement-100",
+                request,
+                "100"
+        );
+
+        assertThat(checkpointRepository.findAll()).singleElement().satisfies(checkpoint ->
+                assertThat(checkpoint.getCompletedAt()).isEqualTo(refreshedAt)
+        );
+    }
+
+    @Test
+    void 신선한_요청을_다른_공고에_연결해도_체크포인트_완료_시각은_유지한다() {
+        String request = "PAN_ID=100&SPL_INF_TP_CD=063";
+        store().complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "announcement-100",
+                request,
+                "100"
+        );
+        Instant linkedAt = COMPLETED_AT.plusSeconds(60);
+        store(linkedAt).link(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "announcement-101",
+                request,
+                "100"
+        );
+
+        assertThat(checkpointRepository.findAll()).singleElement().satisfies(checkpoint ->
+                assertThat(checkpoint.getCompletedAt()).isEqualTo(COMPLETED_AT)
+        );
+        assertThat(linkRepository.findAll()).hasSize(2);
+    }
+
+    @Test
+    void 완료_시각이_신선도_경계와_같으면_만료된_요청이다() {
+        String request = "PAN_ID=100&SPL_INF_TP_CD=063";
+        store().complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "announcement-100",
+                request,
+                "100"
+        );
+
+        var progress = store().findBatch(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                List.of(request),
+                List.of("100"),
+                List.of("announcement-100"),
+                COMPLETED_AT
+        );
+
+        assertThat(progress.isFresh(request)).isFalse();
+    }
+
+    @Test
     void 요청을_공유하는_공고별_연결을_배치_상태에서_구분한다() {
         LhAnnouncementCollectionProgressStore store = store();
         String request = "PAN_ID=100&SPL_INF_TP_CD=063";
@@ -78,10 +146,11 @@ class LhAnnouncementCollectionProgressStoreTest {
                 ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
                 List.of(request),
                 List.of("100"),
-                List.of("announcement-100", "announcement-101")
+                List.of("announcement-100", "announcement-101"),
+                COMPLETED_AT.minusSeconds(1)
         );
 
-        assertThat(progress.isCompleted(request)).isTrue();
+        assertThat(progress.isFresh(request)).isTrue();
         assertThat(progress.isLinkedTo("announcement-100", request)).isTrue();
         assertThat(progress.isLinkedTo("announcement-101", request)).isTrue();
     }
@@ -102,7 +171,8 @@ class LhAnnouncementCollectionProgressStoreTest {
                 ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
                 List.of(currentRequest),
                 List.of("200"),
-                List.of("announcement-100")
+                List.of("announcement-100"),
+                COMPLETED_AT.minusSeconds(1)
         );
 
         assertThat(progress.isLinkedTo("announcement-100", currentRequest)).isFalse();
@@ -124,21 +194,27 @@ class LhAnnouncementCollectionProgressStoreTest {
         var progress = store.findBatch(
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
                 List.of(completedRequest, "PAN_ID=300&SPL_INF_TP_CD=063"),
-                List.of("100", "200", "300")
+                List.of("100", "200", "300"),
+                List.of(),
+                COMPLETED_AT.minusSeconds(1)
         );
 
-        assertThat(progress.isCompleted(completedRequest)).isTrue();
+        assertThat(progress.isFresh(completedRequest)).isTrue();
         assertThat(progress.storedPanIds()).containsExactly("100");
         assertThat(progress.historyPanIds()).containsExactlyInAnyOrder("100", "200");
     }
 
     private LhAnnouncementCollectionProgressStore store() {
+        return store(COMPLETED_AT);
+    }
+
+    private LhAnnouncementCollectionProgressStore store(Instant completedAt) {
         return new LhAnnouncementCollectionProgressStore(
                 checkpointRepository,
                 detailRepository,
                 supplyRepository,
                 linkRepository,
-                Clock.fixed(COMPLETED_AT, ZoneOffset.UTC)
+                Clock.fixed(completedAt, ZoneOffset.UTC)
         );
     }
 }

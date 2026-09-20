@@ -4,7 +4,10 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionLink;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -37,16 +40,9 @@ public class LhAnnouncementCollectionProgressStore {
     public BatchProgress findBatch(
             ExternalDataSource source,
             Collection<String> requestDescriptions,
-            Collection<String> panIds
-    ) {
-        return findBatch(source, requestDescriptions, panIds, Set.of());
-    }
-
-    public BatchProgress findBatch(
-            ExternalDataSource source,
-            Collection<String> requestDescriptions,
             Collection<String> panIds,
-            Collection<String> sourceAnnouncementKeys
+            Collection<String> sourceAnnouncementKeys,
+            Instant freshCompletedAfter
     ) {
         if (requestDescriptions.isEmpty()) {
             return BatchProgress.empty();
@@ -54,8 +50,12 @@ public class LhAnnouncementCollectionProgressStore {
         Set<String> requestHashes = requestDescriptions.stream()
                 .map(LhAnnouncementCollectionCheckpoint::requestHashOf)
                 .collect(Collectors.toSet());
-        Set<String> completedRequestHashes = Set.copyOf(
-                checkpointRepository.findCompletedRequestHashes(source, requestHashes)
+        Set<String> freshRequestHashes = Set.copyOf(
+                checkpointRepository.findFreshRequestHashes(
+                        source,
+                        requestHashes,
+                        freshCompletedAfter
+                )
         );
         Set<String> storedPanIds = findStoredPanIds(source, panIds);
         Set<String> historyPanIds = Set.copyOf(checkpointRepository.findHistoryPanIds(source, panIds));
@@ -64,7 +64,7 @@ public class LhAnnouncementCollectionProgressStore {
                 sourceAnnouncementKeys
         );
         return new BatchProgress(
-                completedRequestHashes,
+                freshRequestHashes,
                 storedPanIds,
                 historyPanIds,
                 linkedRequestHashes
@@ -85,7 +85,7 @@ public class LhAnnouncementCollectionProgressStore {
                 panId,
                 clock.instant()
         );
-        checkpointRepository.insertIfAbsent(
+        checkpointRepository.upsert(
                 checkpoint.getSource().name(),
                 checkpoint.getSourceAnnouncementKey(),
                 checkpoint.getRequestHash(),
@@ -93,6 +93,26 @@ public class LhAnnouncementCollectionProgressStore {
                 checkpoint.getPanId(),
                 checkpoint.getCompletedAt()
         );
+        saveLink(source, sourceAnnouncementKey, requestDescription, panId, checkpoint.getCompletedAt());
+    }
+
+    @Transactional
+    public void link(
+            ExternalDataSource source,
+            String sourceAnnouncementKey,
+            String requestDescription,
+            String panId
+    ) {
+        saveLink(source, sourceAnnouncementKey, requestDescription, panId, clock.instant());
+    }
+
+    private void saveLink(
+            ExternalDataSource source,
+            String sourceAnnouncementKey,
+            String requestDescription,
+            String panId,
+            Instant completedAt
+    ) {
         LhAnnouncementCollectionLink link = linkRepository
                 .findBySourceAndSourceAnnouncementKey(source, sourceAnnouncementKey)
                 .orElseGet(() -> LhAnnouncementCollectionLink.complete(
@@ -100,10 +120,10 @@ public class LhAnnouncementCollectionProgressStore {
                         sourceAnnouncementKey,
                         requestDescription,
                         panId,
-                        checkpoint.getCompletedAt()
+                        completedAt
                 ));
         if (link.getId() != null) {
-            link.updateFrom(requestDescription, panId, checkpoint.getCompletedAt());
+            link.updateFrom(requestDescription, panId, completedAt);
         }
         linkRepository.save(link);
     }
@@ -134,22 +154,22 @@ public class LhAnnouncementCollectionProgressStore {
     }
 
     public record BatchProgress(
-            Set<String> completedRequestHashes,
+            Set<String> freshRequestHashes,
             Set<String> storedPanIds,
             Set<String> historyPanIds,
             Map<String, String> linkedRequestHashes
     ) {
 
         public BatchProgress(
-                Set<String> completedRequestHashes,
+                Set<String> freshRequestHashes,
                 Set<String> storedPanIds,
                 Set<String> historyPanIds
         ) {
-            this(completedRequestHashes, storedPanIds, historyPanIds, Map.of());
+            this(freshRequestHashes, storedPanIds, historyPanIds, Map.of());
         }
 
         public BatchProgress {
-            completedRequestHashes = Set.copyOf(completedRequestHashes);
+            freshRequestHashes = Set.copyOf(freshRequestHashes);
             storedPanIds = Set.copyOf(storedPanIds);
             historyPanIds = Set.copyOf(historyPanIds);
             linkedRequestHashes = Map.copyOf(linkedRequestHashes);
@@ -159,8 +179,25 @@ public class LhAnnouncementCollectionProgressStore {
             return new BatchProgress(Set.of(), Set.of(), Set.of());
         }
 
-        public boolean isCompleted(String requestDescription) {
-            return completedRequestHashes.contains(
+        public BatchProgress plus(BatchProgress other) {
+            Set<String> mergedFreshRequestHashes = new HashSet<>(freshRequestHashes);
+            mergedFreshRequestHashes.addAll(other.freshRequestHashes);
+            Set<String> mergedStoredPanIds = new HashSet<>(storedPanIds);
+            mergedStoredPanIds.addAll(other.storedPanIds);
+            Set<String> mergedHistoryPanIds = new HashSet<>(historyPanIds);
+            mergedHistoryPanIds.addAll(other.historyPanIds);
+            Map<String, String> mergedLinkedRequestHashes = new HashMap<>(linkedRequestHashes);
+            mergedLinkedRequestHashes.putAll(other.linkedRequestHashes);
+            return new BatchProgress(
+                    mergedFreshRequestHashes,
+                    mergedStoredPanIds,
+                    mergedHistoryPanIds,
+                    mergedLinkedRequestHashes
+            );
+        }
+
+        public boolean isFresh(String requestDescription) {
+            return freshRequestHashes.contains(
                     LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescription)
             );
         }
