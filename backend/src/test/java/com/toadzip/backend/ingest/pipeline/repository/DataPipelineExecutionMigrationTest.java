@@ -48,6 +48,14 @@ class DataPipelineExecutionMigrationTest {
                         connection,
                         new ClassPathResource(PARTIAL_FAILURE_REPORTS_MIGRATION)
                 );
+                ScriptUtils.executeSqlScript(
+                        connection,
+                        new ClassPathResource(COMPLETED_STEP_REPORTS_MIGRATION)
+                );
+                ScriptUtils.executeSqlScript(
+                        connection,
+                        new ClassPathResource(PARTIAL_FAILURE_REPORTS_MIGRATION)
+                );
 
                 assertThat(tableExists(connection, "data_pipeline_executions")).isTrue();
                 assertThat(tableExists(connection, "data_pipeline_execution_completed_steps"))

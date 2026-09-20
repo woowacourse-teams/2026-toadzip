@@ -1,4 +1,4 @@
-CREATE TABLE data_pipeline_execution_partial_failures (
+CREATE TABLE IF NOT EXISTS data_pipeline_execution_partial_failures (
     data_pipeline_execution_id BIGINT NOT NULL,
     step_order INTEGER NOT NULL,
     partially_failed_step VARCHAR(60) NOT NULL,
