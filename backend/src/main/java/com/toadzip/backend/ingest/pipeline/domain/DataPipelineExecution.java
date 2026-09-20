@@ -60,9 +60,7 @@ public class DataPipelineExecution {
             joinColumns = @JoinColumn(name = "data_pipeline_execution_id")
     )
     @OrderColumn(name = "step_order")
-    @Enumerated(EnumType.STRING)
-    @Column(name = "completed_step", nullable = false, length = 60)
-    private List<DataPipelineStep> completedSteps = new ArrayList<>();
+    private List<DataPipelineCompletedStep> completedStepResults = new ArrayList<>();
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(
@@ -71,6 +69,14 @@ public class DataPipelineExecution {
     )
     @OrderColumn(name = "step_order")
     private List<DataPipelineSkippedStep> skippedSteps = new ArrayList<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "data_pipeline_execution_partial_failures",
+            joinColumns = @JoinColumn(name = "data_pipeline_execution_id")
+    )
+    @OrderColumn(name = "step_order")
+    private List<DataPipelinePartiallyFailedStep> partiallyFailedSteps = new ArrayList<>();
 
     @Enumerated(EnumType.STRING)
     @Column(length = 60)
@@ -122,13 +128,19 @@ public class DataPipelineExecution {
         currentStep = step;
     }
 
-    public void completeStep(DataPipelineStep step) {
+    public void completeStep(DataPipelineStep step, String report) {
         requireRunning();
         if (currentStep != step) {
             throw new IllegalStateException("현재 실행 중인 단계만 완료할 수 있습니다.");
         }
-        completedSteps.add(step);
+        completedStepResults.add(DataPipelineCompletedStep.of(step, report));
         currentStep = null;
+    }
+
+    public List<DataPipelineStep> getCompletedSteps() {
+        return completedStepResults.stream()
+                .map(DataPipelineCompletedStep::getStep)
+                .toList();
     }
 
     public void startStepAfterPartialFailure(
@@ -143,6 +155,14 @@ public class DataPipelineExecution {
             throw new IllegalStateException("부분 실패한 단계의 바로 다음 단계만 시작할 수 있습니다.");
         }
         currentStep = nextStep;
+    }
+
+    public void recordPartialFailure(DataPipelineStep step, String report) {
+        requireRunning();
+        if (currentStep != step) {
+            throw new IllegalStateException("현재 실행 중인 단계만 부분 실패로 기록할 수 있습니다.");
+        }
+        partiallyFailedSteps.add(DataPipelinePartiallyFailedStep.of(step, report));
     }
 
     public void skipStep(DataPipelineStep step, String reason, String serverResponse) {
@@ -161,7 +181,7 @@ public class DataPipelineExecution {
                     "실행 중인 단계를 완료하거나 건너뛴 뒤 파이프라인을 완료할 수 있습니다."
             );
         }
-        if (completedSteps.size() + skippedSteps.size() != type.steps().size()) {
+        if (completedStepResults.size() + skippedSteps.size() != type.steps().size()) {
             throw new IllegalStateException(
                     "모든 단계를 완료하거나 건너뛴 뒤 파이프라인을 완료할 수 있습니다."
             );
@@ -211,7 +231,8 @@ public class DataPipelineExecution {
     }
 
     private DataPipelineStep nextStep() {
-        int lastCompletedSequence = completedSteps.stream()
+        int lastCompletedSequence = completedStepResults.stream()
+                .map(DataPipelineCompletedStep::getStep)
                 .mapToInt(DataPipelineStep::sequence)
                 .max()
                 .orElse(0);

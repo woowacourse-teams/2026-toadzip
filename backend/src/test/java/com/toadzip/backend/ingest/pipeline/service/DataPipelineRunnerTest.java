@@ -104,6 +104,23 @@ class DataPipelineRunnerTest {
     }
 
     @Test
+    void 성공한_단계의_실행_보고서를_완료_이력으로_전달한다() {
+        ExternalDataCollectionReport report = collectionReport("myhome-announcement");
+        when(myHomeAnnouncementCollectionService.collect(any())).thenReturn(report);
+        when(lhAnnouncementSupplyCollectionService.collect())
+                .thenReturn(collectionReport("lh-announcement-supply"));
+        when(lhAnnouncementDetailCollectionService.collect())
+                .thenReturn(collectionReport("lh-announcement-detail"));
+
+        runner.run(DataPipelineType.ANNOUNCEMENT_COLLECTION, progressListener);
+
+        verify(progressListener).completed(
+                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                resultAdapter.adapt(report).serverResponse()
+        );
+    }
+
+    @Test
     void 단지_수집_단계를_의존_순서대로_실행한다() {
         givenSuccessfulComplexCollectionReports();
 
@@ -278,15 +295,15 @@ class DataPipelineRunnerTest {
 
     @Test
     void 마이홈_공고_수집이_일부_실패해도_LH_증분_수집을_실행한다() {
-        when(myHomeAnnouncementCollectionService.collect(any()))
-                .thenReturn(new ExternalDataCollectionReport(
-                        "myhome-announcement",
-                        0,
-                        2,
-                        4,
-                        0,
-                        1
-                ));
+        ExternalDataCollectionReport partialFailure = new ExternalDataCollectionReport(
+                "myhome-announcement",
+                0,
+                2,
+                4,
+                0,
+                1
+        );
+        when(myHomeAnnouncementCollectionService.collect(any())).thenReturn(partialFailure);
         when(lhAnnouncementSupplyCollectionService.collect())
                 .thenReturn(collectionReport("lh-announcement-supply"));
         when(lhAnnouncementDetailCollectionService.collect())
@@ -295,7 +312,10 @@ class DataPipelineRunnerTest {
         assertThatThrownBy(() -> runner.run(DataPipelineType.ANNOUNCEMENT_COLLECTION, progressListener))
                 .isInstanceOf(DataPipelinePartialFailureException.class);
 
-        verify(progressListener).partiallyFailed(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+        verify(progressListener).partiallyFailed(
+                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                resultAdapter.adapt(partialFailure).serverResponse()
+        );
         verify(lhAnnouncementSupplyCollectionService).collect();
         verify(lhAnnouncementDetailCollectionService).collect();
     }

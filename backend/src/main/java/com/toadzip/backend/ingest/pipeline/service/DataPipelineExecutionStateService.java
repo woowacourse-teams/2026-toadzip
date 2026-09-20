@@ -42,9 +42,9 @@ public class DataPipelineExecutionStateService {
     }
 
     @Transactional
-    public void completeStep(UUID executionId, DataPipelineStep step) {
+    public void completeStep(UUID executionId, DataPipelineStep step, String report) {
         DataPipelineExecution execution = find(executionId);
-        execution.completeStep(step);
+        execution.completeStep(step, report);
         executionRepository.flush();
     }
 
@@ -56,6 +56,13 @@ public class DataPipelineExecutionStateService {
     ) {
         DataPipelineExecution execution = find(executionId);
         execution.startStepAfterPartialFailure(partiallyFailedStep, nextStep);
+        executionRepository.flush();
+    }
+
+    @Transactional
+    public void recordPartialFailure(UUID executionId, DataPipelineStep step, String report) {
+        DataPipelineExecution execution = find(executionId);
+        execution.recordPartialFailure(step, report);
         executionRepository.flush();
     }
 

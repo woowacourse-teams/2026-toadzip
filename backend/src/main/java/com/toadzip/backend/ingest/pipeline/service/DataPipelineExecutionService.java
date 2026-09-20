@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
@@ -104,6 +105,15 @@ public class DataPipelineExecutionService {
                 .orElseGet(() -> DataPipelineExecutionResponse.idle(type));
     }
 
+    public DataPipelineExecutionResponse find(UUID executionId) {
+        return executionRepository.findByExecutionId(executionId)
+                .map(this::recoverInterruptedExecution)
+                .map(executionMapper::response)
+                .orElseThrow(() -> new DataPipelineExecutionNotFoundException(
+                        "데이터 파이프라인 실행을 찾을 수 없습니다: " + executionId
+                ));
+    }
+
     private void execute(
             UUID executionId,
             DataPipelineType type,
@@ -172,8 +182,8 @@ public class DataPipelineExecutionService {
             }
 
             @Override
-            public void completed(DataPipelineStep step) {
-                executionStateService.completeStep(executionId, step);
+            public void completed(DataPipelineStep step, String report) {
+                executionStateService.completeStep(executionId, step, report);
             }
 
             @Override
@@ -187,10 +197,11 @@ public class DataPipelineExecutionService {
             }
 
             @Override
-            public void partiallyFailed(DataPipelineStep step) {
+            public void partiallyFailed(DataPipelineStep step, String report) {
                 if (partiallyFailedStep != null) {
                     throw new IllegalStateException("부분 실패한 단계의 후속 단계가 시작되지 않았습니다.");
                 }
+                executionStateService.recordPartialFailure(executionId, step, report);
                 partiallyFailedStep = step;
             }
         };

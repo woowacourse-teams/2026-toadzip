@@ -72,7 +72,10 @@ public class DataPipelineRunner {
                 runStep(step, progressListener);
             }
             catch (DataPipelinePartialFailureException exception) {
-                progressListener.partiallyFailed(exception.getStep());
+                progressListener.partiallyFailed(
+                        exception.getStep(),
+                        exception.getServerResponse()
+                );
                 if (firstReportedPartialFailure == null) {
                     firstReportedPartialFailure = exception;
                 }
@@ -95,7 +98,7 @@ public class DataPipelineRunner {
                 return;
             }
             rejectPartialFailure(step, result);
-            progressListener.completed(step);
+            progressListener.completed(step, result.serverResponse());
             outcome = "completed";
         }
         finally {
