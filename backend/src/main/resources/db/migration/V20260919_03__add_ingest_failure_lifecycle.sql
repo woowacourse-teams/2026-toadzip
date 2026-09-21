@@ -1,3 +1,5 @@
+BEGIN;
+
 ALTER TABLE myhome_complex_mapping_failures
     ADD COLUMN IF NOT EXISTS last_occurred_at TIMESTAMP WITH TIME ZONE,
     ADD COLUMN IF NOT EXISTS occurrence_count INTEGER NOT NULL DEFAULT 1,
@@ -51,3 +53,23 @@ WHERE last_occurred_at IS NULL;
 ALTER TABLE lh_announcement_enrichment_failures
     ALTER COLUMN last_occurred_at SET DEFAULT CURRENT_TIMESTAMP,
     ALTER COLUMN last_occurred_at SET NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_myhome_complex_mapping_failures_status_source
+    ON myhome_complex_mapping_failures (status, source_key);
+
+CREATE INDEX IF NOT EXISTS idx_myhome_complex_mapping_failures_source_reason
+    ON myhome_complex_mapping_failures (source_key, reason);
+
+CREATE INDEX IF NOT EXISTS idx_myhome_announcement_mapping_failures_status_source
+    ON myhome_announcement_mapping_failures (status, source_key);
+
+CREATE INDEX IF NOT EXISTS idx_myhome_announcement_mapping_failures_source_reason
+    ON myhome_announcement_mapping_failures (source_key, reason);
+
+CREATE INDEX IF NOT EXISTS idx_lh_announcement_enrichment_failures_status_source
+    ON lh_announcement_enrichment_failures (status, source_key);
+
+CREATE INDEX IF NOT EXISTS idx_lh_announcement_enrichment_failures_source_reason
+    ON lh_announcement_enrichment_failures (source_key, reason);
+
+COMMIT;

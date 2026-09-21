@@ -62,6 +62,38 @@ class IngestFailureLifecycleMigrationTest {
                         connection,
                         "lh_household_enrichment_failures"
                 )).isTrue();
+                assertThat(indexExists(
+                        connection,
+                        "idx_myhome_complex_mapping_failures_status_source"
+                )).isTrue();
+                assertThat(indexExists(
+                        connection,
+                        "idx_myhome_complex_mapping_failures_source_reason"
+                )).isTrue();
+                assertThat(indexExists(
+                        connection,
+                        "idx_myhome_announcement_mapping_failures_status_source"
+                )).isTrue();
+                assertThat(indexExists(
+                        connection,
+                        "idx_myhome_announcement_mapping_failures_source_reason"
+                )).isTrue();
+                assertThat(indexExists(
+                        connection,
+                        "idx_lh_announcement_enrichment_failures_status_source"
+                )).isTrue();
+                assertThat(indexExists(
+                        connection,
+                        "idx_lh_announcement_enrichment_failures_source_reason"
+                )).isTrue();
+                assertThat(indexExists(
+                        connection,
+                        "idx_lh_household_enrichment_failures_status_source"
+                )).isTrue();
+                assertThat(indexExists(
+                        connection,
+                        "idx_lh_household_enrichment_failures_source_reason"
+                )).isTrue();
             }
             finally {
                 dropTestSchema(connection);
@@ -82,18 +114,24 @@ class IngestFailureLifecycleMigrationTest {
             statement.execute("""
                     CREATE TABLE myhome_complex_mapping_failures (
                         id BIGSERIAL PRIMARY KEY,
+                        source_key VARCHAR(500) NOT NULL DEFAULT 'source',
+                        reason VARCHAR(40) NOT NULL DEFAULT 'INVALID_VALUE',
                         occurred_at TIMESTAMP WITH TIME ZONE NOT NULL
                     )
                     """);
             statement.execute("""
                     CREATE TABLE myhome_announcement_mapping_failures (
                         id BIGSERIAL PRIMARY KEY,
+                        source_key VARCHAR(500) NOT NULL DEFAULT 'source',
+                        reason VARCHAR(50) NOT NULL DEFAULT 'MISSING_REQUIRED_VALUE',
                         occurred_at TIMESTAMP WITH TIME ZONE NOT NULL
                     )
                     """);
             statement.execute("""
                     CREATE TABLE lh_announcement_enrichment_failures (
                         id BIGSERIAL PRIMARY KEY,
+                        source_key VARCHAR(500) NOT NULL DEFAULT 'source',
+                        reason VARCHAR(50) NOT NULL DEFAULT 'MISSING_REQUIRED_VALUE',
                         occurred_at TIMESTAMP WITH TIME ZONE NOT NULL
                     )
                     """);
@@ -196,6 +234,21 @@ class IngestFailureLifecycleMigrationTest {
                 )
                 """)) {
             statement.setString(1, tableName);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() && result.getBoolean(1);
+            }
+        }
+    }
+
+    private boolean indexExists(Connection connection, String indexName) throws Exception {
+        try (var statement = connection.prepareStatement("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM pg_indexes
+                    WHERE schemaname = current_schema() AND indexname = ?
+                )
+                """)) {
+            statement.setString(1, indexName);
             try (ResultSet result = statement.executeQuery()) {
                 return result.next() && result.getBoolean(1);
             }

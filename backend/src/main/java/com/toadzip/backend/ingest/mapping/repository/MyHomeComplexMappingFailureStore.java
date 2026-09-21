@@ -38,11 +38,19 @@ public class MyHomeComplexMappingFailureStore {
                 MyHomeComplexMappingFailureReason.INVALID_VALUE,
                 MyHomeComplexMappingFailureReason.CONFLICTING_SOURCE_VALUE
         );
-        List<MyHomeComplexMappingFailure> storedPreparationFailures = repository.findAll()
-                .stream()
-                .filter(failure -> preparationReasons.contains(failure.getReason()))
-                .toList();
-        reconcile(storedPreparationFailures, failures, executionId);
+        Map<FailureKey, MyHomeComplexMappingFailure> stored = indexed(
+                repository.findAllByReasonInAndStatus(preparationReasons, PENDING)
+        );
+        if (!failures.isEmpty()) {
+            repository.findAllByReasonInAndSourceKeyIn(
+                    preparationReasons,
+                    failures.stream()
+                            .map(MyHomeComplexMappingFailure::getSourceKey)
+                            .distinct()
+                            .toList()
+            ).forEach(failure -> stored.putIfAbsent(FailureKey.from(failure), failure));
+        }
+        reconcile(List.copyOf(stored.values()), failures, executionId);
     }
 
     @Transactional

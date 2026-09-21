@@ -1,3 +1,5 @@
+BEGIN;
+
 CREATE TABLE IF NOT EXISTS lh_household_enrichment_failures (
     id BIGSERIAL PRIMARY KEY,
     source_key VARCHAR(500) NOT NULL,
@@ -19,3 +21,8 @@ CREATE TABLE IF NOT EXISTS lh_household_enrichment_failures (
 
 CREATE INDEX IF NOT EXISTS idx_lh_household_enrichment_failures_status_source
     ON lh_household_enrichment_failures (status, source_key);
+
+CREATE INDEX IF NOT EXISTS idx_lh_household_enrichment_failures_source_reason
+    ON lh_household_enrichment_failures (source_key, reason);
+
+COMMIT;

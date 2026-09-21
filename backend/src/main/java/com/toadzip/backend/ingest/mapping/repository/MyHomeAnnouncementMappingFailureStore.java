@@ -29,8 +29,15 @@ public class MyHomeAnnouncementMappingFailureStore {
     @Transactional
     public void replaceAll(List<MyHomeAnnouncementMappingFailure> failures, UUID executionId) {
         Instant resolvedAt = clock.instant();
-        Map<FailureKey, MyHomeAnnouncementMappingFailure> stored = indexed(repository.findAll());
         Map<FailureKey, MyHomeAnnouncementMappingFailure> observed = indexed(failures);
+        Map<FailureKey, MyHomeAnnouncementMappingFailure> stored = indexed(
+                repository.findAllByStatus(PENDING)
+        );
+        if (!observed.isEmpty()) {
+            repository.findAllBySourceKeyIn(
+                    observed.keySet().stream().map(FailureKey::sourceKey).distinct().toList()
+            ).forEach(failure -> stored.putIfAbsent(FailureKey.from(failure), failure));
+        }
         stored.forEach((key, failure) -> {
             if (failure.getStatus() == PENDING && !observed.containsKey(key)) {
                 failure.resolve(resolvedAt, executionId);

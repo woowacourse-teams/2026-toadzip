@@ -29,8 +29,15 @@ public class LhAnnouncementEnrichmentFailureStore {
     @Transactional
     public void replaceAll(List<LhAnnouncementEnrichmentFailure> failures, UUID executionId) {
         Instant resolvedAt = clock.instant();
-        Map<FailureKey, LhAnnouncementEnrichmentFailure> stored = indexed(repository.findAll());
         Map<FailureKey, LhAnnouncementEnrichmentFailure> observed = indexed(failures);
+        Map<FailureKey, LhAnnouncementEnrichmentFailure> stored = indexed(
+                repository.findAllByStatus(PENDING)
+        );
+        if (!observed.isEmpty()) {
+            repository.findAllBySourceKeyIn(
+                    observed.keySet().stream().map(FailureKey::sourceKey).distinct().toList()
+            ).forEach(failure -> stored.putIfAbsent(FailureKey.from(failure), failure));
+        }
         stored.forEach((key, failure) -> {
             if (failure.getStatus() == PENDING && !observed.containsKey(key)) {
                 failure.resolve(resolvedAt, executionId);

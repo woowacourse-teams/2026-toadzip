@@ -1,3 +1,5 @@
+BEGIN;
+
 ALTER TABLE external_data_collection_failures
     ADD COLUMN IF NOT EXISTS last_occurred_at TIMESTAMP WITH TIME ZONE,
     ADD COLUMN IF NOT EXISTS occurrence_count INTEGER NOT NULL DEFAULT 1,
@@ -13,3 +15,5 @@ WHERE last_occurred_at IS NULL;
 ALTER TABLE external_data_collection_failures
     ALTER COLUMN last_occurred_at SET DEFAULT CURRENT_TIMESTAMP,
     ALTER COLUMN last_occurred_at SET NOT NULL;
+
+COMMIT;
