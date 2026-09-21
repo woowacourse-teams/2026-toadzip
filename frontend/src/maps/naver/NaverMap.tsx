@@ -380,8 +380,17 @@ export default function NaverMap({
             ),
             gl: true,
             keyboardShortcuts: true,
+            logoControlOptions: {
+              position: maps.Position.BOTTOM_LEFT,
+            },
+            scaleControlOptions: {
+              position: maps.Position.BOTTOM_LEFT,
+            },
             zoom: initialCamera.zoom,
             zoomControl: true,
+            zoomControlOptions: {
+              position: maps.Position.RIGHT_BOTTOM,
+            },
           })
           mapInstance = createdMap
           mapInstanceRef.current = createdMap
