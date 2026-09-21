@@ -3,10 +3,7 @@ import type {
   AnnouncementSearchFilters,
   PublicHousingRepository,
 } from '../api/publicHousingRepository.ts'
-import {
-  hasSearchFilters,
-  searchFiltersSignature,
-} from '../filters/searchFilterLocation.ts'
+import { searchFiltersSignature } from '../filters/searchFilterLocation.ts'
 import type { AnnouncementListItem } from '../model/publicHousing.ts'
 
 const PAGE_SIZE = 20
@@ -82,14 +79,12 @@ export function useAnnouncementResults(
       status: 'loading',
     }))
 
-    const request = hasSearchFilters(filters)
-      ? repository.findAnnouncementPage(
-          null,
-          PAGE_SIZE,
-          controller.signal,
-          filters,
-        )
-      : repository.findAnnouncementPage(null, PAGE_SIZE, controller.signal)
+    const request = repository.findAnnouncementPage(
+      null,
+      PAGE_SIZE,
+      controller.signal,
+      activeAnnouncementFilters(filters),
+    )
 
     request
       .then((page) => {
@@ -142,18 +137,12 @@ export function useAnnouncementResults(
       status: 'loading-more',
     }))
 
-    const request = hasSearchFilters(filters)
-      ? repository.findAnnouncementPage(
-          state.nextCursor,
-          PAGE_SIZE,
-          controller.signal,
-          filters,
-        )
-      : repository.findAnnouncementPage(
-          state.nextCursor,
-          PAGE_SIZE,
-          controller.signal,
-        )
+    const request = repository.findAnnouncementPage(
+      state.nextCursor,
+      PAGE_SIZE,
+      controller.signal,
+      activeAnnouncementFilters(filters),
+    )
 
     request
       .then((page) => {
@@ -211,6 +200,22 @@ export function useAnnouncementResults(
     : loadFirstPage
 
   return { loadMore, retry, state }
+}
+
+function activeAnnouncementFilters(
+  filters: AnnouncementSearchFilters,
+): AnnouncementSearchFilters {
+  const selectedStatuses = filters.applicationStatuses?.filter(
+    (status) => status !== 'CLOSED',
+  )
+
+  // 서버가 페이지를 나누기 전에 마감 공고를 제외한다.
+  return {
+    ...filters,
+    applicationStatuses: selectedStatuses?.length
+      ? selectedStatuses
+      : ['BEFORE_APPLICATION', 'APPLYING'],
+  }
 }
 
 function appendUniqueAnnouncements(

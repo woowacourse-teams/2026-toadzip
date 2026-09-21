@@ -312,6 +312,64 @@ describe('HousingComplexCard', () => {
       .not.toBeInTheDocument()
   })
 
+  it.each([true, false])('마감된 대표 공고는 이미지 %s에서도 공고 없는 배치로 표시한다', (hasImage) => {
+    const { onOpenAnnouncement, onSelect } = renderCard(complexWith({
+      representativeAnnouncement: {
+        ...BASE_ANNOUNCEMENT,
+        applicationStatus: 'CLOSED',
+        applicationEndAt: '2099-08-30',
+      },
+      thumbnailImageUrl: hasImage ? BASE_COMPLEX.thumbnailImageUrl : null,
+    }))
+
+    const card = screen.getByRole('article', { name: BASE_COMPLEX.name })
+    const headings = within(card).getAllByRole('heading', {
+      name: BASE_COMPLEX.name,
+    })
+    const titleRow = headings[0].closest('header')
+    const complexAction = within(card).getByRole('button', {
+      name: `${BASE_COMPLEX.name} 단지 상세 보기`,
+    })
+
+    expect(within(card).queryByRole('group', { name: '대표 공고' }))
+      .not.toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: '대표 공고 상세 보기' }))
+      .not.toBeInTheDocument()
+    expect(within(card).queryByText('접수마감')).not.toBeInTheDocument()
+    expect(card).toHaveAttribute('data-has-announcement', 'false')
+    expect(headings).toHaveLength(1)
+    expect(titleRow).toContainElement(within(card).getByText('LH'))
+    expect(titleRow?.parentElement?.firstElementChild).toBe(titleRow)
+    expect(within(card).queryByRole('img') !== null).toBe(hasImage)
+    expect(within(card).getByRole('group', { name: '주요 임대 조건' }))
+      .toBeInTheDocument()
+
+    complexAction.focus()
+    expect(complexAction).toHaveFocus()
+    expect(complexAction).toHaveAttribute(
+      'data-complex-detail-trigger',
+      BASE_COMPLEX.complexId,
+    )
+    fireEvent.click(complexAction)
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(BASE_COMPLEX.complexId)
+    expect(onOpenAnnouncement).not.toHaveBeenCalled()
+  })
+
+  it('마감일이 지났더라도 서버 상태가 접수중이면 대표 공고를 유지한다', () => {
+    renderCard(complexWith({
+      representativeAnnouncement: {
+        ...BASE_ANNOUNCEMENT,
+        applicationEndAt: '2000-01-01',
+        dDay: -1,
+      },
+    }))
+
+    expect(screen.getByRole('group', { name: '대표 공고' }))
+      .toHaveTextContent('접수중')
+    expect(screen.getByRole('button', { name: '대표 공고 상세 보기' }))
+      .toBeInTheDocument()
+  })
+
   it('공고 상세 handler가 없으면 같은 상태를 정적 정보로 표시한다', () => {
     render(
       <HousingComplexCard
@@ -398,7 +456,6 @@ describe('HousingComplexCard', () => {
   it.each([
     ['BEFORE_APPLICATION', '공고중', '마감 D-2'],
     ['APPLYING', '접수중', 'D-2'],
-    ['CLOSED', '접수마감', null],
     ['CANCELLED', '공고취소', null],
     ['UNEXPECTED', '정보 확인 중', 'D-2'],
   ])('대표 공고 상태 %s를 중복 없이 표시한다', (applicationStatus, label, countdown) => {

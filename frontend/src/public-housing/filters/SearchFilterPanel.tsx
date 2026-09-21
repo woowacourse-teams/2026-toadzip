@@ -209,7 +209,9 @@ export function SearchFilterPanel({
                 label="모집상태"
                 name="applicationStatuses"
                 defaultValues={filters.applicationStatuses}
-                options={APPLICATION_STATUS_OPTIONS}
+                options={kind === 'announcement'
+                  ? APPLICATION_STATUS_OPTIONS.filter(([value]) => value !== 'CLOSED')
+                  : APPLICATION_STATUS_OPTIONS}
               />
               <FilterCheckboxGroup
                 label="공급기관"

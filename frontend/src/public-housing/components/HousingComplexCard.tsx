@@ -50,7 +50,9 @@ export function HousingComplexCard({
   onOpenAnnouncement,
 }: HousingComplexCardProps) {
   const titleId = `housing-complex-card-title-${complex.complexId}`
-  const announcement = complex.representativeAnnouncement
+  const announcement = complex.representativeAnnouncement?.applicationStatus === 'CLOSED'
+    ? null
+    : complex.representativeAnnouncement
   const safeImageUrl = safeHttpUrl(complex.thumbnailImageUrl)
   const [imageLoadState, setImageLoadState] = useState<{
     readonly failed: boolean

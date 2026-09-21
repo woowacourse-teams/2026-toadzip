@@ -37,6 +37,34 @@ const GYEONGGI_REGIONS = [
 ] as const
 
 describe('SearchFilterPanel', () => {
+  it('공고 모집상태는 접수예정과 접수중만 선택해 적용할 수 있다', () => {
+    const onApply = vi.fn()
+    renderFilter({ kind: 'announcement', onApply })
+
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    const statusGroup = within(screen.getByRole('group', { name: '모집상태' }))
+    expect(statusGroup.queryByRole('checkbox', { name: '접수마감' }))
+      .not.toBeInTheDocument()
+    fireEvent.click(statusGroup.getByRole('checkbox', { name: '접수예정' }))
+    fireEvent.click(statusGroup.getByRole('checkbox', { name: '접수중' }))
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
+
+    expect(onApply).toHaveBeenLastCalledWith({
+      applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'],
+    })
+  })
+
+  it('단지 모집상태에서는 접수마감도 선택해 적용할 수 있다', () => {
+    const onApply = vi.fn()
+    renderFilter({ kind: 'complex', onApply })
+
+    fireEvent.click(screen.getByRole('button', { name: '단지 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '접수마감' }))
+    fireEvent.click(screen.getByRole('button', { name: '단지 필터 적용' }))
+
+    expect(onApply).toHaveBeenLastCalledWith({ applicationStatuses: ['CLOSED'] })
+  })
+
   it('공고 조건을 함께 선택해 적용하고 초기화한다', () => {
     const onApply = vi.fn()
     renderFilter({ kind: 'announcement', onApply })

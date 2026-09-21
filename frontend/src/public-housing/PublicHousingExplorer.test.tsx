@@ -2377,6 +2377,7 @@ describe('PublicHousingExplorer', () => {
       null,
       20,
       expect.any(AbortSignal),
+      { applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
     )
 
     fireEvent.click(screen.getByRole('tab', { name: '단지 목록' }))
