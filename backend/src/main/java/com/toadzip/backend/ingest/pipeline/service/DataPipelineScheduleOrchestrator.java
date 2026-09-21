@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -80,6 +81,15 @@ public class DataPipelineScheduleOrchestrator {
 
     private void process(DataPipelineSchedule schedule, Instant now) {
         Instant scheduledAt = slotPolicy.currentSlot(schedule, now);
+        DataPipelineExecution pendingCollection = findPendingCollection(schedule, scheduledAt);
+        if (pendingCollection != null) {
+            startRefinement(
+                    schedule,
+                    pendingCollection.getScheduledAt(),
+                    executionService.find(pendingCollection.getExecutionId())
+            );
+            return;
+        }
         DataPipelineExecution collection = executionRepository
                 .findFirstByTypeAndScheduledAtOrderByIdDesc(
                         schedule.collectionType(),
@@ -103,6 +113,21 @@ public class DataPipelineScheduleOrchestrator {
             return;
         }
         startRefinement(schedule, scheduledAt, collectionResponse);
+    }
+
+    private DataPipelineExecution findPendingCollection(
+            DataPipelineSchedule schedule,
+            Instant scheduledAt
+    ) {
+        return executionRepository.findCompletedWithoutRefinementBefore(
+                        schedule.collectionType(),
+                        schedule.refinementType(),
+                        DataPipelineExecutionStatus.COMPLETED,
+                        scheduledAt,
+                        PageRequest.of(0, 1)
+                ).stream()
+                .findFirst()
+                .orElse(null);
     }
 
     private void startCollection(DataPipelineSchedule schedule, Instant scheduledAt) {

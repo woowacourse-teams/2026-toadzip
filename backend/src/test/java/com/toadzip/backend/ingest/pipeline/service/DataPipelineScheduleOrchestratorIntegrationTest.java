@@ -41,6 +41,8 @@ class DataPipelineScheduleOrchestratorIntegrationTest {
 
     private static final Instant NOW = Instant.parse("2026-09-21T05:15:00Z");
     private static final Instant ANNOUNCEMENT_SLOT = Instant.parse("2026-09-21T03:00:00Z");
+    private static final Instant NEXT_ANNOUNCEMENT_SLOT =
+            Instant.parse("2026-09-21T09:00:00Z");
     private static final DataPipelineSchedulerProperties PROPERTIES =
             new DataPipelineSchedulerProperties(
                     false,
@@ -140,6 +142,68 @@ class DataPipelineScheduleOrchestratorIntegrationTest {
                 DataPipelineType.ANNOUNCEMENT_COLLECTION,
                 DataPipelineType.ANNOUNCEMENT_REFINEMENT
         );
+    }
+
+    @Test
+    void 슬롯_경계를_넘겨_완료된_수집의_정제를_현재_슬롯보다_먼저_연결한다() {
+        completeEveryPipeline();
+        UUID collectionId = saveCompletedScheduledExecution(
+                DataPipelineType.ANNOUNCEMENT_COLLECTION,
+                ANNOUNCEMENT_SLOT
+        );
+
+        orchestrator.runOnce(NEXT_ANNOUNCEMENT_SLOT.plusSeconds(1));
+
+        assertThat(executionRepository
+                .findFirstByTypeAndUpstreamExecutionIdOrderByIdDesc(
+                        DataPipelineType.ANNOUNCEMENT_REFINEMENT,
+                        collectionId
+                )).isPresent();
+        assertThat(executionRepository.findFirstByTypeAndScheduledAtOrderByIdDesc(
+                DataPipelineType.ANNOUNCEMENT_COLLECTION,
+                NEXT_ANNOUNCEMENT_SLOT
+        )).isEmpty();
+
+        orchestrator.runOnce(NEXT_ANNOUNCEMENT_SLOT.plusSeconds(1));
+
+        assertThat(executionRepository.findFirstByTypeAndScheduledAtOrderByIdDesc(
+                DataPipelineType.ANNOUNCEMENT_COLLECTION,
+                NEXT_ANNOUNCEMENT_SLOT
+        )).isPresent();
+    }
+
+    @Test
+    void 여러_이전_슬롯의_미연결_정제를_오래된_수집부터_처리한다() {
+        completeEveryPipeline();
+        UUID oldestCollectionId = saveCompletedScheduledExecution(
+                DataPipelineType.ANNOUNCEMENT_COLLECTION,
+                ANNOUNCEMENT_SLOT.minus(PROPERTIES.announcementInterval())
+        );
+        UUID latestCollectionId = saveCompletedScheduledExecution(
+                DataPipelineType.ANNOUNCEMENT_COLLECTION,
+                ANNOUNCEMENT_SLOT
+        );
+
+        orchestrator.runOnce(NEXT_ANNOUNCEMENT_SLOT.plusSeconds(1));
+
+        assertThat(executionRepository
+                .findFirstByTypeAndUpstreamExecutionIdOrderByIdDesc(
+                        DataPipelineType.ANNOUNCEMENT_REFINEMENT,
+                        oldestCollectionId
+                )).isPresent();
+        assertThat(executionRepository
+                .findFirstByTypeAndUpstreamExecutionIdOrderByIdDesc(
+                        DataPipelineType.ANNOUNCEMENT_REFINEMENT,
+                        latestCollectionId
+                )).isEmpty();
+
+        orchestrator.runOnce(NEXT_ANNOUNCEMENT_SLOT.plusSeconds(1));
+
+        assertThat(executionRepository
+                .findFirstByTypeAndUpstreamExecutionIdOrderByIdDesc(
+                        DataPipelineType.ANNOUNCEMENT_REFINEMENT,
+                        latestCollectionId
+                )).isPresent();
     }
 
     @Test
@@ -317,6 +381,27 @@ class DataPipelineScheduleOrchestratorIntegrationTest {
             executionStateService.completeStep(executionId, step, "{}");
         });
         executionStateService.complete(executionId, startedAt.plusSeconds(1));
+    }
+
+    private UUID saveCompletedScheduledExecution(
+            DataPipelineType type,
+            Instant scheduledAt
+    ) {
+        UUID executionId = UUID.randomUUID();
+        executionStateService.create(
+                executionId,
+                type,
+                scheduledAt,
+                DataPipelineExecutionTrigger.SCHEDULED,
+                scheduledAt,
+                null
+        );
+        type.steps().forEach(step -> {
+            executionStateService.startStep(executionId, step);
+            executionStateService.completeStep(executionId, step, "{}");
+        });
+        executionStateService.complete(executionId, scheduledAt.plusSeconds(1));
+        return executionId;
     }
 
     private void assertRefinementLinked(
