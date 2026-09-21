@@ -249,7 +249,10 @@ function createdMarkerButton(
   callIndex: number,
 ): HTMLButtonElement {
   const markerOptions = fakeSdk.markerConstructor.mock.calls[callIndex]?.[0]
-  const markerButton = markerOptions?.icon?.content
+  const content = markerOptions?.icon?.content
+  const markerButton = content instanceof HTMLButtonElement
+    ? content
+    : content instanceof HTMLElement ? content.querySelector('button') : null
   if (!(markerButton instanceof HTMLButtonElement)) {
     throw new Error(`${callIndex + 1}번째 marker 버튼을 찾을 수 없습니다.`)
   }
@@ -902,63 +905,78 @@ describe('NaverMap', () => {
     expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2)
   })
 
-  it('개별 marker의 Enter와 Space 입력 양쪽 단계를 지도에 전달하지 않고 기본 동작은 보존한다', async () => {
-    const fakeSdk = createFakeSdk()
-    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
-    render(<NaverMap markers={[{
-      ...markerPresentation,
-      id: '101',
-      latitude: 37.6,
-      longitude: 127,
-      name: '키보드 단지',
-    }]} />)
-    await waitFor(() => expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce())
-    const markerButton = createdMarkerButton(fakeSdk, 0)
-    const mapKeyboard = vi.fn()
-    document.body.addEventListener('keydown', mapKeyboard)
-    document.body.addEventListener('keyup', mapKeyboard)
-    try {
-      for (const key of ['Enter', ' ']) {
-        for (const type of ['keydown', 'keyup']) {
-          const event = new KeyboardEvent(type, {
-            key,
-            bubbles: true,
-            cancelable: true,
-          })
-          fireEvent(markerButton, event)
-          expect(event.defaultPrevented).toBe(false)
+  it.each(['individual', 'aggregate', 'cluster'] as const)(
+    '%s marker의 Enter와 Space 입력 양쪽 단계를 지도에 전달하지 않고 기본 동작은 보존한다',
+    async (kind) => {
+      const fakeSdk = createFakeSdk()
+      const markers = [{
+        ...markerPresentation, id: '101', latitude: 37.6, longitude: 127, name: '키보드 단지',
+      }]
+      loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+      render(kind === 'aggregate'
+        ? <NaverMap markerRenderMode="server" representation="AGGREGATE"
+            aggregateMarkers={[aggregateMarker]} onAggregateMarkerSelect={vi.fn()} />
+        : <NaverMap markers={kind === 'cluster'
+            ? [...markers, { ...markers[0], id: '102' }]
+            : markers} />)
+      await waitFor(() => expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce())
+      const markerButton = createdMarkerButton(fakeSdk, 0)
+      const mapKeyboard = vi.fn()
+      document.body.addEventListener('keydown', mapKeyboard)
+      document.body.addEventListener('keyup', mapKeyboard)
+      try {
+        for (const key of ['Enter', ' ']) {
+          for (const type of ['keydown', 'keyup']) {
+            const event = new KeyboardEvent(type, {
+              key,
+              bubbles: true,
+              cancelable: true,
+            })
+            fireEvent(markerButton, event)
+            expect(event.defaultPrevented).toBe(false)
+          }
+        }
+        expect(mapKeyboard).not.toHaveBeenCalled()
+      } finally {
+        document.body.removeEventListener('keydown', mapKeyboard)
+        document.body.removeEventListener('keyup', mapKeyboard)
+      }
+    },
+  )
+
+  it.each(['individual', 'aggregate', 'cluster'] as const)(
+    '%s marker는 키보드와 포인터 클릭을 SDK 좌표 처리 전에 한 번만 선택한다',
+    async (kind) => {
+      const fakeSdk = createFakeSdk()
+      const onMarkerSelect = vi.fn()
+      const selection = kind === 'cluster' ? fakeSdk.fitBoundsMap : onMarkerSelect
+      const markers = [{
+        ...markerPresentation, id: '101', latitude: 37.6, longitude: 127, name: '클릭 단지',
+      }]
+      loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+      render(kind === 'aggregate'
+        ? <NaverMap markerRenderMode="server" representation="AGGREGATE"
+            aggregateMarkers={[aggregateMarker]} onAggregateMarkerSelect={onMarkerSelect} />
+        : <NaverMap markers={kind === 'cluster'
+            ? [...markers, { ...markers[0], id: '102' }]
+            : markers} onMarkerSelect={onMarkerSelect} />)
+      await waitFor(() => expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce())
+      const markerButton = createdMarkerButton(fakeSdk, 0)
+      const sdkPointerClick = vi.fn()
+      markerButton.addEventListener('click', sdkPointerClick)
+      markerButton.parentElement?.parentElement?.addEventListener('click', sdkPointerClick)
+
+      for (const detail of [0, 1]) {
+        selection.mockClear()
+        fireEvent.click(markerButton, { detail })
+        expect(selection).toHaveBeenCalledOnce()
+        if (kind === 'individual') {
+          expect(onMarkerSelect).toHaveBeenCalledWith('101')
         }
       }
-      expect(mapKeyboard).not.toHaveBeenCalled()
-    } finally {
-      document.body.removeEventListener('keydown', mapKeyboard)
-      document.body.removeEventListener('keyup', mapKeyboard)
-    }
-  })
-
-  it('개별 marker는 키보드와 포인터 클릭을 SDK 좌표 처리 전에 한 번만 선택한다', async () => {
-    const fakeSdk = createFakeSdk()
-    const onMarkerSelect = vi.fn()
-    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
-    render(<NaverMap markers={[{
-      ...markerPresentation,
-      id: '101',
-      latitude: 37.6,
-      longitude: 127,
-      name: '클릭 단지',
-    }]} onMarkerSelect={onMarkerSelect} />)
-    await waitFor(() => expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce())
-    const markerButton = createdMarkerButton(fakeSdk, 0)
-    const sdkPointerClick = vi.fn()
-    markerButton.addEventListener('click', sdkPointerClick)
-
-    for (const detail of [0, 1]) {
-      onMarkerSelect.mockClear()
-      fireEvent.click(markerButton, { detail })
-      expect(onMarkerSelect).toHaveBeenCalledExactlyOnceWith('101')
-    }
-    expect(sdkPointerClick).not.toHaveBeenCalled()
-  })
+      expect(sdkPointerClick).not.toHaveBeenCalled()
+    },
+  )
 
   it.each(['server', 'legacy'] as const)(
     '%s 경로에서 선택만 변경하면 마커와 포커스를 유지하고 필요한 표시만 갱신한다',
@@ -1106,6 +1124,233 @@ describe('NaverMap', () => {
     expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(4)
     expect(createdMarkerButton(fakeSdk, 3)).toHaveClass('housing-map-cluster')
     expect(fakeSdk.markerSetMap).toHaveBeenCalledTimes(3)
+  })
+
+  it('처음 표시하는 마커는 SDK 위치 요소 안에서 시간차를 두고 등장하고 효과를 정리한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const markers = Array.from({ length: 8 }, (_, index) => ({
+      ...markerPresentation,
+      id: String(index),
+      latitude: 37.5,
+      longitude: 127 + index * 0.01,
+      name: `${index} 단지`,
+    }))
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    render(<NaverMap markerRenderMode="server" representation="INDIVIDUAL" markers={markers} />)
+
+    const buttons = await screen.findAllByRole('button', { name: /단지 상세 보기/ })
+    const expectedDelays = ['0ms', '25ms', '50ms', '75ms', '100ms', '125ms', '150ms', '150ms']
+    buttons.forEach((button, index) => {
+      const motion = button.parentElement
+      expect(motion).toHaveClass('housing-marker-enter')
+      expect(motion?.parentElement).toHaveClass('housing-marker-content')
+      expect(motion?.style.getPropertyValue('--marker-enter-delay')).toBe(expectedDelays[index])
+    })
+    const firstMotion = buttons[0].parentElement!
+    fireEvent.animationEnd(firstMotion)
+    expect(firstMotion).not.toHaveClass('housing-marker-enter')
+    expect(firstMotion.style.getPropertyValue('--marker-enter-delay')).toBe('')
+    const secondMotion = buttons[1].parentElement!
+    fireEvent(secondMotion, new Event('animationcancel', { bubbles: true }))
+    expect(secondMotion).not.toHaveClass('housing-marker-enter')
+  })
+
+  it('조회 결과 일부가 바뀌면 기존 마커와 포커스를 유지하고 새 마커만 등장한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const onMarkerSelect = vi.fn()
+    const nextMarkerSelect = vi.fn()
+    const onMarkerHighlight = vi.fn()
+    const [a, b, c] = ['a', 'b', 'c'].map((id, index) => ({
+      ...markerPresentation,
+      id,
+      latitude: 37.5,
+      longitude: 127 + index * 0.01,
+      name: `${id} 단지`,
+    }))
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { rerender, unmount } = render(
+      <NaverMap markerRenderMode="server" representation="INDIVIDUAL" markers={[a, b]}
+        onMarkerSelect={onMarkerSelect} onMarkerHighlight={onMarkerHighlight} />,
+    )
+    const aButton = await screen.findByRole('button', { name: /^a 단지,/ })
+    const bButton = screen.getByRole('button', { name: /^b 단지,/ })
+    fireEvent.animationEnd(aButton.parentElement!)
+    aButton.focus()
+    const focus = vi.spyOn(HTMLButtonElement.prototype, 'focus')
+
+    rerender(<NaverMap markerRenderMode="server" representation="INDIVIDUAL" markers={[a, c]}
+      onMarkerSelect={nextMarkerSelect} onMarkerHighlight={onMarkerHighlight} />)
+
+    expect(screen.getByRole('button', { name: /^a 단지,/ })).toBe(aButton)
+    expect(aButton).toHaveFocus()
+    expect(focus).not.toHaveBeenCalled()
+    expect(onMarkerHighlight).toHaveBeenLastCalledWith('a')
+    expect(aButton.parentElement).not.toHaveClass('housing-marker-enter')
+    expect(bButton).not.toBeInTheDocument()
+    fireEvent.click(bButton)
+    expect(onMarkerSelect).not.toHaveBeenCalled()
+    expect(nextMarkerSelect).not.toHaveBeenCalled()
+    fireEvent.click(aButton)
+    expect(nextMarkerSelect).toHaveBeenCalledExactlyOnceWith('a')
+    const cButton = screen.getByRole('button', { name: /^c 단지,/ })
+    expect(cButton.parentElement).toHaveClass('housing-marker-enter')
+    expect(cButton.parentElement?.style.getPropertyValue('--marker-enter-delay')).toBe('0ms')
+
+    rerender(<NaverMap markerRenderMode="server" representation="INDIVIDUAL" markers={[
+      { ...a, selected: true, highlighted: true },
+      { ...c, monthlyRent: { digits: '25', unit: '만', exactLabel: '250,000원' } },
+    ]} onMarkerSelect={nextMarkerSelect} onMarkerHighlight={onMarkerHighlight} />)
+    act(() => fakeSdk.emitIdle())
+    expect(screen.getByRole('button', { name: /^a 단지,/ })).toBe(aButton)
+    expect(aButton).toHaveClass('is-selected', 'is-highlighted')
+    expect(aButton.parentElement).not.toHaveClass('housing-marker-enter')
+    const updatedC = screen.getByRole('button', { name: /^c 단지,/ })
+    expect(updatedC).toHaveTextContent('월25만~')
+    expect(updatedC.parentElement).not.toHaveClass('housing-marker-enter')
+    focus.mockRestore()
+    unmount()
+    nextMarkerSelect.mockClear()
+    fireEvent.click(aButton)
+    fireEvent.click(updatedC)
+    expect(nextMarkerSelect).not.toHaveBeenCalled()
+  })
+
+  it('모션 감소 설정에서는 새 마커도 등장 효과 없이 바로 표시한다', async () => {
+    const fakeSdk = createFakeSdk()
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(prefers-reduced-motion: reduce)' }))
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    render(<NaverMap markers={[{
+      ...markerPresentation, id: 'a', latitude: 37.5, longitude: 127, name: 'a 단지',
+    }]} />)
+    const button = await screen.findByRole('button', { name: /^a 단지,/ })
+    expect(button.parentElement).not.toHaveClass('housing-marker-enter')
+    expect(button.parentElement?.style.getPropertyValue('--marker-enter-delay')).toBe('')
+  })
+
+  it('hover 중인 마커가 제거되면 유지된 키보드 포커스 마커의 강조를 복원한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const markers = ['a', 'b'].map((id, index) => ({
+      ...markerPresentation, id, latitude: 37.5, longitude: 127 + index * 0.01, name: `${id} 단지`,
+    }))
+    function HighlightedMap({ items }: { items: NaverMapMarker[] }) {
+      const [highlightedId, setHighlightedId] = useState<string | null>(null)
+      return <NaverMap markerRenderMode="server" representation="INDIVIDUAL"
+        markers={items.map((marker) => ({ ...marker, highlighted: marker.id === highlightedId }))}
+        onMarkerHighlight={setHighlightedId} />
+    }
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { rerender } = render(<HighlightedMap items={markers} />)
+    const a = await screen.findByRole('button', { name: /^a 단지,/ })
+    const b = screen.getByRole('button', { name: /^b 단지,/ })
+    act(() => a.focus())
+    expect(a).toHaveClass('is-highlighted')
+    fireEvent.mouseEnter(b)
+    expect(b).toHaveClass('is-highlighted')
+    expect(a).not.toHaveClass('is-highlighted')
+    rerender(<HighlightedMap items={[markers[0]]} />)
+    expect(screen.getByRole('button', { name: /^a 단지,/ })).toBe(a)
+    expect(a).toHaveFocus()
+    expect(a).toHaveClass('is-highlighted')
+    expect(b).not.toBeInTheDocument()
+  })
+
+  it('같은 집계의 값은 재등장 없이 갱신하고 다른 마커를 유지하며 최신 확대 정보를 전달한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const onSelect = vi.fn()
+    const second = { ...aggregateMarker, groupKey: 'METROPOLITAN:11', groupLabel: '서울' }
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { rerender } = render(<NaverMap markerRenderMode="server" representation="AGGREGATE"
+      aggregateMarkers={[aggregateMarker, second]} onAggregateMarkerSelect={onSelect} />)
+    const seoulButton = await screen.findByRole('button', { name: /^서울 42곳,/ })
+    fireEvent.animationEnd(seoulButton.parentElement!)
+    const updated = { ...aggregateMarker, uniqueComplexCount: 17, expansionZoom: 13, latitude: 37.6 }
+    rerender(<NaverMap markerRenderMode="server" representation="AGGREGATE"
+      aggregateMarkers={[updated, second]} onAggregateMarkerSelect={onSelect} />)
+    expect(screen.getByRole('button', { name: /^서울 42곳,/ })).toBe(seoulButton)
+    const updatedButton = screen.getByRole('button', { name: /^경기 17곳,/ })
+    expect(updatedButton.parentElement).not.toHaveClass('housing-marker-enter')
+    fireEvent.click(updatedButton)
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(updated)
+
+    rerender(<NaverMap markerRenderMode="server" representation="INDIVIDUAL" markers={[{
+      ...markerPresentation, id: second.groupKey, latitude: 37.5, longitude: 127, name: '개별 단지',
+    }]} />)
+    expect(screen.getByRole('button', { name: /^개별 단지,/ }).parentElement)
+      .toHaveClass('housing-marker-enter')
+  })
+
+  it('기존 군집의 선택이나 줌만 바뀌면 등장 효과를 재생하지 않고 새 조회 마커에만 적용한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const markers = ['a', 'b'].map((id, index) => ({
+      ...markerPresentation, id, latitude: 37.5, longitude: 127 + index * 0.001, name: `${id} 단지`,
+    }))
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { rerender } = render(<NaverMap markers={markers} />)
+    const cluster = await screen.findByRole('button', { name: '2곳 단지 묶음, 확대해서 보기' })
+    expect(cluster.parentElement).toHaveClass('housing-marker-enter')
+    rerender(<NaverMap markers={markers.map((marker) => ({ ...marker, selected: marker.id === 'a' }))} />)
+    screen.getAllByRole('button', { name: /단지 상세 보기/ }).forEach((button) => {
+      expect(button.parentElement).not.toHaveClass('housing-marker-enter')
+    })
+    rerender(<NaverMap markers={markers} />)
+    expect(screen.getByRole('button', { name: '2곳 단지 묶음, 확대해서 보기' }).parentElement)
+      .not.toHaveClass('housing-marker-enter')
+    act(() => {
+      fakeSdk.setCurrentZoom(15)
+      fakeSdk.emitIdle()
+    })
+    screen.getAllByRole('button', { name: /단지 상세 보기/ }).forEach((button) => {
+      expect(button.parentElement).not.toHaveClass('housing-marker-enter')
+    })
+    rerender(<NaverMap markers={[...markers, {
+      ...markerPresentation, id: 'c', latitude: 37.5, longitude: 127.1, name: 'c 단지',
+    }]} />)
+    expect(screen.getByRole('button', { name: /^c 단지,/ }).parentElement)
+      .toHaveClass('housing-marker-enter')
+    expect(screen.getByRole('button', { name: /^a 단지,/ }).parentElement)
+      .not.toHaveClass('housing-marker-enter')
+  })
+
+  it('재사용한 군집을 선택하면 새 결과가 먼저 와도 다음 idle까지 확대 완료를 안내하지 않는다', async () => {
+    const fakeSdk = createFakeSdk()
+    const markers = ['a', 'b'].map((id) => ({
+      ...markerPresentation, id, latitude: 37.5, longitude: 127, name: `${id} 단지`,
+    }))
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { rerender } = render(<NaverMap markers={markers} />)
+    const cluster = await screen.findByRole('button', { name: '2곳 단지 묶음, 확대해서 보기' })
+    act(() => fakeSdk.emitIdle())
+    fireEvent.click(cluster)
+    rerender(<NaverMap markers={[...markers, {
+      ...markerPresentation, id: 'c', latitude: 37.5, longitude: 127.1, name: 'c 단지',
+    }]} />)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '2곳 단지 묶음, 확대해서 보기' })).toBe(cluster)
+    act(() => fakeSdk.emitIdle())
+    expect(await screen.findByRole('status')).toHaveTextContent('아직 함께 표시됩니다.')
+    await waitFor(() => expect(cluster).toHaveFocus())
+  })
+
+  it('군집 중심이 같아도 구성원 좌표가 갱신되면 최신 좌표로 확대한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const markers = ['a', 'b'].map((id, index) => ({
+      ...markerPresentation, id, latitude: 37.5, longitude: 127 + index * 0.001, name: `${id} 단지`,
+    }))
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { rerender } = render(<NaverMap markers={markers} />)
+    const previousCluster = await screen.findByRole('button', { name: '2곳 단지 묶음, 확대해서 보기' })
+    fireEvent.animationEnd(previousCluster.parentElement!)
+    rerender(<NaverMap markers={[
+      { ...markers[0], latitude: 37.4999 },
+      { ...markers[1], latitude: 37.5001 },
+    ]} />)
+    const cluster = screen.getByRole('button', { name: '2곳 단지 묶음, 확대해서 보기' })
+    expect(cluster.parentElement).not.toHaveClass('housing-marker-enter')
+    fireEvent.click(cluster)
+    expect(fakeSdk.fitBoundsMap.mock.calls.at(-1)?.[0]).toEqual([
+      { latitude: 37.4999, longitude: 127 },
+      { latitude: 37.5001, longitude: 127.001 },
+    ])
   })
 
   it('개별 marker에 짧은 기관·유형과 최소 보증금·월세를 표시하고 정확한 값으로 안내한다', async () => {
