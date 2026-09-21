@@ -7,3 +7,7 @@ logging:
   level:
     root: INFO
     com.toadzip.backend: INFO
+
+ingest:
+  scheduler:
+    enabled: ${INGEST_SCHEDULER_ENABLED:true}

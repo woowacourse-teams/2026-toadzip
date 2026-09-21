@@ -18,6 +18,21 @@ public interface DataPipelineExecutionRepository
             DataPipelineType type
     );
 
+    Optional<DataPipelineExecution> findFirstByTypeAndScheduledAtOrderByIdDesc(
+            DataPipelineType type,
+            Instant scheduledAt
+    );
+
+    Optional<DataPipelineExecution> findFirstByTypeAndScheduledAtBeforeOrderByScheduledAtDesc(
+            DataPipelineType type,
+            Instant scheduledAt
+    );
+
+    Optional<DataPipelineExecution> findFirstByTypeAndUpstreamExecutionIdOrderByIdDesc(
+            DataPipelineType type,
+            UUID upstreamExecutionId
+    );
+
     Optional<DataPipelineExecution> findByExecutionId(UUID executionId);
 
     @Modifying
