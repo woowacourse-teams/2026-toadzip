@@ -217,6 +217,7 @@ function createFakeSdk(): FakeSdk {
       Map: mapConstructor,
       Marker: markerConstructor,
       Point: pointConstructor,
+      Position: { BOTTOM_LEFT: 10, RIGHT_BOTTOM: 9 },
       Size: sizeConstructor,
     } as unknown as typeof naver.maps,
     panToMap,
@@ -374,8 +375,17 @@ describe('NaverMap', () => {
       expect.objectContaining({
         gl: true,
         keyboardShortcuts: true,
+        logoControlOptions: {
+          position: fakeSdk.maps.Position.BOTTOM_LEFT,
+        },
+        scaleControlOptions: {
+          position: fakeSdk.maps.Position.BOTTOM_LEFT,
+        },
         zoom: 14,
         zoomControl: true,
+        zoomControlOptions: {
+          position: fakeSdk.maps.Position.RIGHT_BOTTOM,
+        },
       }),
     )
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
