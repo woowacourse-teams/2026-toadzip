@@ -125,6 +125,23 @@ class DataPipelineScheduleOrchestratorTest {
     }
 
     @Test
+    void 기존_수동_실행_이력만_있고_직전_슬롯이_없으면_복구_실행으로_보충한다() {
+        when(executionRepository.existsByTypeAndStartedAtBefore(
+                DataPipelineType.ANNOUNCEMENT_COLLECTION,
+                ANNOUNCEMENT_SLOT
+        )).thenReturn(true);
+
+        orchestrator.runOnce(NOW);
+
+        verify(executionService).start(
+                DataPipelineType.ANNOUNCEMENT_COLLECTION,
+                DataPipelineExecutionTrigger.RECOVERY,
+                ANNOUNCEMENT_SLOT,
+                null
+        );
+    }
+
+    @Test
     void 수집이_완료된_뒤에만_상위_실행_ID를_연결해_정제를_시작한다() {
         UUID collectionId = UUID.randomUUID();
         DataPipelineExecution collection = scheduledExecution(

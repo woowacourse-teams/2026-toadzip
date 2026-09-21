@@ -1,7 +1,7 @@
 BEGIN;
 
 ALTER TABLE data_pipeline_executions
-    ADD COLUMN IF NOT EXISTS execution_trigger VARCHAR(20);
+    ADD COLUMN IF NOT EXISTS execution_trigger VARCHAR(20) DEFAULT 'MANUAL';
 
 ALTER TABLE data_pipeline_executions
     ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP WITH TIME ZONE;
@@ -12,6 +12,9 @@ ALTER TABLE data_pipeline_executions
 UPDATE data_pipeline_executions
 SET execution_trigger = 'MANUAL'
 WHERE execution_trigger IS NULL;
+
+ALTER TABLE data_pipeline_executions
+    ALTER COLUMN execution_trigger SET DEFAULT 'MANUAL';
 
 ALTER TABLE data_pipeline_executions
     ALTER COLUMN execution_trigger SET NOT NULL;

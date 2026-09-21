@@ -28,6 +28,11 @@ public interface DataPipelineExecutionRepository
             Instant scheduledAt
     );
 
+    boolean existsByTypeAndStartedAtBefore(
+            DataPipelineType type,
+            Instant startedAt
+    );
+
     Optional<DataPipelineExecution> findFirstByTypeAndUpstreamExecutionIdOrderByIdDesc(
             DataPipelineType type,
             UUID upstreamExecutionId

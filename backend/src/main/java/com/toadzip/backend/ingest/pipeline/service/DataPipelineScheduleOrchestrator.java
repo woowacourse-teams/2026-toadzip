@@ -204,12 +204,25 @@ public class DataPipelineScheduleOrchestrator {
                         scheduledAt
                 );
         if (previous.isEmpty()) {
-            return DataPipelineExecutionTrigger.SCHEDULED;
+            return triggerWithoutScheduledHistory(schedule, scheduledAt);
         }
         if (previous.get().getScheduledAt().equals(slotPolicy.previousSlot(schedule, scheduledAt))) {
             return DataPipelineExecutionTrigger.SCHEDULED;
         }
         return DataPipelineExecutionTrigger.RECOVERY;
+    }
+
+    private DataPipelineExecutionTrigger triggerWithoutScheduledHistory(
+            DataPipelineSchedule schedule,
+            Instant scheduledAt
+    ) {
+        if (executionRepository.existsByTypeAndStartedAtBefore(
+                schedule.collectionType(),
+                scheduledAt
+        )) {
+            return DataPipelineExecutionTrigger.RECOVERY;
+        }
+        return DataPipelineExecutionTrigger.SCHEDULED;
     }
 
     private void defer(

@@ -21,6 +21,12 @@ import org.springframework.test.context.ActiveProfiles;
 class DataPipelineExecutionMigrationTest {
 
     private static final String SCHEMA = "data_pipeline_execution_migration_test";
+    private static final UUID LEGACY_EXECUTION_ID = UUID.fromString(
+            "00000000-0000-0000-0000-000000000001"
+    );
+    private static final UUID POST_MIGRATION_LEGACY_EXECUTION_ID = UUID.fromString(
+            "00000000-0000-0000-0000-000000000002"
+    );
     private static final String MIGRATION =
             "db/migration/V20260903_01__create_data_pipeline_executions.sql";
     private static final String SKIPPED_STEPS_MIGRATION =
@@ -70,6 +76,7 @@ class DataPipelineExecutionMigrationTest {
                         connection,
                         new ClassPathResource(SCHEDULE_METADATA_MIGRATION)
                 );
+                insertLegacyExecution(connection, POST_MIGRATION_LEGACY_EXECUTION_ID);
 
                 assertThat(tableExists(connection, "data_pipeline_executions")).isTrue();
                 assertThat(tableExists(connection, "data_pipeline_execution_completed_steps"))
@@ -102,7 +109,9 @@ class DataPipelineExecutionMigrationTest {
                         "data_pipeline_executions",
                         "upstream_execution_id"
                 )).isTrue();
-                assertThat(executionTrigger(connection)).isEqualTo("MANUAL");
+                assertThat(executionTrigger(connection, LEGACY_EXECUTION_ID)).isEqualTo("MANUAL");
+                assertThat(executionTrigger(connection, POST_MIGRATION_LEGACY_EXECUTION_ID))
+                        .isEqualTo("MANUAL");
                 assertThat(indexExists(
                         connection,
                         "idx_data_pipeline_execution_upstream"
@@ -191,14 +200,16 @@ class DataPipelineExecutionMigrationTest {
     }
 
     private void insertLegacyExecution(Connection connection) throws Exception {
+        insertLegacyExecution(connection, LEGACY_EXECUTION_ID);
+    }
+
+    private void insertLegacyExecution(Connection connection, UUID executionId) throws Exception {
         try (var statement = connection.prepareStatement("""
                 INSERT INTO data_pipeline_executions (
                     execution_id, type, status, started_at, heartbeat_at
                 ) VALUES (?, 'ANNOUNCEMENT_COLLECTION', 'RUNNING', ?, ?)
                 """)) {
-            statement.setObject(1, UUID.fromString(
-                    "00000000-0000-0000-0000-000000000001"
-            ));
+            statement.setObject(1, executionId);
             Timestamp startedAt = Timestamp.from(Instant.parse(
                     "2026-09-21T00:00:00Z"
             ));
@@ -208,15 +219,13 @@ class DataPipelineExecutionMigrationTest {
         }
     }
 
-    private String executionTrigger(Connection connection) throws Exception {
+    private String executionTrigger(Connection connection, UUID executionId) throws Exception {
         try (var statement = connection.prepareStatement("""
                 SELECT execution_trigger
                 FROM data_pipeline_executions
                 WHERE execution_id = ?
                 """)) {
-            statement.setObject(1, UUID.fromString(
-                    "00000000-0000-0000-0000-000000000001"
-            ));
+            statement.setObject(1, executionId);
             try (ResultSet result = statement.executeQuery()) {
                 if (!result.next()) {
                     throw new IllegalStateException("기존 실행을 찾지 못했습니다.");
