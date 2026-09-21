@@ -39,6 +39,10 @@ class IngestFailureLifecycleMigrationTest {
                 execute(connection, FAILURE_LIFECYCLE_MIGRATION);
                 execute(connection, EXTERNAL_FAILURE_LIFECYCLE_MIGRATION);
                 execute(connection, HOUSEHOLD_FAILURE_MIGRATION);
+                insertLegacyFailuresAfterMigration(connection);
+                execute(connection, FAILURE_LIFECYCLE_MIGRATION);
+                execute(connection, EXTERNAL_FAILURE_LIFECYCLE_MIGRATION);
+                execute(connection, HOUSEHOLD_FAILURE_MIGRATION);
 
                 assertThat(lifecycleBackfilled(
                         connection,
@@ -53,6 +57,7 @@ class IngestFailureLifecycleMigrationTest {
                         "lh_announcement_enrichment_failures"
                 )).isTrue();
                 assertThat(externalLifecycleBackfilled(connection)).isTrue();
+                assertThat(legacyInsertsHaveLifecycleDefaults(connection)).isTrue();
                 assertThat(tableExists(
                         connection,
                         "lh_household_enrichment_failures"
@@ -115,6 +120,20 @@ class IngestFailureLifecycleMigrationTest {
         }
     }
 
+    private void insertLegacyFailuresAfterMigration(Connection connection) throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            for (String table : new String[]{
+                    "myhome_complex_mapping_failures",
+                    "myhome_announcement_mapping_failures",
+                    "lh_announcement_enrichment_failures",
+                    "external_data_collection_failures"
+            }) {
+                statement.execute("INSERT INTO " + table
+                        + " (occurred_at) VALUES ('2026-09-19T01:00:00Z')");
+            }
+        }
+    }
+
     private void execute(Connection connection, String migration) {
         ScriptUtils.executeSqlScript(connection, new ClassPathResource(migration));
     }
@@ -126,6 +145,7 @@ class IngestFailureLifecycleMigrationTest {
                              + " AND occurrence_count = 1"
                              + " AND recurrence_count = 0"
                              + " AND status = 'PENDING' FROM " + table
+                             + " WHERE occurred_at = '2026-09-19T00:00:00Z'"
              )) {
             return result.next() && result.getBoolean(1);
         }
@@ -138,6 +158,30 @@ class IngestFailureLifecycleMigrationTest {
                         AND occurrence_count = 1
                         AND recurrence_count = 0
                      FROM external_data_collection_failures
+                     WHERE occurred_at = '2026-09-19T00:00:00Z'
+                     """)) {
+            return result.next() && result.getBoolean(1);
+        }
+    }
+
+    private boolean legacyInsertsHaveLifecycleDefaults(Connection connection) throws Exception {
+        try (Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery("""
+                     SELECT count(*) = 4
+                     FROM (
+                         SELECT last_occurred_at FROM myhome_complex_mapping_failures
+                         WHERE occurred_at = '2026-09-19T01:00:00Z'
+                         UNION ALL
+                         SELECT last_occurred_at FROM myhome_announcement_mapping_failures
+                         WHERE occurred_at = '2026-09-19T01:00:00Z'
+                         UNION ALL
+                         SELECT last_occurred_at FROM lh_announcement_enrichment_failures
+                         WHERE occurred_at = '2026-09-19T01:00:00Z'
+                         UNION ALL
+                         SELECT last_occurred_at FROM external_data_collection_failures
+                         WHERE occurred_at = '2026-09-19T01:00:00Z'
+                     ) legacy_rows
+                     WHERE last_occurred_at IS NOT NULL
                      """)) {
             return result.next() && result.getBoolean(1);
         }

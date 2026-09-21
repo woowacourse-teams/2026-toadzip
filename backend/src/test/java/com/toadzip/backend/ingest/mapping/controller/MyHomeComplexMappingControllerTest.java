@@ -117,4 +117,26 @@ class MyHomeComplexMappingControllerTest {
                 .andExpect(jsonPath("$[0].reason").value("INVALID_VALUE"))
                 .andExpect(jsonPath("$[0].detail").value("준공일 형식이 올바르지 않습니다."));
     }
+
+    @Test
+    void 실패_이력을_요청한_페이지_범위로_조회한다() throws Exception {
+        when(mappingService.findFailureHistory(2, 50)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/admin/ingest/myhome/complex-mappings/failures/history")
+                        .param("page", "2")
+                        .param("size", "50"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+
+        verify(mappingService).findFailureHistory(2, 50);
+    }
+
+    @Test
+    void 실패_조회_페이지_크기는_최대_200이다() throws Exception {
+        mockMvc.perform(get("/api/admin/ingest/myhome/complex-mappings/failures/page")
+                        .param("size", "201"))
+                .andExpect(status().isBadRequest());
+
+        verify(mappingService, never()).findFailures(0, 201);
+    }
 }

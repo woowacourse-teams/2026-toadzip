@@ -1,4 +1,4 @@
-CREATE TABLE lh_household_enrichment_failures (
+CREATE TABLE IF NOT EXISTS lh_household_enrichment_failures (
     id BIGSERIAL PRIMARY KEY,
     source_key VARCHAR(500) NOT NULL,
     area_name VARCHAR(200),
@@ -17,5 +17,5 @@ CREATE TABLE lh_household_enrichment_failures (
     last_resolved_execution_id UUID
 );
 
-CREATE INDEX idx_lh_household_enrichment_failures_status_source
+CREATE INDEX IF NOT EXISTS idx_lh_household_enrichment_failures_status_source
     ON lh_household_enrichment_failures (status, source_key);

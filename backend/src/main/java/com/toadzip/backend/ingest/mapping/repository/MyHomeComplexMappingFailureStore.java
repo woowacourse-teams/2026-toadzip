@@ -2,7 +2,6 @@ package com.toadzip.backend.ingest.mapping.repository;
 
 import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
 
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailure;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import java.time.Clock;
@@ -30,7 +29,10 @@ public class MyHomeComplexMappingFailureStore {
     }
 
     @Transactional
-    public void replacePreparationFailures(List<MyHomeComplexMappingFailure> failures) {
+    public void replacePreparationFailures(
+            List<MyHomeComplexMappingFailure> failures,
+            UUID executionId
+    ) {
         var preparationReasons = EnumSet.of(
                 MyHomeComplexMappingFailureReason.MISSING_REQUIRED_VALUE,
                 MyHomeComplexMappingFailureReason.INVALID_VALUE,
@@ -40,22 +42,27 @@ public class MyHomeComplexMappingFailureStore {
                 .stream()
                 .filter(failure -> preparationReasons.contains(failure.getReason()))
                 .toList();
-        reconcile(storedPreparationFailures, failures);
+        reconcile(storedPreparationFailures, failures, executionId);
     }
 
     @Transactional
     public void replaceForComplex(
             String sourceComplexIdentifier,
-            List<MyHomeComplexMappingFailure> failures
+            List<MyHomeComplexMappingFailure> failures,
+            UUID executionId
     ) {
-        reconcile(repository.findAllBySourceComplexIdentifier(sourceComplexIdentifier), failures);
+        reconcile(
+                repository.findAllBySourceComplexIdentifier(sourceComplexIdentifier),
+                failures,
+                executionId
+        );
     }
 
     private void reconcile(
             List<MyHomeComplexMappingFailure> storedFailures,
-            List<MyHomeComplexMappingFailure> observedFailures
+            List<MyHomeComplexMappingFailure> observedFailures,
+            UUID executionId
     ) {
-        UUID executionId = IngestExecutionContext.currentExecutionId().orElse(null);
         Instant resolvedAt = clock.instant();
         Map<FailureKey, MyHomeComplexMappingFailure> stored = indexed(storedFailures);
         Map<FailureKey, MyHomeComplexMappingFailure> observed = indexed(observedFailures);

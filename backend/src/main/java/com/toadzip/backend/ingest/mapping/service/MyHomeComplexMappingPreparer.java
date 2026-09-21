@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
 import com.toadzip.backend.ingest.collection.repository.MyHomeComplexSourceRepository;
+import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingCandidate;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailure;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
@@ -17,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
@@ -67,7 +69,7 @@ class MyHomeComplexMappingPreparer {
             );
         }
         synchronizeCandidates(storedCandidates, preparedCandidates);
-        failureStore.replacePreparationFailures(failures);
+        failureStore.replacePreparationFailures(failures, currentExecutionId());
         return new MyHomeComplexMappingPreparationReport(preparedCandidates.size(), failures.size());
     }
 
@@ -125,7 +127,16 @@ class MyHomeComplexMappingPreparer {
                 .stream()
                 .filter(candidate -> !preparedIdentifiers.contains(candidate.getSourceComplexIdentifier()))
                 .toList();
+        staleCandidates.forEach(candidate -> failureStore.replaceForComplex(
+                candidate.getSourceComplexIdentifier(),
+                List.of(),
+                currentExecutionId()
+        ));
         candidateStore.synchronize(preparedCandidates, staleCandidates);
+    }
+
+    private UUID currentExecutionId() {
+        return IngestExecutionContext.currentExecutionId().orElse(null);
     }
 
     private Map<String, List<MyHomeComplexSource>> groupSources(

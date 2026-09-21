@@ -3,7 +3,9 @@ package com.toadzip.backend.ingest.collection.service;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataCollectionFailure;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.ExternalDataFailureStore;
+import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import java.time.Clock;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.springframework.stereotype.Service;
@@ -43,7 +45,7 @@ public class ExternalDataFailureRecorder {
                 details.attemptCount(),
                 details.exception().getClass().getSimpleName(),
                 safeReason
-        ));
+        ), currentExecutionId());
         logger.warn(
                 logMessage + ": request={}, attemptCount={}, reason={}",
                 safeRequestDescription,
@@ -54,11 +56,15 @@ public class ExternalDataFailureRecorder {
     }
 
     public void resolve(ExternalDataSource source, String requestDescription) {
-        store.resolve(source, requestDescription, clock.instant());
+        store.resolve(source, requestDescription, clock.instant(), currentExecutionId());
     }
 
     public void skip(ExternalDataSource source, String requestDescription, String skipReason) {
-        store.skip(source, requestDescription, clock.instant(), skipReason);
+        store.skip(source, requestDescription, clock.instant(), skipReason, currentExecutionId());
+    }
+
+    private UUID currentExecutionId() {
+        return IngestExecutionContext.currentExecutionId().orElse(null);
     }
 
     private String reasonOf(RuntimeException exception) {

@@ -25,6 +25,7 @@ import com.toadzip.backend.ingest.collection.repository.external.MyHomeComplexRe
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -40,6 +41,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.MDC;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
@@ -336,6 +338,37 @@ class MyHomeComplexCollectionServiceTest {
                 .hasMessage("DB 저장 실패");
 
         verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("전국 동시 수집 worker에 실행 ID를 전파한다")
+    void propagatesExecutionIdToConcurrentWorkers() {
+        MyHomeRegion seoul = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        MyHomeRegion busan = new MyHomeRegion("26", "110", "부산광역시", "중구");
+        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexRegionCollector concurrentCollector = mock(MyHomeComplexRegionCollector.class);
+        MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
+                regionCatalog,
+                concurrentCollector
+        );
+        String executionId = UUID.randomUUID().toString();
+        when(regionCatalog.findAll()).thenReturn(List.of(seoul, busan));
+        when(concurrentCollector.collect(any(), eq(request), any(AtomicBoolean.class)))
+                .thenAnswer(invocation -> {
+                    assertThat(MDC.get("executionId")).isEqualTo(executionId);
+                    return MyHomeComplexCollectionReport.empty();
+                });
+
+        MDC.put("executionId", executionId);
+        try {
+            concurrentService.collect(request);
+        }
+        finally {
+            MDC.clear();
+        }
+
+        verify(concurrentCollector, times(2))
+                .collect(any(), eq(request), any(AtomicBoolean.class));
     }
 
     @Test

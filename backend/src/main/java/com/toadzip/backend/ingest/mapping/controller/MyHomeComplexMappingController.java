@@ -48,8 +48,19 @@ public class MyHomeComplexMappingController {
         return ResponseEntity.ok(mappingService.findFailures());
     }
 
+    @GetMapping("/failures/page")
+    public ResponseEntity<List<MyHomeComplexMappingFailureResponse>> findFailurePage(
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "100") @Min(1) @Max(200) int size
+    ) {
+        return ResponseEntity.ok(mappingService.findFailures(page, size));
+    }
+
     @GetMapping("/failures/history")
-    public ResponseEntity<List<MyHomeComplexMappingFailureResponse>> findFailureHistory() {
-        return ResponseEntity.ok(mappingService.findFailureHistory());
+    public ResponseEntity<List<MyHomeComplexMappingFailureResponse>> findFailureHistory(
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "100") @Min(1) @Max(200) int size
+    ) {
+        return ResponseEntity.ok(mappingService.findFailureHistory(page, size));
     }
 }

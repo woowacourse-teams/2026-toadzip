@@ -3,7 +3,6 @@ package com.toadzip.backend.ingest.enrichment.repository;
 import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
 
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -28,8 +27,7 @@ public class LhAnnouncementEnrichmentFailureStore {
     }
 
     @Transactional
-    public void replaceAll(List<LhAnnouncementEnrichmentFailure> failures) {
-        UUID executionId = IngestExecutionContext.currentExecutionId().orElse(null);
+    public void replaceAll(List<LhAnnouncementEnrichmentFailure> failures, UUID executionId) {
         Instant resolvedAt = clock.instant();
         Map<FailureKey, LhAnnouncementEnrichmentFailure> stored = indexed(repository.findAll());
         Map<FailureKey, LhAnnouncementEnrichmentFailure> observed = indexed(failures);

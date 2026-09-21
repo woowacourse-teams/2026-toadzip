@@ -3,8 +3,8 @@ package com.toadzip.backend.ingest.collection.repository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataCollectionFailure;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import java.time.Instant;
+import java.util.UUID;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,8 +18,7 @@ public class ExternalDataFailureStore {
     }
 
     @Transactional
-    public void store(ExternalDataCollectionFailure failure) {
-        var executionId = IngestExecutionContext.currentExecutionId().orElse(null);
+    public void store(ExternalDataCollectionFailure failure, UUID executionId) {
         failureRepository.findFirstBySourceAndRequestDescriptionOrderByIdDesc(
                 failure.getSource(),
                 failure.getRequestDescription()
@@ -33,15 +32,17 @@ public class ExternalDataFailureStore {
     }
 
     @Transactional
-    public void resolve(ExternalDataSource source, String requestDescription, Instant resolvedAt) {
+    public void resolve(
+            ExternalDataSource source,
+            String requestDescription,
+            Instant resolvedAt,
+            UUID executionId
+    ) {
         failureRepository.findAllBySourceAndRequestDescriptionAndStatus(
                 source,
                 requestDescription,
                 ExternalDataFailureStatus.PENDING
-        ).forEach(failure -> failure.resolve(
-                resolvedAt,
-                IngestExecutionContext.currentExecutionId().orElse(null)
-        ));
+        ).forEach(failure -> failure.resolve(resolvedAt, executionId));
     }
 
     @Transactional
@@ -49,16 +50,13 @@ public class ExternalDataFailureStore {
             ExternalDataSource source,
             String requestDescription,
             Instant skippedAt,
-            String skipReason
+            String skipReason,
+            UUID executionId
     ) {
         failureRepository.findAllBySourceAndRequestDescriptionAndStatus(
                 source,
                 requestDescription,
                 ExternalDataFailureStatus.PENDING
-        ).forEach(failure -> failure.skip(
-                skippedAt,
-                skipReason,
-                IngestExecutionContext.currentExecutionId().orElse(null)
-        ));
+        ).forEach(failure -> failure.skip(skippedAt, skipReason, executionId));
     }
 }

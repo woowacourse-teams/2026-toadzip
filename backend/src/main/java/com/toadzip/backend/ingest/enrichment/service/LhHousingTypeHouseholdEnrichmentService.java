@@ -12,6 +12,7 @@ import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailure
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureStore;
+import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -21,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -57,16 +59,19 @@ public class LhHousingTypeHouseholdEnrichmentService {
     }
 
     @Transactional(readOnly = true)
-    public List<LhHouseholdEnrichmentFailureResponse> findFailures() {
-        return failureRepository.findAllByStatusOrderBySourceKeyAsc(PENDING)
+    public List<LhHouseholdEnrichmentFailureResponse> findFailures(int page, int size) {
+        return failureRepository.findAllByStatusOrderBySourceKeyAscIdAsc(
+                        PENDING,
+                        PageRequest.of(page, size)
+                )
                 .stream()
                 .map(LhHouseholdEnrichmentFailureResponse::from)
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public List<LhHouseholdEnrichmentFailureResponse> findFailureHistory() {
-        return failureRepository.findAllByOrderBySourceKeyAsc()
+    public List<LhHouseholdEnrichmentFailureResponse> findFailureHistory(int page, int size) {
+        return failureRepository.findAllByOrderBySourceKeyAscIdAsc(PageRequest.of(page, size))
                 .stream()
                 .map(LhHouseholdEnrichmentFailureResponse::from)
                 .toList();
@@ -94,7 +99,10 @@ public class LhHousingTypeHouseholdEnrichmentService {
             matchedSources.add(matchedSource.get());
         }
         report = report.plus(writeUniqueMatches(matchedSources, failures, occurredAt));
-        failureStore.replaceAll(failures);
+        failureStore.replaceAll(
+                failures,
+                IngestExecutionContext.currentExecutionId().orElse(null)
+        );
         logCompleted(report);
         return report;
     }

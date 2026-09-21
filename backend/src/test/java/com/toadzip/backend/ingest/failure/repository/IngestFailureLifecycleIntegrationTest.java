@@ -25,12 +25,11 @@ import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingFailure
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest
@@ -81,19 +80,20 @@ class IngestFailureLifecycleIntegrationTest {
         Instant firstOccurredAt = Instant.parse("2026-09-19T00:00:00Z");
         Instant secondOccurredAt = Instant.parse("2026-09-19T01:00:00Z");
 
-        inExecution(firstExecutionId, () -> externalFailureStore.store(externalFailure(
+        externalFailureStore.store(externalFailure(
                 firstOccurredAt,
                 "첫 실패"
-        )));
-        inExecution(resolvedExecutionId, () -> externalFailureStore.resolve(
-                    ExternalDataSource.MYHOME_COMPLEX,
-                    "page=1",
-                    Instant.parse("2026-09-19T00:30:00Z")
-        ));
-        inExecution(recurredExecutionId, () -> externalFailureStore.store(externalFailure(
+        ), firstExecutionId);
+        externalFailureStore.resolve(
+                ExternalDataSource.MYHOME_COMPLEX,
+                "page=1",
+                Instant.parse("2026-09-19T00:30:00Z"),
+                resolvedExecutionId
+        );
+        externalFailureStore.store(externalFailure(
                 secondOccurredAt,
                 "재발"
-        )));
+        ), recurredExecutionId);
 
         assertThat(externalFailureRepository.findAll()).singleElement().satisfies(failure -> {
             assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.PENDING);
@@ -120,12 +120,8 @@ class IngestFailureLifecycleIntegrationTest {
         latestResolved.resolve(Instant.parse("2026-09-19T02:00:00Z"), null);
         externalFailureRepository.saveAllAndFlush(List.of(oldPending, latestResolved));
 
-        assertThat(externalFailureRepository.findLatestPendingByRequest()).isEmpty();
-    }
-
-    @AfterEach
-    void tearDown() {
-        MDC.clear();
+        assertThat(externalFailureRepository.findLatestPendingByRequest(PageRequest.of(0, 100)))
+                .isEmpty();
     }
 
     @Test
@@ -135,16 +131,16 @@ class IngestFailureLifecycleIntegrationTest {
         UUID resolvedExecutionId = UUID.randomUUID();
         UUID recurredExecutionId = UUID.randomUUID();
 
-        inExecution(firstExecutionId, () -> announcementStore.replaceAll(List.of(
+        announcementStore.replaceAll(List.of(
                 announcementFailure("처음 실패", "2026-09-19T00:00:00Z")
-        )));
-        inExecution(repeatedExecutionId, () -> announcementStore.replaceAll(List.of(
+        ), firstExecutionId);
+        announcementStore.replaceAll(List.of(
                 announcementFailure("같은 실패 반복", "2026-09-19T01:00:00Z")
-        )));
-        inExecution(resolvedExecutionId, () -> announcementStore.replaceAll(List.of()));
-        inExecution(recurredExecutionId, () -> announcementStore.replaceAll(List.of(
+        ), repeatedExecutionId);
+        announcementStore.replaceAll(List.of(), resolvedExecutionId);
+        announcementStore.replaceAll(List.of(
                 announcementFailure("해결 후 재발", "2026-09-19T03:00:00Z")
-        )));
+        ), recurredExecutionId);
 
         assertThat(announcementRepository.findAll()).singleElement().satisfies(failure -> {
             assertThat(failure.getStatus()).isEqualTo(PENDING);
@@ -164,14 +160,16 @@ class IngestFailureLifecycleIntegrationTest {
     void 단지별_갱신은_해당_단지의_사라진_실패만_해결한다() {
         complexStore.replaceForComplex(
                 "complex-a",
-                List.of(complexFailure("source-a", "complex-a"))
+                List.of(complexFailure("source-a", "complex-a")),
+                null
         );
         complexStore.replaceForComplex(
                 "complex-b",
-                List.of(complexFailure("source-b", "complex-b"))
+                List.of(complexFailure("source-b", "complex-b")),
+                null
         );
 
-        complexStore.replaceForComplex("complex-a", List.of());
+        complexStore.replaceForComplex("complex-a", List.of(), null);
 
         assertThat(complexRepository.findAllBySourceComplexIdentifier("complex-a"))
                 .singleElement()
@@ -187,10 +185,11 @@ class IngestFailureLifecycleIntegrationTest {
     void 후보_준비_동기화는_아직_재처리하지_않은_좌표_실패를_해결하지_않는다() {
         complexStore.replaceForComplex(
                 "complex-a",
-                List.of(complexFailure("source-a", "complex-a"))
+                List.of(complexFailure("source-a", "complex-a")),
+                null
         );
 
-        complexStore.replacePreparationFailures(List.of());
+        complexStore.replacePreparationFailures(List.of(), null);
 
         assertThat(complexRepository.findAll()).singleElement()
                 .extracting(MyHomeComplexMappingFailure::getStatus)
@@ -202,9 +201,9 @@ class IngestFailureLifecycleIntegrationTest {
         enrichmentStore.replaceAll(List.of(LhAnnouncementEnrichmentFailure.create(
                 "source-key", "announcement-id", "pan-id", ANNOUNCEMENT_NOT_FOUND,
                 "공고 없음", Instant.parse("2026-09-19T00:00:00Z")
-        )));
+        )), null);
 
-        enrichmentStore.replaceAll(List.of());
+        enrichmentStore.replaceAll(List.of(), null);
 
         assertThat(enrichmentRepository.findAll()).singleElement().satisfies(failure -> {
             assertThat(failure.getStatus()).isEqualTo(RESOLVED);
@@ -250,13 +249,4 @@ class IngestFailureLifecycleIntegrationTest {
         );
     }
 
-    private void inExecution(UUID executionId, Runnable action) {
-        MDC.put("executionId", executionId.toString());
-        try {
-            action.run();
-        }
-        finally {
-            MDC.remove("executionId");
-        }
-    }
 }

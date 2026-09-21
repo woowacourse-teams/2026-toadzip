@@ -7,6 +7,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingFailureResponse;
@@ -24,6 +25,7 @@ import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
@@ -92,7 +94,10 @@ public class MyHomeAnnouncementMappingService {
                     occurredAt
             ));
         }
-        failureStore.replaceAll(failures);
+        failureStore.replaceAll(
+                failures,
+                IngestExecutionContext.currentExecutionId().orElse(null)
+        );
         return report;
     }
 
@@ -246,6 +251,17 @@ public class MyHomeAnnouncementMappingService {
     }
 
     @Transactional(readOnly = true)
+    public List<MyHomeAnnouncementMappingFailureResponse> findFailures(int page, int size) {
+        return failureRepository.findAllByStatusOrderBySourceKeyAscIdAsc(
+                        PENDING,
+                        PageRequest.of(page, size)
+                )
+                .stream()
+                .map(MyHomeAnnouncementMappingFailureResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<MyHomeAnnouncementMappingFailureResponse> findFailures() {
         return failureRepository.findAllByStatusOrderBySourceKeyAsc(PENDING)
                 .stream()
@@ -254,8 +270,8 @@ public class MyHomeAnnouncementMappingService {
     }
 
     @Transactional(readOnly = true)
-    public List<MyHomeAnnouncementMappingFailureResponse> findFailureHistory() {
-        return failureRepository.findAllByOrderBySourceKeyAsc()
+    public List<MyHomeAnnouncementMappingFailureResponse> findFailureHistory(int page, int size) {
+        return failureRepository.findAllByOrderBySourceKeyAscIdAsc(PageRequest.of(page, size))
                 .stream()
                 .map(MyHomeAnnouncementMappingFailureResponse::from)
                 .toList();

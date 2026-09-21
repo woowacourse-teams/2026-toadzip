@@ -287,7 +287,7 @@ class MyHomeComplexMappingServiceTest {
         assertThat(complexRepository.findAll())
                 .extracting(complex -> complex.getSourceComplexIdentifier())
                 .containsExactly("123:NATIONAL_RENTAL");
-        assertThat(service.findFailures()).singleElement().satisfies(failure -> {
+        assertThat(service.findFailures(0, 100)).singleElement().satisfies(failure -> {
             assertThat(failure.sourceComplexIdentifier()).isEqualTo("456:NATIONAL_RENTAL");
             assertThat(failure.reason()).isEqualTo(MyHomeComplexMappingFailureReason.MISSING_REQUIRED_VALUE);
             assertThat(failure.detail()).contains("단지명");
@@ -362,7 +362,7 @@ class MyHomeComplexMappingServiceTest {
         var report = service.mapAll();
 
         assertThat(report.failedSourceRowCount()).isZero();
-        assertThat(service.findFailures()).isEmpty();
+        assertThat(service.findFailures(0, 100)).isEmpty();
     }
 
     @Test
@@ -431,9 +431,29 @@ class MyHomeComplexMappingServiceTest {
 
         assertThat(report.failedSourceRowCount()).isOne();
         assertThat(complexRepository.findAll()).isEmpty();
-        assertThat(service.findFailures()).singleElement().satisfies(failure -> {
+        assertThat(service.findFailures(0, 100)).singleElement().satisfies(failure -> {
             assertThat(failure.reason()).isEqualTo(MyHomeComplexMappingFailureReason.GEOCODING_ERROR);
             assertThat(failure.detail()).contains("ADDRESS_NOT_FOUND");
+        });
+    }
+
+    @Test
+    void 좌표_변환에_실패한_원천이_사라지면_현재_실패에서_해결한다() {
+        sourceRepository.save(source("46A", "46.8000", "20.2000"));
+        when(geocodingService.geocode(anyString())).thenThrow(new RoadAddressGeocodingException(
+                RoadAddressGeocodingFailureReason.ADDRESS_NOT_FOUND,
+                "원본과 일치하는 도로명주소를 찾지 못했습니다."
+        ));
+        service.mapAll();
+        sourceRepository.deleteAll();
+
+        service.prepare();
+
+        assertThat(service.findFailures(0, 100)).isEmpty();
+        assertThat(service.findFailureHistory(0, 100)).singleElement().satisfies(failure -> {
+            assertThat(failure.reason()).isEqualTo(MyHomeComplexMappingFailureReason.GEOCODING_ERROR);
+            assertThat(failure.status().name()).isEqualTo("RESOLVED");
+            assertThat(failure.lastResolvedAt()).isNotNull();
         });
     }
 
