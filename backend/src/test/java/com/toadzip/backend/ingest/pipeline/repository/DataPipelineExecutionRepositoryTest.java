@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionStateService;
@@ -62,6 +63,49 @@ class DataPipelineExecutionRepositoryTest {
             assertThat(result.getStep()).isEqualTo(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
             assertThat(result.getReport()).isEqualTo("{\"mappedSourceRowCount\":3}");
         });
+    }
+
+    @Test
+    void 정기_실행_슬롯과_상위_실행을_조회한다() {
+        UUID collectionId = UUID.randomUUID();
+        Instant scheduledAt = Instant.parse("2026-09-21T03:00:00Z");
+        DataPipelineExecution collection = DataPipelineExecution.start(
+                collectionId,
+                DataPipelineType.ANNOUNCEMENT_COLLECTION,
+                scheduledAt,
+                DataPipelineExecutionTrigger.SCHEDULED,
+                scheduledAt,
+                null
+        );
+        executionRepository.saveAndFlush(collection);
+        DataPipelineExecution refinement = DataPipelineExecution.start(
+                UUID.randomUUID(),
+                DataPipelineType.ANNOUNCEMENT_REFINEMENT,
+                scheduledAt.plusSeconds(1),
+                DataPipelineExecutionTrigger.SCHEDULED,
+                scheduledAt,
+                collectionId
+        );
+        executionRepository.saveAndFlush(refinement);
+        entityManager.clear();
+
+        DataPipelineExecution foundCollection = executionRepository
+                .findFirstByTypeAndScheduledAtOrderByIdDesc(
+                        DataPipelineType.ANNOUNCEMENT_COLLECTION,
+                        scheduledAt
+                )
+                .orElseThrow();
+        DataPipelineExecution foundRefinement = executionRepository
+                .findFirstByTypeAndUpstreamExecutionIdOrderByIdDesc(
+                        DataPipelineType.ANNOUNCEMENT_REFINEMENT,
+                        collectionId
+                )
+                .orElseThrow();
+
+        assertThat(foundCollection.getExecutionTrigger())
+                .isEqualTo(DataPipelineExecutionTrigger.SCHEDULED);
+        assertThat(foundCollection.getScheduledAt()).isEqualTo(scheduledAt);
+        assertThat(foundRefinement.getUpstreamExecutionId()).isEqualTo(collectionId);
     }
 
     @Test

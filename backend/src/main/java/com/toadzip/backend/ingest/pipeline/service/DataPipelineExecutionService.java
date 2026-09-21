@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.pipeline.service;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
@@ -64,12 +65,29 @@ public class DataPipelineExecutionService {
     }
 
     public DataPipelineExecutionResponse start(DataPipelineType type) {
+        return start(type, DataPipelineExecutionTrigger.MANUAL, null, null);
+    }
+
+    public DataPipelineExecutionResponse start(
+            DataPipelineType type,
+            DataPipelineExecutionTrigger executionTrigger,
+            Instant scheduledAt,
+            UUID upstreamExecutionId
+    ) {
         DataPipelineExecutionLock.Lease lease = executionLock.tryAcquire()
                 .orElseThrow(() -> new IngestAlreadyRunningException(ALREADY_RUNNING_MESSAGE));
         UUID executionId = UUID.randomUUID();
         DataPipelineExecution execution;
         try {
-            execution = executionStateService.create(executionId, type, Instant.now(clock));
+            Instant startedAt = Instant.now(clock);
+            execution = createExecution(
+                    executionId,
+                    type,
+                    startedAt,
+                    executionTrigger,
+                    scheduledAt,
+                    upstreamExecutionId
+            );
         }
         catch (RuntimeException exception) {
             lease.close();
@@ -96,6 +114,29 @@ public class DataPipelineExecutionService {
             throw exception;
         }
         return acceptedResponse;
+    }
+
+    private DataPipelineExecution createExecution(
+            UUID executionId,
+            DataPipelineType type,
+            Instant startedAt,
+            DataPipelineExecutionTrigger executionTrigger,
+            Instant scheduledAt,
+            UUID upstreamExecutionId
+    ) {
+        if (executionTrigger == DataPipelineExecutionTrigger.MANUAL
+                && scheduledAt == null
+                && upstreamExecutionId == null) {
+            return executionStateService.create(executionId, type, startedAt);
+        }
+        return executionStateService.create(
+                executionId,
+                type,
+                startedAt,
+                executionTrigger,
+                scheduledAt,
+                upstreamExecutionId
+        );
     }
 
     public DataPipelineExecutionResponse findLatest(DataPipelineType type) {

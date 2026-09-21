@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.pipeline.dto;
 
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import java.time.Instant;
@@ -10,6 +11,9 @@ import java.util.UUID;
 public record DataPipelineExecutionResponse(
         UUID executionId,
         DataPipelineType type,
+        DataPipelineExecutionTrigger trigger,
+        Instant scheduledAt,
+        UUID upstreamExecutionId,
         DataPipelineExecutionStatus status,
         DataPipelineStep currentStep,
         String currentStepName,
@@ -35,6 +39,9 @@ public record DataPipelineExecutionResponse(
         return new DataPipelineExecutionResponse(
                 null,
                 type,
+                null,
+                null,
+                null,
                 DataPipelineExecutionStatus.IDLE,
                 null,
                 null,

@@ -30,6 +30,9 @@ public class DataPipelineExecutionMapper {
         return new DataPipelineExecutionResponse(
                 execution.getExecutionId(),
                 execution.getType(),
+                execution.getExecutionTrigger(),
+                execution.getScheduledAt(),
+                execution.getUpstreamExecutionId(),
                 execution.getStatus(),
                 currentStep,
                 stepName(currentStep),
