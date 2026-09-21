@@ -5,6 +5,7 @@ import static com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingCand
 
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
+import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
@@ -23,6 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
@@ -96,6 +98,11 @@ class MyHomeComplexMappingBatchProcessor {
             List<MyHomeComplexSource> sources
     ) {
         if (sources == null || sources.isEmpty()) {
+            failureStore.replaceForComplex(
+                    candidate.getSourceComplexIdentifier(),
+                    List.of(),
+                    currentExecutionId()
+            );
             candidateStore.delete(candidate);
             return MyHomeComplexMappingReport.failedRows(0);
         }
@@ -131,7 +138,11 @@ class MyHomeComplexMappingBatchProcessor {
     private void completeCandidate(MyHomeComplexMappingCandidate candidate) {
         candidate.markMapped();
         candidateStore.save(candidate);
-        failureStore.replaceForComplex(candidate.getSourceComplexIdentifier(), List.of());
+        failureStore.replaceForComplex(
+                candidate.getSourceComplexIdentifier(),
+                List.of(),
+                currentExecutionId()
+        );
     }
 
     private MyHomeComplexMappingReport handleGeocodingFailure(
@@ -208,7 +219,11 @@ class MyHomeComplexMappingBatchProcessor {
                     source.getSourceKey(), sourceComplexIdentifier, reason, detail, occurredAt
             ));
         }
-        failureStore.replaceForComplex(sourceComplexIdentifier, failures);
+        failureStore.replaceForComplex(sourceComplexIdentifier, failures, currentExecutionId());
         return MyHomeComplexMappingReport.failedRows(failures.size());
+    }
+
+    private UUID currentExecutionId() {
+        return IngestExecutionContext.currentExecutionId().orElse(null);
     }
 }

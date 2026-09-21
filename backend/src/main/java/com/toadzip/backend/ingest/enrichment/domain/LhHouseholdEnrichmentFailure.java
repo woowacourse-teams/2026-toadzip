@@ -1,4 +1,4 @@
-package com.toadzip.backend.ingest.mapping.domain;
+package com.toadzip.backend.ingest.enrichment.domain;
 
 import static lombok.AccessLevel.PROTECTED;
 
@@ -18,9 +18,9 @@ import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "myhome_complex_mapping_failures")
+@Table(name = "lh_household_enrichment_failures")
 @NoArgsConstructor(access = PROTECTED)
-public class MyHomeComplexMappingFailure {
+public class LhHouseholdEnrichmentFailure {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -29,11 +29,18 @@ public class MyHomeComplexMappingFailure {
     @Column(nullable = false, length = 500)
     private String sourceKey;
 
-    private String sourceComplexIdentifier;
+    @Column(length = 200)
+    private String areaName;
+
+    @Column(length = 200)
+    private String supplyTypeName;
+
+    @Column(length = 500)
+    private String complexName;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 40)
-    private MyHomeComplexMappingFailureReason reason;
+    private LhHouseholdEnrichmentFailureReason reason;
 
     @Column(nullable = false, length = 1000)
     private String detail;
@@ -62,19 +69,23 @@ public class MyHomeComplexMappingFailure {
 
     private UUID lastResolvedExecutionId;
 
-    private MyHomeComplexMappingFailure(
+    private LhHouseholdEnrichmentFailure(
             String sourceKey,
-            String sourceComplexIdentifier,
-            MyHomeComplexMappingFailureReason reason,
+            String areaName,
+            String supplyTypeName,
+            String complexName,
+            LhHouseholdEnrichmentFailureReason reason,
             String detail,
             Instant occurredAt
     ) {
-        validateNotBlank(sourceKey, "원천 키");
-        validateRequired(reason, "실패 사유");
-        validateNotBlank(detail, "실패 상세");
-        validateRequired(occurredAt, "실패 시각");
+        requireText(sourceKey, "원천 키");
+        require(reason, "실패 사유");
+        requireText(detail, "실패 상세");
+        require(occurredAt, "실패 시각");
         this.sourceKey = sourceKey;
-        this.sourceComplexIdentifier = sourceComplexIdentifier;
+        this.areaName = areaName;
+        this.supplyTypeName = supplyTypeName;
+        this.complexName = complexName;
         this.reason = reason;
         this.detail = detail;
         this.occurredAt = occurredAt;
@@ -83,9 +94,25 @@ public class MyHomeComplexMappingFailure {
         status = IngestFailureStatus.PENDING;
     }
 
-    public void observe(MyHomeComplexMappingFailure observed, UUID executionId) {
-        validateRequired(observed, "관찰한 실패");
-        sourceComplexIdentifier = observed.sourceComplexIdentifier;
+    public static LhHouseholdEnrichmentFailure create(
+            String sourceKey,
+            String areaName,
+            String supplyTypeName,
+            String complexName,
+            LhHouseholdEnrichmentFailureReason reason,
+            String detail,
+            Instant occurredAt
+    ) {
+        return new LhHouseholdEnrichmentFailure(
+                sourceKey, areaName, supplyTypeName, complexName, reason, detail, occurredAt
+        );
+    }
+
+    public void observe(LhHouseholdEnrichmentFailure observed, UUID executionId) {
+        require(observed, "관찰한 실패");
+        areaName = observed.areaName;
+        supplyTypeName = observed.supplyTypeName;
+        complexName = observed.complexName;
         detail = observed.detail;
         lastOccurredAt = observed.occurredAt;
         occurrenceCount++;
@@ -102,7 +129,7 @@ public class MyHomeComplexMappingFailure {
     }
 
     public void resolve(Instant resolvedAt, UUID executionId) {
-        validateRequired(resolvedAt, "해결 시각");
+        require(resolvedAt, "해결 시각");
         if (status == IngestFailureStatus.RESOLVED) {
             return;
         }
@@ -111,29 +138,13 @@ public class MyHomeComplexMappingFailure {
         lastResolvedExecutionId = executionId;
     }
 
-    public static MyHomeComplexMappingFailure create(
-            String sourceKey,
-            String sourceComplexIdentifier,
-            MyHomeComplexMappingFailureReason reason,
-            String detail,
-            Instant occurredAt
-    ) {
-        return new MyHomeComplexMappingFailure(
-                sourceKey,
-                sourceComplexIdentifier,
-                reason,
-                detail,
-                occurredAt
-        );
-    }
-
-    private void validateNotBlank(String value, String fieldName) {
+    private static void requireText(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + "은 필수입니다.");
         }
     }
 
-    private void validateRequired(Object value, String fieldName) {
+    private static void require(Object value, String fieldName) {
         if (value == null) {
             throw new IllegalArgumentException(fieldName + "은 필수입니다.");
         }

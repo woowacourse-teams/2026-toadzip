@@ -33,7 +33,7 @@ class ExternalDataFailureStoreTest {
                 3,
                 "IllegalStateException",
                 "외부 API 응답 오류"
-        ));
+        ), null);
 
         assertThat(repository.findAll()).singleElement().satisfies(failure -> {
             assertThat(failure.getReason()).isEqualTo("외부 API 응답 오류");
@@ -55,9 +55,14 @@ class ExternalDataFailureStoreTest {
                 3,
                 "ExternalDataRequestException",
                 "resultCode=05"
-        ));
+        ), null);
 
-        store.resolve(ExternalDataSource.MYHOME_COMPLEX, "pageNo=3&numOfRows=500", resolvedAt);
+        store.resolve(
+                ExternalDataSource.MYHOME_COMPLEX,
+                "pageNo=3&numOfRows=500",
+                resolvedAt,
+                null
+        );
 
         assertThat(repository.findAll()).singleElement().satisfies(failure -> {
             assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.RESOLVED);
@@ -77,13 +82,14 @@ class ExternalDataFailureStoreTest {
                 0,
                 "IllegalStateException",
                 "LH 공고 조회 조건이 없습니다."
-        ));
+        ), null);
 
         store.skip(
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
                 "myhomeAnnouncementSourceId=7",
                 skippedAt,
-                "LH 공급기관이 아닌 마이홈 공고라서 수집 대상이 아닙니다."
+                "LH 공급기관이 아닌 마이홈 공고라서 수집 대상이 아닙니다.",
+                null
         );
 
         assertThat(repository.findAll()).singleElement().satisfies(failure -> {

@@ -11,6 +11,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -43,6 +44,21 @@ public class ExternalDataCollectionFailure {
 
     private Instant resolvedAt;
 
+    @Column(nullable = false)
+    private Instant lastOccurredAt;
+
+    @Column(nullable = false)
+    private int occurrenceCount;
+
+    @Column(nullable = false)
+    private int recurrenceCount;
+
+    private UUID firstExecutionId;
+
+    private UUID lastExecutionId;
+
+    private UUID resolvedExecutionId;
+
     @Column(nullable = false, length = 120)
     private String errorType;
 
@@ -72,6 +88,8 @@ public class ExternalDataCollectionFailure {
         status = ExternalDataFailureStatus.PENDING;
         this.errorType = errorType;
         this.reason = reason;
+        lastOccurredAt = occurredAt;
+        occurrenceCount = 1;
     }
 
     public static ExternalDataCollectionFailure create(
@@ -92,19 +110,40 @@ public class ExternalDataCollectionFailure {
         );
     }
 
-    public void resolve(Instant resolvedAt) {
+    public void observe(ExternalDataCollectionFailure observed, UUID executionId) {
+        validateRequired(observed, "관찰한 실패");
+        lastOccurredAt = observed.occurredAt;
+        attemptCount = observed.attemptCount;
+        errorType = observed.errorType;
+        reason = observed.reason;
+        occurrenceCount++;
+        if (status != ExternalDataFailureStatus.PENDING) {
+            recurrenceCount++;
+        }
+        status = ExternalDataFailureStatus.PENDING;
+        lastExecutionId = executionId;
+    }
+
+    public void attachFirstExecution(UUID executionId) {
+        firstExecutionId = executionId;
+        lastExecutionId = executionId;
+    }
+
+    public void resolve(Instant resolvedAt, UUID executionId) {
         validateRequired(resolvedAt, "해결 시각");
         status = ExternalDataFailureStatus.RESOLVED;
         this.resolvedAt = resolvedAt;
+        resolvedExecutionId = executionId;
     }
 
-    public void skip(Instant skippedAt, String skipReason) {
+    public void skip(Instant skippedAt, String skipReason, UUID executionId) {
         validateRequired(skippedAt, "건너뛴 시각");
         validateNotBlank(skipReason, "건너뛴 사유");
         status = ExternalDataFailureStatus.SKIPPED;
         resolvedAt = skippedAt;
         errorType = "NOT_APPLICABLE";
         reason = skipReason;
+        resolvedExecutionId = executionId;
     }
 
     private void validateNotBlank(String value, String fieldName) {

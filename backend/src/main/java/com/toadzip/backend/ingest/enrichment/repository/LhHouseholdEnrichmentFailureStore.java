@@ -2,7 +2,7 @@ package com.toadzip.backend.ingest.enrichment.repository;
 
 import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
 
-import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
+import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailure;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -13,13 +13,13 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-public class LhAnnouncementEnrichmentFailureStore {
+public class LhHouseholdEnrichmentFailureStore {
 
-    private final LhAnnouncementEnrichmentFailureRepository repository;
+    private final LhHouseholdEnrichmentFailureRepository repository;
     private final Clock clock;
 
-    public LhAnnouncementEnrichmentFailureStore(
-            LhAnnouncementEnrichmentFailureRepository repository,
+    public LhHouseholdEnrichmentFailureStore(
+            LhHouseholdEnrichmentFailureRepository repository,
             Clock clock
     ) {
         this.repository = repository;
@@ -27,10 +27,10 @@ public class LhAnnouncementEnrichmentFailureStore {
     }
 
     @Transactional
-    public void replaceAll(List<LhAnnouncementEnrichmentFailure> failures, UUID executionId) {
+    public void replaceAll(List<LhHouseholdEnrichmentFailure> failures, UUID executionId) {
         Instant resolvedAt = clock.instant();
-        Map<FailureKey, LhAnnouncementEnrichmentFailure> observed = indexed(failures);
-        Map<FailureKey, LhAnnouncementEnrichmentFailure> stored = indexed(
+        Map<FailureKey, LhHouseholdEnrichmentFailure> observed = indexed(failures);
+        Map<FailureKey, LhHouseholdEnrichmentFailure> stored = indexed(
                 repository.findAllByStatus(PENDING)
         );
         if (!observed.isEmpty()) {
@@ -44,7 +44,7 @@ public class LhAnnouncementEnrichmentFailureStore {
             }
         });
         observed.forEach((key, failure) -> {
-            LhAnnouncementEnrichmentFailure existing = stored.get(key);
+            LhHouseholdEnrichmentFailure existing = stored.get(key);
             if (existing == null) {
                 failure.attachFirstExecution(executionId);
                 repository.save(failure);
@@ -54,17 +54,17 @@ public class LhAnnouncementEnrichmentFailureStore {
         });
     }
 
-    private Map<FailureKey, LhAnnouncementEnrichmentFailure> indexed(
-            List<LhAnnouncementEnrichmentFailure> failures
+    private Map<FailureKey, LhHouseholdEnrichmentFailure> indexed(
+            List<LhHouseholdEnrichmentFailure> failures
     ) {
-        Map<FailureKey, LhAnnouncementEnrichmentFailure> indexed = new LinkedHashMap<>();
+        Map<FailureKey, LhHouseholdEnrichmentFailure> indexed = new LinkedHashMap<>();
         failures.forEach(failure -> indexed.put(FailureKey.from(failure), failure));
         return indexed;
     }
 
     private record FailureKey(String sourceKey, Object reason) {
 
-        private static FailureKey from(LhAnnouncementEnrichmentFailure failure) {
+        private static FailureKey from(LhHouseholdEnrichmentFailure failure) {
             return new FailureKey(failure.getSourceKey(), failure.getReason());
         }
     }
