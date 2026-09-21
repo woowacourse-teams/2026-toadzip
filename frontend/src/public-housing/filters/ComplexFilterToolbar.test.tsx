@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -43,27 +41,7 @@ const BASE_FILTERS: ComplexSearchFilters = {
   builtYearTo: 2024,
 }
 
-const TOOLBAR_STYLES = readFileSync(
-  resolve(
-    process.cwd(),
-    'src/public-housing/filters/ComplexFilterToolbar.module.css',
-  ),
-  'utf8',
-)
-
 describe('ComplexFilterToolbar', () => {
-  it('데스크톱 트리거와 선택값을 36px 높이의 둥근 사각형으로 통일한다', () => {
-    const triggerRule = TOOLBAR_STYLES.match(/\.trigger\s*\{([^}]*)\}/)?.[1]
-    const choiceRule = TOOLBAR_STYLES.match(
-      /\.choice\s*>\s*span\s*\{([^}]*)\}/,
-    )?.[1]
-
-    expect(triggerRule).toMatch(/height:\s*36px;/)
-    expect(triggerRule).toMatch(/border-radius:\s*9px;/)
-    expect(choiceRule).toMatch(/min-height:\s*36px;/)
-    expect(choiceRule).toMatch(/border-radius:\s*9px;/)
-  })
-
   it('자주 쓰는 필터 뒤에 아이콘 상세 필터를 두고 한 번에 하나의 팝오버만 연다', () => {
     renderToolbar()
 
@@ -136,6 +114,23 @@ describe('ComplexFilterToolbar', () => {
     expect(primaryScroller).toContainElement(primaryTrigger)
     expect(primaryScroller).not.toContainElement(detailTrigger)
     expect(detailTrigger.parentElement).toBe(toolbar)
+  })
+
+  it('패널 닫기는 미적용 선택을 버리고 필터 버튼으로 포커스를 돌린다', () => {
+    const onApply = vi.fn()
+    renderToolbar({ onApply })
+    const trigger = screen.getByRole('button', { name: '임대유형 필터 열기' })
+    fireEvent.click(trigger)
+    const panel = screen.getByRole('region', { name: '임대유형 필터' })
+    fireEvent.click(within(panel).getByRole('checkbox', { name: '행복주택' }))
+
+    fireEvent.click(within(panel).getByRole('button', { name: '임대유형 필터 패널 닫기' }))
+
+    expect(screen.queryByRole('region', { name: '임대유형 필터' })).not.toBeInTheDocument()
+    expect(onApply).not.toHaveBeenCalled()
+    expect(trigger).toHaveFocus()
+    fireEvent.click(trigger)
+    expect(screen.getByRole('checkbox', { name: '행복주택' })).not.toBeChecked()
   })
 
   it('팝오버를 누른 필터 칩의 가로 중심에 연결한다', () => {

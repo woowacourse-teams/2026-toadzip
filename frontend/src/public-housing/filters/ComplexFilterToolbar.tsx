@@ -148,10 +148,10 @@ const MOBILE_SHEET_TOPICS = [
 
 const POPOVER_WIDTHS = {
   region: 320,
-  rentalType: 280,
-  applicationStatus: 280,
-  agency: 280,
-  recruitmentType: 280,
+  rentalType: 320,
+  applicationStatus: 320,
+  agency: 320,
+  recruitmentType: 320,
   price: 420,
   exclusiveArea: 380,
   builtYear: 320,
@@ -705,9 +705,36 @@ export function ComplexFilterToolbar({
               className={styles.form}
               onSubmit={submit}
             >
-              <h2 className={styles.popoverHeading} id={headingId}>
-                {openLabel} 필터
-              </h2>
+              <header className={styles.popoverHeader}>
+                <button
+                  className={styles.reset}
+                  type="button"
+                  aria-label={`${openLabel} 필터 초기화`}
+                  onClick={resetOpenFilter}
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                    <path d="M16.4 8a6.5 6.5 0 1 0-.3 4.8M16.5 3.5V8H12" />
+                  </svg>
+                  초기화
+                </button>
+                <h2 className={styles.popoverHeading} id={headingId}>
+                  {openLabel} 필터
+                </h2>
+                <button
+                  className={styles.close}
+                  type="button"
+                  aria-label={`${openLabel} 필터 패널 닫기`}
+                  onClick={() => {
+                    setOpenTopic(null)
+                    setErrorMessage(null)
+                    triggerRefs.current[openTopic]?.focus()
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                    <path d="m5 5 14 14M19 5 5 19" />
+                  </svg>
+                </button>
+              </header>
               <div className={styles.fields}>
                 {openTopic === 'detail' ? (
                   <DetailFilterFields
@@ -726,12 +753,6 @@ export function ComplexFilterToolbar({
                 <p className={styles.error} role="alert">{errorMessage}</p>
               )}
               <div className={styles.actions}>
-                <button
-                  className={styles.reset}
-                  type="button"
-                  aria-label={`${openLabel} 필터 초기화`}
-                  onClick={resetOpenFilter}
-                >초기화</button>
                 <button
                   className={styles.apply}
                   type="submit"
@@ -807,23 +828,30 @@ export function ComplexFilterToolbar({
               onSubmit={submitMobileSheet}
             >
               <header className={styles.mobileSheetHeader}>
+                <button
+                  ref={mobileResetRef}
+                  className={styles.mobileReset}
+                  type="button"
+                  aria-label="전체 필터 초기화"
+                  onClick={resetMobileSheet}
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                    <path d="M16.4 8a6.5 6.5 0 1 0-.3 4.8M16.5 3.5V8H12" />
+                  </svg>
+                  초기화
+                </button>
                 <h2 id="mobile-complex-filter-heading">단지 필터</h2>
-                <div className={styles.mobileHeaderActions}>
-                  <button
-                    ref={mobileResetRef}
-                    className={styles.mobileReset}
-                    type="button"
-                    aria-label="전체 필터 초기화"
-                    onClick={resetMobileSheet}
-                  >초기화</button>
-                  <button
-                    ref={mobileCloseRef}
-                    className={styles.mobileClose}
-                    type="button"
-                    aria-label="단지 필터 닫기"
-                    onClick={closeMobileSheet}
-                  >×</button>
-                </div>
+                <button
+                  ref={mobileCloseRef}
+                  className={styles.mobileClose}
+                  type="button"
+                  aria-label="단지 필터 닫기"
+                  onClick={closeMobileSheet}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                    <path d="m5 5 14 14M19 5 5 19" />
+                  </svg>
+                </button>
               </header>
 
               <div

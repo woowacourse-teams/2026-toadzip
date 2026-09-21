@@ -25,12 +25,14 @@ import com.toadzip.backend.ingest.collection.repository.external.MyHomeComplexRe
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,6 +42,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.MDC;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
@@ -339,6 +342,37 @@ class MyHomeComplexCollectionServiceTest {
     }
 
     @Test
+    @DisplayName("전국 동시 수집 worker에 실행 ID를 전파한다")
+    void propagatesExecutionIdToConcurrentWorkers() {
+        MyHomeRegion seoul = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        MyHomeRegion busan = new MyHomeRegion("26", "110", "부산광역시", "중구");
+        MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
+        MyHomeComplexRegionCollector concurrentCollector = mock(MyHomeComplexRegionCollector.class);
+        MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
+                regionCatalog,
+                concurrentCollector
+        );
+        String executionId = UUID.randomUUID().toString();
+        when(regionCatalog.findAll()).thenReturn(List.of(seoul, busan));
+        when(concurrentCollector.collect(any(), eq(request), any(AtomicBoolean.class)))
+                .thenAnswer(invocation -> {
+                    assertThat(MDC.get("executionId")).isEqualTo(executionId);
+                    return MyHomeComplexCollectionReport.empty();
+                });
+
+        MDC.put("executionId", executionId);
+        try {
+            concurrentService.collect(request);
+        }
+        finally {
+            MDC.clear();
+        }
+
+        verify(concurrentCollector, times(2))
+                .collect(any(), eq(request), any(AtomicBoolean.class));
+    }
+
+    @Test
     @DisplayName("전국 수집 중 호출 제한이 발생하면 재시도와 대기 지역 요청을 중단한다")
     void stopsConcurrentRegionsAfterRateLimit() {
         List<MyHomeRegion> regions = java.util.stream.IntStream.rangeClosed(1, 8)
@@ -510,6 +544,7 @@ class MyHomeComplexCollectionServiceTest {
             assertThat(slowWorkerInterrupted.await(2, TimeUnit.SECONDS)).isTrue();
             assertThat(collection.isDone()).isFalse();
             serviceThread.get().interrupt();
+            assertThat(awaitInterruptConsumed(serviceThread.get())).isTrue();
             allowSlowWorkerToFinish.countDown();
 
             assertThatThrownBy(() -> collection.get(2, TimeUnit.SECONDS))
@@ -549,6 +584,14 @@ class MyHomeComplexCollectionServiceTest {
         if (restoreInterrupt) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private boolean awaitInterruptConsumed(Thread thread) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (thread.isInterrupted() && System.nanoTime() < deadline) {
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+        }
+        return !thread.isInterrupted();
     }
 
     private ExternalDataResponse response(String items) {

@@ -22,10 +22,17 @@ export interface HousingAnnouncementCardProps {
   readonly onSelect?: (announcementId: string) => void
 }
 
-interface DeadlinePresentation {
-  readonly label: string
-  readonly value: string
+interface StatusPresentation {
+  readonly statusLabel: string
   readonly accessibleLabel: string
+  readonly countdown: string | null
+}
+
+interface DateParts {
+  readonly isoDate: string
+  readonly year: string
+  readonly month: string
+  readonly day: string
 }
 
 export function HousingAnnouncementCard({
@@ -35,11 +42,9 @@ export function HousingAnnouncementCard({
   onSelect,
 }: HousingAnnouncementCardProps) {
   const title = displayText(announcement.title, '공고명 정보 확인 중')
-  const status = applicationStatusLabel(announcement.applicationStatus)
-  const deadline = deadlinePresentation(announcement)
-  const accessibleLabel = cardAccessibleLabel(title, status, deadline)
+  const status = statusPresentation(announcement)
+  const accessibleLabel = `${title}, ${status.statusLabel}, ${status.accessibleLabel}`
   const urgent = isUrgent(announcement)
-  const meta = viewCountLabel(announcement.viewCount)
   const className = [styles.card, selected ? styles.selected : '']
     .filter(Boolean)
     .join(' ')
@@ -55,6 +60,28 @@ export function HousingAnnouncementCard({
       aria-label={accessibleLabel}
     >
       <div className={styles.summary} data-card-zone="summary">
+        <header className={styles.statusRow} data-summary-row="status">
+          <div className={styles.statusGroup}>
+            <span className={styles.status}>{status.statusLabel}</span>
+            {status.countdown !== null && (
+              <span
+                className={styles.countdown}
+                data-status-kind="countdown"
+                aria-label={status.accessibleLabel}
+              >
+                <i aria-hidden="true">|</i>
+                <strong>{status.countdown}</strong>
+              </span>
+            )}
+          </div>
+          <span
+            className={styles.agency}
+            data-agency-tone={agencyTone(announcement.agencyLabel)}
+          >
+            {displayText(announcement.agencyLabel, '공사 정보 확인 중')}
+          </span>
+        </header>
+
         <header className={styles.titleRow} data-summary-row="title">
           <h3>{title}</h3>
         </header>
@@ -64,45 +91,13 @@ export function HousingAnnouncementCard({
         <section
           className={styles.schedule}
           data-summary-row="schedule"
-          data-priority="primary"
           role="group"
-          aria-label="접수 일정"
+          aria-label="접수기간"
         >
-          <div className={styles.signal} data-schedule-row="status">
-            {status !== null && (
-              <div className={styles.statusGroup} data-status-kind="application">
-                <span className={styles.status}>{status}</span>
-              </div>
-            )}
-            <p className={styles.deadline} aria-label={deadline.accessibleLabel}>
-              <span>{deadline.label}</span>
-              <strong>{deadline.value}</strong>
-            </p>
-          </div>
           <ApplicationPeriod announcement={announcement} />
         </section>
 
-        <dl
-          className={styles.supply}
-          data-summary-row="supply"
-          data-summary-group="supply"
-          data-priority="secondary"
-        >
-          <SupplyMetric
-            label="공급 세대수"
-            value={formatCount(announcement.supplyHouseholdCount, '세대')}
-          />
-        </dl>
-
-        {meta && (
-          <footer
-            className={styles.footer}
-            data-summary-row="meta"
-            data-priority="secondary"
-          >
-            <p>{meta}</p>
-          </footer>
-        )}
+        <AnnouncementFooter announcement={announcement} />
       </div>
 
       {onSelect && (
@@ -126,41 +121,19 @@ function AnnouncementContext({
   announcement: HousingAnnouncementCardData
 }) {
   const region = regionLabel(announcement.regionNames)
-  const agency = displayText(announcement.agencyLabel, '공사 정보 확인 중')
   const rentalType = displayText(
     announcement.rentalTypeLabel,
     '주택유형 정보 확인 중',
   )
-  const recruitmentType = displayText(
-    announcement.recruitmentTypeLabel,
-    '모집유형 정보 확인 중',
-  )
 
   return (
-    <div
-      className={styles.context}
-      data-summary-row="context"
-      data-context-layout="inline"
-    >
-      <span
-        className={styles.region}
-        data-context-group="region"
-        aria-label={`지역 ${region}`}
-      >
-        {region}
-      </span>
-      <p
-        className={styles.interest}
-        data-context-group="interest"
-        aria-label={`공사 ${agency}, 주택 유형 ${rentalType}, 모집 구분 ${recruitmentType}`}
-      >
-        <strong data-context-role="provider">{agency}</strong>
-        <i aria-hidden="true">·</i>
-        <strong data-context-role="housing-type">{rentalType}</strong>
-        <i aria-hidden="true">·</i>
-        <span data-context-role="recruitment">{recruitmentType}</span>
-      </p>
-    </div>
+    <p className={styles.context} data-summary-row="context">
+      <span>{region}</span>
+      {' '}
+      <i aria-hidden="true">·</i>
+      {' '}
+      <span>{rentalType}</span>
+    </p>
   )
 }
 
@@ -169,75 +142,113 @@ function ApplicationPeriod({
 }: {
   announcement: HousingAnnouncementCardData
 }) {
+  const startDate = parseDate(announcement.applicationStartAt)
+  const endDate = parseDate(announcement.applicationEndAt)
+  const omitEndYear = startDate !== null
+    && endDate !== null
+    && startDate.year === endDate.year
+
   return (
-    <dl
-      className={styles.period}
-      data-summary-group="period"
-      data-schedule-row="period"
-    >
+    <dl className={styles.period} data-summary-group="period">
       <div className={styles.periodRow}>
         <dt>접수기간</dt>
         <dd className={styles.periodValues}>
-          <DateWithSuffix value={announcement.applicationStartAt} suffix="부터" />
-          <DateWithSuffix value={announcement.applicationEndAt} suffix="까지" />
+          <DateValue date={startDate} omitYear={false} />
+          {' '}
+          <i aria-hidden="true">~</i>
+          {' '}
+          <DateValue date={endDate} omitYear={omitEndYear} />
         </dd>
       </div>
     </dl>
   )
 }
 
-function DateWithSuffix({
-  value,
-  suffix,
+function DateValue({
+  date,
+  omitYear,
 }: {
-  value: string | null
-  suffix: string
+  date: DateParts | null
+  omitYear: boolean
 }) {
-  const formatted = formatDate(value)
+  if (date === null) {
+    return <b>정보 확인 중</b>
+  }
 
   return (
-    <span>
-      {value !== null && formatted !== null ? (
-        <time dateTime={value}>{formatted}</time>
-      ) : (
-        <b>정보 확인 중</b>
-      )}
-      <small>{suffix}</small>
-    </span>
+    <time dateTime={date.isoDate}>
+      {omitYear ? `${date.month}.${date.day}` : `${date.year}.${date.month}.${date.day}`}
+    </time>
   )
 }
 
-function SupplyMetric({ label, value }: { label: string; value: string }) {
+function AnnouncementFooter({
+  announcement,
+}: {
+  announcement: HousingAnnouncementCardData
+}) {
+  const recruitmentType = displayText(
+    announcement.recruitmentTypeLabel,
+    '모집유형 정보 확인 중',
+  )
+  const supply = supplyLabel(announcement.supplyHouseholdCount)
+  const viewCount = viewCountLabel(announcement.viewCount)
+
   return (
-    <div className={styles.supplyMetric} data-emphasis="neutral">
-      <dt>{label}</dt>
-      <dd>{value}</dd>
-    </div>
+    <footer className={styles.footer} data-summary-row="footer">
+      <p className={styles.supplySummary}>
+        <span>{recruitmentType}</span>
+        {' '}
+        <i aria-hidden="true">·</i>
+        {' '}
+        <span>{supply}</span>
+      </p>
+      {viewCount !== null && <p className={styles.viewCount}>{viewCount}</p>}
+    </footer>
   )
 }
 
-function applicationStatusLabel(status: string | null) {
-  if (status === 'BEFORE_APPLICATION') {
-    return '접수예정'
+function statusPresentation(
+  announcement: HousingAnnouncementCardData,
+): StatusPresentation {
+  if (announcement.applicationStatus === 'CLOSED') {
+    return status('접수마감', '접수 마감 완료')
   }
-  if (status === 'APPLYING') {
-    return '접수중'
+  if (announcement.applicationStatus === 'CANCELLED') {
+    return status('공고취소', '공고 취소')
   }
-  if (status === 'CLOSED' || status === 'CANCELLED') {
-    return null
+  if (announcement.applicationStatus === 'BEFORE_APPLICATION') {
+    return activeStatus('공고중', announcement.dDay, true)
   }
-  return '정보 확인 중'
+  if (announcement.applicationStatus === 'APPLYING') {
+    return activeStatus('접수중', announcement.dDay, false)
+  }
+  return status('정보 확인 중', '공고 상태 정보 확인 중')
 }
 
-function cardAccessibleLabel(
-  title: string,
-  status: string | null,
-  deadline: DeadlinePresentation,
-) {
-  if (status === null) {
-    return `${title}, ${deadline.accessibleLabel}`
+function activeStatus(
+  statusLabel: string,
+  dDay: number | null,
+  includeDeadlinePrefix: boolean,
+): StatusPresentation {
+  if (dDay === null || !Number.isInteger(dDay) || dDay < 0) {
+    return status(statusLabel, '접수 마감일 정보 확인 중', '마감일 확인 중')
   }
-  return `${title}, ${status}, ${deadline.accessibleLabel}`
+
+  const dDayLabel = dDay === 0 ? 'D-Day' : `D-${dDay}`
+  return status(
+    statusLabel,
+    dDay === 0 ? '접수 마감일 당일' : `접수 마감까지 ${dDay}일`,
+    includeDeadlinePrefix ? `마감 ${dDayLabel}` : dDayLabel,
+  )
+}
+
+function status(
+  statusLabel: string,
+  accessibleLabel: string,
+  countdown: string | null = null,
+): StatusPresentation {
+  return { statusLabel, accessibleLabel, countdown }
 }
 
 function statusTone(status: string | null) {
@@ -254,33 +265,6 @@ function statusTone(status: string | null) {
     return 'cancelled'
   }
   return 'unknown'
-}
-
-function deadlinePresentation(
-  announcement: HousingAnnouncementCardData,
-): DeadlinePresentation {
-  if (announcement.applicationStatus === 'CLOSED') {
-    return deadline('접수', '종료', '접수 마감 완료')
-  }
-  if (announcement.applicationStatus === 'CANCELLED') {
-    return deadline('공고', '취소', '공고 취소')
-  }
-  if (
-    announcement.dDay === null
-    || !Number.isInteger(announcement.dDay)
-    || announcement.dDay < 0
-  ) {
-    return deadline('마감일', '확인 중', '접수 마감일 정보 확인 중')
-  }
-  return deadline(
-    '접수 마감까지',
-    `${announcement.dDay}일`,
-    `접수 마감까지 ${announcement.dDay}일`,
-  )
-}
-
-function deadline(label: string, value: string, accessibleLabel: string) {
-  return { label, value, accessibleLabel }
 }
 
 function isUrgent(announcement: HousingAnnouncementCardData) {
@@ -300,25 +284,46 @@ function displayText(value: string | null, fallback: string) {
 }
 
 function regionLabel(regionNames: readonly string[]) {
-  const labels = regionNames.filter((region) => region.trim().length > 0)
+  const labels = regionNames
+    .map((region) => region.trim())
+    .filter((region) => region.length > 0)
   if (labels.length === 0) {
     return '지역 정보 확인 중'
   }
-  return labels.join(' · ')
+  if (labels.length === 1) {
+    return labels[0]
+  }
+  return `${labels[0]} 외 ${labels.length - 1}개`
 }
 
-function formatDate(value: string | null) {
-  if (value === null || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+function parseDate(value: string | null): DateParts | null {
+  if (value === null) {
     return null
   }
-  return value.replaceAll('-', '.')
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (match === null) {
+    return null
+  }
+
+  const [, year, month, day] = match
+  const parsed = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+  if (
+    parsed.getUTCFullYear() !== Number(year)
+    || parsed.getUTCMonth() + 1 !== Number(month)
+    || parsed.getUTCDate() !== Number(day)
+  ) {
+    return null
+  }
+
+  return { isoDate: value, year, month, day }
 }
 
-function formatCount(value: number | null, suffix: string) {
+function supplyLabel(value: number | null) {
   if (value === null || !Number.isInteger(value) || value < 0) {
-    return '정보 확인 중'
+    return '공급 정보 확인 중'
   }
-  return `${value.toLocaleString('ko-KR')}${suffix}`
+  return `공급 ${value.toLocaleString('ko-KR')}세대`
 }
 
 function viewCountLabel(value: number | null) {
@@ -326,4 +331,12 @@ function viewCountLabel(value: number | null) {
     return null
   }
   return `조회 ${value.toLocaleString('ko-KR')}`
+}
+
+function agencyTone(value: string | null) {
+  const code = value?.trim().toUpperCase()
+  if (code === 'LH' || code === 'SH' || code === 'GH') {
+    return code.toLowerCase()
+  }
+  return 'neutral'
 }

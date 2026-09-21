@@ -39,8 +39,8 @@ function rentalTypeLabel(value: string | null) {
 function recruitmentTypeLabel(value: string | null) {
   return codeLabel(value, {
     ETC: '기타 모집',
-    NEW: '신규 입주자',
-    WAITLIST: '예비입주자',
+    NEW: '신규',
+    WAITLIST: '예비',
   })
 }
 

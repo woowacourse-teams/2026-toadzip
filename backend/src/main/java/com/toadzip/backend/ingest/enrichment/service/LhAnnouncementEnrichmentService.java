@@ -1,5 +1,7 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
+import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
+
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
@@ -21,6 +23,7 @@ import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichment
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -29,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
@@ -84,7 +88,10 @@ public class LhAnnouncementEnrichmentService {
         for (MyHomeAnnouncementSource source : lhSourcesByAnnouncement().values()) {
             report = report.plus(enrich(source, failures, occurredAt));
         }
-        failureStore.replaceAll(failures);
+        failureStore.replaceAll(
+                failures,
+                IngestExecutionContext.currentExecutionId().orElse(null)
+        );
         return report;
     }
 
@@ -177,8 +184,25 @@ public class LhAnnouncementEnrichmentService {
     }
 
     @Transactional(readOnly = true)
+    public List<LhAnnouncementEnrichmentFailureResponse> findFailures(int page, int size) {
+        return failureRepository.findAllByStatusOrderBySourceKeyAscIdAsc(
+                        PENDING,
+                        PageRequest.of(page, size)
+                ).stream()
+                .map(LhAnnouncementEnrichmentFailureResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<LhAnnouncementEnrichmentFailureResponse> findFailures() {
-        return failureRepository.findAllByOrderBySourceKeyAsc().stream()
+        return failureRepository.findAllByStatusOrderBySourceKeyAsc(PENDING).stream()
+                .map(LhAnnouncementEnrichmentFailureResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<LhAnnouncementEnrichmentFailureResponse> findFailureHistory(int page, int size) {
+        return failureRepository.findAllByOrderBySourceKeyAscIdAsc(PageRequest.of(page, size)).stream()
                 .map(LhAnnouncementEnrichmentFailureResponse::from)
                 .toList();
     }

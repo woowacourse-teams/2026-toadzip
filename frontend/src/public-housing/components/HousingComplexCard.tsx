@@ -1,36 +1,43 @@
-import { useRef, type FocusEvent } from 'react'
+import { useRef, useState, type FocusEvent } from 'react'
 import styles from './HousingComplexCard.module.css'
 
 export interface HousingComplexCardAnnouncement {
-  announcementId: string
-  applicationStatus: string
-  applicationEndAt: string | null
-  dDay: number | null
+  readonly announcementId: string
+  readonly applicationStatus: string
+  readonly applicationEndAt: string | null
+  readonly dDay: number | null
 }
 
 export interface HousingComplexCardData {
-  complexId: string
-  name: string
-  regionName: string
-  agencyName: string
-  rentalTypeLabel: string
-  exclusiveAreaMin: number | null
-  exclusiveAreaMax: number | null
-  depositMin: number | null
-  depositMax: number | null
-  monthlyRentMin: number | null
-  monthlyRentMax: number | null
-  representativeAnnouncement: HousingComplexCardAnnouncement | null
+  readonly agencyCode: string | null
+  readonly agencyName: string
+  readonly complexId: string
+  readonly depositMax: number | null
+  readonly depositMin: number | null
+  readonly exclusiveAreaMax: number | null
+  readonly exclusiveAreaMin: number | null
+  readonly monthlyRentMax: number | null
+  readonly monthlyRentMin: number | null
+  readonly name: string
+  readonly regionName: string
+  readonly rentalTypeLabel: string
+  readonly representativeAnnouncement: HousingComplexCardAnnouncement | null
+  readonly thumbnailImageUrl: string | null
 }
 
 export interface HousingComplexCardProps {
-  complex: HousingComplexCardData
-  selected?: boolean
-  hovered?: boolean
-  cardRef?: (node: HTMLElement | null) => void
-  onSelect: (complexId: string) => void
-  onHover?: (complexId: string | null) => void
-  onOpenAnnouncement?: (announcementId: string) => void
+  readonly complex: HousingComplexCardData
+  readonly selected?: boolean
+  readonly hovered?: boolean
+  readonly cardRef?: (node: HTMLElement | null) => void
+  readonly onSelect: (complexId: string) => void
+  readonly onHover?: (complexId: string | null) => void
+  readonly onOpenAnnouncement?: (announcementId: string) => void
+}
+
+interface RangePresentation {
+  readonly accessible: string
+  readonly visible: string
 }
 
 export function HousingComplexCard({
@@ -43,7 +50,20 @@ export function HousingComplexCard({
   onOpenAnnouncement,
 }: HousingComplexCardProps) {
   const titleId = `housing-complex-card-title-${complex.complexId}`
-  const announcement = complex.representativeAnnouncement
+  const announcement = complex.representativeAnnouncement?.applicationStatus === 'CLOSED'
+    ? null
+    : complex.representativeAnnouncement
+  const safeImageUrl = safeHttpUrl(complex.thumbnailImageUrl)
+  const [imageLoadState, setImageLoadState] = useState<{
+    readonly failed: boolean
+    readonly url: string | null
+  }>(() => ({ failed: false, url: safeImageUrl }))
+  if (imageLoadState.url !== safeImageUrl) {
+    setImageLoadState({ failed: false, url: safeImageUrl })
+  }
+  const hasImage = safeImageUrl !== null && !(
+    imageLoadState.url === safeImageUrl && imageLoadState.failed
+  )
   const focusInsideRef = useRef(false)
   const pointerInsideRef = useRef(false)
   const cardClassName = [
@@ -86,6 +106,8 @@ export function HousingComplexCard({
       className={cardClassName}
       aria-current={selected ? 'true' : undefined}
       aria-labelledby={titleId}
+      data-has-announcement={announcement !== null ? 'true' : 'false'}
+      data-has-image={hasImage ? 'true' : 'false'}
       data-hovered={hovered || undefined}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -100,55 +122,102 @@ export function HousingComplexCard({
         onClick={() => onSelect(complex.complexId)}
       />
 
-      <header className={styles.titleRow} data-card-row="title">
-        <h3 id={titleId}>{complex.name}</h3>
-      </header>
+      <div className={styles.cardContent}>
+        {announcement ? (
+          <div className={styles.topRow}>
+            <RepresentativeAnnouncement
+              announcement={announcement}
+              descriptionId={`${titleId}-announcement-description`}
+              onOpenAnnouncement={onOpenAnnouncement}
+            />
+            <AgencyMeta complex={complex} />
+          </div>
+        ) : (
+          <header className={styles.titleRow} data-card-row="title">
+            <h3 id={titleId}>{complex.name}</h3>
+            <AgencyMeta complex={complex} />
+          </header>
+        )}
 
-      <div className={styles.context} data-card-row="context">
-        <span className={styles.region}>{complex.regionName}</span>
-        <p>
-          <strong>{complex.agencyName}</strong>
-          <i aria-hidden="true">·</i>
-          <strong>{complex.rentalTypeLabel}</strong>
-        </p>
+        <div className={styles.bodyGrid}>
+          <div className={styles.summary}>
+            {announcement && (
+              <header className={styles.titleRow} data-card-row="title">
+                <h3 id={titleId}>{complex.name}</h3>
+              </header>
+            )}
+
+            <p className={styles.region} data-card-row="context">
+              {complex.regionName}
+            </p>
+
+            <ComplexConditions complex={complex} />
+          </div>
+
+          {hasImage && (
+            <img
+              className={styles.image}
+              src={safeImageUrl}
+              alt={`${complex.name} 단지 대표 이미지`}
+              loading="lazy"
+              decoding="async"
+              onError={() => setImageLoadState((current) => (
+                current.url === safeImageUrl && current.failed
+                  ? current
+                  : { failed: true, url: safeImageUrl }
+              ))}
+            />
+          )}
+        </div>
       </div>
-
-      <dl
-        className={styles.conditions}
-        data-card-row="conditions"
-        role="group"
-        aria-label="주요 임대 조건"
-      >
-        <ComplexMetric
-          className={styles.areaMetric}
-          label="전용면적"
-          value={formatRange(
-            complex.exclusiveAreaMin,
-            complex.exclusiveAreaMax,
-            formatArea,
-          )}
-        />
-        <ComplexMetric
-          label="임대보증금"
-          value={formatRange(complex.depositMin, complex.depositMax, formatMoney)}
-        />
-        <ComplexMetric
-          label="월 임대료"
-          value={formatRange(
-            complex.monthlyRentMin,
-            complex.monthlyRentMax,
-            formatMoney,
-          )}
-        />
-      </dl>
-
-      {announcement && (
-        <RepresentativeAnnouncement
-          announcement={announcement}
-          onOpenAnnouncement={onOpenAnnouncement}
-        />
-      )}
     </article>
+  )
+}
+
+function AgencyMeta({ complex }: { complex: HousingComplexCardData }) {
+  const normalizedCode = complex.agencyCode?.trim().toUpperCase() || null
+  const agencyLabel = normalizedCode ?? complex.agencyName
+
+  return (
+    <p
+      className={styles.agencyMeta}
+      aria-label={`공급기관 ${agencyLabel}, 임대유형 ${complex.rentalTypeLabel}`}
+    >
+      <strong data-agency={agencyTone(normalizedCode)}>{agencyLabel}</strong>
+      <i aria-hidden="true">·</i>
+      <span>{complex.rentalTypeLabel}</span>
+    </p>
+  )
+}
+
+function ComplexConditions({ complex }: { complex: HousingComplexCardData }) {
+  const deposit = formatRange(
+    complex.depositMin,
+    complex.depositMax,
+    formatMoney,
+  )
+  const monthlyRent = formatRange(
+    complex.monthlyRentMin,
+    complex.monthlyRentMax,
+    formatMoney,
+  )
+  const area = formatRange(
+    complex.exclusiveAreaMin,
+    complex.exclusiveAreaMax,
+    formatArea,
+  )
+
+  return (
+    <dl
+      className={styles.conditions}
+      data-card-row="conditions"
+      role="group"
+      aria-label="주요 임대 조건"
+    >
+      <ComplexMetric label="임대보증금" value={deposit} />
+      <ComplexMetric label="월 임대료" value={monthlyRent} />
+      <ComplexMetric className={styles.areaMetric} label="전용" value={area} />
+    </dl>
   )
 }
 
@@ -157,95 +226,78 @@ function ComplexMetric({
   label,
   value,
 }: {
-  className?: string
-  label: string
-  value: string
+  readonly className?: string
+  readonly label: string
+  readonly value: RangePresentation
 }) {
   return (
     <div className={className}>
       <dt>{label}</dt>
-      <dd>{value}</dd>
+      <dd aria-label={`${label} ${value.accessible}`}>{value.visible}</dd>
     </div>
   )
 }
 
 function RepresentativeAnnouncement({
   announcement,
+  descriptionId,
   onOpenAnnouncement,
 }: {
-  announcement: HousingComplexCardAnnouncement
-  onOpenAnnouncement?: (announcementId: string) => void
+  readonly announcement: HousingComplexCardAnnouncement
+  readonly descriptionId: string
+  readonly onOpenAnnouncement?: (announcementId: string) => void
 }) {
-  const urgent = isUrgent(announcement)
+  const status = statusLabel(announcement.applicationStatus)
+  const countdown = countdownPresentation(announcement)
+  const description = countdown
+    ? `대표 공고 상태 ${status}, ${countdown.accessible}`
+    : `대표 공고 상태 ${status}`
+  const content = (
+    <>
+      <span className={styles.statusLabel}>{status}</span>
+      {countdown && (
+        <>
+          <i aria-hidden="true">|</i>
+          <span
+            className={styles.countdown}
+            aria-label={countdown.accessible}
+          >
+            {countdown.visible}
+          </span>
+        </>
+      )}
+    </>
+  )
 
   return (
     <section
       className={styles.announcement}
       data-card-row="announcement"
       data-status={statusTone(announcement.applicationStatus)}
-      data-urgency={urgent ? 'urgent' : undefined}
+      data-urgency={isUrgent(announcement) ? 'urgent' : undefined}
       role="group"
       aria-label="대표 공고"
     >
-      <AnnouncementMetric
-        label="모집 상태"
-        value={statusLabel(announcement.applicationStatus)}
-        emphasized
-      />
-      <AnnouncementDate value={announcement.applicationEndAt} />
-      <AnnouncementMetric
-        label="마감까지"
-        value={dDayLabel(announcement)}
-        emphasized
-      />
-      {onOpenAnnouncement && (
+      {onOpenAnnouncement ? (
         <button
           type="button"
           className={styles.announcementAction}
           aria-label="대표 공고 상세 보기"
+          aria-describedby={descriptionId}
           data-representative-announcement-detail-trigger={
             announcement.announcementId
           }
           onClick={() => onOpenAnnouncement(announcement.announcementId)}
         >
-          공고 확인
+          {content}
+          <span id={descriptionId} className={styles.visuallyHidden}>
+            {description}
+          </span>
         </button>
+      ) : (
+        <div className={styles.announcementStatus}>{content}</div>
       )}
     </section>
-  )
-}
-
-function AnnouncementMetric({
-  label,
-  value,
-  emphasized = false,
-}: {
-  label: string
-  value: string
-  emphasized?: boolean
-}) {
-  return (
-    <dl className={styles.announcementMetric}>
-      <dt>{label}</dt>
-      <dd className={emphasized ? styles.emphasized : undefined}>{value}</dd>
-    </dl>
-  )
-}
-
-function AnnouncementDate({ value }: { value: string | null }) {
-  const formatted = formatDate(value)
-
-  return (
-    <dl className={styles.announcementMetric}>
-      <dt>접수 마감일</dt>
-      <dd>
-        {value && formatted !== null ? (
-          <time dateTime={value}>{formatted}</time>
-        ) : (
-          '정보 확인 중'
-        )}
-      </dd>
-    </dl>
   )
 }
 
@@ -253,15 +305,22 @@ function formatRange(
   minimum: number | null,
   maximum: number | null,
   formatter: (value: number) => string,
-) {
+): RangePresentation {
   const values = [minimum, maximum].filter(isFiniteNumber)
   if (values.length === 0) {
-    return '정보 확인 중'
+    return { accessible: '정보 확인 중', visible: '정보 확인 중' }
   }
+
+  const first = formatter(values[0])
   if (values.length === 1 || values[0] === values[1]) {
-    return formatter(values[0])
+    return { accessible: first, visible: first }
   }
-  return `${formatter(values[0])} ~ ${formatter(values[1])}`
+
+  const last = formatter(values[1])
+  return {
+    accessible: `${first}부터 ${last}까지`,
+    visible: `${first} ~`,
+  }
 }
 
 function isFiniteNumber(value: number | null): value is number {
@@ -269,7 +328,7 @@ function isFiniteNumber(value: number | null): value is number {
 }
 
 function formatArea(value: number) {
-  return `${value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}㎡`
+  return `${value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}m²`
 }
 
 function formatMoney(value: number) {
@@ -281,15 +340,15 @@ function formatMoney(value: number) {
     return `${amountWon.toLocaleString('ko-KR')}원`
   }
   if (amountWon < 100_000_000) {
-    return `${formatManWon(amountWon)}만 원`
+    return `${formatManWon(amountWon)}만원`
   }
 
   const eokWon = Math.floor(amountWon / 100_000_000)
   const remainderWon = amountWon % 100_000_000
   if (remainderWon < 10_000) {
-    return `${eokWon.toLocaleString('ko-KR')}억 원`
+    return `${eokWon.toLocaleString('ko-KR')}억원`
   }
-  return `${eokWon.toLocaleString('ko-KR')}억 ${formatManWon(remainderWon)}만 원`
+  return `${eokWon.toLocaleString('ko-KR')}억 ${formatManWon(remainderWon)}만원`
 }
 
 function formatManWon(value: number) {
@@ -301,13 +360,16 @@ function formatManWon(value: number) {
 
 function statusLabel(status: string) {
   if (status === 'BEFORE_APPLICATION') {
-    return '모집예정'
+    return '공고중'
   }
   if (status === 'APPLYING') {
     return '접수중'
   }
   if (status === 'CLOSED') {
     return '접수마감'
+  }
+  if (status === 'CANCELLED') {
+    return '공고취소'
   }
   return '정보 확인 중'
 }
@@ -322,20 +384,38 @@ function statusTone(status: string) {
   if (status === 'CLOSED') {
     return 'closed'
   }
+  if (status === 'CANCELLED') {
+    return 'cancelled'
+  }
   return 'unknown'
 }
 
-function dDayLabel(announcement: HousingComplexCardAnnouncement) {
-  if (announcement.applicationStatus === 'CLOSED') {
-    return '종료'
+function countdownPresentation(announcement: HousingComplexCardAnnouncement) {
+  if (
+    announcement.applicationStatus === 'CLOSED'
+    || announcement.applicationStatus === 'CANCELLED'
+  ) {
+    return null
   }
-  if (!Number.isInteger(announcement.dDay) || announcement.dDay === null) {
-    return '정보 확인 중'
+  if (
+    announcement.dDay === null
+    || !Number.isInteger(announcement.dDay)
+    || announcement.dDay < 0
+  ) {
+    return {
+      accessible: '접수 마감일 정보 확인 중',
+      visible: '정보 확인 중',
+    }
   }
-  if (announcement.dDay < 0) {
-    return '정보 확인 중'
+  return {
+    accessible: `접수 마감까지 ${announcement.dDay}일`,
+    visible: countdownLabel(announcement.applicationStatus, announcement.dDay),
   }
-  return `D-${announcement.dDay}`
+}
+
+function countdownLabel(status: string, dDay: number) {
+  const value = dDay === 0 ? 'D-Day' : `D-${dDay}`
+  return status === 'BEFORE_APPLICATION' ? `마감 ${value}` : value
 }
 
 function isUrgent(announcement: HousingComplexCardAnnouncement) {
@@ -348,9 +428,24 @@ function isUrgent(announcement: HousingComplexCardAnnouncement) {
   return announcement.dDay >= 0 && announcement.dDay <= 3
 }
 
-function formatDate(value: string | null) {
-  if (value === null || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+function agencyTone(code: string | null) {
+  if (code === 'LH' || code === 'SH' || code === 'GH') {
+    return code
+  }
+  return 'unknown'
+}
+
+function safeHttpUrl(value: string | null) {
+  if (!value) {
     return null
   }
-  return value.replaceAll('-', '.')
+  try {
+    const url = new URL(value)
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return url.href
+    }
+  } catch {
+    return null
+  }
+  return null
 }

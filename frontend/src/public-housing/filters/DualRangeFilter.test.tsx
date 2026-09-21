@@ -585,7 +585,7 @@ describe('DualRangeFilter', () => {
     )
   })
 
-  it('빠른 선택을 한 줄로 유지하고 44px 터치 영역 안에 36px 둥근 사각형을 보인다', () => {
+  it('빠른 선택의 가로 스크롤과 44px 터치 영역 및 키보드 포커스를 유지한다', () => {
     const filterStyles = readFileSync(
       resolve(
         process.cwd(),
@@ -599,9 +599,6 @@ describe('DualRangeFilter', () => {
     )
     expect(filterStyles).toMatch(
       /\.preset\s*\{[\s\S]*?flex:\s*0 0 auto;[\s\S]*?min-width:\s*44px;[\s\S]*?min-height:\s*44px;[\s\S]*?white-space:\s*nowrap;/,
-    )
-    expect(filterStyles).toMatch(
-      /\.preset::before\s*\{[\s\S]*?height:\s*36px;[\s\S]*?border-radius:\s*9px;/,
     )
     expect(filterStyles).toMatch(
       /\.preset:focus-visible::before\s*\{[\s\S]*?outline:\s*3px solid/,

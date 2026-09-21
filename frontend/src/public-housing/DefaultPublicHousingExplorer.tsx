@@ -72,7 +72,6 @@ export function LocalPublicHousingExplorer({
   if (state.status === 'ready') {
     return (
       <PublicHousingExplorer
-        localMockEnabled
         regionRepository={state.regionRepository}
         repository={repository}
       />

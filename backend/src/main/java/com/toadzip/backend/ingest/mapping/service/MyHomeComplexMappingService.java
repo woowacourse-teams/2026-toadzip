@@ -48,8 +48,16 @@ public class MyHomeComplexMappingService {
                 .orElseThrow(this::alreadyRunning);
     }
 
+    public List<MyHomeComplexMappingFailureResponse> findFailures(int page, int size) {
+        return failureQuery.findAll(page, size);
+    }
+
     public List<MyHomeComplexMappingFailureResponse> findFailures() {
         return failureQuery.findAll();
+    }
+
+    public List<MyHomeComplexMappingFailureResponse> findFailureHistory(int page, int size) {
+        return failureQuery.findHistory(page, size);
     }
 
     private MyHomeComplexMappingReport mapAllUnlocked() {
