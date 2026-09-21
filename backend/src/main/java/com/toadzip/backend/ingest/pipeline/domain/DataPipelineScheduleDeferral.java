@@ -40,7 +40,6 @@ public class DataPipelineScheduleDeferral {
     @Column(nullable = false)
     private Instant observedAt;
 
-    @Column(nullable = false)
     private Instant nextRetryAt;
 
     private Instant resolvedAt;

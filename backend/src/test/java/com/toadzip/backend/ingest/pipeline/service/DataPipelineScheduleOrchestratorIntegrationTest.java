@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -61,6 +62,9 @@ class DataPipelineScheduleOrchestratorIntegrationTest {
 
     @Autowired
     private DataPipelineExecutionLock executionLock;
+
+    @Autowired
+    private DataSource dataSource;
 
     @Autowired
     private DataPipelineExecutionMapper executionMapper;
@@ -139,10 +143,13 @@ class DataPipelineScheduleOrchestratorIntegrationTest {
     }
 
     @Test
-    void lock_충돌은_다음_재시도와_함께_저장되고_실행_후_해결된다() {
+    void 다른_인스턴스의_PostgreSQL_advisory_lock_충돌은_지연으로_저장한다() {
         completeEveryPipeline();
+        DataPipelineExecutionLock competingInstanceLock = new DataPipelineExecutionLock(dataSource);
 
-        try (DataPipelineExecutionLock.Lease ignored = executionLock.tryAcquire().orElseThrow()) {
+        try (DataPipelineExecutionLock.Lease ignored = competingInstanceLock
+                .tryAcquire()
+                .orElseThrow()) {
             orchestrator.runOnce(NOW);
         }
 
@@ -168,6 +175,28 @@ class DataPipelineScheduleOrchestratorIntegrationTest {
     }
 
     @Test
+    void 실행_중인_수집은_다음_폴링_시각과_함께_저장한다() {
+        UUID executionId = UUID.randomUUID();
+        executionStateService.create(
+                executionId,
+                DataPipelineType.ANNOUNCEMENT_COLLECTION,
+                NOW,
+                DataPipelineExecutionTrigger.SCHEDULED,
+                ANNOUNCEMENT_SLOT,
+                null
+        );
+
+        orchestrator.runOnce(NOW);
+
+        assertThat(deferralRepository.findById(DataPipelineSchedule.ANNOUNCEMENT))
+                .get()
+                .satisfies(deferral -> {
+                    assertThat(deferral.getDetail()).isEqualTo("RUNNING");
+                    assertThat(deferral.getNextRetryAt()).isEqualTo(NOW.plusSeconds(60));
+                });
+    }
+
+    @Test
     void 건너뛴_수집은_정제를_연결하지_않고_지연_상태를_저장한다() {
         completeWithSkippedAnnouncementCollection();
 
@@ -184,6 +213,7 @@ class DataPipelineScheduleOrchestratorIntegrationTest {
                             DataPipelineScheduleDeferralReason.COLLECTION_NOT_COMPLETED
                     );
                     assertThat(deferral.getDetail()).isEqualTo("COMPLETED_WITH_SKIPS");
+                    assertThat(deferral.getNextRetryAt()).isNull();
                     assertThat(deferral.isActive()).isTrue();
                 });
     }
@@ -209,6 +239,7 @@ class DataPipelineScheduleOrchestratorIntegrationTest {
                             DataPipelineScheduleDeferralReason.COLLECTION_NOT_COMPLETED
                     );
                     assertThat(deferral.getDetail()).isEqualTo("FAILED");
+                    assertThat(deferral.getNextRetryAt()).isNull();
                     assertThat(deferral.isActive()).isTrue();
                 });
     }

@@ -95,13 +95,7 @@ public class DataPipelineScheduleOrchestrator {
                 collection.getExecutionId()
         );
         if (collectionResponse.status() != DataPipelineExecutionStatus.COMPLETED) {
-            defer(
-                    schedule,
-                    DataPipelineScheduleStage.COLLECTION,
-                    scheduledAt,
-                    DataPipelineScheduleDeferralReason.COLLECTION_NOT_COMPLETED,
-                    collectionResponse.status().name()
-            );
+            deferCollection(schedule, scheduledAt, collectionResponse.status());
             return;
         }
         if (hasRefinement(collection.getExecutionId(), schedule)) {
@@ -138,7 +132,7 @@ public class DataPipelineScheduleOrchestrator {
             );
         }
         catch (IngestAlreadyRunningException exception) {
-            defer(
+            deferUntilNextPoll(
                     schedule,
                     DataPipelineScheduleStage.COLLECTION,
                     scheduledAt,
@@ -179,7 +173,7 @@ public class DataPipelineScheduleOrchestrator {
             );
         }
         catch (IngestAlreadyRunningException exception) {
-            defer(
+            deferUntilNextPoll(
                     schedule,
                     DataPipelineScheduleStage.REFINEMENT,
                     scheduledAt,
@@ -229,7 +223,32 @@ public class DataPipelineScheduleOrchestrator {
         return DataPipelineExecutionTrigger.SCHEDULED;
     }
 
-    private void defer(
+    private void deferCollection(
+            DataPipelineSchedule schedule,
+            Instant scheduledAt,
+            DataPipelineExecutionStatus status
+    ) {
+        if (status == DataPipelineExecutionStatus.RUNNING) {
+            deferUntilNextPoll(
+                    schedule,
+                    DataPipelineScheduleStage.COLLECTION,
+                    scheduledAt,
+                    DataPipelineScheduleDeferralReason.COLLECTION_NOT_COMPLETED,
+                    status.name()
+            );
+            return;
+        }
+        defer(
+                schedule,
+                DataPipelineScheduleStage.COLLECTION,
+                scheduledAt,
+                DataPipelineScheduleDeferralReason.COLLECTION_NOT_COMPLETED,
+                status.name(),
+                null
+        );
+    }
+
+    private void deferUntilNextPoll(
             DataPipelineSchedule schedule,
             DataPipelineScheduleStage stage,
             Instant scheduledAt,
@@ -237,7 +256,7 @@ public class DataPipelineScheduleOrchestrator {
             String detail
     ) {
         Instant observedAt = clock.instant();
-        deferralService.defer(
+        defer(
                 schedule,
                 stage,
                 scheduledAt,
@@ -245,6 +264,38 @@ public class DataPipelineScheduleOrchestrator {
                 detail,
                 observedAt,
                 observedAt.plusMillis(schedulerProperties.pollIntervalMillis())
+        );
+    }
+
+    private void defer(
+            DataPipelineSchedule schedule,
+            DataPipelineScheduleStage stage,
+            Instant scheduledAt,
+            DataPipelineScheduleDeferralReason reason,
+            String detail,
+            Instant nextRetryAt
+    ) {
+        Instant observedAt = clock.instant();
+        defer(schedule, stage, scheduledAt, reason, detail, observedAt, nextRetryAt);
+    }
+
+    private void defer(
+            DataPipelineSchedule schedule,
+            DataPipelineScheduleStage stage,
+            Instant scheduledAt,
+            DataPipelineScheduleDeferralReason reason,
+            String detail,
+            Instant observedAt,
+            Instant nextRetryAt
+    ) {
+        deferralService.defer(
+                schedule,
+                stage,
+                scheduledAt,
+                reason,
+                detail,
+                observedAt,
+                nextRetryAt
         );
         String observation = stage.name() + ":" + scheduledAt + ":" + reason.name() + ":" + detail;
         if (observation.equals(deferredObservations.put(schedule, observation))) {

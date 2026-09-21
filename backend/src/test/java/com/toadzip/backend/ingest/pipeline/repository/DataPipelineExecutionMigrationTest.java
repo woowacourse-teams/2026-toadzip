@@ -39,6 +39,8 @@ class DataPipelineExecutionMigrationTest {
             "db/migration/V20260921_01__add_data_pipeline_schedule_metadata.sql";
     private static final String SCHEDULE_DEFERRAL_MIGRATION =
             "db/migration/V20260921_02__create_data_pipeline_schedule_deferrals.sql";
+    private static final String NULLABLE_DEFERRAL_RETRY_MIGRATION =
+            "db/migration/V20260921_03__allow_null_schedule_deferral_next_retry_at.sql";
 
     @Autowired
     private DataSource dataSource;
@@ -86,6 +88,14 @@ class DataPipelineExecutionMigrationTest {
                         connection,
                         new ClassPathResource(SCHEDULE_DEFERRAL_MIGRATION)
                 );
+                ScriptUtils.executeSqlScript(
+                        connection,
+                        new ClassPathResource(NULLABLE_DEFERRAL_RETRY_MIGRATION)
+                );
+                ScriptUtils.executeSqlScript(
+                        connection,
+                        new ClassPathResource(NULLABLE_DEFERRAL_RETRY_MIGRATION)
+                );
                 insertLegacyExecution(connection, POST_MIGRATION_LEGACY_EXECUTION_ID);
 
                 assertThat(tableExists(connection, "data_pipeline_executions")).isTrue();
@@ -122,6 +132,11 @@ class DataPipelineExecutionMigrationTest {
                         connection,
                         "data_pipeline_executions",
                         "upstream_execution_id"
+                )).isTrue();
+                assertThat(columnIsNullable(
+                        connection,
+                        "data_pipeline_schedule_deferrals",
+                        "next_retry_at"
                 )).isTrue();
                 assertThat(executionTrigger(connection, LEGACY_EXECUTION_ID)).isEqualTo("MANUAL");
                 assertThat(executionTrigger(connection, POST_MIGRATION_LEGACY_EXECUTION_ID))
@@ -209,6 +224,29 @@ class DataPipelineExecutionMigrationTest {
             statement.setString(2, columnName);
             try (ResultSet result = statement.executeQuery()) {
                 return result.next() && result.getBoolean(1);
+            }
+        }
+    }
+
+    private boolean columnIsNullable(
+            Connection connection,
+            String tableName,
+            String columnName
+    ) throws Exception {
+        try (var statement = connection.prepareStatement("""
+                SELECT is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = ?
+                  AND column_name = ?
+                """)) {
+            statement.setString(1, tableName);
+            statement.setString(2, columnName);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) {
+                    throw new IllegalStateException("컬럼을 찾지 못했습니다.");
+                }
+                return "YES".equals(result.getString(1));
             }
         }
     }
