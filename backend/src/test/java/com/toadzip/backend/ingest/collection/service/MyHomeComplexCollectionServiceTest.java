@@ -32,6 +32,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
@@ -543,6 +544,7 @@ class MyHomeComplexCollectionServiceTest {
             assertThat(slowWorkerInterrupted.await(2, TimeUnit.SECONDS)).isTrue();
             assertThat(collection.isDone()).isFalse();
             serviceThread.get().interrupt();
+            assertThat(awaitInterruptConsumed(serviceThread.get())).isTrue();
             allowSlowWorkerToFinish.countDown();
 
             assertThatThrownBy(() -> collection.get(2, TimeUnit.SECONDS))
@@ -582,6 +584,14 @@ class MyHomeComplexCollectionServiceTest {
         if (restoreInterrupt) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private boolean awaitInterruptConsumed(Thread thread) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (thread.isInterrupted() && System.nanoTime() < deadline) {
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+        }
+        return !thread.isInterrupted();
     }
 
     private ExternalDataResponse response(String items) {
