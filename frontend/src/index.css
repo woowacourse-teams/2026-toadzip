@@ -797,6 +797,24 @@ a {
   outline-offset: 2px;
 }
 
+/* Animate only newly queried content; the SDK owns the outer map position. */
+.housing-marker-enter {
+  transform-origin: 50% 100%;
+  animation: housing-marker-appear 220ms ease-out var(--marker-enter-delay, 0ms) both;
+}
+
+@keyframes housing-marker-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .housing-map-marker {
   --marker-border: #333333;
   position: relative;
@@ -1299,6 +1317,10 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .housing-marker-enter {
+    animation: none;
+  }
+
   .housing-map-marker,
   .housing-map-marker__top {
     transition: none;
