@@ -17,28 +17,58 @@
 .integrated-search {
   display: grid;
   flex: 0 0 auto;
-  gap: 0.65rem;
-  padding: 0 1rem 1rem;
+  gap: 12px;
+  padding: 16px 20px 12px;
 }
 
 .integrated-search.is-active {
   min-height: 0;
   flex: 1;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.integrated-search__input {
+  display: flex;
+  min-width: 0;
+  height: 44px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: #f5f5f7;
+}
+
+.integrated-search__input:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.integrated-search__icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  color: #202124;
 }
 
 .integrated-search__input input {
   width: 100%;
-  border: 1px solid #cbd5e1;
-  border-radius: 0.75rem;
-  padding: 0.75rem 0.9rem;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #202124;
   font: inherit;
+  font-size: 15px;
+  letter-spacing: -0.025em;
 }
 
-.integrated-search__hint {
-  margin: 0;
-  color: #64748b;
-  font-size: 0.8rem;
+.integrated-search__input input::placeholder {
+  color: #909296;
+  font-weight: 500;
+  opacity: 1;
 }
 
 .integrated-search__body {
@@ -202,11 +232,12 @@ a {
   width: 100%;
   min-width: 0;
   min-height: 0;
-  grid-template-columns: minmax(360px, 440px) minmax(0, 1fr);
+  grid-template-columns: minmax(360px, 400px) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
 }
 
 .housing-results {
+  container: housing-list / inline-size;
   position: relative;
   z-index: 3;
   display: flex;
@@ -215,46 +246,6 @@ a {
   border-right: 1px solid var(--border);
   background: var(--surface);
   flex-direction: column;
-}
-
-.housing-results__header {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: end;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 20px 24px 16px;
-}
-
-.housing-results__header h1,
-.housing-results__header p {
-  margin: 0;
-}
-
-.housing-results__header h1 {
-  margin-top: 2px;
-  font-size: 24px;
-  line-height: 1.5;
-}
-
-.housing-results__eyebrow {
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.housing-results__local-badge {
-  display: inline-flex;
-  min-height: 24px;
-  margin-top: 6px;
-  padding: 2px 8px;
-  align-items: center;
-  border: 1px solid #b5c9f8;
-  border-radius: 999px;
-  background: #edf3ff;
-  color: var(--brand-dark);
-  font-size: 12px;
-  font-weight: 800;
 }
 
 .local-public-housing-state {
@@ -291,9 +282,49 @@ a {
 }
 
 .housing-results__count {
-  color: var(--brand-dark);
-  font-size: 17px;
-  font-weight: 700;
+  color: #2463cf;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.housing-results__list-header {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  padding: 12px var(--list-inset);
+  border-bottom: 1px solid var(--list-divider);
+  color: var(--list-text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.housing-results__list,
+.housing-results__list-header,
+.housing-results__tabs,
+.integrated-search {
+  font-family: "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+}
+
+.housing-results__browse {
+  --list-text: #202124;
+  --list-muted: #777c84;
+  --list-divider: #e9eaed;
+  --list-inset: 28px;
+}
+
+@container housing-list (max-width: 400px) {
+  .housing-results__browse {
+    --list-inset: 20px;
+  }
+}
+
+@container housing-list (max-width: 340px) {
+  .housing-results__browse {
+    --list-inset: 16px;
+  }
 }
 
 .housing-viewport-action {
@@ -332,17 +363,19 @@ a {
 .housing-results__tabs {
   display: grid;
   flex: 0 0 auto;
-  padding: 0 16px;
+  padding: 0;
   border-bottom: 1px solid var(--border);
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .housing-results__tabs button {
-  min-height: 48px;
+  min-height: 44px;
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;
   color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .housing-results__tabs button.is-active {
@@ -373,7 +406,7 @@ a {
 
 .housing-results__scroll {
   min-height: 0;
-  padding: 16px;
+  padding: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   flex: 1;
@@ -383,8 +416,28 @@ a {
   display: grid;
   padding: 0;
   margin: 0;
-  gap: 12px;
+  gap: 0;
   list-style: none;
+}
+
+.housing-results__list > li {
+  min-width: 0;
+}
+
+.housing-results__list > li + li::before {
+  display: block;
+  margin: 0 var(--list-inset);
+  border-top: 1px solid var(--list-divider);
+  content: "";
+}
+
+.housing-results__scroll > :not(.housing-results__list) {
+  margin-right: var(--list-inset);
+  margin-left: var(--list-inset);
+}
+
+.housing-results__scroll > :first-child:not(.housing-results__list) {
+  margin-top: 16px;
 }
 
 .housing-results__state {
@@ -543,26 +596,66 @@ a {
 }
 
 .housing-recent {
-  margin-bottom: 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
+  margin-bottom: 0;
+  border-bottom: 1px solid #d9dde3;
+  background: #f6f7f9;
+  color: var(--list-text, #202124);
+  font-family: "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+}
+
+.housing-results__scroll > .housing-recent {
+  margin-right: 0;
+  margin-left: 0;
+}
+
+.housing-results__scroll > .housing-recent:first-child {
+  margin-top: 0;
 }
 
 .housing-recent button {
   width: 100%;
   border: 0;
-  padding: 10px 12px;
-  background: var(--surface);
+  padding: 12px var(--list-inset);
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  line-height: 1.5;
   text-align: left;
   cursor: pointer;
 }
 
 .housing-recent .housing-recent__toggle {
   display: flex;
+  min-height: 44px;
+  align-items: center;
   justify-content: space-between;
-  background: #f4f5f6;
-  font-weight: 700;
+  gap: 12px;
+  background: #eef0f3;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.housing-recent__count {
+  color: #2463cf;
+}
+
+.housing-recent__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #555b64;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.housing-recent__action svg {
+  width: 14px;
+  height: 14px;
+}
+
+.housing-recent__toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
 }
 
 .housing-recent ul {
@@ -573,18 +666,34 @@ a {
 
 .housing-recent li button {
   display: grid;
+  min-width: 0;
   gap: 4px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--list-divider, #e9eaed);
+}
+
+.housing-recent li strong {
+  font-size: 15px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .housing-recent li span {
-  color: var(--muted);
+  color: var(--list-muted, #777c84);
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
-.housing-recent [aria-current="true"] {
-  background: #ecf2fe;
-  box-shadow: inset 3px 0 var(--brand);
+.housing-recent button:hover {
+  background: #e9edf3;
+}
+
+.housing-recent button[aria-current="true"] {
+  background: #e8effd;
+}
+
+.housing-results .housing-recent button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }
 
 .housing-detail-state {
@@ -706,6 +815,7 @@ a {
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .housing-map-marker::after {
@@ -737,6 +847,7 @@ a {
   border-radius: 5px 5px 0 0;
   background: #333333;
   color: #ffffff;
+  transition: background-color 150ms ease;
 }
 
 .housing-map-marker__name {
@@ -809,6 +920,13 @@ a {
 .housing-map-marker:hover,
 .housing-map-marker.is-highlighted {
   --marker-border: #2463d5;
+  box-shadow: 0 0 0 3px rgb(36 99 213 / 20%), 0 4px 12px rgb(26 60 119 / 20%);
+}
+
+.housing-map-marker:hover .housing-map-marker__top,
+.housing-map-marker.is-highlighted .housing-map-marker__top {
+  border-bottom-color: #2463d5;
+  background: #2463d5;
 }
 
 .housing-map-marker.is-selected {
@@ -1113,7 +1231,7 @@ a {
 
 @media (max-width: 1023px) {
   .housing-explorer {
-    grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+    grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
   }
 }
 
@@ -1121,6 +1239,10 @@ a {
   .housing-explorer {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(300px, 48%) minmax(280px, 52%);
+  }
+
+  .housing-explorer:has(#announcement-results-panel:not([hidden]) #announcement-search-filter-panel) {
+    grid-template-rows: minmax(0, 1fr) 120px;
   }
 
   .housing-results {
@@ -1135,20 +1257,8 @@ a {
     left: 12px;
   }
 
-  .housing-results__header {
-    padding: 12px 16px 8px;
-  }
-
-  .housing-results__header h1 {
-    font-size: 20px;
-  }
-
   .housing-viewport-action {
     margin: 0 12px 8px;
-  }
-
-  .housing-results__scroll {
-    padding: 12px;
   }
 
   .housing-detail-layer {
@@ -1168,6 +1278,16 @@ a {
   }
 }
 
+@media (max-width: 767px) and (max-height: 500px) {
+  .housing-explorer:has(.housing-results__browse:not([hidden]) #announcement-results-panel:not([hidden]) #announcement-search-filter-panel) {
+    grid-template-rows: minmax(0, 1fr) 0;
+  }
+
+  .housing-explorer:not(.has-detail):has(.housing-results__browse:not([hidden]) #announcement-results-panel:not([hidden]) #announcement-search-filter-panel) .housing-map-workspace {
+    visibility: hidden;
+  }
+}
+
 @media (min-width: 768px) and (max-width: 1279px) {
   .housing-explorer.has-detail {
     grid-template-columns: minmax(0, 1fr);
@@ -1179,6 +1299,11 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .housing-map-marker,
+  .housing-map-marker__top {
+    transition: none;
+  }
+
   .map-loading-indicator {
     animation: none;
   }

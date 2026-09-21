@@ -41,12 +41,24 @@ export function IntegratedSearch({
     <section className={`integrated-search${active ? ' is-active' : ''}`} aria-label="통합 검색">
       <div className={styles.top}>
         <label className="integrated-search__input">
-          <span className="visually-hidden">공고, 단지, 지역 검색</span>
+          <span className="visually-hidden">지역, 단지, 공고 검색</span>
+          <svg
+            className="integrated-search__icon"
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          >
+            <circle cx="10.5" cy="10.5" r="7" />
+            <path d="m16 16 5 5" />
+          </svg>
           <input
             ref={inputRef}
             type="search"
             value={query}
-            placeholder="공고, 단지, 지역 검색"
+            placeholder="지역, 단지, 공고 검색"
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
@@ -67,8 +79,8 @@ export function IntegratedSearch({
           </div>
         )}
       </div>
-      <div className="integrated-search__body">
-        {active ? (
+      {active && (
+        <div className="integrated-search__body">
           <div className="integrated-search__results" key={normalizedQuery}>
             {searchTypes.map((type) => (
               <SearchGroup
@@ -80,8 +92,8 @@ export function IntegratedSearch({
               />
             ))}
           </div>
-        ) : <p className="integrated-search__hint">두 글자 이상 입력해 주세요.</p>}
-      </div>
+        </div>
+      )}
     </section>
   )
 }

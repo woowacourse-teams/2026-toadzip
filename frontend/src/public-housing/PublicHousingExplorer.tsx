@@ -159,7 +159,6 @@ interface PendingListFocus {
 }
 
 export interface PublicHousingExplorerProps {
-  localMockEnabled?: boolean
   mapRepository?: HousingMapRepository
   regionRepository?: PublicHousingRegionRepository
   repository?: PublicHousingRepository
@@ -195,7 +194,6 @@ const INITIAL_ANNOUNCEMENT_DETAIL: AnnouncementDetailState = {
 }
 
 export function PublicHousingExplorer({
-  localMockEnabled = false,
   mapRepository,
   regionRepository = publicHousingRegionRepository,
   repository = defaultPublicHousingRepository,
@@ -1440,28 +1438,26 @@ export function PublicHousingExplorer({
   const selectedAnnouncementId = detailLocation.kind === 'announcement'
     ? detailLocation.announcementId
     : null
+  const resultSummary = (
+    <>
+      <span>조회 결과</span>
+      <span
+        className="housing-results__count"
+        aria-label={resultCount.accessibleLabel}
+      >
+        {resultCount.visibleLabel}
+      </span>
+    </>
+  )
+  const listHeader = (
+    <div className="housing-results__list-header">{resultSummary}</div>
+  )
 
   return (
     <div className={!hasDetail
       ? 'housing-explorer'
       : 'housing-explorer has-detail'}>
       <aside className="housing-results" aria-label="공공임대주택 검색 결과">
-        <header className="housing-results__header">
-          <div>
-            <p className="housing-results__eyebrow">지도 기반 탐색</p>
-            <h1>공공임대주택</h1>
-            {localMockEnabled && (
-              <span className="housing-results__local-badge">로컬 mock</span>
-            )}
-          </div>
-          <span
-            className="housing-results__count"
-            aria-label={resultCount.accessibleLabel}
-          >
-            {resultCount.visibleLabel}
-          </span>
-        </header>
-
         <IntegratedSearch
           onActiveChange={setIntegratedSearchActive}
           onSelect={handleIntegratedSearchSelect}
@@ -1469,6 +1465,8 @@ export function PublicHousingExplorer({
         />
 
         <div className="housing-results__browse" hidden={integratedSearchActive}>
+          <ResultTabs activeTab={activeResultTab} onSelect={selectResultTab} />
+
           <ViewportAction
             announcementsActive={activeResultTab === 'announcements'}
             decision={listViewportDecision}
@@ -1478,8 +1476,6 @@ export function PublicHousingExplorer({
             <ComplexRequestFeedback state={complexResults} onRetry={retryComplexResults} />
           )}
 
-          <ResultTabs activeTab={activeResultTab} onSelect={selectResultTab} />
-
           <div
             className="housing-results__panel"
             id="complex-results-panel"
@@ -1487,6 +1483,7 @@ export function PublicHousingExplorer({
             aria-labelledby="complex-results-tab"
             hidden={activeResultTab !== 'complexes'}
           >
+            {activeResultTab === 'complexes' && listHeader}
             <div
               ref={complexResultsScrollRef}
               className="housing-results__scroll"
@@ -1497,8 +1494,13 @@ export function PublicHousingExplorer({
                   <button type="button" className="housing-recent__toggle"
                     aria-expanded={recentExpanded} aria-controls="recent-complexes"
                     onClick={() => setRecentExpanded((current) => !current)}>
-                    최근 본 단지 {recentComplexes.length}개
-                    <span>{recentExpanded ? '접기 ▴' : '펼치기 ▾'}</span>
+                    <span>최근 본 단지 <span className="housing-recent__count">{recentComplexes.length}개</span></span>
+                    <span className="housing-recent__action">
+                      {recentExpanded ? '접기' : '펼치기'}
+                      <svg aria-hidden="true" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path d="m3 4.5 3 3 3-3" />
+                      </svg>
+                    </span>
                   </button>
                   <ul id="recent-complexes" hidden={!recentExpanded}>
                     {recentComplexes.map((recent) => (
@@ -1576,6 +1578,7 @@ export function PublicHousingExplorer({
                 kind="announcement"
                 onApply={applyAnnouncementFilters}
                 regionRepository={regionRepository}
+                resultSummary={activeResultTab === 'announcements' ? resultSummary : null}
               />
               <div
                 ref={announcementResultsScrollRef}
@@ -2235,6 +2238,7 @@ function ComplexResultContent({
 
 function toComplexCardData(complex: ComplexListItem): HousingComplexCardData {
   return {
+    agencyCode: complex.agency?.code ?? null,
     agencyName: complex.agency?.name ?? '기관 정보 확인 중',
     complexId: complex.complexId,
     depositMax: complex.depositMax,
@@ -2245,6 +2249,7 @@ function toComplexCardData(complex: ComplexListItem): HousingComplexCardData {
     monthlyRentMin: complex.monthlyRentMin,
     name: complex.name ?? '단지명 정보 확인 중',
     regionName: complex.regionName ?? '지역 정보 확인 중',
+    thumbnailImageUrl: complex.thumbnailImageUrl,
     rentalTypeLabel: rentalTypeLabel(complex.rentalType),
     representativeAnnouncement: complex.representativeAnnouncement
       ? {
