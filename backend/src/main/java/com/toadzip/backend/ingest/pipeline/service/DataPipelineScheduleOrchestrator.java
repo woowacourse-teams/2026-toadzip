@@ -1,10 +1,13 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.pipeline.configuration.DataPipelineSchedulerProperties;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineSchedule;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineScheduleDeferralReason;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineScheduleStage;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -27,14 +30,11 @@ import org.springframework.stereotype.Service;
 )
 public class DataPipelineScheduleOrchestrator {
 
-    private static final String COLLECTION_STAGE = "collection";
-    private static final String REFINEMENT_STAGE = "refinement";
-    private static final String EXECUTION_IN_PROGRESS = "execution_in_progress";
-    private static final String COLLECTION_NOT_COMPLETED = "collection_not_completed";
-
     private final DataPipelineExecutionService executionService;
     private final DataPipelineExecutionRepository executionRepository;
     private final DataPipelineScheduleSlotPolicy slotPolicy;
+    private final DataPipelineScheduleDeferralService deferralService;
+    private final DataPipelineSchedulerProperties schedulerProperties;
     private final MeterRegistry meterRegistry;
     private final Clock clock;
     private final Map<DataPipelineSchedule, String> deferredObservations =
@@ -44,12 +44,16 @@ public class DataPipelineScheduleOrchestrator {
             DataPipelineExecutionService executionService,
             DataPipelineExecutionRepository executionRepository,
             DataPipelineScheduleSlotPolicy slotPolicy,
+            DataPipelineScheduleDeferralService deferralService,
+            DataPipelineSchedulerProperties schedulerProperties,
             MeterRegistry meterRegistry,
             Clock clock
     ) {
         this.executionService = executionService;
         this.executionRepository = executionRepository;
         this.slotPolicy = slotPolicy;
+        this.deferralService = deferralService;
+        this.schedulerProperties = schedulerProperties;
         this.meterRegistry = meterRegistry;
         this.clock = clock;
     }
@@ -93,9 +97,9 @@ public class DataPipelineScheduleOrchestrator {
         if (collectionResponse.status() != DataPipelineExecutionStatus.COMPLETED) {
             defer(
                     schedule,
-                    COLLECTION_STAGE,
+                    DataPipelineScheduleStage.COLLECTION,
                     scheduledAt,
-                    COLLECTION_NOT_COMPLETED,
+                    DataPipelineScheduleDeferralReason.COLLECTION_NOT_COMPLETED,
                     collectionResponse.status().name()
             );
             return;
@@ -120,14 +124,14 @@ public class DataPipelineScheduleOrchestrator {
             meterRegistry.counter(
                     "ingest.scheduler.started",
                     "schedule", schedule.name(),
-                    "stage", COLLECTION_STAGE,
+                    "stage", DataPipelineScheduleStage.COLLECTION.metricValue(),
                     "trigger", trigger.name()
             ).increment();
             log.info(
                     "event=ingest.schedule.started schedule={} stage={} trigger={} "
                             + "scheduledAt={} executionId={}",
                     schedule,
-                    COLLECTION_STAGE,
+                    DataPipelineScheduleStage.COLLECTION.metricValue(),
                     trigger,
                     scheduledAt,
                     response.executionId()
@@ -136,9 +140,9 @@ public class DataPipelineScheduleOrchestrator {
         catch (IngestAlreadyRunningException exception) {
             defer(
                     schedule,
-                    COLLECTION_STAGE,
+                    DataPipelineScheduleStage.COLLECTION,
                     scheduledAt,
-                    EXECUTION_IN_PROGRESS,
+                    DataPipelineScheduleDeferralReason.EXECUTION_IN_PROGRESS,
                     null
             );
         }
@@ -160,14 +164,14 @@ public class DataPipelineScheduleOrchestrator {
             meterRegistry.counter(
                     "ingest.scheduler.started",
                     "schedule", schedule.name(),
-                    "stage", REFINEMENT_STAGE,
+                    "stage", DataPipelineScheduleStage.REFINEMENT.metricValue(),
                     "trigger", collection.trigger().name()
             ).increment();
             log.info(
                     "event=ingest.schedule.started schedule={} stage={} trigger={} "
                             + "scheduledAt={} executionId={} upstreamExecutionId={}",
                     schedule,
-                    REFINEMENT_STAGE,
+                    DataPipelineScheduleStage.REFINEMENT.metricValue(),
                     collection.trigger(),
                     scheduledAt,
                     response.executionId(),
@@ -177,9 +181,9 @@ public class DataPipelineScheduleOrchestrator {
         catch (IngestAlreadyRunningException exception) {
             defer(
                     schedule,
-                    REFINEMENT_STAGE,
+                    DataPipelineScheduleStage.REFINEMENT,
                     scheduledAt,
-                    EXECUTION_IN_PROGRESS,
+                    DataPipelineScheduleDeferralReason.EXECUTION_IN_PROGRESS,
                     null
             );
         }
@@ -227,33 +231,44 @@ public class DataPipelineScheduleOrchestrator {
 
     private void defer(
             DataPipelineSchedule schedule,
-            String stage,
+            DataPipelineScheduleStage stage,
             Instant scheduledAt,
-            String reason,
+            DataPipelineScheduleDeferralReason reason,
             String detail
     ) {
-        String observation = stage + ":" + scheduledAt + ":" + reason + ":" + detail;
+        Instant observedAt = clock.instant();
+        deferralService.defer(
+                schedule,
+                stage,
+                scheduledAt,
+                reason,
+                detail,
+                observedAt,
+                observedAt.plusMillis(schedulerProperties.pollIntervalMillis())
+        );
+        String observation = stage.name() + ":" + scheduledAt + ":" + reason.name() + ":" + detail;
         if (observation.equals(deferredObservations.put(schedule, observation))) {
             return;
         }
         meterRegistry.counter(
                 "ingest.scheduler.deferred",
                 "schedule", schedule.name(),
-                "stage", stage,
-                "reason", reason
+                "stage", stage.metricValue(),
+                "reason", reason.metricValue()
         ).increment();
         log.warn(
                 "event=ingest.schedule.deferred schedule={} stage={} scheduledAt={} "
                         + "reason={} detail={}",
                 schedule,
-                stage,
+                stage.metricValue(),
                 scheduledAt,
-                reason,
+                reason.metricValue(),
                 detail
         );
     }
 
     private void clearDeferred(DataPipelineSchedule schedule) {
+        deferralService.resolve(schedule, clock.instant());
         deferredObservations.remove(schedule);
     }
 }

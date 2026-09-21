@@ -46,6 +46,9 @@ class DataPipelineScheduleOrchestratorTest {
     @Mock
     private DataPipelineExecutionRepository executionRepository;
 
+    @Mock
+    private DataPipelineScheduleDeferralService deferralService;
+
     private SimpleMeterRegistry meterRegistry;
     private DataPipelineScheduleOrchestrator orchestrator;
 
@@ -64,6 +67,8 @@ class DataPipelineScheduleOrchestratorTest {
                 executionService,
                 executionRepository,
                 new DataPipelineScheduleSlotPolicy(properties),
+                deferralService,
+                properties,
                 meterRegistry,
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );

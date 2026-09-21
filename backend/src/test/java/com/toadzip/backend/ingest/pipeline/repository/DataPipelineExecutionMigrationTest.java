@@ -37,6 +37,8 @@ class DataPipelineExecutionMigrationTest {
             "db/migration/V20260919_02__add_data_pipeline_partial_failure_reports.sql";
     private static final String SCHEDULE_METADATA_MIGRATION =
             "db/migration/V20260921_01__add_data_pipeline_schedule_metadata.sql";
+    private static final String SCHEDULE_DEFERRAL_MIGRATION =
+            "db/migration/V20260921_02__create_data_pipeline_schedule_deferrals.sql";
 
     @Autowired
     private DataSource dataSource;
@@ -76,6 +78,14 @@ class DataPipelineExecutionMigrationTest {
                         connection,
                         new ClassPathResource(SCHEDULE_METADATA_MIGRATION)
                 );
+                ScriptUtils.executeSqlScript(
+                        connection,
+                        new ClassPathResource(SCHEDULE_DEFERRAL_MIGRATION)
+                );
+                ScriptUtils.executeSqlScript(
+                        connection,
+                        new ClassPathResource(SCHEDULE_DEFERRAL_MIGRATION)
+                );
                 insertLegacyExecution(connection, POST_MIGRATION_LEGACY_EXECUTION_ID);
 
                 assertThat(tableExists(connection, "data_pipeline_executions")).isTrue();
@@ -86,6 +96,10 @@ class DataPipelineExecutionMigrationTest {
                 assertThat(tableExists(
                         connection,
                         "data_pipeline_execution_partial_failures"
+                )).isTrue();
+                assertThat(tableExists(
+                        connection,
+                        "data_pipeline_schedule_deferrals"
                 )).isTrue();
                 assertThat(columnLength(connection, "data_pipeline_executions", "type"))
                         .isEqualTo(40);
