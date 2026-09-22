@@ -573,6 +573,25 @@ a {
   pointer-events: none;
 }
 
+.housing-map-credits {
+  position: absolute;
+  z-index: 5;
+  right: 56px;
+  bottom: 6px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 90%);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 16px;
+  text-underline-offset: 2px;
+}
+
+.housing-map-credits:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .housing-map-notice {
   position: absolute;
   z-index: 4;
@@ -1364,7 +1383,8 @@ a {
 
   .housing-explorer.has-detail .housing-results,
   .housing-explorer.has-detail .map-region,
-  .housing-explorer.has-detail .housing-map-notice {
+  .housing-explorer.has-detail .housing-map-notice,
+  .housing-explorer.has-detail .housing-map-credits {
     visibility: hidden;
   }
 }

@@ -3,6 +3,10 @@
   gap: 0.9rem;
 }
 
+.withSelection {
+  gap: 8px;
+}
+
 .header {
   display: flex;
   align-items: center;
