@@ -5,6 +5,7 @@ import { AdminLayout } from './admin/auth/AdminLayout'
 import { LoginPage } from './admin/auth/LoginPage'
 import { RequireAdmin } from './admin/auth/RequireAdmin'
 import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHousingExplorer.tsx'
+import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 
 function Home() {
   return (
@@ -29,6 +30,7 @@ function Home() {
           <span className="brand-name">두꺼비집</span>
           <span className="brand-tagline">공공임대주택 지도</span>
         </Link>
+        <Link className="service-login-link" to="/login">로그인 / 내 계정</Link>
       </header>
       <main className="map-main">
         <DefaultPublicHousingExplorer />
@@ -67,6 +69,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
+      <Route path="/login" element={<UserLoginPage />} />
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

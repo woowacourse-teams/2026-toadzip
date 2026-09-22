@@ -19,7 +19,7 @@
 마지막 값은 후행 `/`가 없는 공개 백엔드 오리진이다. 등록할 콜백 주소는 이 값에
 `/api/auth/oauth2/callback/google`과 `/api/auth/oauth2/callback/kakao`를 붙인 것이다.
 `USER_OAUTH_SUCCESS_URL`, `USER_OAUTH_FAILURE_URL`은 서버가 정한 프론트엔드 이동 주소이며
-기본값은 각각 `http://localhost:5173/`, `http://localhost:5173/?login=failed`다.
+기본값은 각각 `http://localhost:5173/login`, `http://localhost:5173/login?login=failed`다.
 운영에서는 서비스 오리진으로 명시한다. 카카오 개발자 콘솔에서 로그인과 Redirect URI를 등록하고,
 구글 OAuth 클라이언트에도 해당 Redirect URI를 등록한다. 비밀 값은 저장소에 넣지 않는다.
 
