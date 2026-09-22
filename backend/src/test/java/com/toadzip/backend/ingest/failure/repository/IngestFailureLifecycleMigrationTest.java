@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.failure.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.toadzip.backend.MigrationSqlSection;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -9,7 +10,6 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -19,11 +19,11 @@ class IngestFailureLifecycleMigrationTest {
 
     private static final String SCHEMA = "ingest_failure_lifecycle_migration_test";
     private static final String FAILURE_LIFECYCLE_MIGRATION =
-            "db/migration/V20260919_03__add_ingest_failure_lifecycle.sql";
+            "V20260919_03__add_ingest_failure_lifecycle.sql";
     private static final String EXTERNAL_FAILURE_LIFECYCLE_MIGRATION =
-            "db/migration/V20260919_04__add_external_failure_lifecycle.sql";
+            "V20260919_04__add_external_failure_lifecycle.sql";
     private static final String HOUSEHOLD_FAILURE_MIGRATION =
-            "db/migration/V20260919_05__create_lh_household_enrichment_failures.sql";
+            "V20260919_05__create_lh_household_enrichment_failures.sql";
 
     @Autowired
     private DataSource dataSource;
@@ -173,7 +173,7 @@ class IngestFailureLifecycleMigrationTest {
     }
 
     private void execute(Connection connection, String migration) {
-        ScriptUtils.executeSqlScript(connection, new ClassPathResource(migration));
+        ScriptUtils.executeSqlScript(connection, MigrationSqlSection.resource(migration));
     }
 
     private boolean lifecycleBackfilled(Connection connection, String table) throws Exception {

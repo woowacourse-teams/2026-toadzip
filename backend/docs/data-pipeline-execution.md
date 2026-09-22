@@ -32,43 +32,8 @@
 
 ## 스키마 배포
 
-운영은 `ddl-auto=validate`이므로 애플리케이션 배포 전에 다음 SQL을 실행한다.
-
-```text
-src/main/resources/db/migration/V20260903_01__create_data_pipeline_executions.sql
-src/main/resources/db/migration/V20260903_02__add_data_pipeline_skipped_steps.sql
-src/main/resources/db/migration/V20260919_01__add_data_pipeline_completed_step_reports.sql
-src/main/resources/db/migration/V20260919_02__add_data_pipeline_partial_failure_reports.sql
-src/main/resources/db/migration/V20260919_03__add_ingest_failure_lifecycle.sql
-src/main/resources/db/migration/V20260919_04__add_external_failure_lifecycle.sql
-src/main/resources/db/migration/V20260919_05__create_lh_household_enrichment_failures.sql
-src/main/resources/db/migration/V20260921_01__add_data_pipeline_schedule_metadata.sql
-src/main/resources/db/migration/V20260921_02__create_data_pipeline_schedule_deferrals.sql
-src/main/resources/db/migration/V20260921_03__allow_null_schedule_deferral_next_retry_at.sql
-```
-
-```bash
-psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
-  --file src/main/resources/db/migration/V20260903_01__create_data_pipeline_executions.sql
-psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
-  --file src/main/resources/db/migration/V20260903_02__add_data_pipeline_skipped_steps.sql
-psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
-  --file src/main/resources/db/migration/V20260919_01__add_data_pipeline_completed_step_reports.sql
-psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
-  --file src/main/resources/db/migration/V20260919_02__add_data_pipeline_partial_failure_reports.sql
-psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
-  --file src/main/resources/db/migration/V20260919_03__add_ingest_failure_lifecycle.sql
-psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
-  --file src/main/resources/db/migration/V20260919_04__add_external_failure_lifecycle.sql
-psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
-  --file src/main/resources/db/migration/V20260919_05__create_lh_household_enrichment_failures.sql
-psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
-  --file src/main/resources/db/migration/V20260921_01__add_data_pipeline_schedule_metadata.sql
-psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
-  --file src/main/resources/db/migration/V20260921_02__create_data_pipeline_schedule_deferrals.sql
-psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
-  --file src/main/resources/db/migration/V20260921_03__allow_null_schedule_deferral_next_retry_at.sql
-```
+운영 스키마는 [Flyway 도입 절차](flyway-adoption.md)의 통합 `V20260922_01`로 배포한다.
+`ddl-auto=validate`는 변경을 적용하지 않으므로 첫 도입 전에 기존 DB baseline이 필요하다.
 
 SQL은 신규 테이블을 생성하고 기존 실행·실패 테이블을 추가 컬럼으로 확장하므로 이전
 애플리케이션이 기존 실패 행을 저장할 수 있다. 다만 이전 버전의 ingest는 실패 테이블을
@@ -77,7 +42,7 @@ SQL은 신규 테이블을 생성하고 기존 실행·실패 테이블을 추�
 실행 ID 컬럼, `lh_household_enrichment_failures` 테이블과 관련 인덱스, 정기 실행 메타데이터
 컬럼과 스케줄 지연 테이블을 확인한다. `next_retry_at`은 자동 재시도가 없는 지연을 표현하기 위해
 `NULL`을 허용한다.
-실패 수명주기 SQL(`03`~`05`)은 각 파일이 자체 트랜잭션으로 실행되며, 오류가 나면 해당 파일의
+통합 `V20260922_01`은 Flyway의 단일 트랜잭션으로 실행되며, 오류가 나면 해당 마이그레이션의
 스키마 변경과 백필을 함께 롤백한다.
 
 실패 이력은 현재 장애와 재발 추적의 근거이므로 자동 삭제하지 않는다. 보존 기간과 삭제 기준은
