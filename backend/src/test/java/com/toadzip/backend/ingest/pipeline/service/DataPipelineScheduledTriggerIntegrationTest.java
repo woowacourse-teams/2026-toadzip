@@ -10,6 +10,9 @@ import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +32,8 @@ import org.springframework.test.context.ActiveProfiles;
 @Import(DataPipelineScheduledTriggerIntegrationTest.RunnerConfiguration.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class DataPipelineScheduledTriggerIntegrationTest {
+
+    private static final Instant FIXED_NOW = Instant.parse("2026-09-21T05:15:00Z");
 
     @Autowired
     private DataPipelineExecutionRepository executionRepository;
@@ -55,6 +60,10 @@ class DataPipelineScheduledTriggerIntegrationTest {
         assertThat(executions)
                 .extracting(DataPipelineExecution::getExecutionTrigger)
                 .containsOnly(DataPipelineExecutionTrigger.SCHEDULED);
+        assertThat(execution(executions, DataPipelineType.COMPLEX_COLLECTION).getScheduledAt())
+                .isEqualTo(Instant.parse("2026-09-20T18:00:00Z"));
+        assertThat(execution(executions, DataPipelineType.ANNOUNCEMENT_COLLECTION).getScheduledAt())
+                .isEqualTo(Instant.parse("2026-09-21T03:00:00Z"));
         assertRefinementLinked(
                 executions,
                 DataPipelineType.COMPLEX_COLLECTION,
@@ -90,6 +99,12 @@ class DataPipelineScheduledTriggerIntegrationTest {
 
     @TestConfiguration(proxyBeanMethods = false)
     static class RunnerConfiguration {
+
+        @Bean
+        @Primary
+        Clock scheduledTriggerTestClock() {
+            return Clock.fixed(FIXED_NOW, ZoneId.of("Asia/Seoul"));
+        }
 
         @Bean
         @Primary
