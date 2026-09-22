@@ -100,6 +100,51 @@ describe('관리자 데이터 등록 API', () => {
       fieldErrors: { name: '필수 값입니다.' },
     })
   })
+
+  it('공고 JSON 검증 응답을 런타임에서 확인한다', async () => {
+    const validation = {
+      schemaVersion: 'admin-announcement-import/v1',
+      jsonHash: 'a'.repeat(64),
+      registerable: true,
+      duplicated: false,
+      errors: [],
+      warnings: [],
+      unresolvedFields: [],
+      supplyRows: [{
+        supplyRowIndex: 0,
+        sourceComplexName: '두꺼비 행복주택',
+        pnu: '1114010100100010000',
+        status: 'AUTO_SELECTED',
+        suggestedHousingComplexId: 42,
+        candidates: [{
+          housingComplexId: 42,
+          name: '두꺼비 행복주택',
+          roadAddress: '서울시 중구 세종대로 1',
+          rentalType: 'HAPPY_HOUSING',
+          agencyCode: 'LH',
+        }],
+      }],
+    }
+    const fetchMock = prepareFetch(validation)
+    const { validateAnnouncementImport } = await import('./api.ts')
+    const request = { schemaVersion: 'admin-announcement-import/v1' }
+
+    await expect(validateAnnouncementImport(request)).resolves.toEqual(validation)
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:8080/api/admin/announcement-imports/validate',
+      expect.objectContaining({ body: JSON.stringify(request) }),
+    )
+  })
+
+  it('잘못된 공고 JSON 검증 성공 응답은 계약 오류로 처리한다', async () => {
+    prepareFetch({ registerable: true })
+    const { validateAnnouncementImport } = await import('./api.ts')
+
+    await expect(validateAnnouncementImport({})).rejects.toThrow(
+      '공고 JSON 검증 응답 형식이 올바르지 않습니다.',
+    )
+  })
 })
 
 function prepareFetch(data: unknown) {

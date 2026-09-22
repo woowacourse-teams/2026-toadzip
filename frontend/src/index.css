@@ -1322,6 +1322,16 @@ button {
   font-size: 22px;
 }
 
+.registration-card textarea {
+  box-sizing: border-box;
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  margin: 0.5rem 0 1rem;
+  min-height: 16rem;
+  resize: vertical;
+  width: 100%;
+}
+
 .data-pipeline-card {
   display: grid;
   gap: 20px;

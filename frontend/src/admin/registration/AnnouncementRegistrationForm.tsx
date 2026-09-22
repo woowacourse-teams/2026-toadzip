@@ -74,7 +74,7 @@ export function AnnouncementRegistrationForm({
 
   return (
     <section className="registration-card" aria-labelledby="announcement-registration-title">
-      <h2 id="announcement-registration-title">공고 등록</h2>
+      <h2 id="announcement-registration-title">직접 입력</h2>
       {housingComplex ? (
         <p className="selected-complex" role="status">
           선택 단지: <strong>{housingComplex.name}</strong> · {housingComplex.roadAddress}

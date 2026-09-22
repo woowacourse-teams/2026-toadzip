@@ -63,6 +63,43 @@ export type AnnouncementCreateResponse = {
   name: string
 }
 
+export type AnnouncementImportCandidate = {
+  housingComplexId: number
+  name: string
+  roadAddress: string
+  rentalType: string
+  agencyCode: string
+}
+
+export type AnnouncementImportSupplyRowMatch = {
+  supplyRowIndex: number
+  sourceComplexName: string
+  pnu: string
+  status: 'AUTO_SELECTED' | 'SELECTION_REQUIRED' | 'NOT_FOUND'
+  suggestedHousingComplexId: number | null
+  candidates: AnnouncementImportCandidate[]
+}
+
+export type AnnouncementImportValidationResponse = {
+  schemaVersion: string
+  jsonHash: string
+  registerable: boolean
+  duplicated: boolean
+  errors: Array<{ path: string; reason: string }>
+  warnings: Array<{ path: string; reason: string }>
+  unresolvedFields: Array<{ path: string; reason: string }>
+  supplyRows: AnnouncementImportSupplyRowMatch[]
+}
+
+export type AnnouncementImportCreateResponse = {
+  importId: number
+  announcementId: number
+  supplyRowCount: number
+  scheduleCount: number
+  attachmentCount: number
+  supplyTargetCount: number
+}
+
 type CsrfToken = {
   token: string
   headerName: string
@@ -104,6 +141,32 @@ export async function createAnnouncement(
   const body = await readJson(response)
   if (!isAnnouncementEnvelope(body)) {
     throw new Error('공고 등록 응답 형식이 올바르지 않습니다.')
+  }
+  return body.data
+}
+
+export async function validateAnnouncementImport(
+  importData: unknown,
+): Promise<AnnouncementImportValidationResponse> {
+  const response = await postWithCsrf('/api/admin/announcement-imports/validate', importData)
+  const body = await readJson(response)
+  if (!isAnnouncementImportValidationEnvelope(body)) {
+    throw new Error('공고 JSON 검증 응답 형식이 올바르지 않습니다.')
+  }
+  return body.data
+}
+
+export async function createAnnouncementImport(
+  importData: unknown,
+  complexSelections: Array<{ supplyRowIndex: number; housingComplexId: number }>,
+): Promise<AnnouncementImportCreateResponse> {
+  const response = await postWithCsrf('/api/admin/announcement-imports', {
+    importData,
+    complexSelections,
+  })
+  const body = await readJson(response)
+  if (!isAnnouncementImportCreateEnvelope(body)) {
+    throw new Error('공고 JSON 등록 응답 형식이 올바르지 않습니다.')
   }
   return body.data
 }
@@ -193,6 +256,71 @@ function isAnnouncementEnvelope(value: unknown): value is ApiEnvelope<Announceme
     && typeof value.data.supplyRowId === 'number'
     && typeof value.data.housingComplexId === 'number'
     && typeof value.data.name === 'string'
+}
+
+function isAnnouncementImportValidationEnvelope(
+  value: unknown,
+): value is ApiEnvelope<AnnouncementImportValidationResponse> {
+  if (!isRecord(value) || !isRecord(value.data)) {
+    return false
+  }
+  const data = value.data
+  return typeof data.schemaVersion === 'string'
+    && typeof data.jsonHash === 'string'
+    && typeof data.registerable === 'boolean'
+    && typeof data.duplicated === 'boolean'
+    && isIssueArray(data.errors)
+    && isIssueArray(data.warnings)
+    && isIssueArray(data.unresolvedFields)
+    && Array.isArray(data.supplyRows)
+    && data.supplyRows.every(isSupplyRowMatch)
+}
+
+function isAnnouncementImportCreateEnvelope(
+  value: unknown,
+): value is ApiEnvelope<AnnouncementImportCreateResponse> {
+  if (!isRecord(value) || !isRecord(value.data)) {
+    return false
+  }
+  const data = value.data
+  return typeof data.importId === 'number'
+    && typeof data.announcementId === 'number'
+    && typeof data.supplyRowCount === 'number'
+    && typeof data.scheduleCount === 'number'
+    && typeof data.attachmentCount === 'number'
+    && typeof data.supplyTargetCount === 'number'
+}
+
+function isSupplyRowMatch(value: unknown): value is AnnouncementImportSupplyRowMatch {
+  if (!isRecord(value)) {
+    return false
+  }
+  return typeof value.supplyRowIndex === 'number'
+    && typeof value.sourceComplexName === 'string'
+    && typeof value.pnu === 'string'
+    && isMatchStatus(value.status)
+    && (value.suggestedHousingComplexId === null || typeof value.suggestedHousingComplexId === 'number')
+    && Array.isArray(value.candidates)
+    && value.candidates.every(isImportCandidate)
+}
+
+function isMatchStatus(value: unknown): value is AnnouncementImportSupplyRowMatch['status'] {
+  return value === 'AUTO_SELECTED' || value === 'SELECTION_REQUIRED' || value === 'NOT_FOUND'
+}
+
+function isImportCandidate(value: unknown): value is AnnouncementImportCandidate {
+  return isRecord(value)
+    && typeof value.housingComplexId === 'number'
+    && typeof value.name === 'string'
+    && typeof value.roadAddress === 'string'
+    && typeof value.rentalType === 'string'
+    && typeof value.agencyCode === 'string'
+}
+
+function isIssueArray(value: unknown): value is Array<{ path: string; reason: string }> {
+  return Array.isArray(value) && value.every((issue) => isRecord(issue)
+    && typeof issue.path === 'string'
+    && typeof issue.reason === 'string')
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

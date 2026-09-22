@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { DataPipelineControl } from '../ingest/DataPipelineControl'
 import { LocationSummaryUpload } from '../ingest/LocationSummaryUpload'
 import { AnnouncementRegistrationForm } from './AnnouncementRegistrationForm'
+import { AnnouncementImportForm } from './AnnouncementImportForm'
 import type { HousingComplexCreateResponse } from './api'
 import { HousingComplexRegistrationForm } from './HousingComplexRegistrationForm'
 
@@ -14,7 +15,7 @@ export function AdminDataRegistrationPage() {
     <section className="admin-registration-page">
       <header className="admin-registration-heading">
         <h1>관리자 페이지</h1>
-        <p>단지를 먼저 저장한 뒤 해당 단지의 원공고와 공급행을 등록합니다.</p>
+        <p>직접 입력하거나 검증된 JSON을 검토해 원공고와 하위 정보를 등록합니다.</p>
       </header>
       <DataPipelineControl />
       <LocationSummaryUpload />
@@ -26,6 +27,7 @@ export function AdminDataRegistrationPage() {
         housingComplex={housingComplex}
         onSubmittingChange={setIsAnnouncementSubmitting}
       />
+      <AnnouncementImportForm onSubmittingChange={setIsAnnouncementSubmitting} />
     </section>
   )
 }

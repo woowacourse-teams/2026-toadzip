@@ -51,7 +51,8 @@ describe('AdminHome', () => {
     render(<AdminHome />)
 
     expect(screen.getByRole('heading', { name: '단지 등록' })).toBeVisible()
-    expect(screen.getByRole('heading', { name: '공고 등록' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: '직접 입력' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'JSON 가져오기' })).toBeVisible()
     expect(screen.getByRole('button', { name: '단지 저장' })).toBeEnabled()
     expect(screen.getByRole('button', { name: '공고 저장' })).toBeDisabled()
   })
