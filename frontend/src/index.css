@@ -221,7 +221,6 @@ a {
 }
 
 .service-login-link {
-  margin-left: auto;
   padding: 8px 12px;
   border-radius: 8px;
   color: var(--brand-dark);
@@ -231,7 +230,50 @@ a {
 }
 
 .service-login-link:hover { background: #edf4ff; }
+.service-user-control {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.service-user-loading,
+.service-user-error {
+  color: #69736f;
+  font-size: 13px;
+}
+.service-user-error { color: #a13b2a; }
+.service-login-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #245f49;
+  font-size: 14px;
+  font-weight: 700;
+}
+.service-login-status > span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2f9d69;
+}
+.service-logout-button,
+.service-session-retry {
+  padding: 7px 10px;
+  border: 1px solid #d5ddd9;
+  border-radius: 8px;
+  background: #fff;
+  color: #40544c;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.service-logout-button:hover,
+.service-session-retry:hover { background: #f1f6f3; }
+.service-logout-button:disabled { cursor: wait; opacity: .6; }
 .service-login-link:focus-visible,
+.service-logout-button:focus-visible,
+.service-session-retry:focus-visible,
 .user-login-page a:focus-visible,
 .user-login-page button:focus-visible {
   outline: 3px solid var(--focus);
