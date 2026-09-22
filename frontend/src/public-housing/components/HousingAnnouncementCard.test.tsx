@@ -113,16 +113,31 @@ describe('HousingAnnouncementCard', () => {
     ])
   })
 
-  it('누락되거나 유효하지 않은 날짜만 정보 확인 중으로 표시한다', () => {
+  it('접수 날짜가 모두 누락되거나 유효하지 않으면 공고문 확인을 한 번만 표시한다', () => {
     const { card } = renderCard(announcementWith({
       applicationStartAt: null,
       applicationEndAt: '2026-02-30',
     }))
     const schedule = requiredRow(card, 'schedule')
 
-    expect(within(schedule).getAllByText('정보 확인 중')).toHaveLength(2)
+    expect(within(schedule).getAllByText('공고문 확인')).toHaveLength(1)
     expect(within(schedule).queryByRole('time')).not.toBeInTheDocument()
-    expect(schedule).toHaveTextContent('정보 확인 중 ~ 정보 확인 중')
+    expect(schedule).not.toHaveTextContent('~')
+  })
+
+  it.each([
+    [null, '2026-09-21', '공고문 확인 ~ 2026.09.21'],
+    ['2026-09-18', null, '2026.09.18 ~ 공고문 확인'],
+  ])('접수기간 한쪽만 누락되면 확인된 날짜 %s → %s를 유지한다', (start, end, expected) => {
+    const { card } = renderCard(announcementWith({
+      applicationStartAt: start,
+      applicationEndAt: end,
+    }))
+    const schedule = requiredRow(card, 'schedule')
+
+    expect(within(schedule).getAllByText('공고문 확인')).toHaveLength(1)
+    expect(within(schedule).getAllByRole('time')).toHaveLength(1)
+    expect(schedule).toHaveTextContent(expected)
   })
 
   it('첫 지역과 나머지 지역 개수만 요약한다', () => {
@@ -148,7 +163,7 @@ describe('HousingAnnouncementCard', () => {
     expect(footer).not.toHaveTextContent(/모집 호수|모집 예비자 수/)
   })
 
-  it('nullable 핵심 속성은 정보 확인 중으로 표시하고 nullable 조회수는 숨긴다', () => {
+  it('nullable 핵심 속성은 공고문 확인으로 표시하고 nullable 조회수는 숨긴다', () => {
     const { card } = renderCard(announcementWith({
       title: null,
       regionNames: [],
@@ -163,15 +178,18 @@ describe('HousingAnnouncementCard', () => {
       supplyHouseholdCount: null,
     }))
 
-    expect(within(card).getByRole('heading', { name: '공고명 정보 확인 중' }))
+    expect(within(card).getByRole('heading', { name: '공고문 확인' }))
       .toBeInTheDocument()
-    expect(within(card).getByText('지역 정보 확인 중')).toBeInTheDocument()
-    expect(within(card).getByText('공사 정보 확인 중')).toBeInTheDocument()
-    expect(within(card).getByText('주택유형 정보 확인 중')).toBeInTheDocument()
-    expect(requiredRow(card, 'status')).toHaveTextContent('정보 확인 중')
-    expect(requiredRow(card, 'footer')).toHaveTextContent(
-      '모집유형 정보 확인 중 · 공급 정보 확인 중',
-    )
+    const context = requiredRow(card, 'context')
+    expect(within(context).getAllByText('공고문 확인')).toHaveLength(1)
+    expect(context).toHaveAttribute('aria-label', '지역 및 주택유형 공고문 확인')
+    expect(within(requiredRow(card, 'status')).getAllByText('공고문 확인')).toHaveLength(2)
+    const footer = requiredRow(card, 'footer')
+    expect(within(footer).getAllByText('공고문 확인')).toHaveLength(1)
+    expect(within(footer).getByLabelText('모집유형 및 공급 세대수 공고문 확인'))
+      .toBeInTheDocument()
+    expect(card).not.toHaveTextContent('공고문 확인 · 공고문 확인')
+    expect(card).toHaveAccessibleName('공고문 확인, 공고 상태 공고문 확인')
     expect(within(card).queryByText(/조회/)).not.toBeInTheDocument()
   })
 
@@ -191,7 +209,7 @@ describe('HousingAnnouncementCard', () => {
     ['APPLYING', 0, '접수중', 'D-Day', '접수 마감일 당일'],
     ['CLOSED', 1, '접수마감', null, '접수 마감 완료'],
     ['CANCELLED', 1, '공고취소', null, '공고 취소'],
-    ['UNEXPECTED', 3, '정보 확인 중', null, '공고 상태 정보 확인 중'],
+    ['UNEXPECTED', 3, '공고문 확인', null, '공고 상태 공고문 확인'],
   ])(
     '%s 상태는 마감 기준 정보를 표현한다',
     (applicationStatus, dDay, statusLabel, countdown, accessibleDeadline) => {
@@ -205,9 +223,10 @@ describe('HousingAnnouncementCard', () => {
         expect(within(status).getByLabelText(accessibleDeadline))
           .toHaveTextContent(countdown)
       }
-      expect(card).toHaveAccessibleName(
-        `${BASE_TITLE}, ${statusLabel}, ${accessibleDeadline}`,
-      )
+      const expectedName = applicationStatus === 'UNEXPECTED'
+        ? `${BASE_TITLE}, ${accessibleDeadline}`
+        : `${BASE_TITLE}, ${statusLabel}, ${accessibleDeadline}`
+      expect(card).toHaveAccessibleName(expectedName)
     },
   )
 
@@ -219,8 +238,8 @@ describe('HousingAnnouncementCard', () => {
     const status = requiredRow(card, 'status')
 
     expect(within(status).getByText('공고중')).toBeInTheDocument()
-    expect(within(status).getByLabelText('접수 마감일 정보 확인 중'))
-      .toHaveTextContent('마감일 확인 중')
+    expect(within(status).getByLabelText('접수 마감일 공고문 확인'))
+      .toHaveTextContent('공고문 확인')
   })
 
   it.each([
@@ -289,13 +308,25 @@ describe('HousingAnnouncementCard', () => {
       ),
       'utf8',
     )
+    const badgeCss = readFileSync(
+      resolve(
+        process.cwd(),
+        'src/public-housing/components/AnnouncementStatusBadge.module.css',
+      ),
+      'utf8',
+    )
 
     expect(css).toContain('padding-inline: var(--list-inset, 28px);')
     expect(css).toMatch(/\.titleRow h3[\s\S]*?text-overflow:\s*ellipsis;/)
     expect(css).toMatch(/\.titleRow h3[\s\S]*?white-space:\s*nowrap;/)
     expect(css).toMatch(/\.card:hover[\s\S]*?transform:\s*none;/)
     expect(css).toMatch(/\.primaryAction:focus-visible[\s\S]*?outline:/)
-    expect(css).toMatch(/\.statusGroup\s*\{[^}]*background:\s*#edf3ff;/)
+    const tokensCss = readFileSync(
+      resolve(process.cwd(), 'src/public-housing/styles/tokens.css'),
+      'utf8',
+    )
+    expect(badgeCss).toMatch(/\.badge\s*\{[^}]*background:\s*var\(--ds-color-status-applying-surface\);/)
+    expect(tokensCss).toMatch(/--ds-color-status-applying-surface:\s*#edf3ff;/)
     expect(css).toMatch(/\.supplySummary span:last-child\s*\{[^}]*color:\s*var\(--list-text/)
     expect(css).toMatch(/\.footer\s*\{[^}]*flex-wrap:\s*wrap;/)
     expect(css).not.toMatch(/\.card\s*\{[\s\S]*?border:\s*1px/)

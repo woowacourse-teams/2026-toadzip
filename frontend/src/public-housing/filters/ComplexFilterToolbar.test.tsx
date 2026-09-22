@@ -362,7 +362,7 @@ describe('ComplexFilterToolbar', () => {
     })).getByRole('button', { name: '2~3억' }))
     fireEvent.click(within(within(popover).getByRole('group', {
       name: '월 임대료 빠른 선택',
-    })).getByRole('button', { name: '40~60만' }))
+    })).getByRole('button', { name: '40~60만원' }))
     fireEvent.click(within(popover).getByRole('button', {
       name: '가격 필터 적용',
     }))
@@ -393,7 +393,7 @@ describe('ComplexFilterToolbar', () => {
     )).toEqual(['1억 이하', '1~2억', '2~3억', '3~5억', '5억 이상'])
     expect(within(rentPresets).getAllByRole('button').map(
       (button) => button.textContent,
-    )).toEqual(['10만 이하', '10~20만', '20~30만', '30~40만', '40~60만'])
+    )).toEqual(['10만원 이하', '10~20만원', '20~30만원', '30~40만원', '40~60만원'])
     expect(within(popover).getAllByRole('status', {
       name: /선택 범위/,
     }).map((output) => output.textContent)).toEqual(['전체', '전체'])
@@ -611,7 +611,7 @@ describe('ComplexFilterToolbar', () => {
     const expectedSummaries = [
       ['임대유형', '국민임대'],
       ['모집상태', '접수중'],
-      ['가격', '1억~2억 · 월 20만~30만'],
+      ['가격', '1억~2억 · 월 20만원~30만원'],
       ['전용면적', '10~19평'],
       ['준공년도', '2019~2024년'],
     ] as const

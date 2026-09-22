@@ -1,3 +1,4 @@
+import { formatHousingMoney } from '../presentation/housingMoney.ts'
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type PublicHousingRegionRepository,
@@ -63,12 +64,12 @@ const DEPOSIT_PRESETS = [
 
 const MONTHLY_RENT_PRESETS = [
   { label: '전체', minimum: null, maximum: null },
-  { label: '10만 이하', minimum: null, maximum: 100_000 },
-  { label: '10~20만', minimum: 100_000, maximum: 200_000 },
-  { label: '20~30만', minimum: 200_000, maximum: 300_000 },
-  { label: '30~40만', minimum: 300_000, maximum: 400_000 },
-  { label: '40~60만', minimum: 400_000, maximum: 590_000 },
-  { label: '60만 이상', minimum: 600_000, maximum: null },
+  { label: '10만원 이하', minimum: null, maximum: 100_000 },
+  { label: '10~20만원', minimum: 100_000, maximum: 200_000 },
+  { label: '20~30만원', minimum: 200_000, maximum: 300_000 },
+  { label: '30~40만원', minimum: 300_000, maximum: 400_000 },
+  { label: '40~60만원', minimum: 400_000, maximum: 590_000 },
+  { label: '60만원 이상', minimum: 600_000, maximum: null },
 ] as const satisfies readonly DualRangeFilterPreset[]
 
 const EXCLUSIVE_AREA_PRESETS = [
@@ -650,7 +651,7 @@ function optionalFormNumber(data: FormData, name: string) {
 }
 
 function formatDeposit(value: number) {
-  return `${compactDecimal(value / 100_000_000)}억`
+  return formatHousingMoney(value)
 }
 
 function formatDepositTick(value: number) {
@@ -662,15 +663,15 @@ function formatDepositTick(value: number) {
 }
 
 function formatMonthlyRent(value: number) {
-  return `${compactDecimal(value / 10_000)}만 원`
+  return formatHousingMoney(value)
 }
 
 function formatMonthlyRentTick(value: number) {
   return value === 600_000
-    ? '60만+'
+    ? '60만원+'
     : value === 0
       ? '0'
-      : `${compactDecimal(value / 10_000)}만`
+      : formatHousingMoney(value)
 }
 
 function formatExclusiveArea(value: number) {

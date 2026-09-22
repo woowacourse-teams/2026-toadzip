@@ -1,5 +1,5 @@
 .card {
-  --card-title-font-size: 18px;
+  --card-title-font-size: var(--ds-text-title);
   --card-title-line-height: calc(var(--card-title-font-size) * 1.4);
   position: relative;
   min-width: 0;
@@ -7,9 +7,10 @@
   padding: 12px var(--list-inset, 28px) 18px;
   border: 0;
   border-radius: 0;
-  background: #ffffff;
+  background: var(--ds-color-surface);
   box-shadow: none;
-  color: var(--list-text, #202124);
+  color: var(--list-text, var(--ds-color-text));
+  font-family: var(--ds-font-family-ui);
   transition:
     background-color 150ms ease,
     box-shadow 150ms ease;
@@ -17,14 +18,14 @@
 
 .card:hover,
 .hovered {
-  background: #eef4ff;
-  box-shadow: inset 3px 0 0 #2463cf;
+  background: var(--ds-color-action-soft);
+  box-shadow: none;
   transform: none;
 }
 
-.selected {
-  background: #e5eeff;
-  box-shadow: inset 3px 0 0 #2463cf;
+.card.selected {
+  background: var(--ds-color-action-selected);
+  box-shadow: none;
 }
 
 .primaryAction {
@@ -37,7 +38,7 @@
 }
 
 .primaryAction:focus-visible {
-  outline: 3px solid #1d4ed8;
+  outline: 3px solid var(--ds-color-action);
   outline-offset: -4px;
 }
 
@@ -81,7 +82,7 @@
   min-width: 0;
   overflow: hidden;
   margin: 0;
-  color: var(--list-text, #202124);
+  color: var(--list-text, var(--ds-color-text));
   font-size: var(--card-title-font-size);
   font-weight: 700;
   letter-spacing: -0.04em;
@@ -102,7 +103,7 @@
   gap: 7px;
   margin: 0;
   color: #646971;
-  font-size: 13px;
+  font-size: var(--ds-text-caption);
   font-weight: 700;
   letter-spacing: -0.025em;
   line-height: 1.5;
@@ -113,21 +114,21 @@
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  color: var(--list-muted, #777c84);
+  color: var(--list-muted, var(--ds-color-muted));
   font-weight: 700;
   text-overflow: ellipsis;
 }
 
 .agencyMeta strong[data-agency='LH'] {
-  color: #acca10;
+  color: var(--ds-color-agency-lh);
 }
 
 .agencyMeta strong[data-agency='SH'] {
-  color: #5db544;
+  color: var(--ds-color-agency-sh);
 }
 
 .agencyMeta strong[data-agency='GH'] {
-  color: #004c9d;
+  color: var(--ds-color-agency-gh);
 }
 
 .agencyMeta i {
@@ -163,8 +164,8 @@
 .region {
   overflow: hidden;
   margin: 2px 0 0;
-  color: var(--list-muted, #777c84);
-  font-size: 13px;
+  color: var(--list-muted, var(--ds-color-muted));
+  font-size: var(--ds-text-caption);
   font-weight: 400;
   line-height: 1.5;
   text-overflow: ellipsis;
@@ -187,8 +188,8 @@
 }
 
 .conditions dt {
-  color: #555b64;
-  font-size: 13px;
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
   font-weight: 500;
   letter-spacing: -0.025em;
   line-height: 1.5;
@@ -197,13 +198,13 @@
 .conditions dd {
   overflow: visible;
   margin: 0;
-  color: var(--list-text, #202124);
-  font-size: 17px;
+  color: var(--list-text, var(--ds-color-text));
+  font-size: var(--ds-text-money);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 1.3;
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
   word-break: keep-all;
   white-space: normal;
 }
@@ -218,8 +219,8 @@
 
 .areaMetric dt,
 .areaMetric dd {
-  color: var(--list-muted, #777c84);
-  font-size: 13px;
+  color: var(--list-muted, var(--ds-color-muted));
+  font-size: var(--ds-text-caption);
   font-weight: 400;
   letter-spacing: -0.025em;
   line-height: 1.5;
@@ -240,28 +241,15 @@
   pointer-events: none;
 }
 
-.announcementAction,
-.announcementStatus {
-  display: inline-flex;
-  min-height: 24px;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 7px;
-  border: 0;
-  border-radius: 5px;
-  background: #edf3ff;
-  color: #2463cf;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  line-height: 1.5;
-  white-space: nowrap;
-}
-
 .announcementAction {
   position: relative;
   z-index: 3;
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ds-status-badge-radius);
+  background: transparent;
+  font: inherit;
   cursor: pointer;
   pointer-events: auto;
 }
@@ -277,35 +265,8 @@
 }
 
 .announcementAction:focus-visible {
-  outline: 3px solid #1d4ed8;
+  outline: 3px solid var(--ds-color-action);
   outline-offset: 2px;
-}
-
-.announcement[data-status='upcoming'] .announcementAction,
-.announcement[data-status='upcoming'] .announcementStatus {
-  background: #eef7f1;
-  color: #26714c;
-}
-
-.announcement[data-status='closed'] .announcementAction,
-.announcement[data-status='closed'] .announcementStatus,
-.announcement[data-status='cancelled'] .announcementAction,
-.announcement[data-status='cancelled'] .announcementStatus,
-.announcement[data-status='unknown'] .announcementAction,
-.announcement[data-status='unknown'] .announcementStatus {
-  background: #f2f3f5;
-  color: #646971;
-}
-
-.announcementAction i,
-.announcementStatus i {
-  color: currentColor;
-  font-style: normal;
-  opacity: 0.45;
-}
-
-.countdown {
-  color: #d34f3e;
 }
 
 .visuallyHidden {
@@ -337,7 +298,7 @@
   }
 
   .conditions > div:not(.areaMetric) dd {
-    font-size: 17px;
+    font-size: var(--ds-text-money);
   }
 
   .image {
@@ -389,7 +350,7 @@
   }
 
   .agencyMeta {
-    font-size: 13px;
+    font-size: var(--ds-text-caption);
   }
 
   .conditions > div:not(.areaMetric) {
@@ -400,11 +361,11 @@
   .areaMetric dt,
   .areaMetric dd,
   .region {
-    font-size: 13px;
+    font-size: var(--ds-text-caption);
   }
 
   .conditions > div:not(.areaMetric) dd {
-    font-size: 17px;
+    font-size: var(--ds-text-money);
   }
 
   .image {

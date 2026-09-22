@@ -1,4 +1,7 @@
+import { MISSING_DATA_LABEL } from '../presentation/missingData.ts'
+import { formatHousingMoney } from '../presentation/housingMoney.ts'
 import { useRef, useState, type FocusEvent } from 'react'
+import { AnnouncementStatusBadge } from './AnnouncementStatusBadge'
 import styles from './HousingComplexCard.module.css'
 
 export interface HousingComplexCardAnnouncement {
@@ -177,6 +180,8 @@ export function HousingComplexCard({
 function AgencyMeta({ complex }: { complex: HousingComplexCardData }) {
   const normalizedCode = complex.agencyCode?.trim().toUpperCase() || null
   const agencyLabel = normalizedCode ?? complex.agencyName
+  const bothMissing = agencyLabel === MISSING_DATA_LABEL
+    && complex.rentalTypeLabel === MISSING_DATA_LABEL
 
   return (
     <p
@@ -184,8 +189,10 @@ function AgencyMeta({ complex }: { complex: HousingComplexCardData }) {
       aria-label={`공급기관 ${agencyLabel}, 임대유형 ${complex.rentalTypeLabel}`}
     >
       <strong data-agency={agencyTone(normalizedCode)}>{agencyLabel}</strong>
-      <i aria-hidden="true">·</i>
-      <span>{complex.rentalTypeLabel}</span>
+      {!bothMissing && <>
+        <i aria-hidden="true">·</i>
+        <span>{complex.rentalTypeLabel}</span>
+      </>}
     </p>
   )
 }
@@ -194,12 +201,12 @@ function ComplexConditions({ complex }: { complex: HousingComplexCardData }) {
   const deposit = formatRange(
     complex.depositMin,
     complex.depositMax,
-    formatMoney,
+    formatHousingMoney,
   )
   const monthlyRent = formatRange(
     complex.monthlyRentMin,
     complex.monthlyRentMax,
-    formatMoney,
+    formatHousingMoney,
   )
   const area = formatRange(
     complex.exclusiveAreaMin,
@@ -253,20 +260,11 @@ function RepresentativeAnnouncement({
     ? `대표 공고 상태 ${status}, ${countdown.accessible}`
     : `대표 공고 상태 ${status}`
   const content = (
-    <>
-      <span className={styles.statusLabel}>{status}</span>
-      {countdown && (
-        <>
-          <i aria-hidden="true">|</i>
-          <span
-            className={styles.countdown}
-            aria-label={countdown.accessible}
-          >
-            {countdown.visible}
-          </span>
-        </>
-      )}
-    </>
+    <AnnouncementStatusBadge
+      label={status}
+      tone={statusTone(announcement.applicationStatus)}
+      countdown={countdown}
+    />
   )
 
   return (
@@ -295,7 +293,7 @@ function RepresentativeAnnouncement({
           </span>
         </button>
       ) : (
-        <div className={styles.announcementStatus}>{content}</div>
+        content
       )}
     </section>
   )
@@ -306,9 +304,9 @@ function formatRange(
   maximum: number | null,
   formatter: (value: number) => string,
 ): RangePresentation {
-  const values = [minimum, maximum].filter(isFiniteNumber)
+  const values = [minimum, maximum].filter(isValidRangeValue)
   if (values.length === 0) {
-    return { accessible: '정보 확인 중', visible: '정보 확인 중' }
+    return { accessible: MISSING_DATA_LABEL, visible: MISSING_DATA_LABEL }
   }
 
   const first = formatter(values[0])
@@ -323,39 +321,12 @@ function formatRange(
   }
 }
 
-function isFiniteNumber(value: number | null): value is number {
-  return value !== null && Number.isFinite(value)
+function isValidRangeValue(value: number | null): value is number {
+  return value !== null && Number.isFinite(value) && value >= 0
 }
 
 function formatArea(value: number) {
   return `${value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}m²`
-}
-
-function formatMoney(value: number) {
-  const amountWon = Math.max(0, Math.round(value))
-  if (amountWon === 0) {
-    return '0원'
-  }
-  if (amountWon < 10_000) {
-    return `${amountWon.toLocaleString('ko-KR')}원`
-  }
-  if (amountWon < 100_000_000) {
-    return `${formatManWon(amountWon)}만원`
-  }
-
-  const eokWon = Math.floor(amountWon / 100_000_000)
-  const remainderWon = amountWon % 100_000_000
-  if (remainderWon < 10_000) {
-    return `${eokWon.toLocaleString('ko-KR')}억원`
-  }
-  return `${eokWon.toLocaleString('ko-KR')}억 ${formatManWon(remainderWon)}만원`
-}
-
-function formatManWon(value: number) {
-  const manWon = value / 10_000
-  return manWon.toLocaleString('ko-KR', {
-    maximumFractionDigits: Number.isInteger(manWon) ? 0 : 1,
-  })
 }
 
 function statusLabel(status: string) {
@@ -371,7 +342,7 @@ function statusLabel(status: string) {
   if (status === 'CANCELLED') {
     return '공고취소'
   }
-  return '정보 확인 중'
+  return MISSING_DATA_LABEL
 }
 
 function statusTone(status: string) {
@@ -402,9 +373,12 @@ function countdownPresentation(announcement: HousingComplexCardAnnouncement) {
     || !Number.isInteger(announcement.dDay)
     || announcement.dDay < 0
   ) {
+    if (statusLabel(announcement.applicationStatus) === MISSING_DATA_LABEL) {
+      return null
+    }
     return {
-      accessible: '접수 마감일 정보 확인 중',
-      visible: '정보 확인 중',
+      accessible: `접수 마감일 ${MISSING_DATA_LABEL}`,
+      visible: MISSING_DATA_LABEL,
     }
   }
   return {

@@ -89,7 +89,7 @@
 
 .close:hover,
 .more:not(:disabled):hover {
-  background: #eff5ff;
+  background: var(--ds-color-action-soft);
 }
 
 .close:focus-visible,

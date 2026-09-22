@@ -1,0 +1,50 @@
+/* 공공주택 탐색 화면의 공통 색상, 글자 크기와 간격. */
+:root {
+  --ds-font-family-ui: "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+  --ds-text-body: 14px;
+  --ds-text-caption: 13px;
+  --ds-text-section: 16px;
+  --ds-text-title: 18px;
+  --ds-text-money: 17px;
+  --ds-line-height-title: 1.4;
+  --ds-line-height-money: 1.3;
+  --ds-line-height-body: 1.6;
+  --ds-line-height-caption: 1.5;
+  --ds-color-text: #202124;
+  --ds-color-label: #555b64;
+  --ds-color-muted: #777c84;
+  --ds-color-divider: #e9eaed;
+  --ds-color-surface: #ffffff;
+  --ds-color-surface-subtle: #f8f9fb;
+  --ds-color-section-divider: #eef0f3;
+  --ds-color-table-heading: #f4f5f7;
+  --ds-color-table-line: #dfe3e8;
+  /* 밝은 브랜드 채움색과 읽기 쉬운 글자·포커스색을 구분한다. */
+  --ds-color-brand: #00c96c;
+  --ds-color-on-brand: #072f1b;
+  --ds-color-action: #006936;
+  --ds-color-action-soft: #edfbf3;
+  --ds-color-action-selected: #d9f7e8;
+  --ds-color-status-applying: #2463cf;
+  --ds-color-status-applying-surface: #edf3ff;
+  --ds-color-status-upcoming: #26714c;
+  --ds-color-status-upcoming-surface: #eef7f1;
+  --ds-color-status-neutral: #646971;
+  --ds-color-status-neutral-surface: #f2f3f5;
+  --ds-color-deadline: #d34f3e;
+  --ds-color-agency-lh: #acca10;
+  --ds-color-agency-sh: #5db544;
+  --ds-color-agency-gh: #004c9d;
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-5: 20px;
+  --ds-space-6: 24px;
+  --ds-status-badge-font-size: 12px;
+  --ds-status-badge-min-height: 24px;
+  --ds-status-badge-padding-block: 2px;
+  --ds-status-badge-padding-inline: 7px;
+  --ds-status-badge-radius: 5px;
+  --ds-status-badge-gap: 5px;
+}

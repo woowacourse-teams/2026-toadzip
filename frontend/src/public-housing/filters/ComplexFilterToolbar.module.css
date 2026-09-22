@@ -3,7 +3,7 @@
   width: 100%;
   min-width: 0;
   color: #202124;
-  font-family: "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+  font-family: var(--ds-font-family-ui);
 }
 
 .desktopFilters {
@@ -64,21 +64,21 @@
 }
 
 .trigger:hover {
-  border-color: #aeb2b9;
-  background: #f5f5f7;
+  border-color: var(--ds-color-action);
+  background: var(--ds-color-action-soft);
 }
 
 .trigger:focus-visible {
   border-color: var(--focus);
-  outline: 3px solid rgb(37 110 244 / 22%);
+  outline: 3px solid var(--ds-color-action);
   outline-offset: 1px;
 }
 
 .trigger[data-active='true'],
 .trigger[aria-expanded='true'] {
-  border-color: #202124;
-  background: #202124;
-  color: #ffffff;
+  border-color: var(--ds-color-action);
+  background: var(--ds-color-action-selected);
+  color: var(--ds-color-action);
 }
 
 .detailTrigger {
@@ -110,8 +110,8 @@
   padding: 0 3px;
   border: 1px solid #fff;
   border-radius: 999px;
-  background: #2463cf;
-  color: #fff;
+  background: var(--ds-color-brand);
+  color: var(--ds-color-on-brand);
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
@@ -292,10 +292,14 @@
   overflow-wrap: anywhere;
 }
 
+.choice:hover > span {
+  background: var(--ds-color-action-soft);
+}
+
 .choice input:checked + span {
-  border-color: #202124;
-  background: #ffffff;
-  color: #202124;
+  border-color: var(--ds-color-action);
+  background: var(--ds-color-action-soft);
+  color: var(--ds-color-action);
 }
 
 .choiceCheck {
@@ -308,7 +312,7 @@
 }
 
 .choice input:focus-visible + span {
-  outline: 3px solid rgb(37 110 244 / 24%);
+  outline: 3px solid var(--ds-color-action);
   outline-offset: 1px;
 }
 
@@ -454,14 +458,26 @@
 .reset:focus-visible,
 .close:focus-visible,
 .apply:focus-visible {
-  outline: 2px solid #2463cf;
+  outline: 2px solid var(--ds-color-action);
   outline-offset: 2px;
 }
 
+.field select:focus-visible,
+.yearRange select:focus-visible {
+  border-color: var(--ds-color-action);
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+}
+
+.apply:hover,
+.mobileApply:hover {
+  background: color-mix(in srgb, var(--ds-color-brand) 90%, var(--ds-color-action));
+}
+
 .apply {
-  border: 1px solid #2463cf;
-  background: #2463cf;
-  color: #fff;
+  border: 0;
+  background: var(--ds-color-brand);
+  color: var(--ds-color-on-brand);
 }
 
 .mobileToolbar,
@@ -514,9 +530,9 @@
 .mobileAllTrigger[data-active='true'],
 .mobileTrigger[aria-expanded='true'],
 .mobileAllTrigger[aria-expanded='true'] {
-  border-color: #202124;
-  background: #202124;
-  color: #ffffff;
+  border-color: var(--ds-color-action);
+  background: var(--ds-color-action-selected);
+  color: var(--ds-color-action);
 }
 
 .mobileTrigger:focus-visible,
@@ -524,7 +540,7 @@
 .mobileReset:focus-visible,
 .mobileClose:focus-visible,
 .mobileApply:focus-visible {
-  outline: 3px solid rgb(37 110 244 / 24%);
+  outline: 3px solid var(--ds-color-action);
   outline-offset: 1px;
 }
 
@@ -646,10 +662,10 @@
 .mobileApply {
   width: 100%;
   min-height: 50px;
-  border: 1px solid #2463cf;
+  border: 0;
   border-radius: 8px;
-  background: #2463cf;
-  color: #fff;
+  background: var(--ds-color-brand);
+  color: var(--ds-color-on-brand);
   font-size: 15px;
   font-weight: 700;
 }

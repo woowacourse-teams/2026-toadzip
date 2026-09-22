@@ -1,3 +1,5 @@
+import { MISSING_DATA_LABEL } from '../presentation/missingData.ts'
+import { AnnouncementStatusBadge } from './AnnouncementStatusBadge'
 import styles from './HousingAnnouncementCard.module.css'
 
 export interface HousingAnnouncementCardData {
@@ -41,9 +43,11 @@ export function HousingAnnouncementCard({
   selected = false,
   onSelect,
 }: HousingAnnouncementCardProps) {
-  const title = displayText(announcement.title, '공고명 정보 확인 중')
+  const title = displayText(announcement.title)
   const status = statusPresentation(announcement)
-  const accessibleLabel = `${title}, ${status.statusLabel}, ${status.accessibleLabel}`
+  const accessibleLabel = status.statusLabel === MISSING_DATA_LABEL
+    ? `${title}, ${status.accessibleLabel}`
+    : `${title}, ${status.statusLabel}, ${status.accessibleLabel}`
   const urgent = isUrgent(announcement)
   const className = [styles.card, selected ? styles.selected : '']
     .filter(Boolean)
@@ -61,24 +65,19 @@ export function HousingAnnouncementCard({
     >
       <div className={styles.summary} data-card-zone="summary">
         <header className={styles.statusRow} data-summary-row="status">
-          <div className={styles.statusGroup}>
-            <span className={styles.status}>{status.statusLabel}</span>
-            {status.countdown !== null && (
-              <span
-                className={styles.countdown}
-                data-status-kind="countdown"
-                aria-label={status.accessibleLabel}
-              >
-                <i aria-hidden="true">|</i>
-                <strong>{status.countdown}</strong>
-              </span>
-            )}
-          </div>
+          <AnnouncementStatusBadge
+            label={status.statusLabel}
+            tone={statusTone(announcement.applicationStatus)}
+            countdown={status.countdown === null ? null : {
+              visible: status.countdown,
+              accessible: status.accessibleLabel,
+            }}
+          />
           <span
             className={styles.agency}
             data-agency-tone={agencyTone(announcement.agencyLabel)}
           >
-            {displayText(announcement.agencyLabel, '공사 정보 확인 중')}
+            {displayText(announcement.agencyLabel)}
           </span>
         </header>
 
@@ -121,18 +120,23 @@ function AnnouncementContext({
   announcement: HousingAnnouncementCardData
 }) {
   const region = regionLabel(announcement.regionNames)
-  const rentalType = displayText(
-    announcement.rentalTypeLabel,
-    '주택유형 정보 확인 중',
-  )
+  const rentalType = displayText(announcement.rentalTypeLabel)
+  const bothMissing = region === MISSING_DATA_LABEL && rentalType === MISSING_DATA_LABEL
 
   return (
-    <p className={styles.context} data-summary-row="context">
+    <p
+      className={styles.context}
+      data-summary-row="context"
+      role={bothMissing ? 'group' : undefined}
+      aria-label={bothMissing ? `지역 및 주택유형 ${MISSING_DATA_LABEL}` : undefined}
+    >
       <span>{region}</span>
-      {' '}
-      <i aria-hidden="true">·</i>
-      {' '}
-      <span>{rentalType}</span>
+      {!bothMissing && <>
+        {' '}
+        <i aria-hidden="true">·</i>
+        {' '}
+        <span>{rentalType}</span>
+      </>}
     </p>
   )
 }
@@ -154,10 +158,12 @@ function ApplicationPeriod({
         <dt>접수기간</dt>
         <dd className={styles.periodValues}>
           <DateValue date={startDate} omitYear={false} />
-          {' '}
-          <i aria-hidden="true">~</i>
-          {' '}
-          <DateValue date={endDate} omitYear={omitEndYear} />
+          {(startDate !== null || endDate !== null) && <>
+            {' '}
+            <i aria-hidden="true">~</i>
+            {' '}
+            <DateValue date={endDate} omitYear={omitEndYear} />
+          </>}
         </dd>
       </div>
     </dl>
@@ -172,7 +178,7 @@ function DateValue({
   omitYear: boolean
 }) {
   if (date === null) {
-    return <b>정보 확인 중</b>
+    return <b>{MISSING_DATA_LABEL}</b>
   }
 
   return (
@@ -187,21 +193,25 @@ function AnnouncementFooter({
 }: {
   announcement: HousingAnnouncementCardData
 }) {
-  const recruitmentType = displayText(
-    announcement.recruitmentTypeLabel,
-    '모집유형 정보 확인 중',
-  )
+  const recruitmentType = displayText(announcement.recruitmentTypeLabel)
   const supply = supplyLabel(announcement.supplyHouseholdCount)
   const viewCount = viewCountLabel(announcement.viewCount)
+  const bothMissing = recruitmentType === MISSING_DATA_LABEL && supply === MISSING_DATA_LABEL
 
   return (
     <footer className={styles.footer} data-summary-row="footer">
-      <p className={styles.supplySummary}>
+      <p
+        className={styles.supplySummary}
+        role={bothMissing ? 'group' : undefined}
+        aria-label={bothMissing ? `모집유형 및 공급 세대수 ${MISSING_DATA_LABEL}` : undefined}
+      >
         <span>{recruitmentType}</span>
-        {' '}
-        <i aria-hidden="true">·</i>
-        {' '}
-        <span>{supply}</span>
+        {!bothMissing && <>
+          {' '}
+          <i aria-hidden="true">·</i>
+          {' '}
+          <span>{supply}</span>
+        </>}
       </p>
       {viewCount !== null && <p className={styles.viewCount}>{viewCount}</p>}
     </footer>
@@ -223,7 +233,7 @@ function statusPresentation(
   if (announcement.applicationStatus === 'APPLYING') {
     return activeStatus('접수중', announcement.dDay, false)
   }
-  return status('정보 확인 중', '공고 상태 정보 확인 중')
+  return status(MISSING_DATA_LABEL, `공고 상태 ${MISSING_DATA_LABEL}`)
 }
 
 function activeStatus(
@@ -232,7 +242,7 @@ function activeStatus(
   includeDeadlinePrefix: boolean,
 ): StatusPresentation {
   if (dDay === null || !Number.isInteger(dDay) || dDay < 0) {
-    return status(statusLabel, '접수 마감일 정보 확인 중', '마감일 확인 중')
+    return status(statusLabel, `접수 마감일 ${MISSING_DATA_LABEL}`, MISSING_DATA_LABEL)
   }
 
   const dDayLabel = dDay === 0 ? 'D-Day' : `D-${dDay}`
@@ -276,9 +286,9 @@ function isUrgent(announcement: HousingAnnouncementCardData) {
     && announcement.dDay <= 3
 }
 
-function displayText(value: string | null, fallback: string) {
+function displayText(value: string | null) {
   if (value === null || value.trim().length === 0) {
-    return fallback
+    return MISSING_DATA_LABEL
   }
   return value
 }
@@ -288,7 +298,7 @@ function regionLabel(regionNames: readonly string[]) {
     .map((region) => region.trim())
     .filter((region) => region.length > 0)
   if (labels.length === 0) {
-    return '지역 정보 확인 중'
+    return MISSING_DATA_LABEL
   }
   if (labels.length === 1) {
     return labels[0]
@@ -321,7 +331,7 @@ function parseDate(value: string | null): DateParts | null {
 
 function supplyLabel(value: number | null) {
   if (value === null || !Number.isInteger(value) || value < 0) {
-    return '공급 정보 확인 중'
+    return MISSING_DATA_LABEL
   }
   return `공급 ${value.toLocaleString('ko-KR')}세대`
 }

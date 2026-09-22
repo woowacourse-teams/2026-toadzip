@@ -1,3 +1,4 @@
+import { formatHousingMoney } from '../presentation/housingMoney.ts'
 import {
   type CSSProperties,
   Fragment,
@@ -71,11 +72,11 @@ const DEPOSIT_PRESETS = [
 ] as const satisfies readonly DualRangeFilterPreset[]
 
 const MONTHLY_RENT_PRESETS = [
-  { label: '10만 이하', minimum: null, maximum: 100_000 },
-  { label: '10~20만', minimum: 100_000, maximum: 200_000 },
-  { label: '20~30만', minimum: 200_000, maximum: 300_000 },
-  { label: '30~40만', minimum: 300_000, maximum: 400_000 },
-  { label: '40~60만', minimum: 400_000, maximum: 590_000 },
+  { label: '10만원 이하', minimum: null, maximum: 100_000 },
+  { label: '10~20만원', minimum: 100_000, maximum: 200_000 },
+  { label: '20~30만원', minimum: 200_000, maximum: 300_000 },
+  { label: '30~40만원', minimum: 300_000, maximum: 400_000 },
+  { label: '40~60만원', minimum: 400_000, maximum: 590_000 },
 ] as const satisfies readonly DualRangeFilterPreset[]
 
 const AREA_PRESETS = [
@@ -1484,7 +1485,7 @@ function selectedRegionFallback(
 }
 
 function formatDeposit(value: number) {
-  return `${compact(value / 100_000_000)}억`
+  return formatHousingMoney(value)
 }
 
 function formatDepositTick(value: number) {
@@ -1492,15 +1493,15 @@ function formatDepositTick(value: number) {
 }
 
 function formatMonthlyRent(value: number) {
-  return `${compact(value / 10_000)}만 원`
+  return formatHousingMoney(value)
 }
 
 function formatRentSummary(value: number) {
-  return `${compact(value / 10_000)}만`
+  return formatHousingMoney(value)
 }
 
 function formatMonthlyRentTick(value: number) {
-  return value === 600_000 ? '60만+' : value === 0 ? '0' : formatRentSummary(value)
+  return value === 600_000 ? '60만원+' : value === 0 ? '0' : formatRentSummary(value)
 }
 
 function formatArea(value: number) {

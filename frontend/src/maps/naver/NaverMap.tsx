@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { createComplexMarkerButton, markerSummary, markerWidth } from './complexMarkerButton.ts'
 import type { ViewportSnapshot } from '../../public-housing/map/viewportPolicy.ts'
 import type {
-  MapMarkerAmount,
   MapMarkerPresentation,
 } from '../../public-housing/presentation/mapMarkerPresentation.ts'
 import {
@@ -1248,18 +1248,8 @@ function createComplexMarker(
   enterDelay: number | undefined,
 ): CreatedMarkerOverlay {
   const controller = new AbortController()
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.className = markerClassName(marker)
-  button.setAttribute('aria-label', markerAriaLabel(marker))
-  button.setAttribute('aria-pressed', String(Boolean(marker.selected)))
-  button.dataset.complexId = marker.id
-  button.dataset.mapComplexMarker = 'true'
-  button.title = markerSummary(marker)
-  button.append(
-    createMarkerTop(marker),
-    createMarkerBody(marker),
-  )
+  const button = createComplexMarkerButton(marker)
+  const width = markerWidth(marker)
   bindMarkerActivation(button, onSelect, controller.signal)
   const isInteracting = bindMarkerHighlight(button, marker.id, onHighlight, controller.signal)
 
@@ -1267,86 +1257,15 @@ function createComplexMarker(
     clickable: true,
     cursor: 'pointer',
     icon: {
-      anchor: new maps.Point(48, 66),
+      anchor: new maps.Point(width / 2, 66),
       content: createMarkerContent(button, controller.signal, enterDelay),
-      size: new maps.Size(96, 66),
+      size: new maps.Size(width, 66),
     },
     map: mapInstance,
     position: new maps.LatLng(marker.latitude, marker.longitude),
     title: markerSummary(marker),
   })
   return { button, dispose: () => controller.abort(), isInteracting, overlay }
-}
-
-function markerAriaLabel(marker: NaverMapComplexMarker) {
-  return `${markerSummary(marker)}, 단지 상세 보기`
-}
-
-function markerSummary(marker: NaverMapComplexMarker) {
-  return [
-    marker.name,
-    `${marker.agencyName} · ${marker.rentalTypeName}`,
-    `보증금 ${markerAmountSummary(marker.deposit)}`,
-    `월 임대료 ${markerAmountSummary(marker.monthlyRent)}`,
-  ].join(', ')
-}
-
-function markerAmountSummary(amount: MapMarkerAmount | null) {
-  return amount === null ? '정보 없음' : `최소 ${amount.exactLabel}`
-}
-
-function createMarkerTop(marker: NaverMapComplexMarker) {
-  const top = document.createElement('span')
-  top.className = 'housing-map-marker__top'
-  top.append(
-    createMarkerText('name', marker.agencyLabel),
-    createMarkerText('name', marker.rentalTypeLabel),
-  )
-  return top
-}
-
-function createMarkerBody(marker: NaverMapComplexMarker) {
-  const body = document.createElement('span')
-  body.className = 'housing-map-marker__body'
-  body.append(
-    createMarkerAmountRow('보', marker.deposit),
-    createMarkerAmountRow('월', marker.monthlyRent),
-  )
-  return body
-}
-
-function createMarkerAmountRow(label: string, amount: MapMarkerAmount | null) {
-  const row = document.createElement('span')
-  row.className = 'housing-map-marker__row'
-  row.append(createMarkerText('label', label))
-  if (amount === null) {
-    row.append(createMarkerText('missing', '정보 없음'))
-    return row
-  }
-  const value = document.createElement('span')
-  value.className = 'housing-map-marker__amount'
-  value.append(
-    createMarkerText('digits', amount.digits),
-    createMarkerText('unit', amount.unit),
-    createMarkerText('from', '~'),
-  )
-  row.append(value)
-  return row
-}
-
-function createMarkerText(className: string, text: string) {
-  const node = document.createElement('span')
-  node.className = `housing-map-marker__${className}`
-  node.textContent = text
-  return node
-}
-
-function markerClassName(marker: NaverMapComplexMarker) {
-  return [
-    'housing-map-marker',
-    marker.selected ? 'is-selected' : '',
-    marker.highlighted ? 'is-highlighted' : '',
-  ].filter(Boolean).join(' ')
 }
 
 function bindMarkerHighlight(
