@@ -88,8 +88,30 @@ public class IntegratedSearchService {
                 failures,
                 input.page(),
                 responseSize(input),
-                page.hasNext()
+                page.hasNext(),
+                totalCount(input, condition, ranked, failures)
         );
+    }
+
+    private Long totalCount(
+            SearchInput input,
+            IntegratedSearchCondition condition,
+            List<SearchResultItemResponse> ranked,
+            List<SearchFailureResponse> failures
+    ) {
+        if (input.type() == null || !failures.isEmpty()) {
+            return null;
+        }
+        try {
+            return switch (input.type()) {
+                case ANNOUNCEMENT -> internalSearchRepository.countAnnouncements(condition);
+                case COMPLEX -> internalSearchRepository.countComplexes(condition);
+                case REGION -> (long) ranked.size();
+            };
+        } catch (RuntimeException exception) {
+            log.error("{} 검색 건수 집계에 실패했습니다.", input.type(), exception);
+            return null;
+        }
     }
 
     private List<SearchResultItemResponse> orderedResults(List<SearchSourceItem> results, SearchInput input) {

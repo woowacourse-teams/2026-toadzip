@@ -91,6 +91,9 @@ class IntegratedSearchServiceTest {
 
         IntegratedSearchResponse response = service.search(request("서울"));
 
+        assertNull(response.totalCount());
+        verify(internalRepository, never()).countAnnouncements(any());
+        verify(internalRepository, never()).countComplexes(any());
         assertEquals(1, response.announcements().size());
         assertEquals(1, response.failures().size());
         assertEquals(SearchType.REGION, response.failures().getFirst().type());
@@ -151,10 +154,14 @@ class IntegratedSearchServiceTest {
             return complexes.subList(0, Math.min(limit, complexes.size()));
         });
 
+        when(internalRepository.countComplexes(any())).thenReturn(7L);
+
         IntegratedSearchResponse first = service.search(typedRequest("서울", SearchType.COMPLEX, 0, 5));
         IntegratedSearchResponse second = service.search(typedRequest("서울", SearchType.COMPLEX, 1, 5));
 
         assertEquals(5, first.complexes().size());
+        assertEquals(7L, first.totalCount());
+        assertEquals(7L, second.totalCount());
         assertEquals(5, first.size());
         assertTrue(first.hasNext());
         assertEquals(2, second.complexes().size());
@@ -176,9 +183,13 @@ class IntegratedSearchServiceTest {
             return announcements.subList(0, Math.min(limit, announcements.size()));
         });
 
+        when(internalRepository.countAnnouncements(any())).thenReturn(8L);
+
         IntegratedSearchResponse first = service.search(typedRequest("서울", SearchType.ANNOUNCEMENT, 0, 5));
         IntegratedSearchResponse second = service.search(typedRequest("서울", SearchType.ANNOUNCEMENT, 1, 5));
 
+        assertEquals(8L, first.totalCount());
+        assertEquals(8L, second.totalCount());
         List<String> combinedIds = java.util.stream.Stream.concat(
                 first.announcements().stream(), second.announcements().stream()
         ).map(result -> result.id()).toList();
@@ -216,6 +227,9 @@ class IntegratedSearchServiceTest {
         IntegratedSearchResponse second = service.search(typedRequest("서울", SearchType.REGION, 1, 5));
         IntegratedSearchResponse beyond = service.search(typedRequest("서울", SearchType.REGION, 2, 5));
 
+        assertEquals(7L, first.totalCount());
+        assertEquals(7L, second.totalCount());
+        assertEquals(7L, beyond.totalCount());
         assertEquals(5, first.regions().size());
         assertTrue(first.hasNext());
         assertEquals(2, second.regions().size());
@@ -276,6 +290,29 @@ class IntegratedSearchServiceTest {
         assertFalse(response.hasNext());
         assertThrows(InvalidSearchRequestException.class,
                 () -> service.search(typedRequest("서울", SearchType.COMPLEX, 101, 5)));
+    }
+
+    @Test
+    void 검색_건수_집계가_실패해도_검색_결과와_더보기를_유지한다() {
+        when(internalRepository.findComplexes(any(), anyInt())).thenReturn(java.util.stream.IntStream.range(0, 6)
+                .mapToObj(index -> item(SearchType.COMPLEX, String.valueOf(index), "서울 단지 " + index))
+                .toList());
+        when(internalRepository.countComplexes(any())).thenThrow(new IllegalStateException("집계 실패"));
+
+        IntegratedSearchResponse response = service.search(typedRequest("서울", SearchType.COMPLEX, 0, 5));
+
+        assertEquals(5, response.complexes().size());
+        assertTrue(response.hasNext());
+        assertTrue(response.failures().isEmpty());
+        assertNull(response.totalCount());
+    }
+
+    @Test
+    void 결과가_없는_유형별_검색은_전체_건수_영을_반환한다() {
+        IntegratedSearchResponse response = service.search(typedRequest("빈결과", SearchType.COMPLEX, 0, 5));
+
+        assertEquals(0L, response.totalCount());
+        assertFalse(response.hasNext());
     }
 
     private IntegratedSearchRequest request(String query) {

@@ -828,11 +828,10 @@ describe('PublicHousingExplorer', () => {
     fireEvent.change(screen.getByRole('slider', {
       name: '임대보증금 최댓값',
     }), { target: { value: '200000000' } })
-    fireEvent.click(screen.getByRole('button', { name: '가격 필터 적용' }))
 
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(2)
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
+      expect(repository.findMapComplexes).toHaveBeenCalledTimes(3)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(3)
     })
     expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
       INITIAL_BOUNDS,
@@ -874,11 +873,9 @@ describe('PublicHousingExplorer', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 열기' }))
     fireEvent.click(screen.getByRole('checkbox', { name: '국민임대' }))
-    fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 적용' }))
 
     fireEvent.click(screen.getByRole('button', { name: '모집상태 필터 열기' }))
     fireEvent.click(screen.getByRole('checkbox', { name: '접수중' }))
-    fireEvent.click(screen.getByRole('button', { name: '모집상태 필터 적용' }))
 
     fireEvent.click(screen.getByRole('button', { name: '가격 필터 열기' }))
     fireEvent.change(screen.getByRole('slider', {
@@ -901,7 +898,6 @@ describe('PublicHousingExplorer', () => {
     }), {
       target: { value: '500000' },
     })
-    fireEvent.click(screen.getByRole('button', { name: '가격 필터 적용' }))
 
     fireEvent.click(screen.getByRole('button', { name: '전용면적 필터 열기' }))
     fireEvent.change(screen.getByRole('slider', {
@@ -914,13 +910,13 @@ describe('PublicHousingExplorer', () => {
     }), {
       target: { value: '66' },
     })
-    fireEvent.click(screen.getByRole('button', { name: '전용면적 필터 적용' }))
 
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(6)
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(6)
+      expect(repository.findMapComplexes).toHaveBeenCalledTimes(10)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(10)
     })
     repository.findComplexPage
+      .mockResolvedValueOnce(complexPageWithNext())
       .mockResolvedValueOnce(complexPageWithNext())
       .mockResolvedValueOnce(complexPageFor(18, '서울마루 국민임대'))
 
@@ -931,7 +927,6 @@ describe('PublicHousingExplorer', () => {
     fireEvent.change(screen.getByLabelText('최대 준공년도'), {
       target: { value: '2026' },
     })
-    fireEvent.click(screen.getByRole('button', { name: '준공년도 필터 적용' }))
 
     const expectedFilters = {
       agencyCodes: ['LH'],
@@ -949,8 +944,8 @@ describe('PublicHousingExplorer', () => {
       rentalTypes: ['NATIONAL_RENTAL'],
     }
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(7)
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(7)
+      expect(repository.findMapComplexes).toHaveBeenCalledTimes(12)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(12)
     })
     expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
       INITIAL_BOUNDS,
@@ -1002,8 +997,8 @@ describe('PublicHousingExplorer', () => {
       name: '임대유형 필터 초기화',
     }))
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(8)
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(9)
+      expect(repository.findMapComplexes).toHaveBeenCalledTimes(13)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(14)
     })
     const resetSearch = new URLSearchParams(
       screen.getByTestId('location-search').textContent ?? '',
@@ -1070,9 +1065,6 @@ describe('PublicHousingExplorer', () => {
     expect(within(rentalFilter).getByRole('checkbox', {
       name: '행복주택',
     })).toBeChecked()
-    fireEvent.click(within(rentalFilter).getByRole('button', {
-      name: '임대유형 필터 적용',
-    }))
 
     const search = new URLSearchParams(
       screen.getByTestId('location-search').textContent ?? '',
@@ -1150,7 +1142,6 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
     fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 열기' }))
     fireEvent.click(screen.getByRole('checkbox', { name: '국민임대' }))
-    fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 적용' }))
 
     await waitFor(() => {
       expect(repository.findMapComplexes).toHaveBeenCalledTimes(2)
@@ -1197,10 +1188,9 @@ describe('PublicHousingExplorer', () => {
       name: '임대보증금 선택 범위',
     })).toHaveTextContent('1억~1억')
 
-    fireEvent.click(screen.getByRole('button', { name: '가격 필터 적용' }))
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(2)
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
+      expect(repository.findMapComplexes).toHaveBeenCalledTimes(3)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(3)
     })
     expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
       INITIAL_BOUNDS,
@@ -2926,6 +2916,7 @@ function searchRepository(
     query: '서울',
     regions,
     size: 8,
+    totalCount: null,
   }
   return { search: vi.fn().mockResolvedValue(response) }
 }

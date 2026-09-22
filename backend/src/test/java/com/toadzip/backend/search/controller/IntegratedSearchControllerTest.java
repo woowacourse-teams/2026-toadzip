@@ -54,7 +54,8 @@ class IntegratedSearchControllerTest {
                 List.of(),
                 0,
                 8,
-                false
+                false,
+                null
         ));
 
         mockMvc.perform(get("/api/v1/search")
@@ -91,7 +92,7 @@ class IntegratedSearchControllerTest {
                 "수원", List.of(), List.of(), List.of(new SearchResultItemResponse(
                         SearchType.REGION, "41110", "경기도 수원시", "경기도",
                         new BigDecimal("37.27532584"), new BigDecimal("127.01641895"), null, null, "41110"
-                )), List.of(), 1, 5, true
+                )), List.of(), 1, 5, true, 12L
         ));
 
         mockMvc.perform(get("/api/v1/search")
@@ -107,7 +108,8 @@ class IntegratedSearchControllerTest {
                 .andExpect(jsonPath("$.data.regions[0].longitude").value(127.01641895))
                 .andExpect(jsonPath("$.data.page").value(1))
                 .andExpect(jsonPath("$.data.size").value(5))
-                .andExpect(jsonPath("$.data.hasNext").value(true));
+                .andExpect(jsonPath("$.data.hasNext").value(true))
+                .andExpect(jsonPath("$.data.totalCount").value(12));
         verify(service).search(argThat(request -> request.type() == SearchType.REGION
                 && request.page() == 1 && request.size() == 5 && !request.preview()));
     }
