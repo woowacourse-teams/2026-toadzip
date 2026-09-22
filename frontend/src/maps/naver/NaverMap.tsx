@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ViewportSnapshot } from '../../public-housing/map/viewportPolicy.ts'
 import type { MapBounds } from '../../public-housing/model/publicHousing.ts'
+import { createRegionBoundaryOverlay } from './regionBoundaryOverlay.ts'
 import type { RegionBoundary } from '../../public-housing/regions/regionBoundary.ts'
 import type {
   MapMarkerAmount,
@@ -241,7 +242,7 @@ export default function NaverMap({
   const cameraRequestIdRef = useRef(cameraRequestId)
   cameraRequestIdRef.current = cameraRequestId
   const createdMarkersRef = useRef<CreatedMarker[]>([])
-  const boundaryPolygonsRef = useRef<naver.maps.Polygon[]>([])
+  const boundaryOverlaysRef = useRef<naver.maps.OverlayView[]>([])
   const appliedMarkerDataKeyRef = useRef<string | null>(null)
   const aggregateMarkersRef = useRef(aggregateMarkers)
   aggregateMarkersRef.current = aggregateMarkers
@@ -387,7 +388,7 @@ export default function NaverMap({
       window.clearTimeout(markerFocusTimerRef.current)
       markerFocusTimerRef.current = undefined
       clearMarkers(createdMarkersRef.current)
-      clearBoundaryPolygons(boundaryPolygonsRef.current)
+      clearBoundaryOverlays(boundaryOverlaysRef.current)
       createdMarkersRef.current = []
       appliedMarkerDataKeyRef.current = null
       onMarkerHighlightRef.current?.(null)
@@ -520,7 +521,7 @@ export default function NaverMap({
       removeIdleListener()
       removeTransitionInterruptListeners()
       clearMarkers(createdMarkersRef.current)
-      clearBoundaryPolygons(boundaryPolygonsRef.current)
+      clearBoundaryOverlays(boundaryOverlaysRef.current)
       createdMarkersRef.current = []
       appliedMarkerDataKeyRef.current = null
       window.clearTimeout(markerFocusTimerRef.current)
@@ -541,25 +542,9 @@ export default function NaverMap({
       return
     }
 
-    const polygons: naver.maps.Polygon[] = []
-    boundaryPolygonsRef.current = polygons
-    for (const polygon of regionBoundary.polygons) {
-      polygons.push(new maps.Polygon({
-        map: mapInstance,
-        paths: polygon.map((ring) => ring.map(([longitude, latitude]) =>
-          new maps.LatLng(latitude, longitude))),
-        clickable: false,
-        strokeColor: '#D34F3E',
-        strokeOpacity: 1,
-        strokeStyle: 'solid',
-        strokeWeight: 2,
-        fillColor: '#D34F3E',
-        fillOpacity: 0.08,
-        zIndex: -1,
-      }))
-    }
-
-    return () => clearBoundaryPolygons(polygons)
+    const overlays = [createRegionBoundaryOverlay(maps, mapInstance, regionBoundary)]
+    boundaryOverlaysRef.current = overlays
+    return () => clearBoundaryOverlays(overlays)
   }, [regionBoundary, status.kind])
 
   useEffect(() => {
@@ -1550,7 +1535,7 @@ function fitClusterBounds(
   })
 }
 
-function clearBoundaryPolygons(polygons: naver.maps.Polygon[]) {
+function clearBoundaryOverlays(polygons: naver.maps.OverlayView[]) {
   for (const polygon of polygons.splice(0)) {
     try {
       polygon.setMap(null)

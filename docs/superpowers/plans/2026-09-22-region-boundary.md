@@ -22,17 +22,17 @@
 ### Task 1: Source data and reproducible assets (controller)
 
 Files: frontend/scripts/region-boundaries/, frontend/public/region-boundaries/<version>/, frontend/src/public-housing/regions/regionBoundaryIndex.json, frontend/docs/region-boundaries.md.
-- [ ] Download VWorld 법정구역정보 national full data (reference date 2026-09-09, dataset 21); inspect fields, actual .prj, geometry and metadata. The initial N3A source was rejected because official Q&A says 2026 reforms arrive in 2027.
-- [ ] Compare all codes with backend region catalog. Match only verified geometry; union child districts for parent cities where valid. Record unavailable codes explicitly.
-- [ ] Verify the downloaded .prj against published EPSG:5186, then transform to WGS84, keep topology, generate individual GeoJSON and bbox index. Record provenance, hash, size and simplification validation if used.
-- [ ] Verify all generated rings, bboxes, representative cities/islands and mismatch report. No made-up shapes.
+- [x] Download VWorld 법정구역정보 national full data (reference date 2026-09-09, dataset 21); inspect fields, actual .prj, geometry and metadata. The initial N3A source was rejected because official Q&A says 2026 reforms arrive in 2027.
+- [x] Compare all codes with backend region catalog. Match only verified geometry; union child districts for parent cities where valid. Record unavailable codes explicitly.
+- [x] Verify the downloaded .prj against published EPSG:5186, then transform to WGS84, keep topology, generate individual GeoJSON and bbox index. Record provenance, hash, size and simplification validation if used.
+- [x] Verify all generated rings, bboxes, representative cities/islands and mismatch report. No made-up shapes.
 
 ### Task 2: NAVER boundary rendering and bounds camera (worker)
 
 Files: frontend/src/maps/naver/NaverMap.tsx, NaverMap.test.tsx, optional regionBoundaryOverlay.ts.
 - [x] Write failing tests: fit bounds once, repeated request, no refit on overlay arrival, all polygon parts/holes, replacement and unmount disposal.
 - [x] Add optional regionBoundary prop and optional cameraTarget.bounds/boundsPadding. Bounds wins over center/zoom; initial bounds request must execute after map initialization.
-- [x] Create one SDK Polygon per polygon part, preserving rings; clickable false, approved style, below markers. Cleanup on replacement/failure/unmount.
+- [x] Create one SDK OverlayView with a single SVG path; preserve every ring as a separate subpath and use even-odd filling for islands and holes. Keep pointer events disabled and the layer below markers. Cleanup on replacement/failure/unmount.
 - [x] Run focused NaverMap tests and TypeScript check.
 
 ### Task 3: GeoJSON repository and HTTP cache (worker)
@@ -46,22 +46,23 @@ Files: frontend/src/public-housing/regions/regionBoundary.ts, regionBoundaryRepo
 ### Task 4: Search UX and URL integration (controller)
 
 Files: PublicHousingExplorer.tsx/test, search/IntegratedSearch.tsx/test, navigation/regionBoundaryLocation.ts/test, new region boundary control CSS/component.
-- [ ] Write failing tests for bounds selection independent of region filter, coordinate-less supported region, persistence after close/filter, replace/clear/retry, URL restore/back navigation, no late camera change.
-- [ ] Derive selected region from boundaryRegionCode; use bundled metadata to request bounds immediately. Load geometry with cancellation and stale-response guard separately.
-- [ ] Allow supported region selection without representative coordinates. Unsupported regions preserve real coordinate fallback and show unavailable boundary feedback.
-- [ ] Show selected region, region again, clear and error retry with accessible controls. Fit with current visible panel padding and no zoom-13 floor.
-- [ ] Verify focused integration tests, then npm run check and real browser selection/drag/reselect/clear, URL, cache and small viewport.
+- [x] Write failing tests for bounds selection independent of region filter, coordinate-less supported region, persistence after close/filter, replace/clear/retry, URL restore/back navigation, no late camera change.
+- [x] Derive selected region from boundaryRegionCode; use bundled metadata to request bounds immediately. Load geometry with cancellation and stale-response guard separately.
+- [x] Allow supported region selection without representative coordinates. Unsupported regions preserve real coordinate fallback and show unavailable boundary feedback.
+- [x] Show selected region, region again, clear and error retry with accessible controls. Fit with current visible panel padding and no zoom-13 floor.
+- [x] Verify focused integration tests, then npm run check and real browser selection/drag/reselect/clear, URL, cache and small viewport.
 
 ### Task 5: Review and handoff
 
-- [ ] Review specification coverage and code quality, fix material findings.
-- [ ] Report source coverage, limitations, branch, tests and browser evidence. Raw ZIP and unrelated untracked files stay outside commit.
+- [x] Review specification coverage and code quality, fix material findings.
+- [x] Report source coverage, limitations, branch, tests and browser evidence. Raw ZIP and unrelated untracked files stay outside commit.
 
 ## Progress (2026-09-22)
 
-- Task 1 pending: browser login confirmed but download actions produced no local file. User asked for the path of the official 2026-09-09 national full-data ZIP (120MB). No official geometry is bundled yet.
-- Task 2 implemented and unit-reviewed; real SDK fixture verified polygon holes, multiple parts, style and drag/clear. Browser caught an initial GL fit before SDK initialization (first zoom15 clipped bounds, subsequent fit14.292 covered them); fixed by waiting for the current map attempt’s SDK init event; fresh reload now matches the later correct fit.
-- Task 3 complete: 39 repository tests, isolated real Nginx MIME/gzip/cache/404 checks and independent scope/code review passed.
-- Task 4 pending official data validation/index; no Explorer/search integration or URL controls shipped yet.
-- Final npm run check passed 722 tests (41 files), lint and build after the initial-fit fix. Nginx success/cache/gzip/404 verification also passed.
-- Existing user files preserved; no PR yet.
+- Official user-downloaded ZIP validated against SHA-256 and the catalog. Snapshot `vworld-20260909-3f8952dfda77-p2` supports 266 of 269 시군구. 부산 남구, 대구 남구 and 해남군 remain unavailable because of ambiguous, missing or invalid source geometry. See the data document and provenance for repairs, 5m simplification and the bounded precision correction for 화성 union.
+- App source is our static per-region GeoJSON. No API key, runtime VWorld request, new backend dependency or raw ZIP is committed. All 266 assets pass the application repository decoder (20,793 rings).
+- Search selection uses synchronous bbox and independent asynchronous geometry. URL restore, cancellation, retry without camera movement, reselect, filter/marker persistence and explicit clear are covered.
+- Real GL testing found two limitations in the original renderer: 856 Polygon objects took 6,483ms to create for 신안; combining separate exteriors in one SDK Polygon clipped a distant island. The final single SVG OverlayView retains all rings and visually verifies exterior/hole/island-in-hole filling. Local same-environment creation was 29ms for 신안 and 31ms for 태안 (3,198 polygon parts). These measurements exclude a network/paint SLA.
+- Real browser checks: 수원시 child-union and 장안구 without search coordinates, search close persistence, drag/zoom, clear/back restore, fresh URL, markers above boundary; desktop 1280×720 and mobile 390×844 fit below the toolbar with padding. No late geometry camera movement is asserted by integration tests.
+- Final p2 verification: lint, 746 tests across 45 files with `--maxWorkers=2`, and production build passed. The default-parallel full check had intermittent 5s timeouts in existing filter/admin/Explorer tests; limiting worker count eliminated them without changing test timeouts or assertions. A missing mock export for name restoration was fixed before the final run. The production build retains a >500kB chunk advisory. Offline conversion has 10 passing tests, all 266 assets validated, and all 268 generated files reproduced byte-for-byte.
+- Original separate work and user assets remain outside the commit. PR targets develop; no merge or deployment.

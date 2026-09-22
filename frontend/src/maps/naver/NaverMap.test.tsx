@@ -50,8 +50,8 @@ interface FakeSdk {
   maps: typeof naver.maps
   morphMap: ReturnType<typeof vi.fn>
   panToMap: ReturnType<typeof vi.fn>
-  polygonConstructor: ReturnType<typeof vi.fn>
-  polygonInstances: Array<{ setMap: ReturnType<typeof vi.fn> }>
+  overlayConstructor: ReturnType<typeof vi.fn>
+  overlayInstances: Array<{ setMap: ReturnType<typeof vi.fn> }>
   once: ReturnType<typeof vi.fn>
   removeListener: ReturnType<typeof vi.fn>
   setCurrentCenter: (latitude: number, longitude: number) => void
@@ -88,14 +88,22 @@ function createFakeSdk(): FakeSdk {
   const markerSetMap = vi.fn()
   const markerSetZIndex = vi.fn()
   const markerInstances: FakeSdk['markerInstances'] = []
-  const polygonInstances: FakeSdk['polygonInstances'] = []
-  const polygonConstructor = vi.fn(function FakePolygonConstructor(
-    _options: naver.maps.PolygonOptions,
-  ) {
-    const instance = { setMap: vi.fn() }
-    polygonInstances.push(instance)
-    return instance
-  })
+  const overlayInstances: FakeSdk['overlayInstances'] = []
+  const overlayConstructor = vi.fn()
+  class FakeOverlayView {
+    map: naver.maps.Map | null = null
+    constructor() { overlayConstructor(); overlayInstances.push(this) }
+    onAdd() {}
+    onRemove() {}
+    draw() {}
+    getMap() { return this.map }
+    getPanes() { return { overlayLayer: document.body } }
+    getProjection() { return mapInstance.getProjection() }
+    setMap = vi.fn((map: naver.maps.Map | null) => {
+      this.map = map
+      if (map) { this.onAdd(); this.draw() } else this.onRemove()
+    })
+  }
   const stopMap = vi.fn()
   let dragStartListener: (() => void) | null = null
   let idleListener: (() => void) | null = null
@@ -142,6 +150,7 @@ function createFakeSdk(): FakeSdk {
       getSW: () => ({ lat: () => 37.5, lng: () => 126.8 }),
     }),
     getCenter: getCenterMap,
+    getSize: () => ({ width: 1024, height: 768 }),
     getMaxZoom: getMaxZoomMap,
     getMinZoom: getMinZoomMap,
     getProjection: () => ({ factor: (zoom: number) => 2 ** zoom, fromCoordToOffset, fromOffsetToCoord }),
@@ -170,10 +179,9 @@ function createFakeSdk(): FakeSdk {
     return { latitude, longitude }
   })
   const fromCoordToOffset = vi.fn((coordinate: unknown) => {
-    const { latitude, longitude } = coordinate as {
-      latitude: number
-      longitude: number
-    }
+    const value = coordinate as { latitude?: number; longitude?: number; lat?: () => number; lng?: () => number }
+    const latitude = value.latitude ?? value.lat!()
+    const longitude = value.longitude ?? value.lng!()
     const scale = 50_000 * 2 ** (currentZoom - 14)
     return {
       x: (longitude - 127) * scale,
@@ -257,13 +265,13 @@ function createFakeSdk(): FakeSdk {
       Map: mapConstructor,
       Marker: markerConstructor,
       Point: pointConstructor,
-      Polygon: polygonConstructor,
+      OverlayView: FakeOverlayView,
       Position: { BOTTOM_LEFT: 10, RIGHT_BOTTOM: 9 },
       Size: sizeConstructor,
     } as unknown as typeof naver.maps,
     panToMap,
-    polygonConstructor,
-    polygonInstances,
+    overlayConstructor,
+    overlayInstances,
     once,
     removeListener,
     setCurrentCenter: (latitude, longitude) => {
@@ -704,28 +712,13 @@ describe('NaverMap', () => {
     render(<NaverMap regionBoundary={regionBoundary} onMarkerSelect={onMarkerSelect}
       markers={[{ ...markerPresentation, id: '101', name: '경계 안 단지', latitude: 37.6, longitude: 127 }]} />)
 
-    await waitFor(() => expect(fakeSdk.polygonConstructor).toHaveBeenCalledTimes(2))
-    expect(fakeSdk.polygonConstructor.mock.calls[0]?.[0]).toMatchObject({
-      paths: [
-        [{ latitude: 37.5, longitude: 126.8 }, { latitude: 37.5, longitude: 127 },
-          { latitude: 37.7, longitude: 127 }, { latitude: 37.5, longitude: 126.8 }],
-        [{ latitude: 37.55, longitude: 126.9 }, { latitude: 37.6, longitude: 126.92 },
-          { latitude: 37.55, longitude: 126.94 }, { latitude: 37.55, longitude: 126.9 }],
-      ],
-    })
-    expect(fakeSdk.polygonConstructor.mock.calls[1]?.[0]).toMatchObject({
-      paths: [[{ latitude: 37.6, longitude: 127.1 }, { latitude: 37.6, longitude: 127.2 },
-        { latitude: 37.7, longitude: 127.2 }, { latitude: 37.6, longitude: 127.1 }]],
-    })
-    for (const [options] of fakeSdk.polygonConstructor.mock.calls) {
-      expect(options).toMatchObject({
-        map: fakeSdk.mapConstructor.mock.results[0]?.value,
-        clickable: false,
-        strokeColor: '#D34F3E', strokeOpacity: 1, strokeStyle: 'solid', strokeWeight: 2,
-        fillColor: '#D34F3E', fillOpacity: 0.08,
-      })
-      expect(options.zIndex).toBeLessThan(0)
-    }
+    await waitFor(() => expect(fakeSdk.overlayConstructor).toHaveBeenCalledTimes(1))
+    const path = document.querySelector('svg path')
+    expect(path?.getAttribute('d')?.match(/M/g)).toHaveLength(3)
+    expect(path?.getAttribute('d')).not.toContain('NaN')
+    expect(path?.getAttribute('fill-rule')).toBe('evenodd')
+    expect(path?.getAttribute('fill')).toBe('#D34F3E')
+    expect(document.querySelector('svg')?.style.pointerEvents).toBe('none')
     fireEvent.click(createdMarkerButton(fakeSdk, 0))
     expect(onMarkerSelect).toHaveBeenCalledWith('101')
     expect(fakeSdk.fitBoundsMap).not.toHaveBeenCalled()
@@ -735,28 +728,27 @@ describe('NaverMap', () => {
     const fakeSdk = createFakeSdk()
     loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
     const { rerender, unmount } = render(<NaverMap regionBoundary={regionBoundary} />)
-    await waitFor(() => expect(fakeSdk.polygonConstructor).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(fakeSdk.overlayConstructor).toHaveBeenCalledTimes(1))
 
     act(() => fakeSdk.emitIdle())
     rerender(<NaverMap regionBoundary={regionBoundary}
       markers={[{ ...markerPresentation, id: '101', name: '갱신 단지', latitude: 37.6, longitude: 127 }]} />)
-    expect(fakeSdk.polygonConstructor).toHaveBeenCalledTimes(2)
-    expect(fakeSdk.polygonInstances[0]?.setMap).not.toHaveBeenCalled()
+    expect(fakeSdk.overlayConstructor).toHaveBeenCalledTimes(1)
+    expect(fakeSdk.overlayInstances[0]?.setMap).toHaveBeenCalledTimes(1)
 
     rerender(<NaverMap regionBoundary={{ ...regionBoundary, regionCode: '11140' }} />)
-    expect(fakeSdk.polygonConstructor).toHaveBeenCalledTimes(4)
-    expect(fakeSdk.polygonInstances[0]?.setMap).toHaveBeenCalledExactlyOnceWith(null)
-    expect(fakeSdk.polygonInstances[1]?.setMap).toHaveBeenCalledExactlyOnceWith(null)
+    expect(fakeSdk.overlayConstructor).toHaveBeenCalledTimes(2)
+    expect(fakeSdk.overlayInstances[0]?.setMap).toHaveBeenLastCalledWith(null)
 
     rerender(<NaverMap regionBoundary={null} />)
-    expect(fakeSdk.polygonInstances[2]?.setMap).toHaveBeenCalledExactlyOnceWith(null)
-    expect(fakeSdk.polygonInstances[3]?.setMap).toHaveBeenCalledExactlyOnceWith(null)
+    expect(fakeSdk.overlayInstances[1]?.setMap).toHaveBeenCalledWith(null)
 
     rerender(<NaverMap regionBoundary={regionBoundary} />)
     unmount()
-    expect(fakeSdk.polygonInstances).toHaveLength(6)
-    for (const polygon of fakeSdk.polygonInstances) {
-      expect(polygon.setMap).toHaveBeenCalledExactlyOnceWith(null)
+    expect(fakeSdk.overlayInstances).toHaveLength(3)
+    for (const polygon of fakeSdk.overlayInstances) {
+      expect(polygon.setMap).toHaveBeenCalledTimes(2)
+      expect(polygon.setMap).toHaveBeenLastCalledWith(null)
     }
   })
 
@@ -764,19 +756,20 @@ describe('NaverMap', () => {
     const fakeSdk = createFakeSdk()
     loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
     const { unmount } = render(<NaverMap regionBoundary={regionBoundary} />)
-    await waitFor(() => expect(fakeSdk.polygonConstructor).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(fakeSdk.overlayConstructor).toHaveBeenCalledTimes(1))
 
     act(() => authenticationFailureListener?.(new NaverMapsSdkError('authentication', '인증 실패')))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('지도 인증에 실패했습니다.')
-    for (const polygon of fakeSdk.polygonInstances) {
-      expect(polygon.setMap).toHaveBeenCalledExactlyOnceWith(null)
-      expect(polygon.setMap.mock.invocationCallOrder[0])
+    for (const polygon of fakeSdk.overlayInstances) {
+      expect(polygon.setMap).toHaveBeenCalledTimes(2)
+      expect(polygon.setMap).toHaveBeenLastCalledWith(null)
+      expect(polygon.setMap.mock.invocationCallOrder[1])
         .toBeLessThan(fakeSdk.destroyMap.mock.invocationCallOrder[0])
     }
     unmount()
-    for (const polygon of fakeSdk.polygonInstances) {
-      expect(polygon.setMap).toHaveBeenCalledOnce()
+    for (const polygon of fakeSdk.overlayInstances) {
+      expect(polygon.setMap).toHaveBeenCalledTimes(2)
     }
   })
 

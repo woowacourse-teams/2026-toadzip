@@ -1,0 +1,26 @@
+.control {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 6px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: #fff8f6;
+  color: #1e2124;
+  font-size: 13px;
+}
+.control strong { overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.control button {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid #b8a6a1;
+  border-radius: 6px;
+  background: var(--surface);
+  color: #1e2124;
+  cursor: pointer;
+}
+.control button:disabled { opacity: 0.5; cursor: default; }
+.control p { margin: 0; }
+.control small { color: #5e5654; font-size: 11px; }
+.control a { color: inherit; text-underline-offset: 2px; }
+.control button:focus-visible, .control a:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }

@@ -7,6 +7,7 @@ import {
   type SearchType,
 } from './integratedSearchRepository.ts'
 import styles from './IntegratedSearch.module.css'
+import { findRegionBoundaryMetadata } from '../regions/regionBoundaryCatalog.ts'
 
 interface GroupState {
   readonly items: readonly SearchResultItem[]
@@ -164,6 +165,7 @@ function SearchGroup({
         {state.items.map((item) => {
           const unavailable = item.type === 'REGION'
             && (item.latitude === null || item.longitude === null)
+            && !findRegionBoundaryMetadata(item.regionCode ?? item.id)
           return (
             <li key={`${item.type}-${item.id}`}>
               <button
