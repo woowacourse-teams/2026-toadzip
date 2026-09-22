@@ -1149,7 +1149,7 @@ describe('NaverMap', () => {
     render(<NaverMap markerRenderMode="server" representation="INDIVIDUAL" markers={markers} />)
 
     const buttons = await screen.findAllByRole('button', { name: /단지 상세 보기/ })
-    const expectedDelays = ['0ms', '25ms', '50ms', '75ms', '100ms', '125ms', '150ms', '150ms']
+    const expectedDelays = ['0ms', '10ms', '20ms', '30ms', '40ms', '40ms', '40ms', '40ms']
     buttons.forEach((button, index) => {
       const motion = button.parentElement
       expect(motion).toHaveClass('housing-marker-enter')

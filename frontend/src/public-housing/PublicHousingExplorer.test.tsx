@@ -1085,7 +1085,7 @@ describe('PublicHousingExplorer', () => {
     expect(search.getAll('complexAgencyCodes')).toEqual(['LH', 'GH'])
   })
 
-  it('연속 지도 이동은 마지막 idle로부터 300ms 후 한 번만 조회한다', async () => {
+  it('연속 지도 이동은 마지막 idle로부터 100ms 후 한 번만 조회한다', async () => {
     const repository = createRepository()
     renderExplorer(repository)
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
@@ -1093,20 +1093,52 @@ describe('PublicHousingExplorer', () => {
     vi.useFakeTimers()
 
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
-    await act(async () => vi.advanceTimersByTimeAsync(200))
+    await act(async () => vi.advanceTimersByTimeAsync(50))
     fireEvent.click(screen.getByRole('button', { name: '정밀 영역 알림' }))
-    await act(async () => vi.advanceTimersByTimeAsync(299))
+    await act(async () => vi.advanceTimersByTimeAsync(99))
     expect(repository.findComplexPage).toHaveBeenCalledOnce()
     await act(async () => vi.advanceTimersByTimeAsync(1))
 
     // The final region is the already applied region, so the queued intermediate region never queries.
     expect(repository.findComplexPage).toHaveBeenCalledOnce()
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
-    await act(async () => vi.advanceTimersByTimeAsync(299))
+    await act(async () => vi.advanceTimersByTimeAsync(99))
     expect(repository.findComplexPage).toHaveBeenCalledOnce()
     await act(async () => vi.advanceTimersByTimeAsync(1))
     expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
     expect(repository.findComplexPage).toHaveBeenLastCalledWith(NEXT_BOUNDS, null, 20, expect.any(AbortSignal))
+  })
+
+  it('서버 지도는 마지막 idle 100ms 뒤 조회하고 느린 목록을 기다리지 않고 마커를 표시한다', async () => {
+    vi.useFakeTimers()
+    const repository = createRepository()
+    const pendingList = createDeferred<ComplexPage>()
+    repository.findComplexPage.mockReturnValue(pendingList.promise)
+    const pendingMap = createDeferred<HousingMapIndividualResult>()
+    const mapRepository = createMapRepository(individualMapResult())
+    mapRepository.findMap.mockReturnValue(pendingMap.promise)
+    renderExplorer(repository, '/', undefined, undefined, mapRepository)
+
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    await act(async () => vi.advanceTimersByTimeAsync(50))
+    fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
+    await act(async () => vi.advanceTimersByTimeAsync(99))
+    expect(mapRepository.findMap).not.toHaveBeenCalled()
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+
+    expect(mapRepository.findMap).toHaveBeenCalledExactlyOnceWith({
+      bounds: NEXT_BOUNDS,
+      zoom: 14,
+    }, expect.any(AbortSignal))
+    expect(repository.findComplexPage).not.toHaveBeenCalled()
+    await act(async () => pendingMap.resolve(individualMapResult()))
+
+    expect(screen.getByRole('button', {
+      name: '서울가람 행복주택 지도 마커 선택',
+    })).toBeVisible()
+    expect(repository.findComplexPage).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('article', { name: '서울가람 행복주택' }))
+      .not.toBeInTheDocument()
   })
 
   it('지도 idle 대기 중 단지 필터를 바꿔도 이전 조건 요청이 덮어쓰지 않는다', async () => {

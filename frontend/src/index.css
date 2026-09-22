@@ -800,7 +800,7 @@ a {
 /* Animate only newly queried content; the SDK owns the outer map position. */
 .housing-marker-enter {
   transform-origin: 50% 100%;
-  animation: housing-marker-appear 220ms ease-out var(--marker-enter-delay, 0ms) both;
+  animation: housing-marker-appear 120ms ease-out var(--marker-enter-delay, 0ms) both;
 }
 
 @keyframes housing-marker-appear {
