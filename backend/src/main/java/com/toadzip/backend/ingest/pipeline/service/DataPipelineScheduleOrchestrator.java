@@ -59,7 +59,10 @@ public class DataPipelineScheduleOrchestrator {
         this.clock = clock;
     }
 
-    @Scheduled(fixedDelayString = "${ingest.scheduler.poll-interval-millis:60000}")
+    @Scheduled(
+            fixedDelayString = "${ingest.scheduler.poll-interval-millis:60000}",
+            scheduler = "dataPipelineScheduleTaskScheduler"
+    )
     public void runScheduledCycle() {
         runOnce(clock.instant());
     }
@@ -70,6 +73,10 @@ public class DataPipelineScheduleOrchestrator {
                 process(schedule, now);
             }
             catch (RuntimeException exception) {
+                meterRegistry.counter(
+                        "ingest.scheduler.failed",
+                        "schedule", schedule.name()
+                ).increment();
                 log.error(
                         "event=ingest.schedule.failed schedule={} result=unexpected_error",
                         schedule,

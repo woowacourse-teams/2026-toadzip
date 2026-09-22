@@ -290,6 +290,25 @@ class DataPipelineScheduleOrchestratorTest {
                 .isEqualTo(1);
     }
 
+    @Test
+    void 예상하지_못한_스케줄_오류를_메트릭으로_기록하고_다른_스케줄을_계속_확인한다() {
+        when(executionRepository.findFirstByTypeAndScheduledAtOrderByIdDesc(
+                DataPipelineType.COMPLEX_COLLECTION,
+                Instant.parse("2026-09-20T18:00:00Z")
+        )).thenThrow(new IllegalStateException("DB 조회 실패"));
+
+        orchestrator.runOnce(NOW);
+
+        assertThat(meterRegistry.counter("ingest.scheduler.failed", "schedule", "COMPLEX").count())
+                .isEqualTo(1);
+        verify(executionService).start(
+                DataPipelineType.ANNOUNCEMENT_COLLECTION,
+                DataPipelineExecutionTrigger.SCHEDULED,
+                ANNOUNCEMENT_SLOT,
+                null
+        );
+    }
+
     private DataPipelineExecution scheduledExecution(
             DataPipelineType type,
             UUID executionId,

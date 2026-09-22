@@ -10,4 +10,4 @@ logging:
 
 ingest:
   scheduler:
-    enabled: ${INGEST_SCHEDULER_ENABLED:true}
+    enabled: ${INGEST_SCHEDULER_ENABLED:false}
