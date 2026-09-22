@@ -549,7 +549,7 @@ export default function NaverMap({
         return previous
       }
       const enterDelay = animateNewMarkers && !previous
-        ? Math.min(enteringMarkerCount++ * 25, 150)
+        ? Math.min(enteringMarkerCount++ * 10, 40)
         : undefined
       return createMarker({
         enterDelay,

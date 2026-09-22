@@ -1196,7 +1196,7 @@ export function PublicHousingExplorer({
         return
       }
       applyViewport(nextViewport)
-    }, 300)
+    }, 100)
   }, [applyViewport, cancelComplexListRequest, cancelServerMapRequest, effectiveMapFilters,
     finishClusterTransition, requestServerMapWithListIntent, serverMapEnabled])
 
