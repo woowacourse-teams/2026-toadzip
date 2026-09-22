@@ -127,7 +127,7 @@ describe('IntegratedSearch', () => {
     expect(onSelect).toHaveBeenCalledOnce()
   })
 
-  it('5개 더보기는 해당 유형만 추가하고 마지막 페이지에서 사라진다', async () => {
+  it('더보기는 현재 수와 유형별 전체 수를 갱신하고 마지막 페이지에서 사라진다', async () => {
     const next = deferred<IntegratedSearchResponse>()
     const firstPage = Array.from({ length: 5 }, (_, index) => (
       item('COMPLEX', String(index), `서울 단지 ${index + 1}`)
@@ -141,25 +141,46 @@ describe('IntegratedSearch', () => {
         if (page === 1) {
           return next.promise
         }
-        return { ...initial, hasNext: type === 'COMPLEX' }
+        if (page === 2) {
+          return { ...response([], [item('COMPLEX', '10', '서울 단지 11')], []), totalCount: 11 }
+        }
+        return { ...initial, hasNext: type === 'COMPLEX', totalCount: type === 'COMPLEX' ? 11 : 1 }
       },
     )
     render(<IntegratedSearch repository={{ search }} onSelect={vi.fn()} />)
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })
-    fireEvent.click(await screen.findByRole('button', { name: '단지 5개 더보기' }))
+    const more = await screen.findByRole('button', { name: /^단지 더보기/ })
+    expect(more).toHaveTextContent(/더보기\s*\(5 \| 11\)/)
+    fireEvent.click(more)
     const complexGroup = within(screen.getByRole('region', { name: '단지' }))
 
     await waitFor(() => expect(search).toHaveBeenCalledTimes(4))
     expect(search).toHaveBeenLastCalledWith('서울', false, 1, expect.any(AbortSignal), 'COMPLEX')
     expect(complexGroup.getAllByRole('listitem')).toHaveLength(5)
     expect(screen.getByText('서울특별시')).toBeVisible()
-    expect(screen.getByRole('button', { name: '단지 5개 더보기' })).toBeDisabled()
-    next.resolve(response([], secondPage, []))
+    expect(screen.getByRole('button', { name: /^단지 더보기/ })).toBeDisabled()
+    next.resolve({ ...response([], secondPage, []), hasNext: true, totalCount: 11 })
 
     expect(await screen.findByText('서울 단지 10')).toBeVisible()
     expect(screen.getByText('서울 단지 1')).toBeVisible()
     expect(complexGroup.getAllByRole('listitem')).toHaveLength(10)
-    expect(screen.queryByRole('button', { name: '단지 5개 더보기' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^단지 더보기/ })).toHaveTextContent(/더보기\s*\(10 \| 11\)/)
+    fireEvent.click(screen.getByRole('button', { name: /^단지 더보기/ }))
+    expect(await screen.findByText('서울 단지 11')).toBeVisible()
+    expect(complexGroup.getAllByRole('listitem')).toHaveLength(11)
+    expect(screen.queryByRole('button', { name: /^단지 더보기/ })).not.toBeInTheDocument()
+  })
+
+  it('전체 건수가 없는 구버전 응답도 더보기를 유지하고 알 수 없는 수는 대시로 표시한다', async () => {
+    const repository = repositoryWith({
+      ...response([], [item('COMPLEX', '1', '서울 단지')], []), hasNext: true,
+    })
+    render(<IntegratedSearch repository={repository} onSelect={vi.fn()} />)
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })
+
+    const more = await screen.findByRole('button', { name: '단지 더보기, 현재 1개, 전체 확인 중' })
+    expect(more).toHaveTextContent('(1 | —)')
+    expect(more).toBeEnabled()
   })
 
   it('추가 조회가 실패하면 기존 결과를 유지하며 실패한 페이지를 재시도한다', async () => {
@@ -177,7 +198,7 @@ describe('IntegratedSearch', () => {
     )
     render(<IntegratedSearch repository={{ search }} onSelect={vi.fn()} />)
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })
-    fireEvent.click(await screen.findByRole('button', { name: '단지 5개 더보기' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^단지 더보기/ }))
     fireEvent.click(await screen.findByRole('button', { name: '단지 다시 시도' }))
 
     expect(screen.getByText('서울 단지 0')).toBeVisible()
@@ -205,7 +226,7 @@ describe('IntegratedSearch', () => {
     )
     render(<IntegratedSearch repository={{ search }} onSelect={vi.fn()} />)
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })
-    fireEvent.click(await screen.findByRole('button', { name: '단지 5개 더보기' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^단지 더보기/ }))
     await waitFor(() => expect(search).toHaveBeenCalledTimes(4))
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '부산' } })
     expect(await screen.findByText('부산 단지')).toBeVisible()
@@ -262,7 +283,7 @@ function response(
   regions: readonly SearchResultItem[],
   failures: IntegratedSearchResponse['failures'] = [],
 ): IntegratedSearchResponse {
-  return { announcements, complexes, failures, hasNext: false, page: 0, query: '서울', regions, size: 5 }
+  return { announcements, complexes, failures, hasNext: false, page: 0, query: '서울', regions, size: 5, totalCount: null }
 }
 
 function item(

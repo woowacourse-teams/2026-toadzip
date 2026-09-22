@@ -217,6 +217,9 @@ export function ComplexFilterToolbar({
     readonly regionCode: string
   } | null>(null)
   const rootRef = useRef<HTMLElement>(null)
+  const desktopFormRef = useRef<HTMLFormElement>(null)
+  const previousFiltersSignatureRef = useRef(filtersSignature)
+  const quickAppliedSignatureRef = useRef<string | null>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const mobileSheetRef = useRef<HTMLElement>(null)
   const mobileSheetBodyRef = useRef<HTMLDivElement>(null)
@@ -228,6 +231,16 @@ export function ComplexFilterToolbar({
   const triggerRefs = useRef<
     Partial<Record<DesktopFilterTopic, HTMLButtonElement>>
   >({})
+
+  useEffect(() => {
+    if (previousFiltersSignatureRef.current === filtersSignature) return
+    previousFiltersSignatureRef.current = filtersSignature
+    if (quickAppliedSignatureRef.current !== filtersSignature && openTopic !== 'detail') {
+      setOpenTopic(null)
+      setErrorMessage(null)
+    }
+    quickAppliedSignatureRef.current = null
+  }, [filtersSignature, openTopic])
 
   useEffect(() => {
     if (openTopic === null) {
@@ -529,6 +542,22 @@ export function ComplexFilterToolbar({
     applyAndClose(openTopic, replaceTopic(filters, openTopic, draft))
   }
 
+  function applyQuickFilter(rangeValues: Readonly<Record<string, number | null>> = {}) {
+    if (openTopic === null || openTopic === 'detail' || desktopFormRef.current === null) return
+    const data = new FormData(desktopFormRef.current)
+    // Range inputs report both endpoints before their hidden inputs re-render.
+    Object.entries(rangeValues).forEach(([key, value]) => data.set(key, value === null ? '' : String(value)))
+    const draft = topicDraftFromForm(openTopic, data)
+    const rangeError = topicRangeError(openTopic, draft)
+    setErrorMessage(rangeError)
+    if (rangeError !== null) return
+    const next = replaceTopic(filters, openTopic, draft)
+    const nextSignature = searchFiltersSignature(next)
+    if (nextSignature === filtersSignature) return
+    quickAppliedSignatureRef.current = nextSignature
+    onApply(next)
+  }
+
   function applyAndClose(
     topic: DesktopFilterTopic,
     next: ComplexSearchFilters,
@@ -702,9 +731,14 @@ export function ComplexFilterToolbar({
             } as CSSProperties}
           >
             <form
-              key={`${openTopic}-${searchFiltersSignature(filters)}`}
+              key={openTopic === 'detail' ? `${openTopic}-${filtersSignature}` : openTopic}
+              ref={desktopFormRef}
               className={styles.form}
               onSubmit={submit}
+              onChange={(event) => {
+                if (event.target instanceof HTMLInputElement && event.target.type === 'range') return
+                applyQuickFilter()
+              }}
             >
               <header className={styles.popoverHeader}>
                 <button
@@ -747,19 +781,20 @@ export function ComplexFilterToolbar({
                     filters={filters}
                     regionRepository={regionRepository}
                     topic={openTopic}
+                    onRangeChange={applyQuickFilter}
                   />
                 )}
               </div>
               {errorMessage !== null && (
                 <p className={styles.error} role="alert">{errorMessage}</p>
               )}
-              <div className={styles.actions}>
+              {openTopic === 'detail' && <div className={styles.actions}>
                 <button
                   className={styles.apply}
                   type="submit"
                   aria-label={`${openLabel} 필터 적용`}
                 >적용</button>
-              </div>
+              </div>}
             </form>
           </section>
         )}
@@ -950,10 +985,12 @@ function TopicFields({
   filters,
   regionRepository,
   topic,
+  onRangeChange,
 }: {
   readonly filters: ComplexSearchFilters
   readonly regionRepository: PublicHousingRegionRepository
   readonly topic: FilterTopic
+  readonly onRangeChange?: (values: Readonly<Record<string, number | null>>) => void
 }) {
   switch (topic) {
     case 'region':
@@ -987,6 +1024,9 @@ function TopicFields({
             formatValue={formatDeposit}
             formatTick={formatDepositTick}
             presets={DEPOSIT_PRESETS}
+            onChange={onRangeChange && ((minimum, maximum) => onRangeChange({
+              minDeposit: minimum, maxDeposit: maximum,
+            }))}
             preserveInitialValuesUntilChange
           />
           <DualRangeFilter
@@ -1002,6 +1042,9 @@ function TopicFields({
             formatValue={formatMonthlyRent}
             formatTick={formatMonthlyRentTick}
             presets={MONTHLY_RENT_PRESETS}
+            onChange={onRangeChange && ((minimum, maximum) => onRangeChange({
+              minMonthlyRent: minimum, maxMonthlyRent: maximum,
+            }))}
             preserveInitialValuesUntilChange
           />
         </div>
@@ -1021,6 +1064,9 @@ function TopicFields({
           formatValue={formatArea}
           formatTick={formatAreaTick}
           presets={AREA_PRESETS}
+          onChange={onRangeChange && ((minimum, maximum) => onRangeChange({
+            minExclusiveArea: minimum, maxExclusiveArea: maximum,
+          }))}
           preserveInitialValuesUntilChange
         />
       )
