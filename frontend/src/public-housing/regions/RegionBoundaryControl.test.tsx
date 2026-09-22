@@ -15,13 +15,13 @@ function props() {
 }
 
 describe('RegionBoundaryControl', () => {
-  it('짧은 버튼과 닫기 기호에도 접근 가능한 이름과 독립 동작을 유지한다', () => {
+  it('보이는 문구와 접근 가능한 이름이 일치하며 두 조작은 독립적으로 동작한다', () => {
     const callbacks = props()
     render(<RegionBoundaryControl {...callbacks} />)
-    const recenter = screen.getByRole('button', { name: '지역 다시 보기' })
-    const clear = screen.getByRole('button', { name: '표시 해제' })
-    expect(recenter).toHaveTextContent('다시 보기')
-    expect(clear).toHaveTextContent('×')
+    const recenter = screen.getByRole('button', { name: '전체 보기' })
+    const clear = screen.getByRole('button', { name: '경계 지우기' })
+    expect(recenter).toHaveTextContent('전체 보기')
+    expect(clear).toHaveTextContent('경계 지우기')
     recenter.focus()
     expect(recenter).toHaveFocus()
     fireEvent.click(recenter)
@@ -31,15 +31,15 @@ describe('RegionBoundaryControl', () => {
     expect(callbacks.onClear).toHaveBeenCalledOnce()
   })
 
-  it('긴 지역명의 전체 텍스트와 출처·라이선스 링크를 제공한다', () => {
+  it('긴 지역명을 보존하고 조작부에서 출처 설명을 표시하지 않는다', () => {
     const name = '제주특별자치도 서귀포시 아주 긴 지역 이름'
     render(<RegionBoundaryControl {...props()} name={name} />)
-    expect(screen.getByText(`검색 지역: ${name}`)).toHaveAttribute('title', `검색 지역: ${name}`)
-    expect(screen.getByRole('link', { name: '국토교통부 · VWorld' })).toHaveAttribute('href', 'https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?dsId=21')
-    expect(screen.getByRole('link', { name: 'CC BY 2.0 KR' })).toHaveAttribute('href', 'https://creativecommons.org/licenses/by/2.0/kr/')
+    expect(screen.getByText(name)).toHaveAttribute('title', name)
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('지도 표시에 맞게 단순화한 경계입니다.')).not.toBeInTheDocument()
   })
 
-  it('실패 안내의 재시도는 지역 다시 보기와 별도로 동작한다', () => {
+  it('실패 안내의 재시도는 전체 보기와 별도로 동작한다', () => {
     const callbacks = props()
     render(<RegionBoundaryControl {...callbacks} status="error" />)
     const alert = screen.getByRole('alert')
@@ -55,7 +55,7 @@ describe('RegionBoundaryControl', () => {
     expect(screen.getByRole('status')).toHaveTextContent('지역 경계를 불러오는 중입니다.')
     rerender(<RegionBoundaryControl {...callbacks} supported={false} canRecenter={false} status="idle" />)
     expect(screen.getByRole('status')).toHaveTextContent('이 지역은 경계 정보를 제공하지 않습니다.')
-    expect(screen.getByRole('button', { name: '지역 다시 보기' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '표시 해제' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '전체 보기' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '경계 지우기' })).toBeEnabled()
   })
 })

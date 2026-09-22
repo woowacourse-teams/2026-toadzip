@@ -44,6 +44,31 @@ describe('IntegratedSearch', () => {
     }
   })
 
+  it('지역 조작부는 입력 다음과 검색결과 앞에 남고 결과 스크롤과 검색 닫기에 영향받지 않는다', async () => {
+    const regions = Array.from({ length: 20 }, (_, index) => item('REGION', String(index), `서울 지역 ${index}`))
+    render(<IntegratedSearch
+      repository={repositoryWith(response([], [], regions))}
+      onSelect={vi.fn()}
+      selectionControl={<section aria-label="검색 지역 표시"><button type="button">전체 보기</button></section>}
+    />)
+    const control = screen.getByRole('region', { name: '검색 지역 표시' })
+    const input = screen.getByRole('searchbox')
+    expect(input.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.change(input, { target: { value: '서울' } })
+    await screen.findByRole('button', { name: /서울 지역 19/ })
+    const heading = screen.getByRole('heading', { name: '검색결과' })
+    expect(control.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const body = screen.getByRole('region', { name: '통합 검색' }).querySelector('.integrated-search__body')
+    if (!(body instanceof HTMLElement)) throw new Error('검색 결과 스크롤 영역 없음')
+    expect(body).not.toContainElement(control)
+    body.scrollTop = 800
+    fireEvent.scroll(body)
+    expect(screen.getByRole('region', { name: '검색 지역 표시' })).toBe(control)
+    fireEvent.click(screen.getByRole('button', { name: '검색결과 닫기' }))
+    expect(screen.getByRole('region', { name: '검색 지역 표시' })).toBe(control)
+    expect(screen.getByRole('button', { name: '전체 보기' })).toBeVisible()
+  })
+
   it('로딩과 오류, 빈 결과 사이에 본문 컨테이너를 유지하고 유형별로 다시 시도한다', async () => {
     let regionAttempts = 0
     const search = vi.fn<IntegratedSearchRepository['search']>().mockImplementation(

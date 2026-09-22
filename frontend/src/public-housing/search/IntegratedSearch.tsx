@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import { DetailCloseButton } from '../components/DetailPrimitives.tsx'
 import {
   integratedSearchRepository,
@@ -24,12 +24,14 @@ export interface IntegratedSearchProps {
   readonly onActiveChange?: (active: boolean) => void
   readonly onSelect: (item: SearchResultItem) => void
   readonly repository?: IntegratedSearchRepository
+  readonly selectionControl?: ReactNode
 }
 
 export function IntegratedSearch({
   onActiveChange,
   onSelect,
   repository = integratedSearchRepository,
+  selectionControl,
 }: IntegratedSearchProps) {
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -42,7 +44,7 @@ export function IntegratedSearch({
 
   return (
     <section className={`integrated-search${active ? ' is-active' : ''}`} aria-label="통합 검색">
-      <div className={styles.top}>
+      <div className={selectionControl ? `${styles.top} ${styles.withSelection}` : styles.top}>
         <label className="integrated-search__input">
           <span className="visually-hidden">지역, 단지, 공고 검색</span>
           <svg
@@ -65,6 +67,7 @@ export function IntegratedSearch({
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
+        {selectionControl}
         {active && (
           <div className={styles.header}>
             <h2>검색결과</h2>

@@ -1568,19 +1568,19 @@ export function PublicHousingExplorer({
           onActiveChange={setIntegratedSearchActive}
           onSelect={handleIntegratedSearchSelect}
           repository={searchRepository}
+          selectionControl={boundaryRegionCode !== null && (
+            <RegionBoundaryControl
+              name={findRegionBoundaryName(boundaryRegionCode) ?? selectedBoundarySearchItem?.title ?? `지역 ${boundaryRegionCode}`}
+              status={boundaryState.status}
+              supported={boundaryMetadata !== null}
+              canRecenter={boundaryMetadata !== null || (selectedBoundarySearchItem?.latitude != null && selectedBoundarySearchItem?.longitude != null)}
+              onRecenter={() => focusBoundary(boundaryRegionCode)}
+              onClear={() => changeBoundarySelection(null)}
+              onRetry={boundaryState.retry}
+            />
+          )}
         />
 
-        {boundaryRegionCode !== null && (
-          <RegionBoundaryControl
-            name={findRegionBoundaryName(boundaryRegionCode) ?? selectedBoundarySearchItem?.title ?? `지역 ${boundaryRegionCode}`}
-            status={boundaryState.status}
-            supported={boundaryMetadata !== null}
-            canRecenter={boundaryMetadata !== null || (selectedBoundarySearchItem?.latitude != null && selectedBoundarySearchItem?.longitude != null)}
-            onRecenter={() => focusBoundary(boundaryRegionCode)}
-            onClear={() => changeBoundarySelection(null)}
-            onRetry={boundaryState.retry}
-          />
-        )}
         <div className="housing-results__browse" hidden={integratedSearchActive}>
           <ResultTabs activeTab={activeResultTab} onSelect={selectResultTab} />
 
@@ -1765,6 +1765,9 @@ export function PublicHousingExplorer({
           />
         </div>
         <NaverMap {...naverMapProps} regionBoundary={boundaryState.boundary} />
+        {boundaryState.boundary !== null && (
+          <a className="housing-map-credits" href="/map-data-credits.html" target="_blank" rel="noreferrer">저작권</a>
+        )}
         <ComplexDetailLayer
           state={complexDetail}
           onClose={closeDetail}
