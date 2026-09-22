@@ -7,6 +7,7 @@ describe('toHousingComplexDetailData', () => {
     const result = toHousingComplexDetailData(complexDetail())
 
     expect(result).toMatchObject({
+      agencyCode: 'LH',
       agencyName: '한국토지주택공사',
       buildingTypeLabel: '아파트',
       corridorTypeLabel: '계단식',
@@ -22,20 +23,26 @@ describe('toHousingComplexDetailData', () => {
     expect(result.housingTypes[0].maintenanceFee).toBeNull()
   })
 
-  it('알 수 없는 코드와 주소 null은 raw code 대신 확인 중 문구로 바꾼다', () => {
+  it('알 수 없는 코드와 누락 속성은 공고문 확인으로 바꾼다', () => {
     const detail = complexDetail({
       address: null,
+      agency: null,
       buildingType: 'NEW_BUILDING_CODE',
+      corridorType: 'UNKNOWN',
+      heatingType: null,
       name: null,
       rentalType: null,
     })
 
     expect(toHousingComplexDetailData(detail)).toMatchObject({
-      buildingTypeLabel: '건물형태 정보 확인 중',
-      name: '단지명 정보 확인 중',
-      regionName: '지역 정보 확인 중',
-      rentalTypeLabel: '임대유형 정보 확인 중',
-      roadAddress: '주소 정보 확인 중',
+      agencyName: '공고문 확인',
+      buildingTypeLabel: '공고문 확인',
+      corridorTypeLabel: '공고문 확인',
+      heatingTypeLabel: '공고문 확인',
+      name: '공고문 확인',
+      regionName: '공고문 확인',
+      rentalTypeLabel: '공고문 확인',
+      roadAddress: '공고문 확인',
     })
   })
 })

@@ -1,3 +1,4 @@
+import { MISSING_DATA_LABEL } from './missingData.ts'
 import type { HousingComplexDetailData } from '../components/HousingComplexDetailPanel.tsx'
 import type { ComplexDetail } from '../model/publicHousing.ts'
 
@@ -5,7 +6,8 @@ export function toHousingComplexDetailData(
   detail: ComplexDetail,
 ): HousingComplexDetailData {
   return {
-    agencyName: detail.agency?.name ?? '공급기관 정보 확인 중',
+    agencyCode: detail.agency?.code ?? null,
+    agencyName: detail.agency?.name ?? MISSING_DATA_LABEL,
     buildingTypeLabel: buildingTypeLabel(detail.buildingType),
     completionDate: detail.completionDate,
     complexId: detail.complexId,
@@ -19,11 +21,11 @@ export function toHousingComplexDetailData(
     housingTypes: detail.housingTypes,
     images: detail.images,
     moveOutCountLastYear: detail.moveOutCountLastYear,
-    name: detail.name ?? '단지명 정보 확인 중',
+    name: detail.name ?? MISSING_DATA_LABEL,
     overviewImageUrl: detail.overviewImageUrl,
-    regionName: detail.address?.regionName ?? '지역 정보 확인 중',
+    regionName: detail.address?.regionName ?? MISSING_DATA_LABEL,
     rentalTypeLabel: rentalTypeLabel(detail.rentalType),
-    roadAddress: detail.address?.roadAddress ?? '주소 정보 확인 중',
+    roadAddress: detail.address?.roadAddress ?? MISSING_DATA_LABEL,
     totalHouseholdCount: detail.totalHouseholdCount,
     totalParkingCount: detail.totalParkingCount,
   }
@@ -38,7 +40,7 @@ function rentalTypeLabel(value: string | null) {
     PERMANENT_RENTAL: '영구임대',
     PUBLIC_RENTAL_50Y: '50년 공공임대',
     REDEVELOPMENT_RENTAL: '재개발임대',
-  }, '임대유형 정보 확인 중')
+  }, MISSING_DATA_LABEL)
 }
 
 function buildingTypeLabel(value: string | null) {
@@ -46,7 +48,7 @@ function buildingTypeLabel(value: string | null) {
     APARTMENT: '아파트',
     ETC: '기타',
     OFFICETEL: '오피스텔',
-  }, '건물형태 정보 확인 중')
+  }, MISSING_DATA_LABEL)
 }
 
 function heatingTypeLabel(value: string | null) {
@@ -55,7 +57,7 @@ function heatingTypeLabel(value: string | null) {
     DISTRICT: '지역난방',
     ETC: '기타',
     INDIVIDUAL: '개별난방',
-  }, '난방종류 정보 확인 중')
+  }, MISSING_DATA_LABEL)
 }
 
 function corridorTypeLabel(value: string | null) {
@@ -63,15 +65,15 @@ function corridorTypeLabel(value: string | null) {
     CORRIDOR: '복도식',
     MIXED: '혼합식',
     STAIR: '계단식',
-    UNKNOWN: '정보 확인 중',
-  }, '복도유형 정보 확인 중')
+    UNKNOWN: MISSING_DATA_LABEL,
+  }, MISSING_DATA_LABEL)
 }
 
 function publicationTypeLabel(value: string | null) {
   return codeLabel(value, {
     CORRECTION: '정정공고',
     ORIGINAL: '원공고',
-  }, '공고유형 정보 확인 중')
+  }, MISSING_DATA_LABEL)
 }
 
 function codeLabel(

@@ -10,7 +10,7 @@ function Home() {
   return (
     <div className="app-shell">
       <header className="service-header" aria-label="서비스 헤더">
-        <Link className="brand-link" to="/" aria-label="두꺼비집 홈">
+        <Link className="brand-link" to="/" aria-label="공공주택 복덕방 홈">
           <span className="brand-mark" aria-hidden="true">
             <svg
               viewBox="0 0 24 24"
@@ -26,7 +26,7 @@ function Home() {
               <path d="M10 20v-6h4v6" />
             </svg>
           </span>
-          <span className="brand-name">두꺼비집</span>
+          <span className="brand-name">공공주택 복덕방</span>
           <span className="brand-tagline">공공임대주택 지도</span>
         </Link>
       </header>
