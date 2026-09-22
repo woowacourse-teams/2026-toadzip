@@ -259,7 +259,7 @@ describe('HousingComplexCard', () => {
       expected: ['44.87m²', '5,000만원'],
     },
     {
-      label: '두 값이 모두 없으면 정보 확인 중으로 표시한다',
+      label: '두 값이 모두 없으면 공고문 확인으로 표시한다',
       changes: {
         exclusiveAreaMin: null,
         exclusiveAreaMax: null,
@@ -268,7 +268,7 @@ describe('HousingComplexCard', () => {
         monthlyRentMin: null,
         monthlyRentMax: null,
       },
-      expected: ['정보 확인 중'],
+      expected: ['공고문 확인'],
     },
     {
       label: '만원 미만 단위와 큰 금액 및 면적을 손실 없이 표시한다',
@@ -280,7 +280,7 @@ describe('HousingComplexCard', () => {
         monthlyRentMin: 85_000,
         monthlyRentMax: 85_000,
       },
-      expected: ['1,234.56m²', '1억 2,345.7만원', '8.5만원'],
+      expected: ['1,234.56m²', '1.23456789억', '8.5만원'],
     },
     {
       label: '유효하지 않은 수는 값으로 표시하지 않는다',
@@ -292,7 +292,15 @@ describe('HousingComplexCard', () => {
         monthlyRentMin: -1,
         monthlyRentMax: -1,
       },
-      expected: ['정보 확인 중', '0원'],
+      expected: ['공고문 확인'],
+    },
+    {
+      label: '음수 금액은 범위에서 제외하고 확인된 0원은 유지한다',
+      changes: {
+        depositMin: -1,
+        depositMax: 0,
+      },
+      expected: ['0원'],
     },
   ])('$label', ({ changes, expected }) => {
     renderCard(complexWith(changes))
@@ -380,6 +388,7 @@ describe('HousingComplexCard', () => {
 
     const announcement = screen.getByRole('group', { name: '대표 공고' })
     expect(within(announcement).getByText('접수중')).toBeInTheDocument()
+    expect(within(announcement).queryByRole('button')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '대표 공고 상세 보기' }))
       .not.toBeInTheDocument()
   })
@@ -401,6 +410,7 @@ describe('HousingComplexCard', () => {
       'data-representative-announcement-detail-trigger',
       BASE_ANNOUNCEMENT.announcementId,
     )
+    expect(within(announcementAction).queryByRole('button')).not.toBeInTheDocument()
 
     fireEvent.click(complexAction)
     expect(onSelect).toHaveBeenCalledWith(BASE_COMPLEX.complexId)
@@ -457,7 +467,7 @@ describe('HousingComplexCard', () => {
     ['BEFORE_APPLICATION', '공고중', '마감 D-2'],
     ['APPLYING', '접수중', 'D-2'],
     ['CANCELLED', '공고취소', null],
-    ['UNEXPECTED', '정보 확인 중', 'D-2'],
+    ['UNEXPECTED', '공고문 확인', 'D-2'],
   ])('대표 공고 상태 %s를 중복 없이 표시한다', (applicationStatus, label, countdown) => {
     renderCard(complexWith({
       representativeAnnouncement: {
@@ -488,7 +498,7 @@ describe('HousingComplexCard', () => {
       .toHaveAccessibleDescription('대표 공고 상태 접수중, 접수 마감까지 0일')
   })
 
-  it.each([null, -1, 1.5])('유효하지 않은 D-day %s를 날짜 정보 확인 중으로 표시한다', (dDay) => {
+  it.each([null, -1, 1.5])('유효하지 않은 D-day %s는 공고문 확인으로 표시한다', (dDay) => {
     renderCard(complexWith({
       representativeAnnouncement: {
         ...BASE_ANNOUNCEMENT,
@@ -496,9 +506,37 @@ describe('HousingComplexCard', () => {
       },
     }))
 
-    expect(screen.getByText('정보 확인 중')).toBeInTheDocument()
+    expect(screen.getByText('공고문 확인')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '대표 공고 상세 보기' }))
-      .toHaveAccessibleDescription('대표 공고 상태 접수중, 접수 마감일 정보 확인 중')
+      .toHaveAccessibleDescription('대표 공고 상태 접수중, 접수 마감일 공고문 확인')
+  })
+
+  it('대표 공고 상태와 마감일이 모두 없으면 누락 배지를 한 번만 표시한다', () => {
+    renderCard(complexWith({
+      representativeAnnouncement: {
+        ...BASE_ANNOUNCEMENT,
+        applicationStatus: 'UNKNOWN',
+        dDay: null,
+      },
+    }))
+
+    const announcement = screen.getByRole('group', { name: '대표 공고' })
+    expect(within(announcement).getAllByText('공고문 확인')).toHaveLength(1)
+    expect(announcement.querySelector('[data-status-kind="countdown"]')).toBeNull()
+    expect(within(announcement).getByRole('button', { name: '대표 공고 상세 보기' }))
+      .toHaveAccessibleDescription('대표 공고 상태 공고문 확인')
+  })
+
+  it('기관과 임대유형이 모두 없으면 한 문구로 표시하고 접근성 설명에 두 항목을 남긴다', () => {
+    renderCard(complexWith({
+      agencyCode: null,
+      agencyName: '공고문 확인',
+      rentalTypeLabel: '공고문 확인',
+    }))
+
+    const metadata = screen.getByLabelText('공급기관 공고문 확인, 임대유형 공고문 확인')
+    expect(within(metadata).getAllByText('공고문 확인')).toHaveLength(1)
+    expect(metadata).not.toHaveTextContent('·')
   })
 
   it('여러 단지가 같은 대표 공고를 공유해도 각 버튼의 마감 설명을 연결한다', () => {

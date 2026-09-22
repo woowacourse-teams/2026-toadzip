@@ -41,12 +41,7 @@ curl -X POST \
 
 ## 스키마 배포
 
-운영은 `ddl-auto=validate`이므로 애플리케이션 배포 전에 다음 SQL을 실행한다.
-
-```bash
-psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
-  --file src/main/resources/db/migration/V20260903_03__create_road_address_locations.sql
-```
+운영 스키마는 [Flyway 도입 절차](flyway-adoption.md)의 통합 `V20260922_01`로 배포한다.
 
 SQL은 신규 좌표 테이블과 주소 조회 인덱스만 추가하므로 이전 애플리케이션과 함께 적용할 수 있다.
 롤백 시에도 선별 좌표는 재사용 가능한 참조 데이터이므로 테이블을 보존한다. 테이블 삭제는 별도 승인 후

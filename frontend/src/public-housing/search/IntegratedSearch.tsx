@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { DetailCloseButton } from '../components/DetailPrimitives.tsx'
 import {
   integratedSearchRepository,
   type IntegratedSearchRepository,
@@ -12,6 +13,7 @@ import { findRegionBoundaryMetadata } from '../regions/regionBoundaryCatalog.ts'
 interface GroupState {
   readonly items: readonly SearchResultItem[]
   readonly hasNext: boolean
+  readonly totalCount: number | null
   readonly kind: 'loading' | 'ready' | 'error'
   readonly error: string | null
 }
@@ -66,17 +68,13 @@ export function IntegratedSearch({
         {active && (
           <div className={styles.header}>
             <h2>검색결과</h2>
-            <button
-              className={styles.close}
-              type="button"
-              aria-label="검색결과 닫기"
-              onClick={() => {
+            <DetailCloseButton
+              label="검색결과 닫기"
+              onClose={() => {
                 setQuery('')
                 inputRef.current?.focus({ preventScroll: true })
               }}
-            >
-              검색결과 닫기 <span aria-hidden="true">×</span>
-            </button>
+            />
           </div>
         )}
       </div>
@@ -113,7 +111,7 @@ function SearchGroup({
   const [page, setPage] = useState(0)
   const [retryRevision, setRetryRevision] = useState(0)
   const [state, setState] = useState<GroupState>({
-    error: null, hasNext: false, items: [], kind: 'loading',
+    error: null, hasNext: false, items: [], kind: 'loading', totalCount: null,
   })
   const headingId = useId()
   const label = typeLabel(type)
@@ -136,6 +134,7 @@ function SearchGroup({
           setState((current) => ({
             error: null,
             hasNext: response.hasNext,
+            totalCount: response.totalCount,
             items: page === 0
               ? responseItems(response, type)
               : appendUnique(current.items, responseItems(response, type)),
@@ -202,13 +201,19 @@ function SearchGroup({
       )}
       {state.hasNext && state.kind !== 'error' && (
         <button
-          className={styles.more}
+          className={`housing-results__more ${styles.more}`}
           type="button"
-          aria-label={`${label} 5개 더보기`}
+          aria-label={`${label} 더보기, 현재 ${state.items.length}개, 전체 ${state.totalCount === null ? '확인 중' : `${state.totalCount}개`}`}
           disabled={state.kind === 'loading'}
           onClick={() => setPage((current) => current + 1)}
         >
-          5개 더보기 <span aria-hidden="true">⌄</span>
+          <span>{state.kind === 'loading' ? '불러오는 중' : '더보기'}</span>
+          <span className="housing-results__progress">
+            ({state.items.length.toLocaleString('ko-KR')} | {state.totalCount?.toLocaleString('ko-KR') ?? '—'})
+          </span>
+          <svg aria-hidden="true" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="m3 4.5 3 3 3-3" />
+          </svg>
         </button>
       )}
       {page === 100 && state.kind === 'ready' && (

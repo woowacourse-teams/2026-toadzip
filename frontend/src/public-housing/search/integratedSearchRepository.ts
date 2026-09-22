@@ -26,6 +26,7 @@ export interface IntegratedSearchResponse {
   readonly query: string
   readonly regions: readonly SearchResultItem[]
   readonly size: number
+  readonly totalCount: number | null
 }
 
 export interface IntegratedSearchRepository {
@@ -78,6 +79,7 @@ function decodeResponse(value: unknown): IntegratedSearchResponse {
     query: string(data.query, '$.data.query'),
     regions: array(data.regions, '$.data.regions').map(decodeItem),
     size: number(data.size, '$.data.size'),
+    totalCount: data.totalCount == null ? null : number(data.totalCount, '$.data.totalCount'),
   }
 }
 

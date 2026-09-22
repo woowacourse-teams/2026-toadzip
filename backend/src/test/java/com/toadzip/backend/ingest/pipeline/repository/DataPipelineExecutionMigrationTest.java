@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.pipeline.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.toadzip.backend.MigrationSqlSection;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -12,7 +13,6 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -28,19 +28,19 @@ class DataPipelineExecutionMigrationTest {
             "00000000-0000-0000-0000-000000000002"
     );
     private static final String MIGRATION =
-            "db/migration/V20260903_01__create_data_pipeline_executions.sql";
+            "V20260903_01__create_data_pipeline_executions.sql";
     private static final String SKIPPED_STEPS_MIGRATION =
-            "db/migration/V20260903_02__add_data_pipeline_skipped_steps.sql";
+            "V20260903_02__add_data_pipeline_skipped_steps.sql";
     private static final String COMPLETED_STEP_REPORTS_MIGRATION =
-            "db/migration/V20260919_01__add_data_pipeline_completed_step_reports.sql";
+            "V20260919_01__add_data_pipeline_completed_step_reports.sql";
     private static final String PARTIAL_FAILURE_REPORTS_MIGRATION =
-            "db/migration/V20260919_02__add_data_pipeline_partial_failure_reports.sql";
+            "V20260919_02__add_data_pipeline_partial_failure_reports.sql";
     private static final String SCHEDULE_METADATA_MIGRATION =
-            "db/migration/V20260921_01__add_data_pipeline_schedule_metadata.sql";
+            "V20260921_01__add_data_pipeline_schedule_metadata.sql";
     private static final String SCHEDULE_DEFERRAL_MIGRATION =
-            "db/migration/V20260921_02__create_data_pipeline_schedule_deferrals.sql";
+            "V20260921_02__create_data_pipeline_schedule_deferrals.sql";
     private static final String NULLABLE_DEFERRAL_RETRY_MIGRATION =
-            "db/migration/V20260921_03__allow_null_schedule_deferral_next_retry_at.sql";
+            "V20260921_03__allow_null_schedule_deferral_next_retry_at.sql";
 
     @Autowired
     private DataSource dataSource;
@@ -50,51 +50,51 @@ class DataPipelineExecutionMigrationTest {
         try (Connection connection = dataSource.getConnection()) {
             prepareSchema(connection);
             try {
-                ScriptUtils.executeSqlScript(connection, new ClassPathResource(MIGRATION));
+                ScriptUtils.executeSqlScript(connection, MigrationSqlSection.resource(MIGRATION));
                 ScriptUtils.executeSqlScript(
                         connection,
-                        new ClassPathResource(SKIPPED_STEPS_MIGRATION)
+                        MigrationSqlSection.resource(SKIPPED_STEPS_MIGRATION)
                 );
                 ScriptUtils.executeSqlScript(
                         connection,
-                        new ClassPathResource(COMPLETED_STEP_REPORTS_MIGRATION)
+                        MigrationSqlSection.resource(COMPLETED_STEP_REPORTS_MIGRATION)
                 );
                 ScriptUtils.executeSqlScript(
                         connection,
-                        new ClassPathResource(PARTIAL_FAILURE_REPORTS_MIGRATION)
+                        MigrationSqlSection.resource(PARTIAL_FAILURE_REPORTS_MIGRATION)
                 );
                 insertLegacyExecution(connection);
                 ScriptUtils.executeSqlScript(
                         connection,
-                        new ClassPathResource(SCHEDULE_METADATA_MIGRATION)
+                        MigrationSqlSection.resource(SCHEDULE_METADATA_MIGRATION)
                 );
                 ScriptUtils.executeSqlScript(
                         connection,
-                        new ClassPathResource(COMPLETED_STEP_REPORTS_MIGRATION)
+                        MigrationSqlSection.resource(COMPLETED_STEP_REPORTS_MIGRATION)
                 );
                 ScriptUtils.executeSqlScript(
                         connection,
-                        new ClassPathResource(PARTIAL_FAILURE_REPORTS_MIGRATION)
+                        MigrationSqlSection.resource(PARTIAL_FAILURE_REPORTS_MIGRATION)
                 );
                 ScriptUtils.executeSqlScript(
                         connection,
-                        new ClassPathResource(SCHEDULE_METADATA_MIGRATION)
+                        MigrationSqlSection.resource(SCHEDULE_METADATA_MIGRATION)
                 );
                 ScriptUtils.executeSqlScript(
                         connection,
-                        new ClassPathResource(SCHEDULE_DEFERRAL_MIGRATION)
+                        MigrationSqlSection.resource(SCHEDULE_DEFERRAL_MIGRATION)
                 );
                 ScriptUtils.executeSqlScript(
                         connection,
-                        new ClassPathResource(SCHEDULE_DEFERRAL_MIGRATION)
+                        MigrationSqlSection.resource(SCHEDULE_DEFERRAL_MIGRATION)
                 );
                 ScriptUtils.executeSqlScript(
                         connection,
-                        new ClassPathResource(NULLABLE_DEFERRAL_RETRY_MIGRATION)
+                        MigrationSqlSection.resource(NULLABLE_DEFERRAL_RETRY_MIGRATION)
                 );
                 ScriptUtils.executeSqlScript(
                         connection,
-                        new ClassPathResource(NULLABLE_DEFERRAL_RETRY_MIGRATION)
+                        MigrationSqlSection.resource(NULLABLE_DEFERRAL_RETRY_MIGRATION)
                 );
                 insertLegacyExecution(connection, POST_MIGRATION_LEGACY_EXECUTION_ID);
 

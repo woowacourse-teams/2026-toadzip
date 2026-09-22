@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  enrichRecentComplexes,
   readRecentComplexes,
   RECENT_COMPLEXES_KEY,
   rememberComplex,
@@ -49,6 +50,38 @@ describe('최근 본 단지', () => {
 
     expect(readRecentComplexes()).toEqual([second, first])
     expect(JSON.parse(localStorage.getItem(RECENT_COMPLEXES_KEY) ?? 'null')).toEqual([second, first])
+  })
+
+  it('공급기관과 임대유형도 저장하고 다시 읽는다', () => {
+    const complex = { ...first, agencyCode: 'SH', agencyName: '서울주택도시공사', rentalType: 'NATIONAL_RENTAL' }
+    rememberComplex([], complex)
+    expect(readRecentComplexes()).toEqual([complex])
+  })
+
+  it('목록에서 확인한 기존 기록의 기관과 임대유형은 지도 영역이 바뀌어도 유지한다', () => {
+    const current = [second, first]
+    const metadata = { complexId: first.complexId, agencyCode: 'SH', agencyName: '서울주택도시공사', rentalType: 'NATIONAL_RENTAL' }
+
+    const enriched = enrichRecentComplexes(current, [metadata])
+
+    expect(enriched).toEqual([second, { ...first, ...metadata }])
+    expect(current).toEqual([second, first])
+    expect(enrichRecentComplexes(enriched, [])).toBe(enriched)
+    expect(readRecentComplexes()).toEqual(enriched)
+  })
+
+  it('이미 확인한 정보는 덮어쓰지 않고 기록이 같으면 다시 저장하지 않는다', () => {
+    const complex = { ...first, agencyCode: 'SH', agencyName: '서울주택도시공사', rentalType: 'NATIONAL_RENTAL' }
+    const current = [complex, second]
+    const persist = vi.spyOn(Storage.prototype, 'setItem')
+
+    expect(enrichRecentComplexes(current, [{ complexId: first.complexId, agencyCode: 'LH', agencyName: null, rentalType: null }])).toBe(current)
+    expect(persist).not.toHaveBeenCalled()
+  })
+
+  it.each(['agencyCode', 'agencyName', 'rentalType'])('잘못 저장된 %s 값이 있는 항목은 제외한다', (field) => {
+    localStorage.setItem(RECENT_COMPLEXES_KEY, JSON.stringify([{ ...first, [field]: { invalid: true } }, second]))
+    expect(readRecentComplexes()).toEqual([second])
   })
 
   it.each(['{broken', 'null', '{}', '"not an array"', '42'])

@@ -41,7 +41,8 @@ public class InternalSearchRepository {
     }
 
     public List<SearchSourceItem> findAnnouncements(IntegratedSearchCondition condition, int limit) {
-        Map<String, Object> parameters = baseParameters(condition, limit);
+        Map<String, Object> parameters = baseParameters(condition);
+        parameters.put("limit", limit);
         StringBuilder sql = new StringBuilder("""
                 SELECT announcement.id,
                        announcement.name,
@@ -84,16 +85,15 @@ public class InternalSearchRepository {
                 FROM announcements announcement
                 WHERE
                 """).append(LATEST_LEAF);
-        addAnnouncementTokens(sql, parameters, condition);
-        addRentalTypes(sql, parameters, "announcement.supply_type", condition);
-        addAnnouncementStatuses(sql, parameters, condition);
+        addAnnouncementFilters(sql, parameters, condition);
         addAnnouncementOrder(sql);
         sql.append(", announcement.posted_date DESC, announcement.id DESC LIMIT :limit");
         return jdbcClient.sql(sql.toString()).params(parameters).query(this::mapAnnouncement).list();
     }
 
     public List<SearchSourceItem> findComplexes(IntegratedSearchCondition condition, int limit) {
-        Map<String, Object> parameters = baseParameters(condition, limit);
+        Map<String, Object> parameters = baseParameters(condition);
+        parameters.put("limit", limit);
         StringBuilder sql = new StringBuilder("""
                 SELECT complex.id,
                        complex.name,
@@ -105,9 +105,7 @@ public class InternalSearchRepository {
                 FROM housing_complexes complex
                 WHERE 1 = 1
                 """);
-        addComplexTokens(sql, parameters, condition);
-        addRentalTypes(sql, parameters, "complex.supply_type", condition);
-        addComplexAnnouncementFilter(sql, parameters, condition);
+        addComplexFilters(sql, parameters, condition);
         sql.append("""
                  ORDER BY CASE
                      WHEN LOWER(complex.name) = :exactQuery
@@ -120,10 +118,44 @@ public class InternalSearchRepository {
         return jdbcClient.sql(sql.toString()).params(parameters).query(this::mapComplex).list();
     }
 
-    private Map<String, Object> baseParameters(IntegratedSearchCondition condition, int limit) {
+    public long countAnnouncements(IntegratedSearchCondition condition) {
+        Map<String, Object> parameters = baseParameters(condition);
+        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM announcements announcement WHERE ")
+                .append(LATEST_LEAF);
+        addAnnouncementFilters(sql, parameters, condition);
+        return jdbcClient.sql(sql.toString()).params(parameters).query(Long.class).single();
+    }
+
+    public long countComplexes(IntegratedSearchCondition condition) {
+        Map<String, Object> parameters = baseParameters(condition);
+        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM housing_complexes complex WHERE 1 = 1");
+        addComplexFilters(sql, parameters, condition);
+        return jdbcClient.sql(sql.toString()).params(parameters).query(Long.class).single();
+    }
+
+    private void addAnnouncementFilters(
+            StringBuilder sql,
+            Map<String, Object> parameters,
+            IntegratedSearchCondition condition
+    ) {
+        addAnnouncementTokens(sql, parameters, condition);
+        addRentalTypes(sql, parameters, "announcement.supply_type", condition);
+        addAnnouncementStatuses(sql, parameters, condition);
+    }
+
+    private void addComplexFilters(
+            StringBuilder sql,
+            Map<String, Object> parameters,
+            IntegratedSearchCondition condition
+    ) {
+        addComplexTokens(sql, parameters, condition);
+        addRentalTypes(sql, parameters, "complex.supply_type", condition);
+        addComplexAnnouncementFilter(sql, parameters, condition);
+    }
+
+    private Map<String, Object> baseParameters(IntegratedSearchCondition condition) {
         Map<String, Object> parameters = new HashMap<>();
         parameters.put("today", condition.today());
-        parameters.put("limit", limit);
         parameters.put("exactQuery", condition.match().normalizedQuery().toLowerCase(java.util.Locale.ROOT));
         parameters.put("prefixQuery", prefixLike(condition.match().normalizedQuery()));
         return parameters;
