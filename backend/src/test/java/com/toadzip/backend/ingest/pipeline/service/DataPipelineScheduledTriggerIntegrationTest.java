@@ -38,6 +38,9 @@ class DataPipelineScheduledTriggerIntegrationTest {
     @Autowired
     private DataPipelineExecutionRepository executionRepository;
 
+    @Autowired
+    private DataPipelineScheduleOrchestrator orchestrator;
+
     @Test
     void 스케줄러가_자동으로_수집과_정제를_한_번씩_연결한다() throws InterruptedException {
         List<DataPipelineExecution> executions = List.of();
@@ -75,7 +78,7 @@ class DataPipelineScheduledTriggerIntegrationTest {
                 DataPipelineType.ANNOUNCEMENT_REFINEMENT
         );
 
-        Thread.sleep(500);
+        orchestrator.runScheduledCycle();
         assertThat(executionRepository.findAll()).hasSize(4);
     }
 
