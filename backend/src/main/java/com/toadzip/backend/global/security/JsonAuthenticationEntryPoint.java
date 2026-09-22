@@ -26,7 +26,14 @@ public class JsonAuthenticationEntryPoint implements AuthenticationEntryPoint {
                 response,
                 HttpServletResponse.SC_UNAUTHORIZED,
                 "AUTHENTICATION_REQUIRED",
-                "관리자 로그인이 필요합니다."
+                messageFor(request)
         );
+    }
+
+    private String messageFor(HttpServletRequest request) {
+        if (request.getRequestURI().startsWith("/api/auth/")) {
+            return "사용자 로그인이 필요합니다.";
+        }
+        return "관리자 로그인이 필요합니다.";
     }
 }
