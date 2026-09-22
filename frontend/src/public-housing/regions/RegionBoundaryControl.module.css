@@ -1,0 +1,100 @@
+.control {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 0 20px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: #1e2124;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 44px;
+  align-items: center;
+  column-gap: 4px;
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.control button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-family: inherit;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.recenter,
+.retry {
+  padding: 0 8px;
+  color: var(--brand-dark);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.clear {
+  display: grid;
+  width: 44px;
+  padding: 0;
+  place-items: center;
+  color: var(--muted);
+}
+
+.clear span {
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.control button:not(:disabled):hover {
+  background: #eff5ff;
+}
+
+.control button:disabled {
+  color: var(--muted);
+  opacity: 0.5;
+  cursor: default;
+}
+
+.message,
+.source {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.feedback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0 4px;
+}
+
+.source {
+  display: block;
+}
+
+.source a {
+  color: inherit;
+  text-underline-offset: 2px;
+}
+
+.control button:focus-visible,
+.source a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}

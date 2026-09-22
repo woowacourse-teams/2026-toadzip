@@ -7,6 +7,10 @@ import type {
   SearchResultItem,
 } from './integratedSearchRepository.ts'
 
+vi.mock('../regions/regionBoundaryCatalog.ts', () => ({
+  findRegionBoundaryMetadata: (code: string) => code === '41111' ? { regionCode: code } : null,
+}))
+
 describe('IntegratedSearch', () => {
   it('검색창만 표시하다 공백을 제외한 두 글자부터 검색하고 지우면 목록을 닫는다', async () => {
     vi.useFakeTimers()
@@ -109,7 +113,7 @@ describe('IntegratedSearch', () => {
 
   it('지역을 선택해도 검색어와 검색결과를 유지하고 좌표 없는 지역은 이동시키지 않는다', async () => {
     const region = item('REGION', '41110', '수원시')
-    const unavailable = { ...item('REGION', '41111', '수원시 장안구'), latitude: null }
+    const unavailable = { ...item('REGION', '99999', '미지원 지역'), latitude: null }
     const onSelect = vi.fn()
     render(<IntegratedSearch
       repository={repositoryWith(response([], [], [region, unavailable]))}
@@ -120,11 +124,22 @@ describe('IntegratedSearch', () => {
 
     expect(onSelect).toHaveBeenCalledExactlyOnceWith(region)
     expect(screen.getByRole('searchbox')).toHaveValue('수원')
-    const unavailableButton = screen.getByRole('button', { name: /수원시 장안구/ })
+    const unavailableButton = screen.getByRole('button', { name: /미지원 지역/ })
     expect(unavailableButton).toBeDisabled()
     expect(within(unavailableButton).getByText('위치 정보 준비 중')).toBeVisible()
     fireEvent.click(unavailableButton)
     expect(onSelect).toHaveBeenCalledOnce()
+  })
+
+  it('경계가 있는 지역은 대표 좌표 없이 선택할 수 있다', async () => {
+    const region = { ...item('REGION', '41111', '수원시 장안구'), regionCode: '41111', latitude: null, longitude: null }
+    const onSelect = vi.fn()
+    render(<IntegratedSearch repository={repositoryWith(response([], [], [region]))} onSelect={onSelect} />)
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '장안' } })
+    const button = await screen.findByRole('button', { name: /수원시 장안구/ })
+    expect(button).toBeEnabled()
+    fireEvent.click(button)
+    expect(onSelect).toHaveBeenCalledWith(region)
   })
 
   it('더보기는 현재 수와 유형별 전체 수를 갱신하고 마지막 페이지에서 사라진다', async () => {

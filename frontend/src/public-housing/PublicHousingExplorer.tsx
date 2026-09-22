@@ -88,6 +88,11 @@ import type {
   IntegratedSearchRepository,
   SearchResultItem,
 } from './search/integratedSearchRepository.ts'
+import { parseRegionBoundaryCode, setRegionBoundaryCode } from './navigation/regionBoundaryLocation.ts'
+import { findRegionBoundaryMetadata, findRegionBoundaryName, regionBoundaryRepository } from './regions/regionBoundaryCatalog.ts'
+import type { RegionBoundaryRepository } from './regions/regionBoundaryRepository.ts'
+import { useRegionBoundary } from './regions/useRegionBoundary.ts'
+import { RegionBoundaryControl } from './regions/RegionBoundaryControl.tsx'
 
 const PAGE_SIZE = 20
 const DEFAULT_MAP_LOCATION = {
@@ -163,6 +168,7 @@ interface PendingListFocus {
 }
 
 export interface PublicHousingExplorerProps {
+  boundaryRepository?: RegionBoundaryRepository
   mapRepository?: HousingMapRepository
   regionRepository?: PublicHousingRegionRepository
   repository?: PublicHousingRepository
@@ -199,6 +205,7 @@ const INITIAL_ANNOUNCEMENT_DETAIL: AnnouncementDetailState = {
 }
 
 export function PublicHousingExplorer({
+  boundaryRepository = regionBoundaryRepository,
   mapRepository,
   regionRepository = publicHousingRegionRepository,
   repository = defaultPublicHousingRepository,
@@ -324,6 +331,51 @@ export function PublicHousingExplorer({
     () => parseMapLocation(new URLSearchParams(location.search)),
     [location.search],
   )
+  const boundaryRegionCode = parseRegionBoundaryCode(new URLSearchParams(location.search))
+  const boundaryMetadata = boundaryRegionCode ? findRegionBoundaryMetadata(boundaryRegionCode) : null
+  const [selectedSearchRegion, setSelectedSearchRegion] = useState<SearchResultItem | null>(null)
+  const boundarySelectionRef = useRef<SearchResultItem | null>(null)
+  const handledBoundaryCodeRef = useRef<string | null>(null)
+  const boundaryState = useRegionBoundary(boundaryMetadata?.regionCode ?? null, boundaryRepository)
+  const selectedBoundarySearchItem = selectedSearchRegion
+    && (selectedSearchRegion.regionCode ?? selectedSearchRegion.id) === boundaryRegionCode
+      ? selectedSearchRegion : null
+
+  const focusBoundary = useCallback((code: string) => {
+    const metadata = findRegionBoundaryMetadata(code)
+    const item = boundarySelectionRef.current
+    pendingDetailCameraRef.current = null
+    if (metadata) {
+      const { bounds } = metadata
+      setMapCameraTarget({
+        latitude: (bounds.southWestLat + bounds.northEastLat) / 2,
+        longitude: (bounds.southWestLng + bounds.northEastLng) / 2,
+        bounds,
+        boundsPadding: boundaryScreenPadding(mapWorkspaceRef.current),
+      })
+      setCameraRequestId((current) => current + 1)
+    } else if (item && (item.regionCode ?? item.id) === code
+      && item.latitude !== null && item.longitude !== null) {
+      setMapCameraTarget({ latitude: item.latitude, longitude: item.longitude })
+      setCameraRequestId((current) => current + 1)
+    }
+  }, [])
+
+  useLayoutEffect(() => {
+    if (handledBoundaryCodeRef.current === boundaryRegionCode) {
+      return
+    }
+    handledBoundaryCodeRef.current = boundaryRegionCode
+    if (boundaryRegionCode !== null) {
+      focusBoundary(boundaryRegionCode)
+    }
+  }, [boundaryRegionCode, focusBoundary])
+
+  const changeBoundarySelection = useCallback((code: string | null) => {
+    const query = setRegionBoundaryCode(new URLSearchParams(location.search), code)
+    navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(query) }, { state: location.state })
+  }, [location.hash, location.pathname, location.search, location.state, navigate])
+
   const complexFilters = useMemo(
     () => parseComplexSearchFilters(new URLSearchParams(location.search)),
     [location.search],
@@ -1229,12 +1281,17 @@ export function PublicHousingExplorer({
 
   const handleIntegratedSearchSelect = useCallback((item: SearchResultItem) => {
     if (item.type === 'REGION') {
-      if (item.latitude === null || item.longitude === null) {
+      const code = item.regionCode ?? item.id
+      if (!findRegionBoundaryMetadata(code) && (item.latitude === null || item.longitude === null)) {
         return
       }
-      pendingDetailCameraRef.current = null
-      setMapCameraTarget({ latitude: item.latitude, longitude: item.longitude })
-      setCameraRequestId((current) => current + 1)
+      boundarySelectionRef.current = item
+      setSelectedSearchRegion(item)
+      if (code === boundaryRegionCode) {
+        focusBoundary(code)
+      } else {
+        changeBoundarySelection(code)
+      }
       return
     }
     if (item.type === 'ANNOUNCEMENT') {
@@ -1247,7 +1304,7 @@ export function PublicHousingExplorer({
     }
     setSelectedSearchComplex(item)
     openComplexDetail(item.id)
-  }, [openAnnouncementDetail, openComplexDetail])
+  }, [boundaryRegionCode, changeBoundarySelection, focusBoundary, openAnnouncementDetail, openComplexDetail])
 
   useEffect(() => {
     return () => {
@@ -1513,6 +1570,17 @@ export function PublicHousingExplorer({
           repository={searchRepository}
         />
 
+        {boundaryRegionCode !== null && (
+          <RegionBoundaryControl
+            name={findRegionBoundaryName(boundaryRegionCode) ?? selectedBoundarySearchItem?.title ?? `지역 ${boundaryRegionCode}`}
+            status={boundaryState.status}
+            supported={boundaryMetadata !== null}
+            canRecenter={boundaryMetadata !== null || (selectedBoundarySearchItem?.latitude != null && selectedBoundarySearchItem?.longitude != null)}
+            onRecenter={() => focusBoundary(boundaryRegionCode)}
+            onClear={() => changeBoundarySelection(null)}
+            onRetry={boundaryState.retry}
+          />
+        )}
         <div className="housing-results__browse" hidden={integratedSearchActive}>
           <ResultTabs activeTab={activeResultTab} onSelect={selectResultTab} />
 
@@ -1696,7 +1764,7 @@ export function PublicHousingExplorer({
             resultCountLabel={complexFilterResultCountLabel}
           />
         </div>
-        <NaverMap {...naverMapProps} />
+        <NaverMap {...naverMapProps} regionBoundary={boundaryState.boundary} />
         <ComplexDetailLayer
           state={complexDetail}
           onClose={closeDetail}
@@ -2517,6 +2585,45 @@ function clearDetailHistoryState(state: unknown): Record<string, unknown> {
   delete nextState[DETAIL_HISTORY_STATE_KEY]
   delete nextState[DETAIL_RETURN_FOCUS_STACK_KEY]
   return nextState
+}
+
+function boundaryScreenPadding(workspace: HTMLElement | null) {
+  const padding = { top: 24, right: 24, bottom: 24, left: 24 }
+  const map = workspace?.querySelector('.map-surface')?.getBoundingClientRect()
+  if (!map || map.width <= 0 || map.height <= 0) {
+    return padding
+  }
+  const panels = workspace?.querySelectorAll('.housing-detail-layer, .housing-map-filter [role="toolbar"], .housing-map-filter [data-topic], .housing-map-filter [role="dialog"]') ?? []
+  for (const panel of panels) {
+    const style = window.getComputedStyle(panel)
+    if (style.visibility === 'hidden' || style.display === 'none') {
+      continue
+    }
+    const rect = panel.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0 || rect.right <= map.left || rect.left >= map.right
+      || rect.bottom <= map.top || rect.top >= map.bottom) {
+      continue
+    }
+    if (rect.height > map.height / 2 && rect.width < map.width * 0.8) {
+      if (rect.left < map.left + map.width / 2) {
+        padding.left = Math.max(padding.left, rect.right - map.left + 16)
+      } else {
+        padding.right = Math.max(padding.right, map.right - rect.left + 16)
+      }
+    } else if (rect.top < map.top + map.height / 2) {
+      padding.top = Math.max(padding.top, rect.bottom - map.top + 16)
+    } else {
+      padding.bottom = Math.max(padding.bottom, map.bottom - rect.top + 16)
+    }
+  }
+  // Only reduce padding when the overlays leave no usable map area.
+  const horizontalScale = Math.min(1, Math.max(0, map.width - 48) / (padding.left + padding.right))
+  const verticalScale = Math.min(1, Math.max(0, map.height - 48) / (padding.top + padding.bottom))
+  padding.left *= horizontalScale
+  padding.right *= horizontalScale
+  padding.top *= verticalScale
+  padding.bottom *= verticalScale
+  return padding
 }
 
 function detailScreenOffset(workspace: HTMLElement | null) {

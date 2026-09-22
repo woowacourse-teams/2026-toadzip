@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { createComplexMarkerButton, markerSummary, markerWidth } from './complexMarkerButton.ts'
 import type { ViewportSnapshot } from '../../public-housing/map/viewportPolicy.ts'
+import type { MapBounds } from '../../public-housing/model/publicHousing.ts'
+import { createRegionBoundaryOverlay } from './regionBoundaryOverlay.ts'
+import type { RegionBoundary } from '../../public-housing/regions/regionBoundary.ts'
 import type {
   MapMarkerPresentation,
 } from '../../public-housing/presentation/mapMarkerPresentation.ts'
@@ -59,6 +62,14 @@ export interface NaverMapAggregateMarker {
 export interface NaverMapCameraTarget {
   readonly latitude: number
   readonly longitude: number
+  /** Fit the complete region instead of applying center, zoom, or screenOffset. */
+  readonly bounds?: MapBounds
+  readonly boundsPadding?: {
+    readonly top: number
+    readonly right: number
+    readonly bottom: number
+    readonly left: number
+  }
   /** Target position relative to the map center, in pixels at the destination zoom. */
   readonly screenOffset?: { readonly x: number; readonly y: number }
   readonly zoom?: number
@@ -72,6 +83,7 @@ interface NaverMapCommonProps {
   onMarkerSelect?: (complexId: string) => void
   onTransitionInterrupt?: () => void
   onViewportChange?: (viewport: ViewportSnapshot) => void
+  regionBoundary?: RegionBoundary | null
   transitioning?: boolean
 }
 
@@ -218,6 +230,7 @@ export default function NaverMap({
   onMarkerSelect,
   onTransitionInterrupt,
   onViewportChange,
+  regionBoundary,
   representation,
   transitioning = false,
 }: NaverMapProps) {
@@ -229,6 +242,7 @@ export default function NaverMap({
   const cameraRequestIdRef = useRef(cameraRequestId)
   cameraRequestIdRef.current = cameraRequestId
   const createdMarkersRef = useRef<CreatedMarker[]>([])
+  const boundaryOverlaysRef = useRef<naver.maps.OverlayView[]>([])
   const appliedMarkerDataKeyRef = useRef<string | null>(null)
   const aggregateMarkersRef = useRef(aggregateMarkers)
   aggregateMarkersRef.current = aggregateMarkers
@@ -257,6 +271,7 @@ export default function NaverMap({
   const onTransitionInterruptRef = useRef(onTransitionInterrupt)
   const onViewportChangeRef = useRef(onViewportChange)
   const [attempt, setAttempt] = useState(0)
+  const [initializedAttempt, setInitializedAttempt] = useState<number | null>(null)
   const [markerAnnouncement, setMarkerAnnouncement] = useState('')
   const [projectionRevision, setProjectionRevision] = useState(0)
   const projectionRevisionRef = useRef(projectionRevision)
@@ -267,6 +282,14 @@ export default function NaverMap({
   const cameraOffsetX = cameraTarget?.screenOffset?.x
   const cameraOffsetY = cameraTarget?.screenOffset?.y
   const cameraZoom = cameraTarget?.zoom
+  const cameraSouthWestLat = cameraTarget?.bounds?.southWestLat
+  const cameraSouthWestLng = cameraTarget?.bounds?.southWestLng
+  const cameraNorthEastLat = cameraTarget?.bounds?.northEastLat
+  const cameraNorthEastLng = cameraTarget?.bounds?.northEastLng
+  const cameraPaddingTop = cameraTarget?.boundsPadding?.top
+  const cameraPaddingRight = cameraTarget?.boundsPadding?.right
+  const cameraPaddingBottom = cameraTarget?.boundsPadding?.bottom
+  const cameraPaddingLeft = cameraTarget?.boundsPadding?.left
   const markerGeometryKey = createMarkerGeometryKey({
     aggregateMarkers,
     markerRenderMode,
@@ -313,6 +336,7 @@ export default function NaverMap({
     let resizeObserver: ResizeObserver | null = null
     let dragStartListener: naver.maps.MapEventListener | null = null
     let idleListener: naver.maps.MapEventListener | null = null
+    let initListener: naver.maps.MapEventListener | null = null
     let mapSurface: HTMLDivElement | null = null
     let wheelListener: (() => void) | null = null
     setStatus({ kind: 'loading' })
@@ -323,6 +347,14 @@ export default function NaverMap({
       }
       mapsRef.current.Event.removeListener(idleListener)
       idleListener = null
+    }
+
+    const removeInitListener = () => {
+      if (!initListener || !mapsRef.current) {
+        return
+      }
+      mapsRef.current.Event.removeListener(initListener)
+      initListener = null
     }
 
     const removeTransitionInterruptListeners = () => {
@@ -344,6 +376,7 @@ export default function NaverMap({
 
       resizeObserver?.disconnect()
       resizeObserver = null
+      removeInitListener()
       removeIdleListener()
       removeTransitionInterruptListeners()
       const failedMap = mapInstance
@@ -355,6 +388,7 @@ export default function NaverMap({
       window.clearTimeout(markerFocusTimerRef.current)
       markerFocusTimerRef.current = undefined
       clearMarkers(createdMarkersRef.current)
+      clearBoundaryOverlays(boundaryOverlaysRef.current)
       createdMarkersRef.current = []
       appliedMarkerDataKeyRef.current = null
       onMarkerHighlightRef.current?.(null)
@@ -396,10 +430,18 @@ export default function NaverMap({
           mapInstanceRef.current = createdMap
           mapsRef.current = maps
           appliedCameraTargetRef.current = initialCamera
-          // Projection is available only after initialization; apply the offset once afterward.
+          // Bounds and screen offsets need an initialized map; apply them once afterward.
           appliedCameraRequestIdRef.current = cameraTargetRef.current?.screenOffset
+            || cameraTargetRef.current?.bounds
             ? undefined
             : cameraRequestIdRef.current
+
+          initListener = maps.Event.once(createdMap, 'init', () => {
+            initListener = null
+            if (!cancelled && mapInstance === createdMap) {
+              setInitializedAttempt(attempt)
+            }
+          })
 
           const emitViewport = () => {
             transitionInterruptedRef.current = false
@@ -452,6 +494,7 @@ export default function NaverMap({
         } catch {
           resizeObserver?.disconnect()
           resizeObserver = null
+          removeInitListener()
           removeIdleListener()
           removeTransitionInterruptListeners()
           const failedMap = mapInstance
@@ -474,9 +517,11 @@ export default function NaverMap({
       cancelled = true
       unsubscribeAuthenticationFailure()
       resizeObserver?.disconnect()
+      removeInitListener()
       removeIdleListener()
       removeTransitionInterruptListeners()
       clearMarkers(createdMarkersRef.current)
+      clearBoundaryOverlays(boundaryOverlaysRef.current)
       createdMarkersRef.current = []
       appliedMarkerDataKeyRef.current = null
       window.clearTimeout(markerFocusTimerRef.current)
@@ -489,6 +534,18 @@ export default function NaverMap({
       destroyMapSafely(mapInstance)
     }
   }, [attempt])
+
+  useEffect(() => {
+    const mapInstance = mapInstanceRef.current
+    const maps = mapsRef.current
+    if (!mapInstance || !maps || status.kind !== 'ready' || !regionBoundary) {
+      return
+    }
+
+    const overlays = [createRegionBoundaryOverlay(maps, mapInstance, regionBoundary)]
+    boundaryOverlaysRef.current = overlays
+    return () => clearBoundaryOverlays(overlays)
+  }, [regionBoundary, status.kind])
 
   useEffect(() => {
     const mapInstance = mapInstanceRef.current
@@ -625,16 +682,47 @@ export default function NaverMap({
       return
     }
 
+    if (cameraRequestId !== undefined
+      && cameraRequestId === appliedCameraRequestIdRef.current) {
+      return
+    }
+
+    if (cameraSouthWestLat !== undefined && cameraSouthWestLng !== undefined
+      && cameraNorthEastLat !== undefined && cameraNorthEastLng !== undefined) {
+      if (initializedAttempt !== attempt) {
+        return
+      }
+      if (!isValidCameraTarget(cameraSouthWestLat, cameraSouthWestLng, undefined)
+        || !isValidCameraTarget(cameraNorthEastLat, cameraNorthEastLng, undefined)
+        || cameraSouthWestLat >= cameraNorthEastLat
+        || cameraSouthWestLng >= cameraNorthEastLng) {
+        return
+      }
+      appliedCameraRequestIdRef.current = cameraRequestId
+      const bounds = [
+        new maps.LatLng(cameraSouthWestLat, cameraSouthWestLng),
+        new maps.LatLng(cameraNorthEastLat, cameraNorthEastLng),
+      ]
+      if (cameraPaddingTop !== undefined && cameraPaddingRight !== undefined
+        && cameraPaddingBottom !== undefined && cameraPaddingLeft !== undefined) {
+        mapInstance.fitBounds(bounds, {
+          top: cameraPaddingTop,
+          right: cameraPaddingRight,
+          bottom: cameraPaddingBottom,
+          left: cameraPaddingLeft,
+        })
+      } else {
+        // Omit the optional margins argument unless the caller provided all four sides.
+        mapInstance.fitBounds(bounds)
+      }
+      return
+    }
+
     if (
       cameraLatitude === undefined ||
       cameraLongitude === undefined ||
       !isValidCameraTarget(cameraLatitude, cameraLongitude, cameraZoom)
     ) {
-      return
-    }
-
-    if (cameraRequestId !== undefined
-      && cameraRequestId === appliedCameraRequestIdRef.current) {
       return
     }
 
@@ -686,7 +774,10 @@ export default function NaverMap({
       transitionInterruptedRef.current = false
       onViewportChangeRef.current?.(currentViewport)
     }
-  }, [cameraLatitude, cameraLongitude, cameraOffsetX, cameraOffsetY, cameraRequestId, cameraZoom, status.kind])
+  }, [cameraLatitude, cameraLongitude, cameraOffsetX, cameraOffsetY, cameraRequestId, cameraZoom,
+    cameraSouthWestLat, cameraSouthWestLng, cameraNorthEastLat, cameraNorthEastLng,
+    cameraPaddingTop, cameraPaddingRight, cameraPaddingBottom, cameraPaddingLeft,
+    initializedAttempt, attempt, status.kind])
 
   const retry = () => {
     setStatus({ kind: 'loading' })
@@ -734,7 +825,7 @@ export default function NaverMap({
 
 function initialMapCamera(
   cameraTarget: NaverMapCameraTarget | undefined,
-): Required<Omit<NaverMapCameraTarget, 'screenOffset'>> {
+): Required<Pick<NaverMapCameraTarget, 'latitude' | 'longitude' | 'zoom'>> {
   if (cameraTarget && isValidCameraTarget(
     cameraTarget.latitude,
     cameraTarget.longitude,
@@ -1361,6 +1452,16 @@ function fitClusterBounds(
     right: 72,
     top: 72,
   })
+}
+
+function clearBoundaryOverlays(polygons: naver.maps.OverlayView[]) {
+  for (const polygon of polygons.splice(0)) {
+    try {
+      polygon.setMap(null)
+    } catch {
+      // 인증 실패 시 NAVER SDK가 도형을 먼저 무효화할 수 있습니다.
+    }
+  }
 }
 
 function clearMarkers(markers: readonly CreatedMarker[]) {
