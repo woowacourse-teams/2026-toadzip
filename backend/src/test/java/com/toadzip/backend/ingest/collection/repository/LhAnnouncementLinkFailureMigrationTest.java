@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
+import com.toadzip.backend.MigrationSqlSection;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -13,7 +14,6 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -25,7 +25,7 @@ class LhAnnouncementLinkFailureMigrationTest {
     private static final List<String> TABLES = List.of(
             "myhome_announcement_mapping_failures", "lh_announcement_enrichment_failures"
     );
-    private static final String MIGRATION = "db/migration/V20260917_01__add_lh_link_failure_reasons.sql";
+    private static final String MIGRATION = "V20260917_01__add_lh_link_failure_reasons.sql";
 
     @Autowired
     private DataSource dataSource;
@@ -41,8 +41,8 @@ class LhAnnouncementLinkFailureMigrationTest {
                             + " (reason varchar(50) NOT NULL CHECK (reason IN ('INVALID_VALUE')))");
                     statement.execute("INSERT INTO " + table + " VALUES ('INVALID_VALUE')");
                 }
-                ScriptUtils.executeSqlScript(connection, new ClassPathResource(MIGRATION));
-                ScriptUtils.executeSqlScript(connection, new ClassPathResource(MIGRATION));
+                ScriptUtils.executeSqlScript(connection, MigrationSqlSection.resource(MIGRATION));
+                ScriptUtils.executeSqlScript(connection, MigrationSqlSection.resource(MIGRATION));
                 assertLegacyFailure(statement, "myhome_announcement_mapping_failures");
                 assertLegacyFailure(statement, "lh_announcement_enrichment_failures");
                 for (MyHomeAnnouncementMappingFailureReason reason : MyHomeAnnouncementMappingFailureReason.values()) {

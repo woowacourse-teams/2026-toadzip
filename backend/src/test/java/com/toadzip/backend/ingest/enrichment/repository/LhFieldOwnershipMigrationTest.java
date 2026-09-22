@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.enrichment.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.toadzip.backend.MigrationSqlSection;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -9,7 +10,6 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -19,9 +19,9 @@ class LhFieldOwnershipMigrationTest {
 
     private static final String SCHEMA = "lh_field_ownership_migration_test";
     private static final String OWNERSHIP_MIGRATION =
-            "db/migration/V20260918_01__add_lh_field_ownership.sql";
+            "V20260918_01__add_lh_field_ownership.sql";
     private static final String CORRECTION_MIGRATION =
-            "db/migration/V20260918_02__correct_lh_household_count_ownership.sql";
+            "V20260918_02__correct_lh_household_count_ownership.sql";
 
     @Autowired
     private DataSource dataSource;
@@ -31,8 +31,8 @@ class LhFieldOwnershipMigrationTest {
         try (Connection connection = dataSource.getConnection()) {
             prepareLegacySchema(connection);
             try {
-                ScriptUtils.executeSqlScript(connection, new ClassPathResource(OWNERSHIP_MIGRATION));
-                ScriptUtils.executeSqlScript(connection, new ClassPathResource(CORRECTION_MIGRATION));
+                ScriptUtils.executeSqlScript(connection, MigrationSqlSection.resource(OWNERSHIP_MIGRATION));
+                ScriptUtils.executeSqlScript(connection, MigrationSqlSection.resource(CORRECTION_MIGRATION));
 
                 assertOwnershipValues(connection);
                 assertOwnershipConstraints(connection);
