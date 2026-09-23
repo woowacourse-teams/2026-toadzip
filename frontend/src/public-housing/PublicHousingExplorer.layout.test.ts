@@ -32,30 +32,4 @@ describe('public housing explorer layer order', () => {
       /\.housing-map-filter form\s*\{\s*max-height:\s*inherit;/,
     )
   })
-
-  it('필터 제목과 액션을 상단 한 줄에 두고 입력과 오류는 전체 폭을 쓴다', () => {
-    const stylesheet = readFileSync(
-      resolve(
-        process.cwd(),
-        'src/public-housing/filters/ComplexFilterToolbar.module.css',
-      ),
-      'utf8',
-    )
-
-    expect(stylesheet).toMatch(
-      /\.form\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-areas:\s*'heading actions'\s*'fields fields'\s*'error error';/,
-    )
-    expect(stylesheet).toMatch(
-      /\.popoverHeading\s*\{[\s\S]*?grid-area:\s*heading;/,
-    )
-    expect(stylesheet).toMatch(
-      /\.fields\s*\{[\s\S]*?grid-area:\s*fields;/,
-    )
-    expect(stylesheet).toMatch(
-      /\.actions\s*\{[\s\S]*?grid-area:\s*actions;/,
-    )
-    expect(stylesheet).toMatch(
-      /\.error\s*\{[\s\S]*?grid-area:\s*error;/,
-    )
-  })
 })

@@ -26,7 +26,14 @@ public class JsonAccessDeniedHandler implements AccessDeniedHandler {
                 response,
                 HttpServletResponse.SC_FORBIDDEN,
                 "ACCESS_DENIED",
-                "관리자 권한이 필요합니다."
+                messageFor(request)
         );
+    }
+
+    private String messageFor(HttpServletRequest request) {
+        if (request.getRequestURI().startsWith("/api/auth/")) {
+            return "사용자 권한이 필요합니다.";
+        }
+        return "관리자 권한이 필요합니다.";
     }
 }

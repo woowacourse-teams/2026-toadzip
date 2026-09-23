@@ -34,6 +34,10 @@ final class MapClusteringRegionGroups {
                 .toList();
     }
 
+    List<MapClusteringRegionGroup> values() {
+        return values;
+    }
+
     MapClusteringRegionGroup ancestorAt(MapClusteringGroupKey key, MapClusteringStage stage) {
         MapClusteringRegionGroup group = requiredGroup(key);
         if (group.stage() == stage) {

@@ -1,0 +1,313 @@
+package com.toadzip.backend.ingest.pipeline.domain;
+
+import static lombok.AccessLevel.PROTECTED;
+
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
+import jakarta.persistence.Table;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+@Getter
+@Entity
+@Table(
+        name = "data_pipeline_executions",
+        indexes = {
+                @Index(
+                        name = "idx_data_pipeline_execution_type_id",
+                        columnList = "type, id"
+                ),
+                @Index(
+                        name = "idx_data_pipeline_execution_upstream",
+                        columnList = "upstream_execution_id"
+                )
+        }
+)
+@NoArgsConstructor(access = PROTECTED)
+public class DataPipelineExecution {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true, updatable = false)
+    private UUID executionId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 40)
+    private DataPipelineType type;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private DataPipelineExecutionStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "execution_trigger", nullable = false, length = 20)
+    private DataPipelineExecutionTrigger executionTrigger;
+
+    private Instant scheduledAt;
+
+    private UUID upstreamExecutionId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 60)
+    private DataPipelineStep currentStep;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "data_pipeline_execution_completed_steps",
+            joinColumns = @JoinColumn(name = "data_pipeline_execution_id")
+    )
+    @OrderColumn(name = "step_order")
+    private List<DataPipelineCompletedStep> completedStepResults = new ArrayList<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "data_pipeline_execution_skipped_steps",
+            joinColumns = @JoinColumn(name = "data_pipeline_execution_id")
+    )
+    @OrderColumn(name = "step_order")
+    private List<DataPipelineSkippedStep> skippedSteps = new ArrayList<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "data_pipeline_execution_partial_failures",
+            joinColumns = @JoinColumn(name = "data_pipeline_execution_id")
+    )
+    @OrderColumn(name = "step_order")
+    private List<DataPipelinePartiallyFailedStep> partiallyFailedSteps = new ArrayList<>();
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 60)
+    private DataPipelineStep failedStep;
+
+    @Column(length = 500)
+    private String failureMessage;
+
+    @Column(columnDefinition = "text")
+    private String failureServerResponse;
+
+    @Column(nullable = false)
+    private Instant startedAt;
+
+    @Column(nullable = false)
+    private Instant heartbeatAt;
+
+    private Instant finishedAt;
+
+    private DataPipelineExecution(
+            UUID executionId,
+            DataPipelineType type,
+            Instant startedAt,
+            DataPipelineExecutionTrigger executionTrigger,
+            Instant scheduledAt,
+            UUID upstreamExecutionId
+    ) {
+        this.executionId = executionId;
+        this.type = type;
+        this.status = DataPipelineExecutionStatus.RUNNING;
+        this.executionTrigger = executionTrigger;
+        this.scheduledAt = scheduledAt;
+        this.upstreamExecutionId = upstreamExecutionId;
+        this.startedAt = startedAt;
+        this.heartbeatAt = startedAt;
+    }
+
+    public static DataPipelineExecution start(
+            UUID executionId,
+            DataPipelineType type,
+            Instant startedAt
+    ) {
+        return start(
+                executionId,
+                type,
+                startedAt,
+                DataPipelineExecutionTrigger.MANUAL,
+                null,
+                null
+        );
+    }
+
+    public static DataPipelineExecution start(
+            UUID executionId,
+            DataPipelineType type,
+            Instant startedAt,
+            DataPipelineExecutionTrigger executionTrigger,
+            Instant scheduledAt,
+            UUID upstreamExecutionId
+    ) {
+        if (executionTrigger == null) {
+            throw new IllegalArgumentException("실행 시작 원인은 필수입니다.");
+        }
+        if (executionTrigger != DataPipelineExecutionTrigger.MANUAL && scheduledAt == null) {
+            throw new IllegalArgumentException("정기·복구 실행에는 예정 시각이 필요합니다.");
+        }
+        return new DataPipelineExecution(
+                executionId,
+                type,
+                startedAt,
+                executionTrigger,
+                scheduledAt,
+                upstreamExecutionId
+        );
+    }
+
+    public void startStep(DataPipelineStep step) {
+        requireRunning();
+        if (!step.belongsTo(type)) {
+            throw new IllegalStateException("실행 유형에 속하지 않는 단계입니다.");
+        }
+        if (currentStep != null) {
+            throw new IllegalStateException(
+                    "실행 중인 단계를 완료하거나 건너뛴 뒤 다음 단계를 시작할 수 있습니다."
+            );
+        }
+        if (step != nextStep()) {
+            throw new IllegalStateException("다음 순서의 단계만 시작할 수 있습니다.");
+        }
+        currentStep = step;
+    }
+
+    public void completeStep(DataPipelineStep step, String report) {
+        requireRunning();
+        if (currentStep != step) {
+            throw new IllegalStateException("현재 실행 중인 단계만 완료할 수 있습니다.");
+        }
+        completedStepResults.add(DataPipelineCompletedStep.of(step, report));
+        currentStep = null;
+    }
+
+    public List<DataPipelineStep> getCompletedSteps() {
+        return completedStepResults.stream()
+                .map(DataPipelineCompletedStep::getStep)
+                .toList();
+    }
+
+    public void startStepAfterPartialFailure(
+            DataPipelineStep partiallyFailedStep,
+            DataPipelineStep nextStep
+    ) {
+        requireRunning();
+        if (currentStep != partiallyFailedStep) {
+            throw new IllegalStateException("현재 실행 중인 단계만 부분 실패로 종료할 수 있습니다.");
+        }
+        if (nextStep != nextStepAfter(partiallyFailedStep)) {
+            throw new IllegalStateException("부분 실패한 단계의 바로 다음 단계만 시작할 수 있습니다.");
+        }
+        currentStep = nextStep;
+    }
+
+    public void recordPartialFailure(DataPipelineStep step, String report) {
+        requireRunning();
+        if (currentStep != step) {
+            throw new IllegalStateException("현재 실행 중인 단계만 부분 실패로 기록할 수 있습니다.");
+        }
+        partiallyFailedSteps.add(DataPipelinePartiallyFailedStep.of(step, report));
+    }
+
+    public void skipStep(DataPipelineStep step, String reason, String serverResponse) {
+        requireRunning();
+        if (currentStep != step) {
+            throw new IllegalStateException("현재 실행 중인 단계만 건너뛸 수 있습니다.");
+        }
+        skippedSteps.add(DataPipelineSkippedStep.of(step, reason, serverResponse));
+        currentStep = null;
+    }
+
+    public void complete(Instant completedAt) {
+        requireRunning();
+        if (currentStep != null) {
+            throw new IllegalStateException(
+                    "실행 중인 단계를 완료하거나 건너뛴 뒤 파이프라인을 완료할 수 있습니다."
+            );
+        }
+        if (completedStepResults.size() + skippedSteps.size() != type.steps().size()) {
+            throw new IllegalStateException(
+                    "모든 단계를 완료하거나 건너뛴 뒤 파이프라인을 완료할 수 있습니다."
+            );
+        }
+        status = completionStatus();
+        currentStep = null;
+        finishedAt = completedAt;
+    }
+
+    public void fail(
+            DataPipelineStep failedStep,
+            String message,
+            String serverResponse,
+            Instant failedAt
+    ) {
+        requireRunning();
+        status = DataPipelineExecutionStatus.FAILED;
+        currentStep = failedStep;
+        this.failedStep = failedStep;
+        failureMessage = message;
+        failureServerResponse = serverResponse;
+        finishedAt = failedAt;
+    }
+
+    public boolean isRunning() {
+        return status == DataPipelineExecutionStatus.RUNNING;
+    }
+
+    public boolean isCompleted() {
+        return status == DataPipelineExecutionStatus.COMPLETED
+                || status == DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS;
+    }
+
+    private void requireRunning() {
+        if (status != DataPipelineExecutionStatus.RUNNING) {
+            throw new IllegalStateException(
+                    "실행 중인 데이터 파이프라인만 상태를 변경할 수 있습니다."
+            );
+        }
+    }
+
+    private DataPipelineExecutionStatus completionStatus() {
+        if (skippedSteps.isEmpty()) {
+            return DataPipelineExecutionStatus.COMPLETED;
+        }
+        return DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS;
+    }
+
+    private DataPipelineStep nextStep() {
+        int lastCompletedSequence = completedStepResults.stream()
+                .map(DataPipelineCompletedStep::getStep)
+                .mapToInt(DataPipelineStep::sequence)
+                .max()
+                .orElse(0);
+        int lastSkippedSequence = skippedSteps.stream()
+                .map(DataPipelineSkippedStep::getStep)
+                .mapToInt(DataPipelineStep::sequence)
+                .max()
+                .orElse(0);
+        int nextStepIndex = Math.max(lastCompletedSequence, lastSkippedSequence);
+        if (nextStepIndex >= type.steps().size()) {
+            return null;
+        }
+        return type.steps().get(nextStepIndex);
+    }
+
+    private DataPipelineStep nextStepAfter(DataPipelineStep step) {
+        int nextStepIndex = type.steps().indexOf(step) + 1;
+        if (nextStepIndex <= 0 || nextStepIndex >= type.steps().size()) {
+            return null;
+        }
+        return type.steps().get(nextStepIndex);
+    }
+}

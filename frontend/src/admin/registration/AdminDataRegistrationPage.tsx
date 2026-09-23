@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { DataPipelineControl } from '../ingest/DataPipelineControl'
+import { LocationSummaryUpload } from '../ingest/LocationSummaryUpload'
 import { AnnouncementRegistrationForm } from './AnnouncementRegistrationForm'
 import type { HousingComplexCreateResponse } from './api'
 import { HousingComplexRegistrationForm } from './HousingComplexRegistrationForm'
@@ -16,6 +17,7 @@ export function AdminDataRegistrationPage() {
         <p>단지를 먼저 저장한 뒤 해당 단지의 원공고와 공급행을 등록합니다.</p>
       </header>
       <DataPipelineControl />
+      <LocationSummaryUpload />
       <HousingComplexRegistrationForm
         disabled={isAnnouncementSubmitting}
         onCreated={setHousingComplex}

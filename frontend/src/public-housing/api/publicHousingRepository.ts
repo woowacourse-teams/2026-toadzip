@@ -26,7 +26,7 @@ const COMPLEXES_PATH = '/api/v1/complexes'
 const ANNOUNCEMENTS_PATH = '/api/v1/announcements'
 const MAX_JAVA_LONG = 9_223_372_036_854_775_807n
 
-interface RepositoryOptions {
+export interface PublicHousingRepositoryOptions {
   readonly apiBaseUrl?: string
   readonly fetcher?: typeof globalThis.fetch
 }
@@ -75,7 +75,6 @@ export interface ComplexSearchFilters extends SharedSearchFilters {
 }
 
 export type AnnouncementSearchFilters = SharedSearchFilters
-
 export interface PublicHousingRepository {
   findComplexPage(
     bounds: MapBounds,
@@ -120,22 +119,20 @@ export class PublicHousingHttpError extends Error {
 }
 
 export function createHttpPublicHousingRepository(
-  options: RepositoryOptions = {},
+  options: PublicHousingRepositoryOptions = {},
 ): PublicHousingRepository {
-  const apiBaseUrl = options.apiBaseUrl ?? resolveApiBaseUrl()
+  const apiBaseUrl = options.apiBaseUrl ?? resolvePublicHousingApiBaseUrl()
   const fetcher = options.fetcher ?? globalThis.fetch
 
   return {
     async findComplexPage(bounds, cursor, size, signal, filters = {}) {
       validatePageSize(size)
-      const search = boundsSearchParams(bounds)
-      appendComplexFilters(search, filters)
+      const search = createComplexSearchParams(bounds, filters)
       if (cursor !== null) {
         search.set('cursor', cursor)
       }
       search.set('size', String(size))
-
-      const payload = await requestJson(
+      const payload = await requestPublicHousingJson(
         fetcher,
         `${apiBaseUrl}${COMPLEXES_PATH}?${search.toString()}`,
         signal,
@@ -144,9 +141,8 @@ export function createHttpPublicHousingRepository(
     },
 
     async findMapComplexes(bounds, signal, filters = {}) {
-      const search = boundsSearchParams(bounds)
-      appendComplexFilters(search, filters)
-      const payload = await requestJson(
+      const search = createComplexSearchParams(bounds, filters)
+      const payload = await requestPublicHousingJson(
         fetcher,
         `${apiBaseUrl}${COMPLEXES_PATH}/map?${search.toString()}`,
         signal,
@@ -156,7 +152,7 @@ export function createHttpPublicHousingRepository(
 
     async findComplexDetail(complexId, signal) {
       validateCanonicalId(complexId, '단지')
-      const payload = await requestJson(
+      const payload = await requestPublicHousingJson(
         fetcher,
         `${apiBaseUrl}${COMPLEXES_PATH}/${complexId}`,
         signal,
@@ -171,7 +167,7 @@ export function createHttpPublicHousingRepository(
       if (cursor !== null) {
         search.set('cursor', cursor)
       }
-      const payload = await requestJson(
+      const payload = await requestPublicHousingJson(
         fetcher,
         `${apiBaseUrl}${ANNOUNCEMENTS_PATH}?${search.toString()}`,
         signal,
@@ -181,7 +177,7 @@ export function createHttpPublicHousingRepository(
 
     async findAnnouncementDetail(announcementId, signal) {
       validateCanonicalId(announcementId, '공고')
-      const payload = await requestJson(
+      const payload = await requestPublicHousingJson(
         fetcher,
         `${apiBaseUrl}${ANNOUNCEMENTS_PATH}/${announcementId}`,
         signal,
@@ -193,7 +189,7 @@ export function createHttpPublicHousingRepository(
 
 export const publicHousingRepository = createHttpPublicHousingRepository()
 
-async function requestJson(
+export async function requestPublicHousingJson(
   fetcher: typeof globalThis.fetch,
   url: string,
   signal: AbortSignal,
@@ -247,14 +243,19 @@ function isAbortError(error: unknown) {
     && error.name === 'AbortError'
 }
 
-function boundsSearchParams(bounds: MapBounds): URLSearchParams {
+export function createComplexSearchParams(
+  bounds: MapBounds,
+  filters: ComplexSearchFilters = {},
+): URLSearchParams {
   validateBounds(bounds)
-  return new URLSearchParams({
+  const search = new URLSearchParams({
     southWestLat: String(bounds.southWestLat),
     southWestLng: String(bounds.southWestLng),
     northEastLat: String(bounds.northEastLat),
     northEastLng: String(bounds.northEastLng),
   })
+  appendComplexFilters(search, filters)
+  return search
 }
 
 function appendComplexFilters(
@@ -343,7 +344,7 @@ function nullableString(value: unknown): string | null {
   return typeof value === 'string' ? value : null
 }
 
-function resolveApiBaseUrl(): string {
+export function resolvePublicHousingApiBaseUrl(): string {
   const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL
   if (configuredApiBaseUrl) {
     return configuredApiBaseUrl

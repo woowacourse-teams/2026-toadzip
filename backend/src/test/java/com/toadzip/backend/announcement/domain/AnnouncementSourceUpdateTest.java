@@ -20,7 +20,7 @@ class AnnouncementSourceUpdateTest {
                 "https://example.com/apply"
         );
 
-        boolean updated = announcement.updateFromSource(
+        boolean updated = announcement.updateFromMyHome(
                 null,
                 null,
                 "변경 공고명",
@@ -33,7 +33,6 @@ class AnnouncementSourceUpdateTest {
                 LocalDate.of(2026, 8, 15),
                 LocalDate.of(2026, 9, 2),
                 "https://example.com/announcements/changed",
-                null,
                 receptionPlace
         );
 
@@ -48,7 +47,7 @@ class AnnouncementSourceUpdateTest {
     void 원천_공고_정보가_같으면_갱신하지_않는다() {
         Announcement announcement = announcement("기존 공고명");
 
-        boolean updated = announcement.updateFromSource(
+        boolean updated = announcement.updateFromMyHome(
                 null,
                 null,
                 "기존 공고명",
@@ -61,7 +60,6 @@ class AnnouncementSourceUpdateTest {
                 LocalDate.of(2026, 8, 14),
                 LocalDate.of(2026, 9, 1),
                 "https://example.com/announcements/1",
-                null,
                 receptionPlace()
         );
 

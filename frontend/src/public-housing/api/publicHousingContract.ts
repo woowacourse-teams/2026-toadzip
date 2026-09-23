@@ -909,7 +909,10 @@ function decodeAnnouncementListItem(
   }
 }
 
-function decodeMapComplex(value: unknown, path: string): RawMapComplex {
+export function decodeMapComplex(
+  value: unknown,
+  path: string,
+): RawMapComplex {
   const item = recordAt(value, path)
 
   return {

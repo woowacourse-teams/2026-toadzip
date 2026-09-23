@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   createBoundsSignature,
+  evaluateServerMapRequest,
   evaluateViewportRequest,
 } from './viewportPolicy.ts'
 import type { MapBounds } from '../model/publicHousing.ts'
@@ -120,6 +121,62 @@ describe('evaluateViewportRequest', () => {
     { ...allowedBounds, northEastLng: 180.000_001 },
   ])('지리 좌표 범위를 벗어난 bounds를 차단한다', (bounds) => {
     expect(evaluateViewportRequest({ bounds, center, zoom: 13 })).toEqual({
+      allowed: false,
+      reason: 'invalid-bounds',
+      boundsSignature: null,
+    })
+  })
+})
+
+describe('evaluateServerMapRequest', () => {
+  it('낮은 zoom과 넓은 범위도 서버 지도 요청에는 허용한다', () => {
+    const koreaBounds: MapBounds = {
+      southWestLat: 33,
+      southWestLng: 124,
+      northEastLat: 39,
+      northEastLng: 132,
+    }
+
+    expect(evaluateServerMapRequest({
+      bounds: koreaBounds,
+      center: { latitude: 36, longitude: 128 },
+      zoom: 7,
+    })).toEqual({
+      allowed: true,
+      boundsSignature: createBoundsSignature(koreaBounds),
+    })
+  })
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    '유한하지 않은 zoom %s을 차단한다',
+    (zoom) => {
+      expect(evaluateServerMapRequest({ bounds: allowedBounds, center, zoom }))
+        .toEqual({
+          allowed: false,
+          reason: 'invalid-zoom',
+          boundsSignature: createBoundsSignature(allowedBounds),
+        })
+    },
+  )
+
+  it('음수 zoom을 차단한다', () => {
+    expect(evaluateServerMapRequest({
+      bounds: allowedBounds,
+      center,
+      zoom: -0.01,
+    })).toEqual({
+      allowed: false,
+      reason: 'invalid-zoom',
+      boundsSignature: createBoundsSignature(allowedBounds),
+    })
+  })
+
+  it('잘못된 범위는 차단한다', () => {
+    expect(evaluateServerMapRequest({
+      bounds: { ...allowedBounds, southWestLat: Number.NaN },
+      center,
+      zoom: 7,
+    })).toEqual({
       allowed: false,
       reason: 'invalid-bounds',
       boundsSignature: null,

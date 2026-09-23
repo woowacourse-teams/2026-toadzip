@@ -42,13 +42,35 @@ describe('App', () => {
     )
 
     expect(screen.getByRole('banner', { name: '서비스 헤더' })).toBeVisible()
-    expect(screen.getByRole('link', { name: '두꺼비집 홈' })).toBeVisible()
+    const homeLink = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
+    expect(homeLink).toBeVisible()
+    expect(homeLink).toHaveTextContent('공공주택 복덕방')
+    expect(
+      screen.getByRole('searchbox', { name: '지역, 단지, 공고 검색' }),
+    ).toBeVisible()
     expect(
       screen.getByRole('region', { name: '공공임대주택 지도' }),
     ).toBeVisible()
     expect(screen.getByRole('alert')).toHaveTextContent(
       '지도 설정이 준비되지 않았습니다.',
     )
+  })
+
+  it('목록 위에는 검색창과 탭을 두고 소개 제목과 기본 입력 안내는 표시하지 않는다', () => {
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('searchbox', { name: '지역, 단지, 공고 검색' }))
+      .toHaveAttribute('placeholder', '지역, 단지, 공고 검색')
+    expect(screen.getByRole('tab', { name: '단지 목록' })).toBeVisible()
+    expect(screen.getByRole('tab', { name: '공고 목록' })).toBeVisible()
+    expect(screen.queryByText('지도 기반 탐색')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '공공임대주택' }))
+      .not.toBeInTheDocument()
+    expect(screen.queryByText('두 글자 이상 입력해 주세요.')).not.toBeInTheDocument()
   })
 
   it('존재하지 않는 경로에서 안내 화면을 표시한다', () => {

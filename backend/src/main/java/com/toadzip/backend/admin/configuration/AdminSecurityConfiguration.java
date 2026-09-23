@@ -3,9 +3,12 @@ package com.toadzip.backend.admin.configuration;
 import com.toadzip.backend.admin.domain.AdminRole;
 import com.toadzip.backend.global.security.JsonAccessDeniedHandler;
 import com.toadzip.backend.global.security.JsonAuthenticationEntryPoint;
+import com.toadzip.backend.user.service.SocialLoginFailureHandler;
+import com.toadzip.backend.user.service.SocialLoginSuccessHandler;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -18,6 +21,8 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -35,7 +40,11 @@ public class AdminSecurityConfiguration {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             SecurityContextRepository securityContextRepository,
-            CookieCsrfTokenRepository csrfTokenRepository
+            CookieCsrfTokenRepository csrfTokenRepository,
+            ObjectProvider<ClientRegistrationRepository> registrations,
+            ObjectProvider<OAuth2AuthorizedClientRepository> authorizedClients,
+            SocialLoginSuccessHandler socialLoginSuccessHandler,
+            SocialLoginFailureHandler socialLoginFailureHandler
     ) throws Exception {
         http
                 .cors(Customizer.withDefaults())
@@ -47,8 +56,10 @@ public class AdminSecurityConfiguration {
                 )
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.GET, "/api/health", "/api/admin/auth/csrf").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/auth/csrf", "/api/auth/oauth2/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/admin/auth/login").permitAll()
                         .requestMatchers("/api/admin/**").hasRole(AdminRole.ADMIN.name())
+                        .requestMatchers("/api/auth/me", "/api/auth/logout").hasRole("USER")
                         .anyRequest().permitAll()
                 )
                 .exceptionHandling(exceptionHandling -> exceptionHandling
@@ -57,6 +68,14 @@ public class AdminSecurityConfiguration {
                 )
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable);
+        if (registrations.getIfAvailable() != null) {
+            http.oauth2Login(oauth -> oauth
+                    .authorizationEndpoint(endpoint -> endpoint.baseUri("/api/auth/oauth2/authorization"))
+                    .redirectionEndpoint(endpoint -> endpoint.baseUri("/api/auth/oauth2/callback/*"))
+                    .authorizedClientRepository(authorizedClients.getObject())
+                    .successHandler(socialLoginSuccessHandler)
+                    .failureHandler(socialLoginFailureHandler));
+        }
         return http.build();
     }
 

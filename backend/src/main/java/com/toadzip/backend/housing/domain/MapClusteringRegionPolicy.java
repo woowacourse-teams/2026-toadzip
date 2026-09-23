@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public final class MapClusteringRegionPolicy {
 
@@ -48,6 +49,32 @@ public final class MapClusteringRegionPolicy {
     public List<MapClusteringRegionGroup> groupsAt(MapClusteringStage stage) {
         Objects.requireNonNull(stage, "stage");
         return groups.at(stage);
+    }
+
+    public List<MapClusteringRegionGroup> groupsAt(
+            MapClusteringStage stage,
+            Set<String> selectedRegionCodes
+    ) {
+        Objects.requireNonNull(selectedRegionCodes, "selectedRegionCodes");
+        if (selectedRegionCodes.isEmpty()) {
+            return groupsAt(stage);
+        }
+        Set<MapClusteringGroupKey> selectedGroupKeys = assignmentsAt(stage).stream()
+                .filter(assignment -> selectedRegionCodes.contains(assignment.canonicalRegionCode()))
+                .map(MapClusteringRegionAssignment::groupKey)
+                .collect(Collectors.toUnmodifiableSet());
+        return groupsAt(stage).stream()
+                .filter(group -> selectedGroupKeys.contains(group.key()))
+                .toList();
+    }
+
+    public List<MapClusteringRegionGroup> groups() {
+        return groups.values();
+    }
+
+    public List<MapClusteringRegionAssignment> assignmentsAt(MapClusteringStage stage) {
+        Objects.requireNonNull(stage, "stage");
+        return memberships.assignmentsAt(stage, groups);
     }
 
     public Optional<MapClusteringRegionGroup> groupOf(

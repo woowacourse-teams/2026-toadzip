@@ -1,8 +1,7 @@
 package com.toadzip.backend.housing.domain;
 
-import java.math.BigDecimal;
-
 import com.toadzip.backend.housing.exception.InvalidMapBoundsException;
+import java.math.BigDecimal;
 
 public record MapBounds(
         BigDecimal southWestLat,
@@ -33,6 +32,21 @@ public record MapBounds(
         requireAscending(southWestLat, northEastLat);
         requireAscending(southWestLng, northEastLng);
         return new MapBounds(southWestLat, southWestLng, northEastLat, northEastLng);
+    }
+
+    public boolean contains(MapCoordinate coordinate) {
+        if (coordinate == null) {
+            return false;
+        }
+        return containsLatitude(coordinate.latitude()) && containsLongitude(coordinate.longitude());
+    }
+
+    private boolean containsLatitude(BigDecimal latitude) {
+        return latitude.compareTo(southWestLat) >= 0 && latitude.compareTo(northEastLat) <= 0;
+    }
+
+    private boolean containsLongitude(BigDecimal longitude) {
+        return longitude.compareTo(southWestLng) >= 0 && longitude.compareTo(northEastLng) <= 0;
     }
 
     private static void requireAll(

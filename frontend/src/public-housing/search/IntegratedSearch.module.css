@@ -1,0 +1,58 @@
+.top {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.withSelection {
+  gap: 8px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 750;
+}
+
+.group + .group {
+  border-top: 1px solid var(--border);
+}
+
+.groupHeading {
+  margin: 0;
+  padding: 0.75rem;
+  background: #f4f6f8;
+  font-size: 0.95rem;
+  font-weight: 750;
+}
+
+.message {
+  margin: 0;
+  padding: 0.75rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.result strong {
+  grid-column: 1 / -1;
+}
+
+.result:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.result .unavailable {
+  grid-column: 1 / -1;
+  color: #6b5900;
+}
+
+.more {
+  width: 100%;
+}

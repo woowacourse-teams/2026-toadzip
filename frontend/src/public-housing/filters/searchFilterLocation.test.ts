@@ -13,7 +13,7 @@ import {
 
 const COMPLEX_COMMON_FILTERS = {
   agencyCodes: ['LH', 'GH'],
-  applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'],
+  applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING', 'CLOSED'],
   recruitmentTypes: ['NEW', 'WAITLIST'],
   regionCode: '11',
   rentalTypes: ['NATIONAL_RENTAL', 'HAPPY_HOUSING'],
@@ -21,7 +21,7 @@ const COMPLEX_COMMON_FILTERS = {
 
 const ANNOUNCEMENT_FILTERS = {
   agencyCodes: ['SH', 'ETC'],
-  applicationStatuses: ['APPLYING', 'CLOSED'],
+  applicationStatuses: ['APPLYING', 'BEFORE_APPLICATION'],
   recruitmentTypes: ['WAITLIST', 'ETC'],
   regionCode: '41135',
   rentalTypes: ['PERMANENT_RENTAL', 'PUBLIC_RENTAL_50Y'],
@@ -75,6 +75,7 @@ describe('검색 필터 URL namespace', () => {
     expect(complexSearch.getAll('complexApplicationStatuses')).toEqual([
       'BEFORE_APPLICATION',
       'APPLYING',
+      'CLOSED',
     ])
     expect(complexSearch.getAll('complexAgencyCodes')).toEqual(['LH', 'GH'])
     expect(complexSearch.getAll('complexRecruitmentTypes')).toEqual([
@@ -91,7 +92,7 @@ describe('검색 필터 URL namespace', () => {
     ])
     expect(
       announcementSearch.getAll('announcementApplicationStatuses'),
-    ).toEqual(['APPLYING', 'CLOSED'])
+    ).toEqual(['APPLYING', 'BEFORE_APPLICATION'])
     expect(announcementSearch.getAll('announcementAgencyCodes')).toEqual([
       'SH',
       'ETC',
@@ -102,6 +103,54 @@ describe('검색 필터 URL namespace', () => {
     expect(parseAnnouncementSearchFilters(announcementSearch)).toEqual(
       ANNOUNCEMENT_FILTERS,
     )
+  })
+
+  it('기존 공고 URL의 마감 상태를 무시하고 나머지 조건은 복원한다', () => {
+    const search = new URLSearchParams(
+      'announcementApplicationStatuses=CLOSED'
+      + '&announcementApplicationStatuses=BEFORE_APPLICATION'
+      + '&announcementApplicationStatuses=APPLYING'
+      + '&announcementAgencyCodes=LH'
+      + '&announcementRegionCode=11'
+      + '&complexApplicationStatuses=CLOSED',
+    )
+
+    expect(parseAnnouncementSearchFilters(search)).toEqual({
+      applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'],
+      agencyCodes: ['LH'],
+      regionCode: '11',
+    })
+    expect(parseComplexSearchFilters(search)).toEqual({
+      applicationStatuses: ['CLOSED'],
+    })
+    expect(parseAnnouncementSearchFilters(
+      new URLSearchParams('announcementApplicationStatuses=CLOSED'),
+    )).toEqual({})
+  })
+
+  it('공고 URL 저장 시 마감만 제외하고 다른 namespace와 query를 보존한다', () => {
+    const current = new URLSearchParams(
+      'announcementApplicationStatuses=CLOSED'
+      + '&complexApplicationStatuses=CLOSED&mapZoom=14.00&announcementId=42',
+    )
+    const search = setAnnouncementSearchFilters(current, {
+      ...ANNOUNCEMENT_FILTERS,
+      applicationStatuses: ['CLOSED', 'BEFORE_APPLICATION', 'APPLYING'],
+    })
+
+    expect(search.getAll('announcementApplicationStatuses')).toEqual([
+      'BEFORE_APPLICATION',
+      'APPLYING',
+    ])
+    expect(search.getAll('announcementAgencyCodes')).toEqual(['SH', 'ETC'])
+    expect(search.get('announcementRegionCode')).toBe('41135')
+    expect(search.getAll('complexApplicationStatuses')).toEqual(['CLOSED'])
+    expect(search.get('mapZoom')).toBe('14.00')
+    expect(search.get('announcementId')).toBe('42')
+    expect(current.getAll('announcementApplicationStatuses')).toEqual(['CLOSED'])
+    expect(setAnnouncementSearchFilters(current, {
+      applicationStatuses: ['CLOSED'],
+    }).has('announcementApplicationStatuses')).toBe(false)
   })
 
   it('단지의 금액, 면적과 준공년도 범위를 왕복한다', () => {

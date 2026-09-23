@@ -1,4 +1,6 @@
 spring:
+  flyway:
+    enabled: false
   datasource:
     url: jdbc:postgresql://127.0.0.1:55432/toadzip_test
     username: toadzip_test

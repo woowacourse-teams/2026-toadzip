@@ -98,6 +98,9 @@ public class Announcement {
     private String lhPanId;
 
     @Column(nullable = false)
+    private boolean lhReceptionPlaceOwned;
+
+    @Column(nullable = false)
     private long viewCount;
 
     @Column(precision = 12, scale = 4)
@@ -212,7 +215,7 @@ public class Announcement {
         );
     }
 
-    public boolean updateFromSource(
+    public boolean updateFromMyHome(
             String previousSourceAnnouncementIdentifier,
             Announcement previousAnnouncement,
             String name,
@@ -225,9 +228,13 @@ public class Announcement {
             LocalDate applicationEndDate,
             LocalDate winnerAnnouncementDate,
             String originalUrl,
-            String correctionCancellationReason,
             ReceptionPlace receptionPlace
     ) {
+        boolean remainsLh = provider == AgencyCode.LH;
+        boolean preserveLhCorrection = remainsLh && lhPanId != null;
+        boolean preserveLhReceptionPlace = remainsLh && lhReceptionPlaceOwned;
+        String ownedCorrectionReason = preserveLhCorrection ? correctionCancellationReason : null;
+        ReceptionPlace ownedReceptionPlace = preserveLhReceptionPlace ? this.receptionPlace : receptionPlace;
         Announcement incoming = new Announcement(
                 sourceAnnouncementIdentifier,
                 previousSourceAnnouncementIdentifier,
@@ -242,16 +249,21 @@ public class Announcement {
                 applicationEndDate,
                 winnerAnnouncementDate,
                 originalUrl,
-                correctionCancellationReason,
+                ownedCorrectionReason,
                 viewCount,
                 actualCompetitionRate,
                 predictedCompetitionRate,
-                receptionPlace
+                ownedReceptionPlace
         );
-        if (hasSameSourceValues(incoming)) {
+        boolean releasesLhEnrichment = !remainsLh && (lhPanId != null || lhReceptionPlaceOwned);
+        if (hasSameSourceValues(incoming) && !releasesLhEnrichment) {
             return false;
         }
         applySourceValues(incoming);
+        if (releasesLhEnrichment) {
+            lhPanId = null;
+            lhReceptionPlaceOwned = false;
+        }
         return true;
     }
 
@@ -297,14 +309,23 @@ public class Announcement {
     }
 
     public boolean enrichFromLh(String panId, String correctionReason, ReceptionPlace receptionPlace) {
+        String ownedCorrectionReason = correctionReason == null
+                ? correctionCancellationReason
+                : correctionReason;
+        ReceptionPlace ownedReceptionPlace = receptionPlace == null
+                ? this.receptionPlace
+                : receptionPlace;
+        boolean ownsReceptionPlace = receptionPlace != null || lhReceptionPlaceOwned;
         if (Objects.equals(lhPanId, panId)
-                && Objects.equals(correctionCancellationReason, correctionReason)
-                && hasSameReceptionPlace(receptionPlace)) {
+                && Objects.equals(correctionCancellationReason, ownedCorrectionReason)
+                && hasSameReceptionPlace(ownedReceptionPlace)
+                && lhReceptionPlaceOwned == ownsReceptionPlace) {
             return false;
         }
         lhPanId = panId;
-        correctionCancellationReason = correctionReason;
-        this.receptionPlace = receptionPlace;
+        correctionCancellationReason = ownedCorrectionReason;
+        this.receptionPlace = ownedReceptionPlace;
+        lhReceptionPlaceOwned = ownsReceptionPlace;
         return true;
     }
 

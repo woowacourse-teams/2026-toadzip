@@ -300,7 +300,7 @@ function toComplexCurrentAnnouncement(
   }
 }
 
-function toMapComplex(raw: RawMapComplex): MapComplex {
+export function toMapComplex(raw: RawMapComplex): MapComplex {
   return {
     complexId: canonicalId(raw.complexId),
     name: raw.name,

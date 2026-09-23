@@ -1,3 +1,4 @@
+import { formatHousingMoney } from '../presentation/housingMoney.ts'
 import {
   type CSSProperties,
   Fragment,
@@ -71,11 +72,11 @@ const DEPOSIT_PRESETS = [
 ] as const satisfies readonly DualRangeFilterPreset[]
 
 const MONTHLY_RENT_PRESETS = [
-  { label: '10만 이하', minimum: null, maximum: 100_000 },
-  { label: '10~20만', minimum: 100_000, maximum: 200_000 },
-  { label: '20~30만', minimum: 200_000, maximum: 300_000 },
-  { label: '30~40만', minimum: 300_000, maximum: 400_000 },
-  { label: '40~60만', minimum: 400_000, maximum: 590_000 },
+  { label: '10만원 이하', minimum: null, maximum: 100_000 },
+  { label: '10~20만원', minimum: 100_000, maximum: 200_000 },
+  { label: '20~30만원', minimum: 200_000, maximum: 300_000 },
+  { label: '30~40만원', minimum: 300_000, maximum: 400_000 },
+  { label: '40~60만원', minimum: 400_000, maximum: 590_000 },
 ] as const satisfies readonly DualRangeFilterPreset[]
 
 const AREA_PRESETS = [
@@ -95,6 +96,10 @@ type FilterTopic =
   | 'exclusiveArea'
   | 'builtYear'
 
+type DesktopFilterTopic =
+  | Exclude<FilterTopic, 'region' | 'agency' | 'recruitmentType'>
+  | 'detail'
+
 const TOPICS = [
   ['region', '지역'],
   ['rentalType', '임대유형'],
@@ -104,6 +109,25 @@ const TOPICS = [
   ['price', '가격'],
   ['exclusiveArea', '전용면적'],
   ['builtYear', '준공년도'],
+] as const satisfies readonly (readonly [FilterTopic, string])[]
+
+const DESKTOP_PRIMARY_TOPICS = [
+  ['rentalType', '임대유형'],
+  ['applicationStatus', '모집상태'],
+  ['price', '가격'],
+  ['exclusiveArea', '전용면적'],
+  ['builtYear', '준공년도'],
+] as const satisfies readonly (readonly [DesktopFilterTopic, string])[]
+
+const DESKTOP_TOPICS = [
+  ...DESKTOP_PRIMARY_TOPICS,
+  ['detail', '상세 필터'],
+] as const satisfies readonly (readonly [DesktopFilterTopic, string])[]
+
+const DETAIL_FILTER_TOPICS = [
+  ['region', '지역'],
+  ['agency', '공급기관'],
+  ['recruitmentType', '모집유형'],
 ] as const satisfies readonly (readonly [FilterTopic, string])[]
 
 const MOBILE_PRIMARY_TOPICS = [
@@ -125,10 +149,10 @@ const MOBILE_SHEET_TOPICS = [
 
 const POPOVER_WIDTHS = {
   region: 320,
-  rentalType: 280,
-  applicationStatus: 280,
-  agency: 280,
-  recruitmentType: 280,
+  rentalType: 320,
+  applicationStatus: 320,
+  agency: 320,
+  recruitmentType: 320,
   price: 420,
   exclusiveArea: 380,
   builtYear: 320,
@@ -167,14 +191,15 @@ export function ComplexFilterToolbar({
   resultCountLabel,
 }: ComplexFilterToolbarProps) {
   const filtersSignature = searchFiltersSignature(filters)
-  const [openTopic, setOpenTopic] = useState<FilterTopic | null>(null)
+  const [openTopic, setOpenTopic] = useState<DesktopFilterTopic | null>(null)
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
   const [mobileDraftFilters, setMobileDraftFilters] = useState(filters)
   const [mobileDraftDirty, setMobileDraftDirty] = useState(false)
   const [mobileFormRevision, setMobileFormRevision] = useState(0)
   const [mobileInitialTopic, setMobileInitialTopic] =
     useState<FilterTopic | null>(null)
-  const [rovingTopic, setRovingTopic] = useState<FilterTopic>('region')
+  const [rovingTopic, setRovingTopic] =
+    useState<DesktopFilterTopic>('rentalType')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [popoverPlacement, setPopoverPlacement] = useState<{
     readonly anchorX: number
@@ -192,6 +217,9 @@ export function ComplexFilterToolbar({
     readonly regionCode: string
   } | null>(null)
   const rootRef = useRef<HTMLElement>(null)
+  const desktopFormRef = useRef<HTMLFormElement>(null)
+  const previousFiltersSignatureRef = useRef(filtersSignature)
+  const quickAppliedSignatureRef = useRef<string | null>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const mobileSheetRef = useRef<HTMLElement>(null)
   const mobileSheetBodyRef = useRef<HTMLDivElement>(null)
@@ -200,9 +228,19 @@ export function ComplexFilterToolbar({
   const mobileResetFocusPendingRef = useRef(false)
   const mobileTriggerRef = useRef<HTMLButtonElement | null>(null)
   const mobileOpenedFiltersSignatureRef = useRef(filtersSignature)
-  const triggerRefs = useRef<Partial<Record<FilterTopic, HTMLButtonElement>>>(
-    {},
-  )
+  const triggerRefs = useRef<
+    Partial<Record<DesktopFilterTopic, HTMLButtonElement>>
+  >({})
+
+  useEffect(() => {
+    if (previousFiltersSignatureRef.current === filtersSignature) return
+    previousFiltersSignatureRef.current = filtersSignature
+    if (quickAppliedSignatureRef.current !== filtersSignature && openTopic !== 'detail') {
+      setOpenTopic(null)
+      setErrorMessage(null)
+    }
+    quickAppliedSignatureRef.current = null
+  }, [filtersSignature, openTopic])
 
   useEffect(() => {
     if (openTopic === null) {
@@ -256,7 +294,7 @@ export function ComplexFilterToolbar({
       if (window.innerWidth <= 767) {
         return
       }
-      const desktopTopic = mobileInitialTopic ?? 'region'
+      const desktopTopic = desktopTopicFor(mobileInitialTopic)
       setMobileSheetOpen(false)
       setMobileInitialTopic(null)
       setErrorMessage(null)
@@ -351,7 +389,9 @@ export function ComplexFilterToolbar({
       const triggerRect = trigger.getBoundingClientRect()
       const triggerCenter = triggerRect.left - rootRect.left
         + (triggerRect.width / 2)
-      const requestedWidth = POPOVER_WIDTHS[openTopic]
+      const requestedWidth = openTopic === 'detail'
+        ? 420
+        : POPOVER_WIDTHS[openTopic]
       const availableWidth = rootRect.width > 0
         ? rootRect.width
         : requestedWidth
@@ -412,22 +452,22 @@ export function ComplexFilterToolbar({
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
       return
     }
-    const currentIndex = TOPICS.findIndex(
+    const currentIndex = DESKTOP_TOPICS.findIndex(
       ([topic]) => triggerRefs.current[topic] === event.target,
     )
     if (currentIndex < 0) {
       return
     }
     event.preventDefault()
-    const lastIndex = TOPICS.length - 1
+    const lastIndex = DESKTOP_TOPICS.length - 1
     const nextIndex = event.key === 'Home'
       ? 0
       : event.key === 'End'
         ? lastIndex
         : event.key === 'ArrowRight'
-          ? (currentIndex + 1) % TOPICS.length
-          : (currentIndex - 1 + TOPICS.length) % TOPICS.length
-    const nextTopic = TOPICS[nextIndex][0]
+          ? (currentIndex + 1) % DESKTOP_TOPICS.length
+          : (currentIndex - 1 + DESKTOP_TOPICS.length) % DESKTOP_TOPICS.length
+    const nextTopic = DESKTOP_TOPICS[nextIndex][0]
     setRovingTopic(nextTopic)
     triggerRefs.current[nextTopic]?.focus()
   }
@@ -484,7 +524,16 @@ export function ComplexFilterToolbar({
     if (openTopic === null) {
       return
     }
-    const draft = topicDraftFromForm(openTopic, new FormData(event.currentTarget))
+    const data = new FormData(event.currentTarget)
+    if (openTopic === 'detail') {
+      const draft = topicsDraftFromForm(DETAIL_FILTER_TOPICS, data)
+      applyAndClose(
+        openTopic,
+        replaceTopics(filters, DETAIL_FILTER_TOPICS, draft),
+      )
+      return
+    }
+    const draft = topicDraftFromForm(openTopic, data)
     const rangeError = topicRangeError(openTopic, draft)
     if (rangeError !== null) {
       setErrorMessage(rangeError)
@@ -493,14 +542,43 @@ export function ComplexFilterToolbar({
     applyAndClose(openTopic, replaceTopic(filters, openTopic, draft))
   }
 
-  function applyAndClose(topic: FilterTopic, next: ComplexSearchFilters) {
+  function applyQuickFilter(rangeValues: Readonly<Record<string, number | null>> = {}) {
+    if (openTopic === null || openTopic === 'detail' || desktopFormRef.current === null) return
+    const data = new FormData(desktopFormRef.current)
+    // Range inputs report both endpoints before their hidden inputs re-render.
+    Object.entries(rangeValues).forEach(([key, value]) => data.set(key, value === null ? '' : String(value)))
+    const draft = topicDraftFromForm(openTopic, data)
+    const rangeError = topicRangeError(openTopic, draft)
+    setErrorMessage(rangeError)
+    if (rangeError !== null) return
+    const next = replaceTopic(filters, openTopic, draft)
+    const nextSignature = searchFiltersSignature(next)
+    if (nextSignature === filtersSignature) return
+    quickAppliedSignatureRef.current = nextSignature
+    onApply(next)
+  }
+
+  function applyAndClose(
+    topic: DesktopFilterTopic,
+    next: ComplexSearchFilters,
+  ) {
     setErrorMessage(null)
     onApply(next)
     setOpenTopic(null)
     triggerRefs.current[topic]?.focus()
   }
 
-  const openLabel = topicLabel(openTopic)
+  function resetOpenFilter() {
+    if (openTopic === null) {
+      return
+    }
+    const next = openTopic === 'detail'
+      ? replaceTopics(filters, DETAIL_FILTER_TOPICS, {})
+      : replaceTopic(filters, openTopic, {})
+    applyAndClose(openTopic, next)
+  }
+
+  const openLabel = desktopTopicLabel(openTopic)
   const headingId = openTopic === null
     ? undefined
     : `complex-${openTopic}-filter-heading`
@@ -508,6 +586,12 @@ export function ComplexFilterToolbar({
     && resolvedRegionSummary.regionCode === filters.regionCode
     ? resolvedRegionSummary.label
     : null
+  const detailAppliedCount = DETAIL_FILTER_TOPICS.reduce(
+    (count, [topic]) => count + (
+      topicSummary(filters, topic, resolvedRegionName) === null ? 0 : 1
+    ),
+    0,
+  )
   const appliedTopicCount = TOPICS.reduce(
     (count, [topic]) => count + (
       topicSummary(filters, topic, resolvedRegionName) === null ? 0 : 1
@@ -523,65 +607,114 @@ export function ComplexFilterToolbar({
   return (
     <section ref={rootRef} className={styles.root}>
       <div className={styles.desktopFilters}>
-        <div ref={scrollerRef} className={styles.scroller}>
-          <div
-            className={styles.toolbar}
-            role="toolbar"
-            aria-label="단지 검색 필터"
-            onKeyDown={moveToolbarFocus}
-          >
-            {TOPICS.map(([topic, label]) => {
-              const expanded = topic === openTopic
-              const summary = topicSummary(
-                filters,
-                topic,
-                resolvedRegionName,
-              )
-              const summaryId = `complex-${topic}-filter-summary`
-              return (
-                <Fragment key={topic}>
-                  <button
-                    ref={(node) => {
-                      if (node === null) {
-                        delete triggerRefs.current[topic]
-                      } else {
-                        triggerRefs.current[topic] = node
+        <div
+          className={styles.toolbar}
+          role="toolbar"
+          aria-label="단지 검색 필터"
+          onKeyDown={moveToolbarFocus}
+        >
+          <div ref={scrollerRef} className={styles.scroller}>
+            <div className={styles.primaryFilters}>
+              {DESKTOP_PRIMARY_TOPICS.map(([topic, label]) => {
+                const expanded = topic === openTopic
+                const summary = topicSummary(
+                  filters,
+                  topic,
+                  resolvedRegionName,
+                )
+                const summaryId = `complex-${topic}-filter-summary`
+                return (
+                  <Fragment key={topic}>
+                    <button
+                      ref={(node) => {
+                        if (node === null) {
+                          delete triggerRefs.current[topic]
+                        } else {
+                          triggerRefs.current[topic] = node
+                        }
+                      }}
+                      className={styles.trigger}
+                      type="button"
+                      title={summary ?? label}
+                      tabIndex={rovingTopic === topic ? 0 : -1}
+                      aria-controls={`complex-${topic}-filter-popover`}
+                      aria-describedby={
+                        summary === null ? undefined : summaryId
                       }
-                    }}
-                    className={styles.trigger}
-                    type="button"
-                    title={summary ?? label}
-                    tabIndex={rovingTopic === topic ? 0 : -1}
-                    aria-controls={`complex-${topic}-filter-popover`}
-                    aria-describedby={summary === null ? undefined : summaryId}
-                    aria-expanded={expanded}
-                    aria-label={`${label} 필터 ${expanded ? '닫기' : '열기'}`}
-                    data-active={summary === null ? 'false' : 'true'}
-                    onFocus={() => setRovingTopic(topic)}
-                    onClick={() => {
-                      setErrorMessage(null)
-                      setOpenTopic((current) => current === topic ? null : topic)
-                    }}
-                  >
-                    <span className={styles.triggerText} aria-hidden="true">
-                      {summary ?? label}
-                    </span>
-                    <span
-                      className={`${styles.chevron}${
-                        expanded ? ` ${styles.chevronExpanded}` : ''
-                      }`}
-                      aria-hidden="true"
-                    />
-                  </button>
-                  {summary !== null && (
-                    <span className={styles.visuallyHidden} id={summaryId}>
-                      적용됨: {summary}
-                    </span>
-                  )}
-                </Fragment>
-              )
-            })}
+                      aria-expanded={expanded}
+                      aria-label={`${label} 필터 ${expanded ? '닫기' : '열기'}`}
+                      data-active={summary === null ? 'false' : 'true'}
+                      onFocus={() => setRovingTopic(topic)}
+                      onClick={() => {
+                        setErrorMessage(null)
+                        setOpenTopic(
+                          (current) => current === topic ? null : topic,
+                        )
+                      }}
+                    >
+                      <span className={styles.triggerText} aria-hidden="true">
+                        {summary ?? label}
+                      </span>
+                      <span
+                        className={`${styles.chevron}${
+                          expanded ? ` ${styles.chevronExpanded}` : ''
+                        }`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                    {summary !== null && (
+                      <span className={styles.visuallyHidden} id={summaryId}>
+                        적용됨: {summary}
+                      </span>
+                    )}
+                  </Fragment>
+                )
+              })}
+            </div>
           </div>
+
+          <button
+            ref={(node) => {
+              if (node === null) {
+                delete triggerRefs.current.detail
+              } else {
+                triggerRefs.current.detail = node
+              }
+            }}
+            className={`${styles.trigger} ${styles.detailTrigger}`}
+            type="button"
+            title="상세 필터"
+            tabIndex={rovingTopic === 'detail' ? 0 : -1}
+            aria-controls="complex-detail-filter-popover"
+            aria-describedby={detailAppliedCount === 0
+              ? undefined
+              : 'complex-detail-filter-summary'}
+            aria-expanded={openTopic === 'detail'}
+            aria-label={`상세 필터 ${
+              openTopic === 'detail' ? '닫기' : '열기'
+            }`}
+            data-active={detailAppliedCount === 0 ? 'false' : 'true'}
+            onFocus={() => setRovingTopic('detail')}
+            onClick={() => {
+              setErrorMessage(null)
+              setOpenTopic((current) => current === 'detail' ? null : 'detail')
+            }}
+          >
+            <DetailFilterIcon />
+            {detailAppliedCount > 0 && (
+              <span className={styles.detailBadge} aria-hidden="true">
+                {detailAppliedCount}
+              </span>
+            )}
+          </button>
+          {detailAppliedCount > 0 && (
+            <span
+              className={styles.visuallyHidden}
+              id="complex-detail-filter-summary"
+            >
+              상세 필터 {detailAppliedCount}개 적용
+            </span>
+          )}
         </div>
 
         {openTopic !== null && openLabel !== null && headingId !== undefined && (
@@ -598,39 +731,70 @@ export function ComplexFilterToolbar({
             } as CSSProperties}
           >
             <form
-              key={`${openTopic}-${searchFiltersSignature(filters)}`}
+              key={openTopic === 'detail' ? `${openTopic}-${filtersSignature}` : openTopic}
+              ref={desktopFormRef}
               className={styles.form}
               onSubmit={submit}
+              onChange={(event) => {
+                if (event.target instanceof HTMLInputElement && event.target.type === 'range') return
+                applyQuickFilter()
+              }}
             >
-              <h2 className={styles.popoverHeading} id={headingId}>
-                {openLabel} 필터
-              </h2>
-              <div className={styles.fields}>
-                <TopicFields
-                  filters={filters}
-                  regionRepository={regionRepository}
-                  topic={openTopic}
-                />
-              </div>
-              {errorMessage !== null && (
-                <p className={styles.error} role="alert">{errorMessage}</p>
-              )}
-              <div className={styles.actions}>
+              <header className={styles.popoverHeader}>
                 <button
                   className={styles.reset}
                   type="button"
                   aria-label={`${openLabel} 필터 초기화`}
-                  onClick={() => applyAndClose(
-                    openTopic,
-                    replaceTopic(filters, openTopic, {}),
-                  )}
-                >초기화</button>
+                  onClick={resetOpenFilter}
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                    <path d="M16.4 8a6.5 6.5 0 1 0-.3 4.8M16.5 3.5V8H12" />
+                  </svg>
+                  초기화
+                </button>
+                <h2 className={styles.popoverHeading} id={headingId}>
+                  {openLabel} 필터
+                </h2>
+                <button
+                  className={styles.close}
+                  type="button"
+                  aria-label={`${openLabel} 필터 패널 닫기`}
+                  onClick={() => {
+                    setOpenTopic(null)
+                    setErrorMessage(null)
+                    triggerRefs.current[openTopic]?.focus()
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                    <path d="m5 5 14 14M19 5 5 19" />
+                  </svg>
+                </button>
+              </header>
+              <div className={styles.fields}>
+                {openTopic === 'detail' ? (
+                  <DetailFilterFields
+                    filters={filters}
+                    regionRepository={regionRepository}
+                  />
+                ) : (
+                  <TopicFields
+                    filters={filters}
+                    regionRepository={regionRepository}
+                    topic={openTopic}
+                    onRangeChange={applyQuickFilter}
+                  />
+                )}
+              </div>
+              {errorMessage !== null && (
+                <p className={styles.error} role="alert">{errorMessage}</p>
+              )}
+              {openTopic === 'detail' && <div className={styles.actions}>
                 <button
                   className={styles.apply}
                   type="submit"
                   aria-label={`${openLabel} 필터 적용`}
                 >적용</button>
-              </div>
+              </div>}
             </form>
           </section>
         )}
@@ -700,23 +864,30 @@ export function ComplexFilterToolbar({
               onSubmit={submitMobileSheet}
             >
               <header className={styles.mobileSheetHeader}>
+                <button
+                  ref={mobileResetRef}
+                  className={styles.mobileReset}
+                  type="button"
+                  aria-label="전체 필터 초기화"
+                  onClick={resetMobileSheet}
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                    <path d="M16.4 8a6.5 6.5 0 1 0-.3 4.8M16.5 3.5V8H12" />
+                  </svg>
+                  초기화
+                </button>
                 <h2 id="mobile-complex-filter-heading">단지 필터</h2>
-                <div className={styles.mobileHeaderActions}>
-                  <button
-                    ref={mobileResetRef}
-                    className={styles.mobileReset}
-                    type="button"
-                    aria-label="전체 필터 초기화"
-                    onClick={resetMobileSheet}
-                  >초기화</button>
-                  <button
-                    ref={mobileCloseRef}
-                    className={styles.mobileClose}
-                    type="button"
-                    aria-label="단지 필터 닫기"
-                    onClick={closeMobileSheet}
-                  >×</button>
-                </div>
+                <button
+                  ref={mobileCloseRef}
+                  className={styles.mobileClose}
+                  type="button"
+                  aria-label="단지 필터 닫기"
+                  onClick={closeMobileSheet}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                    <path d="m5 5 14 14M19 5 5 19" />
+                  </svg>
+                </button>
               </header>
 
               <div
@@ -770,14 +941,56 @@ export function ComplexFilterToolbar({
   )
 }
 
+function DetailFilterIcon() {
+  return (
+    <svg
+      className={styles.detailIcon}
+      viewBox="0 0 20 20"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M3 5.5h5M12 5.5h5" />
+      <circle cx="10" cy="5.5" r="2" />
+      <path d="M3 14.5h2M9 14.5h8" />
+      <circle cx="7" cy="14.5" r="2" />
+    </svg>
+  )
+}
+
+function DetailFilterFields({
+  filters,
+  regionRepository,
+}: {
+  readonly filters: ComplexSearchFilters
+  readonly regionRepository: PublicHousingRegionRepository
+}) {
+  return (
+    <div className={styles.detailFields}>
+      {DETAIL_FILTER_TOPICS.map(([topic, label]) => (
+        <section className={styles.detailTopic} key={topic}>
+          {topic === 'region' && <h3>{label}</h3>}
+          <TopicFields
+            filters={filters}
+            regionRepository={regionRepository}
+            topic={topic}
+          />
+        </section>
+      ))}
+    </div>
+  )
+}
+
 function TopicFields({
   filters,
   regionRepository,
   topic,
+  onRangeChange,
 }: {
   readonly filters: ComplexSearchFilters
   readonly regionRepository: PublicHousingRegionRepository
   readonly topic: FilterTopic
+  readonly onRangeChange?: (values: Readonly<Record<string, number | null>>) => void
 }) {
   switch (topic) {
     case 'region':
@@ -811,6 +1024,9 @@ function TopicFields({
             formatValue={formatDeposit}
             formatTick={formatDepositTick}
             presets={DEPOSIT_PRESETS}
+            onChange={onRangeChange && ((minimum, maximum) => onRangeChange({
+              minDeposit: minimum, maxDeposit: maximum,
+            }))}
             preserveInitialValuesUntilChange
           />
           <DualRangeFilter
@@ -826,6 +1042,9 @@ function TopicFields({
             formatValue={formatMonthlyRent}
             formatTick={formatMonthlyRentTick}
             presets={MONTHLY_RENT_PRESETS}
+            onChange={onRangeChange && ((minimum, maximum) => onRangeChange({
+              minMonthlyRent: minimum, maxMonthlyRent: maximum,
+            }))}
             preserveInitialValuesUntilChange
           />
         </div>
@@ -845,6 +1064,9 @@ function TopicFields({
           formatValue={formatArea}
           formatTick={formatAreaTick}
           presets={AREA_PRESETS}
+          onChange={onRangeChange && ((minimum, maximum) => onRangeChange({
+            minExclusiveArea: minimum, maxExclusiveArea: maximum,
+          }))}
           preserveInitialValuesUntilChange
         />
       )
@@ -1085,6 +1307,16 @@ function topicDraftFromForm(topic: FilterTopic, data: FormData) {
   }
 }
 
+function topicsDraftFromForm(
+  topics: readonly (readonly [FilterTopic, string])[],
+  data: FormData,
+) {
+  return topics.reduce<ComplexSearchFilters>(
+    (draft, [topic]) => ({ ...draft, ...topicDraftFromForm(topic, data) }),
+    {},
+  )
+}
+
 function replaceTopic(
   filters: ComplexSearchFilters,
   topic: FilterTopic,
@@ -1092,6 +1324,18 @@ function replaceTopic(
 ) {
   const next: Record<string, unknown> = { ...filters }
   TOPIC_KEYS[topic].forEach((key) => delete next[key])
+  return { ...next, ...draft } as ComplexSearchFilters
+}
+
+function replaceTopics(
+  filters: ComplexSearchFilters,
+  topics: readonly (readonly [FilterTopic, string])[],
+  draft: ComplexSearchFilters,
+) {
+  const next: Record<string, unknown> = { ...filters }
+  topics.forEach(([topic]) => {
+    TOPIC_KEYS[topic].forEach((key) => delete next[key])
+  })
   return { ...next, ...draft } as ComplexSearchFilters
 }
 
@@ -1153,8 +1397,23 @@ function topicSummary(
   }
 }
 
-function topicLabel(topic: FilterTopic | null) {
+function desktopTopicLabel(topic: DesktopFilterTopic | null) {
+  if (topic === 'detail') {
+    return '상세'
+  }
   return TOPICS.find(([candidate]) => candidate === topic)?.[1] ?? null
+}
+
+function desktopTopicFor(topic: FilterTopic | null): DesktopFilterTopic {
+  switch (topic) {
+    case null:
+    case 'region':
+    case 'agency':
+    case 'recruitmentType':
+      return 'detail'
+    default:
+      return topic
+  }
 }
 
 function optionsSummary(
@@ -1272,7 +1531,7 @@ function selectedRegionFallback(
 }
 
 function formatDeposit(value: number) {
-  return `${compact(value / 100_000_000)}억`
+  return formatHousingMoney(value)
 }
 
 function formatDepositTick(value: number) {
@@ -1280,15 +1539,15 @@ function formatDepositTick(value: number) {
 }
 
 function formatMonthlyRent(value: number) {
-  return `${compact(value / 10_000)}만 원`
+  return formatHousingMoney(value)
 }
 
 function formatRentSummary(value: number) {
-  return `${compact(value / 10_000)}만`
+  return formatHousingMoney(value)
 }
 
 function formatMonthlyRentTick(value: number) {
-  return value === 600_000 ? '60만+' : value === 0 ? '0' : formatRentSummary(value)
+  return value === 600_000 ? '60만원+' : value === 0 ? '0' : formatRentSummary(value)
 }
 
 function formatArea(value: number) {

@@ -21,6 +21,7 @@ import com.toadzip.backend.housing.dto.response.HousingComplexMapResponse;
 import com.toadzip.backend.housing.exception.InvalidRegionCodeException;
 import com.toadzip.backend.housing.repository.ComplexSummaryQueryRepository;
 import com.toadzip.backend.housing.repository.ComplexSummaryRow;
+import com.toadzip.backend.housing.repository.HousingComplexFilterCondition;
 import com.toadzip.backend.housing.repository.HousingComplexSearchCondition;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
 import java.math.BigDecimal;
@@ -74,7 +75,12 @@ class HousingComplexMapQueryTest {
         when(regionCodeResolver.filterCodes("99")).thenReturn(Optional.empty());
         HousingComplexCodeMapper codeMapper = new HousingComplexCodeMapper();
         HousingComplexSummaryMapper summaryMapper = new HousingComplexSummaryMapper(codeMapper);
-        service = new HousingComplexQueryService(repository, summaryMapper, regionCodeResolver, CLOCK);
+        service = new HousingComplexQueryService(
+                repository,
+                summaryMapper,
+                new HousingComplexSearchRequestNormalizer(regionCodeResolver, CLOCK),
+                CLOCK
+        );
     }
 
     @Test
@@ -87,28 +93,30 @@ class HousingComplexMapQueryTest {
                 ArgumentCaptor.forClass(HousingComplexSearchCondition.class);
         verify(repository).findAll(conditionCaptor.capture());
         HousingComplexSearchCondition condition = conditionCaptor.getValue();
+        HousingComplexFilterCondition filters = condition.filters();
         assertAll(
                 () -> assertEquals(BOUNDS, condition.bounds()),
-                () -> assertEquals("행복 단지", condition.keyword()),
-                () -> assertNull(condition.provinceCode()),
-                () -> assertEquals(Set.of("12210", "29110"), condition.cityCountyDistrictCodes()),
+                () -> assertEquals("행복 단지", filters.keyword()),
+                () -> assertNull(filters.provinceCode()),
+                () -> assertEquals(Set.of("12210", "29110"), filters.cityCountyDistrictCodes()),
                 () -> assertEquals(Set.of(RentalType.HAPPY_HOUSING, RentalType.NATIONAL_RENTAL),
-                        condition.rentalTypes()),
+                        filters.rentalTypes()),
                 () -> assertEquals(Set.of(ApplicationStatus.APPLYING, ApplicationStatus.CLOSED),
-                        condition.applicationStatuses()),
-                () -> assertEquals(Set.of(AgencyCode.LH, AgencyCode.SH), condition.agencyCodes()),
+                        filters.applicationStatuses()),
+                () -> assertEquals(Set.of(AgencyCode.LH, AgencyCode.SH), filters.agencyCodes()),
                 () -> assertEquals(Set.of(RecruitmentType.NEW, RecruitmentType.WAITLIST),
-                        condition.recruitmentTypes()),
-                () -> assertEquals(new BigDecimal("10000000"), condition.minDeposit()),
-                () -> assertEquals(new BigDecimal("70000000"), condition.maxDeposit()),
-                () -> assertEquals(new BigDecimal("100000"), condition.minMonthlyRent()),
-                () -> assertEquals(new BigDecimal("300000"), condition.maxMonthlyRent()),
-                () -> assertEquals(new BigDecimal("36.12"), condition.minExclusiveArea()),
-                () -> assertEquals(new BigDecimal("44.87"), condition.maxExclusiveArea()),
-                () -> assertEquals(2018, condition.builtYearFrom()),
-                () -> assertEquals(2026, condition.builtYearTo()),
-                () -> assertEquals(true, condition.hasElevator()),
-                () -> assertEquals(LocalDate.of(2026, 8, 27), condition.today())
+                        filters.recruitmentTypes()),
+                () -> assertEquals(new BigDecimal("10000000"), filters.minDeposit()),
+                () -> assertEquals(new BigDecimal("70000000"), filters.maxDeposit()),
+                () -> assertEquals(new BigDecimal("100000"), filters.minMonthlyRent()),
+                () -> assertEquals(new BigDecimal("300000"), filters.maxMonthlyRent()),
+                () -> assertEquals(new BigDecimal("36.12"), filters.minExclusiveArea()),
+                () -> assertEquals(new BigDecimal("44.87"), filters.maxExclusiveArea()),
+                () -> assertEquals(2018, filters.builtYearFrom()),
+                () -> assertEquals(2026, filters.builtYearTo()),
+                () -> assertEquals(true, filters.hasElevator()),
+                () -> assertEquals(true, filters.hasActiveAnnouncement()),
+                () -> assertEquals(LocalDate.of(2026, 8, 27), filters.today())
         );
     }
 
@@ -123,10 +131,10 @@ class HousingComplexMapQueryTest {
         verify(repository).findAll(conditionCaptor.capture());
         HousingComplexSearchCondition condition = conditionCaptor.getValue();
         assertAll(
-                () -> assertNull(condition.provinceCode()),
+                () -> assertNull(condition.filters().provinceCode()),
                 () -> assertEquals(
                         Set.of("12110", "12210", "29110", "46110"),
-                        condition.cityCountyDistrictCodes()
+                        condition.filters().cityCountyDistrictCodes()
                 )
         );
     }
@@ -142,7 +150,7 @@ class HousingComplexMapQueryTest {
     }
 
     @Test
-    void 상위_시_지역은_하위_구를_포함하고_다른_시는_제외해_지도_검색조건으로_전달한다() {
+    void 상위_시_지역은_하위_구만_지도_검색조건에_포함한다() {
         when(repository.findAll(any(HousingComplexSearchCondition.class))).thenReturn(List.of());
 
         service.getComplexesForMap(fullSearchRequest("41110"));
@@ -152,8 +160,11 @@ class HousingComplexMapQueryTest {
         verify(repository).findAll(conditionCaptor.capture());
         HousingComplexSearchCondition condition = conditionCaptor.getValue();
         assertAll(
-                () -> assertNull(condition.provinceCode()),
-                () -> assertEquals(Set.of("41110", "41111", "41113"), condition.cityCountyDistrictCodes())
+                () -> assertNull(condition.filters().provinceCode()),
+                () -> assertEquals(
+                        Set.of("41110", "41111", "41113"),
+                        condition.filters().cityCountyDistrictCodes()
+                )
         );
     }
 
@@ -363,7 +374,8 @@ class HousingComplexMapQueryTest {
                 new BigDecimal("37.400000"),
                 new BigDecimal("126.800000"),
                 new BigDecimal("37.600000"),
-                new BigDecimal("127.100000")
+                new BigDecimal("127.100000"),
+                true
         );
     }
 

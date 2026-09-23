@@ -43,6 +43,31 @@ class MapClusteringRegionPolicyTest {
     }
 
     @Test
+    void canonical_지역_코드와_단계별_그룹의_집계_소속을_제공한다() {
+        MapClusteringRegionPolicy policy = policy();
+
+        assertEquals(
+                List.of(
+                        assignment("41130", BASIC_REGION_KEY),
+                        assignment("41131", BASIC_REGION_KEY)
+                ),
+                policy.assignmentsAt(MapClusteringStage.BASIC_REGION)
+        );
+        assertEquals(
+                List.of(
+                        assignment("41130", METROPOLITAN_KEY),
+                        assignment("41131", METROPOLITAN_KEY)
+                ),
+                policy.assignmentsAt(MapClusteringStage.METROPOLITAN)
+        );
+    }
+
+    @Test
+    void 개별_마커_단계에는_지역_집계_소속이_없다() {
+        assertEquals(List.of(), policy().assignmentsAt(MapClusteringStage.INDIVIDUAL));
+    }
+
+    @Test
     void 모든_canonical_지역_코드가_membership에_있어야_한다() {
         assertThrows(
                 IllegalArgumentException.class,
@@ -171,6 +196,13 @@ class MapClusteringRegionPolicyTest {
 
     private static MapClusteringRegionMembership membership(String canonicalRegionCode) {
         return new MapClusteringRegionMembership(canonicalRegionCode, BASIC_REGION_KEY);
+    }
+
+    private static MapClusteringRegionAssignment assignment(
+            String canonicalRegionCode,
+            MapClusteringGroupKey groupKey
+    ) {
+        return new MapClusteringRegionAssignment(canonicalRegionCode, groupKey);
     }
 
     private static MapClusteringGroupKey key(String value) {

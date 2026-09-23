@@ -15,7 +15,8 @@ public class RegionQueryService {
     }
 
     public RegionSearchResponse searchRegions(String keyword) {
-        return new RegionSearchResponse(regionSearchRepository.findByKeyword(keyword.strip())
+        String normalizedKeyword = keyword.strip().replaceAll("\\s+", " ");
+        return new RegionSearchResponse(regionSearchRepository.findByKeyword(normalizedKeyword)
                 .stream()
                 .map(region -> new RegionSearchItemResponse(
                         region.regionCode(),

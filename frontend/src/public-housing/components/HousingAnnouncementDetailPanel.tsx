@@ -8,6 +8,14 @@ import {
   useRef,
   useState,
 } from 'react'
+import {
+  DetailCloseButton,
+  DetailFact,
+  DetailFacts,
+  DetailSection,
+  DetailTable,
+} from './DetailPrimitives.tsx'
+import { AnnouncementStatusBadge } from './AnnouncementStatusBadge.tsx'
 import type {
   AnnouncementHousingType,
   AnnouncementSupplyComplex,
@@ -17,6 +25,8 @@ import {
   groupAnnouncementSupplyRows,
   type HousingAnnouncementSupplyComplexGroup,
 } from '../presentation/announcementDetailPresentation.ts'
+import { MISSING_DATA_LABEL } from '../presentation/missingData'
+import { formatHousingMoney } from '../presentation/housingMoney'
 import styles from './HousingAnnouncementDetailPanel.module.css'
 
 export interface HousingAnnouncementDetailReceptionPlace {
@@ -86,6 +96,7 @@ export interface HousingAnnouncementDetailData {
 export interface HousingAnnouncementDetailPanelProps {
   readonly detail: HousingAnnouncementDetailData
   readonly onClose: () => void
+  readonly backButton?: ReactNode
   readonly onOpenComplex?: (complexId: string) => void
 }
 
@@ -105,6 +116,7 @@ export function HousingAnnouncementDetailPanel({
   detail,
   onClose,
   onOpenComplex,
+  backButton,
 }: HousingAnnouncementDetailPanelProps) {
   const groups = useMemo(
     () => groupAnnouncementSupplyRows(detail.supplyRows),
@@ -121,13 +133,13 @@ export function HousingAnnouncementDetailPanel({
     : firstGroupKey
   const selectedGroup = groups.find((group) => group.key === selectedGroupKey)
     ?? groups[0]
-  const title = detail.title ?? '공고명 정보 확인 중'
+  const title = detail.title ?? MISSING_DATA_LABEL
   const titleId = `announcement-detail-title-${detail.announcementId}`
   const headingRef = useRef<HTMLHeadingElement>(null)
   const tabRefs = useRef(new Map<string, HTMLButtonElement>())
 
   useEffect(() => {
-    headingRef.current?.focus()
+    headingRef.current?.focus({ preventScroll: true })
   }, [detail.announcementId])
 
   function selectGroup(group: HousingAnnouncementSupplyComplexGroup) {
@@ -169,6 +181,7 @@ export function HousingAnnouncementDetailPanel({
       onKeyDown={handlePanelKeyDown}
     >
       <StickyHeader
+        backButton={backButton}
         detail={detail}
         title={title}
         titleId={titleId}
@@ -217,6 +230,7 @@ export function HousingAnnouncementDetailPanel({
 }
 
 function StickyHeader({
+  backButton,
   detail,
   title,
   titleId,
@@ -227,35 +241,54 @@ function StickyHeader({
   title: string
   titleId: string
   headingRef: RefObject<HTMLHeadingElement | null>
+  backButton?: ReactNode
   onClose: () => void
 }) {
+  const hasCountdown = (detail.applicationStatus === 'APPLYING'
+    || detail.applicationStatus === 'BEFORE_APPLICATION')
+    && detail.dDay !== null && Number.isFinite(detail.dDay) && detail.dDay >= 0
+  const statusLabel = detail.applicationStatus === null
+    ? MISSING_DATA_LABEL
+    : detail.applicationStatusLabel
+  const missingContextLabels = [
+    detail.rentalTypeLabel === MISSING_DATA_LABEL ? '임대유형' : null,
+    statusLabel === MISSING_DATA_LABEL ? '접수상태' : null,
+    detail.publicationTypeLabel === MISSING_DATA_LABEL ? '공고구분' : null,
+  ].filter((label): label is string => label !== null)
+
   return (
     <header className={styles.header}>
+      {backButton}
       <div className={styles.headerMain}>
-        <div className={styles.headerContext}>
-          <span>{detail.rentalTypeLabel}</span>
-          <span data-status={statusTone(detail.applicationStatus)}>
-            {detail.applicationStatusLabel}
-          </span>
-          {detail.publicationTypeLabel !== '원공고' && (
+        <div
+          className={styles.headerContext}
+          role="group"
+          aria-label={missingContextLabels.length > 0
+            ? `${missingContextLabels.join(' · ')} ${MISSING_DATA_LABEL}`
+            : '공고 분류 및 접수 상태'}
+        >
+          {detail.rentalTypeLabel !== statusLabel && <span>{detail.rentalTypeLabel}</span>}
+          <AnnouncementStatusBadge
+            label={statusLabel}
+            tone={statusTone(detail.applicationStatus)}
+            countdown={hasCountdown ? {
+              visible: deadlineLabel(detail),
+              accessible: deadlineAccessibleLabel(detail),
+            } : null}
+          />
+          {!hasCountdown && deadlineLabel(detail) !== statusLabel
+            && deadlineLabel(detail) !== detail.rentalTypeLabel && (
+            <span aria-label={deadlineAccessibleLabel(detail)}>{deadlineLabel(detail)}</span>
+          )}
+          {detail.publicationTypeLabel !== '원공고'
+            && detail.publicationTypeLabel !== statusLabel
+            && detail.publicationTypeLabel !== detail.rentalTypeLabel && (
             <span data-publication="changed">{detail.publicationTypeLabel}</span>
           )}
         </div>
         <h2 ref={headingRef} id={titleId} tabIndex={-1} title={title}>{title}</h2>
       </div>
-      <div className={styles.headerActions}>
-        <span className={styles.headerDeadline} aria-label={deadlineAccessibleLabel(detail)}>
-          {deadlineLabel(detail)}
-        </span>
-        <button
-          type="button"
-          className={styles.closeButton}
-          aria-label="공고 상세 닫기"
-          onClick={onClose}
-        >
-          <span aria-hidden="true">×</span>
-        </button>
-      </div>
+      <DetailCloseButton label="공고 상세 닫기" onClose={onClose} />
     </header>
   )
 }
@@ -269,12 +302,24 @@ function NoticeIntro({
 }) {
   const firstGroup = groups[0]
   const remainingComplexes = Math.max(detail.supplyComplexCount - 1, 0)
+  const agency = agencyLabel(detail)
+  const region = regionLabel(detail.regionNames)
+  const missingAgencyAndRegion = agency === MISSING_DATA_LABEL && region === MISSING_DATA_LABEL
   return (
     <section className={styles.intro} aria-label="공고 요약">
       <p>
-        <strong>{agencyLabel(detail)}</strong>
-        <span aria-hidden="true">·</span>
-        <b>{regionLabel(detail.regionNames)}</b>
+        {missingAgencyAndRegion ? (
+          <>
+            <span className={styles.visuallyHidden}>공사·지역 </span>
+            <span>{MISSING_DATA_LABEL}</span>
+          </>
+        ) : (
+          <>
+            <strong data-agency={detail.agencyCode}>{agency}</strong>
+            <span aria-hidden="true">·</span>
+            <b>{region}</b>
+          </>
+        )}
       </p>
       {firstGroup && (
         <p>
@@ -290,29 +335,14 @@ function NoticeIntro({
 function CoreInformation({ detail }: { detail: HousingAnnouncementDetailData }) {
   return (
     <DetailSection title="공고 핵심 정보">
-      <div className={styles.deadline}>
-        <div>
-          <span>접수 마감</span>
-          <time dateTime={detail.applicationEndAt ?? undefined}>
-            {formatDate(detail.applicationEndAt)}
-          </time>
-        </div>
-        <strong aria-label={deadlineAccessibleLabel(detail)}>
-          {deadlineLabel(detail)}
-        </strong>
-      </div>
-      <dl className={styles.coreFacts}>
-        <DetailFact
-          term="접수기간"
-          value={formatDateRange(detail.applicationStartAt, detail.applicationEndAt)}
-        />
-        <DetailFact
-          term="공급 규모"
-          value={`${formatNullableCount(detail.supplyComplexCount, '개 단지')} · ${formatNullableCount(detail.supplyHouseholdCount, '세대')}`}
-        />
+      <DetailFacts>
+        <DetailFact term="접수 시작" value={formatDate(detail.applicationStartAt)} />
+        <DetailFact term="접수 마감" value={formatDate(detail.applicationEndAt)} />
+        <DetailFact term="공급 단지" value={formatNullableCount(detail.supplyComplexCount, '개 단지')} />
+        <DetailFact term="공급 세대" value={formatNullableCount(detail.supplyHouseholdCount, '세대')} />
         <DetailFact term="지역" value={regionLabel(detail.regionNames)} />
         <DetailFact term="공사" value={agencyLabel(detail)} />
-      </dl>
+      </DetailFacts>
       <div className={styles.meta}>
         <span>게시 {formatDate(detail.publishedAt)}</span>
         <span>조회 {detail.viewCount.toLocaleString('ko-KR')}</span>
@@ -340,7 +370,7 @@ function AudienceSection({ targets }: { targets: readonly string[] }) {
       description="세부 소득·자산 기준과 최종 신청자격은 공고문에서 확인해 주세요."
     >
       {targets.length === 0 && (
-        <EmptyState>신청 대상 정보 확인 중</EmptyState>
+        <EmptyState>{MISSING_DATA_LABEL}</EmptyState>
       )}
       {targets.length > 0 && (
         <div className={styles.audiences}>
@@ -370,9 +400,13 @@ function ScheduleSection({ detail }: { detail: HousingAnnouncementDetailData }) 
 
   return (
     <DetailSection title="접수 일정">
-      {!hasSchedule && <EmptyState>상세 일정 정보 확인 중</EmptyState>}
+      {!hasSchedule && <EmptyState>{MISSING_DATA_LABEL}</EmptyState>}
       {hasSchedule && (
-        <ol className={styles.schedule}>
+        <DetailTable caption="접수 일정">
+          <colgroup>
+            <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
+            <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
+          </colgroup>
           {hasApplicationFallback && (
             <ScheduleItem
               label="접수 기간"
@@ -396,7 +430,7 @@ function ScheduleSection({ detail }: { detail: HousingAnnouncementDetailData }) 
               endAt={null}
             />
           )}
-        </ol>
+        </DetailTable>
       )}
     </DetailSection>
   )
@@ -413,12 +447,44 @@ function ScheduleItem({
   endAt: string | null
   current?: boolean
 }) {
+  const idPrefix = useId()
+  const groupId = `${idPrefix}-schedule`
+  const startId = `${idPrefix}-start`
+  const endId = `${idPrefix}-end`
+  const hasEnd = endAt !== null && startAt !== endAt
   return (
-    <li data-current={current || undefined} aria-current={current ? 'step' : undefined}>
-      <strong>{label}</strong>
-      <time dateTime={startAt ?? undefined}>{formatDateTimeRange(startAt, endAt)}</time>
-      {current && <span>현재 단계</span>}
-    </li>
+    <tbody data-current={current || undefined} aria-current={current ? 'step' : undefined}>
+      {hasEnd ? (
+        <>
+          <tr className={styles.scheduleHeading}>
+            <th id={groupId} scope="rowgroup" colSpan={4}>
+              {label}
+              {current && <>{' '}<span className={styles.currentStep}>현재 단계</span></>}
+            </th>
+          </tr>
+          <tr>
+            <th id={startId} scope="row">시작</th>
+            <td headers={`${groupId} ${startId}`}>
+              <time dateTime={startAt ?? undefined}>{formatDateTime(startAt)}</time>
+            </td>
+            <th id={endId} scope="row">종료</th>
+            <td headers={`${groupId} ${endId}`}>
+              <time dateTime={endAt}>{formatDateTime(endAt)}</time>
+            </td>
+          </tr>
+        </>
+      ) : (
+        <tr>
+          <th id={groupId} scope="row">
+            {label}
+            {current && <>{' '}<span className={styles.currentStep}>현재 단계</span></>}
+          </th>
+          <td headers={groupId} colSpan={3}>
+            <time dateTime={startAt ?? undefined}>{formatDateTime(startAt)}</time>
+          </td>
+        </tr>
+      )}
+    </tbody>
   )
 }
 
@@ -437,12 +503,16 @@ function ReceptionPlaces({
           const url = safeHttpUrl(place.url)
           return (
             <li key={`${place.name ?? 'place'}-${index}`}>
-              <div>
-                <strong>{place.name ?? '접수처 정보 확인 중'}</strong>
+              <div className={styles.receptionHeading}>
+                <strong>{place.name ?? MISSING_DATA_LABEL}</strong>
                 <span>{place.methodLabel}</span>
               </div>
-              {hasText(place.address) && <p>{place.address}</p>}
-              {hasText(place.phoneNumber) && <p>{place.phoneNumber}</p>}
+              {(hasText(place.address) || hasText(place.phoneNumber)) && (
+                <DetailFacts>
+                  {hasText(place.address) && <DetailFact term="주소" value={place.address} wide />}
+                  {hasText(place.phoneNumber) && <DetailFact term="문의" value={place.phoneNumber} />}
+                </DetailFacts>
+              )}
               {url && <ExternalLink href={url}>접수처 열기</ExternalLink>}
             </li>
           )
@@ -471,7 +541,7 @@ function ComplexComparison({
       description="주소와 주택형별 면적·임대조건 범위를 한눈에 비교합니다."
       aside={`${formatNullableCount(supplyComplexCount, '개 단지')} · ${formatNullableCount(supplyHouseholdCount, '세대')}`}
     >
-      {groups.length === 0 && <EmptyState>연결된 단지 정보 확인 중</EmptyState>}
+      {groups.length === 0 && <EmptyState>{MISSING_DATA_LABEL}</EmptyState>}
       <div className={styles.complexList}>
         {groups.map((group) => (
           <ComplexCard
@@ -496,6 +566,8 @@ function ComplexCard({
   onOpenComplex?: (complexId: string) => void
 }) {
   const imageUrl = safeHttpUrl(group.overviewImageUrl)
+  const depositRange = moneyRange(group.rows, 'deposit')
+  const monthlyRentRange = moneyRange(group.rows, 'monthlyRent')
 
   function openComplex() {
     if (!group.complexId || !onOpenComplex) {
@@ -506,38 +578,54 @@ function ComplexCard({
 
   return (
     <article className={styles.complexCard} aria-label={`${group.name} 단지 비교`}>
-      <div className={styles.complexImage}>
-        {imageUrl && <img src={imageUrl} alt={`${group.name} 단지 조감도`} loading="lazy" />}
-        {!imageUrl && <span>조감도 정보 확인 중</span>}
-      </div>
-      <div className={styles.complexBody}>
-        <div className={styles.complexHeading}>
-          <div>
-            <strong>{group.name}</strong>
-            <span>{rentalTypeLabel}</span>
+      <header className={styles.complexHeading}>
+        <div>
+          <strong>{group.name}</strong>
+          <span>{rentalTypeLabel}</span>
+        </div>
+        {group.complexId && onOpenComplex && (
+          <button
+            type="button"
+            data-detail-return-focus={`complex:${group.complexId}`}
+            aria-label={`${group.name} 단지 상세 보기`}
+            onClick={openComplex}
+          >
+            단지 상세
+          </button>
+        )}
+      </header>
+      <div className={styles.complexSummary} data-has-image={imageUrl !== null}>
+        {imageUrl && (
+          <div className={styles.complexImage}>
+            <img src={imageUrl} alt={`${group.name} 단지 조감도`} loading="lazy" />
           </div>
-          {group.complexId && onOpenComplex && (
-            <button
-              type="button"
-              data-detail-return-focus={`complex:${group.complexId}`}
-              aria-label={`${group.name} 단지 상세 보기`}
-              onClick={openComplex}
-            >
-              단지 상세
-            </button>
-          )}
-        </div>
-        <p>{group.address ?? '상세주소 정보 확인 중'}</p>
-        <div className={styles.complexCounts}>
-          <span>총 <b>{formatNullableCount(group.totalHouseholdCount, '세대')}</b></span>
-          <span>공급 <b>{formatNullableCount(group.supplyHouseholdCount, '세대')}</b></span>
+        )}
+        <div className={styles.complexBody}>
+          <p>{group.address ?? MISSING_DATA_LABEL}</p>
+          {!imageUrl && <small>조감도 {MISSING_DATA_LABEL}</small>}
+          <div className={styles.complexCounts}>
+            <span>총 <b>{formatNullableCount(group.totalHouseholdCount, '세대')}</b></span>
+            <span>공급 <b>{formatNullableCount(group.supplyHouseholdCount, '세대')}</b></span>
+          </div>
         </div>
       </div>
-      <dl className={styles.complexRanges}>
-        <DetailFact term="전용면적" value={areaRange(group.rows)} />
-        <DetailFact term="보증금" value={moneyRange(group.rows, 'deposit')} />
-        <DetailFact term="월 임대료" value={moneyRange(group.rows, 'monthlyRent', true)} />
-      </dl>
+      <div className={styles.complexRanges}>
+        <DetailFacts>
+          <DetailFact term="전용면적" value={areaRange(group.rows)} wide />
+          <DetailFact
+            term="보증금"
+            value={depositRange}
+            wide={depositRange.includes(' – ')}
+            emphasis={group.rows.some((row) => row.targets.some((target) => Number.isFinite(target.deposit)))}
+          />
+          <DetailFact
+            term="월 임대료"
+            value={monthlyRentRange}
+            wide={monthlyRentRange.includes(' – ')}
+            emphasis={group.rows.some((row) => row.targets.some((target) => Number.isFinite(target.monthlyRent)))}
+          />
+        </DetailFacts>
+      </div>
     </article>
   )
 }
@@ -619,9 +707,10 @@ function HousingTypeCard({
   row: HousingAnnouncementDetailSupplyRow
   onOpenFloorPlan: (selection: FloorPlanSelection) => void
 }) {
+  const idPrefix = useId()
   const housingTypeName = row.housingType?.name
     ?? row.sourceHousingTypeName
-    ?? '주택형 정보 확인 중'
+    ?? MISSING_DATA_LABEL
   const twoDimensionalUrl = safeHttpUrl(row.housingType?.floorPlanImageUrl ?? null)
   const threeDimensionalUrl = safeHttpUrl(row.housingType?.floorPlan3dImageUrl ?? null)
   const hasFloorPlan = twoDimensionalUrl !== null || threeDimensionalUrl !== null
@@ -647,38 +736,80 @@ function HousingTypeCard({
             평면도 보기
           </button>
         )}
-        {!hasFloorPlan && <small>평면도 정보 확인 중</small>}
+        {!hasFloorPlan && <small>{MISSING_DATA_LABEL}</small>}
       </div>
-      <dl className={styles.housingTypeMetrics}>
-        <DetailFact term="공급 구분" value={row.supplyTypeLabel} />
-        <DetailFact term="전용면적" value={formatArea(row.housingType?.exclusiveArea ?? null)} />
-        <DetailFact term="공급 세대수" value={formatNullableCount(row.totalSupplyHouseholdCount, '세대')} />
-        <DetailFact term="입주 예정" value={formatYearMonth(row.occupancyExpectedYearMonth)} />
-      </dl>
+      <DetailTable caption={`${complexName} ${housingTypeName} 공급 정보`}>
+        <colgroup>
+          <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
+          <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
+        </colgroup>
+        <tbody>
+          <tr>
+            <th id={`${idPrefix}-kind`} scope="row">공급 구분</th>
+            <td headers={`${idPrefix}-kind`}>{row.supplyTypeLabel}</td>
+            <th id={`${idPrefix}-area`} scope="row">전용면적</th>
+            <td headers={`${idPrefix}-area`}>{formatArea(row.housingType?.exclusiveArea ?? null)}</td>
+          </tr>
+          <tr>
+            <th id={`${idPrefix}-count`} scope="row">공급 세대수</th>
+            <td headers={`${idPrefix}-count`}>{formatNullableCount(row.totalSupplyHouseholdCount, '세대')}</td>
+            <th id={`${idPrefix}-occupancy`} scope="row">입주 예정</th>
+            <td headers={`${idPrefix}-occupancy`}>{formatYearMonth(row.occupancyExpectedYearMonth)}</td>
+          </tr>
+        </tbody>
+      </DetailTable>
       <SupplyTargets targets={row.targets} />
     </article>
   )
 }
 
 function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget[] }) {
+  const idPrefix = useId()
   if (targets.length === 0) {
-    return <p className={styles.targetEmpty}>대상별 임대조건 정보 확인 중</p>
+    return <p className={styles.targetEmpty}>{MISSING_DATA_LABEL}</p>
   }
   return (
     <ul className={styles.targetList} aria-label="대상별 공급 조건">
-      {targets.map((target) => (
+      {targets.map((target, index) => (
         <li key={target.supplyTargetId}>
-          <div>
-            <strong>{target.target ?? '공급 대상 정보 확인 중'}</strong>
+          <header className={styles.targetHeading}>
+            <strong>{target.target ?? MISSING_DATA_LABEL}</strong>
             {hasText(target.priority) && <span>{target.priority}</span>}
-          </div>
-          <dl>
-            <DetailFact term="공급 세대수" value={formatNullableCount(target.supplyHouseholdCount, '세대')} />
-            <DetailFact term="모집 예비자 수" value={formatNullableCount(target.waitlistCount, '명')} />
-            <DetailFact term="보증금" value={formatMoney(target.deposit)} />
-            <DetailFact term="월 임대료" value={formatMoney(target.monthlyRent, true)} />
-          </dl>
-          {hasText(target.applicationCondition) && <p>{target.applicationCondition}</p>}
+          </header>
+          <DetailTable caption={`${target.target ?? MISSING_DATA_LABEL} 공급 조건`}>
+            <colgroup>
+              <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
+              <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
+            </colgroup>
+            <tbody>
+              <tr>
+                <th id={`${idPrefix}-${index}-count`} scope="row">공급 세대수</th>
+                <td headers={`${idPrefix}-${index}-count`} data-numeric="true">
+                  {formatNullableCount(target.supplyHouseholdCount, '세대')}
+                </td>
+                <th id={`${idPrefix}-${index}-waitlist`} scope="row">모집 예비자 수</th>
+                <td headers={`${idPrefix}-${index}-waitlist`} data-numeric="true">
+                  {formatNullableCount(target.waitlistCount, '명')}
+                </td>
+              </tr>
+              <tr>
+                <th id={`${idPrefix}-${index}-deposit`} scope="row">보증금</th>
+                <td headers={`${idPrefix}-${index}-deposit`} data-emphasis={Number.isFinite(target.deposit) || undefined} data-numeric="true">
+                  {formatHousingMoney(target.deposit)}
+                </td>
+                <th id={`${idPrefix}-${index}-rent`} scope="row">월 임대료</th>
+                <td headers={`${idPrefix}-${index}-rent`} data-emphasis={Number.isFinite(target.monthlyRent) || undefined} data-numeric="true">
+                  {formatHousingMoney(target.monthlyRent)}
+                </td>
+              </tr>
+              {hasText(target.applicationCondition) && (
+                <tr>
+                  <th id={`${idPrefix}-${index}-condition`} scope="row">신청 조건</th>
+                  <td headers={`${idPrefix}-${index}-condition`} colSpan={3}>{target.applicationCondition}</td>
+                </tr>
+              )}
+            </tbody>
+          </DetailTable>
         </li>
       ))}
     </ul>
@@ -698,13 +829,13 @@ function AttachmentList({
       <ul className={styles.attachmentList}>
         {attachments.map((attachment) => {
           const url = safeHttpUrl(attachment.fileUrl)
-          const name = attachment.fileName ?? '파일명 정보 확인 중'
+          const name = attachment.fileName ?? MISSING_DATA_LABEL
           return (
             <li key={attachment.attachmentId}>
               <span>{attachment.fileTypeLabel}</span>
               <strong>{name}</strong>
               {url && <ExternalLink href={url}>열기</ExternalLink>}
-              {!url && <small>링크 확인 중</small>}
+              {!url && <small>{MISSING_DATA_LABEL}</small>}
             </li>
           )
         })}
@@ -717,11 +848,11 @@ function DocumentActions({ detail }: { detail: HousingAnnouncementDetailData }) 
   const sourceUrl = safeHttpUrl(detail.documentLinkUrl)
   const primaryAttachment = findPrimaryNoticeAttachment(detail.attachments)
   const attachmentUrl = safeHttpUrl(primaryAttachment?.fileUrl ?? null)
-  const attachmentName = primaryAttachment?.fileName ?? '공고문 파일 정보 확인 중'
-  const linkStatus = [
-    attachmentUrl ? '첨부파일 연결됨' : '첨부파일 링크 확인 중',
-    sourceUrl ? '원문 연결됨' : '원문 링크 확인 중',
-  ].join(' · ')
+  const attachmentName = primaryAttachment?.fileName ?? MISSING_DATA_LABEL
+  const linkStatus = [...new Set([
+    attachmentUrl ? '첨부파일 연결됨' : MISSING_DATA_LABEL,
+    sourceUrl ? '원문 연결됨' : MISSING_DATA_LABEL,
+  ])].join(' · ')
 
   return (
     <footer className={styles.documents}>
@@ -730,7 +861,7 @@ function DocumentActions({ detail }: { detail: HousingAnnouncementDetailData }) 
         <p>
           <strong>공고문</strong>
           <small title={attachmentName}>{attachmentName}</small>
-          <em>{linkStatus}</em>
+          {linkStatus !== attachmentName && <em>{linkStatus}</em>}
         </p>
       </div>
       <nav aria-label="공고문 바로가기">
@@ -802,7 +933,7 @@ function FloorPlanDialog({
             <span>{selection.complexName}</span>
             <h2 id={titleId}>{selection.housingTypeName} 평면도</h2>
           </div>
-          <button type="button" aria-label="평면도 닫기" onClick={onClose}>×</button>
+          <DetailCloseButton label="평면도 닫기" onClose={onClose} />
         </header>
         <div className={styles.floorPlans}>
           {selection.twoDimensionalUrl && (
@@ -818,42 +949,8 @@ function FloorPlanDialog({
             </figure>
           )}
         </div>
-        {!selection.threeDimensionalUrl && <p className={styles.floorPlanStatus}>3D 평면도 정보 없음</p>}
+        {!selection.threeDimensionalUrl && <p className={styles.floorPlanStatus}>{MISSING_DATA_LABEL}</p>}
       </section>
-    </div>
-  )
-}
-
-function DetailSection({
-  title,
-  description,
-  aside,
-  children,
-}: {
-  title: string
-  description?: string
-  aside?: string
-  children: ReactNode
-}) {
-  return (
-    <section className={styles.section}>
-      <div className={styles.sectionHeading}>
-        <div>
-          <h3>{title}</h3>
-          {description && <p>{description}</p>}
-        </div>
-        {aside && <span>{aside}</span>}
-      </div>
-      {children}
-    </section>
-  )
-}
-
-function DetailFact({ term, value }: { term: string; value: string }) {
-  return (
-    <div>
-      <dt>{term}</dt>
-      <dd>{value}</dd>
     </div>
   )
 }
@@ -880,7 +977,7 @@ function deadlineLabel(detail: HousingAnnouncementDetailData) {
     return '접수 마감'
   }
   if (detail.dDay === null) {
-    return 'D-day 확인 중'
+    return MISSING_DATA_LABEL
   }
   if (detail.dDay === 0) {
     return 'D-day'
@@ -899,7 +996,7 @@ function deadlineAccessibleLabel(detail: HousingAnnouncementDetailData) {
     return '접수 마감'
   }
   if (detail.dDay === null) {
-    return '접수 마감일 정보 확인 중'
+    return MISSING_DATA_LABEL
   }
   if (detail.dDay === 0) {
     return '접수 마감일'
@@ -909,7 +1006,7 @@ function deadlineAccessibleLabel(detail: HousingAnnouncementDetailData) {
 
 function statusTone(value: string | null) {
   if (value === 'APPLYING') {
-    return 'open'
+    return 'applying'
   }
   if (value === 'BEFORE_APPLICATION') {
     return 'upcoming'
@@ -921,27 +1018,27 @@ function statusTone(value: string | null) {
 }
 
 function agencyLabel(detail: HousingAnnouncementDetailData) {
-  return detail.agencyCode ?? detail.agencyName ?? '공급기관 정보 확인 중'
+  return detail.agencyCode ?? detail.agencyName ?? MISSING_DATA_LABEL
 }
 
 function regionLabel(regions: readonly string[]) {
-  return regions.length > 0 ? regions.join(' · ') : '지역 정보 확인 중'
+  return regions.length > 0 ? regions.join(' · ') : MISSING_DATA_LABEL
 }
 
 function formatDate(value: string | null) {
   if (!value) {
-    return '정보 확인 중'
+    return MISSING_DATA_LABEL
   }
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
   if (!match) {
-    return '정보 확인 중'
+    return MISSING_DATA_LABEL
   }
   return `${match[1]}.${match[2]}.${match[3]}`
 }
 
 function formatDateTime(value: string | null) {
   const date = formatDate(value)
-  if (date === '정보 확인 중' || !value) {
+  if (date === MISSING_DATA_LABEL || !value) {
     return date
   }
   const time = /T(\d{2}):(\d{2})/.exec(value)
@@ -951,57 +1048,29 @@ function formatDateTime(value: string | null) {
   return `${date} ${time[1]}:${time[2]}`
 }
 
-function formatDateRange(start: string | null, end: string | null) {
-  if (start === null && end === null) {
-    return '정보 확인 중'
-  }
-  if (start === end) {
-    return formatDate(start)
-  }
-  return `${formatDate(start)} – ${formatDate(end)}`
-}
-
-function formatDateTimeRange(start: string | null, end: string | null) {
-  if (start === null && end === null) {
-    return '정보 확인 중'
-  }
-  if (start === end || end === null) {
-    return formatDateTime(start)
-  }
-  return `${formatDateTime(start)} – ${formatDateTime(end)}`
-}
-
 function formatYearMonth(value: string | null) {
   if (!value) {
-    return '정보 확인 중'
+    return MISSING_DATA_LABEL
   }
   const match = /^(\d{4})-?(\d{2})/.exec(value)
   if (!match) {
-    return '정보 확인 중'
+    return MISSING_DATA_LABEL
   }
   return `${match[1]}.${match[2]}`
 }
 
 function formatNullableCount(value: number | null, unit: string) {
   if (value === null) {
-    return '정보 확인 중'
+    return MISSING_DATA_LABEL
   }
   return `${value.toLocaleString('ko-KR')}${unit}`
 }
 
 function formatArea(value: number | null) {
   if (value === null) {
-    return '정보 확인 중'
+    return MISSING_DATA_LABEL
   }
   return `${value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}㎡`
-}
-
-function formatMoney(value: number | null, monthly = false) {
-  if (value === null) {
-    return '정보 확인 중'
-  }
-  const prefix = monthly ? '월 ' : ''
-  return `${prefix}${value.toLocaleString('ko-KR')}원`
 }
 
 function areaRange(rows: readonly HousingAnnouncementDetailSupplyRow[]) {
@@ -1014,12 +1083,11 @@ function areaRange(rows: readonly HousingAnnouncementDetailSupplyRow[]) {
 function moneyRange(
   rows: readonly HousingAnnouncementDetailSupplyRow[],
   key: 'deposit' | 'monthlyRent',
-  monthly = false,
 ) {
   const values = rows.flatMap((row) => row.targets)
     .map((target) => target[key])
     .filter((value): value is number => value !== null)
-  return numericRange(values, (value) => formatMoney(value, monthly))
+  return numericRange(values, formatHousingMoney)
 }
 
 function numericRange(
@@ -1027,7 +1095,7 @@ function numericRange(
   format: (value: number) => string,
 ) {
   if (values.length === 0) {
-    return '정보 확인 중'
+    return MISSING_DATA_LABEL
   }
   const minimum = Math.min(...values)
   const maximum = Math.max(...values)
