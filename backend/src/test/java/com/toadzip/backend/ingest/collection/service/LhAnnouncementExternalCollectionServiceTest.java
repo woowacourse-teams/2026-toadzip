@@ -640,7 +640,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         source(announcementSource());
         String previousVersion = announcementRequestDescription()
                 .replace("COLLECTION_VERSION=3", "COLLECTION_VERSION=2");
-        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY), any(), any(), any(), any()))
+        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY), any(), any(), any()))
                 .thenReturn(progressWithCompletedRequest(previousVersion));
         when(externalRepository.fetchSupply(any())).thenReturn(supplyResponse());
         when(sourceStore.replaceSupplies(eq("100"), eq(announcementRequestDescription()), any()))
