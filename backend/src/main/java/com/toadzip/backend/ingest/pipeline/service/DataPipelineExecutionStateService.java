@@ -72,6 +72,13 @@ public class DataPipelineExecutionStateService {
     }
 
     @Transactional
+    public void completeStepWithWarnings(UUID executionId, DataPipelineStep step, String report) {
+        DataPipelineExecution execution = find(executionId);
+        execution.completeStepWithWarnings(step, report);
+        executionRepository.flush();
+    }
+
+    @Transactional
     public void startStepAfterPartialFailure(
             UUID executionId,
             DataPipelineStep partiallyFailedStep,

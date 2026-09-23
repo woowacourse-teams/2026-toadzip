@@ -228,6 +228,11 @@ public class DataPipelineExecutionService {
             }
 
             @Override
+            public void completedWithWarnings(DataPipelineStep step, String report) {
+                executionStateService.completeStepWithWarnings(executionId, step, report);
+            }
+
+            @Override
             public void skipped(DataPipelineStep step, String reason, String serverResponse) {
                 executionStateService.skipStep(
                         executionId,
