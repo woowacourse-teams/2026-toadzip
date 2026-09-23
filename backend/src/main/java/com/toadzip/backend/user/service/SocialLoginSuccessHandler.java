@@ -37,6 +37,7 @@ public class SocialLoginSuccessHandler implements AuthenticationSuccessHandler {
             HttpServletResponse response,
             Authentication authentication
     ) throws IOException, ServletException {
+        Long userId;
         try {
             OAuth2AuthenticationToken oauth = (OAuth2AuthenticationToken) authentication;
             Object kakaoId = oauth.getPrincipal().getAttributes().get("id");
@@ -44,19 +45,20 @@ public class SocialLoginSuccessHandler implements AuthenticationSuccessHandler {
             if ("google".equals(oauth.getAuthorizedClientRegistrationId())) {
                 subject = oauth.getPrincipal().getAttribute("sub");
             }
-            Long userId = socialUserService.findOrCreate(oauth.getAuthorizedClientRegistrationId(), subject);
-            Authentication userAuthentication = UsernamePasswordAuthenticationToken.authenticated(
-                    userId.toString(), null, AuthorityUtils.createAuthorityList("ROLE_USER"));
-            request.getSession();
-            request.changeSessionId();
-            SecurityContext context = SecurityContextHolder.createEmptyContext();
-            context.setAuthentication(userAuthentication);
-            SecurityContextHolder.setContext(context);
-            securityContextRepository.saveContext(context, request, response);
-            response.sendRedirect(successUrl);
+            userId = socialUserService.findOrCreate(oauth.getAuthorizedClientRegistrationId(), subject);
         } catch (RuntimeException exception) {
             LOGGER.warn("event=user.login.failed phase=session reason={}", exception.getClass().getSimpleName());
-            failureHandler.fail(request, response);
+            failureHandler.failAfterProviderAuthentication(response);
+            return;
         }
+        Authentication userAuthentication = UsernamePasswordAuthenticationToken.authenticated(
+                userId.toString(), null, AuthorityUtils.createAuthorityList("ROLE_USER"));
+        request.getSession();
+        request.changeSessionId();
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(userAuthentication);
+        SecurityContextHolder.setContext(context);
+        securityContextRepository.saveContext(context, request, response);
+        response.sendRedirect(successUrl);
     }
 }

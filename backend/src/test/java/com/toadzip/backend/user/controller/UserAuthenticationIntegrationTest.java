@@ -12,10 +12,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.user.domain.User;
 import com.toadzip.backend.user.repository.UserRepository;
 import com.toadzip.backend.user.service.SocialLoginSuccessHandler;
 import com.toadzip.backend.user.service.SocialUserService;
-import com.toadzip.backend.user.domain.User;
 import java.time.LocalDateTime;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -26,9 +26,13 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -83,6 +87,24 @@ class UserAuthenticationIntegrationTest {
                         .param("state", "unknown-state"))
                 .andExpect(status().isFound())
                 .andExpect(header().string("Location", "http://localhost:5173/login?login=failed"));
+    }
+
+    @Test
+    void 유효하지_않은_콜백은_기존_관리자_로그인을_종료하지_않는다() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
+                "admin", null, AuthorityUtils.createAuthorityList("ROLE_ADMIN")));
+        session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
+
+        mockMvc.perform(get("/api/auth/oauth2/callback/kakao")
+                        .session(session)
+                        .param("code", "invalid-code")
+                        .param("state", "unknown-state"))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", "http://localhost:5173/login?login=failed"));
+        mockMvc.perform(get("/api/admin/auth/me").session(session))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -154,7 +176,8 @@ class UserAuthenticationIntegrationTest {
                 request, response, authentication("kakao", Map.of("sub", "not-an-id"), "sub"));
 
         assertEquals("http://localhost:5173/login?login=failed", response.getRedirectedUrl());
-        assertNull(request.getSession(false));
+        assertNull(request.getSession(false).getAttribute(
+                HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY));
     }
 
     @Test

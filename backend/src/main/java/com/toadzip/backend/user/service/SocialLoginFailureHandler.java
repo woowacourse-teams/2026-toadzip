@@ -25,14 +25,11 @@ public class SocialLoginFailureHandler implements AuthenticationFailureHandler {
             org.springframework.security.core.AuthenticationException exception
     ) throws IOException {
         LOGGER.warn("event=user.login.failed phase=provider reason={}", exception.getClass().getSimpleName());
-        fail(request, response);
+        response.sendRedirect(failureUrl);
     }
 
-    public void fail(HttpServletRequest request, HttpServletResponse response) throws IOException {
+    public void failAfterProviderAuthentication(HttpServletResponse response) throws IOException {
         SecurityContextHolder.clearContext();
-        if (request.getSession(false) != null) {
-            request.getSession(false).invalidate();
-        }
         response.sendRedirect(failureUrl);
     }
 }
