@@ -48,4 +48,5 @@ services:
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
     ports:
       - "${BACKEND_PORT:-8080}:8080"
+      - "${MANAGEMENT_PORT:-8081}:8081"
     restart: unless-stopped

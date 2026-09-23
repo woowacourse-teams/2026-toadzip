@@ -11,3 +11,4 @@
 - [개발 서버](DEV_SERVER_SETUP.md)
 - [운영 서버](PROD_SERVER_SETUP.md)
 - [DB 서버](../infra/db/SETUP.md)
+- [모니터링 서버](MONITORING_SERVER_SETUP.md)
