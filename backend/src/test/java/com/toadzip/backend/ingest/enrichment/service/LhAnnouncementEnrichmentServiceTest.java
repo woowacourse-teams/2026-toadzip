@@ -901,6 +901,37 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     @Test
+    void 같은_공고의_첫_행에_조회_URL이_없어도_연결된_다음_행으로_매핑과_보강한다() {
+        saveComplex();
+        HousingComplex complex = housingComplexRepository.findAll().getFirst();
+        housingTypeRepository.save(HousingType.createFromMyHome(
+                complex, "source-housing-type-id-59B", "59B",
+                new BigDecimal("59.8000"), new BigDecimal("84.0000")
+        ));
+        MyHomeAnnouncementSource unsupported = myHomeSource();
+        ReflectionTestUtils.setField(unsupported, "url", null);
+        myHomeSourceRepository.save(unsupported);
+        MyHomeAnnouncementSource linked = myHomeSource();
+        ReflectionTestUtils.setField(linked, "houseTyNm", "59B");
+        ReflectionTestUtils.setField(linked, "houseSn", 2);
+        ReflectionTestUtils.setField(linked, "sourceKey", "5:210261:2");
+        myHomeSourceRepository.save(linked);
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(linked);
+
+        var mapping = mappingService.mapAll();
+        var enrichment = enrichmentService.enrichAll();
+
+        assertThat(mapping.failedSourceRowCount()).isZero();
+        assertThat(enrichment.failedSourceCount()).isZero();
+        assertThat(enrichment.updatedAnnouncementCount()).isOne();
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement ->
+                assertThat(announcement.getCorrectionCancellationReason()).isEqualTo("정정 사유"));
+        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target ->
+                assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000"));
+    }
+
+    @Test
     void 같은_panId의_다른_조회조건_원천은_매핑과_보강에_섞이지_않는다() {
         saveComplex();
         MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());

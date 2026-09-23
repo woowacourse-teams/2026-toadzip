@@ -892,6 +892,19 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void 같은_공고의_첫_행이_지원되지_않아도_다음_행에서_수집한다() {
+        source(unsupportedLhAnnouncementSource(), announcementSource());
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("100"), any(), any())).thenReturn(1);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        verify(externalRepository).fetchDetail(any());
+        assertThat(result.externalApiCallCount()).isOne();
+        assertThat(result.storedRowCount()).isOne();
+    }
+
+    @Test
     void 통합공공임대는_LH_공급정보_코드_064로_호출한다() {
         source(integratedLhAnnouncementSource());
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
@@ -973,6 +986,20 @@ class LhAnnouncementExternalCollectionServiceTest {
                 any(),
                 eq(NOW.minus(Duration.ofHours(24)))
         );
+    }
+
+    @Test
+    void 같은_공고의_종료된_첫_행은_다음_유효한_행을_막지_않는다() {
+        MyHomeAnnouncementSource ended = announcementSource();
+        ReflectionTestUtils.setField(ended, "endDe", "20260819");
+        source(ended, announcementSource());
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("100"), any(), any())).thenReturn(1);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        verify(externalRepository).fetchDetail(any());
+        assertThat(result.externalApiCallCount()).isOne();
     }
 
     @Test

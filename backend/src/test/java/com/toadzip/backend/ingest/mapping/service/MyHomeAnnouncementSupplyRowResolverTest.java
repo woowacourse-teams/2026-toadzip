@@ -67,7 +67,8 @@ class MyHomeAnnouncementSupplyRowResolverTest {
                 false
         );
         LhAnnouncementRequest request = new LhAnnouncementRequest("pan-id", "03", "06", "07", "062");
-        when(linkResolver.resolve(source)).thenReturn(request);
+        when(linkResolver.resolveFirstLinked(List.of(source)))
+                .thenReturn(new LhAnnouncementLinkResolver.LinkedSource(source, request));
         when(supplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
                 "pan-id", LhAnnouncementCollectionCheckpoint.requestHashOf(request.requestDescription())))
                 .thenReturn(List.of(lhSupply(lhComplexName)));
