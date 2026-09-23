@@ -23,6 +23,7 @@ describe('integratedSearchRepository', () => {
       new AbortController().signal,
     )
 
+    expect(result.totalCount).toBeNull()
     expect(result.announcements).toHaveLength(1)
     expect(result.complexes).toHaveLength(1)
     expect(result.regions).toHaveLength(1)
@@ -34,7 +35,7 @@ describe('integratedSearchRepository', () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       data: {
         announcements: [], complexes: [], failures: [], hasNext: true,
-        page: 1, query: '수원', regions: [item('REGION', '41110')], size: 5,
+        page: 1, query: '수원', regions: [item('REGION', '41110')], size: 5, totalCount: 23,
       },
     }), { status: 200 }))
     const controller = new AbortController()
@@ -48,6 +49,7 @@ describe('integratedSearchRepository', () => {
     })
     expect(fetcher.mock.calls[0][1].signal).toBe(controller.signal)
     expect(result.hasNext).toBe(true)
+    expect(result.totalCount).toBe(23)
     expect(result.regions[0].id).toBe('41110')
   })
 })

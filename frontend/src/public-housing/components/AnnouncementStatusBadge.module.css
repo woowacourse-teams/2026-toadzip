@@ -1,0 +1,38 @@
+.badge {
+  display: inline-flex;
+  min-height: var(--ds-status-badge-min-height);
+  align-items: center;
+  gap: var(--ds-status-badge-gap);
+  padding: var(--ds-status-badge-padding-block) var(--ds-status-badge-padding-inline);
+  border-radius: var(--ds-status-badge-radius);
+  background: var(--ds-color-status-applying-surface);
+  color: var(--ds-color-status-applying);
+  font-family: inherit;
+  font-size: var(--ds-status-badge-font-size);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.badge[data-tone='upcoming'] {
+  background: var(--ds-color-status-upcoming-surface);
+  color: var(--ds-color-status-upcoming);
+}
+
+.badge[data-tone='closed'],
+.badge[data-tone='cancelled'],
+.badge[data-tone='unknown'] {
+  background: var(--ds-color-status-neutral-surface);
+  color: var(--ds-color-status-neutral);
+}
+
+.separator {
+  color: currentColor;
+  font-style: normal;
+  opacity: 0.45;
+}
+
+.countdown {
+  color: var(--ds-color-deadline);
+}

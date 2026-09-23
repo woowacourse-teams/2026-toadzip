@@ -23,6 +23,7 @@
 | HTTP API | [api-conventions.md](api-conventions.md) | 요청, 응답, 호환성 |
 | 예외 처리 | [exception-handling.md](exception-handling.md) | 예외 소유권, Advice, 오류 계약 |
 | DB 변경 | [persistence.md](persistence.md) | 모델, 쿼리, 트랜잭션 |
+| Flyway 최초 적용 | [flyway-adoption.md](flyway-adoption.md) | 기존 DB baseline과 새 DB 생성 경로 |
 | 관리자 데이터 파이프라인 | [data-pipeline-execution.md](data-pipeline-execution.md) | 실행 상태와 스키마 배포 |
 | 공고 수집 성능 | [announcement-collection-performance.md](announcement-collection-performance.md) | 페이지 크기, LH 동시성, 실측과 메트릭 |
 | LH 공고 연결·복구 | [lh-announcement-link-resolution.md](lh-announcement-link-resolution.md) | 매핑·보강의 성공 연결 기준과 fallback 종료 |

@@ -19,19 +19,7 @@
 
 ## 스키마 배포
 
-운영은 `ddl-auto=validate`이므로 애플리케이션 배포 전에 다음 SQL을 실행한다.
-
-```text
-src/main/resources/db/migration/V20260902_01__add_myhome_announcement_source_lifecycle.sql
-src/main/resources/db/migration/V20260911_01__create_lh_announcement_collection_links.sql
-```
-
-```bash
-psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
-  --file src/main/resources/db/migration/V20260902_01__add_myhome_announcement_source_lifecycle.sql
-psql "$DATABASE_URL" --set ON_ERROR_STOP=1 \
-  --file src/main/resources/db/migration/V20260911_01__create_lh_announcement_collection_links.sql
-```
+운영 스키마는 [Flyway 도입 절차](flyway-adoption.md)의 통합 `V20260922_01`로 배포한다.
 
 SQL은 기존 행을 활성·미조회 0회로 backfill한다. 이전 애플리케이션은 추가 컬럼을 사용하지 않으므로
 SQL을 먼저 적용하는 동안 호환된다.

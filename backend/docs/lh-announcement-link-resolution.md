@@ -39,9 +39,7 @@
    현재 버전의 체크포인트가 없으면 실제 수집을 수행한다.
 3. 공급·상세 수집 결과를 확인한 뒤 `announcement-refinement`를 실행하고 실패 기록을 확인한다.
 
-```text
-src/main/resources/db/migration/V20260917_01__add_lh_link_failure_reasons.sql
-```
+[Flyway 도입 절차](flyway-adoption.md)의 통합 `V20260922_01`이 실패 사유 제약을 확장한다.
 
 이 SQL은 Hibernate가 생성하는 두 실패 테이블의 `*_reason_check` 허용값을 확장한다.
 기존 실패 행과 기존 enum 값은 보존한다. 사용자 지정 제약 이름을 쓰는 환경은 적용 전 확인한다.

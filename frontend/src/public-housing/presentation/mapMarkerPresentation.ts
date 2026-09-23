@@ -1,8 +1,8 @@
+import { MISSING_DATA_LABEL } from './missingData.ts'
+import { housingMoneyParts, type HousingMoneyParts } from './housingMoney.ts'
 import type { HousingAgency, MapComplex } from '../model/publicHousing.ts'
 
-export interface MapMarkerAmount {
-  readonly digits: string
-  readonly unit: '원' | '만' | '억' | '조'
+export interface MapMarkerAmount extends HousingMoneyParts {
   readonly exactLabel: string
 }
 
@@ -99,19 +99,19 @@ function presentAgency(agency: HousingAgency | null): MarkerName {
   const known = AGENCIES.find((candidate) => candidate.label === code
     || candidate.name === code)
     ?? AGENCIES.find((candidate) => candidate.name === name)
-  const label = code === 'ETC' ? '기타' : known?.label ?? code ?? name ?? '미상'
+  const label = code === 'ETC' ? '기타' : known?.label ?? code ?? name ?? MISSING_DATA_LABEL
   return {
     label,
-    name: name ?? (code === 'ETC' ? '기타' : known?.name) ?? code ?? '기관 정보 없음',
+    name: name ?? (code === 'ETC' ? '기타' : known?.name) ?? code ?? MISSING_DATA_LABEL,
   }
 }
 
 function presentRentalType(rentalType: string | null): MarkerName {
   const code = nonBlank(rentalType)
   if (code === null) {
-    return { label: '미상', name: '임대유형 정보 없음' }
+    return { label: MISSING_DATA_LABEL, name: MISSING_DATA_LABEL }
   }
-  return RENTAL_TYPES.get(code) ?? { label: '미상', name: code }
+  return RENTAL_TYPES.get(code) ?? { label: MISSING_DATA_LABEL, name: code }
 }
 
 function nonBlank(value: string | null | undefined): string | null {
@@ -131,22 +131,8 @@ function minimumAmount(values: readonly (number | null)[]): number | null {
 }
 
 function presentAmount(value: number | null): MapMarkerAmount | null {
-  if (!isValidAmount(value)) return null
-
-  const won = BigInt(Math.floor(value))
+  const parts = housingMoneyParts(value)
+  if (parts === null || value === null) return null
   const exactLabel = `${value.toLocaleString('ko-KR', { maximumFractionDigits: 20 })}원`
-  if (won < 10_000n) {
-    return { digits: String(won), unit: '원', exactLabel }
-  }
-  const unit = won < 100_000_000n ? '만' : won < 1_000_000_000_000n ? '억' : '조'
-  const divisor = unit === '만' ? 10_000n : unit === '억' ? 100_000_000n : 1_000_000_000_000n
-  const decimalPlaces = won >= divisor * 1000n ? 0
-    : unit === '만' || won >= divisor * 100n ? 1 : 2
-  const scale = 10n ** BigInt(decimalPlaces)
-  // Integer division keeps a minimum from rounding up, including unit boundaries.
-  const scaled = won / (divisor / scale)
-  const whole = scaled / scale
-  const fraction = String(scaled % scale).padStart(decimalPlaces, '0').replace(/0+$/, '')
-  const digits = fraction ? `${whole}.${fraction}` : String(whole)
-  return { digits, unit, exactLabel }
+  return { ...parts, exactLabel }
 }

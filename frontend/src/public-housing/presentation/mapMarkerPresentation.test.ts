@@ -12,8 +12,8 @@ describe('map marker presentation', () => {
       agencyName: '한국토지주택공사',
       rentalTypeLabel: '행복',
       rentalTypeName: '행복주택',
-      deposit: { digits: '5000', unit: '만', exactLabel: '50,000,000원' },
-      monthlyRent: { digits: '20', unit: '만', exactLabel: '200,000원' },
+      deposit: { digits: '5,000', unit: '만원', exactLabel: '50,000,000원' },
+      monthlyRent: { digits: '20', unit: '만원', exactLabel: '200,000원' },
     })
   })
 
@@ -24,17 +24,17 @@ describe('map marker presentation', () => {
     }))).toMatchObject({ deposit: null, monthlyRent: null })
   })
 
-  it('결측 기관과 임대유형은 미상으로 표시한다', () => {
+  it('결측 기관과 임대유형은 공고문 확인으로 표시한다', () => {
     expect(presentMapComplexMarker(mapComplex({
       agency: null,
       rentalType: null,
       depositMin: null,
       monthlyRentMin: null,
     }))).toEqual({
-      agencyLabel: '미상',
-      agencyName: '기관 정보 없음',
-      rentalTypeLabel: '미상',
-      rentalTypeName: '임대유형 정보 없음',
+      agencyLabel: '공고문 확인',
+      agencyName: '공고문 확인',
+      rentalTypeLabel: '공고문 확인',
+      rentalTypeName: '공고문 확인',
       deposit: null,
       monthlyRent: null,
     })
@@ -50,7 +50,7 @@ describe('map marker presentation', () => {
     [{ code: '지자체', name: '서울특별시' }, '지자체', '서울특별시'],
     [{ code: null, name: '새로운 지역 공급기관' }, '새로운 지역 공급기관', '새로운 지역 공급기관'],
     [{ code: 'NEW', name: null }, 'NEW', 'NEW'],
-    [{ code: ' ', name: '' }, '미상', '기관 정보 없음'],
+    [{ code: ' ', name: '' }, '공고문 확인', '공고문 확인'],
   ])('기관 %j의 알려진 약칭 또는 원문을 유지한다', (agency, agencyLabel, agencyName) => {
     expect(presentMapComplexMarker(mapComplex({ agency }))).toMatchObject({ agencyLabel, agencyName })
   })
@@ -66,46 +66,47 @@ describe('map marker presentation', () => {
     ['REDEVELOPMENT_RENTAL', '재개발', '재개발임대'],
     ['LONG_TERM_JEONSE', '전세', '장기전세'],
     ['ETC', '기타', '기타 공공임대'],
-    ['NEW_RENTAL_TYPE', '미상', 'NEW_RENTAL_TYPE'],
-    ['__proto__', '미상', '__proto__'],
-    [' ', '미상', '임대유형 정보 없음'],
+    ['NEW_RENTAL_TYPE', '공고문 확인', 'NEW_RENTAL_TYPE'],
+    ['__proto__', '공고문 확인', '__proto__'],
+    [' ', '공고문 확인', '공고문 확인'],
   ])('유형 %s을 짧게 표시하고 원문 의미를 보존한다', (rentalType, rentalTypeLabel, rentalTypeName) => {
     expect(presentMapComplexMarker(mapComplex({ rentalType }))).toMatchObject({ rentalTypeLabel, rentalTypeName })
   })
 
   it.each([
     [0, '0', '원'],
-    [9_999, '9999', '원'],
-    [10_000, '1', '만'],
-    [234_900, '23.4', '만'],
-    [580_000, '58', '만'],
-    [999_999, '99.9', '만'],
-    [1_000_000, '100', '만'],
-    [9_999_999, '999.9', '만'],
-    [10_000_000, '1000', '만'],
-    [99_990_000, '9999', '만'],
-    [99_999_999, '9999', '만'],
+    [9_999, '9,999', '원'],
+    [10_000, '1', '만원'],
+    [234_900, '23.49', '만원'],
+    [580_000, '58', '만원'],
+    [999_999, '99.9999', '만원'],
+    [1_000_000, '100', '만원'],
+    [9_999_999, '999.9999', '만원'],
+    [10_000_000, '1,000', '만원'],
+    [18_000_000, '1,800', '만원'],
+    [99_990_000, '9,999', '만원'],
+    [99_999_999, '9,999.9999', '만원'],
     [100_000_000, '1', '억'],
-    [212_340_000, '2.12', '억'],
-    [999_999_999, '9.99', '억'],
-    [9_999_999_999, '99.99', '억'],
+    [180_000_000, '1.8', '억'],
+    [212_340_000, '2.1234', '억'],
+    [999_999_999, '9.99999999', '억'],
+    [9_999_999_999, '99.99999999', '억'],
     [10_000_000_000, '100', '억'],
-    [99_999_999_999, '999.9', '억'],
-    [100_000_000_000, '1000', '억'],
-    [999_999_999_999, '9999', '억'],
-    [1_000_000_000_000, '1', '조'],
-    [2_123_400_000_000, '2.12', '조'],
-    [99_999_999_999_999, '99.99', '조'],
-    [100_000_000_000_000, '100', '조'],
-    [999_999_999_999_999, '999.9', '조'],
-    [1_000_000_000_000_000, '1000', '조'],
-    [Number.MAX_SAFE_INTEGER, '9007', '조'],
-  ])('%s원을 버림 축약하면서 정확한 원 금액을 보존한다', (value, digits, unit) => {
+    [99_999_999_999, '999.99999999', '억'],
+    [100_000_000_000, '1,000', '억'],
+    [999_999_999_999, '9,999.99999999', '억'],
+    [1_000_000_000_000, '10,000', '억'],
+    [2_123_400_000_000, '21,234', '억'],
+    [99_999_999_999_999, '999,999.99999999', '억'],
+    [100_000_000_000_000, '1,000,000', '억'],
+    [999_999_999_999_999, '9,999,999.99999999', '억'],
+    [1_000_000_000_000_000, '10,000,000', '억'],
+    [Number.MAX_SAFE_INTEGER, '90,071,992.54740991', '억'],
+  ])('%s원을 만원·억 규칙으로 표시하며 정밀값과 원 금액을 보존한다', (value, digits, unit) => {
     const result = presentMapComplexMarker(mapComplex({ depositMin: value, monthlyRentMin: value }))
     const expected = { digits, unit, exactLabel: `${value.toLocaleString('ko-KR')}원` }
     expect(result.deposit).toEqual(expected)
     expect(result.monthlyRent).toEqual(expected)
-    expect(digits.length).toBeLessThanOrEqual(5)
   })
 
   it.each([null, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
@@ -136,8 +137,8 @@ describe('map marker presentation', () => {
       agencyName: '서울주택도시공사',
       rentalTypeLabel: '국민',
       rentalTypeName: '국민임대',
-      deposit: { digits: '1000', unit: '만', exactLabel: '10,000,000원' },
-      monthlyRent: { digits: '18', unit: '만', exactLabel: '180,000원' },
+      deposit: { digits: '1,000', unit: '만원', exactLabel: '10,000,000원' },
+      monthlyRent: { digits: '18', unit: '만원', exactLabel: '180,000원' },
     })
   })
 

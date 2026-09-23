@@ -56,8 +56,8 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(firstComplex).getByText('1,046세대')).toBeVisible()
     expect(within(firstComplex).getByText('12세대')).toBeVisible()
     expect(within(firstComplex).getByText('36.2㎡')).toBeVisible()
-    expect(within(firstComplex).getByText('32,000,000원')).toBeVisible()
-    expect(within(firstComplex).getByText('월 128,000원')).toBeVisible()
+    expect(within(firstComplex).getByText('3,200만원')).toBeVisible()
+    expect(within(firstComplex).getByText('12.8만원')).toBeVisible()
 
     await waitFor(() => {
       expect(within(panel).getByRole('link', { name: '첨부파일' }))
@@ -123,9 +123,21 @@ describe('HousingAnnouncementDetailPanel', () => {
       .closest('section')
     expect(schedule).not.toBeNull()
     expect(within(schedule!).getByText('인터넷 접수')).toBeVisible()
-    expect(within(schedule!).getByText(
-      '2026.08.28 09:00 – 2026.08.28 18:00',
-    )).toBeVisible()
+    const scheduleTable = within(schedule!).getByRole('table', { name: '접수 일정' })
+    expect(within(scheduleTable).getByText('2026.08.28 09:00')).toBeVisible()
+    expect(within(scheduleTable).getByText('2026.08.28 18:00')).toBeVisible()
+    expect(within(scheduleTable).getByText('2026.08.28 09:00'))
+      .toHaveAttribute('datetime', '2026-08-28T09:00:00')
+    const firstTimes = within(scheduleTable).getByText('2026.08.28 09:00').closest('tr')
+    expect(within(firstTimes!).getAllByRole('rowheader')).toHaveLength(2)
+    expect(within(firstTimes!).getAllByRole('cell')).toHaveLength(2)
+    expect(within(scheduleTable).getByText('2026.08.28 09:00').closest('td'))
+      .toHaveAttribute('headers', [
+        within(scheduleTable).getByRole('rowheader', { name: '인터넷 접수' }).id,
+        within(firstTimes!).getByRole('rowheader', { name: '시작' }).id,
+      ].join(' '))
+    expect(within(scheduleTable).queryByRole('columnheader', { name: '상태' }))
+      .not.toBeInTheDocument()
     expect(within(schedule!).queryByText('접수 기간')).not.toBeInTheDocument()
     expect(within(schedule!).queryByText('현재 단계')).not.toBeInTheDocument()
   })
@@ -142,9 +154,10 @@ describe('HousingAnnouncementDetailPanel', () => {
       .closest('section')
     expect(schedule).not.toBeNull()
     expect(within(schedule!).getByText('접수 기간')).toBeVisible()
-    expect(within(schedule!).getByText(
-      '2026.08.28 – 2026.08.30',
-    )).toBeVisible()
+    const scheduleTable = within(schedule!).getByRole('table', { name: '접수 일정' })
+    expect(within(scheduleTable).getByText('2026.08.28')).toBeVisible()
+    expect(within(scheduleTable).getByText('2026.08.30')).toBeVisible()
+    expect(within(scheduleTable).getByRole('rowheader', { name: '접수 기간 현재 단계' })).toBeVisible()
     expect(within(schedule!).getByText('현재 단계')).toBeVisible()
   })
 
@@ -196,7 +209,7 @@ describe('HousingAnnouncementDetailPanel', () => {
     const dialog = screen.getByRole('dialog', { name: '44B 평면도' })
     expect(within(dialog).getByRole('img', { name: '44B 2D 평면도' }))
       .toHaveAttribute('src', 'https://example.com/44b.png')
-    expect(within(dialog).getByText('3D 평면도 정보 없음')).toBeVisible()
+    expect(within(dialog).getByText('공고문 확인')).toBeVisible()
     expect(within(dialog).getByRole('button', { name: '평면도 닫기' })).toHaveFocus()
 
     fireEvent.keyDown(dialog, { key: 'Escape' })
@@ -233,14 +246,14 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(container.querySelectorAll('[data-publication="changed"]')).toHaveLength(1)
   })
 
-  it('null과 안전하지 않은 URL을 추정하지 않고 정보 확인 상태와 비활성 링크로 표시한다', () => {
+  it('null과 안전하지 않은 URL은 공고문 확인과 비활성 링크로 표시한다', () => {
     const unsafe = detail({
       agencyCode: null,
       agencyName: null,
       applicationEndAt: null,
       applicationStartAt: null,
       applicationStatus: null,
-      applicationStatusLabel: '접수상태 정보 확인 중',
+      applicationStatusLabel: '공고문 확인',
       attachments: [{
         attachmentId: '601',
         fileName: null,
@@ -263,15 +276,20 @@ describe('HousingAnnouncementDetailPanel', () => {
     })
     render(<HousingAnnouncementDetailPanel detail={unsafe} onClose={vi.fn()} />)
     const panel = screen.getByRole('complementary', {
-      name: '공고명 정보 확인 중 상세 정보',
+      name: '공고문 확인 상세 정보',
     })
 
-    expect(within(panel).getAllByText('공급기관 정보 확인 중').length).toBeGreaterThan(0)
-    expect(within(panel).getAllByText('지역 정보 확인 중').length).toBeGreaterThan(0)
-    expect(within(panel).getByText('신청 대상 정보 확인 중')).toBeVisible()
-    expect(within(panel).getByText('상세 일정 정보 확인 중')).toBeVisible()
-    expect(within(panel).getByText('연결된 단지 정보 확인 중')).toBeVisible()
-    expect(within(panel).getAllByText('0개 단지 · 정보 확인 중')).toHaveLength(2)
+    expect(within(panel).getByText('공사').parentElement).toHaveTextContent('공고문 확인')
+    expect(within(panel).getByText('지역').parentElement).toHaveTextContent('공고문 확인')
+    for (const title of ['신청 대상', '접수 일정', '단지 비교']) {
+      const section = within(panel).getByRole('heading', { name: title }).closest('section')
+      expect(within(section!).getByText('공고문 확인')).toBeVisible()
+    }
+    expect(within(panel).getByText('0개 단지')).toBeVisible()
+    expect(within(panel).getByText('0개 단지 · 공고문 확인')).toBeVisible()
+    const footer = within(panel).getByRole('navigation', { name: '공고문 바로가기' }).parentElement
+    expect(within(footer!).getAllByText('공고문 확인')).toHaveLength(1)
+    expect(within(panel).queryByText('공고문 확인 · 공고문 확인')).not.toBeInTheDocument()
     expect(within(panel).queryByRole('link', { name: '첨부파일' })).not.toBeInTheDocument()
     expect(within(panel).queryByRole('link', { name: '공고 원문' })).not.toBeInTheDocument()
     expect(within(panel).getByText('첨부파일', { selector: '[aria-disabled="true"]' }))
@@ -305,7 +323,86 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(screen.getByTitle('정정공고문.pdf')).toBeVisible()
   })
 
-  it('420px 주택형 2열과 문서 1열 규칙을 스타일에 고정한다', () => {
+  it('주택형과 대상별 조건은 항목·값 두 쌍의 4열 표로 표시한다', () => {
+    renderPanel()
+
+    const housingType = screen.getByRole('table', { name: '새솔마을 36A 공급 정보' })
+    const housingRows = within(housingType).getAllByRole('row')
+    expect(housingRows).toHaveLength(2)
+    expect(within(housingRows[0]!).getAllByRole('rowheader')).toHaveLength(2)
+    expect(within(housingRows[0]!).getAllByRole('cell')).toHaveLength(2)
+    expect(within(housingType).getByRole('rowheader', { name: '공급 구분' }))
+      .toHaveAttribute('scope', 'row')
+    expect(within(housingType).getByRole('rowheader', { name: '입주 예정' })).toBeVisible()
+    expect(within(housingType).getByRole('cell', { name: '신규공급' }))
+      .toHaveAttribute('headers', within(housingType).getByRole('rowheader', { name: '공급 구분' }).id)
+
+    const conditions = screen.getByRole('table', { name: '청년 공급 조건' })
+    const conditionRows = within(conditions).getAllByRole('row')
+    expect(within(conditionRows[0]!).getAllByRole('rowheader')).toHaveLength(2)
+    expect(within(conditionRows[0]!).getAllByRole('cell')).toHaveLength(2)
+    expect(within(conditions).getByRole('cell', { name: '무주택 세대구성원' }))
+      .toHaveAttribute('colspan', '3')
+    expect(within(conditions).getByRole('rowheader', { name: '모집 예비자 수' })).toBeVisible()
+    expect(within(conditions).getByRole('cell', { name: '3,200만원' }))
+      .toHaveAttribute('data-emphasis', 'true')
+    expect(within(conditions).getByRole('cell', { name: '3,200만원' }))
+      .toHaveAttribute('headers', within(conditions).getByRole('rowheader', { name: '보증금' }).id)
+    expect(within(conditions).getByRole('cell', { name: '12.8만원' }))
+      .toHaveAttribute('data-numeric', 'true')
+  })
+
+  it('만원·억 금액과 긴 범위를 표시하고 월 임대료의 월 접두사를 반복하지 않는다', () => {
+    const baseRow = supplyRow()
+    const baseTarget = baseRow.targets[0]!
+    render(
+      <HousingAnnouncementDetailPanel
+        detail={detail({ supplyRows: [supplyRow({
+          targets: [
+            { ...baseTarget, deposit: 18_000_000, monthlyRent: 180_000 },
+            { ...baseTarget, supplyTargetId: '702', target: '신혼부부', deposit: 180_000_000, monthlyRent: 0 },
+          ],
+        })] })}
+        onClose={vi.fn()}
+      />,
+    )
+
+    const complex = screen.getByRole('article', { name: '새솔마을 단지 비교' })
+    const range = within(complex).getByText('1,800만원 – 1.8억')
+    expect(range.closest('[data-wide]')).toHaveAttribute('data-wide', 'true')
+    const young = screen.getByRole('table', { name: '청년 공급 조건' })
+    expect(within(young).getByRole('cell', { name: '1,800만원' })).toBeVisible()
+    expect(within(young).getByRole('cell', { name: '18만원' })).toBeVisible()
+    const newlywed = screen.getByRole('table', { name: '신혼부부 공급 조건' })
+    expect(within(newlywed).getByRole('cell', { name: '1.8억' })).toBeVisible()
+    expect(within(newlywed).getByRole('cell', { name: '0원' })).toBeVisible()
+    expect(screen.queryByText('월 18만원')).not.toBeInTheDocument()
+  })
+
+  it('누락된 헤더 분류는 공고문 확인을 한 번 표시하고 빠진 항목의 이름을 유지한다', () => {
+    render(
+      <HousingAnnouncementDetailPanel
+        detail={detail({
+          applicationStatus: null,
+          applicationStatusLabel: '공고문 확인',
+          dDay: null,
+          rentalTypeLabel: '공고문 확인',
+          publicationTypeLabel: '공고문 확인',
+          agencyCode: null,
+          agencyName: null,
+          regionNames: [],
+        })}
+        onClose={vi.fn()}
+      />,
+    )
+    const context = screen.getByRole('group', { name: '임대유형 · 접수상태 · 공고구분 공고문 확인' })
+    expect(within(context).getAllByText('공고문 확인')).toHaveLength(1)
+    const intro = screen.getByRole('region', { name: '공고 요약' })
+    expect(within(intro).getAllByText('공고문 확인')).toHaveLength(1)
+    expect(within(intro).getByText('공사·지역')).toBeInTheDocument()
+  })
+
+  it('좁은 패널의 표 스크롤과 문서 1열 규칙을 스타일에 고정한다', () => {
     const css = readFileSync(
       resolve(
         process.cwd(),
@@ -319,12 +416,18 @@ describe('HousingAnnouncementDetailPanel', () => {
     )
 
     expect(css).toContain('container: housing-announcement-detail / inline-size;')
-    expect(compactRule).toMatch(
+    const primitivesCss = readFileSync(
+      resolve(process.cwd(), 'src/public-housing/components/DetailPrimitives.module.css'),
+      'utf8',
+    )
+    const compactHeadingRule = primitivesCss.slice(
+      primitivesCss.indexOf('@container (max-width: 420px)'),
+    )
+    expect(compactHeadingRule).toMatch(
       /\.sectionHeading[\s\S]*?display:\s*block;/,
     )
-    expect(compactRule).toMatch(
-      /\.housingTypeMetrics[\s\S]*?grid-template-columns:\s*repeat\(2,/,
-    )
+    expect(primitivesCss).toMatch(/\.tableViewport[\s\S]*?overflow-x:\s*auto;/)
+    expect(primitivesCss).toMatch(/\.table\s*\{[\s\S]*?width:\s*100%;/)
     expect(compactRule).toMatch(
       /\.documents[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\);/,
     )

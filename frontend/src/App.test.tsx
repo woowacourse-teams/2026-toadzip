@@ -42,7 +42,9 @@ describe('App', () => {
     )
 
     expect(screen.getByRole('banner', { name: '서비스 헤더' })).toBeVisible()
-    expect(screen.getByRole('link', { name: '두꺼비집 홈' })).toBeVisible()
+    const homeLink = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
+    expect(homeLink).toBeVisible()
+    expect(homeLink).toHaveTextContent('공공주택 복덕방')
     expect(
       screen.getByRole('searchbox', { name: '지역, 단지, 공고 검색' }),
     ).toBeVisible()

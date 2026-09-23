@@ -1,0 +1,83 @@
+.control {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--ds-color-divider);
+  background: var(--ds-color-surface);
+  color: var(--ds-color-text);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 4px;
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.control button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-family: inherit;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.recenter,
+.retry {
+  padding: 0 8px;
+  color: var(--ds-color-action);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.clear {
+  padding: 0 8px;
+  color: var(--ds-color-label);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.control button:not(:disabled):hover {
+  background: var(--ds-color-action-soft);
+}
+
+.control button:disabled {
+  color: var(--ds-color-muted);
+  opacity: 0.5;
+  cursor: default;
+}
+
+.message {
+  margin: 0;
+  color: var(--ds-color-label);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.feedback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0 4px;
+}
+
+.control button:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+}
