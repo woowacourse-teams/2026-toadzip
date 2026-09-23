@@ -9,7 +9,8 @@ public record MyHomeComplexMappingReport(
         int unchangedHousingTypeCount,
         int deletedHousingTypeCount,
         int failedSourceRowCount,
-        int rateLimitedSourceRowCount
+        int rateLimitedSourceRowCount,
+        int operationalFailedSourceRowCount
 ) {
 
     public MyHomeComplexMappingReport(
@@ -31,8 +32,25 @@ public record MyHomeComplexMappingReport(
                 unchangedHousingTypeCount,
                 deletedHousingTypeCount,
                 failedSourceRowCount,
+                0,
                 0
         );
+    }
+
+    public MyHomeComplexMappingReport(
+            int createdComplexCount,
+            int updatedComplexCount,
+            int unchangedComplexCount,
+            int createdHousingTypeCount,
+            int updatedHousingTypeCount,
+            int unchangedHousingTypeCount,
+            int deletedHousingTypeCount,
+            int failedSourceRowCount,
+            int rateLimitedSourceRowCount
+    ) {
+        this(createdComplexCount, updatedComplexCount, unchangedComplexCount,
+                createdHousingTypeCount, updatedHousingTypeCount, unchangedHousingTypeCount,
+                deletedHousingTypeCount, failedSourceRowCount, rateLimitedSourceRowCount, 0);
     }
 
     public MyHomeComplexMappingReport {
@@ -45,7 +63,10 @@ public record MyHomeComplexMappingReport(
                 || deletedHousingTypeCount < 0
                 || failedSourceRowCount < 0
                 || rateLimitedSourceRowCount < 0
-                || rateLimitedSourceRowCount > failedSourceRowCount) {
+                || rateLimitedSourceRowCount > failedSourceRowCount
+                || operationalFailedSourceRowCount < 0
+                || operationalFailedSourceRowCount > failedSourceRowCount
+                || rateLimitedSourceRowCount > operationalFailedSourceRowCount) {
             throw new IllegalArgumentException("매핑 결과 개수는 음수일 수 없습니다.");
         }
     }
@@ -55,7 +76,11 @@ public record MyHomeComplexMappingReport(
     }
 
     public static MyHomeComplexMappingReport rateLimitedRows(int count) {
-        return new MyHomeComplexMappingReport(0, 0, 0, 0, 0, 0, 0, count, count);
+        return new MyHomeComplexMappingReport(0, 0, 0, 0, 0, 0, 0, count, count, count);
+    }
+
+    public static MyHomeComplexMappingReport operationalFailedRows(int count) {
+        return new MyHomeComplexMappingReport(0, 0, 0, 0, 0, 0, 0, count, 0, count);
     }
 
     public MyHomeComplexMappingReport plus(MyHomeComplexMappingReport other) {
@@ -68,7 +93,8 @@ public record MyHomeComplexMappingReport(
                 unchangedHousingTypeCount + other.unchangedHousingTypeCount,
                 deletedHousingTypeCount + other.deletedHousingTypeCount,
                 failedSourceRowCount + other.failedSourceRowCount,
-                rateLimitedSourceRowCount + other.rateLimitedSourceRowCount
+                rateLimitedSourceRowCount + other.rateLimitedSourceRowCount,
+                operationalFailedSourceRowCount + other.operationalFailedSourceRowCount
         );
     }
 }
