@@ -8,6 +8,7 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -134,6 +135,39 @@ class LhSourceStoreTest {
         assertThat(supplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
                 "PAN-1", LhAnnouncementCollectionCheckpoint.requestHashOf("PAN_ID=PAN-1&TYPE=B")
         )).singleElement().extracting(LhAnnouncementSupplySource::getComplexLabel).isEqualTo("두 번째 단지");
+    }
+
+    @Test
+    void 빈_공급_결과로_같은_요청의_기존_원천을_교체하지_않는다() {
+        String request = "PAN_ID=PAN-1&TYPE=A";
+        store.replaceSupplies("PAN-1", request, List.of(new LhAnnouncementSupplySource(
+                0, "PAN-1", new LhAnnouncementSupplySourceSnapshot(
+                        "기존 단지", "24", "24", "30", "100", "20", "10000000", "200000"
+                )
+        )));
+        List<LhAnnouncementSupplySource> previous = supplyRepository.findAll();
+
+        assertThatThrownBy(() -> store.replaceSupplies("PAN-1", request, List.of()))
+                .isInstanceOf(EmptyLhSupplyReplacementException.class)
+                .hasMessage("기존 LH 공급 원천을 빈 수집 결과로 교체할 수 없습니다.");
+
+        assertThat(supplyRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
+                .containsExactlyElementsOf(previous);
+    }
+
+    @Test
+    void 다른_요청의_원천이_있어도_최초_빈_공급_결과를_허용하고_기존_원천을_보존한다() {
+        store.replaceSupplies("PAN-1", "PAN_ID=PAN-1&TYPE=A", List.of(new LhAnnouncementSupplySource(
+                0, "PAN-1", new LhAnnouncementSupplySourceSnapshot(
+                        "기존 단지", "24", "24", "30", "100", "20", null, null
+                )
+        )));
+        List<LhAnnouncementSupplySource> previous = supplyRepository.findAll();
+
+        assertThat(store.replaceSupplies("PAN-1", "PAN_ID=PAN-1&TYPE=B", List.of())).isZero();
+
+        assertThat(supplyRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
+                .containsExactlyElementsOf(previous);
     }
 
     @Test

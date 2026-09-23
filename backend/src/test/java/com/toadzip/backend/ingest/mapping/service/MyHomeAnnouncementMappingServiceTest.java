@@ -522,7 +522,7 @@ class MyHomeAnnouncementMappingServiceTest {
                 lhSupply(0, "PAN-1", "동삼2", "59A", "59.9500", "84.0500")
         ));
         service.mapAll();
-        lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of());
+        lhSupplyRepository.deleteAll();
 
         var report = service.mapAll();
 
@@ -548,7 +548,7 @@ class MyHomeAnnouncementMappingServiceTest {
             assertThat(row.getHousingType()).isNull();
             assertThat(row.getLhSourceSupplyRowIdentifier()).isNull();
         });
-        lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of());
+        lhSupplyRepository.deleteAll();
 
         var report = service.mapAll();
 
@@ -561,7 +561,7 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     @Test
-    void 이전에_성공한_LH_주택형은_재수집_매칭_실패와_후속_빈_응답에도_보존한다() {
+    void 이전에_성공한_LH_주택형은_재수집_매칭_실패와_후속_원천_유실에도_보존한다() {
         saveMappedComplex();
         HousingComplex complex = complexRepository.findAll().getFirst();
         HousingType lhType = housingTypeRepository.save(HousingType.createFromMyHome(
@@ -591,7 +591,7 @@ class MyHomeAnnouncementMappingServiceTest {
             assertThat(row.getLhSourceSupplyRowIdentifier()).isEqualTo("LH:PAN-1:SUPPLY:0");
         });
 
-        lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of());
+        lhSupplyRepository.deleteAll();
         assertThat(service.mapAll().failedSourceRowCount()).isZero();
         assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
             assertThat(row.getHousingType().getId()).isEqualTo(lhType.getId());

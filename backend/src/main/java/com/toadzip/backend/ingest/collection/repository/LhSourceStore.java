@@ -5,6 +5,7 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -71,6 +72,9 @@ public class LhSourceStore {
     public int replaceSupplies(String panId, String requestDescription, List<LhAnnouncementSupplySource> sources) {
         Instant collectedAt = clock.instant();
         String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescription);
+        if (sources.isEmpty() && supplyRepository.existsByPanIdAndRequestHash(panId, requestHash)) {
+            throw new EmptyLhSupplyReplacementException();
+        }
         sources.forEach(source -> {
             requirePanId(panId, source.getPanId());
             source.assignRequestHash(requestHash);

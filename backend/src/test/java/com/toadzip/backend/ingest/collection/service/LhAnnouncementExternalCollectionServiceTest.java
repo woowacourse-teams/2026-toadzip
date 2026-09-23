@@ -32,6 +32,7 @@ import com.toadzip.backend.ingest.collection.repository.external.ExternalDataReq
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
@@ -421,6 +422,62 @@ class LhAnnouncementExternalCollectionServiceTest {
                 .containsExactlyElementsOf(java.util.stream.IntStream.range(0, 101).boxed().toList());
         assertThat(result.storedRowCount()).isEqualTo(101);
         assertThat(result.externalApiCallCount()).isEqualTo(2);
+    }
+
+    @Test
+    void 공급이_페이지를_가득_채운_뒤_빈_마지막_페이지를_받아도_전체_공급을_저장한다() {
+        source(announcementSource());
+        when(externalRepository.fetchSupply(any())).thenAnswer(invocation -> {
+            LhAnnouncementRequest request = invocation.getArgument(0);
+            if (request.page() == 1) {
+                return supplyResponse(0, 100);
+            }
+            return supplyResponse(100, 0);
+        });
+        when(sourceStore.replaceSupplies(eq("100"), any(), any())).thenReturn(100);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+
+        ArgumentCaptor<List<LhAnnouncementSupplySource>> sources = ArgumentCaptor.captor();
+        verify(sourceStore).replaceSupplies(eq("100"), any(), sources.capture());
+        assertThat(sources.getValue()).hasSize(100);
+        assertThat(result.failedRequestCount()).isZero();
+        assertThat(result.storedRowCount()).isEqualTo(100);
+        assertThat(result.externalApiCallCount()).isEqualTo(2);
+        verify(progressStore).complete(any(), any(), any(), any());
+    }
+
+    @Test
+    void 빈_교체가_거절되면_같은_요청을_공유하는_공고도_성공_연결을_갱신하지_않는다() {
+        source(announcementSource("a", "100"), announcementSource("b", "100"));
+        when(externalRepository.fetchSupply(any())).thenReturn(response("[{\"dsList01\":[]}]"));
+        when(sourceStore.replaceSupplies(eq("100"), any(), any()))
+                .thenThrow(new EmptyLhSupplyReplacementException());
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+
+        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.storedRowCount()).isZero();
+        assertThat(result.externalApiCallCount()).isOne();
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).link(any(), any(), any(), any());
+        verify(failureRecorder).record(any(), any(), any(EmptyLhSupplyReplacementException.class), any(), any());
+        verify(failureRecorder, never()).resolve(any(), any());
+    }
+
+    @Test
+    void LH_공급_저장_DB_실패는_빈_응답_실패로_처리하지_않는다() {
+        source(announcementSource());
+        when(externalRepository.fetchSupply(any())).thenReturn(supplyResponse());
+        when(sourceStore.replaceSupplies(eq("100"), any(), any()))
+                .thenThrow(new IllegalStateException("DB 저장 실패"));
+
+        assertThatThrownBy(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("DB 저장 실패");
+
+        verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
     }
 
     @Test
