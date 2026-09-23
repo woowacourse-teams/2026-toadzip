@@ -53,7 +53,7 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertTrue(history.next()),
-                        () -> assertEquals(3, history.getInt(1)),
+                        () -> assertEquals(4, history.getInt(1)),
                         () -> assertEquals(1, countColumn(connection,
                                 "lh_announcement_detail_source", "request_hash")),
                         () -> assertEquals(1, countColumn(connection,
@@ -97,6 +97,12 @@ class LocalProfileSchemaPersistenceTest {
             try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
                     Statement statement = connection.createStatement()) {
                 statement.executeUpdate("""
+                        INSERT INTO data_pipeline_executions
+                            (execution_id, type, status, started_at, heartbeat_at)
+                        VALUES ('00000000-0000-0000-0000-000000000001',
+                                'ANNOUNCEMENT_REFINEMENT', 'COMPLETED_WARNINGS', now(), now())
+                        """);
+                statement.executeUpdate("""
                         INSERT INTO lh_announcement_detail_source
                             (pan_id, request_hash, source_order, dataset_type)
                         VALUES ('legacy-pan', repeat('a', 64), 0, 'ETC_INFO'),
@@ -136,7 +142,8 @@ class LocalProfileSchemaPersistenceTest {
                 assertEquals(1, countRequestRows(connection, "lh_announcement_detail_source", replayHash));
                 assertEquals(1, countRequestRows(connection, "lh_announcement_supply_source", replayHash));
                 assertTrue(history.next());
-                assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02,SQL:20260923.01",
+                assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02,"
+                                + "SQL:20260923.01,SQL:20260923.02",
                         history.getString(1));
                 assertEquals(1, countColumn(connection, "announcements", "lh_reception_place_owned"));
                 assertEquals(1, countColumn(connection, "supply_rows", "lh_total_supply_household_count_enriched"));
