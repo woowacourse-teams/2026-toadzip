@@ -58,7 +58,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
     private DataPipelineExecutionStateService executionStateService;
 
     @Test
-    void 부분_실패한_단계를_종료하고_후속_단계를_한_번_실행한_뒤_최초_실패로_종료한다() {
+    void 행별_누락이_있어도_후속_단계를_실행하고_주의_상태로_완료한다() {
         MyHomeComplexMappingService mappingService = mock(MyHomeComplexMappingService.class);
         LhHousingTypeHouseholdEnrichmentService enrichmentService =
                 mock(LhHousingTypeHouseholdEnrichmentService.class);
@@ -75,14 +75,42 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         var execution = executionRepository
                 .findFirstByTypeOrderByIdDesc(DataPipelineType.COMPLEX_REFINEMENT)
                 .orElseThrow();
+        assertThat(execution.getStatus()).isEqualTo(DataPipelineExecutionStatus.COMPLETED_WARNINGS);
+        assertThat(execution.getFailedStep()).isNull();
+        assertThat(execution.getPartiallyFailedSteps()).singleElement().satisfies(warning -> {
+            assertThat(warning.getStep()).isEqualTo(DataPipelineStep.MAP_MYHOME_COMPLEXES);
+            assertThat(warning.getReport()).contains("\"failedSourceRowCount\":1");
+        });
+        assertThat(execution.getCompletedSteps())
+                .containsExactly(DataPipelineStep.MAP_MYHOME_COMPLEXES,
+                        DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS);
+        verify(enrichmentService).enrichAll();
+        verify(lease).close();
+    }
+
+    @Test
+    void 단지_정제의_운영_실패는_후속_단계를_실행한_뒤_FAILED로_종료한다() {
+        MyHomeComplexMappingService mappingService = mock(MyHomeComplexMappingService.class);
+        LhHousingTypeHouseholdEnrichmentService enrichmentService =
+                mock(LhHousingTypeHouseholdEnrichmentService.class);
+        when(mappingService.mapAll()).thenReturn(MyHomeComplexMappingReport.operationalFailedRows(1));
+        when(enrichmentService.enrichAll()).thenReturn(
+                LhHousingTypeHouseholdEnrichmentReport.matched(1, 0, 0)
+        );
+        DataPipelineRunner runner = runner(mappingService, enrichmentService);
+        DataPipelineExecutionLock.Lease lease = mock(DataPipelineExecutionLock.Lease.class);
+        DataPipelineExecutionService service = service(runner, lease);
+
+        service.start(DataPipelineType.COMPLEX_REFINEMENT);
+
+        var execution = executionRepository
+                .findFirstByTypeOrderByIdDesc(DataPipelineType.COMPLEX_REFINEMENT)
+                .orElseThrow();
         assertThat(execution.getStatus()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         assertThat(execution.getFailedStep()).isEqualTo(DataPipelineStep.MAP_MYHOME_COMPLEXES);
-        assertThat(execution.getFailureServerResponse())
-                .contains("\"failedSourceRowCount\":1");
         assertThat(execution.getCompletedSteps())
                 .containsExactly(DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS);
         verify(enrichmentService).enrichAll();
-        verify(lease).close();
     }
 
     @Test

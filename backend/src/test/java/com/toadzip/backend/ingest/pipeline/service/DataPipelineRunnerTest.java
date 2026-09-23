@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.pipeline.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -192,15 +193,20 @@ class DataPipelineRunnerTest {
     }
 
     @Test
-    void 마지막_단계가_부분_실패면_파이프라인_실패로_처리한다() {
+    void 마지막_단계에_매칭되지_않은_행이_있어도_주의를_남기고_완료한다() {
         when(myHomeComplexMappingService.mapAll()).thenReturn(complexMappingReport(0));
         when(householdEnrichmentService.enrichAll())
                 .thenReturn(new LhHousingTypeHouseholdEnrichmentReport(1, 0, 0, 0, 1, 0));
 
-        assertThatThrownBy(() -> runner.run(DataPipelineType.COMPLEX_REFINEMENT, progressListener))
-                .isInstanceOf(DataPipelinePartialFailureException.class)
-                .extracting("step")
-                .isEqualTo(DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS);
+        runner.run(DataPipelineType.COMPLEX_REFINEMENT, progressListener);
+
+        verify(progressListener).completedWithWarnings(
+                eq(DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS),
+                any()
+        );
+        assertThat(meterRegistry.get("ingest.pipeline.step")
+                .tags("step", "ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS", "result", "completed_with_warnings")
+                .timer().count()).isOne();
     }
 
     @Test
@@ -219,10 +225,55 @@ class DataPipelineRunnerTest {
     }
 
     @Test
-    void 마이홈_단지_정제가_일부_실패해도_LH_세대수_보강을_실행한다() {
+    void 마이홈_단지_정제에_누락_행이_있어도_LH_세대수_보강을_실행한다() {
         when(myHomeComplexMappingService.mapAll()).thenReturn(complexMappingReport(2));
         when(householdEnrichmentService.enrichAll())
                 .thenReturn(new LhHousingTypeHouseholdEnrichmentReport(1, 1, 1, 0, 0, 0));
+
+        runner.run(DataPipelineType.COMPLEX_REFINEMENT, progressListener);
+
+        verify(progressListener).completedWithWarnings(
+                eq(DataPipelineStep.MAP_MYHOME_COMPLEXES), any()
+        );
+        verify(householdEnrichmentService).enrichAll();
+    }
+
+    @Test
+    void 마이홈_공고_정제에_누락_행이_있어도_LH_공고_보강을_실행한다() {
+        MyHomeAnnouncementMappingReport partialFailure =
+                MyHomeAnnouncementMappingReport.failedRows(2);
+        when(myHomeAnnouncementMappingService.mapAll()).thenReturn(partialFailure);
+        when(announcementEnrichmentService.enrichAll())
+                .thenReturn(LhAnnouncementEnrichmentReport.empty());
+
+        runner.run(DataPipelineType.ANNOUNCEMENT_REFINEMENT, progressListener);
+
+        verify(progressListener).completedWithWarnings(
+                eq(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS), any()
+        );
+        verify(announcementEnrichmentService).enrichAll();
+    }
+
+    @Test
+    void 공고_보강에_누락된_원천이_있으면_주의를_남긴다() {
+        when(myHomeAnnouncementMappingService.mapAll())
+                .thenReturn(new MyHomeAnnouncementMappingReport(1, 0, 0, 1, 0, 0, 0, 0));
+        when(announcementEnrichmentService.enrichAll())
+                .thenReturn(LhAnnouncementEnrichmentReport.failed());
+
+        runner.run(DataPipelineType.ANNOUNCEMENT_REFINEMENT, progressListener);
+
+        verify(progressListener).completedWithWarnings(
+                eq(DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS), any()
+        );
+    }
+
+    @Test
+    void 단지_정제의_운영_실패는_누락과_달리_파이프라인을_실패로_종료한다() {
+        when(myHomeComplexMappingService.mapAll())
+                .thenReturn(MyHomeComplexMappingReport.operationalFailedRows(1));
+        when(householdEnrichmentService.enrichAll())
+                .thenReturn(LhHousingTypeHouseholdEnrichmentReport.empty(0));
 
         assertThatThrownBy(() -> runner.run(DataPipelineType.COMPLEX_REFINEMENT, progressListener))
                 .isInstanceOf(DataPipelinePartialFailureException.class)
@@ -230,38 +281,6 @@ class DataPipelineRunnerTest {
                 .isEqualTo(DataPipelineStep.MAP_MYHOME_COMPLEXES);
 
         verify(householdEnrichmentService).enrichAll();
-    }
-
-    @Test
-    void 마이홈_공고_정제가_일부_실패해도_LH_공고_보강을_실행한다() {
-        MyHomeAnnouncementMappingReport partialFailure =
-                MyHomeAnnouncementMappingReport.failedRows(2);
-        when(myHomeAnnouncementMappingService.mapAll()).thenReturn(partialFailure);
-        when(announcementEnrichmentService.enrichAll())
-                .thenReturn(LhAnnouncementEnrichmentReport.empty());
-
-        assertThatThrownBy(() -> runner.run(
-                DataPipelineType.ANNOUNCEMENT_REFINEMENT,
-                progressListener
-        ))
-                .isInstanceOf(DataPipelinePartialFailureException.class)
-                .extracting("step")
-                .isEqualTo(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
-
-        verify(announcementEnrichmentService).enrichAll();
-    }
-
-    @Test
-    void 공고_보강_원천_실패_건수를_전체_성공으로_처리하지_않는다() {
-        when(myHomeAnnouncementMappingService.mapAll())
-                .thenReturn(new MyHomeAnnouncementMappingReport(1, 0, 0, 1, 0, 0, 0, 0));
-        when(announcementEnrichmentService.enrichAll())
-                .thenReturn(LhAnnouncementEnrichmentReport.failed());
-
-        assertThatThrownBy(() -> runner.run(DataPipelineType.ANNOUNCEMENT_REFINEMENT, progressListener))
-                .isInstanceOf(DataPipelinePartialFailureException.class)
-                .extracting("step")
-                .isEqualTo(DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS);
     }
 
     @Test
