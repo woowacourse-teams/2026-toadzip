@@ -98,6 +98,11 @@ public class DataPipelineRunner {
                 return;
             }
             rejectPartialFailure(step, result);
+            if (result.hasWarnings()) {
+                progressListener.completedWithWarnings(step, result.serverResponse());
+                outcome = "completed_with_warnings";
+                return;
+            }
             progressListener.completed(step, result.serverResponse());
             outcome = "completed";
         }

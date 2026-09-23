@@ -20,39 +20,44 @@ class DataPipelineStepResultAdapter {
     }
 
     DataPipelineStepResult adapt(ExternalDataCollectionReport report) {
-        return result(report, report.failedRequestCount(), report.rateLimitedRequestCount());
+        return result(report, report.failedRequestCount(), report.rateLimitedRequestCount(), 0);
     }
 
     DataPipelineStepResult adapt(MyHomeComplexCollectionReport report) {
-        return result(report, report.failedRequestCount(), report.rateLimitedRequestCount());
+        return result(report, report.failedRequestCount(), report.rateLimitedRequestCount(), 0);
     }
 
     DataPipelineStepResult adapt(MyHomeComplexMappingReport report) {
-        return result(report, report.failedSourceRowCount(), report.rateLimitedSourceRowCount());
+        return result(report, report.operationalFailedSourceRowCount(),
+                report.rateLimitedSourceRowCount(),
+                report.failedSourceRowCount() - report.operationalFailedSourceRowCount());
     }
 
     DataPipelineStepResult adapt(MyHomeAnnouncementMappingReport report) {
-        return result(report, report.failedSourceRowCount(), 0);
+        return result(report, 0, 0, report.failedSourceRowCount());
     }
 
     DataPipelineStepResult adapt(LhHousingTypeHouseholdEnrichmentReport report) {
-        return result(report, report.failedSourceComplexCount(), 0);
+        return result(report, 0, 0,
+                report.failedSourceComplexCount() + report.unmatchedHousingTypeCount());
     }
 
     DataPipelineStepResult adapt(LhAnnouncementEnrichmentReport report) {
-        return result(report, report.failedSourceCount(), 0);
+        return result(report, 0, 0, report.failedSourceCount());
     }
 
     private <T> DataPipelineStepResult result(
             T report,
             int failureCount,
-            int rateLimitedFailureCount
+            int rateLimitedFailureCount,
+            int warningCount
     ) {
         try {
             return new DataPipelineStepResult(
                     objectMapper.writeValueAsString(report),
                     failureCount,
-                    rateLimitedFailureCount
+                    rateLimitedFailureCount,
+                    warningCount
             );
         }
         catch (JacksonException exception) {

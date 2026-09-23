@@ -49,6 +49,21 @@ describe('관리자 데이터 수집·정제 API', () => {
     )
   })
 
+  it('행별 누락을 담은 완료·주의 응답을 읽는다', async () => {
+    const report = {
+      ...execution('COMPLEX_REFINEMENT', 'COMPLETED_WARNINGS'),
+      partiallyFailedSteps: [{
+        step: 'MAP_MYHOME_COMPLEXES',
+        stepName: '마이홈 단지 정제',
+        report: { failedSourceRowCount: 3 },
+      }],
+    }
+    prepareFetch(report)
+    const { startDataPipeline } = await import('./api.ts')
+
+    await expect(startDataPipeline('COMPLEX_REFINEMENT')).resolves.toMatchObject(report)
+  })
+
   it('동적 CSRF 헤더와 세션 쿠키를 포함해 위치정보 ZIP을 업로드한다', async () => {
     vi.stubEnv('DEV', true)
     vi.stubEnv('VITE_API_BASE_URL', '')
@@ -141,6 +156,7 @@ function execution(
     totalStepCount: type === 'ANNOUNCEMENT_COLLECTION' ? 3 : 2,
     completedSteps: [],
     skippedSteps: [],
+    partiallyFailedSteps: [],
     failure: null,
   }
 }

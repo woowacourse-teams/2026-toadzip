@@ -192,6 +192,11 @@ public class DataPipelineExecution {
         currentStep = null;
     }
 
+    public void completeStepWithWarnings(DataPipelineStep step, String report) {
+        completeStep(step, report);
+        partiallyFailedSteps.add(DataPipelinePartiallyFailedStep.of(step, report));
+    }
+
     public List<DataPipelineStep> getCompletedSteps() {
         return completedStepResults.stream()
                 .map(DataPipelineCompletedStep::getStep)
@@ -267,6 +272,7 @@ public class DataPipelineExecution {
 
     public boolean isCompleted() {
         return status == DataPipelineExecutionStatus.COMPLETED
+                || status == DataPipelineExecutionStatus.COMPLETED_WARNINGS
                 || status == DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS;
     }
 
@@ -279,6 +285,9 @@ public class DataPipelineExecution {
     }
 
     private DataPipelineExecutionStatus completionStatus() {
+        if (!partiallyFailedSteps.isEmpty()) {
+            return DataPipelineExecutionStatus.COMPLETED_WARNINGS;
+        }
         if (skippedSteps.isEmpty()) {
             return DataPipelineExecutionStatus.COMPLETED;
         }

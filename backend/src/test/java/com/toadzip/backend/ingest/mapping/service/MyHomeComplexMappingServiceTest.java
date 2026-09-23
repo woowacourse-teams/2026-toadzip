@@ -430,6 +430,7 @@ class MyHomeComplexMappingServiceTest {
         var report = service.mapAll();
 
         assertThat(report.failedSourceRowCount()).isOne();
+        assertThat(report.operationalFailedSourceRowCount()).isZero();
         assertThat(complexRepository.findAll()).isEmpty();
         assertThat(service.findFailures(0, 100)).singleElement().satisfies(failure -> {
             assertThat(failure.reason()).isEqualTo(MyHomeComplexMappingFailureReason.GEOCODING_ERROR);
@@ -469,7 +470,23 @@ class MyHomeComplexMappingServiceTest {
 
         assertThat(report.failedSourceRowCount()).isOne();
         assertThat(report.rateLimitedSourceRowCount()).isOne();
+        assertThat(report.operationalFailedSourceRowCount()).isOne();
         assertThat(complexRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void 좌표_변환_설정_오류는_행별_누락과_구별해_집계한다() {
+        sourceRepository.save(source("46A", "46.8000", "20.2000"));
+        when(geocodingService.geocode(anyString())).thenThrow(new RoadAddressGeocodingException(
+                RoadAddressGeocodingFailureReason.NOT_CONFIGURED,
+                "좌표 변환 설정이 없습니다."
+        ));
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isOne();
+        assertThat(report.operationalFailedSourceRowCount()).isOne();
+        assertThat(report.rateLimitedSourceRowCount()).isZero();
     }
 
     @Test

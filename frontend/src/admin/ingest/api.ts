@@ -8,6 +8,7 @@ export type DataPipelineExecutionStatus =
   | 'IDLE'
   | 'RUNNING'
   | 'COMPLETED'
+  | 'COMPLETED_WARNINGS'
   | 'COMPLETED_WITH_SKIPS'
   | 'FAILED'
 
@@ -15,6 +16,12 @@ export type DataPipelineSkippedStep = {
   stepName: string
   reason: string
   serverResponse: unknown
+}
+
+export type DataPipelineWarningStep = {
+  step: string
+  stepName: string
+  report: unknown
 }
 
 export type DataPipelineFailure = {
@@ -32,6 +39,7 @@ export type DataPipelineExecution = {
   totalStepCount: number
   completedSteps: readonly string[]
   skippedSteps: readonly DataPipelineSkippedStep[]
+  partiallyFailedSteps: readonly DataPipelineWarningStep[]
   failure: DataPipelineFailure | null
 }
 
@@ -166,6 +174,10 @@ function isDataPipelineExecution(value: unknown): value is DataPipelineExecution
     || !value.skippedSteps.every(isPipelineSkippedStep)) {
     return false
   }
+  if (!Array.isArray(value.partiallyFailedSteps)
+    || !value.partiallyFailedSteps.every(isPipelineWarningStep)) {
+    return false
+  }
   return (typeof value.executionId === 'string' || value.executionId === null)
     && (typeof value.currentStepName === 'string' || value.currentStepName === null)
     && typeof value.currentStepIndex === 'number'
@@ -178,6 +190,13 @@ function isPipelineSkippedStep(value: unknown): value is DataPipelineSkippedStep
     && typeof value.stepName === 'string'
     && typeof value.reason === 'string'
     && 'serverResponse' in value
+}
+
+function isPipelineWarningStep(value: unknown): value is DataPipelineWarningStep {
+  return isRecord(value)
+    && typeof value.step === 'string'
+    && typeof value.stepName === 'string'
+    && 'report' in value
 }
 
 function isPipelineFailure(value: unknown): value is DataPipelineFailure {
@@ -220,6 +239,7 @@ function isExecutionStatus(value: unknown): value is DataPipelineExecutionStatus
   return value === 'IDLE'
     || value === 'RUNNING'
     || value === 'COMPLETED'
+    || value === 'COMPLETED_WARNINGS'
     || value === 'COMPLETED_WITH_SKIPS'
     || value === 'FAILED'
 }
