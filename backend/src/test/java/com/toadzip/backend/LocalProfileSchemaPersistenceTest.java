@@ -46,7 +46,7 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertTrue(history.next()),
-                        () -> assertEquals(2, history.getInt(1))
+                        () -> assertEquals(3, history.getInt(1))
                 );
             }
         }
@@ -74,6 +74,16 @@ class LocalProfileSchemaPersistenceTest {
             flyway.baseline();
             flyway.migrate();
 
+            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
+                    Statement statement = connection.createStatement()) {
+                statement.executeUpdate("""
+                        INSERT INTO data_pipeline_executions
+                            (execution_id, type, status, started_at, heartbeat_at)
+                        VALUES ('00000000-0000-0000-0000-000000000001',
+                                'ANNOUNCEMENT_REFINEMENT', 'COMPLETED_WARNINGS', now(), now())
+                        """);
+            }
+
             try (ConfigurableApplicationContext ignored = new SpringApplicationBuilder(BackendApplication.class)
                     .environment(createIsolatedEnvironment(jdbcUrl))
                     .run();
@@ -84,7 +94,8 @@ class LocalProfileSchemaPersistenceTest {
                             FROM flyway_schema_history
                             """)) {
                 assertTrue(history.next());
-                assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02", history.getString(1));
+                assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02,SQL:20260923.02",
+                        history.getString(1));
                 assertEquals(1, countColumn(connection, "announcements", "lh_reception_place_owned"));
                 assertEquals(1, countColumn(connection, "supply_rows", "lh_total_supply_household_count_enriched"));
             }
