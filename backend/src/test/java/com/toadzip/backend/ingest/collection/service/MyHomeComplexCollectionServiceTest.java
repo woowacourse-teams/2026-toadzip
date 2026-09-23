@@ -83,8 +83,8 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
         when(externalRepository.fetch(region, request(), 1))
-                .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]"));
-        when(externalRepository.fetch(region, request(), 2)).thenReturn(response("[{\"hsmpSn\":3}]"));
+                .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]", 3));
+        when(externalRepository.fetch(region, request(), 2)).thenReturn(response("[{\"hsmpSn\":3}]", 3));
         when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(3);
 
         var result = service.collect(request());
@@ -104,7 +104,7 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
         when(externalRepository.fetch(region, request(), 1))
-                .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]"));
+                .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]", 3));
         when(externalRepository.fetch(region, request(), 2)).thenThrow(new ExternalDataRequestException("조회 실패"));
 
         var result = service.collect(request());
@@ -134,6 +134,78 @@ class MyHomeComplexCollectionServiceTest {
     }
 
     @Test
+    @DisplayName("후속 페이지의 totalCount가 줄어들면 기존 지역 원천을 교체하지 않는다")
+    void doesNotReplaceRegionWhenTotalCountChanges() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1))
+                .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]", 3));
+        when(externalRepository.fetch(region, request(), 2))
+                .thenReturn(response("[]", 2));
+
+        var result = service.collect(request());
+
+        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(failureRecorder).record(any(), any(), any(), any(), any());
+        assertThat(result.storedRowCount()).isZero();
+        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.externalApiCallCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("후속 페이지에 같은 단지가 다시 오면 기존 지역 원천을 교체하지 않는다")
+    void doesNotReplaceRegionWhenPagesContainDuplicateSourceKey() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1))
+                .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]", 3));
+        when(externalRepository.fetch(region, request(), 2))
+                .thenReturn(response("[{\"hsmpSn\":2}]", 3));
+
+        var result = service.collect(request());
+
+        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(failureRecorder).record(any(), any(), any(), any(), any());
+        assertThat(result.storedRowCount()).isZero();
+        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.externalApiCallCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("한 페이지에 같은 단지가 중복되면 기존 지역 원천을 교체하지 않는다")
+    void doesNotReplaceRegionWhenPageContainsDuplicateSourceKey() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1))
+                .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":1}]", 2));
+
+        var result = service.collect(request());
+
+        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(failureRecorder).record(any(), any(), any(), any(), any());
+        assertThat(result.storedRowCount()).isZero();
+        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.externalApiCallCount()).isOne();
+    }
+
+    @Test
+    @DisplayName("성공 응답에 totalCount가 없으면 기존 지역 원천을 교체하지 않는다")
+    void doesNotReplaceRegionWithoutTotalCount() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1))
+                .thenReturn(response("[{\"hsmpSn\":1}]"));
+
+        var result = service.collect(request());
+
+        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(failureRecorder).record(any(), any(), any(), any(), any());
+        assertThat(result.storedRowCount()).isZero();
+        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.externalApiCallCount()).isOne();
+    }
+
+    @Test
     @DisplayName("재시도 가능한 외부 API 실패는 다시 호출하고 실제 호출 횟수를 반환한다")
     void retriesRetryableApiFailureAndReportsCallCount() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
@@ -143,7 +215,7 @@ class MyHomeComplexCollectionServiceTest {
                         "일시적 실패",
                         new IllegalStateException("504")
                 ))
-                .thenReturn(response("[{\"hsmpSn\":1}]"));
+                .thenReturn(response("[{\"hsmpSn\":1}]", 1));
         when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(1);
 
         var result = service.collect(request());
@@ -215,7 +287,7 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
         when(externalRepository.fetch(region, request(), 1))
-                .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]"));
+                .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]", 3));
         when(externalRepository.fetch(region, request(), 2))
                 .thenThrow(com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException.retryable(
                         "resultCode=05",
@@ -302,7 +374,7 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
         when(externalRepository.fetch(region, request(), 1))
-                .thenReturn(response("[{\"hsmpSn\":{}}]"));
+                .thenReturn(response("[{\"hsmpSn\":{}}]", 1));
 
         service.collect(request());
 
@@ -326,7 +398,7 @@ class MyHomeComplexCollectionServiceTest {
     void propagatesComplexStoreFailure() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
-        when(externalRepository.fetch(region, request(), 1)).thenReturn(response("[{\"hsmpSn\":1}]"));
+        when(externalRepository.fetch(region, request(), 1)).thenReturn(response("[{\"hsmpSn\":1}]", 1));
         when(sourceStore.replaceComplexRegion(eq(region), any()))
                 .thenThrow(new IllegalStateException("DB 저장 실패"));
 
@@ -345,8 +417,8 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeRegion busan = new MyHomeRegion("26", "110", "부산광역시", "중구");
         MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
         when(regionCatalog.findAll()).thenReturn(List.of(busan, seoul));
-        when(externalRepository.fetch(seoul, request, 1)).thenReturn(response("[{\"hsmpSn\":1}]"));
-        when(externalRepository.fetch(busan, request, 1)).thenReturn(response("[{\"hsmpSn\":2}]"));
+        when(externalRepository.fetch(seoul, request, 1)).thenReturn(response("[{\"hsmpSn\":1}]", 1));
+        when(externalRepository.fetch(busan, request, 1)).thenReturn(response("[{\"hsmpSn\":2}]", 1));
         when(sourceStore.replaceComplexRegion(eq(busan), any())).thenReturn(1);
         when(sourceStore.replaceComplexRegion(eq(seoul), any()))
                 .thenThrow(new IllegalStateException("DB 저장 실패"));
