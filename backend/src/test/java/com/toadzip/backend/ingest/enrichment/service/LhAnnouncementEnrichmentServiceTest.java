@@ -241,9 +241,42 @@ class LhAnnouncementEnrichmentServiceTest {
         });
         assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
             assertThat(row.getLhSourceSupplyRowIdentifier()).isEqualTo("LH:" + PAN_ID + ":SUPPLY:0");
-            assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(100);
+            assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(20);
         });
         assertThat(supplyTargetRepository.count()).isOne();
+    }
+
+    @Test
+    void 공공임대_5년_dsList02_수집부터_보강까지_금회_공급_세대수를_유지한다() {
+        saveComplex("PUBLIC_RENTAL_5Y");
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource("21026", "5년임대"));
+        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
+        LhAnnouncementExternalRepository external = mock(LhAnnouncementExternalRepository.class);
+        when(external.fetchDetail(any())).thenReturn(response("""
+                [{"resHeader":[{"SS_CODE":"Y"}]},{"dsEtcInfo":[{"CRC_RSN":"정정 사유"}]}]
+                """));
+        when(external.fetchSupply(any())).thenReturn(response("""
+                [{"resHeader":[{"SS_CODE":"Y"}]},{"dsList01":[],
+                 "dsList02":[{"BZDT_NM":"동삼2","HTY_NM":"46A","RSDN_DDO_AR":"46.8",
+                 "SPL_AR":"67.0","TOT_HSH_CNT":"100","SIL_HSH_CNT":"20",
+                 "LS_GMY":"10000000","MM_RFE":"200000"}]}]
+                """));
+        LhAnnouncementCandidateCollector collector = collector(external);
+
+        assertThat(collector.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, candidate).failedRequestCount())
+                .isZero();
+        assertThat(collector.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, candidate).failedRequestCount())
+                .isZero();
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+
+        assertThat(supplySourceRepository.count()).isOne();
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row ->
+                assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(20));
+        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
+            assertThat(target.getSupplyHouseholdCount()).isEqualTo(20);
+            assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000");
+        });
     }
 
     @Test

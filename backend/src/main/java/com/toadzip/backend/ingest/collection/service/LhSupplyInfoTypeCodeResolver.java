@@ -12,7 +12,7 @@ public class LhSupplyInfoTypeCodeResolver {
             "국민임대", "062",
             "영구임대", "062",
             "행복주택", "063",
-            "통합공공임대", "064"
+            "통합공공임대", "062"
     );
 
     public Optional<String> resolve(String supplyTypeName) {
