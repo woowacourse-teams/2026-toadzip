@@ -26,12 +26,14 @@ import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionCheckpointRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionLinkRepository;
@@ -433,7 +435,7 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(supplyTargetRepository.count()).isOne();
 
         supplySourceRepository.deleteAll();
-        supplySourceRepository.save(new LhAnnouncementSupplySource(0, PAN_ID,
+        saveSupply(new LhAnnouncementSupplySource(0, PAN_ID,
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "46A", "46.8", "67.0", "100", "20", "공고문 참조", "공고문 참조"
                 )));
@@ -455,7 +457,7 @@ class LhAnnouncementEnrichmentServiceTest {
         enrichmentService.enrichAll();
 
         supplySourceRepository.deleteAll();
-        supplySourceRepository.save(new LhAnnouncementSupplySource(0, PAN_ID,
+        saveSupply(new LhAnnouncementSupplySource(0, PAN_ID,
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "46A", "46.8", "67.0", "100", "20", "10~20만원", "200,000"
                 )));
@@ -515,7 +517,7 @@ class LhAnnouncementEnrichmentServiceTest {
         enrichmentService.enrichAll();
 
         supplySourceRepository.deleteAll();
-        supplySourceRepository.save(new LhAnnouncementSupplySource(0, PAN_ID,
+        saveSupply(new LhAnnouncementSupplySource(0, PAN_ID,
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "99Z", "99.0", "120.0", "100", "20", "12,000,000", "250,000"
                 )));
@@ -538,7 +540,7 @@ class LhAnnouncementEnrichmentServiceTest {
         enrichmentService.enrichAll();
 
         detailSourceRepository.deleteAll();
-        detailSourceRepository.save(detail(
+        saveDetail(detail(
                 0, "ETC_INFO", null, null, null, null, null, null, null, "변경된 정정 사유"
         ));
 
@@ -579,14 +581,14 @@ class LhAnnouncementEnrichmentServiceTest {
                 )
         ));
         saveLhSources("10,000,000", "200,000");
-        supplySourceRepository.save(new LhAnnouncementSupplySource(1, PAN_ID,
+        saveSupply(new LhAnnouncementSupplySource(1, PAN_ID,
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "59B", "59.8", "84.0", "80", "10", "20,000,000", "300,000"
                 )));
         enrichmentService.enrichAll();
 
         supplySourceRepository.deleteAll();
-        supplySourceRepository.saveAll(List.of(
+        saveSupplies(List.of(
                 new LhAnnouncementSupplySource(0, PAN_ID, new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "59B", "59.8", "84.0", "80", "10", "21,000,000", "310,000"
                 )),
@@ -622,7 +624,7 @@ class LhAnnouncementEnrichmentServiceTest {
         ReflectionTestUtils.setField(source, "url", source.getUrl().replace("aisTpCd=07", "aisTpCd=08"));
         myHomeSourceRepository.save(source);
         supplySourceRepository.deleteAll();
-        supplySourceRepository.save(new LhAnnouncementSupplySource(0, PAN_ID,
+        saveSupply(new LhAnnouncementSupplySource(0, PAN_ID,
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "46A", "46.8", "67.0", "100", "99", "90,000,000", "900,000"
                 )));
@@ -825,7 +827,7 @@ class LhAnnouncementEnrichmentServiceTest {
         ReflectionTestUtils.setField(source, "houseTyNm", "통합형");
         myHomeSourceRepository.save(source);
         saveLhSources("10,000,000", "200,000");
-        supplySourceRepository.save(new LhAnnouncementSupplySource(1, PAN_ID,
+        saveSupply(new LhAnnouncementSupplySource(1, PAN_ID,
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "59B", "59.8", "84.0", "80", "10", "20,000,000", "300,000"
                 )));
@@ -899,6 +901,31 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     @Test
+    void 같은_panId의_다른_조회조건_원천은_매핑과_보강에_섞이지_않는다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        String otherRequest = new LhAnnouncementRequest(PAN_ID, "03", "06", "08", "062")
+                .requestDescription();
+        sourceStore.replaceDetails(PAN_ID, otherRequest, List.of(detail(
+                0, "ETC_INFO", null, null, null, null, null, null, null, "다른 조회조건"
+        )));
+        sourceStore.replaceSupplies(PAN_ID, otherRequest, List.of(new LhAnnouncementSupplySource(0, PAN_ID,
+                new LhAnnouncementSupplySourceSnapshot(
+                        "동삼2", "46A", "46.8", "67.0", "100", "99", "90,000,000", "900,000"
+                ))));
+        completeLinks(source);
+
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        assertThat(supplyRowRepository.count()).isOne();
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement ->
+                assertThat(announcement.getCorrectionCancellationReason()).isEqualTo("정정 사유"));
+        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target ->
+                assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000"));
+    }
+
+    @Test
     void LH_연결을_바꿔도_수동_일정_첨부_금액과_이전_원천을_보존한다() {
         saveComplex();
         MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
@@ -929,8 +956,13 @@ class LhAnnouncementEnrichmentServiceTest {
                 assertThat(attachment.getId()).isEqualTo(attachmentId));
         assertThat(supplyTargetRepository.findById(targetId)).isPresent();
         assertThat(supplyTargetRepository.count()).isEqualTo(2);
-        assertThat(detailSourceRepository.findAllByPanIdOrderBySourceOrderAsc(PAN_ID)).hasSize(5);
-        assertThat(supplySourceRepository.findAllByPanIdOrderBySourceOrderAsc(PAN_ID)).hasSize(1);
+        String oldRequest = new LhAnnouncementRequest(PAN_ID, "03", "06", "07", "062")
+                .requestDescription();
+        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(oldRequest);
+        assertThat(detailSourceRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(PAN_ID, requestHash))
+                .hasSize(5);
+        assertThat(supplySourceRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(PAN_ID, requestHash))
+                .hasSize(1);
     }
 
     @Test
@@ -946,7 +978,7 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(enrichmentService.enrichAll().failedSourceCount()).isOne();
         assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target ->
                 assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000"));
-        sourceStore.replaceSupplies("200", List.of(new LhAnnouncementSupplySource(0, "200",
+        sourceStore.replaceSupplies("200", requestDescriptionFor("200"), List.of(new LhAnnouncementSupplySource(0, "200",
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "46A", "46.8", "67.0", "100", "20", "12000000", "250000"
                 ))));
@@ -975,7 +1007,7 @@ class LhAnnouncementEnrichmentServiceTest {
             assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000");
         });
 
-        sourceStore.replaceSupplies("200", List.of(new LhAnnouncementSupplySource(0, "200",
+        sourceStore.replaceSupplies("200", requestDescriptionFor("200"), List.of(new LhAnnouncementSupplySource(0, "200",
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "46A", "46.8", "67.0", "100", "20", "12000000", "250000"
                 ))));
@@ -1002,8 +1034,8 @@ class LhAnnouncementEnrichmentServiceTest {
         LhAnnouncementDetailSource detail = detail(0, "ETC_INFO", null, null, null, null, null,
                 null, null, "새 공고");
         ReflectionTestUtils.setField(detail, "panId", "200");
-        detailSourceRepository.save(detail);
-        supplySourceRepository.save(new LhAnnouncementSupplySource(0, "200",
+        saveDetail(detail);
+        saveSupply(new LhAnnouncementSupplySource(0, "200",
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", housingType, "46.8", "67.0", "100", "20", deposit, rent
                 )));
@@ -1052,7 +1084,7 @@ class LhAnnouncementEnrichmentServiceTest {
     private void mapMyHomeSource() {
         MyHomeAnnouncementSource source = myHomeSourceRepository.findAll().getFirst();
         completeLinks(source);
-        supplySourceRepository.save(new LhAnnouncementSupplySource(0, PAN_ID,
+        saveSupply(new LhAnnouncementSupplySource(0, PAN_ID,
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "46A", "46.8", "67.0", "100", "20", null, null
                 )));
@@ -1116,27 +1148,57 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     private void saveLhSources(String deposit, String rent, String receptionGuidance, String housingTypeName) {
-        detailSourceRepository.saveAll(List.of(
+        saveDetails(List.of(
                 detail(0, "ETC_INFO", null, null, null, null, null, null, null, "정정 사유"),
                 detail(1, "SCHEDULE", "2026.08.24 10:00 ~ 2026.08.31 17:00", null, null, null, null, null, null, null),
                 detail(2, "RECEPTION", null, "서울특별시 종로구 접수로 1", "101호", "1600-1004", receptionGuidance, null, null, null),
                 detail(3, "ANNOUNCEMENT_FILE", null, null, null, null, null, "공고문.pdf", "https://example.com/file.pdf", null),
                 detail(4, "COMPLEX", null, null, null, null, null, null, null, null)
         ));
-        supplySourceRepository.save(new LhAnnouncementSupplySource(0, PAN_ID,
+        saveSupply(new LhAnnouncementSupplySource(0, PAN_ID,
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", housingTypeName, "46.8", "67.0", "100", "20", deposit, rent
                 )));
     }
 
     private void saveLhSourcesWithMissingHouseholdCountAndReception() {
-        detailSourceRepository.save(detail(
+        saveDetail(detail(
                 0, "ETC_INFO", null, null, null, null, null, null, null, "정정 사유"
         ));
-        supplySourceRepository.save(new LhAnnouncementSupplySource(0, PAN_ID,
+        saveSupply(new LhAnnouncementSupplySource(0, PAN_ID,
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "46A", "46.8", "67.0", null, null, null, null
                 )));
+    }
+
+    private String requestDescriptionFor(String panId) {
+        return myHomeSourceRepository.findAll().stream()
+                .map(candidateResolver::resolve)
+                .filter(LhAnnouncementCollectionCandidateResolver.Candidate.class::isInstance)
+                .map(LhAnnouncementCollectionCandidateResolver.Candidate.class::cast)
+                .filter(candidate -> candidate.panId().equals(panId))
+                .map(LhAnnouncementCollectionCandidateResolver.Candidate::requestDescription)
+                .findFirst().orElseThrow();
+    }
+
+    private LhAnnouncementDetailSource saveDetail(LhAnnouncementDetailSource source) {
+        source.assignRequestHash(LhAnnouncementCollectionCheckpoint.requestHashOf(
+                requestDescriptionFor(source.getPanId())));
+        return detailSourceRepository.save(source);
+    }
+
+    private void saveDetails(List<LhAnnouncementDetailSource> sources) {
+        sources.forEach(this::saveDetail);
+    }
+
+    private LhAnnouncementSupplySource saveSupply(LhAnnouncementSupplySource source) {
+        source.assignRequestHash(LhAnnouncementCollectionCheckpoint.requestHashOf(
+                requestDescriptionFor(source.getPanId())));
+        return supplySourceRepository.save(source);
+    }
+
+    private void saveSupplies(List<LhAnnouncementSupplySource> sources) {
+        sources.forEach(this::saveSupply);
     }
 
     private LhAnnouncementDetailSource detail(

@@ -6,10 +6,12 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
@@ -125,9 +127,9 @@ public class LhAnnouncementEnrichmentService {
             return reject(source, null, LhAnnouncementEnrichmentFailureReason.UNSUPPORTED_SUPPLY_TYPE,
                     "지원하지 않는 공급유형의 LH 공고입니다.", failures, occurredAt);
         }
-        String panId;
+        LhAnnouncementRequest request;
         try {
-            panId = linkResolver.resolve(source);
+            request = linkResolver.resolve(source);
         }
         catch (LhAnnouncementLinkResolutionException exception) {
             LhAnnouncementEnrichmentFailureReason reason = switch (exception.reason()) {
@@ -137,12 +139,16 @@ public class LhAnnouncementEnrichmentService {
             };
             return reject(source, null, reason, exception.getMessage(), failures, occurredAt);
         }
-        List<LhAnnouncementDetailSource> details = detailSourceRepository.findAllByPanIdOrderBySourceOrderAsc(panId);
+        String panId = request.panId();
+        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(request.requestDescription());
+        List<LhAnnouncementDetailSource> details = detailSourceRepository
+                .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
         if (details.isEmpty()) {
             return reject(source, panId, LhAnnouncementEnrichmentFailureReason.LH_DETAIL_SOURCE_NOT_FOUND,
                     "연결된 LH 공고 상세 원본이 없습니다.", failures, occurredAt);
         }
-        List<LhAnnouncementSupplySource> supplies = supplySourceRepository.findAllByPanIdOrderBySourceOrderAsc(panId);
+        List<LhAnnouncementSupplySource> supplies = supplySourceRepository
+                .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
         try {
             LhAnnouncementEnrichmentData data = mapper.map(panId, details, supplies);
             LhAnnouncementEnrichmentWriteResult result = writer.write(announcement, data);

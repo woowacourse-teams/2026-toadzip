@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.collection.domain;
 
 import static lombok.AccessLevel.PROTECTED;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -16,7 +17,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(
         name = "lh_announcement_supply_source",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"pan_id", "source_order"})
+        uniqueConstraints = @UniqueConstraint(columnNames = {"pan_id", "request_hash", "source_order"})
 )
 @NoArgsConstructor(access = PROTECTED)
 public class LhAnnouncementSupplySource {
@@ -28,6 +29,8 @@ public class LhAnnouncementSupplySource {
     private Integer sourceOrder;
     private Instant collectedAt;
     private String panId;
+    @Column(name = "request_hash", length = 64)
+    private String requestHash;
     private String complexLabel;
     private String typeName;
     private String exclusiveArea;
@@ -55,6 +58,13 @@ public class LhAnnouncementSupplySource {
             throw new IllegalArgumentException("수집 시각은 필수입니다.");
         }
         this.collectedAt = collectedAt;
+    }
+
+    public void assignRequestHash(String requestHash) {
+        if (requestHash == null || requestHash.isBlank()) {
+            throw new IllegalArgumentException("LH 조회 조건 해시는 필수입니다.");
+        }
+        this.requestHash = requestHash;
     }
 
     private static String trim(String value) {

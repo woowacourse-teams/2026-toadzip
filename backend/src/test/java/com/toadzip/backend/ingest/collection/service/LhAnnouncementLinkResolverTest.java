@@ -48,7 +48,7 @@ class LhAnnouncementLinkResolverTest {
         link(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, REQUEST.requestDescription(), "100");
         link(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, REQUEST.requestDescription(), "100");
 
-        assertThat(resolver.resolve(source)).isEqualTo("100");
+        assertThat(resolver.resolve(source)).isEqualTo(REQUEST);
     }
 
     @Test

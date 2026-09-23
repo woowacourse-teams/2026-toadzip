@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.collection.repository;
 
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSource;
@@ -52,22 +53,38 @@ public class LhSourceStore {
     }
 
     @Transactional
-    public int replaceDetails(String panId, List<LhAnnouncementDetailSource> sources) {
+    public int replaceDetails(String panId, String requestDescription, List<LhAnnouncementDetailSource> sources) {
         Instant collectedAt = clock.instant();
-        sources.forEach(source -> source.markCollectedAt(collectedAt));
-        detailRepository.deleteByPanId(panId);
+        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescription);
+        sources.forEach(source -> {
+            requirePanId(panId, source.getPanId());
+            source.assignRequestHash(requestHash);
+            source.markCollectedAt(collectedAt);
+        });
+        detailRepository.deleteByPanIdAndRequestHash(panId, requestHash);
         detailRepository.flush();
         detailRepository.saveAll(sources);
         return sources.size();
     }
 
     @Transactional
-    public int replaceSupplies(String panId, List<LhAnnouncementSupplySource> sources) {
+    public int replaceSupplies(String panId, String requestDescription, List<LhAnnouncementSupplySource> sources) {
         Instant collectedAt = clock.instant();
-        sources.forEach(source -> source.markCollectedAt(collectedAt));
-        supplyRepository.deleteByPanId(panId);
+        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescription);
+        sources.forEach(source -> {
+            requirePanId(panId, source.getPanId());
+            source.assignRequestHash(requestHash);
+            source.markCollectedAt(collectedAt);
+        });
+        supplyRepository.deleteByPanIdAndRequestHash(panId, requestHash);
         supplyRepository.flush();
         supplyRepository.saveAll(sources);
         return sources.size();
+    }
+
+    private void requirePanId(String requestedPanId, String sourcePanId) {
+        if (!requestedPanId.equals(sourcePanId)) {
+            throw new IllegalArgumentException("LH 원천 행의 공고 식별자가 조회 조건과 다릅니다.");
+        }
     }
 }
