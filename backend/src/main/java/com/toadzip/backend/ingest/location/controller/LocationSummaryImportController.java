@@ -4,6 +4,7 @@ import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestExcept
 import com.toadzip.backend.ingest.location.dto.LocationSummaryImportReport;
 import com.toadzip.backend.ingest.location.service.LocationSummaryImportService;
 import java.io.IOException;
+import java.io.InputStream;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,10 +30,10 @@ public class LocationSummaryImportController {
         if (file == null || file.isEmpty()) {
             throw new InvalidIngestRequestException("위치정보요약DB 월전체 ZIP은 필수입니다.");
         }
-        try {
+        try (InputStream input = file.getInputStream()) {
             LocationSummaryImportReport report = importService.importMatches(
                     file.getOriginalFilename(),
-                    file.getInputStream()
+                    input
             );
             return ResponseEntity.ok(report);
         }

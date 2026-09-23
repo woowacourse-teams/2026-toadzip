@@ -48,8 +48,7 @@ public class LocationSummaryFileParser {
         if (input == null) {
             throw new InvalidIngestRequestException("위치정보요약DB 월전체 ZIP은 필수입니다.");
         }
-        try {
-            PushbackInputStream source = new PushbackInputStream(input, 4);
+        try (PushbackInputStream source = new PushbackInputStream(input, 4)) {
             byte[] signature = source.readNBytes(4);
             source.unread(signature);
             if (!isZip(signature)) {
@@ -66,17 +65,18 @@ public class LocationSummaryFileParser {
             InputStream input,
             Consumer<LocationSummaryRecord> consumer
     ) throws IOException {
-        ZipInputStream zip = new ZipInputStream(input, MS949);
-        ParseState state = new ParseState();
-        for (ZipEntry entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
-            if (!isLocationSummaryEntry(entry)) {
-                continue;
+        try (ZipInputStream zip = new ZipInputStream(input, MS949)) {
+            ParseState state = new ParseState();
+            for (ZipEntry entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
+                if (!isLocationSummaryEntry(entry)) {
+                    continue;
+                }
+                String entryName = baseName(entry.getName());
+                state.startEntry(entryName);
+                parseText(zip, entryName, consumer, state);
             }
-            String entryName = baseName(entry.getName());
-            state.startEntry(entryName);
-            parseText(zip, entryName, consumer, state);
+            return state.result();
         }
-        return state.result();
     }
 
     private void parseText(
