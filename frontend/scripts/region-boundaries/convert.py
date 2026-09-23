@@ -332,7 +332,7 @@ def main():
     verified, unavailable, corrections = verified_catalog_geometries(catalog, rows)
     transformer = pyproj.Transformer.from_crs(5186, 4326, always_xy=True)
     source = {'dataset': '국토교통부/K-Geo플랫폼 법정구역정보', 'url': SOURCE_URL,
-              'attribution': '국토교통부/K-Geo플랫폼 · VWorld 법정구역정보, CC BY 2.0 KR; 두꺼비집 가공',
+              'attribution': '국토교통부/K-Geo플랫폼 · VWorld 법정구역정보, CC BY 2.0 KR; 공공주택 복덕방 가공',
               'license': 'CC BY 2.0 KR', 'licenseUrl': 'https://creativecommons.org/licenses/by/2.0/kr/',
               'referenceDate': '2026-09-09', 'updateDate': '2026-09-09', 'acquiredAt': args.acquired_at,
               'acquiredAtEvidence': 'local downloaded ZIP filesystem creation timestamp',

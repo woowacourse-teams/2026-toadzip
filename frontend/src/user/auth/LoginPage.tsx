@@ -36,16 +36,16 @@ export function LoginPage() {
   return (
     <div className="user-login-page">
       <header className="user-login-header">
-        <Link className="brand-link" to="/" aria-label="두꺼비집 홈">
+        <Link className="brand-link" to="/" aria-label="공공주택 복덕방 홈">
           <span className="brand-mark" aria-hidden="true">⌂</span>
-          <span className="brand-name">두꺼비집</span>
+          <span className="brand-name">공공주택 복덕방</span>
         </Link>
         <Link className="user-login-back" to="/">지도로 돌아가기</Link>
       </header>
       <main className="user-login-main">
         <section className="user-login-intro" aria-label="서비스 소개">
           <span className="user-login-eyebrow">내게 맞는 공공주택을 찾는 곳</span>
-          <h1>좋은 집을 찾는 시간,<br />두꺼비집과 함께.</h1>
+          <h1>좋은 집을 찾는 시간,<br />공공주택 복덕방과 함께.</h1>
           <p>관심 있는 집과 모집 공고를 한곳에서 살펴보세요.</p>
           <div className="user-login-illustration" aria-hidden="true">
             <span className="user-login-sun" />
@@ -56,7 +56,7 @@ export function LoginPage() {
         </section>
         <section className="user-login-panel" aria-label="로그인">
           <div className="user-login-content">
-            <span className="user-login-step">두꺼비집 시작하기</span>
+            <span className="user-login-step">공공주택 복덕방 시작하기</span>
             <h2>{session === 'signed-in' ? '로그인되었습니다' : '로그인'}</h2>
             {session === 'signed-in' ? (
               <>
