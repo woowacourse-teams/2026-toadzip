@@ -54,6 +54,7 @@ import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionPro
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementPageFetcher;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
+import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
@@ -929,6 +930,131 @@ class LhAnnouncementEnrichmentServiceTest {
                 assertThat(announcement.getCorrectionCancellationReason()).isEqualTo("정정 사유"));
         assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target ->
                 assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "name, 공고명",
+            "status, 공고 상태",
+            "url, 원문 URL",
+            "supplyType, 공급유형",
+            "provider, 공급기관",
+            "previousId, 이전 공고 식별자",
+            "contact, 문의처",
+            "postedDate, 모집 공고일",
+            "startDate, 모집 시작일",
+            "endDate, 모집 종료일",
+            "winnerDate, 당첨자 발표일"
+    })
+    void 같은_공고의_공통값이_충돌하면_매핑과_보강이_기존_데이터를_보존한다(
+            String conflictingField,
+            String fieldName
+    ) {
+        saveComplex();
+        MyHomeAnnouncementSource linked = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(linked);
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        Long announcementId = announcementRepository.findAll().getFirst().getId();
+        Long rowId = supplyRowRepository.findAll().getFirst().getId();
+        Long scheduleId = scheduleRepository.findAll().getFirst().getId();
+        Long attachmentId = attachmentRepository.findAll().getFirst().getId();
+        Long targetId = supplyTargetRepository.findAll().getFirst().getId();
+
+        sourceStore.replaceDetails(PAN_ID, requestDescriptionFor(PAN_ID), List.of(
+                detail(0, "ETC_INFO", null, null, null, null, null, null, null, "변경된 정정 사유")
+        ));
+        sourceStore.replaceSupplies(PAN_ID, requestDescriptionFor(PAN_ID), List.of(
+                new LhAnnouncementSupplySource(0, PAN_ID, new LhAnnouncementSupplySourceSnapshot(
+                        "동삼2", "46A", "46.8", "67.0", "100", "20", "12,000,000", "250,000"
+                ))
+        ));
+        if (conflictingField.equals("previousId")) {
+            ReflectionTestUtils.setField(linked, "beforePblancId", "21024");
+            myHomeSourceRepository.save(linked);
+        }
+        MyHomeAnnouncementSource conflicting = myHomeSource();
+        ReflectionTestUtils.setField(conflicting, "houseSn", 2);
+        ReflectionTestUtils.setField(conflicting, "sourceKey", "5:210261:2");
+        switch (conflictingField) {
+            case "name" -> ReflectionTestUtils.setField(conflicting, "pblancNm", "다른 입주자 모집공고");
+            case "status" -> ReflectionTestUtils.setField(conflicting, "sttusNm", "마감");
+            case "url" -> ReflectionTestUtils.setField(
+                    conflicting, "url", linked.getUrl().replace("panId=100", "panId=200")
+            );
+            case "supplyType" -> ReflectionTestUtils.setField(conflicting, "suplyTyNm", "행복주택");
+            case "provider" -> ReflectionTestUtils.setField(conflicting, "suplyInsttNm", "SH공사");
+            case "previousId" -> ReflectionTestUtils.setField(conflicting, "beforePblancId", "21025");
+            case "contact" -> ReflectionTestUtils.setField(conflicting, "refrnc", "02-000-0000");
+            case "postedDate" -> ReflectionTestUtils.setField(conflicting, "rcritPblancDe", "20260913");
+            case "startDate" -> ReflectionTestUtils.setField(conflicting, "beginDe", "20260825");
+            case "endDate" -> ReflectionTestUtils.setField(conflicting, "endDe", "20260901");
+            case "winnerDate" -> ReflectionTestUtils.setField(conflicting, "przwnerPresnatnDe", "20261107");
+            default -> throw new IllegalArgumentException(conflictingField);
+        }
+        myHomeSourceRepository.save(conflicting);
+
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isEqualTo(2);
+        assertThat(mappingFailureRepository.findAll())
+                .allSatisfy(failure -> assertThat(failure.getReason())
+                        .isEqualTo(MyHomeAnnouncementMappingFailureReason.CONFLICTING_SOURCE_VALUE));
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isOne();
+        assertThat(enrichmentFailureRepository.findAll()).singleElement().satisfies(failure -> {
+            assertThat(failure.getReason()).isEqualTo(LhAnnouncementEnrichmentFailureReason.INVALID_VALUE);
+            assertThat(failure.getDetail()).contains(fieldName);
+        });
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement -> {
+            assertThat(announcement.getId()).isEqualTo(announcementId);
+            assertThat(announcement.getLhPanId()).isEqualTo(PAN_ID);
+            assertThat(announcement.getCorrectionCancellationReason()).isEqualTo("정정 사유");
+            assertThat(announcement.getReceptionPlace().getContact()).isEqualTo("1600-1004");
+        });
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row ->
+                assertThat(row.getId()).isEqualTo(rowId));
+        assertThat(scheduleRepository.findAll()).singleElement().satisfies(schedule -> {
+            assertThat(schedule.getId()).isEqualTo(scheduleId);
+            assertThat(schedule.getName()).isEqualTo("접수");
+            assertThat(schedule.getStartAt()).isEqualTo(LocalDateTime.of(2026, 8, 24, 10, 0));
+        });
+        assertThat(attachmentRepository.findAll()).singleElement().satisfies(attachment -> {
+            assertThat(attachment.getId()).isEqualTo(attachmentId);
+            assertThat(attachment.getFileName()).isEqualTo("공고문.pdf");
+            assertThat(attachment.getFileUrl()).isEqualTo("https://example.com/file.pdf");
+        });
+        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
+            assertThat(target.getId()).isEqualTo(targetId);
+            assertThat(target.getRentalDeposit()).isEqualByComparingTo("10000000");
+            assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000");
+        });
+    }
+
+    @Test
+    void 공통값_충돌이_해소되면_보강을_재개하고_실패_이력을_해결한다() {
+        saveComplex();
+        MyHomeAnnouncementSource linked = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(linked);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        sourceStore.replaceDetails(PAN_ID, requestDescriptionFor(PAN_ID), List.of(
+                detail(0, "ETC_INFO", null, null, null, null, null, null, null, "변경된 정정 사유")
+        ));
+        MyHomeAnnouncementSource conflicting = myHomeSource();
+        ReflectionTestUtils.setField(conflicting, "houseSn", 2);
+        ReflectionTestUtils.setField(conflicting, "sourceKey", "5:210261:2");
+        ReflectionTestUtils.setField(conflicting, "url", linked.getUrl().replace("panId=100", "panId=200"));
+        conflicting = myHomeSourceRepository.save(conflicting);
+
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isOne();
+
+        myHomeSourceRepository.delete(conflicting);
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement ->
+                assertThat(announcement.getCorrectionCancellationReason()).isEqualTo("변경된 정정 사유"));
+        assertThat(enrichmentFailureRepository.findAll()).singleElement().satisfies(failure ->
+                assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.RESOLVED));
     }
 
     @Test
