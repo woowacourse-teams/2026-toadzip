@@ -210,6 +210,19 @@ class DataPipelineRunnerTest {
     }
 
     @Test
+    void LH_단지는_매칭됐지만_주택형이_누락되면_주의를_남긴다() {
+        when(myHomeComplexMappingService.mapAll()).thenReturn(complexMappingReport(0));
+        when(householdEnrichmentService.enrichAll())
+                .thenReturn(LhHousingTypeHouseholdEnrichmentReport.matched(0, 0, 1));
+
+        runner.run(DataPipelineType.COMPLEX_REFINEMENT, progressListener);
+
+        verify(progressListener).completedWithWarnings(
+                eq(DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS), any()
+        );
+    }
+
+    @Test
     void 마이홈_수집이_일부_실패해도_뒤의_LH_수집을_실행한다() {
         when(myHomeComplexCollectionService.collect(any()))
                 .thenReturn(new MyHomeComplexCollectionReport("myhome-complex", 10, 1, 20));
