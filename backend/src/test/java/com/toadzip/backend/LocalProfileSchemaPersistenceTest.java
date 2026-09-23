@@ -4,10 +4,17 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
@@ -102,7 +109,7 @@ class LocalProfileSchemaPersistenceTest {
                         """);
             }
 
-            try (ConfigurableApplicationContext ignored = new SpringApplicationBuilder(BackendApplication.class)
+            try (ConfigurableApplicationContext applicationContext = new SpringApplicationBuilder(BackendApplication.class)
                     .environment(createIsolatedEnvironment(jdbcUrl))
                     .run();
                     Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
@@ -111,6 +118,23 @@ class LocalProfileSchemaPersistenceTest {
                             SELECT string_agg(type || ':' || version, ',' ORDER BY installed_rank)
                             FROM flyway_schema_history
                             """)) {
+                String replayRequest = new LhAnnouncementRequest(
+                        "legacy-pan", "03", "06", "07", "062"
+                ).requestDescription();
+                LhSourceStore sourceStore = applicationContext.getBean(LhSourceStore.class);
+                sourceStore.replaceDetails("legacy-pan", replayRequest, List.of(new LhAnnouncementDetailSource(
+                        0, "legacy-pan", "ETC_INFO", null, null, null, null, null, null,
+                        null, null, null, null, null, null, null, null, null, null, null,
+                        null, null, null, null, null, null, null, "재수집", null
+                )));
+                sourceStore.replaceSupplies("legacy-pan", replayRequest, List.of(
+                        new LhAnnouncementSupplySource(0, "legacy-pan", new LhAnnouncementSupplySourceSnapshot(
+                                "재수집 단지", "46A", "46.8", "67.0", "100", "20", null, null
+                        ))
+                ));
+                String replayHash = LhAnnouncementCollectionCheckpoint.requestHashOf(replayRequest);
+                assertEquals(1, countRequestRows(connection, "lh_announcement_detail_source", replayHash));
+                assertEquals(1, countRequestRows(connection, "lh_announcement_supply_source", replayHash));
                 assertTrue(history.next());
                 assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02,SQL:20260923.01",
                         history.getString(1));
@@ -120,8 +144,8 @@ class LocalProfileSchemaPersistenceTest {
                 assertEquals(1, countColumn(connection, "lh_announcement_supply_source", "request_hash"));
                 assertEquals(1, countLegacyRow(connection, "lh_announcement_detail_source"));
                 assertEquals(1, countLegacyRow(connection, "lh_announcement_supply_source"));
-                assertEquals(3, countRows(connection, "lh_announcement_detail_source"));
-                assertEquals(3, countRows(connection, "lh_announcement_supply_source"));
+                assertEquals(4, countRows(connection, "lh_announcement_detail_source"));
+                assertEquals(4, countRows(connection, "lh_announcement_supply_source"));
                 assertEquals("UNIQUE (pan_id, request_hash, source_order, dataset_type)",
                         constraintDefinition(connection, "uk_lh_detail_source_request_row"));
                 assertEquals("UNIQUE (pan_id, request_hash, source_order)",
@@ -154,6 +178,18 @@ class LocalProfileSchemaPersistenceTest {
                         + " WHERE pan_id = 'legacy-pan'")) {
             rows.next();
             return rows.getInt(1);
+        }
+    }
+
+    private int countRequestRows(Connection connection, String tableName, String requestHash) throws Exception {
+        try (var statement = connection.prepareStatement(
+                "SELECT COUNT(*) FROM " + tableName + " WHERE pan_id = 'legacy-pan' AND request_hash = ?"
+        )) {
+            statement.setString(1, requestHash);
+            try (ResultSet rows = statement.executeQuery()) {
+                rows.next();
+                return rows.getInt(1);
+            }
         }
     }
 
