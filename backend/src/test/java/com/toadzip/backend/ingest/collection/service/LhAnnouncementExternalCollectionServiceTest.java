@@ -561,6 +561,20 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void 표준_임대_공급행의_주택형이_없으면_기존_공급_원천과_체크포인트를_보존한다() {
+        source(announcementSource());
+        when(externalRepository.fetchSupply(any())).thenReturn(response("""
+                [{"dsList01":[{"SBD_LGO_NM":"가 단지"}]}]
+                """));
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+
+        verify(sourceStore, never()).replaceSupplies(any(), any(), any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
     void 공공임대_dsList02의_공급행을_원천에_저장한다() {
         source(publicRentalAnnouncementSource());
         when(externalRepository.fetchSupply(any())).thenReturn(response("""
@@ -1230,7 +1244,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     private ExternalDataResponse supplyResponse() {
         return response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},"
-                + "{\"dsList01\":[{\"SBD_LGO_NM\":\"행복주택\"}]}]");
+                + "{\"dsList01\":[{\"SBD_LGO_NM\":\"행복주택\",\"HTY_NNA\":\"46A\"}]}]");
     }
 
     private ExternalDataResponse detailResponse(int start, int count) {
@@ -1257,7 +1271,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     private ExternalDataResponse supplyResponse(String responseDateTime, int start, int count) {
         String rows = java.util.stream.IntStream.range(start, start + count)
-                .mapToObj(index -> "{\"SBD_LGO_NM\":\"단지-" + index + "\"}")
+                .mapToObj(index -> "{\"SBD_LGO_NM\":\"단지-" + index + "\",\"HTY_NNA\":\"46A\"}")
                 .collect(java.util.stream.Collectors.joining(","));
         String responseDateTimeField = responseDateTimeField(responseDateTime);
         return response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"" + responseDateTimeField

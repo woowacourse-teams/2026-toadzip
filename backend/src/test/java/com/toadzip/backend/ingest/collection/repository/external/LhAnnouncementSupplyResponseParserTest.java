@@ -76,6 +76,17 @@ class LhAnnouncementSupplyResponseParserTest {
     }
 
     @Test
+    @DisplayName("062 임대주택 공급행의 단지명 또는 주택형이 없으면 수집에 실패한다")
+    void rejectsUnidentifiableStandardSupplyRow() {
+        var root = objectMapper.readTree("""
+                [{"dsList01":[{"SBD_LGO_NM":"가 단지","HTY_NM":"잘못된 주택형 필드"}]}]
+                """);
+
+        assertThatThrownBy(() -> parser.parse("PAN-1", "062", root))
+                .isInstanceOf(ExternalDataRequestException.class);
+    }
+
+    @Test
     @DisplayName("LH 공고 공급 dataset이 없으면 실패한다")
     void rejectsMissingSupplyDataset() {
         var root = objectMapper.readTree("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]}]");

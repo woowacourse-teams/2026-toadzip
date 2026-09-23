@@ -73,10 +73,7 @@ public class LhAnnouncementSupplyResponseParser {
         if ("060".equals(supplyInfoTypeCode)) {
             String complexLabel = text(row, "BZDT_NM");
             String typeName = text(row, "HTY_NM");
-            if (complexLabel == null || complexLabel.isBlank()
-                    || typeName == null || typeName.isBlank()) {
-                throw new ExternalDataRequestException("LH 공공임대 공급행의 단지명 또는 주택형명이 없습니다.");
-            }
+            requireIdentity(complexLabel, typeName);
             return new LhAnnouncementSupplySourceSnapshot(
                     complexLabel,
                     typeName,
@@ -88,9 +85,12 @@ public class LhAnnouncementSupplyResponseParser {
                     text(row, "MM_RFE")
             );
         }
+        String complexLabel = text(row, "SBD_LGO_NM");
+        String typeName = text(row, "HTY_NNA");
+        requireIdentity(complexLabel, typeName);
         return new LhAnnouncementSupplySourceSnapshot(
-                text(row, "SBD_LGO_NM"),
-                text(row, "HTY_NNA"),
+                complexLabel,
+                typeName,
                 text(row, "DDO_AR"),
                 text(row, "SPL_AR"),
                 text(row, "HSH_CNT"),
@@ -98,6 +98,13 @@ public class LhAnnouncementSupplyResponseParser {
                 text(row, "LS_GMY"),
                 text(row, "RFE")
         );
+    }
+
+    private void requireIdentity(String complexLabel, String typeName) {
+        if (complexLabel == null || complexLabel.isBlank()
+                || typeName == null || typeName.isBlank()) {
+            throw new ExternalDataRequestException("LH 공고 공급행의 단지명 또는 주택형명이 없습니다.");
+        }
     }
 
     private String text(JsonNode row, String field) {
