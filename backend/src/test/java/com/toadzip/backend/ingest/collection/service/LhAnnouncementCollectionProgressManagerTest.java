@@ -48,13 +48,12 @@ class LhAnnouncementCollectionProgressManagerTest {
     }
 
     @Test
-    void 후보의_요청과_PAN_ID로_배치_진행_상태를_조회한다() {
+    void 후보의_요청과_공고별_연결로_배치_진행_상태를_조회한다() {
         Candidate candidate = candidate();
         BatchProgress expected = BatchProgress.empty();
         when(progressStore.findBatch(
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
                 List.of(candidate.requestDescription()),
-                List.of(candidate.panId()),
                 List.of(candidate.sourceAnnouncementKey()),
                 NOW.minus(REFRESH_TTL)
         )).thenReturn(expected);

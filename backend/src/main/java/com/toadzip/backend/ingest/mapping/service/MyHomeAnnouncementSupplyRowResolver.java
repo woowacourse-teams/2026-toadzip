@@ -1,8 +1,9 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.housing.domain.AgencyCode;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
@@ -37,7 +38,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
         if (data.provider() != AgencyCode.LH) {
             return data;
         }
-        List<LhAnnouncementSupplySource> lhSupplies = findLhSupplies(data.supplyRows().getFirst().source());
+        List<LhAnnouncementSupplySource> lhSupplies = findLhSupplies(data.supplyRows());
         if (lhSupplies.isEmpty()) {
             return data.preservingExistingLhResolvedRows();
         }
@@ -65,10 +66,12 @@ public class MyHomeAnnouncementSupplyRowResolver {
         return data.withSupplyRows(List.copyOf(resolved));
     }
 
-    private List<LhAnnouncementSupplySource> findLhSupplies(MyHomeAnnouncementSource source) {
-        String panId;
+    private List<LhAnnouncementSupplySource> findLhSupplies(List<MyHomeSupplyRowMappingData> sourceRows) {
+        LhAnnouncementRequest request;
         try {
-            panId = linkResolver.resolve(source);
+            request = linkResolver.resolveFirstLinked(
+                    sourceRows.stream().map(MyHomeSupplyRowMappingData::source).toList()
+            ).request();
         }
         catch (LhAnnouncementLinkResolutionException exception) {
             MyHomeAnnouncementMappingFailureReason reason = switch (exception.reason()) {
@@ -78,7 +81,10 @@ public class MyHomeAnnouncementSupplyRowResolver {
             };
             throw new MyHomeAnnouncementMappingRejectedException(reason, exception.getMessage());
         }
-        return lhSupplyRepository.findAllByPanIdOrderBySourceOrderAsc(panId);
+        return lhSupplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
+                request.panId(),
+                LhAnnouncementCollectionCheckpoint.requestHashOf(request.requestDescription())
+        );
     }
 
     private Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matchByComplex(

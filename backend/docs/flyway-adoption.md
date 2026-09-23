@@ -12,6 +12,12 @@
 
 `baseline` 명령과 `B` 스크립트는 서로 다른 기능이다. 기존 DB에서 `B`가 실행되면 테이블 생성이 충돌하므로, 복제본에서 이력과 실행 순서를 먼저 확인한다. `baseline-on-migrate=false`를 유지한다.
 
+기존 DB에 `uk_users_login_identifier` 제약이 이미 있으면 `V20260922_02`가 같은 이름의 제약을 추가하려다 실패한다. 2026-09-23 로컬 DB에서 확인된 상태다. 해당 DB에서는 다음 순서를 적용한다.
+
+1. 앱을 중지하고 백업한 뒤, 기존 제약이 `UNIQUE (login_identifier)`이고 중복 로그인 식별자가 없는지 확인한다. 정의가 다르면 이 절차를 적용하지 않는다.
+2. baseline 후 `-target=20260922.01 migrate`로 통합 보정까지만 적용한다.
+3. 기존 `uk_users_login_identifier`를 제거하고 일반 `migrate`로 `V20260922_02`가 동일 제약을 재생성하게 한다. 제약과 Flyway 성공 이력을 확인한다.
+
 ## 복제본에서 확인할 순서
 
 1. 운영 복제본의 `current_database()`가 `toadzip_rehearsal`인지 확인한다. 복제본에 `flyway_schema_history`가 없어야 한다.

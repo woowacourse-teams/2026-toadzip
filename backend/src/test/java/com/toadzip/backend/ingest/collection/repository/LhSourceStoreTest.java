@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.collection.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
@@ -93,8 +94,8 @@ class LhSourceStoreTest {
                 )
         );
 
-        store.replaceDetails("PAN-1", List.of(detail));
-        store.replaceSupplies("PAN-1", List.of(supply));
+        store.replaceDetails("PAN-1", "PAN_ID=PAN-1&TYPE=DETAIL", List.of(detail));
+        store.replaceSupplies("PAN-1", "PAN_ID=PAN-1&TYPE=SUPPLY", List.of(supply));
 
         assertThat(detailRepository.findAll()).singleElement()
                 .extracting(source -> source.getDatasetType())
@@ -102,6 +103,55 @@ class LhSourceStoreTest {
         assertThat(supplyRepository.findAll()).singleElement()
                 .extracting(source -> source.getComplexLabel())
                 .isEqualTo("순천선평3");
+    }
+
+    @Test
+    void 같은_panId의_다른_조회_조건이_기존_원천을_덮지_않는다() {
+        LhAnnouncementSupplySource first = new LhAnnouncementSupplySource(
+                0, "PAN-1", new LhAnnouncementSupplySourceSnapshot(
+                        "첫 번째 단지", "24", "24", "30", "10", "5", null, null
+                )
+        );
+        LhAnnouncementSupplySource second = new LhAnnouncementSupplySource(
+                0, "PAN-1", new LhAnnouncementSupplySourceSnapshot(
+                        "두 번째 단지", "36", "36", "45", "20", "8", null, null
+                )
+        );
+
+        store.replaceSupplies("PAN-1", "PAN_ID=PAN-1&TYPE=A", List.of(first));
+        store.replaceSupplies("PAN-1", "PAN_ID=PAN-1&TYPE=B", List.of(second));
+        store.replaceSupplies("PAN-1", "PAN_ID=PAN-1&TYPE=A", List.of(new LhAnnouncementSupplySource(
+                0, "PAN-1", new LhAnnouncementSupplySourceSnapshot(
+                        "수정된 첫 번째 단지", "24", "24", "30", "10", "5", null, null
+                )
+        )));
+
+        assertThat(supplyRepository.findAll()).hasSize(2);
+        assertThat(supplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
+                "PAN-1", LhAnnouncementCollectionCheckpoint.requestHashOf("PAN_ID=PAN-1&TYPE=A")
+        )).singleElement().extracting(LhAnnouncementSupplySource::getComplexLabel)
+                .isEqualTo("수정된 첫 번째 단지");
+        assertThat(supplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
+                "PAN-1", LhAnnouncementCollectionCheckpoint.requestHashOf("PAN_ID=PAN-1&TYPE=B")
+        )).singleElement().extracting(LhAnnouncementSupplySource::getComplexLabel).isEqualTo("두 번째 단지");
+    }
+
+    @Test
+    void 응답의_panId가_요청과_다르면_기존_원천을_보존한다() {
+        String request = "PAN_ID=PAN-1&TYPE=A";
+        store.replaceSupplies("PAN-1", request, List.of(new LhAnnouncementSupplySource(
+                0, "PAN-1", new LhAnnouncementSupplySourceSnapshot(
+                        "기존 단지", "24", "24", "30", "10", "5", null, null
+                )
+        )));
+
+        assertThatThrownBy(() -> store.replaceSupplies("PAN-1", request, List.of(
+                new LhAnnouncementSupplySource(0, "PAN-2", new LhAnnouncementSupplySourceSnapshot(
+                        "잘못된 단지", "36", "36", "45", "20", "8", null, null
+                ))
+        ))).isInstanceOf(IllegalArgumentException.class);
+        assertThat(supplyRepository.findAll()).singleElement()
+                .extracting(LhAnnouncementSupplySource::getComplexLabel).isEqualTo("기존 단지");
     }
 
     private LhCatalogSourceSnapshot catalog(String label, String area) {

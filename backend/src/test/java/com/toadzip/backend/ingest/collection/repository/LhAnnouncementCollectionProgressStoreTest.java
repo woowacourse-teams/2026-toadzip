@@ -3,7 +3,6 @@ package com.toadzip.backend.ingest.collection.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -25,12 +24,6 @@ class LhAnnouncementCollectionProgressStoreTest {
     private LhAnnouncementCollectionCheckpointRepository checkpointRepository;
 
     @Autowired
-    private LhAnnouncementDetailSourceRepository detailRepository;
-
-    @Autowired
-    private LhAnnouncementSupplySourceRepository supplyRepository;
-
-    @Autowired
     private LhAnnouncementCollectionLinkRepository linkRepository;
 
     @Test
@@ -43,13 +36,11 @@ class LhAnnouncementCollectionProgressStoreTest {
         var progress = store.findBatch(
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
                 List.of(request, request + "&AIS_TP_CD=06"),
-                List.of("100"),
                 List.of(),
                 COMPLETED_AT.minusSeconds(1)
         );
 
         assertThat(progress.isFresh(request)).isTrue();
-        assertThat(progress.historyPanIds()).containsExactly("100");
         assertThat(progress.isFresh(request + "&AIS_TP_CD=06")).isFalse();
         assertThat(checkpointRepository.findAll()).singleElement().satisfies(checkpoint -> {
             assertThat(checkpoint.getPanId()).isEqualTo("100");
@@ -127,7 +118,6 @@ class LhAnnouncementCollectionProgressStoreTest {
         var progress = store().findBatch(
                 ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
                 List.of(request),
-                List.of("100"),
                 List.of("announcement-100"),
                 COMPLETED_AT
         );
@@ -145,7 +135,6 @@ class LhAnnouncementCollectionProgressStoreTest {
         var progress = store.findBatch(
                 ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
                 List.of(request),
-                List.of("100"),
                 List.of("announcement-100", "announcement-101"),
                 COMPLETED_AT.minusSeconds(1)
         );
@@ -170,38 +159,11 @@ class LhAnnouncementCollectionProgressStoreTest {
         var progress = store.findBatch(
                 ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
                 List.of(currentRequest),
-                List.of("200"),
                 List.of("announcement-100"),
                 COMPLETED_AT.minusSeconds(1)
         );
 
         assertThat(progress.isLinkedTo("announcement-100", currentRequest)).isFalse();
-    }
-
-    @Test
-    void 배치의_완료_요청과_적재_panId와_수집_이력을_한번에_조회한다() {
-        LhAnnouncementCollectionProgressStore store = store();
-        String completedRequest = "PAN_ID=100&SPL_INF_TP_CD=063";
-        String historyRequest = "PAN_ID=200&SPL_INF_TP_CD=063";
-        store.complete(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, "announcement-100", completedRequest, "100");
-        store.complete(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, "announcement-200", historyRequest, "200");
-        detailRepository.save(new LhAnnouncementDetailSource(
-                0, "100", "ETC_INFO", null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null
-        ));
-
-        var progress = store.findBatch(
-                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
-                List.of(completedRequest, "PAN_ID=300&SPL_INF_TP_CD=063"),
-                List.of("100", "200", "300"),
-                List.of(),
-                COMPLETED_AT.minusSeconds(1)
-        );
-
-        assertThat(progress.isFresh(completedRequest)).isTrue();
-        assertThat(progress.storedPanIds()).containsExactly("100");
-        assertThat(progress.historyPanIds()).containsExactlyInAnyOrder("100", "200");
     }
 
     private LhAnnouncementCollectionProgressStore store() {
@@ -211,8 +173,6 @@ class LhAnnouncementCollectionProgressStoreTest {
     private LhAnnouncementCollectionProgressStore store(Instant completedAt) {
         return new LhAnnouncementCollectionProgressStore(
                 checkpointRepository,
-                detailRepository,
-                supplyRepository,
                 linkRepository,
                 Clock.fixed(completedAt, ZoneOffset.UTC)
         );

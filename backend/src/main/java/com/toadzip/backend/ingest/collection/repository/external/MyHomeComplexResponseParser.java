@@ -21,6 +21,9 @@ public class MyHomeComplexResponseParser {
         JsonNode root = response.body();
         String resultCode = root.at("/response/header/resultCode").asString("");
         if ("03".equals(resultCode)) {
+            if (collectedCount > 0) {
+                throw new ExternalDataRequestException("마이홈 단지 후속 페이지가 데이터 없음으로 응답했습니다.");
+            }
             return new ValidatedPage(List.of(), -1);
         }
         JsonNode body = root.at("/response/body");
@@ -30,13 +33,16 @@ public class MyHomeComplexResponseParser {
         int totalCount = totalCountOf(body);
         JsonNode item = body.path("item");
         if (item.isMissingNode() || item.isNull()) {
-            return emptyPageOrThrow(totalCount);
+            return emptyPageOrThrow(totalCount, collectedCount);
         }
         if (!item.isArray() && !item.isObject()) {
             throw invalidResponseSchema();
         }
         List<JsonNode> rows = ExternalResponseRows.at(response.body(), LIST_POINTER);
-        if (rows.isEmpty() && collectedCount == 0 && totalCount != 0) {
+        if (rows.isEmpty() && (totalCount < 0 ? collectedCount == 0 : collectedCount < totalCount)) {
+            throw invalidResponseSchema();
+        }
+        if (totalCount >= 0 && collectedCount + rows.size() > totalCount) {
             throw invalidResponseSchema();
         }
         return new ValidatedPage(rows, totalCount);
@@ -49,8 +55,8 @@ public class MyHomeComplexResponseParser {
         return new ExternalDataPage<>(snapshots, page.totalCount());
     }
 
-    private ValidatedPage emptyPageOrThrow(int totalCount) {
-        if (totalCount == 0) {
+    private ValidatedPage emptyPageOrThrow(int totalCount, int collectedCount) {
+        if (totalCount == 0 && collectedCount == 0) {
             return new ValidatedPage(List.of(), totalCount);
         }
         throw invalidResponseSchema();

@@ -60,12 +60,14 @@ class LocationSummaryFileParserTest {
     @Test
     void 컬럼_수가_다르면_파일명과_행번호를_포함해_거절한다() throws IOException {
         byte[] zip = zip(List.of(new Entry("entrc_seoul.txt", "one|two", StandardCharsets.UTF_8)));
+        TrackingInputStream input = new TrackingInputStream(zip);
 
-        assertThatThrownBy(() -> parser.parse(new ByteArrayInputStream(zip), ignored -> { }))
+        assertThatThrownBy(() -> parser.parse(input, ignored -> { }))
                 .isInstanceOf(InvalidIngestRequestException.class)
                 .hasMessageContaining("entrc_seoul.txt")
                 .hasMessageContaining("1번째 행")
                 .hasMessageContaining("18개");
+        assertThat(input.closed).isTrue();
     }
 
     @Test
@@ -237,6 +239,21 @@ class LocationSummaryFileParserTest {
 
         private Entry(String name, String content, Charset charset) {
             this(name, content.getBytes(charset));
+        }
+    }
+
+    private static final class TrackingInputStream extends ByteArrayInputStream {
+
+        private boolean closed;
+
+        private TrackingInputStream(byte[] data) {
+            super(data);
+        }
+
+        @Override
+        public void close() throws IOException {
+            closed = true;
+            super.close();
         }
     }
 }

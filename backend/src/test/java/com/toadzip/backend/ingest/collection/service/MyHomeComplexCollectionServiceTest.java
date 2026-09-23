@@ -117,6 +117,23 @@ class MyHomeComplexCollectionServiceTest {
     }
 
     @Test
+    @DisplayName("후속 페이지의 데이터 없음 응답은 지역 원천을 교체하지 않는다")
+    void doesNotReplaceRegionAfterNoDataOnFollowingPage() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1))
+                .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]", 3));
+        when(externalRepository.fetch(region, request(), 2)).thenReturn(noDataResponse());
+
+        var result = service.collect(request());
+
+        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(failureRecorder).record(any(), any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.externalApiCallCount()).isEqualTo(2);
+    }
+
+    @Test
     @DisplayName("재시도 가능한 외부 API 실패는 다시 호출하고 실제 호출 횟수를 반환한다")
     void retriesRetryableApiFailureAndReportsCallCount() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
@@ -613,6 +630,11 @@ class MyHomeComplexCollectionServiceTest {
 
     private ExternalDataResponse responseWithoutBody() {
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"}}}";
+        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+    }
+
+    private ExternalDataResponse noDataResponse() {
+        String payload = "{\"response\":{\"header\":{\"resultCode\":\"03\"}}}";
         return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
     }
 }
