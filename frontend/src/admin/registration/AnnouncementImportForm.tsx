@@ -135,10 +135,19 @@ export function AnnouncementImportForm({
                   연결 단지
                   <select
                     aria-label={`공급행 ${row.supplyRowIndex + 1} 연결 단지`}
-                    onChange={(event) => setSelections((current) => ({
-                      ...current,
-                      [row.supplyRowIndex]: Number(event.currentTarget.value),
-                    }))}
+                    disabled={isSubmitting}
+                    onChange={(event) => {
+                      const selectedId = event.currentTarget.value
+                      setSelections((current) => {
+                        const next = { ...current }
+                        if (selectedId === '') {
+                          delete next[row.supplyRowIndex]
+                        } else {
+                          next[row.supplyRowIndex] = Number(selectedId)
+                        }
+                        return next
+                      })
+                    }}
                     value={selections[row.supplyRowIndex] ?? ''}
                   >
                     <option value="">단지를 선택해 주세요</option>

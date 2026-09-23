@@ -39,12 +39,30 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  db-lh-ownership-migration:
+    image: postgres:17-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGDATABASE: "${PRIMARY_DB_NAME:-toadzip}"
+      PGUSER: "${PRIMARY_DB_USERNAME:-toadzip}"
+      PGPASSWORD: "${PRIMARY_DB_PASSWORD:?PRIMARY_DB_PASSWORD is required}"
+    volumes:
+      - ./backend/src/main/resources/db/migration:/migrations:ro
+      - ./scripts/migrate-local-lh-ownership.sh:/migrate-local-lh-ownership.sh:ro
+    entrypoint: ["sh", "/migrate-local-lh-ownership.sh"]
+    restart: "no"
+
   backend:
     depends_on:
       db:
         condition: service_healthy
       db-shared:
         condition: service_healthy
+      db-lh-ownership-migration:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:

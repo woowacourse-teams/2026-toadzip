@@ -21,6 +21,10 @@ VITE_NAVER_MAPS_CLIENT_ID=
 docker compose -f compose.yaml -f compose.local.yaml -f compose.monitoring.yaml up -d --build
 ```
 
+기존 로컬 DB에 LH 소유권 컬럼이 없으면 Compose가 백엔드 시작 전에 기존 행을
+backfill하는 SQL 두 개를 순서대로 실행한다. 새 DB에서는 Hibernate가 컬럼을
+생성하고, 이미 적용된 DB에서는 선행 작업이 변경 없이 끝난다.
+
 ## 관리자 데이터 등록 수동 검증
 
 로컬 관리자 계정이 없다면 `.env`에 다음 값을 설정한 뒤 백엔드를 최초 한 번

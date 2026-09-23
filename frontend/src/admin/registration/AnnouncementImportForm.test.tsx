@@ -65,6 +65,32 @@ describe('공고 JSON 가져오기', () => {
     expect(onSubmittingChange).toHaveBeenLastCalledWith(false)
   })
 
+  it('단지를 직접 선택하고 선택을 해제하면 등록 가능 상태가 바뀐다', async () => {
+    const response = validationResponse()
+    response.supplyRows[0].status = 'SELECTION_REQUIRED'
+    response.supplyRows[0].suggestedHousingComplexId = null
+    vi.mocked(api.validateAnnouncementImport).mockResolvedValue(response)
+    render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />)
+
+    fireEvent.change(screen.getByLabelText('공고 JSON'), {
+      target: { value: '{"schemaVersion":"admin-announcement-import/v1"}' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'JSON 검증' }))
+
+    const select = await screen.findByRole('combobox', { name: '공급행 1 연결 단지' })
+    const submit = screen.getByRole('button', { name: '검토한 내용으로 등록' })
+    expect(select).toHaveValue('')
+    expect(submit).toBeDisabled()
+
+    fireEvent.change(select, { target: { value: '42' } })
+    expect(select).toHaveValue('42')
+    expect(submit).toBeEnabled()
+
+    fireEvent.change(select, { target: { value: '' } })
+    expect(select).toHaveValue('')
+    expect(submit).toBeDisabled()
+  })
+
   it('JSON을 수정하면 이전 검증 결과를 폐기한다', async () => {
     vi.mocked(api.validateAnnouncementImport).mockResolvedValue(validationResponse())
     render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />)
