@@ -26,16 +26,6 @@ public interface LhAnnouncementCollectionCheckpointRepository
             @Param("freshCompletedAfter") Instant freshCompletedAfter
     );
 
-    @Query("""
-            select distinct checkpoint.panId
-            from LhAnnouncementCollectionCheckpoint checkpoint
-            where checkpoint.source = :source and checkpoint.panId in :panIds
-            """)
-    List<String> findHistoryPanIds(
-            @Param("source") ExternalDataSource source,
-            @Param("panIds") Collection<String> panIds
-    );
-
     @Modifying
     @Query(value = """
             insert into lh_announcement_collection_checkpoints
