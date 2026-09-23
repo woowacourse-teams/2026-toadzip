@@ -11,7 +11,7 @@ public class OpenApiConfig {
     @Bean
     public OpenAPI toadzipOpenApi() {
         Info apiInfo = new Info()
-                .title("두꺼비집 API")
+                .title("공공주택 복덕방 API")
                 .version("0.0.1");
 
         return new OpenAPI().info(apiInfo);

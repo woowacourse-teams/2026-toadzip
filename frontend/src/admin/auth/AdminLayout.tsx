@@ -29,7 +29,7 @@ export function AdminLayout() {
   return (
     <div className="admin-layout">
       <header className="admin-header">
-        <span>두꺼비집 관리자</span>
+        <span>공공주택 복덕방 관리자</span>
         <div>
           <span>{session?.loginIdentifier}</span>
           <button onClick={handleLogout} type="button">로그아웃</button>
