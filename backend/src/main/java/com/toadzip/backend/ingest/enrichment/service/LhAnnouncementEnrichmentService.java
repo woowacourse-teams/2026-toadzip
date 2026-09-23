@@ -26,6 +26,7 @@ import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichment
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -51,6 +52,7 @@ public class LhAnnouncementEnrichmentService {
     private final LhAnnouncementEnrichmentMapper mapper;
     private final LhAnnouncementEnrichmentWriter writer;
     private final LhAnnouncementLinkResolver linkResolver;
+    private final MyHomeAnnouncementCommonValuesMapper commonValuesMapper;
     private final Clock clock;
 
     public LhAnnouncementEnrichmentService(
@@ -64,6 +66,7 @@ public class LhAnnouncementEnrichmentService {
             LhAnnouncementEnrichmentMapper mapper,
             LhAnnouncementEnrichmentWriter writer,
             LhAnnouncementLinkResolver linkResolver,
+            MyHomeAnnouncementCommonValuesMapper commonValuesMapper,
             Clock clock
     ) {
         this.myHomeSourceRepository = myHomeSourceRepository;
@@ -76,6 +79,7 @@ public class LhAnnouncementEnrichmentService {
         this.mapper = mapper;
         this.writer = writer;
         this.linkResolver = linkResolver;
+        this.commonValuesMapper = commonValuesMapper;
         this.clock = clock;
     }
 
@@ -87,7 +91,7 @@ public class LhAnnouncementEnrichmentService {
         Instant occurredAt = clock.instant();
         List<LhAnnouncementEnrichmentFailure> failures = new ArrayList<>();
         LhAnnouncementEnrichmentReport report = LhAnnouncementEnrichmentReport.empty();
-        for (List<MyHomeAnnouncementSource> sources : lhSourcesByAnnouncement().values()) {
+        for (List<MyHomeAnnouncementSource> sources : sourcesByAnnouncementWithLh().values()) {
             report = report.plus(enrich(sources, failures, occurredAt));
         }
         failureStore.replaceAll(
@@ -97,15 +101,16 @@ public class LhAnnouncementEnrichmentService {
         return report;
     }
 
-    private Map<String, List<MyHomeAnnouncementSource>> lhSourcesByAnnouncement() {
+    private Map<String, List<MyHomeAnnouncementSource>> sourcesByAnnouncementWithLh() {
         Map<String, List<MyHomeAnnouncementSource>> sources = new LinkedHashMap<>();
         for (MyHomeAnnouncementSource source : myHomeSourceRepository.findAllByOrderByIdAsc()) {
-            if (!isLh(source) || blank(source.getPblancId())) {
+            if (blank(source.getPblancId())) {
                 continue;
             }
             sources.computeIfAbsent(source.getPblancId().strip(), ignored -> new ArrayList<>())
                     .add(source);
         }
+        sources.values().removeIf(group -> group.stream().noneMatch(this::isLh));
         return sources;
     }
 
@@ -114,7 +119,8 @@ public class LhAnnouncementEnrichmentService {
             List<LhAnnouncementEnrichmentFailure> failures,
             Instant occurredAt
     ) {
-        MyHomeAnnouncementSource source = sources.getFirst();
+        List<MyHomeAnnouncementSource> lhSources = sources.stream().filter(this::isLh).toList();
+        MyHomeAnnouncementSource source = lhSources.getFirst();
         Announcement announcement = announcementRepository
                 .findBySourceAnnouncementIdentifier(source.getPblancId())
                 .orElse(null);
@@ -125,13 +131,18 @@ public class LhAnnouncementEnrichmentService {
         if (announcement.getProvider() != AgencyCode.LH) {
             return LhAnnouncementEnrichmentReport.empty();
         }
+        String rejectionDetail = commonValuesMapper.rejectionDetail(sources);
+        if (rejectionDetail != null) {
+            return reject(source, null, LhAnnouncementEnrichmentFailureReason.INVALID_VALUE,
+                    rejectionDetail, failures, occurredAt);
+        }
         if (announcement.getSupplyType() == RentalType.ETC) {
             return reject(source, null, LhAnnouncementEnrichmentFailureReason.UNSUPPORTED_SUPPLY_TYPE,
                     "지원하지 않는 공급유형의 LH 공고입니다.", failures, occurredAt);
         }
         LhAnnouncementRequest request;
         try {
-            var linked = linkResolver.resolveFirstLinked(sources);
+            var linked = linkResolver.resolveFirstLinked(lhSources);
             source = linked.source();
             request = linked.request();
         }
