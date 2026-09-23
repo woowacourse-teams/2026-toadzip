@@ -87,8 +87,8 @@ public class LhAnnouncementEnrichmentService {
         Instant occurredAt = clock.instant();
         List<LhAnnouncementEnrichmentFailure> failures = new ArrayList<>();
         LhAnnouncementEnrichmentReport report = LhAnnouncementEnrichmentReport.empty();
-        for (MyHomeAnnouncementSource source : lhSourcesByAnnouncement().values()) {
-            report = report.plus(enrich(source, failures, occurredAt));
+        for (List<MyHomeAnnouncementSource> sources : lhSourcesByAnnouncement().values()) {
+            report = report.plus(enrich(sources, failures, occurredAt));
         }
         failureStore.replaceAll(
                 failures,
@@ -97,22 +97,24 @@ public class LhAnnouncementEnrichmentService {
         return report;
     }
 
-    private Map<String, MyHomeAnnouncementSource> lhSourcesByAnnouncement() {
-        Map<String, MyHomeAnnouncementSource> sources = new LinkedHashMap<>();
-        for (MyHomeAnnouncementSource source : myHomeSourceRepository.findAll()) {
+    private Map<String, List<MyHomeAnnouncementSource>> lhSourcesByAnnouncement() {
+        Map<String, List<MyHomeAnnouncementSource>> sources = new LinkedHashMap<>();
+        for (MyHomeAnnouncementSource source : myHomeSourceRepository.findAllByOrderByIdAsc()) {
             if (!isLh(source) || blank(source.getPblancId())) {
                 continue;
             }
-            sources.putIfAbsent(source.getPblancId().strip(), source);
+            sources.computeIfAbsent(source.getPblancId().strip(), ignored -> new ArrayList<>())
+                    .add(source);
         }
         return sources;
     }
 
     private LhAnnouncementEnrichmentReport enrich(
-            MyHomeAnnouncementSource source,
+            List<MyHomeAnnouncementSource> sources,
             List<LhAnnouncementEnrichmentFailure> failures,
             Instant occurredAt
     ) {
+        MyHomeAnnouncementSource source = sources.getFirst();
         Announcement announcement = announcementRepository
                 .findBySourceAnnouncementIdentifier(source.getPblancId())
                 .orElse(null);
@@ -129,7 +131,9 @@ public class LhAnnouncementEnrichmentService {
         }
         LhAnnouncementRequest request;
         try {
-            request = linkResolver.resolve(source);
+            var linked = linkResolver.resolveFirstLinked(sources);
+            source = linked.source();
+            request = linked.request();
         }
         catch (LhAnnouncementLinkResolutionException exception) {
             LhAnnouncementEnrichmentFailureReason reason = switch (exception.reason()) {

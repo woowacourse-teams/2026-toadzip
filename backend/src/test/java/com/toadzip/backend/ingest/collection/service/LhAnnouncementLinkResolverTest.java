@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.collection.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
@@ -13,6 +14,7 @@ import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCan
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Skipped;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutionException.Reason;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -98,6 +100,17 @@ class LhAnnouncementLinkResolverTest {
         when(candidateResolver.resolve(source)).thenReturn(new Skipped(KEY, KEY, "지원하지 않는 요청"));
 
         rejects(Reason.REQUEST_UNSUPPORTED);
+    }
+
+    @Test
+    void 첫_행이_조회_불가여도_다음_행의_연결_누락을_보고한다() {
+        MyHomeAnnouncementSource second = mock(MyHomeAnnouncementSource.class);
+        when(candidateResolver.resolve(source)).thenReturn(new Skipped(KEY, KEY, "지원하지 않는 요청"));
+        when(candidateResolver.resolve(second)).thenReturn(new Candidate(KEY, KEY, REQUEST));
+
+        assertThatThrownBy(() -> resolver.resolveFirstLinked(List.of(source, second)))
+                .isInstanceOfSatisfying(LhAnnouncementLinkResolutionException.class,
+                        exception -> assertThat(exception.reason()).isEqualTo(Reason.LINK_NOT_FOUND));
     }
 
     private void currentRequest() {

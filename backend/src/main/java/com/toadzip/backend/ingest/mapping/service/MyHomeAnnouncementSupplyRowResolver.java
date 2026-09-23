@@ -3,7 +3,6 @@ package com.toadzip.backend.ingest.mapping.service;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutionException;
@@ -39,7 +38,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
         if (data.provider() != AgencyCode.LH) {
             return data;
         }
-        List<LhAnnouncementSupplySource> lhSupplies = findLhSupplies(data.supplyRows().getFirst().source());
+        List<LhAnnouncementSupplySource> lhSupplies = findLhSupplies(data.supplyRows());
         if (lhSupplies.isEmpty()) {
             return data.preservingExistingLhResolvedRows();
         }
@@ -67,10 +66,12 @@ public class MyHomeAnnouncementSupplyRowResolver {
         return data.withSupplyRows(List.copyOf(resolved));
     }
 
-    private List<LhAnnouncementSupplySource> findLhSupplies(MyHomeAnnouncementSource source) {
+    private List<LhAnnouncementSupplySource> findLhSupplies(List<MyHomeSupplyRowMappingData> sourceRows) {
         LhAnnouncementRequest request;
         try {
-            request = linkResolver.resolve(source);
+            request = linkResolver.resolveFirstLinked(
+                    sourceRows.stream().map(MyHomeSupplyRowMappingData::source).toList()
+            ).request();
         }
         catch (LhAnnouncementLinkResolutionException exception) {
             MyHomeAnnouncementMappingFailureReason reason = switch (exception.reason()) {

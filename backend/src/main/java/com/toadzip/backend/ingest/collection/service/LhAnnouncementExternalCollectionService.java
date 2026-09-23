@@ -137,7 +137,7 @@ public class LhAnnouncementExternalCollectionService {
         Map<String, Duration> refreshTtlByRequest = new HashMap<>();
         for (MyHomeAnnouncementSource source : sources) {
             Resolution resolution = candidateResolver.resolve(source);
-            if (!visitedSourceAnnouncements.add(resolution.sourceAnnouncementKey())) {
+            if (visitedSourceAnnouncements.contains(resolution.sourceAnnouncementKey())) {
                 continue;
             }
             if (resolution instanceof Skipped skipped) {
@@ -159,6 +159,9 @@ public class LhAnnouncementExternalCollectionService {
                         refreshTtl.orElseThrow(),
                         (left, right) -> left.compareTo(right) <= 0 ? left : right
                 );
+            }
+            if (!visitedSourceAnnouncements.add(candidate.sourceAnnouncementKey())) {
+                continue;
             }
             candidates.add(candidate);
         }
