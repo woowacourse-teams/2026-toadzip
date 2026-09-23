@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(
         name = "lh_announcement_detail_source",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"pan_id", "source_order", "dataset_type"})
+        uniqueConstraints = @UniqueConstraint(columnNames = {"pan_id", "request_hash", "source_order", "dataset_type"})
 )
 @NoArgsConstructor(access = PROTECTED)
 public class LhAnnouncementDetailSource {
@@ -29,6 +29,8 @@ public class LhAnnouncementDetailSource {
     private Integer sourceOrder;
     private Instant collectedAt;
     private String panId;
+    @Column(name = "request_hash", length = 64)
+    private String requestHash;
     private String datasetType;
     private String complexName;
     private String address;
@@ -137,6 +139,13 @@ public class LhAnnouncementDetailSource {
             throw new IllegalArgumentException("수집 시각은 필수입니다.");
         }
         this.collectedAt = collectedAt;
+    }
+
+    public void assignRequestHash(String requestHash) {
+        if (requestHash == null || requestHash.isBlank()) {
+            throw new IllegalArgumentException("LH 조회 조건 해시는 필수입니다.");
+        }
+        this.requestHash = requestHash;
     }
 
     private static String trim(String value) {

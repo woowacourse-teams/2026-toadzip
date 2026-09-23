@@ -46,7 +46,11 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertTrue(history.next()),
-                        () -> assertEquals(2, history.getInt(1))
+                        () -> assertEquals(3, history.getInt(1)),
+                        () -> assertEquals(1, countColumn(connection,
+                                "lh_announcement_detail_source", "request_hash")),
+                        () -> assertEquals(1, countColumn(connection,
+                                "lh_announcement_supply_source", "request_hash"))
                 );
             }
         }
@@ -62,8 +66,17 @@ class LocalProfileSchemaPersistenceTest {
         createDatabase(databaseName);
 
         try {
-            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test")) {
+            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
+                    Statement statement = connection.createStatement()) {
                 ScriptUtils.executeSqlScript(connection, MigrationSqlSection.productionSchemaSnapshot());
+                statement.executeUpdate("""
+                        INSERT INTO lh_announcement_detail_source (pan_id, source_order, dataset_type)
+                        VALUES ('legacy-pan', 0, 'ETC_INFO')
+                        """);
+                statement.executeUpdate("""
+                        INSERT INTO lh_announcement_supply_source (pan_id, source_order)
+                        VALUES ('legacy-pan', 0)
+                        """);
             }
 
             Flyway flyway = Flyway.configure()
@@ -73,6 +86,21 @@ class LocalProfileSchemaPersistenceTest {
                     .load();
             flyway.baseline();
             flyway.migrate();
+
+            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
+                    Statement statement = connection.createStatement()) {
+                statement.executeUpdate("""
+                        INSERT INTO lh_announcement_detail_source
+                            (pan_id, request_hash, source_order, dataset_type)
+                        VALUES ('legacy-pan', repeat('a', 64), 0, 'ETC_INFO'),
+                               ('legacy-pan', repeat('b', 64), 0, 'ETC_INFO')
+                        """);
+                statement.executeUpdate("""
+                        INSERT INTO lh_announcement_supply_source (pan_id, request_hash, source_order)
+                        VALUES ('legacy-pan', repeat('a', 64), 0),
+                               ('legacy-pan', repeat('b', 64), 0)
+                        """);
+            }
 
             try (ConfigurableApplicationContext ignored = new SpringApplicationBuilder(BackendApplication.class)
                     .environment(createIsolatedEnvironment(jdbcUrl))
@@ -84,9 +112,20 @@ class LocalProfileSchemaPersistenceTest {
                             FROM flyway_schema_history
                             """)) {
                 assertTrue(history.next());
-                assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02", history.getString(1));
+                assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02,SQL:20260923.01",
+                        history.getString(1));
                 assertEquals(1, countColumn(connection, "announcements", "lh_reception_place_owned"));
                 assertEquals(1, countColumn(connection, "supply_rows", "lh_total_supply_household_count_enriched"));
+                assertEquals(1, countColumn(connection, "lh_announcement_detail_source", "request_hash"));
+                assertEquals(1, countColumn(connection, "lh_announcement_supply_source", "request_hash"));
+                assertEquals(1, countLegacyRow(connection, "lh_announcement_detail_source"));
+                assertEquals(1, countLegacyRow(connection, "lh_announcement_supply_source"));
+                assertEquals(3, countRows(connection, "lh_announcement_detail_source"));
+                assertEquals(3, countRows(connection, "lh_announcement_supply_source"));
+                assertEquals("UNIQUE (pan_id, request_hash, source_order, dataset_type)",
+                        constraintDefinition(connection, "uk_lh_detail_source_request_row"));
+                assertEquals("UNIQUE (pan_id, request_hash, source_order)",
+                        constraintDefinition(connection, "uk_lh_supply_source_request_row"));
             }
         }
         finally {
@@ -97,6 +136,36 @@ class LocalProfileSchemaPersistenceTest {
     private int countColumn(Connection connection, String tableName, String columnName) throws Exception {
         try (var columns = connection.getMetaData().getColumns(null, "public", tableName, columnName)) {
             return columns.next() ? 1 : 0;
+        }
+    }
+
+    private int countLegacyRow(Connection connection, String tableName) throws Exception {
+        try (Statement statement = connection.createStatement();
+                ResultSet rows = statement.executeQuery("SELECT COUNT(*) FROM " + tableName
+                        + " WHERE pan_id = 'legacy-pan' AND request_hash IS NULL")) {
+            rows.next();
+            return rows.getInt(1);
+        }
+    }
+
+    private int countRows(Connection connection, String tableName) throws Exception {
+        try (Statement statement = connection.createStatement();
+                ResultSet rows = statement.executeQuery("SELECT COUNT(*) FROM " + tableName
+                        + " WHERE pan_id = 'legacy-pan'")) {
+            rows.next();
+            return rows.getInt(1);
+        }
+    }
+
+    private String constraintDefinition(Connection connection, String constraintName) throws Exception {
+        try (var statement = connection.prepareStatement("""
+                SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = ?
+                """)) {
+            statement.setString(1, constraintName);
+            try (ResultSet result = statement.executeQuery()) {
+                assertTrue(result.next());
+                return result.getString(1);
+            }
         }
     }
 

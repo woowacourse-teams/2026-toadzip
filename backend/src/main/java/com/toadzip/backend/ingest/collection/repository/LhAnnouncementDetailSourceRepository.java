@@ -6,7 +6,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface LhAnnouncementDetailSourceRepository extends JpaRepository<LhAnnouncementDetailSource, Long> {
 
-    List<LhAnnouncementDetailSource> findAllByPanIdOrderBySourceOrderAsc(String panId);
+    List<LhAnnouncementDetailSource> findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
+            String panId,
+            String requestHash
+    );
 
-    void deleteByPanId(String panId);
+    void deleteByPanIdAndRequestHash(String panId, String requestHash);
 }

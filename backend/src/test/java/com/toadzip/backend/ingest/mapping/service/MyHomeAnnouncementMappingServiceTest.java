@@ -18,6 +18,7 @@ import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
@@ -25,6 +26,7 @@ import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnap
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionCheckpointRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionLinkRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
@@ -469,7 +471,7 @@ class MyHomeAnnouncementMappingServiceTest {
         saveMappedComplex();
         sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
         saveLhSupplyLink("21026", "PAN-1");
-        lhSourceStore.replaceSupplies("PAN-1", List.of(
+        lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of(
                 lhSupply(0, "PAN-1", "동삼2", "46A", "46.8000", "67.0000"),
                 lhSupply(1, "PAN-1", "동삼2", "46A", "46.8000", "67.0000"),
                 lhSupply(2, "PAN-1", "동삼2", "46A", "46.8000", "67.0000")
@@ -490,7 +492,7 @@ class MyHomeAnnouncementMappingServiceTest {
                 1
         ));
 
-        lhSourceStore.replaceSupplies("PAN-1", List.of(
+        lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of(
                 lhSupply(0, "PAN-1", "동삼2", "46A", "46.8000", "67.0000")
         ));
 
@@ -516,11 +518,11 @@ class MyHomeAnnouncementMappingServiceTest {
         ));
         sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
         saveLhSupplyLink("21026", "PAN-1");
-        lhSourceStore.replaceSupplies("PAN-1", List.of(
+        lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of(
                 lhSupply(0, "PAN-1", "동삼2", "59A", "59.9500", "84.0500")
         ));
         service.mapAll();
-        lhSourceStore.replaceSupplies("PAN-1", List.of());
+        lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of());
 
         var report = service.mapAll();
 
@@ -538,7 +540,7 @@ class MyHomeAnnouncementMappingServiceTest {
         HousingType myHomeType = housingTypeRepository.findAll().getFirst();
         sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
         saveLhSupplyLink("21026", "PAN-1");
-        lhSourceStore.replaceSupplies("PAN-1", List.of(
+        lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of(
                 lhSupply(0, "PAN-1", "동삼2", "99Z", "99.0000", "120.0000")
         ));
         service.mapAll();
@@ -546,7 +548,7 @@ class MyHomeAnnouncementMappingServiceTest {
             assertThat(row.getHousingType()).isNull();
             assertThat(row.getLhSourceSupplyRowIdentifier()).isNull();
         });
-        lhSourceStore.replaceSupplies("PAN-1", List.of());
+        lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of());
 
         var report = service.mapAll();
 
@@ -571,12 +573,12 @@ class MyHomeAnnouncementMappingServiceTest {
         ));
         sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
         saveLhSupplyLink("21026", "PAN-1");
-        lhSourceStore.replaceSupplies("PAN-1", List.of(
+        lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of(
                 lhSupply(0, "PAN-1", "동삼2", "59A", "59.9500", "84.0500")
         ));
         service.mapAll();
 
-        lhSourceStore.replaceSupplies("PAN-1", List.of(
+        lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of(
                 lhSupply(0, "PAN-1", "동삼2", "99Z", "99.0000", "120.0000")
         ));
         var failed = service.mapAll();
@@ -589,7 +591,7 @@ class MyHomeAnnouncementMappingServiceTest {
             assertThat(row.getLhSourceSupplyRowIdentifier()).isEqualTo("LH:PAN-1:SUPPLY:0");
         });
 
-        lhSourceStore.replaceSupplies("PAN-1", List.of());
+        lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of());
         assertThat(service.mapAll().failedSourceRowCount()).isZero();
         assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
             assertThat(row.getHousingType().getId()).isEqualTo(lhType.getId());
@@ -603,12 +605,12 @@ class MyHomeAnnouncementMappingServiceTest {
         saveMappedComplex();
         sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
         saveLhSupplyLink("21026", "PAN-1");
-        lhSourceStore.replaceSupplies("PAN-1", List.of(
+        lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of(
                 lhSupply(0, "PAN-1", "동삼2", "46A", "46.8000", "67.0000", "10")
         ));
         service.mapAll();
 
-        lhSourceStore.replaceSupplies("PAN-1", List.of(
+        lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of(
                 lhSupply(0, "PAN-1", "동삼2", "46A", "46.8000", "67.0000", "15")
         ));
         var report = service.mapAll();
@@ -626,11 +628,11 @@ class MyHomeAnnouncementMappingServiceTest {
         saveMappedComplex();
         sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
         saveLhSupplyLink("21026", "PAN-OLD");
-        lhSourceStore.replaceSupplies("PAN-OLD", List.of(
+        lhSourceStore.replaceSupplies("PAN-OLD", lhRequestDescription("PAN-OLD"), List.of(
                 lhSupply(0, "PAN-OLD", "동삼2", "과거형", "99.0000", "99.0000")
         ));
         saveLhSupplyLink("21026", "PAN-CURRENT");
-        lhSourceStore.replaceSupplies("PAN-CURRENT", List.of(
+        lhSourceStore.replaceSupplies("PAN-CURRENT", lhRequestDescription("PAN-CURRENT"), List.of(
                 lhSupply(0, "PAN-CURRENT", "동삼2", "46A", "46.8000", "67.0000")
         ));
 
@@ -794,7 +796,12 @@ class MyHomeAnnouncementMappingServiceTest {
                 )
         );
         source.markCollectedAt(COLLECTED_AT);
+        source.assignRequestHash(LhAnnouncementCollectionCheckpoint.requestHashOf(lhRequestDescription(panId)));
         return source;
+    }
+
+    private String lhRequestDescription(String panId) {
+        return new LhAnnouncementRequest(panId, "03", "06", "07", "062").requestDescription();
     }
 
     private MyHomeAnnouncementSourceSnapshot data(

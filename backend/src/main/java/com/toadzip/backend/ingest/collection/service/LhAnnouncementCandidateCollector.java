@@ -76,12 +76,16 @@ public class LhAnnouncementCandidateCollector {
         if (targetSource == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL) {
             FetchedPages<LhAnnouncementDetailSource> pages = pageFetcher.fetchDetails(request, callCounter);
             int storedRowCount = meterRegistry.timer("ingest.announcement.store", "source", targetSource.name())
-                    .record(() -> sourceStore.replaceDetails(request.panId(), pages.items()));
+                    .record(() -> sourceStore.replaceDetails(
+                            request.panId(), request.requestDescription(), pages.items()
+                    ));
             return new StoredPages(storedRowCount, pages.requestDescriptions());
         }
         FetchedPages<LhAnnouncementSupplySource> pages = pageFetcher.fetchSupplies(request, callCounter);
         int storedRowCount = meterRegistry.timer("ingest.announcement.store", "source", targetSource.name())
-                .record(() -> sourceStore.replaceSupplies(request.panId(), pages.items()));
+                .record(() -> sourceStore.replaceSupplies(
+                        request.panId(), request.requestDescription(), pages.items()
+                ));
         return new StoredPages(storedRowCount, pages.requestDescriptions());
     }
 
