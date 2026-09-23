@@ -285,7 +285,7 @@ public class LhAnnouncementExternalCollectionService {
         Set<String> panIds = new HashSet<>();
         for (int index = offset; index < requests.size() && window.size() < MAX_CONCURRENT_REQUESTS; index++) {
             List<Candidate> request = requests.get(index);
-            // 조회 조건이 달라도 같은 panId의 원천을 교체하므로 다음 묶음에서 처리한다.
+            // 기존의 같은 panId 요청 순서를 유지한다. 원천은 요청 해시별로 저장된다.
             if (!panIds.add(request.getFirst().panId())) {
                 break;
             }
