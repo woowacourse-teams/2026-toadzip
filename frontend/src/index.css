@@ -1954,6 +1954,23 @@ button {
   font-weight: 700;
 }
 
+.admin-content .data-pipeline-warning {
+  color: #92400e;
+  font-weight: 700;
+}
+
+.data-pipeline-warning-report {
+  max-height: 220px;
+  margin: 8px 0 0;
+  padding: 12px;
+  overflow: auto;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #78350f;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
 .data-pipeline-error {
   display: grid;
   gap: 10px;

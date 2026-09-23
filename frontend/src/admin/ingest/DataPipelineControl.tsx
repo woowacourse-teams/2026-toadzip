@@ -268,6 +268,11 @@ function PipelineResult({ type, state }: { type: DataPipelineType, state: Pipeli
       {execution.status === 'COMPLETED' ? (
         <p className="data-pipeline-success" role="status">{label} 작업을 완료했습니다.</p>
       ) : null}
+      {execution.status === 'COMPLETED_WARNINGS' ? (
+        <p className="data-pipeline-warning" role="status">
+          {label} 작업을 완료했습니다. 처리되지 않은 원천 행이 있어 확인이 필요합니다.
+        </p>
+      ) : null}
       {execution.status === 'COMPLETED_WITH_SKIPS' ? (
         <p role="status">{label} 작업을 일부 단계 건너뜀으로 완료했습니다.</p>
       ) : null}
@@ -285,6 +290,20 @@ function PipelineResult({ type, state }: { type: DataPipelineType, state: Pipeli
               {step.serverResponse !== null && step.serverResponse !== undefined ? (
                 <pre aria-label={`${step.stepName} 건너뜀 응답`}>
                   {JSON.stringify(step.serverResponse, null, 2)}
+                </pre>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {execution.status === 'COMPLETED_WARNINGS' && execution.partiallyFailedSteps.length > 0 ? (
+        <ul className="data-pipeline-steps">
+          {execution.partiallyFailedSteps.map((step) => (
+            <li key={step.step}>
+              <strong>{step.stepName} 원천 행 확인</strong>
+              {step.report !== null && step.report !== undefined ? (
+                <pre className="data-pipeline-warning-report" aria-label={`${step.stepName} 누락 보고서`}>
+                  {JSON.stringify(step.report, null, 2)}
                 </pre>
               ) : null}
             </li>
@@ -326,6 +345,7 @@ function idleExecution(type: DataPipelineType): DataPipelineExecution {
     totalStepCount: pipelineStepCounts[type],
     completedSteps: [],
     skippedSteps: [],
+    partiallyFailedSteps: [],
     failure: null,
   }
 }
