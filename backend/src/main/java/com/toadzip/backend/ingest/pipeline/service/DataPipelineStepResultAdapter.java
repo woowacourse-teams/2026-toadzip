@@ -38,7 +38,8 @@ class DataPipelineStepResultAdapter {
     }
 
     DataPipelineStepResult adapt(LhHousingTypeHouseholdEnrichmentReport report) {
-        return result(report, 0, 0, report.failedSourceComplexCount());
+        return result(report, 0, 0,
+                report.failedSourceComplexCount() + report.unmatchedHousingTypeCount());
     }
 
     DataPipelineStepResult adapt(LhAnnouncementEnrichmentReport report) {

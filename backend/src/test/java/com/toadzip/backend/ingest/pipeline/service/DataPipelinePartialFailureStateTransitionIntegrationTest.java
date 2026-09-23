@@ -89,6 +89,33 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
     }
 
     @Test
+    void LH_주택형만_매칭되지_않아도_완료_주의_상태와_보고서를_저장한다() {
+        MyHomeComplexMappingService mappingService = mock(MyHomeComplexMappingService.class);
+        LhHousingTypeHouseholdEnrichmentService enrichmentService =
+                mock(LhHousingTypeHouseholdEnrichmentService.class);
+        when(mappingService.mapAll()).thenReturn(MyHomeComplexMappingReport.failedRows(0));
+        when(enrichmentService.enrichAll()).thenReturn(
+                LhHousingTypeHouseholdEnrichmentReport.matched(0, 0, 1)
+        );
+        DataPipelineExecutionService service = service(
+                runner(mappingService, enrichmentService),
+                mock(DataPipelineExecutionLock.Lease.class)
+        );
+
+        service.start(DataPipelineType.COMPLEX_REFINEMENT);
+
+        var execution = executionRepository
+                .findFirstByTypeOrderByIdDesc(DataPipelineType.COMPLEX_REFINEMENT)
+                .orElseThrow();
+        assertThat(execution.getStatus()).isEqualTo(DataPipelineExecutionStatus.COMPLETED_WARNINGS);
+        assertThat(execution.getPartiallyFailedSteps()).singleElement().satisfies(warning -> {
+            assertThat(warning.getStep())
+                    .isEqualTo(DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS);
+            assertThat(warning.getReport()).contains("\"unmatchedHousingTypeCount\":1");
+        });
+    }
+
+    @Test
     void 단지_정제의_운영_실패는_후속_단계를_실행한_뒤_FAILED로_종료한다() {
         MyHomeComplexMappingService mappingService = mock(MyHomeComplexMappingService.class);
         LhHousingTypeHouseholdEnrichmentService enrichmentService =
