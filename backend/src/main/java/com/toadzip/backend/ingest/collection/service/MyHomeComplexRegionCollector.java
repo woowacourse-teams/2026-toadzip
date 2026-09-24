@@ -114,21 +114,21 @@ public class MyHomeComplexRegionCollector {
     ) {
         List<MyHomeComplexSourceSnapshot> snapshots = new ArrayList<>();
         List<String> requestDescriptions = new ArrayList<>();
+        int expectedTotalCount = -1;
         for (int page = 1; page <= request.maxPages(); page++) {
             if (rateLimitReached.get()) {
                 throw new RateLimitCollectionCancelledException();
             }
             int currentPage = page;
+            int expectedTotalCountForPage = expectedTotalCount;
             String requestDescription = request.requestDescription(region, currentPage);
             ExternalDataPage<MyHomeComplexSourceSnapshot> parsedPage = retryExecutor.execute(
                     ExternalDataSource.MYHOME_COMPLEX,
                     requestDescription,
-                    () -> responseParser.parseItems(responseParser.validate(
-                            externalRepository.fetch(region, request, currentPage),
-                            snapshots.size()
-                    )),
+                    () -> parsePage(region, request, currentPage, snapshots.size(), expectedTotalCountForPage),
                     callCounter
             );
+            expectedTotalCount = parsedPage.totalCount();
             snapshots.addAll(parsedPage.items());
             requestDescriptions.add(requestDescription);
             if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
@@ -136,6 +136,22 @@ public class MyHomeComplexRegionCollector {
             }
         }
         throw new ExternalDataRequestException("마이홈 단지 조회가 최대 페이지 안에 끝나지 않았습니다.");
+    }
+
+    private ExternalDataPage<MyHomeComplexSourceSnapshot> parsePage(
+            MyHomeRegion region,
+            MyHomeComplexCollectionRequest request,
+            int page,
+            int collectedCount,
+            int expectedTotalCount
+    ) {
+        ExternalDataPage<MyHomeComplexSourceSnapshot> parsedPage = responseParser.parseItems(
+                responseParser.validate(externalRepository.fetch(region, request, page), collectedCount)
+        );
+        if (expectedTotalCount >= 0 && expectedTotalCount != parsedPage.totalCount()) {
+            throw new ExternalDataRequestException("마이홈 단지 응답의 totalCount가 페이지마다 다릅니다.");
+        }
+        return parsedPage;
     }
 
     private void resolveFailures(List<String> requestDescriptions) {

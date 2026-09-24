@@ -211,6 +211,26 @@ class MyHomeAnnouncementCollectionServiceTest {
     }
 
     @Test
+    @DisplayName("식별자 없는 공고 항목이 있으면 해당 공급유형 저장과 전체 미조회 판정을 보류한다")
+    void preservesSourcesWhenAnnouncementIdentifierIsMissing() {
+        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
+            MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
+            if (supplyType == MyHomeAnnouncementSupplyType.HAPPY_HOUSE) {
+                return responseWithTotalCount("[{},{}]", 2);
+            }
+            return response("[]");
+        });
+
+        ExternalDataCollectionReport result = service.collect(request);
+
+        verify(sourceStore, times(MyHomeAnnouncementSupplyType.values().length - 1))
+                .storeAnnouncements(anyString(), any());
+        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
     @DisplayName(
             "일부 페이지 수집 후 데이터 없음 응답이 오면 해당 공급유형을 저장하거나 미조회 판정하지 않는다"
     )

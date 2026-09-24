@@ -117,6 +117,25 @@ class MyHomeComplexCollectionServiceTest {
     }
 
     @Test
+    @DisplayName("후속 페이지의 totalCount가 바뀌면 기존 지역 원천을 교체하지 않는다")
+    void doesNotReplaceRegionWhenTotalCountChangesBetweenPages() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1))
+                .thenReturn(response("[{\"hsmpSn\":1},{\"hsmpSn\":2}]", 4));
+        when(externalRepository.fetch(region, request(), 2))
+                .thenReturn(response("[{\"hsmpSn\":3}]", 3));
+
+        MyHomeComplexCollectionReport result = service.collect(request());
+
+        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(failureRecorder).record(any(), any(), any(), any(), any());
+        assertThat(result.storedRowCount()).isZero();
+        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.externalApiCallCount()).isEqualTo(2);
+    }
+
+    @Test
     @DisplayName("후속 페이지의 데이터 없음 응답은 지역 원천을 교체하지 않는다")
     void doesNotReplaceRegionAfterNoDataOnFollowingPage() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");

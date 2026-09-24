@@ -95,8 +95,9 @@ public class MyHomeAnnouncementResponseParser {
     }
 
     private MyHomeAnnouncementSourceSnapshot sourceSnapshotOf(JsonNode row) {
+        MyHomeAnnouncementSourceSnapshot snapshot;
         try {
-            return objectMapper.convertValue(row, MyHomeAnnouncementSourceSnapshot.class);
+            snapshot = objectMapper.convertValue(row, MyHomeAnnouncementSourceSnapshot.class);
         }
         catch (RuntimeException exception) {
             throw new ExternalDataRequestException(
@@ -104,6 +105,10 @@ public class MyHomeAnnouncementResponseParser {
                     exception
             );
         }
+        if (snapshot.pblancId() == null || snapshot.pblancId().isBlank()) {
+            throw new ExternalDataRequestException("마이홈 공고 응답 항목에 공고 식별자가 없습니다.");
+        }
+        return snapshot;
     }
 
     private ExternalDataRequestException invalidResponseSchema() {

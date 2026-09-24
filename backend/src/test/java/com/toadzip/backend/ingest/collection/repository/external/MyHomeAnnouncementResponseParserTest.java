@@ -33,6 +33,26 @@ class MyHomeAnnouncementResponseParserTest {
     }
 
     @Test
+    @DisplayName("공고 식별자가 없거나 공백인 항목은 수집에 실패한다")
+    void rejectsItemsWithoutAnnouncementIdentifier() {
+        ExternalDataResponse missing = response("""
+                {"response":{"header":{"resultCode":"00"},
+                "body":{"totalCount":2,"item":[{},{}]}}}
+                """);
+        ExternalDataResponse blank = response("""
+                {"response":{"header":{"resultCode":"00"},
+                "body":{"totalCount":1,"item":[{"pblancId":"   "}]}}}
+                """);
+
+        assertThatThrownBy(() -> parser.parse(missing, 0))
+                .isInstanceOf(ExternalDataRequestException.class)
+                .hasMessage("마이홈 공고 응답 항목에 공고 식별자가 없습니다.");
+        assertThatThrownBy(() -> parser.parse(blank, 0))
+                .isInstanceOf(ExternalDataRequestException.class)
+                .hasMessage("마이홈 공고 응답 항목에 공고 식별자가 없습니다.");
+    }
+
+    @Test
     @DisplayName("성공 응답에 전체 건수가 없으면 실패한다")
     void rejectsMissingTotalCount() {
         ExternalDataResponse response = response("""
