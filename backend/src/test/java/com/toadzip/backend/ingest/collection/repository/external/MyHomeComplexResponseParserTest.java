@@ -48,6 +48,18 @@ class MyHomeComplexResponseParserTest {
     }
 
     @Test
+    @DisplayName("오류 응답에 빈 body가 있어도 정상 0건으로 처리하지 않는다")
+    void rejectsErrorCodeWithEmptyBody() {
+        ExternalDataResponse response = response("""
+                {"response":{"header":{"resultCode":"99"},"body":{"totalCount":0,"item":[]}}}
+                """);
+
+        assertThatThrownBy(() -> parser.validate(response, 0))
+                .isInstanceOf(ExternalDataRequestException.class)
+                .hasMessage("마이홈 단지 응답 결과 코드가 올바르지 않습니다.");
+    }
+
+    @Test
     @DisplayName("첫 페이지 이후 데이터 없음 응답은 불완전한 지역 수집으로 거절한다")
     void rejectsNoDataAfterCollectedRows() {
         ExternalDataResponse response = response("""

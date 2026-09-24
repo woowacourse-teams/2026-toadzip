@@ -151,6 +151,12 @@ public class MyHomeComplexRegionCollector {
         if (expectedTotalCount >= 0 && expectedTotalCount != parsedPage.totalCount()) {
             throw new ExternalDataRequestException("마이홈 단지 응답의 totalCount가 페이지마다 다릅니다.");
         }
+        boolean containsOtherRegion = parsedPage.items().stream()
+                .anyMatch(snapshot -> !region.provinceCode().equals(snapshot.brtcCode())
+                        || !region.districtCode().equals(snapshot.signguCode()));
+        if (containsOtherRegion) {
+            throw new ExternalDataRequestException("마이홈 단지 응답 항목의 지역 코드가 요청 지역과 다릅니다.");
+        }
         return parsedPage;
     }
 

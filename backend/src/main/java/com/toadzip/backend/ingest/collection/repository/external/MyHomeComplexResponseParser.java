@@ -26,6 +26,9 @@ public class MyHomeComplexResponseParser {
             }
             return new ValidatedPage(List.of(), -1);
         }
+        if (!"00".equals(resultCode)) {
+            throw new ExternalDataRequestException("마이홈 단지 응답 결과 코드가 올바르지 않습니다.");
+        }
         JsonNode body = root.at("/response/body");
         if (!body.isObject()) {
             throw invalidResponseSchema();
