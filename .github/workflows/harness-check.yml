@@ -16,10 +16,13 @@ jobs:
         with:
           fetch-depth: 0
       - name: Validate harness
-        run: sh scripts/validate-harness.sh
+        run: |
+          sh scripts/validate-local-artifacts.sh
+          sh scripts/validate-harness.sh
       - name: Test harness validator
         run: |
           sh tests/harness/validate-harness-test.sh
+          sh tests/harness/validate-local-artifacts-test.sh
           sh tests/harness/contains-hangul-test.sh
           sh tests/harness/validate-commit-message-test.sh
           sh tests/harness/validate-pr-test.sh
