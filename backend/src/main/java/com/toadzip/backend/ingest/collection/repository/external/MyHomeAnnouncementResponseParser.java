@@ -108,6 +108,9 @@ public class MyHomeAnnouncementResponseParser {
         if (snapshot.pblancId() == null || snapshot.pblancId().isBlank()) {
             throw new ExternalDataRequestException("마이홈 공고 응답 항목에 공고 식별자가 없습니다.");
         }
+        if (snapshot.houseSn() == null) {
+            throw new ExternalDataRequestException("마이홈 공고 응답 항목에 주택 일련번호가 없습니다.");
+        }
         return snapshot;
     }
 

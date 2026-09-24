@@ -130,7 +130,7 @@ class MyHomeAnnouncementCollectionServiceTest {
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
             MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
             if (supplyType == MyHomeAnnouncementSupplyType.HAPPY_HOUSE) {
-                return response("[{\"pblancId\":\"1\"}]");
+                return response("[{\"pblancId\":\"1\",\"houseSn\":1}]");
             }
             return response("[]");
         });
@@ -231,6 +231,28 @@ class MyHomeAnnouncementCollectionServiceTest {
     }
 
     @Test
+    @DisplayName("주택 일련번호가 없으면 공급유형 저장과 전체 미조회 판정을 보류한다")
+    void preservesSourcesWhenHouseSerialNumberIsMissing() {
+        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
+            MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
+            if (supplyType == MyHomeAnnouncementSupplyType.HAPPY_HOUSE) {
+                return responseWithTotalCount("[{\"pblancId\":\"A-1\"},{\"pblancId\":\"A-1\"}]", 2);
+            }
+            return response("[]");
+        });
+
+        ExternalDataCollectionReport result = service.collect(request);
+
+        verify(sourceStore, times(MyHomeAnnouncementSupplyType.values().length - 1))
+                .storeAnnouncements(anyString(), any());
+        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        verify(failureRecorder).record(any(), any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.storedRowCount()).isZero();
+    }
+
+    @Test
     @DisplayName(
             "일부 페이지 수집 후 데이터 없음 응답이 오면 해당 공급유형을 저장하거나 미조회 판정하지 않는다"
     )
@@ -243,7 +265,7 @@ class MyHomeAnnouncementCollectionServiceTest {
                 return response("[]");
             }
             if (page == 1) {
-                return responseWithTotalCount("[{\"pblancId\":\"1\"}]", 2);
+                return responseWithTotalCount("[{\"pblancId\":\"1\",\"houseSn\":1}]", 2);
             }
             return noDataResponse();
         });
@@ -269,7 +291,7 @@ class MyHomeAnnouncementCollectionServiceTest {
                 return response("[]");
             }
             if (page == 1) {
-                return responseWithTotalCount("[{\"pblancId\":\"1\"}]", 2);
+                return responseWithTotalCount("[{\"pblancId\":\"1\",\"houseSn\":1}]", 2);
             }
             return response("[]");
         });
@@ -295,9 +317,9 @@ class MyHomeAnnouncementCollectionServiceTest {
                 return response("[]");
             }
             if (page == 1) {
-                return responseWithTotalCount("[{\"pblancId\":\"1\"}]", 3);
+                return responseWithTotalCount("[{\"pblancId\":\"1\",\"houseSn\":1}]", 3);
             }
-            return responseWithTotalCount("[{\"pblancId\":\"2\"}]", 2);
+            return responseWithTotalCount("[{\"pblancId\":\"2\",\"houseSn\":2}]", 2);
         });
 
         var result = service.collect(request);
@@ -320,7 +342,7 @@ class MyHomeAnnouncementCollectionServiceTest {
                         return response("[]");
                     }
                     if (page == 1) {
-                        return responseWithTotalCount("[{\"pblancId\":\"1\"}]", 2);
+                        return responseWithTotalCount("[{\"pblancId\":\"1\",\"houseSn\":1}]", 2);
                     }
                     return responseWithTotalCount("[{\"pblancId\":{}}]", 2);
                 });
@@ -355,9 +377,9 @@ class MyHomeAnnouncementCollectionServiceTest {
                         return response("[]");
                     }
                     if (page == 1) {
-                        return responseWithTotalCount("[{\"pblancId\":\"1\"}]", 2);
+                        return responseWithTotalCount("[{\"pblancId\":\"1\",\"houseSn\":1}]", 2);
                     }
-                    return responseWithTotalCount("[{\"pblancId\":\"2\"}]", 3);
+                    return responseWithTotalCount("[{\"pblancId\":\"2\",\"houseSn\":2}]", 3);
                 });
 
         ExternalDataCollectionReport result = service.collect(request);

@@ -20,7 +20,7 @@ class MyHomeAnnouncementResponseParserTest {
     void parsesItemsAndTotalCount() {
         ExternalDataResponse response = response("""
                 {"response":{"header":{"resultCode":"00"},
-                "body":{"totalCount":1,"item":[{"pblancId":"A-1","pblancNm":"행복주택"}]}}}
+                "body":{"totalCount":1,"item":[{"pblancId":"A-1","houseSn":1,"pblancNm":"행복주택"}]}}}
                 """);
 
         ExternalDataPage<MyHomeAnnouncementSourceSnapshot> page = parser.parse(response, 0);
@@ -50,6 +50,19 @@ class MyHomeAnnouncementResponseParserTest {
         assertThatThrownBy(() -> parser.parse(blank, 0))
                 .isInstanceOf(ExternalDataRequestException.class)
                 .hasMessage("마이홈 공고 응답 항목에 공고 식별자가 없습니다.");
+    }
+
+    @Test
+    @DisplayName("주택 일련번호가 없는 공고 항목은 수집에 실패한다")
+    void rejectsItemsWithoutHouseSerialNumber() {
+        ExternalDataResponse response = response("""
+                {"response":{"header":{"resultCode":"00"},
+                "body":{"totalCount":2,"item":[{"pblancId":"A-1"},{"pblancId":"A-1"}]}}}
+                """);
+
+        assertThatThrownBy(() -> parser.parse(response, 0))
+                .isInstanceOf(ExternalDataRequestException.class)
+                .hasMessage("마이홈 공고 응답 항목에 주택 일련번호가 없습니다.");
     }
 
     @Test
