@@ -26,6 +26,9 @@ public class MyHomeComplexResponseParser {
             }
             return new ValidatedPage(List.of(), -1);
         }
+        if (!"00".equals(resultCode)) {
+            throw new ExternalDataRequestException("마이홈 단지 응답 결과 코드가 올바르지 않습니다.");
+        }
         JsonNode body = root.at("/response/body");
         if (!body.isObject()) {
             throw invalidResponseSchema();
@@ -39,10 +42,10 @@ public class MyHomeComplexResponseParser {
             throw invalidResponseSchema();
         }
         List<JsonNode> rows = ExternalResponseRows.at(response.body(), LIST_POINTER);
-        if (rows.isEmpty() && (totalCount < 0 ? collectedCount == 0 : collectedCount < totalCount)) {
+        if (rows.isEmpty() && collectedCount < totalCount) {
             throw invalidResponseSchema();
         }
-        if (totalCount >= 0 && collectedCount + rows.size() > totalCount) {
+        if (collectedCount + rows.size() > totalCount) {
             throw invalidResponseSchema();
         }
         return new ValidatedPage(rows, totalCount);
@@ -63,18 +66,23 @@ public class MyHomeComplexResponseParser {
     }
 
     private MyHomeComplexSourceSnapshot sourceSnapshotOf(JsonNode row) {
+        MyHomeComplexSourceSnapshot snapshot;
         try {
-            return objectMapper.convertValue(row, MyHomeComplexSourceSnapshot.class);
+            snapshot = objectMapper.convertValue(row, MyHomeComplexSourceSnapshot.class);
         }
         catch (RuntimeException exception) {
             throw new ExternalDataRequestException("마이홈 단지 응답 항목 형식이 올바르지 않습니다.", exception);
         }
+        if (snapshot.hsmpSn() == null) {
+            throw new ExternalDataRequestException("마이홈 단지 응답 항목에 단지 식별자가 없습니다.");
+        }
+        return snapshot;
     }
 
     private int totalCountOf(JsonNode body) {
         JsonNode totalCount = body.path("totalCount");
         if (totalCount.isMissingNode() || totalCount.isNull()) {
-            return -1;
+            throw invalidResponseSchema();
         }
         if (totalCount.isIntegralNumber() && totalCount.canConvertToInt()) {
             return requireNonNegativeTotalCount(totalCount.intValue());

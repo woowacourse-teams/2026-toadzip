@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
@@ -12,7 +13,9 @@ import com.toadzip.backend.ingest.collection.repository.external.ExternalDataReq
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeAnnouncementResponseParser;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -75,6 +78,7 @@ public class MyHomeAnnouncementSupplyTypeCollector {
     ) {
         List<MyHomeAnnouncementSourceSnapshot> snapshots = new ArrayList<>();
         List<String> requestDescriptions = new ArrayList<>();
+        Set<String> collectedSourceKeys = new HashSet<>();
         int expectedTotalCount = -1;
         for (int page = 1; page <= request.maxPages(); page++) {
             int currentPage = page;
@@ -88,13 +92,17 @@ public class MyHomeAnnouncementSupplyTypeCollector {
                             request,
                             currentPage,
                             snapshots.size(),
-                            expectedTotalCountForPage
+                            expectedTotalCountForPage,
+                            collectedSourceKeys
                     ),
                     callCounter
             );
             expectedTotalCount = parsedPage.totalCount();
             requestDescriptions.add(requestDescription);
             snapshots.addAll(parsedPage.items());
+            for (MyHomeAnnouncementSourceSnapshot item : parsedPage.items()) {
+                collectedSourceKeys.add(MyHomeAnnouncementSource.sourceKeyOf(item));
+            }
             if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
                 return new FetchedSupplyType(snapshots, requestDescriptions);
             }
@@ -107,14 +115,29 @@ public class MyHomeAnnouncementSupplyTypeCollector {
             MyHomeAnnouncementCollectionRequest request,
             int page,
             int collectedCount,
-            int expectedTotalCount
+            int expectedTotalCount,
+            Set<String> collectedSourceKeys
     ) {
         ExternalDataPage<MyHomeAnnouncementSourceSnapshot> parsedPage = responseParser.parse(
                 externalRepository.fetch(supplyType, request, page),
                 collectedCount
         );
         validateConsistentTotalCount(expectedTotalCount, parsedPage.totalCount());
+        validateUniqueSourceKeys(parsedPage.items(), collectedSourceKeys);
         return parsedPage;
+    }
+
+    private void validateUniqueSourceKeys(
+            List<MyHomeAnnouncementSourceSnapshot> items,
+            Set<String> collectedSourceKeys
+    ) {
+        Set<String> pageSourceKeys = new HashSet<>();
+        for (MyHomeAnnouncementSourceSnapshot item : items) {
+            String sourceKey = MyHomeAnnouncementSource.sourceKeyOf(item);
+            if (collectedSourceKeys.contains(sourceKey) || !pageSourceKeys.add(sourceKey)) {
+                throw new ExternalDataRequestException("마이홈 공고 응답에 중복된 원천 키가 있습니다.");
+            }
+        }
     }
 
     private void validateConsistentTotalCount(int expectedTotalCount, int actualTotalCount) {
