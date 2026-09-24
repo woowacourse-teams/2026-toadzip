@@ -136,6 +136,23 @@ class MyHomeComplexCollectionServiceTest {
     }
 
     @Test
+    @DisplayName("식별자 없는 단지 행은 지역 원천 교체 전에 수집 실패로 처리한다")
+    void doesNotReplaceRegionWhenComplexIdentifierIsMissing() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1))
+                .thenReturn(response("[{\"brtcCode\":\"11\",\"signguCode\":\"110\"}]", 1));
+
+        MyHomeComplexCollectionReport result = service.collect(request());
+
+        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(failureRecorder).record(any(), any(), any(), any(), any());
+        assertThat(result.storedRowCount()).isZero();
+        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.externalApiCallCount()).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("후속 페이지의 데이터 없음 응답은 지역 원천을 교체하지 않는다")
     void doesNotReplaceRegionAfterNoDataOnFollowingPage() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");

@@ -63,12 +63,17 @@ public class MyHomeComplexResponseParser {
     }
 
     private MyHomeComplexSourceSnapshot sourceSnapshotOf(JsonNode row) {
+        MyHomeComplexSourceSnapshot snapshot;
         try {
-            return objectMapper.convertValue(row, MyHomeComplexSourceSnapshot.class);
+            snapshot = objectMapper.convertValue(row, MyHomeComplexSourceSnapshot.class);
         }
         catch (RuntimeException exception) {
             throw new ExternalDataRequestException("마이홈 단지 응답 항목 형식이 올바르지 않습니다.", exception);
         }
+        if (snapshot.hsmpSn() == null) {
+            throw new ExternalDataRequestException("마이홈 단지 응답 항목에 단지 식별자가 없습니다.");
+        }
+        return snapshot;
     }
 
     private int totalCountOf(JsonNode body) {

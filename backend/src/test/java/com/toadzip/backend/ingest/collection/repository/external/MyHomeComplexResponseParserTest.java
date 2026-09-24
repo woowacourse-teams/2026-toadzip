@@ -33,6 +33,21 @@ class MyHomeComplexResponseParserTest {
     }
 
     @Test
+    @DisplayName("단지 식별자가 없는 항목은 수집에 실패한다")
+    void rejectsItemWithoutComplexIdentifier() {
+        ExternalDataResponse response = response("""
+                {"response":{"header":{"resultCode":"00"},
+                "body":{"totalCount":1,"item":[{"brtcCode":"11","signguCode":"110"}]}}}
+                """);
+
+        MyHomeComplexResponseParser.ValidatedPage page = parser.validate(response, 0);
+
+        assertThatThrownBy(() -> parser.parseItems(page))
+                .isInstanceOf(ExternalDataRequestException.class)
+                .hasMessage("마이홈 단지 응답 항목에 단지 식별자가 없습니다.");
+    }
+
+    @Test
     @DisplayName("첫 페이지 이후 데이터 없음 응답은 불완전한 지역 수집으로 거절한다")
     void rejectsNoDataAfterCollectedRows() {
         ExternalDataResponse response = response("""
