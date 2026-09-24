@@ -23,11 +23,11 @@ class LhAnnouncementRequestTest {
         assertThat(request.toParams()).containsEntry("PAGE", java.util.List.of("1"));
         assertThat(request.requestDescription()).isEqualTo(
                 "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06"
-                        + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=3"
+                        + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=4"
         );
         assertThat(request.compatibleRequestDescriptions()).containsExactly(
                 "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06"
-                        + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=3",
+                        + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=4",
                 "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06&SPL_INF_TP_CD=063&AIS_TP_CD=06",
                 "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06&SPL_INF_TP_CD=063"
         );
@@ -46,11 +46,11 @@ class LhAnnouncementRequestTest {
         assertThat(request.toParams()).containsEntry("PAGE", java.util.List.of("2"));
         assertThat(request.pageRequestDescription()).isEqualTo(
                 "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06"
-                        + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=3&PG_SZ=100&PAGE=2"
+                        + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=4&PG_SZ=100&PAGE=2"
         );
         assertThat(request.requestDescription()).isEqualTo(
                 "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06"
-                        + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=3"
+                        + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=4"
         );
     }
 

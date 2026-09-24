@@ -32,6 +32,8 @@ import com.toadzip.backend.ingest.collection.repository.external.ExternalDataReq
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
+import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
@@ -54,6 +56,8 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -424,6 +428,69 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void 공급이_페이지를_가득_채운_뒤_빈_마지막_페이지를_받아도_전체_공급을_저장한다() {
+        source(announcementSource());
+        when(externalRepository.fetchSupply(any())).thenAnswer(invocation -> {
+            LhAnnouncementRequest request = invocation.getArgument(0);
+            if (request.page() == 1) {
+                return supplyResponse(0, 100);
+            }
+            return supplyResponse(100, 0);
+        });
+        when(sourceStore.replaceSupplies(eq("100"), any(), any())).thenReturn(100);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+
+        ArgumentCaptor<List<LhAnnouncementSupplySource>> sources = ArgumentCaptor.captor();
+        verify(sourceStore).replaceSupplies(eq("100"), any(), sources.capture());
+        assertThat(sources.getValue()).hasSize(100);
+        assertThat(result.failedRequestCount()).isZero();
+        assertThat(result.storedRowCount()).isEqualTo(100);
+        assertThat(result.externalApiCallCount()).isEqualTo(2);
+        verify(progressStore).complete(any(), any(), any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void 빈_응답이나_부분_교체_거절은_같은_요청을_공유하는_공고의_성공_연결도_갱신하지_않는다(boolean empty) {
+        source(announcementSource("a", "100"), announcementSource("b", "100"));
+        RuntimeException failure = new EmptyLhSupplyReplacementException();
+        ExternalDataResponse fetched = response("[{\"dsList01\":[]}]");
+        if (!empty) {
+            failure = new IncompleteLhSupplyReplacementException(1);
+            fetched = supplyResponse();
+        }
+        when(externalRepository.fetchSupply(any())).thenReturn(fetched);
+        when(sourceStore.replaceSupplies(eq("100"), any(), any()))
+                .thenThrow(failure);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+
+        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.storedRowCount()).isZero();
+        assertThat(result.externalApiCallCount()).isOne();
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).link(any(), any(), any(), any());
+        verify(failureRecorder).record(any(), any(), eq(failure), any(), any());
+        verify(failureRecorder, never()).resolve(any(), any());
+    }
+
+    @Test
+    void LH_공급_저장_DB_실패는_빈_응답_실패로_처리하지_않는다() {
+        source(announcementSource());
+        when(externalRepository.fetchSupply(any())).thenReturn(supplyResponse());
+        when(sourceStore.replaceSupplies(eq("100"), any(), any()))
+                .thenThrow(new IllegalStateException("DB 저장 실패"));
+
+        assertThatThrownBy(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("DB 저장 실패");
+
+        verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+    }
+
+    @Test
     void LH_공급의_중간_페이지가_실패하면_기존_원천과_완료_체크포인트를_보존한다() {
         source(announcementSource());
         when(externalRepository.fetchSupply(any())).thenAnswer(invocation -> {
@@ -547,6 +614,56 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void 공공임대_응답에_dsList02가_없으면_기존_공급_원천과_체크포인트를_보존한다() {
+        source(publicRentalAnnouncementSource());
+        when(externalRepository.fetchSupply(any())).thenReturn(response("""
+                [{"dsList01":[{"SBD_LGO_NM":"다른 유형 단지","HTY_NNA":"46형"}]}]
+                """));
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+
+        verify(sourceStore, never()).replaceSupplies(any(), any(), any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
+    void 표준_임대_공급행의_주택형이_없으면_기존_공급_원천과_체크포인트를_보존한다() {
+        source(announcementSource());
+        when(externalRepository.fetchSupply(any())).thenReturn(response("""
+                [{"dsList01":[{"SBD_LGO_NM":"가 단지"}]}]
+                """));
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+
+        verify(sourceStore, never()).replaceSupplies(any(), any(), any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
+    void 공공임대_dsList02의_공급행을_원천에_저장한다() {
+        source(publicRentalAnnouncementSource());
+        when(externalRepository.fetchSupply(any())).thenReturn(response("""
+                [{"dsList01":[],"dsList02":[{"BZDT_NM":"가 단지","HTY_NM":"46형",
+                 "RSDN_DDO_AR":"46.8","SPL_AR":"67.0","TOT_HSH_CNT":"100",
+                 "SIL_HSH_CNT":"20","LS_GMY":"10000000","MM_RFE":"200000"}]}]
+                """));
+        when(sourceStore.replaceSupplies(eq("100"), any(), any())).thenReturn(1);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+
+        ArgumentCaptor<List<LhAnnouncementSupplySource>> supplies = ArgumentCaptor.captor();
+        verify(sourceStore).replaceSupplies(eq("100"), any(), supplies.capture());
+        assertThat(supplies.getValue()).singleElement().satisfies(supply -> {
+            assertThat(supply.getComplexLabel()).isEqualTo("가 단지");
+            assertThat(supply.getSuppliedUnitCount()).isEqualTo("20");
+            assertThat(supply.getMonthlyRentText()).isEqualTo("200000");
+        });
+        assertThat(result.storedRowCount()).isOne();
+    }
+
+    @Test
     void LH_상세_dataset_타입이_잘못되면_기존_snapshot과_체크포인트를_보존한다() {
         source(announcementSource());
         when(externalRepository.fetchDetail(any()))
@@ -636,10 +753,10 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
-    void 요청별_원천_식별_도입_전_완료_요청은_다시_수집한다() {
+    void 유형별_공급_파싱_수정_전_완료_요청은_다시_수집한다() {
         source(announcementSource());
         String previousVersion = announcementRequestDescription()
-                .replace("COLLECTION_VERSION=3", "COLLECTION_VERSION=2");
+                .replace("COLLECTION_VERSION=4", "COLLECTION_VERSION=3");
         when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY), any(), any(), any()))
                 .thenReturn(progressWithCompletedRequest(previousVersion));
         when(externalRepository.fetchSupply(any())).thenReturn(supplyResponse());
@@ -905,19 +1022,26 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
-    void 통합공공임대는_LH_공급정보_코드_064로_호출한다() {
+    void 통합공공임대는_LH_공급정보_코드_062로_호출한다() {
         source(integratedLhAnnouncementSource());
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(externalRepository.fetchSupply(any())).thenReturn(supplyResponse());
         when(sourceStore.replaceDetails(eq("2015122300020531"), any(), any())).thenReturn(1);
+        when(sourceStore.replaceSupplies(eq("2015122300020531"), any(), any())).thenReturn(1);
 
-        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        ExternalDataCollectionReport details = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        ExternalDataCollectionReport supplies = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
 
-        ArgumentCaptor<LhAnnouncementRequest> request = ArgumentCaptor.forClass(LhAnnouncementRequest.class);
-        verify(externalRepository).fetchDetail(request.capture());
-        assertThat(request.getValue().supplyInfoTypeCode()).isEqualTo("064");
-        assertThat(result.storedRowCount()).isOne();
-        assertThat(result.failedRequestCount()).isZero();
-        assertThat(result.skippedRequestCount()).isZero();
+        ArgumentCaptor<LhAnnouncementRequest> detailRequest = ArgumentCaptor.forClass(LhAnnouncementRequest.class);
+        ArgumentCaptor<LhAnnouncementRequest> supplyRequest = ArgumentCaptor.forClass(LhAnnouncementRequest.class);
+        verify(externalRepository).fetchDetail(detailRequest.capture());
+        verify(externalRepository).fetchSupply(supplyRequest.capture());
+        assertThat(detailRequest.getValue().supplyInfoTypeCode()).isEqualTo("062");
+        assertThat(supplyRequest.getValue().supplyInfoTypeCode()).isEqualTo("062");
+        assertThat(details.storedRowCount()).isOne();
+        assertThat(supplies.storedRowCount()).isOne();
+        assertThat(details.failedRequestCount()).isZero();
+        assertThat(supplies.failedRequestCount()).isZero();
     }
 
     @Test
@@ -1144,6 +1268,17 @@ class LhAnnouncementExternalCollectionServiceTest {
         return source;
     }
 
+    private MyHomeAnnouncementSource publicRentalAnnouncementSource() {
+        MyHomeAnnouncementSource source = MyHomeAnnouncementSource.from(0, item(
+                "100",
+                "5년임대",
+                "https://apply.lh.or.kr/panDetail?panId=100"
+                        + "&ccrCnntSysDsCd=03&uppAisTpCd=05&aisTpCd=06"
+        ));
+        ReflectionTestUtils.setField(source, "id", ++nextSourceId);
+        return source;
+    }
+
     private MyHomeAnnouncementSourceSnapshot item(String supplyType, String url) {
         return item("100", supplyType, url);
     }
@@ -1176,7 +1311,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     private ExternalDataResponse supplyResponse() {
         return response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},"
-                + "{\"dsList01\":[{\"SBD_LGO_NM\":\"행복주택\"}]}]");
+                + "{\"dsList01\":[{\"SBD_LGO_NM\":\"행복주택\",\"HTY_NNA\":\"46A\"}]}]");
     }
 
     private ExternalDataResponse detailResponse(int start, int count) {
@@ -1203,7 +1338,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     private ExternalDataResponse supplyResponse(String responseDateTime, int start, int count) {
         String rows = java.util.stream.IntStream.range(start, start + count)
-                .mapToObj(index -> "{\"SBD_LGO_NM\":\"단지-" + index + "\"}")
+                .mapToObj(index -> "{\"SBD_LGO_NM\":\"단지-" + index + "\",\"HTY_NNA\":\"46A\"}")
                 .collect(java.util.stream.Collectors.joining(","));
         String responseDateTimeField = responseDateTimeField(responseDateTime);
         return response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"" + responseDateTimeField
@@ -1230,7 +1365,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     private String announcementRequestDescription() {
         return "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06"
-                + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=3";
+                + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=4";
     }
 
     private String legacyAnnouncementRequestDescription() {

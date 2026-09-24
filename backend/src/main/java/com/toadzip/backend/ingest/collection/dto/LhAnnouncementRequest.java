@@ -18,7 +18,7 @@ public record LhAnnouncementRequest(
 ) {
 
     private static final int DEFAULT_PAGE_SIZE = 100;
-    private static final int COLLECTION_VERSION = 3;
+    private static final int COLLECTION_VERSION = 4;
 
     public LhAnnouncementRequest(
             String panId,
