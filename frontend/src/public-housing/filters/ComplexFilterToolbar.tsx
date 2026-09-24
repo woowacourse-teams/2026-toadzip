@@ -1,3 +1,5 @@
+import { Button } from '../../design-system/components/Button'
+import { IconButton } from '../../design-system/components/IconButton'
 import { formatHousingMoney } from '../presentation/housingMoney.ts'
 import {
   type CSSProperties,
@@ -755,20 +757,20 @@ export function ComplexFilterToolbar({
                 <h2 className={styles.popoverHeading} id={headingId}>
                   {openLabel} 필터
                 </h2>
-                <button
+                <IconButton
                   className={styles.close}
                   type="button"
-                  aria-label={`${openLabel} 필터 패널 닫기`}
+                  label={`${openLabel} 필터 패널 닫기`}
                   onClick={() => {
                     setOpenTopic(null)
                     setErrorMessage(null)
                     triggerRefs.current[openTopic]?.focus()
                   }}
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" focusable="false">
                     <path d="m5 5 14 14M19 5 5 19" />
                   </svg>
-                </button>
+                </IconButton>
               </header>
               <div className={styles.fields}>
                 {openTopic === 'detail' ? (
@@ -789,11 +791,11 @@ export function ComplexFilterToolbar({
                 <p className={styles.error} role="alert">{errorMessage}</p>
               )}
               {openTopic === 'detail' && <div className={styles.actions}>
-                <button
+                <Button
                   className={styles.apply}
                   type="submit"
                   aria-label={`${openLabel} 필터 적용`}
-                >적용</button>
+                >적용</Button>
               </div>}
             </form>
           </section>
@@ -877,17 +879,17 @@ export function ComplexFilterToolbar({
                   초기화
                 </button>
                 <h2 id="mobile-complex-filter-heading">단지 필터</h2>
-                <button
+                <IconButton size="lg"
                   ref={mobileCloseRef}
                   className={styles.mobileClose}
                   type="button"
-                  aria-label="단지 필터 닫기"
+                  label="단지 필터 닫기"
                   onClick={closeMobileSheet}
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" focusable="false">
                     <path d="m5 5 14 14M19 5 5 19" />
                   </svg>
-                </button>
+                </IconButton>
               </header>
 
               <div
@@ -927,11 +929,11 @@ export function ComplexFilterToolbar({
               </div>
 
               <div className={styles.mobileFooter}>
-                <button
+                <Button size="lg"
                   className={styles.mobileApply}
                   type="submit"
                   aria-label={mobileResultAction}
-                >{mobileResultAction}</button>
+                >{mobileResultAction}</Button>
               </div>
             </form>
           </section>

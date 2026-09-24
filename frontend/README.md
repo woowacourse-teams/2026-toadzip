@@ -20,6 +20,8 @@ nvm use
 
 프론트엔드 코드를 변경하기 전에 [AGENTS.md](AGENTS.md)에서 기술 경계와 완료 기준을 확인한다.
 
+새 UI에는 [디자인 시스템](docs/design-system.md)의 토큰과 공통 컴포넌트를 우선 사용한다.
+
 ## 의존성 설치
 
 ```shell

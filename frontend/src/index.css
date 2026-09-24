@@ -1,19 +1,17 @@
-@import "./public-housing/styles/tokens.css";
+@import "./design-system/tokens.css";
 
 :root {
-  font-family:
-    "Pretendard GOV", Pretendard, -apple-system, BlinkMacSystemFont,
-    "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
-  color: #1e2124;
-  background: #f4f5f6;
+  font-family: var(--ds-font-family-base);
+  color: var(--ds-color-text-base);
+  background: var(--ds-color-page);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   --brand: var(--ds-color-brand);
   --brand-dark: var(--ds-color-action);
-  --border: #cdd1d5;
+  --border: var(--ds-color-border-base);
   --focus: var(--ds-color-action);
-  --muted: #464c53;
-  --surface: #ffffff;
+  --muted: var(--ds-color-muted-base);
+  --surface: var(--ds-color-surface);
 }
 
 .integrated-search {
@@ -608,18 +606,18 @@ a {
   --list-text: var(--ds-color-text);
   --list-muted: var(--ds-color-muted);
   --list-divider: var(--ds-color-divider);
-  --list-inset: 28px;
+  --list-inset: var(--ds-space-7);
 }
 
 @container housing-list (max-width: 400px) {
   .housing-results__browse {
-    --list-inset: 20px;
+    --list-inset: var(--ds-space-5);
   }
 }
 
 @container housing-list (max-width: 340px) {
   .housing-results__browse {
-    --list-inset: 16px;
+    --list-inset: var(--ds-space-4);
   }
 }
 

@@ -1,0 +1,39 @@
+.root {
+  display: grid;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ds-radius-icon-control);
+  background: transparent;
+  color: var(--ds-color-text);
+  place-items: center;
+  cursor: pointer;
+}
+
+.md {
+  width: var(--ds-icon-control-md);
+  height: var(--ds-icon-control-md);
+}
+
+.lg {
+  width: var(--ds-icon-control-lg);
+  height: var(--ds-icon-control-lg);
+}
+
+.root svg {
+  width: var(--ds-icon-size);
+  height: var(--ds-icon-size);
+}
+
+.root:hover:not(:disabled) {
+  background: var(--ds-color-control-hover);
+}
+
+.root:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+}
+
+.root:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

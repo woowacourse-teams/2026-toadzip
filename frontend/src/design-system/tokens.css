@@ -1,5 +1,7 @@
-/* 공공주택 탐색 화면의 공통 색상, 글자 크기와 간격. */
+/* 공유 스타일 값의 원본. 사용 규칙: frontend/docs/design-system.md */
 :root {
+  --ds-font-family-base: "Pretendard GOV", Pretendard, -apple-system,
+    BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   --ds-font-family-ui: "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
   --ds-text-body: 14px;
   --ds-text-caption: 13px;
@@ -41,6 +43,22 @@
   --ds-space-4: 16px;
   --ds-space-5: 20px;
   --ds-space-6: 24px;
+  --ds-space-7: 28px;
+  --ds-color-text-base: #1e2124;
+  --ds-color-muted-base: #464c53;
+  --ds-color-page: #f4f5f6;
+  --ds-color-border-base: #cdd1d5;
+  --ds-color-control-hover: #f5f5f7;
+  --ds-color-brand-hover: color-mix(in srgb, var(--ds-color-brand) 90%, var(--ds-color-action));
+  --ds-text-control-lg: 15px;
+  --ds-weight-strong: 700;
+  --ds-radius-control: 8px;
+  --ds-radius-icon-control: 6px;
+  --ds-control-height-md: 44px;
+  --ds-control-height-lg: 50px;
+  --ds-icon-control-md: 40px;
+  --ds-icon-control-lg: 44px;
+  --ds-icon-size: 24px;
   --ds-status-badge-font-size: 12px;
   --ds-status-badge-min-height: 24px;
   --ds-status-badge-padding-block: 2px;
