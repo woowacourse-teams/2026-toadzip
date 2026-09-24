@@ -253,6 +253,33 @@ class MyHomeAnnouncementCollectionServiceTest {
     }
 
     @Test
+    @DisplayName("페이지 간 저장 키가 중복되면 해당 공급유형 저장과 전체 미조회 판정을 보류한다")
+    void preservesSourcesWhenAnnouncementSourceKeysOverlapBetweenPages() {
+        MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
+        when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
+            MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
+            int page = invocation.getArgument(2);
+            if (supplyType != MyHomeAnnouncementSupplyType.HAPPY_HOUSE) {
+                return response("[]");
+            }
+            if (page == 1) {
+                return responseWithTotalCount("[{\"pblancId\":\"A\",\"houseSn\":1},"
+                        + "{\"pblancId\":\"A\",\"houseSn\":2}]", 4);
+            }
+            return responseWithTotalCount("[{\"pblancId\":\"A\",\"houseSn\":2},"
+                    + "{\"pblancId\":\"A\",\"houseSn\":3}]", 4);
+        });
+
+        ExternalDataCollectionReport result = service.collect(request);
+
+        verify(sourceStore, times(MyHomeAnnouncementSupplyType.values().length - 1))
+                .storeAnnouncements(anyString(), any());
+        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        verify(failureRecorder).record(any(), any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
     @DisplayName(
             "일부 페이지 수집 후 데이터 없음 응답이 오면 해당 공급유형을 저장하거나 미조회 판정하지 않는다"
     )
