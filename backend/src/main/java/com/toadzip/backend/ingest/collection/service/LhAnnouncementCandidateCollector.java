@@ -9,6 +9,7 @@ import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementPageFetcher.FetchedPages;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
+import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -33,7 +34,8 @@ public class LhAnnouncementCandidateCollector {
         try {
             storedPages = collectAndStore(targetSource, request, callCounter);
         }
-        catch (ExternalDataCallFailureException | EmptyLhSupplyReplacementException exception) {
+        catch (ExternalDataCallFailureException | EmptyLhSupplyReplacementException
+                | IncompleteLhSupplyReplacementException exception) {
             return failedReport(targetSource, request, exception, callCounter);
         }
         storedPages.requestDescriptions().forEach(description -> failureRecorder.resolve(targetSource, description));

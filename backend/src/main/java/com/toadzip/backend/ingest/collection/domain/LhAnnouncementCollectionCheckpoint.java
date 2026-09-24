@@ -109,6 +109,14 @@ public class LhAnnouncementCollectionCheckpoint {
         }
     }
 
+    public boolean hasSameQuery(String otherRequestDescription) {
+        return withoutCollectionVersion(requestDescription).equals(withoutCollectionVersion(otherRequestDescription));
+    }
+
+    private static String withoutCollectionVersion(String requestDescription) {
+        return requestDescription.replaceFirst("&COLLECTION_VERSION=[0-9]+$", "");
+    }
+
     private static void validateSource(ExternalDataSource source) {
         boolean supported = source == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL
                 || source == ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY;

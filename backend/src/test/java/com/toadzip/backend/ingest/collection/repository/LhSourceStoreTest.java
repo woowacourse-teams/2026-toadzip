@@ -3,18 +3,24 @@ package com.toadzip.backend.ingest.collection.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
+import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -36,6 +42,9 @@ class LhSourceStoreTest {
     @Autowired
     private LhAnnouncementSupplySourceRepository supplyRepository;
 
+    @Autowired
+    private LhAnnouncementCollectionCheckpointRepository checkpointRepository;
+
     private LhSourceStore store;
 
     @BeforeEach
@@ -44,6 +53,7 @@ class LhSourceStoreTest {
                 catalogRepository,
                 detailRepository,
                 supplyRepository,
+                checkpointRepository,
                 Clock.fixed(COLLECTED_AT, ZoneOffset.UTC)
         );
     }
@@ -123,7 +133,7 @@ class LhSourceStoreTest {
         store.replaceSupplies("PAN-1", "PAN_ID=PAN-1&TYPE=B", List.of(second));
         store.replaceSupplies("PAN-1", "PAN_ID=PAN-1&TYPE=A", List.of(new LhAnnouncementSupplySource(
                 0, "PAN-1", new LhAnnouncementSupplySourceSnapshot(
-                        "수정된 첫 번째 단지", "24", "24", "30", "10", "5", null, null
+                        "첫 번째 단지", "24", "24", "30", "10", "6", null, null
                 )
         )));
 
@@ -131,7 +141,7 @@ class LhSourceStoreTest {
         assertThat(supplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
                 "PAN-1", LhAnnouncementCollectionCheckpoint.requestHashOf("PAN_ID=PAN-1&TYPE=A")
         )).singleElement().extracting(LhAnnouncementSupplySource::getComplexLabel)
-                .isEqualTo("수정된 첫 번째 단지");
+                .isEqualTo("첫 번째 단지");
         assertThat(supplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
                 "PAN-1", LhAnnouncementCollectionCheckpoint.requestHashOf("PAN_ID=PAN-1&TYPE=B")
         )).singleElement().extracting(LhAnnouncementSupplySource::getComplexLabel).isEqualTo("두 번째 단지");
@@ -168,6 +178,150 @@ class LhSourceStoreTest {
 
         assertThat(supplyRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
                 .containsExactlyElementsOf(previous);
+    }
+
+    @Test
+    void 기존_150행_중_100행만_수집되면_기존_전체_원천을_보존한다() {
+        String request = "PAN_ID=PAN-1&TYPE=A";
+        store.replaceSupplies("PAN-1", request, IntStream.range(0, 150)
+                .mapToObj(index -> supply(index, "단지-" + index, "24", "24.0", "30.0"))
+                .toList());
+        var previous = supplyRepository.findAll();
+
+        assertThatThrownBy(() -> store.replaceSupplies("PAN-1", request,
+                IntStream.range(0, 100)
+                        .mapToObj(index -> supply(index, "단지-" + index, "24", "24.0", "30.0"))
+                        .toList()))
+                .isInstanceOf(IncompleteLhSupplyReplacementException.class)
+                .hasMessageContaining("누락");
+
+        assertThat(supplyRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
+                .containsExactlyInAnyOrderElementsOf(previous);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"다른 단지", "중복 행", "전용면적", "공급면적"})
+    void 전체_건수가_같아도_기존_공급행이_빠지면_교체하지_않는다(String changed) {
+        String request = "PAN_ID=PAN-1&TYPE=A";
+        store.replaceSupplies("PAN-1", request, List.of(
+                supply(0, "가 단지", "24", "24", "30"),
+                supply(1, "나 단지", "24", "24", "30")));
+        var previous = supplyRepository.findAll();
+        LhAnnouncementSupplySource replacement = switch (changed) {
+            case "다른 단지" -> supply(1, "다 단지", "24", "24", "30");
+            case "중복 행" -> supply(1, "가 단지", "24", "24", "30");
+            case "전용면적" -> supply(1, "나 단지", "24", "25", "30");
+            default -> supply(1, "나 단지", "24", "24", "31");
+        };
+
+        assertThatThrownBy(() -> store.replaceSupplies("PAN-1", request, List.of(
+                supply(0, "가 단지", "24", "24", "30"), replacement)))
+                .isInstanceOf(IncompleteLhSupplyReplacementException.class)
+                .hasMessageContaining("누락");
+
+        assertThat(supplyRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
+                .containsExactlyInAnyOrderElementsOf(previous);
+    }
+
+    @Test
+    void 같은_식별값의_중복행도_개수가_감소하면_교체하지_않는다() {
+        String request = "PAN_ID=PAN-1&TYPE=A";
+        store.replaceSupplies("PAN-1", request, List.of(
+                supply(0, "가 단지", "24", "24", "30"),
+                supply(1, "가 단지", "24", "24", "30")));
+
+        assertThatThrownBy(() -> store.replaceSupplies("PAN-1", request, List.of(
+                supply(0, "가 단지", "24", "24", "30"))))
+                .isInstanceOf(IncompleteLhSupplyReplacementException.class)
+                .hasMessageContaining("누락");
+        assertThat(supplyRepository.count()).isEqualTo(2);
+    }
+
+    @Test
+    void 수집_버전만_바뀐_첫_부분_응답도_이전_성공_원천과_비교한다() {
+        String previousRequest = "PAN_ID=PAN-1&TYPE=A&COLLECTION_VERSION=3";
+        store.replaceSupplies("PAN-1", previousRequest, List.of(
+                supply(0, "가 단지", "24", "24", "30"),
+                supply(1, "나 단지", "24", "24", "30")));
+        checkpointRepository.save(LhAnnouncementCollectionCheckpoint.complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "announcement", previousRequest, "PAN-1", COLLECTED_AT));
+        var previous = supplyRepository.findAll();
+
+        assertThatThrownBy(() -> store.replaceSupplies(
+                "PAN-1", previousRequest.replace("VERSION=3", "VERSION=4"),
+                List.of(supply(0, "가 단지", "24", "24", "30"))))
+                .isInstanceOf(IncompleteLhSupplyReplacementException.class)
+                .hasMessageContaining("누락");
+
+        assertThat(supplyRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
+                .containsExactlyInAnyOrderElementsOf(previous);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "SPL_INF_TP_CD=062, SPL_INF_TP_CD=064",
+            "AIS_TP_CD=07, AIS_TP_CD=06",
+            "CCR_CNNT_SYS_DS_CD=03, CCR_CNNT_SYS_DS_CD=02",
+            "UPP_AIS_TP_CD=06, UPP_AIS_TP_CD=05"
+    })
+    void 실제_조회_조건이_다른_이전_원천은_누락_비교에_섞지_않는다(String from, String to) {
+        String previousRequest = "PAN_ID=PAN-1&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06"
+                + "&SPL_INF_TP_CD=062&AIS_TP_CD=07&COLLECTION_VERSION=3";
+        store.replaceSupplies("PAN-1", previousRequest, List.of(
+                supply(0, "가 단지", "24", "24", "30"),
+                supply(1, "나 단지", "24", "24", "30")));
+        checkpointRepository.save(LhAnnouncementCollectionCheckpoint.complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "announcement", previousRequest, "PAN-1", COLLECTED_AT));
+        String currentRequest = previousRequest.replace(from, to).replace("VERSION=3", "VERSION=4");
+
+        assertThat(store.replaceSupplies("PAN-1", currentRequest,
+                List.of(supply(0, "새 단지", "24", "24", "30")))).isOne();
+        assertThat(supplyRepository.count()).isEqualTo(3);
+    }
+
+    @Test
+    void 구버전에서_주택형_없이_저장한_원천도_누락_검사에서_제외하지_않는다() {
+        String previousRequest = "PAN_ID=PAN-1&TYPE=A&COLLECTION_VERSION=3";
+        store.replaceSupplies("PAN-1", previousRequest, List.of(
+                supply(0, "가 단지", "24", "24", "30"),
+                supply(1, "나 단지", null, "36", "45")));
+        checkpointRepository.save(LhAnnouncementCollectionCheckpoint.complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "announcement", previousRequest, "PAN-1", COLLECTED_AT));
+        var previous = supplyRepository.findAll();
+
+        assertThatThrownBy(() -> store.replaceSupplies(
+                "PAN-1", previousRequest.replace("VERSION=3", "VERSION=4"),
+                List.of(supply(0, "가 단지", "24", "24", "30"))))
+                .isInstanceOf(IncompleteLhSupplyReplacementException.class);
+        assertThat(supplyRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
+                .containsExactlyInAnyOrderElementsOf(previous);
+    }
+
+    @Test
+    void 순서와_숫자표기와_세대수와_금액_변경_및_행_추가는_허용한다() {
+        String request = "PAN_ID=PAN-1&TYPE=A";
+        store.replaceSupplies("PAN-1", request, List.of(
+                supply(0, "가 단지", "24", "24", "30"),
+                supply(1, "나 단지", "36", "36", "45")));
+
+        assertThat(store.replaceSupplies("PAN-1", request, List.of(
+                supply(0, "나 단지", "36", "36.000", "45.0㎡"),
+                new LhAnnouncementSupplySource(1, "PAN-1", new LhAnnouncementSupplySourceSnapshot(
+                        "가 단지", "24", "24.00", "30.0", "110", "0", "12000000", "250000")),
+                supply(2, "다 단지", "46", "46", "60")))).isEqualTo(3);
+        assertThat(supplyRepository.findAll()).filteredOn(source -> "가 단지".equals(source.getComplexLabel()))
+                .singleElement().satisfies(source -> {
+                    assertThat(source.getSuppliedUnitCount()).isEqualTo("0");
+                    assertThat(source.getMonthlyRentText()).isEqualTo("250000");
+                });
+    }
+
+    private LhAnnouncementSupplySource supply(int order, String complex, String type, String area, String supplyArea) {
+        return new LhAnnouncementSupplySource(order, "PAN-1", new LhAnnouncementSupplySourceSnapshot(
+                complex, type, area, supplyArea, "100", "20", "10000000", "200000"));
     }
 
     @Test

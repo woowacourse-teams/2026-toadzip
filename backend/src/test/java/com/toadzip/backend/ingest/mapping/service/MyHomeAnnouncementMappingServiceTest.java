@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
@@ -28,6 +29,7 @@ import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollection
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
+import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver;
@@ -467,7 +469,7 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     @Test
-    void 최신_lh_공급_스냅샷에서_사라진_공급행을_삭제한다() {
+    void 부분_lh_공급_교체를_거절하고_기존_공급행과_공급대상을_보존한다() {
         saveMappedComplex();
         sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
         saveLhSupplyLink("21026", "PAN-1");
@@ -492,17 +494,16 @@ class MyHomeAnnouncementMappingServiceTest {
                 1
         ));
 
-        lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of(
+        assertThatThrownBy(() -> lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of(
                 lhSupply(0, "PAN-1", "동삼2", "46A", "46.8000", "67.0000")
-        ));
+        ))).isInstanceOf(IncompleteLhSupplyReplacementException.class);
 
         var report = service.mapAll();
 
-        assertThat(report.deletedSupplyRowCount()).isEqualTo(2);
-        assertThat(supplyRowRepository.findAll()).singleElement()
-                .extracting(SupplyRow::getSourceSupplyRowIdentifier)
-                .isEqualTo(MyHomeAnnouncementSource.sourceKeyOf(data("21026", 1, "LH", "동삼2")));
-        assertThat(supplyTargetRepository.findAll()).isEmpty();
+        assertThat(report.deletedSupplyRowCount()).isZero();
+        assertThat(supplyRowRepository.findAll()).hasSize(3);
+        assertThat(supplyTargetRepository.findAll()).singleElement()
+                .extracting(target -> target.getSupplyRow().getId()).isEqualTo(staleRow.getId());
     }
 
     @Test
@@ -578,6 +579,8 @@ class MyHomeAnnouncementMappingServiceTest {
         ));
         service.mapAll();
 
+        // 수집기의 누락 방어 도입 전에 저장된 잘못된 원천의 매핑 방어를 검증한다.
+        lhSupplyRepository.deleteAll();
         lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of(
                 lhSupply(0, "PAN-1", "동삼2", "99Z", "99.0000", "120.0000")
         ));

@@ -13,6 +13,11 @@ import org.springframework.data.repository.query.Param;
 public interface LhAnnouncementCollectionCheckpointRepository
         extends JpaRepository<LhAnnouncementCollectionCheckpoint, Long> {
 
+    List<LhAnnouncementCollectionCheckpoint> findAllBySourceAndPanIdOrderByCompletedAtDesc(
+            ExternalDataSource source,
+            String panId
+    );
+
     @Query("""
             select checkpoint.requestHash
             from LhAnnouncementCollectionCheckpoint checkpoint

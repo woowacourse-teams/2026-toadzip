@@ -33,6 +33,7 @@ import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementD
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
+import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
@@ -55,6 +56,8 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -447,12 +450,19 @@ class LhAnnouncementExternalCollectionServiceTest {
         verify(progressStore).complete(any(), any(), any(), any());
     }
 
-    @Test
-    void 빈_교체가_거절되면_같은_요청을_공유하는_공고도_성공_연결을_갱신하지_않는다() {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void 빈_응답이나_부분_교체_거절은_같은_요청을_공유하는_공고의_성공_연결도_갱신하지_않는다(boolean empty) {
         source(announcementSource("a", "100"), announcementSource("b", "100"));
-        when(externalRepository.fetchSupply(any())).thenReturn(response("[{\"dsList01\":[]}]"));
+        RuntimeException failure = new EmptyLhSupplyReplacementException();
+        ExternalDataResponse fetched = response("[{\"dsList01\":[]}]");
+        if (!empty) {
+            failure = new IncompleteLhSupplyReplacementException(1);
+            fetched = supplyResponse();
+        }
+        when(externalRepository.fetchSupply(any())).thenReturn(fetched);
         when(sourceStore.replaceSupplies(eq("100"), any(), any()))
-                .thenThrow(new EmptyLhSupplyReplacementException());
+                .thenThrow(failure);
 
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
 
@@ -461,7 +471,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         assertThat(result.externalApiCallCount()).isOne();
         verify(progressStore, never()).complete(any(), any(), any(), any());
         verify(progressStore, never()).link(any(), any(), any(), any());
-        verify(failureRecorder).record(any(), any(), any(EmptyLhSupplyReplacementException.class), any(), any());
+        verify(failureRecorder).record(any(), any(), eq(failure), any(), any());
         verify(failureRecorder, never()).resolve(any(), any());
     }
 
