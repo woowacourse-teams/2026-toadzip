@@ -42,10 +42,10 @@ public class MyHomeComplexResponseParser {
             throw invalidResponseSchema();
         }
         List<JsonNode> rows = ExternalResponseRows.at(response.body(), LIST_POINTER);
-        if (rows.isEmpty() && (totalCount < 0 ? collectedCount == 0 : collectedCount < totalCount)) {
+        if (rows.isEmpty() && collectedCount < totalCount) {
             throw invalidResponseSchema();
         }
-        if (totalCount >= 0 && collectedCount + rows.size() > totalCount) {
+        if (collectedCount + rows.size() > totalCount) {
             throw invalidResponseSchema();
         }
         return new ValidatedPage(rows, totalCount);
@@ -82,7 +82,7 @@ public class MyHomeComplexResponseParser {
     private int totalCountOf(JsonNode body) {
         JsonNode totalCount = body.path("totalCount");
         if (totalCount.isMissingNode() || totalCount.isNull()) {
-            return -1;
+            throw invalidResponseSchema();
         }
         if (totalCount.isIntegralNumber() && totalCount.canConvertToInt()) {
             return requireNonNegativeTotalCount(totalCount.intValue());

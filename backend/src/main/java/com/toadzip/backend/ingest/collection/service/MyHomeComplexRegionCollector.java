@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionReport;
@@ -11,7 +12,9 @@ import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeComplexResponseParser;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -114,6 +117,7 @@ public class MyHomeComplexRegionCollector {
     ) {
         List<MyHomeComplexSourceSnapshot> snapshots = new ArrayList<>();
         List<String> requestDescriptions = new ArrayList<>();
+        Set<String> collectedSourceKeys = new HashSet<>();
         int expectedTotalCount = -1;
         for (int page = 1; page <= request.maxPages(); page++) {
             if (rateLimitReached.get()) {
@@ -125,11 +129,21 @@ public class MyHomeComplexRegionCollector {
             ExternalDataPage<MyHomeComplexSourceSnapshot> parsedPage = retryExecutor.execute(
                     ExternalDataSource.MYHOME_COMPLEX,
                     requestDescription,
-                    () -> parsePage(region, request, currentPage, snapshots.size(), expectedTotalCountForPage),
+                    () -> parsePage(
+                            region,
+                            request,
+                            currentPage,
+                            snapshots.size(),
+                            expectedTotalCountForPage,
+                            collectedSourceKeys
+                    ),
                     callCounter
             );
             expectedTotalCount = parsedPage.totalCount();
             snapshots.addAll(parsedPage.items());
+            for (MyHomeComplexSourceSnapshot item : parsedPage.items()) {
+                collectedSourceKeys.add(MyHomeComplexSource.sourceKeyOf(item));
+            }
             requestDescriptions.add(requestDescription);
             if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
                 return new FetchedRegion(snapshots, requestDescriptions);
@@ -143,7 +157,8 @@ public class MyHomeComplexRegionCollector {
             MyHomeComplexCollectionRequest request,
             int page,
             int collectedCount,
-            int expectedTotalCount
+            int expectedTotalCount,
+            Set<String> collectedSourceKeys
     ) {
         ExternalDataPage<MyHomeComplexSourceSnapshot> parsedPage = responseParser.parseItems(
                 responseParser.validate(externalRepository.fetch(region, request, page), collectedCount)
@@ -157,7 +172,21 @@ public class MyHomeComplexRegionCollector {
         if (containsOtherRegion) {
             throw new ExternalDataRequestException("마이홈 단지 응답 항목의 지역 코드가 요청 지역과 다릅니다.");
         }
+        validateUniqueSourceKeys(parsedPage.items(), collectedSourceKeys);
         return parsedPage;
+    }
+
+    private void validateUniqueSourceKeys(
+            List<MyHomeComplexSourceSnapshot> items,
+            Set<String> collectedSourceKeys
+    ) {
+        Set<String> pageSourceKeys = new HashSet<>();
+        for (MyHomeComplexSourceSnapshot item : items) {
+            String sourceKey = MyHomeComplexSource.sourceKeyOf(item);
+            if (collectedSourceKeys.contains(sourceKey) || !pageSourceKeys.add(sourceKey)) {
+                throw new ExternalDataRequestException("마이홈 단지 응답에 중복된 원천 키가 있습니다.");
+            }
+        }
     }
 
     private void resolveFailures(List<String> requestDescriptions) {

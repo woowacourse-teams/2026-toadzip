@@ -33,6 +33,17 @@ class MyHomeComplexResponseParserTest {
     }
 
     @Test
+    @DisplayName("성공 응답에 totalCount가 없으면 전체 지역 수집으로 처리하지 않는다")
+    void rejectsMissingTotalCount() {
+        ExternalDataResponse response = response("""
+                {"response":{"header":{"resultCode":"00"},"body":{"item":[{"hsmpSn":10}]}}}
+                """);
+
+        assertThatThrownBy(() -> parser.validate(response, 0))
+                .isInstanceOf(ExternalDataRequestException.class);
+    }
+
+    @Test
     @DisplayName("단지 식별자가 없는 항목은 수집에 실패한다")
     void rejectsItemWithoutComplexIdentifier() {
         ExternalDataResponse response = response("""
