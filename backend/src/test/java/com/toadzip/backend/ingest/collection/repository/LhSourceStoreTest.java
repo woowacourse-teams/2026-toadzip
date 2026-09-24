@@ -237,6 +237,45 @@ class LhSourceStoreTest {
         assertThat(supplyRepository.count()).isEqualTo(2);
     }
 
+    @ParameterizedTest
+    @CsvSource({"20, 250000", "25, 200000"})
+    void 같은_식별값의_다른_세대수나_금액_행이_중복_응답에_가려지면_교체하지_않는다(
+            String secondSuppliedUnitCount,
+            String secondRent
+    ) {
+        String request = "PAN_ID=PAN-1&TYPE=A";
+        store.replaceSupplies("PAN-1", request, List.of(
+                supplyWithValues(0, "20", "200000"),
+                supplyWithValues(1, secondSuppliedUnitCount, secondRent)));
+        var previous = supplyRepository.findAll();
+
+        assertThatThrownBy(() -> store.replaceSupplies("PAN-1", request, List.of(
+                supplyWithValues(0, "20", "200000"),
+                supplyWithValues(1, "20", "200000"))))
+                .isInstanceOf(IncompleteLhSupplyReplacementException.class)
+                .hasMessageContaining("기존 공급행 1건이 누락");
+
+        assertThat(supplyRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
+                .containsExactlyInAnyOrderElementsOf(previous);
+    }
+
+    @Test
+    void 같은_식별값의_다른_금액_행이_순서만_바뀌면_교체한다() {
+        String request = "PAN_ID=PAN-1&TYPE=A";
+        store.replaceSupplies("PAN-1", request, List.of(
+                supplyWithValues(0, "20", "200000"),
+                supplyWithValues(1, "20", "250000")));
+
+        assertThat(store.replaceSupplies("PAN-1", request, List.of(
+                supplyWithValues(0, "20", "250000"),
+                supplyWithValues(1, "20", "200000")))).isEqualTo(2);
+
+        assertThat(supplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
+                "PAN-1", LhAnnouncementCollectionCheckpoint.requestHashOf(request)))
+                .extracting(LhAnnouncementSupplySource::getMonthlyRentText)
+                .containsExactly("250000", "200000");
+    }
+
     @Test
     void 수집_버전만_바뀐_첫_부분_응답도_이전_성공_원천과_비교한다() {
         String previousRequest = "PAN_ID=PAN-1&TYPE=A&COLLECTION_VERSION=3";
@@ -322,6 +361,11 @@ class LhSourceStoreTest {
     private LhAnnouncementSupplySource supply(int order, String complex, String type, String area, String supplyArea) {
         return new LhAnnouncementSupplySource(order, "PAN-1", new LhAnnouncementSupplySourceSnapshot(
                 complex, type, area, supplyArea, "100", "20", "10000000", "200000"));
+    }
+
+    private LhAnnouncementSupplySource supplyWithValues(int order, String suppliedUnitCount, String rent) {
+        return new LhAnnouncementSupplySource(order, "PAN-1", new LhAnnouncementSupplySourceSnapshot(
+                "가 단지", "24", "24", "30", "100", suppliedUnitCount, "10000000", rent));
     }
 
     @Test
