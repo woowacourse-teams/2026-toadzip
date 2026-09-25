@@ -13,6 +13,7 @@ export function AnnouncementImportForm({
   onSubmittingChange: (isSubmitting: boolean) => void
 }) {
   const [jsonText, setJsonText] = useState('')
+  const [validatedJsonText, setValidatedJsonText] = useState<string | null>(null)
   const [validatedDocument, setValidatedDocument] = useState<unknown>(null)
   const [validation, setValidation] = useState<AnnouncementImportValidationResponse | null>(null)
   const [selections, setSelections] = useState<Readonly<Record<number, number>>>({})
@@ -28,6 +29,7 @@ export function AnnouncementImportForm({
   function changeJson(value: string) {
     inputVersion.current += 1
     setJsonText(value)
+    setValidatedJsonText(null)
     setValidatedDocument(null)
     setValidation(null)
     setSelections({})
@@ -49,14 +51,16 @@ export function AnnouncementImportForm({
       return
     }
     const validationInputVersion = inputVersion.current
+    const validationJsonText = jsonText
     setIsValidating(true)
     setError(null)
     setSuccess(null)
     try {
-      const result = await validateAnnouncementImport(document)
+      const result = await validateAnnouncementImport(validationJsonText)
       if (inputVersion.current !== validationInputVersion) {
         return
       }
+      setValidatedJsonText(validationJsonText)
       setValidatedDocument(document)
       setValidation(result)
       setSelections(suggestedSelections(result))
@@ -64,6 +68,7 @@ export function AnnouncementImportForm({
       if (inputVersion.current !== validationInputVersion) {
         return
       }
+      setValidatedJsonText(null)
       setValidatedDocument(null)
       setValidation(null)
       setSelections({})
@@ -76,7 +81,7 @@ export function AnnouncementImportForm({
   }
 
   async function registerImport() {
-    if (!validation || validatedDocument === null || !canSubmit) {
+    if (!validation || validatedJsonText === null || !canSubmit) {
       return
     }
     setIsSubmitting(true)
@@ -85,7 +90,7 @@ export function AnnouncementImportForm({
     setSuccess(null)
     try {
       const created = await createAnnouncementImport(
-        validatedDocument,
+        validatedJsonText,
         validation.supplyRows.map((row) => ({
           supplyRowIndex: row.supplyRowIndex,
           housingComplexId: selections[row.supplyRowIndex],
@@ -95,6 +100,7 @@ export function AnnouncementImportForm({
         `공고 #${created.announcementId}를 저장했습니다. 공급행 ${created.supplyRowCount}건, 일정 ${created.scheduleCount}건, 첨부 ${created.attachmentCount}건입니다.`,
       )
       setJsonText('')
+      setValidatedJsonText(null)
       setValidatedDocument(null)
       setValidation(null)
       setSelections({})
@@ -136,6 +142,7 @@ export function AnnouncementImportForm({
           <p>
             공급행 {validation.supplyRows.length}건 · 일정 {summary.scheduleCount}건 · 첨부 {summary.attachmentCount}건
           </p>
+          <ImportReviewDetails document={validatedDocument} rawJson={validatedJsonText} />
           <IssueList title="오류" issues={validation.errors} />
           <IssueList title="미확정값" issues={validation.unresolvedFields} />
           <IssueList title="경고" issues={validation.warnings} />
@@ -189,6 +196,120 @@ export function AnnouncementImportForm({
       {error ? <RegistrationError fieldErrors={{}} message={error} /> : null}
     </section>
   )
+}
+
+function ImportReviewDetails({ document, rawJson }: { document: unknown; rawJson: string | null }) {
+  if (!isRecord(document)) {
+    return null
+  }
+  const source = recordOf(document.source)
+  const announcement = recordOf(document.announcement)
+  const receptionPlace = recordOf(document.receptionPlace)
+
+  return (
+    <div aria-label="등록할 공고 내용" className="announcement-import-review">
+      <h4>공고와 접수 정보</h4>
+      <ReviewFields fields={[
+        ['공식 원문 URL', source.originalUrl],
+        ['원천 공고번호', source.sourceDocumentId],
+        ['공급 유형', announcement.rentalType],
+        ['모집 유형', announcement.recruitmentType],
+        ['공급 기관', announcement.agencyCode],
+        ['게시일', announcement.postedDate],
+        ['접수 시작일', announcement.applicationStartDate],
+        ['접수 종료일', announcement.applicationEndDate],
+        ['당첨자 발표일', announcement.winnerAnnouncementDate],
+        ['접수처', receptionPlace.name],
+        ['접수 방식', receptionPlace.method],
+        ['접수처 주소', receptionPlace.address],
+        ['접수처 연락처', receptionPlace.contact],
+        ['접수처 URL', receptionPlace.url],
+      ]} />
+      {recordsOf(document.supplyRows).map((row, rowIndex) => (
+        <section key={rowIndex}>
+          <h4>공급행 {rowIndex + 1} 상세</h4>
+          <ReviewFields fields={[
+            ['원문 단지명', recordOf(row.complexReference).sourceComplexName],
+            ['원문 주택형', row.sourceHousingTypeName],
+            ['입주 예정 연월', row.expectedMoveInMonth],
+            ['공급 구분', row.supplyCategory],
+            ['공급세대수', row.totalSupplyHouseholdCount],
+          ]} />
+          {recordsOf(row.targets).map((target, targetIndex) => (
+            <section key={targetIndex}>
+              <h5>공급대상 {targetIndex + 1}</h5>
+              <ReviewFields fields={[
+                ['대상', target.target],
+                ['순위', target.supplyRank],
+                ['공급세대수', target.supplyHouseholdCount],
+                ['예비자 수', target.reserveCount],
+                ['임대보증금', target.rentalDeposit],
+                ['월 임대료', target.monthlyRent],
+                ['전환보증금', target.convertedDeposit],
+                ['신청 조건', target.applicationCondition],
+              ]} />
+            </section>
+          ))}
+        </section>
+      ))}
+      {recordsOf(document.schedules).map((schedule, index) => (
+        <section key={index}>
+          <h4>일정 {index + 1}</h4>
+          <ReviewFields fields={[
+            ['일정 유형', schedule.scheduleType],
+            ['일정명', schedule.name],
+            ['시작', schedule.startAt],
+            ['종료', schedule.endAt],
+          ]} />
+        </section>
+      ))}
+      {recordsOf(document.attachments).map((attachment, index) => (
+        <section key={index}>
+          <h4>첨부 {index + 1}</h4>
+          <ReviewFields fields={[
+            ['파일명', attachment.fileName],
+            ['파일 유형', attachment.fileType],
+            ['파일 URL', attachment.fileUrl],
+          ]} />
+        </section>
+      ))}
+      <details>
+        <summary>등록할 원본 JSON 전체 보기</summary>
+        <pre>{rawJson}</pre>
+      </details>
+    </div>
+  )
+}
+
+function ReviewFields({ fields }: { fields: Array<[string, unknown]> }) {
+  return (
+    <dl>
+      {fields.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{reviewValue(value)}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+function reviewValue(value: unknown): string {
+  if (typeof value === 'number' && !Number.isSafeInteger(value)) {
+    return '원본 JSON에서 정확한 숫자를 확인해 주세요.'
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value)
+  }
+  return '미기재'
+}
+
+function recordOf(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {}
+}
+
+function recordsOf(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter(isRecord) : []
 }
 
 function IssueList({

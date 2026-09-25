@@ -2,7 +2,7 @@ spring:
   flyway:
     enabled: false
   datasource:
-    url: jdbc:postgresql://127.0.0.1:55432/toadzip_test
+    url: jdbc:postgresql://127.0.0.1:${TEST_POSTGRES_PORT:55432}/toadzip_test
     username: toadzip_test
     password: toadzip_test
     driver-class-name: org.postgresql.Driver
@@ -17,7 +17,7 @@ spring:
 app:
   datasource:
     shared:
-      url: jdbc:postgresql://127.0.0.1:55433/toadzip_shared_test
+      url: jdbc:postgresql://127.0.0.1:${TEST_SHARED_POSTGRES_PORT:55433}/toadzip_shared_test
       username: toadzip_shared_test
       password: toadzip_shared_test
       driver-class-name: org.postgresql.Driver

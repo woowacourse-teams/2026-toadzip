@@ -26,6 +26,9 @@ vi.mock('../ingest/api', async (importOriginal) => ({
   startDataPipeline: apiMocks.startDataPipeline,
 }))
 
+vi.mock('../ingest/DataPipelineControl', () => ({ DataPipelineControl: () => null }))
+vi.mock('../ingest/LocationSummaryUpload', () => ({ LocationSummaryUpload: () => null }))
+
 beforeEach(() => {
   apiMocks.createAnnouncement.mockReset()
   apiMocks.createHousingComplex.mockReset()

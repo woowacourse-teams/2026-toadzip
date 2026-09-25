@@ -24,9 +24,10 @@ VITE_NAVER_MAPS_CLIENT_ID=
 docker compose -f compose.yaml -f compose.local.yaml -f compose.monitoring.yaml up -d --build
 ```
 
-기존 로컬 DB에 LH 소유권 컬럼이 없으면 Compose가 백엔드 시작 전에 기존 행을
-backfill하는 SQL 두 개를 순서대로 실행한다. 새 DB에서는 Hibernate가 컬럼을
-생성하고, 이미 적용된 DB에서는 선행 작업이 변경 없이 끝난다.
+새 빈 primary DB는 백엔드 시작 시 Flyway가 초기 스키마와 후속 마이그레이션을 적용한다.
+기존 로컬 DB에 Flyway 이력이 없다면 백엔드를 시작하기 전에
+[Flyway 도입 절차](../backend/docs/flyway-adoption.md)에 따라 백업, 명시적 baseline,
+통합 보정을 진행한다. Compose가 기존 DB를 자동으로 보정하지 않는다.
 
 ## 관리자 데이터 등록 수동 검증
 

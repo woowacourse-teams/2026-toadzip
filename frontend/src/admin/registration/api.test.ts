@@ -127,13 +127,42 @@ describe('관리자 데이터 등록 API', () => {
     }
     const fetchMock = prepareFetch(validation)
     const { validateAnnouncementImport } = await import('./api.ts')
-    const request = { schemaVersion: 'admin-announcement-import/v1' }
+    const request = '{"schemaVersion":"admin-announcement-import/v1"}'
 
     await expect(validateAnnouncementImport(request)).resolves.toEqual(validation)
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       'http://localhost:8080/api/admin/announcement-imports/validate',
-      expect.objectContaining({ body: JSON.stringify(request) }),
+      expect.objectContaining({ body: request }),
+    )
+  })
+
+  it('공고 JSON의 큰 금액을 반올림하지 않고 검증과 등록에 전달한다', async () => {
+    const rawJson = '{"rentalDeposit":9007199254740993}'
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ token: 'csrf-token', headerName: 'X-CSRF' }))
+      .mockResolvedValueOnce(jsonResponse({ data: {
+        schemaVersion: 'admin-announcement-import/v1', jsonHash: 'a'.repeat(64),
+        registerable: true, duplicated: false, errors: [], warnings: [],
+        unresolvedFields: [], supplyRows: [],
+      } }))
+      .mockResolvedValueOnce(jsonResponse({ token: 'csrf-token', headerName: 'X-CSRF' }))
+      .mockResolvedValueOnce(jsonResponse({ data: {
+        importId: 1, announcementId: 2, supplyRowCount: 1,
+        scheduleCount: 0, attachmentCount: 0, supplyTargetCount: 1,
+      } }, 201))
+    vi.stubEnv('DEV', true)
+    vi.stubEnv('VITE_API_BASE_URL', '')
+    vi.stubGlobal('fetch', fetchMock)
+    const { validateAnnouncementImport, createAnnouncementImport } = await import('./api.ts')
+
+    await validateAnnouncementImport(rawJson)
+    await createAnnouncementImport(rawJson, [{ supplyRowIndex: 0, housingComplexId: 42 }])
+
+    expect(fetchMock.mock.calls[1][1].body).toBe(rawJson)
+    expect(fetchMock.mock.calls[3][1].body).toBe(
+      '{"importData":{"rentalDeposit":9007199254740993},' +
+      '"complexSelections":[{"supplyRowIndex":0,"housingComplexId":42}]}',
     )
   })
 
@@ -141,7 +170,7 @@ describe('관리자 데이터 등록 API', () => {
     prepareFetch({ registerable: true })
     const { validateAnnouncementImport } = await import('./api.ts')
 
-    await expect(validateAnnouncementImport({})).rejects.toThrow(
+    await expect(validateAnnouncementImport('{}')).rejects.toThrow(
       '공고 JSON 검증 응답 형식이 올바르지 않습니다.',
     )
   })

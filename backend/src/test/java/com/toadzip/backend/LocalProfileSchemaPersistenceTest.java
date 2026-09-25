@@ -31,7 +31,7 @@ class LocalProfileSchemaPersistenceTest {
     @Test
     void local_프로필은_Flyway로_스키마를_생성하고_종료_후에도_유지한다() throws Exception {
         String databaseName = "toadzip_local_profile_" + UUID.randomUUID().toString().replace("-", "");
-        String jdbcUrl = "jdbc:postgresql://127.0.0.1:55432/" + databaseName;
+        String jdbcUrl = primaryTestDatabaseUrl(databaseName);
         createDatabase(databaseName);
 
         try {
@@ -71,7 +71,7 @@ class LocalProfileSchemaPersistenceTest {
     @Test
     void 기존_스키마를_baseline_후_통합_마이그레이션으로_보정한다() throws Exception {
         String databaseName = "toadzip_reconciliation_" + UUID.randomUUID().toString().replace("-", "");
-        String jdbcUrl = "jdbc:postgresql://127.0.0.1:55432/" + databaseName;
+        String jdbcUrl = primaryTestDatabaseUrl(databaseName);
         createDatabase(databaseName);
 
         try {
@@ -229,7 +229,7 @@ class LocalProfileSchemaPersistenceTest {
     }
 
     private Connection adminConnection() throws Exception {
-        return DriverManager.getConnection("jdbc:postgresql://127.0.0.1:55432/postgres", "toadzip_test", "toadzip_test");
+        return DriverManager.getConnection(primaryTestDatabaseUrl("postgres"), "toadzip_test", "toadzip_test");
     }
 
     private ConfigurableEnvironment createIsolatedEnvironment(String jdbcUrl) {
@@ -255,6 +255,15 @@ class LocalProfileSchemaPersistenceTest {
     }
 
     private String sharedTestDatabaseUrl() {
-        return "jdbc:postgresql://127.0.0.1:55433/toadzip_shared_test";
+        return "jdbc:postgresql://127.0.0.1:" + testPort("TEST_SHARED_POSTGRES_PORT", "55433")
+                + "/toadzip_shared_test";
+    }
+
+    private String primaryTestDatabaseUrl(String databaseName) {
+        return "jdbc:postgresql://127.0.0.1:" + testPort("TEST_POSTGRES_PORT", "55432") + "/" + databaseName;
+    }
+
+    private String testPort(String environmentVariable, String defaultPort) {
+        return System.getenv().getOrDefault(environmentVariable, defaultPort);
     }
 }

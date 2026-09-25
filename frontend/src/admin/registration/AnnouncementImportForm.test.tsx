@@ -56,13 +56,38 @@ describe('공고 JSON 가져오기', () => {
     fireEvent.click(screen.getByRole('button', { name: '검토한 내용으로 등록' }))
 
     await waitFor(() => expect(api.createAnnouncementImport).toHaveBeenCalledWith(
-      document,
+      JSON.stringify(document),
       [{ supplyRowIndex: 0, housingComplexId: 42 }],
     ))
     expect(await screen.findByText(/공고 #7를 저장했습니다/)).toBeInTheDocument()
     expect(screen.getByLabelText('공고 JSON')).toHaveValue('')
     expect(onSubmittingChange).toHaveBeenNthCalledWith(1, true)
     expect(onSubmittingChange).toHaveBeenLastCalledWith(false)
+  })
+
+  it('등록 전에 원문 URL, 기간, 공급 금액과 일정·첨부를 확인할 수 있다', async () => {
+    vi.mocked(api.validateAnnouncementImport).mockResolvedValue(validationResponse())
+    render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />)
+    const rawJson = `{
+      "source":{"originalUrl":"https://example.com/notice","sourceDocumentId":"NOTICE-1"},
+      "announcement":{"name":"행복주택 모집","applicationStartDate":"2026-09-10","applicationEndDate":"2026-09-12"},
+      "supplyRows":[{"complexReference":{"sourceComplexName":"두꺼비 행복주택"},
+        "sourceHousingTypeName":"36A","targets":[{"target":"청년","rentalDeposit":9007199254740993}]}],
+      "schedules":[{"name":"인터넷 접수","startAt":"2026-09-10T10:00:00"}],
+      "attachments":[{"fileName":"공고문.pdf","fileUrl":"https://example.com/notice.pdf"}]
+    }`
+
+    fireEvent.change(screen.getByLabelText('공고 JSON'), { target: { value: rawJson } })
+    fireEvent.click(screen.getByRole('button', { name: 'JSON 검증' }))
+
+    const review = await screen.findByLabelText('등록할 공고 내용')
+    expect(review).toHaveTextContent('https://example.com/notice')
+    expect(review).toHaveTextContent('2026-09-12')
+    expect(review).toHaveTextContent('36A')
+    expect(review).toHaveTextContent('인터넷 접수')
+    expect(review).toHaveTextContent('공고문.pdf')
+    expect(review).toHaveTextContent('원본 JSON에서 정확한 숫자를 확인해 주세요.')
+    expect(review.querySelector('pre')).toHaveTextContent('9007199254740993')
   })
 
   it('단지를 직접 선택하고 선택을 해제하면 등록 가능 상태가 바뀐다', async () => {

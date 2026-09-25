@@ -146,9 +146,9 @@ export async function createAnnouncement(
 }
 
 export async function validateAnnouncementImport(
-  importData: unknown,
+  importJson: string,
 ): Promise<AnnouncementImportValidationResponse> {
-  const response = await postWithCsrf('/api/admin/announcement-imports/validate', importData)
+  const response = await postJsonWithCsrf('/api/admin/announcement-imports/validate', importJson)
   const body = await readJson(response)
   if (!isAnnouncementImportValidationEnvelope(body)) {
     throw new Error('공고 JSON 검증 응답 형식이 올바르지 않습니다.')
@@ -157,13 +157,11 @@ export async function validateAnnouncementImport(
 }
 
 export async function createAnnouncementImport(
-  importData: unknown,
+  importJson: string,
   complexSelections: Array<{ supplyRowIndex: number; housingComplexId: number }>,
 ): Promise<AnnouncementImportCreateResponse> {
-  const response = await postWithCsrf('/api/admin/announcement-imports', {
-    importData,
-    complexSelections,
-  })
+  const registrationJson = `{"importData":${importJson},"complexSelections":${JSON.stringify(complexSelections)}}`
+  const response = await postJsonWithCsrf('/api/admin/announcement-imports', registrationJson)
   const body = await readJson(response)
   if (!isAnnouncementImportCreateEnvelope(body)) {
     throw new Error('공고 JSON 등록 응답 형식이 올바르지 않습니다.')
@@ -172,6 +170,10 @@ export async function createAnnouncementImport(
 }
 
 async function postWithCsrf(path: string, body: unknown): Promise<Response> {
+  return postJsonWithCsrf(path, JSON.stringify(body))
+}
+
+async function postJsonWithCsrf(path: string, jsonBody: string): Promise<Response> {
   const csrfToken = await requestCsrfToken()
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method: 'POST',
@@ -180,7 +182,7 @@ async function postWithCsrf(path: string, body: unknown): Promise<Response> {
       'Content-Type': 'application/json',
       [csrfToken.headerName]: csrfToken.token,
     },
-    body: JSON.stringify(body),
+    body: jsonBody,
   })
   if (!response.ok) {
     throw await registrationError(response)

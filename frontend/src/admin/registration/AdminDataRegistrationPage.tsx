@@ -9,7 +9,8 @@ import { HousingComplexRegistrationForm } from './HousingComplexRegistrationForm
 export function AdminDataRegistrationPage() {
   const [housingComplex, setHousingComplex] =
     useState<HousingComplexCreateResponse | null>(null)
-  const [isAnnouncementSubmitting, setIsAnnouncementSubmitting] = useState(false)
+  const [isDirectAnnouncementSubmitting, setIsDirectAnnouncementSubmitting] = useState(false)
+  const [isAnnouncementImportSubmitting, setIsAnnouncementImportSubmitting] = useState(false)
 
   return (
     <section className="admin-registration-page">
@@ -20,14 +21,14 @@ export function AdminDataRegistrationPage() {
       <DataPipelineControl />
       <LocationSummaryUpload />
       <HousingComplexRegistrationForm
-        disabled={isAnnouncementSubmitting}
+        disabled={isDirectAnnouncementSubmitting || isAnnouncementImportSubmitting}
         onCreated={setHousingComplex}
       />
       <AnnouncementRegistrationForm
         housingComplex={housingComplex}
-        onSubmittingChange={setIsAnnouncementSubmitting}
+        onSubmittingChange={setIsDirectAnnouncementSubmitting}
       />
-      <AnnouncementImportForm onSubmittingChange={setIsAnnouncementSubmitting} />
+      <AnnouncementImportForm onSubmittingChange={setIsAnnouncementImportSubmitting} />
     </section>
   )
 }
