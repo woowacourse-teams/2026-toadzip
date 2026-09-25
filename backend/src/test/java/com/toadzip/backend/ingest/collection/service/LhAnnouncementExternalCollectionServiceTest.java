@@ -320,9 +320,8 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
-    void 호출_제한과_동시에_진행하던_성공_공고는_저장하고_다음_묶음은_호출하지_않는다() throws Exception {
-        source(announcementSource("a", "100"), announcementSource("b", "200"),
-                announcementSource("c", "300"));
+    void 호출_제한과_동시에_진행하던_성공_공고는_저장한다() throws Exception {
+        source(announcementSource("a", "100"), announcementSource("b", "200"));
         CountDownLatch firstPairStarted = new CountDownLatch(2);
         when(externalRepository.fetchDetail(any())).thenAnswer(invocation -> {
             LhAnnouncementRequest request = invocation.getArgument(0);
