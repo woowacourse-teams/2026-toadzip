@@ -56,8 +56,8 @@ class LhLeaseCatalogCollectionServiceTest {
     void storesCompleteCatalogPages() {
         LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
         when(externalRepository.fetch(request, 1))
-                .thenReturn(response("[{\"ARA_NM\":\"서울\"},{\"ARA_NM\":\"부산\"}]"));
-        when(externalRepository.fetch(request, 2)).thenReturn(response("[{\"ARA_NM\":\"대구\"}]"));
+                .thenReturn(response("[" + catalogRow("서울") + "," + catalogRow("부산") + "]"));
+        when(externalRepository.fetch(request, 2)).thenReturn(response("[" + catalogRow("대구") + "]"));
         when(sourceStore.replaceCatalog(any())).thenReturn(3);
 
         var result = service.collect(request);
@@ -99,11 +99,25 @@ class LhLeaseCatalogCollectionServiceTest {
     }
 
     @Test
+    void 식별_정보가_없는_카탈로그는_기존_원천을_교체하지_않고_실패로_기록한다() {
+        LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
+        when(externalRepository.fetch(request, 1)).thenReturn(response("[{}]"));
+
+        var result = service.collect(request);
+
+        verify(sourceStore, never()).replaceCatalog(any());
+        verify(failureRecorder).record(any(), any(), any(), any(), any());
+        verify(failureRecorder, never()).resolve(any(), any());
+        assertThat(result.storedRowCount()).isZero();
+        assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
     @DisplayName("후속 페이지 파싱 실패는 실제 페이지와 시도 횟수로 기록하고 성공 처리하지 않는다")
     void recordsActualCatalogParseFailurePageAndAttemptCount() {
         LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(1, 10);
         when(externalRepository.fetch(request, 1))
-                .thenReturn(response("[{\"ARA_NM\":\"서울\"}]"));
+                .thenReturn(response("[" + catalogRow("서울") + "]"));
         String invalidPayload = "[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsList\":1}]";
         when(externalRepository.fetch(request, 2)).thenReturn(new ExternalDataResponse(
                 invalidPayload,
@@ -133,7 +147,7 @@ class LhLeaseCatalogCollectionServiceTest {
     @DisplayName("LH 임대 카탈로그 저장 실패는 외부 API 실패로 기록하지 않는다")
     void propagatesCatalogStoreFailure() {
         LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
-        when(externalRepository.fetch(request, 1)).thenReturn(response("[{\"ARA_NM\":\"서울\"}]"));
+        when(externalRepository.fetch(request, 1)).thenReturn(response("[" + catalogRow("서울") + "]"));
         when(sourceStore.replaceCatalog(any())).thenThrow(new IllegalStateException("DB 저장 실패"));
 
         assertThatThrownBy(() -> service.collect(request))
@@ -147,5 +161,11 @@ class LhLeaseCatalogCollectionServiceTest {
     private ExternalDataResponse response(String rows) {
         String payload = "[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsList\":" + rows + "}]";
         return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+    }
+
+    private String catalogRow(String areaName) {
+        return "{\"ARA_NM\":\"" + areaName + "\",\"AIS_TP_CD_NM\":\"행복주택\","
+                + "\"SBD_LGO_NM\":\"" + areaName + " 행복주택\",\"SUM_HSH_CNT\":\"100\","
+                + "\"DDO_AR\":\"36.97\",\"HSH_CNT\":\"100\"}";
     }
 }
