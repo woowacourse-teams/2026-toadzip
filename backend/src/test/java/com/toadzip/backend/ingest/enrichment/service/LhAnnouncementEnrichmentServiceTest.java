@@ -60,12 +60,15 @@ import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailur
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.stream.IntStream;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -152,6 +155,9 @@ class LhAnnouncementEnrichmentServiceTest {
     @Autowired
     private HousingComplexRepository housingComplexRepository;
 
+    @Autowired
+    private EntityManager entityManager;
+
     @BeforeEach
     void setUp() {
         cleanUp();
@@ -178,6 +184,27 @@ class LhAnnouncementEnrichmentServiceTest {
         linkRepository.deleteAll();
         checkpointRepository.deleteAll();
         externalFailureRepository.deleteAll();
+    }
+
+    @Test
+    void 반복_LH_보강은_일정과_첨부를_다시_조회하지_않는다() {
+        saveComplex();
+        myHomeSourceRepository.save(myHomeSource());
+        mapMyHomeSource();
+        saveLhSources("10,000,000", "200,000");
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        Statistics statistics = entityManager.getEntityManagerFactory()
+                .unwrap(SessionFactory.class).getStatistics();
+        boolean previouslyEnabled = statistics.isStatisticsEnabled();
+        try {
+            statistics.setStatisticsEnabled(true);
+            statistics.clear();
+            assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+            assertThat(statistics.getPrepareStatementCount()).isLessThanOrEqualTo(14);
+        }
+        finally {
+            statistics.setStatisticsEnabled(previouslyEnabled);
+        }
     }
 
     @Test
