@@ -28,7 +28,7 @@ public class LhLeaseCatalogResponseParser {
     }
 
     private LhCatalogSourceSnapshot sourceSnapshotOf(JsonNode row) {
-        return new LhCatalogSourceSnapshot(
+        LhCatalogSourceSnapshot snapshot = new LhCatalogSourceSnapshot(
                 text(row, "ARA_NM"),
                 text(row, "AIS_TP_CD_NM"),
                 text(row, "SBD_LGO_NM"),
@@ -38,6 +38,16 @@ public class LhLeaseCatalogResponseParser {
                 text(row, "LS_GMY"),
                 text(row, "RFE")
         );
+        requireIdentifier(snapshot.areaName(), "지역명");
+        requireIdentifier(snapshot.supplyTypeName(), "공급유형");
+        requireIdentifier(snapshot.complexLabel(), "단지명");
+        return snapshot;
+    }
+
+    private void requireIdentifier(String value, String name) {
+        if (value == null || value.isBlank()) {
+            throw new ExternalDataRequestException("LH 임대 카탈로그 행에 " + name + "이 없습니다.");
+        }
     }
 
     private String text(JsonNode row, String field) {

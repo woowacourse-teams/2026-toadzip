@@ -9,8 +9,10 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
+import com.toadzip.backend.ingest.collection.repository.external.LhLeaseCatalogResponseParser;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
@@ -85,6 +87,20 @@ class LhSourceStoreTest {
         assertThatThrownBy(() -> store.replaceCatalog(List.of()))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(catalogRepository.count()).isOne();
+    }
+
+    @Test
+    void 내용_없는_카탈로그_응답은_기존_원천을_보존한다() {
+        store.replaceCatalog(List.of(catalog("강릉교동 행복주택", "36.97")));
+        String payload = "[{\"dsList\":[{}]}]";
+        ExternalDataResponse response = new ExternalDataResponse(payload,
+                JsonMapper.builder().build().readTree(payload));
+
+        assertThatThrownBy(() -> new LhLeaseCatalogResponseParser().parse(response))
+                .isInstanceOf(ExternalDataRequestException.class);
+
+        assertThat(catalogRepository.findAll()).singleElement()
+                .extracting(source -> source.getComplexLabel()).isEqualTo("강릉교동 행복주택");
     }
 
     @Test
