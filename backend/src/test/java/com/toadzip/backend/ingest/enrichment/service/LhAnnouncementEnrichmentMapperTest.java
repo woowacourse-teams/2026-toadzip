@@ -65,6 +65,21 @@ class LhAnnouncementEnrichmentMapperTest {
     }
 
     @Test
+    void 날짜만_있는_접수_기간을_시작일과_종료일로_보강한다() {
+        var details = new LhAnnouncementDetailResponseParser().parse(PAN_ID,
+                JsonMapper.builder().build().readTree("""
+                        [{"dsSplScdl":[{"ACP_DTTM":"2026.09.14 ~ 2026.09.15"}]}]
+                        """));
+
+        var result = mapper.map(PAN_ID, details, List.of());
+
+        assertThat(result.schedules()).singleElement().satisfies(schedule -> {
+            assertThat(schedule.startAt()).isEqualTo(LocalDateTime.of(2026, 9, 14, 0, 0));
+            assertThat(schedule.endAt()).isEqualTo(LocalDateTime.of(2026, 9, 15, 0, 0));
+        });
+    }
+
+    @Test
     void 다단지_공고는_공급행의_단지에_해당하는_입주예정월을_매핑한다() {
         List<LhAnnouncementDetailSource> details = List.of(
                 complexDetail(0, "동삼2", "202612"),
