@@ -204,6 +204,7 @@ HTTP 503, `LH_ANNOUNCEMENT_UNAVAILABLE`이다. 이미 진행 중인 응답은 �
 | `ingest.external.retry` | 재시도 진입 횟수(회로 거절 포함) / `source` |
 | `ingest.external.retry.wait` | 재시도 전 대기 시간 / `source` |
 | `ingest.announcement.store` | 공고 원천 교체 트랜잭션 시간 / `source` |
+| `ingest.announcement.catalog.rows` | 성공한 LH 목록 수집의 신규·변경·동일 행 누적 수 / `change` (`new`, `changed`, `unchanged`) |
 | `ingest.lh.circuit.state` | 0: 정상, 1: 차단, 2: 복구 확인 중 |
 | `ingest.lh.circuit.opened` | 장애·제한으로 차단한 횟수 |
 | `ingest.lh.circuit.rejected` | 외부 호출 전에 차단한 횟수 |

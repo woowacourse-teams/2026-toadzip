@@ -26,8 +26,16 @@ class LhAnnouncementCatalogStoreTest {
 
     @Test
     void 같은_목록을_다시_관찰해도_변경시각을_갱신하지_않는다() {
-        store(FIRST).store(List.of(entry("100", "공고중", "original")));
-        store(FIRST.plusSeconds(60)).store(List.of(entry("100", "공고중", "different RNUM and ALL_CNT")));
+        var first = store(FIRST).store(List.of(entry("100", "공고중", "original")));
+        var second = store(FIRST.plusSeconds(60)).store(List.of(
+                entry("100", "공고중", "different RNUM and ALL_CNT")
+        ));
+
+        assertThat(first.newRowCount()).isOne();
+        assertThat(first.changedRowCount()).isZero();
+        assertThat(second.newRowCount()).isZero();
+        assertThat(second.changedRowCount()).isZero();
+        assertThat(second.unchangedRowCount()).isOne();
 
         assertThat(repository.findAll()).singleElement().satisfies(source -> {
             assertThat(source.getChangedAt()).isEqualTo(FIRST);
@@ -38,7 +46,11 @@ class LhAnnouncementCatalogStoreTest {
     @Test
     void 공고상태가_바뀌면_변경시각을_갱신한다() {
         store(FIRST).store(List.of(entry("100", "공고중", "{}")));
-        store(FIRST.plusSeconds(60)).store(List.of(entry("100", "정정공고중", "{}")));
+        var result = store(FIRST.plusSeconds(60)).store(List.of(entry("100", "정정공고중", "{}")));
+
+        assertThat(result.newRowCount()).isZero();
+        assertThat(result.changedRowCount()).isOne();
+        assertThat(result.unchangedRowCount()).isZero();
 
         assertThat(repository.findAll()).singleElement().satisfies(source ->
                 assertThat(source.getChangedAt()).isEqualTo(FIRST.plusSeconds(60))
@@ -48,12 +60,29 @@ class LhAnnouncementCatalogStoreTest {
     @Test
     void 현재_검색범위에_없는_공고_원천을_삭제하지_않는다() {
         store(FIRST).store(List.of(entry("100", "공고중", "{}"), entry("200", "공고중", "{}")));
-        store(FIRST.plusSeconds(60)).store(List.of(entry("200", "공고중", "{}")));
+        var result = store(FIRST.plusSeconds(60)).store(List.of(entry("200", "공고중", "{}")));
+
+        assertThat(result.storedRowCount()).isOne();
+        assertThat(result.unchangedRowCount()).isOne();
 
         assertThat(repository.findAllByPanIdIn(List.of("100"))).singleElement().satisfies(source ->
                 assertThat(source.getCollectedAt()).isEqualTo(FIRST)
         );
         assertThat(repository.count()).isEqualTo(2);
+    }
+
+    @Test
+    void 한_실행의_신규_변경_동일_행을_구분한다() {
+        store(FIRST).store(List.of(entry("100", "공고중", "{}"), entry("200", "공고중", "{}")));
+
+        var result = store(FIRST.plusSeconds(60)).store(List.of(
+                entry("100", "정정공고중", "{}"), entry("200", "공고중", "{}"), entry("300", "공고중", "{}")
+        ));
+
+        assertThat(result.storedRowCount()).isEqualTo(3);
+        assertThat(result.newRowCount()).isOne();
+        assertThat(result.changedRowCount()).isOne();
+        assertThat(result.unchangedRowCount()).isOne();
     }
 
     private LhAnnouncementCatalogStore store(Instant now) {

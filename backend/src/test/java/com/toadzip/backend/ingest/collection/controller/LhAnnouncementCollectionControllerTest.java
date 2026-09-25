@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementDetailCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementSupplyCollectionService;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
@@ -27,7 +28,33 @@ class LhAnnouncementCollectionControllerTest {
     private LhAnnouncementDetailCollectionService detailCollectionService;
 
     @MockitoBean
+    private LhAnnouncementCatalogCollectionService catalogCollectionService;
+
+    @MockitoBean
     private LhAnnouncementSupplyCollectionService supplyCollectionService;
+
+    @Test
+    void LH_공고목록만_단독_수집한다() throws Exception {
+        when(catalogCollectionService.collect())
+                .thenReturn(new ExternalDataCollectionReport("lh-announcement-catalog", 212, 0, 1));
+
+        mockMvc.perform(post("/api/admin/ingest/lh/announcements/catalog"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.operation").value("lh-announcement-catalog"))
+                .andExpect(jsonPath("$.storedRowCount").value(212))
+                .andExpect(jsonPath("$.externalApiCallCount").value(1));
+    }
+
+    @Test
+    void LH_공고목록_조회에_실패하면_502를_반환한다() throws Exception {
+        when(catalogCollectionService.collect())
+                .thenReturn(new ExternalDataCollectionReport("lh-announcement-catalog", 0, 1, 2));
+
+        mockMvc.perform(post("/api/admin/ingest/lh/announcements/catalog"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.storedRowCount").value(0))
+                .andExpect(jsonPath("$.failedRequestCount").value(1));
+    }
 
     @Test
     void LH_상세와_공급_원본을_서로_다른_경로에서_수집한다() throws Exception {

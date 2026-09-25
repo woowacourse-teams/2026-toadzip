@@ -74,18 +74,20 @@ public class LhAnnouncementCatalogSource {
         return source;
     }
 
-    public void updateFrom(LhAnnouncementCatalogSnapshot snapshot, String rawPayload, Instant collectedAt) {
+    public boolean updateFrom(LhAnnouncementCatalogSnapshot snapshot, String rawPayload, Instant collectedAt) {
         if (!sourceKey.equals(snapshot.sourceKey())) {
             throw new IllegalArgumentException("다른 LH 공고 목록 원천으로 변경할 수 없습니다.");
         }
         String fingerprint = fingerprintOf(snapshot);
-        if (!fingerprint.equals(contentFingerprint)) {
+        boolean changed = !fingerprint.equals(contentFingerprint);
+        if (changed) {
             changedAt = collectedAt;
         }
         supplyInfoTypeCode = snapshot.supplyInfoTypeCode();
         contentFingerprint = fingerprint;
         this.rawPayload = rawPayload;
         this.collectedAt = collectedAt;
+        return changed;
     }
 
     private static String fingerprintOf(LhAnnouncementCatalogSnapshot snapshot) {

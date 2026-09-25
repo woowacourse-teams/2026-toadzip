@@ -5,11 +5,13 @@ import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementCatalogPage;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementCatalogPage.Entry;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogStore;
+import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogStore.StoreResult;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionExecutionLock;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementCatalogResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -33,6 +35,7 @@ public class LhAnnouncementCatalogCollectionService {
     private final LhAnnouncementCollectionExecutionLock executionLock;
     private final ExternalDataRetryExecutor retryExecutor;
     private final ExternalDataFailureRecorder failureRecorder;
+    private final MeterRegistry meterRegistry;
 
     public ExternalDataCollectionReport collect() {
         return executionLock.tryRun(SOURCE, this::collectUnlocked)
@@ -51,10 +54,19 @@ public class LhAnnouncementCatalogCollectionService {
                     SOURCE.operation(), 0, 1, counter.count(), 0, ExternalDataRateLimit.count(exception)
             );
         }
-        int stored = store.store(entries);
+        StoreResult result = store.store(entries);
         failureRecorder.resolveStartingWith(SOURCE, "PG_SZ=" + PAGE_SIZE);
-        log.info("LH 공고 목록 수집 완료: storedRowCount={}, externalApiCallCount={}", stored, counter.count());
-        return new ExternalDataCollectionReport(SOURCE.operation(), stored, 0, counter.count());
+        meterRegistry.counter("ingest.announcement.catalog.rows", "change", "new")
+                .increment(result.newRowCount());
+        meterRegistry.counter("ingest.announcement.catalog.rows", "change", "changed")
+                .increment(result.changedRowCount());
+        meterRegistry.counter("ingest.announcement.catalog.rows", "change", "unchanged")
+                .increment(result.unchangedRowCount());
+        log.info("LH 공고 목록 수집 완료: storedRowCount={}, newRowCount={}, changedRowCount={}, "
+                        + "unchangedRowCount={}, externalApiCallCount={}",
+                result.storedRowCount(), result.newRowCount(), result.changedRowCount(),
+                result.unchangedRowCount(), counter.count());
+        return new ExternalDataCollectionReport(SOURCE.operation(), result.storedRowCount(), 0, counter.count());
     }
 
     private List<Entry> fetchAll(ExternalDataCallCounter counter) {

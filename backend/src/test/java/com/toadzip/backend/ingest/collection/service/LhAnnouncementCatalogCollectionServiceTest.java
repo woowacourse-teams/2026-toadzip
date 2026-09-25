@@ -14,6 +14,7 @@ import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementCatalogPage;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementCatalogPage.Entry;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogStore;
+import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogStore.StoreResult;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionExecutionLock;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
@@ -47,6 +48,7 @@ class LhAnnouncementCatalogCollectionServiceTest {
     private ExternalDataFailureRecorder failureRecorder;
 
     private LhAnnouncementCatalogCollectionService service;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
@@ -57,9 +59,10 @@ class LhAnnouncementCatalogCollectionServiceTest {
         when(externalRepository.fetchCatalog(anyInt(), eq(500))).thenReturn(
                 new ExternalDataResponse("{}", JsonMapper.builder().build().createObjectNode())
         );
+        meterRegistry = new SimpleMeterRegistry();
         service = new LhAnnouncementCatalogCollectionService(
                 externalRepository, parser, store, lock,
-                new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry()), failureRecorder
+                new ExternalDataRetryExecutor(Duration.ZERO, meterRegistry), failureRecorder, meterRegistry
         );
     }
 
@@ -67,7 +70,7 @@ class LhAnnouncementCatalogCollectionServiceTest {
     void 모든_페이지를_검증한_후_목록을_한번에_저장한다() {
         when(parser.parse(any(), eq(1), eq(500))).thenReturn(page(0, 500, 501));
         when(parser.parse(any(), eq(2), eq(500))).thenReturn(page(500, 1, 501));
-        when(store.store(any())).thenReturn(501);
+        when(store.store(any())).thenReturn(new StoreResult(501, 3, 2));
 
         var result = service.collect();
 
@@ -77,6 +80,12 @@ class LhAnnouncementCatalogCollectionServiceTest {
         ArgumentCaptor<List<Entry>> captured = ArgumentCaptor.forClass(List.class);
         verify(store).store(captured.capture());
         assertThat(captured.getValue()).hasSize(501);
+        assertThat(meterRegistry.counter("ingest.announcement.catalog.rows", "change", "new").count())
+                .isEqualTo(3);
+        assertThat(meterRegistry.counter("ingest.announcement.catalog.rows", "change", "changed").count())
+                .isEqualTo(2);
+        assertThat(meterRegistry.counter("ingest.announcement.catalog.rows", "change", "unchanged").count())
+                .isEqualTo(496);
     }
 
     @Test
@@ -113,6 +122,7 @@ class LhAnnouncementCatalogCollectionServiceTest {
     @Test
     void 전체건수가_페이지크기와_같으면_불필요한_다음_페이지를_호출하지_않는다() {
         when(parser.parse(any(), eq(1), eq(500))).thenReturn(page(0, 500, 500));
+        when(store.store(any())).thenReturn(new StoreResult(500, 500, 0));
 
         assertThat(service.collect().externalApiCallCount()).isOne();
         verify(externalRepository, never()).fetchCatalog(2, 500);
