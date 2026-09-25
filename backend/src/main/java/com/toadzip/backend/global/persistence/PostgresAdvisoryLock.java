@@ -125,8 +125,38 @@ public final class PostgresAdvisoryLock {
             this.lockName = lockName;
         }
 
+        public synchronized <T> T withConnection(ConnectionOperation<T> operation) throws SQLException {
+            if (closed.get()) {
+                throw new SQLException(lockName + " 잠금이 이미 반납되었습니다.");
+            }
+            return operation.execute(connection);
+        }
+
+        public synchronized void verifyHeld() throws SQLException {
+            withConnection(heldConnection -> {
+                try (PreparedStatement statement = heldConnection.prepareStatement("""
+                        SELECT EXISTS (
+                            SELECT 1 FROM pg_locks
+                            WHERE locktype = 'advisory' AND pid = pg_backend_pid() AND granted
+                              AND classid = (? >> 32)::oid
+                              AND objid = (? & 4294967295)::oid AND objsubid = 1
+                        )
+                        """)) {
+                    statement.setQueryTimeout(5);
+                    statement.setLong(1, lockKey);
+                    statement.setLong(2, lockKey);
+                    try (ResultSet result = statement.executeQuery()) {
+                        if (!result.next() || !result.getBoolean(1)) {
+                            throw new SQLException(lockName + " 잠금 소유권이 없습니다.");
+                        }
+                    }
+                }
+                return null;
+            });
+        }
+
         @Override
-        public void close() {
+        public synchronized void close() {
             if (!closed.compareAndSet(false, true)) {
                 return;
             }
@@ -147,5 +177,11 @@ public final class PostgresAdvisoryLock {
                 }
             }
         }
+    }
+
+    @FunctionalInterface
+    public interface ConnectionOperation<T> {
+
+        T execute(Connection connection) throws SQLException;
     }
 }

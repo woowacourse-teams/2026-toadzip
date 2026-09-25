@@ -1,5 +1,7 @@
 package com.toadzip.backend.ingest.collection.service;
 
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
+
 import com.toadzip.backend.ingest.collection.configuration.LhAnnouncementClientProperties;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
@@ -333,7 +335,7 @@ public class LhAnnouncementExternalCollectionService {
             boolean forceRefresh
     ) {
         Map<String, String> context = MDC.getCopyOfContextMap();
-        return () -> {
+        return IngestExecutionScope.propagate(() -> {
             try {
                 if (context != null) {
                     MDC.setContextMap(context);
@@ -343,7 +345,7 @@ public class LhAnnouncementExternalCollectionService {
             finally {
                 MDC.clear();
             }
-        };
+        });
     }
 
     private ExternalDataCollectionReport collectRequest(

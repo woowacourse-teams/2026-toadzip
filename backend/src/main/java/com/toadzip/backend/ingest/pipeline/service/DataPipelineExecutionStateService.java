@@ -58,6 +58,11 @@ public class DataPipelineExecutionStateService {
     }
 
     @Transactional
+    public int heartbeat(Long id, Instant heartbeatAt) {
+        return executionRepository.updateHeartbeat(id, heartbeatAt);
+    }
+
+    @Transactional
     public void startStep(UUID executionId, DataPipelineStep step) {
         DataPipelineExecution execution = find(executionId);
         execution.startStep(step);
@@ -123,7 +128,8 @@ public class DataPipelineExecutionStateService {
             String serverResponse,
             Instant failedAt
     ) {
-        DataPipelineExecution execution = find(executionId);
+        DataPipelineExecution execution = executionRepository.findByExecutionIdForUpdate(executionId)
+                .orElseThrow(() -> new IllegalStateException("실행을 찾을 수 없습니다: " + executionId));
         if (!execution.isRunning()) {
             return;
         }

@@ -10,6 +10,8 @@ import org.postgresql.copy.CopyIn;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceUtils;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class LocationSummaryStore {
@@ -35,10 +37,12 @@ public class LocationSummaryStore {
         return count == null ? 0 : count;
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
     public void truncate() {
         jdbcTemplate.execute("TRUNCATE TABLE road_address_locations");
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
     public CopyWriter openWriter() {
         try {
             Connection connection = DataSourceUtils.getConnection(dataSource);

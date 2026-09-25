@@ -90,7 +90,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 실행_ID를_별도_로그_맥락으로_전달하고_요청_traceId를_보존한다() {
         configureStoredExecution();
-        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         service = serviceWith(task -> {
             Thread worker = Thread.ofPlatform().start(task);
             try {
@@ -125,7 +125,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 시작한_작업이_모든_단계를_마치면_완료_상태를_조회한다() {
         configureStoredExecution();
-        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         doAnswer(invocation -> {
             DataPipelineType type = invocation.getArgument(0);
             DataPipelineProgressListener listener = invocation.getArgument(1);
@@ -152,7 +152,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 다른_애플리케이션_인스턴스에서도_완료된_실행_상태를_조회한다() {
         configureStoredExecution();
-        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         doAnswer(invocation -> {
             DataPipelineType type = invocation.getArgument(0);
             DataPipelineProgressListener listener = invocation.getArgument(1);
@@ -208,7 +208,7 @@ class DataPipelineExecutionServiceTest {
 
     @Test
     void 다른_파이프라인이_실행_중이면_새_실행을_거부한다() {
-        when(executionLock.tryAcquire()).thenReturn(Optional.empty());
+        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.start(DataPipelineType.ANNOUNCEMENT_REFINEMENT))
                 .isInstanceOf(IngestAlreadyRunningException.class)
@@ -217,7 +217,7 @@ class DataPipelineExecutionServiceTest {
 
     @Test
     void 최초_실행_상태를_저장하지_못하면_실행_잠금을_반납한다() {
-        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         when(executionStateService.create(any(), any(), any()))
                 .thenThrow(new IllegalStateException("database unavailable"));
 
@@ -231,7 +231,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 부분_실패한_단계와_서버_응답을_실패_상태에_보존한다() {
         configureStoredExecution();
-        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         String serverResponse = "{\"failedSourceRowCount\":3}";
         doAnswer(invocation -> {
             DataPipelineProgressListener listener = invocation.getArgument(1);
@@ -264,7 +264,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 호출_제한으로_건너뛴_단계가_있으면_부분_완료_상태와_사유를_보존한다() {
         configureStoredExecution();
-        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         String serverResponse = "{\"rateLimitedRequestCount\":1}";
         doAnswer(invocation -> {
             DataPipelineProgressListener listener = invocation.getArgument(1);
@@ -311,7 +311,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void LH_회로_차단은_실패한_단계와_재실행_안내를_보존한다() {
         configureStoredExecution();
-        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         doAnswer(invocation -> {
             DataPipelineProgressListener listener = invocation.getArgument(1);
             listener.started(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
@@ -333,7 +333,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 완료_상태_저장에_실패하면_실패_상태로_종료한다() {
         configureStoredExecution();
-        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         doAnswer(invocation -> {
             throw new IllegalStateException("final status write failed");
         }).when(executionStateService).complete(any(), any());

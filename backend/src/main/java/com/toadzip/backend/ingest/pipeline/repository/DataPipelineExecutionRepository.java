@@ -68,6 +68,10 @@ public interface DataPipelineExecutionRepository
     Optional<DataPipelineExecution> findByExecutionId(UUID executionId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select execution from DataPipelineExecution execution where execution.executionId = :executionId")
+    Optional<DataPipelineExecution> findByExecutionIdForUpdate(@Param("executionId") UUID executionId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select execution from DataPipelineExecution execution
             where execution.status = com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus.RUNNING

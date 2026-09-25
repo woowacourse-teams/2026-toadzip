@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.pipeline.configuration;
 
 import com.toadzip.backend.ingest.pipeline.controller.IngestExecutionLockInterceptor;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -14,9 +15,9 @@ public class DataPipelineExecutionWebConfiguration implements WebMvcConfigurer {
     private final IngestExecutionLockInterceptor executionLockInterceptor;
 
     public DataPipelineExecutionWebConfiguration(
-            DataPipelineExecutionLock executionLock
+            IngestExecutionOwnershipService ownershipService
     ) {
-        this.executionLockInterceptor = new IngestExecutionLockInterceptor(executionLock);
+        this.executionLockInterceptor = new IngestExecutionLockInterceptor(ownershipService);
     }
 
     @Override

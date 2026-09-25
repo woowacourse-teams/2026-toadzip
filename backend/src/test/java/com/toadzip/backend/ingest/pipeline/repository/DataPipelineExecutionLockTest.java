@@ -89,6 +89,7 @@ class DataPipelineExecutionLockTest {
     void 잠금_해제_쿼리가_실패하면_물리_연결을_폐기한다() throws Exception {
         when(statement.executeQuery())
                 .thenReturn(resultSet)
+                .thenReturn(resultSet)
                 .thenThrow(new SQLException("unlock query failed"));
         var lease = executionLock.tryAcquire().orElseThrow();
 

@@ -1,7 +1,6 @@
 package com.toadzip.backend.ingest.pipeline.controller;
 
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
-import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpMethod;
@@ -12,13 +11,10 @@ public class IngestExecutionLockInterceptor implements HandlerInterceptor {
     private static final String PIPELINE_PATH = "/api/admin/ingest/pipelines/";
     private static final String LEASE_ATTRIBUTE =
             IngestExecutionLockInterceptor.class.getName() + ".lease";
-    private static final String ALREADY_RUNNING_MESSAGE =
-            "다른 데이터 수집·정제 작업이 이미 실행 중입니다.";
+    private final IngestExecutionOwnershipService ownershipService;
 
-    private final DataPipelineExecutionLock executionLock;
-
-    public IngestExecutionLockInterceptor(DataPipelineExecutionLock executionLock) {
-        this.executionLock = executionLock;
+    public IngestExecutionLockInterceptor(IngestExecutionOwnershipService ownershipService) {
+        this.ownershipService = ownershipService;
     }
 
     @Override
@@ -30,9 +26,7 @@ public class IngestExecutionLockInterceptor implements HandlerInterceptor {
         if (shouldBypass(request)) {
             return true;
         }
-        DataPipelineExecutionLock.Lease lease = executionLock.tryAcquire()
-                .orElseThrow(() -> new IngestAlreadyRunningException(ALREADY_RUNNING_MESSAGE));
-        request.setAttribute(LEASE_ATTRIBUTE, lease);
+        request.setAttribute(LEASE_ATTRIBUTE, ownershipService.acquire());
         return true;
     }
 
@@ -44,7 +38,7 @@ public class IngestExecutionLockInterceptor implements HandlerInterceptor {
             Exception exception
     ) {
         Object lease = request.getAttribute(LEASE_ATTRIBUTE);
-        if (lease instanceof DataPipelineExecutionLock.Lease acquiredLease) {
+        if (lease instanceof IngestExecutionOwnershipService.Execution acquiredLease) {
             acquiredLease.close();
         }
     }

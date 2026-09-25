@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.collection.service;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
@@ -39,6 +40,7 @@ public class ExternalDataRetryExecutor {
             ExternalDataCallCounter callCounter
     ) {
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            IngestExecutionScope.verifyHeld();
             callCounter.increment();
             if (attempt > 1) {
                 meterRegistry.counter("ingest.external.retry", "source", source.name()).increment();

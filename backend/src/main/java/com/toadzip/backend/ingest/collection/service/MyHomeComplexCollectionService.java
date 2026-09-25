@@ -1,5 +1,7 @@
 package com.toadzip.backend.ingest.collection.service;
 
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
+
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.collection.dto.MyHomeRegion;
@@ -157,7 +159,7 @@ public class MyHomeComplexCollectionService {
         Map<String, String> context = MDC.getCopyOfContextMap();
         for (MyHomeRegion region : regions) {
             FutureTask<MyHomeComplexCollectionReport> task = new FutureTask<>(
-                    () -> collectRegion(region, request, rateLimitReached, context)
+                    IngestExecutionScope.propagate(() -> collectRegion(region, request, rateLimitReached, context))
             ) {
                 @Override
                 protected void done() {

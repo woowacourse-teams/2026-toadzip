@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
@@ -75,11 +76,11 @@ public class DataPipelineExecutionService {
             Instant scheduledAt,
             UUID upstreamExecutionId
     ) {
-        DataPipelineExecutionLock.Lease lease = executionLock.tryAcquire()
-                .orElseThrow(() -> new IngestAlreadyRunningException(ALREADY_RUNNING_MESSAGE));
         UUID executionId = UUID.randomUUID();
+        DataPipelineExecutionLock.Lease lease = executionLock.tryAcquire(executionId)
+                .orElseThrow(() -> new IngestAlreadyRunningException(ALREADY_RUNNING_MESSAGE));
         DataPipelineExecution execution;
-        try {
+        try (var ignored = IngestExecutionScope.open(lease)) {
             Instant startedAt = Instant.now(clock);
             executionStateService.recoverInterruptedBefore(
                     startedAt.minus(EXECUTION_LEASE_TIMEOUT),
@@ -102,7 +103,7 @@ public class DataPipelineExecutionService {
         DataPipelineExecutionResponse acceptedResponse = executionMapper.response(execution);
         ScheduledFuture<?> heartbeatTask;
         try {
-            heartbeatTask = scheduleHeartbeat(execution);
+            heartbeatTask = scheduleHeartbeat(execution, lease);
         }
         catch (RuntimeException exception) {
             lease.close();
@@ -172,9 +173,14 @@ public class DataPipelineExecutionService {
         String previousExecutionId = MDC.get("executionId");
         setExecutionContext("traceId", traceId);
         MDC.put("executionId", executionId.toString());
-        try (lease) {
+        try (lease; var ignored = IngestExecutionScope.open(lease)) {
+            lease.verifyHeld();
             runner.run(type, progressListener(executionId));
             executionStateService.complete(executionId, Instant.now(clock));
+        }
+        catch (IngestOwnershipLostException exception) {
+            recordFailure(executionId, type, findCurrentStep(executionId), exception.getMessage(), null);
+            log.warn("데이터 수집·정제 실행 소유권 소실: executionId={}", executionId);
         }
         catch (DataPipelinePartialFailureException exception) {
             recordFailure(
@@ -221,6 +227,7 @@ public class DataPipelineExecutionService {
 
             @Override
             public void started(DataPipelineStep step) {
+                IngestExecutionScope.verifyHeld();
                 if (partiallyFailedStep != null) {
                     executionStateService.startStepAfterPartialFailure(
                             executionId,
@@ -304,19 +311,26 @@ public class DataPipelineExecutionService {
         }
     }
 
-    private ScheduledFuture<?> scheduleHeartbeat(DataPipelineExecution execution) {
+    private ScheduledFuture<?> scheduleHeartbeat(
+            DataPipelineExecution execution, DataPipelineExecutionLock.Lease lease
+    ) {
         long intervalSeconds = HEARTBEAT_INTERVAL.toSeconds();
         return heartbeatExecutor.scheduleWithFixedDelay(
-                () -> updateHeartbeat(execution),
+                () -> updateHeartbeat(execution, lease),
                 intervalSeconds,
                 intervalSeconds,
                 TimeUnit.SECONDS
         );
     }
 
-    private void updateHeartbeat(DataPipelineExecution execution) {
-        try {
-            executionRepository.updateHeartbeat(execution.getId(), Instant.now(clock));
+    private void updateHeartbeat(DataPipelineExecution execution, DataPipelineExecutionLock.Lease lease) {
+        try (var ignored = IngestExecutionScope.open(lease)) {
+            lease.verifyHeld();
+            executionStateService.heartbeat(execution.getId(), Instant.now(clock));
+        }
+        catch (IngestOwnershipLostException exception) {
+            recordFailure(execution.getExecutionId(), execution.getType(),
+                    findCurrentStep(execution.getExecutionId()), exception.getMessage(), null);
         }
         catch (RuntimeException exception) {
             log.error(

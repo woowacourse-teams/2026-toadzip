@@ -187,7 +187,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
             DataPipelineExecutionLock.Lease lease
     ) {
         DataPipelineExecutionLock executionLock = mock(DataPipelineExecutionLock.class);
-        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
+        when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         ScheduledExecutorService heartbeatExecutor = mock(ScheduledExecutorService.class);
         ScheduledFuture<?> heartbeatTask = mock(ScheduledFuture.class);
         doReturn(heartbeatTask).when(heartbeatExecutor)
