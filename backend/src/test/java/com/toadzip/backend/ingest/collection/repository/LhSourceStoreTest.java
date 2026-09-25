@@ -9,6 +9,8 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
@@ -26,6 +28,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.test.context.ActiveProfiles;
+import tools.jackson.databind.json.JsonMapper;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -145,6 +148,23 @@ class LhSourceStoreTest {
         assertThat(detailRepository.findAll()).singleElement()
                 .extracting(LhAnnouncementDetailSource::getCorrectionReason)
                 .isEqualTo("기존 정정 사유");
+    }
+
+    @Test
+    void 내용_없는_상세_응답은_기존_원천과_성공_체크포인트를_보존한다() {
+        String request = "PAN_ID=PAN-1&TYPE=DETAIL";
+        store.replaceDetails("PAN-1", request, List.of(detail("기존 정정 사유")));
+        checkpointRepository.save(LhAnnouncementCollectionCheckpoint.complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                "announcement", request, "PAN-1", COLLECTED_AT));
+
+        assertThatThrownBy(() -> new LhAnnouncementDetailResponseParser().parse("PAN-1",
+                JsonMapper.builder().build().readTree("[{\"dsSbd\":[{}]}]")))
+                .isInstanceOf(ExternalDataRequestException.class);
+
+        assertThat(detailRepository.findAll()).singleElement()
+                .extracting(LhAnnouncementDetailSource::getCorrectionReason).isEqualTo("기존 정정 사유");
+        assertThat(checkpointRepository.count()).isOne();
     }
 
     @Test

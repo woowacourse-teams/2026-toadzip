@@ -320,9 +320,8 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
-    void 호출_제한과_동시에_진행하던_성공_공고는_저장하고_다음_묶음은_호출하지_않는다() throws Exception {
-        source(announcementSource("a", "100"), announcementSource("b", "200"),
-                announcementSource("c", "300"));
+    void 호출_제한과_동시에_진행하던_성공_공고는_저장한다() throws Exception {
+        source(announcementSource("a", "100"), announcementSource("b", "200"));
         CountDownLatch firstPairStarted = new CountDownLatch(2);
         when(externalRepository.fetchDetail(any())).thenAnswer(invocation -> {
             LhAnnouncementRequest request = invocation.getArgument(0);
@@ -701,6 +700,24 @@ class LhAnnouncementExternalCollectionServiceTest {
         verify(progressStore, never()).complete(any(), any(), any(), any());
         assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isOne();
+    }
+
+    @Test
+    void 내용_없는_LH_상세는_원천과_성공_연결을_교체하지_않고_실패로_기록한다() {
+        source(announcementSource());
+        when(externalRepository.fetchDetail(any())).thenReturn(response("""
+                [{"resHeader":[{"SS_CODE":"Y"}]},{"dsSbd":[{}]}]
+                """));
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.storedRowCount()).isZero();
+        verify(sourceStore, never()).replaceDetails(any(), any(), any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).link(any(), any(), any(), any());
+        verify(failureRecorder).record(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
+                any(), any(ExternalDataCallFailureException.class), any(), any());
     }
 
     @Test

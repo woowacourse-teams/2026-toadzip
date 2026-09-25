@@ -10,6 +10,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
+import java.util.Objects;
+import java.util.stream.Stream;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -160,6 +162,18 @@ public class LhAnnouncementDetailSource {
             throw new IllegalArgumentException("LH 조회 조건 해시는 필수입니다.");
         }
         this.requestHash = requestHash;
+    }
+
+    public boolean hasContent() {
+        return Stream.of(
+                complexName, address, detailAddress, totalUnitCount, heatingDescription,
+                exclusiveAreaRange, expectedMoveInYearMonth, guidanceText, applicationPeriod,
+                applicationBeginDate, applicationEndDate, winnerAnnouncementDate,
+                documentTargetAnnouncementDate, documentSubmissionBeginDate, documentSubmissionEndDate,
+                contractBeginDate, contractEndDate, receptionAddress, receptionDetailAddress,
+                operationBegin, operationEnd, phone, receptionGuidance, kind, name, url,
+                attachmentComplexName, correctionReason, etcContents
+        ).anyMatch(Objects::nonNull);
     }
 
     private static String trim(String value) {
