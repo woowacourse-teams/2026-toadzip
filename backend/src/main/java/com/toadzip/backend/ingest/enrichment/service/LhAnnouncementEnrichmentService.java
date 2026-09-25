@@ -28,6 +28,7 @@ import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningExcept
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCurrentSources;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -145,7 +146,11 @@ public class LhAnnouncementEnrichmentService {
             Set<Long> changedHousingTypeRows,
             boolean mappingIncomplete
     ) {
-        List<MyHomeAnnouncementSource> lhSources = sources.stream().filter(this::isLh).toList();
+        List<MyHomeAnnouncementSource> lhSources = MyHomeAnnouncementCurrentSources.select(sources)
+                .stream().filter(this::isLh).toList();
+        if (lhSources.isEmpty()) {
+            return LhAnnouncementEnrichmentReport.empty();
+        }
         MyHomeAnnouncementSource source = lhSources.getFirst();
         Announcement announcement = announcementRepository
                 .findBySourceAnnouncementIdentifier(source.getPblancId())

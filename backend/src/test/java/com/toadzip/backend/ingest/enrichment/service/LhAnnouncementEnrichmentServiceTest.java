@@ -785,6 +785,30 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     @Test
+    void 비활성_원천의_과거_공통값은_현재_LH_보강을_막지_않는다() {
+        saveComplex();
+        MyHomeAnnouncementSource current = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(current);
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+
+        MyHomeAnnouncementSource historical = myHomeSource();
+        ReflectionTestUtils.setField(historical, "houseSn", 2);
+        ReflectionTestUtils.setField(historical, "sourceKey", "5:210261:2");
+        historical.markMissed();
+        historical.markMissed();
+        myHomeSourceRepository.save(historical);
+        ReflectionTestUtils.setField(current, "pblancNm", "정정된 국민임대 입주자 모집공고");
+        ReflectionTestUtils.setField(current, "endDe", "20260902");
+        myHomeSourceRepository.save(current);
+
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        assertThat(enrichmentFailureRepository.findAll()).isEmpty();
+        assertThat(myHomeSourceRepository.findById(historical.getId()).orElseThrow().isActive()).isFalse();
+    }
+
+    @Test
     void 임대료가_허용되지_않은_형식이면_기존_공급대상을_보존하고_실패를_기록한다() {
         saveComplex();
         myHomeSourceRepository.save(myHomeSource());

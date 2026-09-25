@@ -15,6 +15,7 @@ public class MyHomeAnnouncementCommonValuesMapper {
             new MyHomeAnnouncementClassificationPolicy(parser);
 
     MyHomeAnnouncementCommonValues map(List<MyHomeAnnouncementSource> sources) {
+        sources = MyHomeAnnouncementCurrentSources.select(sources);
         String identifier = parser.requiredText(sources, MyHomeAnnouncementSource::getPblancId, "공고 식별자");
         String name = parser.requiredText(sources, MyHomeAnnouncementSource::getPblancNm, "공고명");
         String sourceStatus = parser.requiredText(sources, MyHomeAnnouncementSource::getSttusNm, "공고 상태");
