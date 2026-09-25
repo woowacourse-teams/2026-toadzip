@@ -61,6 +61,9 @@ public class LhAnnouncementCatalogSource {
     @Column(nullable = false)
     private Instant collectedAt;
 
+    @Column(nullable = false)
+    private boolean presentInLatestCatalog = true;
+
     public static LhAnnouncementCatalogSource from(
             LhAnnouncementCatalogSnapshot snapshot, String rawPayload, Instant collectedAt
     ) {
@@ -79,7 +82,7 @@ public class LhAnnouncementCatalogSource {
             throw new IllegalArgumentException("다른 LH 공고 목록 원천으로 변경할 수 없습니다.");
         }
         String fingerprint = fingerprintOf(snapshot);
-        boolean changed = !fingerprint.equals(contentFingerprint);
+        boolean changed = !presentInLatestCatalog || !fingerprint.equals(contentFingerprint);
         if (changed) {
             changedAt = collectedAt;
         }
@@ -87,6 +90,7 @@ public class LhAnnouncementCatalogSource {
         contentFingerprint = fingerprint;
         this.rawPayload = rawPayload;
         this.collectedAt = collectedAt;
+        presentInLatestCatalog = true;
         return changed;
     }
 

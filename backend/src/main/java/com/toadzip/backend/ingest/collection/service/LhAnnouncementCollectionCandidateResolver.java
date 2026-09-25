@@ -41,7 +41,8 @@ public class LhAnnouncementCollectionCandidateResolver {
         if (panIds.isEmpty()) {
             return sources.stream().map(source -> resolve(source, List.of())).toList();
         }
-        Map<String, List<LhAnnouncementCatalogSource>> catalogByPanId = catalogRepository.findAllByPanIdIn(panIds)
+        Map<String, List<LhAnnouncementCatalogSource>> catalogByPanId = catalogRepository
+                .findAllByPanIdInAndPresentInLatestCatalogTrue(panIds)
                 .stream().collect(Collectors.groupingBy(LhAnnouncementCatalogSource::getPanId));
         return sources.stream().map(source -> {
             List<LhAnnouncementCatalogSource> catalog = requestOf(source)

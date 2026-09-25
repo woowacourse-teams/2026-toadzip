@@ -318,6 +318,29 @@ class DataPipelineRunnerTest {
     }
 
     @Test
+    void LH_공급에_호출_제한과_일반_오류가_함께_있으면_부분_실패를_기록하고_상세를_건너뛴다() {
+        ExternalDataCollectionReport mixedFailure = new ExternalDataCollectionReport(
+                "lh-announcement-supply", 0, 2, 2, 0, 1
+        );
+        when(myHomeAnnouncementCollectionService.collect(any())).thenReturn(collectionReport("myhome-announcement"));
+        when(lhAnnouncementSupplyCollectionService.collect()).thenReturn(mixedFailure);
+        org.mockito.Mockito.lenient().when(lhAnnouncementDetailCollectionService.collect())
+                .thenReturn(collectionReport("lh-announcement-detail"));
+
+        assertThatThrownBy(() -> runner.run(DataPipelineType.ANNOUNCEMENT_COLLECTION, progressListener))
+                .isInstanceOf(DataPipelinePartialFailureException.class)
+                .extracting("step")
+                .isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
+
+        verify(progressListener).partiallyFailed(
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
+                resultAdapter.adapt(mixedFailure).serverResponse()
+        );
+        verify(lhAnnouncementDetailCollectionService, never()).collect();
+        verify(progressListener).skipped(eq(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS), any(), eq("{}"));
+    }
+
+    @Test
     void 호출_제한으로만_실패한_수집_단계는_건너뛰고_다음_단계를_실행한다() {
         ExternalDataCollectionReport rateLimited = new ExternalDataCollectionReport(
                 "myhome-announcement",

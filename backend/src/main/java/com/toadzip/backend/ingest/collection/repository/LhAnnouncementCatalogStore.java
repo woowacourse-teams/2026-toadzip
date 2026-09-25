@@ -23,12 +23,14 @@ public class LhAnnouncementCatalogStore {
     @Transactional
     public StoreResult store(List<Entry> entries) {
         if (entries.isEmpty()) {
+            repository.markAllAbsentFromLatestCatalog();
             return new StoreResult(0, 0, 0);
         }
         Instant collectedAt = clock.instant();
         List<String> keys = entries.stream().map(entry -> entry.snapshot().sourceKey()).toList();
         Map<String, LhAnnouncementCatalogSource> stored = repository.findAllBySourceKeyIn(keys).stream()
                 .collect(Collectors.toMap(LhAnnouncementCatalogSource::getSourceKey, Function.identity()));
+        repository.markAbsentFromLatestCatalog(keys);
         List<LhAnnouncementCatalogSource> sources = new ArrayList<>();
         int newRowCount = 0;
         int changedRowCount = 0;

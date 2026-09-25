@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCatalogSnapshot;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementCatalogPage.Entry;
+import jakarta.persistence.EntityManager;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -23,6 +24,9 @@ class LhAnnouncementCatalogStoreTest {
 
     @Autowired
     private LhAnnouncementCatalogSourceRepository repository;
+
+    @Autowired
+    private EntityManager entityManager;
 
     @Test
     void 같은_목록을_다시_관찰해도_변경시각을_갱신하지_않는다() {
@@ -65,10 +69,60 @@ class LhAnnouncementCatalogStoreTest {
         assertThat(result.storedRowCount()).isOne();
         assertThat(result.unchangedRowCount()).isOne();
 
-        assertThat(repository.findAllByPanIdIn(List.of("100"))).singleElement().satisfies(source ->
-                assertThat(source.getCollectedAt()).isEqualTo(FIRST)
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(repository.findAllByPanIdIn(List.of("100"))).singleElement().satisfies(source -> {
+            assertThat(source.getCollectedAt()).isEqualTo(FIRST);
+            assertThat(source.isPresentInLatestCatalog()).isFalse();
+        });
+        assertThat(repository.findAllByPanIdIn(List.of("200"))).singleElement().satisfies(source ->
+                assertThat(source.isPresentInLatestCatalog()).isTrue()
         );
         assertThat(repository.count()).isEqualTo(2);
+    }
+
+    @Test
+    void 조회_유형이_바뀌면_이전_행은_보존하지만_현재_목록에서는_제외한다() {
+        store(FIRST).store(List.of(entry("100", "48", "공고중", "{}")));
+        store(FIRST.plusSeconds(60)).store(List.of(entry("100", "10", "공고중", "{}")));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(repository.findAllByPanIdIn(List.of("100"))).hasSize(2);
+        assertThat(repository.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100")))
+                .singleElement().satisfies(source ->
+                        assertThat(source.getAnnouncementTypeCode()).isEqualTo("10")
+                );
+    }
+
+    @Test
+    void 빈_목록을_정상_수집하면_모든_과거_행을_현재_목록에서_제외한다() {
+        store(FIRST).store(List.of(entry("100", "공고중", "{}")));
+
+        store(FIRST.plusSeconds(60)).store(List.of());
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(repository.count()).isOne();
+        assertThat(repository.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100"))).isEmpty();
+    }
+
+    @Test
+    void 사라졌다가_다시_나타난_행은_변경으로_판정한다() {
+        store(FIRST).store(List.of(entry("100", "공고중", "{}")));
+        store(FIRST.plusSeconds(60)).store(List.of());
+        entityManager.flush();
+        entityManager.clear();
+
+        var result = store(FIRST.plusSeconds(120)).store(List.of(entry("100", "공고중", "{}")));
+
+        assertThat(result.changedRowCount()).isOne();
+        assertThat(repository.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100")))
+                .singleElement().satisfies(source ->
+                        assertThat(source.getChangedAt()).isEqualTo(FIRST.plusSeconds(120))
+                );
     }
 
     @Test
@@ -90,8 +144,12 @@ class LhAnnouncementCatalogStoreTest {
     }
 
     private Entry entry(String panId, String status, String raw) {
+        return entry(panId, "48", status, raw);
+    }
+
+    private Entry entry(String panId, String announcementTypeCode, String status, String raw) {
         return new Entry(new LhAnnouncementCatalogSnapshot(
-                panId, "03", "06", "48", "063", "공고", status,
+                panId, "03", "06", announcementTypeCode, "063", "공고", status,
                 "2026.09.25", "20260925", "2026.10.25", "https://apply.lh.or.kr", ""
         ), raw);
     }

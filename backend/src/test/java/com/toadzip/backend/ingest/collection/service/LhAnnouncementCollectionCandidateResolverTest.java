@@ -64,7 +64,8 @@ class LhAnnouncementCollectionCandidateResolverTest {
         var row = LhAnnouncementCatalogSource.from(new LhAnnouncementCatalogSnapshot(
                 "100", "03", "06", "48", "064", "공고", "공고중", "", "", "", "", ""
         ), "{}", observedAt);
-        when(catalogRepository.findAllByPanIdIn(List.of("100"))).thenReturn(List.of(row));
+        when(catalogRepository.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100")))
+                .thenReturn(List.of(row));
         var source = source("LH", "행복주택",
                 "https://apply.lh.or.kr/panDetail?panId=100&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=48");
 
@@ -76,7 +77,7 @@ class LhAnnouncementCollectionCandidateResolverTest {
                     assertThat(candidate.catalogChangedAt()).isEqualTo(observedAt);
                     assertThat(candidate.catalogCollectedAt()).isEqualTo(observedAt);
                 }));
-        verify(catalogRepository).findAllByPanIdIn(List.of("100"));
+        verify(catalogRepository).findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100"));
     }
 
     @Test
@@ -84,7 +85,8 @@ class LhAnnouncementCollectionCandidateResolverTest {
         var row = LhAnnouncementCatalogSource.from(new LhAnnouncementCatalogSnapshot(
                 "100", "03", "06", "10", "061", "공고", "공고중", "", "", "", "", ""
         ), "{}", Instant.now());
-        when(catalogRepository.findAllByPanIdIn(List.of("100"))).thenReturn(List.of(row));
+        when(catalogRepository.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100")))
+                .thenReturn(List.of(row));
 
         var resolution = resolver.resolve(source("LH", "행복주택",
                 "https://apply.lh.or.kr/panDetail?panId=100&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=48"));

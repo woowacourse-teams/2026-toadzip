@@ -19,6 +19,7 @@ import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollection
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import java.time.Clock;
 import java.time.Duration;
@@ -46,6 +47,8 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
     private MyHomeAnnouncementSourceRepository sources;
     @Autowired
     private LhAnnouncementCatalogStore catalogStore;
+    @Autowired
+    private LhAnnouncementCollectionCandidateResolver candidateResolver;
     @Autowired
     private LhAnnouncementCatalogSourceRepository catalog;
     @Autowired
@@ -120,6 +123,28 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
 
         observeAgain(FIRST.plus(Duration.ofHours(6)).plusSeconds(1), "공고중");
         assertThat(service.collect(DETAIL).externalApiCallCount()).isOne();
+    }
+
+    @Test
+    void 조회_유형이_바뀐_경우_이전_목록_행은_후보_연결에_사용하지_않는다() {
+        MyHomeAnnouncementSource source = sources.save(source("100", 1, "20261030"));
+        catalogStore.store(List.of(entry("공고중")));
+        assertThat(candidateResolver.resolve(source)).isInstanceOfSatisfying(Candidate.class, candidate ->
+                assertThat(candidate.catalogCollectedAt()).isEqualTo(FIRST)
+        );
+
+        when(clock.instant()).thenReturn(FIRST.plusSeconds(60));
+        catalogStore.store(List.of(new Entry(new LhAnnouncementCatalogSnapshot(
+                "100", "03", "06", "07", "062", "공고", "공고중", "", "", "20261030", "", ""
+        ), "{}")));
+
+        assertThat(candidateResolver.resolve(source)).isInstanceOfSatisfying(Candidate.class, candidate -> {
+            assertThat(candidate.catalogCollectedAt()).isNull();
+            assertThat(candidate.request().announcementTypeCode()).isEqualTo("06");
+        });
+        assertThat(catalog.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100")))
+                .singleElement().satisfies(row -> assertThat(row.getAnnouncementTypeCode()).isEqualTo("07"));
+        assertThat(catalog.count()).isEqualTo(2);
     }
 
     private void observeAgain(Instant now, String status) {

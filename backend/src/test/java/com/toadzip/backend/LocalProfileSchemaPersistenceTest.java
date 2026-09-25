@@ -53,13 +53,15 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertTrue(history.next()),
-                        () -> assertEquals(7, history.getInt(1)),
+                        () -> assertEquals(8, history.getInt(1)),
                         () -> assertEquals(1, countColumn(connection,
                                 "admin_announcement_imports", "original_json")),
                         () -> assertEquals(1, countColumn(connection,
                                 "lh_announcement_detail_source", "request_hash")),
                         () -> assertEquals(1, countColumn(connection,
-                                "lh_announcement_supply_source", "request_hash"))
+                                "lh_announcement_supply_source", "request_hash")),
+                        () -> assertEquals(1, countColumn(connection,
+                                "lh_announcement_catalog_source", "present_in_latest_catalog"))
                 );
             }
         }
@@ -145,7 +147,8 @@ class LocalProfileSchemaPersistenceTest {
                 assertEquals(1, countRequestRows(connection, "lh_announcement_supply_source", replayHash));
                 assertTrue(history.next());
                 assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02,SQL:20260923.01"
-                                + ",SQL:20260923.02,SQL:20260924.01,SQL:20260925.01,SQL:20260925.02",
+                                + ",SQL:20260923.02,SQL:20260924.01,SQL:20260925.01,SQL:20260925.02"
+                                + ",SQL:20260925.03",
                         history.getString(1));
                 assertEquals(1, countColumn(connection, "admin_announcement_imports", "original_json"));
                 assertEquals(1, countColumn(connection, "announcements", "lh_reception_place_owned"));

@@ -77,6 +77,7 @@ public class DataPipelineRunner {
                 lhRateLimited |= runStep(step, progressListener, lhRateLimited && isLhAnnouncementCollection(step));
             }
             catch (DataPipelinePartialFailureException exception) {
+                lhRateLimited |= exception.hasLhRateLimit();
                 progressListener.partiallyFailed(
                         exception.getStep(),
                         exception.getServerResponse()
@@ -167,7 +168,10 @@ public class DataPipelineRunner {
 
     private void rejectPartialFailure(DataPipelineStep step, DataPipelineStepResult result) {
         if (result.failed()) {
-            throw new DataPipelinePartialFailureException(step, result.serverResponse());
+            throw new DataPipelinePartialFailureException(
+                    step, result.serverResponse(),
+                    isLhAnnouncementCollection(step) && result.rateLimitedFailureCount() > 0
+            );
         }
     }
 }
