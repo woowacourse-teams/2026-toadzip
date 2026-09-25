@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -23,16 +24,22 @@ public class LhAnnouncementRefreshPolicy {
     private final Clock clock;
     private final Duration activeRefreshTtl;
     private final Duration recentEndedRefreshTtl;
+    private final Duration unchangedRefreshTtl;
     private final Period recentEndedWindow;
 
     public LhAnnouncementRefreshPolicy(
             Clock clock,
             @Value("${ingest.lh-announcement-refresh-ttl}") Duration activeRefreshTtl,
             @Value("${ingest.lh-announcement-recent-ended-refresh-ttl}") Duration recentEndedRefreshTtl,
+            @Value("${ingest.lh-announcement-unchanged-refresh-ttl}") Duration unchangedRefreshTtl,
             @Value("${ingest.lh-announcement-recent-ended-window}") Period recentEndedWindow
     ) {
         validatePositive(activeRefreshTtl, "진행 중 LH 공고 재수집 만료 시간");
         validatePositive(recentEndedRefreshTtl, "최근 종료 LH 공고 재수집 만료 시간");
+        validatePositive(unchangedRefreshTtl, "변경 없는 LH 공고 재수집 만료 시간");
+        if (unchangedRefreshTtl.compareTo(activeRefreshTtl) < 0) {
+            throw new IllegalArgumentException("변경 없는 LH 공고 재수집 주기는 진행 중 공고보다 짧을 수 없습니다.");
+        }
         if (recentEndedRefreshTtl.compareTo(activeRefreshTtl) < 0) {
             throw new IllegalArgumentException(
                     "최근 종료 LH 공고 재수집 주기는 진행 중 공고보다 짧을 수 없습니다."
@@ -44,6 +51,7 @@ public class LhAnnouncementRefreshPolicy {
         this.clock = clock;
         this.activeRefreshTtl = activeRefreshTtl;
         this.recentEndedRefreshTtl = recentEndedRefreshTtl;
+        this.unchangedRefreshTtl = unchangedRefreshTtl;
         this.recentEndedWindow = recentEndedWindow;
     }
 
@@ -61,6 +69,21 @@ public class LhAnnouncementRefreshPolicy {
             return Optional.of(recentEndedRefreshTtl);
         }
         return Optional.empty();
+    }
+
+    public Optional<Duration> scheduledRefreshTtl(MyHomeAnnouncementSource source, Candidate candidate) {
+        Optional<LocalDate> endDate = applicationEndDate(source.getEndDe());
+        if (endDate.isPresent() && endDate.orElseThrow().isAfter(LocalDate.now(clock).plusDays(2))
+                && catalogIsCurrent(source, candidate)) {
+            return Optional.of(unchangedRefreshTtl);
+        }
+        return scheduledRefreshTtl(source);
+    }
+
+    private boolean catalogIsCurrent(MyHomeAnnouncementSource source, Candidate candidate) {
+        return candidate.catalogCollectedAt() != null && source.getCollectedAt() != null
+                && !candidate.catalogCollectedAt().isBefore(source.getCollectedAt())
+                && candidate.catalogCollectedAt().isAfter(clock.instant().minus(activeRefreshTtl));
     }
 
     private Optional<LocalDate> applicationEndDate(String value) {

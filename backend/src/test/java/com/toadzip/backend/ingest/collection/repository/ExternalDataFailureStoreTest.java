@@ -99,4 +99,33 @@ class ExternalDataFailureStoreTest {
             assertThat(failure.getReason()).isEqualTo("LH 공급기관이 아닌 마이홈 공고라서 수집 대상이 아닙니다.");
         });
     }
+
+    @Test
+    void 이전_LH_페이지_요청의_실패는_같은_조회_조건만_해결한다() {
+        Instant occurredAt = Instant.parse("2026-08-23T00:01:00Z");
+        Instant resolvedAt = Instant.parse("2026-08-23T00:02:00Z");
+        ExternalDataFailureStore store = new ExternalDataFailureStore(repository);
+        String previousRequest = "PAN_ID=100&SPL_INF_TP_CD=060&COLLECTION_VERSION=4";
+        String matchingPage = previousRequest + "&PG_SZ=100&PAGE=2";
+        String otherPan = "PAN_ID=101&SPL_INF_TP_CD=060&COLLECTION_VERSION=4&PG_SZ=100&PAGE=2";
+        for (String description : new String[]{previousRequest, matchingPage, otherPan}) {
+            store.store(ExternalDataCollectionFailure.create(
+                    ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, description, occurredAt, 1,
+                    "ExternalDataRequestException", "외부 조회 실패"
+            ), null);
+        }
+
+        store.resolve(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, previousRequest, resolvedAt, null);
+        store.resolveStartingWith(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                previousRequest + "&PG_SZ=", resolvedAt, null);
+
+        assertThat(repository.findAll()).filteredOn(failure ->
+                failure.getRequestDescription().equals(otherPan))
+                .singleElement()
+                .extracting(ExternalDataCollectionFailure::getStatus)
+                .isEqualTo(ExternalDataFailureStatus.PENDING);
+        assertThat(repository.findAll()).filteredOn(failure ->
+                !failure.getRequestDescription().equals(otherPan))
+                .allMatch(failure -> failure.getStatus() == ExternalDataFailureStatus.RESOLVED);
+    }
 }

@@ -52,6 +52,15 @@ public class LhAnnouncementEnrichmentWriter {
 
     @Transactional
     public LhAnnouncementEnrichmentWriteResult write(Announcement announcement, LhAnnouncementEnrichmentData data) {
+        return write(announcement, data, Set.of());
+    }
+
+    @Transactional
+    public LhAnnouncementEnrichmentWriteResult write(
+            Announcement announcement,
+            LhAnnouncementEnrichmentData data,
+            Set<Long> changedHousingTypeRows
+    ) {
         Announcement managedAnnouncement = announcementRepository.save(announcement);
         String previousPanId = managedAnnouncement.getLhPanId();
         Set<String> replacedPanIds = new HashSet<>();
@@ -68,7 +77,7 @@ public class LhAnnouncementEnrichmentWriter {
         AttachmentsWriteResult attachments = writeAttachments(
                 managedAnnouncement, data, replacedPanIds, previousPanId
         );
-        SupplyWriteResult supplies = writeSupplies(managedAnnouncement, data);
+        SupplyWriteResult supplies = writeSupplies(managedAnnouncement, data, changedHousingTypeRows);
         return new LhAnnouncementEnrichmentWriteResult(
                 new LhAnnouncementEnrichmentReport(
                         updatedAnnouncements, updatedAnnouncements == 0 ? 1 : 0,
@@ -148,16 +157,21 @@ public class LhAnnouncementEnrichmentWriter {
         return new AttachmentsWriteResult(created, updated);
     }
 
-    private SupplyWriteResult writeSupplies(Announcement announcement, LhAnnouncementEnrichmentData data) {
+    private SupplyWriteResult writeSupplies(
+            Announcement announcement,
+            LhAnnouncementEnrichmentData data,
+            Set<Long> changedHousingTypeRows
+    ) {
         if (data.supplies().isEmpty()) {
+            if (!changedHousingTypeRows.isEmpty()) {
+                throw missingAmountForChangedHousingType();
+            }
             return new SupplyWriteResult(0, 0, 0, List.of());
         }
         List<SupplyRow> rows = supplyRowRepository.findAllByAnnouncement(announcement);
         List<LhSupplyMatchingFailureData> failures = new ArrayList<>();
-        Set<String> retainedTargetIdentifiers = new HashSet<>();
-        int updatedRows = 0;
-        int createdTargets = 0;
-        int updatedTargets = 0;
+        List<MatchedSupply> matchedSupplies = new ArrayList<>();
+        Set<Long> matchedRowIds = new HashSet<>();
         for (LhSupplyData source : data.supplies()) {
             LhSupplyMatchResult match = supplyMatcher.match(rows, source);
             if (match.failure() != null) {
@@ -165,39 +179,90 @@ public class LhAnnouncementEnrichmentWriter {
                 continue;
             }
             SupplyRow row = match.row();
+            if (!matchedRowIds.add(row.getId())) {
+                throw new LhAnnouncementEnrichmentRejectedException(
+                        LhAnnouncementEnrichmentFailureReason.AMBIGUOUS_HOUSING_TYPE,
+                        "여러 LH 공급행이 하나의 제품 공급행에 연결됩니다."
+                );
+            }
+            matchedSupplies.add(new MatchedSupply(source, row));
+        }
+        Map<Long, List<SupplyTarget>> targetsByRow = targetsByRow(rows);
+        Set<String> retainedTargetIdentifiers = new HashSet<>();
+        Set<Long> pricedChangedHousingTypeRows = new HashSet<>();
+        int updatedRows = 0;
+        int createdTargets = 0;
+        int updatedTargets = 0;
+        for (MatchedSupply matched : matchedSupplies) {
+            LhSupplyData source = matched.source();
+            SupplyRow row = matched.row();
+            if (changedHousingTypeRows.contains(row.getId())
+                    && (source.rentalDeposit() == null || source.monthlyRent() == null)) {
+                throw missingAmountForChangedHousingType();
+            }
+            if (changedHousingTypeRows.contains(row.getId())) {
+                pricedChangedHousingTypeRows.add(row.getId());
+            }
             String previousSourceIdentifier = row.getLhSourceSupplyRowIdentifier();
             if (row.enrichFromLh(source.sourceIdentifier(), source.expectedMoveInMonth(), source.supplyHouseholdCount())) {
                 updatedRows++;
             }
-            SupplyTargetWriteResult target = writeTarget(row, source, previousSourceIdentifier);
+            List<SupplyTarget> storedTargets = targetsByRow.get(row.getId());
+            SupplyTargetWriteResult target = writeTarget(row, source, previousSourceIdentifier, storedTargets);
             if (target.replacesPrevious()) {
-                deleteOtherLhTargets(row, target.sourceIdentifier());
+                deleteOtherLhTargets(storedTargets, target.sourceIdentifier());
             }
             retainedTargetIdentifiers.add(target.sourceIdentifier());
             createdTargets += target.created();
             updatedTargets += target.updated();
         }
+        if (!pricedChangedHousingTypeRows.containsAll(changedHousingTypeRows)) {
+            throw missingAmountForChangedHousingType();
+        }
         if (failures.isEmpty()) {
-            deleteStaleTargets(rows, retainedTargetIdentifiers, Set.of(data.panId()));
+            deleteStaleTargets(targetsByRow, retainedTargetIdentifiers, Set.of(data.panId()));
         }
         return new SupplyWriteResult(updatedRows, createdTargets, updatedTargets, failures);
     }
 
-    private void deleteOtherLhTargets(SupplyRow row, String retainedIdentifier) {
-        List<SupplyTarget> previousTargets = supplyTargetRepository.findAllBySupplyRow(row).stream()
+    private Map<Long, List<SupplyTarget>> targetsByRow(List<SupplyRow> rows) {
+        Map<Long, List<SupplyTarget>> targets = new HashMap<>();
+        for (SupplyRow row : rows) {
+            targets.put(row.getId(), new ArrayList<>());
+        }
+        if (rows.isEmpty()) {
+            return targets;
+        }
+        List<Long> rowIds = rows.stream().map(SupplyRow::getId).toList();
+        for (SupplyTarget target : supplyTargetRepository.findAllBySupplyRowIdIn(rowIds)) {
+            targets.get(target.getSupplyRow().getId()).add(target);
+        }
+        return targets;
+    }
+
+    private LhAnnouncementEnrichmentRejectedException missingAmountForChangedHousingType() {
+        return new LhAnnouncementEnrichmentRejectedException(
+                LhAnnouncementEnrichmentFailureReason.INVALID_VALUE,
+                "새 주택형의 임대금액이 없어 이전 주택형의 금액을 유지합니다."
+        );
+    }
+
+    private void deleteOtherLhTargets(List<SupplyTarget> storedTargets, String retainedIdentifier) {
+        List<SupplyTarget> previousTargets = storedTargets.stream()
                 .filter(target -> isLhSource(target.getSourceSupplyTargetIdentifier()))
                 .filter(target -> !retainedIdentifier.equals(target.getSourceSupplyTargetIdentifier()))
                 .toList();
         supplyTargetRepository.deleteAll(previousTargets);
+        storedTargets.removeAll(previousTargets);
     }
 
     private SupplyTargetWriteResult writeTarget(
             SupplyRow row,
             LhSupplyData source,
-            String previousSourceIdentifier
+            String previousSourceIdentifier,
+            List<SupplyTarget> storedTargets
     ) {
         String identifier = source.sourceIdentifier() + ":TARGET";
-        List<SupplyTarget> storedTargets = supplyTargetRepository.findAllBySupplyRow(row);
         SupplyTarget stored = storedTargets.stream()
                 .filter(target -> identifier.equals(target.getSourceSupplyTargetIdentifier()))
                 .findFirst()
@@ -218,10 +283,11 @@ public class LhAnnouncementEnrichmentWriter {
             );
         }
         if (stored == null) {
-            supplyTargetRepository.save(SupplyTarget.createFromSource(
+            SupplyTarget created = supplyTargetRepository.save(SupplyTarget.createFromSource(
                     row, identifier, ALL_TARGET, ALL_RANK, source.supplyHouseholdCount(),
                     source.rentalDeposit(), source.monthlyRent(), 1
             ));
+            storedTargets.add(created);
             return new SupplyTargetWriteResult(identifier, 1, 0, true);
         }
         boolean updated = stored.updateFromSource(
@@ -295,9 +361,13 @@ public class LhAnnouncementEnrichmentWriter {
                 .toList();
     }
 
-    private void deleteStaleTargets(List<SupplyRow> rows, Set<String> retained, Set<String> replacedPanIds) {
-        for (SupplyRow row : rows) {
-            List<SupplyTarget> stale = supplyTargetRepository.findAllBySupplyRow(row).stream()
+    private void deleteStaleTargets(
+            Map<Long, List<SupplyTarget>> targetsByRow,
+            Set<String> retained,
+            Set<String> replacedPanIds
+    ) {
+        for (List<SupplyTarget> storedTargets : targetsByRow.values()) {
+            List<SupplyTarget> stale = storedTargets.stream()
                     .filter(target -> lhSourceForAnyPan(target.getSourceSupplyTargetIdentifier(), replacedPanIds))
                     .filter(target -> !retained.contains(target.getSourceSupplyTargetIdentifier()))
                     .toList();
@@ -313,6 +383,9 @@ public class LhAnnouncementEnrichmentWriter {
     }
 
     private record AttachmentsWriteResult(int created, int updated) {
+    }
+
+    private record MatchedSupply(LhSupplyData source, SupplyRow row) {
     }
 
     private record SupplyWriteResult(

@@ -7,10 +7,22 @@ import org.springframework.mock.web.MockHttpServletRequest;
 
 import com.toadzip.backend.global.exception.RequestTraceIdResolver;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 
 class IngestExceptionAdviceTest {
 
     private final IngestExceptionAdvice advice = new IngestExceptionAdvice();
+
+    @Test
+    void LH_장애_차단은_재실행_가능한_503_오류로_응답한다() {
+        var response = advice.handleLhUnavailable(new LhAnnouncementUnavailableException("LH 장애 차단"),
+                new MockHttpServletRequest());
+
+        assertThat(response.getStatusCode().value()).isEqualTo(503);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo("LH_ANNOUNCEMENT_UNAVAILABLE");
+        assertThat(response.getBody().traceId()).isNotBlank();
+    }
 
     @Test
     void 기능_예외를_고정된_오류_계약으로_변환한다() {

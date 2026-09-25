@@ -9,6 +9,7 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
 import java.time.Clock;
@@ -114,6 +115,58 @@ class LhSourceStoreTest {
         assertThat(supplyRepository.findAll()).singleElement()
                 .extracting(source -> source.getComplexLabel())
                 .isEqualTo("순천선평3");
+    }
+
+    @Test
+    void LH_상세_교체는_같은_조회_조건의_행만_삭제한다() {
+        String firstRequest = "PAN_ID=PAN-1&TYPE=A";
+        String otherRequest = "PAN_ID=PAN-1&TYPE=B";
+        store.replaceDetails("PAN-1", firstRequest, List.of(detail("이전")));
+        store.replaceDetails("PAN-1", otherRequest, List.of(detail("다른 조건")));
+
+        store.replaceDetails("PAN-1", firstRequest, List.of(detail("새 값")));
+
+        String firstHash = LhAnnouncementCollectionCheckpoint.requestHashOf(firstRequest);
+        String otherHash = LhAnnouncementCollectionCheckpoint.requestHashOf(otherRequest);
+        assertThat(detailRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc("PAN-1", firstHash))
+                .extracting(LhAnnouncementDetailSource::getCorrectionReason).containsExactly("새 값");
+        assertThat(detailRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc("PAN-1", otherHash))
+                .extracting(LhAnnouncementDetailSource::getCorrectionReason).containsExactly("다른 조건");
+    }
+
+    @Test
+    void 빈_상세_결과로_기존_원천을_삭제하지_않는다() {
+        String request = "PAN_ID=PAN-1&TYPE=DETAIL";
+        store.replaceDetails("PAN-1", request, List.of(detail("기존 정정 사유")));
+
+        assertThatThrownBy(() -> store.replaceDetails("PAN-1", request, List.of()))
+                .isInstanceOf(EmptyLhDetailReplacementException.class);
+
+        assertThat(detailRepository.findAll()).singleElement()
+                .extracting(LhAnnouncementDetailSource::getCorrectionReason)
+                .isEqualTo("기존 정정 사유");
+    }
+
+    @Test
+    void 최초_빈_상세_결과는_허용한다() {
+        assertThat(store.replaceDetails("PAN-1", "PAN_ID=PAN-1&TYPE=DETAIL", List.of())).isZero();
+        assertThat(detailRepository.count()).isZero();
+    }
+
+    @Test
+    void 수집_버전만_바뀐_빈_상세_결과는_이전_성공_원천을_보존한다() {
+        String previousRequest = "PAN_ID=PAN-1&TYPE=DETAIL&COLLECTION_VERSION=5";
+        store.replaceDetails("PAN-1", previousRequest, List.of(detail("이전 정정 사유")));
+        checkpointRepository.save(LhAnnouncementCollectionCheckpoint.complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                "announcement", previousRequest, "PAN-1", COLLECTED_AT));
+
+        assertThatThrownBy(() -> store.replaceDetails("PAN-1",
+                previousRequest.replace("VERSION=5", "VERSION=6"), List.of()))
+                .isInstanceOf(EmptyLhDetailReplacementException.class);
+        assertThat(detailRepository.findAll()).singleElement()
+                .extracting(LhAnnouncementDetailSource::getCorrectionReason)
+                .isEqualTo("이전 정정 사유");
     }
 
     @Test
@@ -389,6 +442,14 @@ class LhSourceStoreTest {
     private LhCatalogSourceSnapshot catalog(String label, String area) {
         return new LhCatalogSourceSnapshot(
                 "강원특별자치도 강릉시", "행복주택", label, "180", area, "72", "0", "0"
+        );
+    }
+
+    private LhAnnouncementDetailSource detail(String correctionReason) {
+        return new LhAnnouncementDetailSource(
+                0, "PAN-1", "ETC_INFO", null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, correctionReason, "공고문 확인"
         );
     }
 }

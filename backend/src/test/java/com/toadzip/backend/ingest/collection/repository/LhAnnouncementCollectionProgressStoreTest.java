@@ -7,6 +7,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -21,10 +22,34 @@ class LhAnnouncementCollectionProgressStoreTest {
     private static final Instant COMPLETED_AT = Instant.parse("2026-08-25T10:00:00Z");
 
     @Autowired
+    private jakarta.persistence.EntityManager entityManager;
+
+    @Autowired
     private LhAnnouncementCollectionCheckpointRepository checkpointRepository;
 
     @Autowired
     private LhAnnouncementCollectionLinkRepository linkRepository;
+
+    @Test
+    void 목록이_성공_체크포인트_이후에_변경되면_만료전에도_재수집한다() {
+        String request = "PAN_ID=100&SPL_INF_TP_CD=063";
+        store().complete(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "announcement-100", request, "100");
+        Instant changedAt = COMPLETED_AT.plusSeconds(60);
+
+        var progress = store().findBatch(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                List.of(request), List.of("announcement-100"), COMPLETED_AT.minusSeconds(3600),
+                Map.of(request, changedAt));
+
+        assertThat(progress.isFresh(request)).isFalse();
+        assertThat(progress.isLinkedTo("announcement-100", request)).isTrue();
+        store(changedAt).complete(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "announcement-100", request, "100");
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(store().findBatch(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                List.of(request), List.of(), COMPLETED_AT.minusSeconds(3600),
+                Map.of(request, changedAt)).isFresh(request)).isTrue();
+    }
 
     @Test
     void 완료한_동일_요청만_증분_수집에서_제외한다() {

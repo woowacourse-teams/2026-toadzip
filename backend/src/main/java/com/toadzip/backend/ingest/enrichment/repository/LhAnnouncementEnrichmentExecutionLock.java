@@ -11,7 +11,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class LhAnnouncementEnrichmentExecutionLock {
 
-    private static final long LOCK_KEY = 8_432_026_082_800_019L;
+    // 마이홈 공고 매핑과 LH 보강은 같은 제품 공고를 수정하므로 실행 잠금을 공유한다.
+    private static final long LOCK_KEY = 8_432_026_082_800_018L;
 
     private final PostgresAdvisoryLock databaseLock;
 

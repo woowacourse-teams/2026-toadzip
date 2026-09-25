@@ -13,22 +13,13 @@ import org.springframework.data.repository.query.Param;
 public interface LhAnnouncementCollectionCheckpointRepository
         extends JpaRepository<LhAnnouncementCollectionCheckpoint, Long> {
 
+    List<LhAnnouncementCollectionCheckpoint> findAllBySourceAndRequestHashIn(
+            ExternalDataSource source, Collection<String> requestHashes
+    );
+
     List<LhAnnouncementCollectionCheckpoint> findAllBySourceAndPanIdOrderByCompletedAtDesc(
             ExternalDataSource source,
             String panId
-    );
-
-    @Query("""
-            select checkpoint.requestHash
-            from LhAnnouncementCollectionCheckpoint checkpoint
-            where checkpoint.source = :source
-                and checkpoint.requestHash in :requestHashes
-                and checkpoint.completedAt > :freshCompletedAfter
-            """)
-    List<String> findFreshRequestHashes(
-            @Param("source") ExternalDataSource source,
-            @Param("requestHashes") Collection<String> requestHashes,
-            @Param("freshCompletedAfter") Instant freshCompletedAfter
     );
 
     @Modifying

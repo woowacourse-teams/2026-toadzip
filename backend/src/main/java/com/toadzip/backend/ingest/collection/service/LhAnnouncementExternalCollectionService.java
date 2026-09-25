@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.collection.service;
 
+import com.toadzip.backend.ingest.collection.configuration.LhAnnouncementClientProperties;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
@@ -15,12 +16,16 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -37,7 +42,6 @@ import org.springframework.stereotype.Service;
 public class LhAnnouncementExternalCollectionService {
 
     private static final int ANNOUNCEMENT_BATCH_SIZE = 500;
-    private static final int MAX_CONCURRENT_REQUESTS = 2;
 
     private final MyHomeAnnouncementSourceRepository myHomeAnnouncementRepository;
     private final LhAnnouncementCollectionExecutionLock executionLock;
@@ -46,6 +50,7 @@ public class LhAnnouncementExternalCollectionService {
     private final LhAnnouncementCollectionCandidateResolver candidateResolver;
     private final LhAnnouncementCandidateCollector candidateCollector;
     private final LhAnnouncementRefreshPolicy refreshPolicy;
+    private final LhAnnouncementClientProperties clientProperties;
 
     public ExternalDataCollectionReport collect(ExternalDataSource targetSource) {
         validateTargetSource(targetSource);
@@ -135,11 +140,10 @@ public class LhAnnouncementExternalCollectionService {
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
         List<Candidate> candidates = new ArrayList<>();
         Map<String, Duration> refreshTtlByRequest = new HashMap<>();
-        for (MyHomeAnnouncementSource source : sources) {
-            Resolution resolution = candidateResolver.resolve(source);
-            if (visitedSourceAnnouncements.contains(resolution.sourceAnnouncementKey())) {
-                continue;
-            }
+        List<Resolution> resolutions = candidateResolver.resolveAll(sources);
+        for (int sourceIndex = 0; sourceIndex < sources.size(); sourceIndex++) {
+            MyHomeAnnouncementSource source = sources.get(sourceIndex);
+            Resolution resolution = resolutions.get(sourceIndex);
             if (resolution instanceof Skipped skipped) {
                 report = report.plus(skipReport(
                         targetSource,
@@ -150,7 +154,7 @@ public class LhAnnouncementExternalCollectionService {
             }
             Candidate candidate = (Candidate) resolution;
             if (!forceRefresh) {
-                var refreshTtl = refreshPolicy.scheduledRefreshTtl(source);
+                var refreshTtl = refreshPolicy.scheduledRefreshTtl(source, candidate);
                 if (refreshTtl.isEmpty()) {
                     continue;
                 }
@@ -231,29 +235,51 @@ public class LhAnnouncementExternalCollectionService {
             boolean forceRefresh
     ) {
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
-        try (ExecutorService executor = Executors.newFixedThreadPool(MAX_CONCURRENT_REQUESTS)) {
-            int nextRequest = 0;
-            while (nextRequest < requests.size()) {
-                List<List<Candidate>> window = nextWindow(requests, nextRequest);
-                List<Callable<ExternalDataCollectionReport>> tasks = window.stream()
-                        .map(request -> collectionTask(targetSource, request, progress, forceRefresh))
-                        .toList();
-                nextRequest += window.size();
-                Throwable failure = null;
-                for (Future<ExternalDataCollectionReport> result : executor.invokeAll(tasks)) {
-                    try {
-                        report = report.plus(result.get());
+        try (ExecutorService executor = Executors.newFixedThreadPool(clientProperties.maxConcurrentRequests())) {
+            CompletionService<ExternalDataCollectionReport> completedRequests =
+                    new ExecutorCompletionService<>(executor);
+            List<Integer> pending = new ArrayList<>();
+            for (int index = 0; index < requests.size(); index++) {
+                pending.add(index);
+            }
+            Map<Future<ExternalDataCollectionReport>, Integer> running = new HashMap<>();
+            Set<String> runningPanIds = new HashSet<>();
+            Map<Integer, Throwable> failures = new TreeMap<>();
+            boolean stopScheduling = false;
+            while (!pending.isEmpty() || !running.isEmpty()) {
+                while (!stopScheduling && running.size() < clientProperties.maxConcurrentRequests()) {
+                    Integer index = takeNextEligible(pending, requests, runningPanIds);
+                    if (index == null) {
+                        break;
                     }
-                    catch (ExecutionException exception) {
-                        failure = appendFailure(failure, exception.getCause());
-                    }
+                    List<Candidate> request = requests.get(index);
+                    Future<ExternalDataCollectionReport> result = completedRequests.submit(
+                            collectionTask(targetSource, request, progress, forceRefresh)
+                    );
+                    running.put(result, index);
+                    runningPanIds.add(request.getFirst().panId());
                 }
-                if (failure != null) {
-                    throw propagate(failure);
+                if (running.isEmpty()) {
+                    break;
                 }
-                if (report.rateLimitedRequestCount() > 0) {
-                    return report;
+                Future<ExternalDataCollectionReport> completed = completedRequests.take();
+                int index = running.remove(completed);
+                runningPanIds.remove(requests.get(index).getFirst().panId());
+                try {
+                    report = report.plus(completed.get());
+                    stopScheduling |= report.rateLimitedRequestCount() > 0;
                 }
+                catch (ExecutionException exception) {
+                    failures.put(index, exception.getCause());
+                    stopScheduling = true;
+                }
+            }
+            Throwable failure = null;
+            for (Throwable additionalFailure : failures.values()) {
+                failure = appendFailure(failure, additionalFailure);
+            }
+            if (failure != null) {
+                throw propagate(failure);
             }
         }
         catch (InterruptedException exception) {
@@ -283,18 +309,21 @@ public class LhAnnouncementExternalCollectionService {
         return new IllegalStateException("LH 공고 수집 작업이 실패했습니다.", failure);
     }
 
-    private List<List<Candidate>> nextWindow(List<List<Candidate>> requests, int offset) {
-        List<List<Candidate>> window = new ArrayList<>();
-        Set<String> panIds = new HashSet<>();
-        for (int index = offset; index < requests.size() && window.size() < MAX_CONCURRENT_REQUESTS; index++) {
-            List<Candidate> request = requests.get(index);
-            // 기존의 같은 panId 요청 순서를 유지한다. 원천은 요청 해시별로 저장된다.
-            if (!panIds.add(request.getFirst().panId())) {
-                break;
+    private Integer takeNextEligible(
+            List<Integer> pending,
+            List<List<Candidate>> requests,
+            Set<String> runningPanIds
+    ) {
+        Iterator<Integer> iterator = pending.iterator();
+        while (iterator.hasNext()) {
+            int index = iterator.next();
+            if (runningPanIds.contains(requests.get(index).getFirst().panId())) {
+                continue;
             }
-            window.add(request);
+            iterator.remove();
+            return index;
         }
-        return window;
+        return null;
     }
 
     private Callable<ExternalDataCollectionReport> collectionTask(

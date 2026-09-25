@@ -1,7 +1,6 @@
 package com.toadzip.backend.ingest.collection.repository.external;
 
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementResponsePage;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -20,24 +19,16 @@ public class LhAnnouncementDetailResponseParser {
     );
 
     public List<LhAnnouncementDetailSource> parse(String panId, JsonNode root) {
-        return parsePage(panId, root, 0).items();
-    }
-
-    public LhAnnouncementResponsePage<LhAnnouncementDetailSource> parsePage(
-            String panId,
-            JsonNode root,
-            int sourceOrderOffset
-    ) {
         requireAnyDataset(root, DETAIL_DATASET_KEYS, "LH 공고 상세");
         validateDatasetTypes(root);
         List<LhAnnouncementDetailSource> sources = new ArrayList<>();
-        addEtcInfo(sources, panId, root, sourceOrderOffset);
-        addComplexes(sources, panId, root, sourceOrderOffset);
-        addSchedules(sources, panId, root, sourceOrderOffset);
-        addReceptions(sources, panId, root, sourceOrderOffset);
-        addAnnouncementFiles(sources, panId, root, sourceOrderOffset);
-        addComplexImages(sources, panId, root, sourceOrderOffset);
-        return new LhAnnouncementResponsePage<>(sources, maximumDatasetRowCount(root));
+        addEtcInfo(sources, panId, root);
+        addComplexes(sources, panId, root);
+        addSchedules(sources, panId, root);
+        addReceptions(sources, panId, root);
+        addAnnouncementFiles(sources, panId, root);
+        addComplexImages(sources, panId, root);
+        return List.copyOf(sources);
     }
 
     private void requireAnyDataset(JsonNode root, List<String> datasetKeys, String sourceName) {
@@ -55,21 +46,13 @@ public class LhAnnouncementDetailResponseParser {
         DETAIL_DATASET_KEYS.forEach(key -> ExternalResponseRows.find(root, key));
     }
 
-    private int maximumDatasetRowCount(JsonNode root) {
-        return DETAIL_DATASET_KEYS.stream()
-                .mapToInt(key -> ExternalResponseRows.find(root, key).size())
-                .max()
-                .orElse(0);
-    }
-
     private void addEtcInfo(
             List<LhAnnouncementDetailSource> sources,
             String panId,
-            JsonNode root,
-            int sourceOrderOffset
+            JsonNode root
     ) {
         for (JsonNode row : ExternalResponseRows.find(root, "dsEtcInfo")) {
-            sources.add(detail(sourceOrderOffset + sources.size(), panId, "ETC_INFO")
+            sources.add(detail(sources.size(), panId, "ETC_INFO")
                     .correctionReason(text(row, "CRC_RSN"))
                     .etcContents(text(row, "ETC_CTS"))
                     .build());
@@ -79,17 +62,16 @@ public class LhAnnouncementDetailResponseParser {
     private void addComplexes(
             List<LhAnnouncementDetailSource> sources,
             String panId,
-            JsonNode root,
-            int sourceOrderOffset
+            JsonNode root
     ) {
         for (JsonNode row : ExternalResponseRows.find(root, "dsSbd")) {
-            sources.add(detail(sourceOrderOffset + sources.size(), panId, "COMPLEX")
-                    .complexName(text(row, "LCC_NT_NM"))
-                    .address(text(row, "LGDN_ADR"))
-                    .detailAddress(text(row, "LGDN_DTL_ADR"))
-                    .totalUnitCount(text(row, "HSH_CNT"))
-                    .heatingDescription(text(row, "HTN_FMLA_DESC"))
-                    .exclusiveAreaRange(text(row, "DDO_AR"))
+            sources.add(detail(sources.size(), panId, "COMPLEX")
+                    .complexName(text(row, "LCC_NT_NM", "BZDT_NM"))
+                    .address(text(row, "LGDN_ADR", "LCT_ARA_ADR"))
+                    .detailAddress(text(row, "LGDN_DTL_ADR", "LCT_ARA_DTL_ADR"))
+                    .totalUnitCount(text(row, "HSH_CNT", "SUM_TOT_HSH_CNT"))
+                    .heatingDescription(text(row, "HTN_FMLA_DESC", "HTN_FMLA_DS_CD_NM"))
+                    .exclusiveAreaRange(text(row, "DDO_AR", "MIN_MAX_RSDN_DDO_AR"))
                     .expectedMoveInYearMonth(text(row, "MVIN_XPC_YM"))
                     .guidanceText(text(row, "SPL_INF_GUD_FCTS"))
                     .build());
@@ -99,30 +81,31 @@ public class LhAnnouncementDetailResponseParser {
     private void addSchedules(
             List<LhAnnouncementDetailSource> sources,
             String panId,
-            JsonNode root,
-            int sourceOrderOffset
+            JsonNode root
     ) {
         for (JsonNode row : ExternalResponseRows.find(root, "dsSplScdl")) {
-            sources.add(detail(sourceOrderOffset + sources.size(), panId, "SCHEDULE")
+            LhAnnouncementDetailSource source = detail(sources.size(), panId, "SCHEDULE")
                     .complexName(text(row, "SBD_LGO_NM"))
                     .applicationPeriod(text(row, "ACP_DTTM"))
                     .documentTargetAnnouncementDate(text(row, "PPR_SBM_OPE_ANC_DT"))
-                    .documentSubmissionBeginDate(text(row, "PPR_ACP_ST_DT"))
-                    .documentSubmissionEndDate(text(row, "PPR_ACP_CLSG_DT"))
+                    .documentSubmissionBeginDate(text(row, "PPR_ACP_ST_DT", "PZWR_PPR_SBM_ST_DT"))
+                    .documentSubmissionEndDate(text(row, "PPR_ACP_CLSG_DT", "PZWR_PPR_SBM_ED_DT"))
                     .contractBeginDate(text(row, "CTRT_ST_DT"))
                     .contractEndDate(text(row, "CTRT_ED_DT"))
-                    .build());
+                    .build();
+            source.assignScheduleDates(text(row, "SBSC_ACP_ST_DT"), text(row, "SBSC_ACP_CLSG_DT"),
+                    text(row, "PZWR_ANC_DT"));
+            sources.add(source);
         }
     }
 
     private void addReceptions(
             List<LhAnnouncementDetailSource> sources,
             String panId,
-            JsonNode root,
-            int sourceOrderOffset
+            JsonNode root
     ) {
         for (JsonNode row : ExternalResponseRows.find(root, "dsCtrtPlc")) {
-            sources.add(detail(sourceOrderOffset + sources.size(), panId, "RECEPTION")
+            sources.add(detail(sources.size(), panId, "RECEPTION")
                     .receptionAddress(text(row, "CTRT_PLC_ADR"))
                     .receptionDetailAddress(text(row, "CTRT_PLC_DTL_ADR"))
                     .operationBegin(text(row, "TSK_ST_DTTM"))
@@ -136,11 +119,10 @@ public class LhAnnouncementDetailResponseParser {
     private void addAnnouncementFiles(
             List<LhAnnouncementDetailSource> sources,
             String panId,
-            JsonNode root,
-            int sourceOrderOffset
+            JsonNode root
     ) {
         for (JsonNode row : ExternalResponseRows.find(root, "dsAhflInfo")) {
-            sources.add(detail(sourceOrderOffset + sources.size(), panId, "ANNOUNCEMENT_FILE")
+            sources.add(detail(sources.size(), panId, "ANNOUNCEMENT_FILE")
                     .kind(text(row, "SL_PAN_AHFL_DS_CD_NM"))
                     .name(text(row, "CMN_AHFL_NM"))
                     .url(text(row, "AHFL_URL"))
@@ -151,15 +133,14 @@ public class LhAnnouncementDetailResponseParser {
     private void addComplexImages(
             List<LhAnnouncementDetailSource> sources,
             String panId,
-            JsonNode root,
-            int sourceOrderOffset
+            JsonNode root
     ) {
         for (JsonNode row : ExternalResponseRows.find(root, "dsSbdAhfl")) {
-            sources.add(detail(sourceOrderOffset + sources.size(), panId, "COMPLEX_IMAGE")
-                    .kind(text(row, "LS_SPL_INF_UPL_FL_DS_CD_NM"))
+            sources.add(detail(sources.size(), panId, "COMPLEX_IMAGE")
+                    .kind(text(row, "LS_SPL_INF_UPL_FL_DS_CD_NM", "SL_PAN_AHFL_DS_CD_NM"))
                     .name(text(row, "CMN_AHFL_NM"))
                     .url(text(row, "AHFL_URL"))
-                    .attachmentComplexName(text(row, "LCC_NT_NM"))
+                    .attachmentComplexName(text(row, "LCC_NT_NM", "BZDT_NM"))
                     .build());
         }
     }
@@ -170,6 +151,14 @@ public class LhAnnouncementDetailResponseParser {
 
     private String text(JsonNode row, String field) {
         return row.path(field).asString(null);
+    }
+
+    private String text(JsonNode row, String field, String alternativeField) {
+        String value = text(row, field);
+        if (value == null || value.isBlank()) {
+            return text(row, alternativeField);
+        }
+        return value;
     }
 
     private static final class DetailBuilder {

@@ -19,38 +19,16 @@ class LhAnnouncementRequestTest {
 
         assertThat(request.panId()).isEqualTo("100");
         assertThat(request.toParams()).containsEntry("PAN_ID", java.util.List.of("100"));
-        assertThat(request.toParams()).containsEntry("PG_SZ", java.util.List.of("100"));
-        assertThat(request.toParams()).containsEntry("PAGE", java.util.List.of("1"));
+        assertThat(request.toParams()).doesNotContainKeys("PG_SZ", "PAGE");
         assertThat(request.requestDescription()).isEqualTo(
                 "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06"
-                        + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=4"
+                        + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=6"
         );
         assertThat(request.compatibleRequestDescriptions()).containsExactly(
                 "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06"
-                        + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=4",
+                        + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=6",
                 "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06&SPL_INF_TP_CD=063&AIS_TP_CD=06",
                 "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06&SPL_INF_TP_CD=063"
-        );
-    }
-
-    @Test
-    @DisplayName("LH 조회 조건을 유지한 채 다음 페이지 요청을 만든다")
-    void createsRequestForPage() {
-        var request = LhAnnouncementRequest.from(
-                URI.create("https://apply.lh.or.kr/panDetail?panId=100&ccrCnntSysDsCd=03"
-                        + "&uppAisTpCd=06&aisTpCd=06"),
-                "063"
-        ).orElseThrow().withPage(2);
-
-        assertThat(request.toParams()).containsEntry("PG_SZ", java.util.List.of("100"));
-        assertThat(request.toParams()).containsEntry("PAGE", java.util.List.of("2"));
-        assertThat(request.pageRequestDescription()).isEqualTo(
-                "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06"
-                        + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=4&PG_SZ=100&PAGE=2"
-        );
-        assertThat(request.requestDescription()).isEqualTo(
-                "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06"
-                        + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=4"
         );
     }
 

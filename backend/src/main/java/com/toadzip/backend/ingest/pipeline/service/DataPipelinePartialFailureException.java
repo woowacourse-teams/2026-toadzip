@@ -8,10 +8,17 @@ class DataPipelinePartialFailureException extends RuntimeException {
 
     private final String serverResponse;
 
+    private final boolean hasLhRateLimit;
+
     DataPipelinePartialFailureException(DataPipelineStep step, String serverResponse) {
+        this(step, serverResponse, false);
+    }
+
+    DataPipelinePartialFailureException(DataPipelineStep step, String serverResponse, boolean hasLhRateLimit) {
         super(step.displayName() + " 단계가 일부 실패했습니다.");
         this.step = step;
         this.serverResponse = serverResponse;
+        this.hasLhRateLimit = hasLhRateLimit;
     }
 
     DataPipelineStep getStep() {
@@ -20,5 +27,9 @@ class DataPipelinePartialFailureException extends RuntimeException {
 
     String getServerResponse() {
         return serverResponse;
+    }
+
+    boolean hasLhRateLimit() {
+        return hasLhRateLimit;
     }
 }

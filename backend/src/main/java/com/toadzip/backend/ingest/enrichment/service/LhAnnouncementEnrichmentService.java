@@ -26,6 +26,7 @@ import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichment
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
+import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper;
 import java.time.Clock;
 import java.time.Instant;
@@ -33,6 +34,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.data.domain.PageRequest;
@@ -48,6 +51,7 @@ public class LhAnnouncementEnrichmentService {
     private final LhAnnouncementSupplySourceRepository supplySourceRepository;
     private final LhAnnouncementEnrichmentFailureRepository failureRepository;
     private final LhAnnouncementEnrichmentFailureStore failureStore;
+    private final MyHomeAnnouncementMappingFailureRepository mappingFailureRepository;
     private final LhAnnouncementEnrichmentExecutionLock executionLock;
     private final LhAnnouncementEnrichmentMapper mapper;
     private final LhAnnouncementEnrichmentWriter writer;
@@ -62,6 +66,7 @@ public class LhAnnouncementEnrichmentService {
             LhAnnouncementSupplySourceRepository supplySourceRepository,
             LhAnnouncementEnrichmentFailureRepository failureRepository,
             LhAnnouncementEnrichmentFailureStore failureStore,
+            MyHomeAnnouncementMappingFailureRepository mappingFailureRepository,
             LhAnnouncementEnrichmentExecutionLock executionLock,
             LhAnnouncementEnrichmentMapper mapper,
             LhAnnouncementEnrichmentWriter writer,
@@ -75,6 +80,7 @@ public class LhAnnouncementEnrichmentService {
         this.supplySourceRepository = supplySourceRepository;
         this.failureRepository = failureRepository;
         this.failureStore = failureStore;
+        this.mappingFailureRepository = mappingFailureRepository;
         this.executionLock = executionLock;
         this.mapper = mapper;
         this.writer = writer;
@@ -87,12 +93,30 @@ public class LhAnnouncementEnrichmentService {
         return executionLock.tryRun(this::enrichAllUnlocked).orElseThrow(this::alreadyRunning);
     }
 
+    public List<LhAnnouncementEnrichmentFailure> enrichForAtomicMapping(
+            List<MyHomeAnnouncementSource> sources,
+            Set<Long> changedHousingTypeRows
+    ) {
+        List<LhAnnouncementEnrichmentFailure> failures = new ArrayList<>();
+        enrich(sources, failures, clock.instant(), changedHousingTypeRows, false);
+        return List.copyOf(failures);
+    }
+
     private LhAnnouncementEnrichmentReport enrichAllUnlocked() {
         Instant occurredAt = clock.instant();
         List<LhAnnouncementEnrichmentFailure> failures = new ArrayList<>();
+        Set<String> incompleteMappingIds = mappingFailureRepository.findAllByStatus(PENDING)
+                .stream()
+                .map(failure -> failure.getSourceAnnouncementIdentifier())
+                .filter(identifier -> !blank(identifier))
+                .collect(Collectors.toSet());
         LhAnnouncementEnrichmentReport report = LhAnnouncementEnrichmentReport.empty();
-        for (List<MyHomeAnnouncementSource> sources : sourcesByAnnouncementWithLh().values()) {
-            report = report.plus(enrich(sources, failures, occurredAt));
+        for (Map.Entry<String, List<MyHomeAnnouncementSource>> group
+                : sourcesByAnnouncementWithLh().entrySet()) {
+            report = report.plus(enrich(
+                    group.getValue(), failures, occurredAt, Set.of(),
+                    incompleteMappingIds.contains(group.getKey())
+            ));
         }
         failureStore.replaceAll(
                 failures,
@@ -117,7 +141,9 @@ public class LhAnnouncementEnrichmentService {
     private LhAnnouncementEnrichmentReport enrich(
             List<MyHomeAnnouncementSource> sources,
             List<LhAnnouncementEnrichmentFailure> failures,
-            Instant occurredAt
+            Instant occurredAt,
+            Set<Long> changedHousingTypeRows,
+            boolean mappingIncomplete
     ) {
         List<MyHomeAnnouncementSource> lhSources = sources.stream().filter(this::isLh).toList();
         MyHomeAnnouncementSource source = lhSources.getFirst();
@@ -166,7 +192,13 @@ public class LhAnnouncementEnrichmentService {
                 .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
         try {
             LhAnnouncementEnrichmentData data = mapper.map(panId, details, supplies);
-            LhAnnouncementEnrichmentWriteResult result = writer.write(announcement, data);
+            if (mappingIncomplete && announcement.getLhPanId() != null) {
+                return reject(source, panId, LhAnnouncementEnrichmentFailureReason.INVALID_VALUE,
+                        "마이홈 공고 매핑 실패가 남아 LH 보강을 보류했습니다.", failures, occurredAt);
+            }
+            LhAnnouncementEnrichmentWriteResult result = writer.write(
+                    announcement, data, changedHousingTypeRows
+            );
             addSupplyFailures(source, panId, result.failures(), failures, occurredAt);
             return result.report();
         }

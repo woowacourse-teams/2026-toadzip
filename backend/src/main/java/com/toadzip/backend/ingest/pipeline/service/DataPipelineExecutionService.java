@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.pipeline.service;
 
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
+import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
@@ -178,6 +179,11 @@ public class DataPipelineExecutionService {
                     exception.getMessage(),
                     exception.getServerResponse()
             );
+        }
+        catch (LhAnnouncementUnavailableException exception) {
+            DataPipelineStep failedStep = findCurrentStep(executionId);
+            recordFailure(executionId, type, failedStep, exception.getMessage(), null);
+            log.warn("LH 공고 API 장애로 수집을 중단했습니다: type={}, step={}", type, failedStep);
         }
         catch (RuntimeException exception) {
             DataPipelineStep failedStep = findCurrentStep(executionId);

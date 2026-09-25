@@ -69,11 +69,11 @@ class DataPipelineExecutionTest {
 
         execution.startStepAfterPartialFailure(
                 DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
-                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG
         );
 
         assertThat(execution.getCurrentStep())
-                .isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
+                .isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
     }
 
     @Test
@@ -82,14 +82,14 @@ class DataPipelineExecutionTest {
         execution.startStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
         execution.startStepAfterPartialFailure(
                 DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
-                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG
         );
-        execution.completeStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES, "{}");
+        execution.completeStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG, "{}");
 
-        execution.startStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
+        execution.startStep(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
 
         assertThat(execution.getCurrentStep())
-                .isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
+                .isEqualTo(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
     }
 
     @Test

@@ -50,6 +50,7 @@ public class DataGoKrOpenApiClient {
         URI requestUri = buildUri(path, params);
         String rawPayload = requestRawPayload(requestUri);
         JsonNode body = parsePayload(rawPayload);
+        validateGatewayRateLimit(body);
         responseStatusValidator.validate(body);
         return new ExternalDataResponse(rawPayload, body);
     }
@@ -116,6 +117,18 @@ public class DataGoKrOpenApiClient {
         }
         if (serviceKey == null || serviceKey.isBlank()) {
             throw new ExternalDataRequestException("공공데이터 서비스키가 비어 있습니다.");
+        }
+    }
+
+    private void validateGatewayRateLimit(JsonNode body) {
+        JsonNode header = body.path("OpenAPI_ServiceResponse").path("cmmMsgHeader");
+        String code = header.path("returnReasonCode").asString("");
+        if (DAILY_RATE_LIMIT_CODE.equals(code) || "23".equals(code)) {
+            throw ExternalDataRequestException.rateLimited(
+                    sourceName + " 외부 API 호출 제한: resultCode=" + code,
+                    null,
+                    !DAILY_RATE_LIMIT_CODE.equals(code)
+            );
         }
     }
 

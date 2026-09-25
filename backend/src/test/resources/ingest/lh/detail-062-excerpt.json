@@ -1,0 +1,73 @@
+[
+  {
+    "dsSch": [
+      {
+        "PAN_ID": "2015122300020817",
+        "CCR_CNNT_SYS_DS_CD": "03",
+        "SPL_INF_TP_CD": "062",
+        "UPP_AIS_TP_CD": "06",
+        "AIS_TP_CD": "07"
+      }
+    ]
+  },
+  {
+    "dsSplScdl": [
+      {
+        "PPR_SBM_OPE_ANC_DT": "2026.10.13",
+        "PPR_ACP_CLSG_DT": "2026.10.16",
+        "PZWR_ANC_DT": "2027.01.15",
+        "CTRT_ED_DT": "",
+        "SBD_LGO_NM": "",
+        "SBSC_ACP_ST_DT": "2026.09.29",
+        "ACP_DTTM": "~",
+        "SBSC_ACP_CLSG_DT": "2026.09.29",
+        "CTRT_ST_DT": "",
+        "PPR_ACP_ST_DT": "2026.10.13"
+      }
+    ],
+    "dsSbdNm": [
+      {
+        "LGDN_ADR": "단지주소",
+        "LGDN_DTL_ADR": "단지상세주소",
+        "HSH_CNT": "총세대수",
+        "HTN_FMLA_DESC": "난방방식",
+        "LCC_NT_NM": "단지명",
+        "DDO_AR": "전용면적",
+        "SPL_INF_GUD_FCTS": "안내사항",
+        "MVIN_XPC_YM": "입주예정월"
+      }
+    ],
+    "dsSbd": [
+      {
+        "LGDN_ADR": "경상남도 양산시 상북면 양산대로 1360(양산대석휴먼시아)",
+        "LGDN_DTL_ADR": "",
+        "HSH_CNT": "961",
+        "HTN_FMLA_DESC": "개별가스난방",
+        "LCC_NT_NM": "양산 대석휴먼시아",
+        "DDO_AR": "39.43~51.93",
+        "SPL_INF_GUD_FCTS": "",
+        "MVIN_XPC_YM": "2009.06"
+      }
+    ],
+    "dsSplScdlNm": [
+      {
+        "PPR_SBM_OPE_ANC_DT": "서류제출대상자발표일",
+        "PPR_ACP_CLSG_DT": "서류접수기간종료일",
+        "PZWR_ANC_DT": "당첨자발표일",
+        "CTRT_ED_DT": "계약기간종료일",
+        "SBD_LGO_NM": "단지명",
+        "SBSC_ACP_ST_DT": "접수기간시작일",
+        "ACP_DTTM": "신청일시",
+        "SBSC_ACP_CLSG_DT": "접수기간종료일",
+        "CTRT_ST_DT": "계약기간시작일",
+        "PPR_ACP_ST_DT": "서류접수기간시작일"
+      }
+    ],
+    "resHeader": [
+      {
+        "RS_DTTM": "20260925051751",
+        "SS_CODE": "Y"
+      }
+    ]
+  }
+]

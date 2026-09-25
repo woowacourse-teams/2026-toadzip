@@ -17,6 +17,12 @@ public interface ExternalDataCollectionFailureRepository extends JpaRepository<E
             ExternalDataFailureStatus status
     );
 
+    List<ExternalDataCollectionFailure> findAllBySourceAndStatusAndRequestDescriptionStartingWith(
+            ExternalDataSource source,
+            ExternalDataFailureStatus status,
+            String requestDescriptionPrefix
+    );
+
     Optional<ExternalDataCollectionFailure> findFirstBySourceAndRequestDescriptionOrderByIdDesc(
             ExternalDataSource source,
             String requestDescription

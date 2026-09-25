@@ -37,19 +37,33 @@ public class LhAnnouncementCollectionProgressStore {
             Collection<String> sourceAnnouncementKeys,
             Instant freshCompletedAfter
     ) {
+        return findBatch(source, requestDescriptions, sourceAnnouncementKeys, freshCompletedAfter, Map.of());
+    }
+
+    public BatchProgress findBatch(
+            ExternalDataSource source,
+            Collection<String> requestDescriptions,
+            Collection<String> sourceAnnouncementKeys,
+            Instant freshCompletedAfter,
+            Map<String, Instant> catalogChangedAtByRequest
+    ) {
         if (requestDescriptions.isEmpty()) {
             return BatchProgress.empty();
         }
         Set<String> requestHashes = requestDescriptions.stream()
                 .map(LhAnnouncementCollectionCheckpoint::requestHashOf)
                 .collect(Collectors.toSet());
-        Set<String> freshRequestHashes = Set.copyOf(
-                checkpointRepository.findFreshRequestHashes(
-                        source,
-                        requestHashes,
-                        freshCompletedAfter
-                )
-        );
+        Map<String, Instant> changedAtByHash = new HashMap<>();
+        catalogChangedAtByRequest.forEach((request, changedAt) -> changedAtByHash.put(
+                LhAnnouncementCollectionCheckpoint.requestHashOf(request), changedAt
+        ));
+        Set<String> freshRequestHashes = checkpointRepository.findAllBySourceAndRequestHashIn(source, requestHashes)
+                .stream()
+                .filter(checkpoint -> checkpoint.getCompletedAt().isAfter(freshCompletedAfter))
+                .filter(checkpoint -> !changedAtByHash.containsKey(checkpoint.getRequestHash())
+                        || !checkpoint.getCompletedAt().isBefore(changedAtByHash.get(checkpoint.getRequestHash())))
+                .map(LhAnnouncementCollectionCheckpoint::getRequestHash)
+                .collect(Collectors.toUnmodifiableSet());
         Map<String, String> linkedRequestHashes = findLinkedRequestHashes(
                 source,
                 sourceAnnouncementKeys

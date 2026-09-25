@@ -55,6 +55,18 @@ class LhHousingTypeHouseholdMatcherTest {
         assertThat(matcher.findMatches(List.of(other, expected), source)).containsExactly(expected);
     }
 
+    @Test
+    void 공공임대_원천은_연수별_공공임대_단지를_원래_순서로_검색한다() {
+        HousingComplex fiveYear = complex("강릉송정", "PUBLIC_RENTAL_5Y", 623);
+        HousingComplex tenYear = complex("강릉송정", "PUBLIC_RENTAL_10Y", 623);
+        HousingComplex otherCount = complex("강릉송정", "PUBLIC_RENTAL_50Y", 624);
+        LhHousingTypeHouseholdSource source = source("강릉송정", "공공임대", 623);
+
+        assertThat(matcher.findMatches(
+                matcher.index(List.of(tenYear, otherCount, fiveYear)), source
+        )).containsExactly(tenYear, fiveYear);
+    }
+
     private LhHousingTypeHouseholdSource source(
             String name,
             String supplyType,

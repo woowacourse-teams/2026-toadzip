@@ -12,7 +12,7 @@ import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
 
 @Configuration
-@EnableConfigurationProperties(ExternalDataIngestProperties.class)
+@EnableConfigurationProperties({ExternalDataIngestProperties.class, LhAnnouncementClientProperties.class})
 public class ExternalDataIngestConfiguration {
 
     @Bean
@@ -55,6 +55,21 @@ public class ExternalDataIngestConfiguration {
                 "마이홈 공고",
                 responseStatusValidator
         );
+    }
+
+    @Bean("lhAnnouncementOpenApiClient")
+    DataGoKrOpenApiClient lhAnnouncementOpenApiClient(
+            ObjectMapper objectMapper,
+            ExternalDataIngestProperties properties,
+            LhAnnouncementClientProperties clientProperties,
+            LhResponseStatusValidator responseStatusValidator
+    ) {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(clientProperties.connectTimeout());
+        requestFactory.setReadTimeout(clientProperties.readTimeout());
+        RestClient client = RestClient.builder().requestFactory(requestFactory).build();
+        return new DataGoKrOpenApiClient(client, objectMapper, properties.baseUrl().lh(),
+                properties.serviceKey(), "LH 공고", responseStatusValidator);
     }
 
     @Bean("lhOpenApiClient")

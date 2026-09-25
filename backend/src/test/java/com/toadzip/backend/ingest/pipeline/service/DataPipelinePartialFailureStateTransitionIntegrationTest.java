@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementDetailCollectionService;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementSupplyCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhLeaseCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.service.MyHomeAnnouncementCollectionService;
@@ -141,7 +142,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
     }
 
     @Test
-    void 세_단계_파이프라인의_첫_단계가_부분_실패해도_나머지_단계를_모두_완료한다() {
+    void 네_단계_파이프라인의_첫_단계가_부분_실패해도_나머지_단계를_모두_완료한다() {
         MyHomeAnnouncementCollectionService myHomeService =
                 mock(MyHomeAnnouncementCollectionService.class);
         LhAnnouncementSupplyCollectionService supplyService =
@@ -172,6 +173,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
         assertThat(execution.getFailureServerResponse())
                 .contains("\"failedRequestCount\":1");
         assertThat(execution.getCompletedSteps()).containsExactly(
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
                 DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
                 DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS
         );
@@ -210,6 +212,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 mock(MyHomeComplexCollectionService.class),
                 mock(LhLeaseCatalogCollectionService.class),
                 mock(MyHomeAnnouncementCollectionService.class),
+                mock(LhAnnouncementCatalogCollectionService.class),
                 mock(LhAnnouncementSupplyCollectionService.class),
                 mock(LhAnnouncementDetailCollectionService.class),
                 mappingService,
@@ -230,6 +233,7 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 mock(MyHomeComplexCollectionService.class),
                 mock(LhLeaseCatalogCollectionService.class),
                 myHomeService,
+                successfulCatalogService(),
                 supplyService,
                 detailService,
                 mock(MyHomeComplexMappingService.class),
@@ -240,4 +244,12 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 new SimpleMeterRegistry()
         );
     }
+    private LhAnnouncementCatalogCollectionService successfulCatalogService() {
+        var service = mock(LhAnnouncementCatalogCollectionService.class);
+        when(service.collect()).thenReturn(new com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport(
+                "lh-announcement-catalog", 1, 0, 1
+        ));
+        return service;
+    }
+
 }

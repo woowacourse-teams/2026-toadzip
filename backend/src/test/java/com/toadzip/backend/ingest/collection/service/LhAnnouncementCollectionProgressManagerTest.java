@@ -90,6 +90,14 @@ class LhAnnouncementCollectionProgressManagerTest {
         );
         verify(failureRecorder).resolve(
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                candidate.request().previousPageRequestDescription()
+        );
+        verify(failureRecorder).resolveStartingWith(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                candidate.request().previousPageRequestDescription() + "&PG_SZ="
+        );
+        verify(failureRecorder).resolve(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
                 candidate.sourceDescription()
         );
         verify(progressStore).complete(

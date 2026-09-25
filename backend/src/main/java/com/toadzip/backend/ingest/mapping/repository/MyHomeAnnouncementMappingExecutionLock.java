@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class MyHomeAnnouncementMappingExecutionLock {
 
+    // LH 공고 보강과 같은 제품 공고를 수정하므로 실행 잠금을 공유한다.
     private static final long LOCK_KEY = 8_432_026_082_800_018L;
 
     private final ReentrantLock localLock = new ReentrantLock();

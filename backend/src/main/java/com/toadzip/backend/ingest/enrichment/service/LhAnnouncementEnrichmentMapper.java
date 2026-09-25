@@ -99,15 +99,17 @@ public class LhAnnouncementEnrichmentMapper {
 
     private List<LhScheduleData> schedulesOf(String panId, LhAnnouncementDetailSource source) {
         List<LhScheduleData> schedules = new ArrayList<>();
-        addRange(schedules, panId, source, ScheduleType.APPLICATION, "접수", source.getApplicationPeriod());
+        addApplication(schedules, panId, source);
         addDate(
                 schedules,
                 panId,
                 source,
-                ScheduleType.WINNER_ANNOUNCEMENT,
-                "당첨자 발표",
+                ScheduleType.ETC,
+                "서류제출 대상자 발표",
                 source.getDocumentTargetAnnouncementDate()
         );
+        addDate(schedules, panId, source, ScheduleType.WINNER_ANNOUNCEMENT, "당첨자 발표",
+                source.getWinnerAnnouncementDate());
         addRange(
                 schedules, panId, source, ScheduleType.DOCUMENT_SUBMISSION, "서류제출",
                 source.getDocumentSubmissionBeginDate(), source.getDocumentSubmissionEndDate()
@@ -122,6 +124,15 @@ public class LhAnnouncementEnrichmentMapper {
                 source.getContractEndDate()
         );
         return schedules;
+    }
+
+    private void addApplication(List<LhScheduleData> schedules, String panId, LhAnnouncementDetailSource source) {
+        if (!parser.unavailable(source.getApplicationPeriod())) {
+            addRange(schedules, panId, source, ScheduleType.APPLICATION, "접수", source.getApplicationPeriod());
+            return;
+        }
+        addRange(schedules, panId, source, ScheduleType.APPLICATION, "접수",
+                source.getApplicationBeginDate(), source.getApplicationEndDate());
     }
 
     private void addRange(

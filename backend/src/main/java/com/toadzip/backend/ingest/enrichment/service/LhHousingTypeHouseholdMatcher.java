@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.enrichment.service;
 
 import com.toadzip.backend.housing.domain.HousingComplex;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,7 @@ public class LhHousingTypeHouseholdMatcher {
     private static final Set<String> PUBLIC_RENTAL_TYPES = Set.of(
             "PUBLIC_RENTAL_5Y", "PUBLIC_RENTAL_10Y", "PUBLIC_RENTAL_50Y"
     );
+    private static final String PUBLIC_RENTAL = "PUBLIC_RENTAL";
     private static final List<String> NAME_DECORATIONS = List.of(
             "통합공공임대주택",
             "국민임대주택",
@@ -61,13 +63,46 @@ public class LhHousingTypeHouseholdMatcher {
             List<HousingComplex> complexes,
             LhHousingTypeHouseholdSource source
     ) {
-        List<HousingComplex> structuralMatches = complexes.stream()
-                .filter(complex -> "LH".equals(complex.getProvider()))
+        return findMatches(index(complexes), source);
+    }
+
+    Map<MatchKey, List<HousingComplex>> index(List<HousingComplex> complexes) {
+        Map<MatchKey, List<HousingComplex>> indexed = new HashMap<>();
+        for (HousingComplex complex : complexes) {
+            if (!"LH".equals(complex.getProvider())) {
+                continue;
+            }
+            MatchKey key = new MatchKey(complex.getSupplyType(), complex.getTotalHouseholdCount());
+            indexed.computeIfAbsent(key, ignored -> new ArrayList<>()).add(complex);
+            if (PUBLIC_RENTAL_TYPES.contains(complex.getSupplyType())) {
+                MatchKey publicRentalKey = new MatchKey(PUBLIC_RENTAL, complex.getTotalHouseholdCount());
+                indexed.computeIfAbsent(publicRentalKey, ignored -> new ArrayList<>()).add(complex);
+            }
+        }
+        return indexed;
+    }
+
+    List<HousingComplex> findMatches(
+            Map<MatchKey, List<HousingComplex>> indexed,
+            LhHousingTypeHouseholdSource source
+    ) {
+        String supplyType = sourceSupplyType(source.supplyTypeName());
+        if (supplyType == null) {
+            return List.of();
+        }
+        MatchKey key = new MatchKey(supplyType, source.totalHouseholdCount());
+        List<HousingComplex> structuralMatches = indexed.getOrDefault(key, List.of()).stream()
                 .filter(complex -> regionMatches(complex, source.areaName()))
-                .filter(complex -> supplyTypeMatches(complex.getSupplyType(), source.supplyTypeName()))
-                .filter(complex -> complex.getTotalHouseholdCount() == source.totalHouseholdCount())
                 .toList();
         return bestNameMatches(structuralMatches, source.complexName());
+    }
+
+    private String sourceSupplyType(String supplyTypeName) {
+        String normalized = normalized(supplyTypeName);
+        if ("공공임대".equals(normalized)) {
+            return PUBLIC_RENTAL;
+        }
+        return SUPPLY_TYPES.get(normalized);
     }
 
     private List<HousingComplex> bestNameMatches(
@@ -201,14 +236,6 @@ public class LhHousingTypeHouseholdMatcher {
         return !sourceRegion.isEmpty() && address.startsWith(sourceRegion);
     }
 
-    private boolean supplyTypeMatches(String myHomeSupplyType, String lhSupplyType) {
-        String normalized = normalized(lhSupplyType);
-        if ("공공임대".equals(normalized)) {
-            return PUBLIC_RENTAL_TYPES.contains(myHomeSupplyType);
-        }
-        return myHomeSupplyType.equals(SUPPLY_TYPES.get(normalized));
-    }
-
     private String canonicalRegion(String value) {
         return normalized(value)
                 .replace("서울특별시", "서울")
@@ -237,5 +264,8 @@ public class LhHousingTypeHouseholdMatcher {
             return "";
         }
         return value.replaceAll("[\\s\\-·,()]", "").strip().toLowerCase();
+    }
+
+    record MatchKey(String supplyType, int totalHouseholdCount) {
     }
 }

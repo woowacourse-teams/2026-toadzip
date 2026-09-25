@@ -4,6 +4,7 @@ import com.toadzip.backend.ingest.collection.dto.LhLeaseCatalogCollectionRequest
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementDetailCollectionService;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementSupplyCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhLeaseCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.service.MyHomeAnnouncementCollectionService;
@@ -30,6 +31,7 @@ public class DataPipelineRunner {
     private final MyHomeComplexCollectionService myHomeComplexCollectionService;
     private final LhLeaseCatalogCollectionService lhLeaseCatalogCollectionService;
     private final MyHomeAnnouncementCollectionService myHomeAnnouncementCollectionService;
+    private final LhAnnouncementCatalogCollectionService lhAnnouncementCatalogCollectionService;
     private final LhAnnouncementSupplyCollectionService lhAnnouncementSupplyCollectionService;
     private final LhAnnouncementDetailCollectionService lhAnnouncementDetailCollectionService;
     private final MyHomeComplexMappingService myHomeComplexMappingService;
@@ -43,6 +45,7 @@ public class DataPipelineRunner {
             MyHomeComplexCollectionService myHomeComplexCollectionService,
             LhLeaseCatalogCollectionService lhLeaseCatalogCollectionService,
             MyHomeAnnouncementCollectionService myHomeAnnouncementCollectionService,
+            LhAnnouncementCatalogCollectionService lhAnnouncementCatalogCollectionService,
             LhAnnouncementSupplyCollectionService lhAnnouncementSupplyCollectionService,
             LhAnnouncementDetailCollectionService lhAnnouncementDetailCollectionService,
             MyHomeComplexMappingService myHomeComplexMappingService,
@@ -55,6 +58,7 @@ public class DataPipelineRunner {
         this.myHomeComplexCollectionService = myHomeComplexCollectionService;
         this.lhLeaseCatalogCollectionService = lhLeaseCatalogCollectionService;
         this.myHomeAnnouncementCollectionService = myHomeAnnouncementCollectionService;
+        this.lhAnnouncementCatalogCollectionService = lhAnnouncementCatalogCollectionService;
         this.lhAnnouncementSupplyCollectionService = lhAnnouncementSupplyCollectionService;
         this.lhAnnouncementDetailCollectionService = lhAnnouncementDetailCollectionService;
         this.myHomeComplexMappingService = myHomeComplexMappingService;
@@ -67,11 +71,13 @@ public class DataPipelineRunner {
 
     public void run(DataPipelineType type, DataPipelineProgressListener progressListener) {
         DataPipelinePartialFailureException firstReportedPartialFailure = null;
+        boolean lhRateLimited = false;
         for (DataPipelineStep step : type.steps()) {
             try {
-                runStep(step, progressListener);
+                lhRateLimited |= runStep(step, progressListener, lhRateLimited && isLhAnnouncementCollection(step));
             }
             catch (DataPipelinePartialFailureException exception) {
+                lhRateLimited |= exception.hasLhRateLimit();
                 progressListener.partiallyFailed(
                         exception.getStep(),
                         exception.getServerResponse()
@@ -86,25 +92,33 @@ public class DataPipelineRunner {
         }
     }
 
-    private void runStep(DataPipelineStep step, DataPipelineProgressListener progressListener) {
+    private boolean runStep(
+            DataPipelineStep step, DataPipelineProgressListener progressListener, boolean blockedByLhRateLimit
+    ) {
         Timer.Sample sample = Timer.start(meterRegistry);
         String outcome = "failed";
         try {
             progressListener.started(step);
+            if (blockedByLhRateLimit) {
+                progressListener.skipped(step, "앞선 LH 공고 단계의 호출 제한으로 이 단계를 건너뛰었습니다.", "{}");
+                outcome = "rate_limited";
+                return true;
+            }
             DataPipelineStepResult result = execute(step);
             if (result.failedOnlyByRateLimit()) {
                 progressListener.skipped(step, RATE_LIMIT_SKIP_REASON, result.serverResponse());
                 outcome = "rate_limited";
-                return;
+                return isLhAnnouncementCollection(step);
             }
             rejectPartialFailure(step, result);
             if (result.hasWarnings()) {
                 progressListener.completedWithWarnings(step, result.serverResponse());
                 outcome = "completed_with_warnings";
-                return;
+                return false;
             }
             progressListener.completed(step, result.serverResponse());
             outcome = "completed";
+            return false;
         }
         finally {
             long durationNanos = sample.stop(meterRegistry.timer(
@@ -113,6 +127,12 @@ public class DataPipelineRunner {
             log.info("event=ingest.pipeline.step.finished executionId={} step={} result={} durationMs={}",
                     MDC.get("executionId"), step, outcome, durationNanos / 1_000_000);
         }
+    }
+
+    private boolean isLhAnnouncementCollection(DataPipelineStep step) {
+        return step == DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG
+                || step == DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES
+                || step == DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS;
     }
 
     private DataPipelineStepResult execute(DataPipelineStep step) {
@@ -126,6 +146,7 @@ public class DataPipelineRunner {
             case COLLECT_MYHOME_ANNOUNCEMENTS -> resultAdapter.adapt(myHomeAnnouncementCollectionService.collect(
                     new MyHomeAnnouncementCollectionRequest(500, 1_000)
             ));
+            case COLLECT_LH_ANNOUNCEMENT_CATALOG -> resultAdapter.adapt(lhAnnouncementCatalogCollectionService.collect());
             case COLLECT_LH_ANNOUNCEMENT_SUPPLIES -> resultAdapter.adapt(
                     lhAnnouncementSupplyCollectionService.collect()
             );
@@ -147,7 +168,10 @@ public class DataPipelineRunner {
 
     private void rejectPartialFailure(DataPipelineStep step, DataPipelineStepResult result) {
         if (result.failed()) {
-            throw new DataPipelinePartialFailureException(step, result.serverResponse());
+            throw new DataPipelinePartialFailureException(
+                    step, result.serverResponse(),
+                    isLhAnnouncementCollection(step) && result.rateLimitedFailureCount() > 0
+            );
         }
     }
 }

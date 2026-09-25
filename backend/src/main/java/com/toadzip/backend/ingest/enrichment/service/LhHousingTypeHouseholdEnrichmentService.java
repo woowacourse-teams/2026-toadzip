@@ -82,6 +82,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
         Map<LhHousingTypeHouseholdSourceKey, List<LhCatalogSource>> sourceGroups =
                 sourceMapper.group(sourceRepository.findAllByOrderBySourceOrderAsc());
         List<HousingComplex> complexes = complexRepository.findAll();
+        var indexedComplexes = matcher.index(complexes);
         LhHousingTypeHouseholdEnrichmentReport report =
                 LhHousingTypeHouseholdEnrichmentReport.empty(sourceGroups.size());
         List<MatchedSource> matchedSources = new ArrayList<>();
@@ -90,7 +91,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
         for (Map.Entry<LhHousingTypeHouseholdSourceKey, List<LhCatalogSource>> entry
                 : sourceGroups.entrySet()) {
             Optional<MatchedSource> matchedSource = match(
-                    entry.getKey(), entry.getValue(), complexes, failures, occurredAt
+                    entry.getKey(), entry.getValue(), indexedComplexes, failures, occurredAt
             );
             if (matchedSource.isEmpty()) {
                 report = report.plus(LhHousingTypeHouseholdEnrichmentReport.failed());
@@ -110,13 +111,13 @@ public class LhHousingTypeHouseholdEnrichmentService {
     private Optional<MatchedSource> match(
             LhHousingTypeHouseholdSourceKey sourceKey,
             List<LhCatalogSource> sources,
-            List<HousingComplex> complexes,
+            Map<LhHousingTypeHouseholdMatcher.MatchKey, List<HousingComplex>> indexedComplexes,
             List<LhHouseholdEnrichmentFailure> failures,
             Instant occurredAt
     ) {
         try {
             LhHousingTypeHouseholdSource source = sourceMapper.map(sources);
-            List<HousingComplex> matches = matcher.findMatches(complexes, source);
+            List<HousingComplex> matches = matcher.findMatches(indexedComplexes, source);
             if (matches.size() != 1) {
                 log.warn(
                         "event=lh_household.match.unresolved result=skipped source=lh_catalog "

@@ -46,6 +46,20 @@ public class ExternalDataFailureStore {
     }
 
     @Transactional
+    public void resolveStartingWith(
+            ExternalDataSource source,
+            String requestDescriptionPrefix,
+            Instant resolvedAt,
+            UUID executionId
+    ) {
+        failureRepository.findAllBySourceAndStatusAndRequestDescriptionStartingWith(
+                source,
+                ExternalDataFailureStatus.PENDING,
+                requestDescriptionPrefix
+        ).forEach(failure -> failure.resolve(resolvedAt, executionId));
+    }
+
+    @Transactional
     public void skip(
             ExternalDataSource source,
             String requestDescription,

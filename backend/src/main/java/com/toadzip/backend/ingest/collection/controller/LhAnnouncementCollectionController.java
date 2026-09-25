@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.controller;
 
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementDetailCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementSupplyCollectionService;
 import org.springframework.http.HttpStatus;
@@ -14,16 +15,25 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/admin/ingest/lh/announcements")
 public class LhAnnouncementCollectionController {
 
+    private final LhAnnouncementCatalogCollectionService catalogCollectionService;
+
     private final LhAnnouncementDetailCollectionService detailCollectionService;
 
     private final LhAnnouncementSupplyCollectionService supplyCollectionService;
 
     public LhAnnouncementCollectionController(
+            LhAnnouncementCatalogCollectionService catalogCollectionService,
             LhAnnouncementDetailCollectionService detailCollectionService,
             LhAnnouncementSupplyCollectionService supplyCollectionService
     ) {
+        this.catalogCollectionService = catalogCollectionService;
         this.detailCollectionService = detailCollectionService;
         this.supplyCollectionService = supplyCollectionService;
+    }
+
+    @PostMapping("/catalog")
+    public ResponseEntity<ExternalDataCollectionReport> collectCatalog() {
+        return responseOf(catalogCollectionService.collect());
     }
 
     @PostMapping("/details")

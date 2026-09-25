@@ -8,6 +8,8 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import java.net.URI;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
@@ -16,6 +18,25 @@ import org.springframework.web.client.RestClient;
 import tools.jackson.databind.json.JsonMapper;
 
 class DataGoKrOpenApiClientTest {
+
+    @ParameterizedTest
+    @ValueSource(strings = {"22", "23"})
+    void HTTP_200의_게이트웨이_호출_제한도_LH_응답_검증_전에_인식한다(String code) {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(request -> { }).andRespond(withSuccess(
+                "{\"OpenAPI_ServiceResponse\":{\"cmmMsgHeader\":{\"returnReasonCode\":\"" + code + "\"}}}",
+                MediaType.APPLICATION_JSON));
+        DataGoKrOpenApiClient client = new DataGoKrOpenApiClient(builder.build(), JsonMapper.builder().build(),
+                "https://example.com", "key", "LH 공고", new LhResponseStatusValidator());
+
+        assertThatThrownBy(() -> client.get("list", new LinkedMultiValueMap<>()))
+                .isInstanceOfSatisfying(ExternalDataRequestException.class, failure -> {
+                    assertThat(failure.isRateLimited()).isTrue();
+                    assertThat(failure.isRetryable()).isEqualTo("23".equals(code));
+                });
+        server.verify();
+    }
 
     @Test
     @DisplayName("외부 응답 원문과 JSON 응답을 보존한다")

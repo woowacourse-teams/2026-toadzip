@@ -4,6 +4,7 @@ import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PEND
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
@@ -48,6 +49,8 @@ public class MyHomeAnnouncementMappingService {
 
     private final MyHomeAnnouncementMappingWriter writer;
 
+    private final MyHomeLhAnnouncementAtomicWriter atomicWriter;
+
     private final Clock clock;
 
     public MyHomeAnnouncementMappingService(
@@ -59,6 +62,7 @@ public class MyHomeAnnouncementMappingService {
             MyHomeAnnouncementSourceMapper sourceMapper,
             MyHomeAnnouncementSupplyRowResolver supplyRowResolver,
             MyHomeAnnouncementMappingWriter writer,
+            MyHomeLhAnnouncementAtomicWriter atomicWriter,
             Clock clock
     ) {
         this.sourceRepository = sourceRepository;
@@ -69,6 +73,7 @@ public class MyHomeAnnouncementMappingService {
         this.sourceMapper = sourceMapper;
         this.supplyRowResolver = supplyRowResolver;
         this.writer = writer;
+        this.atomicWriter = atomicWriter;
         this.clock = clock;
     }
 
@@ -147,7 +152,7 @@ public class MyHomeAnnouncementMappingService {
                         occurredAt
                 ));
             }
-            MyHomeAnnouncementWriteResult result = writer.write(data, previousResult.announcement());
+            MyHomeAnnouncementWriteResult result = write(data, previousResult.announcement(), sources);
             addSupplyMatchingFailures(failures, result.failures(), occurredAt);
             processed.add(identifier);
             return previousResult.report().plus(result.report());
@@ -159,6 +164,23 @@ public class MyHomeAnnouncementMappingService {
         finally {
             processing.remove(identifier);
         }
+    }
+
+    private MyHomeAnnouncementWriteResult write(
+            MyHomeAnnouncementMappingData data,
+            Announcement previousAnnouncement,
+            List<MyHomeAnnouncementSource> sources
+    ) {
+        if (data.provider() != AgencyCode.LH) {
+            return writer.write(data, previousAnnouncement);
+        }
+        Announcement stored = announcementRepository
+                .findBySourceAnnouncementIdentifier(data.sourceAnnouncementIdentifier())
+                .orElse(null);
+        if (stored != null && stored.getLhPanId() != null) {
+            return atomicWriter.write(data, previousAnnouncement, sources, stored);
+        }
+        return writer.write(data, previousAnnouncement);
     }
 
     private PreviousAnnouncementResult previousAnnouncementOf(

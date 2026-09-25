@@ -44,6 +44,9 @@ public class LhAnnouncementDetailSource {
     private String guidanceText;
 
     private String applicationPeriod;
+    private String applicationBeginDate;
+    private String applicationEndDate;
+    private String winnerAnnouncementDate;
     private String documentTargetAnnouncementDate;
     private String documentSubmissionBeginDate;
     private String documentSubmissionEndDate;
@@ -139,6 +142,17 @@ public class LhAnnouncementDetailSource {
             throw new IllegalArgumentException("수집 시각은 필수입니다.");
         }
         this.collectedAt = collectedAt;
+    }
+
+    public void assignScheduleDates(
+            String applicationBeginDate, String applicationEndDate, String winnerAnnouncementDate
+    ) {
+        if (!"SCHEDULE".equals(datasetType)) {
+            throw new IllegalStateException("일정 원천에만 접수·당첨자 발표일을 지정할 수 있습니다.");
+        }
+        this.applicationBeginDate = trim(applicationBeginDate);
+        this.applicationEndDate = trim(applicationEndDate);
+        this.winnerAnnouncementDate = trim(winnerAnnouncementDate);
     }
 
     public void assignRequestHash(String requestHash) {
