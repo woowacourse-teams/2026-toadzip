@@ -81,6 +81,11 @@ public class DataPipelineExecutionService {
         DataPipelineExecution execution;
         try {
             Instant startedAt = Instant.now(clock);
+            executionStateService.recoverInterruptedBefore(
+                    startedAt.minus(EXECUTION_LEASE_TIMEOUT),
+                    startedAt,
+                    INTERRUPTED_FAILURE_MESSAGE
+            );
             execution = createExecution(
                     executionId,
                     type,
@@ -326,13 +331,19 @@ public class DataPipelineExecutionService {
         if (!isLeaseExpired(execution) || executionLock.isHeld()) {
             return execution;
         }
-        recordFailure(
-                execution.getExecutionId(),
-                execution.getType(),
-                null,
-                INTERRUPTED_FAILURE_MESSAGE,
-                null
-        );
+        try {
+            Instant failedAt = Instant.now(clock);
+            executionStateService.recoverInterrupted(
+                    execution.getExecutionId(),
+                    failedAt.minus(EXECUTION_LEASE_TIMEOUT),
+                    failedAt,
+                    INTERRUPTED_FAILURE_MESSAGE
+            );
+        }
+        catch (RuntimeException exception) {
+            log.error("중단된 데이터 파이프라인 실행을 복구하지 못했습니다: executionId={}",
+                    execution.getExecutionId(), exception);
+        }
         return executionRepository.findByExecutionId(execution.getExecutionId())
                 .orElse(execution);
     }

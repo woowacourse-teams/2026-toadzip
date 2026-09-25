@@ -365,29 +365,27 @@ class DataPipelineExecutionServiceTest {
                 DataPipelineType.ANNOUNCEMENT_COLLECTION,
                 Instant.parse("2026-09-02T11:00:00Z")
         );
+        staleExecution.startStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
         when(executionRepository.findFirstByTypeOrderByIdDesc(any()))
                 .thenReturn(Optional.of(staleExecution));
-        doAnswer(invocation -> {
-            staleExecution.fail(
-                    invocation.getArgument(1),
-                    invocation.getArgument(2),
-                    invocation.getArgument(3),
-                    invocation.getArgument(4)
-            );
-            return null;
-        }).when(executionStateService).fail(
-                any(),
-                org.mockito.ArgumentMatchers.nullable(DataPipelineStep.class),
-                any(),
-                org.mockito.ArgumentMatchers.nullable(String.class),
-                any()
-        );
+        when(executionStateService.recoverInterrupted(any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    staleExecution.fail(
+                            staleExecution.getCurrentStep(),
+                            invocation.getArgument(3),
+                            null,
+                            invocation.getArgument(2)
+                    );
+                    return true;
+                });
         when(executionRepository.findByExecutionId(any())).thenReturn(Optional.of(staleExecution));
 
         var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
         assertThat(status.failure().message()).contains("중단");
+        assertThat(status.failure().stepName())
+                .isEqualTo(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS.displayName());
     }
 
     @Test
@@ -404,7 +402,7 @@ class DataPipelineExecutionServiceTest {
         var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
-        verify(executionStateService, never()).fail(any(), any(), any(), any(), any());
+        verify(executionStateService, never()).recoverInterrupted(any(), any(), any(), any());
     }
 
     private void configureStoredExecution() {

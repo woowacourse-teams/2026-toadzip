@@ -3,12 +3,14 @@ package com.toadzip.backend.ingest.pipeline.repository;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -64,6 +66,27 @@ public interface DataPipelineExecutionRepository
     );
 
     Optional<DataPipelineExecution> findByExecutionId(UUID executionId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select execution from DataPipelineExecution execution
+            where execution.status = com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus.RUNNING
+              and execution.heartbeatAt < :cutoff
+            order by execution.id asc
+            """)
+    List<DataPipelineExecution> findInterruptedBeforeForUpdate(@Param("cutoff") Instant cutoff);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select execution from DataPipelineExecution execution
+            where execution.executionId = :executionId
+              and execution.status = com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus.RUNNING
+              and execution.heartbeatAt < :cutoff
+            """)
+    Optional<DataPipelineExecution> findInterruptedForUpdate(
+            @Param("executionId") UUID executionId,
+            @Param("cutoff") Instant cutoff
+    );
 
     @Modifying
     @Transactional

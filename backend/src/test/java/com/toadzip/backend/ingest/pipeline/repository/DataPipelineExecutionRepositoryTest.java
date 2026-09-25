@@ -66,6 +66,35 @@ class DataPipelineExecutionRepositoryTest {
     }
 
     @Test
+    void 복구_직전_heartbeat나_상태가_바뀌면_실행을_실패로_덮지_않는다() {
+        Instant startedAt = Instant.parse("2026-09-21T03:00:00Z");
+        Instant now = startedAt.plusSeconds(300);
+        UUID refreshedId = UUID.randomUUID();
+        UUID completedId = UUID.randomUUID();
+        executionStateService.create(refreshedId, DataPipelineType.COMPLEX_REFINEMENT, startedAt);
+        executionStateService.startStep(refreshedId, DataPipelineStep.MAP_MYHOME_COMPLEXES);
+        executionStateService.create(completedId, DataPipelineType.COMPLEX_REFINEMENT, startedAt);
+        executionStateService.fail(completedId, null, "이미 실패한 실행", null, startedAt.plusSeconds(1));
+        Long refreshedRowId = executionRepository.findByExecutionId(refreshedId).orElseThrow().getId();
+        executionRepository.updateHeartbeat(refreshedRowId, now.minusSeconds(30));
+        entityManager.clear();
+
+        assertThat(executionStateService.recoverInterrupted(
+                refreshedId, now.minusSeconds(120), now, "중단 복구"
+        )).isFalse();
+        assertThat(executionStateService.recoverInterrupted(
+                completedId, now.minusSeconds(120), now, "중단 복구"
+        )).isFalse();
+        assertThat(executionRepository.findByExecutionId(refreshedId).orElseThrow())
+                .satisfies(execution -> {
+                    assertThat(execution.getStatus()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
+                    assertThat(execution.getCurrentStep()).isEqualTo(DataPipelineStep.MAP_MYHOME_COMPLEXES);
+                });
+        assertThat(executionRepository.findByExecutionId(completedId).orElseThrow().getFailureMessage())
+                .isEqualTo("이미 실패한 실행");
+    }
+
+    @Test
     void 정기_실행_슬롯과_상위_실행을_조회한다() {
         UUID collectionId = UUID.randomUUID();
         Instant scheduledAt = Instant.parse("2026-09-21T03:00:00Z");
