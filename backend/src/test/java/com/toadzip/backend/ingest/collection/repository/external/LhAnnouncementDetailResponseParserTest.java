@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
 class LhAnnouncementDetailResponseParserTest {
@@ -74,5 +76,30 @@ class LhAnnouncementDetailResponseParserTest {
 
         assertThatThrownBy(() -> parser.parse("PAN-1", root))
                 .isInstanceOf(ExternalDataRequestException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "[{\"dsEtcInfo\":[{}]}]",
+            "[{\"dsSbd\":[{}]}]",
+            "[{\"dsSplScdl\":[{}]}]",
+            "[{\"dsCtrtPlc\":[{}]}]",
+            "[{\"dsAhflInfo\":[{}]}]",
+            "[{\"dsSbdAhfl\":[{}]}]",
+            "[{\"dsSbd\":[{\"RENAMED_COMPLEX_NAME\":\"가 단지\"}]}]"
+    })
+    void 내용이_없는_상세_행은_거절한다(String response) {
+        assertThatThrownBy(() -> parser.parse("PAN-1", objectMapper.readTree(response)))
+                .isInstanceOf(ExternalDataRequestException.class);
+    }
+
+    @Test
+    void 정상_상세_행의_선택_필드_누락과_빈_dataset은_허용한다() {
+        var root = objectMapper.readTree("""
+                [{"dsSbd":[{"LCC_NT_NM":"가 단지"}],"dsSplScdl":[]}]
+                """);
+
+        assertThat(parser.parse("PAN-1", root)).singleElement()
+                .extracting(source -> source.getComplexName()).isEqualTo("가 단지");
     }
 }

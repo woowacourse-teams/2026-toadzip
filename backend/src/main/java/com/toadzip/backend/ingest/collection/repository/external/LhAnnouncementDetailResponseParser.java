@@ -28,6 +28,9 @@ public class LhAnnouncementDetailResponseParser {
         addReceptions(sources, panId, root);
         addAnnouncementFiles(sources, panId, root);
         addComplexImages(sources, panId, root);
+        if (sources.stream().anyMatch(source -> !source.hasContent())) {
+            throw new ExternalDataRequestException("LH 공고 상세 응답에 내용 없는 행이 있습니다.");
+        }
         return List.copyOf(sources);
     }
 

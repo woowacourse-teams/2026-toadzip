@@ -704,6 +704,24 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void 내용_없는_LH_상세는_원천과_성공_연결을_교체하지_않고_실패로_기록한다() {
+        source(announcementSource());
+        when(externalRepository.fetchDetail(any())).thenReturn(response("""
+                [{"resHeader":[{"SS_CODE":"Y"}]},{"dsSbd":[{}]}]
+                """));
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.storedRowCount()).isZero();
+        verify(sourceStore, never()).replaceDetails(any(), any(), any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).link(any(), any(), any(), any());
+        verify(failureRecorder).record(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
+                any(), any(ExternalDataCallFailureException.class), any(), any());
+    }
+
+    @Test
     void LH_공급_응답에_공급_dataset이_없으면_기존_snapshot과_체크포인트를_보존한다() {
         source(announcementSource());
         when(externalRepository.fetchSupply(any())).thenReturn(response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]}]"));
