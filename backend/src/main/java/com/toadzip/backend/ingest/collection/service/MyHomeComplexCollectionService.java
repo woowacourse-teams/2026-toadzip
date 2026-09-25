@@ -6,6 +6,7 @@ import com.toadzip.backend.ingest.collection.dto.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.repository.MyHomeRegionCatalog;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -17,6 +18,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -152,9 +154,10 @@ public class MyHomeComplexCollectionService {
             AtomicBoolean rateLimitReached
     ) {
         List<FutureTask<MyHomeComplexCollectionReport>> tasks = new ArrayList<>();
+        Map<String, String> context = MDC.getCopyOfContextMap();
         for (MyHomeRegion region : regions) {
             FutureTask<MyHomeComplexCollectionReport> task = new FutureTask<>(
-                    () -> regionCollector.collect(region, request, rateLimitReached)
+                    () -> collectRegion(region, request, rateLimitReached, context)
             ) {
                 @Override
                 protected void done() {
@@ -165,6 +168,23 @@ public class MyHomeComplexCollectionService {
             executor.execute(task);
         }
         return tasks;
+    }
+
+    private MyHomeComplexCollectionReport collectRegion(
+            MyHomeRegion region,
+            MyHomeComplexCollectionRequest request,
+            AtomicBoolean rateLimitReached,
+            Map<String, String> context
+    ) {
+        try {
+            if (context != null) {
+                MDC.setContextMap(context);
+            }
+            return regionCollector.collect(region, request, rateLimitReached);
+        }
+        finally {
+            MDC.clear();
+        }
     }
 
     private void cancelNeverStarted(List<Runnable> neverStartedTasks) {

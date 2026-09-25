@@ -27,6 +27,7 @@ describe('useAnnouncementResults', () => {
       null,
       20,
       expect.any(AbortSignal),
+      { applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
     )
 
     rerender(<Harness enabled={false} repository={repository} />)
@@ -72,6 +73,7 @@ describe('useAnnouncementResults', () => {
       'next',
       20,
       expect.any(AbortSignal),
+      { applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
     )
   })
 
@@ -125,7 +127,7 @@ describe('useAnnouncementResults', () => {
       'next',
       20,
       expect.any(AbortSignal),
-      seoulFilters,
+      { ...seoulFilters, applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
     )
 
     rerender(
@@ -142,7 +144,7 @@ describe('useAnnouncementResults', () => {
       null,
       20,
       expect.any(AbortSignal),
-      gyeonggiFilters,
+      { ...gyeonggiFilters, applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
     )
   })
 
@@ -189,6 +191,12 @@ describe('useAnnouncementResults', () => {
 
     expect(await screen.findByText('201')).toBeVisible()
     expect(repository.findAnnouncementPage).toHaveBeenCalledTimes(2)
+    expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(
+      null,
+      20,
+      expect.any(AbortSignal),
+      { applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
+    )
   })
 
   it('cursor 요청 오류는 기존 결과와 cursor를 보존해 같은 페이지를 재시도한다', async () => {
@@ -210,7 +218,39 @@ describe('useAnnouncementResults', () => {
       'next',
       20,
       expect.any(AbortSignal),
+      { applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
     )
+  })
+
+  it.each([
+    { selected: ['BEFORE_APPLICATION'], expected: ['BEFORE_APPLICATION'] },
+    { selected: ['APPLYING'], expected: ['APPLYING'] },
+    { selected: ['APPLYING', 'CLOSED'], expected: ['APPLYING'] },
+    { selected: ['CLOSED'], expected: ['BEFORE_APPLICATION', 'APPLYING'] },
+    { selected: [], expected: ['BEFORE_APPLICATION', 'APPLYING'] },
+  ] as const)('선택한 $selected 상태에서 마감을 제외하고 초기화 뒤에도 제외한다', async ({ selected, expected }) => {
+    const repository = createRepository()
+    const { rerender } = render(
+      <Harness enabled filters={{ applicationStatuses: selected }} repository={repository} />,
+    )
+    await screen.findByText('101')
+
+    expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(
+      null,
+      20,
+      expect.any(AbortSignal),
+      { applicationStatuses: expected },
+    )
+
+    rerender(<Harness enabled filters={{}} repository={repository} />)
+
+    expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(
+      null,
+      20,
+      expect.any(AbortSignal),
+      { applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
+    )
+    expect(await screen.findByText('101')).toBeVisible()
   })
 })
 

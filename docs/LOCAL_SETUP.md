@@ -15,6 +15,9 @@ SHARED_DB_PASSWORD=
 VITE_NAVER_MAPS_CLIENT_ID=
 ```
 
+사용자 소셜 로그인 설정은
+[백엔드 소셜 로그인 문서](../backend/docs/user-social-login.md)의 로컬 설정 절차를 따른다.
+
 ## 실행
 
 ```shell

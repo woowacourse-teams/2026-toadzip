@@ -1,33 +1,7 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { type ComponentProps, createElement } from 'react'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import searchFilterPanelClasses from './SearchFilterPanel.module.css'
+import { describe, expect, it, vi } from 'vitest'
 import { SearchFilterPanel } from './SearchFilterPanel.tsx'
-
-const styleElement = document.createElement('style')
-const searchFilterPanelStylesheet = scopeCssModule(
-  readFileSync(
-    resolve(
-      process.cwd(),
-      'src/public-housing/filters/SearchFilterPanel.module.css',
-    ),
-    'utf8',
-  ),
-  {
-    choice: searchFilterPanelClasses.choice,
-    choiceGroup: searchFilterPanelClasses.choiceGroup,
-    choiceOptions: searchFilterPanelClasses.choiceOptions,
-  },
-)
-
-beforeAll(() => {
-  styleElement.textContent = searchFilterPanelStylesheet
-  document.head.append(styleElement)
-})
-
-afterAll(() => styleElement.remove())
 
 const GYEONGGI_REGIONS = [
   {
@@ -63,33 +37,75 @@ const GYEONGGI_REGIONS = [
 ] as const
 
 describe('SearchFilterPanel', () => {
-  it('공고 필터 항목명과 선택값을 구분선과 간격으로 분리한다', () => {
-    renderFilter({ kind: 'announcement' })
+  it('공고 모집상태는 접수예정과 접수중만 선택해 적용할 수 있다', () => {
+    const onApply = vi.fn()
+    renderFilter({ kind: 'announcement', onApply })
 
     fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    const statusGroup = within(screen.getByRole('group', { name: '모집상태' }))
+    expect(statusGroup.queryByRole('checkbox', { name: '접수마감' }))
+      .not.toBeInTheDocument()
+    fireEvent.click(statusGroup.getByRole('checkbox', { name: '접수예정' }))
+    fireEvent.click(statusGroup.getByRole('checkbox', { name: '접수중' }))
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
 
-    const rentalTypeGroup = screen.getByRole('group', { name: '임대유형' })
-    const firstChoice = within(rentalTypeGroup).getByRole('checkbox', {
-      name: '행복주택',
+    expect(onApply).toHaveBeenLastCalledWith({
+      applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'],
     })
-    const valueArea = firstChoice.closest('div')
-    const choiceVisual = firstChoice.nextElementSibling
-    const legend = within(rentalTypeGroup).getByText('임대유형')
+  })
 
-    if (
-      !(valueArea instanceof HTMLElement)
-      || !(choiceVisual instanceof HTMLElement)
-    ) {
-      throw new Error('임대유형 선택값 영역과 버튼을 찾을 수 없습니다.')
-    }
-    expect(getComputedStyle(valueArea).borderTopStyle)
-      .toBe('solid')
-    expect(getComputedStyle(valueArea).borderTopWidth)
-      .toBe('1px')
-    expect(getComputedStyle(valueArea).paddingTop).toBe('8px')
-    expect(getComputedStyle(legend).fontWeight).toBe('800')
-    expect(getComputedStyle(choiceVisual).minHeight).toBe('36px')
-    expect(getComputedStyle(choiceVisual).borderRadius).toBe('9px')
+  it('단지 모집상태에서는 접수마감도 선택해 적용할 수 있다', () => {
+    const onApply = vi.fn()
+    renderFilter({ kind: 'complex', onApply })
+
+    fireEvent.click(screen.getByRole('button', { name: '단지 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '접수마감' }))
+    fireEvent.click(screen.getByRole('button', { name: '단지 필터 적용' }))
+
+    expect(onApply).toHaveBeenLastCalledWith({ applicationStatuses: ['CLOSED'] })
+  })
+
+  it('공고 조건을 함께 선택해 적용하고 초기화한다', () => {
+    const onApply = vi.fn()
+    renderFilter({ kind: 'announcement', onApply })
+
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    fireEvent.click(within(screen.getByRole('group', { name: '임대유형' }))
+      .getByRole('checkbox', { name: '행복주택' }))
+    fireEvent.click(within(screen.getByRole('group', { name: '모집상태' }))
+      .getByRole('checkbox', { name: '접수중' }))
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
+
+    expect(onApply).toHaveBeenLastCalledWith({
+      rentalTypes: ['HAPPY_HOUSING'],
+      applicationStatuses: ['APPLYING'],
+    })
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }))
+    expect(onApply).toHaveBeenLastCalledWith({})
+    expect(screen.getByRole('checkbox', { name: '행복주택' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: '접수중' })).not.toBeChecked()
+  })
+
+  it('헤더에서 닫거나 Escape를 누르면 적용 없이 닫고 열기 버튼으로 포커스를 돌린다', () => {
+    const onApply = vi.fn()
+    renderFilter({ kind: 'announcement', onApply })
+
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    expect(screen.getByRole('heading', { name: '공고 필터' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '공고 필터 닫기' })).toHaveFocus()
+    fireEvent.click(screen.getByRole('checkbox', { name: '행복주택' }))
+    fireEvent.keyDown(screen.getByRole('checkbox', { name: '행복주택' }), {
+      key: 'Escape',
+    })
+
+    expect(screen.queryByRole('checkbox', { name: '행복주택' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '공고 필터 열기' })).toHaveFocus()
+    expect(onApply).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    expect(screen.getByRole('checkbox', { name: '행복주택' })).not.toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 닫기' }))
+    expect(screen.getByRole('button', { name: '공고 필터 열기' })).toHaveFocus()
   })
 
   it('시도를 선택하면 직속 시군구를 불러오고 시도만 또는 시군구까지 적용한다', async () => {
@@ -225,17 +241,4 @@ function renderFilter({
     regionRepository,
   } as ComponentProps<typeof SearchFilterPanel>
   return render(createElement(SearchFilterPanel, props))
-}
-
-function scopeCssModule(
-  stylesheet: string,
-  classNames: Readonly<Record<string, string>>,
-) {
-  return Object.entries(classNames).reduce(
-    (scopedStylesheet, [className, scopedClassName]) => scopedStylesheet.replace(
-      new RegExp(`\\.${className}(?![\\w-])`, 'g'),
-      `.${scopedClassName}`,
-    ),
-    stylesheet,
-  )
 }

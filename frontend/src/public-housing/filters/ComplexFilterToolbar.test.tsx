@@ -1,7 +1,5 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import type { ComponentProps } from 'react'
+import { type ComponentProps, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { ComplexSearchFilters } from '../api/publicHousingRepository.ts'
 import { ComplexFilterToolbar } from './ComplexFilterToolbar.tsx'
@@ -43,25 +41,91 @@ const BASE_FILTERS: ComplexSearchFilters = {
   builtYearTo: 2024,
 }
 
-const TOOLBAR_STYLES = readFileSync(
-  resolve(
-    process.cwd(),
-    'src/public-housing/filters/ComplexFilterToolbar.module.css',
-  ),
-  'utf8',
-)
-
 describe('ComplexFilterToolbar', () => {
-  it('데스크톱 트리거와 선택값을 36px 높이의 둥근 사각형으로 통일한다', () => {
-    const triggerRule = TOOLBAR_STYLES.match(/\.trigger\s*\{([^}]*)\}/)?.[1]
-    const choiceRule = TOOLBAR_STYLES.match(
-      /\.choice\s*>\s*span\s*\{([^}]*)\}/,
-    )?.[1]
+  it('기본 필터 선택과 해제를 즉시 반영하고 팝오버와 포커스를 유지한다', () => {
+    render(<StatefulToolbar initialFilters={{ agencyCodes: ['SH'] }} />)
+    fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 열기' }))
+    const happy = screen.getByRole('checkbox', { name: '행복주택' })
+    happy.focus()
+    fireEvent.click(happy)
 
-    expect(triggerRule).toMatch(/height:\s*36px;/)
-    expect(triggerRule).toMatch(/border-radius:\s*9px;/)
-    expect(choiceRule).toMatch(/min-height:\s*36px;/)
-    expect(choiceRule).toMatch(/border-radius:\s*9px;/)
+    expect(appliedFilters()).toEqual({ agencyCodes: ['SH'], rentalTypes: ['HAPPY_HOUSING'] })
+    expect(screen.getByRole('region', { name: '임대유형 필터' })).toBeVisible()
+    expect(happy).toHaveFocus()
+    expect(screen.queryByRole('button', { name: '임대유형 필터 적용' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: '국민임대' }))
+    expect(appliedFilters()).toEqual({
+      agencyCodes: ['SH'], rentalTypes: ['HAPPY_HOUSING', 'NATIONAL_RENTAL'],
+    })
+    fireEvent.click(happy)
+    fireEvent.click(screen.getByRole('checkbox', { name: '국민임대' }))
+    expect(appliedFilters()).toEqual({ agencyCodes: ['SH'] })
+  })
+
+  it('슬라이더를 연속 조작해도 손잡이를 유지하고 변경하지 않은 원값을 보존한다', () => {
+    render(<StatefulToolbar initialFilters={{
+      minDeposit: 140_000_000, maxDeposit: 155_000_000,
+      minMonthlyRent: 610_000, maxMonthlyRent: 700_000,
+    }} />)
+    fireEvent.click(screen.getByRole('button', { name: '가격 필터 열기' }))
+    const minimum = screen.getByRole('slider', { name: '임대보증금 최솟값' })
+    minimum.focus()
+    fireEvent.change(minimum, { target: { value: '160000000' } })
+    expect(appliedFilters()).toEqual({
+      minDeposit: 160_000_000, maxDeposit: 160_000_000,
+      minMonthlyRent: 610_000, maxMonthlyRent: 700_000,
+    })
+    expect(minimum).toHaveFocus()
+    expect(screen.getByRole('slider', { name: '임대보증금 최솟값' })).toBe(minimum)
+    fireEvent.change(minimum, { target: { value: '120000000' } })
+    expect(appliedFilters()).toEqual({
+      minDeposit: 120_000_000, maxDeposit: 160_000_000,
+      minMonthlyRent: 610_000, maxMonthlyRent: 700_000,
+    })
+  })
+
+  it('준공년도 역전은 조회하지 않고 범위를 바로잡으면 즉시 반영한다', () => {
+    render(<StatefulToolbar initialFilters={{ builtYearFrom: 2019, builtYearTo: 2024 }} />)
+    fireEvent.click(screen.getByRole('button', { name: '준공년도 필터 열기' }))
+    fireEvent.change(screen.getByLabelText('최소 준공년도'), { target: { value: '2025' } })
+    expect(appliedFilters()).toEqual({ builtYearFrom: 2019, builtYearTo: 2024 })
+    expect(screen.getByRole('alert')).toHaveTextContent('최소 준공년도')
+    fireEvent.change(screen.getByLabelText('최대 준공년도'), { target: { value: '2026' } })
+    expect(appliedFilters()).toEqual({ builtYearFrom: 2025, builtYearTo: 2026 })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it.each(['pointer', 'keyboard'])('%s 슬라이더 연속 조작은 완료한 범위만 한 번 적용한다', (interaction) => {
+    const onApply = vi.fn()
+    renderToolbar({ onApply })
+    fireEvent.click(screen.getByRole('button', { name: '가격 필터 열기' }))
+    const minimum = screen.getByRole('slider', { name: '임대보증금 최솟값' })
+    if (interaction === 'pointer') fireEvent.pointerDown(minimum)
+    else fireEvent.keyDown(minimum, { key: 'ArrowRight' })
+    fireEvent.change(minimum, { target: { value: '100000000' } })
+    fireEvent.change(minimum, { target: { value: '200000000' } })
+    expect(onApply).not.toHaveBeenCalled()
+    expect(screen.getByRole('status', { name: '임대보증금 선택 범위' })).toHaveTextContent('2억 이상')
+
+    if (interaction === 'pointer') fireEvent.pointerUp(minimum)
+    else fireEvent.keyUp(minimum, { key: 'ArrowRight' })
+    expect(onApply).toHaveBeenCalledExactlyOnceWith({ minDeposit: 200_000_000 })
+    fireEvent.blur(minimum)
+    expect(onApply).toHaveBeenCalledOnce()
+  })
+
+  it('외부 탐색으로 조건이 바뀌면 이전 기본 필터 입력을 닫고 새 조건을 표시한다', () => {
+    const onApply = vi.fn()
+    const { rerender } = renderToolbar({ filters: { minDeposit: 100_000_000 }, onApply })
+    fireEvent.click(screen.getByRole('button', { name: '가격 필터 열기' }))
+
+    rerender(<ComplexFilterToolbar filters={{ maxDeposit: 200_000_000 }} onApply={onApply} />)
+
+    expect(screen.queryByRole('region', { name: '가격 필터' })).not.toBeInTheDocument()
+    expect(onApply).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '가격 필터 열기' }))
+    expect(screen.getByRole('slider', { name: '임대보증금 최솟값' })).toHaveValue('0')
+    expect(screen.getByRole('slider', { name: '임대보증금 최댓값' })).toHaveValue('200000000')
   })
 
   it('자주 쓰는 필터 뒤에 아이콘 상세 필터를 두고 한 번에 하나의 팝오버만 연다', () => {
@@ -136,6 +200,20 @@ describe('ComplexFilterToolbar', () => {
     expect(primaryScroller).toContainElement(primaryTrigger)
     expect(primaryScroller).not.toContainElement(detailTrigger)
     expect(detailTrigger.parentElement).toBe(toolbar)
+  })
+
+  it('기본 필터를 닫고 다시 열어도 즉시 적용된 선택을 유지한다', () => {
+    render(<StatefulToolbar initialFilters={{}} />)
+    const trigger = screen.getByRole('button', { name: '임대유형 필터 열기' })
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('checkbox', { name: '행복주택' }))
+    fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 패널 닫기' }))
+
+    expect(screen.queryByRole('region', { name: '임대유형 필터' })).not.toBeInTheDocument()
+    expect(appliedFilters()).toEqual({ rentalTypes: ['HAPPY_HOUSING'] })
+    expect(trigger).toHaveFocus()
+    fireEvent.click(trigger)
+    expect(screen.getByRole('checkbox', { name: '행복주택' })).toBeChecked()
   })
 
   it('팝오버를 누른 필터 칩의 가로 중심에 연결한다', () => {
@@ -241,14 +319,11 @@ describe('ComplexFilterToolbar', () => {
       name: `${topic} 필터 열기`,
     }))
     fireEvent.click(screen.getByRole('checkbox', { name: option }))
-    fireEvent.click(screen.getByRole('button', {
-      name: `${topic} 필터 적용`,
-    }))
 
     expect(onApply).toHaveBeenCalledOnce()
     expect(onApply).toHaveBeenCalledWith(expected)
-    expect(screen.queryByRole('region', { name: `${topic} 필터` }))
-      .not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: `${topic} 필터` })).toBeVisible()
+    expect(screen.queryByRole('button', { name: `${topic} 필터 적용` })).not.toBeInTheDocument()
   })
 
   it('상세 필터의 지역·공급기관·모집유형을 한 번에 적용하고 다른 조건은 보존한다', () => {
@@ -367,10 +442,7 @@ describe('ComplexFilterToolbar', () => {
     })).getByRole('button', { name: '2~3억' }))
     fireEvent.click(within(within(popover).getByRole('group', {
       name: '월 임대료 빠른 선택',
-    })).getByRole('button', { name: '40~60만' }))
-    fireEvent.click(within(popover).getByRole('button', {
-      name: '가격 필터 적용',
-    }))
+    })).getByRole('button', { name: '40~60만원' }))
 
     expect(onApply).toHaveBeenCalledWith({
       ...BASE_FILTERS,
@@ -398,13 +470,13 @@ describe('ComplexFilterToolbar', () => {
     )).toEqual(['1억 이하', '1~2억', '2~3억', '3~5억', '5억 이상'])
     expect(within(rentPresets).getAllByRole('button').map(
       (button) => button.textContent,
-    )).toEqual(['10만 이하', '10~20만', '20~30만', '30~40만', '40~60만'])
+    )).toEqual(['10만원 이하', '10~20만원', '20~30만원', '30~40만원', '40~60만원'])
     expect(within(popover).getAllByRole('status', {
       name: /선택 범위/,
     }).map((output) => output.textContent)).toEqual(['전체', '전체'])
   })
 
-  it('URL의 endpoint·domain 초과·step 비정렬 범위를 무변경 적용하면 그대로 보존한다', () => {
+  it('가격·면적을 열기만 하면 URL 원값을 바꾸지 않고 다른 필터 선택에도 보존한다', () => {
     const onApply = vi.fn()
     const filters: ComplexSearchFilters = {
       minDeposit: 0,
@@ -417,16 +489,14 @@ describe('ComplexFilterToolbar', () => {
     renderToolbar({ filters, onApply })
 
     fireEvent.click(screen.getByRole('button', { name: '가격 필터 열기' }))
-    fireEvent.click(screen.getByRole('button', { name: '가격 필터 적용' }))
     fireEvent.click(screen.getByRole('button', {
       name: '전용면적 필터 열기',
     }))
-    fireEvent.click(screen.getByRole('button', {
-      name: '전용면적 필터 적용',
-    }))
 
-    expect(onApply).toHaveBeenNthCalledWith(1, filters)
-    expect(onApply).toHaveBeenNthCalledWith(2, filters)
+    expect(onApply).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '행복주택' }))
+    expect(onApply).toHaveBeenCalledWith({ ...filters, rentalTypes: ['HAPPY_HOUSING'] })
   })
 
   it('가격 slider를 조작하면 해당 범위만 정규화하고 다른 범위 원값은 보존한다', () => {
@@ -443,7 +513,6 @@ describe('ComplexFilterToolbar', () => {
     fireEvent.change(screen.getByRole('slider', {
       name: '임대보증금 최솟값',
     }), { target: { value: '160000000' } })
-    fireEvent.click(screen.getByRole('button', { name: '가격 필터 적용' }))
 
     expect(onApply).toHaveBeenCalledWith({
       minDeposit: 160_000_000,
@@ -464,9 +533,6 @@ describe('ComplexFilterToolbar', () => {
     fireEvent.click(within(within(popover).getByRole('group', {
       name: '전용면적 빠른 선택',
     })).getByRole('button', { name: '30평 이상' }))
-    fireEvent.click(within(popover).getByRole('button', {
-      name: '전용면적 필터 적용',
-    }))
 
     expect(onApply).toHaveBeenCalledWith({
       regionCode: '11',
@@ -497,9 +563,6 @@ describe('ComplexFilterToolbar', () => {
     fireEvent.change(screen.getByRole('combobox', {
       name: '최대 준공년도',
     }), { target: { value: '2020' } })
-    fireEvent.click(screen.getByRole('button', {
-      name: '준공년도 필터 적용',
-    }))
 
     expect(onApply).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toHaveTextContent(
@@ -538,9 +601,6 @@ describe('ComplexFilterToolbar', () => {
 
     fireEvent.change(minimum, { target: { value: '1998' } })
     fireEvent.change(maximum, { target: { value: '2021' } })
-    fireEvent.click(screen.getByRole('button', {
-      name: '준공년도 필터 적용',
-    }))
 
     expect(onApply).toHaveBeenCalledWith({
       builtYearFrom: 1998,
@@ -548,7 +608,7 @@ describe('ComplexFilterToolbar', () => {
     })
   })
 
-  it('선택 범위 밖의 기존 준공년도도 드롭다운에서 보존해 적용한다', () => {
+  it('선택 범위 밖의 기존 준공년도도 드롭다운에서 보존한다', () => {
     const onApply = vi.fn()
     const filters: ComplexSearchFilters = {
       builtYearFrom: 1979,
@@ -573,11 +633,8 @@ describe('ComplexFilterToolbar', () => {
     expect(within(maximum).getByRole('option', { name: '9999년' }))
       .toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', {
-      name: '준공년도 필터 적용',
-    }))
 
-    expect(onApply).toHaveBeenCalledWith(filters)
+    expect(onApply).not.toHaveBeenCalled()
   })
 
   it('지역 repository로 시군구를 불러와 지역 키만 교체한다', async () => {
@@ -616,7 +673,7 @@ describe('ComplexFilterToolbar', () => {
     const expectedSummaries = [
       ['임대유형', '국민임대'],
       ['모집상태', '접수중'],
-      ['가격', '1억~2억 · 월 20만~30만'],
+      ['가격', '1억~2억 · 월 20만원~30만원'],
       ['전용면적', '10~19평'],
       ['준공년도', '2019~2024년'],
     ] as const
@@ -831,6 +888,18 @@ describe('ComplexFilterToolbar', () => {
     expect(rentalType).toHaveFocus()
   })
 })
+
+function StatefulToolbar({ initialFilters }: { initialFilters: ComplexSearchFilters }) {
+  const [filters, setFilters] = useState(initialFilters)
+  return <>
+    <ComplexFilterToolbar filters={filters} onApply={setFilters} />
+    <output data-testid="applied-filters">{JSON.stringify(filters)}</output>
+  </>
+}
+
+function appliedFilters() {
+  return JSON.parse(screen.getByTestId('applied-filters').textContent ?? '{}') as ComplexSearchFilters
+}
 
 function renderToolbar({
   filters = {},

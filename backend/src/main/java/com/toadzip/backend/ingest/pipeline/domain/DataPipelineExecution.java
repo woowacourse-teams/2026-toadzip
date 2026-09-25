@@ -27,10 +27,16 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(
         name = "data_pipeline_executions",
-        indexes = @Index(
-                name = "idx_data_pipeline_execution_type_id",
-                columnList = "type, id"
-        )
+        indexes = {
+                @Index(
+                        name = "idx_data_pipeline_execution_type_id",
+                        columnList = "type, id"
+                ),
+                @Index(
+                        name = "idx_data_pipeline_execution_upstream",
+                        columnList = "upstream_execution_id"
+                )
+        }
 )
 @NoArgsConstructor(access = PROTECTED)
 public class DataPipelineExecution {
@@ -49,6 +55,14 @@ public class DataPipelineExecution {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private DataPipelineExecutionStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "execution_trigger", nullable = false, length = 20)
+    private DataPipelineExecutionTrigger executionTrigger;
+
+    private Instant scheduledAt;
+
+    private UUID upstreamExecutionId;
 
     @Enumerated(EnumType.STRING)
     @Column(length = 60)
@@ -96,10 +110,20 @@ public class DataPipelineExecution {
 
     private Instant finishedAt;
 
-    private DataPipelineExecution(UUID executionId, DataPipelineType type, Instant startedAt) {
+    private DataPipelineExecution(
+            UUID executionId,
+            DataPipelineType type,
+            Instant startedAt,
+            DataPipelineExecutionTrigger executionTrigger,
+            Instant scheduledAt,
+            UUID upstreamExecutionId
+    ) {
         this.executionId = executionId;
         this.type = type;
         this.status = DataPipelineExecutionStatus.RUNNING;
+        this.executionTrigger = executionTrigger;
+        this.scheduledAt = scheduledAt;
+        this.upstreamExecutionId = upstreamExecutionId;
         this.startedAt = startedAt;
         this.heartbeatAt = startedAt;
     }
@@ -109,7 +133,38 @@ public class DataPipelineExecution {
             DataPipelineType type,
             Instant startedAt
     ) {
-        return new DataPipelineExecution(executionId, type, startedAt);
+        return start(
+                executionId,
+                type,
+                startedAt,
+                DataPipelineExecutionTrigger.MANUAL,
+                null,
+                null
+        );
+    }
+
+    public static DataPipelineExecution start(
+            UUID executionId,
+            DataPipelineType type,
+            Instant startedAt,
+            DataPipelineExecutionTrigger executionTrigger,
+            Instant scheduledAt,
+            UUID upstreamExecutionId
+    ) {
+        if (executionTrigger == null) {
+            throw new IllegalArgumentException("실행 시작 원인은 필수입니다.");
+        }
+        if (executionTrigger != DataPipelineExecutionTrigger.MANUAL && scheduledAt == null) {
+            throw new IllegalArgumentException("정기·복구 실행에는 예정 시각이 필요합니다.");
+        }
+        return new DataPipelineExecution(
+                executionId,
+                type,
+                startedAt,
+                executionTrigger,
+                scheduledAt,
+                upstreamExecutionId
+        );
     }
 
     public void startStep(DataPipelineStep step) {
@@ -135,6 +190,11 @@ public class DataPipelineExecution {
         }
         completedStepResults.add(DataPipelineCompletedStep.of(step, report));
         currentStep = null;
+    }
+
+    public void completeStepWithWarnings(DataPipelineStep step, String report) {
+        completeStep(step, report);
+        partiallyFailedSteps.add(DataPipelinePartiallyFailedStep.of(step, report));
     }
 
     public List<DataPipelineStep> getCompletedSteps() {
@@ -212,6 +272,7 @@ public class DataPipelineExecution {
 
     public boolean isCompleted() {
         return status == DataPipelineExecutionStatus.COMPLETED
+                || status == DataPipelineExecutionStatus.COMPLETED_WARNINGS
                 || status == DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS;
     }
 
@@ -224,6 +285,9 @@ public class DataPipelineExecution {
     }
 
     private DataPipelineExecutionStatus completionStatus() {
+        if (!partiallyFailedSteps.isEmpty()) {
+            return DataPipelineExecutionStatus.COMPLETED_WARNINGS;
+        }
         if (skippedSteps.isEmpty()) {
             return DataPipelineExecutionStatus.COMPLETED;
         }

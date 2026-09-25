@@ -18,21 +18,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class LhAnnouncementCollectionProgressStore {
 
     private final LhAnnouncementCollectionCheckpointRepository checkpointRepository;
-    private final LhAnnouncementDetailSourceRepository detailRepository;
-    private final LhAnnouncementSupplySourceRepository supplyRepository;
     private final LhAnnouncementCollectionLinkRepository linkRepository;
     private final Clock clock;
 
     public LhAnnouncementCollectionProgressStore(
             LhAnnouncementCollectionCheckpointRepository checkpointRepository,
-            LhAnnouncementDetailSourceRepository detailRepository,
-            LhAnnouncementSupplySourceRepository supplyRepository,
             LhAnnouncementCollectionLinkRepository linkRepository,
             Clock clock
     ) {
         this.checkpointRepository = checkpointRepository;
-        this.detailRepository = detailRepository;
-        this.supplyRepository = supplyRepository;
         this.linkRepository = linkRepository;
         this.clock = clock;
     }
@@ -40,7 +34,6 @@ public class LhAnnouncementCollectionProgressStore {
     public BatchProgress findBatch(
             ExternalDataSource source,
             Collection<String> requestDescriptions,
-            Collection<String> panIds,
             Collection<String> sourceAnnouncementKeys,
             Instant freshCompletedAfter
     ) {
@@ -57,18 +50,11 @@ public class LhAnnouncementCollectionProgressStore {
                         freshCompletedAfter
                 )
         );
-        Set<String> storedPanIds = findStoredPanIds(source, panIds);
-        Set<String> historyPanIds = Set.copyOf(checkpointRepository.findHistoryPanIds(source, panIds));
         Map<String, String> linkedRequestHashes = findLinkedRequestHashes(
                 source,
                 sourceAnnouncementKeys
         );
-        return new BatchProgress(
-                freshRequestHashes,
-                storedPanIds,
-                historyPanIds,
-                linkedRequestHashes
-        );
+        return new BatchProgress(freshRequestHashes, linkedRequestHashes);
     }
 
     @Transactional
@@ -128,16 +114,6 @@ public class LhAnnouncementCollectionProgressStore {
         linkRepository.save(link);
     }
 
-    private Set<String> findStoredPanIds(ExternalDataSource source, Collection<String> panIds) {
-        if (source == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL) {
-            return Set.copyOf(detailRepository.findStoredPanIds(panIds));
-        }
-        if (source == ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY) {
-            return Set.copyOf(supplyRepository.findStoredPanIds(panIds));
-        }
-        throw new IllegalArgumentException("LH 공고 상세·공급 원천만 확인할 수 있습니다.");
-    }
-
     private Map<String, String> findLinkedRequestHashes(
             ExternalDataSource source,
             Collection<String> sourceAnnouncementKeys
@@ -155,45 +131,24 @@ public class LhAnnouncementCollectionProgressStore {
 
     public record BatchProgress(
             Set<String> freshRequestHashes,
-            Set<String> storedPanIds,
-            Set<String> historyPanIds,
             Map<String, String> linkedRequestHashes
     ) {
 
-        public BatchProgress(
-                Set<String> freshRequestHashes,
-                Set<String> storedPanIds,
-                Set<String> historyPanIds
-        ) {
-            this(freshRequestHashes, storedPanIds, historyPanIds, Map.of());
-        }
-
         public BatchProgress {
             freshRequestHashes = Set.copyOf(freshRequestHashes);
-            storedPanIds = Set.copyOf(storedPanIds);
-            historyPanIds = Set.copyOf(historyPanIds);
             linkedRequestHashes = Map.copyOf(linkedRequestHashes);
         }
 
         public static BatchProgress empty() {
-            return new BatchProgress(Set.of(), Set.of(), Set.of());
+            return new BatchProgress(Set.of(), Map.of());
         }
 
         public BatchProgress plus(BatchProgress other) {
             Set<String> mergedFreshRequestHashes = new HashSet<>(freshRequestHashes);
             mergedFreshRequestHashes.addAll(other.freshRequestHashes);
-            Set<String> mergedStoredPanIds = new HashSet<>(storedPanIds);
-            mergedStoredPanIds.addAll(other.storedPanIds);
-            Set<String> mergedHistoryPanIds = new HashSet<>(historyPanIds);
-            mergedHistoryPanIds.addAll(other.historyPanIds);
             Map<String, String> mergedLinkedRequestHashes = new HashMap<>(linkedRequestHashes);
             mergedLinkedRequestHashes.putAll(other.linkedRequestHashes);
-            return new BatchProgress(
-                    mergedFreshRequestHashes,
-                    mergedStoredPanIds,
-                    mergedHistoryPanIds,
-                    mergedLinkedRequestHashes
-            );
+            return new BatchProgress(mergedFreshRequestHashes, mergedLinkedRequestHashes);
         }
 
         public boolean isFresh(String requestDescription) {

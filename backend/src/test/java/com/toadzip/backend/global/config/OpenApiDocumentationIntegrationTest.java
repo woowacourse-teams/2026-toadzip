@@ -76,7 +76,7 @@ class OpenApiDocumentationIntegrationTest {
         HttpResponse<String> response = TestHttpClient.get(port, "/v3/api-docs");
 
         assertEquals(200, response.statusCode());
-        assertEquals("두꺼비집 API", JsonPath.read(response.body(), "$.info.title"));
+        assertEquals("공공주택 복덕방 API", JsonPath.read(response.body(), "$.info.title"));
         assertEquals("0.0.1", JsonPath.read(response.body(), "$.info.version"));
     }
 

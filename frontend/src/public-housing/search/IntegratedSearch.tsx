@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { DetailCloseButton } from '../components/DetailPrimitives.tsx'
 import {
   integratedSearchRepository,
   type IntegratedSearchRepository,
@@ -7,10 +8,12 @@ import {
   type SearchType,
 } from './integratedSearchRepository.ts'
 import styles from './IntegratedSearch.module.css'
+import { findRegionBoundaryMetadata } from '../regions/regionBoundaryCatalog.ts'
 
 interface GroupState {
   readonly items: readonly SearchResultItem[]
   readonly hasNext: boolean
+  readonly totalCount: number | null
   readonly kind: 'loading' | 'ready' | 'error'
   readonly error: string | null
 }
@@ -21,12 +24,14 @@ export interface IntegratedSearchProps {
   readonly onActiveChange?: (active: boolean) => void
   readonly onSelect: (item: SearchResultItem) => void
   readonly repository?: IntegratedSearchRepository
+  readonly selectionControl?: ReactNode
 }
 
 export function IntegratedSearch({
   onActiveChange,
   onSelect,
   repository = integratedSearchRepository,
+  selectionControl,
 }: IntegratedSearchProps) {
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -39,36 +44,45 @@ export function IntegratedSearch({
 
   return (
     <section className={`integrated-search${active ? ' is-active' : ''}`} aria-label="통합 검색">
-      <div className={styles.top}>
+      <div className={selectionControl ? `${styles.top} ${styles.withSelection}` : styles.top}>
         <label className="integrated-search__input">
-          <span className="visually-hidden">공고, 단지, 지역 검색</span>
+          <span className="visually-hidden">지역, 단지, 공고 검색</span>
+          <svg
+            className="integrated-search__icon"
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          >
+            <circle cx="10.5" cy="10.5" r="7" />
+            <path d="m16 16 5 5" />
+          </svg>
           <input
             ref={inputRef}
             type="search"
             value={query}
-            placeholder="공고, 단지, 지역 검색"
+            placeholder="지역, 단지, 공고 검색"
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
+        {selectionControl}
         {active && (
           <div className={styles.header}>
             <h2>검색결과</h2>
-            <button
-              className={styles.close}
-              type="button"
-              aria-label="검색결과 닫기"
-              onClick={() => {
+            <DetailCloseButton
+              label="검색결과 닫기"
+              onClose={() => {
                 setQuery('')
                 inputRef.current?.focus({ preventScroll: true })
               }}
-            >
-              검색결과 닫기 <span aria-hidden="true">×</span>
-            </button>
+            />
           </div>
         )}
       </div>
-      <div className="integrated-search__body">
-        {active ? (
+      {active && (
+        <div className="integrated-search__body">
           <div className="integrated-search__results" key={normalizedQuery}>
             {searchTypes.map((type) => (
               <SearchGroup
@@ -80,8 +94,8 @@ export function IntegratedSearch({
               />
             ))}
           </div>
-        ) : <p className="integrated-search__hint">두 글자 이상 입력해 주세요.</p>}
-      </div>
+        </div>
+      )}
     </section>
   )
 }
@@ -100,7 +114,7 @@ function SearchGroup({
   const [page, setPage] = useState(0)
   const [retryRevision, setRetryRevision] = useState(0)
   const [state, setState] = useState<GroupState>({
-    error: null, hasNext: false, items: [], kind: 'loading',
+    error: null, hasNext: false, items: [], kind: 'loading', totalCount: null,
   })
   const headingId = useId()
   const label = typeLabel(type)
@@ -123,6 +137,7 @@ function SearchGroup({
           setState((current) => ({
             error: null,
             hasNext: response.hasNext,
+            totalCount: response.totalCount,
             items: page === 0
               ? responseItems(response, type)
               : appendUnique(current.items, responseItems(response, type)),
@@ -152,6 +167,7 @@ function SearchGroup({
         {state.items.map((item) => {
           const unavailable = item.type === 'REGION'
             && (item.latitude === null || item.longitude === null)
+            && !findRegionBoundaryMetadata(item.regionCode ?? item.id)
           return (
             <li key={`${item.type}-${item.id}`}>
               <button
@@ -188,13 +204,19 @@ function SearchGroup({
       )}
       {state.hasNext && state.kind !== 'error' && (
         <button
-          className={styles.more}
+          className={`housing-results__more ${styles.more}`}
           type="button"
-          aria-label={`${label} 5개 더보기`}
+          aria-label={`${label} 더보기, 현재 ${state.items.length}개, 전체 ${state.totalCount === null ? '확인 중' : `${state.totalCount}개`}`}
           disabled={state.kind === 'loading'}
           onClick={() => setPage((current) => current + 1)}
         >
-          5개 더보기 <span aria-hidden="true">⌄</span>
+          <span>{state.kind === 'loading' ? '불러오는 중' : '더보기'}</span>
+          <span className="housing-results__progress">
+            ({state.items.length.toLocaleString('ko-KR')} | {state.totalCount?.toLocaleString('ko-KR') ?? '—'})
+          </span>
+          <svg aria-hidden="true" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="m3 4.5 3 3 3-3" />
+          </svg>
         </button>
       )}
       {page === 100 && state.kind === 'ready' && (

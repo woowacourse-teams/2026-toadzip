@@ -48,13 +48,13 @@ describe('LocalPublicHousingExplorer', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       '로컬 mock 데이터를 준비하고 있습니다.',
     )
-    expect(screen.queryByRole('heading', { name: '공공임대주택' }))
+    expect(screen.queryByRole('complementary', { name: '공공임대주택 검색 결과' }))
       .not.toBeInTheDocument()
 
     await act(async () => resolveSnapshot(SNAPSHOT))
-    expect(await screen.findByRole('heading', { name: '공공임대주택' }))
+    expect(await screen.findByRole('complementary', { name: '공공임대주택 검색 결과' }))
       .toBeVisible()
-    expect(screen.getByText('로컬 mock')).toBeVisible()
+    expect(screen.queryByText('로컬 mock')).not.toBeInTheDocument()
     expect(screen.getByTestId('map-render-mode')).toHaveTextContent('legacy')
   })
 
@@ -69,7 +69,7 @@ describe('LocalPublicHousingExplorer', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
 
-    expect(await screen.findByRole('heading', { name: '공공임대주택' }))
+    expect(await screen.findByRole('complementary', { name: '공공임대주택 검색 결과' }))
       .toBeVisible()
     expect(loadSnapshot).toHaveBeenCalledTimes(2)
   })
@@ -87,7 +87,7 @@ describe('LocalPublicHousingExplorer', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       '로컬 mock 데이터를 불러오지 못했습니다.',
     )
-    expect(screen.queryByRole('heading', { name: '공공임대주택' }))
+    expect(screen.queryByRole('complementary', { name: '공공임대주택 검색 결과' }))
       .not.toBeInTheDocument()
   })
 
@@ -95,7 +95,7 @@ describe('LocalPublicHousingExplorer', () => {
     const loadSnapshot = vi.fn().mockResolvedValue(SNAPSHOT)
     renderLocalExplorer(loadSnapshot)
 
-    await screen.findByRole('heading', { name: '공공임대주택' })
+    await screen.findByRole('complementary', { name: '공공임대주택 검색 결과' })
     fireEvent.click(screen.getByRole('button', { name: '상세 필터 열기' }))
     const detailFilter = screen.getByRole('region', { name: '상세 필터' })
     fireEvent.change(within(detailFilter).getByLabelText('시·도'), {

@@ -5,8 +5,8 @@ import static com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingCand
 
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
+import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
-import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.service.RoadAddressGeocodingService;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingCandidate;
@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
@@ -96,6 +97,11 @@ class MyHomeComplexMappingBatchProcessor {
             List<MyHomeComplexSource> sources
     ) {
         if (sources == null || sources.isEmpty()) {
+            failureStore.replaceForComplex(
+                    candidate.getSourceComplexIdentifier(),
+                    List.of(),
+                    currentExecutionId()
+            );
             candidateStore.delete(candidate);
             return MyHomeComplexMappingReport.failedRows(0);
         }
@@ -131,7 +137,11 @@ class MyHomeComplexMappingBatchProcessor {
     private void completeCandidate(MyHomeComplexMappingCandidate candidate) {
         candidate.markMapped();
         candidateStore.save(candidate);
-        failureStore.replaceForComplex(candidate.getSourceComplexIdentifier(), List.of());
+        failureStore.replaceForComplex(
+                candidate.getSourceComplexIdentifier(),
+                List.of(),
+                currentExecutionId()
+        );
     }
 
     private MyHomeComplexMappingReport handleGeocodingFailure(
@@ -148,10 +158,13 @@ class MyHomeComplexMappingBatchProcessor {
                 "도로명주소 좌표 변환 실패: " + exception.getReason() + ", " + exception.getMessage(),
                 occurredAt
         );
-        if (exception.getReason() == RoadAddressGeocodingFailureReason.RATE_LIMIT_EXCEEDED) {
-            return MyHomeComplexMappingReport.rateLimitedRows(report.failedSourceRowCount());
-        }
-        return report;
+        return switch (exception.getReason()) {
+            case RATE_LIMIT_EXCEEDED ->
+                    MyHomeComplexMappingReport.rateLimitedRows(report.failedSourceRowCount());
+            case EXTERNAL_API_ERROR, COORDINATE_CONVERSION_ERROR, NOT_CONFIGURED ->
+                    MyHomeComplexMappingReport.operationalFailedRows(report.failedSourceRowCount());
+            case INVALID_ADDRESS, ADDRESS_NOT_FOUND, AMBIGUOUS_ADDRESS, COORDINATE_NOT_FOUND -> report;
+        };
     }
 
     private MyHomeComplexMappingReport handleUnexpectedFailure(
@@ -174,11 +187,12 @@ class MyHomeComplexMappingBatchProcessor {
             candidate.failMapping();
             candidateStore.save(candidate);
         }
-        return recordFailure(
+        MyHomeComplexMappingReport report = recordFailure(
                 candidate.getSourceComplexIdentifier(), sources,
                 MyHomeComplexMappingFailureReason.PERSISTENCE_ERROR,
                 PERSISTENCE_FAILURE_DETAIL, occurredAt
         );
+        return MyHomeComplexMappingReport.operationalFailedRows(report.failedSourceRowCount());
     }
 
     private void resolveCoordinates(MyHomeComplexMappingCandidate candidate) {
@@ -208,7 +222,11 @@ class MyHomeComplexMappingBatchProcessor {
                     source.getSourceKey(), sourceComplexIdentifier, reason, detail, occurredAt
             ));
         }
-        failureStore.replaceForComplex(sourceComplexIdentifier, failures);
+        failureStore.replaceForComplex(sourceComplexIdentifier, failures, currentExecutionId());
         return MyHomeComplexMappingReport.failedRows(failures.size());
+    }
+
+    private UUID currentExecutionId() {
+        return IngestExecutionContext.currentExecutionId().orElse(null);
     }
 }

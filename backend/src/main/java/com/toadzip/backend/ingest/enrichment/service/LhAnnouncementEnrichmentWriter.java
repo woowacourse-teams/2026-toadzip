@@ -166,7 +166,7 @@ public class LhAnnouncementEnrichmentWriter {
             }
             SupplyRow row = match.row();
             String previousSourceIdentifier = row.getLhSourceSupplyRowIdentifier();
-            if (row.enrichFromLh(source.sourceIdentifier(), source.expectedMoveInMonth(), source.totalHouseholdCount())) {
+            if (row.enrichFromLh(source.sourceIdentifier(), source.expectedMoveInMonth(), source.supplyHouseholdCount())) {
                 updatedRows++;
             }
             SupplyTargetWriteResult target = writeTarget(row, source, previousSourceIdentifier);

@@ -6,9 +6,11 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.housing.domain.AgencyCode;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
 import java.util.List;
@@ -64,8 +66,11 @@ class MyHomeAnnouncementSupplyRowResolverTest {
                 List.of(sourceRow),
                 false
         );
-        when(linkResolver.resolve(source)).thenReturn("pan-id");
-        when(supplyRepository.findAllByPanIdOrderBySourceOrderAsc("pan-id"))
+        LhAnnouncementRequest request = new LhAnnouncementRequest("pan-id", "03", "06", "07", "062");
+        when(linkResolver.resolveFirstLinked(List.of(source)))
+                .thenReturn(new LhAnnouncementLinkResolver.LinkedSource(source, request));
+        when(supplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
+                "pan-id", LhAnnouncementCollectionCheckpoint.requestHashOf(request.requestDescription())))
                 .thenReturn(List.of(lhSupply(lhComplexName)));
 
         MyHomeAnnouncementMappingData result = resolver.resolve(data);

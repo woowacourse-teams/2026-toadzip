@@ -8,6 +8,8 @@ public interface DataPipelineProgressListener {
 
     void completed(DataPipelineStep step, String report);
 
+    void completedWithWarnings(DataPipelineStep step, String report);
+
     void skipped(DataPipelineStep step, String reason, String serverResponse);
 
     void partiallyFailed(DataPipelineStep step, String report);

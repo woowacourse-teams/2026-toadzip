@@ -136,6 +136,14 @@ public class LhHousingTypeHouseholdSourceMapper {
 }
 
 record LhHousingTypeHouseholdSourceKey(String areaName, String supplyTypeName, String complexName) {
+
+    String failureKey() {
+        return component(areaName) + component(supplyTypeName) + component(complexName);
+    }
+
+    private String component(String value) {
+        return value.length() + ":" + value;
+    }
 }
 
 record LhHousingTypeHouseholdSource(

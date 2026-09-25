@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.collection.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.toadzip.backend.MigrationSqlSection;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -9,7 +10,6 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -20,7 +20,7 @@ class MyHomeAnnouncementLifecycleMigrationTest {
     private static final String SCHEMA = "myhome_announcement_lifecycle_migration_test";
 
     private static final String MIGRATION =
-            "db/migration/V20260902_01__add_myhome_announcement_source_lifecycle.sql";
+            "V20260902_01__add_myhome_announcement_source_lifecycle.sql";
 
     @Autowired
     private DataSource dataSource;
@@ -30,7 +30,7 @@ class MyHomeAnnouncementLifecycleMigrationTest {
         try (Connection connection = dataSource.getConnection()) {
             prepareLegacySchema(connection);
             try {
-                ScriptUtils.executeSqlScript(connection, new ClassPathResource(MIGRATION));
+                ScriptUtils.executeSqlScript(connection, MigrationSqlSection.resource(MIGRATION));
 
                 assertLifecycleValues(connection);
                 assertLifecycleConstraints(connection);

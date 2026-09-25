@@ -1,3 +1,4 @@
+import { formatHousingMoney } from '../presentation/housingMoney.ts'
 import {
   type CSSProperties,
   Fragment,
@@ -71,11 +72,11 @@ const DEPOSIT_PRESETS = [
 ] as const satisfies readonly DualRangeFilterPreset[]
 
 const MONTHLY_RENT_PRESETS = [
-  { label: '10만 이하', minimum: null, maximum: 100_000 },
-  { label: '10~20만', minimum: 100_000, maximum: 200_000 },
-  { label: '20~30만', minimum: 200_000, maximum: 300_000 },
-  { label: '30~40만', minimum: 300_000, maximum: 400_000 },
-  { label: '40~60만', minimum: 400_000, maximum: 590_000 },
+  { label: '10만원 이하', minimum: null, maximum: 100_000 },
+  { label: '10~20만원', minimum: 100_000, maximum: 200_000 },
+  { label: '20~30만원', minimum: 200_000, maximum: 300_000 },
+  { label: '30~40만원', minimum: 300_000, maximum: 400_000 },
+  { label: '40~60만원', minimum: 400_000, maximum: 590_000 },
 ] as const satisfies readonly DualRangeFilterPreset[]
 
 const AREA_PRESETS = [
@@ -148,10 +149,10 @@ const MOBILE_SHEET_TOPICS = [
 
 const POPOVER_WIDTHS = {
   region: 320,
-  rentalType: 280,
-  applicationStatus: 280,
-  agency: 280,
-  recruitmentType: 280,
+  rentalType: 320,
+  applicationStatus: 320,
+  agency: 320,
+  recruitmentType: 320,
   price: 420,
   exclusiveArea: 380,
   builtYear: 320,
@@ -216,6 +217,9 @@ export function ComplexFilterToolbar({
     readonly regionCode: string
   } | null>(null)
   const rootRef = useRef<HTMLElement>(null)
+  const desktopFormRef = useRef<HTMLFormElement>(null)
+  const previousFiltersSignatureRef = useRef(filtersSignature)
+  const quickAppliedSignatureRef = useRef<string | null>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const mobileSheetRef = useRef<HTMLElement>(null)
   const mobileSheetBodyRef = useRef<HTMLDivElement>(null)
@@ -227,6 +231,16 @@ export function ComplexFilterToolbar({
   const triggerRefs = useRef<
     Partial<Record<DesktopFilterTopic, HTMLButtonElement>>
   >({})
+
+  useEffect(() => {
+    if (previousFiltersSignatureRef.current === filtersSignature) return
+    previousFiltersSignatureRef.current = filtersSignature
+    if (quickAppliedSignatureRef.current !== filtersSignature && openTopic !== 'detail') {
+      setOpenTopic(null)
+      setErrorMessage(null)
+    }
+    quickAppliedSignatureRef.current = null
+  }, [filtersSignature, openTopic])
 
   useEffect(() => {
     if (openTopic === null) {
@@ -528,6 +542,22 @@ export function ComplexFilterToolbar({
     applyAndClose(openTopic, replaceTopic(filters, openTopic, draft))
   }
 
+  function applyQuickFilter(rangeValues: Readonly<Record<string, number | null>> = {}) {
+    if (openTopic === null || openTopic === 'detail' || desktopFormRef.current === null) return
+    const data = new FormData(desktopFormRef.current)
+    // Range inputs report both endpoints before their hidden inputs re-render.
+    Object.entries(rangeValues).forEach(([key, value]) => data.set(key, value === null ? '' : String(value)))
+    const draft = topicDraftFromForm(openTopic, data)
+    const rangeError = topicRangeError(openTopic, draft)
+    setErrorMessage(rangeError)
+    if (rangeError !== null) return
+    const next = replaceTopic(filters, openTopic, draft)
+    const nextSignature = searchFiltersSignature(next)
+    if (nextSignature === filtersSignature) return
+    quickAppliedSignatureRef.current = nextSignature
+    onApply(next)
+  }
+
   function applyAndClose(
     topic: DesktopFilterTopic,
     next: ComplexSearchFilters,
@@ -701,13 +731,45 @@ export function ComplexFilterToolbar({
             } as CSSProperties}
           >
             <form
-              key={`${openTopic}-${searchFiltersSignature(filters)}`}
+              key={openTopic === 'detail' ? `${openTopic}-${filtersSignature}` : openTopic}
+              ref={desktopFormRef}
               className={styles.form}
               onSubmit={submit}
+              onChange={(event) => {
+                if (event.target instanceof HTMLInputElement && event.target.type === 'range') return
+                applyQuickFilter()
+              }}
             >
-              <h2 className={styles.popoverHeading} id={headingId}>
-                {openLabel} 필터
-              </h2>
+              <header className={styles.popoverHeader}>
+                <button
+                  className={styles.reset}
+                  type="button"
+                  aria-label={`${openLabel} 필터 초기화`}
+                  onClick={resetOpenFilter}
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                    <path d="M16.4 8a6.5 6.5 0 1 0-.3 4.8M16.5 3.5V8H12" />
+                  </svg>
+                  초기화
+                </button>
+                <h2 className={styles.popoverHeading} id={headingId}>
+                  {openLabel} 필터
+                </h2>
+                <button
+                  className={styles.close}
+                  type="button"
+                  aria-label={`${openLabel} 필터 패널 닫기`}
+                  onClick={() => {
+                    setOpenTopic(null)
+                    setErrorMessage(null)
+                    triggerRefs.current[openTopic]?.focus()
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                    <path d="m5 5 14 14M19 5 5 19" />
+                  </svg>
+                </button>
+              </header>
               <div className={styles.fields}>
                 {openTopic === 'detail' ? (
                   <DetailFilterFields
@@ -719,25 +781,20 @@ export function ComplexFilterToolbar({
                     filters={filters}
                     regionRepository={regionRepository}
                     topic={openTopic}
+                    onRangeChange={applyQuickFilter}
                   />
                 )}
               </div>
               {errorMessage !== null && (
                 <p className={styles.error} role="alert">{errorMessage}</p>
               )}
-              <div className={styles.actions}>
-                <button
-                  className={styles.reset}
-                  type="button"
-                  aria-label={`${openLabel} 필터 초기화`}
-                  onClick={resetOpenFilter}
-                >초기화</button>
+              {openTopic === 'detail' && <div className={styles.actions}>
                 <button
                   className={styles.apply}
                   type="submit"
                   aria-label={`${openLabel} 필터 적용`}
                 >적용</button>
-              </div>
+              </div>}
             </form>
           </section>
         )}
@@ -807,23 +864,30 @@ export function ComplexFilterToolbar({
               onSubmit={submitMobileSheet}
             >
               <header className={styles.mobileSheetHeader}>
+                <button
+                  ref={mobileResetRef}
+                  className={styles.mobileReset}
+                  type="button"
+                  aria-label="전체 필터 초기화"
+                  onClick={resetMobileSheet}
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                    <path d="M16.4 8a6.5 6.5 0 1 0-.3 4.8M16.5 3.5V8H12" />
+                  </svg>
+                  초기화
+                </button>
                 <h2 id="mobile-complex-filter-heading">단지 필터</h2>
-                <div className={styles.mobileHeaderActions}>
-                  <button
-                    ref={mobileResetRef}
-                    className={styles.mobileReset}
-                    type="button"
-                    aria-label="전체 필터 초기화"
-                    onClick={resetMobileSheet}
-                  >초기화</button>
-                  <button
-                    ref={mobileCloseRef}
-                    className={styles.mobileClose}
-                    type="button"
-                    aria-label="단지 필터 닫기"
-                    onClick={closeMobileSheet}
-                  >×</button>
-                </div>
+                <button
+                  ref={mobileCloseRef}
+                  className={styles.mobileClose}
+                  type="button"
+                  aria-label="단지 필터 닫기"
+                  onClick={closeMobileSheet}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                    <path d="m5 5 14 14M19 5 5 19" />
+                  </svg>
+                </button>
               </header>
 
               <div
@@ -921,10 +985,12 @@ function TopicFields({
   filters,
   regionRepository,
   topic,
+  onRangeChange,
 }: {
   readonly filters: ComplexSearchFilters
   readonly regionRepository: PublicHousingRegionRepository
   readonly topic: FilterTopic
+  readonly onRangeChange?: (values: Readonly<Record<string, number | null>>) => void
 }) {
   switch (topic) {
     case 'region':
@@ -958,6 +1024,9 @@ function TopicFields({
             formatValue={formatDeposit}
             formatTick={formatDepositTick}
             presets={DEPOSIT_PRESETS}
+            onChange={onRangeChange && ((minimum, maximum) => onRangeChange({
+              minDeposit: minimum, maxDeposit: maximum,
+            }))}
             preserveInitialValuesUntilChange
           />
           <DualRangeFilter
@@ -973,6 +1042,9 @@ function TopicFields({
             formatValue={formatMonthlyRent}
             formatTick={formatMonthlyRentTick}
             presets={MONTHLY_RENT_PRESETS}
+            onChange={onRangeChange && ((minimum, maximum) => onRangeChange({
+              minMonthlyRent: minimum, maxMonthlyRent: maximum,
+            }))}
             preserveInitialValuesUntilChange
           />
         </div>
@@ -992,6 +1064,9 @@ function TopicFields({
           formatValue={formatArea}
           formatTick={formatAreaTick}
           presets={AREA_PRESETS}
+          onChange={onRangeChange && ((minimum, maximum) => onRangeChange({
+            minExclusiveArea: minimum, maxExclusiveArea: maximum,
+          }))}
           preserveInitialValuesUntilChange
         />
       )
@@ -1456,7 +1531,7 @@ function selectedRegionFallback(
 }
 
 function formatDeposit(value: number) {
-  return `${compact(value / 100_000_000)}억`
+  return formatHousingMoney(value)
 }
 
 function formatDepositTick(value: number) {
@@ -1464,15 +1539,15 @@ function formatDepositTick(value: number) {
 }
 
 function formatMonthlyRent(value: number) {
-  return `${compact(value / 10_000)}만 원`
+  return formatHousingMoney(value)
 }
 
 function formatRentSummary(value: number) {
-  return `${compact(value / 10_000)}만`
+  return formatHousingMoney(value)
 }
 
 function formatMonthlyRentTick(value: number) {
-  return value === 600_000 ? '60만+' : value === 0 ? '0' : formatRentSummary(value)
+  return value === 600_000 ? '60만원+' : value === 0 ? '0' : formatRentSummary(value)
 }
 
 function formatArea(value: number) {

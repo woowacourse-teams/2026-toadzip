@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.location.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.toadzip.backend.MigrationSqlSection;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -9,7 +10,6 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -20,7 +20,7 @@ class RoadAddressLocationMigrationTest {
     private static final String SCHEMA = "road_address_location_migration_test";
 
     private static final String MIGRATION =
-            "db/migration/V20260903_03__create_road_address_locations.sql";
+            "V20260903_03__create_road_address_locations.sql";
 
     @Autowired
     private DataSource dataSource;
@@ -30,7 +30,7 @@ class RoadAddressLocationMigrationTest {
         try (Connection connection = dataSource.getConnection()) {
             prepareSchema(connection);
             try {
-                ScriptUtils.executeSqlScript(connection, new ClassPathResource(MIGRATION));
+                ScriptUtils.executeSqlScript(connection, MigrationSqlSection.resource(MIGRATION));
 
                 assertThat(tableExists(connection, "road_address_locations")).isTrue();
                 assertThat(indexExists(connection, "idx_road_address_location_address")).isTrue();

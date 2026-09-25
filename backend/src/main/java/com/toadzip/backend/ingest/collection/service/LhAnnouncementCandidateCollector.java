@@ -8,6 +8,8 @@ import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementPageFetcher.FetchedPages;
+import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
+import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +34,8 @@ public class LhAnnouncementCandidateCollector {
         try {
             storedPages = collectAndStore(targetSource, request, callCounter);
         }
-        catch (ExternalDataCallFailureException exception) {
+        catch (ExternalDataCallFailureException | EmptyLhSupplyReplacementException
+                | IncompleteLhSupplyReplacementException exception) {
             return failedReport(targetSource, request, exception, callCounter);
         }
         storedPages.requestDescriptions().forEach(description -> failureRecorder.resolve(targetSource, description));
@@ -76,12 +79,16 @@ public class LhAnnouncementCandidateCollector {
         if (targetSource == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL) {
             FetchedPages<LhAnnouncementDetailSource> pages = pageFetcher.fetchDetails(request, callCounter);
             int storedRowCount = meterRegistry.timer("ingest.announcement.store", "source", targetSource.name())
-                    .record(() -> sourceStore.replaceDetails(request.panId(), pages.items()));
+                    .record(() -> sourceStore.replaceDetails(
+                            request.panId(), request.requestDescription(), pages.items()
+                    ));
             return new StoredPages(storedRowCount, pages.requestDescriptions());
         }
         FetchedPages<LhAnnouncementSupplySource> pages = pageFetcher.fetchSupplies(request, callCounter);
         int storedRowCount = meterRegistry.timer("ingest.announcement.store", "source", targetSource.name())
-                .record(() -> sourceStore.replaceSupplies(request.panId(), pages.items()));
+                .record(() -> sourceStore.replaceSupplies(
+                        request.panId(), request.requestDescription(), pages.items()
+                ));
         return new StoredPages(storedRowCount, pages.requestDescriptions());
     }
 

@@ -139,6 +139,34 @@ describe('DataPipelineControl', () => {
     expect(screen.getByRole('status')).toHaveTextContent('단지 수집 작업을 완료했습니다.')
   })
 
+  it('행별 누락은 완료·주의로 표시하고 보고서를 확인할 수 있다', async () => {
+    apiMocks.startDataPipeline.mockResolvedValue(execution(
+      'COMPLEX_REFINEMENT',
+      'COMPLETED_WARNINGS',
+      {
+        completedSteps: ['마이홈 단지 정제', 'LH 세대수 보강'],
+        partiallyFailedSteps: [{
+          step: 'MAP_MYHOME_COMPLEXES',
+          stepName: '마이홈 단지 정제',
+          report: { failedSourceRowCount: 3 },
+        }],
+      },
+    ))
+    render(<DataPipelineControl />)
+
+    fireEvent.click(screen.getByRole('button', { name: '단지 정제' }))
+
+    expect(await screen.findByText(
+      '단지 정제 작업을 완료했습니다. 처리되지 않은 원천 행이 있어 확인이 필요합니다.',
+    )).toHaveAttribute('role', 'status')
+    expect(screen.getByText('마이홈 단지 정제 원천 행 확인')).toBeVisible()
+    expect(screen.getByLabelText('마이홈 단지 정제 누락 보고서')).toHaveTextContent(
+      '"failedSourceRowCount": 3',
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '단지 정제' })).toBeEnabled()
+  })
+
   it('호출 제한으로 건너뛴 단계와 응답을 부분 완료로 표시한다', async () => {
     apiMocks.startDataPipeline.mockResolvedValue(execution(
       'ANNOUNCEMENT_COLLECTION',
@@ -181,6 +209,7 @@ function execution(
     totalStepCount: stepCount(type),
     completedSteps: [],
     skippedSteps: [],
+    partiallyFailedSteps: [],
     failure: null,
     ...overrides,
   }

@@ -13,6 +13,11 @@ import org.springframework.data.repository.query.Param;
 public interface LhAnnouncementCollectionCheckpointRepository
         extends JpaRepository<LhAnnouncementCollectionCheckpoint, Long> {
 
+    List<LhAnnouncementCollectionCheckpoint> findAllBySourceAndPanIdOrderByCompletedAtDesc(
+            ExternalDataSource source,
+            String panId
+    );
+
     @Query("""
             select checkpoint.requestHash
             from LhAnnouncementCollectionCheckpoint checkpoint
@@ -24,16 +29,6 @@ public interface LhAnnouncementCollectionCheckpointRepository
             @Param("source") ExternalDataSource source,
             @Param("requestHashes") Collection<String> requestHashes,
             @Param("freshCompletedAfter") Instant freshCompletedAfter
-    );
-
-    @Query("""
-            select distinct checkpoint.panId
-            from LhAnnouncementCollectionCheckpoint checkpoint
-            where checkpoint.source = :source and checkpoint.panId in :panIds
-            """)
-    List<String> findHistoryPanIds(
-            @Param("source") ExternalDataSource source,
-            @Param("panIds") Collection<String> panIds
     );
 
     @Modifying

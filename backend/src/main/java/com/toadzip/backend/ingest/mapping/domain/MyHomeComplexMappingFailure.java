@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.mapping.domain;
 
 import static lombok.AccessLevel.PROTECTED;
 
+import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -11,6 +12,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -39,6 +41,27 @@ public class MyHomeComplexMappingFailure {
     @Column(nullable = false)
     private Instant occurredAt;
 
+    @Column(nullable = false)
+    private Instant lastOccurredAt;
+
+    @Column(nullable = false)
+    private int occurrenceCount;
+
+    @Column(nullable = false)
+    private int recurrenceCount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private IngestFailureStatus status;
+
+    private Instant lastResolvedAt;
+
+    private UUID firstExecutionId;
+
+    private UUID lastExecutionId;
+
+    private UUID lastResolvedExecutionId;
+
     private MyHomeComplexMappingFailure(
             String sourceKey,
             String sourceComplexIdentifier,
@@ -55,6 +78,37 @@ public class MyHomeComplexMappingFailure {
         this.reason = reason;
         this.detail = detail;
         this.occurredAt = occurredAt;
+        lastOccurredAt = occurredAt;
+        occurrenceCount = 1;
+        status = IngestFailureStatus.PENDING;
+    }
+
+    public void observe(MyHomeComplexMappingFailure observed, UUID executionId) {
+        validateRequired(observed, "관찰한 실패");
+        sourceComplexIdentifier = observed.sourceComplexIdentifier;
+        detail = observed.detail;
+        lastOccurredAt = observed.occurredAt;
+        occurrenceCount++;
+        if (status == IngestFailureStatus.RESOLVED) {
+            recurrenceCount++;
+        }
+        status = IngestFailureStatus.PENDING;
+        lastExecutionId = executionId;
+    }
+
+    public void attachFirstExecution(UUID executionId) {
+        firstExecutionId = executionId;
+        lastExecutionId = executionId;
+    }
+
+    public void resolve(Instant resolvedAt, UUID executionId) {
+        validateRequired(resolvedAt, "해결 시각");
+        if (status == IngestFailureStatus.RESOLVED) {
+            return;
+        }
+        status = IngestFailureStatus.RESOLVED;
+        lastResolvedAt = resolvedAt;
+        lastResolvedExecutionId = executionId;
     }
 
     public static MyHomeComplexMappingFailure create(

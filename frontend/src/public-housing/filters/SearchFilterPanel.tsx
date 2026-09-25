@@ -1,4 +1,5 @@
-import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { formatHousingMoney } from '../presentation/housingMoney.ts'
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type PublicHousingRegionRepository,
   publicHousingRegionRepository,
@@ -63,12 +64,12 @@ const DEPOSIT_PRESETS = [
 
 const MONTHLY_RENT_PRESETS = [
   { label: '전체', minimum: null, maximum: null },
-  { label: '10만 이하', minimum: null, maximum: 100_000 },
-  { label: '10~20만', minimum: 100_000, maximum: 200_000 },
-  { label: '20~30만', minimum: 200_000, maximum: 300_000 },
-  { label: '30~40만', minimum: 300_000, maximum: 400_000 },
-  { label: '40~60만', minimum: 400_000, maximum: 590_000 },
-  { label: '60만 이상', minimum: 600_000, maximum: null },
+  { label: '10만원 이하', minimum: null, maximum: 100_000 },
+  { label: '10~20만원', minimum: 100_000, maximum: 200_000 },
+  { label: '20~30만원', minimum: 200_000, maximum: 300_000 },
+  { label: '30~40만원', minimum: 300_000, maximum: 400_000 },
+  { label: '40~60만원', minimum: 400_000, maximum: 590_000 },
+  { label: '60만원 이상', minimum: 600_000, maximum: null },
 ] as const satisfies readonly DualRangeFilterPreset[]
 
 const EXCLUSIVE_AREA_PRESETS = [
@@ -86,6 +87,7 @@ interface SearchFilterPanelProps {
   readonly kind: FilterKind
   readonly onApply: (filters: ComplexSearchFilters) => void
   readonly regionRepository?: PublicHousingRegionRepository
+  readonly resultSummary?: ReactNode
 }
 
 export function SearchFilterPanel({
@@ -93,14 +95,32 @@ export function SearchFilterPanel({
   kind,
   onApply,
   regionRepository = publicHousingRegionRepository,
+  resultSummary,
 }: SearchFilterPanelProps) {
   const [open, setOpen] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const formRef = useRef<HTMLFormElement>(null)
+  const toggleRef = useRef<HTMLButtonElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const restoreFocusRef = useRef(false)
   const label = kind === 'complex' ? '단지' : '공고'
   const panelId = `${kind}-search-filter-panel`
   const summaryId = `${panelId}-summary`
   const appliedCount = appliedFilterCount(filters, kind)
+
+  useEffect(() => {
+    if (open) {
+      closeRef.current?.focus()
+    } else if (restoreFocusRef.current) {
+      toggleRef.current?.focus()
+      restoreFocusRef.current = false
+    }
+  }, [open])
+
+  function close() {
+    restoreFocusRef.current = true
+    setOpen(false)
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -122,23 +142,28 @@ export function SearchFilterPanel({
 
   return (
     <section className={styles.panel} aria-label={`${label} 검색 필터`}>
-      <button
-        className={styles.toggle}
-        type="button"
-        aria-label={open ? `${label} 필터 닫기` : `${label} 필터 열기`}
-        aria-controls={panelId}
-        aria-describedby={summaryId}
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span>{label} 필터</span>
-        <span className={styles.toggleMeta}>
-          <span id={summaryId}>
+      <div className={styles.toolbar} role="group" aria-label={`${label} 목록 도구`}>
+        {resultSummary && <div className={styles.resultSummary}>{resultSummary}</div>}
+        <button
+          ref={toggleRef}
+          className={`${styles.toggle} ${appliedCount > 0 ? styles.toggleActive : ''}`}
+          type="button"
+          aria-label={`${label} 필터 ${open ? '접기' : '열기'}`}
+          aria-controls={panelId}
+          aria-describedby={summaryId}
+          aria-expanded={open}
+          onClick={() => open ? close() : setOpen(true)}
+        >
+          <span>{label} 필터</span>
+          {appliedCount > 0 && <span className={styles.count} aria-hidden="true">{appliedCount}</span>}
+          <span id={summaryId} className={styles.visuallyHidden}>
             {appliedCount > 0 ? `${appliedCount}개 적용` : '조건 선택'}
           </span>
-          <span aria-hidden="true">{open ? '▲' : '▼'}</span>
-        </span>
-      </button>
+          <svg className={styles.chevron} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+            <path d="m3 6 5 5 5-5" />
+          </svg>
+        </button>
+      </div>
 
       {open && (
         <form
@@ -147,7 +172,27 @@ export function SearchFilterPanel({
           id={panelId}
           className={styles.form}
           onSubmit={submit}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              close()
+            }
+          }}
         >
+          <div className={styles.header}>
+            <button className={styles.reset} type="button" onClick={reset}>
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                <path d="M16.4 8a6.5 6.5 0 1 0-.3 4.8M16.5 3.5V8H12" />
+              </svg>
+              초기화
+            </button>
+            <h2>{label} 필터</h2>
+            <button ref={closeRef} className={styles.close} type="button" aria-label={`${label} 필터 닫기`} onClick={close}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                <path d="m5 5 14 14M19 5 5 19" />
+              </svg>
+            </button>
+          </div>
           <div className={styles.fields}>
             <div className={styles.grid}>
               <RegionSelect
@@ -165,7 +210,9 @@ export function SearchFilterPanel({
                 label="모집상태"
                 name="applicationStatuses"
                 defaultValues={filters.applicationStatuses}
-                options={APPLICATION_STATUS_OPTIONS}
+                options={kind === 'announcement'
+                  ? APPLICATION_STATUS_OPTIONS.filter(([value]) => value !== 'CLOSED')
+                  : APPLICATION_STATUS_OPTIONS}
               />
               <FilterCheckboxGroup
                 label="공급기관"
@@ -247,9 +294,6 @@ export function SearchFilterPanel({
           )}
 
           <div className={styles.actions}>
-            <button className={styles.reset} type="button" onClick={reset}>
-              초기화
-            </button>
             <button className={styles.apply} type="submit">
               {label} 필터 적용
             </button>
@@ -607,7 +651,7 @@ function optionalFormNumber(data: FormData, name: string) {
 }
 
 function formatDeposit(value: number) {
-  return `${compactDecimal(value / 100_000_000)}억`
+  return formatHousingMoney(value)
 }
 
 function formatDepositTick(value: number) {
@@ -619,15 +663,15 @@ function formatDepositTick(value: number) {
 }
 
 function formatMonthlyRent(value: number) {
-  return `${compactDecimal(value / 10_000)}만 원`
+  return formatHousingMoney(value)
 }
 
 function formatMonthlyRentTick(value: number) {
   return value === 600_000
-    ? '60만+'
+    ? '60만원+'
     : value === 0
       ? '0'
-      : `${compactDecimal(value / 10_000)}만`
+      : formatHousingMoney(value)
 }
 
 function formatExclusiveArea(value: number) {

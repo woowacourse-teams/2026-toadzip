@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
@@ -26,10 +27,32 @@ public class DataPipelineExecutionStateService {
             DataPipelineType type,
             Instant startedAt
     ) {
+        return create(
+                executionId,
+                type,
+                startedAt,
+                DataPipelineExecutionTrigger.MANUAL,
+                null,
+                null
+        );
+    }
+
+    @Transactional
+    public DataPipelineExecution create(
+            UUID executionId,
+            DataPipelineType type,
+            Instant startedAt,
+            DataPipelineExecutionTrigger executionTrigger,
+            Instant scheduledAt,
+            UUID upstreamExecutionId
+    ) {
         DataPipelineExecution execution = DataPipelineExecution.start(
                 executionId,
                 type,
-                startedAt
+                startedAt,
+                executionTrigger,
+                scheduledAt,
+                upstreamExecutionId
         );
         return executionRepository.saveAndFlush(execution);
     }
@@ -45,6 +68,13 @@ public class DataPipelineExecutionStateService {
     public void completeStep(UUID executionId, DataPipelineStep step, String report) {
         DataPipelineExecution execution = find(executionId);
         execution.completeStep(step, report);
+        executionRepository.flush();
+    }
+
+    @Transactional
+    public void completeStepWithWarnings(UUID executionId, DataPipelineStep step, String report) {
+        DataPipelineExecution execution = find(executionId);
+        execution.completeStepWithWarnings(step, report);
         executionRepository.flush();
     }
 

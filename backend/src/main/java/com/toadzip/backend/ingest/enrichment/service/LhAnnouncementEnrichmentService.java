@@ -1,13 +1,17 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
+import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
+
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
@@ -21,6 +25,8 @@ import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichment
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -29,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
@@ -45,6 +52,7 @@ public class LhAnnouncementEnrichmentService {
     private final LhAnnouncementEnrichmentMapper mapper;
     private final LhAnnouncementEnrichmentWriter writer;
     private final LhAnnouncementLinkResolver linkResolver;
+    private final MyHomeAnnouncementCommonValuesMapper commonValuesMapper;
     private final Clock clock;
 
     public LhAnnouncementEnrichmentService(
@@ -58,6 +66,7 @@ public class LhAnnouncementEnrichmentService {
             LhAnnouncementEnrichmentMapper mapper,
             LhAnnouncementEnrichmentWriter writer,
             LhAnnouncementLinkResolver linkResolver,
+            MyHomeAnnouncementCommonValuesMapper commonValuesMapper,
             Clock clock
     ) {
         this.myHomeSourceRepository = myHomeSourceRepository;
@@ -70,6 +79,7 @@ public class LhAnnouncementEnrichmentService {
         this.mapper = mapper;
         this.writer = writer;
         this.linkResolver = linkResolver;
+        this.commonValuesMapper = commonValuesMapper;
         this.clock = clock;
     }
 
@@ -81,29 +91,36 @@ public class LhAnnouncementEnrichmentService {
         Instant occurredAt = clock.instant();
         List<LhAnnouncementEnrichmentFailure> failures = new ArrayList<>();
         LhAnnouncementEnrichmentReport report = LhAnnouncementEnrichmentReport.empty();
-        for (MyHomeAnnouncementSource source : lhSourcesByAnnouncement().values()) {
-            report = report.plus(enrich(source, failures, occurredAt));
+        for (List<MyHomeAnnouncementSource> sources : sourcesByAnnouncementWithLh().values()) {
+            report = report.plus(enrich(sources, failures, occurredAt));
         }
-        failureStore.replaceAll(failures);
+        failureStore.replaceAll(
+                failures,
+                IngestExecutionContext.currentExecutionId().orElse(null)
+        );
         return report;
     }
 
-    private Map<String, MyHomeAnnouncementSource> lhSourcesByAnnouncement() {
-        Map<String, MyHomeAnnouncementSource> sources = new LinkedHashMap<>();
-        for (MyHomeAnnouncementSource source : myHomeSourceRepository.findAll()) {
-            if (!isLh(source) || blank(source.getPblancId())) {
+    private Map<String, List<MyHomeAnnouncementSource>> sourcesByAnnouncementWithLh() {
+        Map<String, List<MyHomeAnnouncementSource>> sources = new LinkedHashMap<>();
+        for (MyHomeAnnouncementSource source : myHomeSourceRepository.findAllByOrderByIdAsc()) {
+            if (blank(source.getPblancId())) {
                 continue;
             }
-            sources.putIfAbsent(source.getPblancId().strip(), source);
+            sources.computeIfAbsent(source.getPblancId().strip(), ignored -> new ArrayList<>())
+                    .add(source);
         }
+        sources.values().removeIf(group -> group.stream().noneMatch(this::isLh));
         return sources;
     }
 
     private LhAnnouncementEnrichmentReport enrich(
-            MyHomeAnnouncementSource source,
+            List<MyHomeAnnouncementSource> sources,
             List<LhAnnouncementEnrichmentFailure> failures,
             Instant occurredAt
     ) {
+        List<MyHomeAnnouncementSource> lhSources = sources.stream().filter(this::isLh).toList();
+        MyHomeAnnouncementSource source = lhSources.getFirst();
         Announcement announcement = announcementRepository
                 .findBySourceAnnouncementIdentifier(source.getPblancId())
                 .orElse(null);
@@ -114,13 +131,20 @@ public class LhAnnouncementEnrichmentService {
         if (announcement.getProvider() != AgencyCode.LH) {
             return LhAnnouncementEnrichmentReport.empty();
         }
+        String rejectionDetail = commonValuesMapper.rejectionDetail(sources);
+        if (rejectionDetail != null) {
+            return reject(source, null, LhAnnouncementEnrichmentFailureReason.INVALID_VALUE,
+                    rejectionDetail, failures, occurredAt);
+        }
         if (announcement.getSupplyType() == RentalType.ETC) {
             return reject(source, null, LhAnnouncementEnrichmentFailureReason.UNSUPPORTED_SUPPLY_TYPE,
                     "지원하지 않는 공급유형의 LH 공고입니다.", failures, occurredAt);
         }
-        String panId;
+        LhAnnouncementRequest request;
         try {
-            panId = linkResolver.resolve(source);
+            var linked = linkResolver.resolveFirstLinked(lhSources);
+            source = linked.source();
+            request = linked.request();
         }
         catch (LhAnnouncementLinkResolutionException exception) {
             LhAnnouncementEnrichmentFailureReason reason = switch (exception.reason()) {
@@ -130,12 +154,16 @@ public class LhAnnouncementEnrichmentService {
             };
             return reject(source, null, reason, exception.getMessage(), failures, occurredAt);
         }
-        List<LhAnnouncementDetailSource> details = detailSourceRepository.findAllByPanIdOrderBySourceOrderAsc(panId);
+        String panId = request.panId();
+        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(request.requestDescription());
+        List<LhAnnouncementDetailSource> details = detailSourceRepository
+                .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
         if (details.isEmpty()) {
             return reject(source, panId, LhAnnouncementEnrichmentFailureReason.LH_DETAIL_SOURCE_NOT_FOUND,
                     "연결된 LH 공고 상세 원본이 없습니다.", failures, occurredAt);
         }
-        List<LhAnnouncementSupplySource> supplies = supplySourceRepository.findAllByPanIdOrderBySourceOrderAsc(panId);
+        List<LhAnnouncementSupplySource> supplies = supplySourceRepository
+                .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
         try {
             LhAnnouncementEnrichmentData data = mapper.map(panId, details, supplies);
             LhAnnouncementEnrichmentWriteResult result = writer.write(announcement, data);
@@ -177,8 +205,25 @@ public class LhAnnouncementEnrichmentService {
     }
 
     @Transactional(readOnly = true)
+    public List<LhAnnouncementEnrichmentFailureResponse> findFailures(int page, int size) {
+        return failureRepository.findAllByStatusOrderBySourceKeyAscIdAsc(
+                        PENDING,
+                        PageRequest.of(page, size)
+                ).stream()
+                .map(LhAnnouncementEnrichmentFailureResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<LhAnnouncementEnrichmentFailureResponse> findFailures() {
-        return failureRepository.findAllByOrderBySourceKeyAsc().stream()
+        return failureRepository.findAllByStatusOrderBySourceKeyAsc(PENDING).stream()
+                .map(LhAnnouncementEnrichmentFailureResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<LhAnnouncementEnrichmentFailureResponse> findFailureHistory(int page, int size) {
+        return failureRepository.findAllByOrderBySourceKeyAscIdAsc(PageRequest.of(page, size)).stream()
                 .map(LhAnnouncementEnrichmentFailureResponse::from)
                 .toList();
     }

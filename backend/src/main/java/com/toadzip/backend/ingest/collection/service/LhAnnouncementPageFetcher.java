@@ -61,7 +61,9 @@ public class LhAnnouncementPageFetcher {
                 request,
                 callCounter,
                 externalRepository::fetchSupply,
-                supplyResponseParser::parsePage
+                (panId, root, sourceOrderOffset) -> supplyResponseParser.parsePage(
+                        panId, request.supplyInfoTypeCode(), root, sourceOrderOffset
+                )
         );
     }
 

@@ -5,12 +5,14 @@ import { AdminLayout } from './admin/auth/AdminLayout'
 import { LoginPage } from './admin/auth/LoginPage'
 import { RequireAdmin } from './admin/auth/RequireAdmin'
 import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHousingExplorer.tsx'
+import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
+import { UserSessionControl } from './user/auth/UserSessionControl'
 
 function Home() {
   return (
     <div className="app-shell">
       <header className="service-header" aria-label="서비스 헤더">
-        <Link className="brand-link" to="/" aria-label="두꺼비집 홈">
+        <Link className="brand-link" to="/" aria-label="공공주택 복덕방 홈">
           <span className="brand-mark" aria-hidden="true">
             <svg
               viewBox="0 0 24 24"
@@ -26,9 +28,10 @@ function Home() {
               <path d="M10 20v-6h4v6" />
             </svg>
           </span>
-          <span className="brand-name">두꺼비집</span>
+          <span className="brand-name">공공주택 복덕방</span>
           <span className="brand-tagline">공공임대주택 지도</span>
         </Link>
+        <UserSessionControl />
       </header>
       <main className="map-main">
         <DefaultPublicHousingExplorer />
@@ -67,6 +70,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
+      <Route path="/login" element={<UserLoginPage />} />
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

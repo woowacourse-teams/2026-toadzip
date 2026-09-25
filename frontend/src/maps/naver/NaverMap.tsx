@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import { createComplexMarkerButton, markerSummary, markerWidth } from './complexMarkerButton.ts'
 import type { ViewportSnapshot } from '../../public-housing/map/viewportPolicy.ts'
+import type { MapBounds } from '../../public-housing/model/publicHousing.ts'
+import { createRegionBoundaryOverlay } from './regionBoundaryOverlay.ts'
+import type { RegionBoundary } from '../../public-housing/regions/regionBoundary.ts'
 import type {
-  MapMarkerAmount,
   MapMarkerPresentation,
 } from '../../public-housing/presentation/mapMarkerPresentation.ts'
 import {
@@ -59,6 +62,14 @@ export interface NaverMapAggregateMarker {
 export interface NaverMapCameraTarget {
   readonly latitude: number
   readonly longitude: number
+  /** Fit the complete region instead of applying center, zoom, or screenOffset. */
+  readonly bounds?: MapBounds
+  readonly boundsPadding?: {
+    readonly top: number
+    readonly right: number
+    readonly bottom: number
+    readonly left: number
+  }
   /** Target position relative to the map center, in pixels at the destination zoom. */
   readonly screenOffset?: { readonly x: number; readonly y: number }
   readonly zoom?: number
@@ -72,6 +83,7 @@ interface NaverMapCommonProps {
   onMarkerSelect?: (complexId: string) => void
   onTransitionInterrupt?: () => void
   onViewportChange?: (viewport: ViewportSnapshot) => void
+  regionBoundary?: RegionBoundary | null
   transitioning?: boolean
 }
 
@@ -218,6 +230,7 @@ export default function NaverMap({
   onMarkerSelect,
   onTransitionInterrupt,
   onViewportChange,
+  regionBoundary,
   representation,
   transitioning = false,
 }: NaverMapProps) {
@@ -229,6 +242,8 @@ export default function NaverMap({
   const cameraRequestIdRef = useRef(cameraRequestId)
   cameraRequestIdRef.current = cameraRequestId
   const createdMarkersRef = useRef<CreatedMarker[]>([])
+  const boundaryOverlaysRef = useRef<naver.maps.OverlayView[]>([])
+  const appliedMarkerDataKeyRef = useRef<string | null>(null)
   const aggregateMarkersRef = useRef(aggregateMarkers)
   aggregateMarkersRef.current = aggregateMarkers
   const markerRenderModeRef = useRef(markerRenderMode)
@@ -246,7 +261,6 @@ export default function NaverMap({
   if (!transitioning || !wasTransitioning) {
     transitionInterruptedRef.current = false
   }
-  const markerOverlaysRef = useRef<naver.maps.Marker[]>([])
   const markerFocusTimerRef = useRef<number | undefined>(undefined)
   const appliedCameraTargetRef = useRef<NaverMapCameraTarget | null>(null)
   const appliedCameraRequestIdRef = useRef<number | undefined>(undefined)
@@ -257,20 +271,37 @@ export default function NaverMap({
   const onTransitionInterruptRef = useRef(onTransitionInterrupt)
   const onViewportChangeRef = useRef(onViewportChange)
   const [attempt, setAttempt] = useState(0)
+  const [initializedAttempt, setInitializedAttempt] = useState<number | null>(null)
   const [markerAnnouncement, setMarkerAnnouncement] = useState('')
   const [projectionRevision, setProjectionRevision] = useState(0)
+  const projectionRevisionRef = useRef(projectionRevision)
+  projectionRevisionRef.current = projectionRevision
   const [status, setStatus] = useState<MapStatus>({ kind: 'loading' })
   const cameraLatitude = cameraTarget?.latitude
   const cameraLongitude = cameraTarget?.longitude
   const cameraOffsetX = cameraTarget?.screenOffset?.x
   const cameraOffsetY = cameraTarget?.screenOffset?.y
   const cameraZoom = cameraTarget?.zoom
+  const cameraSouthWestLat = cameraTarget?.bounds?.southWestLat
+  const cameraSouthWestLng = cameraTarget?.bounds?.southWestLng
+  const cameraNorthEastLat = cameraTarget?.bounds?.northEastLat
+  const cameraNorthEastLng = cameraTarget?.bounds?.northEastLng
+  const cameraPaddingTop = cameraTarget?.boundsPadding?.top
+  const cameraPaddingRight = cameraTarget?.boundsPadding?.right
+  const cameraPaddingBottom = cameraTarget?.boundsPadding?.bottom
+  const cameraPaddingLeft = cameraTarget?.boundsPadding?.left
   const markerGeometryKey = createMarkerGeometryKey({
     aggregateMarkers,
     markerRenderMode,
     markers,
     representation,
   })
+  const markerDataKey = createMarkerGeometryKey({
+    aggregateMarkers,
+    markerRenderMode,
+    markers,
+    representation,
+  }, false)
 
   useEffect(() => {
     onAggregateMarkerSelectRef.current = onAggregateMarkerSelect
@@ -305,6 +336,7 @@ export default function NaverMap({
     let resizeObserver: ResizeObserver | null = null
     let dragStartListener: naver.maps.MapEventListener | null = null
     let idleListener: naver.maps.MapEventListener | null = null
+    let initListener: naver.maps.MapEventListener | null = null
     let mapSurface: HTMLDivElement | null = null
     let wheelListener: (() => void) | null = null
     setStatus({ kind: 'loading' })
@@ -315,6 +347,14 @@ export default function NaverMap({
       }
       mapsRef.current.Event.removeListener(idleListener)
       idleListener = null
+    }
+
+    const removeInitListener = () => {
+      if (!initListener || !mapsRef.current) {
+        return
+      }
+      mapsRef.current.Event.removeListener(initListener)
+      initListener = null
     }
 
     const removeTransitionInterruptListeners = () => {
@@ -336,6 +376,7 @@ export default function NaverMap({
 
       resizeObserver?.disconnect()
       resizeObserver = null
+      removeInitListener()
       removeIdleListener()
       removeTransitionInterruptListeners()
       const failedMap = mapInstance
@@ -346,9 +387,10 @@ export default function NaverMap({
       pendingClusterFocusRef.current = null
       window.clearTimeout(markerFocusTimerRef.current)
       markerFocusTimerRef.current = undefined
-      clearMarkers(markerOverlaysRef.current)
-      markerOverlaysRef.current = []
+      clearMarkers(createdMarkersRef.current)
+      clearBoundaryOverlays(boundaryOverlaysRef.current)
       createdMarkersRef.current = []
+      appliedMarkerDataKeyRef.current = null
       onMarkerHighlightRef.current?.(null)
       setMarkerAnnouncement('')
       setStatus({ kind: 'unavailable', reason: 'authentication' })
@@ -372,17 +414,34 @@ export default function NaverMap({
             ),
             gl: true,
             keyboardShortcuts: true,
+            logoControlOptions: {
+              position: maps.Position.BOTTOM_LEFT,
+            },
+            scaleControlOptions: {
+              position: maps.Position.BOTTOM_LEFT,
+            },
             zoom: initialCamera.zoom,
             zoomControl: true,
+            zoomControlOptions: {
+              position: maps.Position.RIGHT_BOTTOM,
+            },
           })
           mapInstance = createdMap
           mapInstanceRef.current = createdMap
           mapsRef.current = maps
           appliedCameraTargetRef.current = initialCamera
-          // Projection is available only after initialization; apply the offset once afterward.
+          // Bounds and screen offsets need an initialized map; apply them once afterward.
           appliedCameraRequestIdRef.current = cameraTargetRef.current?.screenOffset
+            || cameraTargetRef.current?.bounds
             ? undefined
             : cameraRequestIdRef.current
+
+          initListener = maps.Event.once(createdMap, 'init', () => {
+            initListener = null
+            if (!cancelled && mapInstance === createdMap) {
+              setInitializedAttempt(attempt)
+            }
+          })
 
           const emitViewport = () => {
             transitionInterruptedRef.current = false
@@ -435,6 +494,7 @@ export default function NaverMap({
         } catch {
           resizeObserver?.disconnect()
           resizeObserver = null
+          removeInitListener()
           removeIdleListener()
           removeTransitionInterruptListeners()
           const failedMap = mapInstance
@@ -457,11 +517,13 @@ export default function NaverMap({
       cancelled = true
       unsubscribeAuthenticationFailure()
       resizeObserver?.disconnect()
+      removeInitListener()
       removeIdleListener()
       removeTransitionInterruptListeners()
-      clearMarkers(markerOverlaysRef.current)
-      markerOverlaysRef.current = []
+      clearMarkers(createdMarkersRef.current)
+      clearBoundaryOverlays(boundaryOverlaysRef.current)
       createdMarkersRef.current = []
+      appliedMarkerDataKeyRef.current = null
       window.clearTimeout(markerFocusTimerRef.current)
       markerFocusTimerRef.current = undefined
       mapInstanceRef.current = null
@@ -476,15 +538,27 @@ export default function NaverMap({
   useEffect(() => {
     const mapInstance = mapInstanceRef.current
     const maps = mapsRef.current
+    if (!mapInstance || !maps || status.kind !== 'ready' || !regionBoundary) {
+      return
+    }
+
+    const overlays = [createRegionBoundaryOverlay(maps, mapInstance, regionBoundary)]
+    boundaryOverlaysRef.current = overlays
+    return () => clearBoundaryOverlays(overlays)
+  }, [regionBoundary, status.kind])
+
+  useEffect(() => {
+    const mapInstance = mapInstanceRef.current
+    const maps = mapsRef.current
 
     if (!mapInstance || !maps || status.kind !== 'ready') {
       if (createdMarkersRef.current.some(({ isInteracting }) =>
         isInteracting())) {
         onMarkerHighlightRef.current?.(null)
       }
-      clearMarkers(markerOverlaysRef.current)
-      markerOverlaysRef.current = []
+      clearMarkers(createdMarkersRef.current)
       createdMarkersRef.current = []
+      appliedMarkerDataKeyRef.current = null
       return
     }
 
@@ -497,6 +571,8 @@ export default function NaverMap({
       representationRef.current,
     )
     const previousMarkers = createdMarkersRef.current
+    const animateNewMarkers = appliedMarkerDataKeyRef.current !== markerDataKey
+    appliedMarkerDataKeyRef.current = markerDataKey
     const previousFocus = readMarkerFocus(previousMarkers)
     window.clearTimeout(markerFocusTimerRef.current)
     markerFocusTimerRef.current = undefined
@@ -510,42 +586,68 @@ export default function NaverMap({
       return
     }
 
-    if (previousMarkers.some(({ isInteracting }) => isInteracting())) {
-      onMarkerHighlightRef.current?.(null)
+    const previousById = new Map(previousMarkers.map((created) => [
+      renderedMarkerIdentity(created.rendered), created,
+    ]))
+    const nextGeometryById = new Map(clusteredMarkers.map((marker) => [
+      renderedMarkerIdentity(marker), renderedMarkerGeometryKey(marker),
+    ]))
+    const removedMarkers = previousMarkers.filter(({ rendered }) =>
+      nextGeometryById.get(renderedMarkerIdentity(rendered))
+        !== renderedMarkerGeometryKey(rendered),
+    )
+    const removedInteraction = removedMarkers.some(({ isInteracting }) => isInteracting())
+    clearMarkers(removedMarkers)
+    let enteringMarkerCount = 0
+    const createdMarkers = clusteredMarkers.map((marker) => {
+      const previous = previousById.get(renderedMarkerIdentity(marker))
+      if (previous && renderedMarkerGeometryKey(previous.rendered)
+        === renderedMarkerGeometryKey(marker)) {
+        return previous
+      }
+      const enterDelay = animateNewMarkers && !previous
+        ? Math.min(enteringMarkerCount++ * 10, 40)
+        : undefined
+      return createMarker({
+        enterDelay,
+        mapInstance,
+        maps,
+        marker,
+        onAggregateMarkerSelect: (aggregateMarker) => {
+          if (dataBusyRef.current || transitioningRef.current) {
+            return
+          }
+          onAggregateMarkerSelectRef.current?.(aggregateMarker)
+        },
+        onClusterSelect: (cluster) => {
+          pendingClusterFocusRef.current = {
+            memberIds: cluster.members.map(({ id }) => id),
+            projectionRevision: projectionRevisionRef.current,
+          }
+          setMarkerAnnouncement('')
+          fitClusterBounds(maps, mapInstance, cluster)
+        },
+        onMarkerHighlight: (complexId) => {
+          onMarkerHighlightRef.current?.(complexId)
+        },
+        onMarkerSelect: (complexId) => {
+          onMarkerSelectRef.current?.(complexId)
+        },
+      })
+    })
+    if (removedInteraction) {
+      const activeMarker = createdMarkers.find(({ button }) => button === document.activeElement)
+        ?? createdMarkers.find(({ isInteracting }) => isInteracting())
+      onMarkerHighlightRef.current?.(activeMarker?.rendered.kind === 'complex'
+        ? activeMarker.rendered.marker.id
+        : null)
     }
-    clearMarkers(markerOverlaysRef.current)
-    const createdMarkers = clusteredMarkers.map((marker) => createMarker({
-      mapInstance,
-      maps,
-      marker,
-      onAggregateMarkerSelect: (aggregateMarker) => {
-        if (dataBusyRef.current || transitioningRef.current) {
-          return
-        }
-        onAggregateMarkerSelectRef.current?.(aggregateMarker)
-      },
-      onClusterSelect: (cluster) => {
-        pendingClusterFocusRef.current = {
-          memberIds: cluster.members.map(({ id }) => id),
-          projectionRevision,
-        }
-        setMarkerAnnouncement('')
-        fitClusterBounds(maps, mapInstance, cluster)
-      },
-      onMarkerHighlight: (complexId) => {
-        onMarkerHighlightRef.current?.(complexId)
-      },
-      onMarkerSelect: (complexId) => {
-        onMarkerSelectRef.current?.(complexId)
-      },
-    }))
     updateAggregateMarkerAvailability(
       createdMarkers,
       dataBusyRef.current || transitioningRef.current,
     )
     applyMarkerPresentation(createdMarkers, markersRef.current)
     createdMarkersRef.current = createdMarkers
-    markerOverlaysRef.current = createdMarkers.map(({ overlay }) => overlay)
     const clusterFocusTimer = restoreClusterFocus(
       createdMarkers,
       pendingClusterFocusRef.current,
@@ -559,7 +661,7 @@ export default function NaverMap({
       pendingClusterFocusRef.current = null
       setMarkerAnnouncement(message)
     }
-  }, [markerGeometryKey, projectionRevision, status.kind])
+  }, [markerDataKey, markerGeometryKey, projectionRevision, status.kind])
 
   useEffect(() => {
     applyMarkerPresentation(createdMarkersRef.current, markers)
@@ -580,16 +682,47 @@ export default function NaverMap({
       return
     }
 
+    if (cameraRequestId !== undefined
+      && cameraRequestId === appliedCameraRequestIdRef.current) {
+      return
+    }
+
+    if (cameraSouthWestLat !== undefined && cameraSouthWestLng !== undefined
+      && cameraNorthEastLat !== undefined && cameraNorthEastLng !== undefined) {
+      if (initializedAttempt !== attempt) {
+        return
+      }
+      if (!isValidCameraTarget(cameraSouthWestLat, cameraSouthWestLng, undefined)
+        || !isValidCameraTarget(cameraNorthEastLat, cameraNorthEastLng, undefined)
+        || cameraSouthWestLat >= cameraNorthEastLat
+        || cameraSouthWestLng >= cameraNorthEastLng) {
+        return
+      }
+      appliedCameraRequestIdRef.current = cameraRequestId
+      const bounds = [
+        new maps.LatLng(cameraSouthWestLat, cameraSouthWestLng),
+        new maps.LatLng(cameraNorthEastLat, cameraNorthEastLng),
+      ]
+      if (cameraPaddingTop !== undefined && cameraPaddingRight !== undefined
+        && cameraPaddingBottom !== undefined && cameraPaddingLeft !== undefined) {
+        mapInstance.fitBounds(bounds, {
+          top: cameraPaddingTop,
+          right: cameraPaddingRight,
+          bottom: cameraPaddingBottom,
+          left: cameraPaddingLeft,
+        })
+      } else {
+        // Omit the optional margins argument unless the caller provided all four sides.
+        mapInstance.fitBounds(bounds)
+      }
+      return
+    }
+
     if (
       cameraLatitude === undefined ||
       cameraLongitude === undefined ||
       !isValidCameraTarget(cameraLatitude, cameraLongitude, cameraZoom)
     ) {
-      return
-    }
-
-    if (cameraRequestId !== undefined
-      && cameraRequestId === appliedCameraRequestIdRef.current) {
       return
     }
 
@@ -641,7 +774,10 @@ export default function NaverMap({
       transitionInterruptedRef.current = false
       onViewportChangeRef.current?.(currentViewport)
     }
-  }, [cameraLatitude, cameraLongitude, cameraOffsetX, cameraOffsetY, cameraRequestId, cameraZoom, status.kind])
+  }, [cameraLatitude, cameraLongitude, cameraOffsetX, cameraOffsetY, cameraRequestId, cameraZoom,
+    cameraSouthWestLat, cameraSouthWestLng, cameraNorthEastLat, cameraNorthEastLng,
+    cameraPaddingTop, cameraPaddingRight, cameraPaddingBottom, cameraPaddingLeft,
+    initializedAttempt, attempt, status.kind])
 
   const retry = () => {
     setStatus({ kind: 'loading' })
@@ -689,7 +825,7 @@ export default function NaverMap({
 
 function initialMapCamera(
   cameraTarget: NaverMapCameraTarget | undefined,
-): Required<Omit<NaverMapCameraTarget, 'screenOffset'>> {
+): Required<Pick<NaverMapCameraTarget, 'latitude' | 'longitude' | 'zoom'>> {
   if (cameraTarget && isValidCameraTarget(
     cameraTarget.latitude,
     cameraTarget.longitude,
@@ -851,6 +987,7 @@ function readCoordinateValue(
 
 interface CreatedMarker {
   readonly button: HTMLButtonElement
+  readonly dispose: () => void
   readonly isInteracting: () => boolean
   readonly overlay: naver.maps.Marker
   readonly rendered: RenderedMarker
@@ -1024,7 +1161,12 @@ function renderedMarkerId(marker: RenderedMarker) {
   return marker.cluster.id
 }
 
+function renderedMarkerIdentity(marker: RenderedMarker) {
+  return JSON.stringify([marker.kind, renderedMarkerId(marker)])
+}
+
 interface CreateMarkerOptions {
+  readonly enterDelay?: number
   readonly mapInstance: naver.maps.Map
   readonly maps: typeof naver.maps
   readonly marker: RenderedMarker
@@ -1037,6 +1179,7 @@ interface CreateMarkerOptions {
 }
 
 function createMarker({
+  enterDelay,
   mapInstance,
   maps,
   marker,
@@ -1051,6 +1194,7 @@ function createMarker({
       mapInstance,
       marker.marker,
       () => onAggregateMarkerSelect(marker.marker),
+      enterDelay,
     )
     return { ...created, rendered: marker, presentation: null }
   }
@@ -1060,6 +1204,7 @@ function createMarker({
       mapInstance,
       marker,
       () => onClusterSelect(marker),
+      enterDelay,
     )
     return { ...created, rendered: marker, presentation: null }
   }
@@ -1069,14 +1214,64 @@ function createMarker({
     marker.marker,
     () => onMarkerSelect?.(marker.marker.id),
     (complexId) => onMarkerHighlight?.(complexId),
+    enterDelay,
   )
   return { ...created, rendered: marker, presentation: null }
 }
 
 interface CreatedMarkerOverlay {
   readonly button: HTMLButtonElement
+  readonly dispose: () => void
   readonly isInteracting: () => boolean
   readonly overlay: naver.maps.Marker
+}
+
+function createMarkerContent(
+  button: HTMLButtonElement,
+  signal: AbortSignal,
+  enterDelay: number | undefined,
+) {
+  const content = document.createElement('div')
+  const motion = document.createElement('div')
+  content.className = 'housing-marker-content'
+  motion.append(button)
+  content.append(motion)
+  const reducedMotion = typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (enterDelay !== undefined && !reducedMotion) {
+    motion.className = 'housing-marker-enter'
+    motion.style.setProperty('--marker-enter-delay', `${enterDelay}ms`)
+    const finishEntry = (event: Event) => {
+      if (event.target !== motion) {
+        return
+      }
+      motion.classList.remove('housing-marker-enter')
+      motion.style.removeProperty('--marker-enter-delay')
+      motion.removeEventListener('animationend', finishEntry)
+      motion.removeEventListener('animationcancel', finishEntry)
+    }
+    motion.addEventListener('animationend', finishEntry, { signal })
+    motion.addEventListener('animationcancel', finishEntry, { signal })
+  }
+  return content
+}
+
+function bindMarkerActivation(
+  button: HTMLButtonElement,
+  onSelect: () => void,
+  signal: AbortSignal,
+) {
+  // Native keyboard clicks have no pointer coordinates for the SDK to process.
+  button.addEventListener('click', (event) => {
+    event.stopImmediatePropagation()
+    onSelect()
+  }, { capture: true, signal })
+  const keepKeyboardOnMarker = (event: KeyboardEvent) => {
+    // Preserve native Enter/Space activation and keep both phases off the map.
+    event.stopPropagation()
+  }
+  button.addEventListener('keydown', keepKeyboardOnMarker, { signal })
+  button.addEventListener('keyup', keepKeyboardOnMarker, { signal })
 }
 
 function createAggregateMarker(
@@ -1084,23 +1279,25 @@ function createAggregateMarker(
   mapInstance: naver.maps.Map,
   marker: NaverMapAggregateMarker,
   onSelect: () => void,
+  enterDelay: number | undefined,
 ): CreatedMarkerOverlay {
+  const controller = new AbortController()
   const button = aggregateMarkerButton(marker)
-  button.addEventListener('click', onSelect)
+  bindMarkerActivation(button, onSelect, controller.signal)
   const title = aggregateMarkerTitle(marker)
   const overlay = new maps.Marker({
     clickable: true,
     cursor: 'pointer',
     icon: {
       anchor: new maps.Point(52, 68),
-      content: button,
+      content: createMarkerContent(button, controller.signal, enterDelay),
       size: new maps.Size(104, 68),
     },
     map: mapInstance,
     position: new maps.LatLng(marker.latitude, marker.longitude),
     title,
   })
-  return { button, isInteracting: () => false, overlay }
+  return { button, dispose: () => controller.abort(), isInteracting: () => false, overlay }
 }
 
 function aggregateMarkerButton(marker: NaverMapAggregateMarker) {
@@ -1139,122 +1336,34 @@ function createComplexMarker(
   marker: NaverMapComplexMarker,
   onSelect: () => void,
   onHighlight: (complexId: string | null) => void,
+  enterDelay: number | undefined,
 ): CreatedMarkerOverlay {
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.className = markerClassName(marker)
-  button.setAttribute('aria-label', markerAriaLabel(marker))
-  button.setAttribute('aria-pressed', String(Boolean(marker.selected)))
-  button.dataset.complexId = marker.id
-  button.dataset.mapComplexMarker = 'true'
-  button.title = markerSummary(marker)
-  button.append(
-    createMarkerTop(marker),
-    createMarkerBody(marker),
-  )
-  // Native keyboard clicks have no pointer coordinates for the SDK to process.
-  button.addEventListener('click', (event) => {
-    event.stopImmediatePropagation()
-    onSelect()
-  }, true)
-  const keepKeyboardOnMarker = (event: KeyboardEvent) => {
-    // Preserve native Enter/Space activation and keep both phases off the map.
-    event.stopPropagation()
-  }
-  button.addEventListener('keydown', keepKeyboardOnMarker)
-  button.addEventListener('keyup', keepKeyboardOnMarker)
-  const isInteracting = bindMarkerHighlight(button, marker.id, onHighlight)
+  const controller = new AbortController()
+  const button = createComplexMarkerButton(marker)
+  const width = markerWidth(marker)
+  bindMarkerActivation(button, onSelect, controller.signal)
+  const isInteracting = bindMarkerHighlight(button, marker.id, onHighlight, controller.signal)
 
   const overlay = new maps.Marker({
     clickable: true,
     cursor: 'pointer',
     icon: {
-      anchor: new maps.Point(48, 66),
-      content: button,
-      size: new maps.Size(96, 66),
+      anchor: new maps.Point(width / 2, 66),
+      content: createMarkerContent(button, controller.signal, enterDelay),
+      size: new maps.Size(width, 66),
     },
     map: mapInstance,
     position: new maps.LatLng(marker.latitude, marker.longitude),
     title: markerSummary(marker),
   })
-  return { button, isInteracting, overlay }
-}
-
-function markerAriaLabel(marker: NaverMapComplexMarker) {
-  return `${markerSummary(marker)}, 단지 상세 보기`
-}
-
-function markerSummary(marker: NaverMapComplexMarker) {
-  return [
-    marker.name,
-    `${marker.agencyName} · ${marker.rentalTypeName}`,
-    `보증금 ${markerAmountSummary(marker.deposit)}`,
-    `월 임대료 ${markerAmountSummary(marker.monthlyRent)}`,
-  ].join(', ')
-}
-
-function markerAmountSummary(amount: MapMarkerAmount | null) {
-  return amount === null ? '정보 없음' : `최소 ${amount.exactLabel}`
-}
-
-function createMarkerTop(marker: NaverMapComplexMarker) {
-  const top = document.createElement('span')
-  top.className = 'housing-map-marker__top'
-  top.append(
-    createMarkerText('name', marker.agencyLabel),
-    createMarkerText('name', marker.rentalTypeLabel),
-  )
-  return top
-}
-
-function createMarkerBody(marker: NaverMapComplexMarker) {
-  const body = document.createElement('span')
-  body.className = 'housing-map-marker__body'
-  body.append(
-    createMarkerAmountRow('보', marker.deposit),
-    createMarkerAmountRow('월', marker.monthlyRent),
-  )
-  return body
-}
-
-function createMarkerAmountRow(label: string, amount: MapMarkerAmount | null) {
-  const row = document.createElement('span')
-  row.className = 'housing-map-marker__row'
-  row.append(createMarkerText('label', label))
-  if (amount === null) {
-    row.append(createMarkerText('missing', '정보 없음'))
-    return row
-  }
-  const value = document.createElement('span')
-  value.className = 'housing-map-marker__amount'
-  value.append(
-    createMarkerText('digits', amount.digits),
-    createMarkerText('unit', amount.unit),
-    createMarkerText('from', '~'),
-  )
-  row.append(value)
-  return row
-}
-
-function createMarkerText(className: string, text: string) {
-  const node = document.createElement('span')
-  node.className = `housing-map-marker__${className}`
-  node.textContent = text
-  return node
-}
-
-function markerClassName(marker: NaverMapComplexMarker) {
-  return [
-    'housing-map-marker',
-    marker.selected ? 'is-selected' : '',
-    marker.highlighted ? 'is-highlighted' : '',
-  ].filter(Boolean).join(' ')
+  return { button, dispose: () => controller.abort(), isInteracting, overlay }
 }
 
 function bindMarkerHighlight(
   button: HTMLButtonElement,
   complexId: string,
   onHighlight: (complexId: string | null) => void,
+  signal: AbortSignal,
 ) {
   let focused = false
   let pointerInside = false
@@ -1264,19 +1373,19 @@ function bindMarkerHighlight(
   button.addEventListener('mouseenter', () => {
     pointerInside = true
     updateHighlight()
-  })
+  }, { signal })
   button.addEventListener('mouseleave', () => {
     pointerInside = false
     updateHighlight()
-  })
+  }, { signal })
   button.addEventListener('focus', () => {
     focused = true
     updateHighlight()
-  })
+  }, { signal })
   button.addEventListener('blur', () => {
     focused = false
     updateHighlight()
-  })
+  }, { signal })
   return () => focused || pointerInside
 }
 
@@ -1285,7 +1394,9 @@ function createClusterMarker(
   mapInstance: naver.maps.Map,
   marker: RenderedClusterMarker,
   onSelect: () => void,
+  enterDelay: number | undefined,
 ): CreatedMarkerOverlay {
+  const controller = new AbortController()
   const button = document.createElement('button')
   const count = document.createElement('strong')
   const complexCount = marker.members.length
@@ -1301,14 +1412,14 @@ function createClusterMarker(
   button.title = title
   count.textContent = `${complexCount}곳`
   button.append(count)
-  button.addEventListener('click', onSelect)
+  bindMarkerActivation(button, onSelect, controller.signal)
 
   const overlay = new maps.Marker({
     clickable: true,
     cursor: 'pointer',
     icon: {
       anchor: new maps.Point(30, 26),
-      content: button,
+      content: createMarkerContent(button, controller.signal, enterDelay),
       size: new maps.Size(60, 52),
     },
     map: mapInstance,
@@ -1318,7 +1429,7 @@ function createClusterMarker(
     ),
     title,
   })
-  return { button, isInteracting: () => false, overlay }
+  return { button, dispose: () => controller.abort(), isInteracting: () => false, overlay }
 }
 
 function fitClusterBounds(
@@ -1343,8 +1454,21 @@ function fitClusterBounds(
   })
 }
 
-function clearMarkers(markers: naver.maps.Marker[]) {
-  markers.forEach((marker) => marker.setMap(null))
+function clearBoundaryOverlays(polygons: naver.maps.OverlayView[]) {
+  for (const polygon of polygons.splice(0)) {
+    try {
+      polygon.setMap(null)
+    } catch {
+      // 인증 실패 시 NAVER SDK가 도형을 먼저 무효화할 수 있습니다.
+    }
+  }
+}
+
+function clearMarkers(markers: readonly CreatedMarker[]) {
+  markers.forEach(({ dispose, overlay }) => {
+    dispose()
+    overlay.setMap(null)
+  })
 }
 
 interface MarkerGeometryInput {
@@ -1359,7 +1483,7 @@ function createMarkerGeometryKey({
   markerRenderMode,
   markers,
   representation,
-}: MarkerGeometryInput) {
+}: MarkerGeometryInput, includeSelection = true) {
   if (representation === 'AGGREGATE') {
     return JSON.stringify([
       markerRenderMode,
@@ -1394,7 +1518,7 @@ function createMarkerGeometryKey({
       marker.monthlyRent?.unit,
       marker.monthlyRent?.exactLabel,
       // 기존 군집은 선택 단지를 묶음에서 분리하므로 구성 재계산이 필요하다.
-      ...(markerRenderMode === 'legacy' ? [Boolean(marker.selected)] : []),
+      ...(includeSelection && markerRenderMode === 'legacy' ? [Boolean(marker.selected)] : []),
     ]),
   ])
 }
@@ -1515,7 +1639,7 @@ function renderedMarkerGeometryKey(marker: RenderedMarker | undefined) {
     marker.cluster.id,
     marker.cluster.latitude,
     marker.cluster.longitude,
-    marker.members.map(({ id }) => id),
+    marker.members.map(({ id, latitude, longitude }) => [id, latitude, longitude]),
   ])
 }
 
@@ -1555,7 +1679,7 @@ function restoreMarkerFocus(
     return undefined
   }
   const target = findMarkerFocusTarget(createdMarkers, focus)
-  return target
+  return target && target.button !== document.activeElement
     ? window.setTimeout(() => target.button.focus({ preventScroll: true }))
     : undefined
 }

@@ -10,6 +10,8 @@ import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.LhCatalogSourceRepository;
+import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailureReason;
+import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import org.junit.jupiter.api.AfterEach;
@@ -34,6 +36,9 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
 
     @Autowired
     private HousingTypeRepository housingTypeRepository;
+
+    @Autowired
+    private LhHouseholdEnrichmentFailureRepository failureRepository;
 
     @BeforeEach
     void setUp() {
@@ -111,6 +116,11 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
         assertThat(report.failedSourceComplexCount()).isOne();
         assertThat(housingTypeRepository.findAllById(java.util.List.of(firstType.getId(), secondType.getId())))
                 .allSatisfy(type -> assertThat(type.getTotalHouseholdCount()).isNull());
+        assertThat(failureRepository.findAll()).singleElement().satisfies(failure -> {
+            assertThat(failure.getReason())
+                    .isEqualTo(LhHouseholdEnrichmentFailureReason.AMBIGUOUS_COMPLEX);
+            assertThat(failure.getOccurrenceCount()).isOne();
+        });
     }
 
     @Test
@@ -128,6 +138,10 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
         assertThat(report.failedSourceComplexCount()).isEqualTo(2);
         assertThat(housingTypeRepository.findById(type.getId()).orElseThrow().getTotalHouseholdCount())
                 .isNull();
+        assertThat(failureRepository.findAll())
+                .hasSize(2)
+                .allSatisfy(failure -> assertThat(failure.getReason())
+                        .isEqualTo(LhHouseholdEnrichmentFailureReason.DUPLICATE_TARGET_COMPLEX));
     }
 
     @Test
@@ -261,6 +275,7 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
     }
 
     private void cleanUp() {
+        failureRepository.deleteAll();
         sourceRepository.deleteAll();
         housingTypeRepository.deleteAll();
         complexRepository.deleteAll();
