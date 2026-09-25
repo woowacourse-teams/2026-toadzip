@@ -64,7 +64,10 @@ public class MyHomeComplexRegionCollector {
             return failedReport(region, request, rateLimitReached, callCounter, exception);
         }
         int storedRowCount = sourceStore.replaceComplexRegion(region, fetchedRegion.snapshots());
-        resolveFailures(fetchedRegion.requestDescriptions());
+        failureRecorder.resolveStartingWith(
+                ExternalDataSource.MYHOME_COMPLEX,
+                region.requestDescription() + "&pageNo="
+        );
         return new MyHomeComplexCollectionReport(
                 ExternalDataSource.MYHOME_COMPLEX.operation(),
                 storedRowCount,
@@ -116,7 +119,6 @@ public class MyHomeComplexRegionCollector {
             AtomicBoolean rateLimitReached
     ) {
         List<MyHomeComplexSourceSnapshot> snapshots = new ArrayList<>();
-        List<String> requestDescriptions = new ArrayList<>();
         Set<String> collectedSourceKeys = new HashSet<>();
         int expectedTotalCount = -1;
         for (int page = 1; page <= request.maxPages(); page++) {
@@ -144,9 +146,8 @@ public class MyHomeComplexRegionCollector {
             for (MyHomeComplexSourceSnapshot item : parsedPage.items()) {
                 collectedSourceKeys.add(MyHomeComplexSource.sourceKeyOf(item));
             }
-            requestDescriptions.add(requestDescription);
             if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
-                return new FetchedRegion(snapshots, requestDescriptions);
+                return new FetchedRegion(snapshots);
             }
         }
         throw new ExternalDataRequestException("마이홈 단지 조회가 최대 페이지 안에 끝나지 않았습니다.");
@@ -189,19 +190,9 @@ public class MyHomeComplexRegionCollector {
         }
     }
 
-    private void resolveFailures(List<String> requestDescriptions) {
-        requestDescriptions.forEach(requestDescription -> failureRecorder.resolve(
-                ExternalDataSource.MYHOME_COMPLEX,
-                requestDescription
-        ));
-    }
-
     private static final class RateLimitCollectionCancelledException extends RuntimeException {
     }
 
-    private record FetchedRegion(
-            List<MyHomeComplexSourceSnapshot> snapshots,
-            List<String> requestDescriptions
-    ) {
+    private record FetchedRegion(List<MyHomeComplexSourceSnapshot> snapshots) {
     }
 }

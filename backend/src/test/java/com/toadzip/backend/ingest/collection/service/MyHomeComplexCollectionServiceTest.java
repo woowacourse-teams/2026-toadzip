@@ -100,6 +100,9 @@ class MyHomeComplexCollectionServiceTest {
         assertThat(result.storedRowCount()).isEqualTo(3);
         assertThat(result.failedRequestCount()).isZero();
         assertThat(result.externalApiCallCount()).isEqualTo(2);
+        verify(failureRecorder).resolveStartingWith(
+                ExternalDataSource.MYHOME_COMPLEX, "brtcCode=11&signguCode=110&pageNo="
+        );
     }
 
     @Test
@@ -425,6 +428,7 @@ class MyHomeComplexCollectionServiceTest {
                 "brtcCode=11&signguCode=110&pageNo=2&numOfRows=2"
         );
         verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(failureRecorder, never()).resolveStartingWith(any(), any());
         assertThat(result.failedRequestCount()).isOne();
     }
 

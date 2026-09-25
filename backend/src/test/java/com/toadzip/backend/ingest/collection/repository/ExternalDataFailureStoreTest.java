@@ -7,6 +7,7 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -127,5 +128,43 @@ class ExternalDataFailureStoreTest {
         assertThat(repository.findAll()).filteredOn(failure ->
                 !failure.getRequestDescription().equals(otherPan))
                 .allMatch(failure -> failure.getStatus() == ExternalDataFailureStatus.RESOLVED);
+    }
+
+    @Test
+    void 전체_수집_범위의_과거_페이지_실패만_페이지_크기와_무관하게_해결한다() {
+        ExternalDataFailureStore store = new ExternalDataFailureStore(repository);
+        Instant occurredAt = Instant.parse("2026-08-23T00:01:00Z");
+        Instant resolvedAt = occurredAt.plusSeconds(60);
+        String announcement = "suplyTy=01&pageNo=2&numOfRows=2";
+        String announcementOtherSize = "suplyTy=01&pageNo=1&numOfRows=10";
+        String otherSupplyType = "suplyTy=02&pageNo=2&numOfRows=2";
+        String complex = "brtcCode=11&signguCode=110&pageNo=3&numOfRows=2";
+        String otherRegion = "brtcCode=11&signguCode=111&pageNo=3&numOfRows=2";
+        String catalog = "PG_SZ=2&PAGE=3";
+        for (String request : List.of(announcement, announcementOtherSize, otherSupplyType)) {
+            store.store(ExternalDataCollectionFailure.create(ExternalDataSource.MYHOME_ANNOUNCEMENT,
+                    request, occurredAt, 1, "ExternalDataRequestException", "조회 실패"), null);
+        }
+        for (String request : List.of(complex, otherRegion)) {
+            store.store(ExternalDataCollectionFailure.create(ExternalDataSource.MYHOME_COMPLEX,
+                    request, occurredAt, 1, "ExternalDataRequestException", "조회 실패"), null);
+        }
+        store.store(ExternalDataCollectionFailure.create(ExternalDataSource.LH_LEASE_CATALOG,
+                catalog, occurredAt, 1, "ExternalDataRequestException", "조회 실패"), null);
+
+        store.resolveStartingWith(ExternalDataSource.MYHOME_ANNOUNCEMENT,
+                "suplyTy=01&pageNo=", resolvedAt, null);
+        store.resolveStartingWith(ExternalDataSource.MYHOME_COMPLEX,
+                "brtcCode=11&signguCode=110&pageNo=", resolvedAt, null);
+        store.resolveStartingWith(ExternalDataSource.LH_LEASE_CATALOG, "PG_SZ=", resolvedAt, null);
+
+        assertThat(repository.findAll()).filteredOn(failure ->
+                failure.getStatus() == ExternalDataFailureStatus.RESOLVED)
+                .extracting(ExternalDataCollectionFailure::getRequestDescription)
+                .containsExactlyInAnyOrder(announcement, announcementOtherSize, complex, catalog);
+        assertThat(repository.findAll()).filteredOn(failure ->
+                failure.getStatus() == ExternalDataFailureStatus.PENDING)
+                .extracting(ExternalDataCollectionFailure::getRequestDescription)
+                .containsExactlyInAnyOrder(otherSupplyType, otherRegion);
     }
 }

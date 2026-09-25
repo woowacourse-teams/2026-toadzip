@@ -155,6 +155,9 @@ class MyHomeAnnouncementCollectionServiceTest {
                 .isEqualTo("1");
         assertThat(result.storedRowCount()).isOne();
         assertThat(result.failedRequestCount()).isZero();
+        verify(failureRecorder).resolveStartingWith(
+                ExternalDataSource.MYHOME_ANNOUNCEMENT, "suplyTy=10&pageNo="
+        );
     }
 
     @Test
@@ -169,6 +172,7 @@ class MyHomeAnnouncementCollectionServiceTest {
         verify(failureRecorder, org.mockito.Mockito.times(MyHomeAnnouncementSupplyType.values().length))
                 .record(any(), any(), any(), any(), any());
         verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        verify(failureRecorder, never()).resolveStartingWith(any(), any());
         assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isEqualTo(MyHomeAnnouncementSupplyType.values().length);
     }

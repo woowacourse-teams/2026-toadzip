@@ -66,6 +66,7 @@ class LhLeaseCatalogCollectionServiceTest {
         assertThat(result.storedRowCount()).isEqualTo(3);
         assertThat(result.failedRequestCount()).isZero();
         assertThat(result.externalApiCallCount()).isEqualTo(2);
+        verify(failureRecorder).resolveStartingWith(ExternalDataSource.LH_LEASE_CATALOG, "PG_SZ=");
     }
 
     @Test
@@ -78,6 +79,7 @@ class LhLeaseCatalogCollectionServiceTest {
 
         verify(sourceStore, never()).replaceCatalog(any());
         verify(failureRecorder).record(any(), any(), any(), any(), any());
+        verify(failureRecorder, never()).resolveStartingWith(any(), any());
         assertThat(result.failedRequestCount()).isOne();
     }
 
