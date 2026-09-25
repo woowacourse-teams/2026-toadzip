@@ -37,6 +37,7 @@ import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailur
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -270,6 +271,73 @@ class MyHomeAnnouncementMappingServiceTest {
                 .isEqualTo(ApplicationStatus.CANCELLED);
         assertThat(announcementQueryService.getAnnouncement(original.getId()).announcementId())
                 .isEqualTo(original.getId());
+    }
+
+    @Test
+    void 비활성_공급_원천은_보존하면서_활성_원천의_공고_정정을_반영한다() {
+        saveMappedComplex();
+        MyHomeAnnouncementSource current = source(0, data("21026", 1, "부산도시공사", "동삼2"));
+        MyHomeAnnouncementSource historical = source(1, data("21026", 2, "부산도시공사", "동삼2"));
+        sourceRepository.saveAll(List.of(current, historical));
+        assertThat(service.mapAll().failedSourceRowCount()).isZero();
+        List<Long> previousRowIds = supplyRowRepository.findAll().stream().map(SupplyRow::getId).sorted().toList();
+
+        historical.markMissed();
+        historical.markMissed();
+        ReflectionTestUtils.setField(current, "pblancNm", "정정된 국민임대 입주자 모집공고");
+        ReflectionTestUtils.setField(current, "endDe", "20260902");
+        sourceRepository.saveAll(List.of(current, historical));
+
+        assertThat(service.mapAll().failedSourceRowCount()).isZero();
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement -> {
+            assertThat(announcement.getName()).isEqualTo("정정된 국민임대 입주자 모집공고");
+            assertThat(announcement.getApplicationEndDate()).isEqualTo(LocalDate.of(2026, 9, 2));
+        });
+        assertThat(supplyRowRepository.findAll().stream().map(SupplyRow::getId).sorted().toList())
+                .containsExactlyElementsOf(previousRowIds);
+        assertThat(sourceRepository.findById(historical.getId()).orElseThrow().isActive()).isFalse();
+    }
+
+    @Test
+    void 모든_원천이_비활성이면_마지막으로_관찰한_실행의_공통값과_공급행을_보존한다() {
+        saveMappedComplex();
+        MyHomeAnnouncementSource previous = source(0, data("21026", 1, "부산도시공사", "동삼2"));
+        MyHomeAnnouncementSource latest = source(1, data("21026", 2, "부산도시공사", "동삼2"));
+        sourceRepository.saveAll(List.of(previous, latest));
+        service.mapAll();
+        List<Long> previousRowIds = supplyRowRepository.findAll().stream().map(SupplyRow::getId).sorted().toList();
+
+        previous.markSeen("earlier", COLLECTED_AT);
+        previous.markMissed();
+        previous.markMissed();
+        latest.markSeen("later", COLLECTED_AT.plusSeconds(60));
+        ReflectionTestUtils.setField(latest, "pblancNm", "마지막으로 관찰한 공고명");
+        latest.markMissed();
+        latest.markMissed();
+        sourceRepository.saveAll(List.of(previous, latest));
+
+        assertThat(service.mapAll().failedSourceRowCount()).isZero();
+        assertThat(announcementRepository.findAll()).singleElement()
+                .extracting(Announcement::getName).isEqualTo("마지막으로 관찰한 공고명");
+        assertThat(supplyRowRepository.findAll().stream().map(SupplyRow::getId).sorted().toList())
+                .containsExactlyElementsOf(previousRowIds);
+    }
+
+    @Test
+    void 같은_실행의_활성_원천끼리_공통값이_다르면_계속_거절한다() {
+        MyHomeAnnouncementSource first = source(0, data("21026", 1, "부산도시공사", "동삼2"));
+        MyHomeAnnouncementSource second = source(1, data("21026", 2, "부산도시공사", "동삼2"));
+        first.markSeen("same-run", COLLECTED_AT);
+        second.markSeen("same-run", COLLECTED_AT);
+        ReflectionTestUtils.setField(second, "pblancNm", "충돌하는 공고명");
+        sourceRepository.saveAll(List.of(first, second));
+
+        assertThat(service.mapAll().failedSourceRowCount()).isEqualTo(2);
+        assertThat(announcementRepository.count()).isZero();
+        assertThat(supplyRowRepository.count()).isZero();
+        assertThat(failureRepository.findAll()).allSatisfy(failure ->
+                assertThat(failure.getReason()).isEqualTo(
+                        MyHomeAnnouncementMappingFailureReason.CONFLICTING_SOURCE_VALUE));
     }
 
     @Test

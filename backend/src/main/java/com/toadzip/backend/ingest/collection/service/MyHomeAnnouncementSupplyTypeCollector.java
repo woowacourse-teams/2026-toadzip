@@ -62,7 +62,10 @@ public class MyHomeAnnouncementSupplyTypeCollector {
         int storedRowCount = meterRegistry.timer(
                 "ingest.announcement.store", "source", ExternalDataSource.MYHOME_ANNOUNCEMENT.name()
         ).record(() -> sourceStore.storeAnnouncements(runId, fetchedSupplyType.snapshots()));
-        resolveFailures(fetchedSupplyType.requestDescriptions());
+        failureRecorder.resolveStartingWith(
+                ExternalDataSource.MYHOME_ANNOUNCEMENT,
+                "suplyTy=" + supplyType.requestCode() + "&pageNo="
+        );
         return new ExternalDataCollectionReport(
                 ExternalDataSource.MYHOME_ANNOUNCEMENT.operation(),
                 storedRowCount,
@@ -77,7 +80,6 @@ public class MyHomeAnnouncementSupplyTypeCollector {
             ExternalDataCallCounter callCounter
     ) {
         List<MyHomeAnnouncementSourceSnapshot> snapshots = new ArrayList<>();
-        List<String> requestDescriptions = new ArrayList<>();
         Set<String> collectedSourceKeys = new HashSet<>();
         int expectedTotalCount = -1;
         for (int page = 1; page <= request.maxPages(); page++) {
@@ -98,13 +100,12 @@ public class MyHomeAnnouncementSupplyTypeCollector {
                     callCounter
             );
             expectedTotalCount = parsedPage.totalCount();
-            requestDescriptions.add(requestDescription);
             snapshots.addAll(parsedPage.items());
             for (MyHomeAnnouncementSourceSnapshot item : parsedPage.items()) {
                 collectedSourceKeys.add(MyHomeAnnouncementSource.sourceKeyOf(item));
             }
             if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
-                return new FetchedSupplyType(snapshots, requestDescriptions);
+                return new FetchedSupplyType(snapshots);
             }
         }
         throw new ExternalDataRequestException("마이홈 공고 조회가 최대 페이지 안에 끝나지 않았습니다.");
@@ -149,16 +150,6 @@ public class MyHomeAnnouncementSupplyTypeCollector {
         );
     }
 
-    private void resolveFailures(List<String> requestDescriptions) {
-        requestDescriptions.forEach(requestDescription -> failureRecorder.resolve(
-                ExternalDataSource.MYHOME_ANNOUNCEMENT,
-                requestDescription
-        ));
-    }
-
-    private record FetchedSupplyType(
-            List<MyHomeAnnouncementSourceSnapshot> snapshots,
-            List<String> requestDescriptions
-    ) {
+    private record FetchedSupplyType(List<MyHomeAnnouncementSourceSnapshot> snapshots) {
     }
 }
