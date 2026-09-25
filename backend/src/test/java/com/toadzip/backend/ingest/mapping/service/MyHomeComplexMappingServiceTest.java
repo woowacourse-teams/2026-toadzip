@@ -35,6 +35,8 @@ import java.time.YearMonth;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -45,6 +47,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 class MyHomeComplexMappingServiceTest {
 
     private static final Instant COLLECTED_AT = Instant.parse("2026-08-27T00:00:00Z");
+    private static final String NEW_ADDRESS = "서울특별시 종로구 새길 2";
+    private static final String NEW_PNU = "1111010100200020000";
 
     @Autowired
     private MyHomeComplexMappingService service;
@@ -136,6 +140,54 @@ class MyHomeComplexMappingServiceTest {
 
         assertThat(complexRepository.count()).isEqualTo(2);
         verify(geocodingService, times(1)).geocode(anyString());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void 준비_후_주소가_바뀌면_이전_좌표를_버리고_최신_주소로_매핑한다(boolean geocoded) {
+        sourceRepository.save(source("46A", "46.8000", "20.2000"));
+        service.prepare();
+        if (geocoded) {
+            var candidate = candidateRepository.findAll().getFirst();
+            candidate.resolve(new GeocodedRoadAddress("서울특별시 종로구 테스트로 1",
+                    new BigDecimal("37.56620552"), new BigDecimal("126.97770648")));
+            candidateRepository.save(candidate);
+        }
+        sourceRepository.deleteAll();
+        sourceRepository.save(source(withAddress(data(123L, "46A", "46.8000", "20.2000",
+                "서울주택도시공사", "20200101"), NEW_ADDRESS, NEW_PNU)));
+        when(geocodingService.geocode(NEW_ADDRESS)).thenReturn(new GeocodedRoadAddress(
+                NEW_ADDRESS, new BigDecimal("37.570000"), new BigDecimal("126.980000")));
+
+        var report = service.mapNext(100);
+
+        assertThat(report.createdComplexCount()).isOne();
+        verify(geocodingService).geocode(NEW_ADDRESS);
+        assertThat(complexRepository.findAll()).singleElement().satisfies(complex -> {
+            assertThat(complex.getAddress().getRoadAddress()).isEqualTo(NEW_ADDRESS);
+            assertThat(complex.getAddress().getPnu()).isEqualTo(NEW_PNU);
+            assertThat(complex.getAddress().getLatitude()).isEqualByComparingTo("37.570000");
+        });
+    }
+
+    @Test
+    void 바뀐_주소의_좌표_변환이_실패하면_기존_단지를_보존한다() {
+        sourceRepository.save(source("46A", "46.8000", "20.2000"));
+        service.mapAll();
+        service.prepare();
+        sourceRepository.deleteAll();
+        sourceRepository.save(source(withAddress(data(123L, "46A", "46.8000", "20.2000",
+                "서울주택도시공사", "20200101"), NEW_ADDRESS, NEW_PNU)));
+        when(geocodingService.geocode(NEW_ADDRESS)).thenThrow(new RoadAddressGeocodingException(
+                RoadAddressGeocodingFailureReason.ADDRESS_NOT_FOUND, "새 주소를 찾지 못했습니다."));
+
+        var report = service.mapNext(100);
+
+        assertThat(report.failedSourceRowCount()).isOne();
+        assertThat(complexRepository.findAll()).singleElement().satisfies(complex -> {
+            assertThat(complex.getAddress().getRoadAddress()).isEqualTo("서울특별시 종로구 테스트로 1");
+            assertThat(complex.getAddress().getPnu()).isEqualTo("1111010100100010000");
+        });
     }
 
     @Test
@@ -612,6 +664,20 @@ class MyHomeComplexMappingServiceTest {
                 10_000_000L,
                 200_000L,
                 20_000_000L
+        );
+    }
+
+    private MyHomeComplexSourceSnapshot withAddress(
+            MyHomeComplexSourceSnapshot original, String roadAddress, String pnu
+    ) {
+        return new MyHomeComplexSourceSnapshot(
+                original.hsmpSn(), original.insttNm(), original.brtcCode(), original.brtcNm(),
+                original.signguCode(), original.signguNm(), original.hsmpNm(), roadAddress, pnu,
+                original.competDe(), original.hshldCo(), original.suplyTyNm(), original.styleNm(),
+                original.suplyPrvuseAr(), original.suplyCmnuseAr(), original.houseTyNm(),
+                original.heatMthdDetailNm(), original.buldStleNm(), original.elvtrInstlAtNm(),
+                original.parkngCo(), original.bassRentGtn(), original.bassMtRntchrg(),
+                original.bassCnvrsGtnLmt()
         );
     }
 }

@@ -148,6 +148,18 @@ class LhAnnouncementEnrichmentMapperTest {
     }
 
     @Test
+    void 상세_단지가_하나여도_공급_단지와_이름이_다르면_입주예정월을_연결하지_않는다() {
+        LhAnnouncementEnrichmentData result = mapper.map(
+                PAN_ID,
+                List.of(complexDetail(0, "청운3", "202703")),
+                List.of(supply(0, "동삼2", "46A"))
+        );
+
+        assertThat(result.supplies()).singleElement()
+                .extracting(LhSupplyData::expectedMoveInMonth).isNull();
+    }
+
+    @Test
     void 빈_단지명은_단일_후보에_입주예정월을_임의로_연결하지_않는다() {
         LhAnnouncementEnrichmentData result = mapper.map(
                 PAN_ID,
