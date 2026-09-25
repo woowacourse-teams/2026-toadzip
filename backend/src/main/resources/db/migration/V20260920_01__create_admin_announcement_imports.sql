@@ -10,6 +10,7 @@ CREATE TABLE admin_announcement_imports (
     announcement_id BIGINT NOT NULL,
     CONSTRAINT fk_admin_announcement_import_announcement
         FOREIGN KEY (announcement_id) REFERENCES announcements (id),
+    CONSTRAINT uk_admin_announcement_import_original_url UNIQUE (original_url),
     CONSTRAINT uk_admin_announcement_import_hash UNIQUE (json_hash),
     CONSTRAINT uk_admin_announcement_import_source_document UNIQUE (source_document_id),
     CONSTRAINT uk_admin_announcement_import_announcement UNIQUE (announcement_id)

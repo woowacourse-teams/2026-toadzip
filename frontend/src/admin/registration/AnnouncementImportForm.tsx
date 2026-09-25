@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   createAnnouncementImport,
   validateAnnouncementImport,
@@ -20,15 +20,18 @@ export function AnnouncementImportForm({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const inputVersion = useRef(0)
   const summary = useMemo(() => documentSummary(validatedDocument), [validatedDocument])
-  const canSubmit = validation?.registerable === true
+  const canSubmit = !isValidating && validation?.registerable === true
     && validation.supplyRows.every((row) => selections[row.supplyRowIndex] !== undefined)
 
   function changeJson(value: string) {
+    inputVersion.current += 1
     setJsonText(value)
     setValidatedDocument(null)
     setValidation(null)
     setSelections({})
+    setIsValidating(false)
     setError(null)
     setSuccess(null)
   }
@@ -45,21 +48,30 @@ export function AnnouncementImportForm({
       setError('최상위 값은 JSON 객체여야 합니다.')
       return
     }
+    const validationInputVersion = inputVersion.current
     setIsValidating(true)
     setError(null)
     setSuccess(null)
     try {
       const result = await validateAnnouncementImport(document)
+      if (inputVersion.current !== validationInputVersion) {
+        return
+      }
       setValidatedDocument(document)
       setValidation(result)
       setSelections(suggestedSelections(result))
     } catch (requestError) {
+      if (inputVersion.current !== validationInputVersion) {
+        return
+      }
       setValidatedDocument(null)
       setValidation(null)
       setSelections({})
       setError(registrationFailure(requestError, '공고 JSON 검증 요청을 처리하지 못했습니다.').message)
     } finally {
-      setIsValidating(false)
+      if (inputVersion.current === validationInputVersion) {
+        setIsValidating(false)
+      }
     }
   }
 
@@ -101,6 +113,7 @@ export function AnnouncementImportForm({
       <label htmlFor="announcement-import-json">공고 JSON</label>
       <textarea
         id="announcement-import-json"
+        disabled={isSubmitting}
         onChange={(event) => changeJson(event.currentTarget.value)}
         rows={16}
         spellCheck={false}

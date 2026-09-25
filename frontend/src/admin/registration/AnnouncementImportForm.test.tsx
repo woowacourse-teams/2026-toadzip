@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AnnouncementImportForm } from './AnnouncementImportForm'
 import * as api from './api'
@@ -103,6 +103,52 @@ describe('공고 JSON 가져오기', () => {
     fireEvent.change(textarea, { target: { value: '{"schemaVersion":"changed"}' } })
 
     expect(screen.queryByRole('button', { name: '검토한 내용으로 등록' })).not.toBeInTheDocument()
+  })
+
+  it('재검증 중에는 이전 검증 결과로 등록할 수 없다', async () => {
+    let resolveRevalidation!: (response: api.AnnouncementImportValidationResponse) => void
+    vi.mocked(api.validateAnnouncementImport)
+      .mockResolvedValueOnce(validationResponse())
+      .mockReturnValueOnce(new Promise((resolve) => { resolveRevalidation = resolve }))
+    render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />)
+
+    fireEvent.change(screen.getByLabelText('공고 JSON'), {
+      target: { value: '{"schemaVersion":"admin-announcement-import/v1"}' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'JSON 검증' }))
+    const submit = await screen.findByRole('button', { name: '검토한 내용으로 등록' })
+    expect(submit).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'JSON 검증' }))
+    expect(submit).toBeDisabled()
+    await act(async () => resolveRevalidation(validationResponse()))
+    expect(submit).toBeEnabled()
+  })
+
+  it('검증 중 JSON을 수정하면 늦게 도착한 이전 결과를 무시한다', async () => {
+    let resolveFirst!: (response: api.AnnouncementImportValidationResponse) => void
+    let resolveSecond!: (response: api.AnnouncementImportValidationResponse) => void
+    vi.mocked(api.validateAnnouncementImport)
+      .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveSecond = resolve }))
+    render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />)
+    const textarea = screen.getByLabelText('공고 JSON')
+    const newDocument = { schemaVersion: 'admin-announcement-import/v1', announcement: { name: '새 공고' } }
+
+    fireEvent.change(textarea, { target: { value: '{"schemaVersion":"admin-announcement-import/v1"}' } })
+    fireEvent.click(screen.getByRole('button', { name: 'JSON 검증' }))
+    fireEvent.change(textarea, { target: { value: JSON.stringify(newDocument) } })
+    fireEvent.click(screen.getByRole('button', { name: 'JSON 검증' }))
+    await act(async () => resolveFirst(validationResponse()))
+
+    expect(textarea).toHaveValue(JSON.stringify(newDocument))
+    expect(screen.queryByRole('button', { name: '검토한 내용으로 등록' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '검증 중…' })).toBeDisabled()
+
+    await act(async () => resolveSecond(validationResponse()))
+
+    expect(screen.getByText('공고명: 새 공고')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'JSON 검증' })).toBeEnabled()
   })
 })
 

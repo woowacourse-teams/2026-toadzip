@@ -44,4 +44,33 @@
 - 검증 오류, `unresolvedFields`, 중복 또는 후보 미발견이 있으면 등록할 수 없다. 같은 원천 공고번호, 원문 URL 또는 정규화된 JSON 해시가 이미 등록되었으면 중복으로 처리하며 등록 요청은 `409`를 반환한다.
 - 등록 이력에는 스키마 버전, 원문 URL, 원천 공고번호, 정규화된 JSON과 해시, 등록 관리자·시각, 결과 공고 ID를 보존한다.
 
+## 스키마 배포 확인
+
+운영은 `ddl-auto=validate`이며 이 SQL은 자동 실행되지 않는다. 배포 담당자는 **새 백엔드 실행 전에** 대상 DB를 확인하고 다음 SQL을 한 번 적용한다. 아래 명령은 저장소 루트에서 실행하며, `DATABASE_URL`은 승인된 배포 환경에서 주입한다. 연결 문자열을 PR이나 로그에 기록하지 않는다.
+
+```bash
+psql "$DATABASE_URL" -X --set ON_ERROR_STOP=1 \
+  -c "SELECT current_database(), current_schema(), to_regclass('public.admin_announcement_imports');"
+```
+
+대상 DB가 예상과 일치하고 `current_schema()`가 `public`이며 `to_regclass`가 `NULL`일 때만 실행한다. 이미 테이블이 있으면 생성 SQL을 재실행하지 말고 아래 기존 테이블 절차를 따른다.
+
+```bash
+psql "$DATABASE_URL" -X --set ON_ERROR_STOP=1 --single-transaction \
+  --file backend/src/main/resources/db/migration/V20260920_01__create_admin_announcement_imports.sql
+psql "$DATABASE_URL" -X --set ON_ERROR_STOP=1 \
+  -c "SELECT conname FROM pg_constraint WHERE conrelid = 'public.admin_announcement_imports'::regclass ORDER BY conname;"
+```
+
+`admin_announcement_imports` 테이블과 원문 URL·JSON 해시·원천 공고번호·공고 ID의 고유 제약 및 공고 외래 키가 있는지 확인한다. 이후 새 백엔드를 배포해 스키마 검사와 헬스 체크가 통과하는지 확인한다. 문제가 생기면 이전 백엔드로 되돌리고 등록 이력 테이블은 보존한다. 실제 적용 담당자·대상·시각·결과는 PR 배포 기록에 남긴다.
+
+이미 테이블이 있는 DB에서는 위 제약 조회 결과를 먼저 확인한다. `uk_admin_announcement_import_original_url`만 없다면 중복 URL 건수를 확인하고, 결과가 `0`일 때만 다음 제약을 한 번 추가한다. 중복이 있거나 다른 제약도 누락됐다면 데이터와 스키마를 조사한 뒤 적용 계획을 세운다.
+
+```bash
+psql "$DATABASE_URL" -X --set ON_ERROR_STOP=1 \
+  -c "SELECT count(*) FROM (SELECT original_url FROM public.admin_announcement_imports GROUP BY original_url HAVING count(*) > 1) duplicates;"
+psql "$DATABASE_URL" -X --set ON_ERROR_STOP=1 --single-transaction \
+  -c "ALTER TABLE public.admin_announcement_imports ADD CONSTRAINT uk_admin_announcement_import_original_url UNIQUE (original_url);"
+```
+
 [미확정값 예시](fixtures/announcement-import-v1-unresolved.json)와 [다중 공급행 예시](fixtures/announcement-import-v1-multiple-supply-rows.json)를 검토에 사용할 수 있다.

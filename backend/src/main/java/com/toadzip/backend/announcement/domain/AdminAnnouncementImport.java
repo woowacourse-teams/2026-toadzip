@@ -21,6 +21,7 @@ import lombok.NoArgsConstructor;
 @Table(
         name = "admin_announcement_imports",
         uniqueConstraints = {
+                @UniqueConstraint(name = "uk_admin_announcement_import_original_url", columnNames = "original_url"),
                 @UniqueConstraint(name = "uk_admin_announcement_import_hash", columnNames = "json_hash"),
                 @UniqueConstraint(
                         name = "uk_admin_announcement_import_source_document",

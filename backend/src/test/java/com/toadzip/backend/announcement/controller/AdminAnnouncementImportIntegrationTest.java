@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -18,14 +19,20 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
 @AutoConfigureMockMvc
@@ -57,6 +64,12 @@ class AdminAnnouncementImportIntegrationTest {
 
     @Autowired
     private HousingComplexRepository housingComplexRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void cleanDatabase() {
@@ -136,6 +149,34 @@ class AdminAnnouncementImportIntegrationTest {
     }
 
     @Test
+    void 다른_JSON이라도_같은_원문_URL은_DB에서_거부한다() throws Exception {
+        HousingComplex complex = housingComplexRepository.save(createHousingComplex());
+        String first = registrationJson(complex.getId());
+        String second = first.replace("import-1", "import-2")
+                .replace("IMPORT-2026-1", "IMPORT-2026-2");
+
+        mockMvc.perform(post(ENDPOINT)
+                        .with(user("admin").roles("ADMIN"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(first))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post(ENDPOINT)
+                        .with(user("admin").roles("ADMIN"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(second))
+                .andExpect(status().isCreated());
+
+        assertThrows(DataIntegrityViolationException.class, () -> jdbcTemplate.update(
+                "UPDATE admin_announcement_imports SET original_url = ? WHERE original_url = ?",
+                "https://example.com/announcements/import-1",
+                "https://example.com/announcements/import-2"
+        ));
+        assertEquals(2, importRepository.count());
+    }
+
+    @Test
     void 미확정값이_있으면_등록을_차단한다() throws Exception {
         HousingComplex complex = housingComplexRepository.save(createHousingComplex());
         String request = registrationJson(complex.getId()).replace(
@@ -154,14 +195,64 @@ class AdminAnnouncementImportIntegrationTest {
         assertEquals(0, announcementRepository.count());
     }
 
+    @Test
+    void 공급행별_후보가_아닌_단지_선택은_등록을_차단한다() throws Exception {
+        HousingComplex first = housingComplexRepository.save(createHousingComplex());
+        HousingComplex second = housingComplexRepository.save(createHousingComplex(
+                "두꺼비 행복주택 B단지",
+                "ADMIN-IMPORT-TEST-COMPLEX-B",
+                "1114010100100020000"
+        ));
+        String importData = twoRowImportJson();
+        mockMvc.perform(post(ENDPOINT + "/validate")
+                        .with(user("admin").roles("ADMIN"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(importData))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.registerable").value(true))
+                .andExpect(jsonPath("$.data.supplyRows[0].suggestedHousingComplexId").value(first.getId()))
+                .andExpect(jsonPath("$.data.supplyRows[1].suggestedHousingComplexId").value(second.getId()));
+        List<String> invalidSelections = List.of(
+                selections(second.getId(), first.getId()),
+                "[{\"supplyRowIndex\":0,\"housingComplexId\":%d}]".formatted(first.getId()),
+                """
+                [{"supplyRowIndex":0,"housingComplexId":%d},
+                 {"supplyRowIndex":0,"housingComplexId":%d}]
+                """.formatted(first.getId(), second.getId()),
+                selections(999999L, second.getId())
+        );
+
+        for (String complexSelections : invalidSelections) {
+            mockMvc.perform(post(ENDPOINT)
+                            .with(user("admin").roles("ADMIN"))
+                            .with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(registrationJson(importData, complexSelections)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("ANNOUNCEMENT_IMPORT_INVALID"));
+
+            assertEquals(0, announcementRepository.count());
+            assertEquals(0, importRepository.count());
+        }
+    }
+
     private HousingComplex createHousingComplex() {
-        return HousingComplex.create(
+        return createHousingComplex(
                 "두꺼비 행복주택",
                 "ADMIN-IMPORT-TEST-COMPLEX",
+                "1114010100100010000"
+        );
+    }
+
+    private HousingComplex createHousingComplex(String name, String sourceIdentifier, String pnu) {
+        return HousingComplex.create(
+                name,
+                sourceIdentifier,
                 "HAPPY_HOUSING",
                 Address.create(
                         "서울특별시 중구 세종대로 110",
-                        "1114010100100010000",
+                        pnu,
                         "1114010100",
                         "11",
                         "11140",
@@ -182,12 +273,37 @@ class AdminAnnouncementImportIntegrationTest {
     }
 
     private String registrationJson(long housingComplexId) {
+        return registrationJson(
+                importJson(),
+                "[{\"supplyRowIndex\":0,\"housingComplexId\":%d}]".formatted(housingComplexId)
+        );
+    }
+
+    private String registrationJson(String importData, String complexSelections) {
         return """
                 {
                   "importData": %s,
-                  "complexSelections": [{"supplyRowIndex": 0, "housingComplexId": %d}]
+                  "complexSelections": %s
                 }
-                """.formatted(importJson(), housingComplexId);
+                """.formatted(importData, complexSelections);
+    }
+
+    private String selections(long firstId, long secondId) {
+        return """
+                [{"supplyRowIndex":0,"housingComplexId":%d},
+                 {"supplyRowIndex":1,"housingComplexId":%d}]
+                """.formatted(firstId, secondId);
+    }
+
+    private String twoRowImportJson() {
+        ObjectNode document = (ObjectNode) objectMapper.readTree(importJson());
+        ArrayNode supplyRows = (ArrayNode) document.get("supplyRows");
+        ObjectNode secondRow = (ObjectNode) supplyRows.get(0).deepCopy();
+        ObjectNode complexReference = (ObjectNode) secondRow.get("complexReference");
+        complexReference.put("sourceComplexName", "두꺼비 행복주택 B단지");
+        complexReference.put("pnu", "1114010100100020000");
+        supplyRows.add(secondRow);
+        return objectMapper.writeValueAsString(document);
     }
 
     private String importJson() {
