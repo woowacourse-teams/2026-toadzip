@@ -94,7 +94,8 @@ public class LhAnnouncementEnrichmentWriter {
             Set<String> replacedPanIds,
             String previousPanId
     ) {
-        Map<String, AnnouncementSchedule> stored = schedulesBySource(announcement);
+        List<AnnouncementSchedule> storedSchedules = scheduleRepository.findAllByAnnouncement(announcement);
+        Map<String, AnnouncementSchedule> stored = schedulesBySource(storedSchedules);
         Set<String> retained = new HashSet<>();
         int created = 0;
         int updated = 0;
@@ -115,10 +116,10 @@ public class LhAnnouncementEnrichmentWriter {
             }
         }
         if (!data.schedules().isEmpty()) {
-            scheduleRepository.deleteAll(staleSchedules(announcement, retained, replacedPanIds));
+            scheduleRepository.deleteAll(staleSchedules(storedSchedules, retained, replacedPanIds));
         }
         else if (previousPanId != null && !previousPanId.equals(data.panId())) {
-            scheduleRepository.deleteAll(staleSchedules(announcement, retained, Set.of(previousPanId)));
+            scheduleRepository.deleteAll(staleSchedules(storedSchedules, retained, Set.of(previousPanId)));
         }
         return new SchedulesWriteResult(created, updated);
     }
@@ -129,7 +130,8 @@ public class LhAnnouncementEnrichmentWriter {
             Set<String> replacedPanIds,
             String previousPanId
     ) {
-        Map<String, AnnouncementAttachment> stored = attachmentsBySource(announcement);
+        List<AnnouncementAttachment> storedAttachments = attachmentRepository.findAllByAnnouncement(announcement);
+        Map<String, AnnouncementAttachment> stored = attachmentsBySource(storedAttachments);
         Set<String> retained = new HashSet<>();
         int created = 0;
         int updated = 0;
@@ -149,10 +151,10 @@ public class LhAnnouncementEnrichmentWriter {
             }
         }
         if (!data.attachments().isEmpty()) {
-            attachmentRepository.deleteAll(staleAttachments(announcement, retained, replacedPanIds));
+            attachmentRepository.deleteAll(staleAttachments(storedAttachments, retained, replacedPanIds));
         }
         else if (previousPanId != null && !previousPanId.equals(data.panId())) {
-            attachmentRepository.deleteAll(staleAttachments(announcement, retained, Set.of(previousPanId)));
+            attachmentRepository.deleteAll(staleAttachments(storedAttachments, retained, Set.of(previousPanId)));
         }
         return new AttachmentsWriteResult(created, updated);
     }
@@ -323,9 +325,9 @@ public class LhAnnouncementEnrichmentWriter {
         return identifier != null && identifier.startsWith("LH:");
     }
 
-    private Map<String, AnnouncementSchedule> schedulesBySource(Announcement announcement) {
+    private Map<String, AnnouncementSchedule> schedulesBySource(List<AnnouncementSchedule> storedSchedules) {
         Map<String, AnnouncementSchedule> schedules = new HashMap<>();
-        for (AnnouncementSchedule schedule : scheduleRepository.findAllByAnnouncement(announcement)) {
+        for (AnnouncementSchedule schedule : storedSchedules) {
             if (schedule.getSourceScheduleIdentifier() != null) {
                 schedules.put(schedule.getSourceScheduleIdentifier(), schedule);
             }
@@ -333,9 +335,9 @@ public class LhAnnouncementEnrichmentWriter {
         return schedules;
     }
 
-    private Map<String, AnnouncementAttachment> attachmentsBySource(Announcement announcement) {
+    private Map<String, AnnouncementAttachment> attachmentsBySource(List<AnnouncementAttachment> storedAttachments) {
         Map<String, AnnouncementAttachment> attachments = new HashMap<>();
-        for (AnnouncementAttachment attachment : attachmentRepository.findAllByAnnouncement(announcement)) {
+        for (AnnouncementAttachment attachment : storedAttachments) {
             if (attachment.getSourceAttachmentIdentifier() != null) {
                 attachments.put(attachment.getSourceAttachmentIdentifier(), attachment);
             }
@@ -344,18 +346,18 @@ public class LhAnnouncementEnrichmentWriter {
     }
 
     private List<AnnouncementSchedule> staleSchedules(
-            Announcement announcement, Set<String> retained, Set<String> replacedPanIds
+            List<AnnouncementSchedule> storedSchedules, Set<String> retained, Set<String> replacedPanIds
     ) {
-        return scheduleRepository.findAllByAnnouncement(announcement).stream()
+        return storedSchedules.stream()
                 .filter(schedule -> lhSourceForAnyPan(schedule.getSourceScheduleIdentifier(), replacedPanIds))
                 .filter(schedule -> !retained.contains(schedule.getSourceScheduleIdentifier()))
                 .toList();
     }
 
     private List<AnnouncementAttachment> staleAttachments(
-            Announcement announcement, Set<String> retained, Set<String> replacedPanIds
+            List<AnnouncementAttachment> storedAttachments, Set<String> retained, Set<String> replacedPanIds
     ) {
-        return attachmentRepository.findAllByAnnouncement(announcement).stream()
+        return storedAttachments.stream()
                 .filter(attachment -> lhSourceForAnyPan(attachment.getSourceAttachmentIdentifier(), replacedPanIds))
                 .filter(attachment -> !retained.contains(attachment.getSourceAttachmentIdentifier()))
                 .toList();
