@@ -63,6 +63,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
@@ -755,6 +756,32 @@ class LhAnnouncementEnrichmentServiceTest {
             assertThat(target.getRentalDeposit()).isEqualByComparingTo("10000000");
             assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000");
         });
+    }
+
+    @Test
+    void 상세_단지명이_불일치해도_마지막_정상_입주예정월을_보존한다() {
+        saveComplex();
+        myHomeSourceRepository.save(myHomeSource());
+        mapMyHomeSource();
+        saveLhSources("10,000,000", "200,000");
+        detailSourceRepository.deleteAll();
+        saveDetails(new LhAnnouncementDetailResponseParser().parse(PAN_ID,
+                JsonMapper.builder().build().readTree("""
+                        [{"dsSbd":[{"LCC_NT_NM":"동삼2","MVIN_XPC_YM":"202612"}]}]
+                        """)));
+        enrichmentService.enrichAll();
+        assertThat(supplyRowRepository.findAll()).singleElement()
+                .extracting(SupplyRow::getExpectedMoveInMonth).isEqualTo(YearMonth.of(2026, 12));
+
+        detailSourceRepository.deleteAll();
+        saveDetails(new LhAnnouncementDetailResponseParser().parse(PAN_ID,
+                JsonMapper.builder().build().readTree("""
+                        [{"dsSbd":[{"LCC_NT_NM":"청운3","MVIN_XPC_YM":"202703"}]}]
+                        """)));
+
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        assertThat(supplyRowRepository.findAll()).singleElement()
+                .extracting(SupplyRow::getExpectedMoveInMonth).isEqualTo(YearMonth.of(2026, 12));
     }
 
     @Test

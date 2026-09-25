@@ -111,6 +111,8 @@ class MyHomeComplexMappingBatchProcessor {
             MyHomeComplexMappingData data = sourceMapper.map(
                     candidate.getSourceComplexIdentifier(), sources
             );
+            candidate.prepare(data.address().sourceRoadAddress());
+            needsGeocoding = candidate.needsGeocoding();
             resolveCoordinates(candidate);
             Address address = data.address().resolve(candidate.geocodedAddress());
             MyHomeComplexMappingReport report = writer.write(data, address);

@@ -68,12 +68,6 @@ public class LhAnnouncementEnrichmentMapper {
         if (matches.size() == 1) {
             return parser.yearMonth(matches.getFirst().expectedMoveInYearMonth(), "입주예정월");
         }
-        if (matches.isEmpty()
-                && complexes.size() == 1
-                && !SupplyNameNormalizer.complexName(supply.getComplexLabel()).isEmpty()
-                && !SupplyNameNormalizer.complexName(complexes.getFirst().name()).isEmpty()) {
-            return parser.yearMonth(complexes.getFirst().expectedMoveInYearMonth(), "입주예정월");
-        }
         return null;
     }
 
