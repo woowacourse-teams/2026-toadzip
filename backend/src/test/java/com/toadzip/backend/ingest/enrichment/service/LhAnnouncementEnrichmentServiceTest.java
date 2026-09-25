@@ -733,8 +733,9 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(supplyTargetRepository.count()).isZero();
     }
 
-    @Test
-    void 저장했던_임대료가_공고문_참조로_바뀌어도_마지막_정상_금액을_보존한다() {
+    @ParameterizedTest
+    @ValueSource(strings = {"공고문 참조", "별도 안내"})
+    void 저장했던_임대료가_미제공으로_바뀌어도_마지막_정상_금액을_보존한다(String unavailableValue) {
         saveComplex();
         myHomeSourceRepository.save(myHomeSource());
         mapMyHomeSource();
@@ -745,7 +746,7 @@ class LhAnnouncementEnrichmentServiceTest {
         supplySourceRepository.deleteAll();
         saveSupply(new LhAnnouncementSupplySource(0, PAN_ID,
                 new LhAnnouncementSupplySourceSnapshot(
-                        "동삼2", "46A", "46.8", "67.0", "100", "20", "공고문 참조", "공고문 참조"
+                        "동삼2", "46A", "46.8", "67.0", "100", "20", unavailableValue, unavailableValue
                 )));
 
         enrichmentService.enrichAll();
