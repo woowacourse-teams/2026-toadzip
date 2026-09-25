@@ -43,4 +43,20 @@ class LhAnnouncementValueParserTest {
         assertThatThrownBy(() -> parser.dateTime("2026.09.14 ~ 2026.09.15", "접수"))
                 .isInstanceOf(LhAnnouncementEnrichmentRejectedException.class);
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"별도 안내", "별도안내", "별도\t안내", "별도\n안내"})
+    void 공백_형태와_무관하게_별도_안내를_미제공으로_해석한다(String value) {
+        assertThat(parser.unavailable(value)).isTrue();
+        assertThat(parser.yearMonth(value, "입주예정월")).isNull();
+        assertThat(parser.amount(value, "임대보증금")).isNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"공고문 참조", "미정"})
+    void 기존_미제공_마커도_계속_해석한다(String value) {
+        assertThat(parser.unavailable(value)).isTrue();
+        assertThat(parser.yearMonth(value, "입주예정월")).isNull();
+        assertThat(parser.amount(value, "임대보증금")).isNull();
+    }
 }

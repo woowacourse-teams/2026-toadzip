@@ -154,7 +154,7 @@ class LhAnnouncementValueParser {
                 || normalized.equals("-")
                 || normalized.contains("공고문참조")
                 || normalized.contains("미정")
-                || normalized.contains("별도 안내");
+                || normalized.contains("별도안내");
     }
 
     LhAnnouncementEnrichmentRejectedException invalid(String detail) {

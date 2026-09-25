@@ -80,6 +80,16 @@ class LhAnnouncementEnrichmentMapperTest {
     }
 
     @Test
+    void 별도_안내인_접수_기간은_일정을_만들지_않는다() {
+        var details = new LhAnnouncementDetailResponseParser().parse(PAN_ID,
+                JsonMapper.builder().build().readTree("""
+                        [{"dsSplScdl":[{"ACP_DTTM":"별도 안내"}]}]
+                        """));
+
+        assertThat(mapper.map(PAN_ID, details, List.of()).schedules()).isEmpty();
+    }
+
+    @Test
     void 다단지_공고는_공급행의_단지에_해당하는_입주예정월을_매핑한다() {
         List<LhAnnouncementDetailSource> details = List.of(
                 complexDetail(0, "동삼2", "202612"),
