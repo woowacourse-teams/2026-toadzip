@@ -5,7 +5,6 @@ import java.math.BigDecimal;
 import java.time.DateTimeException;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -13,38 +12,63 @@ import java.util.regex.Pattern;
 class LhAnnouncementValueParser {
 
     private static final Pattern DATE_TIME = Pattern.compile(
-            "(20\\d{2})\\D*(\\d{1,2})\\D*(\\d{1,2})(?:\\D+(\\d{1,2})\\D*(\\d{2}))?"
+            "^(20\\d{2})([./-])(\\d{1,2})\\2(\\d{1,2})\\.?(?:\\s+(\\d{1,2})(?::|시\\s*)(\\d{2})(?:분)?)?$"
     );
+    private static final Pattern COMPACT_DATE = Pattern.compile("^(20\\d{2})(\\d{2})(\\d{2})$");
     private static final Pattern YEAR_MONTH = Pattern.compile("((?:19|20)\\d{2})\\D*(\\d{1,2})");
     private static final Pattern UNSIGNED_INTEGER = Pattern.compile("(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)");
 
     List<LocalDateTime> dateTimes(String value, String fieldName) {
-        List<LocalDateTime> values = new ArrayList<>();
-        Matcher matcher = DATE_TIME.matcher(value);
-        while (matcher.find()) {
-            values.add(dateTime(matcher, fieldName));
+        if (value == null) {
+            throw invalid(fieldName + " 기간의 시작·종료 시각을 해석할 수 없습니다.");
         }
-        return values;
+        String[] parts = value.split("\\s*~\\s*", -1);
+        if (parts.length != 2) {
+            throw invalid(fieldName + " 기간의 시작·종료 시각을 해석할 수 없습니다.");
+        }
+        return List.of(dateTime(parts[0], fieldName), dateTime(parts[1], fieldName));
     }
 
     LocalDateTime dateTime(String value, String fieldName) {
-        Matcher matcher = DATE_TIME.matcher(value);
-        if (!matcher.find()) {
+        if (value == null) {
             throw invalid(fieldName + " 형식이 올바르지 않습니다.");
         }
-        return dateTime(matcher, fieldName);
+        Matcher matcher = DATE_TIME.matcher(value.strip());
+        if (matcher.matches()) {
+            return dateTime(matcher, fieldName);
+        }
+        Matcher compact = COMPACT_DATE.matcher(value.strip());
+        if (compact.matches()) {
+            return compactDate(compact, fieldName);
+        }
+        throw invalid(fieldName + " 형식이 올바르지 않습니다.");
     }
 
     private LocalDateTime dateTime(Matcher matcher, String fieldName) {
         try {
-            int hour = matcher.group(4) == null ? 0 : Integer.parseInt(matcher.group(4));
-            int minute = matcher.group(5) == null ? 0 : Integer.parseInt(matcher.group(5));
+            int hour = matcher.group(5) == null ? 0 : Integer.parseInt(matcher.group(5));
+            int minute = matcher.group(6) == null ? 0 : Integer.parseInt(matcher.group(6));
+            return LocalDateTime.of(
+                    Integer.parseInt(matcher.group(1)),
+                    Integer.parseInt(matcher.group(3)),
+                    Integer.parseInt(matcher.group(4)),
+                    hour,
+                    minute
+            );
+        }
+        catch (DateTimeException | NumberFormatException exception) {
+            throw invalid(fieldName + " 형식이 올바르지 않습니다.");
+        }
+    }
+
+    private LocalDateTime compactDate(Matcher matcher, String fieldName) {
+        try {
             return LocalDateTime.of(
                     Integer.parseInt(matcher.group(1)),
                     Integer.parseInt(matcher.group(2)),
                     Integer.parseInt(matcher.group(3)),
-                    hour,
-                    minute
+                    0,
+                    0
             );
         }
         catch (DateTimeException | NumberFormatException exception) {
