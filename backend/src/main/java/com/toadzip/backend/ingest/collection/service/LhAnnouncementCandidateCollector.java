@@ -7,8 +7,10 @@ import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
+import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
+import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -33,8 +35,15 @@ public class LhAnnouncementCandidateCollector {
         try {
             storedRowCount = collectAndStore(targetSource, request, callCounter);
         }
-        catch (ExternalDataCallFailureException | EmptyLhSupplyReplacementException
+        catch (ExternalDataCallFailureException | EmptyLhDetailReplacementException
+                | EmptyLhSupplyReplacementException
                 | IncompleteLhSupplyReplacementException exception) {
+            return failedReport(targetSource, request, exception, callCounter);
+        }
+        catch (LhAnnouncementUnavailableException exception) {
+            if (!exception.isRateLimited()) {
+                throw exception;
+            }
             return failedReport(targetSource, request, exception, callCounter);
         }
         progressManager.complete(targetSource, candidate);

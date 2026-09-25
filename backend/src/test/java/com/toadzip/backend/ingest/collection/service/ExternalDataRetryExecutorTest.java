@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import io.micrometer.core.instrument.MockClock;
 import io.micrometer.core.instrument.simple.SimpleConfig;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -102,6 +103,22 @@ class ExternalDataRetryExecutorTest {
         assertThat(meterRegistry.find("ingest.external.request")
                 .tag("result", "rate_limited").timer()).isNotNull();
         assertThat(meterRegistry.find("ingest.external.retry").counter()).isNull();
+    }
+
+    @Test
+    void 회로_차단으로_실제_요청이_없으면_API_호출수에_포함하지_않는다() {
+        ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
+
+        assertThatThrownBy(() -> executor.execute(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                "PAN_ID=100",
+                () -> {
+                    throw new LhAnnouncementUnavailableException("LH 호출 제한 차단", true);
+                },
+                callCounter
+        )).isInstanceOf(LhAnnouncementUnavailableException.class);
+
+        assertThat(callCounter.count()).isZero();
     }
 
     private String responseAfterTwoFailures(AtomicInteger executions) {

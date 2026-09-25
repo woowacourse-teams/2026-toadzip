@@ -57,11 +57,12 @@ class LhAnnouncementCatalogResponseParserTest {
     }
 
     @Test
-    void 첫_페이지의_명시적인_빈_목록만_허용한다() throws IOException {
+    void 전체건수를_검증할_수_없는_빈_목록은_거절한다() throws IOException {
         JsonNode root = response();
         ((ObjectNode) root.get(1)).putArray("dsList");
 
-        assertThat(parser.parse(root, 1, 500).totalCount()).isZero();
+        assertThatThrownBy(() -> parser.parse(root, 1, 500))
+                .isInstanceOf(ExternalDataRequestException.class).hasMessageContaining("빈 목록");
     }
 
     private JsonNode response() throws IOException {

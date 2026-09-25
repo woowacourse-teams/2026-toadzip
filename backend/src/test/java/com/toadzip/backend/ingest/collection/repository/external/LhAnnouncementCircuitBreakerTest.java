@@ -34,7 +34,9 @@ class LhAnnouncementCircuitBreakerTest {
         AtomicInteger calls = new AtomicInteger();
 
         assertThatThrownBy(() -> circuit.execute(calls::incrementAndGet))
-                .isInstanceOf(LhAnnouncementUnavailableException.class);
+                .isInstanceOfSatisfying(LhAnnouncementUnavailableException.class, exception ->
+                        assertThat(exception.isRateLimited()).isFalse()
+                );
 
         assertThat(calls).hasValue(0);
         assertThat(registry.get("ingest.lh.circuit.opened").counter().count()).isEqualTo(1);
@@ -65,7 +67,9 @@ class LhAnnouncementCircuitBreakerTest {
         })).isInstanceOf(ExternalDataRequestException.class);
 
         assertThatThrownBy(() -> circuit.execute(() -> "should not run"))
-                .isInstanceOf(LhAnnouncementUnavailableException.class);
+                .isInstanceOfSatisfying(LhAnnouncementUnavailableException.class, exception ->
+                        assertThat(exception.isRateLimited()).isTrue()
+                );
     }
 
     @Test

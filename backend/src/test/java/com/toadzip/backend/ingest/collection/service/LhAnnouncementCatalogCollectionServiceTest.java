@@ -120,6 +120,16 @@ class LhAnnouncementCatalogCollectionServiceTest {
     }
 
     @Test
+    void 전체건수_증거가_없는_빈_목록은_실패로_보고하고_저장하지_않는다() {
+        when(parser.parse(any(), eq(1), eq(500)))
+                .thenReturn(new LhAnnouncementCatalogPage(List.of(), 0, "20260725", "20260925"));
+        org.mockito.Mockito.lenient().when(store.store(any())).thenReturn(new StoreResult(0, 0, 0));
+
+        assertThat(service.collect().failedRequestCount()).isOne();
+        verify(store, never()).store(any());
+    }
+
+    @Test
     void 전체건수가_페이지크기와_같으면_불필요한_다음_페이지를_호출하지_않는다() {
         when(parser.parse(any(), eq(1), eq(500))).thenReturn(page(0, 500, 500));
         when(store.store(any())).thenReturn(new StoreResult(500, 500, 0));

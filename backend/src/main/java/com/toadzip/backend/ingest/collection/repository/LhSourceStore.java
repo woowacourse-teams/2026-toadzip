@@ -7,6 +7,7 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
 import com.toadzip.backend.ingest.collection.domain.LhSupplySnapshot;
+import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
 import java.time.Clock;
@@ -64,6 +65,9 @@ public class LhSourceStore {
     public int replaceDetails(String panId, String requestDescription, List<LhAnnouncementDetailSource> sources) {
         Instant collectedAt = clock.instant();
         String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescription);
+        if (sources.isEmpty() && !previousDetails(panId, requestDescription, requestHash).isEmpty()) {
+            throw new EmptyLhDetailReplacementException();
+        }
         sources.forEach(source -> {
             requirePanId(panId, source.getPanId());
             source.assignRequestHash(requestHash);
@@ -103,6 +107,26 @@ public class LhSourceStore {
         if (missingRowCount > 0) {
             throw new IncompleteLhSupplyReplacementException(missingRowCount);
         }
+    }
+
+    private List<LhAnnouncementDetailSource> previousDetails(
+            String panId,
+            String requestDescription,
+            String requestHash
+    ) {
+        List<LhAnnouncementDetailSource> current = detailRepository
+                .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
+        if (!current.isEmpty()) {
+            return current;
+        }
+        return checkpointRepository.findAllBySourceAndPanIdOrderByCompletedAtDesc(
+                        ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, panId).stream()
+                .filter(checkpoint -> checkpoint.hasSameQuery(requestDescription))
+                .map(checkpoint -> detailRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
+                        panId, checkpoint.getRequestHash()))
+                .filter(previous -> !previous.isEmpty())
+                .findFirst()
+                .orElseGet(List::of);
     }
 
     private List<LhAnnouncementSupplySource> previousSupplies(

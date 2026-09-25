@@ -28,10 +28,7 @@ public class LhAnnouncementCatalogResponseParser {
         String startDate = required(condition, "PAN_ST_DT");
         String endDate = required(condition, "PAN_ED_DT");
         if (rows.isEmpty()) {
-            if (page != 1) {
-                throw invalid("후속 페이지의 빈 목록");
-            }
-            return new LhAnnouncementCatalogPage(List.of(), 0, startDate, endDate);
+            throw invalid("전체 건수를 확인할 수 없는 빈 목록");
         }
         int total = number(rows.get(0), "ALL_CNT");
         List<Entry> entries = new ArrayList<>();

@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -61,5 +62,32 @@ class LhAnnouncementEnrichmentWriterTest {
 
         verify(supplyTargetRepository).findAllBySupplyRowIdIn(List.of(1L));
         verify(supplyTargetRepository, never()).findAllBySupplyRow(any());
+    }
+
+    @Test
+    void 서로_다른_LH_공급행이_같은_제품_공급행에_연결되면_반영_전에_거절한다() {
+        Announcement announcement = mock(Announcement.class);
+        SupplyRow row = mock(SupplyRow.class);
+        LhSupplyData first = new LhSupplyData("LH:100:SUPPLY:1", "단지", "주택형", null,
+                null, null, null, null);
+        LhSupplyData second = new LhSupplyData("LH:100:SUPPLY:2", "단지", "주택형", null,
+                null, null, null, null);
+        when(announcementRepository.save(announcement)).thenReturn(announcement);
+        when(supplyRowRepository.findAllByAnnouncement(announcement)).thenReturn(List.of(row));
+        when(row.getId()).thenReturn(1L);
+        when(supplyMatcher.match(List.of(row), first)).thenReturn(LhSupplyMatchResult.matched(row));
+        when(supplyMatcher.match(List.of(row), second)).thenReturn(LhSupplyMatchResult.matched(row));
+        LhAnnouncementEnrichmentWriter writer = new LhAnnouncementEnrichmentWriter(
+                scheduleRepository, announcementRepository, attachmentRepository,
+                supplyRowRepository, supplyTargetRepository, supplyMatcher
+        );
+
+        assertThatThrownBy(() -> writer.write(announcement, new LhAnnouncementEnrichmentData(
+                "100", null, null, List.of(), List.of(), List.of(first, second)
+        ))).isInstanceOf(LhAnnouncementEnrichmentRejectedException.class)
+                .hasMessageContaining("여러 LH 공급행");
+
+        verify(row, never()).enrichFromLh(any(), any(), any());
+        verify(supplyTargetRepository, never()).save(any());
     }
 }

@@ -23,8 +23,7 @@ public class LhAnnouncementCatalogStore {
     @Transactional
     public StoreResult store(List<Entry> entries) {
         if (entries.isEmpty()) {
-            repository.markAllAbsentFromLatestCatalog();
-            return new StoreResult(0, 0, 0);
+            throw new IllegalArgumentException("검증되지 않은 빈 LH 목록은 저장할 수 없습니다.");
         }
         Instant collectedAt = clock.instant();
         List<String> keys = entries.stream().map(entry -> entry.snapshot().sourceKey()).toList();

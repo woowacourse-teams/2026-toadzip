@@ -8,6 +8,10 @@ final class ExternalDataCallCounter {
         count++;
     }
 
+    void decrement() {
+        count--;
+    }
+
     int count() {
         return count;
     }

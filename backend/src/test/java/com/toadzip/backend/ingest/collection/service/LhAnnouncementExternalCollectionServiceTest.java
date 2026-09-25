@@ -34,9 +34,10 @@ import com.toadzip.backend.ingest.collection.repository.external.ExternalDataReq
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementCircuitBreaker;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
+import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -346,6 +347,30 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
+    void 호출_제한으로_열린_회로의_동시_거절도_부분_실패로_기록하고_후속_공고를_중단한다() throws Exception {
+        source(announcementSource("a", "100"), announcementSource("b", "200"),
+                announcementSource("c", "300"));
+        CountDownLatch firstPairStarted = new CountDownLatch(2);
+        when(externalRepository.fetchDetail(any())).thenAnswer(invocation -> {
+            LhAnnouncementRequest request = invocation.getArgument(0);
+            firstPairStarted.countDown();
+            assertThat(firstPairStarted.await(2, TimeUnit.SECONDS)).isTrue();
+            if (request.panId().equals("100")) {
+                throw ExternalDataRequestException.rateLimited("일일 요청 한도 초과", null, false);
+            }
+            throw new LhAnnouncementUnavailableException("LH 호출 제한 차단", true);
+        });
+
+        ExternalDataCollectionReport report = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        assertThat(report.failedRequestCount()).isEqualTo(2);
+        assertThat(report.rateLimitedRequestCount()).isEqualTo(2);
+        assertThat(report.externalApiCallCount()).isOne();
+        verify(externalRepository, times(2)).fetchDetail(any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+    }
+
+    @Test
     void 같은_panId의_다른_조회_조건은_저장과_체크포인트까지_순서대로_처리한다() {
         MyHomeAnnouncementSource first = announcementSource("a", "100");
         MyHomeAnnouncementSource second = announcementSource("b", "100");
@@ -590,6 +615,23 @@ class LhAnnouncementExternalCollectionServiceTest {
         verify(progressStore, never()).link(any(), any(), any(), any());
         verify(failureRecorder).record(any(), any(), eq(failure), any(), any());
         verify(failureRecorder, never()).resolve(any(), any());
+    }
+
+    @Test
+    void 빈_상세_교체를_거절하면_성공_연결을_갱신하지_않는다() {
+        source(announcementSource("a", "100"), announcementSource("b", "100"));
+        EmptyLhDetailReplacementException failure = new EmptyLhDetailReplacementException();
+        when(externalRepository.fetchDetail(any())).thenReturn(response(
+                "[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsEtcInfo\":[]}]"));
+        when(sourceStore.replaceDetails(eq("100"), any(), any())).thenThrow(failure);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.storedRowCount()).isZero();
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).link(any(), any(), any(), any());
+        verify(failureRecorder).record(any(), any(), eq(failure), any(), any());
     }
 
     @Test

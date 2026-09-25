@@ -21,6 +21,7 @@ public class LhAnnouncementCircuitBreaker {
     private boolean probeRunning;
     private long generation;
     private String rejectionMessage;
+    private boolean rejectionRateLimited;
 
     public LhAnnouncementCircuitBreaker(Clock clock, MeterRegistry meterRegistry) {
         this.clock = clock;
@@ -51,7 +52,7 @@ public class LhAnnouncementCircuitBreaker {
         }
         if (clock.instant().isBefore(openUntil) || probeRunning) {
             meterRegistry.counter("ingest.lh.circuit.rejected").increment();
-            throw new LhAnnouncementUnavailableException(rejectionMessage);
+            throw new LhAnnouncementUnavailableException(rejectionMessage, rejectionRateLimited);
         }
         probeRunning = true;
         generation++;
@@ -84,6 +85,7 @@ public class LhAnnouncementCircuitBreaker {
             probeRunning = false;
             generation++;
             rejectionMessage = "LH 공고 API 장애로 호출을 잠시 중단했습니다. 잠시 후 재실행해주세요.";
+            rejectionRateLimited = rateLimited;
             if (rateLimited) {
                 rejectionMessage = "LH 공고 API 호출 제한으로 수집을 잠시 중단했습니다. 잠시 후 재실행해주세요.";
             }

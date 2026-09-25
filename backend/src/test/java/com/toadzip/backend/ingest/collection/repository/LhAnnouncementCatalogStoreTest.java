@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCatalogSnapshot;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementCatalogPage.Entry;
@@ -98,21 +99,22 @@ class LhAnnouncementCatalogStoreTest {
     }
 
     @Test
-    void 빈_목록을_정상_수집하면_모든_과거_행을_현재_목록에서_제외한다() {
+    void 검증되지_않은_빈_목록은_기존_행의_포함_상태를_보존한다() {
         store(FIRST).store(List.of(entry("100", "공고중", "{}")));
 
-        store(FIRST.plusSeconds(60)).store(List.of());
+        assertThatThrownBy(() -> store(FIRST.plusSeconds(60)).store(List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
 
         entityManager.flush();
         entityManager.clear();
         assertThat(repository.count()).isOne();
-        assertThat(repository.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100"))).isEmpty();
+        assertThat(repository.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100"))).hasSize(1);
     }
 
     @Test
     void 사라졌다가_다시_나타난_행은_변경으로_판정한다() {
         store(FIRST).store(List.of(entry("100", "공고중", "{}")));
-        store(FIRST.plusSeconds(60)).store(List.of());
+        store(FIRST.plusSeconds(60)).store(List.of(entry("200", "공고중", "{}")));
         entityManager.flush();
         entityManager.clear();
 

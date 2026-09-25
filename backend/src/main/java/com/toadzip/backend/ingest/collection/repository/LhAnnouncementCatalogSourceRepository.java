@@ -19,9 +19,4 @@ public interface LhAnnouncementCatalogSourceRepository extends JpaRepository<LhA
     @Query("UPDATE LhAnnouncementCatalogSource source SET source.presentInLatestCatalog = false "
             + "WHERE source.presentInLatestCatalog = true AND source.sourceKey NOT IN :sourceKeys")
     void markAbsentFromLatestCatalog(Collection<String> sourceKeys);
-
-    @Modifying(flushAutomatically = true)
-    @Query("UPDATE LhAnnouncementCatalogSource source SET source.presentInLatestCatalog = false "
-            + "WHERE source.presentInLatestCatalog = true")
-    void markAllAbsentFromLatestCatalog();
 }

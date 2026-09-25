@@ -79,6 +79,9 @@ public class LhAnnouncementCatalogCollectionService {
                 first = current;
             }
             validateConsistentWindow(first, current);
+            if (current.entries().isEmpty()) {
+                throw new ExternalDataRequestException("LH 목록의 전체 건수를 확인할 수 없는 빈 목록입니다.");
+            }
             for (Entry entry : current.entries()) {
                 if (!keys.add(entry.snapshot().sourceKey())) {
                     throw new ExternalDataRequestException("LH 목록에 중복 공고 식별자가 있습니다.");

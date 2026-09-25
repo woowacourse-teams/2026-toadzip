@@ -169,13 +169,9 @@ public class LhAnnouncementEnrichmentWriter {
             return new SupplyWriteResult(0, 0, 0, List.of());
         }
         List<SupplyRow> rows = supplyRowRepository.findAllByAnnouncement(announcement);
-        Map<Long, List<SupplyTarget>> targetsByRow = targetsByRow(rows);
         List<LhSupplyMatchingFailureData> failures = new ArrayList<>();
-        Set<String> retainedTargetIdentifiers = new HashSet<>();
-        Set<Long> pricedChangedHousingTypeRows = new HashSet<>();
-        int updatedRows = 0;
-        int createdTargets = 0;
-        int updatedTargets = 0;
+        List<MatchedSupply> matchedSupplies = new ArrayList<>();
+        Set<Long> matchedRowIds = new HashSet<>();
         for (LhSupplyData source : data.supplies()) {
             LhSupplyMatchResult match = supplyMatcher.match(rows, source);
             if (match.failure() != null) {
@@ -183,6 +179,23 @@ public class LhAnnouncementEnrichmentWriter {
                 continue;
             }
             SupplyRow row = match.row();
+            if (!matchedRowIds.add(row.getId())) {
+                throw new LhAnnouncementEnrichmentRejectedException(
+                        LhAnnouncementEnrichmentFailureReason.AMBIGUOUS_HOUSING_TYPE,
+                        "여러 LH 공급행이 하나의 제품 공급행에 연결됩니다."
+                );
+            }
+            matchedSupplies.add(new MatchedSupply(source, row));
+        }
+        Map<Long, List<SupplyTarget>> targetsByRow = targetsByRow(rows);
+        Set<String> retainedTargetIdentifiers = new HashSet<>();
+        Set<Long> pricedChangedHousingTypeRows = new HashSet<>();
+        int updatedRows = 0;
+        int createdTargets = 0;
+        int updatedTargets = 0;
+        for (MatchedSupply matched : matchedSupplies) {
+            LhSupplyData source = matched.source();
+            SupplyRow row = matched.row();
             if (changedHousingTypeRows.contains(row.getId())
                     && (source.rentalDeposit() == null || source.monthlyRent() == null)) {
                 throw missingAmountForChangedHousingType();
@@ -370,6 +383,9 @@ public class LhAnnouncementEnrichmentWriter {
     }
 
     private record AttachmentsWriteResult(int created, int updated) {
+    }
+
+    private record MatchedSupply(LhSupplyData source, SupplyRow row) {
     }
 
     private record SupplyWriteResult(
