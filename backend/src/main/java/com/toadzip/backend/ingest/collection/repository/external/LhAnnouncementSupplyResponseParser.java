@@ -2,7 +2,6 @@ package com.toadzip.backend.ingest.collection.repository.external;
 
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementResponsePage;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -15,15 +14,6 @@ public class LhAnnouncementSupplyResponseParser {
     private static final String PUBLIC_RENTAL_DATASET_KEY = "dsList02";
 
     public List<LhAnnouncementSupplySource> parse(String panId, String supplyInfoTypeCode, JsonNode root) {
-        return parsePage(panId, supplyInfoTypeCode, root, 0).items();
-    }
-
-    public LhAnnouncementResponsePage<LhAnnouncementSupplySource> parsePage(
-            String panId,
-            String supplyInfoTypeCode,
-            JsonNode root,
-            int sourceOrderOffset
-    ) {
         String datasetKey = datasetKeyOf(supplyInfoTypeCode);
         requireDataset(root, datasetKey);
         List<JsonNode> rows = ExternalResponseRows.find(root, datasetKey);
@@ -31,12 +21,12 @@ public class LhAnnouncementSupplyResponseParser {
         List<LhAnnouncementSupplySource> sources = new ArrayList<>();
         for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
             sources.add(new LhAnnouncementSupplySource(
-                    sourceOrderOffset + rowIndex,
+                    rowIndex,
                     panId,
                     sourceSnapshotOf(rows.get(rowIndex), supplyInfoTypeCode)
             ));
         }
-        return new LhAnnouncementResponsePage<>(sources, rows.size());
+        return List.copyOf(sources);
     }
 
     private String datasetKeyOf(String supplyInfoTypeCode) {

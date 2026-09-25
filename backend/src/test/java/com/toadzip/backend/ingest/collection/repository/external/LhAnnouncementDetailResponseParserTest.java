@@ -13,6 +13,20 @@ class LhAnnouncementDetailResponseParserTest {
     private final LhAnnouncementDetailResponseParser parser = new LhAnnouncementDetailResponseParser();
 
     @Test
+    void 공공임대_실응답의_단지명_주소_세대수를_보존한다() throws Exception {
+        try (var input = getClass().getResourceAsStream("/ingest/lh/detail-060-excerpt.json")) {
+            var sources = parser.parse("0000061177", objectMapper.readTree(input));
+
+            assertThat(sources).filteredOn(source -> "COMPLEX".equals(source.getDatasetType()))
+                    .singleElement().satisfies(source -> {
+                        assertThat(source.getComplexName()).isEqualTo("화성동탄2A-40(공임리츠) A-40");
+                        assertThat(source.getAddress()).isEqualTo("경기도 화성시 동탄대로12길 71");
+                        assertThat(source.getTotalUnitCount()).isEqualTo("652");
+                    });
+        }
+    }
+
+    @Test
     @DisplayName("LH 공고 상세 dataset을 정해진 순서의 원천 데이터로 파싱한다")
     void parsesDetailSourcesInDatasetOrder() {
         var root = objectMapper.readTree("""

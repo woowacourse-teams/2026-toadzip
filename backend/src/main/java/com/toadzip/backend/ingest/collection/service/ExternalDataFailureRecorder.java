@@ -59,6 +59,10 @@ public class ExternalDataFailureRecorder {
         store.resolve(source, requestDescription, clock.instant(), currentExecutionId());
     }
 
+    public void resolveStartingWith(ExternalDataSource source, String requestDescriptionPrefix) {
+        store.resolveStartingWith(source, requestDescriptionPrefix, clock.instant(), currentExecutionId());
+    }
+
     public void skip(ExternalDataSource source, String requestDescription, String skipReason) {
         store.skip(source, requestDescription, clock.instant(), skipReason, currentExecutionId());
     }

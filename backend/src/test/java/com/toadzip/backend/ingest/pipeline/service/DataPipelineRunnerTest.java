@@ -13,6 +13,7 @@ import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementDetailCollectionService;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementSupplyCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhLeaseCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.service.MyHomeAnnouncementCollectionService;
@@ -49,6 +50,9 @@ class DataPipelineRunnerTest {
     private MyHomeAnnouncementCollectionService myHomeAnnouncementCollectionService;
 
     @Mock
+    private LhAnnouncementCatalogCollectionService lhAnnouncementCatalogCollectionService;
+
+    @Mock
     private LhAnnouncementSupplyCollectionService lhAnnouncementSupplyCollectionService;
 
     @Mock
@@ -76,11 +80,14 @@ class DataPipelineRunnerTest {
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.lenient().when(lhAnnouncementCatalogCollectionService.collect())
+                .thenReturn(collectionReport("lh-announcement-catalog"));
         resultAdapter = new DataPipelineStepResultAdapter(JsonMapper.builder().build());
         runner = new DataPipelineRunner(
                 myHomeComplexCollectionService,
                 lhLeaseCatalogCollectionService,
                 myHomeAnnouncementCollectionService,
+                lhAnnouncementCatalogCollectionService,
                 lhAnnouncementSupplyCollectionService,
                 lhAnnouncementDetailCollectionService,
                 myHomeComplexMappingService,
@@ -153,10 +160,12 @@ class DataPipelineRunnerTest {
 
         InOrder order = inOrder(
                 myHomeAnnouncementCollectionService,
+                lhAnnouncementCatalogCollectionService,
                 lhAnnouncementSupplyCollectionService,
                 lhAnnouncementDetailCollectionService
         );
         order.verify(myHomeAnnouncementCollectionService).collect(any());
+        order.verify(lhAnnouncementCatalogCollectionService).collect();
         order.verify(lhAnnouncementSupplyCollectionService).collect();
         order.verify(lhAnnouncementDetailCollectionService).collect();
         verify(myHomeComplexCollectionService, never()).collect(any());
@@ -297,6 +306,18 @@ class DataPipelineRunnerTest {
     }
 
     @Test
+    void LH_공급에서_호출_제한에_도달하면_상세는_외부_호출_없이_건너뛴다() {
+        when(myHomeAnnouncementCollectionService.collect(any())).thenReturn(collectionReport("myhome-announcement"));
+        when(lhAnnouncementSupplyCollectionService.collect()).thenReturn(
+                new ExternalDataCollectionReport("lh-announcement-supply", 0, 1, 1, 0, 1));
+
+        runner.run(DataPipelineType.ANNOUNCEMENT_COLLECTION, progressListener);
+
+        verify(lhAnnouncementDetailCollectionService, never()).collect();
+        verify(progressListener).skipped(eq(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS), any(), eq("{}"));
+    }
+
+    @Test
     void 호출_제한으로만_실패한_수집_단계는_건너뛰고_다음_단계를_실행한다() {
         ExternalDataCollectionReport rateLimited = new ExternalDataCollectionReport(
                 "myhome-announcement",
@@ -368,10 +389,12 @@ class DataPipelineRunnerTest {
 
         InOrder order = inOrder(
                 myHomeAnnouncementCollectionService,
+                lhAnnouncementCatalogCollectionService,
                 lhAnnouncementSupplyCollectionService,
                 lhAnnouncementDetailCollectionService
         );
         order.verify(myHomeAnnouncementCollectionService).collect(any());
+        order.verify(lhAnnouncementCatalogCollectionService).collect();
         order.verify(lhAnnouncementSupplyCollectionService).collect();
         order.verify(lhAnnouncementDetailCollectionService).collect();
     }

@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -74,6 +75,10 @@ public class ExternalDataRetryExecutor {
             T response = action.get();
             result = "completed";
             return response;
+        }
+        catch (LhAnnouncementUnavailableException exception) {
+            result = "rejected";
+            throw exception;
         }
         catch (ExternalDataRequestException exception) {
             if (exception.isRateLimited()) {

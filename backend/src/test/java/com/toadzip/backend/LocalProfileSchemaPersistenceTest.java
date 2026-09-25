@@ -53,7 +53,7 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertTrue(history.next()),
-                        () -> assertEquals(5, history.getInt(1)),
+                        () -> assertEquals(7, history.getInt(1)),
                         () -> assertEquals(1, countColumn(connection,
                                 "admin_announcement_imports", "original_json")),
                         () -> assertEquals(1, countColumn(connection,
@@ -144,12 +144,14 @@ class LocalProfileSchemaPersistenceTest {
                 assertEquals(1, countRequestRows(connection, "lh_announcement_detail_source", replayHash));
                 assertEquals(1, countRequestRows(connection, "lh_announcement_supply_source", replayHash));
                 assertTrue(history.next());
-                assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02,SQL:20260923.01,SQL:20260923.02,SQL:20260924.01",
+                assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02,SQL:20260923.01"
+                                + ",SQL:20260923.02,SQL:20260924.01,SQL:20260925.01,SQL:20260925.02",
                         history.getString(1));
                 assertEquals(1, countColumn(connection, "admin_announcement_imports", "original_json"));
                 assertEquals(1, countColumn(connection, "announcements", "lh_reception_place_owned"));
                 assertEquals(1, countColumn(connection, "supply_rows", "lh_total_supply_household_count_enriched"));
                 assertEquals(1, countColumn(connection, "lh_announcement_detail_source", "request_hash"));
+                assertEquals(1, countColumn(connection, "lh_announcement_detail_source", "winner_announcement_date"));
                 assertEquals(1, countColumn(connection, "lh_announcement_supply_source", "request_hash"));
                 assertEquals(1, countLegacyRow(connection, "lh_announcement_detail_source"));
                 assertEquals(1, countLegacyRow(connection, "lh_announcement_supply_source"));

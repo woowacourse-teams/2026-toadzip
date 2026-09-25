@@ -191,11 +191,11 @@ class DataPipelineExecutionRepositoryTest {
         executionStateService.startStepAfterPartialFailure(
                 executionId,
                 DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
-                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG
         );
         executionStateService.recordPartialFailure(
                 executionId,
-                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
                 "{\"failedRequestCount\":2}"
         );
 
@@ -209,7 +209,7 @@ class DataPipelineExecutionRepositoryTest {
                                 "{\"failedPageCount\":1}"
                         ),
                         org.assertj.core.groups.Tuple.tuple(
-                                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
+                                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
                                 "{\"failedRequestCount\":2}"
                         )
                 );

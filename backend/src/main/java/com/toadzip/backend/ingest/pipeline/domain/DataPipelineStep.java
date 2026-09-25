@@ -12,6 +12,10 @@ public enum DataPipelineStep {
             DataPipelineType.ANNOUNCEMENT_COLLECTION,
             "마이홈 공고 수집"
     ),
+    COLLECT_LH_ANNOUNCEMENT_CATALOG(
+            DataPipelineType.ANNOUNCEMENT_COLLECTION,
+            "LH 공고 목록 수집"
+    ),
     COLLECT_LH_ANNOUNCEMENT_SUPPLIES(
             DataPipelineType.ANNOUNCEMENT_COLLECTION,
             "LH 공고 공급 원본 수집"

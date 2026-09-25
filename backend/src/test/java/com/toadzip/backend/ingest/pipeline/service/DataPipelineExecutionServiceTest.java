@@ -142,10 +142,10 @@ class DataPipelineExecutionServiceTest {
         assertThat(started.executionId()).isNotNull();
         assertThat(started.status()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
-        assertThat(status.completedSteps()).hasSize(3);
+        assertThat(status.completedSteps()).hasSize(4);
         verify(lease).close();
-        verify(executionStateService, times(3)).startStep(any(), any());
-        verify(executionStateService, times(3)).completeStep(any(), any(), any());
+        verify(executionStateService, times(4)).startStep(any(), any());
+        verify(executionStateService, times(4)).completeStep(any(), any(), any());
         verify(executionStateService).complete(any(), any());
     }
 
@@ -274,6 +274,11 @@ class DataPipelineExecutionServiceTest {
                     "외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.",
                     serverResponse
             );
+            listener.started(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
+            listener.completed(
+                    DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
+                    "{\"collectedSourceRowCount\":1}"
+            );
             listener.started(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
             listener.completed(
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
@@ -291,8 +296,8 @@ class DataPipelineExecutionServiceTest {
         var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS);
-        assertThat(status.completedSteps()).hasSize(2);
-        assertThat(status.completedStepResults()).hasSize(2);
+        assertThat(status.completedSteps()).hasSize(3);
+        assertThat(status.completedStepResults()).hasSize(3);
         assertThat(status.completedStepResults().getFirst().report())
                 .isEqualTo(java.util.Map.of("collectedSourceRowCount", 1));
         assertThat(status.skippedSteps()).singleElement().satisfies(skipped -> {
@@ -301,6 +306,28 @@ class DataPipelineExecutionServiceTest {
             assertThat(skipped.serverResponse())
                     .isEqualTo(java.util.Map.of("rateLimitedRequestCount", 1));
         });
+    }
+
+    @Test
+    void LH_회로_차단은_실패한_단계와_재실행_안내를_보존한다() {
+        configureStoredExecution();
+        when(executionLock.tryAcquire()).thenReturn(Optional.of(lease));
+        doAnswer(invocation -> {
+            DataPipelineProgressListener listener = invocation.getArgument(1);
+            listener.started(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+            listener.completed(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS, "{}");
+            listener.started(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
+            throw new com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException(
+                    "LH 공고 API 장애로 호출을 잠시 중단했습니다. 잠시 후 재실행해주세요.");
+        }).when(runner).run(any(), any());
+
+        service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+        var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+
+        assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.FAILED);
+        assertThat(status.failure().stepName()).isEqualTo("LH 공고 목록 수집");
+        assertThat(status.failure().message()).contains("LH 공고 API 장애", "재실행");
+        verify(lease).close();
     }
 
     @Test

@@ -70,7 +70,6 @@ public class LhSourceStore {
             source.markCollectedAt(collectedAt);
         });
         detailRepository.deleteByPanIdAndRequestHash(panId, requestHash);
-        detailRepository.flush();
         detailRepository.saveAll(sources);
         return sources.size();
     }
@@ -86,7 +85,6 @@ public class LhSourceStore {
             source.markCollectedAt(collectedAt);
         });
         supplyRepository.deleteByPanIdAndRequestHash(panId, requestHash);
-        supplyRepository.flush();
         supplyRepository.saveAll(sources);
         return sources.size();
     }

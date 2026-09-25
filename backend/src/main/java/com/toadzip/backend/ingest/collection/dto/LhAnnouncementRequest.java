@@ -12,37 +12,11 @@ public record LhAnnouncementRequest(
         String connectionSystemDivisionCode,
         String upperAnnouncementTypeCode,
         String announcementTypeCode,
-        String supplyInfoTypeCode,
-        int pageSize,
-        int page
+        String supplyInfoTypeCode
 ) {
 
-    private static final int DEFAULT_PAGE_SIZE = 100;
-    private static final int COLLECTION_VERSION = 4;
-
-    public LhAnnouncementRequest(
-            String panId,
-            String connectionSystemDivisionCode,
-            String upperAnnouncementTypeCode,
-            String announcementTypeCode,
-            String supplyInfoTypeCode
-    ) {
-        this(
-                panId,
-                connectionSystemDivisionCode,
-                upperAnnouncementTypeCode,
-                announcementTypeCode,
-                supplyInfoTypeCode,
-                DEFAULT_PAGE_SIZE,
-                1
-        );
-    }
-
-    public LhAnnouncementRequest {
-        if (pageSize < 1 || page < 1) {
-            throw new IllegalArgumentException("페이지 크기와 페이지 번호는 1 이상이어야 합니다.");
-        }
-    }
+    private static final int COLLECTION_VERSION = 6;
+    private static final int PREVIOUS_PAGE_COLLECTION_VERSION = 4;
 
     public static Optional<LhAnnouncementRequest> from(URI detailUrl, String supplyInfoTypeCode) {
         MultiValueMap<String, String> query = UriComponentsBuilder.fromUri(detailUrl)
@@ -73,25 +47,19 @@ public record LhAnnouncementRequest(
             params.add("AIS_TP_CD", announcementTypeCode);
         }
         params.add("SPL_INF_TP_CD", supplyInfoTypeCode);
-        params.add("PG_SZ", Integer.toString(pageSize));
-        params.add("PAGE", Integer.toString(page));
         return params;
-    }
-
-    public LhAnnouncementRequest withPage(int page) {
-        return new LhAnnouncementRequest(
-                panId,
-                connectionSystemDivisionCode,
-                upperAnnouncementTypeCode,
-                announcementTypeCode,
-                supplyInfoTypeCode,
-                pageSize,
-                page
-        );
     }
 
     public String requestDescription() {
         return unversionedRequestDescription() + "&COLLECTION_VERSION=" + COLLECTION_VERSION;
+    }
+
+    public String previousPageRequestDescription() {
+        return unversionedRequestDescription() + "&COLLECTION_VERSION=" + PREVIOUS_PAGE_COLLECTION_VERSION;
+    }
+
+    public String previousRequestDescription() {
+        return unversionedRequestDescription() + "&COLLECTION_VERSION=5";
     }
 
     private String unversionedRequestDescription() {
@@ -110,10 +78,6 @@ public record LhAnnouncementRequest(
             return List.of(currentDescription, legacyDescription);
         }
         return List.of(currentDescription, unversionedDescription, legacyDescription);
-    }
-
-    public String pageRequestDescription() {
-        return requestDescription() + "&PG_SZ=" + pageSize + "&PAGE=" + page;
     }
 
     private String legacyRequestDescription() {

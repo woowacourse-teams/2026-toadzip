@@ -37,6 +37,7 @@ public enum DataPipelineType {
             );
             case ANNOUNCEMENT_COLLECTION -> List.of(
                     DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                    DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS
             );

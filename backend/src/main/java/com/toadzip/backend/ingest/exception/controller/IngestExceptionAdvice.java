@@ -13,6 +13,7 @@ import com.toadzip.backend.global.exception.RequestTraceIdResolver;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice
@@ -62,6 +63,16 @@ public class IngestExceptionAdvice {
                 traceIdOf(request)
         );
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+    }
+
+    @ExceptionHandler(LhAnnouncementUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleLhUnavailable(
+            LhAnnouncementUnavailableException exception,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(new ErrorResponse(
+                "LH_ANNOUNCEMENT_UNAVAILABLE", exception.getMessage(), traceIdOf(request)
+        ));
     }
 
     private String traceIdOf(HttpServletRequest request) {

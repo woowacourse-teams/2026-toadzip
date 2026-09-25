@@ -7,17 +7,62 @@ import static org.assertj.core.groups.Tuple.tuple;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
+import com.toadzip.backend.announcement.domain.ScheduleType;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import tools.jackson.databind.json.JsonMapper;
 
 class LhAnnouncementEnrichmentMapperTest {
 
     private static final String PAN_ID = "100";
 
     private final LhAnnouncementEnrichmentMapper mapper = new LhAnnouncementEnrichmentMapper();
+
+    @Test
+    void 국민임대_실응답에서_접수와_서류대상자_발표와_당첨자_발표를_구분한다() throws Exception {
+        var result = mapDetailFixture("062");
+
+        assertThat(result.schedules()).extracting(LhScheduleData::type, LhScheduleData::name,
+                        LhScheduleData::startAt, LhScheduleData::endAt)
+                .contains(
+                        tuple(ScheduleType.APPLICATION, "접수", LocalDateTime.of(2026, 9, 29, 0, 0),
+                                LocalDateTime.of(2026, 9, 29, 0, 0)),
+                        tuple(ScheduleType.ETC, "서류제출 대상자 발표", LocalDateTime.of(2026, 10, 13, 0, 0),
+                                LocalDateTime.of(2026, 10, 13, 0, 0)),
+                        tuple(ScheduleType.WINNER_ANNOUNCEMENT, "당첨자 발표", LocalDateTime.of(2027, 1, 15, 0, 0),
+                                LocalDateTime.of(2027, 1, 15, 0, 0))
+                );
+        assertThat(result.schedules()).filteredOn(row -> row.type() == ScheduleType.WINNER_ANNOUNCEMENT)
+                .hasSize(1);
+    }
+
+    @Test
+    void 공공임대_실응답의_당첨자_발표와_당첨자_서류제출_일정을_보존한다() throws Exception {
+        var result = mapDetailFixture("060");
+
+        assertThat(result.schedules()).extracting(LhScheduleData::type, LhScheduleData::startAt, LhScheduleData::endAt)
+                .containsExactly(
+                        tuple(ScheduleType.APPLICATION, LocalDateTime.of(2026, 9, 29, 9, 0),
+                                LocalDateTime.of(2026, 9, 30, 16, 0)),
+                        tuple(ScheduleType.WINNER_ANNOUNCEMENT, LocalDateTime.of(2026, 10, 6, 0, 0),
+                                LocalDateTime.of(2026, 10, 6, 0, 0)),
+                        tuple(ScheduleType.DOCUMENT_SUBMISSION, LocalDateTime.of(2026, 10, 7, 0, 0),
+                                LocalDateTime.of(2026, 10, 14, 0, 0))
+                );
+    }
+
+    private LhAnnouncementEnrichmentData mapDetailFixture(String type) throws Exception {
+        try (var input = getClass().getResourceAsStream("/ingest/lh/detail-" + type + "-excerpt.json")) {
+            var details = new LhAnnouncementDetailResponseParser().parse(PAN_ID,
+                    JsonMapper.builder().build().readTree(input));
+            return mapper.map(PAN_ID, details, List.of());
+        }
+    }
 
     @Test
     void 다단지_공고는_공급행의_단지에_해당하는_입주예정월을_매핑한다() {

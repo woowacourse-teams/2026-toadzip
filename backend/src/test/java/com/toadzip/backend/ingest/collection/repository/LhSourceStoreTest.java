@@ -117,6 +117,23 @@ class LhSourceStoreTest {
     }
 
     @Test
+    void LH_상세_교체는_같은_조회_조건의_행만_삭제한다() {
+        String firstRequest = "PAN_ID=PAN-1&TYPE=A";
+        String otherRequest = "PAN_ID=PAN-1&TYPE=B";
+        store.replaceDetails("PAN-1", firstRequest, List.of(detail("이전")));
+        store.replaceDetails("PAN-1", otherRequest, List.of(detail("다른 조건")));
+
+        store.replaceDetails("PAN-1", firstRequest, List.of(detail("새 값")));
+
+        String firstHash = LhAnnouncementCollectionCheckpoint.requestHashOf(firstRequest);
+        String otherHash = LhAnnouncementCollectionCheckpoint.requestHashOf(otherRequest);
+        assertThat(detailRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc("PAN-1", firstHash))
+                .extracting(LhAnnouncementDetailSource::getCorrectionReason).containsExactly("새 값");
+        assertThat(detailRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc("PAN-1", otherHash))
+                .extracting(LhAnnouncementDetailSource::getCorrectionReason).containsExactly("다른 조건");
+    }
+
+    @Test
     void 같은_panId의_다른_조회_조건이_기존_원천을_덮지_않는다() {
         LhAnnouncementSupplySource first = new LhAnnouncementSupplySource(
                 0, "PAN-1", new LhAnnouncementSupplySourceSnapshot(
@@ -389,6 +406,14 @@ class LhSourceStoreTest {
     private LhCatalogSourceSnapshot catalog(String label, String area) {
         return new LhCatalogSourceSnapshot(
                 "강원특별자치도 강릉시", "행복주택", label, "180", area, "72", "0", "0"
+        );
+    }
+
+    private LhAnnouncementDetailSource detail(String correctionReason) {
+        return new LhAnnouncementDetailSource(
+                0, "PAN-1", "ETC_INFO", null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, correctionReason, "공고문 확인"
         );
     }
 }

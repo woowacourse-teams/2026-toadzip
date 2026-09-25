@@ -77,6 +77,25 @@ class LhAnnouncementCollectionExecutionLockTest {
     }
 
     @Test
+    void 상세_수집_중에는_공급도_시작하지_않아_동시성_상한을_합산해_지킨다() throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var running = executor.submit(() -> executionLock.tryRun(
+                    ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, () -> {
+                        started.countDown();
+                        await(release);
+                        return "completed";
+                    }));
+            assertThat(started.await(1, TimeUnit.SECONDS)).isTrue();
+            var supply = executionLock.tryRun(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, () -> "supply");
+            release.countDown();
+            assertThat(running.get(1, TimeUnit.SECONDS)).contains("completed");
+            assertThat(supply).isEmpty();
+        }
+    }
+
+    @Test
     void 다른_인스턴스가_DB_실행_잠금을_보유하면_수집을_실행하지_않는다() throws Exception {
         AtomicBoolean operationExecuted = new AtomicBoolean();
         when(resultSet.getBoolean(1)).thenReturn(false);
@@ -92,12 +111,11 @@ class LhAnnouncementCollectionExecutionLockTest {
     }
 
     @Test
-    void 상세와_공급_API는_서로_다른_DB_잠금을_사용한다() throws Exception {
+    void 상세와_공급_API는_같은_DB_잠금을_사용한다() throws Exception {
         executionLock.tryRun(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, () -> "detail");
         executionLock.tryRun(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, () -> "supply");
 
-        verify(statement, times(2)).setLong(1, 8_432_026_082_400_001L);
-        verify(statement, times(2)).setLong(1, 8_432_026_082_400_002L);
+        verify(statement, times(4)).setLong(1, 8_432_026_082_400_001L);
     }
 
     private void await(CountDownLatch latch) {
