@@ -185,7 +185,7 @@ HTTP 503, `LH_ANNOUNCEMENT_UNAVAILABLE`이다. 이미 진행 중인 응답은 �
 검증 범위: 8개 상한과 다음 슬롯 투입, 실제 HTTP 읽기 타임아웃, 실제 PostgreSQL의 다른 잠금 인스턴스 간
 상세/공급/목록 중복 거절, 연속 장애 차단·단일 복구 확인·늦은 성공의 잘못된 복구 방지,
 진행 중인 성공 저장 보존, 차단 시 후속 공고·단계 중단과 관리자 실패 표시.
-현재 작업 트리 검증: 격리 PostgreSQL에서 `./gradlew test --tests 'com.toadzip.backend.ingest.*'`의
+동시성 변경 당시 검증: 격리 PostgreSQL에서 `./gradlew test --tests 'com.toadzip.backend.ingest.*'`의
 625개, `./gradlew --rerun-tasks check`의 **1,443개 테스트 통과**(실패·오류·건너뜀 0).
 초기 실패 테스트는 상세 실행 중 공급이 함께 시작되는 기존 동작을 재현했고 공통 잠금 적용 후 통과했다.
 전체 검사에는 신규/기존 DB Flyway 적용·Hibernate 스키마 검증이 포함된다.
