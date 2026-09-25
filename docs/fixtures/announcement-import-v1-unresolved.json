@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "admin-announcement-import/v1",
+  "source": {
+    "originalUrl": "https://example.com/announcements/unresolved",
+    "sourceDocumentId": null,
+    "extractedAt": "2026-09-18T10:30:00+09:00"
+  },
+  "announcement": {
+    "name": "2026년 행복주택 입주자 모집",
+    "rentalType": "HAPPY_HOUSING",
+    "recruitmentType": "NEW",
+    "agencyCode": "LH",
+    "postedDate": "2026-09-01",
+    "applicationStartDate": "2026-09-10",
+    "applicationEndDate": "2026-09-12",
+    "winnerAnnouncementDate": "2026-10-01"
+  },
+  "receptionPlace": {
+    "name": "LH 청약플러스",
+    "method": "ONLINE",
+    "address": null,
+    "contact": "1600-1004",
+    "url": "https://apply.lh.or.kr"
+  },
+  "supplyRows": [
+    {
+      "complexReference": {
+        "sourceComplexName": "두꺼비 행복주택",
+        "pnu": "1114010100100010000"
+      },
+      "sourceHousingTypeName": "36A",
+      "expectedMoveInMonth": null,
+      "supplyCategory": "NEW_SUPPLY",
+      "totalSupplyHouseholdCount": 20,
+      "targets": []
+    }
+  ],
+  "schedules": [],
+  "attachments": [],
+  "unresolvedFields": [
+    {
+      "path": "$.supplyRows[0].expectedMoveInMonth",
+      "reason": "원문에서 확인할 수 없음"
+    }
+  ]
+}

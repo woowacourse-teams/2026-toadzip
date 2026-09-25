@@ -24,6 +24,11 @@ VITE_NAVER_MAPS_CLIENT_ID=
 docker compose -f compose.yaml -f compose.local.yaml -f compose.monitoring.yaml up -d --build
 ```
 
+새 빈 primary DB는 백엔드 시작 시 Flyway가 초기 스키마와 후속 마이그레이션을 적용한다.
+기존 로컬 DB에 Flyway 이력이 없다면 백엔드를 시작하기 전에
+[Flyway 도입 절차](../backend/docs/flyway-adoption.md)에 따라 백업, 명시적 baseline,
+통합 보정을 진행한다. Compose가 기존 DB를 자동으로 보정하지 않는다.
+
 ## 관리자 데이터 등록 수동 검증
 
 로컬 관리자 계정이 없다면 `.env`에 다음 값을 설정한 뒤 백엔드를 최초 한 번

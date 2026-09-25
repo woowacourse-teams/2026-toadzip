@@ -10,6 +10,8 @@ public interface AnnouncementRepository extends JpaRepository<Announcement, Long
 
     Optional<Announcement> findBySourceAnnouncementIdentifier(String sourceAnnouncementIdentifier);
 
+    boolean existsByOriginalUrl(String originalUrl);
+
     @Query("""
             SELECT announcement
             FROM Announcement announcement

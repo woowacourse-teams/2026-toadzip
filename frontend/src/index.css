@@ -1851,6 +1851,43 @@ button {
   font-size: 22px;
 }
 
+.registration-card textarea {
+  box-sizing: border-box;
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  margin: 0.5rem 0 1rem;
+  min-height: 16rem;
+  resize: vertical;
+  width: 100%;
+}
+
+.announcement-import-review dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.announcement-import-review dt {
+  font-weight: 700;
+}
+
+.announcement-import-review dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.announcement-import-review section {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.announcement-import-review pre {
+  max-height: 20rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .data-pipeline-card {
   display: grid;
   gap: 20px;

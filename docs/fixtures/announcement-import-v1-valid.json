@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "admin-announcement-import/v1",
+  "source": {
+    "originalUrl": "https://example.com/announcements/2026-1",
+    "sourceDocumentId": "2026-1",
+    "extractedAt": "2026-09-18T10:30:00+09:00"
+  },
+  "announcement": {
+    "name": "2026년 행복주택 입주자 모집",
+    "rentalType": "HAPPY_HOUSING",
+    "recruitmentType": "NEW",
+    "agencyCode": "LH",
+    "postedDate": "2026-09-01",
+    "applicationStartDate": "2026-09-10",
+    "applicationEndDate": "2026-09-12",
+    "winnerAnnouncementDate": "2026-10-01"
+  },
+  "receptionPlace": {
+    "name": "LH 청약플러스",
+    "method": "ONLINE",
+    "address": null,
+    "contact": "1600-1004",
+    "url": "https://apply.lh.or.kr"
+  },
+  "supplyRows": [
+    {
+      "complexReference": {
+        "sourceComplexName": "두꺼비 행복주택",
+        "pnu": "1114010100100010000"
+      },
+      "sourceHousingTypeName": "36A",
+      "expectedMoveInMonth": "2027-03",
+      "supplyCategory": "NEW_SUPPLY",
+      "totalSupplyHouseholdCount": 20,
+      "targets": [
+        {
+          "target": "청년",
+          "supplyRank": "1순위",
+          "supplyHouseholdCount": 10,
+          "reserveCount": 5,
+          "rentalDeposit": 10000000,
+          "monthlyRent": 200000,
+          "convertedDeposit": null,
+          "applicationCondition": "공고문 참조"
+        }
+      ]
+    }
+  ],
+  "schedules": [
+    {
+      "scheduleType": "APPLICATION",
+      "name": "인터넷 접수",
+      "startAt": "2026-09-10T10:00:00",
+      "endAt": "2026-09-12T17:00:00"
+    }
+  ],
+  "attachments": [
+    {
+      "fileName": "공고문.pdf",
+      "fileType": "ANNOUNCEMENT",
+      "fileUrl": "https://example.com/files/announcement.pdf"
+    }
+  ],
+  "unresolvedFields": []
+}

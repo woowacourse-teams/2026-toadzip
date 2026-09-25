@@ -31,7 +31,7 @@ class LocalProfileSchemaPersistenceTest {
     @Test
     void local_프로필은_Flyway로_스키마를_생성하고_종료_후에도_유지한다() throws Exception {
         String databaseName = "toadzip_local_profile_" + UUID.randomUUID().toString().replace("-", "");
-        String jdbcUrl = "jdbc:postgresql://127.0.0.1:55432/" + databaseName;
+        String jdbcUrl = primaryTestDatabaseUrl(databaseName);
         createDatabase(databaseName);
 
         try {
@@ -53,7 +53,9 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertTrue(history.next()),
-                        () -> assertEquals(4, history.getInt(1)),
+                        () -> assertEquals(5, history.getInt(1)),
+                        () -> assertEquals(1, countColumn(connection,
+                                "admin_announcement_imports", "original_json")),
                         () -> assertEquals(1, countColumn(connection,
                                 "lh_announcement_detail_source", "request_hash")),
                         () -> assertEquals(1, countColumn(connection,
@@ -69,7 +71,7 @@ class LocalProfileSchemaPersistenceTest {
     @Test
     void 기존_스키마를_baseline_후_통합_마이그레이션으로_보정한다() throws Exception {
         String databaseName = "toadzip_reconciliation_" + UUID.randomUUID().toString().replace("-", "");
-        String jdbcUrl = "jdbc:postgresql://127.0.0.1:55432/" + databaseName;
+        String jdbcUrl = primaryTestDatabaseUrl(databaseName);
         createDatabase(databaseName);
 
         try {
@@ -142,8 +144,9 @@ class LocalProfileSchemaPersistenceTest {
                 assertEquals(1, countRequestRows(connection, "lh_announcement_detail_source", replayHash));
                 assertEquals(1, countRequestRows(connection, "lh_announcement_supply_source", replayHash));
                 assertTrue(history.next());
-                assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02,SQL:20260923.01,SQL:20260923.02",
+                assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02,SQL:20260923.01,SQL:20260923.02,SQL:20260924.01",
                         history.getString(1));
+                assertEquals(1, countColumn(connection, "admin_announcement_imports", "original_json"));
                 assertEquals(1, countColumn(connection, "announcements", "lh_reception_place_owned"));
                 assertEquals(1, countColumn(connection, "supply_rows", "lh_total_supply_household_count_enriched"));
                 assertEquals(1, countColumn(connection, "lh_announcement_detail_source", "request_hash"));
@@ -226,7 +229,7 @@ class LocalProfileSchemaPersistenceTest {
     }
 
     private Connection adminConnection() throws Exception {
-        return DriverManager.getConnection("jdbc:postgresql://127.0.0.1:55432/postgres", "toadzip_test", "toadzip_test");
+        return DriverManager.getConnection(primaryTestDatabaseUrl("postgres"), "toadzip_test", "toadzip_test");
     }
 
     private ConfigurableEnvironment createIsolatedEnvironment(String jdbcUrl) {
@@ -252,6 +255,15 @@ class LocalProfileSchemaPersistenceTest {
     }
 
     private String sharedTestDatabaseUrl() {
-        return "jdbc:postgresql://127.0.0.1:55433/toadzip_shared_test";
+        return "jdbc:postgresql://127.0.0.1:" + testPort("TEST_SHARED_POSTGRES_PORT", "55433")
+                + "/toadzip_shared_test";
+    }
+
+    private String primaryTestDatabaseUrl(String databaseName) {
+        return "jdbc:postgresql://127.0.0.1:" + testPort("TEST_POSTGRES_PORT", "55432") + "/" + databaseName;
+    }
+
+    private String testPort(String environmentVariable, String defaultPort) {
+        return System.getenv().getOrDefault(environmentVariable, defaultPort);
     }
 }
