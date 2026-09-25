@@ -131,6 +131,28 @@ public class DataPipelineExecutionStateService {
         executionRepository.flush();
     }
 
+    @Transactional
+    public int recoverInterruptedBefore(Instant cutoff, Instant failedAt, String message) {
+        var interrupted = executionRepository.findInterruptedBeforeForUpdate(cutoff);
+        interrupted.forEach(execution ->
+                execution.fail(execution.getCurrentStep(), message, null, failedAt));
+        executionRepository.flush();
+        return interrupted.size();
+    }
+
+    @Transactional
+    public boolean recoverInterrupted(
+            UUID executionId, Instant cutoff, Instant failedAt, String message
+    ) {
+        return executionRepository.findInterruptedForUpdate(executionId, cutoff)
+                .map(execution -> {
+                    execution.fail(execution.getCurrentStep(), message, null, failedAt);
+                    executionRepository.flush();
+                    return true;
+                })
+                .orElse(false);
+    }
+
     @Transactional(readOnly = true)
     public DataPipelineStep findCurrentStep(UUID executionId) {
         return find(executionId).getCurrentStep();

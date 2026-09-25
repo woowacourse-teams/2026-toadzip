@@ -13,6 +13,7 @@ import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineSchedule;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineScheduleDeferralReason;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
@@ -75,6 +76,7 @@ class DataPipelineScheduleOrchestratorIntegrationTest {
     private DataPipelineScheduleDeferralService deferralService;
 
     private DataPipelineRunner runner;
+    private DataPipelineExecutionService executionService;
     private DataPipelineScheduleOrchestrator orchestrator;
 
     @BeforeEach
@@ -91,7 +93,7 @@ class DataPipelineScheduleOrchestratorIntegrationTest {
                 anyLong(),
                 any()
         );
-        DataPipelineExecutionService executionService = new DataPipelineExecutionService(
+        executionService = new DataPipelineExecutionService(
                 runner,
                 executionLock,
                 executionRepository,
@@ -110,6 +112,43 @@ class DataPipelineScheduleOrchestratorIntegrationTest {
                 new SimpleMeterRegistry(),
                 clock
         );
+    }
+
+    @Test
+    void 새_실행을_시작하면_가려진_과거_실행을_마지막_단계와_함께_복구하고_활성_실행은_보존한다() {
+        UUID oldManualId = UUID.randomUUID();
+        UUID oldScheduledId = UUID.randomUUID();
+        UUID activeId = UUID.randomUUID();
+        executionStateService.create(oldManualId, DataPipelineType.ANNOUNCEMENT_COLLECTION,
+                NOW.minusSeconds(3_600));
+        executionStateService.startStep(oldManualId, DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+        executionStateService.create(oldScheduledId, DataPipelineType.ANNOUNCEMENT_REFINEMENT,
+                NOW.minusSeconds(1_800), DataPipelineExecutionTrigger.SCHEDULED,
+                ANNOUNCEMENT_SLOT, null);
+        executionStateService.startStep(oldScheduledId, DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+        executionStateService.create(activeId, DataPipelineType.COMPLEX_REFINEMENT,
+                NOW.minusSeconds(60));
+        executionStateService.startStep(activeId, DataPipelineStep.MAP_MYHOME_COMPLEXES);
+        completeEveryPipeline();
+
+        var started = executionService.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+
+        assertThat(executionRepository.findByExecutionId(started.executionId()).orElseThrow().getStatus())
+                .isEqualTo(DataPipelineExecutionStatus.COMPLETED);
+        assertThat(executionRepository.findByExecutionId(oldManualId).orElseThrow())
+                .satisfies(execution -> {
+                    assertThat(execution.getStatus()).isEqualTo(DataPipelineExecutionStatus.FAILED);
+                    assertThat(execution.getFailedStep())
+                            .isEqualTo(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+                });
+        assertThat(executionRepository.findByExecutionId(oldScheduledId).orElseThrow())
+                .satisfies(execution -> {
+                    assertThat(execution.getStatus()).isEqualTo(DataPipelineExecutionStatus.FAILED);
+                    assertThat(execution.getFailedStep())
+                            .isEqualTo(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+                });
+        assertThat(executionRepository.findByExecutionId(activeId).orElseThrow().getStatus())
+                .isEqualTo(DataPipelineExecutionStatus.RUNNING);
     }
 
     @Test
