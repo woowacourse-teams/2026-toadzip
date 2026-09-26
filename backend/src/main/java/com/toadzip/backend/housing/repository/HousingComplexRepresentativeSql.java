@@ -15,6 +15,9 @@ final class HousingComplexRepresentativeSql {
                 SELECT DISTINCT ON (supply_row.housing_complex_id)
                        supply_row.housing_complex_id,
                        announcement.id AS announcement_id,
+                       announcement.id,
+                       announcement.status,
+                       announcement.application_schedule_reviewed,
                        announcement.status AS publication_type,
                        announcement.recruitment_type,
                        announcement.posted_date,

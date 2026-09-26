@@ -1,6 +1,8 @@
 package com.toadzip.backend.announcement.repository;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
+import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
 import com.toadzip.backend.announcement.domain.SupplyRow;
@@ -143,13 +145,14 @@ public class AnnouncementSearchRepository {
             AnnouncementSearchCondition condition,
             List<Predicate> predicates
     ) {
-        addApplicationStatusPredicate(criteriaBuilder, announcement, condition, predicates);
-        addApplicationPeriodPredicates(criteriaBuilder, announcement, condition, predicates);
+        addApplicationStatusPredicate(criteriaBuilder, query, announcement, condition, predicates);
+        addApplicationPeriodPredicates(criteriaBuilder, query, announcement, condition, predicates);
         addRegionPredicate(criteriaBuilder, query, announcement, condition, predicates);
     }
 
     private void addApplicationStatusPredicate(
             HibernateCriteriaBuilder criteriaBuilder,
+            CriteriaQuery<Announcement> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             List<Predicate> predicates
@@ -162,7 +165,9 @@ public class AnnouncementSearchRepository {
                 .filter(applicationStatus -> applicationStatus != ApplicationStatus.CANCELLED)
                 .map(applicationStatus -> applicationStatusPredicate(
                         criteriaBuilder,
+                        query,
                         announcement,
+                        condition,
                         applicationStatus,
                         condition.today()
                 ))
@@ -174,11 +179,13 @@ public class AnnouncementSearchRepository {
 
     private Predicate applicationStatusPredicate(
             HibernateCriteriaBuilder criteriaBuilder,
+            CriteriaQuery<Announcement> query,
             Root<Announcement> announcement,
+            AnnouncementSearchCondition condition,
             ApplicationStatus applicationStatus,
             LocalDate today
     ) {
-        return switch (applicationStatus) {
+        Predicate legacy = switch (applicationStatus) {
             case BEFORE_APPLICATION -> criteriaBuilder.greaterThan(
                     announcement.get("applicationStartDate"),
                     today
@@ -188,28 +195,85 @@ public class AnnouncementSearchRepository {
                     criteriaBuilder.greaterThanOrEqualTo(announcement.get("applicationEndDate"), today)
             );
             case CLOSED -> criteriaBuilder.lessThan(announcement.get("applicationEndDate"), today);
+            case CANCELLED, CONDITIONAL -> criteriaBuilder.disjunction();
+        };
+        Predicate confirmed = scheduleExists(criteriaBuilder, query, announcement, condition,
+                ApplicationScheduleState.CONFIRMED, today, today, false);
+        Predicate current = scheduleExists(criteriaBuilder, query, announcement, condition,
+                null, today, today, false);
+        Predicate future = scheduleExists(criteriaBuilder, query, announcement, condition,
+                null, today.plusDays(1), null, true);
+        Predicate reviewed = switch (applicationStatus) {
+            case APPLYING -> confirmed;
+            case CONDITIONAL -> criteriaBuilder.and(criteriaBuilder.not(confirmed), current);
+            case BEFORE_APPLICATION -> criteriaBuilder.and(criteriaBuilder.not(current), future);
+            case CLOSED -> criteriaBuilder.and(criteriaBuilder.not(current), criteriaBuilder.not(future));
             case CANCELLED -> criteriaBuilder.disjunction();
         };
+        return criteriaBuilder.or(
+                criteriaBuilder.and(criteriaBuilder.isFalse(announcement.get("applicationScheduleReviewed")), legacy),
+                criteriaBuilder.and(criteriaBuilder.isTrue(announcement.get("applicationScheduleReviewed")), reviewed)
+        );
     }
 
     private void addApplicationPeriodPredicates(
             HibernateCriteriaBuilder criteriaBuilder,
+            CriteriaQuery<Announcement> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             List<Predicate> predicates
     ) {
+        if (condition.applicationFrom() == null && condition.applicationTo() == null) {
+            return;
+        }
+        List<Predicate> legacy = new ArrayList<>();
         if (condition.applicationFrom() != null) {
-            predicates.add(criteriaBuilder.greaterThanOrEqualTo(
-                    announcement.get("applicationEndDate"),
-                    condition.applicationFrom()
-            ));
+            legacy.add(criteriaBuilder.greaterThanOrEqualTo(
+                    announcement.get("applicationEndDate"), condition.applicationFrom()));
         }
         if (condition.applicationTo() != null) {
-            predicates.add(criteriaBuilder.lessThanOrEqualTo(
-                    announcement.get("applicationStartDate"),
-                    condition.applicationTo()
-            ));
+            legacy.add(criteriaBuilder.lessThanOrEqualTo(
+                    announcement.get("applicationStartDate"), condition.applicationTo()));
         }
+        predicates.add(criteriaBuilder.or(
+                criteriaBuilder.and(criteriaBuilder.isFalse(announcement.get("applicationScheduleReviewed")),
+                        criteriaBuilder.and(legacy.toArray(Predicate[]::new))),
+                criteriaBuilder.and(criteriaBuilder.isTrue(announcement.get("applicationScheduleReviewed")),
+                        scheduleExists(criteriaBuilder, query, announcement, condition, null,
+                                condition.applicationFrom(), condition.applicationTo(), false))
+        ));
+    }
+
+    private Predicate scheduleExists(
+            HibernateCriteriaBuilder builder, CriteriaQuery<Announcement> query,
+            Root<Announcement> announcement, AnnouncementSearchCondition condition,
+            ApplicationScheduleState state, LocalDate from, LocalDate to, boolean startsAfter
+    ) {
+        Subquery<Long> scheduleQuery = query.subquery(Long.class);
+        Root<AnnouncementApplicationSchedule> schedule = scheduleQuery.from(AnnouncementApplicationSchedule.class);
+        List<Predicate> predicates = new ArrayList<>();
+        predicates.add(builder.equal(schedule.get("announcement"), announcement));
+        if (state != null) {
+            predicates.add(builder.equal(schedule.get("state"), state));
+        }
+        if (from != null) {
+            String field = "endDate";
+            if (startsAfter) {
+                field = "startDate";
+            }
+            predicates.add(builder.greaterThanOrEqualTo(schedule.get(field), from));
+        }
+        if (to != null) {
+            predicates.add(builder.lessThanOrEqualTo(schedule.get("startDate"), to));
+        }
+        if (hasValues(condition.regionCodes())) {
+            Join<AnnouncementApplicationSchedule, HousingComplex> complex = schedule.join(
+                    "housingComplex", jakarta.persistence.criteria.JoinType.LEFT);
+            predicates.add(builder.or(builder.isNull(schedule.get("housingComplex")),
+                    complex.get("address").get("cityCountyDistrictCode").in(condition.regionCodes())));
+        }
+        scheduleQuery.select(schedule.get("id")).where(predicates.toArray(Predicate[]::new));
+        return builder.exists(scheduleQuery);
     }
 
     private void addRegionPredicate(

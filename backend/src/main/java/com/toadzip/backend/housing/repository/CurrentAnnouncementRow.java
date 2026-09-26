@@ -10,6 +10,8 @@ public record CurrentAnnouncementRow(
         LocalDate postedDate,
         LocalDate applicationStartAt,
         LocalDate applicationEndAt,
-        BigDecimal actualCompetitionRate
+        BigDecimal actualCompetitionRate,
+        String applicationStatus,
+        LocalDate confirmedApplicationEndDate
 ) {
 }

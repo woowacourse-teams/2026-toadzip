@@ -167,20 +167,21 @@ public class HousingComplexDetailMapper {
                 row.announcementId(),
                 row.title(),
                 codeMapper.toPublicationType(row.publicationType()),
-                applicationStatus(row, today),
+                row.applicationStatus(),
                 targetsByAnnouncement.getOrDefault(row.announcementId(), List.of()),
                 row.applicationStartAt(),
                 row.applicationEndAt(),
-                Math.toIntExact(ChronoUnit.DAYS.between(today, row.applicationEndAt())),
+                dDay(row, today),
                 row.actualCompetitionRate()
         );
     }
 
-    private String applicationStatus(CurrentAnnouncementRow row, LocalDate today) {
-        if (today.isBefore(row.applicationStartAt())) {
-            return "BEFORE_APPLICATION";
+    private Integer dDay(CurrentAnnouncementRow row, LocalDate today) {
+        if (row.confirmedApplicationEndDate() == null || "CONDITIONAL".equals(row.applicationStatus())
+                || "CANCELLED".equals(row.applicationStatus()) || "CLOSED".equals(row.applicationStatus())) {
+            return null;
         }
-        return "APPLYING";
+        return Math.toIntExact(ChronoUnit.DAYS.between(today, row.confirmedApplicationEndDate()));
     }
 
     private Long toLongExact(BigDecimal value) {

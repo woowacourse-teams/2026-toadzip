@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
+import com.toadzip.backend.announcement.repository.ApplicationScheduleSql;
 import com.toadzip.backend.global.persistence.LegacyStoredValue;
 
 @Component
@@ -50,19 +51,14 @@ final class HousingComplexFilterPredicateBuilder {
               AND housing_complex.elevator_installed = :hasElevator
             """;
 
-    private static final String ACTIVE_ANNOUNCEMENT_FILTER = """
-              AND representative.announcement_id IS NOT NULL
-              AND representative.application_start_date <= :today
-              AND representative.application_end_date >= :today
-            """;
+    private static final String REPRESENTATIVE_STATUS =
+            ApplicationScheduleSql.status("representative", "housing_complex.id");
 
-    private static final String NO_ACTIVE_ANNOUNCEMENT_FILTER = """
-              AND (
-                    representative.announcement_id IS NULL
-                    OR representative.application_start_date > :today
-                    OR representative.application_end_date < :today
-              )
-            """;
+    private static final String ACTIVE_ANNOUNCEMENT_FILTER =
+            " AND representative.announcement_id IS NOT NULL AND " + REPRESENTATIVE_STATUS + " = 'APPLYING'";
+
+    private static final String NO_ACTIVE_ANNOUNCEMENT_FILTER =
+            " AND (representative.announcement_id IS NULL OR " + REPRESENTATIVE_STATUS + " <> 'APPLYING')";
 
     private static final String REPRESENTATIVE_REQUIRED_FILTER = """
               AND representative.announcement_id IS NOT NULL
@@ -72,18 +68,10 @@ final class HousingComplexFilterPredicateBuilder {
               AND representative.recruitment_type IN (:recruitmentTypeValues)
             """;
 
-    private static final String BEFORE_APPLICATION_FILTER =
-            "representative.application_start_date > :today";
-
-    private static final String APPLYING_FILTER = """
-            (
-                representative.application_start_date <= :today
-                AND representative.application_end_date >= :today
-            )
-            """.strip();
-
-    private static final String CLOSED_FILTER =
-            "representative.application_end_date < :today";
+    private static final String BEFORE_APPLICATION_FILTER = REPRESENTATIVE_STATUS + " = 'BEFORE_APPLICATION'";
+    private static final String APPLYING_FILTER = REPRESENTATIVE_STATUS + " = 'APPLYING'";
+    private static final String CONDITIONAL_FILTER = REPRESENTATIVE_STATUS + " = 'CONDITIONAL'";
+    private static final String CLOSED_FILTER = REPRESENTATIVE_STATUS + " = 'CLOSED'";
 
     private static final String CANCELLED_FILTER = """
             EXISTS (
@@ -379,6 +367,7 @@ final class HousingComplexFilterPredicateBuilder {
                 ApplicationStatus.BEFORE_APPLICATION, BEFORE_APPLICATION_FILTER,
                 ApplicationStatus.APPLYING, APPLYING_FILTER,
                 ApplicationStatus.CLOSED, CLOSED_FILTER,
+                ApplicationStatus.CONDITIONAL, CONDITIONAL_FILTER,
                 ApplicationStatus.CANCELLED, CANCELLED_FILTER
         );
         requireCompleteApplicationStatusFilters(filters);

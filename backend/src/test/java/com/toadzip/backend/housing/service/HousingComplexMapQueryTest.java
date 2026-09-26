@@ -434,7 +434,9 @@ class HousingComplexMapQueryTest {
                 null,
                 null,
                 null,
-                LocalDate.of(2020, 1, 1)
+                LocalDate.of(2020, 1, 1),
+                null,
+                null
         );
     }
 

@@ -26,10 +26,12 @@ public record AnnouncementListItemResponse(
         AgencyResponse agency,
         BigDecimal actualCompetitionRate,
         BigDecimal predictedCompetitionRate,
-        String thumbnailImageUrl
+        String thumbnailImageUrl,
+        List<ApplicationScheduleResponse> applicationSchedules
 ) {
 
     public AnnouncementListItemResponse {
         regionNames = List.copyOf(regionNames);
+        applicationSchedules = List.copyOf(applicationSchedules);
     }
 }

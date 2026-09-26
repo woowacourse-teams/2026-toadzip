@@ -1,5 +1,7 @@
 package com.toadzip.backend.housing.repository;
 
+import com.toadzip.backend.announcement.repository.ApplicationScheduleSql;
+
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
@@ -51,9 +53,13 @@ final class ComplexSummarySqlBuilder {
                    representative.posted_date,
                    representative.application_start_date,
                    representative.application_end_date,
-                   housing_complex.completion_date
+                   housing_complex.completion_date,
+                   %s AS application_status,
+                   %s AS confirmed_application_end_date
             FROM housing_complexes housing_complex
-            """ + HousingComplexRepresentativeSql.LEFT_JOIN + """
+            """.formatted(ApplicationScheduleSql.status("representative", "housing_complex.id"),
+                    ApplicationScheduleSql.confirmedDeadline("representative", "housing_complex.id"))
+            + HousingComplexRepresentativeSql.LEFT_JOIN + """
             LEFT JOIN area_range ON area_range.housing_complex_id = housing_complex.id
             LEFT JOIN price_range ON price_range.housing_complex_id = housing_complex.id
             WHERE housing_complex.latitude BETWEEN :southWestLat AND :northEastLat
@@ -95,6 +101,7 @@ final class ComplexSummarySqlBuilder {
         HousingComplexFilterPredicate predicate = filterPredicateBuilder.build(condition.filters());
         Map<String, Object> parameters = new HashMap<>(boundsParameters(condition.bounds()));
         parameters.putAll(predicate.parameters());
+        parameters.put("today", condition.filters().today());
         return new FilteredSummaryQuery(BASE_SUMMARY_QUERY + predicate.sql(), parameters);
     }
 

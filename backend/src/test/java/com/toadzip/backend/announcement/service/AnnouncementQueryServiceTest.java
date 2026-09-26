@@ -344,6 +344,7 @@ class AnnouncementQueryServiceTest {
         AnnouncementResponseMapper announcementResponseMapper = mock(AnnouncementResponseMapper.class);
         AnnouncementQueryService service = new AnnouncementQueryService(
                 announcementRepository,
+                mock(com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository.class),
                 announcementSearchRepository,
                 mock(AnnouncementScheduleRepository.class),
                 mock(AnnouncementAttachmentRepository.class),
@@ -427,6 +428,7 @@ class AnnouncementQueryServiceTest {
         when(announcementResponseMapper.toListItemResponses(
                 org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.anyList(),
                 org.mockito.ArgumentMatchers.any(LocalDate.class)
         )).thenReturn(List.of());
         AnnouncementQueryService service = searchService(
@@ -454,6 +456,7 @@ class AnnouncementQueryServiceTest {
         );
         verify(announcementResponseMapper).toListItemResponses(
                 org.mockito.ArgumentMatchers.eq(List.of(first)),
+                org.mockito.ArgumentMatchers.eq(List.of()),
                 org.mockito.ArgumentMatchers.eq(List.of()),
                 mapperTodayCaptor.capture()
         );
@@ -956,6 +959,7 @@ class AnnouncementQueryServiceTest {
     ) {
         return new AnnouncementQueryService(
                 mock(AnnouncementRepository.class),
+                mock(com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository.class),
                 announcementSearchRepository,
                 mock(AnnouncementScheduleRepository.class),
                 mock(AnnouncementAttachmentRepository.class),

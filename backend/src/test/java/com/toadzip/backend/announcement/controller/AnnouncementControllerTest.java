@@ -371,7 +371,8 @@ class AnnouncementControllerTest {
                 new AgencyResponse(AgencyCode.LH, "한국토지주택공사"),
                 new BigDecimal("2.5000"),
                 null,
-                null
+                null,
+                List.of()
         );
         return new AnnouncementListResponse(List.of(item), null, false);
     }
@@ -464,7 +465,9 @@ class AnnouncementControllerTest {
                         "https://example.com/announcement.pdf"
                 )),
                 List.of(matchedRow, unmatchedRow),
-                new CompetitionResponse(new BigDecimal("2.5000"), null)
+                new CompetitionResponse(new BigDecimal("2.5000"), null),
+                List.of(),
+                null
         );
     }
 
@@ -490,7 +493,8 @@ class AnnouncementControllerTest {
                       "agency": {"code": "LH", "name": "한국토지주택공사"},
                       "actualCompetitionRate": 2.5000,
                       "predictedCompetitionRate": null,
-                      "thumbnailImageUrl": null
+                      "thumbnailImageUrl": null,
+                      "applicationSchedules": []
                     }],
                     "nextCursor": null,
                     "hasNext": false
@@ -586,7 +590,9 @@ class AnnouncementControllerTest {
                       "totalSupplyHouseholdCount": null,
                       "targets": []
                     }],
-                    "competition": {"actualRate": 2.5000, "predictedRate": null}
+                    "competition": {"actualRate": 2.5000, "predictedRate": null},
+                    "applicationSchedules": [],
+                    "revision": null
                   }
                 }
                 """;

@@ -81,7 +81,7 @@ public class MyHomeAnnouncementMappingWriter {
             Announcement previousAnnouncement
     ) {
         Announcement stored = announcementRepository
-                .findBySourceAnnouncementIdentifier(data.sourceAnnouncementIdentifier())
+                .findBySourceAnnouncementIdentifierForUpdate(data.sourceAnnouncementIdentifier())
                 .orElse(null);
         if (stored == null) {
             Announcement created = announcementRepository.save(Announcement.create(
@@ -103,6 +103,12 @@ public class MyHomeAnnouncementMappingWriter {
                     data.receptionPlace()
             ));
             return new AnnouncementWriteResult(created, true, false, false);
+        }
+        if (stored.isLhPanIdReviewed() && data.provider() != AgencyCode.LH) {
+            throw new MyHomeAnnouncementMappingRejectedException(
+                    MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
+                    "확인된 LH 공고의 기관을 바꿀 수 없습니다."
+            );
         }
         boolean releasesLhOwnership = stored.getLhPanId() != null && data.provider() != AgencyCode.LH;
         boolean updated = stored.updateFromMyHome(

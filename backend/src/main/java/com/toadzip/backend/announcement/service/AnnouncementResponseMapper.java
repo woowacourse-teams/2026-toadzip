@@ -1,6 +1,9 @@
 package com.toadzip.backend.announcement.service;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
+import com.toadzip.backend.announcement.dto.response.ApplicationScheduleResponse;
+import com.toadzip.backend.announcement.dto.response.LhRevisionResponse;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
@@ -51,6 +54,7 @@ final class AnnouncementResponseMapper {
     List<AnnouncementListItemResponse> toListItemResponses(
             List<Announcement> announcements,
             List<SupplyRow> supplyRows,
+            List<AnnouncementApplicationSchedule> applicationSchedules,
             LocalDate today
     ) {
         Map<Long, List<SupplyRow>> rowsByAnnouncementId = groupRowsByAnnouncementId(supplyRows);
@@ -58,6 +62,8 @@ final class AnnouncementResponseMapper {
                 .map(announcement -> toListItem(
                         announcement,
                         rowsByAnnouncementId.getOrDefault(announcement.getId(), List.of()),
+                        applicationSchedules.stream().filter(schedule ->
+                                schedule.getAnnouncement().getId().equals(announcement.getId())).toList(),
                         today
                 ))
                 .toList();
@@ -69,6 +75,7 @@ final class AnnouncementResponseMapper {
             List<AnnouncementAttachment> attachments,
             List<SupplyRow> supplyRows,
             List<SupplyTarget> supplyTargets,
+            List<AnnouncementApplicationSchedule> applicationSchedules,
             LocalDate today
     ) {
         Map<Long, List<SupplyTarget>> targetsBySupplyRowId = groupTargetsBySupplyRowId(supplyTargets);
@@ -78,7 +85,7 @@ final class AnnouncementResponseMapper {
                 announcement.getId(),
                 announcement.getStatus(),
                 announcement.getCorrectionCancellationReason(),
-                applicationStatusCalculator.calculateApplicationStatus(announcement, today),
+                applicationStatusCalculator.calculateApplicationStatus(announcement, applicationSchedules, today),
                 announcement.getSupplyType(),
                 announcement.getRecruitmentType(),
                 announcement.getName(),
@@ -87,7 +94,7 @@ final class AnnouncementResponseMapper {
                 announcement.getPostedDate(),
                 announcement.getApplicationStartDate(),
                 announcement.getApplicationEndDate(),
-                applicationStatusCalculator.calculateDDay(announcement, today),
+                applicationStatusCalculator.calculateDDay(announcement, applicationSchedules, today),
                 announcement.getWinnerAnnouncementDate(),
                 announcement.getViewCount(),
                 supplyComposition.targets(),
@@ -101,7 +108,9 @@ final class AnnouncementResponseMapper {
                 new CompetitionResponse(
                         announcement.getActualCompetitionRate(),
                         announcement.getPredictedCompetitionRate()
-                )
+                ),
+                applicationSchedules.stream().map(this::applicationScheduleResponse).toList(),
+                revisionResponse(announcement)
         );
     }
 
@@ -130,13 +139,14 @@ final class AnnouncementResponseMapper {
     private AnnouncementListItemResponse toListItem(
             Announcement announcement,
             List<SupplyRow> supplyRows,
+            List<AnnouncementApplicationSchedule> applicationSchedules,
             LocalDate today
     ) {
         ListAggregate aggregate = aggregateRows(supplyRows);
         return new AnnouncementListItemResponse(
                 announcement.getId(),
                 announcement.getStatus(),
-                applicationStatusCalculator.calculateApplicationStatus(announcement, today),
+                applicationStatusCalculator.calculateApplicationStatus(announcement, applicationSchedules, today),
                 announcement.getSupplyType(),
                 announcement.getRecruitmentType(),
                 announcement.getName(),
@@ -144,15 +154,36 @@ final class AnnouncementResponseMapper {
                 announcement.getPostedDate(),
                 announcement.getApplicationStartDate(),
                 announcement.getApplicationEndDate(),
-                applicationStatusCalculator.calculateDDay(announcement, today),
+                applicationStatusCalculator.calculateDDay(announcement, applicationSchedules, today),
                 announcement.getViewCount(),
                 aggregate.supplyComplexCount(),
                 aggregate.supplyHouseholdCount(),
                 agencyResponse(announcement.getProvider()),
                 announcement.getActualCompetitionRate(),
                 announcement.getPredictedCompetitionRate(),
-                aggregate.thumbnailImageUrl()
+                aggregate.thumbnailImageUrl(),
+                applicationSchedules.stream().map(this::applicationScheduleResponse).toList()
         );
+    }
+
+    private ApplicationScheduleResponse applicationScheduleResponse(AnnouncementApplicationSchedule schedule) {
+        Long complexId = null;
+        String complexName = null;
+        if (schedule.getHousingComplex() != null) {
+            complexId = schedule.getHousingComplex().getId();
+            complexName = schedule.getHousingComplex().getName();
+        }
+        return new ApplicationScheduleResponse(schedule.getId(), complexId, complexName, schedule.getSupplyRank(),
+                schedule.getState(), schedule.getCondition(), schedule.getStartDate(), schedule.getEndDate(),
+                schedule.getStartTime(), schedule.getEndTime(), schedule.getSourceUrl(), schedule.getSourcePage());
+    }
+
+    private LhRevisionResponse revisionResponse(Announcement announcement) {
+        if (announcement.getRevisionEvidenceUrl() == null) {
+            return null;
+        }
+        return new LhRevisionResponse(announcement.getPreviousAnnouncement().getId(),
+                announcement.getPreviousLhPanId(), announcement.getLhPanId(), announcement.getRevisionEvidenceUrl());
     }
 
     private AgencyResponse agencyResponse(AgencyCode agencyCode) {
