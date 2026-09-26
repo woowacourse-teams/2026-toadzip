@@ -9,7 +9,10 @@ const mocks = vi.hoisted(() => ({list:vi.fn(),detail:vi.fn(),request:vi.fn(),his
 vi.mock('./api',async original => ({...(await original<typeof import('./api')>()),...mocks}))
 const summary = {id:7,name:'두꺼비 단지',subtitle:'서울 중구 세종대로',provider:'LH',rental:'HAPPY_HOUSING',deleted:false,modified:false,reviewRequired:false,updatedAt:null}
 function fixture(): Detail { return {summary,sourceIdentifier:'TEST-7',data:{version:2,name:'두꺼비 단지',rentalType:'HAPPY_HOUSING',agencyCode:'LH',address:{roadAddress:summary.subtitle,pnu:'1114010100100010000',legalDongCode:'1114010100',provinceCode:'11',cityCountyDistrictCode:'11140',latitude:37.5,longitude:127},totalHouseholdCount:10,totalParkingCount:5},housingTypes:[],announcements:[],supplyRows:[],scheduleReviewed:false,schedules:[]} }
-beforeEach(() => {vi.clearAllMocks();mocks.list.mockResolvedValue({items:[summary],page:0,hasNext:false,totalElements:1,totalPages:1});mocks.detail.mockResolvedValue(fixture());mocks.history.mockResolvedValue([])})
+beforeEach(() => {
+  Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value:function(this:HTMLDialogElement){this.setAttribute('open','')}})
+  Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value:function(this:HTMLDialogElement){this.removeAttribute('open')}})
+  vi.clearAllMocks();mocks.list.mockResolvedValue({items:[summary],page:0,hasNext:false,totalElements:1,totalPages:1});mocks.detail.mockResolvedValue(fixture());mocks.history.mockResolvedValue([])})
 it('검색 조건을 URL로 보존하고 상세에서 목록으로 돌아간다',async () => {
   render(<MemoryRouter initialEntries={['/admin/complexes?keyword=두꺼비&provider=LH']}><Routes><Route path="/admin/complexes" element={<ManagementList resource="complexes" />} /><Route path="/admin/complexes/:id" element={<ManagementDetail resource="complexes" />} /></Routes></MemoryRouter>)
   fireEvent.click(await screen.findByRole('link',{name:'두꺼비 단지'}))
@@ -92,7 +95,8 @@ it('검색 결과가 없으면 0건과 0페이지로 표시한다',async () => {
 it.each(['complexes','announcements'] as const)('%s 목록에서 검색 조건을 유지하며 원하는 페이지로 이동한다',async resource => {
   mocks.list.mockResolvedValue({items:[summary],page:0,hasNext:true,totalElements:3504,totalPages:176})
   render(<MemoryRouter initialEntries={[`/admin/${resource}?region=11&keyword=두꺼비`]}><ManagementList resource={resource} /></MemoryRouter>)
-  fireEvent.change(await screen.findByLabelText('페이지 바로가기'),{target:{value:'100'}})
+  fireEvent.click(await screen.findByRole('button',{name:'페이지 이동'}))
+  fireEvent.change(screen.getByLabelText('페이지 바로가기'),{target:{value:'100'}})
   fireEvent.submit(screen.getByRole('button',{name:'이동'}).closest('form')!)
   await waitFor(() => expect(mocks.list.mock.lastCall?.[1].get('page')).toBe('99'))
   expect(mocks.list.mock.lastCall?.[1].get('region')).toBe('11')
@@ -103,13 +107,30 @@ it.each(['complexes','announcements'] as const)('%s 목록에서 검색 조건�
 it('범위를 벗어난 페이지와 소수 입력은 요청하지 않는다',async () => {
   mocks.list.mockResolvedValue({items:[summary],page:0,hasNext:true,totalElements:41,totalPages:3})
   render(<MemoryRouter><ManagementList resource="complexes" /></MemoryRouter>)
-  const input = await screen.findByLabelText('페이지 바로가기')
+  fireEvent.click(await screen.findByRole('button',{name:'페이지 이동'}))
+  const input = screen.getByLabelText('페이지 바로가기')
   const count = mocks.list.mock.calls.length
   for (const value of ['0','4','1.5','']) {
     fireEvent.change(input,{target:{value}})
     fireEvent.submit(screen.getByRole('button',{name:'이동'}).closest('form')!)
   }
   expect(mocks.list).toHaveBeenCalledTimes(count)
+  fireEvent.click(screen.getByRole('button',{name:'페이지 이동 닫기'}))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button',{name:'3페이지'}))
   await waitFor(() => expect(mocks.list.mock.lastCall?.[1].get('page')).toBe('2'))
+})
+
+it('현재 페이지가 속한 15개 번호를 표시하고 팝업을 닫으면 이동하지 않는다',async () => {
+  mocks.list.mockResolvedValue({items:[summary],page:142,hasNext:true,totalElements:3504,totalPages:176})
+  render(<MemoryRouter><ManagementList resource="complexes" /></MemoryRouter>)
+  expect(await screen.findByRole('button',{name:'136페이지'})).toBeVisible()
+  expect(screen.getByRole('button',{name:'150페이지'})).toBeVisible()
+  expect(screen.queryByRole('button',{name:'151페이지'})).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button',{name:'페이지 이동'}))
+  expect(screen.getByRole('dialog',{name:'페이지 이동'})).toBeVisible()
+  expect(screen.getByLabelText('페이지 바로가기')).toHaveValue(143)
+  fireEvent.click(screen.getByRole('button',{name:'페이지 이동 닫기'}))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(mocks.list).toHaveBeenCalledOnce()
 })
