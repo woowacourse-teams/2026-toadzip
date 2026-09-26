@@ -373,6 +373,11 @@ class DataPipelineScheduleOrchestratorTest {
                 java.util.List.of(),
                 null,
                 scheduledAt,
+                null,
+                false,
+                0,
+                null,
+                null,
                 null
         );
     }

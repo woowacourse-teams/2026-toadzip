@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Outlet, useNavigate } from 'react-router'
+import { NavLink, Outlet, useNavigate } from 'react-router'
 import { useAdminAuth } from './useAdminAuth'
 
 export function AdminLayout() {
@@ -36,6 +36,12 @@ export function AdminLayout() {
         </div>
       </header>
       {error ? <p className="form-error admin-layout-error">{error}</p> : null}
+      <nav className="admin-navigation" aria-label="관리자 메뉴">
+        <NavLink to="/admin/ingest">수집·정제</NavLink>
+        <NavLink to="/admin/complexes">단지 입력</NavLink>
+        <NavLink to="/admin/announcements">공고 입력</NavLink>
+        <NavLink to="/admin/locations">주소 데이터</NavLink>
+      </nav>
       <main className="admin-content">
         <Outlet />
       </main>

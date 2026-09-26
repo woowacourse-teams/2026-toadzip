@@ -9,6 +9,7 @@ import com.toadzip.backend.ingest.collection.repository.LhLeaseCatalogExternalRe
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.LhLeaseCatalogResponseParser;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -74,6 +75,7 @@ public class LhLeaseCatalogCollectionService {
             LhLeaseCatalogCollectionRequest request,
             ExternalDataCallCounter callCounter
     ) {
+        IngestExecutionScope.beginWork("LH 임대 카탈로그", "페이지", -1);
         List<LhCatalogSourceSnapshot> snapshots = new ArrayList<>();
         for (int page = 1; page <= request.maxPages(); page++) {
             int currentPage = page;
@@ -84,6 +86,7 @@ public class LhLeaseCatalogCollectionService {
                     () -> responseParser.parse(externalRepository.fetch(request, currentPage)),
                     callCounter
             );
+            IngestExecutionScope.pageCompleted(page, parsedPage.totalCount(), request.pageSize());
             snapshots.addAll(parsedPage.items());
             if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
                 return new FetchedCatalog(snapshots);

@@ -50,6 +50,11 @@ public class DataPipelineController {
         return ResponseEntity.ok(scheduleDeferralService.findAll());
     }
 
+    @PostMapping("/executions/{executionId}/stop")
+    public ResponseEntity<DataPipelineExecutionResponse> stop(@PathVariable UUID executionId) {
+        return ResponseEntity.accepted().body(executionService.requestStop(executionId));
+    }
+
     @GetMapping("/executions/{executionId}")
     public ResponseEntity<DataPipelineExecutionResponse> find(
             @PathVariable UUID executionId

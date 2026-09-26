@@ -80,7 +80,7 @@ export function AnnouncementRegistrationForm({
           선택 단지: <strong>{housingComplex.name}</strong> · {housingComplex.roadAddress}
         </p>
       ) : (
-        <p className="selected-complex-guide">먼저 이 페이지에서 단지를 등록해 주세요.</p>
+        <p className="selected-complex-guide">위에서 등록된 단지를 확인하거나, 단지 입력 화면에서 새 단지를 등록해 주세요.</p>
       )}
       <form className="registration-form" onSubmit={handleSubmit}>
         <fieldset>

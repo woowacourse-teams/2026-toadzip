@@ -12,6 +12,7 @@ import com.toadzip.backend.ingest.collection.repository.external.ExternalDataReq
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementCatalogResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import io.micrometer.core.instrument.MeterRegistry;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -70,6 +71,7 @@ public class LhAnnouncementCatalogCollectionService {
     }
 
     private List<Entry> fetchAll(ExternalDataCallCounter counter) {
+        IngestExecutionScope.beginWork("LH 공고 목록", "페이지", -1);
         List<Entry> entries = new ArrayList<>();
         Set<String> keys = new HashSet<>();
         LhAnnouncementCatalogPage first = null;
@@ -87,6 +89,7 @@ public class LhAnnouncementCatalogCollectionService {
                     throw new ExternalDataRequestException("LH 목록에 중복 공고 식별자가 있습니다.");
                 }
             }
+            IngestExecutionScope.pageCompleted(page, first.totalCount(), PAGE_SIZE);
             entries.addAll(current.entries());
             if (entries.size() == first.totalCount()) {
                 return List.copyOf(entries);

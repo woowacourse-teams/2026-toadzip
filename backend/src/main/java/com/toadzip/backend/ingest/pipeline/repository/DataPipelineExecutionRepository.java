@@ -67,6 +67,38 @@ public interface DataPipelineExecutionRepository
 
     Optional<DataPipelineExecution> findByExecutionId(UUID executionId);
 
+    boolean existsByExecutionIdAndStopRequestedTrue(UUID executionId);
+
+    @Modifying
+    @Query("""
+            update DataPipelineExecution execution
+            set execution.lastRequestDescription = :description,
+                execution.lastProgressAt = :now
+            where execution.executionId = :executionId
+              and execution.status = com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus.RUNNING
+            """)
+    int recordRequestStarted(UUID executionId, String description, Instant now);
+
+    @Modifying
+    @Query("""
+            update DataPipelineExecution execution
+            set execution.externalRequestCount = execution.externalRequestCount + 1,
+                execution.lastProgressAt = :now
+            where execution.executionId = :executionId
+              and execution.status = com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus.RUNNING
+            """)
+    int recordRequestFinished(UUID executionId, Instant now);
+
+
+    @Modifying
+    @Query("""
+            update DataPipelineExecution execution
+            set execution.workProgress = :progress
+            where execution.executionId = :executionId
+              and execution.status = com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus.RUNNING
+            """)
+    int recordWorkProgress(UUID executionId, String progress);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select execution from DataPipelineExecution execution where execution.executionId = :executionId")
     Optional<DataPipelineExecution> findByExecutionIdForUpdate(@Param("executionId") UUID executionId);

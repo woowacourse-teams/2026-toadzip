@@ -12,6 +12,7 @@ import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeAnnouncementResponseParser;
 import io.micrometer.core.instrument.MeterRegistry;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -82,6 +83,7 @@ public class MyHomeAnnouncementSupplyTypeCollector {
         List<MyHomeAnnouncementSourceSnapshot> snapshots = new ArrayList<>();
         Set<String> collectedSourceKeys = new HashSet<>();
         int expectedTotalCount = -1;
+        IngestExecutionScope.beginWork("마이홈 공고 · 공급유형 " + supplyType.requestCode(), "페이지", -1);
         for (int page = 1; page <= request.maxPages(); page++) {
             int currentPage = page;
             int expectedTotalCountForPage = expectedTotalCount;
@@ -99,6 +101,7 @@ public class MyHomeAnnouncementSupplyTypeCollector {
                     ),
                     callCounter
             );
+            IngestExecutionScope.pageCompleted(page, parsedPage.totalCount(), request.pageSize());
             expectedTotalCount = parsedPage.totalCount();
             snapshots.addAll(parsedPage.items());
             for (MyHomeAnnouncementSourceSnapshot item : parsedPage.items()) {

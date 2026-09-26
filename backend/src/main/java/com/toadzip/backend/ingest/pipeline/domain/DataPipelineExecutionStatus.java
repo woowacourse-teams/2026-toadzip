@@ -6,5 +6,6 @@ public enum DataPipelineExecutionStatus {
     COMPLETED,
     COMPLETED_WARNINGS,
     COMPLETED_WITH_SKIPS,
-    FAILED
+    FAILED,
+    STOPPED
 }

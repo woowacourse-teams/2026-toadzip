@@ -41,6 +41,8 @@ public class ExternalDataRetryExecutor {
     ) {
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             IngestExecutionScope.verifyHeld();
+            IngestExecutionScope.checkStopRequested();
+            IngestExecutionScope.requestStarted(source.operation() + " · " + requestDescription);
             callCounter.increment();
             if (attempt > 1) {
                 meterRegistry.counter("ingest.external.retry", "source", source.name()).increment();
@@ -69,6 +71,9 @@ public class ExternalDataRetryExecutor {
                         MAX_ATTEMPTS
                 );
                 waitBeforeRetry(source, attempt);
+            }
+            finally {
+                IngestExecutionScope.requestFinished();
             }
         }
         throw new IllegalStateException("외부 API 재시도 흐름이 올바르게 종료되지 않았습니다.");

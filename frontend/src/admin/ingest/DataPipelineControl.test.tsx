@@ -6,6 +6,7 @@ import { DataPipelineControl } from './DataPipelineControl'
 const apiMocks = vi.hoisted(() => ({
   getDataPipelineStatus: vi.fn(),
   startDataPipeline: vi.fn(),
+  stopDataPipeline: vi.fn(),
 }))
 
 vi.mock('./api', async (importOriginal) => ({
@@ -16,12 +17,48 @@ vi.mock('./api', async (importOriginal) => ({
 beforeEach(() => {
   apiMocks.getDataPipelineStatus.mockReset()
   apiMocks.startDataPipeline.mockReset()
+  apiMocks.stopDataPipeline.mockReset()
   apiMocks.getDataPipelineStatus.mockImplementation(
     (type: DataPipelineType) => Promise.resolve(execution(type, 'IDLE')),
   )
 })
 
 describe('DataPipelineControl', () => {
+  it('중지를 요청한 뒤 실제 종료 응답이 오기 전까지 새 실행을 막는다', async () => {
+    const running = execution('COMPLEX_COLLECTION', 'RUNNING', { executionId: 'run-1' })
+    apiMocks.startDataPipeline.mockResolvedValue(running)
+    apiMocks.stopDataPipeline.mockResolvedValue({ ...running, stopRequested: true })
+    render(<DataPipelineControl />)
+    fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
+    const stop = await screen.findByRole('button', { name: '단지 수집 실행 중지' })
+    fireEvent.click(stop)
+    expect(await screen.findByText(/중지 요청됨/)).toBeVisible()
+    expect(apiMocks.stopDataPipeline).toHaveBeenCalledWith('run-1')
+    expect(screen.getByRole('button', { name: '중지 요청 중…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '공고 수집' })).toBeDisabled()
+  })
+
+  it('중지 API가 실패하면 완료로 표시하지 않고 다시 중지할 수 있다', async () => {
+    apiMocks.startDataPipeline.mockResolvedValue(execution('COMPLEX_COLLECTION', 'RUNNING', { executionId: 'run-1' }))
+    apiMocks.stopDataPipeline.mockRejectedValue(new Error('중지 요청 실패'))
+    render(<DataPipelineControl />)
+    fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
+    fireEvent.click(await screen.findByRole('button', { name: '단지 수집 실행 중지' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('중지 요청 실패')
+    expect(screen.getByRole('button', { name: '단지 수집 실행 중지' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '공고 수집' })).toBeDisabled()
+  })
+
+  it('재접속 시 중지된 실행과 완료한 단계를 표시한다', async () => {
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
+      type === 'COMPLEX_COLLECTION' ? execution(type, 'STOPPED', { completedSteps: ['마이홈 단지 수집'] }) : execution(type, 'IDLE'),
+    ))
+    render(<DataPipelineControl />)
+    expect(await screen.findByRole('status')).toHaveTextContent('실행이 중지되었습니다')
+    expect(screen.getByText('마이홈 단지 수집 완료')).toBeVisible()
+    expect(screen.getByRole('button', { name: '공고 수집' })).toBeEnabled()
+  })
+
   it('단지 수집 실행 중 네 버튼을 잠그고 현재 단계를 표시한다', async () => {
     apiMocks.startDataPipeline.mockResolvedValue(execution('COMPLEX_COLLECTION', 'RUNNING', {
       currentStepName: '마이홈 단지 수집',

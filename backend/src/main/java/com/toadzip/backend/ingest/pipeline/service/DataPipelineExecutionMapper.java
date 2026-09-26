@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.pipeline.service;
 
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineWorkProgress;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineCompletedStepResponse;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineFailureResponse;
@@ -44,7 +45,12 @@ public class DataPipelineExecutionMapper {
                 partiallyFailedStepResponses(execution),
                 failureResponse(execution),
                 execution.getStartedAt(),
-                execution.getFinishedAt()
+                execution.getFinishedAt(),
+                execution.isStopRequested(),
+                execution.getExternalRequestCount(),
+                execution.getLastRequestDescription(),
+                execution.getLastProgressAt(),
+                workProgress(execution)
         );
     }
 
@@ -110,6 +116,13 @@ public class DataPipelineExecutionMapper {
             return null;
         }
         return step.displayName();
+    }
+
+    private DataPipelineWorkProgress workProgress(DataPipelineExecution execution) {
+        if (execution.getWorkProgress() == null) {
+            return null;
+        }
+        return objectMapper.readValue(execution.getWorkProgress(), DataPipelineWorkProgress.class);
     }
 
     private Object deserializeReport(String report) {

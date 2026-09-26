@@ -4,6 +4,7 @@ import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineWorkProgress;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -25,7 +26,12 @@ public record DataPipelineExecutionResponse(
         List<DataPipelinePartiallyFailedStepResponse> partiallyFailedSteps,
         DataPipelineFailureResponse failure,
         Instant startedAt,
-        Instant finishedAt
+        Instant finishedAt,
+        boolean stopRequested,
+        long externalRequestCount,
+        String lastRequestDescription,
+        Instant lastProgressAt,
+        DataPipelineWorkProgress workProgress
 ) {
 
     public DataPipelineExecutionResponse {
@@ -51,6 +57,11 @@ public record DataPipelineExecutionResponse(
                 List.of(),
                 List.of(),
                 List.of(),
+                null,
+                null,
+                null,
+                false,
+                0,
                 null,
                 null,
                 null

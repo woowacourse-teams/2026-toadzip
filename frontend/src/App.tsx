@@ -1,5 +1,8 @@
-import { Link, Route, Routes } from 'react-router'
+import { Link, Navigate, Route, Routes } from 'react-router'
 import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
+import { HousingComplexRegistrationPage } from './admin/registration/HousingComplexRegistrationPage'
+import { AnnouncementRegistrationPage } from './admin/registration/AnnouncementRegistrationPage'
+import { LocationDataPage } from './admin/ingest/LocationDataPage'
 import { AdminHome } from './admin/auth/AdminHome'
 import { AdminLayout } from './admin/auth/AdminLayout'
 import { LoginPage } from './admin/auth/LoginPage'
@@ -57,7 +60,11 @@ function AdminRoutes() {
         <Route path="login" element={<LoginPage />} />
         <Route element={<RequireAdmin />}>
           <Route element={<AdminLayout />}>
-            <Route index element={<AdminHome />} />
+            <Route index element={<Navigate to="ingest" replace />} />
+            <Route path="ingest" element={<AdminHome />} />
+            <Route path="complexes" element={<HousingComplexRegistrationPage />} />
+            <Route path="announcements" element={<AnnouncementRegistrationPage />} />
+            <Route path="locations" element={<LocationDataPage />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFound />} />

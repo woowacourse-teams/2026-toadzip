@@ -13,9 +13,10 @@ vi.mock('./admin/ingest/api', async (importOriginal) => ({
     status: 'IDLE',
     currentStepName: null,
     currentStepIndex: 0,
-    totalStepCount: type === 'ANNOUNCEMENT_COLLECTION' ? 3 : 2,
+    totalStepCount: type === 'ANNOUNCEMENT_COLLECTION' ? 4 : 2,
     completedSteps: [],
     skippedSteps: [],
+    partiallyFailedSteps: [],
     failure: null,
   })),
   startDataPipeline: vi.fn(),
@@ -112,7 +113,36 @@ describe('App', () => {
     fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password1' } })
     fireEvent.click(screen.getByRole('button', { name: '로그인' }))
 
-    expect(await screen.findByRole('heading', { name: '관리자 페이지' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '수집·정제', level: 1 })).toBeVisible()
+  })
+
+  it('관리자 메뉴를 이동하면 해당 업무만 표시하고 뒤로 돌아와도 실행 상태를 조회한다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
+    render(<MemoryRouter initialEntries={['/admin']}><App /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: '수집·정제', level: 1 })).toBeVisible()
+    expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: '단지 입력' }))
+    expect(screen.getByRole('heading', { name: '단지 등록' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: '공고 수집 실행' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: '공고 입력' }))
+    expect(screen.getByRole('heading', { name: 'JSON 가져오기' })).toBeVisible()
+    expect(screen.queryByRole('heading', { name: '직접 입력' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '직접 입력' }))
+    expect(screen.getByRole('heading', { name: '직접 입력' })).toBeVisible()
+    expect(screen.queryByRole('heading', { name: 'JSON 가져오기' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: '주소 데이터' }))
+    expect(screen.getByRole('heading', { name: '주소 데이터', level: 1 })).toBeVisible()
+    expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: '수집·정제' }))
+    expect(screen.getByRole('heading', { name: '수집·정제', level: 1 })).toBeVisible()
+  })
+
+  it('공고 입력 URL로 직접 들어와도 지정한 방식만 연다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
+    render(<MemoryRouter initialEntries={['/admin/announcements?mode=direct']}><App /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: '직접 입력' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '공고 입력' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
   })
 
   it('StrictMode의 오래된 인증 상태 응답이 로그인 후 세션을 덮어쓰지 않는다', async () => {
