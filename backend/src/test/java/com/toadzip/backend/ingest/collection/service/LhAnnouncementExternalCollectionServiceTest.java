@@ -251,6 +251,38 @@ class LhAnnouncementExternalCollectionServiceTest {
                 eq("myhomeAnnouncementCurrentSource=P1"), any(IllegalStateException.class), any(), any());
     }
 
+    @ParameterizedTest
+    @CsvSource({"false,false,0", "true,false,1", "false,true,1"})
+    void 오래된_공고의_충돌은_정기_대상이나_강제_갱신일_때만_실패한다(
+            boolean forced, boolean hasEligibleSource, int expectedFailures
+    ) {
+        MyHomeAnnouncementSource first = announcementSource("P1", "100");
+        MyHomeAnnouncementSource second = announcementSource("P1", "200");
+        first.markSeen("current", NOW);
+        second.markSeen("current", NOW);
+        ReflectionTestUtils.setField(first, "endDe", "20260801");
+        ReflectionTestUtils.setField(second, "endDe", "20260801");
+        if (hasEligibleSource) {
+            ReflectionTestUtils.setField(second, "endDe", "20260918");
+        }
+        if (forced) {
+            when(myHomeAnnouncementRepository.findAllByPblancIdOrderByIdAsc("P1"))
+                    .thenReturn(List.of(first, second));
+        }
+        if (!forced) {
+            source(first, second);
+        }
+
+        ExternalDataCollectionReport report = collectOrRefresh(forced, "P1");
+
+        assertThat(report.failedRequestCount()).isEqualTo(expectedFailures);
+        assertThat(report.externalApiCallCount()).isZero();
+        verify(externalRepository, never()).fetchDetail(any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).link(any(), any(), any(), any());
+        verify(failureRecorder, times(expectedFailures)).record(any(), any(), any(), any(), any());
+    }
+
     @Test
     void 최신_원천이_정기_대상에서_제외되어도_과거_요청으로_되돌아가지_않는다() {
         MyHomeAnnouncementSource previous = announcementSource("P1", "100");

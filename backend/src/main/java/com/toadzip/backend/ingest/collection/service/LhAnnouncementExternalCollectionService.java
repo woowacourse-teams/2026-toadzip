@@ -23,6 +23,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
@@ -32,6 +33,7 @@ import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.function.BinaryOperator;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -246,20 +248,23 @@ public class LhAnnouncementExternalCollectionService {
                 continue;
             }
             Candidate candidate = (Candidate) resolution;
+            Optional<Duration> refreshTtl = Optional.empty();
+            if (!forceRefresh) {
+                refreshTtl = refreshPolicy.scheduledRefreshTtl(source, candidate);
+                if (refreshTtl.isEmpty()) {
+                    policyExcludedCount++;
+                    continue;
+                }
+            }
             if (conflictingKeys.contains(candidate.sourceAnnouncementKey())) {
                 addConflict(candidate, visitedSourceAnnouncements, conflicts);
                 continue;
             }
             if (!forceRefresh) {
-                var refreshTtl = refreshPolicy.scheduledRefreshTtl(source, candidate);
-                if (refreshTtl.isEmpty()) {
-                    policyExcludedCount++;
-                    continue;
-                }
                 refreshTtlByRequest.merge(
                         candidate.requestDescription(),
                         refreshTtl.orElseThrow(),
-                        (left, right) -> left.compareTo(right) <= 0 ? left : right
+                        BinaryOperator.minBy(Duration::compareTo)
                 );
             }
             if (!visitedSourceAnnouncements.add(candidate.sourceAnnouncementKey())) {
