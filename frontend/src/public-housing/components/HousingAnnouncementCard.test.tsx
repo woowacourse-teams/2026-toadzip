@@ -322,7 +322,7 @@ describe('HousingAnnouncementCard', () => {
     expect(css).toMatch(/\.card:hover[\s\S]*?transform:\s*none;/)
     expect(css).toMatch(/\.primaryAction:focus-visible[\s\S]*?outline:/)
     const tokensCss = readFileSync(
-      resolve(process.cwd(), 'src/public-housing/styles/tokens.css'),
+      resolve(process.cwd(), 'src/design-system/tokens.css'),
       'utf8',
     )
     expect(badgeCss).toMatch(/\.badge\s*\{[^}]*background:\s*var\(--ds-color-status-applying-surface\);/)
