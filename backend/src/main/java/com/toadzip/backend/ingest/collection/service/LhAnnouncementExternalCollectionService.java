@@ -1,7 +1,5 @@
 package com.toadzip.backend.ingest.collection.service;
 
-import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
-
 import com.toadzip.backend.ingest.collection.configuration.LhAnnouncementClientProperties;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
@@ -14,6 +12,8 @@ import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCan
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Skipped;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,6 +31,7 @@ import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -53,6 +54,7 @@ public class LhAnnouncementExternalCollectionService {
     private final LhAnnouncementCandidateCollector candidateCollector;
     private final LhAnnouncementRefreshPolicy refreshPolicy;
     private final LhAnnouncementClientProperties clientProperties;
+    private final MeterRegistry meterRegistry;
 
     public ExternalDataCollectionReport collect(ExternalDataSource targetSource) {
         validateTargetSource(targetSource);
@@ -96,7 +98,7 @@ public class LhAnnouncementExternalCollectionService {
         Set<String> visitedSourceAnnouncements = new HashSet<>();
         long lastSeenId = 0L;
         while (true) {
-            List<MyHomeAnnouncementSource> sources = findNextBatch(lastSeenId);
+            List<MyHomeAnnouncementSource> sources = findNextBatch(targetSource, lastSeenId);
             if (sources.isEmpty()) {
                 return report;
             }
@@ -118,19 +120,29 @@ public class LhAnnouncementExternalCollectionService {
             ExternalDataSource targetSource,
             String pblancId
     ) {
-        List<MyHomeAnnouncementSource> sources = myHomeAnnouncementRepository
-                .findAllByPblancIdOrderByIdAsc(pblancId);
+        List<MyHomeAnnouncementSource> sources = readSources(targetSource, true,
+                () -> myHomeAnnouncementRepository.findAllByPblancIdOrderByIdAsc(pblancId));
         if (sources.isEmpty()) {
             throw new InvalidIngestRequestException("마이홈 공고 원천을 찾을 수 없습니다: pblancId=" + pblancId);
         }
         return collectBatch(targetSource, sources, new HashSet<>(), true);
     }
 
-    private List<MyHomeAnnouncementSource> findNextBatch(long lastSeenId) {
-        return myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(
-                lastSeenId,
-                PageRequest.of(0, ANNOUNCEMENT_BATCH_SIZE)
-        );
+    private List<MyHomeAnnouncementSource> findNextBatch(ExternalDataSource targetSource, long lastSeenId) {
+        return readSources(targetSource, false,
+                () -> myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(
+                        lastSeenId, PageRequest.of(0, ANNOUNCEMENT_BATCH_SIZE)
+                ));
+    }
+
+    private List<MyHomeAnnouncementSource> readSources(
+            ExternalDataSource targetSource,
+            boolean forceRefresh,
+            Supplier<List<MyHomeAnnouncementSource>> query
+    ) {
+        List<MyHomeAnnouncementSource> sources = measurePreparation(targetSource, forceRefresh, "source_read", query);
+        recordCount(targetSource, forceRefresh, "source.rows", "read", sources.size());
+        return sources;
     }
 
     private ExternalDataCollectionReport collectBatch(
@@ -139,25 +151,46 @@ public class LhAnnouncementExternalCollectionService {
             Set<String> visitedSourceAnnouncements,
             boolean forceRefresh
     ) {
+        List<Resolution> resolutions = measurePreparation(targetSource, forceRefresh, "candidate_resolution",
+                () -> candidateResolver.resolveAll(sources));
+        CandidateSelection selection = measurePreparation(targetSource, forceRefresh, "candidate_selection",
+                () -> selectCandidates(sources, resolutions, visitedSourceAnnouncements, forceRefresh));
+        recordCount(targetSource, forceRefresh, "source.rows", "candidate", selection.candidates().size());
+        recordCount(targetSource, forceRefresh, "source.rows", "unsupported", selection.skipped().size());
+        recordCount(targetSource, forceRefresh, "source.rows", "policy_excluded", selection.policyExcludedCount());
+        recordCount(targetSource, forceRefresh, "source.rows", "duplicate", selection.duplicateCount());
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
+        for (Skipped skipped : selection.skipped()) {
+            report = report.plus(skipReport(targetSource, skipped.sourceDescription(), skipped.reason()));
+        }
+        return report.plus(collectCandidates(
+                targetSource, selection.candidates(), selection.refreshTtlByRequest(), forceRefresh
+        ));
+    }
+
+    private CandidateSelection selectCandidates(
+            List<MyHomeAnnouncementSource> sources,
+            List<Resolution> resolutions,
+            Set<String> visitedSourceAnnouncements,
+            boolean forceRefresh
+    ) {
         List<Candidate> candidates = new ArrayList<>();
+        List<Skipped> skippedSources = new ArrayList<>();
         Map<String, Duration> refreshTtlByRequest = new HashMap<>();
-        List<Resolution> resolutions = candidateResolver.resolveAll(sources);
+        int policyExcludedCount = 0;
+        int duplicateCount = 0;
         for (int sourceIndex = 0; sourceIndex < sources.size(); sourceIndex++) {
             MyHomeAnnouncementSource source = sources.get(sourceIndex);
             Resolution resolution = resolutions.get(sourceIndex);
             if (resolution instanceof Skipped skipped) {
-                report = report.plus(skipReport(
-                        targetSource,
-                        skipped.sourceDescription(),
-                        skipped.reason()
-                ));
+                skippedSources.add(skipped);
                 continue;
             }
             Candidate candidate = (Candidate) resolution;
             if (!forceRefresh) {
                 var refreshTtl = refreshPolicy.scheduledRefreshTtl(source, candidate);
                 if (refreshTtl.isEmpty()) {
+                    policyExcludedCount++;
                     continue;
                 }
                 refreshTtlByRequest.merge(
@@ -167,16 +200,14 @@ public class LhAnnouncementExternalCollectionService {
                 );
             }
             if (!visitedSourceAnnouncements.add(candidate.sourceAnnouncementKey())) {
+                duplicateCount++;
                 continue;
             }
             candidates.add(candidate);
         }
-        return report.plus(collectCandidates(
-                targetSource,
-                candidates,
-                refreshTtlByRequest,
-                forceRefresh
-        ));
+        return new CandidateSelection(
+                candidates, refreshTtlByRequest, skippedSources, policyExcludedCount, duplicateCount
+        );
     }
 
     private ExternalDataCollectionReport collectCandidates(
@@ -195,9 +226,13 @@ public class LhAnnouncementExternalCollectionService {
                         Collectors.toList()
                 ));
         List<List<Candidate>> requests = new ArrayList<>(candidatesByRequest.values());
-        BatchProgress progress = forceRefresh
-                ? BatchProgress.empty()
-                : findProgress(targetSource, requests, refreshTtlByRequest);
+        BatchProgress progress = BatchProgress.empty();
+        if (!forceRefresh) {
+            progress = measurePreparation(targetSource, false, "checkpoint_read",
+                    () -> findProgress(targetSource, requests, refreshTtlByRequest));
+        }
+        // 배치의 판정 결과다. 이후 수집이 중단되면 실제 호출 수는 더 적을 수 있다.
+        recordDecisions(targetSource, forceRefresh, requests, progress);
         return collectRequests(
                 targetSource,
                 requests,
@@ -228,6 +263,67 @@ public class LhAnnouncementExternalCollectionService {
             ));
         }
         return progress;
+    }
+
+    private void recordDecisions(
+            ExternalDataSource targetSource,
+            boolean forceRefresh,
+            List<List<Candidate>> requests,
+            BatchProgress progress
+    ) {
+        int candidateCount = 0;
+        int freshCandidateCount = 0;
+        int freshRequestCount = 0;
+        for (List<Candidate> request : requests) {
+            candidateCount += request.size();
+            if (!forceRefresh && progress.isFresh(request.getFirst().requestDescription())) {
+                freshCandidateCount += request.size();
+                freshRequestCount++;
+            }
+        }
+        recordCount(targetSource, forceRefresh, "candidates", "ttl_fresh", freshCandidateCount);
+        recordCount(targetSource, forceRefresh, "candidates", "refresh", candidateCount - freshCandidateCount);
+        recordCount(targetSource, forceRefresh, "requests", "ttl_fresh", freshRequestCount);
+        recordCount(targetSource, forceRefresh, "requests", "refresh", requests.size() - freshRequestCount);
+    }
+
+    private <T> T measurePreparation(
+            ExternalDataSource targetSource,
+            boolean forceRefresh,
+            String phase,
+            Supplier<T> action
+    ) {
+        return meterRegistry.timer("ingest.announcement.prepare",
+                        "source", targetSource.name(), "mode", collectionMode(forceRefresh), "phase", phase)
+                .record(action);
+    }
+
+    private void recordCount(
+            ExternalDataSource targetSource,
+            boolean forceRefresh,
+            String name,
+            String result,
+            int count
+    ) {
+        meterRegistry.counter("ingest.announcement." + name,
+                        "source", targetSource.name(), "mode", collectionMode(forceRefresh), "result", result)
+                .increment(count);
+    }
+
+    private String collectionMode(boolean forceRefresh) {
+        if (forceRefresh) {
+            return "forced";
+        }
+        return "scheduled";
+    }
+
+    private record CandidateSelection(
+            List<Candidate> candidates,
+            Map<String, Duration> refreshTtlByRequest,
+            List<Skipped> skipped,
+            int policyExcludedCount,
+            int duplicateCount
+    ) {
     }
 
     private ExternalDataCollectionReport collectRequests(

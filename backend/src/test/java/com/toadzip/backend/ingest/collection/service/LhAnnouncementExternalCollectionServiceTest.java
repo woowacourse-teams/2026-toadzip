@@ -40,6 +40,9 @@ import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacem
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
+import io.micrometer.core.instrument.MockClock;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.simple.SimpleConfig;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
@@ -100,10 +103,14 @@ class LhAnnouncementExternalCollectionServiceTest {
     private LhAnnouncementExternalCollectionService service;
 
     private long nextSourceId;
+    private MockClock metricClock;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
         nextSourceId = 0L;
+        metricClock = new MockClock();
+        meterRegistry = new SimpleMeterRegistry(SimpleConfig.DEFAULT, metricClock);
         lenient().when(executionLock.<ExternalDataCollectionReport>tryRun(any(), any()))
                 .thenAnswer(invocation -> {
                     Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(1);
@@ -122,14 +129,14 @@ class LhAnnouncementExternalCollectionServiceTest {
                 externalRepository,
                 new LhAnnouncementDetailResponseParser(),
                 new LhAnnouncementSupplyResponseParser(),
-                new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry())
+                new ExternalDataRetryExecutor(Duration.ZERO, meterRegistry)
         );
         LhAnnouncementCandidateCollector candidateCollector = new LhAnnouncementCandidateCollector(
                 responseFetcher,
                 sourceStore,
                 failureRecorder,
                 progressManager,
-                new SimpleMeterRegistry()
+                meterRegistry
         );
         LhAnnouncementRefreshPolicy refreshPolicy = new LhAnnouncementRefreshPolicy(
                 Clock.fixed(NOW, ZoneOffset.UTC),
@@ -146,8 +153,145 @@ class LhAnnouncementExternalCollectionServiceTest {
                 new LhAnnouncementCollectionCandidateResolver(new LhSupplyInfoTypeCodeResolver(), catalogRepository),
                 candidateCollector,
                 refreshPolicy,
-                new LhAnnouncementClientProperties(2, Duration.ofSeconds(3), Duration.ofSeconds(10))
+                new LhAnnouncementClientProperties(2, Duration.ofSeconds(3), Duration.ofSeconds(10)),
+                meterRegistry
         );
+    }
+
+    @Test
+    void 읽은_행과_후보_제외_사유를_페이지에_걸쳐_집계하고_TTL_공고수와_요청수를_구분한다() {
+        MyHomeAnnouncementSource first = announcementSource("a", "100");
+        MyHomeAnnouncementSource linked = announcementSource("b", "100");
+        MyHomeAnnouncementSource duplicate = announcementSource("a", "100");
+        MyHomeAnnouncementSource expired = announcementSource("c", "200");
+        MyHomeAnnouncementSource old = announcementSource("old", "300");
+        ReflectionTestUtils.setField(old, "endDe", "20260801");
+        when(myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(anyLong(), any()))
+                .thenReturn(List.of(first, linked),
+                        List.of(duplicate, expired, old, nonLhAnnouncementSource(), unsupportedLhAnnouncementSource()),
+                        List.of());
+        when(progressStore.findBatch(any(), any(), any(), any()))
+                .thenReturn(progressWithCompletedRequest(announcementRequestDescription()));
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("200"), any(), any())).thenReturn(1);
+
+        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        assertMetricCount("source.rows", "scheduled", "read", 7);
+        assertMetricCount("source.rows", "scheduled", "candidate", 3);
+        assertMetricCount("source.rows", "scheduled", "duplicate", 1);
+        assertMetricCount("source.rows", "scheduled", "policy_excluded", 1);
+        assertMetricCount("source.rows", "scheduled", "unsupported", 2);
+        assertMetricCount("candidates", "scheduled", "ttl_fresh", 2);
+        assertMetricCount("candidates", "scheduled", "refresh", 1);
+        assertMetricCount("requests", "scheduled", "ttl_fresh", 1);
+        assertMetricCount("requests", "scheduled", "refresh", 1);
+        assertThat(preparationTimer("scheduled", "source_read").count()).isEqualTo(3);
+        assertThat(preparationTimer("scheduled", "candidate_resolution").count()).isEqualTo(2);
+        assertThat(preparationTimer("scheduled", "candidate_selection").count()).isEqualTo(2);
+        assertThat(preparationTimer("scheduled", "checkpoint_read").count()).isEqualTo(2);
+        assertThat(result.externalApiCallCount()).isOne();
+        assertThat(result.skippedRequestCount()).isEqualTo(2);
+        verify(progressStore).link(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), eq("b"), any(), eq("100"));
+    }
+
+    @Test
+    void 준비_시간은_원천_조회와_후보_해석과_체크포인트를_나누고_외부호출과_저장을_제외한다() {
+        MyHomeAnnouncementSource candidate = announcementSource();
+        MyHomeAnnouncementSource unsupported = nonLhAnnouncementSource();
+        when(myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(anyLong(), any()))
+                .thenAnswer(invocation -> {
+                    metricClock.add(Duration.ofMillis(10));
+                    if ((long) invocation.getArgument(0) == 0L) {
+                        return List.of(candidate, unsupported);
+                    }
+                    return List.of();
+                });
+        when(catalogRepository.findAllByPanIdInAndPresentInLatestCatalogTrue(any())).thenAnswer(invocation -> {
+            metricClock.add(Duration.ofMillis(20));
+            return List.of();
+        });
+        when(progressStore.findBatch(any(), any(), any(), any())).thenAnswer(invocation -> {
+            metricClock.add(Duration.ofMillis(30));
+            return BatchProgress.empty();
+        });
+        org.mockito.Mockito.doAnswer(invocation -> {
+            metricClock.add(Duration.ofMillis(400));
+            return null;
+        }).when(failureRecorder).skip(any(), any(), any());
+        when(externalRepository.fetchDetail(any())).thenAnswer(invocation -> {
+            metricClock.add(Duration.ofMillis(100));
+            return detailResponse();
+        });
+        when(sourceStore.replaceDetails(any(), any(), any())).thenAnswer(invocation -> {
+            metricClock.add(Duration.ofMillis(200));
+            return 1;
+        });
+
+        service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        assertThat(preparationTimer("scheduled", "source_read").totalTime(TimeUnit.MILLISECONDS)).isEqualTo(20);
+        assertThat(preparationTimer("scheduled", "candidate_resolution").totalTime(TimeUnit.MILLISECONDS))
+                .isEqualTo(20);
+        assertThat(preparationTimer("scheduled", "candidate_selection").totalTime(TimeUnit.MILLISECONDS)).isZero();
+        assertThat(preparationTimer("scheduled", "checkpoint_read").totalTime(TimeUnit.MILLISECONDS)).isEqualTo(30);
+        assertThat(meterRegistry.get("ingest.external.request").timer().totalTime(TimeUnit.MILLISECONDS))
+                .isEqualTo(100);
+        assertThat(meterRegistry.get("ingest.announcement.store").timer().totalTime(TimeUnit.MILLISECONDS))
+                .isEqualTo(200);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"source_read", "candidate_resolution", "checkpoint_read"})
+    void 준비_실패도_걸린_시간을_기록하고_원래_예외를_전파한다(String phase) {
+        IllegalStateException failure = new IllegalStateException("준비 실패");
+        org.mockito.stubbing.Answer<Object> fail = invocation -> {
+            metricClock.add(Duration.ofMillis(50));
+            throw failure;
+        };
+        if (phase.equals("source_read")) {
+            when(myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(anyLong(), any())).thenAnswer(fail);
+        }
+        if (!phase.equals("source_read")) {
+            source(announcementSource());
+        }
+        if (phase.equals("candidate_resolution")) {
+            when(catalogRepository.findAllByPanIdInAndPresentInLatestCatalogTrue(any())).thenAnswer(fail);
+        }
+        if (phase.equals("checkpoint_read")) {
+            when(progressStore.findBatch(any(), any(), any(), any())).thenAnswer(fail);
+        }
+
+        assertThatThrownBy(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)).isSameAs(failure);
+
+        assertThat(preparationTimer("scheduled", phase).count()).isOne();
+        assertThat(preparationTimer("scheduled", phase).totalTime(TimeUnit.MILLISECONDS)).isEqualTo(50);
+        assertThat(meterRegistry.find("ingest.announcement.requests").counters()).isEmpty();
+        verify(externalRepository, never()).fetchDetail(any());
+    }
+
+    @Test
+    void 빈_원천도_조회_횟수를_기록하고_후보_판정을_실행하지_않는다() {
+        when(myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(anyLong(), any())).thenReturn(List.of());
+
+        service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        assertMetricCount("source.rows", "scheduled", "read", 0);
+        assertThat(preparationTimer("scheduled", "source_read").count()).isOne();
+        assertThat(meterRegistry.find("ingest.announcement.prepare")
+                .tag("phase", "candidate_resolution").timer()).isNull();
+        assertThat(meterRegistry.find("ingest.announcement.requests").counters()).isEmpty();
+    }
+
+    private void assertMetricCount(String name, String mode, String result, int count) {
+        assertThat(meterRegistry.get("ingest.announcement." + name)
+                .tags("source", "LH_ANNOUNCEMENT_DETAIL", "mode", mode, "result", result)
+                .counter().count()).isEqualTo(count);
+    }
+
+    private Timer preparationTimer(String mode, String phase) {
+        return meterRegistry.get("ingest.announcement.prepare")
+                .tags("source", "LH_ANNOUNCEMENT_DETAIL", "mode", mode, "phase", phase).timer();
     }
 
     @Test
@@ -204,6 +348,9 @@ class LhAnnouncementExternalCollectionServiceTest {
         verify(externalRepository, times(2)).fetchDetail(any());
         verify(progressStore).complete(any(), eq("b"), any(), eq("200"));
         verify(progressStore, never()).complete(any(), eq("a"), any(), any());
+        assertMetricCount("source.rows", "scheduled", "read", 3);
+        assertMetricCount("requests", "scheduled", "refresh", 3);
+        assertThat(preparationTimer("scheduled", "source_read").count()).isOne();
     }
 
     @Test
@@ -849,6 +996,11 @@ class LhAnnouncementExternalCollectionServiceTest {
         assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isZero();
         assertThat(result.externalApiCallCount()).isZero();
+        assertThat(meterRegistry.get("ingest.announcement.requests")
+                .tags("source", "LH_ANNOUNCEMENT_SUPPLY", "mode", "scheduled", "result", "ttl_fresh")
+                .counter().count()).isOne();
+        assertThat(meterRegistry.find("ingest.announcement.requests")
+                .tag("source", "LH_ANNOUNCEMENT_DETAIL").counters()).isEmpty();
     }
 
     @Test
@@ -1197,6 +1349,14 @@ class LhAnnouncementExternalCollectionServiceTest {
                 eq("100")
         );
         assertThat(result.externalApiCallCount()).isOne();
+        assertMetricCount("source.rows", "forced", "read", 1);
+        assertMetricCount("source.rows", "forced", "policy_excluded", 0);
+        assertMetricCount("candidates", "forced", "refresh", 1);
+        assertMetricCount("requests", "forced", "refresh", 1);
+        assertMetricCount("requests", "forced", "ttl_fresh", 0);
+        assertThat(preparationTimer("forced", "source_read").count()).isOne();
+        assertThat(meterRegistry.find("ingest.announcement.prepare").tag("phase", "checkpoint_read").timer()).isNull();
+        assertThat(meterRegistry.find("ingest.announcement.prepare").tag("mode", "scheduled").timers()).isEmpty();
     }
 
     @Test
