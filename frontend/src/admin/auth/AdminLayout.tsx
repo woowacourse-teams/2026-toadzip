@@ -27,7 +27,7 @@ export function AdminLayout() {
   }
 
   return (
-    <div className="admin-layout">
+    <div className="admin-layout"><a className="admin-skip" href="#admin-main">본문으로 건너뛰기</a>
       <header className="admin-header">
         <span>공공주택 복덕방 관리자</span>
         <div>
@@ -37,12 +37,17 @@ export function AdminLayout() {
       </header>
       {error ? <p className="form-error admin-layout-error">{error}</p> : null}
       <nav className="admin-navigation" aria-label="관리자 메뉴">
-        <NavLink to="/admin/ingest">수집·정제</NavLink>
-        <NavLink to="/admin/complexes">단지 입력</NavLink>
-        <NavLink to="/admin/announcements">공고 입력</NavLink>
-        <NavLink to="/admin/locations">주소 데이터</NavLink>
+        <div className="admin-nav-group"><span>데이터 관리</span>
+          <NavLink to="/admin/complexes">단지 관리</NavLink>
+          <NavLink to="/admin/announcements">공고 관리</NavLink>
+        </div>
+        <div className="admin-nav-group"><span>수집 운영</span>
+          <NavLink to="/admin/ingest">수집·정제</NavLink>
+          <NavLink to="/admin/failures">실패·검토 항목</NavLink>
+          <NavLink to="/admin/locations">주소 데이터</NavLink>
+        </div>
       </nav>
-      <main className="admin-content">
+      <main className="admin-content" id="admin-main">
         <Outlet />
       </main>
     </div>

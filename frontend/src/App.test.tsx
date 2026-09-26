@@ -1,3 +1,4 @@
+vi.mock('./admin/management/api', async importOriginal => ({ ...(await importOriginal<typeof import('./admin/management/api')>()), list:vi.fn(async () => ({items:[],page:0,hasNext:false})) }))
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { MemoryRouter } from 'react-router'
@@ -20,6 +21,7 @@ vi.mock('./admin/ingest/api', async (importOriginal) => ({
     failure: null,
   })),
   startDataPipeline: vi.fn(),
+  getPipelineHistory: vi.fn(async () => []),
 }))
 
 beforeEach(() => {
@@ -113,18 +115,20 @@ describe('App', () => {
     fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password1' } })
     fireEvent.click(screen.getByRole('button', { name: '로그인' }))
 
-    expect(await screen.findByRole('heading', { name: '수집·정제', level: 1 })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '단지 관리', level: 1 })).toBeVisible()
   })
 
   it('관리자 메뉴를 이동하면 해당 업무만 표시하고 뒤로 돌아와도 실행 상태를 조회한다', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
     render(<MemoryRouter initialEntries={['/admin']}><App /></MemoryRouter>)
-    expect(await screen.findByRole('heading', { name: '수집·정제', level: 1 })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '단지 관리', level: 1 })).toBeVisible()
     expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('link', { name: '단지 입력' }))
-    expect(screen.getByRole('heading', { name: '단지 등록' })).toBeVisible()
+    fireEvent.click(screen.getByRole('link', { name: '단지 관리' }))
+    fireEvent.click(screen.getByRole('link', { name: '단지 등록' }))
+    expect(screen.getByRole('heading', { name: '단지 등록',level:1 })).toBeVisible()
     expect(screen.queryByRole('button', { name: '공고 수집 실행' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('link', { name: '공고 입력' }))
+    fireEvent.click(screen.getByRole('link', { name: '공고 관리' }))
+    fireEvent.click(screen.getByRole('link', { name: '공고 등록' }))
     expect(screen.getByRole('heading', { name: 'JSON 가져오기' })).toBeVisible()
     expect(screen.queryByRole('heading', { name: '직접 입력' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '직접 입력' }))
@@ -139,9 +143,9 @@ describe('App', () => {
 
   it('공고 입력 URL로 직접 들어와도 지정한 방식만 연다', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
-    render(<MemoryRouter initialEntries={['/admin/announcements?mode=direct']}><App /></MemoryRouter>)
+    render(<MemoryRouter initialEntries={['/admin/announcements/new?mode=direct']}><App /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: '직접 입력' })).toBeVisible()
-    expect(screen.getByRole('link', { name: '공고 입력' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: '공고 관리' })).toHaveAttribute('aria-current', 'page')
     expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
   })
 

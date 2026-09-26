@@ -1,6 +1,7 @@
+import { ComplexPicker } from '../management/ComplexPicker'
+import { detail } from '../management/api'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { publicHousingRepository } from '../../public-housing/api/publicHousingRepository'
 import { AnnouncementImportForm } from './AnnouncementImportForm'
 import { AnnouncementRegistrationForm } from './AnnouncementRegistrationForm'
 import type { HousingComplexCreateResponse } from './api'
@@ -16,7 +17,7 @@ export function AnnouncementRegistrationPage() {
   }
 
   return <section className="admin-registration-page">
-    <header className="admin-registration-heading"><h1>공고 입력</h1>
+    <header className="admin-registration-heading"><Link to="/admin/announcements">← 공고 목록</Link><h1>공고 등록</h1>
       <p>JSON을 검증해 가져오거나, 등록된 단지를 선택해 공고를 직접 입력합니다.</p></header>
     <div className="admin-mode-switch" aria-label="공고 입력 방식">
       <button type="button" aria-pressed={!direct} disabled={submitting} onClick={() => selectMode('json')}>JSON 가져오기</button>
@@ -46,10 +47,11 @@ function DirectAnnouncement({ complexId, submitting, onSubmittingChange, onSelec
         if (!/^[1-9]\d*$/.test(complexId) || !Number.isSafeInteger(Number(complexId))) {
           throw new Error('유효한 단지 ID를 입력해 주세요.')
         }
-        const detail = await publicHousingRepository.findComplexDetail(complexId, controller.signal)
+        const found = await detail('complexes', complexId, controller.signal)
+        if (found.summary.deleted) throw new Error('삭제된 단지는 연결할 수 없습니다.')
         if (!controller.signal.aborted) setHousingComplex({
-          housingComplexId: Number(complexId), name: detail.name ?? `단지 ${complexId}`,
-          roadAddress: detail.address?.roadAddress ?? '주소 정보 없음',
+          housingComplexId: Number(complexId), name: found.summary.name,
+          roadAddress: found.summary.subtitle,
         })
       } catch (cause) {
         if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '단지를 불러오지 못했습니다.')
@@ -64,16 +66,8 @@ function DirectAnnouncement({ complexId, submitting, onSubmittingChange, onSelec
   return <>
     <section className="registration-card" aria-labelledby="complex-selection-title">
       <h2 id="complex-selection-title">공고를 연결할 단지</h2>
-      <form className="admin-complex-select" onSubmit={(event) => {
-        event.preventDefault()
-        const id = new FormData(event.currentTarget).get('complexId')
-        if (typeof id === 'string') onSelect(id.trim())
-      }}>
-        <label>단지 ID<input name="complexId" type="text" inputMode="numeric" pattern="[1-9][0-9]*"
-          required defaultValue={complexId} disabled={submitting} /></label>
-        <button type="submit" disabled={submitting}>단지 확인</button>
-        <Link to="/admin/complexes">새 단지 입력</Link>
-      </form>
+      <ComplexPicker disabled={submitting} onSelect={item => onSelect(String(item.id))} />
+      <Link to="/admin/complexes/new">새 단지 등록</Link>
       {loading ? <p role="status">선택 단지를 불러오는 중…</p> : null}
       {error ? <div><p className="form-error" role="alert">{error}</p>
         <button type="button" onClick={() => setAttempt((value) => value + 1)}>다시 시도</button></div> : null}
