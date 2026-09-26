@@ -111,7 +111,28 @@ class LhAnnouncementConcurrentCollectionIntegrationTest {
                 .tags("source", "LH_ANNOUNCEMENT_DETAIL", "result", "completed").timer().count()).isEqualTo(2);
         assertThat(meterRegistry.get("ingest.external.request")
                 .tags("source", "LH_ANNOUNCEMENT_DETAIL", "result", "failed").timer().count()).isOne();
+        assertThat(meterRegistry.get("ingest.announcement.source.rows")
+                .tags("source", "LH_ANNOUNCEMENT_DETAIL", "mode", "scheduled", "result", "read")
+                .counter().count()).isEqualTo(6);
+        assertThat(meterRegistry.get("ingest.announcement.candidates")
+                .tags("source", "LH_ANNOUNCEMENT_DETAIL", "mode", "scheduled", "result", "ttl_fresh")
+                .counter().count()).isEqualTo(2);
+        assertThat(meterRegistry.get("ingest.announcement.requests")
+                .tags("source", "LH_ANNOUNCEMENT_DETAIL", "mode", "scheduled", "result", "refresh")
+                .counter().count()).isEqualTo(3);
+        assertThat(meterRegistry.get("ingest.announcement.requests")
+                .tags("source", "LH_ANNOUNCEMENT_DETAIL", "mode", "scheduled", "result", "ttl_fresh")
+                .counter().count()).isOne();
         verify(externalRepository).fetchDetail(any());
+    }
+
+    @Test
+    void 수집_비용과_함께_볼_JVM과_DB풀_계측이_등록된다() {
+        assertThat(meterRegistry.get("jvm.memory.used").tag("area", "heap").gauges()).isNotEmpty();
+        assertThat(meterRegistry.get("jvm.gc.memory.allocated").counter().count()).isGreaterThanOrEqualTo(0);
+        assertThat(meterRegistry.get("hikaricp.connections.pending").gauges()).isNotEmpty();
+        assertThat(meterRegistry.get("hikaricp.connections.acquire").timers())
+                .anySatisfy(timer -> assertThat(timer.count()).isPositive());
     }
 
     private MyHomeAnnouncementSource source(String id, String panId) {
