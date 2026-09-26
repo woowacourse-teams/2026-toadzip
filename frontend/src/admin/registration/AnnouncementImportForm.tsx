@@ -1,3 +1,4 @@
+import { Link } from 'react-router'
 import { useMemo, useRef, useState } from 'react'
 import {
   createAnnouncementImport,
@@ -20,6 +21,7 @@ export function AnnouncementImportForm({
   const [isValidating, setIsValidating] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [createdId, setCreatedId] = useState<number | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const inputVersion = useRef(0)
   const summary = useMemo(() => documentSummary(validatedDocument), [validatedDocument])
@@ -96,6 +98,7 @@ export function AnnouncementImportForm({
           housingComplexId: selections[row.supplyRowIndex],
         })),
       )
+      setCreatedId(created.announcementId)
       setSuccess(
         `공고 #${created.announcementId}를 저장했습니다. 공급행 ${created.supplyRowCount}건, 일정 ${created.scheduleCount}건, 첨부 ${created.attachmentCount}건입니다.`,
       )
@@ -194,6 +197,7 @@ export function AnnouncementImportForm({
 
       {success ? <p className="registration-message registration-success" role="status">{success}</p> : null}
       {error ? <RegistrationError fieldErrors={{}} message={error} /> : null}
+      {createdId ? <Link className="admin-primary" to={`/admin/announcements/${createdId}`}>등록한 공고 상세 보기 →</Link> : null}
     </section>
   )
 }

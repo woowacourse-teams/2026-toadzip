@@ -1,3 +1,4 @@
+import { Link } from 'react-router'
 import { useState, type FormEvent } from 'react'
 import {
   createAnnouncement,
@@ -39,6 +40,7 @@ export function AnnouncementRegistrationForm({
   onSubmittingChange: (isSubmitting: boolean) => void
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [createdId, setCreatedId] = useState<number | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Readonly<Record<string, string>>>({})
@@ -60,6 +62,7 @@ export function AnnouncementRegistrationForm({
       const created = await createAnnouncement(
         announcementRequest(new FormData(form), housingComplexId),
       )
+      setCreatedId(created.announcementId)
       form.reset()
       setSuccess(`${created.name} 공고를 저장했습니다.`)
     } catch (requestError) {
@@ -244,6 +247,7 @@ export function AnnouncementRegistrationForm({
           {isSubmitting ? '공고 저장 중…' : '공고 저장'}
         </button>
       </form>
+      {createdId ? <Link className="admin-primary" to={`/admin/announcements/${createdId}`}>등록한 공고 상세 보기 →</Link> : null}
     </section>
   )
 }

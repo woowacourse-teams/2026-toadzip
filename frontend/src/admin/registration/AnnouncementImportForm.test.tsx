@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AnnouncementImportForm } from './AnnouncementImportForm'
@@ -18,7 +19,7 @@ afterEach(() => {
 
 describe('공고 JSON 가져오기', () => {
   it('문법 오류는 서버 호출 전에 표시한다', () => {
-    render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />)
+    render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />, {wrapper: MemoryRouter})
 
     fireEvent.change(screen.getByLabelText('공고 JSON'), { target: { value: '{' } })
     fireEvent.click(screen.getByRole('button', { name: 'JSON 검증' }))
@@ -38,7 +39,7 @@ describe('공고 JSON 가져오기', () => {
       supplyTargetCount: 0,
     })
     const onSubmittingChange = vi.fn()
-    render(<AnnouncementImportForm onSubmittingChange={onSubmittingChange} />)
+    render(<AnnouncementImportForm onSubmittingChange={onSubmittingChange} />, {wrapper: MemoryRouter})
 
     const document = {
       schemaVersion: 'admin-announcement-import/v1',
@@ -67,7 +68,7 @@ describe('공고 JSON 가져오기', () => {
 
   it('등록 전에 원문 URL, 기간, 공급 금액과 일정·첨부를 확인할 수 있다', async () => {
     vi.mocked(api.validateAnnouncementImport).mockResolvedValue(validationResponse())
-    render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />)
+    render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />, {wrapper: MemoryRouter})
     const rawJson = `{
       "source":{"originalUrl":"https://example.com/notice","sourceDocumentId":"NOTICE-1"},
       "announcement":{"name":"행복주택 모집","applicationStartDate":"2026-09-10","applicationEndDate":"2026-09-12"},
@@ -95,7 +96,7 @@ describe('공고 JSON 가져오기', () => {
     response.supplyRows[0].status = 'SELECTION_REQUIRED'
     response.supplyRows[0].suggestedHousingComplexId = null
     vi.mocked(api.validateAnnouncementImport).mockResolvedValue(response)
-    render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />)
+    render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />, {wrapper: MemoryRouter})
 
     fireEvent.change(screen.getByLabelText('공고 JSON'), {
       target: { value: '{"schemaVersion":"admin-announcement-import/v1"}' },
@@ -118,7 +119,7 @@ describe('공고 JSON 가져오기', () => {
 
   it('JSON을 수정하면 이전 검증 결과를 폐기한다', async () => {
     vi.mocked(api.validateAnnouncementImport).mockResolvedValue(validationResponse())
-    render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />)
+    render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />, {wrapper: MemoryRouter})
     const textarea = screen.getByLabelText('공고 JSON')
 
     fireEvent.change(textarea, { target: { value: '{"schemaVersion":"admin-announcement-import/v1"}' } })
@@ -135,7 +136,7 @@ describe('공고 JSON 가져오기', () => {
     vi.mocked(api.validateAnnouncementImport)
       .mockResolvedValueOnce(validationResponse())
       .mockReturnValueOnce(new Promise((resolve) => { resolveRevalidation = resolve }))
-    render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />)
+    render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />, {wrapper: MemoryRouter})
 
     fireEvent.change(screen.getByLabelText('공고 JSON'), {
       target: { value: '{"schemaVersion":"admin-announcement-import/v1"}' },
@@ -156,7 +157,7 @@ describe('공고 JSON 가져오기', () => {
     vi.mocked(api.validateAnnouncementImport)
       .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve }))
       .mockReturnValueOnce(new Promise((resolve) => { resolveSecond = resolve }))
-    render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />)
+    render(<AnnouncementImportForm onSubmittingChange={vi.fn()} />, {wrapper: MemoryRouter})
     const textarea = screen.getByLabelText('공고 JSON')
     const newDocument = { schemaVersion: 'admin-announcement-import/v1', announcement: { name: '새 공고' } }
 

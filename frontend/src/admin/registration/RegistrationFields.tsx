@@ -26,9 +26,10 @@ export function RegistrationTextField({
   const errorId = `${inputId}-error`
   return (
     <div className="registration-field">
-      <label htmlFor={inputId}>{label}</label>
+      <label htmlFor={inputId}>{label}{inputProps.required ? <span className="admin-required" aria-hidden="true"> · 필수</span> : null}</label>
       <input
         {...inputProps}
+        aria-label={label}
         aria-describedby={error ? errorId : undefined}
         aria-invalid={error ? true : undefined}
         id={inputId}
@@ -51,9 +52,10 @@ export function RegistrationSelectField({
   const errorId = `${inputId}-error`
   return (
     <div className="registration-field">
-      <label htmlFor={inputId}>{label}</label>
+      <label htmlFor={inputId}>{label}{selectProps.required ? <span className="admin-required" aria-hidden="true"> · 필수</span> : null}</label>
       <select
         {...selectProps}
+        aria-label={label}
         aria-describedby={error ? errorId : undefined}
         aria-invalid={error ? true : undefined}
         id={inputId}
