@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.configuration.LhAnnouncementClientProperties;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionExecutionLock;
@@ -96,6 +97,7 @@ public class LhAnnouncementExternalCollectionService {
     private ExternalDataCollectionReport collectAnnouncements(ExternalDataSource targetSource) {
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
         Set<String> visitedSourceAnnouncements = new HashSet<>();
+        Set<String> readSourceAnnouncements = new HashSet<>();
         long lastSeenId = 0L;
         while (true) {
             List<MyHomeAnnouncementSource> sources = findNextBatch(targetSource, lastSeenId);
@@ -103,9 +105,15 @@ public class LhAnnouncementExternalCollectionService {
                 return report;
             }
             lastSeenId = sources.getLast().getId();
+            List<MyHomeAnnouncementSource> completeSources = completeSourceGroups(
+                    targetSource, sources, readSourceAnnouncements
+            );
+            if (completeSources.isEmpty()) {
+                continue;
+            }
             ExternalDataCollectionReport batchReport = collectBatch(
                     targetSource,
-                    sources,
+                    completeSources,
                     visitedSourceAnnouncements,
                     false
             );
@@ -135,6 +143,47 @@ public class LhAnnouncementExternalCollectionService {
                 ));
     }
 
+    private List<MyHomeAnnouncementSource> completeSourceGroups(
+            ExternalDataSource targetSource,
+            List<MyHomeAnnouncementSource> batch,
+            Set<String> readSourceAnnouncements
+    ) {
+        List<MyHomeAnnouncementSource> unread = batch.stream()
+                .filter(source -> readSourceAnnouncements.add(sourceGroupKey(source)))
+                .toList();
+        if (unread.isEmpty()) {
+            return List.of();
+        }
+        List<String> identifiers = unread.stream()
+                .map(MyHomeAnnouncementSource::getPblancId)
+                .filter(identifier -> identifier != null && !identifier.isBlank())
+                .distinct()
+                .toList();
+        List<MyHomeAnnouncementSource> sources = new ArrayList<>(measurePreparation(
+                targetSource, false, "source_group_read",
+                () -> myHomeAnnouncementRepository.findAllByPblancIdInOrderByIdAsc(identifiers)
+        ));
+        unread.stream()
+                .filter(source -> source.getPblancId() == null || source.getPblancId().isBlank())
+                .forEach(sources::add);
+        return sources;
+    }
+
+    private List<MyHomeAnnouncementSource> currentSources(List<MyHomeAnnouncementSource> sources) {
+        return sources.stream()
+                .collect(Collectors.groupingBy(this::sourceGroupKey, LinkedHashMap::new, Collectors.toList()))
+                .values().stream()
+                .flatMap(group -> MyHomeAnnouncementCurrentSources.select(group).stream())
+                .toList();
+    }
+
+    private String sourceGroupKey(MyHomeAnnouncementSource source) {
+        if (source.getPblancId() == null || source.getPblancId().isBlank()) {
+            return "source:" + source.getSourceKey();
+        }
+        return source.getPblancId();
+    }
+
     private List<MyHomeAnnouncementSource> readSources(
             ExternalDataSource targetSource,
             boolean forceRefresh,
@@ -151,15 +200,23 @@ public class LhAnnouncementExternalCollectionService {
             Set<String> visitedSourceAnnouncements,
             boolean forceRefresh
     ) {
+        List<MyHomeAnnouncementSource> current = measurePreparation(
+                targetSource, forceRefresh, "current_source_selection", () -> currentSources(sources)
+        );
         List<Resolution> resolutions = measurePreparation(targetSource, forceRefresh, "candidate_resolution",
-                () -> candidateResolver.resolveAll(sources));
+                () -> candidateResolver.resolveAll(current));
         CandidateSelection selection = measurePreparation(targetSource, forceRefresh, "candidate_selection",
-                () -> selectCandidates(sources, resolutions, visitedSourceAnnouncements, forceRefresh));
+                () -> selectCandidates(current, resolutions, visitedSourceAnnouncements, forceRefresh));
         recordCount(targetSource, forceRefresh, "source.rows", "candidate", selection.candidates().size());
         recordCount(targetSource, forceRefresh, "source.rows", "unsupported", selection.skipped().size());
         recordCount(targetSource, forceRefresh, "source.rows", "policy_excluded", selection.policyExcludedCount());
         recordCount(targetSource, forceRefresh, "source.rows", "duplicate", selection.duplicateCount());
+        recordCount(targetSource, forceRefresh, "source.rows", "historical", sources.size() - current.size());
+        recordCount(targetSource, forceRefresh, "candidates", "conflicting", selection.conflicts().size());
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
+        for (Candidate conflict : selection.conflicts()) {
+            report = report.plus(conflictReport(targetSource, conflict));
+        }
         for (Skipped skipped : selection.skipped()) {
             report = report.plus(skipReport(targetSource, skipped.sourceDescription(), skipped.reason()));
         }
@@ -174,6 +231,8 @@ public class LhAnnouncementExternalCollectionService {
             Set<String> visitedSourceAnnouncements,
             boolean forceRefresh
     ) {
+        Set<String> conflictingKeys = conflictingSourceKeys(resolutions);
+        List<Candidate> conflicts = new ArrayList<>();
         List<Candidate> candidates = new ArrayList<>();
         List<Skipped> skippedSources = new ArrayList<>();
         Map<String, Duration> refreshTtlByRequest = new HashMap<>();
@@ -187,6 +246,10 @@ public class LhAnnouncementExternalCollectionService {
                 continue;
             }
             Candidate candidate = (Candidate) resolution;
+            if (conflictingKeys.contains(candidate.sourceAnnouncementKey())) {
+                addConflict(candidate, visitedSourceAnnouncements, conflicts);
+                continue;
+            }
             if (!forceRefresh) {
                 var refreshTtl = refreshPolicy.scheduledRefreshTtl(source, candidate);
                 if (refreshTtl.isEmpty()) {
@@ -206,8 +269,40 @@ public class LhAnnouncementExternalCollectionService {
             candidates.add(candidate);
         }
         return new CandidateSelection(
-                candidates, refreshTtlByRequest, skippedSources, policyExcludedCount, duplicateCount
+                candidates, refreshTtlByRequest, skippedSources, conflicts, policyExcludedCount, duplicateCount
         );
+    }
+
+    private Set<String> conflictingSourceKeys(List<Resolution> resolutions) {
+        Map<String, Set<String>> requestsBySource = new HashMap<>();
+        for (Resolution resolution : resolutions) {
+            if (!(resolution instanceof Candidate candidate)) {
+                continue;
+            }
+            requestsBySource.computeIfAbsent(candidate.sourceAnnouncementKey(), ignored -> new HashSet<>())
+                    .add(candidate.requestDescription());
+        }
+        return requestsBySource.entrySet().stream()
+                .filter(entry -> entry.getValue().size() > 1)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toSet());
+    }
+
+    private void addConflict(Candidate candidate, Set<String> visited, List<Candidate> conflicts) {
+        if (visited.add(candidate.sourceAnnouncementKey())) {
+            conflicts.add(candidate);
+        }
+    }
+
+    private ExternalDataCollectionReport conflictReport(ExternalDataSource targetSource, Candidate conflict) {
+        failureRecorder.record(targetSource, sourceSelectionDescription(conflict),
+                new IllegalStateException("현재 마이홈 공고 원천의 LH 요청이 서로 다릅니다: pblancId="
+                        + conflict.sourceAnnouncementKey()), log, "LH 현재 원천 선택 실패");
+        return new ExternalDataCollectionReport(targetSource.operation(), 0, 1, 0);
+    }
+
+    private String sourceSelectionDescription(Candidate candidate) {
+        return "myhomeAnnouncementCurrentSource=" + candidate.sourceAnnouncementKey();
     }
 
     private ExternalDataCollectionReport collectCandidates(
@@ -321,6 +416,7 @@ public class LhAnnouncementExternalCollectionService {
             List<Candidate> candidates,
             Map<String, Duration> refreshTtlByRequest,
             List<Skipped> skipped,
+            List<Candidate> conflicts,
             int policyExcludedCount,
             int duplicateCount
     ) {
@@ -463,6 +559,9 @@ public class LhAnnouncementExternalCollectionService {
             if (!progress.isLinkedTo(linkedCandidate.sourceAnnouncementKey(), linkedCandidate.requestDescription())) {
                 progressManager.link(targetSource, linkedCandidate);
             }
+        }
+        for (Candidate candidate : requestCandidates) {
+            failureRecorder.resolve(targetSource, sourceSelectionDescription(candidate));
         }
         return report;
     }

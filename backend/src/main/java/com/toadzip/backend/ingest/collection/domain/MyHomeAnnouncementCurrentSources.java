@@ -1,6 +1,5 @@
-package com.toadzip.backend.ingest.mapping.service;
+package com.toadzip.backend.ingest.collection.domain;
 
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import java.util.List;
 import java.util.Objects;
 
@@ -13,7 +12,10 @@ public final class MyHomeAnnouncementCurrentSources {
         List<MyHomeAnnouncementSource> active = sources.stream()
                 .filter(MyHomeAnnouncementSource::isActive)
                 .toList();
-        List<MyHomeAnnouncementSource> candidates = active.isEmpty() ? sources : active;
+        List<MyHomeAnnouncementSource> candidates = sources;
+        if (!active.isEmpty()) {
+            candidates = active;
+        }
         MyHomeAnnouncementSource latest = candidates.stream()
                 .filter(source -> source.getLastSeenRunId() != null && source.getCollectedAt() != null)
                 .max((left, right) -> left.getCollectedAt().compareTo(right.getCollectedAt()))

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
@@ -50,6 +51,7 @@ import java.time.Instant;
 import java.time.Period;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -66,6 +68,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -102,6 +105,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     private LhAnnouncementExternalCollectionService service;
 
+    private final List<MyHomeAnnouncementSource> storedSources = new ArrayList<>();
     private long nextSourceId;
     private MockClock metricClock;
     private SimpleMeterRegistry meterRegistry;
@@ -109,6 +113,12 @@ class LhAnnouncementExternalCollectionServiceTest {
     @BeforeEach
     void setUp() {
         nextSourceId = 0L;
+        storedSources.clear();
+        lenient().when(myHomeAnnouncementRepository.findAllByPblancIdInOrderByIdAsc(any()))
+                .thenAnswer(invocation -> {
+                    Collection<String> identifiers = invocation.getArgument(0);
+                    return storedSources.stream().filter(source -> identifiers.contains(source.getPblancId())).toList();
+                });
         metricClock = new MockClock();
         meterRegistry = new SimpleMeterRegistry(SimpleConfig.DEFAULT, metricClock);
         lenient().when(executionLock.<ExternalDataCollectionReport>tryRun(any(), any()))
@@ -156,6 +166,104 @@ class LhAnnouncementExternalCollectionServiceTest {
                 new LhAnnouncementClientProperties(2, Duration.ofSeconds(3), Duration.ofSeconds(10)),
                 meterRegistry
         );
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false,false", "true,false", "false,true"})
+    void 과거_비활성_행보다_현재_원천의_요청을_수집한다(boolean forced, boolean splitBatches) {
+        MyHomeAnnouncementSource previous = announcementSource("P1", "100");
+        previous.markSeen("previous", NOW.minusSeconds(60));
+        previous.markMissed();
+        previous.markMissed();
+        MyHomeAnnouncementSource current = announcementSource("P1", "200");
+        current.markSeen("current", NOW);
+        if (forced) {
+            when(myHomeAnnouncementRepository.findAllByPblancIdOrderByIdAsc("P1"))
+                    .thenReturn(List.of(previous, current));
+        }
+        if (!forced && splitBatches) {
+            when(myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(anyLong(), any()))
+                    .thenReturn(List.of(previous), List.of(current), List.of());
+        }
+        if (!forced && !splitBatches) {
+            source(previous, current);
+        }
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+
+        ExternalDataCollectionReport report = collectOrRefresh(forced, "P1");
+
+        ArgumentCaptor<LhAnnouncementRequest> request = ArgumentCaptor.forClass(LhAnnouncementRequest.class);
+        verify(externalRepository).fetchDetail(request.capture());
+        assertThat(request.getValue().panId()).isEqualTo("200");
+        assertThat(report.failedRequestCount()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void 활성_상태가_같으면_최신_실행을_선택하고_비활성_최근_종료도_수집한다(boolean active) {
+        MyHomeAnnouncementSource previous = announcementSource("P1", "100");
+        previous.markSeen("previous", NOW.minusSeconds(60));
+        MyHomeAnnouncementSource current = announcementSource("P1", "200");
+        current.markSeen("current", NOW);
+        ReflectionTestUtils.setField(current, "endDe", "20260918");
+        if (!active) {
+            previous.markMissed();
+            previous.markMissed();
+            current.markMissed();
+            current.markMissed();
+        }
+        source(previous, current);
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+
+        ExternalDataCollectionReport report = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        ArgumentCaptor<LhAnnouncementRequest> request = ArgumentCaptor.forClass(LhAnnouncementRequest.class);
+        verify(externalRepository).fetchDetail(request.capture());
+        assertThat(request.getValue().panId()).isEqualTo("200");
+        assertThat(report.failedRequestCount()).isZero();
+        verify(progressStore).findBatch(any(), any(), any(), eq(NOW.minus(Duration.ofHours(24))));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void 현재_원천의_요청_충돌은_정기와_강제_모두_기존_연결을_보존하고_실패로_기록한다(boolean forced) {
+        MyHomeAnnouncementSource first = announcementSource("P1", "100");
+        MyHomeAnnouncementSource second = announcementSource("P1", "200");
+        first.markSeen("current", NOW);
+        second.markSeen("current", NOW);
+        if (forced) {
+            when(myHomeAnnouncementRepository.findAllByPblancIdOrderByIdAsc("P1"))
+                    .thenReturn(List.of(first, second));
+        }
+        if (!forced) {
+            when(myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(anyLong(), any()))
+                    .thenReturn(List.of(first), List.of(second), List.of());
+        }
+
+        ExternalDataCollectionReport report = collectOrRefresh(forced, "P1");
+
+        assertThat(report.failedRequestCount()).isOne();
+        assertThat(report.externalApiCallCount()).isZero();
+        verify(externalRepository, never()).fetchDetail(any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).link(any(), any(), any(), any());
+        verify(failureRecorder).record(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
+                eq("myhomeAnnouncementCurrentSource=P1"), any(IllegalStateException.class), any(), any());
+    }
+
+    @Test
+    void 최신_원천이_정기_대상에서_제외되어도_과거_요청으로_되돌아가지_않는다() {
+        MyHomeAnnouncementSource previous = announcementSource("P1", "100");
+        previous.markSeen("previous", NOW.minusSeconds(60));
+        MyHomeAnnouncementSource current = announcementSource("P1", "200");
+        current.markSeen("current", NOW);
+        ReflectionTestUtils.setField(current, "endDe", "20260801");
+        source(previous, current);
+
+        ExternalDataCollectionReport report = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+
+        assertThat(report.externalApiCallCount()).isZero();
+        verify(externalRepository, never()).fetchDetail(any());
     }
 
     @Test
@@ -242,7 +350,7 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"source_read", "candidate_resolution", "checkpoint_read"})
+    @ValueSource(strings = {"source_read", "source_group_read", "candidate_resolution", "checkpoint_read"})
     void 준비_실패도_걸린_시간을_기록하고_원래_예외를_전파한다(String phase) {
         IllegalStateException failure = new IllegalStateException("준비 실패");
         org.mockito.stubbing.Answer<Object> fail = invocation -> {
@@ -254,6 +362,9 @@ class LhAnnouncementExternalCollectionServiceTest {
         }
         if (!phase.equals("source_read")) {
             source(announcementSource());
+        }
+        if (phase.equals("source_group_read")) {
+            doAnswer(fail).when(myHomeAnnouncementRepository).findAllByPblancIdInOrderByIdAsc(any());
         }
         if (phase.equals("candidate_resolution")) {
             when(catalogRepository.findAllByPanIdInAndPresentInLatestCatalogTrue(any())).thenAnswer(fail);
@@ -1482,6 +1593,13 @@ class LhAnnouncementExternalCollectionServiceTest {
                 .hasMessage("LH 공고 API가 아닙니다.");
     }
 
+    private ExternalDataCollectionReport collectOrRefresh(boolean forced, String pblancId) {
+        if (forced) {
+            return service.refresh(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, pblancId);
+        }
+        return service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+    }
+
     private void source(MyHomeAnnouncementSource... sources) {
         List<MyHomeAnnouncementSource> batch = List.of(sources);
         long lastId = batch.getLast().getId();
@@ -1511,6 +1629,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"
         ));
         ReflectionTestUtils.setField(source, "id", ++nextSourceId);
+        storedSources.add(source);
         return source;
     }
 
@@ -1523,6 +1642,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"
         ));
         ReflectionTestUtils.setField(source, "id", ++nextSourceId);
+        storedSources.add(source);
         return source;
     }
 
@@ -1534,6 +1654,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"
         ));
         ReflectionTestUtils.setField(source, "id", ++nextSourceId);
+        storedSources.add(source);
         return source;
     }
 
@@ -1545,6 +1666,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=48"
         ));
         ReflectionTestUtils.setField(source, "id", ++nextSourceId);
+        storedSources.add(source);
         return source;
     }
 
@@ -1556,6 +1678,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                         + "&ccrCnntSysDsCd=03&uppAisTpCd=05&aisTpCd=06"
         ));
         ReflectionTestUtils.setField(source, "id", ++nextSourceId);
+        storedSources.add(source);
         return source;
     }
 
