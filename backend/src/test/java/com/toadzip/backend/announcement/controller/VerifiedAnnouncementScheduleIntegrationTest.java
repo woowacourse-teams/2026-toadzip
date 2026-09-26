@@ -141,6 +141,92 @@ class VerifiedAnnouncementScheduleIntegrationTest {
     }
 
     @Test
+    void 단지별_접수기간과_Dday를_목록과_상세에서_같은_일정으로_표시한다() throws Exception {
+        Announcement announcement = announcement("2015122300020681");
+        HousingComplex earlyComplex = complex(announcement, "11140");
+        HousingComplex lateComplex = complex(announcement, "11680");
+        scheduleService.replace(announcement.getId(), new VerifiedApplicationSchedulesRequest(List.of(
+                schedule(earlyComplex.getId(), ApplicationScheduleState.CONFIRMED, 14, 15),
+                schedule(lateComplex.getId(), ApplicationScheduleState.CONFIRMED, 24, 25))));
+
+        assertComplexApplicationPeriod(earlyComplex, "APPLYING", 14, 15, 0);
+        assertComplexApplicationPeriod(lateComplex, "BEFORE_APPLICATION", 24, 25, 10);
+        mvc.perform(get("/api/v1/announcements/{id}", announcement.getId()))
+                .andExpect(jsonPath("$.data.applicationStartAt").value("2026-09-14"))
+                .andExpect(jsonPath("$.data.applicationEndAt").value("2026-09-25"));
+    }
+
+    @Test
+    void 공통_확정기간을_현재와_후순위의_조건부_기간보다_우선한다() throws Exception {
+        Announcement announcement = announcement("2015122300020681");
+        HousingComplex complex = complex(announcement, "11140");
+        scheduleService.replace(announcement.getId(), new VerifiedApplicationSchedulesRequest(List.of(
+                schedule(null, ApplicationScheduleState.CONFIRMED, 14, 16),
+                schedule(complex.getId(), ApplicationScheduleState.CONDITIONAL, 15),
+                schedule(complex.getId(), ApplicationScheduleState.CONDITIONAL, 17))));
+
+        assertComplexApplicationPeriod(complex, "APPLYING", 14, 16, 1);
+    }
+
+    @Test
+    void 현재_조건부_기간에_미래_확정기간과_다른_단지_기간을_섞지_않는다() throws Exception {
+        Announcement announcement = announcement("2015122300020681");
+        HousingComplex currentComplex = complex(announcement, "11140");
+        HousingComplex otherComplex = complex(announcement, "11680");
+        scheduleService.replace(announcement.getId(), new VerifiedApplicationSchedulesRequest(List.of(
+                schedule(currentComplex.getId(), ApplicationScheduleState.CONDITIONAL, 15),
+                schedule(currentComplex.getId(), ApplicationScheduleState.CONFIRMED, 16),
+                schedule(otherComplex.getId(), ApplicationScheduleState.CONFIRMED, 25))));
+
+        assertComplexApplicationPeriod(currentComplex, "CONDITIONAL", 15, 15, null);
+    }
+
+    @Test
+    void 일정_사이에는_다음_접수기간과_그_종료일까지의_Dday를_표시한다() throws Exception {
+        Announcement announcement = announcement("2015122300020681");
+        HousingComplex complex = complex(announcement, "11140");
+        scheduleService.replace(announcement.getId(), new VerifiedApplicationSchedulesRequest(List.of(
+                schedule(complex.getId(), ApplicationScheduleState.CONFIRMED, 14),
+                schedule(complex.getId(), ApplicationScheduleState.CONFIRMED, 16, 18),
+                schedule(complex.getId(), ApplicationScheduleState.CONDITIONAL, 20))));
+
+        assertComplexApplicationPeriod(complex, "BEFORE_APPLICATION", 16, 18, 3);
+    }
+
+    @Test
+    void 다음_접수가_조건부이면_그_기간을_표시하고_확정_Dday를_만들지_않는다() throws Exception {
+        Announcement announcement = announcement("2015122300020681");
+        HousingComplex complex = complex(announcement, "11140");
+        scheduleService.replace(announcement.getId(), new VerifiedApplicationSchedulesRequest(List.of(
+                schedule(complex.getId(), ApplicationScheduleState.CONDITIONAL, 16),
+                schedule(complex.getId(), ApplicationScheduleState.CONFIRMED, 20))));
+
+        assertComplexApplicationPeriod(complex, "BEFORE_APPLICATION", 16, 16, null);
+    }
+
+    @Test
+    void 접수가_끝난_단지는_그_단지의_마지막_종료일만_표시한다() throws Exception {
+        Announcement announcement = announcement("2015122300020681");
+        HousingComplex closedComplex = complex(announcement, "11140");
+        HousingComplex otherComplex = complex(announcement, "11680");
+        scheduleService.replace(announcement.getId(), new VerifiedApplicationSchedulesRequest(List.of(
+                schedule(closedComplex.getId(), ApplicationScheduleState.CONFIRMED, 12),
+                schedule(closedComplex.getId(), ApplicationScheduleState.CONDITIONAL, 14),
+                schedule(otherComplex.getId(), ApplicationScheduleState.CONFIRMED, 25))));
+        entityManager.flush();
+
+        mvc.perform(get("/api/v1/complexes").param("regionCode", "11140")
+                        .param("southWestLat", "37").param("southWestLng", "126")
+                        .param("northEastLat", "38").param("northEastLng", "128"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].representativeAnnouncement.applicationStatus").value("CLOSED"))
+                .andExpect(jsonPath("$.data.items[0].representativeAnnouncement.applicationEndAt").value("2026-09-14"))
+                .andExpect(jsonPath("$.data.items[0].representativeAnnouncement.dDay").isEmpty());
+        mvc.perform(get("/api/v1/complexes/{id}", closedComplex.getId()))
+                .andExpect(jsonPath("$.data.currentAnnouncements").isEmpty());
+    }
+
+    @Test
     void 근거가_있는_정정본만_검색하고_기존_ID와_수동_첨부는_유지한다() throws Exception {
         Announcement previous = announcement("2015122300020681");
         Announcement correction = announcement("2015122300020856");
@@ -225,9 +311,37 @@ class VerifiedAnnouncementScheduleIntegrationTest {
     }
 
     private Schedule schedule(Long complexId, ApplicationScheduleState state, int day) {
+        return schedule(complexId, state, day, day);
+    }
+
+    private Schedule schedule(Long complexId, ApplicationScheduleState state, int startDay, int endDay) {
         return new Schedule(complexId, "순위 확인", state, "선순위 접수 결과에 따라 진행",
-                LocalDate.of(2026, 9, day), LocalDate.of(2026, 9, day), null, null,
+                LocalDate.of(2026, 9, startDay), LocalDate.of(2026, 9, endDay), null, null,
                 "https://apply.lh.or.kr/notice.pdf", 6);
+    }
+
+    private void assertComplexApplicationPeriod(HousingComplex complex, String applicationStatus,
+            int startDay, int endDay, Integer dDay) throws Exception {
+        entityManager.flush();
+        String startDate = LocalDate.of(2026, 9, startDay).toString();
+        String endDate = LocalDate.of(2026, 9, endDay).toString();
+        mvc.perform(get("/api/v1/complexes")
+                        .param("regionCode", complex.getAddress().getCityCountyDistrictCode())
+                        .param("southWestLat", "37").param("southWestLng", "126")
+                        .param("northEastLat", "38").param("northEastLng", "128"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].complexId").value(complex.getId()))
+                .andExpect(jsonPath("$.data.items[0].representativeAnnouncement.applicationStatus")
+                        .value(applicationStatus))
+                .andExpect(jsonPath("$.data.items[0].representativeAnnouncement.applicationEndAt").value(endDate))
+                .andExpect(jsonPath("$.data.items[0].representativeAnnouncement.dDay").value(dDay));
+        mvc.perform(get("/api/v1/complexes/{id}", complex.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentAnnouncements[0].applicationStatus").value(applicationStatus))
+                .andExpect(jsonPath("$.data.currentAnnouncements[0].applicationStartAt").value(startDate))
+                .andExpect(jsonPath("$.data.currentAnnouncements[0].applicationEndAt").value(endDate))
+                .andExpect(jsonPath("$.data.currentAnnouncements[0].dDay").value(dDay));
     }
 
     private HousingComplex complex(Announcement announcement, String regionCode) {

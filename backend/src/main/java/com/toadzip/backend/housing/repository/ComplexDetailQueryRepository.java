@@ -93,12 +93,11 @@ public class ComplexDetailQueryRepository {
                    announcement.name AS title,
                    announcement.status AS publication_type,
                    announcement.posted_date,
-                   announcement.application_start_date,
-                   announcement.application_end_date,
                    announcement.actual_competition_rate,
                    %s AS application_status,
-                   %s AS confirmed_application_end_date
+                   %s
             FROM current_leaf announcement
+            %s
             WHERE EXISTS (
                 SELECT 1
                 FROM supply_rows supply_row
@@ -107,7 +106,8 @@ public class ComplexDetailQueryRepository {
             )
             ORDER BY announcement.posted_date DESC, announcement.id DESC
             """.formatted(ApplicationScheduleSql.status("announcement", ":complexId"),
-                    ApplicationScheduleSql.confirmedDeadline("announcement", ":complexId"));
+                    ApplicationScheduleSql.displayPeriodColumns("announcement"),
+                    ApplicationScheduleSql.displayPeriodJoin("announcement", ":complexId"));
 
     private static final String FIND_CURRENT_ANNOUNCEMENT_TARGETS = CURRENT_LEAF_CTE + """
             , ranked_target AS (

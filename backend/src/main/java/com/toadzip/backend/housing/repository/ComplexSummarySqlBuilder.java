@@ -51,15 +51,14 @@ final class ComplexSummarySqlBuilder {
                    representative.announcement_id,
                    representative.publication_type,
                    representative.posted_date,
-                   representative.application_start_date,
-                   representative.application_end_date,
                    housing_complex.completion_date,
                    %s AS application_status,
-                   %s AS confirmed_application_end_date
+                   %s
             FROM housing_complexes housing_complex
             """.formatted(ApplicationScheduleSql.status("representative", "housing_complex.id"),
-                    ApplicationScheduleSql.confirmedDeadline("representative", "housing_complex.id"))
-            + HousingComplexRepresentativeSql.LEFT_JOIN + """
+                    ApplicationScheduleSql.displayPeriodColumns("representative"))
+            + HousingComplexRepresentativeSql.LEFT_JOIN
+            + ApplicationScheduleSql.displayPeriodJoin("representative", "housing_complex.id") + """
             LEFT JOIN area_range ON area_range.housing_complex_id = housing_complex.id
             LEFT JOIN price_range ON price_range.housing_complex_id = housing_complex.id
             WHERE housing_complex.latitude BETWEEN :southWestLat AND :northEastLat
