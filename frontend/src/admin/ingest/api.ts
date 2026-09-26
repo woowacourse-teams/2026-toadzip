@@ -379,3 +379,14 @@ function parseIngestFailure(value: unknown): IngestFailure {
     raw: value,
   }
 }
+
+export async function getPipelineHistory(page: number): Promise<DataPipelineExecution[]> {
+  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/history?page=${page}&size=20`, {credentials:'include'})
+  const body = await readJson(response)
+  if (!response.ok) throw apiError(response.status,body)
+  if (!Array.isArray(body) || !body.every(isDataPipelineExecution)) throw new Error('실행 이력 응답 형식이 올바르지 않습니다.')
+  return body
+}
+export async function getPipelineExecution(id: string): Promise<DataPipelineExecution> {
+  return readExecutionResponse(await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/executions/${encodeURIComponent(id)}`, {credentials:'include'}))
+}

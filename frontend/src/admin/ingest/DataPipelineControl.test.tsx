@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DataPipelineExecution, DataPipelineType } from './api'
@@ -28,7 +29,7 @@ describe('DataPipelineControl', () => {
     const running = execution('COMPLEX_COLLECTION', 'RUNNING', { executionId: 'run-1' })
     apiMocks.startDataPipeline.mockResolvedValue(running)
     apiMocks.stopDataPipeline.mockResolvedValue({ ...running, stopRequested: true })
-    render(<DataPipelineControl />)
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
     fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
     const stop = await screen.findByRole('button', { name: '단지 수집 실행 중지' })
     fireEvent.click(stop)
@@ -41,7 +42,7 @@ describe('DataPipelineControl', () => {
   it('중지 API가 실패하면 완료로 표시하지 않고 다시 중지할 수 있다', async () => {
     apiMocks.startDataPipeline.mockResolvedValue(execution('COMPLEX_COLLECTION', 'RUNNING', { executionId: 'run-1' }))
     apiMocks.stopDataPipeline.mockRejectedValue(new Error('중지 요청 실패'))
-    render(<DataPipelineControl />)
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
     fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
     fireEvent.click(await screen.findByRole('button', { name: '단지 수집 실행 중지' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('중지 요청 실패')
@@ -53,8 +54,9 @@ describe('DataPipelineControl', () => {
     apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
       type === 'COMPLEX_COLLECTION' ? execution(type, 'STOPPED', { completedSteps: ['마이홈 단지 수집'] }) : execution(type, 'IDLE'),
     ))
-    render(<DataPipelineControl />)
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
     expect(await screen.findByRole('status')).toHaveTextContent('실행이 중지되었습니다')
+    fireEvent.click(screen.getByText('마이홈 단지 수집 완료').closest('details')!.querySelector('summary')!)
     expect(screen.getByText('마이홈 단지 수집 완료')).toBeVisible()
     expect(screen.getByRole('button', { name: '공고 수집' })).toBeEnabled()
   })
@@ -64,7 +66,7 @@ describe('DataPipelineControl', () => {
       currentStepName: '마이홈 단지 수집',
       currentStepIndex: 1,
     }))
-    render(<DataPipelineControl />)
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
     fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
 
@@ -81,11 +83,13 @@ describe('DataPipelineControl', () => {
       currentStepIndex: 2,
       completedSteps: ['마이홈 단지 수집'],
     }))
-    render(<DataPipelineControl />)
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
     fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
 
-    expect(await screen.findByText('마이홈 단지 수집 완료')).toBeVisible()
+    const completed = await screen.findByText('마이홈 단지 수집 완료')
+    fireEvent.click(completed.closest('details')!.querySelector('summary')!)
+    expect(completed).toBeVisible()
     expect(screen.getByRole('status')).toHaveTextContent('2/2 · LH 임대 카탈로그 수집 실행 중')
   })
 
@@ -99,7 +103,7 @@ describe('DataPipelineControl', () => {
         serverResponse: { failedSourceRowCount: 3 },
       },
     }))
-    render(<DataPipelineControl />)
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
     fireEvent.click(screen.getByRole('button', { name: '공고 정제' }))
 
@@ -120,7 +124,7 @@ describe('DataPipelineControl', () => {
       }
       return Promise.resolve(execution(type, 'IDLE'))
     })
-    render(<DataPipelineControl />)
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
     expect(await screen.findByRole('status')).toHaveTextContent('1/3 · 마이홈 공고 수집 실행 중')
     expect(screen.getByRole('button', { name: '공고 수집 실행 중…' })).toBeDisabled()
@@ -138,7 +142,7 @@ describe('DataPipelineControl', () => {
       currentStepName: '마이홈 단지 수집',
       currentStepIndex: 1,
     }))
-    render(<DataPipelineControl />)
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
     fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
     expect(await screen.findByRole('status')).toHaveTextContent('마이홈 단지 수집 실행 중')
@@ -149,7 +153,7 @@ describe('DataPipelineControl', () => {
   })
 
   it('시작 응답과 상태 조회를 모두 잃으면 실행 잠금을 유지하며 재조회한다', async () => {
-    render(<DataPipelineControl />)
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
     await waitFor(() => expect(apiMocks.getDataPipelineStatus).toHaveBeenCalledTimes(4))
     apiMocks.startDataPipeline.mockRejectedValue(new Error('네트워크 연결이 끊겼습니다.'))
     apiMocks.getDataPipelineStatus.mockRejectedValue(new Error('상태를 조회하지 못했습니다.'))
@@ -168,7 +172,7 @@ describe('DataPipelineControl', () => {
         'LH 임대 카탈로그 수집',
       ],
     }))
-    render(<DataPipelineControl />)
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
     fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
 
@@ -189,13 +193,14 @@ describe('DataPipelineControl', () => {
         }],
       },
     ))
-    render(<DataPipelineControl />)
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
     fireEvent.click(screen.getByRole('button', { name: '단지 정제' }))
 
     expect(await screen.findByText(
       '단지 정제 작업을 완료했습니다. 처리되지 않은 원천 행이 있어 확인이 필요합니다.',
     )).toHaveAttribute('role', 'status')
+    fireEvent.click(screen.getByText('마이홈 단지 정제 원천 행 확인').closest('details')!.querySelector('summary')!)
     expect(screen.getByText('마이홈 단지 정제 원천 행 확인')).toBeVisible()
     expect(screen.getByLabelText('마이홈 단지 정제 누락 보고서')).toHaveTextContent(
       '"failedSourceRowCount": 3',
@@ -217,13 +222,14 @@ describe('DataPipelineControl', () => {
         }],
       },
     ))
-    render(<DataPipelineControl />)
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
     fireEvent.click(screen.getByRole('button', { name: '공고 수집' }))
 
     expect(await screen.findByText(
       '공고 수집 작업을 일부 단계 건너뜀으로 완료했습니다.',
     )).toBeVisible()
+    fireEvent.click(screen.getByText('마이홈 공고 수집 건너뜀').closest('details')!.querySelector('summary')!)
     expect(screen.getByText('마이홈 공고 수집 건너뜀')).toBeVisible()
     expect(screen.getByLabelText('마이홈 공고 수집 건너뜀 응답')).toHaveTextContent(
       '"rateLimitedRequestCount": 1',

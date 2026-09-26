@@ -6,14 +6,13 @@ import {
   type HousingComplexCreateResponse,
 } from '../registration/api'
 import type { DataPipelineType } from '../ingest/api'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { MemoryRouter, Route, Routes, Link } from 'react-router'
 import { HousingComplexRegistrationPage } from '../registration/HousingComplexRegistrationPage'
 import { AnnouncementRegistrationPage } from '../registration/AnnouncementRegistrationPage'
 
-vi.mock('../../public-housing/api/publicHousingRepository', () => ({
-  publicHousingRepository: { findComplexDetail: vi.fn(async () => ({
-    name: '두꺼비 행복주택', address: { roadAddress: '서울시 중구 세종대로 1' },
-  })) },
+vi.mock('../management/api', async importOriginal => ({
+  ...(await importOriginal<typeof import('../management/api')>()),
+  detail: vi.fn(async () => ({summary:{name:'두꺼비 행복주택',subtitle:'서울시 중구 세종대로 1',deleted:false}})),
 }))
 
 const apiMocks = vi.hoisted(() => ({
@@ -91,11 +90,7 @@ describe('분리된 단지·공고 등록 흐름', () => {
       response.resolve(housingResponse())
     })
 
-    expect(screen.getByText('두꺼비 행복주택 단지를 저장했습니다.')).toHaveAttribute(
-      'role',
-      'status',
-    )
-    expect(screen.getByLabelText('단지명')).toHaveValue('')
+    expect(screen.getByRole('heading', {name:'등록한 단지 상세'})).toBeVisible()
     fireEvent.click(screen.getByRole('link', { name: '이 단지에 공고 입력 →' }))
     expect(await screen.findByText(/선택 단지:/)).toHaveTextContent('두꺼비 행복주택 · 서울시 중구 세종대로 1')
     expect(screen.getByRole('button', { name: '공고 저장' })).toBeEnabled()
@@ -190,8 +185,8 @@ describe('분리된 단지·공고 등록 흐름', () => {
 
     submitWithButton('공고 저장')
 
-    expect(screen.getByRole('button', { name: '단지 확인' })).toBeDisabled()
-    expect(screen.getByLabelText('단지 ID')).toBeDisabled()
+    expect(screen.getByRole('button', { name: '단지 검색' })).toBeDisabled()
+    expect(screen.getByLabelText('단지명·주소 검색')).toBeDisabled()
 
     await act(async () => {
       announcementResponse.resolve({
@@ -202,7 +197,7 @@ describe('분리된 단지·공고 등록 흐름', () => {
       })
     })
 
-    expect(screen.getByRole('button', { name: '단지 확인' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '단지 검색' })).toBeEnabled()
   })
 
   it('공고 저장 실패 시 입력값을 유지한다', async () => {
@@ -288,6 +283,8 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 function renderPages(path = '/admin/complexes') {
   return render(<MemoryRouter initialEntries={[path]}><Routes>
     <Route path="/admin/complexes" element={<HousingComplexRegistrationPage />} />
+    <Route path="/admin/complexes/:id" element={<><h1>등록한 단지 상세</h1><Link to="/admin/announcements/new?mode=direct&complexId=42">이 단지에 공고 입력 →</Link></>} />
+    <Route path="/admin/announcements/new" element={<AnnouncementRegistrationPage />} />
     <Route path="/admin/announcements" element={<AnnouncementRegistrationPage />} />
   </Routes></MemoryRouter>)
 }

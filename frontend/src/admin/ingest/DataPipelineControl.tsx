@@ -1,16 +1,17 @@
+import { pipelineStatusLabels } from './pipelineLabels'
+import { Link } from 'react-router'
 import { useEffect, useRef, useState } from 'react'
 import {
   DataPipelineApiError,
   getDataPipelineStatus,
   startDataPipeline,
   stopDataPipeline,
-  type FailureCategory,
   type DataPipelineExecution,
   type DataPipelineType,
 } from './api'
 
 import { DataPipelineProgress, PipelineReport } from './DataPipelineProgress'
-import { IngestFailurePanel } from './IngestFailurePanel'
+
 
 type PipelineViewState = {
   execution: DataPipelineExecution
@@ -60,7 +61,6 @@ const pipelineGroups = [
 export function DataPipelineControl() {
   const [pipelineStates, setPipelineStates] = useState(initialPipelineStates)
   const [stopping, setStopping] = useState<Partial<Record<DataPipelineType, boolean>>>({})
-  const [failureView, setFailureView] = useState<{ category: FailureCategory, executionId: string | null } | null>(null)
   const pollTimers = useRef<Partial<Record<DataPipelineType, number>>>({})
   const stateGenerations = useRef<Record<DataPipelineType, number>>({
     COMPLEX_COLLECTION: 0,
@@ -111,12 +111,6 @@ export function DataPipelineControl() {
     } finally {
       if (mounted.current) setStopping((previous) => ({ ...previous, [type]: false }))
     }
-  }
-
-  function inspectFailures(type: DataPipelineType) {
-    const category = type === 'COMPLEX_REFINEMENT' ? 'complex'
-      : type === 'ANNOUNCEMENT_REFINEMENT' ? 'announcement' : 'collection'
-    setFailureView({ category, executionId: pipelineStates[type].execution.executionId })
   }
 
   async function execute(type: DataPipelineType) {
@@ -280,21 +274,19 @@ export function DataPipelineControl() {
               {group.types.map((type) => (
                 <PipelineResult key={type} type={type} state={pipelineStates[type]}
                   stopping={stopping[type] ?? false} onStop={() => void stop(type)}
-                  onInspect={() => inspectFailures(type)} />
+                  />
               ))}
             </div>
           </section>
         ))}
       </div>
-      {failureView ? <IngestFailurePanel key={`${failureView.category}-${failureView.executionId}`}
-        initialCategory={failureView.category} executionId={failureView.executionId} /> : null}
     </section>
   )
 }
 
-function PipelineResult({ type, state, stopping, onStop, onInspect }: {
+export function PipelineResult({ type, state, stopping, onStop }: {
   type: DataPipelineType, state: PipelineViewState, stopping: boolean,
-  onStop: () => void, onInspect: () => void,
+  onStop: () => void,
 }) {
   const label = pipelineLabels[type]
   const { execution } = state
@@ -305,8 +297,9 @@ function PipelineResult({ type, state, stopping, onStop, onInspect }: {
 
   return (
     <article className="data-pipeline-result">
-      <h4>{label} 상태</h4>
-      {execution.status !== 'IDLE' ? <DataPipelineProgress execution={execution} label={label} /> : null}
+      <h4>{label} 상태 <span className={`pipeline-badge pipeline-${execution.status.toLowerCase()}`}>{pipelineStatusLabels[execution.status]}</span></h4>
+      {execution.status === 'RUNNING' ? <DataPipelineProgress execution={execution} label={label} /> : null}
+      {execution.startedAt ? <p className="ingest-meta">마지막 실행 {new Date(execution.startedAt).toLocaleString('ko-KR')}</p> : null}
       {execution.status === 'IDLE' ? <p>아직 실행하지 않았습니다.</p> : null}
       {execution.status === 'RUNNING' ? (
         <div>
@@ -330,6 +323,7 @@ function PipelineResult({ type, state, stopping, onStop, onInspect }: {
       {execution.status === 'COMPLETED_WITH_SKIPS' ? (
         <p role="status">{label} 작업을 일부 단계 건너뜀으로 완료했습니다.</p>
       ) : null}
+      <details className="pipeline-details"><summary>단계별 결과·기술 상세</summary>
       {execution.completedSteps.length > 0 ? (
         <ol className="data-pipeline-steps">
           {execution.completedSteps.map((step) => <li key={step}>{step} 완료</li>)}
@@ -342,9 +336,9 @@ function PipelineResult({ type, state, stopping, onStop, onInspect }: {
               <strong>{step.stepName} 건너뜀</strong>
               <p>{step.reason}</p>
               {step.serverResponse !== null && step.serverResponse !== undefined ? (
-                <pre aria-label={`${step.stepName} 건너뜀 응답`}>
+                <details><summary>원본 응답</summary><pre aria-label={`${step.stepName} 건너뜀 응답`}>
                   {JSON.stringify(step.serverResponse, null, 2)}
-                </pre>
+                </pre></details>
               ) : null}
             </li>
           ))}
@@ -366,7 +360,7 @@ function PipelineResult({ type, state, stopping, onStop, onInspect }: {
         </ul>
       ) : null}
       {(execution.status === 'FAILED' || state.requestError !== null) && failureMessage ? (
-        <div className="data-pipeline-error" role="alert">
+        <div className="data-pipeline-error">
           <strong>{failureMessage}</strong>
           {serverResponse !== null && serverResponse !== undefined ? (
             <div><PipelineReport report={serverResponse} />
@@ -380,7 +374,9 @@ function PipelineResult({ type, state, stopping, onStop, onInspect }: {
       ).map((step) => <details className="pipeline-completed-report" key={step.step}>
         <summary>{step.stepName} 처리 결과</summary><PipelineReport report={step.report} />
       </details>)}
-      <button className="pipeline-inspect" type="button" onClick={onInspect}>{label} 실패 행·요청 보기</button>
+      </details>
+      {failureMessage ? <p role="alert" className="data-pipeline-error">{failureMessage}</p> : null}
+      <Link className="pipeline-inspect" to={`/admin/failures?category=${type === 'COMPLEX_REFINEMENT' ? 'complex' : type === 'ANNOUNCEMENT_REFINEMENT' ? 'announcement' : 'collection'}&executionId=${execution.executionId ?? ''}`}>{label} 실패 행·요청 보기</Link>
     </article>
   )
 }

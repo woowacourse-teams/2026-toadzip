@@ -1,3 +1,4 @@
+import { Link } from 'react-router'
 import { useEffect, useRef, useState } from 'react'
 import { failureCategories, getIngestFailures, type FailureCategory, type IngestFailure } from './api'
 
@@ -76,6 +77,8 @@ export function IngestFailurePanel({
               <tr key={`${row.sourceKey}-${row.occurredAt}-${index}`}>
                 <td>
                   <strong>{row.target}</strong>
+                  {typeof row.raw.sourceAnnouncementIdentifier === 'string' ? <Link to={`/admin/announcements?keyword=${encodeURIComponent(row.raw.sourceAnnouncementIdentifier)}`}>관련 공고 찾기</Link>
+                    : typeof row.raw.sourceComplexIdentifier === 'string' ? <Link to={`/admin/complexes?keyword=${encodeURIComponent(row.raw.sourceComplexIdentifier)}`}>관련 단지 찾기</Link> : null}
                   {row.source ? <span className="ingest-meta">{row.source}</span> : null}
                   <details><summary>원천 식별자·상세 기록</summary>
                     <p>원천 키: {row.sourceKey}</p>

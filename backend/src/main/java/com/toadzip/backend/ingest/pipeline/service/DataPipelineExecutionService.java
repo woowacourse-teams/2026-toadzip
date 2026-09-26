@@ -146,6 +146,12 @@ public class DataPipelineExecutionService {
         );
     }
 
+    public java.util.List<DataPipelineExecutionResponse> history(int page, int size) {
+        return executionRepository.findAll(org.springframework.data.domain.PageRequest.of(page, size,
+                org.springframework.data.domain.Sort.by("id").descending())).stream()
+                .map(executionMapper::response).toList();
+    }
+
     public DataPipelineExecutionResponse findLatest(DataPipelineType type) {
         return executionRepository.findFirstByTypeOrderByIdDesc(type)
                 .map(this::recoverInterruptedExecution)
