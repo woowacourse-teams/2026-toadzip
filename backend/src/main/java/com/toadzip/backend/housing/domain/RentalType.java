@@ -11,6 +11,7 @@ public enum RentalType implements LegacyStoredValue {
     PUBLIC_RENTAL_50Y("50년공공임대"),
     INTEGRATED_PUBLIC_RENTAL("통합공공임대"),
     REDEVELOPMENT_RENTAL("재개발임대"),
+    LONG_TERM_JEONSE("장기전세"),
     ETC("기타");
 
     private final String legacyStoredValue;
@@ -29,6 +30,7 @@ public enum RentalType implements LegacyStoredValue {
             case "PUBLIC_RENTAL_50Y", "50년공공임대" -> PUBLIC_RENTAL_50Y;
             case "INTEGRATED_PUBLIC_RENTAL", "통합공공임대" -> INTEGRATED_PUBLIC_RENTAL;
             case "REDEVELOPMENT_RENTAL", "재개발임대" -> REDEVELOPMENT_RENTAL;
+            case "LONG_TERM_JEONSE", "장기전세" -> LONG_TERM_JEONSE;
             case "ETC", "기타" -> ETC;
             default -> throw new IllegalArgumentException("알 수 없는 임대유형 코드다.");
         };

@@ -1,6 +1,6 @@
 import type { JsonValue, Values } from './api'
 export const labels: Record<string, string> = {
-  HAPPY_HOUSING: '행복주택', NATIONAL_RENTAL: '국민임대', PERMANENT_RENTAL: '영구임대',
+  LONG_TERM_JEONSE: '장기전세', HAPPY_HOUSING: '행복주택', NATIONAL_RENTAL: '국민임대', PERMANENT_RENTAL: '영구임대',
   PUBLIC_RENTAL_5Y: '5년 공공임대', PUBLIC_RENTAL_10Y: '10년 공공임대', PUBLIC_RENTAL_50Y: '50년 공공임대',
   INTEGRATED_PUBLIC_RENTAL: '통합공공임대', REDEVELOPMENT_RENTAL: '재개발임대', ETC: '기타',
   INDIVIDUAL: '개별난방', CENTRAL: '중앙난방', DISTRICT: '지역난방', APARTMENT: '아파트', OFFICETEL: '오피스텔',
@@ -11,7 +11,7 @@ export const labels: Record<string, string> = {
   UPDATE: '정보 수정', DELETE: '휴지통 이동', RESTORE: '복구', UPDATE_SUPPLY: '공급정보 수정',
 }
 export const rentals = ['HAPPY_HOUSING', 'NATIONAL_RENTAL', 'PERMANENT_RENTAL', 'PUBLIC_RENTAL_5Y', 'PUBLIC_RENTAL_10Y',
-  'PUBLIC_RENTAL_50Y', 'INTEGRATED_PUBLIC_RENTAL', 'REDEVELOPMENT_RENTAL', 'ETC']
+  'PUBLIC_RENTAL_50Y', 'INTEGRATED_PUBLIC_RENTAL', 'REDEVELOPMENT_RENTAL', 'LONG_TERM_JEONSE', 'ETC']
 export const provinces = [['11','서울'],['26','부산'],['27','대구'],['28','인천'],['29','광주'],['30','대전'],['31','울산'],['36','세종'],
   ['41','경기'],['51','강원'],['43','충북'],['44','충남'],['52','전북'],['46','전남'],['47','경북'],['48','경남'],['50','제주']]
 export type Field = { name: string; label: string; type?: 'text' | 'number' | 'date' | 'url' | 'month' | 'time'; required?: boolean;
