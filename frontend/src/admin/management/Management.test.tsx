@@ -88,3 +88,28 @@ it('검색 결과가 없으면 0건과 0페이지로 표시한다',async () => {
   expect(screen.getByText('등록일 최신순 · 총 0건')).toBeVisible()
   expect(screen.getByRole('button',{name:'다음'})).toBeDisabled()
 })
+
+it.each(['complexes','announcements'] as const)('%s 목록에서 검색 조건을 유지하며 원하는 페이지로 이동한다',async resource => {
+  mocks.list.mockResolvedValue({items:[summary],page:0,hasNext:true,totalElements:3504,totalPages:176})
+  render(<MemoryRouter initialEntries={[`/admin/${resource}?region=11&keyword=두꺼비`]}><ManagementList resource={resource} /></MemoryRouter>)
+  fireEvent.change(await screen.findByLabelText('페이지 바로가기'),{target:{value:'100'}})
+  fireEvent.submit(screen.getByRole('button',{name:'이동'}).closest('form')!)
+  await waitFor(() => expect(mocks.list.mock.lastCall?.[1].get('page')).toBe('99'))
+  expect(mocks.list.mock.lastCall?.[1].get('region')).toBe('11')
+  expect(mocks.list.mock.lastCall?.[1].get('keyword')).toBe('두꺼비')
+  fireEvent.click(await screen.findByRole('button',{name:'마지막'}))
+  await waitFor(() => expect(mocks.list.mock.lastCall?.[1].get('page')).toBe('175'))
+})
+it('범위를 벗어난 페이지와 소수 입력은 요청하지 않는다',async () => {
+  mocks.list.mockResolvedValue({items:[summary],page:0,hasNext:true,totalElements:41,totalPages:3})
+  render(<MemoryRouter><ManagementList resource="complexes" /></MemoryRouter>)
+  const input = await screen.findByLabelText('페이지 바로가기')
+  const count = mocks.list.mock.calls.length
+  for (const value of ['0','4','1.5','']) {
+    fireEvent.change(input,{target:{value}})
+    fireEvent.submit(screen.getByRole('button',{name:'이동'}).closest('form')!)
+  }
+  expect(mocks.list).toHaveBeenCalledTimes(count)
+  fireEvent.click(screen.getByRole('button',{name:'3페이지'}))
+  await waitFor(() => expect(mocks.list.mock.lastCall?.[1].get('page')).toBe('2'))
+})

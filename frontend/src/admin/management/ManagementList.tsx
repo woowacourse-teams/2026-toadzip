@@ -1,3 +1,4 @@
+import { ListPagination } from './ListPagination'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { list, type Page, type Resource, type Summary } from './api'
@@ -40,8 +41,7 @@ export function ManagementList({ resource }: { resource: Resource }) {
     {error ? <div role="alert" className="registration-error"><p>{error}</p><button onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></div> : null}
     {!page && !error ? <p role="status">목록을 불러오는 중…</p> : null}
     {page ? <><p className="ingest-meta">등록일 최신순 · 총 {page.totalElements.toLocaleString('ko-KR')}건</p><SummaryTable items={page.items} resource={resource} returnTo={returnTo} />
-      <nav className="admin-pagination" aria-label="목록 페이지"><button disabled={page.page === 0} onClick={() => move(page.page - 1)}>이전</button>
-        <span>{page.totalPages === 0 ? 0 : page.page + 1} / {page.totalPages} 페이지</span><button disabled={!page.hasNext} onClick={() => move(page.page + 1)}>다음</button></nav></> : null}
+      <ListPagination page={page.page} totalPages={page.totalPages} onMove={move} /></> : null}
   </section>
 }
 export function SummaryTable({ items, resource, returnTo }: { items: Summary[]; resource: Resource; returnTo?: string }) {
