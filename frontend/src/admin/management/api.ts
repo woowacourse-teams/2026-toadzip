@@ -10,7 +10,7 @@ export type SupplyRow = { id: number; housingComplexId: number | null; housingCo
   housingTypeId: number | null; modified: boolean; data: Values }
 export type Detail = { summary: Summary; sourceIdentifier: string; data: Values;
   housingTypes: HousingType[]; announcements: Summary[]; supplyRows: SupplyRow[]; scheduleReviewed: boolean; schedules: Values[] }
-export type Page = { items: Summary[]; page: number; hasNext: boolean }
+export type Page = { items: Summary[]; page: number; hasNext: boolean; totalElements: number; totalPages: number }
 export type Change = { id: number; action: string; actor: string; occurredAt: string; beforeValue: string; afterValue: string }
 
 const base = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:8080' : '')
@@ -51,8 +51,10 @@ export async function request(path: string, method = 'GET', body?: unknown, sign
 export async function list(resource: Resource, params: URLSearchParams, signal?: AbortSignal): Promise<Page> {
   const value = await request(`${resourcePath(resource)}?${params}`, 'GET', undefined, signal)
   if (!record(value) || !Array.isArray(value.items) || !value.items.every(isSummary)
-    || typeof value.page !== 'number' || typeof value.hasNext !== 'boolean') throw new Error('목록 응답이 올바르지 않습니다.')
-  return { items: value.items, page: value.page, hasNext: value.hasNext }
+    || typeof value.page !== 'number' || typeof value.hasNext !== 'boolean'
+    || typeof value.totalElements !== 'number' || !Number.isSafeInteger(value.totalElements) || value.totalElements < 0
+    || typeof value.totalPages !== 'number' || !Number.isSafeInteger(value.totalPages) || value.totalPages < 0) throw new Error('목록 응답이 올바르지 않습니다.')
+  return { items: value.items, page: value.page, hasNext: value.hasNext, totalElements: value.totalElements, totalPages: value.totalPages }
 }
 export async function detail(resource: Resource, id: string, signal?: AbortSignal): Promise<Detail> {
   return parseDetail(await request(`${resourcePath(resource)}/${encodeURIComponent(id)}`, 'GET', undefined, signal))

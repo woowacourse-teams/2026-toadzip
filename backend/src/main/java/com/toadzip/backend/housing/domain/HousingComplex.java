@@ -26,6 +26,11 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = PROTECTED)
 public class HousingComplex {
 
+    @org.hibernate.annotations.CreationTimestamp
+    @Column(updatable = false)
+    @org.hibernate.annotations.ColumnDefault("CURRENT_TIMESTAMP")
+    private java.time.Instant createdAt;
+
     @jakarta.persistence.Version
     @org.hibernate.annotations.ColumnDefault("0")
     private long version;

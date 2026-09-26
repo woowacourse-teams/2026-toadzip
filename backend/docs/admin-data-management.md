@@ -27,7 +27,9 @@
 - 기존 `PUT /{id}/application-schedules`는 선택적 `version` 쿼리로 충돌을 확인한다.
 - `/api/admin/ingest/pipelines/history?page=...&size=...`는 실행 이력을 제공한다.
 - 세션 인증과 쓰기 요청의 CSRF 검증을 유지한다. 관리자 CORS는 PUT·DELETE도 허용한다.
-- 이름·주소는 부분 일치, 원천 식별자는 정확한 일치로 검색한다.
+- 이름·주소는 부분 일치, 원천 식별자는 정확한 일치로 검색한다. 장기전세도 조회·수정한다.
+- 목록은 `totalElements`와 `totalPages`를 반환하고 등록 시각 내림차순, 같은 시각은 ID 내림차순으로 정렬한다.
+- `V20260926_06`부터 등록 시각을 기록한다. 과거 등록 시각은 추정하지 않고 NULL로 유지하며, 새 등록 건 뒤에서 ID 내림차순으로 표시한다.
 
 ## 데이터 규칙
 
@@ -50,8 +52,8 @@
 
 ## 검증 기록 (2026-09-26)
 
-- 독립된 PostgreSQL 두 개에서 `./gradlew --rerun-tasks check`: 1,571개 테스트 통과.
-- 프론트엔드 `npm run check`: lint, 856개 테스트, TypeScript와 프로덕션 빌드 통과.
+- 독립된 PostgreSQL 두 개에서 `./gradlew --rerun-tasks check`: 1,573개 테스트 통과.
+- 프론트엔드 `npm run check`: lint, 859개 테스트, TypeScript와 프로덕션 빌드 통과.
 - 브라우저: 검색 → 상세 → 수정 → 휴지통 → 복원 → 변경 이력 확인.
 - 인증·CSRF, 버전 충돌, 공개 조회 제외, 복원 순서, 원천 덮어쓰기 방지, 접수 일정 변경을 통합 검증했다.
 - 하네스 검사와 `git diff --check` 통과.

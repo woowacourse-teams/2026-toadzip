@@ -17,7 +17,7 @@ public interface HousingComplexRepository extends JpaRepository<HousingComplex, 
               AND (:provider = '' OR c.provider IN (:provider, :providerLegacy))
               AND (:rental = '' OR c.supply_type IN (:rental, :rentalLegacy))
               AND (:region = '' OR c.province_code = :region OR c.city_county_district_code = :region)
-            ORDER BY c.id DESC
+            ORDER BY c.created_at DESC NULLS LAST, c.id DESC
             """, nativeQuery = true)
     org.springframework.data.domain.Page<HousingComplex> searchAdmin(String keyword, String identifier, String provider, String providerLegacy,
             String rental, String rentalLegacy, String region, boolean deleted, boolean review,

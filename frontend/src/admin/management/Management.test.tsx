@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({list:vi.fn(),detail:vi.fn(),request:vi.fn(),his
 vi.mock('./api',async original => ({...(await original<typeof import('./api')>()),...mocks}))
 const summary = {id:7,name:'두꺼비 단지',subtitle:'서울 중구 세종대로',provider:'LH',rental:'HAPPY_HOUSING',deleted:false,modified:false,reviewRequired:false,updatedAt:null}
 function fixture(): Detail { return {summary,sourceIdentifier:'TEST-7',data:{version:2,name:'두꺼비 단지',rentalType:'HAPPY_HOUSING',agencyCode:'LH',address:{roadAddress:summary.subtitle,pnu:'1114010100100010000',legalDongCode:'1114010100',provinceCode:'11',cityCountyDistrictCode:'11140',latitude:37.5,longitude:127},totalHouseholdCount:10,totalParkingCount:5},housingTypes:[],announcements:[],supplyRows:[],scheduleReviewed:false,schedules:[]} }
-beforeEach(() => {vi.clearAllMocks();mocks.list.mockResolvedValue({items:[summary],page:0,hasNext:false});mocks.detail.mockResolvedValue(fixture());mocks.history.mockResolvedValue([])})
+beforeEach(() => {vi.clearAllMocks();mocks.list.mockResolvedValue({items:[summary],page:0,hasNext:false,totalElements:1,totalPages:1});mocks.detail.mockResolvedValue(fixture());mocks.history.mockResolvedValue([])})
 it('검색 조건을 URL로 보존하고 상세에서 목록으로 돌아간다',async () => {
   render(<MemoryRouter initialEntries={['/admin/complexes?keyword=두꺼비&provider=LH']}><Routes><Route path="/admin/complexes" element={<ManagementList resource="complexes" />} /><Route path="/admin/complexes/:id" element={<ManagementDetail resource="complexes" />} /></Routes></MemoryRouter>)
   fireEvent.click(await screen.findByRole('link',{name:'두꺼비 단지'}))
@@ -68,4 +68,23 @@ it('저장하지 않은 수정은 메뉴 이동 전에 확인하고 취소하면
   fireEvent.click(screen.getByRole('link',{name:'← 목록으로'}))
   expect(screen.getByText('목록 도착')).toBeVisible()
   confirm.mockRestore()
+})
+
+it.each(['complexes','announcements'] as const)('%s 목록은 검색 결과의 전체 건수와 페이지를 표시한다',async resource => {
+  mocks.list.mockResolvedValue({items:[summary],page:0,hasNext:true,totalElements:41,totalPages:3})
+  render(<MemoryRouter><ManagementList resource={resource} /></MemoryRouter>)
+  expect(await screen.findByText('1 / 3 페이지')).toBeVisible()
+  expect(screen.getByText('등록일 최신순 · 총 41건')).toBeVisible()
+  expect(screen.getByRole('button',{name:'이전'})).toBeDisabled()
+  mocks.list.mockResolvedValue({items:[summary],page:1,hasNext:true,totalElements:41,totalPages:3})
+  fireEvent.click(screen.getByRole('button',{name:'다음'}))
+  expect(await screen.findByText('2 / 3 페이지')).toBeVisible()
+  expect(mocks.list.mock.lastCall?.[1].get('page')).toBe('1')
+})
+it('검색 결과가 없으면 0건과 0페이지로 표시한다',async () => {
+  mocks.list.mockResolvedValue({items:[],page:0,hasNext:false,totalElements:0,totalPages:0})
+  render(<MemoryRouter><ManagementList resource="complexes" /></MemoryRouter>)
+  expect(await screen.findByText('0 / 0 페이지')).toBeVisible()
+  expect(screen.getByText('등록일 최신순 · 총 0건')).toBeVisible()
+  expect(screen.getByRole('button',{name:'다음'})).toBeDisabled()
 })

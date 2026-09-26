@@ -23,7 +23,7 @@ public interface AnnouncementRepository extends JpaRepository<Announcement, Long
                       OR h.city_county_district_code = :region)))
               AND (:complexId = 0 OR EXISTS (SELECT 1 FROM supply_rows r
                   WHERE r.announcement_id = c.id AND r.housing_complex_id = :complexId))
-            ORDER BY c.id DESC
+            ORDER BY c.created_at DESC NULLS LAST, c.id DESC
             """, nativeQuery = true)
     org.springframework.data.domain.Page<Announcement> searchAdmin(String keyword, String identifier, String provider, String providerLegacy,
             String rental, String rentalLegacy, String region, boolean deleted, boolean review, long complexId,

@@ -216,6 +216,47 @@ class AdminManagementIntegrationTest {
         return json.readTree(result.getResponse().getContentAsString()).get("data").get("announcementId").asLong();
     }
 
+    @Test
+    void 장기전세_단지를_목록과_상세에서_조회하고_수정한다() throws Exception {
+        long id = createComplex();
+        entityManager.createNativeQuery("UPDATE housing_complexes SET supply_type = 'LONG_TERM_JEONSE' WHERE id = :id")
+                .setParameter("id", id).executeUpdate();
+        entityManager.clear();
+        mvc.perform(get("/api/admin/housing-complexes").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].rental").value("LONG_TERM_JEONSE"));
+        var detail = getData("/api/admin/housing-complexes/" + id);
+        mvc.perform(put("/api/admin/housing-complexes/" + id).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(detail.get("data").toString()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.data.rentalType").value("LONG_TERM_JEONSE"));
+    }
+
+    @Test
+    void 단지와_공고는_등록시각_최신순으로_전체_페이지를_반환한다() throws Exception {
+        long olderId = createComplex();
+        long newerId = createComplex();
+        long announcementId = createAnnouncement(olderId);
+        createAnnouncement(newerId);
+        for (String table : java.util.List.of("housing_complexes", "announcements")) {
+            long id = table.equals("housing_complexes") ? olderId : announcementId;
+            entityManager.createNativeQuery("UPDATE " + table + " SET created_at = '2026-01-01T00:00:00Z'")
+                    .executeUpdate();
+            entityManager.createNativeQuery("UPDATE " + table + " SET created_at = '2026-02-01T00:00:00Z' WHERE id = :id")
+                    .setParameter("id", id).executeUpdate();
+            entityManager.clear();
+            String path = table.equals("housing_complexes") ? "/api/admin/housing-complexes" : "/api/admin/announcements";
+            mvc.perform(get(path).param("size", "1").with(user("admin").roles("ADMIN")))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].id").value(id))
+                    .andExpect(jsonPath("$.data.totalPages").value(2))
+                    .andExpect(jsonPath("$.data.totalElements").value(2));
+            mvc.perform(get(path).param("size", "1").param("page", "1").with(user("admin").roles("ADMIN")))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.hasNext").value(false))
+                    .andExpect(jsonPath("$.data.totalPages").value(2));
+            mvc.perform(get(path).param("keyword", "없는검색결과").with(user("admin").roles("ADMIN")))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalPages").value(0))
+                    .andExpect(jsonPath("$.data.totalElements").value(0));
+        }
+    }
+
     private long createComplex() throws Exception {
         var result = mvc.perform(post("/api/admin/housing-complexes")
                 .with(user("admin").roles("ADMIN")).with(csrf())

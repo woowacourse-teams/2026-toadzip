@@ -51,7 +51,8 @@ public class AdminHousingComplexManagementService {
         var page = complexes.searchAdmin(search.pattern(), search.identifier(), search.providerCode(), search.providerLegacy(),
                 search.rentalCode(), search.rentalLegacy(), search.regionCode(), search.deleted(), search.review(),
                 PageRequest.of(search.page(), search.pageSize()));
-        return new AdminPage<>(page.stream().map(this::summary).toList(), search.page(), page.hasNext());
+        return new AdminPage<>(page.stream().map(this::summary).toList(), search.page(), page.hasNext(),
+                page.getTotalElements(), page.getTotalPages());
     }
 
     public AdminHousingComplexDetail detail(long id) {

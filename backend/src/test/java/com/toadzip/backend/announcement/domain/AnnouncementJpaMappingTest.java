@@ -27,7 +27,7 @@ class AnnouncementJpaMappingTest {
         assertEntityAttributes(
                 "Announcement",
                 Set.of(
-                        "id", "version", "adminModified", "adminDeleted", "sourceReviewRequired", "adminUpdatedAt",
+                        "id", "createdAt", "version", "adminModified", "adminDeleted", "sourceReviewRequired", "adminUpdatedAt",
                         "sourceAnnouncementIdentifier",
                         "previousSourceAnnouncementIdentifier",
                         "previousAnnouncement",
