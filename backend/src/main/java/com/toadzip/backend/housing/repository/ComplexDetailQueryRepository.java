@@ -33,7 +33,7 @@ public class ComplexDetailQueryRepository {
                    housing_complex.total_household_count,
                    housing_complex.parking_space_count AS total_parking_count
             FROM housing_complexes housing_complex
-            WHERE housing_complex.id = :complexId
+            WHERE housing_complex.id = :complexId AND housing_complex.admin_deleted = false
             """;
 
     private static final String FIND_HOUSING_TYPES = """
@@ -53,10 +53,10 @@ public class ComplexDetailQueryRepository {
             WITH current_leaf AS (
                 SELECT announcement.*
                 FROM announcements announcement
-                WHERE NOT EXISTS (
+                WHERE announcement.admin_deleted = false AND NOT EXISTS (
                     SELECT 1
                     FROM announcements successor
-                    WHERE successor.previous_announcement_id = announcement.id
+                    WHERE successor.previous_announcement_id = announcement.id AND successor.admin_deleted = false
                 )
                   AND announcement.status NOT IN ('CANCELLATION', '취소공고')
                   AND %s NOT IN ('CLOSED', 'CANCELLED')

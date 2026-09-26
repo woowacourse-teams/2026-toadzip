@@ -70,7 +70,7 @@ class AdminAnnouncementRegistrationServiceTest {
         Announcement savedAnnouncement = mock(Announcement.class);
         SupplyRow savedSupplyRow = mock(SupplyRow.class);
         when(housingComplex.getId()).thenReturn(11L);
-        when(housingComplexRepository.findById(11L)).thenReturn(Optional.of(housingComplex));
+        when(housingComplexRepository.findByIdForUpdate(11L)).thenReturn(Optional.of(housingComplex));
         when(announcementRepository.save(any())).thenReturn(savedAnnouncement);
         when(savedAnnouncement.getId()).thenReturn(21L);
         when(savedAnnouncement.getName()).thenReturn("2026년 행복주택 입주자 모집");
@@ -120,7 +120,7 @@ class AdminAnnouncementRegistrationServiceTest {
 
     @Test
     void 없는_단지면_아무것도_저장하지_않는다() {
-        when(housingComplexRepository.findById(11L)).thenReturn(Optional.empty());
+        when(housingComplexRepository.findByIdForUpdate(11L)).thenReturn(Optional.empty());
 
         assertThrows(AdminHousingComplexNotFoundException.class, () -> service.register(validRequest()));
 

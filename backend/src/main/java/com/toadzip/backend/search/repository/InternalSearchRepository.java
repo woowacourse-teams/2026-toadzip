@@ -29,9 +29,9 @@ public class InternalSearchRepository {
             """.strip();
 
     private static final String LATEST_LEAF = """
-            NOT EXISTS (
+            announcement.admin_deleted = false AND NOT EXISTS (
                 SELECT 1 FROM announcements successor
-                WHERE successor.previous_announcement_id = announcement.id
+                WHERE successor.previous_announcement_id = announcement.id AND successor.admin_deleted = false
             )
             """;
 
@@ -144,6 +144,7 @@ public class InternalSearchRepository {
             Map<String, Object> parameters,
             IntegratedSearchCondition condition
     ) {
+        sql.append(" AND complex.admin_deleted = false");
         addComplexTokens(sql, parameters, condition);
         addRentalTypes(sql, parameters, "complex.supply_type", condition);
         addComplexAnnouncementFilter(sql, parameters, condition);

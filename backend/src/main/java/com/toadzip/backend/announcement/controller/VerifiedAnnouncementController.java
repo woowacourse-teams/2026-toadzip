@@ -32,9 +32,11 @@ public class VerifiedAnnouncementController {
     @Operation(summary = "확인한 접수 일정 전체 교체", description = "공고문 근거를 보존합니다. 검색 상태는 서울 날짜 기준입니다.")
     @PutMapping("/{announcementId}/application-schedules")
     public ResponseEntity<Void> replaceSchedules(@PathVariable long announcementId,
-            @Valid @RequestBody VerifiedApplicationSchedulesRequest request) {
+            @Valid @RequestBody VerifiedApplicationSchedulesRequest request,
+            @org.springframework.web.bind.annotation.RequestParam(required = false)
+            @jakarta.validation.constraints.Min(0) Long version, java.security.Principal principal) {
         try (var ignored = ownershipService.acquire()) {
-            scheduleService.replace(announcementId, request);
+            scheduleService.replace(announcementId, request, version, principal.getName());
         }
         return ResponseEntity.noContent().build();
     }

@@ -63,6 +63,7 @@ class VerifiedAnnouncementScheduleIntegrationTest {
     void 조건부_후순위_날짜를_일반_접수중과_구분하고_공식_종료시각을_제공한다() throws Exception {
         Announcement announcement = announcement("2015122300020681");
         mvc.perform(put("/api/admin/announcements/{id}/application-schedules", announcement.getId())
+                        .principal(() -> "admin")
                         .contentType(MediaType.APPLICATION_JSON).content("""
                                 {"schedules":[
                                   {"supplyRank":"1·2순위","state":"CONFIRMED",

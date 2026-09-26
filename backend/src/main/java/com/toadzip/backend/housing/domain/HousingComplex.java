@@ -26,6 +26,35 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = PROTECTED)
 public class HousingComplex {
 
+    @jakarta.persistence.Version
+    @org.hibernate.annotations.ColumnDefault("0")
+    private long version;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminModified;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminDeleted;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean sourceReviewRequired;
+
+    private java.time.Instant adminUpdatedAt;
+
+    public void moveToTrash() {
+        adminDeleted = true;
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
+    public void restore() {
+        adminDeleted = false;
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -206,11 +235,29 @@ public class HousingComplex {
                 elevatorInstalled,
                 parkingSpaceCount
         );
+        if (adminModified || adminDeleted) {
+            if (adminModified && !hasSameMyHomeValues(incoming)) {
+                sourceReviewRequired = true;
+            }
+            return false;
+        }
         if (hasSameMyHomeValues(incoming)) {
             return false;
         }
         applyMyHomeValues(incoming);
         return true;
+    }
+
+    public void reviseByAdmin(HousingComplex incoming) {
+        if (adminDeleted) {
+            throw new IllegalArgumentException("휴지통에서 복구한 뒤 수정해 주세요.");
+        }
+        applyMyHomeValues(incoming);
+        imageUrl = incoming.imageUrl;
+        recentOneYearMoveOutCount = incoming.recentOneYearMoveOutCount;
+        adminModified = true;
+        sourceReviewRequired = false;
+        adminUpdatedAt = java.time.Instant.now();
     }
 
     private boolean hasSameMyHomeValues(HousingComplex incoming) {

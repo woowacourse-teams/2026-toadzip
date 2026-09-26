@@ -105,6 +105,7 @@ public class AnnouncementQueryService {
     public AnnouncementDetailResponse getAnnouncement(long announcementId) {
         LocalDate today = currentSeoulDate();
         Announcement announcement = announcementRepository.findDetailById(announcementId)
+                .filter(value -> !value.isAdminDeleted())
                 .orElseThrow(AnnouncementNotFoundException::new);
         List<Long> announcementIds = List.of(announcement.getId());
         List<AnnouncementSchedule> schedules = announcementScheduleRepository.findAllByAnnouncementIdIn(

@@ -80,11 +80,13 @@ final class HousingComplexFilterPredicateBuilder {
                 JOIN announcements cancelled_announcement
                   ON cancelled_announcement.id = cancelled_supply_row.announcement_id
                 WHERE cancelled_supply_row.housing_complex_id = housing_complex.id
+                  AND cancelled_announcement.admin_deleted = false
                   AND cancelled_announcement.status IN ('CANCELLATION', '취소공고')
                   AND NOT EXISTS (
                       SELECT 1
                       FROM announcements cancelled_successor
                       WHERE cancelled_successor.previous_announcement_id = cancelled_announcement.id
+                        AND cancelled_successor.admin_deleted = false
                   )
             )
             """.strip();
