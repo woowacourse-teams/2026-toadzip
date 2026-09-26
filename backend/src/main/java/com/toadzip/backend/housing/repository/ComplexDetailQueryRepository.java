@@ -1,5 +1,7 @@
 package com.toadzip.backend.housing.repository;
 
+import com.toadzip.backend.announcement.repository.ApplicationScheduleSql;
+
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
@@ -57,9 +59,9 @@ public class ComplexDetailQueryRepository {
                     WHERE successor.previous_announcement_id = announcement.id
                 )
                   AND announcement.status NOT IN ('CANCELLATION', '취소공고')
-                  AND announcement.application_end_date >= :today
+                  AND %s NOT IN ('CLOSED', 'CANCELLED')
             )
-            """;
+            """.formatted(ApplicationScheduleSql.status("announcement", ":complexId"));
 
     private static final String FIND_CURRENT_SUPPLY_CONDITIONS = CURRENT_LEAF_CTE + """
             SELECT announcement.id AS announcement_id,
@@ -91,10 +93,11 @@ public class ComplexDetailQueryRepository {
                    announcement.name AS title,
                    announcement.status AS publication_type,
                    announcement.posted_date,
-                   announcement.application_start_date,
-                   announcement.application_end_date,
-                   announcement.actual_competition_rate
+                   announcement.actual_competition_rate,
+                   %s AS application_status,
+                   %s
             FROM current_leaf announcement
+            %s
             WHERE EXISTS (
                 SELECT 1
                 FROM supply_rows supply_row
@@ -102,7 +105,9 @@ public class ComplexDetailQueryRepository {
                   AND supply_row.housing_complex_id = :complexId
             )
             ORDER BY announcement.posted_date DESC, announcement.id DESC
-            """;
+            """.formatted(ApplicationScheduleSql.status("announcement", ":complexId"),
+                    ApplicationScheduleSql.displayPeriodColumns("announcement"),
+                    ApplicationScheduleSql.displayPeriodJoin("announcement", ":complexId"));
 
     private static final String FIND_CURRENT_ANNOUNCEMENT_TARGETS = CURRENT_LEAF_CTE + """
             , ranked_target AS (
@@ -241,7 +246,9 @@ public class ComplexDetailQueryRepository {
                 resultSet.getObject("posted_date", LocalDate.class),
                 resultSet.getObject("application_start_date", LocalDate.class),
                 resultSet.getObject("application_end_date", LocalDate.class),
-                resultSet.getBigDecimal("actual_competition_rate")
+                resultSet.getBigDecimal("actual_competition_rate"),
+                resultSet.getString("application_status"),
+                resultSet.getObject("confirmed_application_end_date", java.time.LocalDate.class)
         );
     }
 

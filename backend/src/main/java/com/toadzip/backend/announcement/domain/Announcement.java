@@ -42,6 +42,17 @@ import org.hibernate.annotations.JdbcType;
 @NoArgsConstructor(access = PROTECTED)
 public class Announcement {
 
+    @Column(nullable = false)
+    private boolean applicationScheduleReviewed;
+
+    @Column(length = 2000)
+    private String revisionEvidenceUrl;
+
+    private String previousLhPanId;
+
+    @Column(nullable = false)
+    private boolean lhPanIdReviewed;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -175,6 +186,39 @@ public class Announcement {
         this.receptionPlace = receptionPlace;
     }
 
+    public void confirmApplicationPeriod(LocalDate start, LocalDate end) {
+        if (start == null || end == null || end.isBefore(start)) {
+            throw new IllegalArgumentException("접수 기간이 올바르지 않습니다.");
+        }
+        applicationStartDate = start;
+        applicationEndDate = end;
+        applicationScheduleReviewed = true;
+    }
+
+    public void confirmLhRevision(Announcement previous, String previousPanId, String correctedPanId,
+            String evidenceUrl, String reason) {
+        if (previous == null || previous == this || previousPanId == null || correctedPanId == null
+                || previousPanId.equals(correctedPanId) || evidenceUrl == null || evidenceUrl.isBlank()) {
+            throw new IllegalArgumentException("정정 공고 연결과 공식 근거가 필요합니다.");
+        }
+        previous.confirmLhPanId(previousPanId);
+        confirmLhPanId(correctedPanId);
+        previousAnnouncement = previous;
+        previousSourceAnnouncementIdentifier = previous.getSourceAnnouncementIdentifier();
+        previousLhPanId = previousPanId;
+        revisionEvidenceUrl = evidenceUrl;
+        correctionCancellationReason = reason;
+        status = AnnouncementPublicationType.CORRECTION;
+    }
+
+    private void confirmLhPanId(String panId) {
+        if (lhPanIdReviewed && !Objects.equals(lhPanId, panId)) {
+            throw new IllegalArgumentException("확인된 LH 공고 원천을 바꿀 수 없습니다.");
+        }
+        lhPanId = panId;
+        lhPanIdReviewed = true;
+    }
+
     public static Announcement create(
             String sourceAnnouncementIdentifier,
             String previousSourceAnnouncementIdentifier,
@@ -230,6 +274,20 @@ public class Announcement {
             String originalUrl,
             ReceptionPlace receptionPlace
     ) {
+        if (applicationScheduleReviewed) {
+            applicationStartDate = this.applicationStartDate;
+            applicationEndDate = this.applicationEndDate;
+        }
+        if (lhPanIdReviewed && provider != AgencyCode.LH) {
+            throw new IllegalArgumentException("확인된 LH 공고의 기관을 바꿀 수 없습니다.");
+        }
+        if (revisionEvidenceUrl != null) {
+            previousSourceAnnouncementIdentifier = this.previousSourceAnnouncementIdentifier;
+            previousAnnouncement = this.previousAnnouncement;
+            if (status != AnnouncementPublicationType.CANCELLATION) {
+                status = this.status;
+            }
+        }
         boolean remainsLh = provider == AgencyCode.LH;
         boolean preserveLhCorrection = remainsLh && lhPanId != null;
         boolean preserveLhReceptionPlace = remainsLh && lhReceptionPlaceOwned;
@@ -309,6 +367,12 @@ public class Announcement {
     }
 
     public boolean enrichFromLh(String panId, String correctionReason, ReceptionPlace receptionPlace) {
+        if (lhPanIdReviewed && !Objects.equals(lhPanId, panId)) {
+            throw new IllegalArgumentException("확인된 LH 공고의 원천을 바꿀 수 없습니다.");
+        }
+        if (revisionEvidenceUrl != null) {
+            correctionReason = correctionCancellationReason;
+        }
         String ownedCorrectionReason = correctionReason == null
                 ? correctionCancellationReason
                 : correctionReason;

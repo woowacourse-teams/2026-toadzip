@@ -624,7 +624,9 @@ class HousingComplexListQueryTest {
                 null,
                 null,
                 null,
-                LocalDate.of(2020, 1, 1)
+                LocalDate.of(2020, 1, 1),
+                null,
+                null
         );
         when(repository.findPage(any(), eq(ComplexSort.LATEST_ANNOUNCEMENT), isNull(), eq(2)))
                 .thenReturn(List.of(unresolved));
@@ -859,8 +861,20 @@ class HousingComplexListQueryTest {
                 postedDate,
                 applicationStartDate,
                 applicationEndDate,
-                LocalDate.of(2020, 1, 1)
+                LocalDate.of(2020, 1, 1),
+                fixtureStatus(applicationStartDate, applicationEndDate),
+                applicationEndDate
         );
+    }
+
+    private String fixtureStatus(LocalDate start, LocalDate end) {
+        if (LocalDate.now(CLOCK.withZone(java.time.ZoneId.of("Asia/Seoul"))).isBefore(start)) {
+            return "BEFORE_APPLICATION";
+        }
+        if (LocalDate.now(CLOCK.withZone(java.time.ZoneId.of("Asia/Seoul"))).isAfter(end)) {
+            return "CLOSED";
+        }
+        return "APPLYING";
     }
 
     private ComplexSummaryRow rowWithoutAnnouncement(long complexId) {
@@ -885,7 +899,9 @@ class HousingComplexListQueryTest {
                 null,
                 null,
                 null,
-                LocalDate.of(2020, 1, 1)
+                LocalDate.of(2020, 1, 1),
+                null,
+                null
         );
     }
 

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,7 +31,7 @@ class IngestExecutionLockInterceptorTest {
 
     @BeforeEach
     void setUp() {
-        interceptor = new IngestExecutionLockInterceptor(executionLock);
+        interceptor = new IngestExecutionLockInterceptor(new IngestExecutionOwnershipService(executionLock));
     }
 
     @Test

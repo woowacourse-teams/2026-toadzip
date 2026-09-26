@@ -15,6 +15,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepositor
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -47,7 +48,8 @@ class LhAnnouncementEnrichmentWriterTest {
         SupplyRow row = mock(SupplyRow.class);
         LhSupplyData supply = new LhSupplyData("LH:100:1", "단지", "주택형", null,
                 null, null, null, null);
-        when(announcementRepository.save(announcement)).thenReturn(announcement);
+        when(announcement.getId()).thenReturn(1L);
+        when(announcementRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(announcement));
         when(supplyRowRepository.findAllByAnnouncement(announcement)).thenReturn(List.of(row));
         when(row.getId()).thenReturn(1L);
         when(supplyMatcher.match(List.of(row), supply)).thenReturn(LhSupplyMatchResult.matched(row));
@@ -72,7 +74,8 @@ class LhAnnouncementEnrichmentWriterTest {
                 null, null, null, null);
         LhSupplyData second = new LhSupplyData("LH:100:SUPPLY:2", "단지", "주택형", null,
                 null, null, null, null);
-        when(announcementRepository.save(announcement)).thenReturn(announcement);
+        when(announcement.getId()).thenReturn(1L);
+        when(announcementRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(announcement));
         when(supplyRowRepository.findAllByAnnouncement(announcement)).thenReturn(List.of(row));
         when(row.getId()).thenReturn(1L);
         when(supplyMatcher.match(List.of(row), first)).thenReturn(LhSupplyMatchResult.matched(row));

@@ -24,6 +24,8 @@ public record ComplexSummaryRow(
         LocalDate postedDate,
         LocalDate applicationStartDate,
         LocalDate applicationEndDate,
-        LocalDate completionDate
+        LocalDate completionDate,
+        String applicationStatus,
+        LocalDate confirmedApplicationEndDate
 ) {
 }

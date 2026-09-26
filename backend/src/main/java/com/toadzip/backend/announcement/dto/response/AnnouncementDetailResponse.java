@@ -31,7 +31,9 @@ public record AnnouncementDetailResponse(
         List<AnnouncementScheduleResponse> schedules,
         List<AnnouncementAttachmentResponse> attachments,
         List<SupplyRowResponse> supplyRows,
-        CompetitionResponse competition
+        CompetitionResponse competition,
+        List<ApplicationScheduleResponse> applicationSchedules,
+        LhRevisionResponse revision
 ) {
 
     public AnnouncementDetailResponse {
@@ -41,5 +43,6 @@ public record AnnouncementDetailResponse(
         schedules = List.copyOf(schedules);
         attachments = List.copyOf(attachments);
         supplyRows = List.copyOf(supplyRows);
+        applicationSchedules = List.copyOf(applicationSchedules);
     }
 }

@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.service;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
@@ -40,6 +41,7 @@ public class AnnouncementQueryService {
     private static final int MAXIMUM_PAGE_SIZE = 50;
 
     private final AnnouncementRepository announcementRepository;
+    private final AnnouncementApplicationScheduleRepository applicationScheduleRepository;
     private final AnnouncementSearchRepository announcementSearchRepository;
     private final AnnouncementScheduleRepository announcementScheduleRepository;
     private final AnnouncementAttachmentRepository announcementAttachmentRepository;
@@ -52,6 +54,7 @@ public class AnnouncementQueryService {
 
     public AnnouncementQueryService(
             AnnouncementRepository announcementRepository,
+            AnnouncementApplicationScheduleRepository applicationScheduleRepository,
             AnnouncementSearchRepository announcementSearchRepository,
             AnnouncementScheduleRepository announcementScheduleRepository,
             AnnouncementAttachmentRepository announcementAttachmentRepository,
@@ -63,6 +66,7 @@ public class AnnouncementQueryService {
             RegionCodeResolver regionCodeResolver
     ) {
         this.announcementRepository = announcementRepository;
+        this.applicationScheduleRepository = applicationScheduleRepository;
         this.announcementSearchRepository = announcementSearchRepository;
         this.announcementScheduleRepository = announcementScheduleRepository;
         this.announcementAttachmentRepository = announcementAttachmentRepository;
@@ -88,6 +92,11 @@ public class AnnouncementQueryService {
         List<AnnouncementListItemResponse> items = announcementResponseMapper.toListItemResponses(
                 announcements,
                 supplyRows,
+                applicationScheduleRepository.findAllByAnnouncementIdIn(announcementIds(announcements)).stream()
+                        .filter(schedule -> condition.regionCodes().isEmpty() || schedule.getHousingComplex() == null
+                                || condition.regionCodes().contains(schedule.getHousingComplex().getAddress()
+                                        .getCityCountyDistrictCode()))
+                        .toList(),
                 today
         );
         return new AnnouncementListResponse(items, nextCursor(announcements, hasNext), hasNext);
@@ -112,6 +121,7 @@ public class AnnouncementQueryService {
                 attachments,
                 supplyRows,
                 supplyTargets,
+                applicationScheduleRepository.findAllByAnnouncementIdIn(announcementIds),
                 today
         );
     }

@@ -60,7 +60,7 @@ class AnnouncementCodeEnumTest {
                 RentalType.values().length
         );
         assertEquals(3, AnnouncementPublicationType.values().length);
-        assertEquals(4, ApplicationStatus.values().length);
+        assertEquals(5, ApplicationStatus.values().length);
         assertEquals(3, RecruitmentType.values().length);
         assertEquals(4, ReceptionMethod.values().length);
         assertEquals(6, ScheduleType.values().length);

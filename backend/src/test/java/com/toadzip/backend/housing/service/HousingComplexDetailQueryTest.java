@@ -381,7 +381,9 @@ class HousingComplexDetailQueryTest {
                         LocalDate.of(2026, 8, 26),
                         LocalDate.of(2026, 8, 28),
                         LocalDate.of(2026, 8, 30),
-                        new BigDecimal("2.5000")
+                        new BigDecimal("2.5000"),
+                        "BEFORE_APPLICATION",
+                        LocalDate.of(2026, 8, 30)
                 ),
                 new CurrentAnnouncementRow(
                         201L,
@@ -390,7 +392,9 @@ class HousingComplexDetailQueryTest {
                         LocalDate.of(2026, 8, 25),
                         LocalDate.of(2026, 8, 20),
                         TODAY,
-                        null
+                        null,
+                        "APPLYING",
+                        TODAY
                 )
         ));
         when(detailRepository.findCurrentAnnouncementTargets(COMPLEX_ID, TODAY)).thenReturn(List.of(

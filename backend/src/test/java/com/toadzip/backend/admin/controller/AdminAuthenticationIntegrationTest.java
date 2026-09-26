@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -60,6 +61,29 @@ class AdminAuthenticationIntegrationTest {
                         LocalDateTime.of(2026, 8, 26, 10, 0)
                 )
         );
+    }
+
+    @Test
+    void 공식_일정과_정정_등록은_관리자_권한과_CSRF를_요구한다() throws Exception {
+        for (String operation : java.util.List.of("application-schedules", "revision")) {
+            String path = "/api/admin/announcements/42/" + operation;
+            CsrfFixture csrfFixture = issueCsrfToken();
+            mockMvc.perform(put(path).cookie(csrfFixture.cookie())
+                            .header(csrfFixture.headerName(), csrfFixture.token())
+                            .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isUnauthorized());
+            mockMvc.perform(put(path).cookie(csrfFixture.cookie())
+                            .header(csrfFixture.headerName(), csrfFixture.token()).with(user("member").roles("USER"))
+                            .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(put(path).with(user("admin").roles("ADMIN"))
+                            .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(put(path).cookie(csrfFixture.cookie())
+                            .header(csrfFixture.headerName(), csrfFixture.token()).with(user("admin").roles("ADMIN"))
+                            .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isBadRequest());
+        }
     }
 
     @Test

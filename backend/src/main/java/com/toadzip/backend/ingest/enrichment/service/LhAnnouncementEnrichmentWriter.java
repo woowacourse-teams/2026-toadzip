@@ -61,8 +61,14 @@ public class LhAnnouncementEnrichmentWriter {
             LhAnnouncementEnrichmentData data,
             Set<Long> changedHousingTypeRows
     ) {
-        Announcement managedAnnouncement = announcementRepository.save(announcement);
+        Announcement managedAnnouncement = managedAnnouncement(announcement);
         String previousPanId = managedAnnouncement.getLhPanId();
+        if (managedAnnouncement.isLhPanIdReviewed() && !data.panId().equals(previousPanId)) {
+            throw new LhAnnouncementEnrichmentRejectedException(
+                    LhAnnouncementEnrichmentFailureReason.LH_COLLECTION_LINK_MISMATCH,
+                    "확인된 공고의 LH 원천과 보강 대상이 다릅니다."
+            );
+        }
         Set<String> replacedPanIds = new HashSet<>();
         replacedPanIds.add(data.panId());
         if (previousPanId != null) {
@@ -86,6 +92,14 @@ public class LhAnnouncementEnrichmentWriter {
                 ),
                 supplies.failures()
         );
+    }
+
+    private Announcement managedAnnouncement(Announcement announcement) {
+        if (announcement.getId() == null) {
+            return announcementRepository.save(announcement);
+        }
+        return announcementRepository.findByIdForUpdate(announcement.getId())
+                .orElseThrow(() -> new IllegalStateException("보강할 공고가 없습니다."));
     }
 
     private SchedulesWriteResult writeSchedules(

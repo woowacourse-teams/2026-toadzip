@@ -53,7 +53,7 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertTrue(history.next()),
-                        () -> assertEquals(8, history.getInt(1)),
+                        () -> assertEquals(10, history.getInt(1)),
                         () -> assertEquals(1, countColumn(connection,
                                 "admin_announcement_imports", "original_json")),
                         () -> assertEquals(1, countColumn(connection,
@@ -148,10 +148,16 @@ class LocalProfileSchemaPersistenceTest {
                 assertTrue(history.next());
                 assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02,SQL:20260923.01"
                                 + ",SQL:20260923.02,SQL:20260924.01,SQL:20260925.01,SQL:20260925.02"
-                                + ",SQL:20260925.03",
+                                + ",SQL:20260925.03,SQL:20260926.01,SQL:20260926.02",
                         history.getString(1));
                 assertEquals(1, countColumn(connection, "admin_announcement_imports", "original_json"));
                 assertEquals(1, countColumn(connection, "announcements", "lh_reception_place_owned"));
+                assertEquals(1, countColumn(connection, "announcements", "application_schedule_reviewed"));
+                assertEquals(1, countColumn(connection, "announcements", "lh_pan_id_reviewed"));
+                assertEquals(1, countColumn(connection, "ingest_execution_ownership", "generation"));
+                assertEquals(1, countColumn(connection, "ingest_execution_ownership", "owner_id"));
+                assertEquals(1, countAllRows(connection, "ingest_execution_ownership"));
+                assertEquals(0, countAllRows(connection, "announcement_application_schedules"));
                 assertEquals(1, countColumn(connection, "supply_rows", "lh_total_supply_household_count_enriched"));
                 assertEquals(1, countColumn(connection, "lh_announcement_detail_source", "request_hash"));
                 assertEquals(1, countColumn(connection, "lh_announcement_detail_source", "winner_announcement_date"));
@@ -174,6 +180,14 @@ class LocalProfileSchemaPersistenceTest {
     private int countColumn(Connection connection, String tableName, String columnName) throws Exception {
         try (var columns = connection.getMetaData().getColumns(null, "public", tableName, columnName)) {
             return columns.next() ? 1 : 0;
+        }
+    }
+
+    private int countAllRows(Connection connection, String tableName) throws Exception {
+        try (Statement statement = connection.createStatement();
+                ResultSet rows = statement.executeQuery("SELECT COUNT(*) FROM " + tableName)) {
+            rows.next();
+            return rows.getInt(1);
         }
     }
 

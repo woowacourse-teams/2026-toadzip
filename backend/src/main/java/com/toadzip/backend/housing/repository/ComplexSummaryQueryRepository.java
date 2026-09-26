@@ -57,7 +57,9 @@ public class ComplexSummaryQueryRepository {
                 resultSet.getObject("posted_date", java.time.LocalDate.class),
                 resultSet.getObject("application_start_date", java.time.LocalDate.class),
                 resultSet.getObject("application_end_date", java.time.LocalDate.class),
-                resultSet.getObject("completion_date", java.time.LocalDate.class)
+                resultSet.getObject("completion_date", java.time.LocalDate.class),
+                resultSet.getString("application_status"),
+                resultSet.getObject("confirmed_application_end_date", java.time.LocalDate.class)
         );
     }
 

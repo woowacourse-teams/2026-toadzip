@@ -1,6 +1,7 @@
 package com.toadzip.backend.search.repository;
 
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
+import com.toadzip.backend.announcement.repository.ApplicationScheduleSql;
 import com.toadzip.backend.global.persistence.LegacyStoredValue;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.search.domain.SearchType;
@@ -50,12 +51,7 @@ public class InternalSearchRepository {
                        announcement.posted_date,
                        announcement.application_start_date,
                        announcement.application_end_date,
-                       CASE
-                           WHEN announcement.status IN ('CANCELLATION', '취소공고') THEN 'CANCELLED'
-                           WHEN announcement.application_start_date > :today THEN 'BEFORE_APPLICATION'
-                           WHEN announcement.application_end_date < :today THEN 'CLOSED'
-                           ELSE 'APPLYING'
-                       END AS application_status,
+                       %s AS application_status,
                        COALESCE((
                            SELECT STRING_AGG(DISTINCT complex.road_address, ' ')
                            FROM supply_rows supply_row
@@ -84,7 +80,7 @@ public class InternalSearchRepository {
                        ) AS longitude
                 FROM announcements announcement
                 WHERE
-                """).append(LATEST_LEAF);
+                """.formatted(ApplicationScheduleSql.status("announcement", null))).append(LATEST_LEAF);
         addAnnouncementFilters(sql, parameters, condition);
         addAnnouncementOrder(sql);
         sql.append(", announcement.posted_date DESC, announcement.id DESC LIMIT :limit");
@@ -228,16 +224,7 @@ public class InternalSearchRepository {
     }
 
     private String announcementStatus(ApplicationStatus status) {
-        return switch (status) {
-            case BEFORE_APPLICATION -> "announcement.status NOT IN ('CANCELLATION', '취소공고')"
-                    + " AND announcement.application_start_date > :today";
-            case APPLYING -> "announcement.status NOT IN ('CANCELLATION', '취소공고')"
-                    + " AND announcement.application_start_date <= :today"
-                    + " AND announcement.application_end_date >= :today";
-            case CLOSED -> "announcement.status NOT IN ('CANCELLATION', '취소공고')"
-                    + " AND announcement.application_end_date < :today";
-            case CANCELLED -> "announcement.status IN ('CANCELLATION', '취소공고')";
-        };
+        return ApplicationScheduleSql.status("announcement", null) + " = '" + status.name() + "'";
     }
 
     private void addComplexAnnouncementFilter(
@@ -272,10 +259,7 @@ public class InternalSearchRepository {
     }
 
     private String activeAnnouncementExists() {
-        return statusAnnouncementStart()
-                + " AND announcement.status NOT IN ('CANCELLATION', '취소공고')"
-                + " AND announcement.application_start_date <= :today"
-                + " AND announcement.application_end_date >= :today";
+        return statusAnnouncementStart() + " AND " + complexStatus(ApplicationStatus.APPLYING);
     }
 
     private String statusAnnouncementStart() {
@@ -285,13 +269,7 @@ public class InternalSearchRepository {
     }
 
     private String complexStatus(ApplicationStatus status) {
-        return switch (status) {
-            case BEFORE_APPLICATION -> "announcement.application_start_date > :today";
-            case APPLYING -> "announcement.application_start_date <= :today"
-                    + " AND announcement.application_end_date >= :today";
-            case CLOSED -> "announcement.application_end_date < :today";
-            case CANCELLED -> "1 = 0";
-        };
+        return ApplicationScheduleSql.status("announcement", "complex.id") + " = '" + status.name() + "'";
     }
 
     private SearchSourceItem mapAnnouncement(ResultSet resultSet, int rowNumber) throws SQLException {
