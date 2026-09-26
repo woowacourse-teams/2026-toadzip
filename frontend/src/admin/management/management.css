@@ -106,7 +106,9 @@
 .admin-content .admin-page-dialog header button {border:0;color:#294b42;background:transparent;font-size:24px;line-height:1;padding:7px 10px;}
 .admin-page-dialog-body {padding:22px 26px 30px;}
 .admin-page-dialog-body p {margin:0 0 20px;}
-.admin-page-jump,.admin-content .admin-page-jump label {display:flex;flex-direction:row;align-items:center;gap:12px;}
+.admin-page-jump,.admin-content .admin-page-jump label {display:flex;flex-direction:row;align-items:center;gap:18px;}
 .admin-page-jump {flex-wrap:wrap;}
-.admin-content .admin-page-jump input:not([type=checkbox]) {width:100px;min-width:0;text-align:right;}
+.admin-content .admin-page-jump input:not([type=checkbox]) {width:120px;min-width:0;text-align:right;}
 .admin-content .admin-page-jump button {background:#17685b;color:#fff;border-color:#17685b;min-width:80px;}
+
+.admin-page-jump input::-webkit-inner-spin-button {margin-left:12px;}
