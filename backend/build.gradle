@@ -43,6 +43,8 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// Avoid evicting create-drop contexts while another cached context still uses the same test schema.
+	systemProperty 'spring.test.context.cache.maxSize', '64'
 	maxParallelForks = 1
 	maxHeapSize = '1g'
 }
