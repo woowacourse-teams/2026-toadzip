@@ -55,12 +55,12 @@ export function ManagementDetail({resource}: {resource:Resource}) {
       {confirmation ? <section className="admin-confirm" role="alertdialog" aria-label={value.summary.deleted ? '복구 확인' : '삭제 확인'}>
         <h2>{value.summary.deleted ? '복구할까요?' : '휴지통으로 이동할까요?'}</h2><p><strong>{value.summary.name}</strong></p>
         <p>{value.summary.deleted ? '다시 서비스 조회 대상이 됩니다.' : '서비스 검색·상세에서 제외됩니다. 원천과 수정 이력은 유지되며 다시 복구할 수 있습니다.'}</p>
-        {resource === 'complexes' ? <p>연결 공고 {value.announcements.length}건 · 주택형 {value.housingTypes.length}건. 사용 중인 연결 공고가 있으면 삭제할 수 없습니다.</p> : <p>연결 공급정보 {value.supplyRows.length}건은 함께 보존됩니다.</p>}
+        {resource === 'complexes' ? <p>연결 공고 {value.announcements.length}건 · 주택형 {value.housingTypes.length}건. 휴지통에 없는 연결 공고가 있으면 삭제할 수 없습니다.</p> : <p>연결 공급정보 {value.supplyRows.length}건은 함께 보존됩니다.</p>}
         <div className="admin-inline"><button disabled={busy} className="admin-danger" onClick={() => void trash()}>{busy ? '처리 중…' : value.summary.deleted ? '복구 확인' : '휴지통으로 이동'}</button><button disabled={busy} onClick={() => setConfirmation(false)}>취소</button></div></section> : null}
       {!editing ? <nav className="admin-section-tabs" aria-label="상세 섹션">{[['info','기본정보'],['relations',resource === 'complexes' ? '주택형·연결 공고' : '공급정보·단지 연결'],['history','출처·수정 이력']].map(([key,label]) =>
         <button data-admin-navigation key={key} type="button" aria-pressed={section === key} onClick={() => setSection(key)}>{label}</button>)}</nav> : null}
       {section === 'info' && !editing ? <>{sections.map(group => <section className="admin-detail-section" key={group.title}><h2>{group.title}</h2>
-        <dl className="admin-data-grid">{group.fields.map(field => <div key={field.name}><dt>{field.label}</dt><dd>{field.type === 'url' && typeof valueAt(value.data,field.name) === 'string' && /^https?:\/\//.test(String(valueAt(value.data,field.name)))
+        <dl className={`admin-data-grid${group.fields.some(field => field.name === 'address.roadAddress') ? ' admin-location-grid' : ''}`}>{group.fields.map(field => <div key={field.name}><dt>{field.label}</dt><dd>{field.type === 'url' && typeof valueAt(value.data,field.name) === 'string' && /^https?:\/\//.test(String(valueAt(value.data,field.name)))
           ? <a href={String(valueAt(value.data,field.name))} target="_blank" rel="noreferrer">원문 열기 ↗</a> : display(valueAt(value.data,field.name))}</dd></div>)}</dl></section>)}</> : null}
       {section === 'info' && !editing && resource === 'announcements' ? <ScheduleEditor key={String(value.data.version)} value={value} id={id} onSaved={saved} /> : null}
       {editing ? <form key={String(value.data.version)} onChange={() => setDirty(true)} onSubmit={event => {
