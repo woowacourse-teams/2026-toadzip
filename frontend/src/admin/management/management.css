@@ -76,3 +76,18 @@
 
 .admin-content .admin-location-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
 .admin-location-grid > :first-child {grid-column:1 / -1;}
+
+.ingest-failure-table td > strong {display:block;font-size:15px;line-height:1.5;margin-bottom:6px;}
+.ingest-failure-table td > .ingest-meta {display:block;margin-top:4px;}
+.ingest-failure-table td details {margin-top:12px;}
+.ingest-failure-table td summary {cursor:pointer;color:#52685f;font-size:12px;}
+.ingest-page-summary {color:#52685f;font-size:13px;}
+
+@media(max-width:1000px) {
+  .ingest-failure-table {min-width:0;}
+  .ingest-failure-table thead {display:none;}
+  .ingest-failure-table tbody,.ingest-failure-table tr,.ingest-failure-table td {display:block;width:auto;}
+  .ingest-failure-table tr {border:1px solid #dbe5e1;border-radius:8px;margin-bottom:16px;padding:16px;background:#fff;}
+  .ingest-failure-table td {padding:0 0 12px;border:0;}
+  .ingest-failure-table td:last-child {padding:12px 0 0;border-top:1px solid #e2e8f0;}
+}

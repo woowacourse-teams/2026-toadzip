@@ -45,3 +45,21 @@ it('페이지와 해결 이력을 조회하고 분류를 바꾸면 첫 페이지
   fireEvent.change(screen.getByLabelText('조회 범위'), { target: { value: 'history' } })
   await waitFor(() => expect(fetchFailures).toHaveBeenLastCalledWith('collection', true, 0))
 })
+
+it('수집 요청은 지역명과 조치로 표시하고 요청 문자열은 상세에 보존한다', async () => {
+  const request = 'brtcCode=47&signguCode=130&pageNo=1&numOfRows=500'
+  fetchFailures.mockResolvedValue([{...row,target:request,sourceKey:request,source:'MYHOME_COMPLEX',
+    reason:'ExternalDataRequestException',detail:'HTTP 429, resultCode=23, 초당 서비스 요청제한 횟수 초과 에러',
+    executionId:'old-run',raw:{requestDescription:request}}])
+  render(<IngestFailurePanel initialCategory="collection" executionId="run-1" />, {wrapper:MemoryRouter})
+  expect(await screen.findByText('경상북도 경주시')).toBeVisible()
+  expect(screen.getByText('마이홈 단지 수집')).toBeVisible()
+  expect(screen.getByText('요청 1페이지 · 페이지당 500건')).toBeVisible()
+  expect(screen.getByText('요청 속도 제한')).toBeVisible()
+  expect(screen.getByText('다른 실행 기록')).toBeVisible()
+  expect(screen.getByText('이 페이지 1건 · 선택한 실행에서 발생 0건')).toBeVisible()
+  expect(screen.getByText(`원천 키: ${request}`)).not.toBeVisible()
+  fireEvent.click(screen.getByText('요청·오류 원문 보기'))
+  expect(screen.getByText(`원천 키: ${request}`)).toBeVisible()
+  expect(screen.getByText(/미해결 · 발생/)).toBeVisible()
+})
