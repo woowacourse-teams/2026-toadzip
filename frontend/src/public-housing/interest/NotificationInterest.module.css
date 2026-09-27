@@ -1,0 +1,55 @@
+.button, .bell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: var(--text);
+  cursor: pointer;
+}
+.bell { flex: 0 0 40px; width: 40px; padding: 8px; }
+.button svg, .bell svg { width: 20px; height: 20px; }
+.button:disabled, .bell:disabled { opacity: 0.6; cursor: wait; }
+.button:focus-visible, .bell:focus-visible, .dialog button:focus-visible { outline: 2px solid var(--primary, #2563eb); outline-offset: 2px; }
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 35%);
+}
+.dialog {
+  width: min(440px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  border-radius: 14px;
+  padding: 24px;
+  background: var(--surface, #fff);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 18%);
+}
+.dialog h2 { margin: 0 0 16px; font-size: 1.2rem; }
+.target { font-weight: 700; overflow-wrap: anywhere; }
+.notice { color: var(--muted); font-size: 0.875rem; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.dialog button, .error button { min-height: 40px; padding: 8px 12px; cursor: pointer; }
+.error { color: #a12622; }
+.feedback {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 101;
+  width: min(440px, calc(100% - 32px));
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  box-shadow: 0 4px 20px rgb(0 0 0 / 15%);
+}
+.feedback p { margin: 0; font-size: 0.875rem; }

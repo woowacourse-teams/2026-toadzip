@@ -17,6 +17,7 @@ import { formatHousingMoney } from '../presentation/housingMoney'
 import { MISSING_DATA_LABEL } from '../presentation/missingData'
 import { AnnouncementStatusBadge } from './AnnouncementStatusBadge'
 import styles from './HousingComplexDetailPanel.module.css'
+import { NotificationInterestButton } from '../interest/NotificationInterest'
 
 export interface HousingComplexDetailSupplyCondition {
   readonly target: string | null
@@ -190,6 +191,10 @@ export function HousingComplexDetailPanel({
             </p>
           </div>
           <p className={styles.address}>{displayAddress(detail)}</p>
+          <NotificationInterestButton
+            target={{ type: 'COMPLEX', id: detail.complexId, name: detail.name }}
+            source="COMPLEX_DETAIL"
+          />
         </section>
 
         <CurrentAnnouncements

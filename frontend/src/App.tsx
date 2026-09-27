@@ -7,9 +7,11 @@ import { RequireAdmin } from './admin/auth/RequireAdmin'
 import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHousingExplorer.tsx'
 import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { UserSessionControl } from './user/auth/UserSessionControl'
+import { NotificationInterestProvider } from './public-housing/interest/NotificationInterest'
 
 function Home() {
   return (
+    <NotificationInterestProvider>
     <div className="app-shell">
       <header className="service-header" aria-label="서비스 헤더">
         <Link className="brand-link" to="/" aria-label="공공주택 복덕방 홈">
@@ -37,6 +39,7 @@ function Home() {
         <DefaultPublicHousingExplorer />
       </main>
     </div>
+    </NotificationInterestProvider>
   )
 }
 
