@@ -9,6 +9,7 @@ import {
 } from './integratedSearchRepository.ts'
 import styles from './IntegratedSearch.module.css'
 import { findRegionBoundaryMetadata } from '../regions/regionBoundaryCatalog.ts'
+import { NotificationInterestButton } from '../interest/NotificationInterest'
 
 interface GroupState {
   readonly items: readonly SearchResultItem[]
@@ -169,7 +170,7 @@ function SearchGroup({
             && (item.latitude === null || item.longitude === null)
             && !findRegionBoundaryMetadata(item.regionCode ?? item.id)
           return (
-            <li key={`${item.type}-${item.id}`}>
+            <li key={`${item.type}-${item.id}`} className={item.type === 'REGION' ? styles.regionRow : undefined}>
               <button
                 type="button"
                 disabled={unavailable}
@@ -182,6 +183,13 @@ function SearchGroup({
                 {item.applicationStatus && <span>{statusLabel(item.applicationStatus)}</span>}
                 {unavailable && <span className={styles.unavailable}>위치 정보 준비 중</span>}
               </button>
+              {item.type === 'REGION' && item.regionCode && (
+                <NotificationInterestButton
+                  target={{ type: 'REGION', id: item.regionCode, name: item.title }}
+                  source="REGION_SEARCH"
+                  iconOnly
+                />
+              )}
             </li>
           )
         })}

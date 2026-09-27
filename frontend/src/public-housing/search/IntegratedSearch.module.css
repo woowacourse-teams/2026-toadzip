@@ -56,3 +56,15 @@
 .more {
   width: 100%;
 }
+
+.regionRow { display: flex; align-items: center; }
+.regionRow .result { min-width: 0; flex: 1; }
+.regionRow > button + button {
+  display: inline-flex;
+  flex: 0 0 40px;
+  width: 40px;
+  padding: 8px;
+  margin-right: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { IntegratedSearch } from './IntegratedSearch.tsx'
+import { NotificationInterestProvider } from '../interest/NotificationInterest'
 import type {
   IntegratedSearchRepository,
   IntegratedSearchResponse,
@@ -12,6 +13,24 @@ vi.mock('../regions/regionBoundaryCatalog.ts', () => ({
 }))
 
 describe('IntegratedSearch', () => {
+  it('지역 종 버튼은 지역 이동 없이 알림 의사만 묻는다', async () => {
+    localStorage.clear()
+    const record = vi.fn().mockResolvedValue(undefined)
+    const onSelect = vi.fn()
+    render(
+      <NotificationInterestProvider repository={{ record }}>
+        <IntegratedSearch repository={repositoryWith(response([], [], [item('REGION', '11', '서울특별시')]))} onSelect={onSelect} />
+      </NotificationInterestProvider>,
+    )
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })
+    fireEvent.click(await screen.findByRole('button', { name: '서울특별시 알림 받기' }))
+    expect(await screen.findByRole('dialog')).toHaveTextContent('이 지역에 대한 알림을 받으시겠습니까?')
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(record).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'CLICKED', source: 'REGION_SEARCH', targetType: 'REGION', targetId: '11',
+    }))
+  })
+
   it('검색창만 표시하다 공백을 제외한 두 글자부터 검색하고 지우면 목록을 닫는다', async () => {
     vi.useFakeTimers()
     try {
