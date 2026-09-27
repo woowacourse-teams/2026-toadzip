@@ -6,6 +6,7 @@ import com.toadzip.backend.ingest.collection.repository.ExternalDataFailureStore
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import java.time.Clock;
 import java.util.Collection;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -54,6 +55,13 @@ public class ExternalDataFailureRecorder {
                 safeReason,
                 sanitizedException(details.exception(), safeReason)
         );
+    }
+
+    public Set<String> findPendingRequestDescriptions(
+            ExternalDataSource source,
+            Collection<String> requestDescriptions
+    ) {
+        return store.findPendingRequestDescriptions(source, requestDescriptions);
     }
 
     public void resolve(ExternalDataSource source, String requestDescription) {

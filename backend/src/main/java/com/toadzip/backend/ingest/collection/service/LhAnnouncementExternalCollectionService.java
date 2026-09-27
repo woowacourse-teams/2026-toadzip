@@ -339,12 +339,16 @@ public class LhAnnouncementExternalCollectionService {
             progress = measurePreparation(targetSource, false, "checkpoint_read",
                     () -> findProgress(targetSource, requests, refreshTtlByRequest));
         }
+        Set<String> pendingConflicts = measurePreparation(targetSource, forceRefresh, "failure_read",
+                () -> failureRecorder.findPendingRequestDescriptions(targetSource, candidates.stream()
+                        .map(candidate -> sourceSelectionDescription(candidate.sourceAnnouncementKey())).toList()));
         // 배치의 판정 결과다. 이후 수집이 중단되면 실제 호출 수는 더 적을 수 있다.
         recordDecisions(targetSource, forceRefresh, requests, progress);
         return collectRequests(
                 targetSource,
                 requests,
                 progress,
+                pendingConflicts,
                 forceRefresh
         );
     }
@@ -440,6 +444,7 @@ public class LhAnnouncementExternalCollectionService {
             ExternalDataSource targetSource,
             List<List<Candidate>> requests,
             BatchProgress progress,
+            Set<String> pendingConflicts,
             boolean forceRefresh
     ) {
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
@@ -462,7 +467,7 @@ public class LhAnnouncementExternalCollectionService {
                     }
                     List<Candidate> request = requests.get(index);
                     Future<ExternalDataCollectionReport> result = completedRequests.submit(
-                            collectionTask(targetSource, request, progress, forceRefresh)
+                            collectionTask(targetSource, request, progress, pendingConflicts, forceRefresh)
                     );
                     running.put(result, index);
                     runningPanIds.add(request.getFirst().panId());
@@ -538,6 +543,7 @@ public class LhAnnouncementExternalCollectionService {
             ExternalDataSource targetSource,
             List<Candidate> requestCandidates,
             BatchProgress progress,
+            Set<String> pendingConflicts,
             boolean forceRefresh
     ) {
         Map<String, String> context = MDC.getCopyOfContextMap();
@@ -546,7 +552,7 @@ public class LhAnnouncementExternalCollectionService {
                 if (context != null) {
                     MDC.setContextMap(context);
                 }
-                return collectRequest(targetSource, requestCandidates, progress, forceRefresh);
+                return collectRequest(targetSource, requestCandidates, progress, pendingConflicts, forceRefresh);
             }
             finally {
                 MDC.clear();
@@ -558,6 +564,7 @@ public class LhAnnouncementExternalCollectionService {
             ExternalDataSource targetSource,
             List<Candidate> requestCandidates,
             BatchProgress progress,
+            Set<String> pendingConflicts,
             boolean forceRefresh
     ) {
         ExternalDataCollectionReport report = collectCandidate(
@@ -575,7 +582,10 @@ public class LhAnnouncementExternalCollectionService {
             }
         }
         for (Candidate candidate : requestCandidates) {
-            failureRecorder.resolve(targetSource, sourceSelectionDescription(candidate.sourceAnnouncementKey()));
+            String conflictRequest = sourceSelectionDescription(candidate.sourceAnnouncementKey());
+            if (pendingConflicts.contains(conflictRequest)) {
+                failureRecorder.resolve(targetSource, conflictRequest);
+            }
         }
         return report;
     }

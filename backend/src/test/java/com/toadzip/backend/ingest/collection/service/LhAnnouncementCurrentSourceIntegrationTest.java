@@ -16,11 +16,13 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.collection.domain.ExternalDataCollectionFailure;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogSourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionCheckpointRepository;
@@ -288,6 +290,63 @@ class LhAnnouncementCurrentSourceIntegrationTest {
         assertThat(failures.findById(failureId)).hasValueSatisfying(failure ->
                 assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.PENDING));
         assertThat(links.count()).isZero();
+    }
+
+    @Test
+    void 공유_요청의_캐시가_유효하면_외부_호출_없이_각_공고의_충돌_이력을_해결한다() {
+        sources.saveAll(List.of(source("P1", 1, "100", "current", NOW),
+                source("P2", 1, "100", "current", NOW)));
+        assertThat(collection.collect(DETAIL).externalApiCallCount()).isOne();
+        Long firstFailure = pendingConflict(DETAIL, "P1");
+        Long linkedFailure = pendingConflict(DETAIL, "P2");
+        Long otherApiFailure = pendingConflict(SUPPLY, "P1");
+        Long otherAnnouncementFailure = pendingConflict(DETAIL, "P3");
+
+        var report = collection.collect(DETAIL);
+
+        assertThat(report.failedRequestCount()).isZero();
+        assertThat(report.externalApiCallCount()).isZero();
+        assertFailureStatus(firstFailure, ExternalDataFailureStatus.RESOLVED);
+        assertFailureStatus(linkedFailure, ExternalDataFailureStatus.RESOLVED);
+        assertFailureStatus(otherApiFailure, ExternalDataFailureStatus.PENDING);
+        assertFailureStatus(otherAnnouncementFailure, ExternalDataFailureStatus.PENDING);
+        assertThat(checkpoints.findAll()).singleElement().satisfies(checkpoint ->
+                assertThat(checkpoint.getCompletedAt()).isEqualTo(NOW));
+    }
+
+    @Test
+    void 한_배치에서_성공한_공고의_충돌_이력만_해결하고_실패한_공고는_보존한다() {
+        sources.saveAll(List.of(source("P1", 1, "100", "current", NOW),
+                source("P2", 1, "200", "current", NOW)));
+        Long successfulFailure = pendingConflict(DETAIL, "P1");
+        Long unsuccessfulFailure = pendingConflict(DETAIL, "P2");
+        when(external.fetchDetail(any())).thenAnswer(invocation -> {
+            LhAnnouncementRequest request = invocation.getArgument(0);
+            if (request.panId().equals("200")) {
+                throw new ExternalDataRequestException("두 번째 공고 수집 실패");
+            }
+            return detailResponse();
+        });
+
+        var report = collection.collect(DETAIL);
+
+        assertThat(report.failedRequestCount()).isOne();
+        assertFailureStatus(successfulFailure, ExternalDataFailureStatus.RESOLVED);
+        assertFailureStatus(unsuccessfulFailure, ExternalDataFailureStatus.PENDING);
+        assertThat(links.findAll()).singleElement().satisfies(link ->
+                assertThat(link.getSourceAnnouncementKey()).isEqualTo("P1"));
+    }
+
+    private Long pendingConflict(ExternalDataSource targetSource, String identifier) {
+        return failures.save(ExternalDataCollectionFailure.create(
+                targetSource, "myhomeAnnouncementCurrentSource=" + identifier, NOW, 0,
+                "IllegalStateException", "과거 원천 요청 충돌"
+        )).getId();
+    }
+
+    private void assertFailureStatus(Long identifier, ExternalDataFailureStatus status) {
+        assertThat(failures.findById(identifier)).hasValueSatisfying(failure ->
+                assertThat(failure.getStatus()).isEqualTo(status));
     }
 
     private void excludeSource(MyHomeAnnouncementSource source, String exclusion) {

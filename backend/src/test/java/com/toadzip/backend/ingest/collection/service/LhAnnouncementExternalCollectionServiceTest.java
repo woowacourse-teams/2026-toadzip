@@ -382,7 +382,7 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"source_read", "source_group_read", "candidate_resolution", "checkpoint_read"})
+    @ValueSource(strings = {"source_read", "source_group_read", "candidate_resolution", "checkpoint_read", "failure_read"})
     void 준비_실패도_걸린_시간을_기록하고_원래_예외를_전파한다(String phase) {
         IllegalStateException failure = new IllegalStateException("준비 실패");
         org.mockito.stubbing.Answer<Object> fail = invocation -> {
@@ -403,6 +403,9 @@ class LhAnnouncementExternalCollectionServiceTest {
         }
         if (phase.equals("checkpoint_read")) {
             when(progressStore.findBatch(any(), any(), any(), any())).thenAnswer(fail);
+        }
+        if (phase.equals("failure_read")) {
+            doAnswer(fail).when(failureRecorder).findPendingRequestDescriptions(any(), any());
         }
 
         assertThatThrownBy(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)).isSameAs(failure);

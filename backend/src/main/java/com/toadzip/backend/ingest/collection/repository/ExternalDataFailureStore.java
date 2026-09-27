@@ -5,7 +5,9 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +32,19 @@ public class ExternalDataFailureStore {
                     failureRepository.save(failure);
                 }
         );
+    }
+
+    @Transactional(readOnly = true)
+    public Set<String> findPendingRequestDescriptions(
+            ExternalDataSource source,
+            Collection<String> requestDescriptions
+    ) {
+        if (requestDescriptions.isEmpty()) {
+            return Set.of();
+        }
+        return failureRepository.findAllBySourceAndRequestDescriptionInAndStatus(
+                source, requestDescriptions, ExternalDataFailureStatus.PENDING
+        ).stream().map(ExternalDataCollectionFailure::getRequestDescription).collect(Collectors.toUnmodifiableSet());
     }
 
     @Transactional
