@@ -4,11 +4,13 @@ import {
   render,
   screen,
   within,
+  waitFor,
 } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NaverMapProps } from '../maps/naver/NaverMap.tsx'
-import type { PublicHousingRepository } from './api/publicHousingRepository.ts'
+import { housingMapRepository } from './api/housingMapRepository.ts'
+import { defaultPublicHousingRepository } from './api/defaultPublicHousingRepository.ts'
 import { MINIMAL_PUBLIC_HOUSING_SNAPSHOT } from './testing/minimalPublicHousingSnapshot.ts'
 import {
   DefaultPublicHousingExplorer,
@@ -16,24 +18,57 @@ import {
 } from './DefaultPublicHousingExplorer.tsx'
 
 vi.mock('../maps/naver/NaverMap.tsx', () => ({
-  default: ({ markerRenderMode = 'legacy' }: NaverMapProps) => (
+  default: ({ representation, markers, onViewportChange }: NaverMapProps) => (
     <section aria-label="공공임대주택 지도">
-      <output data-testid="map-render-mode">{markerRenderMode}</output>
+      <output data-testid="map-representation">{representation}</output>
+      <output data-testid="map-complex-ids">
+        {markers?.map((marker) => marker.id).join(',')}
+      </output>
+      <button type="button" onClick={() => onViewportChange?.({
+        bounds: {
+          southWestLat: 37.4,
+          southWestLng: 126.8,
+          northEastLat: 37.7,
+          northEastLng: 127.1,
+        },
+        center: { latitude: 37.55, longitude: 126.95 },
+        zoom: 9,
+      })}>
+        지도 범위 알림
+      </button>
     </section>
   ),
 }))
 
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
 const SNAPSHOT = MINIMAL_PUBLIC_HOUSING_SNAPSHOT
 
 describe('DefaultPublicHousingExplorer', () => {
-  it('일반 실행에서는 서버 지도 repository를 연결한다', () => {
+  it('일반 실행에서는 서버 지도 repository를 연결한다', async () => {
+    const findMap = vi.spyOn(housingMapRepository, 'findMap').mockResolvedValue({
+      resolvedStage: 1,
+      representation: 'AGGREGATE',
+      policyVersion: 'test',
+      regionDatasetVersion: 'test',
+      nodes: [],
+    })
+    vi.spyOn(defaultPublicHousingRepository, 'findComplexPage').mockResolvedValue({
+      items: [], nextCursor: null, hasNext: false,
+      raw: { items: [], nextCursor: null, hasNext: false },
+    })
     render(
       <MemoryRouter>
         <DefaultPublicHousingExplorer />
       </MemoryRouter>,
     )
 
-    expect(screen.getByTestId('map-render-mode')).toHaveTextContent('server')
+    fireEvent.click(screen.getByRole('button', { name: '지도 범위 알림' }))
+
+    await waitFor(() => expect(findMap).toHaveBeenCalledOnce())
+    expect(screen.getByTestId('map-representation')).toHaveTextContent('AGGREGATE')
   })
 })
 
@@ -55,7 +90,24 @@ describe('LocalPublicHousingExplorer', () => {
     expect(await screen.findByRole('complementary', { name: '공공임대주택 검색 결과' }))
       .toBeVisible()
     expect(screen.queryByText('로컬 mock')).not.toBeInTheDocument()
-    expect(screen.getByTestId('map-render-mode')).toHaveTextContent('legacy')
+    fireEvent.click(screen.getByRole('button', { name: '지도 범위 알림' }))
+    await waitFor(() => expect(screen.getByTestId('map-complex-ids')).toHaveTextContent('17'))
+    expect(screen.getByTestId('map-representation')).toHaveTextContent('INDIVIDUAL')
+  })
+
+  it('snapshot의 통합 검색 결과를 선택해 외부 요청 없이 단지 상세를 연다', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    renderLocalExplorer(vi.fn().mockResolvedValue(SNAPSHOT))
+    await screen.findByRole('complementary', { name: '공공임대주택 검색 결과' })
+
+    fireEvent.change(screen.getByRole('searchbox', { name: '지역, 단지, 공고 검색' }), {
+      target: { value: '서울가람' },
+    })
+    const result = await screen.findByRole('button', { name: /서울가람 행복주택/ })
+    fireEvent.click(result)
+
+    expect(await screen.findByRole('heading', { name: '서울가람 행복주택' })).toBeVisible()
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   it('파일 오류를 안내하고 사용자가 다시 불러올 수 있다', async () => {
@@ -115,18 +167,7 @@ function renderLocalExplorer(loadSnapshot: () => Promise<unknown>) {
     <MemoryRouter>
       <LocalPublicHousingExplorer
         loadSnapshot={loadSnapshot}
-        repository={emptyRepository()}
       />
     </MemoryRouter>,
   )
-}
-
-function emptyRepository(): PublicHousingRepository {
-  return {
-    findAnnouncementDetail: vi.fn(),
-    findAnnouncementPage: vi.fn(),
-    findComplexDetail: vi.fn(),
-    findComplexPage: vi.fn(),
-    findMapComplexes: vi.fn(),
-  }
 }

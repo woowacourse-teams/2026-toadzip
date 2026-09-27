@@ -108,12 +108,6 @@ export function toComplexDetail(raw: RawComplexDetail): ComplexDetail {
   }
 }
 
-export function toMapComplexes(
-  rawItems: readonly RawMapComplex[],
-): readonly MapComplex[] {
-  return rawItems.filter(hasValidCoordinates).map(toMapComplex)
-}
-
 function toComplexListItem(raw: RawComplexListItem): ComplexListItem {
   return {
     complexId: canonicalId(raw.complexId),
@@ -320,13 +314,4 @@ export function toMapComplex(raw: RawMapComplex): MapComplex {
 
 function canonicalId(id: number): string {
   return String(id)
-}
-
-function hasValidCoordinates(raw: RawMapComplex): boolean {
-  return (
-    raw.latitude >= -90 &&
-    raw.latitude <= 90 &&
-    raw.longitude >= -180 &&
-    raw.longitude <= 180
-  )
 }
