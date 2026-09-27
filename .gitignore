@@ -13,6 +13,11 @@ Desktop.ini
 .env.*
 !.env.example
 
+# Local agent planning artifacts (never commit)
+/docs/superpowers/plans/
+/docs/superpowers/specs/
+/.superpowers/
+
 # Logs and JVM error reports
 *.log
 hs_err_pid*

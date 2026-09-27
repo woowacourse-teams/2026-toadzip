@@ -1,3 +1,5 @@
+import { Button } from '../../design-system/components/Button'
+import { IconButton } from '../../design-system/components/IconButton'
 import { formatHousingMoney } from '../presentation/housingMoney.ts'
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -187,11 +189,11 @@ export function SearchFilterPanel({
               초기화
             </button>
             <h2>{label} 필터</h2>
-            <button ref={closeRef} className={styles.close} type="button" aria-label={`${label} 필터 닫기`} onClick={close}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+            <IconButton ref={closeRef} className={styles.close} type="button" label={`${label} 필터 닫기`} onClick={close}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" focusable="false">
                 <path d="m5 5 14 14M19 5 5 19" />
               </svg>
-            </button>
+            </IconButton>
           </div>
           <div className={styles.fields}>
             <div className={styles.grid}>
@@ -294,9 +296,9 @@ export function SearchFilterPanel({
           )}
 
           <div className={styles.actions}>
-            <button className={styles.apply} type="submit">
+            <Button className={styles.apply} type="submit">
               {label} 필터 적용
-            </button>
+            </Button>
           </div>
         </form>
       )}
