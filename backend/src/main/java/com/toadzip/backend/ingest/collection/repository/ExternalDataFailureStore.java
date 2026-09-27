@@ -4,6 +4,7 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataCollectionFailur
 import com.toadzip.backend.ingest.collection.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,6 +58,22 @@ public class ExternalDataFailureStore {
                 ExternalDataFailureStatus.PENDING,
                 requestDescriptionPrefix
         ).forEach(failure -> failure.resolve(resolvedAt, executionId));
+    }
+
+    @Transactional
+    public void skipAll(
+            ExternalDataSource source,
+            Collection<String> requestDescriptions,
+            Instant skippedAt,
+            String skipReason,
+            UUID executionId
+    ) {
+        if (requestDescriptions.isEmpty()) {
+            return;
+        }
+        failureRepository.findAllBySourceAndRequestDescriptionInAndStatus(
+                source, requestDescriptions, ExternalDataFailureStatus.PENDING
+        ).forEach(failure -> failure.skip(skippedAt, skipReason, executionId));
     }
 
     @Transactional

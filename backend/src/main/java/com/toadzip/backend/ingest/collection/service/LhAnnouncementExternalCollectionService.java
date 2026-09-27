@@ -215,6 +215,9 @@ public class LhAnnouncementExternalCollectionService {
         recordCount(targetSource, forceRefresh, "source.rows", "duplicate", selection.duplicateCount());
         recordCount(targetSource, forceRefresh, "source.rows", "historical", sources.size() - current.size());
         recordCount(targetSource, forceRefresh, "candidates", "conflicting", selection.conflicts().size());
+        failureRecorder.skipAll(targetSource,
+                selection.excludedSourceKeys().stream().map(this::sourceSelectionDescription).toList(),
+                "현재 마이홈 공고 원천이 모두 LH 수집 대상에서 제외되어 충돌 재처리를 건너뜁니다.");
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
         for (Candidate conflict : selection.conflicts()) {
             report = report.plus(conflictReport(targetSource, conflict));
@@ -234,6 +237,9 @@ public class LhAnnouncementExternalCollectionService {
             boolean forceRefresh
     ) {
         Set<String> conflictingKeys = conflictingSourceKeys(resolutions);
+        Set<String> excludedSourceKeys = resolutions.stream()
+                .map(Resolution::sourceAnnouncementKey)
+                .collect(Collectors.toSet());
         List<Candidate> conflicts = new ArrayList<>();
         List<Candidate> candidates = new ArrayList<>();
         List<Skipped> skippedSources = new ArrayList<>();
@@ -256,6 +262,7 @@ public class LhAnnouncementExternalCollectionService {
                     continue;
                 }
             }
+            excludedSourceKeys.remove(candidate.sourceAnnouncementKey());
             if (conflictingKeys.contains(candidate.sourceAnnouncementKey())) {
                 addConflict(candidate, visitedSourceAnnouncements, conflicts);
                 continue;
@@ -274,7 +281,8 @@ public class LhAnnouncementExternalCollectionService {
             candidates.add(candidate);
         }
         return new CandidateSelection(
-                candidates, refreshTtlByRequest, skippedSources, conflicts, policyExcludedCount, duplicateCount
+                candidates, refreshTtlByRequest, skippedSources, conflicts, excludedSourceKeys,
+                policyExcludedCount, duplicateCount
         );
     }
 
@@ -300,14 +308,14 @@ public class LhAnnouncementExternalCollectionService {
     }
 
     private ExternalDataCollectionReport conflictReport(ExternalDataSource targetSource, Candidate conflict) {
-        failureRecorder.record(targetSource, sourceSelectionDescription(conflict),
+        failureRecorder.record(targetSource, sourceSelectionDescription(conflict.sourceAnnouncementKey()),
                 new IllegalStateException("현재 마이홈 공고 원천의 LH 요청이 서로 다릅니다: pblancId="
                         + conflict.sourceAnnouncementKey()), log, "LH 현재 원천 선택 실패");
         return new ExternalDataCollectionReport(targetSource.operation(), 0, 1, 0);
     }
 
-    private String sourceSelectionDescription(Candidate candidate) {
-        return "myhomeAnnouncementCurrentSource=" + candidate.sourceAnnouncementKey();
+    private String sourceSelectionDescription(String sourceAnnouncementKey) {
+        return "myhomeAnnouncementCurrentSource=" + sourceAnnouncementKey;
     }
 
     private ExternalDataCollectionReport collectCandidates(
@@ -422,6 +430,7 @@ public class LhAnnouncementExternalCollectionService {
             Map<String, Duration> refreshTtlByRequest,
             List<Skipped> skipped,
             List<Candidate> conflicts,
+            Set<String> excludedSourceKeys,
             int policyExcludedCount,
             int duplicateCount
     ) {
@@ -566,7 +575,7 @@ public class LhAnnouncementExternalCollectionService {
             }
         }
         for (Candidate candidate : requestCandidates) {
-            failureRecorder.resolve(targetSource, sourceSelectionDescription(candidate));
+            failureRecorder.resolve(targetSource, sourceSelectionDescription(candidate.sourceAnnouncementKey()));
         }
         return report;
     }

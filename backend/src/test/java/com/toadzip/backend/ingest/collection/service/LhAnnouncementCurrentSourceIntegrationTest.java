@@ -43,10 +43,13 @@ import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.json.JsonMapper;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
@@ -235,6 +238,65 @@ class LhAnnouncementCurrentSourceIntegrationTest {
         assertThat(links.findAll()).singleElement().satisfies(link -> assertThat(link.getPanId()).isEqualTo("200"));
         assertThat(failures.findAll()).singleElement().satisfies(failure ->
                 assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.RESOLVED));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"expired", "non_lh", "unsupported"})
+    void 충돌_공고가_수집_대상에서_빠지면_기존_실패를_건너뜀으로_정리한다(String exclusion) {
+        MyHomeAnnouncementSource first = sources.save(source("P1", 1, "100", "current", NOW));
+        MyHomeAnnouncementSource second = sources.save(source("P1", 2, "200", "current", NOW));
+        assertThat(collection.collect(DETAIL).failedRequestCount()).isOne();
+        Long failureId = failures.findAll().getFirst().getId();
+        excludeSource(first, exclusion);
+        excludeSource(second, exclusion);
+        sources.saveAll(List.of(first, second));
+
+        var excluded = collection.collect(DETAIL);
+
+        assertThat(excluded.failedRequestCount()).isZero();
+        assertThat(excluded.externalApiCallCount()).isZero();
+        assertThat(failures.findAll()).singleElement().satisfies(failure -> {
+            assertThat(failure.getId()).isEqualTo(failureId);
+            assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.SKIPPED);
+        });
+        assertThat(links.count()).isZero();
+
+        first.replaceWith(snapshot("P1", 1, "100", "20261030"));
+        second.replaceWith(snapshot("P1", 2, "200", "20261030"));
+        sources.saveAll(List.of(first, second));
+        assertThat(collection.collect(DETAIL).failedRequestCount()).isOne();
+        assertThat(failures.findAll()).singleElement().satisfies(failure -> {
+            assertThat(failure.getId()).isEqualTo(failureId);
+            assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.PENDING);
+            assertThat(failure.getRecurrenceCount()).isOne();
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"expired", "non_lh", "unsupported"})
+    void 일부_원천만_제외되고_충돌이나_수집_실패가_남으면_기존_보류를_유지한다(String exclusion) {
+        MyHomeAnnouncementSource first = sources.save(source("P1", 1, "100", "current", NOW));
+        sources.save(source("P1", 2, "200", "current", NOW));
+        assertThat(collection.collect(DETAIL).failedRequestCount()).isOne();
+        Long failureId = failures.findAll().getFirst().getId();
+        excludeSource(first, exclusion);
+        sources.save(first);
+        when(external.fetchDetail(any())).thenThrow(new ExternalDataRequestException("현재 요청 수집 실패"));
+
+        assertThat(collection.collect(DETAIL).failedRequestCount()).isOne();
+
+        assertThat(failures.findById(failureId)).hasValueSatisfying(failure ->
+                assertThat(failure.getStatus()).isEqualTo(ExternalDataFailureStatus.PENDING));
+        assertThat(links.count()).isZero();
+    }
+
+    private void excludeSource(MyHomeAnnouncementSource source, String exclusion) {
+        switch (exclusion) {
+            case "expired" -> ReflectionTestUtils.setField(source, "endDe", "20260801");
+            case "non_lh" -> ReflectionTestUtils.setField(source, "suplyInsttNm", "SH");
+            case "unsupported" -> ReflectionTestUtils.setField(source, "suplyTyNm", "미지원 유형");
+            default -> throw new IllegalArgumentException("알 수 없는 수집 제외 조건: " + exclusion);
+        }
     }
 
     private void saveHousingComplex() {
