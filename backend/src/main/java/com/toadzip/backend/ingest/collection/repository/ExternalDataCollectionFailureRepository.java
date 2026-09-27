@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.collection.repository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataCollectionFailure;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Pageable;
@@ -14,6 +15,12 @@ public interface ExternalDataCollectionFailureRepository extends JpaRepository<E
     List<ExternalDataCollectionFailure> findAllBySourceAndRequestDescriptionAndStatus(
             ExternalDataSource source,
             String requestDescription,
+            ExternalDataFailureStatus status
+    );
+
+    List<ExternalDataCollectionFailure> findAllBySourceAndRequestDescriptionInAndStatus(
+            ExternalDataSource source,
+            Collection<String> requestDescriptions,
             ExternalDataFailureStatus status
     );
 
