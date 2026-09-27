@@ -8,6 +8,7 @@ import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHous
 import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { UserSessionControl } from './user/auth/UserSessionControl'
 import { NotificationInterestProvider } from './public-housing/interest/NotificationInterest'
+import { NotificationSettings } from './public-housing/interest/NotificationSettings'
 
 function Home() {
   return (
@@ -34,6 +35,7 @@ function Home() {
           <span className="brand-tagline">공공임대주택 지도</span>
         </Link>
         <UserSessionControl />
+        <NotificationSettings />
       </header>
       <main className="map-main">
         <DefaultPublicHousingExplorer />
