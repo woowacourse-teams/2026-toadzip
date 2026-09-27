@@ -53,7 +53,9 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertTrue(history.next()),
-                        () -> assertEquals(10, history.getInt(1)),
+                        () -> assertEquals(11, history.getInt(1)),
+                        () -> assertEquals(1, countColumn(connection,
+                                "notification_interest_events", "event_id")),
                         () -> assertEquals(1, countColumn(connection,
                                 "admin_announcement_imports", "original_json")),
                         () -> assertEquals(1, countColumn(connection,
@@ -148,9 +150,10 @@ class LocalProfileSchemaPersistenceTest {
                 assertTrue(history.next());
                 assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02,SQL:20260923.01"
                                 + ",SQL:20260923.02,SQL:20260924.01,SQL:20260925.01,SQL:20260925.02"
-                                + ",SQL:20260925.03,SQL:20260926.01,SQL:20260926.02",
+                                + ",SQL:20260925.03,SQL:20260926.01,SQL:20260926.02,SQL:20260927.01",
                         history.getString(1));
                 assertEquals(1, countColumn(connection, "admin_announcement_imports", "original_json"));
+                assertEquals(1, countColumn(connection, "notification_interest_events", "event_id"));
                 assertEquals(1, countColumn(connection, "announcements", "lh_reception_place_owned"));
                 assertEquals(1, countColumn(connection, "announcements", "application_schedule_reviewed"));
                 assertEquals(1, countColumn(connection, "announcements", "lh_pan_id_reviewed"));

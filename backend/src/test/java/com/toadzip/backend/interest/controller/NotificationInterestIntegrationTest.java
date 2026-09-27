@@ -65,7 +65,7 @@ class NotificationInterestIntegrationTest {
     }
 
     @Test
-    void 마이그레이션은_이벤트_중복과_미지원_유형을_거절한다() throws Exception {
+    void 마이그레이션은_중복_이벤트를_한번만_저장한다() throws Exception {
         String migration = new ClassPathResource("db/migration/V20260927_01__create_notification_interest_events.sql")
                 .getContentAsString(StandardCharsets.UTF_8);
         jdbcTemplate.execute(migration.replace("notification_interest_events", "notification_interest_migration_test"));

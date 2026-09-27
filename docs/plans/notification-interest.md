@@ -17,6 +17,7 @@
 3. 지역 검색 종 버튼: 지역 이동 버튼과 분리하고 기존 검색 결과의 지역 코드 사용.
 4. 독립 알림 설정: 기존 검색으로 지역·단지 선택 후 동일 알림 버튼 사용.
 5. 공고 알림: 상세 진입점과 수요 집계 SQL, 통합 검증.
+6. 브라우저 검증 보완: 동시 CSRF 초기화, 알림 화면 레이어·헤더 배치, 클릭 후 포커스 복원.
 
 ## 데이터와 지표
 
@@ -38,3 +39,18 @@
 - 키보드·Escape·포커스 복원과 모바일 확인.
 - frontend npm run check, 테스트 PostgreSQL에서 backend ./gradlew --rerun-tasks check.
 - 마이그레이션 SQL을 배포 전에 적용하고 실제 DB 저장·집계를 확인.
+
+## 구현과 운영
+
+- 이슈: https://github.com/woowacourse-teams/2026-toadzip/issues/235
+- POST /api/v1/notification-interest-events, 성공 204. 로그인 불필요, 기존 /api/auth/csrf 토큰 필요.
+- targetType은 REGION/COMPLEX/ANNOUNCEMENT. source는 SETTING/REGION_SEARCH/COMPLEX_DETAIL/ANNOUNCEMENT_DETAIL.
+- SETTING은 지역·단지, 나머지는 해당 대상만 허용한다. 존재하지 않는 대상·잘못된 입력은 400.
+- DB unique(event_id)와 ON CONFLICT로 동시 재전송도 중복 저장하지 않는다.
+- 동시에 노출되는 버튼들은 CSRF 초기화를 공유하여 최초 쿠키 발급 충돌을 방지한다.
+- 최초 질문은 확인·취소 기록 성공 시 완료된다. 저장 실패면 질문을 유지하고 같은 eventId로 재시도한다.
+- 노출 수집 실패는 콘솔에 진단을 남긴다. 집계에서 노출 없는 클릭은 클릭률 분자에서 제외한다.
+- [집계 SQL](../queries/notification-interest-metrics.sql)은 읽기 전용이며 대시보드 없이 사용한다.
+- 실험 종료 후 집계본을 남기고 원본은 운영 담당자가 삭제한다. 90일을 넘기기 전에 삭제한다.
+- 배포 시 Flyway가 V20260927_01을 실행한 뒤 Hibernate validate가 확인한다. 기존 테이블·데이터 변경은 없다.
+- 앱 롤백 시 이벤트 테이블은 남겨 호환성을 유지한다. 테이블 삭제는 별도 운영 작업이다.

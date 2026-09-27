@@ -28,6 +28,7 @@ import {
 import { MISSING_DATA_LABEL } from '../presentation/missingData'
 import { formatHousingMoney } from '../presentation/housingMoney'
 import styles from './HousingAnnouncementDetailPanel.module.css'
+import { NotificationInterestButton } from '../interest/NotificationInterest'
 
 export interface HousingAnnouncementDetailReceptionPlace {
   readonly name: string | null
@@ -196,6 +197,10 @@ export function HousingAnnouncementDetailPanel({
         tabIndex={0}
       >
         <NoticeIntro detail={detail} groups={groups} />
+        <NotificationInterestButton
+          target={{ type: 'ANNOUNCEMENT', id: detail.announcementId, name: title }}
+          source="ANNOUNCEMENT_DETAIL"
+        />
         <CoreInformation detail={detail} />
         <ReasonNotice detail={detail} />
         <AudienceSection targets={detail.targets} />

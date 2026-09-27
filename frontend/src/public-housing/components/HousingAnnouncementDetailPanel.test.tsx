@@ -15,8 +15,25 @@ import {
   HousingAnnouncementDetailPanel,
   type HousingAnnouncementDetailData,
 } from './HousingAnnouncementDetailPanel.tsx'
+import { NotificationInterestProvider } from '../interest/NotificationInterest'
 
 describe('HousingAnnouncementDetailPanel', () => {
+  it('최초 질문을 마친 브라우저의 공고 알림은 확인창 없이 클릭만 기록한다', async () => {
+    localStorage.setItem('toadzip.notification-interest.prompt-completed', '1')
+    const record = vi.fn().mockResolvedValue(undefined)
+    render(
+      <NotificationInterestProvider repository={{ record }}>
+        <HousingAnnouncementDetailPanel detail={detail()} onClose={vi.fn()} />
+      </NotificationInterestProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '성남 행복주택 예비입주자 모집 알림 받기' }))
+    await waitFor(() => expect(record).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'CLICKED', source: 'ANNOUNCEMENT_DETAIL', targetType: 'ANNOUNCEMENT', targetId: '201',
+    })))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    localStorage.clear()
+  })
+
   it('상세 제목에 focus를 옮길 때 목록과 페이지를 스크롤하지 않는다', () => {
     const focus = vi.spyOn(HTMLHeadingElement.prototype, 'focus')
     renderPanel()
