@@ -229,6 +229,26 @@ a {
   font-size: 13px;
 }
 
+.service-header:has([aria-controls="notification-settings"]) .brand-tagline {
+  display: none;
+}
+
+.service-header:has([aria-controls="notification-settings"]) .brand-link {
+  min-width: 0;
+}
+
+.service-header:has([aria-controls="notification-settings"]) .brand-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.service-header:has([aria-controls="notification-settings"]) .service-user-control {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .service-login-link {
   padding: 8px 12px;
   border-radius: 8px;

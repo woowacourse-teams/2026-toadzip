@@ -49,13 +49,12 @@ export function NotificationInterestProvider({ children, repository = notificati
   const inFlight = useRef(false)
   const completed = useRef(false)
   const trigger = useRef<HTMLButtonElement | null>(null)
-  const hadPrompt = useRef(false)
+  const restoreFocus = useRef(false)
   const exposed = useRef(new Set<string>())
 
   useEffect(() => {
-    if (prompt) hadPrompt.current = true
-    if (!prompt && !busy && hadPrompt.current) {
-      hadPrompt.current = false
+    if (!prompt && !busy && restoreFocus.current) {
+      restoreFocus.current = false
       trigger.current?.focus({ preventScroll: true })
     }
   }, [busy, prompt])
@@ -76,6 +75,7 @@ export function NotificationInterestProvider({ children, repository = notificati
       if (action.next === 'prompt') {
         setPrompt({ target: action.target, source: action.source })
       } else {
+        restoreFocus.current = true
         if (action.next === 'complete') {
           completed.current = true
           writeStorage('localStorage', promptKey, '1')

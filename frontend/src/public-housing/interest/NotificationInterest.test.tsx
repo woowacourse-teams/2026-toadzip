@@ -75,6 +75,7 @@ describe('알림 수요', () => {
     expect(record.mock.calls.map(([event]) => event.eventType))
       .toEqual(['CLICKED', 'CONFIRMED', 'CLICKED', 'CLICKED'])
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveFocus())
   })
 
   it('최초 취소도 질문을 마치며 신청으로 기록하지 않는다', async () => {

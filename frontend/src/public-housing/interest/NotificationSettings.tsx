@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { IntegratedSearch } from '../search/IntegratedSearch'
 import type { IntegratedSearchRepository, SearchResultItem } from '../search/integratedSearchRepository'
 import { NotificationInterestButton } from './NotificationInterest'
@@ -32,7 +33,7 @@ export function NotificationSettings({ searchRepository }: { readonly searchRepo
     <>
       <button ref={trigger} type="button" className={styles.trigger} aria-expanded={open}
         aria-controls="notification-settings" onClick={() => setOpen((current) => !current)}>알림 설정</button>
-      {open && (
+      {open && createPortal(
         <section ref={panel} id="notification-settings" className={styles.panel} aria-labelledby={titleId}
           onKeyDown={(event) => {
             if (event.key === 'Escape') { event.stopPropagation(); setOpen(false) }
@@ -50,7 +51,7 @@ export function NotificationSettings({ searchRepository }: { readonly searchRepo
             </div>
           )}
           <IntegratedSearch repository={searchRepository} onSelect={select} purpose="notification" />
-        </section>
+        </section>, document.body,
       )}
     </>
   )

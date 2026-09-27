@@ -18,7 +18,7 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: 4000;
   display: grid;
   place-items: center;
   padding: 16px;
@@ -44,7 +44,7 @@
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 101;
+  z-index: 4100;
   width: min(440px, calc(100% - 32px));
   padding: 12px 16px;
   border: 1px solid var(--border);

@@ -8,6 +8,16 @@ const event: NotificationInterestEvent = {
 }
 
 describe('알림 수요 저장 경계', () => {
+  it('동시 노출 요청은 CSRF 초기화를 공유한다', async () => {
+    const fetcher = vi.fn().mockImplementation(async (url: string) => url.endsWith('/csrf')
+      ? new Response(JSON.stringify({ token: 'test-token', headerName: 'X-XSRF-TOKEN' }))
+      : new Response(null, { status: 204 }))
+    const repository = createNotificationInterestRepository(fetcher)
+    await Promise.all([repository.record(event), repository.record({ ...event, eventId: '00000000-0000-4000-8000-000000000003' })])
+    expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith('/csrf'))).toHaveLength(1)
+    expect(fetcher).toHaveBeenCalledTimes(3)
+  })
+
   it('공개 CSRF 토큰과 쿠키를 사용하여 이벤트만 전송한다', async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ token: 'test-token', headerName: 'X-XSRF-TOKEN' })))

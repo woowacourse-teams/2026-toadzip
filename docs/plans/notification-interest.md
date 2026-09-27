@@ -54,3 +54,12 @@
 - 실험 종료 후 집계본을 남기고 원본은 운영 담당자가 삭제한다. 90일을 넘기기 전에 삭제한다.
 - 배포 시 Flyway가 V20260927_01을 실행한 뒤 Hibernate validate가 확인한다. 기존 테이블·데이터 변경은 없다.
 - 앱 롤백 시 이벤트 테이블은 남겨 호환성을 유지한다. 테이블 삭제는 별도 운영 작업이다.
+
+## 최종 검증
+
+- backend ./gradlew --rerun-tasks check: 1,560개 테스트 통과. PostgreSQL 저장, 동시 중복 방지, Flyway 신규·기존 스키마 검증 포함.
+- frontend npm run check: 55개 파일, 849개 테스트 통과. lint·TypeScript·프로덕션 빌드 통과.
+- 실제 브라우저: 최초 지역 확인과 포커스 복원, 다른 지역 클릭, 새로고침 후 지역 종·단지·공고 클릭 확인.
+- 390×844 모바일과 1440×900 데스크톱에서 알림 화면·헤더·종 버튼 표시 확인.
+- 격리된 임시 DB에서 SETTING/REGION_SEARCH/COMPLEX_DETAIL/ANNOUNCEMENT_DETAIL 클릭, 최초 CONFIRMED 1건을 확인. 집계 SQL 실행 성공.
+- 지도 Client ID 없이 검증했으므로 실제 NAVER 지도 렌더링은 확인하지 않음. 기존 빌드의 500 kB 청크 경고는 유지.

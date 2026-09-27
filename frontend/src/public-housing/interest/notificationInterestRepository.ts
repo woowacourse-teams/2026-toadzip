@@ -25,17 +25,26 @@ export function createNotificationInterestRepository(
   fetcher: typeof globalThis.fetch = globalThis.fetch,
 ): NotificationInterestRepository {
   const baseUrl = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:8080' : '')
+  let csrfRequest: Promise<{ token: string; headerName: string }> | null = null
+
+  async function loadCsrf() {
+    const csrfResponse = await fetcher(`${baseUrl}/api/auth/csrf`, { credentials: 'include' })
+    if (!csrfResponse.ok) throw new Error('관심을 기록할 준비를 하지 못했습니다.')
+    const csrf: unknown = await csrfResponse.json()
+    if (typeof csrf !== 'object' || csrf === null
+      || !('token' in csrf) || typeof csrf.token !== 'string' || !csrf.token
+      || !('headerName' in csrf) || typeof csrf.headerName !== 'string'
+      || !['X-CSRF-TOKEN', 'X-XSRF-TOKEN'].includes(csrf.headerName)) {
+      throw new Error('관심을 기록할 준비를 하지 못했습니다.')
+    }
+    return { token: csrf.token, headerName: csrf.headerName }
+  }
+
   return {
     async record(event) {
-      const csrfResponse = await fetcher(`${baseUrl}/api/auth/csrf`, { credentials: 'include' })
-      if (!csrfResponse.ok) throw new Error('관심을 기록할 준비를 하지 못했습니다.')
-      const csrf: unknown = await csrfResponse.json()
-      if (typeof csrf !== 'object' || csrf === null
-        || !('token' in csrf) || typeof csrf.token !== 'string' || !csrf.token
-        || !('headerName' in csrf) || typeof csrf.headerName !== 'string'
-        || !['X-CSRF-TOKEN', 'X-XSRF-TOKEN'].includes(csrf.headerName)) {
-        throw new Error('관심을 기록할 준비를 하지 못했습니다.')
-      }
+      // Concurrent first exposures must share the same CSRF cookie initialization.
+      csrfRequest ??= loadCsrf().finally(() => { csrfRequest = null })
+      const csrf = await csrfRequest
       const response = await fetcher(`${baseUrl}/api/v1/notification-interest-events`, {
         method: 'POST',
         credentials: 'include',

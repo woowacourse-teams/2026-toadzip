@@ -13,7 +13,7 @@
   position: fixed;
   top: 64px;
   left: 16px;
-  z-index: 50;
+  z-index: 2000;
   width: min(440px, calc(100% - 32px));
   max-height: calc(100dvh - 80px);
   overflow: auto;
