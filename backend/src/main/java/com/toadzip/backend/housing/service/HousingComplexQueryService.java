@@ -115,12 +115,13 @@ public class HousingComplexQueryService {
         LocalDate today = today();
         ComplexDetailRow complex = detailRepository.findComplex(complexId)
                 .orElseThrow(HousingComplexNotFoundException::new);
+        long resolvedId = complex.complexId();
         return detailMapper.toResponse(
                 complex,
-                detailRepository.findHousingTypes(complexId),
-                detailRepository.findCurrentSupplyConditions(complexId, today),
-                detailRepository.findCurrentAnnouncements(complexId, today),
-                detailRepository.findCurrentAnnouncementTargets(complexId, today),
+                detailRepository.findHousingTypes(resolvedId),
+                detailRepository.findCurrentSupplyConditions(resolvedId, today),
+                detailRepository.findCurrentAnnouncements(resolvedId, today),
+                detailRepository.findCurrentAnnouncementTargets(resolvedId, today),
                 today
         );
     }

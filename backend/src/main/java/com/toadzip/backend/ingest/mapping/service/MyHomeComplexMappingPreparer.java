@@ -7,6 +7,7 @@ import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingCandidate;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailure;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingPreparationReport;
+import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingCandidateRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingCandidateStore;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingFailureStore;
@@ -27,6 +28,7 @@ import org.springframework.stereotype.Component;
 class MyHomeComplexMappingPreparer {
 
     private final MyHomeComplexSourceRepository sourceRepository;
+    private final MyHomeComplexLinkRepository linkRepository;
     private final MyHomeComplexMappingFailureStore failureStore;
     private final MyHomeComplexMappingCandidateRepository candidateRepository;
     private final MyHomeComplexMappingCandidateStore candidateStore;
@@ -35,6 +37,7 @@ class MyHomeComplexMappingPreparer {
 
     MyHomeComplexMappingPreparer(
             MyHomeComplexSourceRepository sourceRepository,
+            MyHomeComplexLinkRepository linkRepository,
             MyHomeComplexMappingFailureStore failureStore,
             MyHomeComplexMappingCandidateRepository candidateRepository,
             MyHomeComplexMappingCandidateStore candidateStore,
@@ -42,6 +45,7 @@ class MyHomeComplexMappingPreparer {
             Clock clock
     ) {
         this.sourceRepository = sourceRepository;
+        this.linkRepository = linkRepository;
         this.failureStore = failureStore;
         this.candidateRepository = candidateRepository;
         this.candidateStore = candidateStore;
@@ -69,8 +73,25 @@ class MyHomeComplexMappingPreparer {
             );
         }
         synchronizeCandidates(storedCandidates, preparedCandidates);
+        addMissingLinkedSourceFailures(groupedSources.keySet(), failures, occurredAt);
         failureStore.replacePreparationFailures(failures, currentExecutionId());
         return new MyHomeComplexMappingPreparationReport(preparedCandidates.size(), failures.size());
+    }
+
+    private void addMissingLinkedSourceFailures(
+            Set<String> currentIdentifiers,
+            List<MyHomeComplexMappingFailure> failures,
+            Instant occurredAt
+    ) {
+        linkRepository.findAllByMergeIdIsNotNull().stream()
+                .filter(link -> !currentIdentifiers.contains(link.getSourceComplexIdentifier()))
+                .forEach(link -> failures.add(MyHomeComplexMappingFailure.create(
+                        "linked-complex:" + link.getSourceComplexIdentifier(),
+                        link.getSourceComplexIdentifier(),
+                        MyHomeComplexMappingFailureReason.CONFLICTING_SOURCE_VALUE,
+                        "확인된 연결 원천이 누락되어 기존 단지와 주택형을 보존합니다.",
+                        occurredAt
+                )));
     }
 
     Map<String, List<MyHomeComplexSource>> sourcesFor(
