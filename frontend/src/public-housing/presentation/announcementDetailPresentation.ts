@@ -157,7 +157,7 @@ function sumNullable(values: readonly (number | null)[]) {
 function applicationStatusLabel(value: string | null) {
   return codeLabel(value, {
     APPLYING: '접수중',
-    BEFORE_APPLICATION: '접수예정',
+    BEFORE_APPLICATION: '공고중',
     CANCELLED: '공고취소',
     CLOSED: '접수마감',
   }, MISSING_DATA_LABEL)

@@ -323,7 +323,7 @@ function NoticeIntro({
       </p>
       {firstGroup && (
         <p>
-          <span>{firstGroup.name}</span>
+          <strong>{firstGroup.name}</strong>
           {remainingComplexes > 0 && <em>외 {remainingComplexes}곳</em>}
         </p>
       )}
@@ -539,9 +539,9 @@ function ComplexComparison({
     <DetailSection
       title="단지 비교"
       description="주소와 주택형별 면적·임대조건 범위를 한눈에 비교합니다."
-      aside={`${formatNullableCount(supplyComplexCount, '개 단지')} · ${formatNullableCount(supplyHouseholdCount, '세대')}`}
+      aside={`${formatNullableCount(supplyComplexCount, '개 단지')} · ${supplyHouseholdSummary(supplyHouseholdCount)}`}
     >
-      {groups.length === 0 && <EmptyState>{MISSING_DATA_LABEL}</EmptyState>}
+      {groups.length === 0 && <EmptyState>단지 정보: {MISSING_DATA_LABEL}</EmptyState>}
       <div className={styles.complexList}>
         {groups.map((group) => (
           <ComplexCard
@@ -601,7 +601,7 @@ function ComplexCard({
           </div>
         )}
         <div className={styles.complexBody}>
-          <p>{group.address ?? MISSING_DATA_LABEL}</p>
+          <p>{group.address ?? `주소: ${MISSING_DATA_LABEL}`}</p>
           {!imageUrl && <small>조감도 {MISSING_DATA_LABEL}</small>}
           <div className={styles.complexCounts}>
             <span>총 <b>{formatNullableCount(group.totalHouseholdCount, '세대')}</b></span>
@@ -671,7 +671,7 @@ function HousingTypeComparison({
               onKeyDown={(event) => onGroupKeyDown(event, index)}
             >
               <span>{group.name}</span>
-              <b>{formatNullableCount(group.supplyHouseholdCount, '세대')}</b>
+              <b>{supplyHouseholdSummary(group.supplyHouseholdCount)}</b>
             </button>
           ))}
         </div>
@@ -736,7 +736,7 @@ function HousingTypeCard({
             평면도 보기
           </button>
         )}
-        {!hasFloorPlan && <small>{MISSING_DATA_LABEL}</small>}
+        {!hasFloorPlan && <small>평면도: {MISSING_DATA_LABEL}</small>}
       </div>
       <DetailTable caption={`${complexName} ${housingTypeName} 공급 정보`}>
         <colgroup>
@@ -766,7 +766,7 @@ function HousingTypeCard({
 function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget[] }) {
   const idPrefix = useId()
   if (targets.length === 0) {
-    return <p className={styles.targetEmpty}>{MISSING_DATA_LABEL}</p>
+    return <p className={styles.targetEmpty}>대상별 공급 조건: {MISSING_DATA_LABEL}</p>
   }
   return (
     <ul className={styles.targetList} aria-label="대상별 공급 조건">
@@ -949,7 +949,7 @@ function FloorPlanDialog({
             </figure>
           )}
         </div>
-        {!selection.threeDimensionalUrl && <p className={styles.floorPlanStatus}>{MISSING_DATA_LABEL}</p>}
+        {!selection.threeDimensionalUrl && <p className={styles.floorPlanStatus}>3D 평면도: {MISSING_DATA_LABEL}</p>}
       </section>
     </div>
   )
@@ -1064,6 +1064,10 @@ function formatNullableCount(value: number | null, unit: string) {
     return MISSING_DATA_LABEL
   }
   return `${value.toLocaleString('ko-KR')}${unit}`
+}
+
+function supplyHouseholdSummary(value: number | null) {
+  return value === null ? `공급 세대수: ${MISSING_DATA_LABEL}` : formatNullableCount(value, '세대')
 }
 
 function formatArea(value: number | null) {

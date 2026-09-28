@@ -126,8 +126,10 @@
 }
 
 .intro p strong {
+  min-width: 0;
   color: var(--ds-color-label);
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .intro strong[data-agency='LH'] {
@@ -157,7 +159,7 @@
 }
 
 .intro small {
-  color: var(--detail-muted);
+  color: var(--ds-color-text);
   font-size: var(--ds-text-caption);
   line-height: var(--ds-line-height-caption);
 }
