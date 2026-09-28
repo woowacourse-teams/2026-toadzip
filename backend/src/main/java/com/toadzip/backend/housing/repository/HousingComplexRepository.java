@@ -25,11 +25,6 @@ public interface HousingComplexRepository extends JpaRepository<HousingComplex, 
             String rental, String rentalLegacy, String region, boolean deleted, boolean review,
             org.springframework.data.domain.Pageable pageable);
 
-
-    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
-    @Query("select complex from HousingComplex complex where complex.id = :id")
-    Optional<HousingComplex> findByIdForUpdate(long id);
-
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT complex FROM HousingComplex complex WHERE complex.id = :id")
     Optional<HousingComplex> findByIdForUpdate(@Param("id") long id);
