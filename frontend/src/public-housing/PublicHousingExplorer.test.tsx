@@ -155,7 +155,7 @@ afterEach(() => {
 })
 
 describe('PublicHousingExplorer', () => {
-  it('서버 지도 모드에서는 저배율 영역을 v2로 조회하고 0곳 지역 마커를 표시한다', async () => {
+  it('저배율 영역을 v2로 조회하고 0곳 지역 마커를 표시한다', async () => {
     const repository = createRepository()
     const mapRepository = createMapRepository(aggregateMapResult())
     renderExplorer(repository, '/', undefined, undefined, mapRepository)
@@ -166,7 +166,6 @@ describe('PublicHousingExplorer', () => {
       bounds: KOREA_TEST_BOUNDS,
       zoom: 7,
     }, expect.any(AbortSignal)))
-    expect(repository.findMapComplexes).not.toHaveBeenCalled()
     expect(screen.getByRole('button', {
       name: '서울 0곳 지역 마커 선택',
     })).toBeVisible()
@@ -338,7 +337,6 @@ describe('PublicHousingExplorer', () => {
       expect.any(AbortSignal),
       filters,
     ))
-    expect(repository.findMapComplexes).not.toHaveBeenCalled()
     expect(screen.getByRole('button', {
       name: '서울가람 행복주택 지도 마커 선택',
     })).toBeVisible()
@@ -740,10 +738,10 @@ describe('PublicHousingExplorer', () => {
     await screen.findByRole('heading', { name: '서울가람 행복주택' })
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
 
-    expect(repository.findMapComplexes).toHaveBeenCalledOnce()
-    await waitFor(() => expect(repository.findMapComplexes).toHaveBeenCalledTimes(2))
-    expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
-      NEXT_BOUNDS,
+    expect(repository.findMap).toHaveBeenCalledOnce()
+    await waitFor(() => expect(repository.findMap).toHaveBeenCalledTimes(2))
+    expect(repository.findMap).toHaveBeenLastCalledWith(
+      expect.objectContaining({ bounds: NEXT_BOUNDS, zoom: 14 }),
       expect.any(AbortSignal),
     )
   })
@@ -755,11 +753,11 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
 
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledOnce()
+      expect(repository.findMap).toHaveBeenCalledOnce()
       expect(repository.findComplexPage).toHaveBeenCalledOnce()
     })
-    expect(repository.findMapComplexes).toHaveBeenCalledWith(
-      INITIAL_BOUNDS,
+    expect(repository.findMap).toHaveBeenCalledWith(
+      expect.objectContaining({ bounds: INITIAL_BOUNDS, zoom: 14 }),
       expect.any(AbortSignal),
     )
     expect(repository.findComplexPage).toHaveBeenCalledWith(
@@ -845,18 +843,21 @@ describe('PublicHousingExplorer', () => {
     }), { target: { value: '200000000' } })
 
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(3)
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(3)
+      expect(repository.findMap).toHaveBeenCalledTimes(3)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
     })
-    expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
-      INITIAL_BOUNDS,
+    expect(repository.findMap).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        bounds: INITIAL_BOUNDS,
+        zoom: 14,
+        filters: {
+          maxDeposit: 200_000_000,
+          minDeposit: 100_000_000,
+          regionCode: '11',
+          rentalTypes: ['NATIONAL_RENTAL'],
+        },
+      }),
       expect.any(AbortSignal),
-      {
-        maxDeposit: 200_000_000,
-        minDeposit: 100_000_000,
-        regionCode: '11',
-        rentalTypes: ['NATIONAL_RENTAL'],
-      },
     )
     const search = new URLSearchParams(
       screen.getByTestId('location-search').textContent ?? '',
@@ -927,11 +928,10 @@ describe('PublicHousingExplorer', () => {
     })
 
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(10)
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(10)
+      expect(repository.findMap).toHaveBeenCalledTimes(10)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
     })
     repository.findComplexPage
-      .mockResolvedValueOnce(complexPageWithNext())
       .mockResolvedValueOnce(complexPageWithNext())
       .mockResolvedValueOnce(complexPageFor(18, '서울마루 국민임대'))
 
@@ -959,13 +959,12 @@ describe('PublicHousingExplorer', () => {
       rentalTypes: ['NATIONAL_RENTAL'],
     }
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(12)
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(12)
+      expect(repository.findMap).toHaveBeenCalledTimes(12)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(3)
     })
-    expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
-      INITIAL_BOUNDS,
+    expect(repository.findMap).toHaveBeenLastCalledWith(
+      expect.objectContaining({ bounds: INITIAL_BOUNDS, zoom: 14, filters: expectedFilters }),
       expect.any(AbortSignal),
-      expectedFilters,
     )
     expect(repository.findComplexPage).toHaveBeenLastCalledWith(
       INITIAL_BOUNDS,
@@ -1012,31 +1011,34 @@ describe('PublicHousingExplorer', () => {
       name: '임대유형 필터 초기화',
     }))
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(13)
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(14)
+      expect(repository.findMap).toHaveBeenCalledTimes(13)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(5)
     })
     const resetSearch = new URLSearchParams(
       screen.getByTestId('location-search').textContent ?? '',
     )
     expect(resetSearch.get('complexRegionCode')).toBe('11')
     expect(resetSearch.getAll('complexRentalTypes')).toEqual([])
-    expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
-      INITIAL_BOUNDS,
+    expect(repository.findMap).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        bounds: INITIAL_BOUNDS,
+        zoom: 14,
+        filters: {
+          agencyCodes: ['LH'],
+          applicationStatuses: ['APPLYING'],
+          builtYearFrom: 2015,
+          builtYearTo: 2026,
+          maxDeposit: 300_000_000,
+          maxExclusiveArea: 66,
+          maxMonthlyRent: 500_000,
+          minDeposit: 100_000_000,
+          minExclusiveArea: 33,
+          minMonthlyRent: 100_000,
+          recruitmentTypes: ['NEW'],
+          regionCode: '11',
+        },
+      }),
       expect.any(AbortSignal),
-      {
-        agencyCodes: ['LH'],
-        applicationStatuses: ['APPLYING'],
-        builtYearFrom: 2015,
-        builtYearTo: 2026,
-        maxDeposit: 300_000_000,
-        maxExclusiveArea: 66,
-        maxMonthlyRent: 500_000,
-        minDeposit: 100_000_000,
-        minExclusiveArea: 33,
-        minMonthlyRent: 100_000,
-        recruitmentTypes: ['NEW'],
-        regionCode: '11',
-      },
     )
   })
 
@@ -1159,7 +1161,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '국민임대' }))
 
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(2)
+      expect(repository.findMap).toHaveBeenCalledTimes(2)
       expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
     })
     await act(async () => new Promise((resolve) => {
@@ -1167,11 +1169,10 @@ describe('PublicHousingExplorer', () => {
     }))
 
     const filters = { rentalTypes: ['NATIONAL_RENTAL'] }
-    expect(repository.findMapComplexes).toHaveBeenCalledTimes(2)
-    expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
-      NEXT_BOUNDS,
+    expect(repository.findMap).toHaveBeenCalledTimes(2)
+    expect(repository.findMap).toHaveBeenLastCalledWith(
+      expect.objectContaining({ bounds: NEXT_BOUNDS, zoom: 14, filters }),
       expect.any(AbortSignal),
-      filters,
     )
     expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
     expect(repository.findComplexPage).toHaveBeenLastCalledWith(
@@ -1204,13 +1205,16 @@ describe('PublicHousingExplorer', () => {
     })).toHaveTextContent('1억~1억')
 
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(3)
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(3)
+      expect(repository.findMap).toHaveBeenCalledTimes(3)
+      expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
     })
-    expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
-      INITIAL_BOUNDS,
+    expect(repository.findMap).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        bounds: INITIAL_BOUNDS,
+        zoom: 14,
+        filters: { maxDeposit: 100_000_000, minDeposit: 100_000_000 },
+      }),
       expect.any(AbortSignal),
-      { maxDeposit: 100_000_000, minDeposit: 100_000_000 },
     )
     const search = new URLSearchParams(
       screen.getByTestId('location-search').textContent ?? '',
@@ -1229,7 +1233,7 @@ describe('PublicHousingExplorer', () => {
       name: '성남 청년 행복주택 입주자 모집 공고',
     })
     const complexRequestCount = repository.findComplexPage.mock.calls.length
-    const mapRequestCount = repository.findMapComplexes.mock.calls.length
+    const mapRequestCount = repository.findMap.mock.calls.length
     const scroll = screen.getByRole('tabpanel', { name: '공고 목록' })
       .querySelector<HTMLElement>('.housing-results__scroll')
     if (!scroll) throw new Error('공고 목록 스크롤 영역 없음')
@@ -1266,7 +1270,7 @@ describe('PublicHousingExplorer', () => {
       },
     )
     expect(repository.findComplexPage).toHaveBeenCalledTimes(complexRequestCount)
-    expect(repository.findMapComplexes).toHaveBeenCalledTimes(mapRequestCount)
+    expect(repository.findMap).toHaveBeenCalledTimes(mapRequestCount)
     const search = new URLSearchParams(
       screen.getByTestId('location-search').textContent ?? '',
     )
@@ -1312,14 +1316,14 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     await screen.findByRole('heading', { name: '서울가람 행복주택' })
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
-    expect(repository.findMapComplexes).toHaveBeenCalledOnce()
+    expect(repository.findMap).toHaveBeenCalledOnce()
 
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(2)
+      expect(repository.findMap).toHaveBeenCalledTimes(2)
       expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
     })
-    expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
-      NEXT_BOUNDS,
+    expect(repository.findMap).toHaveBeenLastCalledWith(
+      expect.objectContaining({ bounds: NEXT_BOUNDS, zoom: 14 }),
       expect.any(AbortSignal),
     )
     expect(screen.queryByRole('button', { name: '이 지역에서 검색' }))
@@ -1433,7 +1437,7 @@ describe('PublicHousingExplorer', () => {
     expect(screen.queryByRole('link', { name: '저작권' })).not.toBeInTheDocument()
     const request = screen.getByTestId('map-camera-request').textContent
     fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
-    await waitFor(() => expect(repository.findMapComplexes).toHaveBeenCalled())
+    await waitFor(() => expect(repository.findMap).toHaveBeenCalled())
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
     await act(async () => pending.resolve({ regionCode: '41111', version: 'test', polygons: [] }))
     expect(screen.getByTestId('map-boundary')).toHaveTextContent('41111')
@@ -1544,14 +1548,15 @@ describe('PublicHousingExplorer', () => {
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '수원' } })
     fireEvent.click(await screen.findByRole('button', { name: /경기도 수원시/ }))
 
-    expect(repository.findMapComplexes).toHaveBeenCalledOnce()
+    expect(repository.findMap).toHaveBeenCalledOnce()
     expect(screen.getByText('카메라 37.3,127')).toBeVisible()
     expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('14')
     expectCurrentSearch({ boundaryRegionCode: '41110' })
     fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
-    await waitFor(() => expect(repository.findMapComplexes).toHaveBeenCalledTimes(2))
-    expect(repository.findMapComplexes).toHaveBeenLastCalledWith(
-      boundaryMetadata[0].bounds, expect.any(AbortSignal),
+    await waitFor(() => expect(repository.findMap).toHaveBeenCalledTimes(2))
+    expect(repository.findMap).toHaveBeenLastCalledWith(
+      expect.objectContaining({ bounds: boundaryMetadata[0].bounds, zoom: 14 }),
+      expect.any(AbortSignal),
     )
   })
 
@@ -1567,7 +1572,7 @@ describe('PublicHousingExplorer', () => {
     expect(unavailable).toHaveTextContent('위치 정보 준비 중')
     fireEvent.click(unavailable)
     expect(screen.getByText('카메라 37.56,127')).toBeVisible()
-    expect(repository.findMapComplexes).toHaveBeenCalledOnce()
+    expect(repository.findMap).toHaveBeenCalledOnce()
   })
 
   it('검색결과를 닫아도 열린 상세와 현재 지도 위치 및 기존 목록 탭을 유지한다', async () => {
@@ -1593,10 +1598,10 @@ describe('PublicHousingExplorer', () => {
 
   it('새 영역 재조회 중 기존 단지 목록 레이아웃을 유지한다', async () => {
     const repository = createRepository()
-    const nextMap = createDeferred<readonly MapComplex[]>()
+    const nextMap = createDeferred<HousingMapIndividualResult>()
     const nextPage = createDeferred<ComplexPage>()
-    repository.findMapComplexes
-      .mockResolvedValueOnce([mapComplex()])
+    repository.findMap
+      .mockResolvedValueOnce(individualMapResult())
       .mockReturnValueOnce(nextMap.promise)
     repository.findComplexPage
       .mockResolvedValueOnce(complexPage())
@@ -1613,10 +1618,15 @@ describe('PublicHousingExplorer', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
     await waitFor(() => {
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
+      expect(repository.findMap).toHaveBeenCalledTimes(2)
     })
 
     expect(initialCard).toBeVisible()
+    expect(screen.getByRole('region', { name: '공공임대주택 지도' }))
+      .toHaveAttribute('aria-busy', 'true')
+    expect(scrollContainer).toHaveAttribute('aria-busy', 'false')
+    await act(async () => nextMap.resolve(individualMapResult([mapComplexFor(18, '서울마루 국민임대')])))
+    await waitFor(() => expect(repository.findComplexPage).toHaveBeenCalledTimes(2))
     expect(screen.getByText('1곳 · 갱신 중')).toBeVisible()
     expect(screen.getByRole('list')).toBe(initialList)
     expect(scrollContainer).toHaveAttribute('aria-busy', 'true')
@@ -1631,7 +1641,6 @@ describe('PublicHousingExplorer', () => {
       '기존 결과를 유지하면서 새 지역을 확인하고 있습니다.',
     )
 
-    nextMap.resolve([mapComplexFor(18, '서울마루 국민임대')])
     nextPage.resolve(complexPageFor(18, '서울마루 국민임대'))
     expect(await screen.findByRole('heading', {
       name: '서울마루 국민임대',
@@ -1650,11 +1659,11 @@ describe('PublicHousingExplorer', () => {
       window.setTimeout(resolve, 350)
     }))
 
-    expect(repository.findMapComplexes).toHaveBeenCalledOnce()
+    expect(repository.findMap).toHaveBeenCalledOnce()
     expect(repository.findComplexPage).toHaveBeenCalledOnce()
   })
 
-  it('너무 넓은 영역에서는 요청하지 않고 이전 목록과 마커를 숨긴다', async () => {
+  it('너무 넓은 영역도 지도는 조회하고 목록 재조회만 제한하며 기존 목록을 유지한다', async () => {
     const repository = createRepository()
     renderExplorer(repository)
 
@@ -1662,28 +1671,28 @@ describe('PublicHousingExplorer', () => {
     await screen.findByRole('heading', { name: '서울가람 행복주택' })
     fireEvent.click(screen.getByRole('button', { name: '넓은 영역 알림' }))
 
-    expect(repository.findMapComplexes).toHaveBeenCalledOnce()
+    await waitFor(() => expect(repository.findMap).toHaveBeenCalledTimes(2))
     expect(repository.findComplexPage).toHaveBeenCalledOnce()
     expect(
       screen.getByText('요청 범위가 넓습니다. 지도를 조금 더 확대해 주세요.'),
     ).toBeVisible()
     expect(screen.getByLabelText(
-      '단지 조회를 위한 지도 확대 필요',
-    )).toHaveTextContent('확대 필요')
-    expect(screen.queryByRole('heading', {
+      '조회된 단지 1곳',
+    )).toHaveTextContent('1곳')
+    expect(screen.getByRole('heading', {
       name: '서울가람 행복주택',
-    })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', {
+    })).toBeVisible()
+    expect(screen.getByRole('button', {
       name: '서울가람 행복주택 지도 마커 선택',
-    })).not.toBeInTheDocument()
+    })).toBeVisible()
   })
 
-  it('지도와 목록의 새 영역 응답을 둘 다 받은 뒤 한 번에 교체한다', async () => {
+  it('새 영역 지도 응답을 먼저 표시하고 목록은 이어서 조회해 교체한다', async () => {
     const repository = createRepository()
-    const nextMap = createDeferred<readonly MapComplex[]>()
+    const nextMap = createDeferred<HousingMapIndividualResult>()
     const nextPage = createDeferred<ComplexPage>()
-    repository.findMapComplexes
-      .mockResolvedValueOnce([mapComplex()])
+    repository.findMap
+      .mockResolvedValueOnce(individualMapResult())
       .mockReturnValueOnce(nextMap.promise)
     repository.findComplexPage
       .mockResolvedValueOnce(complexPage())
@@ -1694,11 +1703,11 @@ describe('PublicHousingExplorer', () => {
     await screen.findByRole('heading', { name: '서울가람 행복주택' })
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(2)
-      expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
+      expect(repository.findMap).toHaveBeenCalledTimes(2)
+      expect(repository.findComplexPage).toHaveBeenCalledOnce()
     })
 
-    nextMap.resolve([mapComplexFor(18, '서울마루 국민임대')])
+    nextMap.resolve(individualMapResult([mapComplexFor(18, '서울마루 국민임대')]))
     await act(async () => Promise.resolve())
 
     expect(screen.getByRole('heading', {
@@ -1706,8 +1715,9 @@ describe('PublicHousingExplorer', () => {
     })).toBeVisible()
     expect(screen.queryByRole('button', {
       name: '서울마루 국민임대 지도 마커 선택',
-    })).not.toBeInTheDocument()
+    })).toBeVisible()
 
+    expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
     nextPage.resolve(complexPageFor(18, '서울마루 국민임대'))
 
     expect(await screen.findByRole('heading', {
@@ -1720,11 +1730,10 @@ describe('PublicHousingExplorer', () => {
 
   it('지도 이동은 이전 조회를 취소하고 뒤늦게 온 이전 응답이 최신 목록을 덮어쓰지 못한다', async () => {
     const repository = createRepository()
-    const previousMap = createDeferred<readonly MapComplex[]>()
     const previousPage = createDeferred<ComplexPage>()
-    const nextMap = createDeferred<readonly MapComplex[]>()
+    const nextMap = createDeferred<HousingMapIndividualResult>()
     const nextPage = createDeferred<ComplexPage>()
-    repository.findMapComplexes.mockReturnValueOnce(previousMap.promise).mockReturnValueOnce(nextMap.promise)
+    repository.findMap.mockResolvedValueOnce(individualMapResult()).mockReturnValueOnce(nextMap.promise)
     repository.findComplexPage.mockReturnValueOnce(previousPage.promise).mockReturnValueOnce(nextPage.promise)
     renderExplorer(repository)
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
@@ -1733,26 +1742,25 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
 
     expect(previousSignal).toHaveProperty('aborted', true)
-    await waitFor(() => expect(repository.findComplexPage).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(repository.findMap).toHaveBeenCalledTimes(2))
     await act(async () => {
-      nextMap.resolve([mapComplexFor(18, '서울마루 국민임대')])
+      nextMap.resolve(individualMapResult([mapComplexFor(18, '서울마루 국민임대')]))
       nextPage.resolve(complexPageFor(18, '서울마루 국민임대'))
     })
     expect(await screen.findByRole('heading', { name: '서울마루 국민임대' })).toBeVisible()
     await act(async () => {
-      previousMap.resolve([mapComplex()])
       previousPage.resolve(complexPage())
     })
     expect(screen.getByRole('heading', { name: '서울마루 국민임대' })).toBeVisible()
     expect(screen.queryByRole('heading', { name: '서울가람 행복주택' })).not.toBeInTheDocument()
   })
 
-  it('새 영역 한쪽이 실패하면 직전 지도와 목록 쌍을 유지하고 재시도한다', async () => {
+  it('새 영역 지도 조회가 실패하면 직전 지도와 목록을 유지하고 재시도한다', async () => {
     const repository = createRepository()
-    repository.findMapComplexes
-      .mockResolvedValueOnce([mapComplex()])
+    repository.findMap
+      .mockResolvedValueOnce(individualMapResult())
       .mockRejectedValueOnce(new Error('지도 조회 실패'))
-      .mockResolvedValueOnce([mapComplexFor(18, '서울마루 국민임대')])
+      .mockResolvedValueOnce(individualMapResult([mapComplexFor(18, '서울마루 국민임대')]))
     repository.findComplexPage
       .mockResolvedValueOnce(complexPage())
       .mockResolvedValueOnce(complexPageFor(18, '서울마루 국민임대'))
@@ -1774,7 +1782,7 @@ describe('PublicHousingExplorer', () => {
     expect(screen.getByRole('button', {
       name: '서울가람 행복주택 지도 마커 선택',
     })).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+    fireEvent.click(screen.getByRole('button', { name: '지도 다시 시도' }))
 
     expect(await screen.findByRole('heading', {
       name: '서울마루 국민임대',
@@ -1787,24 +1795,24 @@ describe('PublicHousingExplorer', () => {
     )
   })
 
-  it('최초 통합 요청 실패 뒤 같은 영역을 다시 시도한다', async () => {
+  it('최초 지도 요청 실패 뒤 같은 영역을 다시 시도하고 목록을 조회한다', async () => {
     const repository = createRepository()
-    repository.findMapComplexes
+    repository.findMap
       .mockRejectedValueOnce(new Error('최초 조회 실패'))
-      .mockResolvedValueOnce([mapComplex()])
+      .mockResolvedValueOnce(individualMapResult())
     renderExplorer(repository)
 
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     expect(await screen.findByText(
-      '단지 목록을 불러오지 못했습니다.',
+      '지도 정보를 불러오지 못했습니다.',
     )).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+    fireEvent.click(screen.getByRole('button', { name: '지도 다시 시도' }))
 
     expect(await screen.findByRole('heading', {
       name: '서울가람 행복주택',
     })).toBeVisible()
-    expect(repository.findMapComplexes).toHaveBeenCalledTimes(2)
-    expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
+    expect(repository.findMap).toHaveBeenCalledTimes(2)
+    expect(repository.findComplexPage).toHaveBeenCalledOnce()
   })
 
   it('더 보기 실패는 첫 페이지 대신 실패한 cursor를 다시 요청한다', async () => {
@@ -1912,7 +1920,7 @@ describe('PublicHousingExplorer', () => {
   it('페이지 크기 대신 조회된 전체 단지 수를 표시하고 더보기 진행 수를 갱신한다', async () => {
     const repository = createRepository()
     const items = Array.from({ length: 45 }, (_, index) => complexPageFor(index + 1, `단지 ${index + 1}`).items[0])
-    repository.findMapComplexes.mockResolvedValue(items.map((item) => ({ ...mapComplex(), complexId: item.complexId })))
+    repository.findMap.mockResolvedValue(individualMapResult(items.map((item) => ({ ...mapComplex(), complexId: item.complexId }))))
     repository.findComplexPage
       .mockResolvedValueOnce({ ...complexPageWithNext(), items: items.slice(0, 20) })
       .mockResolvedValueOnce({ ...complexPageWithNext(), items: items.slice(20, 40), nextCursor: 'cursor-3' })
@@ -1958,9 +1966,9 @@ describe('PublicHousingExplorer', () => {
 
   it('단지 초기 조회와 전체 결과 수를 count와 지도 busy에 반영한다', async () => {
     const repository = createRepository()
-    const mapDeferred = createDeferred<readonly MapComplex[]>()
+    const mapDeferred = createDeferred<HousingMapIndividualResult>()
     const pageDeferred = createDeferred<ComplexPage>()
-    repository.findMapComplexes.mockReturnValueOnce(mapDeferred.promise)
+    repository.findMap.mockReturnValueOnce(mapDeferred.promise)
     repository.findComplexPage.mockReturnValueOnce(pageDeferred.promise)
     renderExplorer(repository)
 
@@ -1969,13 +1977,13 @@ describe('PublicHousingExplorer', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
 
-    await waitFor(() => expect(repository.findMapComplexes).toHaveBeenCalled())
+    await waitFor(() => expect(repository.findMap).toHaveBeenCalled())
     expect(
       screen.getByRole('region', { name: '공공임대주택 지도' }),
     ).toHaveAttribute('aria-busy', 'true')
 
     await act(async () => {
-      mapDeferred.resolve([mapComplex()])
+      mapDeferred.resolve(individualMapResult())
       pageDeferred.resolve(complexPageWithNext())
     })
 
@@ -2100,10 +2108,10 @@ describe('PublicHousingExplorer', () => {
 
   it('상세가 열린 선택 단지는 영역 밖에 유지하고 닫힌 뒤 새 결과에서 정리한다', async () => {
     const repository = createRepository()
-    repository.findMapComplexes
-      .mockResolvedValueOnce([mapComplex()])
-      .mockResolvedValueOnce([mapComplexFor(18, '서울마루 국민임대')])
-      .mockResolvedValueOnce([mapComplex()])
+    repository.findMap
+      .mockResolvedValueOnce(individualMapResult())
+      .mockResolvedValueOnce(individualMapResult([mapComplexFor(18, '서울마루 국민임대')]))
+      .mockResolvedValueOnce(individualMapResult())
     repository.findComplexPage
       .mockResolvedValueOnce(complexPage())
       .mockResolvedValueOnce(complexPageFor(18, '서울마루 국민임대'))
@@ -2299,7 +2307,7 @@ describe('PublicHousingExplorer', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledOnce()
+      expect(repository.findMap).toHaveBeenCalledOnce()
       expect(repository.findComplexPage).toHaveBeenCalledOnce()
     })
     expect(screen.getByTestId('location-key').textContent).toBe(locationKey)
@@ -2308,7 +2316,7 @@ describe('PublicHousingExplorer', () => {
     await act(async () => new Promise((resolve) => {
       window.setTimeout(resolve, 350)
     }))
-    expect(repository.findMapComplexes).toHaveBeenCalledOnce()
+    expect(repository.findMap).toHaveBeenCalledOnce()
     expect(repository.findComplexPage).toHaveBeenCalledOnce()
     expectCurrentSearch({})
   })
@@ -2955,7 +2963,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
 
     await waitFor(() => {
-      expect(repository.findMapComplexes).toHaveBeenCalledTimes(2)
+      expect(repository.findMap).toHaveBeenCalledTimes(2)
       expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
     })
     expect(repository.findAnnouncementPage).toHaveBeenCalledOnce()
@@ -3008,11 +3016,11 @@ function applyProvinceFilter(provinceCode: string) {
 }
 
 function renderExplorer(
-  repository: PublicHousingRepository,
+  repository: PublicHousingRepository & HousingMapRepository,
   initialEntry = '/',
   integratedSearchRepository?: IntegratedSearchRepository,
   regionRepository = createRegionRepository(),
-  mapRepository?: HousingMapRepository,
+  mapRepository: HousingMapRepository = repository,
   boundaryRepository?: RegionBoundaryRepository,
 ) {
   return render(
@@ -3242,19 +3250,19 @@ function expectCurrentSearch(expected: Record<string, string>) {
   expect(Object.fromEntries(new URLSearchParams(search))).toEqual(expected)
 }
 
-function createRepository(): PublicHousingRepository & {
+function createRepository(): PublicHousingRepository & HousingMapRepository & {
   findAnnouncementDetail: ReturnType<typeof vi.fn>
   findAnnouncementPage: ReturnType<typeof vi.fn>
   findComplexDetail: ReturnType<typeof vi.fn>
   findComplexPage: ReturnType<typeof vi.fn>
-  findMapComplexes: ReturnType<typeof vi.fn>
+  findMap: ReturnType<typeof vi.fn>
 } {
   return {
     findAnnouncementDetail: vi.fn().mockResolvedValue(announcementDetail()),
     findAnnouncementPage: vi.fn().mockResolvedValue(announcementPage()),
     findComplexDetail: vi.fn().mockResolvedValue(complexDetail()),
     findComplexPage: vi.fn().mockResolvedValue(complexPage()),
-    findMapComplexes: vi.fn().mockResolvedValue([mapComplex()]),
+    findMap: vi.fn().mockResolvedValue(individualMapResult()),
   }
 }
 
@@ -3284,9 +3292,11 @@ function aggregateMapResult(): HousingMapAggregateResult {
   }
 }
 
-function individualMapResult(): HousingMapIndividualResult {
+function individualMapResult(
+  complexes: readonly MapComplex[] = [mapComplex()],
+): HousingMapIndividualResult {
   return {
-    nodes: [{ ...mapComplex(), type: 'INDIVIDUAL' }],
+    nodes: complexes.map((complex) => ({ ...complex, type: 'INDIVIDUAL' })),
     policyVersion: '2026-09-03',
     regionDatasetVersion: '2026-09-03',
     representation: 'INDIVIDUAL',

@@ -155,7 +155,7 @@ class AdminManagementIntegrationTest {
                 supply.get("id").asLong());
         var announcement = row.getAnnouncement();
         assertThat(announcement.enrichFromLh("new-pan", "수집 이유", null)).isFalse();
-        assertThat(row.updateFromMyHome(null, null, 0, "원천 단지", "주택형", "111", 
+        assertThat(row.updateFromMyHome(null, null, 0, "원천 단지", "주택형", "111",
                 com.toadzip.backend.announcement.domain.SupplyCategory.NEW_SUPPLY, null, 99)).isFalse();
         assertThat(row.getTotalSupplyHouseholdCount()).isEqualTo(17);
         assertThat(row.getHousingComplex().getId()).isEqualTo(complexId);

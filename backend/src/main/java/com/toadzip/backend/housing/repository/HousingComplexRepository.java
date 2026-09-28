@@ -1,9 +1,11 @@
 package com.toadzip.backend.housing.repository;
 
 import com.toadzip.backend.housing.domain.HousingComplex;
+import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -27,6 +29,10 @@ public interface HousingComplexRepository extends JpaRepository<HousingComplex, 
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("select complex from HousingComplex complex where complex.id = :id")
     Optional<HousingComplex> findByIdForUpdate(long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT complex FROM HousingComplex complex WHERE complex.id = :id")
+    Optional<HousingComplex> findByIdForUpdate(@Param("id") long id);
 
     Optional<HousingComplex> findBySourceComplexIdentifier(String sourceComplexIdentifier);
 

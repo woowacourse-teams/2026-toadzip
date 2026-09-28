@@ -1345,41 +1345,6 @@ a {
   outline-offset: 3px;
 }
 
-.housing-map-cluster {
-  display: grid;
-  width: 60px;
-  height: 52px;
-  padding: 0;
-  border: 3px solid rgb(255 255 255 / 94%);
-  border-radius: 26px;
-  background: #172b4d;
-  box-shadow: 0 7px 16px rgb(18 37 47 / 28%);
-  color: #ffffff;
-  place-items: center;
-}
-
-.housing-map-cluster strong {
-  display: block;
-  font-size: 16px;
-  font-weight: 900;
-}
-
-.housing-map-cluster.is-highlighted {
-  background: var(--ds-color-brand);
-  color: var(--ds-color-on-brand);
-  box-shadow:
-    0 7px 16px rgb(18 37 47 / 28%),
-    0 0 0 7px color-mix(in srgb, var(--ds-color-action) 30%, transparent);
-}
-
-.housing-map-cluster:focus-visible {
-  outline: 3px solid #ffffff;
-  outline-offset: 2px;
-  box-shadow:
-    0 7px 16px rgb(18 37 47 / 28%),
-    0 0 0 6px var(--focus);
-}
-
 .housing-map-aggregate {
   position: relative;
   display: grid;

@@ -33,7 +33,9 @@ public class ComplexDetailQueryRepository {
                    housing_complex.total_household_count,
                    housing_complex.parking_space_count AS total_parking_count
             FROM housing_complexes housing_complex
-            WHERE housing_complex.id = :complexId AND housing_complex.admin_deleted = false
+            WHERE housing_complex.id = COALESCE(
+                (SELECT alias.housing_complex_id FROM housing_complex_aliases alias WHERE alias.id = :complexId),
+                :complexId) AND housing_complex.admin_deleted = false
             """;
 
     private static final String FIND_HOUSING_TYPES = """

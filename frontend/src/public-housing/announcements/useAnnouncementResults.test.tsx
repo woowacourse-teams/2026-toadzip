@@ -289,7 +289,6 @@ function createRepository(): PublicHousingRepository & {
     ),
     findComplexDetail: vi.fn(),
     findComplexPage: vi.fn(),
-    findMapComplexes: vi.fn(),
   }
 }
 

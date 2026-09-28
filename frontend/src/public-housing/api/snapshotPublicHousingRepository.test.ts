@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   RawAnnouncementDetail,
   RawAnnouncementListItem,
@@ -10,7 +10,7 @@ import { MINIMAL_PUBLIC_HOUSING_SNAPSHOT } from '../testing/minimalPublicHousing
 import { PublicHousingContractError } from './publicHousingContract.ts'
 import { PublicHousingHttpError } from './publicHousingRepository.ts'
 import {
-  createSnapshotPublicHousingRepository,
+  createSnapshotPublicHousingRepositories,
   type PublicHousingSnapshotV1,
 } from './snapshotPublicHousingRepository.ts'
 
@@ -22,13 +22,17 @@ const BOUNDS = {
 }
 
 describe('local public housing snapshot repository', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('serves all five repository methods through the production contract', async () => {
-    const repository = createSnapshotPublicHousingRepository(
+    const { repository, mapRepository } = createSnapshotPublicHousingRepositories(
       MINIMAL_PUBLIC_HOUSING_SNAPSHOT,
     )
     const signal = new AbortController().signal
 
-    const mapItems = await repository.findMapComplexes(BOUNDS, signal)
+    const mapResult = await mapRepository.findMap({ bounds: BOUNDS, zoom: 9 }, signal)
     const complexPage = await repository.findComplexPage(
       BOUNDS,
       null,
@@ -46,14 +50,19 @@ describe('local public housing snapshot repository', () => {
       signal,
     )
 
-    expect(mapItems).toHaveLength(1)
-    expect(mapItems[0]).toMatchObject({
-      complexId: '17',
-      depositMin: 0,
-      depositMax: null,
+    expect(mapResult).toMatchObject({
+      resolvedStage: 4,
+      representation: 'INDIVIDUAL',
+      nodes: [{
+        complexId: '17',
+        depositMin: 0,
+        depositMax: null,
+        type: 'INDIVIDUAL',
+        raw: MINIMAL_PUBLIC_HOUSING_SNAPSHOT.mapComplexItems[0],
+      }],
     })
-    expect(mapItems[0]?.raw).toEqual(
-      MINIMAL_PUBLIC_HOUSING_SNAPSHOT.mapComplexItems[0],
+    expect(mapResult.nodes[0]).toHaveProperty(
+      'raw', MINIMAL_PUBLIC_HOUSING_SNAPSHOT.mapComplexItems[0],
     )
     expect(complexPage).toMatchObject({
       hasNext: false,
@@ -126,7 +135,7 @@ describe('local public housing snapshot repository', () => {
   })
 
   it('filters map and complex pages by bounds and keeps cursors opaque', async () => {
-    const repository = createSnapshotPublicHousingRepository(
+    const { repository, mapRepository } = createSnapshotPublicHousingRepositories(
       snapshotWithSecondScenario(),
     )
     const signal = new AbortController().signal
@@ -169,16 +178,19 @@ describe('local public housing snapshot repository', () => {
       .toEqual(['202'])
     expect(secondAnnouncementPage.hasNext).toBe(false)
 
-    await expect(repository.findMapComplexes({
-      southWestLat: 35,
-      southWestLng: 128,
-      northEastLat: 36,
-      northEastLng: 129,
-    }, signal)).resolves.toEqual([])
+    await expect(mapRepository.findMap({
+      bounds: {
+        southWestLat: 35,
+        southWestLng: 128,
+        northEastLat: 36,
+        northEastLng: 129,
+      },
+      zoom: 9,
+    }, signal)).resolves.toMatchObject({ nodes: [] })
   })
 
   it('applies the same filters to local snapshot maps, complexes and announcements', async () => {
-    const repository = createSnapshotPublicHousingRepository(
+    const { repository, mapRepository } = createSnapshotPublicHousingRepositories(
       snapshotWithSecondScenario(),
     )
     const signal = new AbortController().signal
@@ -198,8 +210,12 @@ describe('local public housing snapshot repository', () => {
       rentalTypes: ['NATIONAL_RENTAL'],
     } as const
 
-    const [mapItems, complexPage, announcementPage] = await Promise.all([
-      repository.findMapComplexes(BOUNDS, signal, complexFilters),
+    const [mapResult, complexPage, announcementPage] = await Promise.all([
+      mapRepository.findMap({
+        bounds: BOUNDS,
+        zoom: 9,
+        filters: complexFilters,
+      }, signal),
       repository.findComplexPage(BOUNDS, null, 20, signal, complexFilters),
       repository.findAnnouncementPage(null, 20, signal, {
         agencyCodes: ['GH'],
@@ -210,7 +226,7 @@ describe('local public housing snapshot repository', () => {
       }),
     ])
 
-    expect(mapItems.map((item) => item.complexId)).toEqual(['18'])
+    expect(mapResult).toMatchObject({ nodes: [{ complexId: '18' }] })
     expect(complexPage.items.map((item) => item.complexId)).toEqual(['18'])
     expect(announcementPage.items.map((item) => item.announcementId))
       .toEqual(['202'])
@@ -235,11 +251,15 @@ describe('local public housing snapshot repository', () => {
         41130: ['41131', '41133', '41135', '41137', '41139'],
       },
     } as unknown as PublicHousingSnapshotV1
-    const repository = createSnapshotPublicHousingRepository(snapshot)
+    const { repository, mapRepository } = createSnapshotPublicHousingRepositories(snapshot)
     const signal = new AbortController().signal
 
-    const [mapItems, complexPage, announcementPage] = await Promise.all([
-      repository.findMapComplexes(BOUNDS, signal, { regionCode: '41130' }),
+    const [mapResult, complexPage, announcementPage] = await Promise.all([
+      mapRepository.findMap({
+        bounds: BOUNDS,
+        zoom: 9,
+        filters: { regionCode: '41130' },
+      }, signal),
       repository.findComplexPage(BOUNDS, null, 20, signal, {
         regionCode: '41130',
       }),
@@ -248,7 +268,7 @@ describe('local public housing snapshot repository', () => {
       }),
     ])
 
-    expect(mapItems.map((item) => item.complexId)).toEqual(['18'])
+    expect(mapResult).toMatchObject({ nodes: [{ complexId: '18' }] })
     expect(complexPage.items.map((item) => item.complexId)).toEqual(['18'])
     expect(announcementPage.items.map((item) => item.announcementId))
       .toEqual(['202'])
@@ -267,22 +287,26 @@ describe('local public housing snapshot repository', () => {
         12: ['12110', '12210', '29110', '46110'],
       },
     } as PublicHousingSnapshotV1
-    const repository = createSnapshotPublicHousingRepository(snapshot)
+    const { repository, mapRepository } = createSnapshotPublicHousingRepositories(snapshot)
     const signal = new AbortController().signal
 
-    const [mapItems, complexPage] = await Promise.all([
-      repository.findMapComplexes(BOUNDS, signal, { regionCode: '12' }),
+    const [mapResult, complexPage] = await Promise.all([
+      mapRepository.findMap({
+        bounds: BOUNDS,
+        zoom: 9,
+        filters: { regionCode: '12' },
+      }, signal),
       repository.findComplexPage(BOUNDS, null, 20, signal, {
         regionCode: '12',
       }),
     ])
 
-    expect(mapItems.map((item) => item.complexId)).toEqual(['18'])
+    expect(mapResult).toMatchObject({ nodes: [{ complexId: '18' }] })
     expect(complexPage.items.map((item) => item.complexId)).toEqual(['18'])
   })
 
   it('returns the same 404 contract as the HTTP repository', async () => {
-    const repository = createSnapshotPublicHousingRepository(
+    const { repository } = createSnapshotPublicHousingRepositories(
       MINIMAL_PUBLIC_HOUSING_SNAPSHOT,
     )
     const signal = new AbortController().signal
@@ -309,21 +333,24 @@ describe('local public housing snapshot repository', () => {
     const preAbortedController = new AbortController()
     preAbortedController.abort()
     let preAbortLoadCount = 0
-    const repository = createSnapshotPublicHousingRepository(
+    const { mapRepository } = createSnapshotPublicHousingRepositories(
       () => {
         preAbortLoadCount += 1
         return Promise.resolve(MINIMAL_PUBLIC_HOUSING_SNAPSHOT)
       },
     )
 
-    await expect(repository.findMapComplexes(
-      BOUNDS,
+    await expect(mapRepository.findMap(
+      { bounds: BOUNDS, zoom: 9 },
       preAbortedController.signal,
     )).rejects.toMatchObject({ name: 'AbortError' })
     expect(preAbortLoadCount).toBe(0)
 
     const source = deferred<unknown>()
-    const loadingRepository = createSnapshotPublicHousingRepository(
+    const {
+      repository: loadingRepository,
+      mapRepository: loadingMapRepository,
+    } = createSnapshotPublicHousingRepositories(
       () => source.promise,
     )
     const loadingController = new AbortController()
@@ -332,10 +359,69 @@ describe('local public housing snapshot repository', () => {
       20,
       loadingController.signal,
     )
+    const mapRequest = loadingMapRepository.findMap(
+      { bounds: BOUNDS, zoom: 9 },
+      loadingController.signal,
+    )
     loadingController.abort()
 
     await expect(request).rejects.toMatchObject({ name: 'AbortError' })
+    await expect(mapRequest).rejects.toMatchObject({ name: 'AbortError' })
     source.resolve(MINIMAL_PUBLIC_HOUSING_SNAPSHOT)
+  })
+
+  it.each([0, 9, 13, 20])('zoom %s에서도 개별 단지 계약만 반환한다', async (zoom) => {
+    const { mapRepository } = createSnapshotPublicHousingRepositories(
+      MINIMAL_PUBLIC_HOUSING_SNAPSHOT,
+    )
+
+    const result = await mapRepository.findMap({
+      bounds: BOUNDS,
+      zoom,
+      previousResolvedStage: 1,
+    }, new AbortController().signal)
+
+    expect(result).toMatchObject({
+      resolvedStage: 4,
+      representation: 'INDIVIDUAL',
+      policyVersion: 'local-snapshot-individual-v1',
+      regionDatasetVersion: 'local-snapshot-v1',
+      nodes: [{ type: 'INDIVIDUAL', complexId: '17' }],
+    })
+  })
+
+  it('지도와 목록은 snapshot 로딩을 공유하고 외부 API를 요청하지 않는다', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const loadSnapshot = vi.fn().mockResolvedValue(MINIMAL_PUBLIC_HOUSING_SNAPSHOT)
+    const { repository, mapRepository } = createSnapshotPublicHousingRepositories(loadSnapshot)
+    const signal = new AbortController().signal
+
+    await Promise.all([
+      mapRepository.findMap({ bounds: BOUNDS, zoom: 9 }, signal),
+      repository.findComplexPage(BOUNDS, null, 20, signal),
+      repository.findComplexDetail('17', signal),
+      repository.findAnnouncementPage(null, 20, signal),
+      repository.findAnnouncementDetail('201', signal),
+    ])
+
+    expect(loadSnapshot).toHaveBeenCalledOnce()
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('snapshot 로딩 실패 뒤 지도와 목록을 다시 조회할 수 있다', async () => {
+    const loadSnapshot = vi.fn()
+      .mockRejectedValueOnce(new Error('snapshot unavailable'))
+      .mockResolvedValueOnce(MINIMAL_PUBLIC_HOUSING_SNAPSHOT)
+    const { repository, mapRepository } = createSnapshotPublicHousingRepositories(loadSnapshot)
+    const signal = new AbortController().signal
+
+    await expect(mapRepository.findMap({ bounds: BOUNDS, zoom: 9 }, signal))
+      .rejects.toThrow('snapshot unavailable')
+    await expect(repository.findComplexPage(BOUNDS, null, 20, signal))
+      .resolves.toMatchObject({ items: [{ complexId: '17' }] })
+    await expect(mapRepository.findMap({ bounds: BOUNDS, zoom: 9 }, signal))
+      .resolves.toMatchObject({ nodes: [{ complexId: '17' }] })
+    expect(loadSnapshot).toHaveBeenCalledTimes(2)
   })
 
   it('validates local data with the production response decoders', async () => {
@@ -348,12 +434,12 @@ describe('local public housing snapshot repository', () => {
         },
       ],
     }
-    const repository = createSnapshotPublicHousingRepository(
+    const { mapRepository } = createSnapshotPublicHousingRepositories(
       () => Promise.resolve(invalidSnapshot),
     )
 
-    const error = await repository
-      .findMapComplexes(BOUNDS, new AbortController().signal)
+    const error = await mapRepository
+      .findMap({ bounds: BOUNDS, zoom: 9 }, new AbortController().signal)
       .catch((caught: unknown) => caught)
 
     expect(error).toBeInstanceOf(PublicHousingContractError)

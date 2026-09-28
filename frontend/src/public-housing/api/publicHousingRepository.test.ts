@@ -635,12 +635,11 @@ describe('공공주택 HTTP repository', () => {
     expect(page.raw.items[0]).toEqual(LIST_ITEM)
   })
 
-  it('단지 목록과 지도는 같은 단지 필터를 query로 직렬화한다', async () => {
+  it('단지 목록 필터를 query로 직렬화한다', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(
         jsonResponse({ data: { items: [], nextCursor: null, hasNext: false } }),
       )
-      .mockResolvedValueOnce(jsonResponse({ data: { items: [] } }))
     const repository = createRepository(fetchMock, 'https://api.example.test')
     const signal = new AbortController().signal
 
@@ -651,7 +650,6 @@ describe('공공주택 HTTP repository', () => {
       signal,
       COMPLEX_FILTERS,
     )
-    await repository.findMapComplexes(BOUNDS, signal, COMPLEX_FILTERS)
 
     for (const [requestUrl] of fetchMock.mock.calls) {
       const search = new URL(String(requestUrl)).searchParams
@@ -674,34 +672,6 @@ describe('공공주택 HTTP repository', () => {
     }
   })
 
-  it('지도 응답 순서를 보존하되 범위를 벗어난 개별 좌표만 제외한다', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({
-        data: {
-          items: [
-            mapItem({ complexId: 9, latitude: 37.5, longitude: 126.9 }),
-            mapItem({ complexId: 7, latitude: 91, longitude: 126.91 }),
-            mapItem({ complexId: 3, latitude: 37.51, longitude: 126.92 }),
-          ],
-        },
-      }),
-    )
-    const repository = createRepository(fetchMock, '')
-
-    const complexes = await repository.findMapComplexes(
-      BOUNDS,
-      new AbortController().signal,
-    )
-
-    expect(complexes.map((complex) => complex.complexId)).toEqual(['9', '3'])
-    expect(complexes[0]).toMatchObject({
-      latitude: 37.5,
-      longitude: 126.9,
-      depositMin: 0,
-      depositMax: null,
-    })
-  })
-
   it('서버 오류의 공개 필드를 HTTP 오류로 전달한다', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse(
@@ -716,8 +686,10 @@ describe('공공주택 HTTP repository', () => {
     )
     const repository = createRepository(fetchMock, '')
 
-    const request = repository.findMapComplexes(
+    const request = repository.findComplexPage(
       BOUNDS,
+      null,
+      20,
       new AbortController().signal,
     )
 
@@ -740,7 +712,7 @@ describe('공공주택 HTTP repository', () => {
     const repository = createRepository(fetchMock, '')
 
     await expect(
-      repository.findMapComplexes(BOUNDS, new AbortController().signal),
+      repository.findComplexPage(BOUNDS, null, 20, new AbortController().signal),
     ).rejects.toBeInstanceOf(PublicHousingContractError)
   })
 
@@ -754,7 +726,7 @@ describe('공공주택 HTTP repository', () => {
     const repository = createRepository(fetchMock, '')
 
     await expect(
-      repository.findMapComplexes(BOUNDS, new AbortController().signal),
+      repository.findComplexPage(BOUNDS, null, 20, new AbortController().signal),
     ).rejects.toBe(abortError)
   })
 
@@ -768,7 +740,7 @@ describe('공공주택 HTTP repository', () => {
     const repository = createRepository(fetchMock, '')
 
     await expect(
-      repository.findMapComplexes(BOUNDS, new AbortController().signal),
+      repository.findComplexPage(BOUNDS, null, 20, new AbortController().signal),
     ).rejects.toBe(abortError)
   })
 
@@ -1103,29 +1075,4 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { 'Content-Type': 'application/json' },
     status,
   })
-}
-
-function mapItem({
-  complexId,
-  latitude,
-  longitude,
-}: {
-  complexId: number
-  latitude: number
-  longitude: number
-}) {
-  return {
-    complexId,
-    name: `단지 ${complexId}`,
-    latitude,
-    longitude,
-    rentalType: 'HAPPY_HOUSING',
-    agency: { code: 'LH', name: '한국토지주택공사' },
-    exclusiveAreaMin: null,
-    exclusiveAreaMax: null,
-    depositMin: 0,
-    depositMax: null,
-    monthlyRentMin: null,
-    monthlyRentMax: null,
-  }
 }
