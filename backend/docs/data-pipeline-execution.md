@@ -1,5 +1,7 @@
 # Data Pipeline Execution
 
+진행 표시·중지 API·실패 조회와 배포 조건은 [관리자 실행 제어](pipeline-operator-controls.md)를 따른다.
+
 ## 실행 상태
 
 - 파이프라인은 `단지 수집`, `단지 정제`, `공고 수집`, `공고 정제` 네 실행 단위로 구분한다.

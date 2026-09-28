@@ -9,6 +9,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -41,6 +42,8 @@ import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacem
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.MockClock;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleConfig;
@@ -315,7 +318,14 @@ class LhAnnouncementExternalCollectionServiceTest {
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
         when(sourceStore.replaceDetails(eq("200"), any(), any())).thenReturn(1);
 
-        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        var monitor = mock(DataPipelineExecutionMonitor.class);
+        ExternalDataCollectionReport result;
+        try (var scope = IngestExecutionScope.open(null, monitor)) {
+            result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        }
+        verify(monitor).beginWork(any(), eq("요청"), eq(0L));
+        verify(monitor).beginWork(any(), eq("요청"), eq(1L));
+        verify(monitor).workCompleted();
 
         assertMetricCount("source.rows", "scheduled", "read", 7);
         assertMetricCount("source.rows", "scheduled", "candidate", 3);

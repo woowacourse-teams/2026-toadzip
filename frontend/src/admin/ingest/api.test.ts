@@ -7,6 +7,29 @@ afterEach(() => {
 })
 
 describe('관리자 데이터 수집·정제 API', () => {
+  it('중지는 실행 ID와 CSRF 헤더를 포함하고 서버의 대기 상태를 보존한다', async () => {
+    const fetchMock = prepareFetch({ ...execution('COMPLEX_COLLECTION', 'RUNNING'), stopRequested: true })
+    const { stopDataPipeline } = await import('./api.ts')
+    await expect(stopDataPipeline('run-1')).resolves.toMatchObject({ status: 'RUNNING', stopRequested: true })
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:8080/api/admin/ingest/pipelines/executions/run-1/stop',
+      { method: 'POST', credentials: 'include', headers: { 'X-CUSTOM-CSRF': 'csrf-token' } },
+    )
+  })
+
+  it('실패 목록은 페이징 경로로 요청하고 잘못된 행 응답을 거절한다', async () => {
+    vi.stubEnv('DEV', true)
+    vi.stubEnv('VITE_API_BASE_URL', '')
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse([{ status: 'PENDING' }]))
+    vi.stubGlobal('fetch', fetchMock)
+    const { getIngestFailures } = await import('./api.ts')
+    await expect(getIngestFailures('complex', false, 2)).rejects.toThrow('실패 항목 응답 형식')
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:8080/api/admin/ingest/myhome/complex-mappings/failures/page?page=2&size=20',
+      { credentials: 'include' },
+    )
+  })
+
   it('동적 CSRF 헤더와 세션 쿠키를 포함해 수집 실행을 요청한다', async () => {
     const fetchMock = prepareFetch(execution('ANNOUNCEMENT_COLLECTION', 'RUNNING'))
     const { startDataPipeline } = await import('./api.ts')

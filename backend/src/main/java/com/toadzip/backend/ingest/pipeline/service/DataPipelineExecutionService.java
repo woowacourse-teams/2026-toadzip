@@ -146,11 +146,21 @@ public class DataPipelineExecutionService {
         );
     }
 
+    public java.util.List<DataPipelineExecutionResponse> history(int page, int size) {
+        return executionRepository.findAll(org.springframework.data.domain.PageRequest.of(page, size,
+                org.springframework.data.domain.Sort.by("id").descending())).stream()
+                .map(executionMapper::response).toList();
+    }
+
     public DataPipelineExecutionResponse findLatest(DataPipelineType type) {
         return executionRepository.findFirstByTypeOrderByIdDesc(type)
                 .map(this::recoverInterruptedExecution)
                 .map(executionMapper::response)
                 .orElseGet(() -> DataPipelineExecutionResponse.idle(type));
+    }
+
+    public DataPipelineExecutionResponse requestStop(UUID executionId) {
+        return executionMapper.response(executionStateService.requestStop(executionId));
     }
 
     public DataPipelineExecutionResponse find(UUID executionId) {
@@ -173,10 +183,10 @@ public class DataPipelineExecutionService {
         String previousExecutionId = MDC.get("executionId");
         setExecutionContext("traceId", traceId);
         MDC.put("executionId", executionId.toString());
-        try (lease; var ignored = IngestExecutionScope.open(lease)) {
+        var monitor = new DataPipelineExecutionMonitor(executionId, executionStateService, clock);
+        try (lease; var ignored = IngestExecutionScope.open(lease, monitor)) {
             lease.verifyHeld();
-            runner.run(type, progressListener(executionId));
-            executionStateService.complete(executionId, Instant.now(clock));
+            runUntilStopped(executionId, type);
         }
         catch (IngestOwnershipLostException exception) {
             recordFailure(executionId, type, findCurrentStep(executionId), exception.getMessage(), null);
@@ -213,6 +223,17 @@ public class DataPipelineExecutionService {
         }
     }
 
+    private void runUntilStopped(UUID executionId, DataPipelineType type) {
+        try {
+            runner.run(type, progressListener(executionId));
+        }
+        catch (DataPipelineStoppedException exception) {
+            executionStateService.stop(executionId, Instant.now(clock));
+            return;
+        }
+        executionStateService.complete(executionId, Instant.now(clock));
+    }
+
     private void setExecutionContext(String key, String value) {
         if (value == null) {
             MDC.remove(key);
@@ -228,6 +249,7 @@ public class DataPipelineExecutionService {
             @Override
             public void started(DataPipelineStep step) {
                 IngestExecutionScope.verifyHeld();
+                IngestExecutionScope.checkStopRequested();
                 if (partiallyFailedStep != null) {
                     executionStateService.startStepAfterPartialFailure(
                             executionId,

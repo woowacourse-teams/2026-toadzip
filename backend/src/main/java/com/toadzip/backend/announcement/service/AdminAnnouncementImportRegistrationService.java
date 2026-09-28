@@ -130,7 +130,8 @@ public class AdminAnnouncementImportRegistrationService {
         Map<Integer, HousingComplex> result = new HashMap<>();
         for (SupplyRowMatchResponse match : validation.supplyRows()) {
             long selectedId = selectedIdFor(match, selectedIds);
-            HousingComplex complex = housingComplexRepository.findById(selectedId)
+            HousingComplex complex = housingComplexRepository.findByIdForUpdate(selectedId)
+                    .filter(value -> !value.isAdminDeleted())
                     .orElseThrow(InvalidAnnouncementImportException::new);
             result.put(match.supplyRowIndex(), complex);
         }

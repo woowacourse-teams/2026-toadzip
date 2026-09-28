@@ -11,6 +11,7 @@ export type DataPipelineExecutionStatus =
   | 'COMPLETED_WARNINGS'
   | 'COMPLETED_WITH_SKIPS'
   | 'FAILED'
+  | 'STOPPED'
 
 export type DataPipelineSkippedStep = {
   stepName: string
@@ -30,6 +31,15 @@ export type DataPipelineFailure = {
   serverResponse: unknown
 }
 
+export type DataPipelineWorkProgress = {
+  label: string
+  unit: string
+  completedCount: number
+  totalCount: number
+  startedAt: string
+  updatedAt: string
+}
+
 export type DataPipelineExecution = {
   executionId: string | null
   type: DataPipelineType
@@ -41,6 +51,14 @@ export type DataPipelineExecution = {
   skippedSteps: readonly DataPipelineSkippedStep[]
   partiallyFailedSteps: readonly DataPipelineWarningStep[]
   failure: DataPipelineFailure | null
+  startedAt?: string | null
+  finishedAt?: string | null
+  stopRequested?: boolean
+  externalRequestCount?: number
+  lastRequestDescription?: string | null
+  lastProgressAt?: string | null
+  workProgress?: DataPipelineWorkProgress | null
+  completedStepResults?: readonly DataPipelineWarningStep[]
 }
 
 export type LocationSummaryImportReport = {
@@ -162,6 +180,15 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
+function isWorkProgress(value: unknown): value is DataPipelineWorkProgress {
+  return isRecord(value)
+    && typeof value.label === 'string' && typeof value.unit === 'string'
+    && typeof value.completedCount === 'number' && Number.isSafeInteger(value.completedCount) && value.completedCount >= 0
+    && typeof value.totalCount === 'number' && Number.isSafeInteger(value.totalCount) && value.totalCount >= -1
+    && typeof value.startedAt === 'string' && Number.isFinite(Date.parse(value.startedAt))
+    && typeof value.updatedAt === 'string' && Number.isFinite(Date.parse(value.updatedAt))
+}
+
 function isDataPipelineExecution(value: unknown): value is DataPipelineExecution {
   if (!isRecord(value) || !isDataPipelineType(value.type) || !isExecutionStatus(value.status)) {
     return false
@@ -183,6 +210,15 @@ function isDataPipelineExecution(value: unknown): value is DataPipelineExecution
     && typeof value.currentStepIndex === 'number'
     && typeof value.totalStepCount === 'number'
     && (value.failure === null || isPipelineFailure(value.failure))
+    && (value.stopRequested === undefined || typeof value.stopRequested === 'boolean')
+    && (value.workProgress == null || isWorkProgress(value.workProgress))
+    && (value.externalRequestCount === undefined
+      || (typeof value.externalRequestCount === 'number' && value.externalRequestCount >= 0))
+    && ['startedAt', 'finishedAt', 'lastProgressAt', 'lastRequestDescription'].every(
+      (key) => value[key] === undefined || value[key] === null || typeof value[key] === 'string',
+    )
+    && (value.completedStepResults === undefined || (Array.isArray(value.completedStepResults)
+      && value.completedStepResults.every(isPipelineWarningStep)))
 }
 
 function isPipelineSkippedStep(value: unknown): value is DataPipelineSkippedStep {
@@ -242,6 +278,7 @@ function isExecutionStatus(value: unknown): value is DataPipelineExecutionStatus
     || value === 'COMPLETED_WARNINGS'
     || value === 'COMPLETED_WITH_SKIPS'
     || value === 'FAILED'
+    || value === 'STOPPED'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -267,4 +304,89 @@ function resolveApiBaseUrl(): string {
     return 'http://localhost:8080'
   }
   return ''
+}
+
+export async function stopDataPipeline(executionId: string): Promise<DataPipelineExecution> {
+  const csrfToken = await requestCsrfToken()
+  const response = await fetch(
+    `${apiBaseUrl}/api/admin/ingest/pipelines/executions/${encodeURIComponent(executionId)}/stop`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: { [csrfToken.headerName]: csrfToken.token },
+    },
+  )
+  return readExecutionResponse(response)
+}
+
+export const failureCategories = {
+  collection: { label: '외부 API 수집', path: 'external-data-failures' },
+  complex: { label: '단지 정제', path: 'myhome/complex-mappings/failures' },
+  household: { label: 'LH 세대수 보강', path: 'lh/housing-type-households/failures' },
+  announcement: { label: '공고 정제', path: 'myhome/announcement-mappings/failures' },
+  enrichment: { label: 'LH 공고 보강', path: 'lh/announcement-enrichments/failures' },
+} as const
+export type FailureCategory = keyof typeof failureCategories
+export type IngestFailure = {
+  target: string
+  sourceKey: string
+  reason: string
+  detail: string
+  status: string
+  occurredAt: string
+  occurrenceCount: number
+  executionId: string | null
+  source: string | null
+  raw: Record<string, unknown>
+}
+
+export async function getIngestFailures(
+  category: FailureCategory, history: boolean, page: number,
+): Promise<readonly IngestFailure[]> {
+  const needsPageSuffix = !history && category !== 'collection' && category !== 'household'
+  const suffix = history ? '/history' : needsPageSuffix ? '/page' : ''
+  const response = await fetch(
+    `${apiBaseUrl}/api/admin/ingest/${failureCategories[category].path}${suffix}?page=${page}&size=20`,
+    { credentials: 'include' },
+  )
+  const body = await readJson(response)
+  if (!response.ok) throw apiError(response.status, body)
+  if (!Array.isArray(body)) throw new Error('실패 목록 응답 형식이 올바르지 않습니다.')
+  return body.map(parseIngestFailure)
+}
+
+function parseIngestFailure(value: unknown): IngestFailure {
+  if (!isRecord(value) || typeof value.reason !== 'string'
+    || typeof value.status !== 'string' || typeof value.occurredAt !== 'string'
+    || (typeof value.sourceKey !== 'string' && typeof value.requestDescription !== 'string')) {
+    throw new Error('실패 항목 응답 형식이 올바르지 않습니다.')
+  }
+  const text = (key: string) => typeof value[key] === 'string' ? value[key] : null
+  const target = text('complexName') ?? text('sourceComplexIdentifier')
+    ?? text('sourceAnnouncementIdentifier') ?? text('requestDescription') ?? text('sourceKey') ?? '식별자 없음'
+  const serial = typeof value.sourceHouseSerialNumber === 'number'
+    ? ` · 공급행 ${value.sourceHouseSerialNumber}` : ''
+  return {
+    target: target + serial,
+    sourceKey: text('sourceKey') ?? text('requestDescription') ?? '',
+    reason: text('errorType') ?? value.reason,
+    detail: text('detail') ?? value.reason,
+    status: value.status,
+    occurredAt: text('lastOccurredAt') ?? value.occurredAt,
+    occurrenceCount: typeof value.occurrenceCount === 'number' ? value.occurrenceCount : 1,
+    executionId: text('lastExecutionId'),
+    source: text('source'),
+    raw: value,
+  }
+}
+
+export async function getPipelineHistory(page: number): Promise<DataPipelineExecution[]> {
+  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/history?page=${page}&size=20`, {credentials:'include'})
+  const body = await readJson(response)
+  if (!response.ok) throw apiError(response.status,body)
+  if (!Array.isArray(body) || !body.every(isDataPipelineExecution)) throw new Error('실행 이력 응답 형식이 올바르지 않습니다.')
+  return body
+}
+export async function getPipelineExecution(id: string): Promise<DataPipelineExecution> {
+  return readExecutionResponse(await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/executions/${encodeURIComponent(id)}`, {credentials:'include'}))
 }

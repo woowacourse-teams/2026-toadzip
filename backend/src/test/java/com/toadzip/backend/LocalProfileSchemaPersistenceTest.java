@@ -53,7 +53,7 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertTrue(history.next()),
-                        () -> assertEquals(11, history.getInt(1)),
+                        () -> assertEquals(15, history.getInt(1)),
                         () -> assertEquals(1, countColumn(connection,
                                 "admin_announcement_imports", "original_json")),
                         () -> assertEquals(1, countColumn(connection,
@@ -148,7 +148,7 @@ class LocalProfileSchemaPersistenceTest {
                 assertTrue(history.next());
                 assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02,SQL:20260923.01"
                                 + ",SQL:20260923.02,SQL:20260924.01,SQL:20260925.01,SQL:20260925.02"
-                                + ",SQL:20260925.03,SQL:20260926.01,SQL:20260926.02,SQL:20260927.01",
+                                + ",SQL:20260925.03,SQL:20260926.01,SQL:20260926.02,SQL:20260926.03,SQL:20260926.04,SQL:20260926.05,SQL:20260926.06,SQL:20260927.01",
                         history.getString(1));
                 assertEquals(1, countColumn(connection, "admin_announcement_imports", "original_json"));
                 assertEquals(1, countColumn(connection, "announcements", "lh_reception_place_owned"));
@@ -156,6 +156,9 @@ class LocalProfileSchemaPersistenceTest {
                 assertEquals(1, countColumn(connection, "announcements", "lh_pan_id_reviewed"));
                 assertEquals(1, countColumn(connection, "ingest_execution_ownership", "generation"));
                 assertEquals(1, countColumn(connection, "ingest_execution_ownership", "owner_id"));
+                assertEquals(1, countColumn(connection, "data_pipeline_executions", "stop_requested"));
+                assertEquals(1, countColumn(connection, "data_pipeline_executions", "work_progress"));
+                assertEquals(1, countColumn(connection, "data_pipeline_executions", "external_request_count"));
                 assertEquals(1, countAllRows(connection, "ingest_execution_ownership"));
                 assertEquals(0, countAllRows(connection, "announcement_application_schedules"));
                 assertEquals(1, countColumn(connection, "myhome_complex_links", "approved_household_count"));

@@ -37,6 +37,15 @@ public class DataPipelineController {
         return ResponseEntity.accepted().body(response);
     }
 
+    @GetMapping("/history")
+    public ResponseEntity<List<DataPipelineExecutionResponse>> history(
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0")
+            @jakarta.validation.constraints.Min(0) int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20")
+            @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(100) int size) {
+        return ResponseEntity.ok(executionService.history(page, size));
+    }
+
     @GetMapping("/{type}")
     public ResponseEntity<DataPipelineExecutionResponse> findLatest(@PathVariable String type) {
         DataPipelineExecutionResponse response = executionService.findLatest(
@@ -48,6 +57,11 @@ public class DataPipelineController {
     @GetMapping("/schedule-deferrals")
     public ResponseEntity<List<DataPipelineScheduleDeferralResponse>> findScheduleDeferrals() {
         return ResponseEntity.ok(scheduleDeferralService.findAll());
+    }
+
+    @PostMapping("/executions/{executionId}/stop")
+    public ResponseEntity<DataPipelineExecutionResponse> stop(@PathVariable UUID executionId) {
+        return ResponseEntity.accepted().body(executionService.requestStop(executionId));
     }
 
     @GetMapping("/executions/{executionId}")

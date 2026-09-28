@@ -61,7 +61,8 @@ final class ComplexSummarySqlBuilder {
             + ApplicationScheduleSql.displayPeriodJoin("representative", "housing_complex.id") + """
             LEFT JOIN area_range ON area_range.housing_complex_id = housing_complex.id
             LEFT JOIN price_range ON price_range.housing_complex_id = housing_complex.id
-            WHERE housing_complex.latitude BETWEEN :southWestLat AND :northEastLat
+            WHERE housing_complex.admin_deleted = false
+              AND housing_complex.latitude BETWEEN :southWestLat AND :northEastLat
               AND housing_complex.longitude BETWEEN :southWestLng AND :northEastLng
             """;
 

@@ -10,6 +10,20 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface HousingComplexRepository extends JpaRepository<HousingComplex, Long> {
+    @Query(value = """
+            SELECT c.* FROM housing_complexes c
+            WHERE c.admin_deleted = :deleted
+              AND (:review = false OR c.source_review_required = true)
+              AND (lower(c.name) LIKE :keyword ESCAPE '!' OR lower(c.road_address) LIKE :keyword ESCAPE '!'
+                  OR lower(c.source_complex_identifier) = :identifier)
+              AND (:provider = '' OR c.provider IN (:provider, :providerLegacy))
+              AND (:rental = '' OR c.supply_type IN (:rental, :rentalLegacy))
+              AND (:region = '' OR c.province_code = :region OR c.city_county_district_code = :region)
+            ORDER BY c.created_at DESC NULLS LAST, c.id DESC
+            """, nativeQuery = true)
+    org.springframework.data.domain.Page<HousingComplex> searchAdmin(String keyword, String identifier, String provider, String providerLegacy,
+            String rental, String rentalLegacy, String region, boolean deleted, boolean review,
+            org.springframework.data.domain.Pageable pageable);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT complex FROM HousingComplex complex WHERE complex.id = :id")
@@ -20,7 +34,7 @@ public interface HousingComplexRepository extends JpaRepository<HousingComplex, 
     @Query("""
             SELECT complex
             FROM HousingComplex complex
-            WHERE complex.address.pnu = :pnu
+            WHERE complex.adminDeleted = false AND complex.address.pnu = :pnu
               AND complex.supplyType = :supplyType
             """)
     List<HousingComplex> findAllByPnuAndSupplyType(

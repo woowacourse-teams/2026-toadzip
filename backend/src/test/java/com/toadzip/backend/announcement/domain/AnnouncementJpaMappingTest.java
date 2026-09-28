@@ -27,7 +27,7 @@ class AnnouncementJpaMappingTest {
         assertEntityAttributes(
                 "Announcement",
                 Set.of(
-                        "id",
+                        "id", "createdAt", "version", "adminModified", "adminDeleted", "sourceReviewRequired", "adminUpdatedAt",
                         "sourceAnnouncementIdentifier",
                         "previousSourceAnnouncementIdentifier",
                         "previousAnnouncement",
@@ -72,7 +72,7 @@ class AnnouncementJpaMappingTest {
                         "totalSupplyHouseholdCount",
                         "lhSourceSupplyRowIdentifier",
                         "lhTotalSupplyHouseholdCountOwned",
-                        "lhTotalSupplyHouseholdCountEnriched"
+                        "lhTotalSupplyHouseholdCountEnriched", "adminModified"
                 )
         );
         assertEntityAttributes(

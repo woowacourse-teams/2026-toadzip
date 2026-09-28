@@ -6,9 +6,9 @@ final class HousingComplexRepresentativeSql {
             WITH latest_leaf AS (
                 SELECT announcement.*
                 FROM announcements announcement
-                WHERE NOT EXISTS (
+                WHERE announcement.admin_deleted = false AND NOT EXISTS (
                     SELECT 1 FROM announcements successor
-                    WHERE successor.previous_announcement_id = announcement.id
+                    WHERE successor.previous_announcement_id = announcement.id AND successor.admin_deleted = false
                 )
                   AND announcement.status NOT IN ('CANCELLATION', '취소공고')
             ), representative AS (

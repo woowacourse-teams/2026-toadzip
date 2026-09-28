@@ -102,6 +102,7 @@ public class LhAnnouncementExternalCollectionService {
         Set<String> readSourceAnnouncements = new HashSet<>();
         long lastSeenId = 0L;
         while (true) {
+            IngestExecutionScope.checkStopRequested();
             List<MyHomeAnnouncementSource> sources = findNextBatch(targetSource, lastSeenId);
             if (sources.isEmpty()) {
                 return report;
@@ -344,6 +345,11 @@ public class LhAnnouncementExternalCollectionService {
                         .map(candidate -> sourceSelectionDescription(candidate.sourceAnnouncementKey())).toList()));
         // 배치의 판정 결과다. 이후 수집이 중단되면 실제 호출 수는 더 적을 수 있다.
         recordDecisions(targetSource, forceRefresh, requests, progress);
+        BatchProgress requestProgress = progress;
+        long requestCount = requests.stream()
+                .filter(request -> forceRefresh || !requestProgress.isFresh(request.getFirst().requestDescription()))
+                .count();
+        IngestExecutionScope.beginWork(targetSource.operation() + " · 현재 묶음 (최대 500개 원천 행)", "요청", requestCount);
         return collectRequests(
                 targetSource,
                 requests,
@@ -480,6 +486,9 @@ public class LhAnnouncementExternalCollectionService {
                 runningPanIds.remove(requests.get(index).getFirst().panId());
                 try {
                     report = report.plus(completed.get());
+                    if (forceRefresh || !progress.isFresh(requests.get(index).getFirst().requestDescription())) {
+                        IngestExecutionScope.workCompleted();
+                    }
                     stopScheduling |= report.rateLimitedRequestCount() > 0;
                 }
                 catch (ExecutionException exception) {

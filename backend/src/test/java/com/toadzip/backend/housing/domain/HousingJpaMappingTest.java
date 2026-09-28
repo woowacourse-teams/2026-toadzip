@@ -27,7 +27,7 @@ class HousingJpaMappingTest {
         assertEntityAttributes(
                 "HousingComplex",
                 Set.of(
-                        "id",
+                        "id", "createdAt", "version", "adminModified", "adminDeleted", "sourceReviewRequired", "adminUpdatedAt",
                         "name",
                         "sourceComplexIdentifier",
                         "supplyType",

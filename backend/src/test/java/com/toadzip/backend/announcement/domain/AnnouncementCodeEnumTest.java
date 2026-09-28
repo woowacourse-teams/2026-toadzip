@@ -56,7 +56,7 @@ class AnnouncementCodeEnumTest {
     @Test
     void 모든_정식_코드를_선언한다() {
         assertEquals(
-                9,
+                10,
                 RentalType.values().length
         );
         assertEquals(3, AnnouncementPublicationType.values().length);
