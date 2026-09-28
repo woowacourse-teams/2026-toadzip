@@ -6,6 +6,7 @@
 
 ```dotenv
 SPRING_PROFILES_ACTIVE=prod
+LOKI_PUSH_URL=http://<모니터링 서버 사설 IP>:3100/loki/api/v1/push
 PRIMARY_DB_HOST=<DB 서버 사설 IP>
 PRIMARY_DB_PORT=5433
 PRIMARY_DB_PASSWORD=
