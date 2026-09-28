@@ -3,7 +3,7 @@ import {
   type PublicHousingRepository,
 } from './publicHousingRepository.ts'
 import {
-  createSnapshotPublicHousingRepository,
+  createSnapshotPublicHousingRepositories,
   decodePublicHousingSnapshot,
 } from './snapshotPublicHousingRepository.ts'
 
@@ -85,5 +85,5 @@ export function loadLocalPublicHousingMock() {
 
 export const defaultPublicHousingRepository: PublicHousingRepository =
   localPublicHousingMockEnabled
-    ? createSnapshotPublicHousingRepository(loadLocalPublicHousingMock)
+    ? createSnapshotPublicHousingRepositories(loadLocalPublicHousingMock).repository
     : publicHousingRepository

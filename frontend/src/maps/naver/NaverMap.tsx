@@ -8,10 +8,6 @@ import type {
   MapMarkerPresentation,
 } from '../../public-housing/presentation/mapMarkerPresentation.ts'
 import {
-  clusterScreenMarkers,
-  type ClusteredScreenMarkers,
-} from './screenMarkerClustering.ts'
-import {
   loadNaverMapsSdk,
   NaverMapsSdkError,
   subscribeToNaverMapsAuthenticationFailure,
@@ -87,44 +83,27 @@ interface NaverMapCommonProps {
   transitioning?: boolean
 }
 
-interface NaverMapLegacyProps extends NaverMapCommonProps {
-  aggregateMarkers?: never
-  markerRenderMode?: 'legacy'
-  markers?: readonly NaverMapMarker[]
-  onAggregateMarkerSelect?: never
-  representation?: never
-}
-
-interface NaverMapServerAggregateProps extends NaverMapCommonProps {
+interface NaverMapAggregateProps extends NaverMapCommonProps {
   aggregateMarkers: readonly NaverMapAggregateMarker[]
-  markerRenderMode: 'server'
   markers?: never
   onAggregateMarkerSelect: (marker: NaverMapAggregateMarker) => void
   representation: 'AGGREGATE'
 }
 
-interface NaverMapServerIndividualProps extends NaverMapCommonProps {
+interface NaverMapIndividualProps extends NaverMapCommonProps {
   aggregateMarkers?: never
-  markerRenderMode: 'server'
   markers: readonly NaverMapMarker[]
   onAggregateMarkerSelect?: never
   representation: 'INDIVIDUAL'
 }
 
 export type NaverMapProps =
-  | NaverMapLegacyProps
-  | NaverMapServerAggregateProps
-  | NaverMapServerIndividualProps
-
-interface PendingClusterFocus {
-  readonly memberIds: readonly string[]
-  readonly projectionRevision: number
-}
+  | NaverMapAggregateProps
+  | NaverMapIndividualProps
 
 interface MarkerFocusTarget {
-  readonly aggregateMarkerId?: string
-  readonly memberIds: readonly string[]
-  readonly preferredComplexId: string | null
+  readonly kind: RenderedMarker['kind']
+  readonly id: string
 }
 
 const FAILURE_CONTENT: Record<MapFailureReason, FailureContent> = {
@@ -223,7 +202,6 @@ export default function NaverMap({
   cameraRequestId,
   cameraTarget,
   dataBusy = false,
-  markerRenderMode = 'legacy',
   markers = [],
   onAggregateMarkerSelect,
   onMarkerHighlight,
@@ -246,8 +224,6 @@ export default function NaverMap({
   const appliedMarkerDataKeyRef = useRef<string | null>(null)
   const aggregateMarkersRef = useRef(aggregateMarkers)
   aggregateMarkersRef.current = aggregateMarkers
-  const markerRenderModeRef = useRef(markerRenderMode)
-  markerRenderModeRef.current = markerRenderMode
   const markersRef = useRef(markers)
   markersRef.current = markers
   const representationRef = useRef(representation)
@@ -264,7 +240,6 @@ export default function NaverMap({
   const markerFocusTimerRef = useRef<number | undefined>(undefined)
   const appliedCameraTargetRef = useRef<NaverMapCameraTarget | null>(null)
   const appliedCameraRequestIdRef = useRef<number | undefined>(undefined)
-  const pendingClusterFocusRef = useRef<PendingClusterFocus | null>(null)
   const onAggregateMarkerSelectRef = useRef(onAggregateMarkerSelect)
   const onMarkerHighlightRef = useRef(onMarkerHighlight)
   const onMarkerSelectRef = useRef(onMarkerSelect)
@@ -272,10 +247,6 @@ export default function NaverMap({
   const onViewportChangeRef = useRef(onViewportChange)
   const [attempt, setAttempt] = useState(0)
   const [initializedAttempt, setInitializedAttempt] = useState<number | null>(null)
-  const [markerAnnouncement, setMarkerAnnouncement] = useState('')
-  const [projectionRevision, setProjectionRevision] = useState(0)
-  const projectionRevisionRef = useRef(projectionRevision)
-  projectionRevisionRef.current = projectionRevision
   const [status, setStatus] = useState<MapStatus>({ kind: 'loading' })
   const cameraLatitude = cameraTarget?.latitude
   const cameraLongitude = cameraTarget?.longitude
@@ -292,16 +263,9 @@ export default function NaverMap({
   const cameraPaddingLeft = cameraTarget?.boundsPadding?.left
   const markerGeometryKey = createMarkerGeometryKey({
     aggregateMarkers,
-    markerRenderMode,
     markers,
     representation,
   })
-  const markerDataKey = createMarkerGeometryKey({
-    aggregateMarkers,
-    markerRenderMode,
-    markers,
-    representation,
-  }, false)
 
   useEffect(() => {
     onAggregateMarkerSelectRef.current = onAggregateMarkerSelect
@@ -384,7 +348,6 @@ export default function NaverMap({
       mapInstanceRef.current = null
       mapsRef.current = null
       appliedCameraTargetRef.current = null
-      pendingClusterFocusRef.current = null
       window.clearTimeout(markerFocusTimerRef.current)
       markerFocusTimerRef.current = undefined
       clearMarkers(createdMarkersRef.current)
@@ -392,7 +355,6 @@ export default function NaverMap({
       createdMarkersRef.current = []
       appliedMarkerDataKeyRef.current = null
       onMarkerHighlightRef.current?.(null)
-      setMarkerAnnouncement('')
       setStatus({ kind: 'unavailable', reason: 'authentication' })
       destroyMapSafely(failedMap)
     }
@@ -445,7 +407,6 @@ export default function NaverMap({
 
           const emitViewport = () => {
             transitionInterruptedRef.current = false
-            setProjectionRevision((current) => current + 1)
             const viewport = readViewport(createdMap)
             if (viewport) {
               appliedCameraTargetRef.current = {
@@ -485,7 +446,6 @@ export default function NaverMap({
           if (typeof ResizeObserver === 'function') {
             resizeObserver = new ResizeObserver(() => {
               createdMap.autoResize()
-              setProjectionRevision((current) => current + 1)
             })
             resizeObserver.observe(mapContainerRef.current)
           }
@@ -530,7 +490,6 @@ export default function NaverMap({
       mapsRef.current = null
       appliedCameraTargetRef.current = null
       appliedCameraRequestIdRef.current = undefined
-      pendingClusterFocusRef.current = null
       destroyMapSafely(mapInstance)
     }
   }, [attempt])
@@ -562,34 +521,25 @@ export default function NaverMap({
       return
     }
 
-    const clusteredMarkers = toRenderedMarkers(
-      maps,
-      mapInstance,
+    const renderedMarkers = toRenderedMarkers(
       aggregateMarkersRef.current,
-      markerRenderModeRef.current,
       markersRef.current,
       representationRef.current,
     )
     const previousMarkers = createdMarkersRef.current
-    const animateNewMarkers = appliedMarkerDataKeyRef.current !== markerDataKey
-    appliedMarkerDataKeyRef.current = markerDataKey
+    const animateNewMarkers = appliedMarkerDataKeyRef.current !== markerGeometryKey
+    appliedMarkerDataKeyRef.current = markerGeometryKey
     const previousFocus = readMarkerFocus(previousMarkers)
     window.clearTimeout(markerFocusTimerRef.current)
     markerFocusTimerRef.current = undefined
-    if (sameRenderedMarkers(previousMarkers, clusteredMarkers)) {
-      markerFocusTimerRef.current = restoreClusterFocus(
-        previousMarkers,
-        pendingClusterFocusRef.current,
-        projectionRevision,
-        completeClusterFocusRestore,
-      )
+    if (sameRenderedMarkers(previousMarkers, renderedMarkers)) {
       return
     }
 
     const previousById = new Map(previousMarkers.map((created) => [
       renderedMarkerIdentity(created.rendered), created,
     ]))
-    const nextGeometryById = new Map(clusteredMarkers.map((marker) => [
+    const nextGeometryById = new Map(renderedMarkers.map((marker) => [
       renderedMarkerIdentity(marker), renderedMarkerGeometryKey(marker),
     ]))
     const removedMarkers = previousMarkers.filter(({ rendered }) =>
@@ -599,7 +549,7 @@ export default function NaverMap({
     const removedInteraction = removedMarkers.some(({ isInteracting }) => isInteracting())
     clearMarkers(removedMarkers)
     let enteringMarkerCount = 0
-    const createdMarkers = clusteredMarkers.map((marker) => {
+    const createdMarkers = renderedMarkers.map((marker) => {
       const previous = previousById.get(renderedMarkerIdentity(marker))
       if (previous && renderedMarkerGeometryKey(previous.rendered)
         === renderedMarkerGeometryKey(marker)) {
@@ -618,14 +568,6 @@ export default function NaverMap({
             return
           }
           onAggregateMarkerSelectRef.current?.(aggregateMarker)
-        },
-        onClusterSelect: (cluster) => {
-          pendingClusterFocusRef.current = {
-            memberIds: cluster.members.map(({ id }) => id),
-            projectionRevision: projectionRevisionRef.current,
-          }
-          setMarkerAnnouncement('')
-          fitClusterBounds(maps, mapInstance, cluster)
         },
         onMarkerHighlight: (complexId) => {
           onMarkerHighlightRef.current?.(complexId)
@@ -648,20 +590,8 @@ export default function NaverMap({
     )
     applyMarkerPresentation(createdMarkers, markersRef.current)
     createdMarkersRef.current = createdMarkers
-    const clusterFocusTimer = restoreClusterFocus(
-      createdMarkers,
-      pendingClusterFocusRef.current,
-      projectionRevision,
-      completeClusterFocusRestore,
-    )
-    markerFocusTimerRef.current = clusterFocusTimer
-      ?? restoreMarkerFocus(createdMarkers, previousFocus)
-
-    function completeClusterFocusRestore(message: string) {
-      pendingClusterFocusRef.current = null
-      setMarkerAnnouncement(message)
-    }
-  }, [markerDataKey, markerGeometryKey, projectionRevision, status.kind])
+    markerFocusTimerRef.current = restoreMarkerFocus(createdMarkers, previousFocus)
+  }, [markerGeometryKey, status.kind])
 
   useEffect(() => {
     applyMarkerPresentation(createdMarkersRef.current, markers)
@@ -805,16 +735,6 @@ export default function NaverMap({
         ref={mapContainerRef}
         aria-hidden={!isReady}
       />
-      {markerAnnouncement && (
-        <p
-          className="visually-hidden"
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {markerAnnouncement}
-        </p>
-      )}
       {isLoading && <MapLoading />}
       {status.kind === 'unavailable' && (
         <MapUnavailable reason={status.reason} onRetry={retry} />
@@ -1021,40 +941,12 @@ interface RenderedAggregateMarker {
   readonly marker: NaverMapAggregateMarker
 }
 
-interface RenderedClusterMarker {
-  readonly cluster: ClusteredScreenMarkers
-  readonly highlighted: boolean
-  readonly kind: 'cluster'
-  readonly members: readonly NaverMapComplexMarker[]
-}
-
-type RenderedMarker =
-  | RenderedAggregateMarker
-  | RenderedComplexMarker
-  | RenderedClusterMarker
+type RenderedMarker = RenderedAggregateMarker | RenderedComplexMarker
 
 function toRenderedMarkers(
-  maps: typeof naver.maps,
-  mapInstance: naver.maps.Map,
-  aggregateMarkers: readonly NaverMapAggregateMarker[],
-  markerRenderMode: 'legacy' | 'server',
-  markers: readonly NaverMapMarker[],
-  representation: 'AGGREGATE' | 'INDIVIDUAL' | undefined,
-): RenderedMarker[] {
-  if (markerRenderMode === 'server') {
-    return toServerRenderedMarkers(
-      aggregateMarkers,
-      markers,
-      representation,
-    )
-  }
-  return toLegacyRenderedMarkers(maps, mapInstance, markers)
-}
-
-function toServerRenderedMarkers(
   aggregateMarkers: readonly NaverMapAggregateMarker[],
   markers: readonly NaverMapMarker[],
-  representation: 'AGGREGATE' | 'INDIVIDUAL' | undefined,
+  representation: 'AGGREGATE' | 'INDIVIDUAL',
 ): RenderedMarker[] {
   if (representation === 'AGGREGATE') {
     return uniqueSortedAggregateMarkers(aggregateMarkers).map((marker) => ({
@@ -1066,57 +958,6 @@ function toServerRenderedMarkers(
     kind: 'complex',
     marker,
   }))
-}
-
-function toLegacyRenderedMarkers(
-  maps: typeof naver.maps,
-  mapInstance: naver.maps.Map,
-  markers: readonly NaverMapMarker[],
-): RenderedMarker[] {
-  const uniqueMarkers = uniqueSortedMarkers(markers)
-  const selectedMarkers = uniqueMarkers.filter((marker) => marker.selected)
-  const candidates = uniqueMarkers.filter((marker) => !marker.selected)
-  const markerById = new Map(candidates.map((marker) => [marker.id, marker]))
-
-  try {
-    const projection = mapInstance.getProjection()
-    const projected = candidates.map((marker) => {
-      const point = projection.fromCoordToOffset(
-        new maps.LatLng(marker.latitude, marker.longitude),
-      )
-      return {
-        id: marker.id,
-        latitude: marker.latitude,
-        longitude: marker.longitude,
-        x: point.x,
-        y: point.y,
-      }
-    })
-    const clustered = clusterScreenMarkers(projected).map((result) => {
-      if (result.kind === 'singleton') {
-        return {
-          kind: 'complex' as const,
-          marker: markerById.get(result.marker.id)!,
-        }
-      }
-      const members = result.markers.map((marker) => markerById.get(marker.id)!)
-      return {
-        cluster: result,
-        highlighted: members.some((marker) => marker.highlighted),
-        kind: 'cluster' as const,
-        members,
-      }
-    })
-    return sortRenderedMarkers([
-      ...clustered,
-      ...selectedMarkers.map((marker) => ({
-        kind: 'complex' as const,
-        marker,
-      })),
-    ])
-  } catch {
-    return uniqueMarkers.map((marker) => ({ kind: 'complex', marker }))
-  }
 }
 
 function uniqueSortedAggregateMarkers(
@@ -1145,20 +986,11 @@ function uniqueSortedMarkers(markers: readonly NaverMapMarker[]) {
   )
 }
 
-function sortRenderedMarkers(markers: readonly RenderedMarker[]) {
-  return [...markers].sort((left, right) =>
-    renderedMarkerId(left).localeCompare(renderedMarkerId(right)),
-  )
-}
-
 function renderedMarkerId(marker: RenderedMarker) {
   if (marker.kind === 'aggregate') {
     return marker.marker.groupKey
   }
-  if (marker.kind === 'complex') {
-    return marker.marker.id
-  }
-  return marker.cluster.id
+  return marker.marker.id
 }
 
 function renderedMarkerIdentity(marker: RenderedMarker) {
@@ -1173,7 +1005,6 @@ interface CreateMarkerOptions {
   readonly onAggregateMarkerSelect: (
     marker: NaverMapAggregateMarker,
   ) => void
-  readonly onClusterSelect: (cluster: RenderedClusterMarker) => void
   readonly onMarkerHighlight: ((complexId: string | null) => void) | undefined
   readonly onMarkerSelect: ((complexId: string) => void) | undefined
 }
@@ -1184,7 +1015,6 @@ function createMarker({
   maps,
   marker,
   onAggregateMarkerSelect,
-  onClusterSelect,
   onMarkerHighlight,
   onMarkerSelect,
 }: CreateMarkerOptions): CreatedMarker {
@@ -1194,16 +1024,6 @@ function createMarker({
       mapInstance,
       marker.marker,
       () => onAggregateMarkerSelect(marker.marker),
-      enterDelay,
-    )
-    return { ...created, rendered: marker, presentation: null }
-  }
-  if (marker.kind === 'cluster') {
-    const created = createClusterMarker(
-      maps,
-      mapInstance,
-      marker,
-      () => onClusterSelect(marker),
       enterDelay,
     )
     return { ...created, rendered: marker, presentation: null }
@@ -1389,71 +1209,6 @@ function bindMarkerHighlight(
   return () => focused || pointerInside
 }
 
-function createClusterMarker(
-  maps: typeof naver.maps,
-  mapInstance: naver.maps.Map,
-  marker: RenderedClusterMarker,
-  onSelect: () => void,
-  enterDelay: number | undefined,
-): CreatedMarkerOverlay {
-  const controller = new AbortController()
-  const button = document.createElement('button')
-  const count = document.createElement('strong')
-  const complexCount = marker.members.length
-  const title = `공공임대 단지 ${complexCount}곳 모여 있음`
-  button.type = 'button'
-  button.className = marker.highlighted
-    ? 'housing-map-cluster is-highlighted'
-    : 'housing-map-cluster'
-  button.dataset.clusterId = marker.cluster.id
-  button.dataset.complexIds = marker.members.map(({ id }) => id).join(',')
-  button.dataset.mapClusterMarker = 'true'
-  button.setAttribute('aria-label', `${complexCount}곳 단지 묶음, 확대해서 보기`)
-  button.title = title
-  count.textContent = `${complexCount}곳`
-  button.append(count)
-  bindMarkerActivation(button, onSelect, controller.signal)
-
-  const overlay = new maps.Marker({
-    clickable: true,
-    cursor: 'pointer',
-    icon: {
-      anchor: new maps.Point(30, 26),
-      content: createMarkerContent(button, controller.signal, enterDelay),
-      size: new maps.Size(60, 52),
-    },
-    map: mapInstance,
-    position: new maps.LatLng(
-      marker.cluster.latitude,
-      marker.cluster.longitude,
-    ),
-    title,
-  })
-  return { button, dispose: () => controller.abort(), isInteracting: () => false, overlay }
-}
-
-function fitClusterBounds(
-  maps: typeof naver.maps,
-  mapInstance: naver.maps.Map,
-  cluster: RenderedClusterMarker,
-) {
-  const coordinates = cluster.members.map((marker) => new maps.LatLng(
-    marker.latitude,
-    marker.longitude,
-  ))
-  const maximumZoom = Math.min(
-    mapInstance.getZoom() + 2,
-    mapInstance.getMaxZoom(),
-  )
-  mapInstance.fitBounds(coordinates, {
-    bottom: 72,
-    left: 72,
-    maxZoom: maximumZoom,
-    right: 72,
-    top: 72,
-  })
-}
-
 function clearBoundaryOverlays(polygons: naver.maps.OverlayView[]) {
   for (const polygon of polygons.splice(0)) {
     try {
@@ -1473,20 +1228,17 @@ function clearMarkers(markers: readonly CreatedMarker[]) {
 
 interface MarkerGeometryInput {
   readonly aggregateMarkers: readonly NaverMapAggregateMarker[]
-  readonly markerRenderMode: 'legacy' | 'server'
   readonly markers: readonly NaverMapMarker[]
-  readonly representation: 'AGGREGATE' | 'INDIVIDUAL' | undefined
+  readonly representation: 'AGGREGATE' | 'INDIVIDUAL'
 }
 
 function createMarkerGeometryKey({
   aggregateMarkers,
-  markerRenderMode,
   markers,
   representation,
-}: MarkerGeometryInput, includeSelection = true) {
+}: MarkerGeometryInput) {
   if (representation === 'AGGREGATE') {
     return JSON.stringify([
-      markerRenderMode,
       representation,
       ...uniqueSortedAggregateMarkers(aggregateMarkers).map((marker) => [
         marker.groupKey,
@@ -1500,7 +1252,6 @@ function createMarkerGeometryKey({
     ])
   }
   return JSON.stringify([
-    markerRenderMode,
     representation,
     ...uniqueSortedMarkers(markers).map((marker) => [
       marker.id,
@@ -1517,8 +1268,6 @@ function createMarkerGeometryKey({
       marker.monthlyRent?.digits,
       marker.monthlyRent?.unit,
       marker.monthlyRent?.exactLabel,
-      // 기존 군집은 선택 단지를 묶음에서 분리하므로 구성 재계산이 필요하다.
-      ...(includeSelection && markerRenderMode === 'legacy' ? [Boolean(marker.selected)] : []),
     ]),
   ])
 }
@@ -1567,10 +1316,7 @@ function markerIsHighlighted(
   if (marker.kind === 'aggregate') {
     return false
   }
-  if (marker.kind === 'complex') {
-    return highlightedIds.has(marker.marker.id)
-  }
-  return marker.members.some(({ id }) => highlightedIds.has(id))
+  return highlightedIds.has(marker.marker.id)
 }
 
 function markerZIndex(marker: RenderedMarker, selected: boolean, highlighted: boolean) {
@@ -1583,7 +1329,7 @@ function markerZIndex(marker: RenderedMarker, selected: boolean, highlighted: bo
   if (marker.kind === 'aggregate') {
     return 0
   }
-  return marker.kind === 'complex' ? 10 : 0
+  return 10
 }
 
 function sameRenderedMarkers(
@@ -1615,31 +1361,22 @@ function renderedMarkerGeometryKey(marker: RenderedMarker | undefined) {
       marker.marker.expansionZoom,
     ])
   }
-  if (marker.kind === 'complex') {
-    return JSON.stringify([
-      marker.kind,
-      marker.marker.id,
-      marker.marker.latitude,
-      marker.marker.longitude,
-      marker.marker.name,
-      marker.marker.agencyLabel,
-      marker.marker.agencyName,
-      marker.marker.rentalTypeLabel,
-      marker.marker.rentalTypeName,
-      marker.marker.deposit?.digits,
-      marker.marker.deposit?.unit,
-      marker.marker.deposit?.exactLabel,
-      marker.marker.monthlyRent?.digits,
-      marker.marker.monthlyRent?.unit,
-      marker.marker.monthlyRent?.exactLabel,
-    ])
-  }
   return JSON.stringify([
     marker.kind,
-    marker.cluster.id,
-    marker.cluster.latitude,
-    marker.cluster.longitude,
-    marker.members.map(({ id, latitude, longitude }) => [id, latitude, longitude]),
+    marker.marker.id,
+    marker.marker.latitude,
+    marker.marker.longitude,
+    marker.marker.name,
+    marker.marker.agencyLabel,
+    marker.marker.agencyName,
+    marker.marker.rentalTypeLabel,
+    marker.marker.rentalTypeName,
+    marker.marker.deposit?.digits,
+    marker.marker.deposit?.unit,
+    marker.marker.deposit?.exactLabel,
+    marker.marker.monthlyRent?.digits,
+    marker.marker.monthlyRent?.unit,
+    marker.marker.monthlyRent?.exactLabel,
   ])
 }
 
@@ -1652,22 +1389,9 @@ function readMarkerFocus(
   if (!focused) {
     return null
   }
-  if (focused.rendered.kind === 'aggregate') {
-    return {
-      aggregateMarkerId: focused.rendered.marker.groupKey,
-      memberIds: [],
-      preferredComplexId: null,
-    }
-  }
-  if (focused.rendered.kind === 'complex') {
-    return {
-      memberIds: [focused.rendered.marker.id],
-      preferredComplexId: focused.rendered.marker.id,
-    }
-  }
   return {
-    memberIds: focused.rendered.members.map(({ id }) => id),
-    preferredComplexId: null,
+    kind: focused.rendered.kind,
+    id: renderedMarkerId(focused.rendered),
   }
 }
 
@@ -1688,46 +1412,7 @@ function findMarkerFocusTarget(
   createdMarkers: readonly CreatedMarker[],
   focus: MarkerFocusTarget,
 ) {
-  const aggregate = createdMarkers.find(({ rendered }) =>
-    rendered.kind === 'aggregate'
-      && rendered.marker.groupKey === focus.aggregateMarkerId,
+  return createdMarkers.find(({ rendered }) =>
+    rendered.kind === focus.kind && renderedMarkerId(rendered) === focus.id,
   )
-  if (aggregate) {
-    return aggregate
-  }
-  const memberIds = new Set(focus.memberIds)
-  const preferred = createdMarkers.find(({ rendered }) =>
-    rendered.kind === 'complex'
-      && rendered.marker.id === focus.preferredComplexId,
-  )
-  const individual = preferred ?? createdMarkers.find(({ rendered }) =>
-    rendered.kind === 'complex' && memberIds.has(rendered.marker.id),
-  )
-  return individual ?? createdMarkers.find(({ rendered }) =>
-    rendered.kind === 'cluster'
-      && rendered.members.some(({ id }) => memberIds.has(id)),
-  )
-}
-
-function restoreClusterFocus(
-  createdMarkers: readonly CreatedMarker[],
-  pending: PendingClusterFocus | null,
-  projectionRevision: number,
-  onRestore: (message: string) => void,
-) {
-  if (!pending || projectionRevision <= pending.projectionRevision) {
-    return undefined
-  }
-
-  const focus = { memberIds: pending.memberIds, preferredComplexId: null }
-  const target = findMarkerFocusTarget(createdMarkers, focus)
-  if (!target) {
-    return undefined
-  }
-  const message = target.rendered.kind === 'complex'
-    ? `${pending.memberIds.length}곳 단지 묶음을 확대해 개별 단지를 표시했습니다.`
-    : `${pending.memberIds.length}곳 단지 묶음을 확대했지만 아직 함께 표시됩니다.`
-
-  onRestore(message)
-  return window.setTimeout(() => target.button.focus({ preventScroll: true }))
 }

@@ -57,7 +57,7 @@ interface RequestCandidate {
 }
 
 export function useHousingMapResults(
-  repository: HousingMapRepository | null | undefined,
+  repository: HousingMapRepository,
 ) {
   const [state, setState] = useState<HousingMapResultsState>(INITIAL_STATE)
   const appliedSignatureRef = useRef<string | null>(null)
@@ -67,9 +67,6 @@ export function useHousingMapResults(
   const resolvedStageRef = useRef<HousingMapResult['resolvedStage'] | null>(null)
 
   const startRequest = useCallback((candidate: RequestCandidate) => {
-    if (repository === null || repository === undefined) {
-      return false
-    }
     pendingRequestRef.current?.controller.abort()
     const controller = new AbortController()
     const revision = requestRevisionRef.current + 1
@@ -155,9 +152,7 @@ export function useHousingMapResults(
     if (restoreAppliedResult(candidate.signature)) {
       return 'applied' as const
     }
-    if (!startRequest(candidate)) {
-      return 'ignored'
-    }
+    startRequest(candidate)
     return 'started'
   }, [startRequest])
 

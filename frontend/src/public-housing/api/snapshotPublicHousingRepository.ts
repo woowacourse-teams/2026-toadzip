@@ -1,3 +1,7 @@
+import {
+  createHttpHousingMapRepository,
+  type HousingMapRepository,
+} from './housingMapRepository.ts'
 import type {
   MapBounds,
   RawAnnouncementDetail,
@@ -55,12 +59,18 @@ interface CursorResult {
   readonly offset: number
 }
 
-export function createSnapshotPublicHousingRepository(
+export function createSnapshotPublicHousingRepositories(
   source: SnapshotSource,
-): PublicHousingRepository {
+): {
+  readonly repository: PublicHousingRepository
+  readonly mapRepository: HousingMapRepository
+} {
   const loadSnapshot = createSnapshotLoader(source)
   const fetcher = createSnapshotFetcher(loadSnapshot)
-  return createHttpPublicHousingRepository({ apiBaseUrl: '', fetcher })
+  return {
+    repository: createHttpPublicHousingRepository({ apiBaseUrl: '', fetcher }),
+    mapRepository: createHttpHousingMapRepository({ apiBaseUrl: '', fetcher }),
+  }
 }
 
 function createSnapshotLoader(source: SnapshotSource) {
@@ -98,7 +108,7 @@ function routeSnapshotRequest(
   snapshot: PublicHousingSnapshotV1,
   url: URL,
 ): Response {
-  if (url.pathname === '/api/v1/complexes/map') {
+  if (url.pathname === '/api/v2/complexes/map') {
     return mapResponse(snapshot, url)
   }
   if (url.pathname === '/api/v1/complexes') {
@@ -131,7 +141,13 @@ function mapResponse(snapshot: PublicHousingSnapshotV1, url: URL): Response {
     isInsideBounds(item, bounds)
     && (!filterRequested || matchingIds.has(item.complexId))
   ))
-  return successResponse({ items })
+  return successResponse({
+    resolvedStage: 4,
+    representation: 'INDIVIDUAL',
+    policyVersion: 'local-snapshot-individual-v1',
+    regionDatasetVersion: 'local-snapshot-v1',
+    nodes: items.map((item) => ({ ...item, type: 'INDIVIDUAL' })),
+  })
 }
 
 function complexPageResponse(
