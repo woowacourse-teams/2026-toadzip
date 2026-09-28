@@ -17,7 +17,8 @@ public class MyHomeComplexMergeStore {
             "id", "city_county_district_code", "latitude", "legal_dong_code", "longitude", "pnu",
             "province_code", "road_address", "completion_date", "corridor_type", "elevator_installed",
             "heating_type", "housing_type", "image_url", "name", "parking_space_count", "provider",
-            "recent_one_year_move_out_count", "source_complex_identifier", "supply_type", "total_household_count"
+            "recent_one_year_move_out_count", "source_complex_identifier", "supply_type", "total_household_count",
+            "version", "created_at", "admin_deleted", "admin_modified", "source_review_required", "admin_updated_at"
     );
 
     private final JdbcClient jdbc;
