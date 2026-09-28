@@ -10,6 +10,7 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionChec
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhProviderPolicy;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
@@ -28,7 +29,6 @@ import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningExcept
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper;
-import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCurrentSources;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
