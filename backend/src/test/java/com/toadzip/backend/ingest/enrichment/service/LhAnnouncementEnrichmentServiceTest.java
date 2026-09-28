@@ -897,10 +897,14 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"true,true", "true,false", "false,true", "false,false"})
+    @CsvSource({
+            "true,true,false", "true,false,false", "false,true,false", "false,false,false",
+            "true,true,true", "false,true,true"
+    })
     void 같은_PAN의_현재_공급만_보강하고_과거_원천의_행과_금액을_보존한다(
             boolean historicalFirst,
-            boolean expandedCurrentSupply
+            boolean expandedCurrentSupply,
+            boolean adminModifiedExpanded
     ) {
         saveComplex();
         HousingComplex complex = housingComplexRepository.findAll().getFirst();
@@ -925,6 +929,13 @@ class LhAnnouncementEnrichmentServiceTest {
                 .orElseThrow();
         SupplyRow expanded = supplyRowRepository.findBySourceSupplyRowIdentifier("21026:LH:100:1").orElseThrow();
         Long expandedTargetId = supplyTargetRepository.findAllBySupplyRow(expanded).getFirst().getId();
+        if (adminModifiedExpanded) {
+            expanded.reviseByAdmin(
+                    expanded.getHousingComplex(), expanded.getHousingType(), "동삼2", "관리자 확인 59B",
+                    PNU, YearMonth.of(2027, 1), SupplyCategory.RESUPPLY, 7
+            );
+            supplyRowRepository.save(expanded);
+        }
         historical.markMissed();
         historical.markMissed();
         myHomeSourceRepository.save(historical);
@@ -974,6 +985,13 @@ class LhAnnouncementEnrichmentServiceTest {
         SupplyTarget expandedTarget = supplyTargetRepository.findById(expandedTargetId).orElseThrow();
         assertThat(expandedTarget.getSupplyRow().getId()).isEqualTo(expanded.getId());
         assertThat(expandedTarget.getMonthlyRent()).isEqualByComparingTo(expectedExpandedRent);
+        if (adminModifiedExpanded) {
+            SupplyRow preserved = supplyRowRepository.findById(expanded.getId()).orElseThrow();
+            assertThat(preserved.getSourceHousingTypeName()).isEqualTo("관리자 확인 59B");
+            assertThat(preserved.getExpectedMoveInMonth()).isEqualTo(YearMonth.of(2027, 1));
+            assertThat(preserved.getSupplyCategory()).isEqualTo(SupplyCategory.RESUPPLY);
+            assertThat(preserved.getTotalSupplyHouseholdCount()).isEqualTo(7);
+        }
     }
 
     @Test
