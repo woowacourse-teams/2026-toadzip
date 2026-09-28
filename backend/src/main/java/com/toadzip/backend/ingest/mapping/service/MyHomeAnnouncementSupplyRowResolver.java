@@ -4,6 +4,7 @@ import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementCurrentSources;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutionException;
@@ -39,12 +40,13 @@ public class MyHomeAnnouncementSupplyRowResolver {
         if (data.provider() != AgencyCode.LH) {
             return data;
         }
-        List<LhAnnouncementSupplySource> lhSupplies = findLhSupplies(data.supplyRows());
+        List<MyHomeSupplyRowMappingData> currentRows = currentRows(data.supplyRows());
+        List<LhAnnouncementSupplySource> lhSupplies = findLhSupplies(currentRows);
         if (lhSupplies.isEmpty()) {
             return data.preservingExistingLhResolvedRows();
         }
         Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matched = matchByComplex(
-                data.supplyRows(),
+                currentRows,
                 lhSupplies
         );
         List<MyHomeSupplyRowMappingData> resolved = new ArrayList<>();
@@ -71,9 +73,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
         LhAnnouncementRequest request;
         try {
             request = linkResolver.resolveFirstLinked(
-                    MyHomeAnnouncementCurrentSources.select(
-                            sourceRows.stream().map(MyHomeSupplyRowMappingData::source).toList()
-                    )
+                    sourceRows.stream().map(MyHomeSupplyRowMappingData::source).toList()
             ).request();
         }
         catch (LhAnnouncementLinkResolutionException exception) {
@@ -88,6 +88,13 @@ public class MyHomeAnnouncementSupplyRowResolver {
                 request.panId(),
                 LhAnnouncementCollectionCheckpoint.requestHashOf(request.requestDescription())
         );
+    }
+
+    private List<MyHomeSupplyRowMappingData> currentRows(List<MyHomeSupplyRowMappingData> sourceRows) {
+        List<MyHomeAnnouncementSource> currentSources = MyHomeAnnouncementCurrentSources.select(
+                sourceRows.stream().map(MyHomeSupplyRowMappingData::source).toList()
+        );
+        return sourceRows.stream().filter(row -> currentSources.contains(row.source())).toList();
     }
 
     private Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matchByComplex(

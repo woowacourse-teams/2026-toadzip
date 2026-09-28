@@ -34,8 +34,8 @@ class MyHomeAnnouncementSupplyRowResolverTest {
         MyHomeAnnouncementSource past = mock(MyHomeAnnouncementSource.class);
         MyHomeAnnouncementSource current = mock(MyHomeAnnouncementSource.class);
         when(current.isActive()).thenReturn(true);
-        MyHomeSupplyRowMappingData pastRow = sourceRow(past, "past-row", "과거 단지");
-        MyHomeSupplyRowMappingData currentRow = sourceRow(current, "current-row", "현재 단지");
+        MyHomeSupplyRowMappingData pastRow = sourceRow(past, "past-row", "같은 단지");
+        MyHomeSupplyRowMappingData currentRow = sourceRow(current, "current-row", "같은 단지");
         LhAnnouncementRequest pastRequest = new LhAnnouncementRequest("past-pan", "03", "06", "07", "062");
         LhAnnouncementRequest currentRequest = new LhAnnouncementRequest("current-pan", "03", "06", "07", "062");
         when(linkResolver.resolveFirstLinked(List.of(past, current)))
@@ -44,10 +44,10 @@ class MyHomeAnnouncementSupplyRowResolverTest {
                 .thenReturn(new LhAnnouncementLinkResolver.LinkedSource(current, currentRequest));
         when(supplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
                 "past-pan", LhAnnouncementCollectionCheckpoint.requestHashOf(pastRequest.requestDescription())))
-                .thenReturn(List.of(lhSupply("과거 단지", "past-pan", "46A")));
+                .thenReturn(List.of(lhSupply("같은 단지", "past-pan", "46A")));
         when(supplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
                 "current-pan", LhAnnouncementCollectionCheckpoint.requestHashOf(currentRequest.requestDescription())))
-                .thenReturn(List.of(lhSupply("현재 단지", "current-pan", "59A")));
+                .thenReturn(List.of(lhSupply("같은 단지", "current-pan", "59A")));
 
         MyHomeAnnouncementMappingData result = resolver.resolve(data(List.of(pastRow, currentRow)));
 
