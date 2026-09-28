@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
+import { BrandLink } from '../../BrandLink'
 import { getCurrentUser, logoutUser, socialLoginUrl } from './api'
 
 type SessionState = 'loading' | 'guest' | 'signed-in' | 'error'
@@ -36,10 +37,7 @@ export function LoginPage() {
   return (
     <div className="user-login-page">
       <header className="user-login-header">
-        <Link className="brand-link" to="/" aria-label="공공주택 복덕방 홈">
-          <span className="brand-mark" aria-hidden="true">⌂</span>
-          <span className="brand-name">공공주택 복덕방</span>
-        </Link>
+        <BrandLink />
         <Link className="user-login-back" to="/">지도로 돌아가기</Link>
       </header>
       <main className="user-login-main">

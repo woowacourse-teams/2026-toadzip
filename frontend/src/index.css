@@ -197,34 +197,19 @@ a {
   outline-offset: 3px;
 }
 
-.brand-mark {
-  display: grid;
-  width: 34px;
+.brand-logo {
+  width: 58px;
   height: 34px;
   margin-right: 9px;
-  border-radius: 9px;
-  background: var(--brand);
-  color: var(--ds-color-on-brand);
-  place-items: center;
-}
-
-.brand-mark svg {
-  width: 21px;
-  height: 21px;
+  flex: none;
+  object-fit: contain;
 }
 
 .brand-name {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 750;
   letter-spacing: -0.025em;
-}
-
-.brand-tagline {
-  margin-left: 8px;
-  padding-left: 8px;
-  border-left: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 13px;
+  white-space: nowrap;
 }
 
 .service-login-link {
@@ -1546,6 +1531,12 @@ a {
   text-underline-offset: 4px;
 }
 
+.not-found-main .brand-link {
+  margin: 0 0 24px;
+  color: var(--ds-color-text);
+  text-decoration: none;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -1567,10 +1558,6 @@ a {
 @media (max-width: 420px) {
   .service-header {
     padding: 0 12px;
-  }
-
-  .brand-tagline {
-    display: none;
   }
 
   .map-state-layer {
@@ -1697,10 +1684,17 @@ button {
   display: grid;
   min-height: 100vh;
   min-height: 100dvh;
+  gap: 16px;
   padding: 24px;
   text-align: center;
   place-content: center;
 }
+
+.admin-auth-state .brand-link {
+  justify-self: center;
+}
+
+.admin-auth-state p { margin: 0; }
 
 .admin-login-form {
   display: grid;
@@ -1717,6 +1711,12 @@ button {
   margin: 0;
   font-size: 24px;
 }
+
+.admin-login-brand {
+  margin-bottom: 4px;
+}
+
+.admin-login-brand .brand-name { font-size: 15px; }
 
 .admin-login-form label {
   display: grid;
@@ -1754,18 +1754,28 @@ button {
   padding: 16px 24px;
   align-items: center;
   justify-content: space-between;
-  color: #ffffff;
-  background: #0f172a;
+  border-bottom: 1px solid #d9e3e1;
+  color: var(--ds-color-text);
+  background: #ffffff;
 }
 
-.admin-header div {
+.admin-brand,
+.admin-header-account {
   display: flex;
   gap: 12px;
   align-items: center;
 }
 
+.admin-brand-context {
+  padding-left: 12px;
+  border-left: 1px solid #d9e3e1;
+  color: #516761;
+  font-size: 14px;
+  font-weight: 700;
+}
+
 .admin-header button {
-  background: #334155;
+  background: #17685b;
 }
 
 .admin-content {
@@ -2297,7 +2307,7 @@ button {
 @media (max-width: 600px) { .admin-navigation { padding: 10px 16px; gap: 2px; } .admin-navigation a { padding: 10px 12px; } }
 @media (max-width: 600px) {
   .admin-header { flex-wrap: wrap; gap: 12px; }
-  .admin-header > span { flex-basis: 100%; }
-  .admin-header > div { width: 100%; justify-content: space-between; }
+  .admin-brand { flex-basis: 100%; }
+  .admin-header-account { width: 100%; justify-content: space-between; }
   .admin-header button { white-space: nowrap; flex-shrink: 0; }
 }

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="favicon-title">
+  <title id="favicon-title">복덕방</title>
+  <rect width="64" height="64" rx="14" fill="#edfbf3" />
+  <circle cx="28" cy="27" r="17" fill="#edfbf3" stroke="#17683b" stroke-width="7" />
+  <path d="m41 40 14 14" fill="none" stroke="#35c96f" stroke-width="8" stroke-linecap="round" />
+</svg>

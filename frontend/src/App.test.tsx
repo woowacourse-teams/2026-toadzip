@@ -48,6 +48,7 @@ describe('App', () => {
     const homeLink = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
     expect(homeLink).toBeVisible()
     expect(homeLink).toHaveTextContent('공공주택 복덕방')
+    expect(homeLink.querySelector('img')).toHaveAttribute('src', '/logo-bok-search.svg')
     expect(
       screen.getByRole('searchbox', { name: '지역, 단지, 공고 검색' }),
     ).toBeVisible()
@@ -86,10 +87,27 @@ describe('App', () => {
     expect(
       screen.getByRole('heading', { name: '페이지를 찾을 수 없습니다.' }),
     ).toBeVisible()
+    expect(screen.getByRole('link', { name: '공공주택 복덕방 홈' }).querySelector('img'))
+      .toHaveAttribute('src', '/logo-bok-search.svg')
     expect(screen.getByRole('link', { name: '지도로 돌아가기' })).toHaveAttribute(
       'href',
       '/',
     )
+  })
+
+  it('관리자 로그인과 관리 화면에도 같은 로고를 표시한다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(jsonResponse({ message: '인증이 필요합니다.' }, 401))
+      .mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
+    const { unmount } = render(<MemoryRouter initialEntries={['/admin/login']}><App /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: '관리자 로그인' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '공공주택 복덕방 홈' }).querySelector('img'))
+      .toHaveAttribute('src', '/logo-bok-search.svg')
+
+    unmount()
+    render(<MemoryRouter initialEntries={['/admin/complexes']}><App /></MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: '단지 관리' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '공공주택 복덕방 홈' }).querySelector('img'))
+      .toHaveAttribute('src', '/logo-bok-search.svg')
   })
 
   it('만료된 세션의 로그아웃 응답이 401이어도 로그인 상태를 지우고 다시 로그인한다', async () => {

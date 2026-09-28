@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router'
+import { BrandLink } from '../../BrandLink'
 import { useAdminAuth } from './useAdminAuth'
 
 export function AdminLayout() {
@@ -29,8 +30,11 @@ export function AdminLayout() {
   return (
     <div className="admin-layout"><a className="admin-skip" href="#admin-main">본문으로 건너뛰기</a>
       <header className="admin-header">
-        <span>공공주택 복덕방 관리자</span>
-        <div>
+        <div className="admin-brand">
+          <BrandLink />
+          <span className="admin-brand-context">관리자</span>
+        </div>
+        <div className="admin-header-account">
           <span>{session?.loginIdentifier}</span>
           <button onClick={handleLogout} type="button">로그아웃</button>
         </div>
