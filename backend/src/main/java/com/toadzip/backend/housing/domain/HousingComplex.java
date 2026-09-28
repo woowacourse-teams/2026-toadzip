@@ -213,6 +213,14 @@ public class HousingComplex {
         return true;
     }
 
+    public void adoptVerifiedMerge(int householdCount, String imageUrl, Integer moveOutCount) {
+        validateNonNegative(householdCount, "확인된 전체 세대수");
+        validateNonNegativeIfPresent(moveOutCount, "최근 1년 퇴거자 수");
+        totalHouseholdCount = householdCount;
+        this.imageUrl = imageUrl;
+        recentOneYearMoveOutCount = moveOutCount;
+    }
+
     private boolean hasSameMyHomeValues(HousingComplex incoming) {
         return name.equals(incoming.name)
                 && supplyType.equals(incoming.supplyType)

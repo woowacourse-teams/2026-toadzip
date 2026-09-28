@@ -105,6 +105,13 @@ public class LhHousingTypeHouseholdMatcher {
         return SUPPLY_TYPES.get(normalized);
     }
 
+    public boolean hasExactIdentity(HousingComplex complex, String name, String region, String supplyType) {
+        return "LH".equals(complex.getProvider())
+                && normalized(complex.getName()).equals(normalized(name))
+                && regionMatches(complex, region)
+                && complex.getSupplyType().equals(sourceSupplyType(supplyType));
+    }
+
     private List<HousingComplex> bestNameMatches(
             List<HousingComplex> complexes,
             String sourceName
