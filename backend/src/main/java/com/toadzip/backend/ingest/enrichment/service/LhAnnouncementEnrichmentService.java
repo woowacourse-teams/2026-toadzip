@@ -202,7 +202,7 @@ public class LhAnnouncementEnrichmentService {
                         "마이홈 공고 매핑 실패가 남아 LH 보강을 보류했습니다.", failures, occurredAt);
             }
             LhAnnouncementEnrichmentWriteResult result = writer.write(
-                    announcement, data, changedHousingTypeRows
+                    announcement, data, changedHousingTypeRows, historicalSourceKeys(sources, lhSources)
             );
             addSupplyFailures(source, panId, result.failures(), failures, occurredAt);
             return result.report();
@@ -210,6 +210,17 @@ public class LhAnnouncementEnrichmentService {
         catch (LhAnnouncementEnrichmentRejectedException exception) {
             return reject(source, panId, exception.reason(), exception.getMessage(), failures, occurredAt);
         }
+    }
+
+    private Set<String> historicalSourceKeys(
+            List<MyHomeAnnouncementSource> sources,
+            List<MyHomeAnnouncementSource> currentSources
+    ) {
+        Set<String> currentKeys = currentSources.stream()
+                .map(MyHomeAnnouncementSource::getSourceKey).collect(Collectors.toSet());
+        return sources.stream().map(MyHomeAnnouncementSource::getSourceKey)
+                .filter(key -> !currentKeys.contains(key))
+                .collect(Collectors.toSet());
     }
 
     private void addSupplyFailures(
