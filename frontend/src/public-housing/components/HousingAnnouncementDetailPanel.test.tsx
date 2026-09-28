@@ -59,6 +59,10 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(firstComplex).getByText('3,200만원')).toBeVisible()
     expect(within(firstComplex).getByText('12.8만원')).toBeVisible()
 
+    const firstHousingType = within(panel).getByRole('article', { name: '새솔마을 36A 주택형' })
+    expect(within(firstHousingType).getByText('평면도: 공고문 확인')).toBeVisible()
+    expect(within(firstHousingType).queryByText('대상별 공급 조건: 공고문 확인')).not.toBeInTheDocument()
+
     await waitFor(() => {
       expect(within(panel).getByRole('link', { name: '첨부파일' }))
         .toHaveAttribute('href', 'https://example.com/notice.pdf')
@@ -89,6 +93,9 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(panel).getByRole('article', {
       name: '봇들마을 44B 주택형',
     })).toBeVisible()
+    const secondHousingType = within(panel).getByRole('article', { name: '봇들마을 44B 주택형' })
+    expect(within(secondHousingType).getByText('대상별 공급 조건: 공고문 확인')).toBeVisible()
+    expect(within(secondHousingType).queryByText('평면도: 공고문 확인')).not.toBeInTheDocument()
 
     fireEvent.keyDown(secondTab, { key: 'Home' })
     expect(firstTab).toHaveAttribute('aria-selected', 'true')
@@ -170,6 +177,7 @@ describe('HousingAnnouncementDetailPanel', () => {
               complex: null,
               sourceComplexName: '가나다',
               supplyRowId: '401',
+              totalSupplyHouseholdCount: null,
             }),
             supplyRow({
               complex: null,
@@ -186,6 +194,8 @@ describe('HousingAnnouncementDetailPanel', () => {
       name: '주택형을 볼 단지 선택',
     })
     const tabs = within(tablist).getAllByRole('tab')
+    expect(within(tabs[0]!).getByText('공급 세대수: 공고문 확인')).toBeVisible()
+    expect(within(screen.getByRole('article', { name: '가나다 단지 비교' })).getByText('주소: 공고문 확인')).toBeVisible()
     const panel = screen.getByRole('tabpanel')
     expect(tabs[0]).not.toHaveAttribute('id', tabs[1]?.id)
     expect(tabs[0]).toHaveAttribute('aria-controls', panel.id)
@@ -209,7 +219,7 @@ describe('HousingAnnouncementDetailPanel', () => {
     const dialog = screen.getByRole('dialog', { name: '44B 평면도' })
     expect(within(dialog).getByRole('img', { name: '44B 2D 평면도' }))
       .toHaveAttribute('src', 'https://example.com/44b.png')
-    expect(within(dialog).getByText('공고문 확인')).toBeVisible()
+    expect(within(dialog).getByText('3D 평면도: 공고문 확인')).toBeVisible()
     expect(within(dialog).getByRole('button', { name: '평면도 닫기' })).toHaveFocus()
 
     fireEvent.keyDown(dialog, { key: 'Escape' })
@@ -281,12 +291,15 @@ describe('HousingAnnouncementDetailPanel', () => {
 
     expect(within(panel).getByText('공사').parentElement).toHaveTextContent('공고문 확인')
     expect(within(panel).getByText('지역').parentElement).toHaveTextContent('공고문 확인')
-    for (const title of ['신청 대상', '접수 일정', '단지 비교']) {
+    for (const title of ['신청 대상', '접수 일정']) {
       const section = within(panel).getByRole('heading', { name: title }).closest('section')
       expect(within(section!).getByText('공고문 확인')).toBeVisible()
     }
     expect(within(panel).getByText('0개 단지')).toBeVisible()
-    expect(within(panel).getByText('0개 단지 · 공고문 확인')).toBeVisible()
+    const complexSection = within(panel).getByRole('heading', { name: '단지 비교' }).closest('section')
+    expect(within(complexSection!).getByText('0개 단지 · 공급 세대수: 공고문 확인')).toBeVisible()
+    expect(within(complexSection!).getByText('단지 정보: 공고문 확인')).toBeVisible()
+    expect(within(complexSection!).queryByText('공고문 확인')).not.toBeInTheDocument()
     const footer = within(panel).getByRole('navigation', { name: '공고문 바로가기' }).parentElement
     expect(within(footer!).getAllByText('공고문 확인')).toHaveLength(1)
     expect(within(panel).queryByText('공고문 확인 · 공고문 확인')).not.toBeInTheDocument()
@@ -379,7 +392,7 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(screen.queryByText('월 18만원')).not.toBeInTheDocument()
   })
 
-  it('누락된 헤더 분류는 공고문 확인을 한 번 표시하고 빠진 항목의 이름을 유지한다', () => {
+  it('상단 공고 정보는 항목명 접두어 없이 기존 값과 접근성 설명을 유지한다', () => {
     render(
       <HousingAnnouncementDetailPanel
         detail={detail({
@@ -388,6 +401,7 @@ describe('HousingAnnouncementDetailPanel', () => {
           dDay: null,
           rentalTypeLabel: '공고문 확인',
           publicationTypeLabel: '공고문 확인',
+          recruitmentTypeLabel: '공고문 확인',
           agencyCode: null,
           agencyName: null,
           regionNames: [],
@@ -397,9 +411,11 @@ describe('HousingAnnouncementDetailPanel', () => {
     )
     const context = screen.getByRole('group', { name: '임대유형 · 접수상태 · 공고구분 공고문 확인' })
     expect(within(context).getAllByText('공고문 확인')).toHaveLength(1)
+    expect(context).not.toHaveTextContent(':')
     const intro = screen.getByRole('region', { name: '공고 요약' })
-    expect(within(intro).getAllByText('공고문 확인')).toHaveLength(1)
+    expect(intro).not.toHaveTextContent(':')
     expect(within(intro).getByText('공사·지역')).toBeInTheDocument()
+    expect(within(intro).getAllByText('공고문 확인')).toHaveLength(2)
   })
 
   it('좁은 패널의 표 스크롤과 문서 1열 규칙을 스타일에 고정한다', () => {

@@ -1247,7 +1247,7 @@ describe('PublicHousingExplorer', () => {
       target: { value: '41' },
     })
     fireEvent.click(screen.getByRole('checkbox', { name: '행복주택' }))
-    fireEvent.click(screen.getByRole('checkbox', { name: '접수예정' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '공고중' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'GH' }))
     fireEvent.click(screen.getByRole('checkbox', {
       name: '예비입주자 모집',
