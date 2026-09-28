@@ -11,12 +11,16 @@ it('비로그인 사용자는 카카오와 구글 로그인 경로를 선택할 
   render(<MemoryRouter><LoginPage /></MemoryRouter>)
   expect(screen.getByRole('link', { name: '공공주택 복덕방 홈' }).querySelector('img'))
     .toHaveAttribute('src', '/logo-bok-search.svg')
-  expect(await screen.findByRole('link', { name: '카카오로 계속하기' })).toHaveAttribute(
+  const kakaoLink = await screen.findByRole('link', { name: '카카오로 계속하기' })
+  expect(kakaoLink).toHaveAttribute(
     'href', 'https://api.example.com/api/auth/oauth2/authorization/kakao',
   )
-  expect(screen.getByRole('link', { name: 'Google로 계속하기' })).toHaveAttribute(
+  expect(kakaoLink.querySelector('img')).toHaveAttribute('src', '/auth/kakao-symbol.svg')
+  const googleLink = screen.getByRole('link', { name: 'Google로 계속하기' })
+  expect(googleLink).toHaveAttribute(
     'href', 'https://api.example.com/api/auth/oauth2/authorization/google',
   )
+  expect(googleLink.querySelector('img')).toHaveAttribute('src', '/auth/google-g.png')
 })
 
 it('로그인 실패 후 재시도 안내를 표시한다', async () => {

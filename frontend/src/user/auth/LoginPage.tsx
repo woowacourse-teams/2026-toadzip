@@ -41,21 +41,11 @@ export function LoginPage() {
         <Link className="user-login-back" to="/">지도로 돌아가기</Link>
       </header>
       <main className="user-login-main">
-        <section className="user-login-intro" aria-label="서비스 소개">
-          <span className="user-login-eyebrow">내게 맞는 공공주택을 찾는 곳</span>
-          <h1>좋은 집을 찾는 시간,<br />공공주택 복덕방과 함께.</h1>
-          <p>관심 있는 집과 모집 공고를 한곳에서 살펴보세요.</p>
-          <div className="user-login-illustration" aria-hidden="true">
-            <span className="user-login-sun" />
-            <span className="user-login-house user-login-house--back" />
-            <span className="user-login-house user-login-house--front" />
-            <span className="user-login-ground" />
-          </div>
-        </section>
         <section className="user-login-panel" aria-label="로그인">
           <div className="user-login-content">
+            <img className="user-login-feature-logo" src="/logo-bok-search.svg" alt="" />
             <span className="user-login-step">공공주택 복덕방 시작하기</span>
-            <h2>{session === 'signed-in' ? '로그인되었습니다' : '로그인'}</h2>
+            <h1>{session === 'signed-in' ? '로그인되었습니다' : '로그인'}</h1>
             {session === 'signed-in' ? (
               <>
                 <p>이제 관심 있는 주택을 둘러보세요.</p>
@@ -74,10 +64,12 @@ export function LoginPage() {
                 ) : (
                   <div className="user-login-actions">
                     <a className="user-login-provider user-login-provider--kakao" href={socialLoginUrl('kakao')}>
-                      <span className="user-login-provider-mark" aria-hidden="true">●</span>카카오로 계속하기
+                      <img className="user-login-provider-icon" src="/auth/kakao-symbol.svg" alt="" aria-hidden="true" />
+                      <span>카카오로 계속하기</span>
                     </a>
                     <a className="user-login-provider user-login-provider--google" href={socialLoginUrl('google')}>
-                      <span className="user-login-google-mark" aria-hidden="true">G</span>Google로 계속하기
+                      <img className="user-login-provider-icon" src="/auth/google-g.png" alt="" aria-hidden="true" />
+                      <span>Google로 계속하기</span>
                     </a>
                   </div>
                 )}
