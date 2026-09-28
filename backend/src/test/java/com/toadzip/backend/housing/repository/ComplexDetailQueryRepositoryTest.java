@@ -262,7 +262,8 @@ class ComplexDetailQueryRepositoryTest {
                 "계단식",
                 7,
                 100,
-                80
+                80,
+                null, null, null, null
         );
     }
 

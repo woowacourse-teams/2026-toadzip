@@ -84,6 +84,10 @@ const COMPLEX_DETAIL = {
   moveOutCountLastYear: 0,
   totalHouseholdCount: 100,
   totalParkingCount: 0,
+  depositMin: 50_000_000,
+  depositMax: 70_000_000,
+  monthlyRentMin: 200_000,
+  monthlyRentMax: 300_000,
   images: [],
   overviewImageUrl: null,
   housingTypes: [
@@ -950,6 +954,8 @@ describe('공공주택 응답 계약', () => {
 
     expect(decoded).toMatchObject({
       completionDate: null,
+      depositMin: 50_000_000,
+      monthlyRentMin: 200_000,
       hasElevator: false,
       moveOutCountLastYear: 0,
       totalParkingCount: 0,
@@ -965,6 +971,23 @@ describe('공공주택 응답 계약', () => {
       currentAnnouncements: [
         { title: null, targets: [], dDay: 0, actualCompetitionRate: 0 },
       ],
+    })
+  })
+
+  it('이전 버전의 상세 응답에 단지 가격 필드가 없어도 null로 읽는다', () => {
+    const {
+      depositMin: _depositMin,
+      depositMax: _depositMax,
+      monthlyRentMin: _monthlyRentMin,
+      monthlyRentMax: _monthlyRentMax,
+      ...previousDetail
+    } = COMPLEX_DETAIL
+
+    expect(decodeComplexDetailEnvelope({ data: previousDetail })).toMatchObject({
+      depositMin: null,
+      depositMax: null,
+      monthlyRentMin: null,
+      monthlyRentMax: null,
     })
   })
 
