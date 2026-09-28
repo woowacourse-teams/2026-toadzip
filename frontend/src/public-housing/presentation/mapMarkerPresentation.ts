@@ -53,25 +53,18 @@ export function presentMapComplexMarker(
 export function presentComplexDetailMarker(
   detail: DetailMarkerSource,
 ): MapMarkerPresentation {
-  const conditions = detail.housingTypes.flatMap(
-    ({ currentSupplyConditions }) => currentSupplyConditions,
-  )
   return presentMarker(
     detail.agency,
     detail.rentalType,
-    minimumAmount(conditions.map(({ deposit }) => deposit)),
-    minimumAmount(conditions.map(({ monthlyRent }) => monthlyRent)),
+    detail.depositMin,
+    detail.monthlyRentMin,
   )
 }
 
 interface DetailMarkerSource {
   readonly agency: HousingAgency | null
-  readonly housingTypes: readonly {
-    readonly currentSupplyConditions: readonly {
-      readonly deposit: number | null
-      readonly monthlyRent: number | null
-    }[]
-  }[]
+  readonly depositMin: number | null
+  readonly monthlyRentMin: number | null
   readonly rentalType: string | null
 }
 
@@ -117,17 +110,6 @@ function presentRentalType(rentalType: string | null): MarkerName {
 function nonBlank(value: string | null | undefined): string | null {
   const trimmed = value?.trim()
   return trimmed ? trimmed : null
-}
-
-function isValidAmount(value: number | null): value is number {
-  return value !== null && Number.isFinite(value) && value >= 0
-}
-
-function minimumAmount(values: readonly (number | null)[]): number | null {
-  return values.reduce<number | null>((minimum, value) => {
-    if (!isValidAmount(value)) return minimum
-    return minimum === null || value < minimum ? value : minimum
-  }, null)
 }
 
 function presentAmount(value: number | null): MapMarkerAmount | null {

@@ -146,7 +146,8 @@ class HousingComplexDetailQueryTest {
                 "STAIR",
                 null,
                 100,
-                80
+                80,
+                null, null, null, null
         ));
 
         HousingComplexDetailResponse response = getExistingComplex();
@@ -177,7 +178,8 @@ class HousingComplexDetailQueryTest {
                 null,
                 null,
                 100,
-                80
+                80,
+                null, null, null, null
         ));
         when(detailRepository.findHousingTypes(COMPLEX_ID)).thenReturn(List.of(new HousingTypeDetailRow(
                 101L,
@@ -309,7 +311,8 @@ class HousingComplexDetailQueryTest {
                 row.corridorType(),
                 row.moveOutCountLastYear(),
                 row.totalHouseholdCount(),
-                row.totalParkingCount()
+                row.totalParkingCount(),
+                row.depositMin(), row.depositMax(), row.monthlyRentMin(), row.monthlyRentMax()
         ));
 
         assertThrows(IllegalStateException.class, () -> service.getComplex(COMPLEX_ID));
@@ -428,7 +431,8 @@ class HousingComplexDetailQueryTest {
                 corridorType,
                 7,
                 100,
-                80
+                80,
+                null, null, null, null
         );
     }
 

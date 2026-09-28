@@ -575,6 +575,22 @@ function decodeComplexDetail(value: unknown, path: string): RawComplexDetail {
       recordField(detail, 'totalParkingCount', path),
       `${path}.totalParkingCount`,
     ),
+    depositMin: nullableSafeIntegerAt(
+      detail.depositMin ?? null,
+      `${path}.depositMin`,
+    ),
+    depositMax: nullableSafeIntegerAt(
+      detail.depositMax ?? null,
+      `${path}.depositMax`,
+    ),
+    monthlyRentMin: nullableSafeIntegerAt(
+      detail.monthlyRentMin ?? null,
+      `${path}.monthlyRentMin`,
+    ),
+    monthlyRentMax: nullableSafeIntegerAt(
+      detail.monthlyRentMax ?? null,
+      `${path}.monthlyRentMax`,
+    ),
     images: stringArrayAt(
       recordField(detail, 'images', path),
       `${path}.images`,

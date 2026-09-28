@@ -64,6 +64,10 @@ export const MINIMAL_PUBLIC_HOUSING_SNAPSHOT = {
       moveOutCountLastYear: 0,
       totalHouseholdCount: 100,
       totalParkingCount: 0,
+      depositMin: 0,
+      depositMax: null,
+      monthlyRentMin: 200_000,
+      monthlyRentMax: null,
       images: [],
       overviewImageUrl: null,
       housingTypes: [

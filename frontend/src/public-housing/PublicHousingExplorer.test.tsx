@@ -2482,8 +2482,8 @@ describe('PublicHousingExplorer', () => {
       name: '서울가람 행복주택 지도 마커 선택',
     })
     expect(marker).toBeVisible()
-    expect(marker).toHaveAttribute('data-deposit-label', '공고문 확인')
-    expect(marker).toHaveAttribute('data-monthly-rent-label', '공고문 확인')
+    expect(marker).toHaveAttribute('data-deposit-label', '5,000만원~')
+    expect(marker).toHaveAttribute('data-monthly-rent-label', '20만원~')
     expect(repository.findComplexPage).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
@@ -3427,6 +3427,10 @@ function complexDetail(): ComplexDetail {
     rentalType: 'HAPPY_HOUSING',
     totalHouseholdCount: 100,
     totalParkingCount: 80,
+    depositMin: 50_000_000,
+    depositMax: 70_000_000,
+    monthlyRentMin: 200_000,
+    monthlyRentMax: 300_000,
   }
 }
 

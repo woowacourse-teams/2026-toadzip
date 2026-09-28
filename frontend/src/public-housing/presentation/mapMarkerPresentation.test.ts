@@ -117,21 +117,12 @@ describe('map marker presentation', () => {
     },
   )
 
-  it('상세의 보증금과 월세 최솟값은 서로 다른 조건에서도 각각 찾는다', () => {
+  it('상세 마커도 단지의 마이홈 최솟값을 표시한다', () => {
     expect(presentComplexDetailMarker({
       agency: { code: 'SH', name: '서울주택도시공사' },
       rentalType: 'NATIONAL_RENTAL',
-      housingTypes: [
-        { currentSupplyConditions: [
-          { deposit: 50_000_000, monthlyRent: 180_000 },
-          { deposit: 10_000_000, monthlyRent: 260_000 },
-          { deposit: -1, monthlyRent: null },
-        ] },
-        { currentSupplyConditions: [
-          { deposit: null, monthlyRent: 310_000 },
-          { deposit: Number.NaN, monthlyRent: Number.POSITIVE_INFINITY },
-        ] },
-      ],
+      depositMin: 10_000_000,
+      monthlyRentMin: 180_000,
     })).toEqual({
       agencyLabel: 'SH',
       agencyName: '서울주택도시공사',
@@ -142,17 +133,13 @@ describe('map marker presentation', () => {
     })
   })
 
-  it('상세의 0원은 최소로 유지하고 조건이 없으면 결측으로 표시한다', () => {
-    const detail = { agency: null, rentalType: null, housingTypes: [
-      { currentSupplyConditions: [{ deposit: 0, monthlyRent: 0 }, { deposit: 20_000_000, monthlyRent: 300_000 }] },
-    ] }
+  it('상세의 0원은 유지하고 마이홈 금액이 없으면 결측으로 표시한다', () => {
+    const detail = { agency: null, rentalType: null, depositMin: 0, monthlyRentMin: 0 }
     expect(presentComplexDetailMarker(detail)).toMatchObject({
       deposit: { digits: '0', unit: '원', exactLabel: '0원' },
       monthlyRent: { digits: '0', unit: '원', exactLabel: '0원' },
     })
-    expect(presentComplexDetailMarker({ ...detail, housingTypes: [] }))
-      .toMatchObject({ deposit: null, monthlyRent: null })
-    expect(presentComplexDetailMarker({ ...detail, housingTypes: [{ currentSupplyConditions: [] }] }))
+    expect(presentComplexDetailMarker({ ...detail, depositMin: null, monthlyRentMin: null }))
       .toMatchObject({ deposit: null, monthlyRent: null })
   })
 })

@@ -159,6 +159,10 @@ export interface RawComplexDetail {
   readonly moveOutCountLastYear: number | null
   readonly totalHouseholdCount: number | null
   readonly totalParkingCount: number | null
+  readonly depositMin: number | null
+  readonly depositMax: number | null
+  readonly monthlyRentMin: number | null
+  readonly monthlyRentMax: number | null
   readonly images: readonly string[]
   readonly overviewImageUrl: string | null
   readonly housingTypes: readonly RawComplexHousingType[]
@@ -212,6 +216,10 @@ export interface ComplexDetail {
   readonly moveOutCountLastYear: number | null
   readonly totalHouseholdCount: number | null
   readonly totalParkingCount: number | null
+  readonly depositMin: number | null
+  readonly depositMax: number | null
+  readonly monthlyRentMin: number | null
+  readonly monthlyRentMax: number | null
   readonly images: readonly string[]
   readonly overviewImageUrl: string | null
   readonly housingTypes: readonly ComplexHousingType[]

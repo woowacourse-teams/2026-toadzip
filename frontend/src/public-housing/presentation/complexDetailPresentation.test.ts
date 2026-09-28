@@ -98,6 +98,10 @@ function complexDetail(changes: Partial<ComplexDetail> = {}): ComplexDetail {
     rentalType: 'HAPPY_HOUSING',
     totalHouseholdCount: 100,
     totalParkingCount: 0,
+    depositMin: 0,
+    depositMax: null,
+    monthlyRentMin: 200_000,
+    monthlyRentMax: null,
     ...changes,
   }
 }

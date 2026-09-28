@@ -244,6 +244,29 @@ describe('local public housing snapshot repository', () => {
     })).resolves.toMatchObject({ items: [] })
   })
 
+  it('finds a complex without an announcement by its displayed MyHome minimum prices', async () => {
+    const item = MINIMAL_PUBLIC_HOUSING_SNAPSHOT.complexListItems[0]
+    const snapshot = {
+      ...MINIMAL_PUBLIC_HOUSING_SNAPSHOT,
+      complexListItems: [{ ...item, representativeAnnouncement: null }],
+      complexDetails: [{
+        ...MINIMAL_PUBLIC_HOUSING_SNAPSHOT.complexDetails[0],
+        currentAnnouncements: [],
+      }],
+    }
+    const { repository, mapRepository } = createSnapshotPublicHousingRepositories(snapshot)
+    const signal = new AbortController().signal
+    const filters = { maxDeposit: 0, minMonthlyRent: 200_000 }
+
+    const [mapResult, complexPage] = await Promise.all([
+      mapRepository.findMap({ bounds: BOUNDS, zoom: 9, filters }, signal),
+      repository.findComplexPage(BOUNDS, null, 20, signal, filters),
+    ])
+
+    expect(mapResult).toMatchObject({ nodes: [{ complexId: '17' }] })
+    expect(complexPage.items.map((complex) => complex.complexId)).toEqual(['17'])
+  })
+
   it('includes child districts when a snapshot parent city is selected', async () => {
     const snapshot = {
       ...snapshotWithSecondScenario(),
