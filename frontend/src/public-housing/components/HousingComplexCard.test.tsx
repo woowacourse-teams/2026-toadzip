@@ -464,7 +464,7 @@ describe('HousingComplexCard', () => {
   })
 
   it.each([
-    ['BEFORE_APPLICATION', '공고중', '마감 D-2'],
+    ['BEFORE_APPLICATION', '공고중', '접수 시작 D-2'],
     ['APPLYING', '접수중', 'D-2'],
     ['CANCELLED', '공고취소', null],
     ['UNEXPECTED', '공고문 확인', 'D-2'],

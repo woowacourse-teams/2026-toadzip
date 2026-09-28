@@ -185,6 +185,9 @@ public class HousingComplexDetailMapper {
                 || "CANCELLED".equals(row.applicationStatus()) || "CLOSED".equals(row.applicationStatus())) {
             return null;
         }
+        if ("BEFORE_APPLICATION".equals(row.applicationStatus())) {
+            return Math.toIntExact(ChronoUnit.DAYS.between(today, row.applicationStartAt()));
+        }
         return Math.toIntExact(ChronoUnit.DAYS.between(today, row.confirmedApplicationEndDate()));
     }
 

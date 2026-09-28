@@ -299,6 +299,26 @@ export interface RawAnnouncementSchedule {
   readonly endAt: string | null
 }
 
+export interface RawAnnouncementApplicationSchedule {
+  readonly scheduleId: number
+  readonly housingComplexId: number | null
+  readonly complexName: string | null
+  readonly supplyRank: string | null
+  readonly state: string
+  readonly condition: string | null
+  readonly startDate: string
+  readonly endDate: string
+  readonly startTime: string | null
+  readonly endTime: string | null
+  readonly sourceUrl: string
+  readonly sourcePage: number
+}
+
+export interface AnnouncementApplicationSchedule extends Omit<RawAnnouncementApplicationSchedule, 'scheduleId' | 'housingComplexId'> {
+  readonly scheduleId: string
+  readonly housingComplexId: string | null
+}
+
 export interface RawAnnouncementAttachment {
   readonly attachmentId: number
   readonly fileName: string | null
@@ -374,6 +394,7 @@ export interface RawAnnouncementDetail {
   readonly documentLinkUrl: string | null
   readonly receptionPlaces: readonly RawAnnouncementReceptionPlace[]
   readonly schedules: readonly RawAnnouncementSchedule[]
+  readonly applicationSchedules?: readonly RawAnnouncementApplicationSchedule[]
   readonly attachments: readonly RawAnnouncementAttachment[]
   readonly supplyRows: readonly RawAnnouncementSupplyRow[]
   readonly competition: RawAnnouncementCompetition | null
@@ -461,6 +482,7 @@ export interface AnnouncementDetail {
   readonly documentLinkUrl: string | null
   readonly receptionPlaces: readonly AnnouncementReceptionPlace[]
   readonly schedules: readonly AnnouncementSchedule[]
+  readonly applicationSchedules?: readonly AnnouncementApplicationSchedule[]
   readonly attachments: readonly AnnouncementAttachment[]
   readonly supplyRows: readonly AnnouncementSupplyRow[]
   readonly competition: AnnouncementCompetition | null
