@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.mapping.service;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutionException;
@@ -70,7 +71,9 @@ public class MyHomeAnnouncementSupplyRowResolver {
         LhAnnouncementRequest request;
         try {
             request = linkResolver.resolveFirstLinked(
-                    sourceRows.stream().map(MyHomeSupplyRowMappingData::source).toList()
+                    MyHomeAnnouncementCurrentSources.select(
+                            sourceRows.stream().map(MyHomeSupplyRowMappingData::source).toList()
+                    )
             ).request();
         }
         catch (LhAnnouncementLinkResolutionException exception) {
