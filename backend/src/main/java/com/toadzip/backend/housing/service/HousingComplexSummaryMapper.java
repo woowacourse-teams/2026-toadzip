@@ -90,14 +90,18 @@ public class HousingComplexSummaryMapper {
                 codeMapper.toPublicationType(row.publicationType()),
                 applicationStatus,
                 row.applicationEndDate(),
-                dDay(row.confirmedApplicationEndDate(), today, applicationStatus)
+                dDay(row, today, applicationStatus)
         );
     }
 
-    private Integer dDay(LocalDate applicationEndDate, LocalDate today, String applicationStatus) {
+    private Integer dDay(ComplexSummaryRow row, LocalDate today, String applicationStatus) {
+        LocalDate applicationEndDate = row.confirmedApplicationEndDate();
         if (applicationEndDate == null || "CANCELLED".equals(applicationStatus)
                 || "CLOSED".equals(applicationStatus) || "CONDITIONAL".equals(applicationStatus)) {
             return null;
+        }
+        if ("BEFORE_APPLICATION".equals(applicationStatus)) {
+            return Math.toIntExact(ChronoUnit.DAYS.between(today, row.applicationStartDate()));
         }
         return Math.toIntExact(ChronoUnit.DAYS.between(today, applicationEndDate));
     }

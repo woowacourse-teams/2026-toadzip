@@ -17,6 +17,203 @@ import {
 } from './HousingAnnouncementDetailPanel.tsx'
 
 describe('HousingAnnouncementDetailPanel', () => {
+  it('중복된 후속 일정은 한 번만 표시하고 서로 다른 접수일은 날짜순으로 분리한다', () => {
+    const schedules = Object.freeze(['2026-09-30', '2026-09-28', '2026-10-01'].flatMap((date, index) => [
+      Object.freeze(legacySchedule({ scheduleId: `application-${index}`,
+        startAt: `${date}T10:00:00`, endAt: `${date}T16:10:00` })),
+      Object.freeze(legacySchedule({ scheduleId: `winner-${index}`, type: 'WINNER_ANNOUNCEMENT',
+        typeLabel: '당첨자 발표', startAt: '2026-10-22', endAt: null })),
+      Object.freeze(legacySchedule({ scheduleId: `document-${index}`, type: 'DOCUMENT_SUBMISSION',
+        typeLabel: '서류제출', startAt: '2026-10-22', endAt: '2026-10-29' })),
+    ]))
+    const original = JSON.stringify(schedules)
+    render(<HousingAnnouncementDetailPanel detail={detail({ schedules,
+      winnerAnnouncementAt: '2026-10-22' })} onClose={vi.fn()} />)
+
+    const applications = screen.getByRole('table', { name: '접수 일정' })
+    expect(within(applications).getAllByRole('rowheader', { name: '접수' })).toHaveLength(3)
+    expect([...applications.querySelectorAll('time')].map((time) => time.dateTime)).toEqual([
+      '2026-09-28T10:00:00', '2026-09-28T16:10:00',
+      '2026-09-30T10:00:00', '2026-09-30T16:10:00',
+      '2026-10-01T10:00:00', '2026-10-01T16:10:00',
+    ])
+    expect(within(applications).queryByText('당첨자 발표')).not.toBeInTheDocument()
+    expect(within(applications).queryByText('서류제출')).not.toBeInTheDocument()
+    const followUps = screen.getByRole('table', { name: '후속 일정' })
+    expect(within(followUps).getAllByRole('rowheader', { name: '당첨자 발표' })).toHaveLength(1)
+    expect(within(followUps).getAllByRole('rowheader', { name: '서류제출' })).toHaveLength(1)
+    expect(JSON.stringify(schedules)).toBe(original)
+  })
+
+  it('종류·이름·시작·종료가 모두 같은 일정만 묶고 날짜가 없는 접수는 뒤에 둔다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({
+      winnerAnnouncementAt: null,
+      schedules: [
+        legacySchedule({ scheduleId: 'unknown', startAt: null, endAt: null }),
+        legacySchedule(),
+        legacySchedule({ scheduleId: 'duplicate' }),
+        legacySchedule({ scheduleId: 'name', name: '현장 접수' }),
+        legacySchedule({ scheduleId: 'start', startAt: '2026-09-28T11:00:00' }),
+        legacySchedule({ scheduleId: 'end', endAt: '2026-09-28T17:00:00' }),
+        legacySchedule({ scheduleId: 'type', type: 'DOCUMENT_SUBMISSION', typeLabel: '서류제출' }),
+      ],
+    })} onClose={vi.fn()} />)
+    const applications = screen.getByRole('table', { name: '접수 일정' })
+    expect(applications.querySelectorAll('tbody')).toHaveLength(5)
+    expect(within(applications).getByRole('rowheader', { name: '현장 접수' })).toBeVisible()
+    expect(within(applications).getByText('2026.09.28 11:00')).toBeVisible()
+    expect(within(applications).getByText('2026.09.28 17:00')).toBeVisible()
+    expect(applications.querySelector('tbody:last-child')).toHaveTextContent('공고문 확인')
+    expect(within(screen.getByRole('table', { name: '후속 일정' }))
+      .getByRole('rowheader', { name: '서류제출' })).toBeVisible()
+  })
+
+  it('단지별 접수도 날짜순으로 표시하고 다른 단지·순위·조건은 유지한다', () => {
+    const schedules = Object.freeze([
+      applicationSchedule({ scheduleId: 'later', supplyRank: '2순위', startDate: '2026-09-02', endDate: '2026-09-02' }),
+      applicationSchedule(),
+      applicationSchedule({ scheduleId: 'duplicate' }),
+      applicationSchedule({ scheduleId: 'rank', supplyRank: '우선공급' }),
+      applicationSchedule({ scheduleId: 'conditional', state: 'CONDITIONAL', condition: '미달 시 진행' }),
+      applicationSchedule({ scheduleId: 'other', housingComplexId: '102', complexName: '봇들마을' }),
+    ])
+    const original = JSON.stringify(schedules)
+    render(<HousingAnnouncementDetailPanel detail={detail({ applicationSchedules: schedules })} onClose={vi.fn()} />)
+    const firstComplex = screen.getByRole('region', { name: '새솔마을 접수 일정' })
+    const cards = within(firstComplex).getAllByRole('listitem')
+    expect(cards).toHaveLength(4)
+    expect(within(cards[0]!).getByRole('heading', { name: '1순위' })).toBeVisible()
+    expect(within(cards[3]!).getByRole('heading', { name: '2순위' })).toBeVisible()
+    expect(within(firstComplex).getByRole('heading', { name: '우선공급' })).toBeVisible()
+    expect(within(firstComplex).getByText('미달 시 진행')).toBeVisible()
+    expect(within(screen.getByRole('region', { name: '봇들마을 접수 일정' })).getAllByRole('listitem')).toHaveLength(1)
+    expect(JSON.stringify(schedules)).toBe(original)
+  })
+
+  it('접수일 없이 발표일만 있으면 후속 일정에 표시한다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({ schedules: [],
+      applicationStartAt: null, applicationEndAt: null })} onClose={vi.fn()} />)
+    const reception = screen.getByRole('heading', { name: '접수 일정' }).closest('section')!
+    expect(within(reception).getByText('공고문 확인')).toBeVisible()
+    expect(within(reception).queryByRole('table')).not.toBeInTheDocument()
+    expect(within(screen.getByRole('table', { name: '후속 일정' }))
+      .getByRole('rowheader', { name: '당첨자 발표' })).toBeVisible()
+  })
+
+  it('단지 연결 ID가 없어도 제공된 단지명을 보존하고 전체 공통 일정과 구분한다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({
+      supplyRows: [supplyRow({ complex: null, sourceComplexName: '미연결 단지' })],
+      applicationSchedules: [
+        applicationSchedule({ scheduleId: 'named', housingComplexId: null, complexName: '이름만 제공된 단지' }),
+        applicationSchedule({ scheduleId: 'common', housingComplexId: null, complexName: null }),
+      ],
+    })} onClose={vi.fn()} />)
+    expect(screen.getByRole('region', { name: '이름만 제공된 단지 접수 일정' })).toBeVisible()
+    expect(screen.getByRole('region', { name: '전체 단지 공통 접수 일정' })).toBeVisible()
+  })
+
+  it('접수 외의 일정 종류와 시작일 없는 일정도 후속 일정에서 누락하지 않는다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({
+      winnerAnnouncementAt: null,
+      schedules: [
+        legacySchedule({ scheduleId: 'unknown', type: null, typeLabel: '기타', startAt: null, endAt: null }),
+        legacySchedule({ scheduleId: 'contract', type: 'CONTRACT', typeLabel: '계약',
+          startAt: '2026-11-10', endAt: '2026-11-12' }),
+        legacySchedule({ scheduleId: 'etc', type: 'ETC', typeLabel: '추가 안내',
+          startAt: null, endAt: '2026-11-01' }),
+      ],
+    })} onClose={vi.fn()} />)
+    const followUps = screen.getByRole('table', { name: '후속 일정' })
+    expect(within(followUps).getAllByRole('rowheader')
+      .map((header) => header.textContent).filter((text) => !['시작', '종료'].includes(text!)))
+      .toEqual(['추가 안내', '계약', '기타'])
+    expect(within(followUps).getByText('2026.11.01')).toBeVisible()
+  })
+
+  it('단지와 공급 순위별 확정·조건부 접수 일정을 구분하고 공통 일정을 보존한다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({
+      applicationSchedules: [
+        applicationSchedule({ scheduleId: '3', housingComplexId: null, complexName: null, supplyRank: null }),
+        applicationSchedule({ scheduleId: '1' }),
+        applicationSchedule({ scheduleId: '2', supplyRank: '2순위', state: 'CONDITIONAL',
+          condition: '1순위 미달 시 진행', startDate: '2026-09-02', endDate: '2026-09-02',
+          startTime: null, endTime: null }),
+        applicationSchedule({ scheduleId: '4', housingComplexId: '102', complexName: '봇들마을' }),
+      ],
+      schedules: [{ scheduleId: 'old', type: 'APPLICATION', typeLabel: '접수 기간',
+        name: '기존 접수', startAt: '2026-08-28T09:00:00', endAt: '2026-08-30T18:00:00' }],
+    })} onClose={vi.fn()} />)
+    const firstComplex = screen.getByRole('region', { name: '새솔마을 접수 일정' })
+    expect(within(firstComplex).getByRole('heading', { name: '1순위' })).toBeVisible()
+    expect(within(firstComplex).getByRole('heading', { name: '2순위' })).toBeVisible()
+    expect(within(firstComplex).getByText('확정')).toBeVisible()
+    expect(within(firstComplex).getByText('조건부')).toBeVisible()
+    expect(within(firstComplex).getByText('1순위 미달 시 진행')).toBeVisible()
+    expect(within(firstComplex).getByText('2026.09.01 09:00')).toBeVisible()
+    expect(within(firstComplex).getByText('2026.09.01 18:00')).toBeVisible()
+    expect(within(firstComplex).getByText('2026.09.02')).toBeVisible()
+    expect(within(firstComplex).queryByText(/00:00/)).not.toBeInTheDocument()
+    expect(within(firstComplex).getAllByRole('link', { name: '공고문 3쪽' })[0])
+      .toHaveAttribute('href', 'https://example.com/schedule.pdf#page=3')
+    expect(screen.getByRole('region', { name: '전체 단지 공통 접수 일정' })).toBeVisible()
+    expect(screen.getByRole('region', { name: '봇들마을 접수 일정' })).toBeVisible()
+    expect(screen.queryByText('기존 접수')).not.toBeInTheDocument()
+    expect(screen.queryByText('현재 단계')).not.toBeInTheDocument()
+  })
+
+  it('일정의 단지명이 없으면 공급 단지명으로 식별하고 안전하지 않은 출처는 링크로 만들지 않는다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({
+      applicationSchedules: [applicationSchedule({ complexName: null, sourceUrl: 'javascript:alert(1)' })],
+    })} onClose={vi.fn()} />)
+    const group = screen.getByRole('region', { name: '새솔마을 접수 일정' })
+    expect(within(group).getByRole('heading', { name: '1순위' })).toBeVisible()
+    expect(within(group).queryByRole('link')).not.toBeInTheDocument()
+  })
+
+  it('공고중에는 접수 시작까지 남은 일수를 표시한다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({
+      applicationStatus: 'BEFORE_APPLICATION', applicationStatusLabel: '공고중', dDay: 3,
+    })} onClose={vi.fn()} />)
+    expect(screen.getByLabelText('접수 시작까지 3일')).toHaveTextContent('접수 시작 D-3')
+  })
+
+  it('조건부 접수의 상단에 확정 디데이를 표시하지 않는다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({
+      applicationStatus: 'CONDITIONAL', applicationStatusLabel: '조건부 접수', dDay: 3,
+    })} onClose={vi.fn()} />)
+    expect(screen.getByText('조건부 접수')).toBeVisible()
+    expect(screen.queryByText('D-3')).not.toBeInTheDocument()
+  })
+
+  it('단지가 하나여도 단지명 선택 탭과 주택형 패널을 연결한다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({
+      supplyRows: [supplyRow()], supplyComplexCount: 1,
+    })} onClose={vi.fn()} />)
+    const tab = screen.getByRole('tab', { name: /새솔마을/ })
+    expect(tab).toHaveAttribute('aria-selected', 'true')
+    const panel = screen.getByRole('tabpanel', { name: /새솔마을/ })
+    expect(tab).toHaveAttribute('aria-controls', panel.id)
+    expect(within(panel).getByRole('article', { name: '새솔마을 36A 주택형' })).toBeVisible()
+    fireEvent.keyDown(tab, { key: 'ArrowRight' })
+    expect(tab).toHaveFocus()
+  })
+
+  it.each([
+    ['16700003', '1670-0003'],
+    ['021234567', '02-123-4567'],
+    ['0212345678', '02-1234-5678'],
+    ['0311234567', '031-123-4567'],
+    ['01012345678', '010-1234-5678'],
+    ['1670-0003', '1670-0003'],
+    ['대표 16700003 / 0311234567 (내선 123)', '대표 1670-0003 / 031-123-4567 (내선 123)'],
+    ['공고문 참조', '공고문 참조'],
+  ])('문의 전화번호 %s의 구분 기호와 안내를 보존한다', (phoneNumber, expected) => {
+    render(<HousingAnnouncementDetailPanel detail={detail({ receptionPlaces: [{
+      name: '상담센터', methodLabel: '전화', address: null, url: null, phoneNumber,
+    }] })} onClose={vi.fn()} />)
+    expect(screen.getByText(expected)).toBeVisible()
+  })
+
   it('상세 제목에 focus를 옮길 때 목록과 페이지를 스크롤하지 않는다', () => {
     const focus = vi.spyOn(HTMLHeadingElement.prototype, 'focus')
     renderPanel()
@@ -587,4 +784,20 @@ function supplyRow(
     totalSupplyHouseholdCount: 12,
     ...changes,
   }
+}
+
+function applicationSchedule(overrides = {}) {
+  return {
+    scheduleId: '1', housingComplexId: '101', complexName: '새솔마을', supplyRank: '1순위',
+    state: 'CONFIRMED', condition: null, startDate: '2026-09-01', endDate: '2026-09-01',
+    startTime: '09:00:00', endTime: '18:00:00', sourceUrl: 'https://example.com/schedule.pdf',
+    sourcePage: 3, ...overrides,
+  }
+}
+
+function legacySchedule(
+  overrides: Partial<HousingAnnouncementDetailData['schedules'][number]> = {},
+): HousingAnnouncementDetailData['schedules'][number] {
+  return { scheduleId: 'application', type: 'APPLICATION', typeLabel: '접수', name: null,
+    startAt: '2026-09-28T10:00:00', endAt: '2026-09-28T16:10:00', ...overrides }
 }

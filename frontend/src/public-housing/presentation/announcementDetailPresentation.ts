@@ -44,6 +44,7 @@ export function toHousingAnnouncementDetailData(
     regionNames: detail.regionNames,
     rentalTypeLabel: rentalTypeLabel(detail.rentalType),
     schedules: detail.schedules.map(toSchedule),
+    applicationSchedules: detail.applicationSchedules ?? [],
     supplyComplexCount: detail.supplyComplexCount,
     supplyHouseholdCount: detail.supplyHouseholdCount,
     supplyRows: detail.supplyRows.map(toSupplyRow),
@@ -159,6 +160,7 @@ function applicationStatusLabel(value: string | null) {
     APPLYING: '접수중',
     BEFORE_APPLICATION: '공고중',
     CANCELLED: '공고취소',
+    CONDITIONAL: '조건부 접수',
     CLOSED: '접수마감',
   }, MISSING_DATA_LABEL)
 }

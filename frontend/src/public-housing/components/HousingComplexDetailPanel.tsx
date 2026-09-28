@@ -353,7 +353,6 @@ function CurrentAnnouncements({
   return (
     <DetailSection
       title="현재 모집 공고"
-      description="정정 내용을 반영한 모집 건별 최신 공고입니다."
     >
       {announcements.length === 0 && (
         <p className={styles.empty}>현재 연결된 모집 공고가 없습니다.</p>
@@ -401,7 +400,9 @@ function AnnouncementCard({
             countdown={null}
           />
           <p className={styles.announcementDeadline} data-tone={deadlineTone}>
-            <span className={styles.visuallyHidden}>마감까지 </span>
+            {announcement.applicationStatus !== 'BEFORE_APPLICATION' && (
+              <span className={styles.visuallyHidden}>마감까지 </span>
+            )}
             <span>{announcementDDay(announcement)}</span>
           </p>
         </div>
@@ -442,7 +443,6 @@ function BasicInformation({ detail }: { detail: HousingComplexDetailData }) {
   return (
     <DetailSection
       title="단지 기본 정보"
-      description="단지의 건물 특성과 규모입니다."
     >
       <DetailFacts columns={2}>
         <DetailFact term="공급기관" value={detail.agencyName} />
@@ -700,7 +700,7 @@ function formatNumber(value: number) {
 
 function applicationStatusLabel(status: string | null) {
   if (status === 'BEFORE_APPLICATION') {
-    return '모집예정'
+    return '공고중'
   }
   if (status === 'APPLYING') {
     return '접수중'
@@ -734,7 +734,9 @@ function announcementDDay(announcement: HousingComplexDetailAnnouncement) {
   if (announcement.dDay < 0) {
     return MISSING_DATA_LABEL
   }
-  return `D-${announcement.dDay}`
+  return announcement.applicationStatus === 'BEFORE_APPLICATION'
+    ? `접수 시작 D-${announcement.dDay}`
+    : `D-${announcement.dDay}`
 }
 
 function isUrgent(announcement: HousingComplexDetailAnnouncement) {

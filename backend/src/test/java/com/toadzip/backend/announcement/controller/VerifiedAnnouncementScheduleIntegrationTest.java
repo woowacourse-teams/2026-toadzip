@@ -151,7 +151,7 @@ class VerifiedAnnouncementScheduleIntegrationTest {
                 schedule(lateComplex.getId(), ApplicationScheduleState.CONFIRMED, 24, 25))));
 
         assertComplexApplicationPeriod(earlyComplex, "APPLYING", 14, 15, 0);
-        assertComplexApplicationPeriod(lateComplex, "BEFORE_APPLICATION", 24, 25, 10);
+        assertComplexApplicationPeriod(lateComplex, "BEFORE_APPLICATION", 24, 25, 9);
         mvc.perform(get("/api/v1/announcements/{id}", announcement.getId()))
                 .andExpect(jsonPath("$.data.applicationStartAt").value("2026-09-14"))
                 .andExpect(jsonPath("$.data.applicationEndAt").value("2026-09-25"));
@@ -183,7 +183,7 @@ class VerifiedAnnouncementScheduleIntegrationTest {
     }
 
     @Test
-    void 일정_사이에는_다음_접수기간과_그_종료일까지의_Dday를_표시한다() throws Exception {
+    void 일정_사이에는_다음_접수기간과_그_시작일까지의_Dday를_표시한다() throws Exception {
         Announcement announcement = announcement("2015122300020681");
         HousingComplex complex = complex(announcement, "11140");
         scheduleService.replace(announcement.getId(), new VerifiedApplicationSchedulesRequest(List.of(
@@ -191,7 +191,7 @@ class VerifiedAnnouncementScheduleIntegrationTest {
                 schedule(complex.getId(), ApplicationScheduleState.CONFIRMED, 16, 18),
                 schedule(complex.getId(), ApplicationScheduleState.CONDITIONAL, 20))));
 
-        assertComplexApplicationPeriod(complex, "BEFORE_APPLICATION", 16, 18, 3);
+        assertComplexApplicationPeriod(complex, "BEFORE_APPLICATION", 16, 18, 1);
     }
 
     @Test
@@ -203,6 +203,19 @@ class VerifiedAnnouncementScheduleIntegrationTest {
                 schedule(complex.getId(), ApplicationScheduleState.CONFIRMED, 20))));
 
         assertComplexApplicationPeriod(complex, "BEFORE_APPLICATION", 16, 16, null);
+    }
+
+    @Test
+    void 다음_시작일이_같으면_확정일정의_기간과_시작_Dday를_표시한다() throws Exception {
+        Announcement announcement = announcement("2015122300020681");
+        HousingComplex complex = complex(announcement, "11140");
+        scheduleService.replace(announcement.getId(), new VerifiedApplicationSchedulesRequest(List.of(
+                schedule(complex.getId(), ApplicationScheduleState.CONDITIONAL, 16),
+                schedule(complex.getId(), ApplicationScheduleState.CONFIRMED, 16, 18))));
+
+        assertComplexApplicationPeriod(complex, "BEFORE_APPLICATION", 16, 18, 1);
+        mvc.perform(get("/api/v1/announcements/{id}", announcement.getId()))
+                .andExpect(jsonPath("$.data.dDay").value(1));
     }
 
     @Test

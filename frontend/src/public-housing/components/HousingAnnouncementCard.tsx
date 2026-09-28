@@ -239,17 +239,17 @@ function statusPresentation(
 function activeStatus(
   statusLabel: string,
   dDay: number | null,
-  includeDeadlinePrefix: boolean,
+  beforeApplication: boolean,
 ): StatusPresentation {
   if (dDay === null || !Number.isInteger(dDay) || dDay < 0) {
-    return status(statusLabel, `접수 마감일 ${MISSING_DATA_LABEL}`, MISSING_DATA_LABEL)
+    return status(statusLabel, `${beforeApplication ? '접수 시작일' : '접수 마감일'} ${MISSING_DATA_LABEL}`, MISSING_DATA_LABEL)
   }
 
   const dDayLabel = dDay === 0 ? 'D-Day' : `D-${dDay}`
   return status(
     statusLabel,
-    dDay === 0 ? '접수 마감일 당일' : `접수 마감까지 ${dDay}일`,
-    includeDeadlinePrefix ? `마감 ${dDayLabel}` : dDayLabel,
+    dDay === 0 ? `${beforeApplication ? '접수 시작일' : '접수 마감일'} 당일` : `접수 ${beforeApplication ? '시작' : '마감'}까지 ${dDay}일`,
+    beforeApplication ? `접수 시작 ${dDayLabel}` : dDayLabel,
   )
 }
 
