@@ -8,6 +8,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -73,7 +74,7 @@ public class MyHomeComplexMerge {
         merge.previewHash = previewHash;
         merge.reason = reason;
         merge.verifiedBy = verifiedBy;
-        merge.mergedAt = now;
+        merge.mergedAt = now.truncatedTo(ChronoUnit.MICROS);
         return merge;
     }
 
@@ -86,7 +87,7 @@ public class MyHomeComplexMerge {
             throw new IllegalStateException("이미 복구된 통합입니다.");
         }
         revertedBy = actor;
-        revertedAt = now;
+        revertedAt = now.truncatedTo(ChronoUnit.MICROS);
     }
 
     public static void requireCompatibleProducts(List<HousingComplex> complexes) {
