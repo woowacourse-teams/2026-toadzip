@@ -65,6 +65,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.IntStream;
 import org.hibernate.SessionFactory;
@@ -833,6 +834,164 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
         assertThat(enrichmentFailureRepository.findAll()).isEmpty();
         assertThat(myHomeSourceRepository.findById(historical.getId()).orElseThrow().isActive()).isFalse();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"46A,false", "통합형,false", "통합형,true"})
+    void 현재_원천으로_재정제해도_과거의_LH_확장행과_금액을_보존한다(
+            String historicalHousingType,
+            boolean historicalActive
+    ) {
+        saveComplex();
+        HousingComplex complex = housingComplexRepository.findAll().getFirst();
+        housingTypeRepository.save(HousingType.createFromMyHome(
+                complex, "source-housing-type-id-59B", "59B",
+                new BigDecimal("59.8000"), new BigDecimal("84.0000")
+        ));
+        MyHomeAnnouncementSource historical = myHomeSource();
+        ReflectionTestUtils.setField(historical, "houseTyNm", historicalHousingType);
+        historical.markSeen("earlier", Instant.parse("2026-08-28T00:00:00Z"));
+        myHomeSourceRepository.save(historical);
+        saveLhSources("10,000,000", "200,000");
+        saveSupply(new LhAnnouncementSupplySource(1, PAN_ID,
+                new LhAnnouncementSupplySourceSnapshot(
+                        "동삼2", "59B", "59.8", "84.0", "80", "10", "20,000,000", "300,000"
+                )));
+        completeLinks(historical);
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        List<Long> historicalRowIds = supplyRowRepository.findAll().stream().map(SupplyRow::getId).toList();
+        List<Long> historicalTargetIds = supplyTargetRepository.findAll().stream().map(SupplyTarget::getId).toList();
+        if (!historicalActive) {
+            historical.markMissed();
+            historical.markMissed();
+            myHomeSourceRepository.save(historical);
+        }
+        MyHomeAnnouncementSource current = myHomeSource();
+        ReflectionTestUtils.setField(current, "houseSn", 2);
+        ReflectionTestUtils.setField(current, "sourceKey", "5:210261:2");
+        ReflectionTestUtils.setField(current, "sourceOrder", 1);
+        current.markSeen("latest", Instant.parse("2026-08-29T00:00:00Z"));
+        myHomeSourceRepository.save(current);
+        switchLhSource(current, "59B", "12,000,000", "250,000");
+
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+
+        assertThat(supplyRowRepository.count()).isEqualTo(3);
+        assertThat(supplyRowRepository.findAllById(historicalRowIds))
+                .hasSize(2).extracting(SupplyRow::getSourceHousingTypeName)
+                .containsExactlyInAnyOrder("46A", "59B");
+        assertThat(supplyTargetRepository.findAllById(historicalTargetIds))
+                .hasSize(2).extracting(target -> target.getMonthlyRent().intValueExact())
+                .containsExactlyInAnyOrder(200000, 300000);
+        assertThat(supplyRowRepository.findAll())
+                .filteredOn(row -> row.getSourceSupplyRowIdentifier().equals(current.getSourceKey()))
+                .singleElement().satisfies(row -> {
+                    assertThat(row.getSourceHousingTypeName()).isEqualTo("59B");
+                    assertThat(row.getLhSourceSupplyRowIdentifier()).isEqualTo("LH:200:SUPPLY:0");
+                    assertThat(supplyTargetRepository.findAllBySupplyRow(row)).singleElement()
+                            .satisfies(target -> assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000"));
+                });
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "true,true,false", "true,false,false", "false,true,false", "false,false,false",
+            "true,true,true", "false,true,true"
+    })
+    void 같은_PAN의_현재_공급만_보강하고_과거_원천의_행과_금액을_보존한다(
+            boolean historicalFirst,
+            boolean expandedCurrentSupply,
+            boolean adminModifiedExpanded
+    ) {
+        saveComplex();
+        HousingComplex complex = housingComplexRepository.findAll().getFirst();
+        housingTypeRepository.save(HousingType.createFromMyHome(
+                complex, "source-housing-type-id-59B", "59B",
+                new BigDecimal("59.8000"), new BigDecimal("84.0000")
+        ));
+        MyHomeAnnouncementSource historical = myHomeSource();
+        ReflectionTestUtils.setField(historical, "houseTyNm", "통합형");
+        ReflectionTestUtils.setField(historical, "sourceOrder", 1);
+        historical.markSeen("earlier", Instant.parse("2026-08-28T00:00:00Z"));
+        myHomeSourceRepository.save(historical);
+        saveLhSources("10,000,000", "200,000");
+        saveSupply(new LhAnnouncementSupplySource(1, PAN_ID,
+                new LhAnnouncementSupplySourceSnapshot(
+                        "동삼2", "59B", "59.8", "84.0", "80", "10", "20,000,000", "300,000"
+                )));
+        completeLinks(historical);
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        SupplyRow historicalRoot = supplyRowRepository.findBySourceSupplyRowIdentifier(historical.getSourceKey())
+                .orElseThrow();
+        SupplyRow expanded = supplyRowRepository.findBySourceSupplyRowIdentifier("21026:LH:100:1").orElseThrow();
+        Long expandedTargetId = supplyTargetRepository.findAllBySupplyRow(expanded).getFirst().getId();
+        if (adminModifiedExpanded) {
+            expanded.reviseByAdmin(
+                    expanded.getHousingComplex(), expanded.getHousingType(), "동삼2", "관리자 확인 59B",
+                    PNU, YearMonth.of(2027, 1), SupplyCategory.RESUPPLY, 7
+            );
+            supplyRowRepository.save(expanded);
+        }
+        historical.markMissed();
+        historical.markMissed();
+        myHomeSourceRepository.save(historical);
+        MyHomeAnnouncementSource current = myHomeSource();
+        ReflectionTestUtils.setField(current, "houseSn", 2);
+        ReflectionTestUtils.setField(current, "sourceKey", "5:210261:2");
+        if (historicalFirst) {
+            ReflectionTestUtils.setField(current, "sourceOrder", 2);
+        }
+        ReflectionTestUtils.setField(current, "url", current.getUrl().replace("aisTpCd=07", "aisTpCd=08"));
+        current.markSeen("latest", Instant.parse("2026-08-29T00:00:00Z"));
+        myHomeSourceRepository.save(current);
+        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(current);
+        sourceStore.replaceDetails(PAN_ID, candidate.requestDescription(), List.of(detail(
+                0, "ETC_INFO", null, null, null, null, null, null, null, "현재 원천"
+        )));
+        List<LhAnnouncementSupplySource> currentSupplies = new ArrayList<>();
+        currentSupplies.add(new LhAnnouncementSupplySource(0, PAN_ID,
+                new LhAnnouncementSupplySourceSnapshot(
+                        "동삼2", "46A", "46.8", "67.0", "100", "20", "12,000,000", "250,000"
+                )));
+        if (expandedCurrentSupply) {
+            currentSupplies.add(new LhAnnouncementSupplySource(1, PAN_ID,
+                    new LhAnnouncementSupplySourceSnapshot(
+                            "동삼2", "59B", "59.8", "84.0", "80", "10", "22,000,000", "350,000"
+                    )));
+        }
+        sourceStore.replaceSupplies(PAN_ID, candidate.requestDescription(), currentSupplies);
+        completeLinks(current);
+
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+
+        assertThat(supplyRowRepository.count()).isEqualTo(3);
+        assertThat(supplyTargetRepository.findAllBySupplyRow(historicalRoot)).singleElement()
+                .satisfies(target -> assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000"));
+        SupplyRow currentRoot = supplyRowRepository.findBySourceSupplyRowIdentifier(current.getSourceKey())
+                .orElseThrow();
+        assertThat(supplyTargetRepository.findAllBySupplyRow(currentRoot)).singleElement()
+                .satisfies(target -> assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000"));
+        BigDecimal expectedExpandedRent = new BigDecimal("300000");
+        if (expandedCurrentSupply) {
+            expectedExpandedRent = new BigDecimal("350000");
+        }
+        SupplyTarget expandedTarget = supplyTargetRepository.findById(expandedTargetId).orElseThrow();
+        assertThat(expandedTarget.getSupplyRow().getId()).isEqualTo(expanded.getId());
+        assertThat(expandedTarget.getMonthlyRent()).isEqualByComparingTo(expectedExpandedRent);
+        if (adminModifiedExpanded) {
+            SupplyRow preserved = supplyRowRepository.findById(expanded.getId()).orElseThrow();
+            assertThat(preserved.getSourceHousingTypeName()).isEqualTo("관리자 확인 59B");
+            assertThat(preserved.getExpectedMoveInMonth()).isEqualTo(YearMonth.of(2027, 1));
+            assertThat(preserved.getSupplyCategory()).isEqualTo(SupplyCategory.RESUPPLY);
+            assertThat(preserved.getTotalSupplyHouseholdCount()).isEqualTo(7);
+        }
     }
 
     @Test

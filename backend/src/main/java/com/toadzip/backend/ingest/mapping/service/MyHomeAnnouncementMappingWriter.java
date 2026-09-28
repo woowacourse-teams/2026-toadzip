@@ -11,15 +11,16 @@ import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepositor
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
@@ -168,11 +169,26 @@ public class MyHomeAnnouncementMappingWriter {
         int unchanged = 0;
         int displayOrder = 1;
         List<MyHomeSupplyMatchingFailureData> failures = new ArrayList<>();
-        Map<String, List<SupplyRow>> storedGroups = storedGroupsByMyHomeSource(announcement, storedRows.values());
+        Map<String, List<SupplyRow>> storedGroups = MyHomeAnnouncementSupplyRowGroups.byMyHomeSource(
+                announcement.getSourceAnnouncementIdentifier(), storedRows.values()
+        );
+        Set<MyHomeAnnouncementSource> currentSources = Set.copyOf(MyHomeAnnouncementCurrentSources.select(
+                rows.stream().map(MyHomeSupplyRowMappingData::source).distinct().toList()
+        ));
+        Set<String> currentRowIdentifiers = rows.stream()
+                .filter(row -> currentSources.contains(row.source()))
+                .map(MyHomeSupplyRowMappingData::sourceSupplyRowIdentifier)
+                .collect(Collectors.toSet());
         for (MyHomeSupplyRowMappingData data : rows) {
             List<SupplyRow> storedGroup = storedGroups.get(data.sourceSupplyRowIdentifier());
-            if (preserveExistingLhResolvedRows && hasLhResolvedRows(announcement, storedGroup)) {
+            boolean preserveLhRows = preserveExistingLhResolvedRows
+                    || announcement.getProvider() == AgencyCode.LH && !currentSources.contains(data.source());
+            if (preserveLhRows && hasLhResolvedRows(announcement, storedGroup)) {
                 for (SupplyRow stored : storedGroup) {
+                    if (!currentSources.contains(data.source())
+                            && currentRowIdentifiers.contains(stored.getSourceSupplyRowIdentifier())) {
+                        continue;
+                    }
                     storedRows.remove(stored.getSourceSupplyRowIdentifier());
                     Integer householdCount = stored.getSourceSupplyRowIdentifier()
                             .equals(data.sourceSupplyRowIdentifier())
@@ -274,27 +290,6 @@ public class MyHomeAnnouncementMappingWriter {
         return match.failure() != null
                 && data.resolvedLhSourceIdentifier() != null
                 && stored.getLhSourceSupplyRowIdentifier() != null;
-    }
-
-    private Map<String, List<SupplyRow>> storedGroupsByMyHomeSource(
-            Announcement announcement,
-            Collection<SupplyRow> rows
-    ) {
-        String generatedIdentifierPrefix = announcement.getSourceAnnouncementIdentifier() + ":LH:";
-        List<SupplyRow> orderedRows = rows.stream()
-                .sorted(Comparator.comparingInt(SupplyRow::getDisplayOrder).thenComparing(SupplyRow::getId))
-                .toList();
-        Map<String, List<SupplyRow>> groups = new LinkedHashMap<>();
-        String myHomeSourceIdentifier = null;
-        for (SupplyRow row : orderedRows) {
-            if (!row.getSourceSupplyRowIdentifier().startsWith(generatedIdentifierPrefix)) {
-                myHomeSourceIdentifier = row.getSourceSupplyRowIdentifier();
-            }
-            if (myHomeSourceIdentifier != null) {
-                groups.computeIfAbsent(myHomeSourceIdentifier, ignored -> new ArrayList<>()).add(row);
-            }
-        }
-        return groups;
     }
 
     private boolean hasLhResolvedRows(Announcement announcement, List<SupplyRow> rows) {

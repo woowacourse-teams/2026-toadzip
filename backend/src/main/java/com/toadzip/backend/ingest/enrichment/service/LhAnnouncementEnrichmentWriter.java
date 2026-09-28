@@ -10,6 +10,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
+import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,14 +54,15 @@ public class LhAnnouncementEnrichmentWriter {
 
     @Transactional
     public LhAnnouncementEnrichmentWriteResult write(Announcement announcement, LhAnnouncementEnrichmentData data) {
-        return write(announcement, data, Set.of());
+        return write(announcement, data, Set.of(), Set.of());
     }
 
     @Transactional
     public LhAnnouncementEnrichmentWriteResult write(
             Announcement announcement,
             LhAnnouncementEnrichmentData data,
-            Set<Long> changedHousingTypeRows
+            Set<Long> changedHousingTypeRows,
+            Set<String> historicalSourceKeys
     ) {
         Announcement managedAnnouncement = managedAnnouncement(announcement);
         String previousPanId = managedAnnouncement.getLhPanId();
@@ -83,7 +86,9 @@ public class LhAnnouncementEnrichmentWriter {
         AttachmentsWriteResult attachments = writeAttachments(
                 managedAnnouncement, data, replacedPanIds, previousPanId
         );
-        SupplyWriteResult supplies = writeSupplies(managedAnnouncement, data, changedHousingTypeRows);
+        SupplyWriteResult supplies = writeSupplies(
+                managedAnnouncement, data, changedHousingTypeRows, historicalSourceKeys
+        );
         return new LhAnnouncementEnrichmentWriteResult(
                 new LhAnnouncementEnrichmentReport(
                         updatedAnnouncements, updatedAnnouncements == 0 ? 1 : 0,
@@ -176,7 +181,8 @@ public class LhAnnouncementEnrichmentWriter {
     private SupplyWriteResult writeSupplies(
             Announcement announcement,
             LhAnnouncementEnrichmentData data,
-            Set<Long> changedHousingTypeRows
+            Set<Long> changedHousingTypeRows,
+            Set<String> historicalSourceKeys
     ) {
         if (data.supplies().isEmpty()) {
             if (!changedHousingTypeRows.isEmpty()) {
@@ -185,6 +191,16 @@ public class LhAnnouncementEnrichmentWriter {
             return new SupplyWriteResult(0, 0, 0, List.of());
         }
         List<SupplyRow> rows = supplyRowRepository.findAllByAnnouncement(announcement);
+        if (!historicalSourceKeys.isEmpty()) {
+            Set<Long> historicalRowIds = MyHomeAnnouncementSupplyRowGroups.byMyHomeSource(
+                    announcement.getSourceAnnouncementIdentifier(), rows
+            ).entrySet().stream()
+                    .filter(group -> historicalSourceKeys.contains(group.getKey()))
+                    .flatMap(group -> group.getValue().stream())
+                    .map(SupplyRow::getId)
+                    .collect(Collectors.toSet());
+            rows = rows.stream().filter(row -> !historicalRowIds.contains(row.getId())).toList();
+        }
         List<LhSupplyMatchingFailureData> failures = new ArrayList<>();
         List<MatchedSupply> matchedSupplies = new ArrayList<>();
         Set<Long> matchedRowIds = new HashSet<>();
