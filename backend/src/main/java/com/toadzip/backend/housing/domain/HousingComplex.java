@@ -104,6 +104,9 @@ public class HousingComplex {
 
     private Integer recentOneYearMoveOutCount;
 
+    @Embedded
+    private RentalPriceRange rentalPriceRange;
+
     private HousingComplex(
             String name,
             String sourceComplexIdentifier,
@@ -271,6 +274,14 @@ public class HousingComplex {
         totalHouseholdCount = householdCount;
         this.imageUrl = imageUrl;
         recentOneYearMoveOutCount = moveOutCount;
+    }
+
+    public boolean updateRentalPriceRange(RentalPriceRange incoming) {
+        if (java.util.Objects.equals(rentalPriceRange, incoming)) {
+            return false;
+        }
+        rentalPriceRange = incoming;
+        return true;
     }
 
     private boolean hasSameMyHomeValues(HousingComplex incoming) {

@@ -26,6 +26,7 @@ import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.ComplexSort;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.RentalPriceRange;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -167,6 +168,7 @@ class HousingComplexApiIntegrationTest {
         );
 
         persistCorrectionChain(sameDateType);
+        insideComplex.updateRentalPriceRange(new RentalPriceRange(10000000L, 30000000L, 100000L, 300000L));
         persistCancellationChain(boundaryType);
         persistEndedLeaf();
         persistUnmatchedCurrentRow();
@@ -691,6 +693,9 @@ class HousingComplexApiIntegrationTest {
         );
         SupplyRow supplyRow = persistSupplyRow(announcement, complex, housingType, suffix + "-row", 1);
         persistSupplyTarget(supplyRow, suffix + "-target", deposit, monthlyRent, null, 1);
+        complex.updateRentalPriceRange(new RentalPriceRange(
+                Long.valueOf(deposit), Long.valueOf(deposit),
+                Long.valueOf(monthlyRent), Long.valueOf(monthlyRent)));
     }
 
     private List<Long> fetchEveryFilteredListPage() throws Exception {

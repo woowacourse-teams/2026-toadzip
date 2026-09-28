@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.RentalPriceRange;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
@@ -134,6 +135,23 @@ class MyHomeComplexMergeIntegrationTest {
     }
 
     @Test
+    void 통합한_단지는_모든_원천의_보증금과_월임대료_범위를_표시한다() throws Exception {
+        jdbc.sql("""
+                UPDATE myhome_complex_source
+                SET bass_rent_gtn = CASE hsmp_sn WHEN 31713153 THEN 30000000 ELSE 10000000 END,
+                    bass_mt_rntchrg = CASE hsmp_sn WHEN 31713153 THEN 100000 ELSE 200000 END
+                """).update();
+        mapping.mapAll();
+
+        merge();
+        mapping.mapAll();
+
+        assertThat(complexes.findAll()).singleElement().satisfies(complex ->
+                assertThat(complex.getRentalPriceRange()).isEqualTo(
+                        new RentalPriceRange(10_000_000L, 30_000_000L, 100_000L, 200_000L)));
+    }
+
+    @Test
     void 같은_이름과_PNU여도_확인하기_전에는_각_단지를_유지하고_후보만_보여준다() throws Exception {
         mapping.mapAll();
         mvc.perform(get(ENDPOINT + "/candidates").with(user("admin").roles("ADMIN")))
@@ -172,6 +190,33 @@ class MyHomeComplexMergeIntegrationTest {
         assertThat(jdbc.sql("SELECT count(*) FROM housing_complex_aliases").query(Long.class).single()).isZero();
         mapping.mapAll();
         assertThat(complexes.count()).isEqualTo(3);
+    }
+
+    @Test
+    void 금액_컬럼_추가_전_통합_이력도_복구할_수_있다() throws Exception {
+        jdbc.sql("UPDATE myhome_complex_source SET bass_rent_gtn = 10000000, bass_mt_rntchrg = 200000")
+                .update();
+        mapping.mapAll();
+        JsonNode merged = merge();
+        jdbc.sql("""
+                UPDATE myhome_complex_merges
+                SET before_state = jsonb_set(before_state, '{complexes}', (
+                        SELECT jsonb_agg(complex - 'deposit_min' - 'deposit_max'
+                            - 'monthly_rent_min' - 'monthly_rent_max')
+                        FROM jsonb_array_elements(before_state->'complexes') complex)),
+                    after_state = jsonb_set(after_state, '{complexes}', (
+                        SELECT jsonb_agg(complex - 'deposit_min' - 'deposit_max'
+                            - 'monthly_rent_min' - 'monthly_rent_max')
+                        FROM jsonb_array_elements(after_state->'complexes') complex))
+                """).update();
+
+        postJson(ENDPOINT + "/" + merged.get("operationId").asText() + "/revert", Map.of());
+
+        assertThat(complexes.count()).isEqualTo(3);
+        assertThat(complexes.findAll()).allSatisfy(complex ->
+                assertThat(complex.getRentalPriceRange()).isEqualTo(
+                        new RentalPriceRange(
+                                10_000_000L, 10_000_000L, 200_000L, 200_000L)));
     }
 
     @Test

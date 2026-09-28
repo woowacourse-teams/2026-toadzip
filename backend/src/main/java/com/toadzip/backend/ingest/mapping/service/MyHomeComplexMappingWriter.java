@@ -96,10 +96,12 @@ public class MyHomeComplexMappingWriter {
                     data.elevatorInstalled(),
                     data.parkingSpaceCount()
             );
+            created.updateRentalPriceRange(data.rentalPriceRange());
             return new ComplexWriteResult(complexRepository.save(created), true, false);
         }
         complex = complexRepository.findByIdForUpdate(complex.getId()).orElseThrow();
-        boolean updated = complex.updateFromMyHome(
+        boolean priceUpdated = complex.updateRentalPriceRange(data.rentalPriceRange());
+        boolean detailsUpdated = complex.updateFromMyHome(
                 data.name(),
                 data.supplyType(),
                 address,
@@ -112,7 +114,7 @@ public class MyHomeComplexMappingWriter {
                 data.elevatorInstalled(),
                 data.parkingSpaceCount()
         );
-        return new ComplexWriteResult(complex, false, updated);
+        return new ComplexWriteResult(complex, false, priceUpdated || detailsUpdated);
     }
 
     private MyHomeComplexMappingReport writeVerifiedGroup(MyHomeComplexLink link) {
@@ -123,6 +125,7 @@ public class MyHomeComplexMappingWriter {
         Map<String, List<MyHomeComplexSource>> grouped = sourceRepository.findAllByHsmpSnIn(identifiers).stream()
                 .collect(Collectors.groupingBy(sourceMapper::sourceComplexIdentifier));
         List<MyHomeHousingTypeMappingData> housingTypes = new ArrayList<>();
+        List<MyHomeComplexSource> allSources = new ArrayList<>();
         for (MyHomeComplexLink member : links) {
             List<MyHomeComplexSource> sources = grouped.get(member.getSourceComplexIdentifier());
             if (sources == null || sources.isEmpty()) {
@@ -134,10 +137,13 @@ public class MyHomeComplexMappingWriter {
                 throw mergedSourceConflict("통합 근거의 단지 공통값 또는 원천 세대수가 변경되어 재확인이 필요합니다.");
             }
             housingTypes.addAll(data.housingTypes());
+            allSources.addAll(sources);
         }
+        boolean priceUpdated = complex.updateRentalPriceRange(sourceMapper.rentalPriceRange(allSources));
         HousingTypeWriteResult result = synchronizeHousingTypes(complex, housingTypes, true);
         return new MyHomeComplexMappingReport(
-                0, 0, 1, result.created(), result.updated(), result.unchanged(), result.deleted(), 0);
+                0, priceUpdated ? 1 : 0, priceUpdated ? 0 : 1,
+                result.created(), result.updated(), result.unchanged(), result.deleted(), 0);
     }
 
     private MyHomeComplexMappingRejectedException mergedSourceConflict(String message) {

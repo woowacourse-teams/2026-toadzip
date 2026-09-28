@@ -18,7 +18,8 @@ public class MyHomeComplexMergeStore {
             "province_code", "road_address", "completion_date", "corridor_type", "elevator_installed",
             "heating_type", "housing_type", "image_url", "name", "parking_space_count", "provider",
             "recent_one_year_move_out_count", "source_complex_identifier", "supply_type", "total_household_count",
-            "version", "created_at", "admin_deleted", "admin_modified", "source_review_required", "admin_updated_at"
+            "version", "created_at", "admin_deleted", "admin_modified", "source_review_required", "admin_updated_at",
+            "deposit_min", "deposit_max", "monthly_rent_min", "monthly_rent_max"
     );
 
     private final JdbcClient jdbc;
@@ -82,8 +83,22 @@ public class MyHomeComplexMergeStore {
     }
 
     public boolean sameState(String left, String right) {
+        if (!hasRentalPriceSnapshot(right)) {
+            return jdbc.sql("""
+                    SELECT jsonb_set(CAST(:left AS jsonb), '{complexes}', COALESCE((
+                        SELECT jsonb_agg(complex - 'deposit_min' - 'deposit_max'
+                            - 'monthly_rent_min' - 'monthly_rent_max' ORDER BY (complex->>'id')::bigint)
+                        FROM jsonb_array_elements(CAST(:left AS jsonb)->'complexes') complex
+                    ), '[]'::jsonb)) = CAST(:right AS jsonb)
+                    """).param("left", left).param("right", right).query(Boolean.class).single();
+        }
         return jdbc.sql("SELECT CAST(:left AS jsonb) = CAST(:right AS jsonb)")
                 .param("left", left).param("right", right).query(Boolean.class).single();
+    }
+
+    public boolean hasRentalPriceSnapshot(String state) {
+        return jdbc.sql("SELECT jsonb_exists(CAST(:state AS jsonb)->'complexes'->0, 'deposit_min')")
+                .param("state", state).query(Boolean.class).single();
     }
 
     public void transferAndRemove(long representativeId, List<Long> donorIds, UUID mergeId) {
