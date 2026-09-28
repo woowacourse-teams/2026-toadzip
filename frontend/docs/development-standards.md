@@ -61,3 +61,11 @@ Node.js 계약을 변경할 때는 같은 행의 두 정의를 함께 갱신한�
 4. 도입 근거와 대안을 이슈 또는 PR에 남겼는가.
 
 lock 파일을 직접 편집하거나 현재 작업과 무관한 버전 갱신을 함께 넣지 않는다.
+
+## PDF 미리보기
+
+공고 첨부파일은 브라우저 내장 PDF 플러그인 없이 확인할 수 있도록 `pdfjs-dist` legacy 빌드를 모달을 열 때 지연 로딩한다. native iframe은 앱 내 브라우저에서 빈 화면이 확인되어 채택하지 않았다. 라이선스는 Apache-2.0이며 버전은 package.json/lock에 고정한다. 설치 시점 npm audit 결과 취약점 0건이었다.
+
+`npm run dev`와 `npm run build`의 pre 스크립트가 `scripts/prepare-pdf-assets.mjs`를 실행해 설치 버전의 CMap, 표준 폰트, WASM 및 라이선스를 `public/pdfjs-{version}/`에 준비한다. 생성 디렉터리는 Git에서 제외되지만 dist에는 포함된다. PDF.js 교체·제거 경계는 PdfDocumentPreview 컴포넌트와 이 자산 준비 스크립트다.
+
+`usePdfViewer`는 PDFViewer의 연속 스크롤·렌더 버퍼와 PDFFindController의 전체 문서 검색·텍스트 강조를 연결한다. build 모듈 초기화 후 web viewer를 읽고, 문서 해제·AbortSignal·지역화 객체·worker를 함께 정리한다. SDK 스타일은 `@scope` 안에 두어 전역 색상과 다른 화면에 영향을 주지 않는다. 검색 단축키는 현재 모달에만 등록하며 PDF 스크립트와 폼 편집은 활성화하지 않는다.

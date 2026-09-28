@@ -15,6 +15,8 @@ import {
   DetailSection,
   DetailTable,
 } from './DetailPrimitives.tsx'
+import { AttachmentDialog, AttachmentList } from './AnnouncementAttachments.tsx'
+import { hasAttachmentUrl } from '../api/announcementAttachments.ts'
 import { AnnouncementStatusBadge } from './AnnouncementStatusBadge.tsx'
 import type {
   AnnouncementHousingType,
@@ -128,6 +130,7 @@ export function HousingAnnouncementDetailPanel({
     groupKey: firstGroupKey,
   })
   const [floorPlan, setFloorPlan] = useState<FloorPlanSelection | null>(null)
+  const [attachmentAnnouncementId, setAttachmentAnnouncementId] = useState<string | null>(null)
   const selectedGroupKey = selection.announcementId === detail.announcementId
     ? selection.groupKey
     : firstGroupKey
@@ -218,10 +221,14 @@ export function HousingAnnouncementDetailPanel({
             onOpenFloorPlan={setFloorPlan}
           />
         )}
-        <AttachmentList attachments={detail.attachments} />
+        <AttachmentList key={detail.announcementId} announcementId={detail.announcementId} attachments={detail.attachments} />
       </div>
 
-      <DocumentActions detail={detail} />
+      <DocumentActions detail={detail} onOpenAttachments={() => setAttachmentAnnouncementId(detail.announcementId)} />
+      {attachmentAnnouncementId === detail.announcementId && (
+        <AttachmentDialog key={detail.announcementId} announcementId={detail.announcementId} attachments={detail.attachments}
+          onClose={() => setAttachmentAnnouncementId(null)} />
+      )}
       {floorPlan && (
         <FloorPlanDialog selection={floorPlan} onClose={() => setFloorPlan(null)} />
       )}
@@ -816,81 +823,21 @@ function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget
   )
 }
 
-function AttachmentList({
-  attachments,
-}: {
-  attachments: readonly HousingAnnouncementDetailAttachment[]
+function DocumentActions({ detail, onOpenAttachments }: {
+  detail: HousingAnnouncementDetailData
+  onOpenAttachments: () => void
 }) {
-  if (attachments.length <= 1) {
-    return null
-  }
-  return (
-    <DetailSection title="첨부파일">
-      <ul className={styles.attachmentList}>
-        {attachments.map((attachment) => {
-          const url = safeHttpUrl(attachment.fileUrl)
-          const name = attachment.fileName ?? MISSING_DATA_LABEL
-          return (
-            <li key={attachment.attachmentId}>
-              <span>{attachment.fileTypeLabel}</span>
-              <strong>{name}</strong>
-              {url && <ExternalLink href={url}>열기</ExternalLink>}
-              {!url && <small>{MISSING_DATA_LABEL}</small>}
-            </li>
-          )
-        })}
-      </ul>
-    </DetailSection>
-  )
-}
-
-function DocumentActions({ detail }: { detail: HousingAnnouncementDetailData }) {
   const sourceUrl = safeHttpUrl(detail.documentLinkUrl)
-  const primaryAttachment = findPrimaryNoticeAttachment(detail.attachments)
-  const attachmentUrl = safeHttpUrl(primaryAttachment?.fileUrl ?? null)
-  const attachmentName = primaryAttachment?.fileName ?? MISSING_DATA_LABEL
-  const linkStatus = [...new Set([
-    attachmentUrl ? '첨부파일 연결됨' : MISSING_DATA_LABEL,
-    sourceUrl ? '원문 연결됨' : MISSING_DATA_LABEL,
-  ])].join(' · ')
-
+  const hasFiles = detail.attachments.some(hasAttachmentUrl)
   return (
     <footer className={styles.documents}>
-      <div>
-        <span aria-hidden="true">▤</span>
-        <p>
-          <strong>공고문</strong>
-          <small title={attachmentName}>{attachmentName}</small>
-          {linkStatus !== attachmentName && <em>{linkStatus}</em>}
-        </p>
-      </div>
       <nav aria-label="공고문 바로가기">
-        {attachmentUrl && <ExternalLink href={attachmentUrl}>첨부파일</ExternalLink>}
-        {!attachmentUrl && <DisabledLink>첨부파일</DisabledLink>}
+        <button type="button" disabled={!hasFiles} onClick={onOpenAttachments}>공고문 보기</button>
         {sourceUrl && <ExternalLink href={sourceUrl}>공고 원문</ExternalLink>}
         {!sourceUrl && <DisabledLink>공고 원문</DisabledLink>}
       </nav>
     </footer>
   )
-}
-
-function findPrimaryNoticeAttachment(
-  attachments: readonly HousingAnnouncementDetailAttachment[],
-) {
-  const noticeAttachments = attachments.filter((attachment) => (
-    isNoticeAttachmentLabel(attachment.fileTypeLabel)
-  ))
-  return noticeAttachments.find(
-    (attachment) => safeHttpUrl(attachment.fileUrl) !== null,
-  ) ?? noticeAttachments[0] ?? attachments.find(
-    (attachment) => safeHttpUrl(attachment.fileUrl) !== null,
-  ) ?? attachments[0]
-}
-
-function isNoticeAttachmentLabel(label: string) {
-  return label === '공고문'
-    || label === '정정공고문'
-    || label === '취소공고문'
 }
 
 function FloorPlanDialog({

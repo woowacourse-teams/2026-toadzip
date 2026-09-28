@@ -64,8 +64,7 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(firstHousingType).queryByText('대상별 공급 조건: 공고문 확인')).not.toBeInTheDocument()
 
     await waitFor(() => {
-      expect(within(panel).getByRole('link', { name: '첨부파일' }))
-        .toHaveAttribute('href', 'https://example.com/notice.pdf')
+      expect(within(panel).getByRole('button', { name: '공고문 보기' })).toBeEnabled()
     })
     expect(within(panel).getByRole('link', { name: '공고 원문' }))
       .toHaveAttribute('href', 'https://example.com/notice')
@@ -301,17 +300,17 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(complexSection!).getByText('단지 정보: 공고문 확인')).toBeVisible()
     expect(within(complexSection!).queryByText('공고문 확인')).not.toBeInTheDocument()
     const footer = within(panel).getByRole('navigation', { name: '공고문 바로가기' }).parentElement
-    expect(within(footer!).getAllByText('공고문 확인')).toHaveLength(1)
+    expect(within(footer!).queryByText('첨부파일 정보 없음')).not.toBeInTheDocument()
+    expect(within(footer!).queryByText(/연결됨|링크 없음/)).not.toBeInTheDocument()
     expect(within(panel).queryByText('공고문 확인 · 공고문 확인')).not.toBeInTheDocument()
     expect(within(panel).queryByRole('link', { name: '첨부파일' })).not.toBeInTheDocument()
     expect(within(panel).queryByRole('link', { name: '공고 원문' })).not.toBeInTheDocument()
-    expect(within(panel).getByText('첨부파일', { selector: '[aria-disabled="true"]' }))
-      .toBeVisible()
+    expect(within(panel).getByRole('button', { name: '공고문 보기' })).toBeDisabled()
     expect(within(panel).getByText('공고 원문', { selector: '[aria-disabled="true"]' }))
       .toBeVisible()
   })
 
-  it('참고자료보다 실제 공고문 첨부를 바로가기 대표 파일로 선택한다', () => {
+  it('여러 첨부는 공고문 보기 버튼으로 제공하고 하단 설명을 중복하지 않는다', () => {
     render(
       <HousingAnnouncementDetailPanel
         detail={detail({
@@ -331,9 +330,10 @@ describe('HousingAnnouncementDetailPanel', () => {
       />,
     )
 
-    expect(screen.getByRole('link', { name: '첨부파일' }))
-      .toHaveAttribute('href', 'https://example.com/correction.pdf')
-    expect(screen.getByTitle('정정공고문.pdf')).toBeVisible()
+    expect(screen.getByRole('button', { name: '공고문 보기' })).toBeEnabled()
+    const navigation = screen.getByRole('navigation', { name: '공고문 바로가기' })
+    expect(navigation.parentElement).toHaveTextContent(/^공고문 보기공고 원문$/)
+    expect(screen.queryByText(/연결됨/)).not.toBeInTheDocument()
   })
 
   it('주택형과 대상별 조건은 항목·값 두 쌍의 4열 표로 표시한다', () => {
