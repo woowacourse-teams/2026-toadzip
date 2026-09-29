@@ -31,7 +31,7 @@ public class MyHomeComplexResponseParser {
         if (!body.isObject()) {
             throw invalidResponseSchema();
         }
-        int totalCount = totalCountOf(body);
+        int totalCount = MyHomeResponseTotalCountParser.parse(body, this::invalidResponseSchema);
         JsonNode item = body.path("item");
         if (item.isMissingNode() || item.isNull()) {
             return emptyPageOrThrow(totalCount, collectedCount);
@@ -71,36 +71,6 @@ public class MyHomeComplexResponseParser {
             throw new ExternalDataRequestException("마이홈 단지 응답 항목에 단지 식별자가 없습니다.");
         }
         return snapshot;
-    }
-
-    private int totalCountOf(JsonNode body) {
-        JsonNode totalCount = body.path("totalCount");
-        if (totalCount.isMissingNode() || totalCount.isNull()) {
-            throw invalidResponseSchema();
-        }
-        if (totalCount.isIntegralNumber() && totalCount.canConvertToInt()) {
-            return requireNonNegativeTotalCount(totalCount.intValue());
-        }
-        if (totalCount.isTextual()) {
-            return textualTotalCount(totalCount.textValue());
-        }
-        throw invalidResponseSchema();
-    }
-
-    private int textualTotalCount(String totalCount) {
-        try {
-            return requireNonNegativeTotalCount(Integer.parseInt(totalCount));
-        }
-        catch (NumberFormatException exception) {
-            throw invalidResponseSchema();
-        }
-    }
-
-    private int requireNonNegativeTotalCount(int totalCount) {
-        if (totalCount < 0) {
-            throw invalidResponseSchema();
-        }
-        return totalCount;
     }
 
     private ExternalDataRequestException invalidResponseSchema() {

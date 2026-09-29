@@ -234,7 +234,10 @@ public class LhAnnouncementExternalCollectionService {
         recordCount(targetSource, forceRefresh, "candidates", "conflicting", selection.conflicts().size());
     }
 
-    private ExternalDataCollectionReport selectionReport(ExternalDataSource targetSource, CandidateSelection selection) {
+    private ExternalDataCollectionReport selectionReport(
+            ExternalDataSource targetSource,
+            CandidateSelection selection
+    ) {
         failureRecorder.skipAll(targetSource,
                 selection.excludedSourceKeys().stream().map(this::sourceSelectionDescription).toList(),
                 "현재 마이홈 공고 원천이 모두 LH 수집 대상에서 제외되어 충돌 재처리를 건너뜁니다.");

@@ -83,20 +83,7 @@ public class MyHomeComplexMergeService {
         var products = complexes.findAllById(candidates.stream()
                 .map(ComplexMergeCandidateRow::representativeId).toList());
         List<LhCatalogSource> catalog = lhSources.findAllByOrderBySourceOrderAsc();
-        return candidates.stream().map(candidate -> {
-            HousingComplex product = products.stream()
-                    .filter(complex -> complex.getId() == candidate.representativeId()).findFirst().orElseThrow();
-            return new ComplexMergeCandidateResponse(
-                    candidate.representativeId(), candidate.name(), candidate.roadAddress(), candidate.pnu(),
-                    candidate.provider(), candidate.supplyType(), candidate.sources().stream().map(source ->
-                            new ComplexMergeCandidateResponse.Source(
-                                    source.complexId(), source.sourceIdentifier(), source.householdCount())).toList(),
-                    catalog.stream().filter(source -> matcher.hasExactIdentity(product,
-                                    source.getComplexLabel(), source.getAreaName(), source.getSupplyTypeName()))
-                            .map(source -> new ComplexMergeCandidateResponse.LhEvidence(
-                                    source.getId(), source.getComplexTotalUnitCount(), source.getCollectedAt()))
-                            .toList());
-        }).toList();
+        return candidates.stream().map(candidate -> candidateResponse(candidate, products, catalog)).toList();
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -119,6 +106,33 @@ public class MyHomeComplexMergeService {
     @Transactional(readOnly = true)
     public ComplexMergeResponse get(UUID id) {
         return response(findMerge(id));
+    }
+
+    private ComplexMergeCandidateResponse candidateResponse(
+            ComplexMergeCandidateRow candidate,
+            List<HousingComplex> products,
+            List<LhCatalogSource> catalog
+    ) {
+        HousingComplex product = products.stream()
+                .filter(complex -> complex.getId() == candidate.representativeId()).findFirst().orElseThrow();
+        return new ComplexMergeCandidateResponse(
+                candidate.representativeId(), candidate.name(), candidate.roadAddress(), candidate.pnu(),
+                candidate.provider(), candidate.supplyType(), candidate.sources().stream().map(source ->
+                        new ComplexMergeCandidateResponse.Source(
+                                source.complexId(), source.sourceIdentifier(), source.householdCount())).toList(),
+                candidateEvidence(product, catalog)
+        );
+    }
+
+    private List<ComplexMergeCandidateResponse.LhEvidence> candidateEvidence(
+            HousingComplex product,
+            List<LhCatalogSource> catalog
+    ) {
+        return catalog.stream().filter(source -> matcher.hasExactIdentity(product,
+                        source.getComplexLabel(), source.getAreaName(), source.getSupplyTypeName()))
+                .map(source -> new ComplexMergeCandidateResponse.LhEvidence(
+                        source.getId(), source.getComplexTotalUnitCount(), source.getCollectedAt()))
+                .toList();
     }
 
     private ComplexMergeResponse mergeLocked(ComplexMergeRequest request, String actor) {

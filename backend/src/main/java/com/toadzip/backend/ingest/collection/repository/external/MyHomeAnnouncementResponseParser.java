@@ -33,7 +33,7 @@ public class MyHomeAnnouncementResponseParser {
         if (!body.isObject()) {
             throw invalidResponseSchema();
         }
-        int totalCount = totalCountOf(body);
+        int totalCount = MyHomeResponseTotalCountParser.parse(body, this::invalidResponseSchema);
         JsonNode item = body.path("item");
         if (item.isMissingNode() || item.isNull()) {
             return emptyPageOrThrow(collectedCount, totalCount);
@@ -63,33 +63,6 @@ public class MyHomeAnnouncementResponseParser {
             return new ExternalDataPage<>(List.of(), totalCount);
         }
         throw invalidResponseSchema();
-    }
-
-    private int totalCountOf(JsonNode body) {
-        JsonNode totalCount = body.path("totalCount");
-        if (totalCount.isIntegralNumber() && totalCount.canConvertToInt()) {
-            return requireNonNegativeTotalCount(totalCount.intValue());
-        }
-        if (totalCount.isTextual()) {
-            return textualTotalCount(totalCount.textValue());
-        }
-        throw invalidResponseSchema();
-    }
-
-    private int textualTotalCount(String totalCount) {
-        try {
-            return requireNonNegativeTotalCount(Integer.parseInt(totalCount));
-        }
-        catch (NumberFormatException exception) {
-            throw invalidResponseSchema();
-        }
-    }
-
-    private int requireNonNegativeTotalCount(int totalCount) {
-        if (totalCount < 0) {
-            throw invalidResponseSchema();
-        }
-        return totalCount;
     }
 
     private MyHomeAnnouncementSourceSnapshot sourceSnapshotOf(JsonNode row) {
