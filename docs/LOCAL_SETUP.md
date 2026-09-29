@@ -25,9 +25,10 @@ docker compose -f compose.yaml -f compose.local.yaml -f compose.monitoring.yaml 
 ```
 
 새 빈 primary DB는 백엔드 시작 시 Flyway가 초기 스키마와 후속 마이그레이션을 적용한다.
-기존 로컬 DB에 Flyway 이력이 없다면 백엔드를 시작하기 전에
-[Flyway 도입 절차](../backend/docs/flyway-adoption.md)에 따라 백업, 명시적 baseline,
-통합 보정을 진행한다. Compose가 기존 DB를 자동으로 보정하지 않는다.
+기존 로컬 DB에 Flyway 이력이 없다면 먼저 백업하고
+[Flyway 도입 절차](../backend/docs/flyway-adoption.md)의 스키마·제약 확인을 진행한다.
+백엔드 기동 시 자동 기준선과 후속 마이그레이션이 적용된다. 알려진 제약 충돌이 있는 DB는
+문서의 수동 보정 절차가 필요하다.
 
 ## 관리자 데이터 등록 수동 검증
 

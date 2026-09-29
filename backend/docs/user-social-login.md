@@ -93,7 +93,7 @@ docker compose -f compose.yaml -f compose.local.yaml -f compose.monitoring.yaml 
 운영에서는 서비스 오리진으로 명시한다. 카카오 개발자 콘솔에서 로그인과 Redirect URI를 등록하고,
 구글 OAuth 클라이언트에도 해당 Redirect URI를 등록한다. 비밀 값은 저장소에 넣지 않는다.
 
-기존 스키마는 [Flyway 도입 절차](flyway-adoption.md)에 따라 `20260922.00`으로 baseline 한 뒤
+기존 스키마는 [Flyway 도입 절차](flyway-adoption.md)에 따라 `20260922.00`으로 자동 baseline 한 뒤
 통합 스키마 `V20260922_01`과 사용자 식별자 제약 `V20260922_02`를 순서대로 적용한다.
 새 빈 DB에서는 baseline 스키마 `B20260922_01`을 사용한다. 이미 중복된 `login_identifier`가
 있다면 `V20260922_02`가 실패하므로 계정 소유권을 확인하고 처리한 뒤 재시도한다.
