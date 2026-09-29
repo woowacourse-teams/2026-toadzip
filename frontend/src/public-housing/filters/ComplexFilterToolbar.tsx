@@ -47,7 +47,7 @@ const RENTAL_TYPE_OPTIONS = [
 ] as const satisfies readonly (readonly [RentalTypeFilter, string])[]
 
 const APPLICATION_STATUS_OPTIONS = [
-  ['BEFORE_APPLICATION', '접수예정'],
+  ['BEFORE_APPLICATION', '공고중'],
   ['APPLYING', '접수중'],
   ['CLOSED', '접수마감'],
 ] as const satisfies readonly (readonly [ApplicationStatusFilter, string])[]

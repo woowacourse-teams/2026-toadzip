@@ -59,6 +59,8 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals(1, countColumn(connection, "housing_complexes", "deposit_min")),
                         () -> assertEquals(1, countColumn(connection, "housing_complexes", "monthly_rent_min")),
                         () -> assertEquals(1, countColumn(connection,
+                                "announcement_views", "viewed_on")),
+                        () -> assertEquals(1, countColumn(connection,
                                 "admin_announcement_imports", "original_json")),
                         () -> assertEquals(1, countColumn(connection,
                                 "lh_announcement_detail_source", "request_hash")),

@@ -18,6 +18,7 @@ import {
   toComplexDetail,
   toComplexPage,
 } from './publicHousingMapper.ts'
+import { recordAnnouncementView } from './announcementViews.ts'
 
 const COMPLEXES_PATH = '/api/v1/complexes'
 const ANNOUNCEMENTS_PATH = '/api/v1/announcements'
@@ -164,7 +165,11 @@ export function createHttpPublicHousingRepository(
         `${apiBaseUrl}${ANNOUNCEMENTS_PATH}/${announcementId}`,
         signal,
       )
-      return toAnnouncementDetail(decodeAnnouncementDetailEnvelope(payload))
+      const detail = toAnnouncementDetail(decodeAnnouncementDetailEnvelope(payload))
+      const recordedCount = await recordAnnouncementView(apiBaseUrl, fetcher, announcementId, signal)
+      if (recordedCount === null) return detail
+      const viewCount = Math.max(detail.viewCount, recordedCount)
+      return { ...detail, viewCount, raw: { ...detail.raw, viewCount } }
     },
   }
 }

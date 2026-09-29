@@ -465,7 +465,7 @@ class HousingComplexListQueryTest {
                 () -> assertEquals("BEFORE_APPLICATION", item.representativeAnnouncement().applicationStatus()),
                 () -> assertEquals(LocalDate.of(2026, 8, 30),
                         item.representativeAnnouncement().applicationEndAt()),
-                () -> assertEquals(3, item.representativeAnnouncement().dDay())
+                () -> assertEquals(1, item.representativeAnnouncement().dDay())
         );
     }
 
@@ -540,7 +540,7 @@ class HousingComplexListQueryTest {
 
     @ParameterizedTest
     @CsvSource(nullValues = "NULL", value = {
-            "2026-08-28, 2026-08-30, BEFORE_APPLICATION, 3",
+            "2026-08-28, 2026-08-30, BEFORE_APPLICATION, 1",
             "2026-08-20, 2026-08-27, APPLYING, 0",
             "2026-08-20, 2026-08-26, CLOSED, NULL"
     })

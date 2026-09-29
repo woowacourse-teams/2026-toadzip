@@ -301,7 +301,7 @@ describe('ComplexFilterToolbar', () => {
     },
     {
       topic: '모집상태',
-      option: '접수예정',
+      option: '공고중',
       expected: {
         ...BASE_FILTERS,
         applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'],

@@ -392,6 +392,7 @@ export function PublicHousingExplorer({
     announcementFilters,
     announcementFiltersKey,
   )
+  const updateAnnouncementViewCount = announcementResults.updateViewCount
 
   useEffect(() => {
     setRecentComplexes((current) => enrichRecentComplexes(current, complexResults.items.map((item) => ({
@@ -557,6 +558,7 @@ export function PublicHousingExplorer({
           if (!active) {
             return
           }
+          updateAnnouncementViewCount(announcementId, detail.viewCount)
           setAnnouncementDetail({
             announcementId,
             detail,
@@ -589,6 +591,7 @@ export function PublicHousingExplorer({
     location.state,
     navigate,
     repository,
+    updateAnnouncementViewCount,
   ])
 
   useEffect(() => {

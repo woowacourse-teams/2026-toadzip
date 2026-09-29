@@ -57,6 +57,7 @@ public final class ApplicationScheduleSql {
                         ELSE 3
                     END,
                     CASE WHEN schedule.start_date > :today THEN schedule.start_date END ASC NULLS LAST,
+                    CASE WHEN schedule.start_date > :today AND schedule.state = 'CONFIRMED' THEN 0 ELSE 1 END,
                     CASE WHEN schedule.end_date >= :today THEN schedule.end_date END ASC NULLS LAST,
                     schedule.end_date DESC, schedule.start_date ASC, schedule.id ASC
                     LIMIT 1

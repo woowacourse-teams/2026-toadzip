@@ -76,6 +76,11 @@ export function toAnnouncementDetail(
     documentLinkUrl: raw.documentLinkUrl,
     receptionPlaces: raw.receptionPlaces,
     schedules: raw.schedules.map(toAnnouncementSchedule),
+    applicationSchedules: (raw.applicationSchedules ?? []).map((schedule) => ({
+      ...schedule,
+      scheduleId: canonicalId(schedule.scheduleId),
+      housingComplexId: schedule.housingComplexId === null ? null : canonicalId(schedule.housingComplexId),
+    })),
     attachments: raw.attachments.map(toAnnouncementAttachment),
     supplyRows: raw.supplyRows.map(toAnnouncementSupplyRow),
     competition: raw.competition,

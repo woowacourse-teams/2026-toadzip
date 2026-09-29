@@ -1,0 +1,104 @@
+.groups {
+  display: grid;
+  gap: var(--ds-space-5);
+  margin-bottom: var(--ds-space-4);
+}
+
+.groupTitle {
+  margin: 0;
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border-left: 3px solid var(--ds-color-action);
+  background: var(--ds-color-action-soft);
+  color: var(--ds-color-action);
+  font-size: var(--ds-text-body);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  padding: var(--ds-space-3) 0;
+  border-bottom: 1px solid var(--ds-color-divider);
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+}
+
+.heading h5 {
+  margin: 0;
+  color: var(--ds-color-text);
+  font-size: var(--ds-text-body);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.state {
+  flex-shrink: 0;
+  padding: var(--ds-space-1) var(--ds-space-2);
+  border-radius: var(--ds-status-badge-radius);
+  background: var(--ds-color-status-neutral-surface);
+  color: var(--ds-color-status-neutral);
+  font-size: var(--ds-text-caption);
+  font-weight: 500;
+}
+
+.state[data-confirmed='true'] {
+  background: var(--ds-color-status-upcoming-surface);
+  color: var(--ds-color-status-upcoming);
+}
+
+.condition {
+  margin: var(--ds-space-2) 0 0;
+  color: var(--ds-color-text);
+  font-size: var(--ds-text-body);
+  overflow-wrap: anywhere;
+}
+
+.dates {
+  display: grid;
+  gap: var(--ds-space-2);
+  margin: var(--ds-space-3) 0 0;
+}
+
+.dates > div {
+  display: grid;
+  grid-template-columns: 3em minmax(0, 1fr);
+  gap: var(--ds-space-2);
+  align-items: baseline;
+}
+
+.dates dt {
+  color: var(--ds-color-muted);
+  font-size: var(--ds-text-caption);
+}
+
+.dates dd {
+  margin: 0;
+  color: var(--ds-color-text);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.source {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  margin-top: var(--ds-space-1);
+  color: var(--ds-color-action);
+  font-size: var(--ds-text-caption);
+  text-underline-offset: 3px;
+}
+
+.source:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+}

@@ -15,8 +15,12 @@ import {
   DetailSection,
   DetailTable,
 } from './DetailPrimitives.tsx'
+import { AttachmentDialog, AttachmentList } from './AnnouncementAttachments.tsx'
+import { hasAttachmentUrl } from '../api/announcementAttachments.ts'
 import { AnnouncementStatusBadge } from './AnnouncementStatusBadge.tsx'
+import { ApplicationScheduleGroups } from './ApplicationScheduleGroups'
 import type {
+  AnnouncementApplicationSchedule,
   AnnouncementHousingType,
   AnnouncementSupplyComplex,
   AnnouncementSupplyTarget,
@@ -26,6 +30,8 @@ import {
   type HousingAnnouncementSupplyComplexGroup,
 } from '../presentation/announcementDetailPresentation.ts'
 import { MISSING_DATA_LABEL } from '../presentation/missingData'
+import { formatPhoneNumber } from '../presentation/phoneNumber'
+import { displayAnnouncementSchedules } from '../presentation/announcementSchedulePresentation'
 import { formatHousingMoney } from '../presentation/housingMoney'
 import styles from './HousingAnnouncementDetailPanel.module.css'
 
@@ -89,6 +95,7 @@ export interface HousingAnnouncementDetailData {
   readonly documentLinkUrl: string | null
   readonly receptionPlaces: readonly HousingAnnouncementDetailReceptionPlace[]
   readonly schedules: readonly HousingAnnouncementDetailSchedule[]
+  readonly applicationSchedules?: readonly AnnouncementApplicationSchedule[]
   readonly attachments: readonly HousingAnnouncementDetailAttachment[]
   readonly supplyRows: readonly HousingAnnouncementDetailSupplyRow[]
 }
@@ -128,6 +135,7 @@ export function HousingAnnouncementDetailPanel({
     groupKey: firstGroupKey,
   })
   const [floorPlan, setFloorPlan] = useState<FloorPlanSelection | null>(null)
+  const [attachmentAnnouncementId, setAttachmentAnnouncementId] = useState<string | null>(null)
   const selectedGroupKey = selection.announcementId === detail.announcementId
     ? selection.groupKey
     : firstGroupKey
@@ -199,7 +207,7 @@ export function HousingAnnouncementDetailPanel({
         <CoreInformation detail={detail} />
         <ReasonNotice detail={detail} />
         <AudienceSection targets={detail.targets} />
-        <ScheduleSection detail={detail} />
+        <ScheduleSection detail={detail} groups={groups} />
         <ReceptionPlaces places={detail.receptionPlaces} />
         <ComplexComparison
           groups={groups}
@@ -218,10 +226,14 @@ export function HousingAnnouncementDetailPanel({
             onOpenFloorPlan={setFloorPlan}
           />
         )}
-        <AttachmentList attachments={detail.attachments} />
+        <AttachmentList key={detail.announcementId} announcementId={detail.announcementId} attachments={detail.attachments} />
       </div>
 
-      <DocumentActions detail={detail} />
+      <DocumentActions detail={detail} onOpenAttachments={() => setAttachmentAnnouncementId(detail.announcementId)} />
+      {attachmentAnnouncementId === detail.announcementId && (
+        <AttachmentDialog key={detail.announcementId} announcementId={detail.announcementId} attachments={detail.attachments}
+          onClose={() => setAttachmentAnnouncementId(null)} />
+      )}
       {floorPlan && (
         <FloorPlanDialog selection={floorPlan} onClose={() => setFloorPlan(null)} />
       )}
@@ -323,7 +335,7 @@ function NoticeIntro({
       </p>
       {firstGroup && (
         <p>
-          <span>{firstGroup.name}</span>
+          <strong>{firstGroup.name}</strong>
           {remainingComplexes > 0 && <em>외 {remainingComplexes}곳</em>}
         </p>
       )}
@@ -367,7 +379,6 @@ function AudienceSection({ targets }: { targets: readonly string[] }) {
   return (
     <DetailSection
       title="신청 대상"
-      description="세부 소득·자산 기준과 최종 신청자격은 공고문에서 확인해 주세요."
     >
       {targets.length === 0 && (
         <EmptyState>{MISSING_DATA_LABEL}</EmptyState>
@@ -383,56 +394,80 @@ function AudienceSection({ targets }: { targets: readonly string[] }) {
   )
 }
 
-function ScheduleSection({ detail }: { detail: HousingAnnouncementDetailData }) {
-  const hasApplicationSchedule = detail.schedules.some(
-    (schedule) => schedule.type === 'APPLICATION',
-  )
-  const hasWinnerSchedule = detail.schedules.some(
+function ScheduleSection({ detail, groups }: {
+  detail: HousingAnnouncementDetailData
+  groups: readonly HousingAnnouncementSupplyComplexGroup[]
+}) {
+  const applicationSchedules = detail.applicationSchedules ?? []
+  const hasVerifiedSchedules = applicationSchedules.length > 0
+  const schedules = displayAnnouncementSchedules(detail.schedules)
+  const legacyApplicationSchedules = schedules.filter((schedule) => schedule.type === 'APPLICATION')
+  const hasApplicationSchedule = hasVerifiedSchedules || legacyApplicationSchedules.length > 0
+  const hasWinnerSchedule = schedules.some(
     (schedule) => schedule.type === 'WINNER_ANNOUNCEMENT',
   )
   const hasApplicationFallback = !hasApplicationSchedule && (
     detail.applicationStartAt !== null || detail.applicationEndAt !== null
   )
   const hasWinnerDate = detail.winnerAnnouncementAt !== null && !hasWinnerSchedule
-  const hasSchedule = hasApplicationFallback
-    || detail.schedules.length > 0
-    || hasWinnerDate
+  const followUpSchedules = displayAnnouncementSchedules([
+    ...schedules.filter((schedule) => schedule.type !== 'APPLICATION'),
+    ...(hasWinnerDate ? [{ scheduleId: 'winner-fallback', type: 'WINNER_ANNOUNCEMENT',
+      typeLabel: '당첨자 발표', name: null, startAt: detail.winnerAnnouncementAt, endAt: null }] : []),
+  ])
 
   return (
-    <DetailSection title="접수 일정">
-      {!hasSchedule && <EmptyState>{MISSING_DATA_LABEL}</EmptyState>}
-      {hasSchedule && (
-        <DetailTable caption="접수 일정">
-          <colgroup>
-            <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-            <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-          </colgroup>
-          {hasApplicationFallback && (
-            <ScheduleItem
-              label="접수 기간"
-              startAt={detail.applicationStartAt}
-              endAt={detail.applicationEndAt}
-              current={detail.applicationStatus === 'APPLYING'}
-            />
-          )}
-          {detail.schedules.map((schedule) => (
-            <ScheduleItem
-              key={schedule.scheduleId}
-              label={schedule.name ?? schedule.typeLabel}
-              startAt={schedule.startAt}
-              endAt={schedule.endAt}
-            />
-          ))}
-          {hasWinnerDate && (
-            <ScheduleItem
-              label="당첨자 발표"
-              startAt={detail.winnerAnnouncementAt}
-              endAt={null}
-            />
-          )}
-        </DetailTable>
+    <>
+      <DetailSection title="접수 일정">
+        {hasVerifiedSchedules && <ApplicationScheduleGroups schedules={applicationSchedules} complexes={groups} />}
+        {!hasApplicationSchedule && !hasApplicationFallback && <EmptyState>{MISSING_DATA_LABEL}</EmptyState>}
+        {!hasVerifiedSchedules && (hasApplicationFallback || legacyApplicationSchedules.length > 0) && (
+          <>
+            <p className={styles.empty}>대상 구분: {MISSING_DATA_LABEL}</p>
+            <DetailTable caption="접수 일정">
+              <colgroup>
+                <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
+                <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
+              </colgroup>
+              {hasApplicationFallback && (
+                <ScheduleItem
+                  label="접수 기간"
+                  startAt={detail.applicationStartAt}
+                  endAt={detail.applicationEndAt}
+                  current={detail.applicationStatus === 'APPLYING'}
+                />
+              )}
+              {legacyApplicationSchedules.map((schedule) => (
+                <ScheduleItem
+                  key={schedule.scheduleId}
+                  label={schedule.name ?? schedule.typeLabel}
+                  startAt={schedule.startAt}
+                  endAt={schedule.endAt}
+                />
+              ))}
+            </DetailTable>
+          </>
+        )}
+      </DetailSection>
+      {followUpSchedules.length > 0 && (
+        <DetailSection title="후속 일정">
+          <DetailTable caption="후속 일정">
+            <colgroup>
+              <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
+              <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
+            </colgroup>
+            {followUpSchedules.map((schedule) => (
+              <ScheduleItem
+                key={schedule.scheduleId}
+                label={schedule.name ?? schedule.typeLabel}
+                startAt={schedule.startAt}
+                endAt={schedule.endAt}
+              />
+            ))}
+          </DetailTable>
+        </DetailSection>
       )}
-    </DetailSection>
+    </>
   )
 }
 
@@ -510,7 +545,7 @@ function ReceptionPlaces({
               {(hasText(place.address) || hasText(place.phoneNumber)) && (
                 <DetailFacts>
                   {hasText(place.address) && <DetailFact term="주소" value={place.address} wide />}
-                  {hasText(place.phoneNumber) && <DetailFact term="문의" value={place.phoneNumber} />}
+                  {hasText(place.phoneNumber) && <DetailFact term="문의" value={formatPhoneNumber(place.phoneNumber) ?? MISSING_DATA_LABEL} />}
                 </DetailFacts>
               )}
               {url && <ExternalLink href={url}>접수처 열기</ExternalLink>}
@@ -538,10 +573,9 @@ function ComplexComparison({
   return (
     <DetailSection
       title="단지 비교"
-      description="주소와 주택형별 면적·임대조건 범위를 한눈에 비교합니다."
-      aside={`${formatNullableCount(supplyComplexCount, '개 단지')} · ${formatNullableCount(supplyHouseholdCount, '세대')}`}
+      aside={`${formatNullableCount(supplyComplexCount, '개 단지')} · ${supplyHouseholdSummary(supplyHouseholdCount)}`}
     >
-      {groups.length === 0 && <EmptyState>{MISSING_DATA_LABEL}</EmptyState>}
+      {groups.length === 0 && <EmptyState>단지 정보: {MISSING_DATA_LABEL}</EmptyState>}
       <div className={styles.complexList}>
         {groups.map((group) => (
           <ComplexCard
@@ -601,7 +635,7 @@ function ComplexCard({
           </div>
         )}
         <div className={styles.complexBody}>
-          <p>{group.address ?? MISSING_DATA_LABEL}</p>
+          <p>{group.address ?? `주소: ${MISSING_DATA_LABEL}`}</p>
           {!imageUrl && <small>조감도 {MISSING_DATA_LABEL}</small>}
           <div className={styles.complexCounts}>
             <span>총 <b>{formatNullableCount(group.totalHouseholdCount, '세대')}</b></span>
@@ -653,9 +687,8 @@ function HousingTypeComparison({
   return (
     <DetailSection
       title="주택형 비교"
-      description="단지를 고른 뒤 공급 구분·면적·공급량·비용을 비교하세요."
     >
-      {groups.length > 1 && (
+      {groups.length > 0 && (
         <div className={styles.complexTabs} role="tablist" aria-label="주택형을 볼 단지 선택">
           {groups.map((group, index) => (
             <button
@@ -671,7 +704,7 @@ function HousingTypeComparison({
               onKeyDown={(event) => onGroupKeyDown(event, index)}
             >
               <span>{group.name}</span>
-              <b>{formatNullableCount(group.supplyHouseholdCount, '세대')}</b>
+              <b>{supplyHouseholdSummary(group.supplyHouseholdCount)}</b>
             </button>
           ))}
         </div>
@@ -679,11 +712,8 @@ function HousingTypeComparison({
       <div
         className={styles.housingTypes}
         id={panelId}
-        role={groups.length > 1 ? 'tabpanel' : 'region'}
-        aria-labelledby={groups.length > 1
-          ? `${idPrefix}-complex-tab-${selectedIndex}`
-          : undefined}
-        aria-label={groups.length === 1 ? `${selectedGroup.name} 주택형 비교` : undefined}
+        role="tabpanel"
+        aria-labelledby={`${idPrefix}-complex-tab-${selectedIndex}`}
       >
         {selectedGroup.rows.map((row) => (
           <HousingTypeCard
@@ -736,7 +766,7 @@ function HousingTypeCard({
             평면도 보기
           </button>
         )}
-        {!hasFloorPlan && <small>{MISSING_DATA_LABEL}</small>}
+        {!hasFloorPlan && <small>평면도: {MISSING_DATA_LABEL}</small>}
       </div>
       <DetailTable caption={`${complexName} ${housingTypeName} 공급 정보`}>
         <colgroup>
@@ -766,7 +796,7 @@ function HousingTypeCard({
 function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget[] }) {
   const idPrefix = useId()
   if (targets.length === 0) {
-    return <p className={styles.targetEmpty}>{MISSING_DATA_LABEL}</p>
+    return <p className={styles.targetEmpty}>대상별 공급 조건: {MISSING_DATA_LABEL}</p>
   }
   return (
     <ul className={styles.targetList} aria-label="대상별 공급 조건">
@@ -816,81 +846,21 @@ function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget
   )
 }
 
-function AttachmentList({
-  attachments,
-}: {
-  attachments: readonly HousingAnnouncementDetailAttachment[]
+function DocumentActions({ detail, onOpenAttachments }: {
+  detail: HousingAnnouncementDetailData
+  onOpenAttachments: () => void
 }) {
-  if (attachments.length <= 1) {
-    return null
-  }
-  return (
-    <DetailSection title="첨부파일">
-      <ul className={styles.attachmentList}>
-        {attachments.map((attachment) => {
-          const url = safeHttpUrl(attachment.fileUrl)
-          const name = attachment.fileName ?? MISSING_DATA_LABEL
-          return (
-            <li key={attachment.attachmentId}>
-              <span>{attachment.fileTypeLabel}</span>
-              <strong>{name}</strong>
-              {url && <ExternalLink href={url}>열기</ExternalLink>}
-              {!url && <small>{MISSING_DATA_LABEL}</small>}
-            </li>
-          )
-        })}
-      </ul>
-    </DetailSection>
-  )
-}
-
-function DocumentActions({ detail }: { detail: HousingAnnouncementDetailData }) {
   const sourceUrl = safeHttpUrl(detail.documentLinkUrl)
-  const primaryAttachment = findPrimaryNoticeAttachment(detail.attachments)
-  const attachmentUrl = safeHttpUrl(primaryAttachment?.fileUrl ?? null)
-  const attachmentName = primaryAttachment?.fileName ?? MISSING_DATA_LABEL
-  const linkStatus = [...new Set([
-    attachmentUrl ? '첨부파일 연결됨' : MISSING_DATA_LABEL,
-    sourceUrl ? '원문 연결됨' : MISSING_DATA_LABEL,
-  ])].join(' · ')
-
+  const hasFiles = detail.attachments.some(hasAttachmentUrl)
   return (
     <footer className={styles.documents}>
-      <div>
-        <span aria-hidden="true">▤</span>
-        <p>
-          <strong>공고문</strong>
-          <small title={attachmentName}>{attachmentName}</small>
-          {linkStatus !== attachmentName && <em>{linkStatus}</em>}
-        </p>
-      </div>
       <nav aria-label="공고문 바로가기">
-        {attachmentUrl && <ExternalLink href={attachmentUrl}>첨부파일</ExternalLink>}
-        {!attachmentUrl && <DisabledLink>첨부파일</DisabledLink>}
+        <button type="button" disabled={!hasFiles} onClick={onOpenAttachments}>공고문 보기</button>
         {sourceUrl && <ExternalLink href={sourceUrl}>공고 원문</ExternalLink>}
         {!sourceUrl && <DisabledLink>공고 원문</DisabledLink>}
       </nav>
     </footer>
   )
-}
-
-function findPrimaryNoticeAttachment(
-  attachments: readonly HousingAnnouncementDetailAttachment[],
-) {
-  const noticeAttachments = attachments.filter((attachment) => (
-    isNoticeAttachmentLabel(attachment.fileTypeLabel)
-  ))
-  return noticeAttachments.find(
-    (attachment) => safeHttpUrl(attachment.fileUrl) !== null,
-  ) ?? noticeAttachments[0] ?? attachments.find(
-    (attachment) => safeHttpUrl(attachment.fileUrl) !== null,
-  ) ?? attachments[0]
-}
-
-function isNoticeAttachmentLabel(label: string) {
-  return label === '공고문'
-    || label === '정정공고문'
-    || label === '취소공고문'
 }
 
 function FloorPlanDialog({
@@ -949,7 +919,7 @@ function FloorPlanDialog({
             </figure>
           )}
         </div>
-        {!selection.threeDimensionalUrl && <p className={styles.floorPlanStatus}>{MISSING_DATA_LABEL}</p>}
+        {!selection.threeDimensionalUrl && <p className={styles.floorPlanStatus}>3D 평면도: {MISSING_DATA_LABEL}</p>}
       </section>
     </div>
   )
@@ -970,14 +940,20 @@ function DisabledLink({ children }: { children: ReactNode }) {
 }
 
 function deadlineLabel(detail: HousingAnnouncementDetailData) {
+  if (detail.applicationStatus === 'CONDITIONAL') {
+    return '조건부 접수'
+  }
   if (detail.applicationStatus === 'CANCELLED') {
     return '공고 취소'
   }
   if (detail.applicationStatus === 'CLOSED') {
     return '접수 마감'
   }
-  if (detail.dDay === null) {
+  if (detail.dDay === null || !Number.isInteger(detail.dDay)) {
     return MISSING_DATA_LABEL
+  }
+  if (detail.applicationStatus === 'BEFORE_APPLICATION' && detail.dDay >= 0) {
+    return `접수 시작 ${detail.dDay === 0 ? 'D-Day' : `D-${detail.dDay}`}`
   }
   if (detail.dDay === 0) {
     return 'D-day'
@@ -989,14 +965,20 @@ function deadlineLabel(detail: HousingAnnouncementDetailData) {
 }
 
 function deadlineAccessibleLabel(detail: HousingAnnouncementDetailData) {
+  if (detail.applicationStatus === 'CONDITIONAL') {
+    return '조건부 접수'
+  }
   if (detail.applicationStatus === 'CANCELLED') {
     return '공고 취소'
   }
   if (detail.applicationStatus === 'CLOSED' || (detail.dDay !== null && detail.dDay < 0)) {
     return '접수 마감'
   }
-  if (detail.dDay === null) {
+  if (detail.dDay === null || !Number.isInteger(detail.dDay)) {
     return MISSING_DATA_LABEL
+  }
+  if (detail.applicationStatus === 'BEFORE_APPLICATION') {
+    return detail.dDay === 0 ? '접수 시작일 당일' : `접수 시작까지 ${detail.dDay}일`
   }
   if (detail.dDay === 0) {
     return '접수 마감일'
@@ -1064,6 +1046,10 @@ function formatNullableCount(value: number | null, unit: string) {
     return MISSING_DATA_LABEL
   }
   return `${value.toLocaleString('ko-KR')}${unit}`
+}
+
+function supplyHouseholdSummary(value: number | null) {
+  return value === null ? `공급 세대수: ${MISSING_DATA_LABEL}` : formatNullableCount(value, '세대')
 }
 
 function formatArea(value: number | null) {
