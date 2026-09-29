@@ -118,9 +118,27 @@ public class MyHomeComplexCollectionService {
                 interrupted = true;
             }
         }
-        while (completedTaskCount < tasks.size()) {
+        TaskDrainResult drained = drainCompletedTasks(completedTasks, tasks.size() - completedTaskCount, failure);
+        reports.addAll(drained.reports());
+        if (interrupted || drained.interrupted()) {
+            Thread.currentThread().interrupt();
+        }
+        if (drained.failure() != null) {
+            throw drained.failure();
+        }
+        return reports.stream()
+                .reduce(MyHomeComplexCollectionReport.empty(), MyHomeComplexCollectionReport::plus);
+    }
+
+    private TaskDrainResult drainCompletedTasks(
+            BlockingQueue<Future<MyHomeComplexCollectionReport>> completedTasks,
+            int remainingTaskCount,
+            RuntimeException failure
+    ) {
+        List<MyHomeComplexCollectionReport> reports = new ArrayList<>();
+        boolean interrupted = false;
+        for (int index = 0; index < remainingTaskCount; index++) {
             Future<MyHomeComplexCollectionReport> completedTask = completedTasks.remove();
-            completedTaskCount++;
             if (completedTask.isCancelled()) {
                 continue;
             }
@@ -136,14 +154,7 @@ public class MyHomeComplexCollectionService {
                 failure = appendFailure(failure, additionalFailure);
             }
         }
-        if (interrupted) {
-            Thread.currentThread().interrupt();
-        }
-        if (failure != null) {
-            throw failure;
-        }
-        return reports.stream()
-                .reduce(MyHomeComplexCollectionReport.empty(), MyHomeComplexCollectionReport::plus);
+        return new TaskDrainResult(reports, failure, interrupted);
     }
 
     private List<FutureTask<MyHomeComplexCollectionReport>> submit(
@@ -250,5 +261,12 @@ public class MyHomeComplexCollectionService {
         }
         primaryFailure.addSuppressed(additionalFailure);
         return primaryFailure;
+    }
+
+    private record TaskDrainResult(
+            List<MyHomeComplexCollectionReport> reports,
+            RuntimeException failure,
+            boolean interrupted
+    ) {
     }
 }

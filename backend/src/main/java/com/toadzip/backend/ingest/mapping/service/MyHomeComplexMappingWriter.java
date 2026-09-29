@@ -183,7 +183,18 @@ public class MyHomeComplexMappingWriter {
                         (first, second) -> first,
                         LinkedHashMap::new
                 ));
-        int created = 0;
+        MatchedHousingTypes matched = updateMatchedHousingTypes(storedByIdentifier, incoming);
+        HousingTypeWriteResult unmatched = writeUnmatchedHousingTypes(complex, storedByIdentifier, matched.unmatched());
+        int deleted = deleteStaleHousingTypes(storedByIdentifier, preserveSupplementalValues);
+        return new HousingTypeWriteResult(
+                unmatched.created(), matched.updated() + unmatched.updated(), matched.unchanged(), deleted
+        );
+    }
+
+    private MatchedHousingTypes updateMatchedHousingTypes(
+            Map<String, HousingType> storedByIdentifier,
+            List<MyHomeHousingTypeMappingData> incoming
+    ) {
         int updated = 0;
         int unchanged = 0;
         List<MyHomeHousingTypeMappingData> unmatchedIncoming = new ArrayList<>();
@@ -204,6 +215,16 @@ public class MyHomeComplexMappingWriter {
             }
             unchanged++;
         }
+        return new MatchedHousingTypes(unmatchedIncoming, updated, unchanged);
+    }
+
+    private HousingTypeWriteResult writeUnmatchedHousingTypes(
+            HousingComplex complex,
+            Map<String, HousingType> storedByIdentifier,
+            List<MyHomeHousingTypeMappingData> unmatchedIncoming
+    ) {
+        int created = 0;
+        int updated = 0;
         for (MyHomeHousingTypeMappingData data : unmatchedIncoming) {
             HousingType corrected = findUniqueStoredTypeByName(storedByIdentifier, data);
             if (corrected == null) {
@@ -226,13 +247,20 @@ public class MyHomeComplexMappingWriter {
             );
             updated++;
         }
+        return new HousingTypeWriteResult(created, updated, 0, 0);
+    }
+
+    private int deleteStaleHousingTypes(
+            Map<String, HousingType> storedByIdentifier,
+            boolean preserveSupplementalValues
+    ) {
         List<HousingType> stale = List.copyOf(storedByIdentifier.values());
         List<HousingType> deletable = stale.stream()
                 .filter(type -> !supplyRowRepository.existsByHousingType(type))
                 .filter(type -> !preserveSupplementalValues || !type.hasSupplementalInformation())
                 .toList();
         housingTypeRepository.deleteAll(deletable);
-        return new HousingTypeWriteResult(created, updated, unchanged, deletable.size());
+        return deletable.size();
     }
 
     private HousingType findUniqueStoredTypeByName(
@@ -256,6 +284,9 @@ public class MyHomeComplexMappingWriter {
         int unchanged() {
             return 1 - created - updated;
         }
+    }
+
+    private record MatchedHousingTypes(List<MyHomeHousingTypeMappingData> unmatched, int updated, int unchanged) {
     }
 
     private record HousingTypeWriteResult(int created, int updated, int unchanged, int deleted) {
