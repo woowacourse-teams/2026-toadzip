@@ -36,6 +36,8 @@ export interface GuestCancellationRequest {
   readonly requestedAt: string
   readonly codeExpiresAt: string | null
   readonly failedAttempts: number
+  readonly codeSentAt: string | null
+  readonly codeSentBy: string | null
 }
 
 export async function loadGuestCancellationRequests(): Promise<GuestCancellationRequest[]> {
@@ -49,4 +51,10 @@ export async function issueGuestCancellationCode(id: string) {
   if (response.status === 409) throw new Error('이미 유효한 코드가 있습니다. 만료 후 다시 발급할 수 있습니다.')
   if (!response.ok) throw new Error('확인 코드를 만들지 못했습니다.')
   return response.json() as Promise<{ code: string; expiresAt: string }>
+}
+
+export async function markGuestCancellationCodeSent(id: string) {
+  const response = await post(`/api/admin/notification-guest-cancellations/${id}/sent`, undefined, true)
+  if (response.status === 409) throw new Error('유효한 코드가 없습니다. 코드를 다시 확인해 주세요.')
+  if (!response.ok) throw new Error('발송 완료를 기록하지 못했습니다.')
 }

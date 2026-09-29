@@ -29,24 +29,28 @@ public class GuestCancellationRepository {
 
     public List<Request> pending() {
         return jdbcTemplate.query("""
-                SELECT id, email, requested_at, code_expires_at, failed_attempts
+                SELECT id, email, requested_at, code_expires_at, failed_attempts, code_sent_at, code_sent_by
                 FROM notification_guest_cancellation_requests ORDER BY requested_at ASC
                 """, (row, number) -> new Request(
                 (UUID) row.getObject("id"), row.getString("email"),
                 row.getTimestamp("requested_at").toInstant(),
                 row.getTimestamp("code_expires_at") == null ? null : row.getTimestamp("code_expires_at").toInstant(),
-                row.getInt("failed_attempts")));
+                row.getInt("failed_attempts"),
+                row.getTimestamp("code_sent_at") == null ? null : row.getTimestamp("code_sent_at").toInstant(),
+                row.getString("code_sent_by")));
     }
 
     public Request findForUpdate(UUID id) {
         return jdbcTemplate.query("""
-                SELECT id, email, requested_at, code_expires_at, failed_attempts
+                SELECT id, email, requested_at, code_expires_at, failed_attempts, code_sent_at, code_sent_by
                 FROM notification_guest_cancellation_requests WHERE id = ? FOR UPDATE
                 """, (row, number) -> new Request(
                 (UUID) row.getObject("id"), row.getString("email"),
                 row.getTimestamp("requested_at").toInstant(),
                 row.getTimestamp("code_expires_at") == null ? null : row.getTimestamp("code_expires_at").toInstant(),
-                row.getInt("failed_attempts")), id).stream().findFirst().orElse(null);
+                row.getInt("failed_attempts"),
+                row.getTimestamp("code_sent_at") == null ? null : row.getTimestamp("code_sent_at").toInstant(),
+                row.getString("code_sent_by")), id).stream().findFirst().orElse(null);
     }
 
     public Challenge findChallengeForUpdate(String email) {
@@ -62,8 +66,16 @@ public class GuestCancellationRepository {
     public void issue(UUID id, String hash, Instant expiresAt) {
         jdbcTemplate.update("""
                 UPDATE notification_guest_cancellation_requests
-                SET code_hash = ?, code_expires_at = ?, failed_attempts = 0 WHERE id = ?
+                SET code_hash = ?, code_expires_at = ?, failed_attempts = 0,
+                    code_sent_at = NULL, code_sent_by = NULL WHERE id = ?
                 """, hash, Timestamp.from(expiresAt), id);
+    }
+
+    public void markSent(UUID id, String sender, Instant sentAt) {
+        jdbcTemplate.update("""
+                UPDATE notification_guest_cancellation_requests
+                SET code_sent_at = ?, code_sent_by = ? WHERE id = ?
+                """, Timestamp.from(sentAt), sender, id);
     }
 
     public void failedAttempt(UUID id) {
@@ -88,7 +100,8 @@ public class GuestCancellationRepository {
                 Timestamp.from(threshold));
     }
 
-    public record Request(UUID id, String email, Instant requestedAt, Instant codeExpiresAt, int failedAttempts) {
+    public record Request(UUID id, String email, Instant requestedAt, Instant codeExpiresAt, int failedAttempts,
+                          Instant codeSentAt, String codeSentBy) {
     }
 
     public record Challenge(UUID id, String hash, Instant expiresAt, int failedAttempts) {

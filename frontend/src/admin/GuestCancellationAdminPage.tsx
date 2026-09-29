@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { issueGuestCancellationCode, loadGuestCancellationRequests, type GuestCancellationRequest } from '../public-housing/interest/guestCancellationApi'
+import { issueGuestCancellationCode, loadGuestCancellationRequests, markGuestCancellationCodeSent, type GuestCancellationRequest } from '../public-housing/interest/guestCancellationApi'
 import styles from './GuestCancellationAdminPage.module.css'
 
 export function GuestCancellationAdminPage() {
@@ -33,11 +33,29 @@ export function GuestCancellationAdminPage() {
     }
   }
 
+  async function markSent(id: string) {
+    setBusy(true)
+    setError('')
+    try {
+      await markGuestCancellationCodeSent(id)
+      setCodes((current) => {
+        const next = { ...current }
+        delete next[id]
+        return next
+      })
+      await refresh()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '발송 완료를 기록하지 못했습니다.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return <section className={styles.page}>
     <div className={styles.heading}>
       <div>
         <h1>비로그인 알림 취소 요청</h1>
-        <p>신청 주소로 확인 코드를 수동 발송한 뒤 사용자가 입력하면 취소가 완료됩니다.</p>
+        <p>코드를 신청 주소로 직접 보낸 뒤 발송 완료를 기록하세요. 사용자가 코드를 입력하면 취소됩니다.</p>
       </div>
       <button type="button" onClick={() => { void refresh() }}>목록 새로고침</button>
     </div>
@@ -49,12 +67,15 @@ export function GuestCancellationAdminPage() {
           <strong>{request.email}</strong>
           <span>요청 {new Date(request.requestedAt).toLocaleString('ko-KR')}</span>
           {request.codeExpiresAt && <span>코드 만료 {new Date(request.codeExpiresAt).toLocaleString('ko-KR')}</span>}
+          {request.codeSentAt && <span>이메일 발송 완료 {new Date(request.codeSentAt).toLocaleString('ko-KR')} · {request.codeSentBy}</span>}
         </div>
         {codes[request.id] ? <div className={styles.code}>
           <label htmlFor={`code-${request.id}`}>한 번만 표시되는 코드 · 신청 주소로 수동 발송</label>
           <input id={`code-${request.id}`} readOnly value={codes[request.id]} onFocus={(event) => event.target.select()} />
-        </div> : <button type="button" disabled={busy || Boolean(request.codeExpiresAt && new Date(request.codeExpiresAt) > new Date())}
-          onClick={() => { void issue(request.id) }}>확인 코드 만들기</button>}
+          <button type="button" disabled={busy} onClick={() => { void markSent(request.id) }}>이메일 발송 완료 기록</button>
+        </div> : request.codeExpiresAt && new Date(request.codeExpiresAt) > new Date()
+          ? <span>{request.codeSentAt ? '코드 발송 완료 · 사용자 확인 대기' : '발급된 코드가 있습니다. 화면을 닫았다면 만료 후 다시 발급하세요.'}</span>
+          : <button type="button" disabled={busy} onClick={() => { void issue(request.id) }}>확인 코드 만들기</button>}
       </li>)}
     </ul>
   </section>

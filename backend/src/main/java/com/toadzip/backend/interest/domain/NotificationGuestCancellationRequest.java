@@ -25,6 +25,11 @@ public class NotificationGuestCancellationRequest {
 
     private Instant codeExpiresAt;
 
+    private Instant codeSentAt;
+
+    @Column(length = 254)
+    private String codeSentBy;
+
     @Column(nullable = false)
     private int failedAttempts;
 

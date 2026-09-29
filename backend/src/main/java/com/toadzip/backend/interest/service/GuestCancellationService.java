@@ -57,6 +57,21 @@ public class GuestCancellationService {
     }
 
     @Transactional
+    public void markSent(UUID id, String sender) {
+        Request request = repository.findForUpdate(id);
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        if (request.codeExpiresAt() == null || !request.codeExpiresAt().isAfter(clock.instant())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "발송할 유효한 코드가 없습니다.");
+        }
+        if (request.codeSentAt() != null) {
+            return;
+        }
+        repository.markSent(id, sender, clock.instant());
+    }
+
+    @Transactional
     public boolean verifyAndCancel(String email, String code) {
         String normalized = normalize(email);
         Challenge challenge = repository.findChallengeForUpdate(normalized);

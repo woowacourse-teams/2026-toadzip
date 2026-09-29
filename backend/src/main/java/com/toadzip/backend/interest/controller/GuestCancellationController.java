@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -49,6 +50,12 @@ public class GuestCancellationController {
     @PostMapping("/api/admin/notification-guest-cancellations/{id}/code")
     public IssuedCode issue(@PathVariable UUID id) {
         return service.issue(id);
+    }
+
+    @PostMapping("/api/admin/notification-guest-cancellations/{id}/sent")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void markSent(@PathVariable UUID id, Authentication authentication) {
+        service.markSent(id, authentication.getName());
     }
 
     @ExceptionHandler(ResponseStatusException.class)

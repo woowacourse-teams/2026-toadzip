@@ -103,6 +103,34 @@ class GuestCancellationIntegrationTest {
                 Integer.class, email));
     }
 
+    @Test
+    void 관리자는_코드를_발급한_뒤에만_수동_발송을_기록할_수_있다() throws Exception {
+        String email = "delivery@example.com";
+        subscribeGuest(email);
+        mockMvc.perform(post("/api/v1/notification-guest-cancellations").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"email\":\"" + email + "\"}"))
+                .andExpect(status().isAccepted());
+        UUID id = jdbcTemplate.queryForObject(
+                "SELECT id FROM notification_guest_cancellation_requests WHERE email = ?", UUID.class, email);
+        String path = "/api/admin/notification-guest-cancellations/" + id + "/sent";
+
+        mockMvc.perform(post(path).with(user("admin").roles("ADMIN")).with(csrf()))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/admin/notification-guest-cancellations/" + id + "/code")
+                        .with(user("admin").roles("ADMIN")).with(csrf()))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/admin/notification-guest-cancellations")
+                        .with(user("admin").roles("ADMIN")))
+                .andExpect(jsonPath("$[0].codeSentAt").isEmpty());
+        mockMvc.perform(post(path).with(csrf())).andExpect(status().isUnauthorized());
+        mockMvc.perform(post(path).with(user("admin").roles("ADMIN")).with(csrf()))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/admin/notification-guest-cancellations")
+                        .with(user("admin").roles("ADMIN")))
+                .andExpect(jsonPath("$[0].codeSentAt").isNotEmpty())
+                .andExpect(jsonPath("$[0].codeSentBy").value("admin"));
+    }
+
     private UUID subscribeGuest(String email) {
         UUID clientId = UUID.randomUUID();
         jdbcTemplate.update("""
