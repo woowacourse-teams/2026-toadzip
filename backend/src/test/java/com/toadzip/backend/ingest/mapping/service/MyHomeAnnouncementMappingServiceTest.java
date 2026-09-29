@@ -945,7 +945,9 @@ class MyHomeAnnouncementMappingServiceTest {
         );
     }
 
-    private MyHomeAnnouncementSourceSnapshot withPrevious(MyHomeAnnouncementSourceSnapshot data, String previousIdentifier) {
+    private MyHomeAnnouncementSourceSnapshot withPrevious(
+            MyHomeAnnouncementSourceSnapshot data, String previousIdentifier
+    ) {
         return new MyHomeAnnouncementSourceSnapshot(
                 data.pblancId(), data.houseSn(), "정정공고", data.pblancNm(), data.suplyInsttNm(),
                 data.houseTyNm(), data.suplyTyNm(), previousIdentifier, data.rcritPblancDe(),
@@ -992,7 +994,9 @@ class MyHomeAnnouncementMappingServiceTest {
         );
     }
 
-    private MyHomeAnnouncementSourceSnapshot withHousingType(MyHomeAnnouncementSourceSnapshot data, String housingType) {
+    private MyHomeAnnouncementSourceSnapshot withHousingType(
+            MyHomeAnnouncementSourceSnapshot data, String housingType
+    ) {
         return new MyHomeAnnouncementSourceSnapshot(
                 data.pblancId(), data.houseSn(), data.sttusNm(), data.pblancNm(), data.suplyInsttNm(),
                 housingType, data.suplyTyNm(), data.beforePblancId(), data.rcritPblancDe(),

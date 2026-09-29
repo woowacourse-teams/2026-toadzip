@@ -2,7 +2,6 @@ package com.toadzip.backend.ingest.collection.repository.external;
 
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -20,10 +19,9 @@ public class MyHomeAnnouncementResponseParser {
     private final ObjectMapper objectMapper;
 
     public ExternalDataPage<MyHomeAnnouncementSourceSnapshot> parse(
-            ExternalDataResponse response,
+            JsonNode root,
             int collectedCount
     ) {
-        JsonNode root = response.body();
         String resultCode = root.at("/response/header/resultCode").asString("");
         if (NO_DATA.equals(resultCode)) {
             return emptyPageOrThrow(collectedCount, 0);

@@ -26,15 +26,14 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataFailureStatus;
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionCheckpointRepository;
@@ -55,7 +54,6 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCandidateCollector;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionProgressManager;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementResponseFetcher;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
@@ -84,6 +82,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 
@@ -686,7 +685,7 @@ class LhAnnouncementEnrichmentServiceTest {
             progressStore.complete(target, source.getPblancId(), previousRequest, candidate.panId());
         }
         LhAnnouncementExternalRepository external = mock(LhAnnouncementExternalRepository.class);
-        ExternalDataResponse incomplete = response("[{\"dsList01\":[]}]");
+        JsonNode incomplete = response("[{\"dsList01\":[]}]");
         if (!empty) {
             incomplete = response("""
                     [{"dsList01":[{"SBD_LGO_NM":"동삼2","HTY_NNA":"다른 주택형",
@@ -821,13 +820,13 @@ class LhAnnouncementEnrichmentServiceTest {
                 .containsExactlyInAnyOrderElementsOf(previousLinks);
     }
 
-    private ExternalDataResponse repeatedSupplyResponse(String typeCode, int count) {
-        ExternalDataResponse result = supplyResponse(typeCode, "30", "12000000", "250000");
+    private JsonNode repeatedSupplyResponse(String typeCode, int count) {
+        JsonNode result = supplyResponse(typeCode, "30", "12000000", "250000");
         String dataset = "dsList01";
         if ("060".equals(typeCode)) {
             dataset = "dsList02";
         }
-        var rows = (ArrayNode) result.body().get(1).get(dataset);
+        var rows = (ArrayNode) result.get(1).get(dataset);
         var row = rows.get(0).deepCopy();
         for (int index = 1; index < count; index++) {
             rows.add(row.deepCopy());
@@ -1921,7 +1920,8 @@ class LhAnnouncementEnrichmentServiceTest {
         // 주택형 이름 정정은 자동 교체 대상이 아니므로 확인 후 정정된 원천을 준비한다.
         supplySourceRepository.deleteAll(supplySourceRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
                 "200", LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescriptionFor("200"))));
-        sourceStore.replaceSupplies("200", requestDescriptionFor("200"), List.of(new LhAnnouncementSupplySource(0, "200",
+        sourceStore.replaceSupplies("200", requestDescriptionFor("200"), List.of(new LhAnnouncementSupplySource(
+                0, "200",
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "46A", "46.8", "67.0", "100", "20", "12000000", "250000"
                 ))));
@@ -2056,7 +2056,8 @@ class LhAnnouncementEnrichmentServiceTest {
             assertThat(target.getLhAmountPreservedReason()).isEqualTo("LH_AMOUNT_NOT_PROVIDED");
         });
 
-        sourceStore.replaceSupplies("200", requestDescriptionFor("200"), List.of(new LhAnnouncementSupplySource(0, "200",
+        sourceStore.replaceSupplies("200", requestDescriptionFor("200"), List.of(new LhAnnouncementSupplySource(
+                0, "200",
                 new LhAnnouncementSupplySourceSnapshot(
                         "동삼2", "46A", "46.8", "67.0", "100", "20", "12000000", "250000"
                 ))));
@@ -2093,20 +2094,18 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     private LhAnnouncementCandidateCollector collector(LhAnnouncementExternalRepository external) {
-        LhAnnouncementResponseFetcher fetcher = new LhAnnouncementResponseFetcher(
-                external, new LhAnnouncementDetailResponseParser(), new LhAnnouncementSupplyResponseParser(),
-                new ExternalDataRetryExecutor(new SimpleMeterRegistry())
-        );
         return new LhAnnouncementCandidateCollector(
-                fetcher, sourceStore, failureRecorder, progressManager, new SimpleMeterRegistry()
+                external, new LhAnnouncementDetailResponseParser(), new LhAnnouncementSupplyResponseParser(),
+                new ExternalDataRetryExecutor(new SimpleMeterRegistry()),
+                sourceStore, failureRecorder, progressManager, new SimpleMeterRegistry()
         );
     }
 
-    private ExternalDataResponse response(String json) {
-        return new ExternalDataResponse(json, JsonMapper.builder().build().readTree(json));
+    private JsonNode response(String json) {
+        return JsonMapper.builder().build().readTree(json);
     }
 
-    private ExternalDataResponse detailResponse(
+    private JsonNode detailResponse(
             String correctionReason,
             String applicationPeriod,
             String fileName,
@@ -2122,7 +2121,7 @@ class LhAnnouncementEnrichmentServiceTest {
                 """.formatted(correctionReason, applicationPeriod, fileName, fileUrl));
     }
 
-    private ExternalDataResponse supplyResponse(String suppliedCount, String deposit, String rent) {
+    private JsonNode supplyResponse(String suppliedCount, String deposit, String rent) {
         return response("""
                 [{"resHeader":[{"SS_CODE":"Y"}]},
                  {"dsList01":[{"SBD_LGO_NM":"동삼2","HTY_NNA":"46A","DDO_AR":"46.8",
@@ -2131,7 +2130,7 @@ class LhAnnouncementEnrichmentServiceTest {
                 """.formatted(suppliedCount, deposit, rent));
     }
 
-    private ExternalDataResponse supplyResponse(String typeCode, String suppliedCount, String deposit, String rent) {
+    private JsonNode supplyResponse(String typeCode, String suppliedCount, String deposit, String rent) {
         if (!"060".equals(typeCode)) {
             return supplyResponse(suppliedCount, deposit, rent);
         }
@@ -2248,8 +2247,10 @@ class LhAnnouncementEnrichmentServiceTest {
         saveDetails(List.of(
                 detail(0, "ETC_INFO", null, null, null, null, null, null, null, "정정 사유"),
                 detail(1, "SCHEDULE", "2026.08.24 10:00 ~ 2026.08.31 17:00", null, null, null, null, null, null, null),
-                detail(2, "RECEPTION", null, "서울특별시 종로구 접수로 1", "101호", "1600-1004", receptionGuidance, null, null, null),
-                detail(3, "ANNOUNCEMENT_FILE", null, null, null, null, null, "공고문.pdf", "https://example.com/file.pdf", null),
+                detail(2, "RECEPTION", null, "서울특별시 종로구 접수로 1", "101호", "1600-1004",
+                        receptionGuidance, null, null, null),
+                detail(3, "ANNOUNCEMENT_FILE", null, null, null, null, null,
+                        "공고문.pdf", "https://example.com/file.pdf", null),
                 detail(4, "COMPLEX", null, null, null, null, null, null, null, null)
         ));
         saveSupply(new LhAnnouncementSupplySource(0, PAN_ID,
@@ -2310,9 +2311,13 @@ class LhAnnouncementEnrichmentServiceTest {
             String url,
             String correctionReason
     ) {
+        String expectedMoveInYearMonth = null;
+        if (datasetType.equals("COMPLEX")) {
+            expectedMoveInYearMonth = "202612";
+        }
         return new LhAnnouncementDetailSource(
                 order, PAN_ID, datasetType, null, address, detailAddress, null, null, null,
-                datasetType.equals("COMPLEX") ? "202612" : null, guidance, applicationPeriod, null, null, null,
+                expectedMoveInYearMonth, guidance, applicationPeriod, null, null, null,
                 null, null, address, detailAddress, null, null, phone, guidance, null, name, url, null,
                 correctionReason, null
         );

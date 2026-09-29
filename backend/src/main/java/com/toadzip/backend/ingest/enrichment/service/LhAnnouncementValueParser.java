@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
 import java.math.BigDecimal;
 import java.time.DateTimeException;
 import java.time.LocalDateTime;
@@ -46,8 +47,8 @@ class LhAnnouncementValueParser {
 
     private LocalDateTime dateTime(Matcher matcher, String fieldName) {
         try {
-            int hour = matcher.group(5) == null ? 0 : Integer.parseInt(matcher.group(5));
-            int minute = matcher.group(6) == null ? 0 : Integer.parseInt(matcher.group(6));
+            int hour = optionalTimePart(matcher.group(5));
+            int minute = optionalTimePart(matcher.group(6));
             return LocalDateTime.of(
                     Integer.parseInt(matcher.group(1)),
                     Integer.parseInt(matcher.group(3)),
@@ -59,6 +60,13 @@ class LhAnnouncementValueParser {
         catch (DateTimeException | NumberFormatException exception) {
             throw invalid(fieldName + " 형식이 올바르지 않습니다.");
         }
+    }
+
+    private int optionalTimePart(String value) {
+        if (value == null) {
+            return 0;
+        }
+        return Integer.parseInt(value);
     }
 
     private LocalDateTime compactDate(Matcher matcher, String fieldName) {

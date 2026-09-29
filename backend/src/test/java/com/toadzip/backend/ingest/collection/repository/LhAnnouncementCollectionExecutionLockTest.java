@@ -1,12 +1,13 @@
 package com.toadzip.backend.ingest.collection.repository;
 
+import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.LH_ANNOUNCEMENT_COLLECTION;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -36,7 +37,7 @@ class LhAnnouncementCollectionExecutionLockTest {
     @Mock
     private ResultSet resultSet;
 
-    private LhAnnouncementCollectionExecutionLock executionLock;
+    private IngestOperationLock executionLock;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -45,7 +46,7 @@ class LhAnnouncementCollectionExecutionLockTest {
         when(statement.executeQuery()).thenReturn(resultSet);
         when(resultSet.next()).thenReturn(true);
         when(resultSet.getBoolean(1)).thenReturn(true);
-        executionLock = new LhAnnouncementCollectionExecutionLock(dataSource);
+        executionLock = new IngestOperationLock(dataSource);
     }
 
     @Test
@@ -55,7 +56,7 @@ class LhAnnouncementCollectionExecutionLockTest {
 
         try (var executor = Executors.newSingleThreadExecutor()) {
             var runningOperation = executor.submit(() -> executionLock.tryRun(
-                    ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                    LH_ANNOUNCEMENT_COLLECTION,
                     () -> {
                         operationStarted.countDown();
                         await(releaseOperation);
@@ -65,7 +66,7 @@ class LhAnnouncementCollectionExecutionLockTest {
             assertThat(operationStarted.await(1, TimeUnit.SECONDS)).isTrue();
 
             var rejectedOperation = executionLock.tryRun(
-                    ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                    LH_ANNOUNCEMENT_COLLECTION,
                     () -> "duplicate"
             );
             releaseOperation.countDown();
@@ -82,13 +83,13 @@ class LhAnnouncementCollectionExecutionLockTest {
         CountDownLatch release = new CountDownLatch(1);
         try (var executor = Executors.newSingleThreadExecutor()) {
             var running = executor.submit(() -> executionLock.tryRun(
-                    ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, () -> {
+                    LH_ANNOUNCEMENT_COLLECTION, () -> {
                         started.countDown();
                         await(release);
                         return "completed";
                     }));
             assertThat(started.await(1, TimeUnit.SECONDS)).isTrue();
-            var supply = executionLock.tryRun(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, () -> "supply");
+            var supply = executionLock.tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> "supply");
             release.countDown();
             assertThat(running.get(1, TimeUnit.SECONDS)).contains("completed");
             assertThat(supply).isEmpty();
@@ -100,7 +101,7 @@ class LhAnnouncementCollectionExecutionLockTest {
         AtomicBoolean operationExecuted = new AtomicBoolean();
         when(resultSet.getBoolean(1)).thenReturn(false);
 
-        var result = executionLock.tryRun(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, () -> {
+        var result = executionLock.tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> {
             operationExecuted.set(true);
             return "duplicate";
         });
@@ -112,8 +113,8 @@ class LhAnnouncementCollectionExecutionLockTest {
 
     @Test
     void 상세와_공급_API는_같은_DB_잠금을_사용한다() throws Exception {
-        executionLock.tryRun(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, () -> "detail");
-        executionLock.tryRun(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, () -> "supply");
+        executionLock.tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> "detail");
+        executionLock.tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> "supply");
 
         verify(statement, times(4)).setLong(1, 8_432_026_082_400_001L);
     }

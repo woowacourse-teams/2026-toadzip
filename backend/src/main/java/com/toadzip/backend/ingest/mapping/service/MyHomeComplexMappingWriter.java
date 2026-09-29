@@ -10,19 +10,24 @@ import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
 import com.toadzip.backend.ingest.collection.repository.MyHomeComplexSourceRepository;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
-import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
+import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository;
+import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingData;
+import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingRejectedException;
+import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeHousingTypeMappingData;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class MyHomeComplexMappingWriter {
 
     private final HousingComplexRepository complexRepository;
@@ -33,22 +38,6 @@ public class MyHomeComplexMappingWriter {
     private final MyHomeComplexLinkRepository linkRepository;
     private final MyHomeComplexSourceRepository sourceRepository;
     private final MyHomeComplexSourceMapper sourceMapper;
-
-    public MyHomeComplexMappingWriter(
-            HousingComplexRepository complexRepository,
-            HousingTypeRepository housingTypeRepository,
-            SupplyRowRepository supplyRowRepository,
-            MyHomeComplexLinkRepository linkRepository,
-            MyHomeComplexSourceRepository sourceRepository,
-            MyHomeComplexSourceMapper sourceMapper
-    ) {
-        this.complexRepository = complexRepository;
-        this.housingTypeRepository = housingTypeRepository;
-        this.supplyRowRepository = supplyRowRepository;
-        this.linkRepository = linkRepository;
-        this.sourceRepository = sourceRepository;
-        this.sourceMapper = sourceMapper;
-    }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public MyHomeComplexMappingReport write(MyHomeComplexMappingData data, Address address) {
@@ -66,9 +55,9 @@ public class MyHomeComplexMappingWriter {
                 data.housingTypes()
         );
         return new MyHomeComplexMappingReport(
-                complexResult.created() ? 1 : 0,
-                complexResult.updated() ? 1 : 0,
-                complexResult.unchanged() ? 1 : 0,
+                complexResult.created(),
+                complexResult.updated(),
+                complexResult.unchanged(),
                 housingTypeResult.created(),
                 housingTypeResult.updated(),
                 housingTypeResult.unchanged(),
@@ -97,7 +86,7 @@ public class MyHomeComplexMappingWriter {
                     data.parkingSpaceCount()
             );
             created.updateRentalPriceRange(data.rentalPriceRange());
-            return new ComplexWriteResult(complexRepository.save(created), true, false);
+            return new ComplexWriteResult(complexRepository.save(created), 1, 0);
         }
         complex = complexRepository.findByIdForUpdate(complex.getId()).orElseThrow();
         boolean priceUpdated = complex.updateRentalPriceRange(data.rentalPriceRange());
@@ -114,7 +103,10 @@ public class MyHomeComplexMappingWriter {
                 data.elevatorInstalled(),
                 data.parkingSpaceCount()
         );
-        return new ComplexWriteResult(complex, false, priceUpdated || detailsUpdated);
+        if (priceUpdated || detailsUpdated) {
+            return new ComplexWriteResult(complex, 0, 1);
+        }
+        return new ComplexWriteResult(complex, 0, 0);
     }
 
     private MyHomeComplexMappingReport writeVerifiedGroup(MyHomeComplexLink link) {
@@ -139,10 +131,13 @@ public class MyHomeComplexMappingWriter {
             housingTypes.addAll(data.housingTypes());
             allSources.addAll(sources);
         }
-        boolean priceUpdated = complex.updateRentalPriceRange(sourceMapper.rentalPriceRange(allSources));
+        int priceUpdated = 0;
+        if (complex.updateRentalPriceRange(sourceMapper.rentalPriceRange(allSources))) {
+            priceUpdated = 1;
+        }
         HousingTypeWriteResult result = synchronizeHousingTypes(complex, housingTypes, true);
         return new MyHomeComplexMappingReport(
-                0, priceUpdated ? 1 : 0, priceUpdated ? 0 : 1,
+                0, priceUpdated, 1 - priceUpdated,
                 result.created(), result.updated(), result.unchanged(), result.deleted(), 0);
     }
 
@@ -256,10 +251,10 @@ public class MyHomeComplexMappingWriter {
         return sameName.getFirst();
     }
 
-    private record ComplexWriteResult(HousingComplex complex, boolean created, boolean updated) {
+    private record ComplexWriteResult(HousingComplex complex, int created, int updated) {
 
-        boolean unchanged() {
-            return !created && !updated;
+        int unchanged() {
+            return 1 - created - updated;
         }
     }
 

@@ -16,6 +16,10 @@ import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchResult;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,10 +27,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
+@RequiredArgsConstructor
 public class MyHomeAnnouncementMappingWriter {
 
     private final AnnouncementRepository announcementRepository;
@@ -40,22 +46,6 @@ public class MyHomeAnnouncementMappingWriter {
     private final SupplyTargetRepository supplyTargetRepository;
 
     private final MyHomeAnnouncementSupplyMatcher supplyMatcher;
-
-    public MyHomeAnnouncementMappingWriter(
-            AnnouncementRepository announcementRepository,
-            AnnouncementScheduleRepository scheduleRepository,
-            AnnouncementAttachmentRepository attachmentRepository,
-            SupplyRowRepository supplyRowRepository,
-            SupplyTargetRepository supplyTargetRepository,
-            MyHomeAnnouncementSupplyMatcher supplyMatcher
-    ) {
-        this.announcementRepository = announcementRepository;
-        this.scheduleRepository = scheduleRepository;
-        this.attachmentRepository = attachmentRepository;
-        this.supplyRowRepository = supplyRowRepository;
-        this.supplyTargetRepository = supplyTargetRepository;
-        this.supplyMatcher = supplyMatcher;
-    }
 
     @Transactional
     public MyHomeAnnouncementWriteResult write(
@@ -103,7 +93,7 @@ public class MyHomeAnnouncementMappingWriter {
                     0L,
                     data.receptionPlace()
             ));
-            return new AnnouncementWriteResult(created, true, false, false);
+            return new AnnouncementWriteResult(created, 1, 0, false);
         }
         if (stored.isLhPanIdReviewed() && data.provider() != AgencyCode.LH) {
             throw new MyHomeAnnouncementMappingRejectedException(
@@ -127,7 +117,10 @@ public class MyHomeAnnouncementMappingWriter {
                 data.originalUrl(),
                 data.receptionPlace()
         );
-        return new AnnouncementWriteResult(stored, false, updated, releasesLhOwnership);
+        if (updated) {
+            return new AnnouncementWriteResult(stored, 0, 1, releasesLhOwnership);
+        }
+        return new AnnouncementWriteResult(stored, 0, 0, releasesLhOwnership);
     }
 
     private void deleteLhEnrichment(Announcement announcement) {
@@ -190,10 +183,10 @@ public class MyHomeAnnouncementMappingWriter {
                         continue;
                     }
                     storedRows.remove(stored.getSourceSupplyRowIdentifier());
-                    Integer householdCount = stored.getSourceSupplyRowIdentifier()
-                            .equals(data.sourceSupplyRowIdentifier())
-                            ? data.totalSupplyHouseholdCount()
-                            : stored.getTotalSupplyHouseholdCount();
+                    Integer householdCount = stored.getTotalSupplyHouseholdCount();
+                    if (stored.getSourceSupplyRowIdentifier().equals(data.sourceSupplyRowIdentifier())) {
+                        householdCount = data.totalSupplyHouseholdCount();
+                    }
                     boolean changed = stored.updateFromMyHome(
                             stored.getHousingComplex(),
                             stored.getHousingType(),
@@ -335,13 +328,10 @@ public class MyHomeAnnouncementMappingWriter {
             AnnouncementWriteResult announcement,
             SupplyRowsWriteResult supplyRows
     ) {
-        int createdAnnouncement = announcement.created() ? 1 : 0;
-        int updatedAnnouncement = announcement.updated() ? 1 : 0;
-        int unchangedAnnouncement = announcement.unchanged() ? 1 : 0;
         return new MyHomeAnnouncementMappingReport(
-                createdAnnouncement,
-                updatedAnnouncement,
-                unchangedAnnouncement,
+                announcement.created(),
+                announcement.updated(),
+                announcement.unchanged(),
                 supplyRows.created(),
                 supplyRows.updated(),
                 supplyRows.unchanged(),
@@ -352,13 +342,13 @@ public class MyHomeAnnouncementMappingWriter {
 
     private record AnnouncementWriteResult(
             Announcement announcement,
-            boolean created,
-            boolean updated,
+            int created,
+            int updated,
             boolean releasedLhOwnership
     ) {
 
-        boolean unchanged() {
-            return !created && !updated;
+        int unchanged() {
+            return 1 - created - updated;
         }
     }
 
@@ -371,17 +361,17 @@ public class MyHomeAnnouncementMappingWriter {
     ) {
     }
 
-}
 
-record MyHomeAnnouncementWriteResult(
-        MyHomeAnnouncementMappingReport report,
-        List<MyHomeSupplyMatchingFailureData> failures
-) {
-}
+    record MyHomeAnnouncementWriteResult(
+            MyHomeAnnouncementMappingReport report,
+            List<MyHomeSupplyMatchingFailureData> failures
+    ) {
+    }
 
-record MyHomeSupplyMatchingFailureData(
-        MyHomeAnnouncementSource source,
-        MyHomeAnnouncementMappingFailureReason reason,
-        String detail
-) {
+    record MyHomeSupplyMatchingFailureData(
+            MyHomeAnnouncementSource source,
+            MyHomeAnnouncementMappingFailureReason reason,
+            String detail
+    ) {
+    }
 }

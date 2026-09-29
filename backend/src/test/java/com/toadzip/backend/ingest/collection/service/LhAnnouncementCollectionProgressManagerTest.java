@@ -9,14 +9,15 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore.BatchProgress;
+import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,8 +43,7 @@ class LhAnnouncementCollectionProgressManagerTest {
         progressManager = new LhAnnouncementCollectionProgressManager(
                 progressStore,
                 failureRecorder,
-                Clock.fixed(NOW, ZoneOffset.UTC),
-                REFRESH_TTL
+                Clock.fixed(NOW, ZoneOffset.UTC)
         );
     }
 
@@ -55,12 +55,14 @@ class LhAnnouncementCollectionProgressManagerTest {
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
                 List.of(candidate.requestDescription()),
                 List.of(candidate.sourceAnnouncementKey()),
-                NOW.minus(REFRESH_TTL)
+                NOW.minus(REFRESH_TTL),
+                Map.of()
         )).thenReturn(expected);
 
         BatchProgress result = progressManager.findBatch(
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
-                List.of(candidate)
+                List.of(candidate),
+                REFRESH_TTL
         );
 
         assertThat(result).isSameAs(expected);
@@ -68,10 +70,9 @@ class LhAnnouncementCollectionProgressManagerTest {
 
     @Test
     void 재수집_만료_시간은_0보다_커야_한다() {
-        assertThatThrownBy(() -> new LhAnnouncementCollectionProgressManager(
-                progressStore,
-                failureRecorder,
-                Clock.fixed(NOW, ZoneOffset.UTC),
+        assertThatThrownBy(() -> progressManager.findBatch(
+                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                List.of(candidate()),
                 Duration.ZERO
         ))
                 .isInstanceOf(IllegalArgumentException.class)

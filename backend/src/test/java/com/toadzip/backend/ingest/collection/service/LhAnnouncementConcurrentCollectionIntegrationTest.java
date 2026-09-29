@@ -10,7 +10,6 @@ import static org.mockito.Mockito.when;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionCheckpointRepository;
@@ -30,6 +29,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
@@ -144,11 +144,11 @@ class LhAnnouncementConcurrentCollectionIntegrationTest {
                 .readValue(payload, MyHomeAnnouncementSourceSnapshot.class));
     }
 
-    private ExternalDataResponse response() {
+    private JsonNode response() {
         String payload = """
                 [{"resHeader":[{"SS_CODE":"Y","RS_DTTM":"20260917120000"}],
                   "dsSbd":[{"LCC_NT_NM":"테스트 단지"}]}]
                 """;
-        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+        return JsonMapper.builder().build().readTree(payload);
     }
 }

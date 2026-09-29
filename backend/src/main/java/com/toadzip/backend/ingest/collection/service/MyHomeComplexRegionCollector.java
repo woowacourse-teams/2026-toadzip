@@ -47,9 +47,9 @@ public class MyHomeComplexRegionCollector {
             return MyHomeComplexCollectionReport.empty();
         }
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
-        FetchedRegion fetchedRegion;
+        List<MyHomeComplexSourceSnapshot> snapshots;
         try {
-            fetchedRegion = fetchCompleteRegion(region, request, callCounter, rateLimitReached);
+            snapshots = fetchCompleteRegion(region, request, callCounter, rateLimitReached);
         }
         catch (RateLimitCollectionCancelledException exception) {
             return cancelledReport(callCounter);
@@ -63,7 +63,7 @@ public class MyHomeComplexRegionCollector {
         catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
             return failedReport(region, request, rateLimitReached, callCounter, exception);
         }
-        int storedRowCount = sourceStore.replaceComplexRegion(region, fetchedRegion.snapshots());
+        int storedRowCount = sourceStore.replaceComplexRegion(region, snapshots);
         failureRecorder.resolveStartingWith(
                 ExternalDataSource.MYHOME_COMPLEX,
                 region.requestDescription() + "&pageNo="
@@ -112,7 +112,7 @@ public class MyHomeComplexRegionCollector {
         );
     }
 
-    private FetchedRegion fetchCompleteRegion(
+    private List<MyHomeComplexSourceSnapshot> fetchCompleteRegion(
             MyHomeRegion region,
             MyHomeComplexCollectionRequest request,
             ExternalDataCallCounter callCounter,
@@ -147,7 +147,7 @@ public class MyHomeComplexRegionCollector {
                 collectedSourceKeys.add(MyHomeComplexSource.sourceKeyOf(item));
             }
             if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
-                return new FetchedRegion(snapshots);
+                return snapshots;
             }
         }
         throw new ExternalDataRequestException("마이홈 단지 조회가 최대 페이지 안에 끝나지 않았습니다.");
@@ -161,8 +161,8 @@ public class MyHomeComplexRegionCollector {
             int expectedTotalCount,
             Set<String> collectedSourceKeys
     ) {
-        ExternalDataPage<MyHomeComplexSourceSnapshot> parsedPage = responseParser.parseItems(
-                responseParser.validate(externalRepository.fetch(region, request, page), collectedCount)
+        ExternalDataPage<MyHomeComplexSourceSnapshot> parsedPage = responseParser.parse(
+                externalRepository.fetch(region, request, page), collectedCount
         );
         if (expectedTotalCount >= 0 && expectedTotalCount != parsedPage.totalCount()) {
             throw new ExternalDataRequestException("마이홈 단지 응답의 totalCount가 페이지마다 다릅니다.");
@@ -191,8 +191,5 @@ public class MyHomeComplexRegionCollector {
     }
 
     private static final class RateLimitCollectionCancelledException extends RuntimeException {
-    }
-
-    private record FetchedRegion(List<MyHomeComplexSourceSnapshot> snapshots) {
     }
 }

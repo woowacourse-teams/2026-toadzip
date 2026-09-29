@@ -13,17 +13,26 @@ import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAttachmentData;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhScheduleData;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementSupplyMatcher.LhSupplyMatchResult;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
+@RequiredArgsConstructor
 public class LhAnnouncementEnrichmentWriter {
 
     private static final String ALL_TARGET = "전체";
@@ -35,22 +44,6 @@ public class LhAnnouncementEnrichmentWriter {
     private final SupplyRowRepository supplyRowRepository;
     private final SupplyTargetRepository supplyTargetRepository;
     private final LhAnnouncementSupplyMatcher supplyMatcher;
-
-    public LhAnnouncementEnrichmentWriter(
-            AnnouncementScheduleRepository scheduleRepository,
-            AnnouncementRepository announcementRepository,
-            AnnouncementAttachmentRepository attachmentRepository,
-            SupplyRowRepository supplyRowRepository,
-            SupplyTargetRepository supplyTargetRepository,
-            LhAnnouncementSupplyMatcher supplyMatcher
-    ) {
-        this.scheduleRepository = scheduleRepository;
-        this.announcementRepository = announcementRepository;
-        this.attachmentRepository = attachmentRepository;
-        this.supplyRowRepository = supplyRowRepository;
-        this.supplyTargetRepository = supplyTargetRepository;
-        this.supplyMatcher = supplyMatcher;
-    }
 
     @Transactional
     public LhAnnouncementEnrichmentWriteResult write(Announcement announcement, LhAnnouncementEnrichmentData data) {
@@ -88,9 +81,12 @@ public class LhAnnouncementEnrichmentWriter {
         if (previousPanId != null) {
             replacedPanIds.add(previousPanId);
         }
-        int updatedAnnouncements = managedAnnouncement.enrichFromLh(
+        int updatedAnnouncements = 0;
+        if (managedAnnouncement.enrichFromLh(
                 data.panId(), data.correctionReason(), data.receptionPlace()
-        ) ? 1 : 0;
+        )) {
+            updatedAnnouncements = 1;
+        }
         SchedulesWriteResult schedules = writeSchedules(
                 managedAnnouncement, data, replacedPanIds, previousPanId
         );
@@ -102,9 +98,10 @@ public class LhAnnouncementEnrichmentWriter {
         );
         return new LhAnnouncementEnrichmentWriteResult(
                 new LhAnnouncementEnrichmentReport(
-                        updatedAnnouncements, updatedAnnouncements == 0 ? 1 : 0,
+                        updatedAnnouncements, 1 - updatedAnnouncements,
                         schedules.created(), schedules.updated(), attachments.created(), attachments.updated(),
-                        supplies.updatedRows(), supplies.createdTargets(), supplies.updatedTargets(), supplies.failures().size()
+                        supplies.updatedRows(), supplies.createdTargets(), supplies.updatedTargets(),
+                        supplies.failures().size()
                 ),
                 supplies.failures()
         );
@@ -148,8 +145,9 @@ public class LhAnnouncementEnrichmentWriter {
         }
         if (!data.schedules().isEmpty()) {
             scheduleRepository.deleteAll(staleSchedules(storedSchedules, retained, replacedPanIds));
+            return new SchedulesWriteResult(created, updated);
         }
-        else if (previousPanId != null && !previousPanId.equals(data.panId())) {
+        if (previousPanId != null && !previousPanId.equals(data.panId())) {
             scheduleRepository.deleteAll(staleSchedules(storedSchedules, retained, Set.of(previousPanId)));
         }
         return new SchedulesWriteResult(created, updated);
@@ -183,8 +181,9 @@ public class LhAnnouncementEnrichmentWriter {
         }
         if (!data.attachments().isEmpty()) {
             attachmentRepository.deleteAll(staleAttachments(storedAttachments, retained, replacedPanIds));
+            return new AttachmentsWriteResult(created, updated);
         }
-        else if (previousPanId != null && !previousPanId.equals(data.panId())) {
+        if (previousPanId != null && !previousPanId.equals(data.panId())) {
             attachmentRepository.deleteAll(staleAttachments(storedAttachments, retained, Set.of(previousPanId)));
         }
         return new AttachmentsWriteResult(created, updated);
@@ -246,7 +245,9 @@ public class LhAnnouncementEnrichmentWriter {
                 pricedChangedHousingTypeRows.add(row.getId());
             }
             String previousSourceIdentifier = row.getLhSourceSupplyRowIdentifier();
-            if (row.enrichFromLh(source.sourceIdentifier(), source.expectedMoveInMonth(), source.supplyHouseholdCount())) {
+            if (row.enrichFromLh(
+                    source.sourceIdentifier(), source.expectedMoveInMonth(), source.supplyHouseholdCount()
+            )) {
                 updatedRows++;
             }
             List<SupplyTarget> storedTargets = targetsByRow.get(row.getId());
@@ -345,7 +346,7 @@ public class LhAnnouncementEnrichmentWriter {
                     .findFirst()
                     .ifPresent(SupplyTarget::markLhAmountPreserved);
             return new SupplyTargetWriteResult(
-                    previousTargetIdentifier == null ? identifier : previousTargetIdentifier,
+                    Objects.requireNonNullElse(previousTargetIdentifier, identifier),
                     0,
                     0,
                     false
@@ -362,7 +363,10 @@ public class LhAnnouncementEnrichmentWriter {
         boolean updated = stored.updateFromSource(
                 ALL_TARGET, ALL_RANK, source.supplyHouseholdCount(), source.rentalDeposit(), source.monthlyRent(), 1
         );
-        return new SupplyTargetWriteResult(identifier, 0, updated ? 1 : 0, true);
+        if (updated) {
+            return new SupplyTargetWriteResult(identifier, 0, 1, true);
+        }
+        return new SupplyTargetWriteResult(identifier, 0, 0, true);
     }
 
     private String previousTargetIdentifier(
@@ -473,17 +477,17 @@ public class LhAnnouncementEnrichmentWriter {
     ) {
     }
 
-}
 
-record LhAnnouncementEnrichmentWriteResult(
-        LhAnnouncementEnrichmentReport report,
-        List<LhSupplyMatchingFailureData> failures
-) {
-}
+    record LhAnnouncementEnrichmentWriteResult(
+            LhAnnouncementEnrichmentReport report,
+            List<LhSupplyMatchingFailureData> failures
+    ) {
+    }
 
-record LhSupplyMatchingFailureData(
-        LhSupplyData source,
-        LhAnnouncementEnrichmentFailureReason reason,
-        String detail
-) {
+    record LhSupplyMatchingFailureData(
+            LhSupplyData source,
+            LhAnnouncementEnrichmentFailureReason reason,
+            String detail
+    ) {
+    }
 }

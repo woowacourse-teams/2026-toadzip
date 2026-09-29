@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.collection.repository;
 
+import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.MYHOME_ANNOUNCEMENT_COLLECTION;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -8,6 +9,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -17,8 +19,8 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
 import org.mockito.InOrder;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,7 +38,7 @@ class MyHomeAnnouncementCollectionExecutionLockTest {
     @Mock
     private ResultSet resultSet;
 
-    private MyHomeAnnouncementCollectionExecutionLock executionLock;
+    private IngestOperationLock executionLock;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -45,12 +47,12 @@ class MyHomeAnnouncementCollectionExecutionLockTest {
         when(statement.executeQuery()).thenReturn(resultSet);
         when(resultSet.next()).thenReturn(true);
         when(resultSet.getBoolean(1)).thenReturn(true);
-        executionLock = new MyHomeAnnouncementCollectionExecutionLock(dataSource);
+        executionLock = new IngestOperationLock(dataSource);
     }
 
     @Test
     void DB_실행_잠금을_획득하면_수집을_실행하고_잠금을_해제한다() throws Exception {
-        var result = executionLock.tryRun(() -> "completed");
+        var result = executionLock.tryRun(MYHOME_ANNOUNCEMENT_COLLECTION, () -> "completed");
 
         assertThat(result).contains("completed");
         verify(statement, org.mockito.Mockito.times(2)).setLong(1, 8_432_026_082_800_017L);
@@ -61,7 +63,7 @@ class MyHomeAnnouncementCollectionExecutionLockTest {
         AtomicBoolean operationExecuted = new AtomicBoolean();
         when(resultSet.getBoolean(1)).thenReturn(false);
 
-        var result = executionLock.tryRun(() -> {
+        var result = executionLock.tryRun(MYHOME_ANNOUNCEMENT_COLLECTION, () -> {
             operationExecuted.set(true);
             return "duplicate";
         });
@@ -77,7 +79,7 @@ class MyHomeAnnouncementCollectionExecutionLockTest {
                 .thenReturn(resultSet)
                 .thenThrow(new SQLException("unlock query failed"));
 
-        var result = executionLock.tryRun(() -> "completed");
+        var result = executionLock.tryRun(MYHOME_ANNOUNCEMENT_COLLECTION, () -> "completed");
 
         assertThat(result).contains("completed");
         InOrder releaseOrder = inOrder(connection);
@@ -91,7 +93,7 @@ class MyHomeAnnouncementCollectionExecutionLockTest {
                 .thenReturn(resultSet)
                 .thenThrow(new SQLException("unlock query failed"));
 
-        assertThatThrownBy(() -> executionLock.tryRun(() -> {
+        assertThatThrownBy(() -> executionLock.tryRun(MYHOME_ANNOUNCEMENT_COLLECTION, () -> {
             throw new IllegalStateException("operation failed");
         }))
                 .isInstanceOf(IllegalStateException.class)

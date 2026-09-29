@@ -5,17 +5,17 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionStateService;
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineProgressListener;
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineRunner;
+import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
-import java.time.Instant;
-import java.time.Clock;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionStateService;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -38,7 +38,7 @@ class DataPipelineStopIntegrationTest {
     @Autowired private DataPipelineExecutionStateService stateService;
     @Autowired private DataPipelineExecutionLock executionLock;
     @Autowired private ExternalDataRetryExecutor retryExecutor;
-    @MockitoBean private DataPipelineRunner runner;
+    @MockitoBean private MyHomeComplexCollectionService collectionService;
     @MockitoBean(name = "dataPipelineExecutor") private Executor executor;
 
     @Test
@@ -53,8 +53,6 @@ class DataPipelineStopIntegrationTest {
             return null;
         }).when(executor).execute(any());
         doAnswer(invocation -> {
-            DataPipelineProgressListener listener = invocation.getArgument(1);
-            listener.started(DataPipelineStep.COLLECT_MYHOME_COMPLEXES);
             retryExecutor.execute(ExternalDataSource.MYHOME_COMPLEX, "pageNo=1", () -> {
                 calls.incrementAndGet();
                 entered.countDown();
@@ -66,8 +64,8 @@ class DataPipelineStopIntegrationTest {
                 calls.incrementAndGet();
                 return "must not run";
             }, new ExternalDataCallCounter());
-            return null;
-        }).when(runner).run(any(), any());
+            return new MyHomeComplexCollectionReport("myhome-complex", 2, 0, 2);
+        }).when(collectionService).collect(any());
         var accepted = service.start(DataPipelineType.COMPLEX_COLLECTION);
         try (var worker = Executors.newSingleThreadExecutor()) {
             var result = worker.submit(task.get());
@@ -100,7 +98,8 @@ class DataPipelineStopIntegrationTest {
     @Test
     void 병렬_요청의_진행_횟수와_중지_요청은_서로_덮어쓰지_않는다() throws Exception {
         UUID id = UUID.randomUUID();
-        stateService.create(id, DataPipelineType.COMPLEX_COLLECTION, Instant.now());
+        stateService.create(id, DataPipelineType.COMPLEX_COLLECTION, Instant.now(),
+                DataPipelineExecutionTrigger.MANUAL, null, null);
         try (var workers = Executors.newFixedThreadPool(4)) {
             var tasks = java.util.stream.IntStream.range(0, 20).mapToObj(index -> workers.submit(() -> {
                 stateService.recordRequestStarted(id, "page=" + index, Instant.now());
@@ -123,7 +122,8 @@ class DataPipelineStopIntegrationTest {
     @Test
     void 완료된_실행의_중지_요청은_완료_결과를_변경하지_않는다() {
         UUID id = UUID.randomUUID();
-        stateService.create(id, DataPipelineType.COMPLEX_COLLECTION, Instant.now());
+        stateService.create(id, DataPipelineType.COMPLEX_COLLECTION, Instant.now(),
+                DataPipelineExecutionTrigger.MANUAL, null, null);
         for (var step : DataPipelineType.COMPLEX_COLLECTION.steps()) {
             stateService.startStep(id, step);
             stateService.completeStep(id, step, "{}");
@@ -137,7 +137,8 @@ class DataPipelineStopIntegrationTest {
     @Test
     void 실제_작업_완료는_재시도_횟수와_독립적이며_다음_단계에서_초기화된다() throws Exception {
         UUID id = UUID.randomUUID();
-        stateService.create(id, DataPipelineType.COMPLEX_COLLECTION, Instant.now());
+        stateService.create(id, DataPipelineType.COMPLEX_COLLECTION, Instant.now(),
+                DataPipelineExecutionTrigger.MANUAL, null, null);
         stateService.startStep(id, DataPipelineStep.COLLECT_MYHOME_COMPLEXES);
         var monitor = new DataPipelineExecutionMonitor(id, stateService, Clock.systemUTC());
         monitor.beginWork("전체 지역", "지역", 40);

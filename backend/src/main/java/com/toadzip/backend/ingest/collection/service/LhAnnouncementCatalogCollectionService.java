@@ -1,18 +1,20 @@
 package com.toadzip.backend.ingest.collection.service;
 
+import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.LH_ANNOUNCEMENT_COLLECTION;
+
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementCatalogPage;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementCatalogPage.Entry;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogStore;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementCatalogPage;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogStore.StoreResult;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionExecutionLock;
+import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogStore;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementCatalogResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
-import io.micrometer.core.instrument.MeterRegistry;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -33,13 +35,13 @@ public class LhAnnouncementCatalogCollectionService {
     private final LhAnnouncementExternalRepository externalRepository;
     private final LhAnnouncementCatalogResponseParser parser;
     private final LhAnnouncementCatalogStore store;
-    private final LhAnnouncementCollectionExecutionLock executionLock;
+    private final IngestOperationLock executionLock;
     private final ExternalDataRetryExecutor retryExecutor;
     private final ExternalDataFailureRecorder failureRecorder;
     private final MeterRegistry meterRegistry;
 
     public ExternalDataCollectionReport collect() {
-        return executionLock.tryRun(SOURCE, this::collectUnlocked)
+        return executionLock.tryRun(LH_ANNOUNCEMENT_COLLECTION, this::collectUnlocked)
                 .orElseThrow(() -> new IngestAlreadyRunningException("LH 공고 목록 수집이 이미 실행 중입니다."));
     }
 
@@ -104,7 +106,7 @@ public class LhAnnouncementCatalogCollectionService {
     private LhAnnouncementCatalogPage fetchPage(int page, ExternalDataCallCounter counter) {
         return retryExecutor.execute(
                 SOURCE, "PG_SZ=" + PAGE_SIZE + "&PAGE=" + page,
-                () -> parser.parse(externalRepository.fetchCatalog(page, PAGE_SIZE).body(), page, PAGE_SIZE),
+                () -> parser.parse(externalRepository.fetchCatalog(page, PAGE_SIZE), page, PAGE_SIZE),
                 counter
         );
     }

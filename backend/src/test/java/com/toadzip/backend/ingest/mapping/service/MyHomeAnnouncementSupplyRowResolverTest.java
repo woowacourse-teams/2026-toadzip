@@ -16,6 +16,9 @@ import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySour
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;

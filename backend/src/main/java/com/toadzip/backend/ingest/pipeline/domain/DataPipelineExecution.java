@@ -304,12 +304,6 @@ public class DataPipelineExecution {
         return status == DataPipelineExecutionStatus.RUNNING;
     }
 
-    public boolean isCompleted() {
-        return status == DataPipelineExecutionStatus.COMPLETED
-                || status == DataPipelineExecutionStatus.COMPLETED_WARNINGS
-                || status == DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS;
-    }
-
     private void requireRunning() {
         if (status != DataPipelineExecutionStatus.RUNNING) {
             throw new IllegalStateException(

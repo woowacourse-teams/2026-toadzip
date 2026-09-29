@@ -6,12 +6,14 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSource;
 import com.toadzip.backend.ingest.collection.repository.LhCatalogSourceRepository;
-import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdEnrichmentFailureResponse;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailureReason;
+import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdEnrichmentFailureResponse;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureStore;
+import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHouseholdSource;
+import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHouseholdSourceKey;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import java.time.Clock;
 import java.time.Instant;
@@ -21,8 +23,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -126,12 +128,14 @@ public class LhHousingTypeHouseholdEnrichmentService {
                         source.complexName(),
                         matches.size()
                 );
+                LhHouseholdEnrichmentFailureReason reason = LhHouseholdEnrichmentFailureReason.AMBIGUOUS_COMPLEX;
+                if (matches.isEmpty()) {
+                    reason = LhHouseholdEnrichmentFailureReason.COMPLEX_NOT_FOUND;
+                }
                 failures.add(failure(
                         sourceKey,
                         sources,
-                        matches.isEmpty()
-                                ? LhHouseholdEnrichmentFailureReason.COMPLEX_NOT_FOUND
-                                : LhHouseholdEnrichmentFailureReason.AMBIGUOUS_COMPLEX,
+                        reason,
                         "일치한 단지 수: " + matches.size(),
                         occurredAt
                 ));

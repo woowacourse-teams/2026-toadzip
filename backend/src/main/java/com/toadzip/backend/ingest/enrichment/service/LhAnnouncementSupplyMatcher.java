@@ -3,6 +3,8 @@ package com.toadzip.backend.ingest.enrichment.service;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter.LhSupplyMatchingFailureData;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
@@ -69,19 +71,19 @@ class LhAnnouncementSupplyMatcher {
         return row.getHousingType() != null
                 && SupplyNameNormalizer.sameHousingType(row.getHousingType().getName(), source.housingTypeName());
     }
-}
 
-record LhSupplyMatchResult(SupplyRow row, LhSupplyMatchingFailureData failure) {
+    record LhSupplyMatchResult(SupplyRow row, LhSupplyMatchingFailureData failure) {
 
-    static LhSupplyMatchResult matched(SupplyRow row) {
-        return new LhSupplyMatchResult(row, null);
-    }
+        static LhSupplyMatchResult matched(SupplyRow row) {
+            return new LhSupplyMatchResult(row, null);
+        }
 
-    static LhSupplyMatchResult failure(
-            LhSupplyData source,
-            LhAnnouncementEnrichmentFailureReason reason,
-            String detail
-    ) {
-        return new LhSupplyMatchResult(null, new LhSupplyMatchingFailureData(source, reason, detail));
+        static LhSupplyMatchResult failure(
+                LhSupplyData source,
+                LhAnnouncementEnrichmentFailureReason reason,
+                String detail
+        ) {
+            return new LhSupplyMatchResult(null, new LhSupplyMatchingFailureData(source, reason, detail));
+        }
     }
 }

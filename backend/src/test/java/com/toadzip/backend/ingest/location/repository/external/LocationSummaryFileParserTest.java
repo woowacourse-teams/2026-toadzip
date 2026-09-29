@@ -43,9 +43,10 @@ class LocationSummaryFileParserTest {
 
         assertThat(result.entryCount()).isEqualTo(2);
         assertThat(result.rowCount()).isEqualTo(2);
-        assertThat(result.coordinateRowCount()).isOne();
-        assertThat(result.missingCoordinateRowCount()).isOne();
-        assertThat(result.entryNames()).containsExactlyInAnyOrder("entrc_seoul.txt", "entrc_jeju.txt");
+        assertThat(records.getFirst().x()).isEqualByComparingTo("953875.044172");
+        assertThat(records.getFirst().y()).isEqualByComparingTo("1951999.498732");
+        assertThat(records.getLast().x()).isNull();
+        assertThat(records.getLast().y()).isNull();
         assertThat(result.provinceCodes()).containsExactlyInAnyOrder("11", "50");
         assertThat(result.provinceCodesByEntry())
                 .containsEntry("entrc_seoul.txt", Set.of("11"))

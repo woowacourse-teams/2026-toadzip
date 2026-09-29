@@ -13,7 +13,6 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.collection.dto.MyHomeRegion;
@@ -32,9 +31,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +46,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
@@ -238,7 +238,7 @@ class MyHomeComplexCollectionServiceTest {
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"99\"},"
                 + "\"body\":{\"totalCount\":0,\"item\":[]}}}";
         when(externalRepository.fetch(region, request(), 1))
-                .thenReturn(new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload)));
+                .thenReturn(JsonMapper.builder().build().readTree(payload));
 
         MyHomeComplexCollectionReport result = service.collect(request());
 
@@ -303,7 +303,7 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
         when(externalRepository.fetch(region, request(), 1))
-                .thenThrow(com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException.retryable(
+                .thenThrow(ExternalDataRequestException.retryable(
                         "일시적 실패",
                         new IllegalStateException("504")
                 ))
@@ -324,7 +324,7 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
         when(externalRepository.fetch(region, request(), 1))
-                .thenThrow(com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException.retryable(
+                .thenThrow(ExternalDataRequestException.retryable(
                         "일시적 실패",
                         new IllegalStateException("504")
                 ));
@@ -381,7 +381,7 @@ class MyHomeComplexCollectionServiceTest {
         when(externalRepository.fetch(region, request(), 1))
                 .thenReturn(response(itemsFor(region, 1, 2), 3));
         when(externalRepository.fetch(region, request(), 2))
-                .thenThrow(com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException.retryable(
+                .thenThrow(ExternalDataRequestException.retryable(
                         "resultCode=05",
                         new IllegalStateException("timeout")
                 ));
@@ -776,7 +776,7 @@ class MyHomeComplexCollectionServiceTest {
         return !thread.isInterrupted();
     }
 
-    private ExternalDataResponse responseWithoutTotalCount(String items) {
+    private JsonNode responseWithoutTotalCount(String items) {
         return response(items, null);
     }
 
@@ -788,26 +788,29 @@ class MyHomeComplexCollectionServiceTest {
                 .collect(Collectors.joining(",", "[", "]"));
     }
 
-    private ExternalDataResponse response(String items, Integer totalCount) {
-        String totalCountField = totalCount == null ? "" : "\"totalCount\":" + totalCount + ",";
+    private JsonNode response(String items, Integer totalCount) {
+        String totalCountField = "";
+        if (totalCount != null) {
+            totalCountField = "\"totalCount\":" + totalCount + ",";
+        }
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"},"
                 + "\"body\":{" + totalCountField + "\"item\":" + items + "}}}";
-        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+        return JsonMapper.builder().build().readTree(payload);
     }
 
-    private ExternalDataResponse responseWithTextualTotalCount(String items, String totalCount) {
+    private JsonNode responseWithTextualTotalCount(String items, String totalCount) {
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"},"
                 + "\"body\":{\"totalCount\":\"" + totalCount + "\",\"item\":" + items + "}}}";
-        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+        return JsonMapper.builder().build().readTree(payload);
     }
 
-    private ExternalDataResponse responseWithoutBody() {
+    private JsonNode responseWithoutBody() {
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"}}}";
-        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+        return JsonMapper.builder().build().readTree(payload);
     }
 
-    private ExternalDataResponse noDataResponse() {
+    private JsonNode noDataResponse() {
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"03\"}}}";
-        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+        return JsonMapper.builder().build().readTree(payload);
     }
 }

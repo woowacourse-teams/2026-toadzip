@@ -7,6 +7,9 @@ import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingWriter.MyHomeAnnouncementWriteResult;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +73,9 @@ public class MyHomeLhAnnouncementAtomicWriter {
     }
 
     private Long housingTypeId(SupplyRow row) {
-        return row.getHousingType() == null ? null : row.getHousingType().getId();
+        if (row.getHousingType() == null) {
+            return null;
+        }
+        return row.getHousingType().getId();
     }
 }

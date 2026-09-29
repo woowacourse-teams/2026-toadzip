@@ -1,10 +1,12 @@
 package com.toadzip.backend.ingest.mapping.repository;
 
+import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.MYHOME_COMPLEX_MAPPING;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -34,7 +36,7 @@ class MyHomeComplexMappingExecutionLockTest {
     @Mock
     private ResultSet resultSet;
 
-    private MyHomeComplexMappingExecutionLock executionLock;
+    private IngestOperationLock executionLock;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -43,7 +45,7 @@ class MyHomeComplexMappingExecutionLockTest {
         when(statement.executeQuery()).thenReturn(resultSet);
         when(resultSet.next()).thenReturn(true);
         when(resultSet.getBoolean(1)).thenReturn(true);
-        executionLock = new MyHomeComplexMappingExecutionLock(dataSource);
+        executionLock = new IngestOperationLock(dataSource);
     }
 
     @Test
@@ -52,14 +54,14 @@ class MyHomeComplexMappingExecutionLockTest {
         CountDownLatch releaseOperation = new CountDownLatch(1);
 
         try (var executor = Executors.newSingleThreadExecutor()) {
-            var runningOperation = executor.submit(() -> executionLock.tryRun(() -> {
+            var runningOperation = executor.submit(() -> executionLock.tryRun(MYHOME_COMPLEX_MAPPING, () -> {
                 operationStarted.countDown();
                 await(releaseOperation);
                 return "completed";
             }));
             assertThat(operationStarted.await(1, TimeUnit.SECONDS)).isTrue();
 
-            var rejectedOperation = executionLock.tryRun(() -> "duplicate");
+            var rejectedOperation = executionLock.tryRun(MYHOME_COMPLEX_MAPPING, () -> "duplicate");
             releaseOperation.countDown();
 
             assertThat(rejectedOperation).isEmpty();
@@ -73,7 +75,7 @@ class MyHomeComplexMappingExecutionLockTest {
         AtomicBoolean operationExecuted = new AtomicBoolean();
         when(resultSet.getBoolean(1)).thenReturn(false);
 
-        var result = executionLock.tryRun(() -> {
+        var result = executionLock.tryRun(MYHOME_COMPLEX_MAPPING, () -> {
             operationExecuted.set(true);
             return "duplicate";
         });

@@ -2,7 +2,6 @@ package com.toadzip.backend.ingest.collection.repository.external;
 
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import java.util.List;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -12,9 +11,9 @@ public class LhLeaseCatalogResponseParser {
 
     private static final String LIST_KEY = "dsList";
 
-    public ExternalDataPage<LhCatalogSourceSnapshot> parse(ExternalDataResponse response) {
-        requireDataset(response.body());
-        List<LhCatalogSourceSnapshot> snapshots = ExternalResponseRows.find(response.body(), LIST_KEY)
+    public ExternalDataPage<LhCatalogSourceSnapshot> parse(JsonNode response) {
+        requireDataset(response);
+        List<LhCatalogSourceSnapshot> snapshots = ExternalResponseRows.find(response, LIST_KEY)
                 .stream()
                 .map(this::sourceSnapshotOf)
                 .toList();

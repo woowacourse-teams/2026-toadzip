@@ -22,8 +22,16 @@ public class LhAnnouncementCollectionCandidateResolver {
             "LH 공급기관이 아닌 마이홈 공고라서 수집 대상이 아닙니다.";
     private static final String UNSUPPORTED_REQUEST_REASON =
             "LH 공고 조회 조건을 지원하지 않아 건너뛰었습니다.";
+    private static final Map<String, String> SUPPLY_TYPE_CODE_BY_NAME = Map.of(
+            "5년임대", "060",
+            "10년임대", "060",
+            "50년임대", "061",
+            "국민임대", "062",
+            "영구임대", "062",
+            "행복주택", "063",
+            "통합공공임대", "062"
+    );
 
-    private final LhSupplyInfoTypeCodeResolver supplyTypeCodeResolver;
     private final LhAnnouncementCatalogSourceRepository catalogRepository;
 
     public Resolution resolve(MyHomeAnnouncementSource source) {
@@ -91,7 +99,7 @@ public class LhAnnouncementCollectionCandidateResolver {
     }
 
     private Optional<LhAnnouncementRequest> requestOf(MyHomeAnnouncementSource source) {
-        Optional<String> supplyTypeCode = supplyTypeCodeResolver.resolve(source.getSuplyTyNm());
+        Optional<String> supplyTypeCode = supplyTypeCodeOf(source.getSuplyTyNm());
         if (supplyTypeCode.isEmpty()) {
             return Optional.empty();
         }
@@ -115,6 +123,13 @@ public class LhAnnouncementCollectionCandidateResolver {
             return source.getSourceKey();
         }
         return "myhomeAnnouncementSourceId=" + source.getId();
+    }
+
+    private Optional<String> supplyTypeCodeOf(String supplyTypeName) {
+        if (supplyTypeName == null || supplyTypeName.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(SUPPLY_TYPE_CODE_BY_NAME.get(supplyTypeName.strip()));
     }
 
     private String sourceAnnouncementKey(MyHomeAnnouncementSource source) {

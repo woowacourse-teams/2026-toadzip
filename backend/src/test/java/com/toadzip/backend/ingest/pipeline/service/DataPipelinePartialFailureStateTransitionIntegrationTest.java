@@ -8,10 +8,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementDetailCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCatalogCollectionService;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementSupplyCollectionService;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.collection.service.LhLeaseCatalogCollectionService;
 import com.toadzip.backend.ingest.collection.service.MyHomeAnnouncementCollectionService;
 import com.toadzip.backend.ingest.collection.service.MyHomeComplexCollectionService;
@@ -36,9 +36,9 @@ import java.util.concurrent.ScheduledFuture;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
-import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -146,20 +146,18 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
     void 네_단계_파이프라인의_첫_단계가_부분_실패해도_나머지_단계를_모두_완료한다() {
         MyHomeAnnouncementCollectionService myHomeService =
                 mock(MyHomeAnnouncementCollectionService.class);
-        LhAnnouncementSupplyCollectionService supplyService =
-                mock(LhAnnouncementSupplyCollectionService.class);
-        LhAnnouncementDetailCollectionService detailService =
-                mock(LhAnnouncementDetailCollectionService.class);
+        LhAnnouncementExternalCollectionService collectionService =
+                mock(LhAnnouncementExternalCollectionService.class);
         when(myHomeService.collect(any())).thenReturn(
                 new ExternalDataCollectionReport("myhome-announcement", 2, 1, 3)
         );
-        when(supplyService.collect()).thenReturn(
+        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY)).thenReturn(
                 ExternalDataCollectionReport.empty("lh-announcement-supply")
         );
-        when(detailService.collect()).thenReturn(
+        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)).thenReturn(
                 ExternalDataCollectionReport.empty("lh-announcement-detail")
         );
-        DataPipelineRunner runner = runner(myHomeService, supplyService, detailService);
+        DataPipelineRunner runner = runner(myHomeService, collectionService);
         DataPipelineExecutionLock.Lease lease = mock(DataPipelineExecutionLock.Lease.class);
         DataPipelineExecutionService service = service(runner, lease);
 
@@ -178,9 +176,53 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
                 DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS
         );
-        verify(supplyService).collect();
-        verify(detailService).collect();
+        verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+        verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
         verify(lease).close();
+    }
+
+    @Test
+    void 여러_부분_실패를_저장하고_다음_실행에는_실패_상태를_넘기지_않는다() {
+        MyHomeAnnouncementCollectionService myHomeService =
+                mock(MyHomeAnnouncementCollectionService.class);
+        LhAnnouncementExternalCollectionService collectionService =
+                mock(LhAnnouncementExternalCollectionService.class);
+        when(myHomeService.collect(any())).thenReturn(
+                new ExternalDataCollectionReport("myhome-announcement", 0, 1, 1),
+                ExternalDataCollectionReport.empty("myhome-announcement")
+        );
+        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY)).thenReturn(
+                new ExternalDataCollectionReport("lh-announcement-supply", 0, 1, 1),
+                ExternalDataCollectionReport.empty("lh-announcement-supply")
+        );
+        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL)).thenReturn(
+                new ExternalDataCollectionReport("lh-announcement-detail", 0, 1, 1),
+                ExternalDataCollectionReport.empty("lh-announcement-detail")
+        );
+        DataPipelineExecutionService service = service(
+                runner(myHomeService, collectionService),
+                mock(DataPipelineExecutionLock.Lease.class)
+        );
+
+        var failed = service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+        var first = executionRepository.findByExecutionId(failed.executionId()).orElseThrow();
+
+        assertThat(first.getStatus()).isEqualTo(DataPipelineExecutionStatus.FAILED);
+        assertThat(first.getFailedStep()).isEqualTo(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+        assertThat(first.getPartiallyFailedSteps()).extracting("step").containsExactly(
+                DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS
+        );
+        assertThat(first.getCompletedSteps()).containsExactly(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
+
+        var completed = service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION);
+        var second = executionRepository.findByExecutionId(completed.executionId()).orElseThrow();
+
+        assertThat(second.getStatus()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
+        assertThat(second.getPartiallyFailedSteps()).isEmpty();
+        assertThat(second.getCompletedSteps())
+                .containsExactlyElementsOf(DataPipelineType.ANNOUNCEMENT_COLLECTION.steps());
     }
 
     private DataPipelineExecutionService service(
@@ -214,34 +256,33 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 mock(LhLeaseCatalogCollectionService.class),
                 mock(MyHomeAnnouncementCollectionService.class),
                 mock(LhAnnouncementCatalogCollectionService.class),
-                mock(LhAnnouncementSupplyCollectionService.class),
-                mock(LhAnnouncementDetailCollectionService.class),
+                mock(LhAnnouncementExternalCollectionService.class),
                 mappingService,
                 enrichmentService,
                 mock(MyHomeAnnouncementMappingService.class),
                 mock(LhAnnouncementEnrichmentService.class),
                 new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
+                executionStateService,
                 new SimpleMeterRegistry()
         );
     }
 
     private DataPipelineRunner runner(
             MyHomeAnnouncementCollectionService myHomeService,
-            LhAnnouncementSupplyCollectionService supplyService,
-            LhAnnouncementDetailCollectionService detailService
+            LhAnnouncementExternalCollectionService collectionService
     ) {
         return new DataPipelineRunner(
                 mock(MyHomeComplexCollectionService.class),
                 mock(LhLeaseCatalogCollectionService.class),
                 myHomeService,
                 successfulCatalogService(),
-                supplyService,
-                detailService,
+                collectionService,
                 mock(MyHomeComplexMappingService.class),
                 mock(LhHousingTypeHouseholdEnrichmentService.class),
                 mock(MyHomeAnnouncementMappingService.class),
                 mock(LhAnnouncementEnrichmentService.class),
                 new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
+                executionStateService,
                 new SimpleMeterRegistry()
         );
     }

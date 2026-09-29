@@ -17,6 +17,8 @@ import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingCandidateRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingCandidateStore;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingFailureStore;
+import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingData;
+import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingRejectedException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;

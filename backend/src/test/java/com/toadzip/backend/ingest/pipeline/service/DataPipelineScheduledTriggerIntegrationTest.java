@@ -14,6 +14,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -111,14 +112,14 @@ class DataPipelineScheduledTriggerIntegrationTest {
 
         @Bean
         @Primary
-        DataPipelineRunner scheduledTriggerTestRunner() {
+        DataPipelineRunner scheduledTriggerTestRunner(DataPipelineExecutionStateService executionStateService) {
             DataPipelineRunner runner = mock(DataPipelineRunner.class);
             doAnswer(invocation -> {
                 DataPipelineType type = invocation.getArgument(0);
-                DataPipelineProgressListener listener = invocation.getArgument(1);
+                UUID executionId = invocation.getArgument(1);
                 type.steps().forEach(step -> {
-                    listener.started(step);
-                    listener.completed(step, "{}");
+                    executionStateService.startStep(executionId, step);
+                    executionStateService.completeStep(executionId, step, "{}");
                 });
                 return null;
             }).when(runner).run(any(), any());

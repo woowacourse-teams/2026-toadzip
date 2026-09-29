@@ -2,31 +2,23 @@ package com.toadzip.backend.ingest.mapping.repository;
 
 import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
 
+import com.toadzip.backend.ingest.failure.domain.IngestFailureReconciler;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailure;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import java.time.Clock;
-import java.time.Instant;
 import java.util.EnumSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
+@RequiredArgsConstructor
 public class MyHomeComplexMappingFailureStore {
 
     private final MyHomeComplexMappingFailureRepository repository;
     private final Clock clock;
-
-    public MyHomeComplexMappingFailureStore(
-            MyHomeComplexMappingFailureRepository repository,
-            Clock clock
-    ) {
-        this.repository = repository;
-        this.clock = clock;
-    }
 
     @Transactional
     public void replacePreparationFailures(
@@ -38,19 +30,18 @@ public class MyHomeComplexMappingFailureStore {
                 MyHomeComplexMappingFailureReason.INVALID_VALUE,
                 MyHomeComplexMappingFailureReason.CONFLICTING_SOURCE_VALUE
         );
-        Map<FailureKey, MyHomeComplexMappingFailure> stored = indexed(
-                repository.findAllByReasonInAndStatus(preparationReasons, PENDING)
-        );
+        List<MyHomeComplexMappingFailure> stored = repository.findAllByReasonInAndStatus(preparationReasons, PENDING);
+        List<MyHomeComplexMappingFailure> history = List.of();
         if (!failures.isEmpty()) {
-            repository.findAllByReasonInAndSourceKeyIn(
+            history = repository.findAllByReasonInAndSourceKeyIn(
                     preparationReasons,
                     failures.stream()
                             .map(MyHomeComplexMappingFailure::getSourceKey)
                             .distinct()
                             .toList()
-            ).forEach(failure -> stored.putIfAbsent(FailureKey.from(failure), failure));
+            );
         }
-        reconcile(List.copyOf(stored.values()), failures, executionId);
+        reconcile(stored, history, failures, executionId);
     }
 
     @Transactional
@@ -61,6 +52,7 @@ public class MyHomeComplexMappingFailureStore {
     ) {
         reconcile(
                 repository.findAllBySourceComplexIdentifier(sourceComplexIdentifier),
+                List.of(),
                 failures,
                 executionId
         );
@@ -68,40 +60,12 @@ public class MyHomeComplexMappingFailureStore {
 
     private void reconcile(
             List<MyHomeComplexMappingFailure> storedFailures,
+            List<MyHomeComplexMappingFailure> historicalFailures,
             List<MyHomeComplexMappingFailure> observedFailures,
             UUID executionId
     ) {
-        Instant resolvedAt = clock.instant();
-        Map<FailureKey, MyHomeComplexMappingFailure> stored = indexed(storedFailures);
-        Map<FailureKey, MyHomeComplexMappingFailure> observed = indexed(observedFailures);
-        stored.forEach((key, failure) -> {
-            if (failure.getStatus() == PENDING && !observed.containsKey(key)) {
-                failure.resolve(resolvedAt, executionId);
-            }
-        });
-        observed.forEach((key, failure) -> {
-            MyHomeComplexMappingFailure existing = stored.get(key);
-            if (existing == null) {
-                failure.attachFirstExecution(executionId);
-                repository.save(failure);
-                return;
-            }
-            existing.observe(failure, executionId);
-        });
-    }
-
-    private Map<FailureKey, MyHomeComplexMappingFailure> indexed(
-            List<MyHomeComplexMappingFailure> failures
-    ) {
-        Map<FailureKey, MyHomeComplexMappingFailure> indexed = new LinkedHashMap<>();
-        failures.forEach(failure -> indexed.put(FailureKey.from(failure), failure));
-        return indexed;
-    }
-
-    private record FailureKey(String sourceKey, Object reason) {
-
-        private static FailureKey from(MyHomeComplexMappingFailure failure) {
-            return new FailureKey(failure.getSourceKey(), failure.getReason());
-        }
+        IngestFailureReconciler.reconcile(
+                storedFailures, historicalFailures, observedFailures, clock.instant(), executionId
+        ).forEach(repository::save);
     }
 }

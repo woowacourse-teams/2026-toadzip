@@ -1,8 +1,8 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
+import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
-import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
@@ -14,6 +14,7 @@ import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepos
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
@@ -22,6 +23,8 @@ import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -87,7 +90,7 @@ public class DataPipelineExecutionService {
                     startedAt,
                     INTERRUPTED_FAILURE_MESSAGE
             );
-            execution = createExecution(
+            execution = executionStateService.create(
                     executionId,
                     type,
                     startedAt,
@@ -123,33 +126,13 @@ public class DataPipelineExecutionService {
         return acceptedResponse;
     }
 
-    private DataPipelineExecution createExecution(
-            UUID executionId,
-            DataPipelineType type,
-            Instant startedAt,
-            DataPipelineExecutionTrigger executionTrigger,
-            Instant scheduledAt,
-            UUID upstreamExecutionId
-    ) {
-        if (executionTrigger == DataPipelineExecutionTrigger.MANUAL
-                && scheduledAt == null
-                && upstreamExecutionId == null) {
-            return executionStateService.create(executionId, type, startedAt);
-        }
-        return executionStateService.create(
-                executionId,
-                type,
-                startedAt,
-                executionTrigger,
-                scheduledAt,
-                upstreamExecutionId
+    public List<DataPipelineExecutionResponse> history(int page, int size) {
+        var request = PageRequest.of(
+                page, size, Sort.by("id").descending()
         );
-    }
-
-    public java.util.List<DataPipelineExecutionResponse> history(int page, int size) {
-        return executionRepository.findAll(org.springframework.data.domain.PageRequest.of(page, size,
-                org.springframework.data.domain.Sort.by("id").descending())).stream()
-                .map(executionMapper::response).toList();
+        return executionRepository.findAll(request).stream()
+                .map(executionMapper::response)
+                .toList();
     }
 
     public DataPipelineExecutionResponse findLatest(DataPipelineType type) {
@@ -225,7 +208,7 @@ public class DataPipelineExecutionService {
 
     private void runUntilStopped(UUID executionId, DataPipelineType type) {
         try {
-            runner.run(type, progressListener(executionId));
+            runner.run(type, executionId);
         }
         catch (DataPipelineStoppedException exception) {
             executionStateService.stop(executionId, Instant.now(clock));
@@ -240,57 +223,6 @@ public class DataPipelineExecutionService {
             return;
         }
         MDC.put(key, value);
-    }
-
-    private DataPipelineProgressListener progressListener(UUID executionId) {
-        return new DataPipelineProgressListener() {
-            private DataPipelineStep partiallyFailedStep;
-
-            @Override
-            public void started(DataPipelineStep step) {
-                IngestExecutionScope.verifyHeld();
-                IngestExecutionScope.checkStopRequested();
-                if (partiallyFailedStep != null) {
-                    executionStateService.startStepAfterPartialFailure(
-                            executionId,
-                            partiallyFailedStep,
-                            step
-                    );
-                    partiallyFailedStep = null;
-                    return;
-                }
-                executionStateService.startStep(executionId, step);
-            }
-
-            @Override
-            public void completed(DataPipelineStep step, String report) {
-                executionStateService.completeStep(executionId, step, report);
-            }
-
-            @Override
-            public void completedWithWarnings(DataPipelineStep step, String report) {
-                executionStateService.completeStepWithWarnings(executionId, step, report);
-            }
-
-            @Override
-            public void skipped(DataPipelineStep step, String reason, String serverResponse) {
-                executionStateService.skipStep(
-                        executionId,
-                        step,
-                        reason,
-                        serverResponse
-                );
-            }
-
-            @Override
-            public void partiallyFailed(DataPipelineStep step, String report) {
-                if (partiallyFailedStep != null) {
-                    throw new IllegalStateException("부분 실패한 단계의 후속 단계가 시작되지 않았습니다.");
-                }
-                executionStateService.recordPartialFailure(executionId, step, report);
-                partiallyFailedStep = step;
-            }
-        };
     }
 
     private void recordFailure(

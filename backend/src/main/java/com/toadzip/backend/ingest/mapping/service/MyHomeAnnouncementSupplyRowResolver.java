@@ -11,6 +11,9 @@ import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutio
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -133,9 +136,10 @@ public class MyHomeAnnouncementSupplyRowResolver {
     ) {
         String sourceHousingTypeName = sourceHousingTypeName(sourceRow, lhSupply);
         Integer lhSupplyHouseholdCount = nonNegativeInteger(lhSupply.getSuppliedUnitCount());
-        Integer totalSupplyHouseholdCount = lhSupplyHouseholdCount == null
-                ? sourceRow.totalSupplyHouseholdCount()
-                : lhSupplyHouseholdCount;
+        Integer totalSupplyHouseholdCount = lhSupplyHouseholdCount;
+        if (totalSupplyHouseholdCount == null) {
+            totalSupplyHouseholdCount = sourceRow.totalSupplyHouseholdCount();
+        }
         return new MyHomeSupplyRowMappingData(
                 sourceRow.source(),
                 sourceIdentifier(announcementIdentifier, sourceRow, lhSupply, preserveOriginalIdentifier),

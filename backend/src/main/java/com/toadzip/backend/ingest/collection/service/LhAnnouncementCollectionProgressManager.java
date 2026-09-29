@@ -1,8 +1,8 @@
 package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore.BatchProgress;
+import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import java.time.Clock;
 import java.time.Duration;
@@ -12,37 +12,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BinaryOperator;
-import org.springframework.beans.factory.annotation.Value;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
+@RequiredArgsConstructor
 public class LhAnnouncementCollectionProgressManager {
 
     private final LhAnnouncementCollectionProgressStore progressStore;
     private final ExternalDataFailureRecorder failureRecorder;
     private final Clock clock;
-    private final Duration refreshTtl;
-
-    public LhAnnouncementCollectionProgressManager(
-            LhAnnouncementCollectionProgressStore progressStore,
-            ExternalDataFailureRecorder failureRecorder,
-            Clock clock,
-            @Value("${ingest.lh-announcement-refresh-ttl}") Duration refreshTtl
-    ) {
-        if (refreshTtl.isZero() || refreshTtl.isNegative()) {
-            throw new IllegalArgumentException("LH 공고 재수집 만료 시간은 0보다 커야 합니다.");
-        }
-        this.progressStore = progressStore;
-        this.failureRecorder = failureRecorder;
-        this.clock = clock;
-        this.refreshTtl = refreshTtl;
-    }
-
-    public BatchProgress findBatch(ExternalDataSource targetSource, List<Candidate> candidates) {
-        return findBatch(targetSource, candidates, refreshTtl);
-    }
-
     public BatchProgress findBatch(
             ExternalDataSource targetSource,
             List<Candidate> candidates,
@@ -58,20 +38,12 @@ public class LhAnnouncementCollectionProgressManager {
                         BinaryOperator.maxBy(Comparator.naturalOrder()));
             }
         }
-        if (!changedAtByRequest.isEmpty()) {
-            return progressStore.findBatch(
-                    targetSource,
-                    candidates.stream().map(Candidate::requestDescription).toList(),
-                    candidates.stream().map(Candidate::sourceAnnouncementKey).toList(),
-                    clock.instant().minus(candidateRefreshTtl),
-                    changedAtByRequest
-            );
-        }
         return progressStore.findBatch(
                 targetSource,
                 candidates.stream().map(Candidate::requestDescription).toList(),
                 candidates.stream().map(Candidate::sourceAnnouncementKey).toList(),
-                clock.instant().minus(candidateRefreshTtl)
+                clock.instant().minus(candidateRefreshTtl),
+                changedAtByRequest
         );
     }
 

@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
 import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
+import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.LH_ANNOUNCEMENT_ENRICHMENT;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
@@ -23,13 +24,17 @@ import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFail
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentFailureResponse;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
-import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentExecutionLock;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter.LhAnnouncementEnrichmentWriteResult;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter.LhSupplyMatchingFailureData;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -39,8 +44,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
@@ -55,7 +60,7 @@ public class LhAnnouncementEnrichmentService {
     private final LhAnnouncementEnrichmentFailureRepository failureRepository;
     private final LhAnnouncementEnrichmentFailureStore failureStore;
     private final MyHomeAnnouncementMappingFailureRepository mappingFailureRepository;
-    private final LhAnnouncementEnrichmentExecutionLock executionLock;
+    private final IngestOperationLock executionLock;
     private final LhAnnouncementEnrichmentMapper mapper;
     private final LhAnnouncementEnrichmentWriter writer;
     private final LhAnnouncementLinkResolver linkResolver;
@@ -71,7 +76,7 @@ public class LhAnnouncementEnrichmentService {
             LhAnnouncementEnrichmentFailureRepository failureRepository,
             LhAnnouncementEnrichmentFailureStore failureStore,
             MyHomeAnnouncementMappingFailureRepository mappingFailureRepository,
-            LhAnnouncementEnrichmentExecutionLock executionLock,
+            IngestOperationLock executionLock,
             LhAnnouncementEnrichmentMapper mapper,
             LhAnnouncementEnrichmentWriter writer,
             LhAnnouncementLinkResolver linkResolver,
@@ -95,7 +100,8 @@ public class LhAnnouncementEnrichmentService {
     }
 
     public LhAnnouncementEnrichmentReport enrichAll() {
-        return executionLock.tryRun(this::enrichAllUnlocked).orElseThrow(this::alreadyRunning);
+        return executionLock.tryRun(LH_ANNOUNCEMENT_ENRICHMENT, this::enrichAllUnlocked)
+                .orElseThrow(this::alreadyRunning);
     }
 
     public List<LhAnnouncementEnrichmentFailure> enrichForAtomicMapping(

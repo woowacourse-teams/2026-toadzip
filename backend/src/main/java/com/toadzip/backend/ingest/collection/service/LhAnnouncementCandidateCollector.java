@@ -5,7 +5,10 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
+import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
+import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
@@ -17,12 +20,19 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+/**
+ * 선정된 요청 하나를 조회·파싱하고 저장한 뒤 수집 완료를 기록한다.
+ * 재시도는 외부 조회와 파싱에만 적용하며 저장과 완료 기록의 트랜잭션은 각 저장소·관리자가 소유한다.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class LhAnnouncementCandidateCollector {
 
-    private final LhAnnouncementResponseFetcher responseFetcher;
+    private final LhAnnouncementExternalRepository externalRepository;
+    private final LhAnnouncementDetailResponseParser detailResponseParser;
+    private final LhAnnouncementSupplyResponseParser supplyResponseParser;
+    private final ExternalDataRetryExecutor retryExecutor;
     private final LhSourceStore sourceStore;
     private final ExternalDataFailureRecorder failureRecorder;
     private final LhAnnouncementCollectionProgressManager progressManager;
@@ -87,13 +97,25 @@ public class LhAnnouncementCandidateCollector {
             ExternalDataCallCounter callCounter
     ) {
         if (targetSource == ExternalDataSource.LH_ANNOUNCEMENT_DETAIL) {
-            List<LhAnnouncementDetailSource> details = responseFetcher.fetchDetails(request, callCounter);
+            List<LhAnnouncementDetailSource> details = retryExecutor.execute(
+                    ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
+                    request.requestDescription(),
+                    () -> detailResponseParser.parse(request.panId(), externalRepository.fetchDetail(request)),
+                    callCounter
+            );
             return meterRegistry.timer("ingest.announcement.store", "source", targetSource.name())
                     .record(() -> sourceStore.replaceDetails(
                             request.panId(), request.requestDescription(), details
                     ));
         }
-        List<LhAnnouncementSupplySource> supplies = responseFetcher.fetchSupplies(request, callCounter);
+        List<LhAnnouncementSupplySource> supplies = retryExecutor.execute(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                request.requestDescription(),
+                () -> supplyResponseParser.parse(
+                        request.panId(), request.supplyInfoTypeCode(), externalRepository.fetchSupply(request)
+                ),
+                callCounter
+        );
         return meterRegistry.timer("ingest.announcement.store", "source", targetSource.name())
                 .record(() -> sourceStore.replaceSupplies(
                         request.panId(), request.requestDescription(), supplies

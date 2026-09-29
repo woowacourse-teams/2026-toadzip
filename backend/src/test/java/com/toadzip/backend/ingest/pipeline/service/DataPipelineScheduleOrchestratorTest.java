@@ -15,7 +15,6 @@ import com.toadzip.backend.ingest.pipeline.configuration.DataPipelineSchedulerPr
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
-import com.toadzip.backend.ingest.pipeline.domain.DataPipelineSchedule;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;

@@ -197,8 +197,12 @@ class LocationSummaryImportServiceTest {
     }
 
     private String row(String provinceCode, String provinceName, String seoulRoadName) {
-        String districtCode = provinceCode.equals("11") ? "11110" : provinceCode + "000";
-        String districtName = provinceCode.equals("11") ? "종로구" : "테스트시";
+        String districtCode = provinceCode + "000";
+        String districtName = "테스트시";
+        if (provinceCode.equals("11")) {
+            districtCode = "11110";
+            districtName = "종로구";
+        }
         String roadName = roadName(provinceCode, seoulRoadName);
         return String.join("|",
                 districtCode,

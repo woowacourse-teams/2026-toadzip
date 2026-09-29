@@ -120,14 +120,16 @@ class DataPipelineScheduleOrchestratorIntegrationTest {
         UUID oldScheduledId = UUID.randomUUID();
         UUID activeId = UUID.randomUUID();
         executionStateService.create(oldManualId, DataPipelineType.ANNOUNCEMENT_COLLECTION,
-                NOW.minusSeconds(3_600));
+                NOW.minusSeconds(3_600),
+                DataPipelineExecutionTrigger.MANUAL, null, null);
         executionStateService.startStep(oldManualId, DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
         executionStateService.create(oldScheduledId, DataPipelineType.ANNOUNCEMENT_REFINEMENT,
                 NOW.minusSeconds(1_800), DataPipelineExecutionTrigger.SCHEDULED,
                 ANNOUNCEMENT_SLOT, null);
         executionStateService.startStep(oldScheduledId, DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
         executionStateService.create(activeId, DataPipelineType.COMPLEX_REFINEMENT,
-                NOW.minusSeconds(60));
+                NOW.minusSeconds(60),
+                DataPipelineExecutionTrigger.MANUAL, null, null);
         executionStateService.startStep(activeId, DataPipelineStep.MAP_MYHOME_COMPLEXES);
         completeEveryPipeline();
 
@@ -370,10 +372,10 @@ class DataPipelineScheduleOrchestratorIntegrationTest {
     private void completeEveryPipeline() {
         doAnswer(invocation -> {
             DataPipelineType type = invocation.getArgument(0);
-            DataPipelineProgressListener listener = invocation.getArgument(1);
+            UUID executionId = invocation.getArgument(1);
             type.steps().forEach(step -> {
-                listener.started(step);
-                listener.completed(step, "{}");
+                executionStateService.startStep(executionId, step);
+                executionStateService.completeStep(executionId, step, "{}");
             });
             return null;
         }).when(runner).run(any(), any());
@@ -382,15 +384,15 @@ class DataPipelineScheduleOrchestratorIntegrationTest {
     private void completeWithSkippedAnnouncementCollection() {
         doAnswer(invocation -> {
             DataPipelineType type = invocation.getArgument(0);
-            DataPipelineProgressListener listener = invocation.getArgument(1);
+            UUID executionId = invocation.getArgument(1);
             type.steps().forEach(step -> {
-                listener.started(step);
+                executionStateService.startStep(executionId, step);
                 if (type == DataPipelineType.ANNOUNCEMENT_COLLECTION
                         && step == type.steps().getFirst()) {
-                    listener.skipped(step, "외부 API 호출 제한", "{}");
+                    executionStateService.skipStep(executionId, step, "외부 API 호출 제한", "{}");
                     return;
                 }
-                listener.completed(step, "{}");
+                executionStateService.completeStep(executionId, step, "{}");
             });
             return null;
         }).when(runner).run(any(), any());
@@ -399,14 +401,14 @@ class DataPipelineScheduleOrchestratorIntegrationTest {
     private void failAnnouncementCollection() {
         doAnswer(invocation -> {
             DataPipelineType type = invocation.getArgument(0);
-            DataPipelineProgressListener listener = invocation.getArgument(1);
+            UUID executionId = invocation.getArgument(1);
             if (type == DataPipelineType.ANNOUNCEMENT_COLLECTION) {
-                listener.started(type.steps().getFirst());
+                executionStateService.startStep(executionId, type.steps().getFirst());
                 throw new IllegalStateException("외부 수집 실패");
             }
             type.steps().forEach(step -> {
-                listener.started(step);
-                listener.completed(step, "{}");
+                executionStateService.startStep(executionId, step);
+                executionStateService.completeStep(executionId, step, "{}");
             });
             return null;
         }).when(runner).run(any(), any());
@@ -414,7 +416,8 @@ class DataPipelineScheduleOrchestratorIntegrationTest {
 
     private void saveCompletedManualExecution(DataPipelineType type, Instant startedAt) {
         UUID executionId = UUID.randomUUID();
-        executionStateService.create(executionId, type, startedAt);
+        executionStateService.create(executionId, type, startedAt,
+                DataPipelineExecutionTrigger.MANUAL, null, null);
         type.steps().forEach(step -> {
             executionStateService.startStep(executionId, step);
             executionStateService.completeStep(executionId, step, "{}");

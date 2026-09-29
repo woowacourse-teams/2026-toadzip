@@ -24,6 +24,7 @@
 | 예외 처리 | [exception-handling.md](exception-handling.md) | 예외 소유권, Advice, 오류 계약 |
 | DB 변경 | [persistence.md](persistence.md) | 모델, 쿼리, 트랜잭션 |
 | Flyway 최초 적용 | [flyway-adoption.md](flyway-adoption.md) | 기존 DB baseline과 새 DB 생성 경로 |
+| ingest 처음 읽기 | [ingest-maintenance.md](ingest-maintenance.md) | 시작할 두 파일, 단계별 서비스와 수집 흐름 |
 | 관리자 데이터 파이프라인 | [data-pipeline-execution.md](data-pipeline-execution.md) | 실행 상태와 스키마 배포 |
 | 마이홈 단지 통합 | [myhome-complex-linking.md](myhome-complex-linking.md) | 원천 연결, 확인된 통합, 재정제와 복구 |
 | 수집·정제 코드 리뷰 | [ingest-review-2026-09-26.md](ingest-review-2026-09-26.md) | 9월 28일 재검토: 해결 상태, 원천 선택 결함, 책임·성능·죽은 코드와 개선 순서 |

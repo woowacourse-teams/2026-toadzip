@@ -1,12 +1,11 @@
 package com.toadzip.backend.ingest.collection.service;
 
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
-import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
-
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.collection.dto.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.repository.MyHomeRegionCatalog;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -112,12 +111,7 @@ public class MyHomeComplexCollectionService {
             cancelRemaining = true;
         }
         finally {
-            if (cancelRemaining && !(failure instanceof DataPipelineStoppedException)) {
-                cancelNeverStarted(executor.shutdownNow());
-            }
-            else {
-                executor.shutdown();
-            }
+            shutdown(executor, cancelRemaining && !(failure instanceof DataPipelineStoppedException));
             InterruptedException terminationInterruption = awaitTermination(executor);
             if (terminationInterruption != null) {
                 failure = appendFailure(failure, interruptedFailure(terminationInterruption));
@@ -203,6 +197,14 @@ public class MyHomeComplexCollectionService {
         }
     }
 
+    private void shutdown(ExecutorService executor, boolean cancelRemaining) {
+        if (cancelRemaining) {
+            cancelNeverStarted(executor.shutdownNow());
+            return;
+        }
+        executor.shutdown();
+    }
+
     private InterruptedException awaitTermination(ExecutorService executor) {
         InterruptedException interruption = null;
         while (!executor.isTerminated()) {
@@ -213,10 +215,9 @@ public class MyHomeComplexCollectionService {
                 executor.shutdownNow();
                 if (interruption == null) {
                     interruption = exception;
+                    continue;
                 }
-                else {
-                    interruption.addSuppressed(exception);
-                }
+                interruption.addSuppressed(exception);
             }
         }
         return interruption;

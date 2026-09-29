@@ -14,8 +14,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Propagation;
@@ -72,9 +72,11 @@ class DataPipelineExecutionRepositoryTest {
         Instant now = startedAt.plusSeconds(300);
         UUID refreshedId = UUID.randomUUID();
         UUID completedId = UUID.randomUUID();
-        executionStateService.create(refreshedId, DataPipelineType.COMPLEX_REFINEMENT, startedAt);
+        executionStateService.create(refreshedId, DataPipelineType.COMPLEX_REFINEMENT, startedAt,
+                DataPipelineExecutionTrigger.MANUAL, null, null);
         executionStateService.startStep(refreshedId, DataPipelineStep.MAP_MYHOME_COMPLEXES);
-        executionStateService.create(completedId, DataPipelineType.COMPLEX_REFINEMENT, startedAt);
+        executionStateService.create(completedId, DataPipelineType.COMPLEX_REFINEMENT, startedAt,
+                DataPipelineExecutionTrigger.MANUAL, null, null);
         executionStateService.fail(completedId, null, "이미 실패한 실행", null, startedAt.plusSeconds(1));
         Long refreshedRowId = executionRepository.findByExecutionId(refreshedId).orElseThrow().getId();
         executionRepository.updateHeartbeat(refreshedRowId, now.minusSeconds(30));
@@ -143,7 +145,8 @@ class DataPipelineExecutionRepositoryTest {
     void 단계마다_새_트랜잭션에서_실행을_갱신해도_완료_단계_순서가_충돌하지_않는다() {
         UUID executionId = UUID.randomUUID();
         Instant startedAt = Instant.parse("2026-09-03T03:00:00Z");
-        executionStateService.create(executionId, DataPipelineType.ANNOUNCEMENT_REFINEMENT, startedAt);
+        executionStateService.create(executionId, DataPipelineType.ANNOUNCEMENT_REFINEMENT, startedAt,
+                DataPipelineExecutionTrigger.MANUAL, null, null);
         executionStateService.startStep(executionId, DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
         executionStateService.completeStep(
                 executionId,
@@ -172,7 +175,8 @@ class DataPipelineExecutionRepositoryTest {
     void 건너뛴_단계와_완료한_단계를_각각_보존한다() {
         UUID executionId = UUID.randomUUID();
         Instant startedAt = Instant.parse("2026-09-03T03:00:00Z");
-        executionStateService.create(executionId, DataPipelineType.COMPLEX_REFINEMENT, startedAt);
+        executionStateService.create(executionId, DataPipelineType.COMPLEX_REFINEMENT, startedAt,
+                DataPipelineExecutionTrigger.MANUAL, null, null);
         executionStateService.startStep(executionId, DataPipelineStep.MAP_MYHOME_COMPLEXES);
         executionStateService.skipStep(
                 executionId,
@@ -208,7 +212,8 @@ class DataPipelineExecutionRepositoryTest {
     void 부분_실패한_단계별_보고서를_순서대로_보존한다() {
         UUID executionId = UUID.randomUUID();
         Instant startedAt = Instant.parse("2026-09-03T03:00:00Z");
-        executionStateService.create(executionId, DataPipelineType.ANNOUNCEMENT_COLLECTION, startedAt);
+        executionStateService.create(executionId, DataPipelineType.ANNOUNCEMENT_COLLECTION, startedAt,
+                DataPipelineExecutionTrigger.MANUAL, null, null);
         executionStateService.startStep(
                 executionId,
                 DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS

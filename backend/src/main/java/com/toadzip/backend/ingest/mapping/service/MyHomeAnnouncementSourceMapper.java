@@ -9,6 +9,7 @@ import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper.MyHomeAnnouncementCommonValues;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -86,96 +87,96 @@ public class MyHomeAnnouncementSourceMapper {
         ).thenComparing(MyHomeAnnouncementSource::getId, Comparator.nullsLast(Comparator.naturalOrder())));
         return ordered;
     }
-}
 
-record MyHomeAnnouncementMappingData(
-        String sourceAnnouncementIdentifier,
-        String previousSourceAnnouncementIdentifier,
-        String name,
-        AnnouncementPublicationType publicationType,
-        RentalType rentalType,
-        RecruitmentType recruitmentType,
-        AgencyCode provider,
-        LocalDate postedDate,
-        LocalDate applicationStartDate,
-        LocalDate applicationEndDate,
-        LocalDate winnerAnnouncementDate,
-        String originalUrl,
-        ReceptionPlace receptionPlace,
-        List<MyHomeSupplyRowMappingData> supplyRows,
-        boolean preserveExistingLhResolvedRows
-) {
-
-    MyHomeAnnouncementMappingData withSupplyRows(List<MyHomeSupplyRowMappingData> resolvedSupplyRows) {
-        return new MyHomeAnnouncementMappingData(
-                sourceAnnouncementIdentifier,
-                previousSourceAnnouncementIdentifier,
-                name,
-                publicationType,
-                rentalType,
-                recruitmentType,
-                provider,
-                postedDate,
-                applicationStartDate,
-                applicationEndDate,
-                winnerAnnouncementDate,
-                originalUrl,
-                receptionPlace,
-                resolvedSupplyRows,
-                false
-        );
-    }
-
-    MyHomeAnnouncementMappingData preservingExistingLhResolvedRows() {
-        return new MyHomeAnnouncementMappingData(
-                sourceAnnouncementIdentifier,
-                previousSourceAnnouncementIdentifier,
-                name,
-                publicationType,
-                rentalType,
-                recruitmentType,
-                provider,
-                postedDate,
-                applicationStartDate,
-                applicationEndDate,
-                winnerAnnouncementDate,
-                originalUrl,
-                receptionPlace,
-                supplyRows,
-                true
-        );
-    }
-}
-
-record MyHomeSupplyRowMappingData(
-        MyHomeAnnouncementSource source,
-        String sourceSupplyRowIdentifier,
-        String sourceComplexName,
-        String sourceHousingTypeName,
-        String pnu,
-        String complexSupplyType,
-        SupplyCategory supplyCategory,
-        Integer totalSupplyHouseholdCount,
-        BigDecimal exclusiveArea,
-        BigDecimal supplyArea,
-        Integer lhTotalSupplyHouseholdCount,
-        String resolvedLhSourceIdentifier
-) {
-}
-
-class MyHomeAnnouncementMappingRejectedException extends RuntimeException {
-
-    private final MyHomeAnnouncementMappingFailureReason reason;
-
-    MyHomeAnnouncementMappingRejectedException(
-            MyHomeAnnouncementMappingFailureReason reason,
-            String detail
+    record MyHomeAnnouncementMappingData(
+            String sourceAnnouncementIdentifier,
+            String previousSourceAnnouncementIdentifier,
+            String name,
+            AnnouncementPublicationType publicationType,
+            RentalType rentalType,
+            RecruitmentType recruitmentType,
+            AgencyCode provider,
+            LocalDate postedDate,
+            LocalDate applicationStartDate,
+            LocalDate applicationEndDate,
+            LocalDate winnerAnnouncementDate,
+            String originalUrl,
+            ReceptionPlace receptionPlace,
+            List<MyHomeSupplyRowMappingData> supplyRows,
+            boolean preserveExistingLhResolvedRows
     ) {
-        super(detail);
-        this.reason = reason;
+
+        MyHomeAnnouncementMappingData withSupplyRows(List<MyHomeSupplyRowMappingData> resolvedSupplyRows) {
+            return new MyHomeAnnouncementMappingData(
+                    sourceAnnouncementIdentifier,
+                    previousSourceAnnouncementIdentifier,
+                    name,
+                    publicationType,
+                    rentalType,
+                    recruitmentType,
+                    provider,
+                    postedDate,
+                    applicationStartDate,
+                    applicationEndDate,
+                    winnerAnnouncementDate,
+                    originalUrl,
+                    receptionPlace,
+                    resolvedSupplyRows,
+                    false
+            );
+        }
+
+        MyHomeAnnouncementMappingData preservingExistingLhResolvedRows() {
+            return new MyHomeAnnouncementMappingData(
+                    sourceAnnouncementIdentifier,
+                    previousSourceAnnouncementIdentifier,
+                    name,
+                    publicationType,
+                    rentalType,
+                    recruitmentType,
+                    provider,
+                    postedDate,
+                    applicationStartDate,
+                    applicationEndDate,
+                    winnerAnnouncementDate,
+                    originalUrl,
+                    receptionPlace,
+                    supplyRows,
+                    true
+            );
+        }
     }
 
-    MyHomeAnnouncementMappingFailureReason reason() {
-        return reason;
+    record MyHomeSupplyRowMappingData(
+            MyHomeAnnouncementSource source,
+            String sourceSupplyRowIdentifier,
+            String sourceComplexName,
+            String sourceHousingTypeName,
+            String pnu,
+            String complexSupplyType,
+            SupplyCategory supplyCategory,
+            Integer totalSupplyHouseholdCount,
+            BigDecimal exclusiveArea,
+            BigDecimal supplyArea,
+            Integer lhTotalSupplyHouseholdCount,
+            String resolvedLhSourceIdentifier
+    ) {
+    }
+
+    static class MyHomeAnnouncementMappingRejectedException extends RuntimeException {
+
+        private final MyHomeAnnouncementMappingFailureReason reason;
+
+        MyHomeAnnouncementMappingRejectedException(
+                MyHomeAnnouncementMappingFailureReason reason,
+                String detail
+        ) {
+            super(detail);
+            this.reason = reason;
+        }
+
+        MyHomeAnnouncementMappingFailureReason reason() {
+            return reason;
+        }
     }
 }

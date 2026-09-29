@@ -5,11 +5,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 class LhLeaseCatalogResponseParserTest {
@@ -47,8 +47,8 @@ class LhLeaseCatalogResponseParserTest {
     @Test
     @DisplayName("LH 임대 카탈로그 dataset이 없거나 타입이 잘못되면 실패한다")
     void rejectsMissingOrInvalidCatalogDataset() {
-        ExternalDataResponse missing = response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]}]");
-        ExternalDataResponse scalar = response("[{\"dsList\":\"invalid\"}]");
+        JsonNode missing = response("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]}]");
+        JsonNode scalar = response("[{\"dsList\":\"invalid\"}]");
 
         assertThatThrownBy(() -> parser.parse(missing))
                 .isInstanceOf(ExternalDataRequestException.class)
@@ -70,7 +70,7 @@ class LhLeaseCatalogResponseParserTest {
                 .isInstanceOf(ExternalDataRequestException.class);
     }
 
-    private ExternalDataResponse response(String payload) {
-        return new ExternalDataResponse(payload, objectMapper.readTree(payload));
+    private JsonNode response(String payload) {
+        return objectMapper.readTree(payload);
     }
 }

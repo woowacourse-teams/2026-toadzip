@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
 import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHouseholdSource;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -163,7 +164,11 @@ public class LhHousingTypeHouseholdMatcher {
         if (commonLength < 4 && diceScore < 450 && !(commonLength >= 2 && sharesNumber)) {
             return 0;
         }
-        return 1_000 + commonLength * 100 + diceScore + (sharesNumber ? 200 : 0);
+        int score = 1_000 + commonLength * 100 + diceScore;
+        if (sharesNumber) {
+            return score + 200;
+        }
+        return score;
     }
 
     private String comparableName(String normalizedName) {

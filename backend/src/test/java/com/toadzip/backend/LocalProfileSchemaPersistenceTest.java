@@ -11,18 +11,36 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
+import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
+import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
+import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailure;
+import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailureReason;
+import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
+import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureRepository;
+import com.toadzip.backend.ingest.failure.domain.IngestFailure;
+import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
+import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
+import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
+import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailure;
+import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
+import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
+import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingFailureRepository;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.StandardEnvironment;
@@ -42,6 +60,7 @@ class LocalProfileSchemaPersistenceTest {
                     .run()) {
                 String ddlAuto = applicationContext.getEnvironment().getProperty("spring.jpa.hibernate.ddl-auto");
                 assertEquals("validate", ddlAuto);
+                verifyFailurePersistence(applicationContext);
             }
 
             try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
@@ -100,6 +119,64 @@ class LocalProfileSchemaPersistenceTest {
         finally {
             dropDatabase(databaseName);
         }
+    }
+
+    private void verifyFailurePersistence(ConfigurableApplicationContext context) {
+        Instant occurredAt = Instant.parse("2026-09-29T00:00:00Z");
+        var complexRepository = context.getBean(MyHomeComplexMappingFailureRepository.class);
+        verifyFailurePersistence(complexRepository, MyHomeComplexMappingFailure.create(
+                "complex", "complex-id", MyHomeComplexMappingFailureReason.INVALID_VALUE, "실패", occurredAt
+        ), () -> complexRepository.findAllByStatusOrderBySourceKeyAscIdAsc(
+                IngestFailureStatus.PENDING, PageRequest.of(0, 10)));
+        var announcementRepository = context.getBean(MyHomeAnnouncementMappingFailureRepository.class);
+        verifyFailurePersistence(announcementRepository, MyHomeAnnouncementMappingFailure.create(
+                "announcement", "announcement-id", 1, MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
+                "실패", occurredAt
+        ), () -> announcementRepository.findAllByStatusOrderBySourceKeyAscIdAsc(
+                IngestFailureStatus.PENDING, PageRequest.of(0, 10)));
+        var enrichmentRepository = context.getBean(LhAnnouncementEnrichmentFailureRepository.class);
+        verifyFailurePersistence(enrichmentRepository, LhAnnouncementEnrichmentFailure.create(
+                "enrichment", "announcement-id", "pan-id", LhAnnouncementEnrichmentFailureReason.INVALID_VALUE,
+                "실패", occurredAt
+        ), () -> enrichmentRepository.findAllByStatusOrderBySourceKeyAscIdAsc(
+                IngestFailureStatus.PENDING, PageRequest.of(0, 10)));
+        var householdRepository = context.getBean(LhHouseholdEnrichmentFailureRepository.class);
+        verifyFailurePersistence(householdRepository, LhHouseholdEnrichmentFailure.create(
+                "household", "서울", "국민임대", "단지", LhHouseholdEnrichmentFailureReason.INVALID_SOURCE,
+                "실패", occurredAt
+        ), () -> householdRepository.findAllByStatusOrderBySourceKeyAscIdAsc(
+                IngestFailureStatus.PENDING, PageRequest.of(0, 10)));
+    }
+
+    private <T extends IngestFailure<T>> void verifyFailurePersistence(
+            JpaRepository<T, Long> repository, T observed, Supplier<List<T>> pendingQuery
+    ) {
+        UUID firstExecution = UUID.randomUUID();
+        UUID resolvedExecution = UUID.randomUUID();
+        observed.attachFirstExecution(firstExecution);
+        T stored = repository.saveAndFlush(observed);
+        Long id = stored.getId();
+        T reloaded = repository.findById(id).orElseThrow();
+        assertEquals(observed.getSourceKey(), reloaded.getSourceKey());
+        assertEquals(observed.getReason(), reloaded.getReason());
+        assertEquals(firstExecution, reloaded.getFirstExecutionId());
+        Instant resolvedAt = observed.getOccurredAt().plusSeconds(60);
+        reloaded.resolve(resolvedAt, resolvedExecution);
+        repository.saveAndFlush(reloaded);
+        assertTrue(pendingQuery.get().isEmpty());
+
+        T resolved = repository.findById(id).orElseThrow();
+        resolved.observe(observed, null);
+        repository.saveAndFlush(resolved);
+        List<T> pending = pendingQuery.get();
+        assertEquals(1, pending.size());
+        T recurred = pending.getFirst();
+        assertEquals(id, recurred.getId());
+        assertEquals(2, recurred.getOccurrenceCount());
+        assertEquals(1, recurred.getRecurrenceCount());
+        assertEquals(observed.getOccurredAt(), recurred.getOccurredAt());
+        assertEquals(resolvedAt, recurred.getLastResolvedAt());
+        assertEquals(resolvedExecution, recurred.getLastResolvedExecutionId());
     }
 
     @Test

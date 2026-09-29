@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
+import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.MYHOME_ANNOUNCEMENT_MAPPING;
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
@@ -13,9 +14,13 @@ import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailur
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingFailureResponse;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
-import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingExecutionLock;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureStore;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingWriter.MyHomeAnnouncementWriteResult;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingWriter.MyHomeSupplyMatchingFailureData;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -25,8 +30,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
@@ -39,7 +44,7 @@ public class MyHomeAnnouncementMappingService {
 
     private final MyHomeAnnouncementMappingFailureStore failureStore;
 
-    private final MyHomeAnnouncementMappingExecutionLock executionLock;
+    private final IngestOperationLock executionLock;
 
     private final AnnouncementRepository announcementRepository;
 
@@ -57,7 +62,7 @@ public class MyHomeAnnouncementMappingService {
             MyHomeAnnouncementSourceRepository sourceRepository,
             MyHomeAnnouncementMappingFailureRepository failureRepository,
             MyHomeAnnouncementMappingFailureStore failureStore,
-            MyHomeAnnouncementMappingExecutionLock executionLock,
+            IngestOperationLock executionLock,
             AnnouncementRepository announcementRepository,
             MyHomeAnnouncementSourceMapper sourceMapper,
             MyHomeAnnouncementSupplyRowResolver supplyRowResolver,
@@ -78,7 +83,7 @@ public class MyHomeAnnouncementMappingService {
     }
 
     public MyHomeAnnouncementMappingReport mapAll() {
-        return executionLock.tryRun(this::mapAllUnlocked)
+        return executionLock.tryRun(MYHOME_ANNOUNCEMENT_MAPPING, this::mapAllUnlocked)
                 .orElseThrow(this::alreadyRunning);
     }
 

@@ -1,11 +1,12 @@
 package com.toadzip.backend.ingest.collection.service;
 
+import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.LH_ANNOUNCEMENT_COLLECTION;
+
 import com.toadzip.backend.ingest.collection.configuration.LhAnnouncementClientProperties;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionExecutionLock;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore.BatchProgress;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
@@ -13,6 +14,7 @@ import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCan
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Skipped;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
@@ -50,7 +52,7 @@ public class LhAnnouncementExternalCollectionService {
     private static final int ANNOUNCEMENT_BATCH_SIZE = 500;
 
     private final MyHomeAnnouncementSourceRepository myHomeAnnouncementRepository;
-    private final LhAnnouncementCollectionExecutionLock executionLock;
+    private final IngestOperationLock executionLock;
     private final LhAnnouncementCollectionProgressManager progressManager;
     private final ExternalDataFailureRecorder failureRecorder;
     private final LhAnnouncementCollectionCandidateResolver candidateResolver;
@@ -63,10 +65,11 @@ public class LhAnnouncementExternalCollectionService {
         validateTargetSource(targetSource);
         log.info("{} 수집을 시작합니다.", targetSource.operation());
         ExternalDataCollectionReport report = executionLock
-                .tryRun(targetSource, () -> collectAnnouncements(targetSource))
+                .tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> collectAnnouncements(targetSource))
                 .orElseThrow(() -> alreadyRunning(targetSource));
         log.info(
-                "{} 수집을 완료했습니다: storedRowCount={}, failedRequestCount={}, externalApiCallCount={}, skippedRequestCount={}",
+                "{} 수집을 완료했습니다: storedRowCount={}, failedRequestCount={}, "
+                        + "externalApiCallCount={}, skippedRequestCount={}",
                 targetSource.operation(),
                 report.storedRowCount(),
                 report.failedRequestCount(),
@@ -81,7 +84,7 @@ public class LhAnnouncementExternalCollectionService {
         validatePblancId(pblancId);
         log.info("{} 강제 갱신을 시작합니다: pblancId={}", targetSource.operation(), pblancId);
         ExternalDataCollectionReport report = executionLock
-                .tryRun(targetSource, () -> refreshAnnouncement(targetSource, pblancId.strip()))
+                .tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> refreshAnnouncement(targetSource, pblancId.strip()))
                 .orElseThrow(() -> alreadyRunning(targetSource));
         log.info(
                 "{} 강제 갱신을 완료했습니다: pblancId={}, storedRowCount={}, failedRequestCount={}, "

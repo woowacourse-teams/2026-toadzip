@@ -2,8 +2,8 @@ package com.toadzip.backend.ingest.collection.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCatalogSnapshot;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCatalogSource;
@@ -21,7 +21,7 @@ class LhAnnouncementCollectionCandidateResolverTest {
     private final LhAnnouncementCatalogSourceRepository catalogRepository =
             mock(LhAnnouncementCatalogSourceRepository.class);
     private final LhAnnouncementCollectionCandidateResolver resolver =
-            new LhAnnouncementCollectionCandidateResolver(new LhSupplyInfoTypeCodeResolver(), catalogRepository);
+            new LhAnnouncementCollectionCandidateResolver(catalogRepository);
 
     @Test
     void LH_공고의_공급유형과_URL로_수집_후보를_만든다() {

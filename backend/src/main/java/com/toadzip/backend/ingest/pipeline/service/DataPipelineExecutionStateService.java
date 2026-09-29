@@ -5,13 +5,13 @@ import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
-import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineWorkProgress;
-import tools.jackson.databind.ObjectMapper;
+import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class DataPipelineExecutionStateService {
@@ -30,22 +30,6 @@ public class DataPipelineExecutionStateService {
     @Transactional
     public void recordWorkProgress(UUID executionId, DataPipelineWorkProgress progress) {
         executionRepository.recordWorkProgress(executionId, objectMapper.writeValueAsString(progress));
-    }
-
-    @Transactional
-    public DataPipelineExecution create(
-            UUID executionId,
-            DataPipelineType type,
-            Instant startedAt
-    ) {
-        return create(
-                executionId,
-                type,
-                startedAt,
-                DataPipelineExecutionTrigger.MANUAL,
-                null,
-                null
-        );
     }
 
     @Transactional

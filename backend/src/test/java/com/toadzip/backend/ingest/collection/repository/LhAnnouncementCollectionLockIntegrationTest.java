@@ -1,8 +1,9 @@
 package com.toadzip.backend.ingest.collection.repository;
 
+import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.LH_ANNOUNCEMENT_COLLECTION;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -21,12 +22,12 @@ class LhAnnouncementCollectionLockIntegrationTest {
 
     @Test
     void 다른_인스턴스의_상세_수집_중에는_공급과_목록도_실행하지_않는다() throws Exception {
-        var first = new LhAnnouncementCollectionExecutionLock(dataSource);
-        var second = new LhAnnouncementCollectionExecutionLock(dataSource);
+        var first = new IngestOperationLock(dataSource);
+        var second = new IngestOperationLock(dataSource);
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         try (var executor = Executors.newSingleThreadExecutor()) {
-            var running = executor.submit(() -> first.tryRun(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, () -> {
+            var running = executor.submit(() -> first.tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> {
                 started.countDown();
                 try {
                     if (!release.await(5, TimeUnit.SECONDS)) {
@@ -41,14 +42,14 @@ class LhAnnouncementCollectionLockIntegrationTest {
             }));
             try {
                 assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
-                assertThat(second.tryRun(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, () -> "supply")).isEmpty();
-                assertThat(second.tryRun(ExternalDataSource.LH_ANNOUNCEMENT_CATALOG, () -> "catalog")).isEmpty();
+                assertThat(second.tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> "supply")).isEmpty();
+                assertThat(second.tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> "catalog")).isEmpty();
             }
             finally {
                 release.countDown();
             }
             assertThat(running.get(5, TimeUnit.SECONDS)).contains("detail");
-            assertThat(second.tryRun(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, () -> "supply")).contains("supply");
+            assertThat(second.tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> "supply")).contains("supply");
         }
     }
 }

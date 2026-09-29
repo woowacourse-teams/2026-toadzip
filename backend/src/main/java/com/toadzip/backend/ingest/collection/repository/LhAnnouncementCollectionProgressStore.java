@@ -35,15 +35,6 @@ public class LhAnnouncementCollectionProgressStore {
             ExternalDataSource source,
             Collection<String> requestDescriptions,
             Collection<String> sourceAnnouncementKeys,
-            Instant freshCompletedAfter
-    ) {
-        return findBatch(source, requestDescriptions, sourceAnnouncementKeys, freshCompletedAfter, Map.of());
-    }
-
-    public BatchProgress findBatch(
-            ExternalDataSource source,
-            Collection<String> requestDescriptions,
-            Collection<String> sourceAnnouncementKeys,
             Instant freshCompletedAfter,
             Map<String, Instant> catalogChangedAtByRequest
     ) {

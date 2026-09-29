@@ -1,6 +1,5 @@
 package com.toadzip.backend.ingest.collection.repository.external;
 
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -45,14 +44,14 @@ public class DataGoKrOpenApiClient {
         this.responseStatusValidator = responseStatusValidator;
     }
 
-    public ExternalDataResponse get(String path, MultiValueMap<String, String> params) {
+    public JsonNode get(String path, MultiValueMap<String, String> params) {
         requireConfigured();
         URI requestUri = buildUri(path, params);
         String rawPayload = requestRawPayload(requestUri);
         JsonNode body = parsePayload(rawPayload);
         validateGatewayRateLimit(body);
         responseStatusValidator.validate(body);
-        return new ExternalDataResponse(rawPayload, body);
+        return body;
     }
 
     URI buildUri(String path, MultiValueMap<String, String> params) {

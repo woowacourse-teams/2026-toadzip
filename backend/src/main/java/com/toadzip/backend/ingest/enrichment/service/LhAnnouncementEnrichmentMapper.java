@@ -21,7 +21,6 @@ public class LhAnnouncementEnrichmentMapper {
     private static final int MAX_RECEPTION_NAME_LENGTH = 255;
 
     private final LhAnnouncementValueParser parser = new LhAnnouncementValueParser();
-    private final LhAttachmentTypePolicy attachmentTypePolicy = new LhAttachmentTypePolicy();
 
     public LhAnnouncementEnrichmentData map(
             String panId,
@@ -209,8 +208,21 @@ public class LhAnnouncementEnrichmentMapper {
         }
         return new LhAttachmentData(
                 identifier(panId, "ANNOUNCEMENT_FILE", source.getSourceOrder(), null), source.getName(),
-                attachmentTypePolicy.classify(source.getKind()), source.getUrl()
+                attachmentTypeOf(source.getKind()), source.getUrl()
         );
+    }
+
+    private AttachmentType attachmentTypeOf(String kind) {
+        if (kind != null && kind.contains("취소")) {
+            return AttachmentType.CANCELLATION;
+        }
+        if (kind != null && kind.contains("정정")) {
+            return AttachmentType.CORRECTION;
+        }
+        if (kind != null && kind.contains("공고")) {
+            return AttachmentType.ANNOUNCEMENT;
+        }
+        return AttachmentType.REFERENCE;
     }
 
     private LhSupplyData supplyOf(String panId, LhAnnouncementSupplySource source, YearMonth expectedMoveInMonth) {
@@ -245,56 +257,56 @@ public class LhAnnouncementEnrichmentMapper {
         }
         return first + " " + second;
     }
-}
 
-record LhAnnouncementEnrichmentData(
-        String panId,
-        String correctionReason,
-        ReceptionPlace receptionPlace,
-        List<LhScheduleData> schedules,
-        List<LhAttachmentData> attachments,
-        List<LhSupplyData> supplies
-) {
-}
-
-record LhScheduleData(
-        String sourceIdentifier,
-        ScheduleType type,
-        String name,
-        LocalDateTime startAt,
-        LocalDateTime endAt,
-        String complexName
-) {
-}
-
-record LhAttachmentData(String sourceIdentifier, String name, AttachmentType type, String url) {
-}
-
-record LhComplexData(String name, String expectedMoveInYearMonth) {
-}
-
-record LhSupplyData(
-        String sourceIdentifier,
-        String complexName,
-        String housingTypeName,
-        YearMonth expectedMoveInMonth,
-        Integer totalHouseholdCount,
-        Integer supplyHouseholdCount,
-        BigDecimal rentalDeposit,
-        BigDecimal monthlyRent
-) {
-}
-
-class LhAnnouncementEnrichmentRejectedException extends RuntimeException {
-
-    private final LhAnnouncementEnrichmentFailureReason reason;
-
-    LhAnnouncementEnrichmentRejectedException(LhAnnouncementEnrichmentFailureReason reason, String detail) {
-        super(detail);
-        this.reason = reason;
+    record LhAnnouncementEnrichmentData(
+            String panId,
+            String correctionReason,
+            ReceptionPlace receptionPlace,
+            List<LhScheduleData> schedules,
+            List<LhAttachmentData> attachments,
+            List<LhSupplyData> supplies
+    ) {
     }
 
-    LhAnnouncementEnrichmentFailureReason reason() {
-        return reason;
+    record LhScheduleData(
+            String sourceIdentifier,
+            ScheduleType type,
+            String name,
+            LocalDateTime startAt,
+            LocalDateTime endAt,
+            String complexName
+    ) {
+    }
+
+    record LhAttachmentData(String sourceIdentifier, String name, AttachmentType type, String url) {
+    }
+
+    private record LhComplexData(String name, String expectedMoveInYearMonth) {
+    }
+
+    record LhSupplyData(
+            String sourceIdentifier,
+            String complexName,
+            String housingTypeName,
+            YearMonth expectedMoveInMonth,
+            Integer totalHouseholdCount,
+            Integer supplyHouseholdCount,
+            BigDecimal rentalDeposit,
+            BigDecimal monthlyRent
+    ) {
+    }
+
+    static class LhAnnouncementEnrichmentRejectedException extends RuntimeException {
+
+        private final LhAnnouncementEnrichmentFailureReason reason;
+
+        LhAnnouncementEnrichmentRejectedException(LhAnnouncementEnrichmentFailureReason reason, String detail) {
+            super(detail);
+            this.reason = reason;
+        }
+
+        LhAnnouncementEnrichmentFailureReason reason() {
+            return reason;
+        }
     }
 }
