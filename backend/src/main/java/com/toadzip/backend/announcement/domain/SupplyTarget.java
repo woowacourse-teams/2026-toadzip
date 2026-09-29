@@ -57,7 +57,14 @@ public class SupplyTarget {
     private String lhAmountPreservedReason;
 
     public void markLhAmountPreserved() {
-        lhAmountPreservedReason = "LH_AMOUNT_NOT_PROVIDED";
+        markLhAmountPreserved("LH_AMOUNT_NOT_PROVIDED");
+    }
+
+    public void markLhAmountPreserved(String reason) {
+        if (sourceSupplyTargetIdentifier != null && sourceSupplyTargetIdentifier.startsWith("LH:")
+                && rentalDeposit != null && monthlyRent != null) {
+            lhAmountPreservedReason = reason;
+        }
     }
 
     private SupplyTarget(

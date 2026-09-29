@@ -7,7 +7,6 @@ import com.toadzip.backend.ingest.collection.service.LhAnnouncementDetailCollect
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementSupplyCollectionService;
 import com.toadzip.backend.ingest.collection.service.VerifiedLhSupplyReplacementService;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
-import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import jakarta.validation.Valid;
 import java.security.Principal;
 import org.springframework.http.HttpStatus;
@@ -30,20 +29,16 @@ public class LhAnnouncementCollectionController {
 
     private final VerifiedLhSupplyReplacementService replacementService;
 
-    private final IngestExecutionOwnershipService ownershipService;
-
     public LhAnnouncementCollectionController(
             LhAnnouncementCatalogCollectionService catalogCollectionService,
             LhAnnouncementDetailCollectionService detailCollectionService,
             LhAnnouncementSupplyCollectionService supplyCollectionService,
-            VerifiedLhSupplyReplacementService replacementService,
-            IngestExecutionOwnershipService ownershipService
+            VerifiedLhSupplyReplacementService replacementService
     ) {
         this.catalogCollectionService = catalogCollectionService;
         this.detailCollectionService = detailCollectionService;
         this.supplyCollectionService = supplyCollectionService;
         this.replacementService = replacementService;
-        this.ownershipService = ownershipService;
     }
 
     @PostMapping("/catalog")
@@ -75,24 +70,22 @@ public class LhAnnouncementCollectionController {
     public ResponseEntity<ExternalDataCollectionReport> approveSupplyReplacement(
             @PathVariable String pblancId,
             @Valid @RequestBody VerifiedLhSupplyReplacementRequest request, Principal principal) {
-        try (var ignored = ownershipService.acquire()) {
-            long approvalId = replacementService.approve(pblancId, request, principal.getName());
-            ExternalDataCollectionReport report;
-            try {
-                report = supplyCollectionService.refresh(pblancId);
-            }
-            catch (RuntimeException exception) {
-                replacementService.finish(approvalId);
-                throw exception;
-            }
-            boolean applied = replacementService.finish(approvalId);
-            if (!applied && report.failedRequestCount() == 0 && report.successfulRequestCount() == 0) {
-                throw new InvalidIngestRequestException(
-                        "승인 대상 LH 공급 요청을 재조회하지 못했습니다."
-                );
-            }
-            return responseOf(report);
+        long approvalId = replacementService.approve(pblancId, request, principal.getName());
+        ExternalDataCollectionReport report;
+        try {
+            report = supplyCollectionService.refresh(pblancId);
         }
+        catch (RuntimeException exception) {
+            replacementService.finish(approvalId);
+            throw exception;
+        }
+        boolean applied = replacementService.finish(approvalId);
+        if (!applied && report.failedRequestCount() == 0 && report.successfulRequestCount() == 0) {
+            throw new InvalidIngestRequestException(
+                    "승인 대상 LH 공급 요청을 재조회하지 못했습니다."
+            );
+        }
+        return responseOf(report);
     }
 
     private ResponseEntity<ExternalDataCollectionReport> responseOf(ExternalDataCollectionReport report) {

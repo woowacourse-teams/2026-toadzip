@@ -29,6 +29,8 @@ it('수집 성공률과 제품 충족률 및 보류 사유를 서로 구분해 �
   expect(screen.getByText('주택형 후보 모호: 2행')).toBeVisible()
   expect(screen.getByText(/빈 응답·공급행 감소로 교체하지 않은 현재 요청 수/)).toBeVisible()
   expect(screen.getByText('LH 신규 금액 미제공: 1건')).toBeVisible()
+  expect(screen.getByText('원천 선택 충돌 1건')).toBeVisible()
+  expect(screen.getByText('주택형·공고 매핑 보류: 1건')).toBeVisible()
   expect(screen.getByText('미연결 LH 임대 공고 조사 후보 4건')).toBeVisible()
   fireEvent.click(screen.getByText('미연결 LH 임대 공고 조사 후보 4건'))
   expect(screen.getByText('pan-2')).toBeVisible()
@@ -78,8 +80,8 @@ function quality(): LhAnnouncementQuality {
       changedAt: '2026-09-28T00:00:00Z' }],
     preservedSourceRequestCount: 1,
     preservedReasons: { IncompleteLhSupplyReplacementException: 1 },
-    preservedAmountTargetCount: 1,
-    preservedAmountReasons: { LH_AMOUNT_NOT_PROVIDED: 1 },
+    preservedAmountTargetCount: 2,
+    preservedAmountReasons: { LH_AMOUNT_NOT_PROVIDED: 1, MYHOME_MAPPING_REJECTED: 1 },
     heldRequests: [{ requestDescription: 'PAN_ID=pan-1', reason: '기존 공급행 감소',
       lastOccurredAt: '2026-09-28T00:00:00Z', proposedFingerprint: 'a'.repeat(64) }],
   }
@@ -91,6 +93,6 @@ function collectionExecution(): DataPipelineExecution {
     currentStepName: null, currentStepIndex: 0, totalStepCount: 4,
     completedSteps: [], skippedSteps: [], partiallyFailedSteps: [], failure: null,
     completedStepResults: [{ step: 'COLLECT_LH_ANNOUNCEMENT_SUPPLIES',
-      stepName: 'LH 공고 공급 원본 수집', report: { successfulRequestCount: 1, failedRequestCount: 1 } }],
+      stepName: 'LH 공고 공급 원본 수집', report: { successfulRequestCount: 1, failedRequestCount: 2, selectionFailedRequestCount: 1 } }],
   }
 }

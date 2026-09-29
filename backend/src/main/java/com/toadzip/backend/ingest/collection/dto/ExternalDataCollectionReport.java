@@ -7,8 +7,16 @@ public record ExternalDataCollectionReport(
         int externalApiCallCount,
         int skippedRequestCount,
         int rateLimitedRequestCount,
-        int successfulRequestCount
+        int successfulRequestCount,
+        int selectionFailedRequestCount
 ) {
+
+    public ExternalDataCollectionReport(String operation, int storedRowCount, int failedRequestCount,
+            int externalApiCallCount, int skippedRequestCount, int rateLimitedRequestCount,
+            int successfulRequestCount) {
+        this(operation, storedRowCount, failedRequestCount, externalApiCallCount, skippedRequestCount,
+                rateLimitedRequestCount, successfulRequestCount, 0);
+    }
 
     public ExternalDataCollectionReport(String operation, int storedRowCount, int failedRequestCount,
             int externalApiCallCount, int skippedRequestCount, int rateLimitedRequestCount) {
@@ -41,7 +49,9 @@ public record ExternalDataCollectionReport(
         }
         if (storedRowCount < 0 || failedRequestCount < 0 || externalApiCallCount < 0
                 || skippedRequestCount < 0 || rateLimitedRequestCount < 0
-                || rateLimitedRequestCount > failedRequestCount || successfulRequestCount < 0) {
+                || rateLimitedRequestCount > failedRequestCount || successfulRequestCount < 0
+                || selectionFailedRequestCount < 0 || selectionFailedRequestCount > failedRequestCount
+                || rateLimitedRequestCount + selectionFailedRequestCount > failedRequestCount) {
             throw new IllegalArgumentException("수집 결과 개수는 음수일 수 없습니다.");
         }
     }
@@ -61,7 +71,8 @@ public record ExternalDataCollectionReport(
                 externalApiCallCount + other.externalApiCallCount,
                 skippedRequestCount + other.skippedRequestCount,
                 rateLimitedRequestCount + other.rateLimitedRequestCount,
-                successfulRequestCount + other.successfulRequestCount
+                successfulRequestCount + other.successfulRequestCount,
+                selectionFailedRequestCount + other.selectionFailedRequestCount
         );
     }
 }

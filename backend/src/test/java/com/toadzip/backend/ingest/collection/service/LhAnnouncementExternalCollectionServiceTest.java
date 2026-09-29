@@ -246,6 +246,8 @@ class LhAnnouncementExternalCollectionServiceTest {
         ExternalDataCollectionReport report = collectOrRefresh(forced, "P1");
 
         assertThat(report.failedRequestCount()).isOne();
+        assertThat(report.selectionFailedRequestCount()).isOne();
+        assertThat(report.successfulRequestCount()).isZero();
         assertThat(report.externalApiCallCount()).isZero();
         verify(externalRepository, never()).fetchDetail(any());
         verify(progressStore, never()).complete(any(), any(), any(), any());

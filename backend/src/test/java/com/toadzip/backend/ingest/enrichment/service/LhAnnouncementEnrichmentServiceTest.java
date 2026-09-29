@@ -103,6 +103,9 @@ class LhAnnouncementEnrichmentServiceTest {
     private JdbcClient jdbc;
 
     @Autowired
+    private com.toadzip.backend.ingest.quality.service.LhAnnouncementQualityService qualityService;
+
+    @Autowired
     private ExternalDataFailureRecorder failureRecorder;
 
     @Autowired
@@ -1029,6 +1032,8 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(enrichmentFailureRepository.findAll()).singleElement()
                 .extracting(failure -> failure.getReason())
                 .isEqualTo(LhAnnouncementEnrichmentFailureReason.INVALID_VALUE);
+        assertThat(qualityService.snapshot().preservedAmountReasons())
+                .containsEntry("LH_ENRICHMENT_REJECTED", 1L);
     }
 
     @Test
@@ -1405,6 +1410,79 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     @Test
+    void 새_PAN의_빈_공급을_승인하면_이전_PAN에서_보존한_금액도_제거한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        switchLhSource(source, "46A", null, null);
+        enrichmentService.enrichAll();
+        assertThat(supplyTargetRepository.count()).isOne();
+        String request = requestDescriptionFor("200");
+        long approvalId = verifiedReplacementStore.approve(
+                LhAnnouncementCollectionCheckpoint.requestHashOf(request),
+                LhSupplySnapshot.fingerprint(List.of()), "https://apply.lh.or.kr/notice",
+                "새 공고 공급 철회 확인", "operator");
+
+        sourceStore.replaceSupplies("200", request, List.of());
+        assertThat(verifiedReplacementStore.finish(approvalId)).isTrue();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+
+        assertThat(supplyTargetRepository.count()).isZero();
+        assertThat(supplyRowRepository.count()).isOne();
+    }
+
+    @Test
+    void 빈_공급_승인은_현재_원천의_금액만_제거하고_과거_원천의_금액을_보존한다() {
+        saveComplex();
+        MyHomeAnnouncementSource historical = myHomeSource();
+        historical.markSeen("earlier", Instant.parse("2026-08-28T00:00:00Z"));
+        myHomeSourceRepository.save(historical);
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(historical);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        Long historicalTargetId = supplyTargetRepository.findAll().getFirst().getId();
+        historical.markMissed();
+        historical.markMissed();
+        myHomeSourceRepository.save(historical);
+        MyHomeAnnouncementSource current = myHomeSource();
+        ReflectionTestUtils.setField(current, "houseSn", 2);
+        ReflectionTestUtils.setField(current, "sourceKey", "5:210261:2");
+        ReflectionTestUtils.setField(current, "url", current.getUrl().replace("aisTpCd=07", "aisTpCd=08"));
+        current.markSeen("latest", Instant.parse("2026-08-29T00:00:00Z"));
+        myHomeSourceRepository.save(current);
+        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(current);
+        String request = candidate.requestDescription();
+        sourceStore.replaceDetails(PAN_ID, request, List.of(detail(
+                0, "ETC_INFO", null, null, null, null, null, null, null, "현재 원천"
+        )));
+        sourceStore.replaceSupplies(PAN_ID, request, List.of(new LhAnnouncementSupplySource(0, PAN_ID,
+                new LhAnnouncementSupplySourceSnapshot(
+                        "동삼2", "46A", "46.8", "67.0", "100", "20", "12,000,000", "250,000"
+                ))));
+        completeLinks(current);
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        assertThat(supplyTargetRepository.count()).isEqualTo(2);
+        long approvalId = verifiedReplacementStore.approve(
+                LhAnnouncementCollectionCheckpoint.requestHashOf(request),
+                LhSupplySnapshot.fingerprint(List.of()), "https://apply.lh.or.kr/notice",
+                "현재 원천 공급 철회 확인", "operator");
+
+        sourceStore.replaceSupplies(PAN_ID, request, List.of());
+        assertThat(verifiedReplacementStore.finish(approvalId)).isTrue();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+
+        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
+            assertThat(target.getId()).isEqualTo(historicalTargetId);
+            assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000");
+        });
+    }
+
+    @Test
     void 정상_빈_LH_공급_응답은_기존_확장_공급행과_금액을_보존한다() {
         saveComplex();
         HousingComplex complex = housingComplexRepository.findAll().getFirst();
@@ -1724,6 +1802,8 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(enrichmentService.enrichAll().failedSourceCount()).isOne();
         assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target ->
                 assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000"));
+        assertThat(qualityService.snapshot().preservedAmountReasons())
+                .containsEntry("LH_SUPPLY_MATCHING_FAILED", 1L);
         // 주택형 이름 정정은 자동 교체 대상이 아니므로 확인 후 정정된 원천을 준비한다.
         supplySourceRepository.deleteAll(supplySourceRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
                 "200", LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescriptionFor("200"))));
@@ -1738,6 +1818,7 @@ class LhAnnouncementEnrichmentServiceTest {
             assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000");
             assertThat(target.getLhAmountPreservedReason()).isNull();
         });
+        assertThat(qualityService.snapshot().preservedAmountTargetCount()).isZero();
     }
 
     @Test
@@ -1798,6 +1879,10 @@ class LhAnnouncementEnrichmentServiceTest {
             assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000");
         });
 
+        var quality = qualityService.snapshot();
+        assertThat(quality.preservedAmountTargetCount()).isOne();
+        assertThat(quality.preservedAmountReasons()).containsEntry("MYHOME_MAPPING_REJECTED", 1L);
+
         sourceStore.replaceSupplies("200", requestDescriptionFor("200"), List.of(new LhAnnouncementSupplySource(
                 0, "200", new LhAnnouncementSupplySourceSnapshot(
                 "동삼2", "59B", "46.8", "67.0", "100", "20", "12000000", "250000"
@@ -1810,6 +1895,7 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target ->
                 assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000")
         );
+        assertThat(qualityService.snapshot().preservedAmountTargetCount()).isZero();
     }
 
     @Test

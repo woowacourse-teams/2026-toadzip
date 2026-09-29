@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -27,28 +28,6 @@ public class LhAnnouncementQualityStore {
     private static final String UNLINKED_LH_LEASE_CATALOG = """
             FROM lh_announcement_catalog_source catalog
             WHERE catalog.present_in_latest_catalog AND catalog.upper_announcement_type_code = '06'
-              AND NOT EXISTS (
-                  SELECT 1 FROM lh_announcement_collection_links link
-                  JOIN myhome_announcement_source myhome
-                    ON myhome.source_key = link.source_announcement_key
-                  WHERE link.pan_id = catalog.pan_id AND myhome.active
-                    AND (
-                        NOT EXISTS (
-                            SELECT 1 FROM myhome_announcement_source observed
-                            WHERE observed.pblanc_id = myhome.pblanc_id AND observed.active
-                              AND observed.last_seen_run_id IS NOT NULL
-                              AND observed.collected_at IS NOT NULL
-                        )
-                        OR myhome.last_seen_run_id IN (
-                            SELECT observed.last_seen_run_id
-                            FROM myhome_announcement_source observed
-                            WHERE observed.pblanc_id = myhome.pblanc_id AND observed.active
-                              AND observed.last_seen_run_id IS NOT NULL
-                              AND observed.collected_at IS NOT NULL
-                            ORDER BY observed.collected_at DESC, observed.id DESC LIMIT 1
-                        )
-                    )
-              )
             """;
 
     private final JdbcClient jdbc;
@@ -57,20 +36,22 @@ public class LhAnnouncementQualityStore {
         this.jdbc = jdbc;
     }
 
-    public LhAnnouncementQualityResponse snapshot(Instant observedAt, Instant freshSince) {
+    public LhAnnouncementQualityResponse snapshot(Instant observedAt, Freshness supplyFreshness,
+            Freshness detailFreshness, Set<String> linkedPanIds) {
+        Map<String, Long> amountReasons = preservedAmountReasons();
         return new LhAnnouncementQualityResponse(
                 observedAt,
                 connection(),
                 amounts(),
                 schedules(),
-                freshness("LH_ANNOUNCEMENT_SUPPLY", freshSince),
-                freshness("LH_ANNOUNCEMENT_DETAIL", freshSince),
-                unlinkedLhLeaseCatalogCount(),
-                unlinkedLhCandidates(),
+                supplyFreshness,
+                detailFreshness,
+                unlinkedLhLeaseCatalogCount(linkedPanIds),
+                unlinkedLhCandidates(linkedPanIds),
                 preservedSourceRequestCount(),
                 preservedReasons(),
-                preservedAmountTargetCount(),
-                preservedAmountReasons(),
+                amountReasons.values().stream().mapToLong(Long::longValue).sum(),
+                amountReasons,
                 heldRequests()
         );
     }
@@ -133,30 +114,24 @@ public class LhAnnouncementQualityStore {
         )).single();
     }
 
-    private Freshness freshness(String source, Instant freshSince) {
-        return jdbc.sql("""
-                SELECT COUNT(*) AS total,
-                       COUNT(*) FILTER (WHERE completed_at >= :freshSince) AS fresh,
-                       MAX(completed_at) AS latest
-                FROM lh_announcement_collection_checkpoints
-                WHERE source = :source
-                """).param("source", source).param("freshSince", java.sql.Timestamp.from(freshSince))
-                .query((result, index) -> new Freshness(
-                        result.getLong("total"), result.getLong("fresh"), instant(result, "latest")
-                )).single();
+    private long unlinkedLhLeaseCatalogCount(Set<String> linkedPanIds) {
+        return unlinkedCatalogQuery("SELECT COUNT(*) ", "", linkedPanIds).query(Long.class).single();
     }
 
-    private long unlinkedLhLeaseCatalogCount() {
-        return jdbc.sql("SELECT COUNT(*) " + UNLINKED_LH_LEASE_CATALOG).query(Long.class).single();
-    }
-
-    private List<UnlinkedLhCandidate> unlinkedLhCandidates() {
-        return jdbc.sql("SELECT catalog.pan_id, catalog.source_key, catalog.changed_at "
-                + UNLINKED_LH_LEASE_CATALOG
-                + " ORDER BY catalog.changed_at DESC, catalog.id DESC LIMIT 50")
+    private List<UnlinkedLhCandidate> unlinkedLhCandidates(Set<String> linkedPanIds) {
+        return unlinkedCatalogQuery("SELECT catalog.pan_id, catalog.source_key, catalog.changed_at ",
+                " ORDER BY catalog.changed_at DESC, catalog.id DESC LIMIT 50", linkedPanIds)
                 .query((result, index) -> new UnlinkedLhCandidate(
-                result.getString("pan_id"), result.getString("source_key"), instant(result, "changed_at")
-        )).list();
+                        result.getString("pan_id"), result.getString("source_key"), instant(result, "changed_at")
+                )).list();
+    }
+
+    private JdbcClient.StatementSpec unlinkedCatalogQuery(String select, String suffix, Set<String> linkedPanIds) {
+        if (linkedPanIds.isEmpty()) {
+            return jdbc.sql(select + UNLINKED_LH_LEASE_CATALOG + suffix);
+        }
+        return jdbc.sql(select + UNLINKED_LH_LEASE_CATALOG + " AND catalog.pan_id NOT IN (:linkedPanIds)" + suffix)
+                .param("linkedPanIds", linkedPanIds);
     }
 
     private long preservedSourceRequestCount() {
@@ -184,26 +159,33 @@ public class LhAnnouncementQualityStore {
         return reasons;
     }
 
-    private long preservedAmountTargetCount() {
-        return jdbc.sql("""
-                SELECT COUNT(*) FROM supply_targets target
-                JOIN supply_rows row ON row.id = target.supply_row_id
-                JOIN announcements announcement ON announcement.id = row.announcement_id
-                WHERE announcement.provider = 'LH' AND NOT announcement.admin_deleted
-                  AND target.lh_amount_preserved_reason IS NOT NULL
-                """).query(Long.class).single();
-    }
-
     private Map<String, Long> preservedAmountReasons() {
         Map<String, Long> reasons = new LinkedHashMap<>();
         jdbc.sql("""
-                SELECT target.lh_amount_preserved_reason AS reason, COUNT(*) AS target_count
-                FROM supply_targets target
-                JOIN supply_rows row ON row.id = target.supply_row_id
-                JOIN announcements announcement ON announcement.id = row.announcement_id
-                WHERE announcement.provider = 'LH' AND NOT announcement.admin_deleted
-                  AND target.lh_amount_preserved_reason IS NOT NULL
-                GROUP BY target.lh_amount_preserved_reason
+                WITH preserved AS (
+                    SELECT CASE
+                        WHEN EXISTS (
+                            SELECT 1 FROM myhome_announcement_mapping_failures failure
+                            WHERE failure.source_announcement_identifier = announcement.source_announcement_identifier
+                              AND failure.status = 'PENDING'
+                              AND failure.reason NOT IN ('COMPLEX_NOT_FOUND', 'AMBIGUOUS_COMPLEX',
+                                                         'HOUSING_TYPE_NOT_FOUND', 'AMBIGUOUS_HOUSING_TYPE')
+                        ) THEN 'MYHOME_MAPPING_REJECTED'
+                        WHEN EXISTS (
+                            SELECT 1 FROM lh_announcement_enrichment_failures failure
+                            WHERE failure.source_announcement_identifier = announcement.source_announcement_identifier
+                              AND failure.status = 'PENDING' AND failure.source_key NOT LIKE 'LH:%'
+                        ) THEN 'LH_ENRICHMENT_REJECTED'
+                        ELSE target.lh_amount_preserved_reason END AS reason
+                    FROM supply_targets target
+                    JOIN supply_rows row ON row.id = target.supply_row_id
+                    JOIN announcements announcement ON announcement.id = row.announcement_id
+                    WHERE announcement.provider = 'LH' AND NOT announcement.admin_deleted
+                      AND target.source_supply_target_identifier LIKE 'LH:%'
+                      AND target.rental_deposit IS NOT NULL AND target.monthly_rent IS NOT NULL
+                )
+                SELECT reason, COUNT(*) AS target_count FROM preserved
+                WHERE reason IS NOT NULL GROUP BY reason ORDER BY reason
                 """).query((result, index) -> {
             reasons.put(result.getString("reason"), result.getLong("target_count"));
             return true;

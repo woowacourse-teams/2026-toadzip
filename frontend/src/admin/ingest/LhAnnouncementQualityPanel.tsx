@@ -81,8 +81,10 @@ export function LhAnnouncementQualityPanel({ collectionExecution }: {
           <section className="lh-quality-metric-group" aria-labelledby="lh-collection-metrics">
             <h4 id="lh-collection-metrics">수집 상태</h4>
             <div className="lh-quality-metrics">
-              <div><h5>최근 LH 공급 수집</h5><p>{collectionRate(collectionExecution, 'COLLECT_LH_ANNOUNCEMENT_SUPPLIES')}</p></div>
-              <div><h5>최근 LH 상세 수집</h5><p>{collectionRate(collectionExecution, 'COLLECT_LH_ANNOUNCEMENT_DETAILS')}</p></div>
+              <div><h5>최근 LH 공급 수집</h5><p>{collectionRate(collectionExecution, 'COLLECT_LH_ANNOUNCEMENT_SUPPLIES')}</p>
+                <small>원천 선택 충돌 {selectionFailures(collectionExecution, 'COLLECT_LH_ANNOUNCEMENT_SUPPLIES')}건</small></div>
+              <div><h5>최근 LH 상세 수집</h5><p>{collectionRate(collectionExecution, 'COLLECT_LH_ANNOUNCEMENT_DETAILS')}</p>
+                <small>원천 선택 충돌 {selectionFailures(collectionExecution, 'COLLECT_LH_ANNOUNCEMENT_DETAILS')}건</small></div>
               <div><h5>공급 최신성</h5><p>{coverage(quality.supplyCollection.freshRequests, quality.supplyCollection.totalRequests)}</p>
                 <small>마지막 수집 {time(quality.supplyCollection.latestCollectedAt)}</small></div>
               <div><h5>상세 최신성</h5><p>{coverage(quality.detailCollection.freshRequests, quality.detailCollection.totalRequests)}</p>
@@ -99,7 +101,7 @@ export function LhAnnouncementQualityPanel({ collectionExecution }: {
                 <small>확인한 접수 일정 {quality.schedules.withApplicationSchedule}건</small></div>
             </div>
           </section>
-          <p className="ingest-meta">최신성은 LH 요청별 마지막 성공 시각이 재수집 주기 안인지 봅니다. 금액 확보는 공급행에 보증금·월세 숫자 쌍이 하나 이상 있는 경우입니다.</p>
+          <p className="ingest-meta">최신성은 현재 재수집 대상 요청의 주기와 원천 변경 시각으로 판정합니다. 성공 기록이 없는 요청도 포함합니다. 금액 확보는 공급행에 보증금·월세 숫자 쌍이 하나 이상 있는 경우입니다.</p>
           <div className="lh-quality-review-grid">
             <section className="lh-quality-summary">
               <h4>연결되지 않은 공급행 사유</h4>
@@ -119,7 +121,7 @@ export function LhAnnouncementQualityPanel({ collectionExecution }: {
             <section className="lh-quality-summary">
               <h4>기존 숫자 금액 유지 <strong>{quality.preservedAmountTargetCount}건</strong></h4>
               <ul>{Object.entries(quality.preservedAmountReasons).map(([reason, count]) => (
-                <li key={reason}>{reason === 'LH_AMOUNT_NOT_PROVIDED' ? 'LH 신규 금액 미제공' : reason}: {count}건</li>
+                <li key={reason}>{amountPreservationReason(reason)}: {count}건</li>
               ))}</ul>
             </section>
           </div>
@@ -193,7 +195,29 @@ function collectionRate(execution: DataPipelineExecution, step: string): string 
   const successful = matched.successfulRequestCount
   const failed = matched.failedRequestCount
   if (typeof successful !== 'number' || typeof failed !== 'number') return '이번 실행의 요청별 결과 없음'
-  return coverage(successful, successful + failed)
+  const attemptedFailures = failed - selectionFailures(execution, step)
+  if (attemptedFailures < 0) return '이번 실행의 요청별 결과 없음'
+  if (successful + attemptedFailures === 0) return '실제 요청 없음'
+  return coverage(successful, successful + attemptedFailures)
+}
+
+function selectionFailures(execution: DataPipelineExecution, step: string): number {
+  const reports = [...(execution.completedStepResults ?? []), ...execution.partiallyFailedSteps]
+  const report = reports.find((item) => item.step === step)?.report
+  if (typeof report !== 'object' || report === null || !('selectionFailedRequestCount' in report)) return 0
+  const count = report.selectionFailedRequestCount
+  return typeof count === 'number' && Number.isSafeInteger(count) && count >= 0 ? count : 0
+}
+
+function amountPreservationReason(reason: string): string {
+  const labels: Record<string, string> = {
+    LH_AMOUNT_NOT_PROVIDED: 'LH 신규 금액 미제공',
+    LH_SUPPLY_NOT_PROVIDED: 'LH 공급 정보 미제공',
+    LH_SUPPLY_MATCHING_FAILED: 'LH 공급행 연결 실패',
+    MYHOME_MAPPING_REJECTED: '주택형·공고 매핑 보류',
+    LH_ENRICHMENT_REJECTED: 'LH 보강 검증·연결 보류',
+  }
+  return labels[reason] ?? reason
 }
 
 function preservationReason(reason: string): string {

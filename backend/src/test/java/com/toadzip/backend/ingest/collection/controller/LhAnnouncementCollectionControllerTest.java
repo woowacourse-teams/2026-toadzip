@@ -1,8 +1,10 @@
 package com.toadzip.backend.ingest.collection.controller;
 
-import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -13,16 +15,22 @@ import com.toadzip.backend.ingest.collection.service.LhAnnouncementDetailCollect
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementSupplyCollectionService;
 import com.toadzip.backend.ingest.collection.service.VerifiedLhSupplyReplacementService;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.pipeline.configuration.DataPipelineExecutionWebConfiguration;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.http.MediaType;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @WebMvcTest(LhAnnouncementCollectionController.class)
+@Import(LhAnnouncementCollectionControllerTest.LockWebConfiguration.class)
 @AutoConfigureMockMvc(addFilters = false)
 class LhAnnouncementCollectionControllerTest {
 
@@ -43,6 +51,14 @@ class LhAnnouncementCollectionControllerTest {
 
     @MockitoBean
     private IngestExecutionOwnershipService ownershipService;
+
+    @TestConfiguration
+    static class LockWebConfiguration {
+        @Bean
+        WebMvcConfigurer executionLockConfigurer(IngestExecutionOwnershipService ownershipService) {
+            return new DataPipelineExecutionWebConfiguration(ownershipService);
+        }
+    }
 
     @Test
     void LH_공고목록만_단독_수집한다() throws Exception {
@@ -143,6 +159,7 @@ class LhAnnouncementCollectionControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.successfulRequestCount").value(1));
+        verify(ownershipService, times(1)).acquire();
     }
 
     @Test
