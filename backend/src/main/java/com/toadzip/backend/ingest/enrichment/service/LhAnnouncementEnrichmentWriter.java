@@ -136,12 +136,13 @@ public class LhAnnouncementEnrichmentWriter {
             if (schedule == null) {
                 scheduleRepository.save(AnnouncementSchedule.createFromSource(
                         announcement, source.sourceIdentifier(), source.type(), source.name(),
-                        source.startAt(), source.endAt(), order++
+                        source.startAt(), source.endAt(), order++, source.complexName()
                 ));
                 created++;
                 continue;
             }
-            if (schedule.updateFromSource(source.type(), source.name(), source.startAt(), source.endAt(), order++)) {
+            if (schedule.updateFromSource(
+                    source.type(), source.name(), source.startAt(), source.endAt(), order++, source.complexName())) {
                 updated++;
             }
         }

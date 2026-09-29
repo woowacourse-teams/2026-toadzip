@@ -198,7 +198,8 @@ public class LhAnnouncementEnrichmentMapper {
             throw parser.invalid(name + " 종료 시각이 시작 시각보다 빠릅니다.");
         }
         return new LhScheduleData(
-                identifier(panId, "SCHEDULE", source.getSourceOrder(), type.name()), type, name, startAt, endAt
+                identifier(panId, "SCHEDULE", source.getSourceOrder(), type.name()), type, name, startAt, endAt,
+                source.getComplexName()
         );
     }
 
@@ -261,7 +262,8 @@ record LhScheduleData(
         ScheduleType type,
         String name,
         LocalDateTime startAt,
-        LocalDateTime endAt
+        LocalDateTime endAt,
+        String complexName
 ) {
 }
 

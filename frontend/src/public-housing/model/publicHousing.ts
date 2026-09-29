@@ -293,6 +293,7 @@ export interface RawAnnouncementReceptionPlace {
 
 export interface RawAnnouncementSchedule {
   readonly scheduleId: number
+  readonly complexName?: string | null
   readonly type: string | null
   readonly name: string | null
   readonly startAt: string | null
@@ -404,6 +405,7 @@ export type AnnouncementReceptionPlace = RawAnnouncementReceptionPlace
 
 export interface AnnouncementSchedule {
   readonly scheduleId: string
+  readonly complexName?: string | null
   readonly type: string | null
   readonly name: string | null
   readonly startAt: string | null

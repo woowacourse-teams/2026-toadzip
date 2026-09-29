@@ -1,7 +1,7 @@
 import { useId } from 'react'
 import type { AnnouncementApplicationSchedule } from '../model/publicHousing'
 import { MISSING_DATA_LABEL } from '../presentation/missingData'
-import { displayApplicationSchedules } from '../presentation/announcementSchedulePresentation'
+import { groupApplicationSchedules } from '../presentation/announcementSchedulePresentation'
 import styles from './ApplicationScheduleGroups.module.css'
 
 interface Props {
@@ -11,22 +11,11 @@ interface Props {
 
 export function ApplicationScheduleGroups({ schedules, complexes }: Props) {
   const id = useId()
-  const groups = new Map<string, AnnouncementApplicationSchedule[]>()
-  for (const schedule of displayApplicationSchedules(schedules)) {
-    const key = JSON.stringify([schedule.housingComplexId,
-      schedule.housingComplexId === null ? schedule.complexName?.trim() || null : null])
-    const group = groups.get(key) ?? []
-    group.push(schedule)
-    groups.set(key, group)
-  }
+  const groups = groupApplicationSchedules(schedules, complexes)
 
   return (
     <div className={styles.groups}>
-      {[...groups].map(([key, items], index) => {
-        const complexId = items[0]?.housingComplexId ?? null
-        const name = items.find((item) => item.complexName?.trim())?.complexName
-            ?? (complexId !== null ? complexes.find((complex) => complex.complexId === complexId)?.name : undefined)
-            ?? (complexId === null ? '전체 단지 공통' : `단지 정보: ${MISSING_DATA_LABEL}`)
+      {groups.map(({ key, name, schedules: items }, index) => {
         const headingId = `${id}-group-${index}`
         return (
           <section key={key} aria-label={`${name} 접수 일정`}>

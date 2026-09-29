@@ -31,7 +31,8 @@ import {
 } from '../presentation/announcementDetailPresentation.ts'
 import { MISSING_DATA_LABEL } from '../presentation/missingData'
 import { formatPhoneNumber } from '../presentation/phoneNumber'
-import { displayAnnouncementSchedules } from '../presentation/announcementSchedulePresentation'
+import { groupAnnouncementSchedules } from '../presentation/announcementSchedulePresentation'
+import scheduleStyles from './ApplicationScheduleGroups.module.css'
 import { formatHousingMoney } from '../presentation/housingMoney'
 import styles from './HousingAnnouncementDetailPanel.module.css'
 
@@ -45,6 +46,7 @@ export interface HousingAnnouncementDetailReceptionPlace {
 
 export interface HousingAnnouncementDetailSchedule {
   readonly scheduleId: string
+  readonly complexName?: string | null
   readonly type: string | null
   readonly typeLabel: string
   readonly name: string | null
@@ -400,7 +402,7 @@ function ScheduleSection({ detail, groups }: {
 }) {
   const applicationSchedules = detail.applicationSchedules ?? []
   const hasVerifiedSchedules = applicationSchedules.length > 0
-  const schedules = displayAnnouncementSchedules(detail.schedules)
+  const schedules = detail.schedules
   const legacyApplicationSchedules = schedules.filter((schedule) => schedule.type === 'APPLICATION')
   const hasApplicationSchedule = hasVerifiedSchedules || legacyApplicationSchedules.length > 0
   const hasWinnerSchedule = schedules.some(
@@ -410,65 +412,57 @@ function ScheduleSection({ detail, groups }: {
     detail.applicationStartAt !== null || detail.applicationEndAt !== null
   )
   const hasWinnerDate = detail.winnerAnnouncementAt !== null && !hasWinnerSchedule
-  const followUpSchedules = displayAnnouncementSchedules([
+  const followUpSchedules = [
     ...schedules.filter((schedule) => schedule.type !== 'APPLICATION'),
     ...(hasWinnerDate ? [{ scheduleId: 'winner-fallback', type: 'WINNER_ANNOUNCEMENT',
       typeLabel: '당첨자 발표', name: null, startAt: detail.winnerAnnouncementAt, endAt: null }] : []),
-  ])
+  ]
+  const receptionSchedules = hasApplicationFallback ? [{
+    scheduleId: 'application-fallback', type: 'APPLICATION', typeLabel: '접수 기간', name: null,
+    startAt: detail.applicationStartAt, endAt: detail.applicationEndAt,
+  }] : legacyApplicationSchedules
 
   return (
     <>
       <DetailSection title="접수 일정">
         {hasVerifiedSchedules && <ApplicationScheduleGroups schedules={applicationSchedules} complexes={groups} />}
         {!hasApplicationSchedule && !hasApplicationFallback && <EmptyState>{MISSING_DATA_LABEL}</EmptyState>}
-        {!hasVerifiedSchedules && (hasApplicationFallback || legacyApplicationSchedules.length > 0) && (
-          <>
-            <p className={styles.empty}>대상 구분: {MISSING_DATA_LABEL}</p>
-            <DetailTable caption="접수 일정">
-              <colgroup>
-                <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-                <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-              </colgroup>
-              {hasApplicationFallback && (
-                <ScheduleItem
-                  label="접수 기간"
-                  startAt={detail.applicationStartAt}
-                  endAt={detail.applicationEndAt}
-                  current={detail.applicationStatus === 'APPLYING'}
-                />
-              )}
-              {legacyApplicationSchedules.map((schedule) => (
-                <ScheduleItem
-                  key={schedule.scheduleId}
-                  label={schedule.name ?? schedule.typeLabel}
-                  startAt={schedule.startAt}
-                  endAt={schedule.endAt}
-                />
-              ))}
-            </DetailTable>
-          </>
+        {!hasVerifiedSchedules && receptionSchedules.length > 0 && (
+          <AnnouncementScheduleGroups schedules={receptionSchedules} caption="접수 일정"
+            current={hasApplicationFallback && detail.applicationStatus === 'APPLYING'} />
         )}
       </DetailSection>
       {followUpSchedules.length > 0 && (
         <DetailSection title="후속 일정">
-          <DetailTable caption="후속 일정">
-            <colgroup>
-              <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-              <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-            </colgroup>
-            {followUpSchedules.map((schedule) => (
-              <ScheduleItem
-                key={schedule.scheduleId}
-                label={schedule.name ?? schedule.typeLabel}
-                startAt={schedule.startAt}
-                endAt={schedule.endAt}
-              />
-            ))}
-          </DetailTable>
+          <AnnouncementScheduleGroups schedules={followUpSchedules} caption="후속 일정" />
         </DetailSection>
       )}
     </>
   )
+}
+
+function AnnouncementScheduleGroups({ schedules, caption, current = false }: {
+  schedules: readonly HousingAnnouncementDetailSchedule[]
+  caption: string
+  current?: boolean
+}) {
+  return <div className={scheduleStyles.groups}>
+    {groupAnnouncementSchedules(schedules).map((group) => (
+      <section key={group.key} aria-label={`${group.name} ${caption}`}>
+        <h4 className={scheduleStyles.groupTitle}>{group.name}</h4>
+        <DetailTable caption={caption}>
+          <colgroup>
+            <col style={{ width: '18%' }} /><col style={{ width: '32%' }} />
+            <col style={{ width: '18%' }} /><col style={{ width: '32%' }} />
+          </colgroup>
+          {group.schedules.map((schedule) => (
+            <ScheduleItem key={schedule.scheduleId} label={schedule.name ?? schedule.typeLabel}
+              startAt={schedule.startAt} endAt={schedule.endAt} current={current} />
+          ))}
+        </DetailTable>
+      </section>
+    ))}
+  </div>
 }
 
 function ScheduleItem({

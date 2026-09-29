@@ -104,6 +104,7 @@ function toSchedule(
   schedule: AnnouncementDetail['schedules'][number],
 ): HousingAnnouncementDetailSchedule {
   return {
+    complexName: schedule.complexName ?? null,
     endAt: schedule.endAt,
     name: schedule.name,
     scheduleId: schedule.scheduleId,

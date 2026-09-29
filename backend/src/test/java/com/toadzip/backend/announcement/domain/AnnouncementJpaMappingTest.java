@@ -97,7 +97,7 @@ class AnnouncementJpaMappingTest {
                 "AnnouncementSchedule",
                 Set.of(
                         "id", "announcement", "scheduleType", "name", "startAt", "endAt", "displayOrder",
-                        "sourceScheduleIdentifier"
+                        "sourceScheduleIdentifier", "complexName"
                 )
         );
         assertEntityAttributes(
