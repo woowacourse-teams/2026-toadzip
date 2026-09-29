@@ -1,11 +1,14 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AttachmentDialog, AttachmentList } from './AnnouncementAttachments.tsx'
 import { loadAnnouncementAttachment } from '../api/announcementAttachments.ts'
 import type { HousingAnnouncementDetailAttachment } from './HousingAnnouncementDetailPanel.tsx'
 
 vi.mock('./PdfDocumentPreview.tsx', () => ({
-  default: ({ name, url }: { name: string; url: string }) => <div title={`${name} 미리보기`} data-url={url} />,
+  default: ({ name, url }: { name: string; url: string }) => {
+    if (name === '깨진.pdf') throw new Error('Viewer failed')
+    return <div title={`${name} 미리보기`} data-url={url} />
+  },
 }))
 
 vi.mock('./HwpDocumentPreview.tsx', () => ({
@@ -41,7 +44,7 @@ beforeEach(() => {
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview')
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
 })
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers() })
 
 describe('첨부파일', () => {
   it('하나면 곧바로 PDF를 불러오고 닫힐 때 요청과 URL을 정리하고 포커스를 돌려준다', async () => {
@@ -123,5 +126,121 @@ describe('첨부파일', () => {
     expect(anchor.href).toBe('blob:preview')
     fireEvent.click(toggle)
     expect(within(screen.getByRole('region', { name: '첨부파일 1개' })).queryByRole('button', { name: /다운로드/ })).not.toBeInTheDocument()
+  })
+})
+
+
+function deferredBlob() {
+  let resolve!: (blob: Blob) => void
+  const promise = new Promise<Blob>((done) => { resolve = done })
+  return { promise, resolve }
+}
+
+async function bytesOf(blob: Blob): Promise<number[]> {
+  const bytes = await new Promise<ArrayBuffer>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as ArrayBuffer)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsArrayBuffer(blob)
+  })
+  return Array.from(new Uint8Array(bytes))
+}
+
+describe('미리보기 원본 다운로드 재사용', () => {
+  it.each(['pdf', 'hwp', 'hwpx'])('%s 원본 바이트와 파일명으로 저장하고 API를 다시 호출하지 않는다', async (extension) => {
+    const original = new Blob([new Uint8Array([0, 255, 37, 80, 68, 70, 128])], { type: 'application/octet-stream' })
+    vi.mocked(loadAnnouncementAttachment).mockReset().mockResolvedValue(original)
+    vi.mocked(URL.createObjectURL).mockReturnValueOnce('blob:preview').mockReturnValueOnce('blob:download')
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const name = `★공고문(최종).${extension}`
+    render(<AttachmentDialog announcementId="201" attachments={[{ ...pdf, fileName: name }]} onClose={vi.fn()} />)
+    await screen.findByTitle(`${name}${extension === 'pdf' ? ' 미리보기' : ' 한글 미리보기'}`)
+    fireEvent.click(screen.getByRole('button', { name: `${name} 다운로드` }))
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
+    expect(loadAnnouncementAttachment).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(URL.createObjectURL).mock.calls[1]![0]).toBe(original)
+    expect(await bytesOf(vi.mocked(URL.createObjectURL).mock.calls[1]![0] as Blob))
+      .toEqual([0, 255, 37, 80, 68, 70, 128])
+    const anchor = click.mock.instances[0] as HTMLAnchorElement
+    expect(anchor.download).toBe(name)
+    expect(anchor.href).toBe('blob:download')
+  })
+
+  it('뷰어 렌더링에 실패해도 이미 받은 원본으로 다운로드한다', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(loadAnnouncementAttachment).mockClear()
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    render(<AttachmentDialog announcementId="201" attachments={[{ ...pdf, fileName: '깨진.pdf' }]} onClose={vi.fn()} />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('뷰어를 불러오지 못했습니다')
+    fireEvent.click(screen.getByRole('button', { name: '깨진.pdf 다운로드' }))
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
+    expect(loadAnnouncementAttachment).toHaveBeenCalledTimes(1)
+  })
+
+  it('미리보기 원본을 받지 못했으면 기존 다운로드 API를 호출한다', async () => {
+    vi.mocked(loadAnnouncementAttachment).mockReset().mockRejectedValueOnce(new Error('preview unavailable'))
+      .mockResolvedValueOnce(new Blob(['original']))
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    render(<AttachmentDialog announcementId="201" attachments={[pdf]} onClose={vi.fn()} />)
+    await screen.findByRole('alert')
+    fireEvent.click(screen.getByRole('button', { name: '모집공고.pdf 다운로드' }))
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
+    expect(loadAnnouncementAttachment).toHaveBeenNthCalledWith(2, '201', '1', true, expect.any(AbortSignal))
+  })
+
+  it('닫을 때 미리보기 URL만 즉시 정리하고 다운로드 URL은 브라우저에 전달한 뒤 정리한다', async () => {
+    vi.mocked(URL.createObjectURL).mockReturnValueOnce('blob:preview').mockReturnValueOnce('blob:download')
+    const { unmount } = render(<AttachmentDialog announcementId="201" attachments={[pdf]} onClose={vi.fn()} />)
+    await screen.findByTitle('모집공고.pdf 미리보기')
+    vi.useFakeTimers()
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => unmount())
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '모집공고.pdf 다운로드' })) })
+    expect(click).toHaveBeenCalledTimes(1)
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview')
+    expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:download')
+    act(() => vi.runOnlyPendingTimers())
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:download')
+  })
+
+  it.each(['닫기', '파일 전환'])('원본이 없어 다운로드 API로 받는 중 %s해도 완료한다', async (action) => {
+    const preview = deferredBlob()
+    const download = deferredBlob()
+    const original = new Blob([new Uint8Array([255, 0, 123])])
+    vi.mocked(loadAnnouncementAttachment).mockReset().mockImplementation((_announcement, _attachment, isDownload) =>
+      isDownload ? download.promise : preview.promise)
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const { unmount } = render(<AttachmentDialog announcementId="201" attachments={[pdf, reference]} onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /모집공고.pdf/ }))
+    fireEvent.click(screen.getByRole('button', { name: '모집공고.pdf 다운로드' }))
+    const previewSignal = vi.mocked(loadAnnouncementAttachment).mock.calls[0]![3]
+    const downloadSignal = vi.mocked(loadAnnouncementAttachment).mock.calls[1]![3]
+    if (action === '닫기') unmount()
+    else fireEvent.click(screen.getByRole('button', { name: '파일 목록' }))
+    expect(previewSignal.aborted).toBe(true)
+    expect(downloadSignal.aborted).toBe(false)
+    await act(async () => { download.resolve(original) })
+    expect(click).toHaveBeenCalledTimes(1)
+    expect((click.mock.instances[0] as HTMLAnchorElement).download).toBe('모집공고.pdf')
+    expect(URL.createObjectURL).toHaveBeenCalledWith(original)
+    await act(async () => { preview.resolve(new Blob(['late preview'])) })
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
+  })
+
+  it('파일을 바꾸면 이전 Blob을 재사용하지 않고 새 파일의 원본만 저장한다', async () => {
+    const first = new Blob(['first'])
+    const second = new Blob(['second'])
+    vi.mocked(loadAnnouncementAttachment).mockReset().mockResolvedValueOnce(first).mockResolvedValueOnce(second)
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    render(<AttachmentDialog announcementId="201" attachments={[pdf, reference]} onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /모집공고.pdf/ }))
+    await screen.findByTitle('모집공고.pdf 미리보기')
+    fireEvent.click(screen.getByRole('button', { name: '파일 목록' }))
+    fireEvent.click(screen.getByRole('button', { name: /참고자료.pdf/ }))
+    await screen.findByTitle('참고자료.pdf 미리보기')
+    fireEvent.click(screen.getByRole('button', { name: '참고자료.pdf 다운로드' }))
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
+    expect(loadAnnouncementAttachment).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(URL.createObjectURL).mock.calls[2]![0]).toBe(second)
+    expect((click.mock.instances[0] as HTMLAnchorElement).download).toBe('참고자료.pdf')
   })
 })
