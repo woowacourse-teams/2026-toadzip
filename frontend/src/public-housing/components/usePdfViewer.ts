@@ -3,7 +3,10 @@ import { AnnotationMode, getDocument, GlobalWorkerOptions, version, type PDFDocu
 import type { EventBus, PDFViewer } from 'pdfjs-dist/legacy/web/pdf_viewer.mjs'
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 
-GlobalWorkerOptions.workerSrc = workerUrl
+// Bypass immutable responses cached before Nginx served .mjs as JavaScript.
+const workerSource = new URL(workerUrl, window.location.href)
+workerSource.searchParams.set('mime', 'javascript')
+GlobalWorkerOptions.workerSrc = workerSource.href
 const assets = `${import.meta.env.BASE_URL}pdfjs-${version}/`
 export interface PdfSearchResult {
   readonly current: number
