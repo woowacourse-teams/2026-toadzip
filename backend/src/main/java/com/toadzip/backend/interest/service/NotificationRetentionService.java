@@ -14,7 +14,7 @@ public class NotificationRetentionService {
     private final NotificationRetentionRepository repository;
     private final Clock clock;
 
-    @Scheduled(cron = "0 0 3 * * *", zone = "Asia/Seoul")
+    @Scheduled(cron = "0 */15 * * * *", zone = "Asia/Seoul")
     @Transactional
     public void purgeExpiredData() {
         repository.purge(clock.instant());

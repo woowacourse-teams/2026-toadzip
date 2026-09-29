@@ -12,7 +12,10 @@ public class NotificationRetentionRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
+    private final GuestCancellationRepository cancellationRepository;
+
     public void purge(Instant now) {
+        cancellationRepository.purgeOldRequests(now.minusSeconds(30L * 24 * 60 * 60));
         jdbcTemplate.update("DELETE FROM notification_interest_events WHERE created_at < ?",
                 Timestamp.from(now.minusSeconds(90L * 24 * 60 * 60)));
         jdbcTemplate.update("""
@@ -20,6 +23,15 @@ public class NotificationRetentionRepository {
                 WHERE NOT EXISTS (
                     SELECT 1 FROM notification_guest_subscriptions subscriptions
                     WHERE subscriptions.client_id = preferences.client_id
+                      AND subscriptions.active = true AND subscriptions.expires_at > ?)
+                """, Timestamp.from(now));
+        jdbcTemplate.update("""
+                DELETE FROM notification_guest_cancellation_requests requests
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM notification_guest_email_preferences preferences
+                    JOIN notification_guest_subscriptions subscriptions
+                      ON subscriptions.client_id = preferences.client_id
+                    WHERE lower(preferences.email) = requests.email
                       AND subscriptions.active = true AND subscriptions.expires_at > ?)
                 """, Timestamp.from(now));
         jdbcTemplate.update("""

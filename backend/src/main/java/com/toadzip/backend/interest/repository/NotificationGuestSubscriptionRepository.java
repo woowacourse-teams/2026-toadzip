@@ -60,6 +60,15 @@ public class NotificationGuestSubscriptionRepository {
                     WHERE subscriptions.client_id = preferences.client_id
                       AND subscriptions.active = true AND subscriptions.expires_at > CURRENT_TIMESTAMP)
                 """, clientId);
+        jdbcTemplate.update("""
+                DELETE FROM notification_guest_cancellation_requests requests
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM notification_guest_email_preferences preferences
+                    JOIN notification_guest_subscriptions subscriptions
+                      ON subscriptions.client_id = preferences.client_id
+                    WHERE lower(preferences.email) = requests.email
+                      AND subscriptions.active = true AND subscriptions.expires_at > CURRENT_TIMESTAMP)
+                """);
     }
 
     public NotificationSubscriptionResponse findForClient(UUID clientId) {

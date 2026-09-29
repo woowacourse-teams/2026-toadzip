@@ -19,7 +19,7 @@ BEGIN
     END IF;
     FOREACH expected_version IN ARRAY ARRAY[
             '20260922.02', '20260927.01', '20260928.01', '20260929.01',
-            '20260929.02', '20260929.03', '20260929.04'] LOOP
+            '20260929.02', '20260929.03', '20260929.04', '20260929.05'] LOOP
         IF NOT EXISTS (
                 SELECT 1 FROM public.flyway_schema_history
                 WHERE version = expected_version AND success = true) THEN
@@ -29,7 +29,7 @@ BEGIN
     FOREACH expected_table IN ARRAY ARRAY[
             'notification_interest_events', 'notification_email_preferences',
             'notification_subscriptions', 'notification_guest_email_preferences',
-            'notification_guest_subscriptions'] LOOP
+            'notification_guest_subscriptions', 'notification_guest_cancellation_requests'] LOOP
         IF to_regclass('public.' || expected_table) IS NULL THEN
             RAISE EXCEPTION 'Table % is missing', expected_table;
         END IF;

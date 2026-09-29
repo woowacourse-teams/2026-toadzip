@@ -117,6 +117,10 @@ class NotificationInterestIntegrationTest {
                 .replace("\"targetId\": \"11\"", "\"targetId\": \"11\", \"email\": \"guest@example.com\", "
                         + "\"clientId\": \"" + clientId + "\"");
         submit(confirmed);
+        mockMvc.perform(post("/api/v1/notification-guest-cancellations").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"guest@example.com\"}"))
+                .andExpect(status().isAccepted());
         String cancelled = request(UUID.randomUUID(), "CANCELLED", "REGION_SEARCH", "REGION", "11")
                 .replace("\"targetId\": \"11\"", "\"targetId\": \"11\", "
                         + "\"clientId\": \"" + clientId + "\"");
@@ -125,6 +129,9 @@ class NotificationInterestIntegrationTest {
         assertEquals(0, jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM notification_guest_email_preferences WHERE client_id = ?",
                 Integer.class, clientId));
+        assertEquals(0, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM notification_guest_cancellation_requests WHERE email = 'guest@example.com'",
+                Integer.class));
         mockMvc.perform(get("/api/v1/notification-subscriptions/guest")
                         .header("X-Notification-Client-Id", clientId))
                 .andExpect(status().isOk())

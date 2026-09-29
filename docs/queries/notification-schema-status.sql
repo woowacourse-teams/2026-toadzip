@@ -17,7 +17,7 @@ ORDER BY installed_rank;
 
 WITH expected(version) AS (
     VALUES ('20260922.02'), ('20260927.01'), ('20260928.01'), ('20260929.01'),
-           ('20260929.02'), ('20260929.03'), ('20260929.04')
+           ('20260929.02'), ('20260929.03'), ('20260929.04'), ('20260929.05')
 )
 SELECT expected.version,
        COALESCE(bool_or(history.success), false) AS applied_successfully
@@ -34,6 +34,7 @@ SELECT to_regclass('public.notification_interest_events') IS NOT NULL AS event_t
        to_regclass('public.notification_subscriptions') IS NOT NULL AS subscription_table_exists,
        to_regclass('public.notification_guest_email_preferences') IS NOT NULL AS guest_email_table_exists,
        to_regclass('public.notification_guest_subscriptions') IS NOT NULL AS guest_subscription_table_exists,
+       to_regclass('public.notification_guest_cancellation_requests') IS NOT NULL AS guest_cancellation_table_exists,
        EXISTS (SELECT 1 FROM information_schema.columns
                WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'email') AS user_email_column_exists,
        EXISTS (SELECT 1 FROM information_schema.columns
