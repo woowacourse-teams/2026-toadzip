@@ -2622,10 +2622,10 @@ describe('PublicHousingExplorer', () => {
     const detail = await screen.findByRole('complementary', {
       name: '성남 청년 행복주택 입주자 모집 공고 상세 정보',
     })
-    expect(within(detail).getByRole('heading', {
+    await waitFor(() => expect(within(detail).getByRole('heading', {
       name: '성남 청년 행복주택 입주자 모집 공고',
       level: 2,
-    })).toHaveFocus()
+    })).toHaveFocus())
     expect(screen.getByTestId('location-search')).toHaveTextContent(
       '?announcementId=201',
     )
