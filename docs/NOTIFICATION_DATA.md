@@ -3,6 +3,13 @@
 현재 서비스는 신청 목록을 관리한다. 이메일 발송과 새 공고의 대상 매칭은 자동화하지 않는다.
 운영자가 수동으로 확인할 수 있는 [유효 신청 이메일 조회 쿼리](queries/active-notification-recipients.sql)만 제공한다.
 쿼리 결과에는 개인정보가 있으므로 승인된 담당자만 조회하고 공개 로그·저장소에 남기지 않는다.
+발송 담당자는 새 공고의 대상 지역·단지·공고 ID를 확인한 후 유효 신청 목록에서 해당 대상을 선택한다.
+조회는 `psql -X -v ON_ERROR_STOP=1 -v target_type=REGION -v target_id=<지역_ID>
+-f docs/queries/active-notification-recipients.sql`처럼 **대상 하나씩** 실행한다. 이 SQL은 읽기 전용이며
+인자 없이 전체 이메일을 출력하지 않는다. 조회 계정에는 필요한 테이블의 `SELECT` 권한만 부여한다.
+일치 여부와 발송 대상은 사람이 최종 확인한다. 취소된 신청은 `active=false`여서 조회 결과에 없다.
+[집계 쿼리](queries/notification-interest-metrics.sql)의 클릭 수는 관심 행동의 기록이고, 유효 신청 건수는
+현재 `active=true`인 계정·비로그인 신청을 세므로 서로 다를 수 있다.
 
 ## 저장 구조
 
