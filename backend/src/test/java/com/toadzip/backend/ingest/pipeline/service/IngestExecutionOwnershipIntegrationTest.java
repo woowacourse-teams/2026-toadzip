@@ -68,7 +68,7 @@ class IngestExecutionOwnershipIntegrationTest {
                       and objsubid = 1
                       and database = (select oid from pg_database where datname = current_database())
                     """, Integer.class);
-            assertThat(jdbc.queryForObject("select pg_terminate_backend(?)", Boolean.class, ownerPid)).isTrue();
+            assertThat(jdbc.queryForObject("select pg_terminate_backend(?, 5000)", Boolean.class, ownerPid)).isTrue();
             DataPipelineExecutionLock second = new DataPipelineExecutionLock(dataSource);
             try (var ignored = second.tryAcquire().orElseThrow()) {
                 sourceStore.completeAnnouncementCollection("stale-owner");
@@ -214,7 +214,8 @@ class IngestExecutionOwnershipIntegrationTest {
                   and objid = (8432026090100001::bigint & 4294967295)::oid and objsubid = 1
                   and database = (select oid from pg_database where datname = current_database())
                 """, Integer.class);
-        assertThat(jdbc.queryForObject("select pg_terminate_backend(?)", Boolean.class, pid)).isTrue();
+        // A positive timeout waits for session termination, not just delivery of the termination signal.
+        assertThat(jdbc.queryForObject("select pg_terminate_backend(?, 5000)", Boolean.class, pid)).isTrue();
     }
 
     @TestConfiguration(proxyBeanMethods = false)

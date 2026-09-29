@@ -1,4 +1,6 @@
 package com.toadzip.backend.announcement.dto.response;
 
-public record AttachmentContent(String fileName, byte[] bytes) {
+import com.toadzip.backend.announcement.domain.TemporaryAttachment;
+
+public record AttachmentContent(String fileName, TemporaryAttachment file) {
 }

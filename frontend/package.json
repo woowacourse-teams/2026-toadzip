@@ -18,6 +18,7 @@
     "prebuild": "node scripts/prepare-pdf-assets.mjs"
   },
   "dependencies": {
+    "@rhwp/core": "0.8.6",
     "pdfjs-dist": "6.3.289",
     "react": "19.2.8",
     "react-dom": "19.2.8",
