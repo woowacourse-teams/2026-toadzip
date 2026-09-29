@@ -10,66 +10,143 @@ class PreviewWorker {
   postMessage = vi.fn()
   terminate = vi.fn()
   constructor() { PreviewWorker.instances.push(this) }
-  page(page = 0) {
-    act(() => this.onmessage?.({ data: { type: 'page', page, count: 2, svg: '<svg/>', text: '<script>공고문</script>' } }))
+  send(data: unknown) { act(() => this.onmessage?.({ data: data as HwpResponse })) }
+  ready(count = 8) { this.send({ type: 'ready', pages: Array.from({ length: count }, () => ({ width: 794, height: 1123 })) }) }
+  page(page = 0) { this.send({ type: 'page', page, svg: '<svg/>', text: '<script>공고문</script>' }) }
+  results(id: number, matches = [{ page: 4, rects: [{ x: 10, y: 20, width: 40, height: 12 }] }, { page: 6, rects: [{ x: 10, y: 30, width: 40, height: 12 }] }]) {
+    this.send({ type: 'search', id, matches })
   }
 }
 
 beforeEach(() => {
   PreviewWorker.instances = []
+  vi.useFakeTimers()
   vi.stubGlobal('Worker', PreviewWorker)
-  vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:hwp-page'), revokeObjectURL: vi.fn() }))
-})
-afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
+  let nextUrl = 0
+  vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => `blob:hwp-${nextUrl++}`), revokeObjectURL: vi.fn() }))
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(818)
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600)
 
-it('페이지 이동과 확대를 제공하고 문서 텍스트를 HTML로 실행하지 않는다', () => {
-  const { unmount } = render(<HwpDocumentPreview url="blob:original" name="공고.hwpx" />)
-  const worker = PreviewWorker.instances[0]!
-  expect(worker.postMessage).toHaveBeenCalledWith({ type: 'open', url: 'blob:original' })
-  worker.page()
-  expect(screen.getByRole('status')).toHaveTextContent('1 / 2 페이지')
-  expect(screen.getByRole('button', { name: '이전 페이지' })).toBeDisabled()
-  expect(screen.getByText('<script>공고문</script>')).toBeInTheDocument()
-  expect(document.querySelector('script')).toBeNull()
-  fireEvent.change(screen.getByRole('combobox', { name: '크기' }), { target: { value: '150' } })
-  expect(screen.getByRole('img')).toHaveStyle({ width: '1191px' })
-  fireEvent.click(screen.getByRole('button', { name: '다음 페이지' }))
-  expect(worker.postMessage).toHaveBeenLastCalledWith({ type: 'page', page: 1 })
-  expect(screen.getByRole('button', { name: '다음 페이지' })).toBeDisabled()
-  worker.page(1)
-  expect(screen.getByRole('status')).toHaveTextContent('2 / 2 페이지')
-  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:hwp-page')
+})
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers() })
+function ready() { const worker = PreviewWorker.instances.at(-1)!; worker.ready(); worker.page(); return worker }
+function search(query = '임대', modifier = 'metaKey') {
+  fireEvent.keyDown(screen.getByRole('region', { name: '공고.hwp 문서' }), { key: 'f', [modifier]: true })
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: query } })
+  act(() => vi.advanceTimersByTime(250))
+}
+
+it('여러 페이지를 세로로 배치하고 스크롤한 쪽수·확대를 반영하며 먼 이미지 URL을 해제한다', () => {
+  const { unmount } = render(<HwpDocumentPreview url="blob:original" name="공고.hwp" />)
+  const worker = ready(); worker.page(1)
+  expect(screen.getByRole('region', { name: '공고.hwp 문서' })).toHaveAttribute('tabindex', '0')
+  expect(screen.getAllByRole('region', { name: /페이지$/ })).toHaveLength(8)
+  expect(screen.queryByRole('button', { name: '다음 페이지' })).not.toBeInTheDocument()
+  expect(screen.getByRole('img', { name: '공고.hwp 1페이지' })).toBeVisible()
+  fireEvent.scroll(screen.getByRole('region', { name: '공고.hwp 문서' }), { target: { scrollTop: 4550 } })
+  expect(screen.getByText('5 / 8 페이지')).toBeVisible()
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:hwp-0')
+  expect(worker.postMessage).toHaveBeenCalledWith({ type: 'page', page: 4 })
+  worker.page(4)
+  fireEvent.change(screen.getByRole('combobox', { name: '한글 문서 크기' }), { target: { value: '150' } })
+  expect(screen.getByRole('region', { name: '5페이지' })).toHaveStyle({ width: '1191px' })
   unmount()
   expect(worker.terminate).toHaveBeenCalled()
+  expect(vi.getTimerCount()).toBe(0)
 })
-
-it('암호·손상 등 SDK 실패는 다운로드 안내와 새 작업자로 재시도를 제공한다', () => {
+it.each(['metaKey', 'ctrlKey'])('%s+F로 전체 검색·이동·강조하고 Enter/Shift+Enter로 순환한다', (modifier) => {
   render(<HwpDocumentPreview url="blob:original" name="공고.hwp" />)
-  const worker = PreviewWorker.instances[0]!
-  act(() => worker.onmessage?.({ data: { type: 'error' } }))
+  const worker = ready(); search('임대', modifier)
+  expect(screen.getByRole('searchbox')).toHaveFocus()
+  expect(worker.postMessage).toHaveBeenCalledWith({ type: 'search', query: '임대', id: expect.any(Number) })
+  const id = worker.postMessage.mock.calls.at(-1)![0].id as number
+  worker.results(id)
+  expect(screen.getByText('1 / 2개')).toBeVisible()
+  expect(screen.getByText('5 / 8 페이지')).toBeVisible()
+  expect(screen.getByRole('region', { name: '5페이지' }).querySelector('[data-search-active="true"]')).toBeInTheDocument()
+  fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'Enter' })
+  expect(screen.getByText('2 / 2개')).toBeVisible()
+  expect(screen.getByText('7 / 8 페이지')).toBeVisible()
+  fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'Enter', shiftKey: true })
+  expect(screen.getByText('1 / 2개')).toBeVisible()
+})
+it('오래된 검색 결과를 무시하고 한글 조합 중에는 검색을 보내지 않는다', () => {
+  render(<HwpDocumentPreview url="blob:original" name="공고.hwp" />)
+  const worker = ready(); search()
+  const id = worker.postMessage.mock.calls.at(-1)![0].id as number
+  const input = screen.getByRole('searchbox')
+  fireEvent.compositionStart(input)
+  fireEvent.change(input, { target: { value: 'ㅇ' } })
+  act(() => vi.advanceTimersByTime(250))
+  expect(worker.postMessage.mock.calls.filter(([request]) => request.type === 'search' && request.query === 'ㅇ')).toHaveLength(0)
+  fireEvent.compositionEnd(input, { target: { value: '청년' } })
+  act(() => vi.advanceTimersByTime(250))
+  const nextId = worker.postMessage.mock.calls.at(-1)![0].id as number
+  worker.results(id)
+  expect(screen.queryByText('1 / 2개')).not.toBeInTheDocument()
+  worker.results(nextId, [])
+  expect(screen.getByText('검색 결과 없음')).toBeVisible()
+})
+it('Escape는 검색만 닫고 모달 밖 단축키는 유지한다', () => {
+  render(<><button>모달 밖</button><dialog open><button>파일 목록</button><HwpDocumentPreview url="blob:original" name="공고.hwp" /></dialog></>)
+  ready()
+  const outside = new KeyboardEvent('keydown', { key: 'f', metaKey: true, bubbles: true, cancelable: true })
+  fireEvent(screen.getByRole('button', { name: '모달 밖' }), outside)
+  expect(outside.defaultPrevented).toBe(false)
+  fireEvent.keyDown(screen.getByRole('button', { name: '파일 목록' }), { key: 'f', ctrlKey: true })
+  const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+  fireEvent(screen.getByRole('searchbox'), escape)
+  expect(escape.defaultPrevented).toBe(true)
+  expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+  expect(screen.getByRole('dialog')).toBeVisible()
+})
+it('파일 전환 시 이전 작업자·URL·검색 상태를 정리하고 늦은 응답을 무시한다', () => {
+  const { rerender, unmount } = render(<HwpDocumentPreview url="blob:original" name="공고.hwp" />)
+  const worker = ready(); search()
+  const late = worker.onmessage
+  rerender(<HwpDocumentPreview url="blob:new" name="공고.hwpx" />)
+  expect(worker.terminate).toHaveBeenCalled()
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:hwp-0')
+  expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+  act(() => late?.({ data: { type: 'page', page: 5, svg: '<svg/>' } as HwpResponse }))
+  expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  unmount(); expect(vi.getTimerCount()).toBe(0)
+})
+it('암호·손상 등 SDK 오류와 시간 초과에 작업자를 정리하고 재시도한다', () => {
+  render(<HwpDocumentPreview url="blob:original" name="공고.hwp" />)
+  const worker = ready()
+  worker.send({ type: 'error' })
   expect(screen.getByRole('alert')).toHaveTextContent('다운로드해서 확인해 주세요')
   expect(worker.terminate).toHaveBeenCalled()
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:hwp-0')
   fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
   expect(PreviewWorker.instances).toHaveLength(2)
-  PreviewWorker.instances[1]!.page()
-  expect(screen.getByRole('img', { name: '공고.hwp 1페이지' })).toBeVisible()
-})
-
-it('해석이 멈추면 제한시간 후 작업자를 종료하고 오류를 표시한다', () => {
-  vi.useFakeTimers()
-  render(<HwpDocumentPreview url="blob:original" name="공고.hwp" />)
   act(() => vi.advanceTimersByTime(60_000))
-  expect(PreviewWorker.instances[0]!.terminate).toHaveBeenCalled()
+  expect(PreviewWorker.instances[1]!.terminate).toHaveBeenCalled()
   expect(screen.getByRole('alert')).toBeVisible()
 })
 
-it('페이지 이동 중 닫으면 작업자와 타이머와 이미지 URL을 정리한다', () => {
-  vi.useFakeTimers()
-  const { unmount } = render(<HwpDocumentPreview url="blob:original" name="공고.hwp" />)
-  PreviewWorker.instances[0]!.page()
-  fireEvent.click(screen.getByRole('button', { name: '다음 페이지' }))
-  unmount()
-  expect(PreviewWorker.instances[0]!.terminate).toHaveBeenCalled()
-  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:hwp-page')
-  expect(vi.getTimerCount()).toBe(0)
+it('결과가 하나여도 다른 쪽을 읽다가 Enter를 누르면 검색 위치로 돌아온다', () => {
+  render(<HwpDocumentPreview url="blob:original" name="공고.hwp" />)
+  const worker = ready(); search()
+  worker.results(worker.postMessage.mock.calls.at(-1)![0].id as number, [{ page: 4, rects: [{ x: 10, y: 20, width: 40, height: 12 }] }])
+  fireEvent.scroll(screen.getByRole('region', { name: '공고.hwp 문서' }), { target: { scrollTop: 0 } })
+  expect(screen.getByText('1 / 8 페이지')).toBeVisible()
+  fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'Enter' })
+  expect(screen.getByText('5 / 8 페이지')).toBeVisible()
+})
+it('검색 후 직접 이동한 페이지에서 확대해도 이전 검색 위치로 튀지 않는다', () => {
+  render(<HwpDocumentPreview url="blob:original" name="공고.hwp" />)
+  const worker = ready(); search()
+  worker.results(worker.postMessage.mock.calls.at(-1)![0].id as number)
+  fireEvent.scroll(screen.getByRole('region', { name: '공고.hwp 문서' }), { target: { scrollTop: 0 } })
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: '150' } })
+  expect(screen.getByText('1 / 8 페이지')).toBeVisible()
+})
+it('현재 페이지 텍스트를 읽고 복사할 수 있으며 문서 마크업을 실행하지 않는다', () => {
+  render(<HwpDocumentPreview url="blob:original" name="공고.hwp" />)
+  ready()
+  expect(screen.getByText('<script>공고문</script>')).toBeInTheDocument()
+  expect(document.querySelector('script')).toBeNull()
 })
