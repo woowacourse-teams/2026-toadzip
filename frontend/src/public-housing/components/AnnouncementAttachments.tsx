@@ -8,7 +8,11 @@ import { PdfPreviewBoundary } from './PdfPreviewBoundary.tsx'
 import styles from './AnnouncementAttachments.module.css'
 
 const HwpDocumentPreview = lazy(() => import('./HwpDocumentPreview.tsx'))
-const PdfDocumentPreview = lazy(() => import('./PdfDocumentPreview.tsx'))
+const PdfDocumentPreview = lazy(loadPdfDocumentPreview)
+
+function loadPdfDocumentPreview() {
+  return import('./PdfDocumentPreview.tsx')
+}
 
 interface AttachmentsProps {
   readonly announcementId: string
@@ -129,6 +133,11 @@ function AttachmentPreview({ announcementId, attachment, onLoad }: {
     if (unsupported || !available) return
     const controller = new AbortController()
     let url: string | undefined
+    // Warm code while the original downloads; native imports share in-flight work.
+    // Core initializes pdfjsLib before the web viewer reads it. Keep web import
+    // failures out of React.lazy's cache and let usePdfViewer handle them on mount.
+    if (!hwp) void loadPdfDocumentPreview()
+      .then(() => import('pdfjs-dist/legacy/web/pdf_viewer.mjs')).catch(() => {})
     loadAnnouncementAttachment(announcementId, attachment.attachmentId, hwp, controller.signal)
       .then((blob) => {
         if (controller.signal.aborted) return

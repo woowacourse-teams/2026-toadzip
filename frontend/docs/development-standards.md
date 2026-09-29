@@ -66,6 +66,8 @@ lock 파일을 직접 편집하거나 현재 작업과 무관한 버전 갱신�
 
 공고 첨부파일은 브라우저 내장 PDF 플러그인 없이 확인할 수 있도록 `pdfjs-dist` legacy 빌드를 모달을 열 때 지연 로딩한다. native iframe은 앱 내 브라우저에서 빈 화면이 확인되어 채택하지 않았다. 라이선스는 Apache-2.0이며 버전은 package.json/lock에 고정한다. 설치 시점 npm audit 결과 취약점 0건이었다.
 
+PDF를 선택하면 원본 파일 요청과 동시에 뷰어 컴포넌트·코어를 불러오고 코어 초기화 후 web viewer 모듈을 미리 준비한다. 같은 동적 import를 재사용해 초기 화면이나 한글 문서에는 PDF 코드를 추가하지 않는다. 사전 로딩 실패는 원본 수신을 막지 않으며 렌더링 시 다시 로딩을 시도한다. worker 생성·문서 해석은 원본 Blob 수신 후 시작하므로 기존 파일 전환·닫기 정리를 유지한다. 이 최적화는 첫 열람의 코드 로딩 대기를 겹치며 파일 전송 시간 자체를 줄이지 않는다.
+
 `npm run dev`와 `npm run build`의 pre 스크립트가 `scripts/prepare-pdf-assets.mjs`를 실행해 설치 버전의 CMap, 표준 폰트, WASM 및 라이선스를 `public/pdfjs-{version}/`에 준비한다. 생성 디렉터리는 Git에서 제외되지만 dist에는 포함된다. PDF.js 교체·제거 경계는 PdfDocumentPreview 컴포넌트와 이 자산 준비 스크립트다.
 
 배포 Nginx는 `nginx.conf`에서 `.mjs`를 `application/javascript`로 제공해야 한다. PDF worker가 `application/octet-stream`으로 응답하면 첨부 API가 성공해도 브라우저의 모듈 MIME 검사에서 미리보기가 실패한다. 설정 변경은 프론트 이미지를 다시 빌드하고 컨테이너를 재생성해 반영한다. `/assets/`의 기존 잘못된 MIME 응답도 장기 캐시되므로 worker URL에 `mime=javascript` 쿼리를 붙여 이전 캐시를 우회한다. 이 쿼리는 캐시 키를 바꾸는 용도이며 응답 형식은 Nginx의 MIME 매핑이 결정한다. 배포 후 페이지를 새로고침하고 worker 요청의 `Content-Type`을 확인한다.

@@ -10,6 +10,8 @@ vi.mock('./PdfDocumentPreview.tsx', () => ({
     return <div title={`${name} 미리보기`} data-url={url} />
   },
 }))
+// Its core is replaced above, so the dependent web viewer is also an SDK boundary double.
+vi.mock('pdfjs-dist/legacy/web/pdf_viewer.mjs', () => ({}))
 
 vi.mock('./HwpDocumentPreview.tsx', () => ({
   default: ({ name }: { name: string }) => <div title={`${name} 한글 미리보기`} />,
