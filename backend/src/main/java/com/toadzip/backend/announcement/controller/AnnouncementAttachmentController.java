@@ -6,6 +6,8 @@ import com.toadzip.backend.announcement.service.AnnouncementAttachmentService;
 import com.toadzip.backend.global.exception.ErrorResponse;
 import com.toadzip.backend.global.exception.RequestTraceIdResolver;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
@@ -30,24 +32,29 @@ public class AnnouncementAttachmentController {
     }
 
     @GetMapping
-    public ResponseEntity<byte[]> read(
+    public void read(
             @PathVariable long announcementId,
             @PathVariable long attachmentId,
-            @RequestParam(defaultValue = "false") boolean download
-    ) {
+            @RequestParam(defaultValue = "false") boolean download,
+            HttpServletResponse response
+    ) throws IOException {
         AttachmentContent content = service.read(announcementId, attachmentId, download);
-        ContentDisposition.Builder disposition = ContentDisposition.inline();
-        MediaType type = MediaType.APPLICATION_PDF;
-        if (download) {
-            disposition = ContentDisposition.attachment();
-            type = MediaType.APPLICATION_OCTET_STREAM;
+        try (var file = content.file()) {
+            ContentDisposition.Builder disposition = ContentDisposition.inline();
+            MediaType type = MediaType.APPLICATION_PDF;
+            if (download) {
+                disposition = ContentDisposition.attachment();
+                type = MediaType.APPLICATION_OCTET_STREAM;
+            }
+            String name = content.fileName().replaceAll("[\\p{Cntrl}/\\\\]", "_");
+            response.setContentType(type.toString());
+            response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
+            response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
+                    disposition.filename(name, StandardCharsets.UTF_8).build().toString());
+            response.setHeader("X-Content-Type-Options", "nosniff");
+            response.setContentLengthLong(file.size());
+            file.transferTo(response.getOutputStream());
         }
-        String name = content.fileName().replaceAll("[\\p{Cntrl}/\\\\]", "_");
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).contentType(type)
-                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.filename(name, StandardCharsets.UTF_8)
-                        .build().toString())
-                .header("X-Content-Type-Options", "nosniff")
-                .contentLength(content.bytes().length).body(content.bytes());
     }
 
     @ExceptionHandler(AttachmentUnavailableException.class)

@@ -1,0 +1,11 @@
+.document { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; background: var(--ds-color-surface-subtle); color-scheme: light; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-2); padding: var(--ds-space-2) var(--ds-space-3); border-top: 1px solid var(--ds-color-divider); background: var(--ds-color-surface); font-size: var(--ds-text-caption); }
+.controls label { margin-left: auto; }
+.controls button, .controls select, .error button { min-height: 36px; border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); padding: var(--ds-space-1) var(--ds-space-2); background: var(--ds-color-surface); color: var(--ds-color-text); font: inherit; }
+.document :is(button, select, summary):focus-visible, .viewport:focus-visible, .error button:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: -2px; }
+.viewport { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: var(--ds-space-3); }
+.page { display: block; height: auto; margin: 0 auto; background: white; }
+.text { margin-top: var(--ds-space-3); color: var(--ds-color-label); }
+.text summary { cursor: pointer; padding: var(--ds-space-2); }
+.text pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; padding: var(--ds-space-3); background: var(--ds-color-surface); }
+.error { padding: var(--ds-space-4); text-align: center; color: var(--ds-color-label); }

@@ -8,6 +8,10 @@ vi.mock('./PdfDocumentPreview.tsx', () => ({
   default: ({ name, url }: { name: string; url: string }) => <div title={`${name} 미리보기`} data-url={url} />,
 }))
 
+vi.mock('./HwpDocumentPreview.tsx', () => ({
+  default: ({ name }: { name: string }) => <div title={`${name} 한글 미리보기`} />,
+}))
+
 vi.mock('../api/announcementAttachments.ts', async (importOriginal) => ({
   ...await importOriginal<typeof import('../api/announcementAttachments.ts')>(),
   loadAnnouncementAttachment: vi.fn(),
@@ -68,12 +72,19 @@ describe('첨부파일', () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview')
   })
 
-  it('비PDF는 자동 다운로드 없이 지원 안내와 다운로드 버튼을 제공한다', () => {
+  it('ZIP은 자동 다운로드 없이 지원 안내와 다운로드 버튼을 제공한다', () => {
     vi.mocked(loadAnnouncementAttachment).mockClear()
-    render(<AttachmentDialog announcementId="201" attachments={[{ ...pdf, fileName: '신청서.hwpx' }]} onClose={vi.fn()} />)
+    render(<AttachmentDialog announcementId="201" attachments={[{ ...pdf, fileName: '신청서.zip' }]} onClose={vi.fn()} />)
     expect(screen.getByText('이 파일은 미리보기를 지원하지 않습니다. 다운로드해서 확인해 주세요.')).toBeVisible()
-    expect(screen.getByRole('button', { name: '신청서.hwpx 다운로드' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '신청서.zip 다운로드' })).toBeEnabled()
     expect(loadAnnouncementAttachment).not.toHaveBeenCalled()
+  })
+
+  it.each(['hwp', 'hwpx'])('%s는 원본 바이트를 요청해 한글 뷰어로 연다', async (extension) => {
+    render(<AttachmentDialog announcementId="201" attachments={[{ ...pdf, fileName: `공고문.${extension}` }]} onClose={vi.fn()} />)
+    expect(await screen.findByTitle(`공고문.${extension} 한글 미리보기`)).toBeVisible()
+    expect(loadAnnouncementAttachment).toHaveBeenCalledWith('201', '1', true, expect.any(AbortSignal))
+    expect(screen.queryByRole('link', { name: 'PDF 새 창에서 보기' })).not.toBeInTheDocument()
   })
 
   it('미리보기 실패를 표시하고 다시 시도할 수 있다', async () => {

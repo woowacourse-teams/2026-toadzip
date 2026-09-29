@@ -28,7 +28,7 @@ export async function loadAnnouncementAttachment(
   }
   const response = await fetch(
     `${resolvePublicHousingApiBaseUrl()}/api/v1/announcements/${announcementId}/attachments/${attachmentId}/content?download=${download}`,
-    { signal: AbortSignal.any([signal, AbortSignal.timeout(40_000)]) },
+    { signal: AbortSignal.any([signal, AbortSignal.timeout(150_000)]) },
   )
   if (!response.ok) {
     const payload: unknown = await response.json().catch(() => null)

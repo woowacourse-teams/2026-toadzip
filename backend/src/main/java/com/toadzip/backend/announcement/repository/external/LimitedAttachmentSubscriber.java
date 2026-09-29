@@ -1,33 +1,38 @@
 package com.toadzip.backend.announcement.repository.external;
 
-import com.toadzip.backend.announcement.exception.AttachmentUnavailableException;
+import com.toadzip.backend.announcement.domain.TemporaryAttachment;
 import com.toadzip.backend.announcement.exception.AttachmentUnavailableException.Reason;
+import com.toadzip.backend.announcement.exception.AttachmentUnavailableException;
+import java.io.IOException;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Flow;
 
-final class LimitedAttachmentSubscriber implements HttpResponse.BodySubscriber<byte[]> {
-    private final HttpResponse.BodySubscriber<byte[]> downstream = HttpResponse.BodySubscribers.ofByteArray();
+final class LimitedAttachmentSubscriber implements HttpResponse.BodySubscriber<TemporaryAttachment> {
+    private final CompletableFuture<TemporaryAttachment> body = new CompletableFuture<>();
+    private final TemporaryAttachment file;
     private final long limit;
     private Flow.Subscription subscription;
     private long received;
     private boolean done;
 
-    LimitedAttachmentSubscriber(long limit) {
+    LimitedAttachmentSubscriber(long limit, TemporaryAttachment file) {
         this.limit = limit;
+        this.file = file;
     }
 
     @Override
-    public CompletionStage<byte[]> getBody() {
-        return downstream.getBody();
+    public CompletionStage<TemporaryAttachment> getBody() {
+        return body;
     }
 
     @Override
     public void onSubscribe(Flow.Subscription subscription) {
         this.subscription = subscription;
-        downstream.onSubscribe(subscription);
+        subscription.request(1);
     }
 
     @Override
@@ -41,14 +46,22 @@ final class LimitedAttachmentSubscriber implements HttpResponse.BodySubscriber<b
             onError(new AttachmentUnavailableException(Reason.TOO_LARGE));
             return;
         }
-        downstream.onNext(buffers);
+        try {
+            for (ByteBuffer buffer : buffers) {
+                file.append(buffer);
+            }
+            subscription.request(1);
+        } catch (IOException exception) {
+            subscription.cancel();
+            onError(exception);
+        }
     }
 
     @Override
     public void onError(Throwable error) {
         if (!done) {
             done = true;
-            downstream.onError(error);
+            body.completeExceptionally(error);
         }
     }
 
@@ -56,7 +69,7 @@ final class LimitedAttachmentSubscriber implements HttpResponse.BodySubscriber<b
     public void onComplete() {
         if (!done) {
             done = true;
-            downstream.onComplete();
+            body.complete(file);
         }
     }
 }

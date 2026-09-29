@@ -2,7 +2,6 @@ package com.toadzip.backend.announcement.controller;
 
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -14,11 +13,13 @@ import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.AttachmentType;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
+import com.toadzip.backend.announcement.domain.TemporaryAttachment;
 import com.toadzip.backend.announcement.exception.AttachmentUnavailableException;
 import com.toadzip.backend.announcement.repository.external.AnnouncementAttachmentClient;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
 import jakarta.persistence.EntityManager;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -57,7 +58,7 @@ class AnnouncementAttachmentIntegrationTest {
         attachment = AnnouncementAttachment.create(announcement, "공고문.pdf", AttachmentType.ANNOUNCEMENT, SOURCE, 0);
         entityManager.persist(attachment);
         entityManager.flush();
-        when(client.read(SOURCE)).thenReturn(PDF);
+        stub(PDF);
     }
 
     @Test
@@ -72,7 +73,7 @@ class AnnouncementAttachmentIntegrationTest {
 
     @Test
     void 다운로드는_원본_형식과_무관하게_attachment로_반환한다() throws Exception {
-        when(client.read(SOURCE)).thenReturn(new byte[] {1, 2, 3});
+        stub(new byte[] {1, 2, 3});
         mockMvc.perform(request().param("download", "true")).andExpect(status().isOk())
                 .andExpect(content().contentType("application/octet-stream"))
                 .andExpect(header().string("Content-Disposition", startsWith("attachment;")))
@@ -97,17 +98,25 @@ class AnnouncementAttachmentIntegrationTest {
 
     @Test
     void 비PDF는_미리보기_오류를_JSON으로_반환한다() throws Exception {
-        when(client.read(SOURCE)).thenReturn("<html>error</html>".getBytes(StandardCharsets.US_ASCII));
+        stub("<html>error</html>".getBytes(StandardCharsets.US_ASCII));
         mockMvc.perform(request()).andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("ATTACHMENT_NOT_PDF"));
     }
 
     @Test
     void 외부_파일_오류는_성공한_파일로_위장하지_않는다() throws Exception {
-        when(client.read(SOURCE)).thenThrow(new AttachmentUnavailableException(
-                AttachmentUnavailableException.Reason.UPSTREAM_FAILURE));
+        org.mockito.Mockito.doThrow(new AttachmentUnavailableException(
+                AttachmentUnavailableException.Reason.UPSTREAM_FAILURE)).when(client).read(SOURCE);
         mockMvc.perform(request()).andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.code").value("ATTACHMENT_UPSTREAM_FAILURE"));
+    }
+
+    private void stub(byte[] bytes) {
+        org.mockito.Mockito.doAnswer(invocation -> {
+            var file = new TemporaryAttachment(() -> {});
+            file.append(ByteBuffer.wrap(bytes));
+            return file;
+        }).when(client).read(SOURCE);
     }
 
     private MockHttpServletRequestBuilder request() {

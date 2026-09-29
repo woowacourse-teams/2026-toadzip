@@ -71,3 +71,14 @@ lock 파일을 직접 편집하거나 현재 작업과 무관한 버전 갱신�
 배포 Nginx는 `nginx.conf`에서 `.mjs`를 `application/javascript`로 제공해야 한다. PDF worker가 `application/octet-stream`으로 응답하면 첨부 API가 성공해도 브라우저의 모듈 MIME 검사에서 미리보기가 실패한다. 설정 변경은 프론트 이미지를 다시 빌드하고 컨테이너를 재생성해 반영한다. `/assets/`의 기존 잘못된 MIME 응답도 장기 캐시되므로 worker URL에 `mime=javascript` 쿼리를 붙여 이전 캐시를 우회한다. 이 쿼리는 캐시 키를 바꾸는 용도이며 응답 형식은 Nginx의 MIME 매핑이 결정한다. 배포 후 페이지를 새로고침하고 worker 요청의 `Content-Type`을 확인한다.
 
 `usePdfViewer`는 PDFViewer의 연속 스크롤·렌더 버퍼와 PDFFindController의 전체 문서 검색·텍스트 강조를 연결한다. build 모듈 초기화 후 web viewer를 읽고, 문서 해제·AbortSignal·지역화 객체·worker를 함께 정리한다. SDK 스타일은 `@scope` 안에 두어 전역 색상과 다른 화면에 영향을 주지 않는다. 검색 단축키는 현재 모달에만 등록하며 PDF 스크립트와 폼 편집은 활성화하지 않는다.
+
+
+## HWP·HWPX 미리보기
+
+`@rhwp/core` 0.8.6(MIT)을 사용한다. 브라우저에서 한글 원본을 해석하며 외부 변환 서비스로 업로드하지 않는다. HwpDocumentPreview를 지연 로딩하고 별도 worker에서 WASM을 초기화한다. 약 9.94 MB의 WASM은 한글 문서를 처음 열 때만 내려받고 Vite 해시 자산으로 캐시한다. 라이선스는 pre 스크립트가 `public/rhwp-{version}/LICENSE`로 복사한다. SDK를 제거하거나 교체하는 경계는 이 컴포넌트, worker와 자산 준비 스크립트다.
+
+기존 원본 다운로드 API(`download=true`)를 이용하며 PDF 전용 미리보기 API의 형식 검증은 유지한다. 페이지별 SVG는 Blob 이미지로 표시하고 문서의 마크업을 DOM에 삽입하지 않는다. 현재 페이지의 추출 텍스트는 일반 텍스트로 제공한다. 문서 해석은 60초, 페이지 이동은 30초 제한을 두고 실패·닫기 시 worker를 종료해 WASM 메모리를 반환한다.
+
+실제 부산문현 LH HWPX 공고문과 관세청 공개 HWP에서 한글·표·이미지와 페이지 이동을 확인했다. 원본 글꼴이나 페이지 나눔은 달라질 수 있다(동일 LH 공고 PDF 53쪽, HWPX 뷰어 55쪽). 암호·손상·지원되지 않는 HWP 구조 및 구형 브라우저에서는 다운로드로 안내한다. ZIP·DOCX·XLSX 등은 미리보기 대상이 아니다. 검증한 버전은 고정하며 라이브러리 교체 시 실제 문서 검증을 다시 수행한다.
+
+첨부 API 대기 시간은 서버 외부 다운로드 제한 120초를 포함하도록 150초다. 파일 한도의 기본값은 100 MiB이며 백엔드 `ANNOUNCEMENT_ATTACHMENT_MAX_SIZE`로 조절한다.
