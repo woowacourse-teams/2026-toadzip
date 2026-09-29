@@ -9,8 +9,11 @@ it('비로그인 사용자는 카카오와 구글 로그인 경로를 선택할 
   vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.com')
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 401, ok: false }))
   render(<MemoryRouter><LoginPage /></MemoryRouter>)
-  expect(screen.getByRole('link', { name: '공공주택 복덕방 홈' }).querySelector('img'))
+  const brand = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
+  expect(brand).toHaveTextContent('공공주택 복덕방')
+  expect(brand.querySelector('img'))
     .toHaveAttribute('src', '/logo-bok-search.svg')
+  expect(screen.getByRole('heading', { name: /좋은 집을 찾는 시간/ })).toBeVisible()
   const kakaoLink = await screen.findByRole('link', { name: '카카오로 계속하기' })
   expect(kakaoLink).toHaveAttribute(
     'href', 'https://api.example.com/api/auth/oauth2/authorization/kakao',

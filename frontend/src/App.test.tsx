@@ -47,7 +47,7 @@ describe('App', () => {
     expect(screen.getByRole('banner', { name: '서비스 헤더' })).toBeVisible()
     const homeLink = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
     expect(homeLink).toBeVisible()
-    expect(homeLink).toHaveTextContent('공공주택 복덕방')
+    expect(homeLink.querySelector('.brand-name')).not.toBeInTheDocument()
     expect(homeLink.querySelector('img')).toHaveAttribute('src', '/logo-bok-search.svg')
     expect(
       screen.getByRole('searchbox', { name: '지역, 단지, 공고 검색' }),
@@ -87,7 +87,9 @@ describe('App', () => {
     expect(
       screen.getByRole('heading', { name: '페이지를 찾을 수 없습니다.' }),
     ).toBeVisible()
-    expect(screen.getByRole('link', { name: '공공주택 복덕방 홈' }).querySelector('img'))
+    const brand = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
+    expect(brand.querySelector('.brand-name')).not.toBeInTheDocument()
+    expect(brand.querySelector('img'))
       .toHaveAttribute('src', '/logo-bok-search.svg')
     expect(screen.getByRole('link', { name: '지도로 돌아가기' })).toHaveAttribute(
       'href',
@@ -100,13 +102,17 @@ describe('App', () => {
       .mockResolvedValue(jsonResponse({ loginIdentifier: 'admin', role: 'ADMIN' })))
     const { unmount } = render(<MemoryRouter initialEntries={['/admin/login']}><App /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: '관리자 로그인' })).toBeVisible()
-    expect(screen.getByRole('link', { name: '공공주택 복덕방 홈' }).querySelector('img'))
+    const adminLoginBrand = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
+    expect(adminLoginBrand.querySelector('.brand-name')).not.toBeInTheDocument()
+    expect(adminLoginBrand.querySelector('img'))
       .toHaveAttribute('src', '/logo-bok-search.svg')
 
     unmount()
     render(<MemoryRouter initialEntries={['/admin/complexes']}><App /></MemoryRouter>)
     expect(await screen.findByRole('heading', { name: '단지 관리' })).toBeVisible()
-    expect(screen.getByRole('link', { name: '공공주택 복덕방 홈' }).querySelector('img'))
+    const adminBrand = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
+    expect(adminBrand.querySelector('.brand-name')).not.toBeInTheDocument()
+    expect(adminBrand.querySelector('img'))
       .toHaveAttribute('src', '/logo-bok-search.svg')
   })
 

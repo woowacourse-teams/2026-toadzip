@@ -200,12 +200,12 @@ a {
 .brand-logo {
   width: 58px;
   height: 34px;
-  margin-right: 9px;
   flex: none;
   object-fit: contain;
 }
 
 .brand-name {
+  margin-left: 9px;
   font-size: 17px;
   font-weight: 750;
   letter-spacing: -0.025em;
@@ -299,29 +299,26 @@ a {
 
 .user-login-main {
   display: grid;
-  min-height: calc(100dvh - 68px);
-  padding: 48px 20px 72px;
-  place-items: center;
-}
-
-.user-login-panel {
-  width: min(100%, 440px);
-  padding: 40px;
+  width: min(1120px, calc(100% - 40px));
+  min-height: min(690px, calc(100dvh - 116px));
+  grid-template-columns: 1fr 0.88fr;
+  margin: 24px auto;
+  overflow: hidden;
   border: 1px solid #e5eae7;
-  border-radius: 24px;
+  border-radius: 28px;
   background: #fff;
-  box-shadow: 0 20px 50px rgb(28 58 46 / 6%);
+  box-shadow: 0 18px 55px rgb(28 58 46 / 7%);
 }
 
-.user-login-content { width: 100%; }
-
-.user-login-feature-logo {
-  display: block;
-  width: 122px;
-  height: auto;
-  margin-bottom: 32px;
+.user-login-intro {
+  position: relative;
+  min-height: 560px;
+  overflow: hidden;
+  padding: clamp(36px, 5vw, 76px);
+  background: #e5f0e9;
 }
 
+.user-login-eyebrow,
 .user-login-step {
   color: #277259;
   font-size: 13px;
@@ -329,7 +326,104 @@ a {
   letter-spacing: .01em;
 }
 
-.user-login-content h1 {
+.user-login-intro h1 {
+  position: relative;
+  z-index: 1;
+  margin: 26px 0 16px;
+  font-size: clamp(31px, 3.2vw, 46px);
+  font-weight: 760;
+  letter-spacing: -.055em;
+  line-height: 1.28;
+}
+
+.user-login-intro p {
+  position: relative;
+  z-index: 1;
+  color: #4e655c;
+  line-height: 1.6;
+}
+
+.user-login-illustration {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 50%;
+}
+
+.user-login-ground {
+  position: absolute;
+  right: -10%;
+  bottom: -40px;
+  left: -10%;
+  height: 100px;
+  border-radius: 50% 50% 0 0;
+  background: #b8d5c3;
+}
+
+.user-login-sun {
+  position: absolute;
+  right: 18%;
+  top: 2%;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  background: #f8d98c;
+}
+
+.user-login-house {
+  position: absolute;
+  z-index: 1;
+  bottom: 40px;
+  display: block;
+  border-radius: 7px 7px 0 0;
+}
+
+.user-login-house::before {
+  position: absolute;
+  right: -12%;
+  bottom: 100%;
+  left: -12%;
+  height: 70px;
+  background: inherit;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  content: '';
+}
+
+.user-login-house--back {
+  right: 12%;
+  width: 145px;
+  height: 125px;
+  background: #8bb69e;
+}
+
+.user-login-house--front {
+  right: 37%;
+  width: 175px;
+  height: 150px;
+  background: #4b9478;
+}
+
+.user-login-house--front::after {
+  position: absolute;
+  right: 28px;
+  bottom: 0;
+  width: 45px;
+  height: 85px;
+  border-radius: 23px 23px 0 0;
+  background: #e5f0e9;
+  content: '';
+}
+
+.user-login-panel {
+  display: grid;
+  min-height: 560px;
+  padding: 36px;
+  place-items: center;
+}
+
+.user-login-content { width: min(100%, 352px); }
+.user-login-content h2 {
   margin: 14px 0 8px;
   font-size: 32px;
   letter-spacing: -.04em;
@@ -397,12 +491,23 @@ a {
 
 @media (max-width: 480px) {
   .user-login-header { padding: 0 20px; }
-  .user-login-main { padding: 32px 20px; place-items: start center; }
-  .user-login-panel {
-    padding: 32px 24px;
+}
+
+@media (max-width: 760px) {
+  .user-login-main {
+    width: 100%;
+    min-height: calc(100dvh - 68px);
+    grid-template-columns: 1fr;
+    margin: 0;
     border: 0;
-    border-radius: 20px;
+    border-radius: 0;
+    box-shadow: none;
   }
+  .user-login-intro { min-height: 230px; padding: 30px 24px; }
+  .user-login-intro h1 { margin: 12px 0 8px; font-size: 28px; }
+  .user-login-intro p { margin: 0; font-size: 13px; }
+  .user-login-illustration { right: 0; bottom: -55px; left: auto; width: 210px; height: 180px; opacity: .35; }
+  .user-login-panel { min-height: 420px; padding: 40px 24px; place-items: start center; }
 }
 
 .map-main {
@@ -1623,8 +1728,6 @@ button {
 .admin-login-brand {
   margin-bottom: 4px;
 }
-
-.admin-login-brand .brand-name { font-size: 15px; }
 
 .admin-login-form label {
   display: grid;
