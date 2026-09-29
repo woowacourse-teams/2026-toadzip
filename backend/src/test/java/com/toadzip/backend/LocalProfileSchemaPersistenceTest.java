@@ -52,7 +52,7 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertTrue(history.next()),
-                        () -> assertEquals(17, history.getInt(1)),
+                        () -> assertEquals(18, history.getInt(1)),
                         () -> assertEquals(1, countColumn(connection,
                                 "notification_interest_events", "event_id")),
                         () -> assertEquals(0, countColumn(connection,
@@ -71,6 +71,10 @@ class LocalProfileSchemaPersistenceTest {
                                 "notification_guest_subscriptions", "active")),
                         () -> assertEquals(1, countColumn(connection,
                                 "notification_guest_cancellation_requests", "code_hash")),
+                        () -> assertEquals(1, countColumn(connection,
+                                "notification_guest_cancellation_requests", "code_sent_at")),
+                        () -> assertEquals(1, countColumn(connection,
+                                "notification_guest_cancellation_requests", "code_sent_by")),
                         () -> assertTrue(constraintDefinition(connection,
                                 "notification_interest_events_event_type_check").contains("CANCELLED")),
                         () -> assertEquals(1, countColumn(connection, "users", "email")),
@@ -168,7 +172,7 @@ class LocalProfileSchemaPersistenceTest {
                                 + ",SQL:20260923.02,SQL:20260924.01,SQL:20260925.01,SQL:20260925.02"
                                 + ",SQL:20260925.03,SQL:20260926.01,SQL:20260926.02,SQL:20260927.01"
                                 + ",SQL:20260928.01,SQL:20260929.01,SQL:20260929.02,SQL:20260929.03"
-                                + ",SQL:20260929.04,SQL:20260929.05",
+                                + ",SQL:20260929.04,SQL:20260929.05,SQL:20260930.01",
                         history.getString(1));
                 assertEquals(1, countColumn(connection, "admin_announcement_imports", "original_json"));
                 assertEquals(1, countColumn(connection, "notification_interest_events", "event_id"));

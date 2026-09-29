@@ -19,7 +19,8 @@ BEGIN
     END IF;
     FOREACH expected_version IN ARRAY ARRAY[
             '20260922.02', '20260927.01', '20260928.01', '20260929.01',
-            '20260929.02', '20260929.03', '20260929.04', '20260929.05'] LOOP
+            '20260929.02', '20260929.03', '20260929.04', '20260929.05',
+            '20260930.01'] LOOP
         IF NOT EXISTS (
                 SELECT 1 FROM public.flyway_schema_history
                 WHERE version = expected_version AND success = true) THEN
@@ -41,8 +42,14 @@ BEGIN
                      AND column_name = 'expires_at')
             OR NOT EXISTS (SELECT 1 FROM information_schema.columns
                    WHERE table_schema = 'public' AND table_name = 'notification_guest_subscriptions'
-                     AND column_name = 'expires_at') THEN
-        RAISE EXCEPTION 'Notification email or expiry column is missing';
+                     AND column_name = 'expires_at')
+            OR NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public' AND table_name = 'notification_guest_cancellation_requests'
+                     AND column_name = 'code_sent_at')
+            OR NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public' AND table_name = 'notification_guest_cancellation_requests'
+                     AND column_name = 'code_sent_by') THEN
+        RAISE EXCEPTION 'Notification email, expiry, or send tracking column is missing';
     END IF;
     IF EXISTS (SELECT 1 FROM information_schema.columns
                WHERE table_schema = 'public' AND table_name = 'notification_interest_events'
