@@ -311,36 +311,35 @@ a {
 }
 
 .user-login-intro {
-  display: flex;
+  position: relative;
   min-height: 600px;
-  padding: clamp(40px, 5vw, 72px);
+  overflow: hidden;
+  padding: clamp(40px, 5vw, 64px);
   background: #164735;
   color: #fff;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.user-login-eyebrow {
-  color: #bfe4cd;
-  font-size: 13px;
-  font-weight: 650;
-  letter-spacing: .04em;
 }
 
 .user-login-intro h1 {
-  margin: 24px 0 22px;
-  font-size: clamp(36px, 3.5vw, 50px);
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  font-size: clamp(33px, 3.2vw, 42px);
   font-weight: 700;
   letter-spacing: -.05em;
   line-height: 1.24;
 }
 
-.user-login-intro p {
-  max-width: 380px;
-  margin: 0;
-  color: #d3e6da;
-  font-size: 15px;
-  line-height: 1.7;
+.user-login-product-preview {
+  position: absolute;
+  bottom: 0;
+  left: clamp(40px, 5vw, 64px);
+  display: block;
+  width: max(500px, 120%);
+  max-width: none;
+  height: auto;
+  transform: translateY(64px);
+  border-radius: 16px;
+  box-shadow: 0 18px 48px rgb(5 33 20 / 24%);
 }
 
 .user-login-panel {
@@ -431,10 +430,9 @@ a {
     border-radius: 0;
     box-shadow: none;
   }
-  .user-login-intro { min-height: 220px; padding: 34px 24px; }
-  .user-login-intro h1 { margin: 12px 0 10px; font-size: 28px; }
-  .user-login-intro p { font-size: 13px; }
-  .user-login-desktop-break { display: none; }
+  .user-login-intro { min-height: 280px; padding: 34px 24px; }
+  .user-login-intro h1 { font-size: 29px; }
+  .user-login-product-preview { left: 24px; width: 450px; transform: translateY(110px); }
   .user-login-panel { min-height: 420px; padding: 48px 24px; place-items: start center; }
 }
 

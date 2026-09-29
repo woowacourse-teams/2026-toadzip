@@ -13,8 +13,9 @@ it('비로그인 사용자는 카카오와 구글 로그인 경로를 선택할 
   expect(brand).toHaveTextContent('공공주택 복덕방')
   expect(brand.querySelector('img'))
     .toHaveAttribute('src', '/logo-bok-search.svg')
-  expect(screen.getByRole('heading', { name: /집을 찾는 시간/ })).toBeVisible()
-  expect(screen.getByText(/단지 정보부터 모집 공고와 신청 일정까지/)).toBeVisible()
+  expect(screen.getByRole('heading', { name: '공공주택, 한눈에.' })).toBeVisible()
+  expect(screen.getByRole('region', { name: '서비스 소개' }).querySelector('img'))
+    .toHaveAttribute('src', '/login-product-preview.svg')
   const kakaoLink = await screen.findByRole('link', { name: '카카오로 계속하기' })
   expect(kakaoLink).toHaveAttribute(
     'href', 'https://api.example.com/api/auth/oauth2/authorization/kakao',

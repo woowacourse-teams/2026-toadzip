@@ -42,9 +42,8 @@ export function LoginPage() {
       </header>
       <main className="user-login-main">
         <section className="user-login-intro" aria-label="서비스 소개">
-          <span className="user-login-eyebrow">공공주택 탐색, 한곳에서</span>
-          <h1>집을 찾는 시간,<br />조금 더 명확하게.</h1>
-          <p>단지 정보부터 모집 공고와 신청 일정까지<br className="user-login-desktop-break" /> 한곳에서 살펴보세요.</p>
+          <h1>공공주택, 한눈에.</h1>
+          <img className="user-login-product-preview" src="/login-product-preview.svg" alt="" aria-hidden="true" />
         </section>
         <section className="user-login-panel" aria-label="로그인">
           <div className="user-login-content">
