@@ -2,9 +2,7 @@ package com.toadzip.backend.ingest.pipeline.controller;
 
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
-import com.toadzip.backend.ingest.pipeline.dto.DataPipelineScheduleDeferralResponse;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineScheduleDeferralService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.util.List;
@@ -22,14 +20,8 @@ import org.springframework.web.bind.annotation.RestController;
 public class DataPipelineController {
 
     private final DataPipelineExecutionService executionService;
-    private final DataPipelineScheduleDeferralService scheduleDeferralService;
-
-    public DataPipelineController(
-            DataPipelineExecutionService executionService,
-            DataPipelineScheduleDeferralService scheduleDeferralService
-    ) {
+    public DataPipelineController(DataPipelineExecutionService executionService) {
         this.executionService = executionService;
-        this.scheduleDeferralService = scheduleDeferralService;
     }
 
     @PostMapping("/{type}")
@@ -54,11 +46,6 @@ public class DataPipelineController {
                 DataPipelineType.fromPathValue(type)
         );
         return ResponseEntity.ok(response);
-    }
-
-    @GetMapping("/schedule-deferrals")
-    public ResponseEntity<List<DataPipelineScheduleDeferralResponse>> findScheduleDeferrals() {
-        return ResponseEntity.ok(scheduleDeferralService.findAll());
     }
 
     @PostMapping("/executions/{executionId}/stop")

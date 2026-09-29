@@ -218,7 +218,7 @@ class DataPipelineExecutionServiceTest {
     @Test
     void 최초_실행_상태를_저장하지_못하면_실행_잠금을_반납한다() {
         when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
-        when(executionStateService.create(any(), any(), any(), any(), any(), any()))
+        when(executionStateService.create(any(), any(), any()))
                 .thenThrow(new IllegalStateException("database unavailable"));
 
         assertThatThrownBy(() -> service.start(DataPipelineType.ANNOUNCEMENT_COLLECTION))
@@ -412,9 +412,8 @@ class DataPipelineExecutionServiceTest {
 
     private void configureStoredExecution() {
         AtomicReference<DataPipelineExecution> savedExecution = new AtomicReference<>();
-        lenient().when(executionStateService.create(
-                any(), any(), any(), any(), any(), any()
-        )).thenAnswer(invocation -> {
+        lenient().when(executionStateService.create(any(), any(), any()))
+                .thenAnswer(invocation -> {
             DataPipelineExecution execution = DataPipelineExecution.start(
                     invocation.getArgument(0),
                     invocation.getArgument(1),

@@ -100,44 +100,48 @@ public class MyHomeAnnouncementMappingService {
         }
         List<MyHomeAnnouncementSource> sources = groupedSources.get(identifier);
         if (!processing.add(identifier)) {
-            processed.add(identifier);
-            return reject(
-                    sources,
-                    MyHomeAnnouncementMappingFailureReason.CYCLIC_ANNOUNCEMENT_REVISION,
-                    "이전 공고 참조가 순환합니다.",
-                    failures,
-                    occurredAt
-            );
-        }
-        try {
-            ResolvedAnnouncement resolved = supplyRowResolver.resolve(sourceMapper.map(sources));
-            MyHomeAnnouncementMappingData data = resolved.data();
-            PreviousAnnouncementResult previousResult = previousAnnouncementOf(
-                    data,
-                    groupedSources,
-                    processed,
-                    processing,
-                    failures,
-                    occurredAt
-            );
-            if (processed.contains(identifier)) {
-                return previousResult.report();
-            }
-            if (data.previousSourceAnnouncementIdentifier() != null
-                    && previousResult.announcement() == null) {
-                processed.add(identifier);
-                return previousResult.report().plus(reject(
-                        sources,
-                        MyHomeAnnouncementMappingFailureReason.PREVIOUS_ANNOUNCEMENT_NOT_FOUND,
-                        "이전 공고를 찾을 수 없습니다: " + data.previousSourceAnnouncementIdentifier(),
+            MyHomeAnnouncementMappingReport cycleReport = MyHomeAnnouncementMappingReport.empty();
+            for (String processingIdentifier : processing) {
+                processed.add(processingIdentifier);
+                cycleReport = cycleReport.plus(reject(
+                        groupedSources.get(processingIdentifier),
+                        MyHomeAnnouncementMappingFailureReason.CYCLIC_ANNOUNCEMENT_REVISION,
+                        "이전 공고 참조가 순환합니다.",
                         failures,
                         occurredAt
                 ));
             }
-            MyHomeAnnouncementWriteResult result = writer.write(resolved, previousResult.announcement());
+            return cycleReport;
+        }
+        try {
+            ResolvedAnnouncement resolved = supplyRowResolver.resolve(sourceMapper.map(sources));
+            MyHomeAnnouncementMappingData data = resolved.data();
+            String previousIdentifier = data.previousSourceAnnouncementIdentifier();
+            MyHomeAnnouncementMappingReport previousReport = MyHomeAnnouncementMappingReport.empty();
+            if (previousIdentifier != null && groupedSources.containsKey(previousIdentifier)) {
+                previousReport = mapGroup(
+                        previousIdentifier, groupedSources, processed, processing, failures, occurredAt
+                );
+            }
+            if (processed.contains(identifier)) {
+                return previousReport;
+            }
+            Announcement previous = previousIdentifier == null ? null : announcementRepository
+                    .findBySourceAnnouncementIdentifier(previousIdentifier).orElse(null);
+            if (previousIdentifier != null && previous == null) {
+                processed.add(identifier);
+                return previousReport.plus(reject(
+                        sources,
+                        MyHomeAnnouncementMappingFailureReason.PREVIOUS_ANNOUNCEMENT_NOT_FOUND,
+                        "이전 공고를 찾을 수 없습니다: " + previousIdentifier,
+                        failures,
+                        occurredAt
+                ));
+            }
+            MyHomeAnnouncementWriteResult result = writer.write(resolved, previous);
             addSupplyMatchingFailures(failures, result.failures(), occurredAt);
             processed.add(identifier);
-            return previousResult.report().plus(result.report());
+            return previousReport.plus(result.report());
         }
         catch (MyHomeAnnouncementMappingRejectedException exception) {
             processed.add(identifier);
@@ -146,35 +150,6 @@ public class MyHomeAnnouncementMappingService {
         finally {
             processing.remove(identifier);
         }
-    }
-
-    private PreviousAnnouncementResult previousAnnouncementOf(
-            MyHomeAnnouncementMappingData data,
-            Map<String, List<MyHomeAnnouncementSource>> groupedSources,
-            Set<String> processed,
-            Set<String> processing,
-            List<MyHomeAnnouncementMappingFailure> failures,
-            Instant occurredAt
-    ) {
-        String previousIdentifier = data.previousSourceAnnouncementIdentifier();
-        if (previousIdentifier == null) {
-            return PreviousAnnouncementResult.empty();
-        }
-        MyHomeAnnouncementMappingReport report = MyHomeAnnouncementMappingReport.empty();
-        if (groupedSources.containsKey(previousIdentifier)) {
-            report = mapGroup(
-                    previousIdentifier,
-                    groupedSources,
-                    processed,
-                    processing,
-                    failures,
-                    occurredAt
-            );
-        }
-        Announcement previous = announcementRepository
-                .findBySourceAnnouncementIdentifier(previousIdentifier)
-                .orElse(null);
-        return new PreviousAnnouncementResult(previous, report);
     }
 
     private Map<String, List<MyHomeAnnouncementSource>> groupSources(
@@ -274,15 +249,5 @@ public class MyHomeAnnouncementMappingService {
     private IngestAlreadyRunningException alreadyRunning() {
         log.warn("마이홈 공고 매핑이 이미 실행 중이므로 중복 실행을 건너뜁니다.");
         return new IngestAlreadyRunningException("마이홈 공고 매핑이 이미 실행 중입니다.");
-    }
-
-    private record PreviousAnnouncementResult(
-            Announcement announcement,
-            MyHomeAnnouncementMappingReport report
-    ) {
-
-        static PreviousAnnouncementResult empty() {
-            return new PreviousAnnouncementResult(null, MyHomeAnnouncementMappingReport.empty());
-        }
     }
 }

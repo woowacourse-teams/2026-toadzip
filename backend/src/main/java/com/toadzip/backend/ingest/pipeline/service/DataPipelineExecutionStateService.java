@@ -2,7 +2,6 @@ package com.toadzip.backend.ingest.pipeline.service;
 
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
-import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineWorkProgress;
@@ -36,19 +35,9 @@ public class DataPipelineExecutionStateService {
     public DataPipelineExecution create(
             UUID executionId,
             DataPipelineType type,
-            Instant startedAt,
-            DataPipelineExecutionTrigger executionTrigger,
-            Instant scheduledAt,
-            UUID upstreamExecutionId
+            Instant startedAt
     ) {
-        DataPipelineExecution execution = DataPipelineExecution.start(
-                executionId,
-                type,
-                startedAt,
-                executionTrigger,
-                scheduledAt,
-                upstreamExecutionId
-        );
+        DataPipelineExecution execution = DataPipelineExecution.start(executionId, type, startedAt);
         return executionRepository.saveAndFlush(execution);
     }
 

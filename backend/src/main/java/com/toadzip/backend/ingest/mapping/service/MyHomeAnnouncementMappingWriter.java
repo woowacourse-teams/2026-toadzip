@@ -53,6 +53,7 @@ public class MyHomeAnnouncementMappingWriter {
 
     private final LhAnnouncementEnrichmentWriter enrichmentWriter;
 
+    /** 주택형 변경과 LH 금액 보강을 함께 저장한다. 보강이 실패하면 공고 한 건을 모두 되돌린다. */
     @Transactional
     public MyHomeAnnouncementWriteResult write(
             ResolvedAnnouncement resolved,
@@ -93,7 +94,7 @@ public class MyHomeAnnouncementMappingWriter {
         try {
             enrichmentWriter.writeAfterMapping(
                     announcement, resolved.request(), resolved.supplies(),
-                    supplyRowsResult.changedHousingTypeRows(), resolved.lhHistoricalSourceKeys()
+                    supplyRowsResult.changedHousingTypeRowIds(), resolved.lhHistoricalSourceKeys()
             );
         }
         catch (LhAnnouncementEnrichmentRejectedException exception) {
@@ -203,7 +204,7 @@ public class MyHomeAnnouncementMappingWriter {
         int updated = 0;
         int unchanged = 0;
         int displayOrder = 1;
-        Set<Long> changedHousingTypeRows = new HashSet<>();
+        Set<Long> changedHousingTypeRowIds = new HashSet<>();
         List<MyHomeSupplyMatchingFailureData> failures = new ArrayList<>();
         Map<String, List<SupplyRow>> storedGroups = MyHomeAnnouncementSupplyRowGroups.byMyHomeSource(
                 announcement.getSourceAnnouncementIdentifier(), storedRows.values()
@@ -263,7 +264,7 @@ public class MyHomeAnnouncementMappingWriter {
             );
             changed |= applyLhResolution(stored, data, match);
             if (!Objects.equals(previousHousingTypeId, housingTypeId(stored))) {
-                changedHousingTypeRows.add(stored.getId());
+                changedHousingTypeRowIds.add(stored.getId());
             }
             if (changed) {
                 updated++;
@@ -274,7 +275,7 @@ public class MyHomeAnnouncementMappingWriter {
         List<SupplyRow> staleRows = List.copyOf(storedRows.values());
         deleteStaleRows(staleRows);
         return new SupplyRowsWriteResult(
-                created, updated, unchanged, staleRows.size(), failures, changedHousingTypeRows
+                created, updated, unchanged, staleRows.size(), failures, changedHousingTypeRowIds
         );
     }
 
@@ -434,7 +435,7 @@ public class MyHomeAnnouncementMappingWriter {
             int unchanged,
             int deleted,
             List<MyHomeSupplyMatchingFailureData> failures,
-            Set<Long> changedHousingTypeRows
+            Set<Long> changedHousingTypeRowIds
     ) {
     }
 

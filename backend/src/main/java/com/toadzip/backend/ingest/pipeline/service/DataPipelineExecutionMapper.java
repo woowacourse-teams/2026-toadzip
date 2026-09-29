@@ -3,11 +3,10 @@ package com.toadzip.backend.ingest.pipeline.service;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineWorkProgress;
-import com.toadzip.backend.ingest.pipeline.dto.DataPipelineCompletedStepResponse;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineFailureResponse;
-import com.toadzip.backend.ingest.pipeline.dto.DataPipelinePartiallyFailedStepResponse;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineSkippedStepResponse;
+import com.toadzip.backend.ingest.pipeline.dto.DataPipelineStepReportResponse;
 import java.util.List;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
@@ -54,12 +53,12 @@ public class DataPipelineExecutionMapper {
         );
     }
 
-    private List<DataPipelinePartiallyFailedStepResponse> partiallyFailedStepResponses(
+    private List<DataPipelineStepReportResponse> partiallyFailedStepResponses(
             DataPipelineExecution execution
     ) {
         return execution.getPartiallyFailedSteps()
                 .stream()
-                .map(partiallyFailedStep -> new DataPipelinePartiallyFailedStepResponse(
+                .map(partiallyFailedStep -> new DataPipelineStepReportResponse(
                         partiallyFailedStep.getStep(),
                         partiallyFailedStep.getStep().displayName(),
                         deserializeReport(partiallyFailedStep.getReport())
@@ -67,12 +66,12 @@ public class DataPipelineExecutionMapper {
                 .toList();
     }
 
-    private List<DataPipelineCompletedStepResponse> completedStepResponses(
+    private List<DataPipelineStepReportResponse> completedStepResponses(
             DataPipelineExecution execution
     ) {
         return execution.getCompletedStepResults()
                 .stream()
-                .map(completedStep -> new DataPipelineCompletedStepResponse(
+                .map(completedStep -> new DataPipelineStepReportResponse(
                         completedStep.getStep(),
                         completedStep.getStep().displayName(),
                         deserializeReport(completedStep.getReport())

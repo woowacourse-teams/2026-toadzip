@@ -16,6 +16,7 @@ import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMap
 import jakarta.persistence.EntityManager;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -46,7 +47,8 @@ class VerifiedAnnouncementEnrichmentIntegrationTest {
                 "https://apply.lh.or.kr/notice.pdf", 6));
 
         writer.write(detached, new LhAnnouncementEnrichmentData(
-                "2015122300020856", "자동 원천 문구", null, List.of(), List.of(), List.of()));
+                "2015122300020856", "자동 원천 문구", null, List.of(), List.of(), List.of()),
+                Set.of(), Set.of());
         entityManager.flush();
         entityManager.clear();
 
@@ -66,11 +68,11 @@ class VerifiedAnnouncementEnrichmentIntegrationTest {
                 "https://apply.lh.or.kr/notice.pdf", "공식 정정 확인");
 
         assertThatThrownBy(() -> writer.write(correction, new LhAnnouncementEnrichmentData(
-                "2015122300020681", null, null, List.of(), List.of(), List.of())))
+                "2015122300020681", null, null, List.of(), List.of(), List.of()), Set.of(), Set.of()))
                 .isInstanceOf(LhAnnouncementEnrichmentRejectedException.class)
                 .hasMessageContaining("확인된 공고의 LH 원천");
         assertThatThrownBy(() -> writer.write(previous, new LhAnnouncementEnrichmentData(
-                "2015122300020856", null, null, List.of(), List.of(), List.of())))
+                "2015122300020856", null, null, List.of(), List.of(), List.of()), Set.of(), Set.of()))
                 .isInstanceOf(LhAnnouncementEnrichmentRejectedException.class);
         assertThat(previous.getLhPanId()).isEqualTo("2015122300020681");
         assertThat(correction.getLhPanId()).isEqualTo("2015122300020856");

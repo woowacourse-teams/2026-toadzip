@@ -286,6 +286,36 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     @Test
+    void 이전_공고가_순환하면_기존_공고가_있어도_두_공고를_저장하지_않는다() {
+        saveMappedComplex();
+        MyHomeAnnouncementSource original = source(
+                0, data("21026", 1, "부산도시공사", "동삼2")
+        );
+        sourceRepository.save(original);
+        assertThat(service.mapAll().createdAnnouncementCount()).isOne();
+
+        original.replaceWith(withPrevious(data("21026", 1, "부산도시공사", "동삼2"), "21027"));
+        sourceRepository.save(original);
+        sourceRepository.save(source(
+                1, withPrevious(data("21027", 2, "부산도시공사", "동삼2"), "21026")
+        ));
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isEqualTo(2);
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement -> {
+            assertThat(announcement.getSourceAnnouncementIdentifier()).isEqualTo("21026");
+            assertThat(announcement.getPreviousSourceAnnouncementIdentifier()).isNull();
+        });
+        assertThat(failureRepository.findAll())
+                .extracting(failure -> failure.getReason())
+                .containsExactlyInAnyOrder(
+                        MyHomeAnnouncementMappingFailureReason.CYCLIC_ANNOUNCEMENT_REVISION,
+                        MyHomeAnnouncementMappingFailureReason.CYCLIC_ANNOUNCEMENT_REVISION
+                );
+    }
+
+    @Test
     void 비활성화된_원공고의_상세를_유지하고_재수집된_취소공고를_반영한다() {
         saveMappedComplex();
         saveDefaultLhSupply("21026");

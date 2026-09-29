@@ -5,7 +5,6 @@ import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningExcept
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
-import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
@@ -70,15 +69,6 @@ public class DataPipelineExecutionService {
     }
 
     public DataPipelineExecutionResponse start(DataPipelineType type) {
-        return start(type, DataPipelineExecutionTrigger.MANUAL, null, null);
-    }
-
-    public DataPipelineExecutionResponse start(
-            DataPipelineType type,
-            DataPipelineExecutionTrigger executionTrigger,
-            Instant scheduledAt,
-            UUID upstreamExecutionId
-    ) {
         UUID executionId = UUID.randomUUID();
         DataPipelineExecutionLock.Lease lease = executionLock.tryAcquire(executionId)
                 .orElseThrow(() -> new IngestAlreadyRunningException(ALREADY_RUNNING_MESSAGE));
@@ -90,14 +80,7 @@ public class DataPipelineExecutionService {
                     startedAt,
                     INTERRUPTED_FAILURE_MESSAGE
             );
-            execution = executionStateService.create(
-                    executionId,
-                    type,
-                    startedAt,
-                    executionTrigger,
-                    scheduledAt,
-                    upstreamExecutionId
-            );
+            execution = executionStateService.create(executionId, type, startedAt);
         }
         catch (RuntimeException exception) {
             lease.close();

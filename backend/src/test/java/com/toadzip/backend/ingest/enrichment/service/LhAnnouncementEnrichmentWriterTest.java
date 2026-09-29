@@ -21,6 +21,7 @@ import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMap
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementSupplyMatcher.LhSupplyMatchResult;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -71,7 +72,7 @@ class LhAnnouncementEnrichmentWriterTest {
         );
         writer.write(announcement, new LhAnnouncementEnrichmentData(
                 "100", null, null, List.of(), List.of(), List.of(supply)
-        ));
+        ), Set.of(), Set.of());
 
         verify(supplyTargetRepository).findAllBySupplyRowIdIn(List.of(1L));
         verify(supplyTargetRepository, never()).findAllBySupplyRow(any());
@@ -95,10 +96,12 @@ class LhAnnouncementEnrichmentWriterTest {
                 scheduleRepository, announcementRepository, attachmentRepository,
                 supplyRowRepository, supplyTargetRepository, supplyMatcher, detailSourceRepository, mapper
         );
-
-        assertThatThrownBy(() -> writer.write(announcement, new LhAnnouncementEnrichmentData(
+        LhAnnouncementEnrichmentData data = new LhAnnouncementEnrichmentData(
                 "100", null, null, List.of(), List.of(), List.of(first, second)
-        ))).isInstanceOf(LhAnnouncementEnrichmentRejectedException.class)
+        );
+
+        assertThatThrownBy(() -> writer.write(announcement, data, Set.of(), Set.of()))
+                .isInstanceOf(LhAnnouncementEnrichmentRejectedException.class)
                 .hasMessageContaining("여러 LH 공급행");
 
         verify(row, never()).enrichFromLh(any(), any(), any());

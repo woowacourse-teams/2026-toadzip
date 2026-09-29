@@ -21,7 +21,7 @@ Spring은 생성자 주입으로 객체를 연결한다. `Runner.run()`에서 �
 | 공고 정제 | [MyHomeAnnouncementMappingService](../src/main/java/com/toadzip/backend/ingest/mapping/service/MyHomeAnnouncementMappingService.java) → LH 공고 보강 |
 
 수집은 원천을 보관하고 정제·보강은 그 원천을 읽어 단지·주택형·공고에 반영한다.
-각 작업은 별도 실행이며 자동 실행의 연결 조건은 [실행 문서](data-pipeline-execution.md)를 따른다.
+각 작업은 별도 실행이며 수집 완료를 확인한 뒤 해당 정제를 직접 시작한다.
 
 ## 공고 수집·정제를 따라가는 순서
 
@@ -52,7 +52,6 @@ SourceMapper → SupplyRowResolver → MappingWriter → EnrichmentWriter.writeA
 |---|---|
 | 실행·중단·복구 | [DataPipelineExecutionService](../src/main/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineExecutionService.java) → `StateService`·실행 잠금 |
 | 동기 작업의 충돌 범위 | [IngestOperationLock](../src/main/java/com/toadzip/backend/ingest/pipeline/repository/IngestOperationLock.java)의 `Operation`과 호출 서비스 |
-| 자동 실행 시점·선행 작업 | [DataPipelineScheduleOrchestrator](../src/main/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineScheduleOrchestrator.java) |
 | 실패의 해결·재발 | [IngestFailure](../src/main/java/com/toadzip/backend/ingest/failure/domain/IngestFailure.java)의 상태 전이, [IngestFailureReconciler](../src/main/java/com/toadzip/backend/ingest/failure/domain/IngestFailureReconciler.java)의 일괄 조정 |
 | 위치 파일 적재 | [LocationSummaryImportService](../src/main/java/com/toadzip/backend/ingest/location/service/LocationSummaryImportService.java) → Parser·Store |
 
