@@ -2,7 +2,7 @@ import type { HousingAnnouncementDetailSchedule } from '../components/HousingAnn
 import type { AnnouncementApplicationSchedule } from '../model/publicHousing'
 import { MISSING_DATA_LABEL } from './missingData'
 
-interface ScheduleTarget {
+export interface ScheduleTarget {
   readonly key: string
   readonly name: string
   readonly scope: 'complex' | 'common' | 'unknown'
@@ -11,6 +11,7 @@ interface ScheduleTarget {
 interface ScheduleGroup<T> {
   readonly key: string
   readonly name: string
+  readonly targets: readonly ScheduleTarget[]
   readonly schedules: T[]
 }
 
@@ -75,9 +76,11 @@ function groupSchedules<T>(
   const groups = new Map<string, ScheduleGroup<T>>()
   for (const { schedule, targets } of unique.values()) {
     const key = JSON.stringify([...targets.values()].map((target) => [target.scope, target.key]).sort())
+    const sortedTargets = [...targets.values()].sort((a, b) => a.name.localeCompare(b.name, 'ko'))
     const group = groups.get(key) ?? {
       key,
-      name: [...targets.values()].map((target) => target.name).sort((a, b) => a.localeCompare(b, 'ko')).join(' · '),
+      name: sortedTargets.map((target) => target.name).join(' · '),
+      targets: sortedTargets,
       schedules: [],
     }
     group.schedules.push(schedule)

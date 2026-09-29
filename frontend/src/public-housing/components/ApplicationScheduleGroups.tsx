@@ -1,8 +1,9 @@
-import { useId } from 'react'
 import type { AnnouncementApplicationSchedule } from '../model/publicHousing'
 import { MISSING_DATA_LABEL } from '../presentation/missingData'
 import { groupApplicationSchedules } from '../presentation/announcementSchedulePresentation'
-import styles from './ApplicationScheduleGroups.module.css'
+import { ScheduleGroupCard } from './ScheduleGroupCard'
+import { SchedulePeriod } from './SchedulePeriod'
+import styles from './ScheduleGroups.module.css'
 
 interface Props {
   readonly schedules: readonly AnnouncementApplicationSchedule[]
@@ -10,22 +11,15 @@ interface Props {
 }
 
 export function ApplicationScheduleGroups({ schedules, complexes }: Props) {
-  const id = useId()
   const groups = groupApplicationSchedules(schedules, complexes)
 
   return (
     <div className={styles.groups}>
-      {groups.map(({ key, name, schedules: items }, index) => {
-        const headingId = `${id}-group-${index}`
-        return (
-          <section key={key} aria-label={`${name} 접수 일정`}>
-            <h4 id={headingId} className={styles.groupTitle}>{name}</h4>
-            <ul className={styles.list} aria-labelledby={headingId}>
-              {items.map((schedule) => <ScheduleCard key={schedule.scheduleId} schedule={schedule} />)}
-            </ul>
-          </section>
-        )
-      })}
+      {groups.map((group) => (
+        <ScheduleGroupCard key={group.key} name={group.name} targets={group.targets} caption="접수 일정">
+          {group.schedules.map((schedule) => <ScheduleCard key={schedule.scheduleId} schedule={schedule} />)}
+        </ScheduleGroupCard>
+      ))}
     </div>
   )
 }
@@ -33,10 +27,9 @@ export function ApplicationScheduleGroups({ schedules, complexes }: Props) {
 function ScheduleCard({ schedule }: { schedule: AnnouncementApplicationSchedule }) {
   const confirmed = schedule.state === 'CONFIRMED'
   const conditional = schedule.state === 'CONDITIONAL'
-  const sameDate = schedule.startDate === schedule.endDate && schedule.startTime === schedule.endTime
   const sourceUrl = scheduleSourceUrl(schedule)
   return (
-    <li className={styles.card}>
+    <li className={styles.item}>
       <header className={styles.heading}>
         <h5>{schedule.supplyRank?.trim() || '공통 접수'}</h5>
         <span className={styles.state} data-confirmed={confirmed}>
@@ -44,27 +37,15 @@ function ScheduleCard({ schedule }: { schedule: AnnouncementApplicationSchedule 
         </span>
       </header>
       {schedule.condition?.trim() && <p className={styles.condition}>{schedule.condition}</p>}
-      <dl className={styles.dates}>
-        <div>
-          <dt>{sameDate ? '접수일' : '시작'}</dt>
-          <dd><ScheduleDate date={schedule.startDate} time={schedule.startTime} /></dd>
-        </div>
-        {!sameDate && <div>
-          <dt>종료</dt>
-          <dd><ScheduleDate date={schedule.endDate} time={schedule.endTime} /></dd>
-        </div>}
-      </dl>
+      <SchedulePeriod
+        startAt={schedule.startTime ? `${schedule.startDate}T${schedule.startTime}` : schedule.startDate}
+        endAt={schedule.endTime ? `${schedule.endDate}T${schedule.endTime}` : schedule.endDate}
+      />
       {sourceUrl && <a className={styles.source} href={sourceUrl} target="_blank" rel="noreferrer">
         공고문 {schedule.sourcePage}쪽
       </a>}
     </li>
   )
-}
-
-function ScheduleDate({ date, time }: { date: string; time: string | null }) {
-  return <time dateTime={time ? `${date}T${time}` : date}>
-    {date.replaceAll('-', '.')}{time ? ` ${time.slice(0, 5)}` : ''}
-  </time>
 }
 
 function scheduleSourceUrl(schedule: AnnouncementApplicationSchedule): string | null {

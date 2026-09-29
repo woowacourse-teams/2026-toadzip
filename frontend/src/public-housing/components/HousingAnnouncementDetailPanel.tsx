@@ -32,7 +32,9 @@ import {
 import { MISSING_DATA_LABEL } from '../presentation/missingData'
 import { formatPhoneNumber } from '../presentation/phoneNumber'
 import { groupAnnouncementSchedules } from '../presentation/announcementSchedulePresentation'
-import scheduleStyles from './ApplicationScheduleGroups.module.css'
+import { ScheduleGroupCard } from './ScheduleGroupCard'
+import { SchedulePeriod } from './SchedulePeriod'
+import scheduleStyles from './ScheduleGroups.module.css'
 import { formatHousingMoney } from '../presentation/housingMoney'
 import styles from './HousingAnnouncementDetailPanel.module.css'
 
@@ -448,19 +450,12 @@ function AnnouncementScheduleGroups({ schedules, caption, current = false }: {
 }) {
   return <div className={scheduleStyles.groups}>
     {groupAnnouncementSchedules(schedules).map((group) => (
-      <section key={group.key} aria-label={`${group.name} ${caption}`}>
-        <h4 className={scheduleStyles.groupTitle}>{group.name}</h4>
-        <DetailTable caption={caption}>
-          <colgroup>
-            <col style={{ width: '18%' }} /><col style={{ width: '32%' }} />
-            <col style={{ width: '18%' }} /><col style={{ width: '32%' }} />
-          </colgroup>
-          {group.schedules.map((schedule) => (
-            <ScheduleItem key={schedule.scheduleId} label={schedule.name ?? schedule.typeLabel}
-              startAt={schedule.startAt} endAt={schedule.endAt} current={current} />
-          ))}
-        </DetailTable>
-      </section>
+      <ScheduleGroupCard key={group.key} name={group.name} targets={group.targets} caption={caption}>
+        {group.schedules.map((schedule) => (
+          <ScheduleItem key={schedule.scheduleId} label={schedule.name ?? schedule.typeLabel}
+            startAt={schedule.startAt} endAt={schedule.endAt} current={current} />
+        ))}
+      </ScheduleGroupCard>
     ))}
   </div>
 }
@@ -476,44 +471,14 @@ function ScheduleItem({
   endAt: string | null
   current?: boolean
 }) {
-  const idPrefix = useId()
-  const groupId = `${idPrefix}-schedule`
-  const startId = `${idPrefix}-start`
-  const endId = `${idPrefix}-end`
-  const hasEnd = endAt !== null && startAt !== endAt
   return (
-    <tbody data-current={current || undefined} aria-current={current ? 'step' : undefined}>
-      {hasEnd ? (
-        <>
-          <tr className={styles.scheduleHeading}>
-            <th id={groupId} scope="rowgroup" colSpan={4}>
-              {label}
-              {current && <>{' '}<span className={styles.currentStep}>현재 단계</span></>}
-            </th>
-          </tr>
-          <tr>
-            <th id={startId} scope="row">시작</th>
-            <td headers={`${groupId} ${startId}`}>
-              <time dateTime={startAt ?? undefined}>{formatDateTime(startAt)}</time>
-            </td>
-            <th id={endId} scope="row">종료</th>
-            <td headers={`${groupId} ${endId}`}>
-              <time dateTime={endAt}>{formatDateTime(endAt)}</time>
-            </td>
-          </tr>
-        </>
-      ) : (
-        <tr>
-          <th id={groupId} scope="row">
-            {label}
-            {current && <>{' '}<span className={styles.currentStep}>현재 단계</span></>}
-          </th>
-          <td headers={groupId} colSpan={3}>
-            <time dateTime={startAt ?? undefined}>{formatDateTime(startAt)}</time>
-          </td>
-        </tr>
-      )}
-    </tbody>
+    <li className={scheduleStyles.item} data-current={current || undefined} aria-current={current ? 'step' : undefined}>
+      <header className={scheduleStyles.heading}>
+        <h5>{label}</h5>
+        {current && <span className={scheduleStyles.state} data-confirmed="true">현재 단계</span>}
+      </header>
+      <SchedulePeriod startAt={startAt} endAt={endAt} hideMidnight />
+    </li>
   )
 }
 
@@ -1010,18 +975,6 @@ function formatDate(value: string | null) {
     return MISSING_DATA_LABEL
   }
   return `${match[1]}.${match[2]}.${match[3]}`
-}
-
-function formatDateTime(value: string | null) {
-  const date = formatDate(value)
-  if (date === MISSING_DATA_LABEL || !value) {
-    return date
-  }
-  const time = /T(\d{2}):(\d{2})/.exec(value)
-  if (!time || (time[1] === '00' && time[2] === '00')) {
-    return date
-  }
-  return `${date} ${time[1]}:${time[2]}`
 }
 
 function formatYearMonth(value: string | null) {
