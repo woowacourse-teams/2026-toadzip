@@ -39,17 +39,20 @@
 대조한다. 자동 기준선은 이력이 없는 비어 있지 않은 DB에 `20260922.00`을 기록한 뒤 후속 `V`를
 적용한다. 이미 이력이 있으면 미적용 `V`만 실행한다. 빈 DB에는 `B20260922_01`과 후속 `V`가 적용된다.
 
-각 서버에서 DB 접근 권한이 있는 담당자는 배포 전후 다음 읽기 전용 쿼리를 실행한다.
-비밀번호는 명령이나 저장소에 적지 않고 `psql` 프롬프트에서 입력한다.
+각 서버의 배포 작업은 새 백엔드 기동 후 다음 점검 스크립트를 실행하고 **종료 코드가 0일 때만**
+알림 스키마 적용 완료로 기록한다. 개발과 운영에서 각각 해당 환경의 주 DB 연결 변수를 설정한다.
+비밀번호는 명령이나 저장소에 적지 않고 서버의 접근 통제된 `PGPASSFILE` 등을 사용한다.
 
 ```shell
-psql "host=<PRIMARY_DB_HOST> port=<PRIMARY_DB_PORT> dbname=<PRIMARY_DB_NAME> user=<PRIMARY_DB_USERNAME>" \
-  -X -W -v ON_ERROR_STOP=1 -f docs/queries/notification-schema-status.sql
+PGHOST=<개발_주_DB_주소> PGPORT=5432 PGDATABASE=toadzip PGUSER=<점검_계정> \
+  PGPASSFILE=<보호된_개발_비밀번호_파일> sh scripts/check-notification-schema.sh dev
+
+PGHOST=<운영_주_DB_주소> PGPORT=5432 PGDATABASE=toadzip PGUSER=<점검_계정> \
+  PGPASSFILE=<보호된_운영_비밀번호_파일> sh scripts/check-notification-schema.sh prod
 ```
 
-출력의 DB 이름·서버 주소·포트가 의도한 환경과 같은지 먼저 확인한다. 배포 후에는
-`history_present=true`, 버전 `20260927.01`부터 `20260929.03`까지 모두
-`applied_successfully=true`, 이력의 `success=false`가 없음, 관련 테이블·컬럼·취소 제약이
-모두 `true`인지 확인한다. 이력이 없거나 값이 예상과 다르면 앱 배포를 진행하지 않고
-복제본에서 원인을 확인한다. 저장소에는 실제 개발·운영 DB에 대한 연결 정보나 실행 이력이 없어
-문서만으로 완료 여부를 단정할 수 없다.
+이 스크립트는 실제 DB 이름, Flyway 성공 이력, 필수 테이블·컬럼·제약을 읽기 전용으로 검사한다.
+하나라도 빠지면 오류와 함께 비정상 종료한다. 배포 작업에 이 명령을 넣으면 자동 차단할 수 있다.
+출력의 DB 주소·이름·시각은 배포 기록에 남기고 의도한 환경과 대조한다. 원인 조사에는
+[상세 조회 쿼리](queries/notification-schema-status.sql)를 사용한다. 현재 저장소에는 개발·운영
+배포 파이프라인과 DB 접속 정보가 없으므로, 이 저장소만으로 원격 DB 실행 완료를 주장할 수 없다.
