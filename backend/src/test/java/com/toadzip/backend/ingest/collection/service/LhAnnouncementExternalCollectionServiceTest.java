@@ -789,6 +789,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         verify(externalRepository).fetchDetail(any());
         verify(externalRepository, never()).fetchSupply(any());
         assertThat(result.storedRowCount()).isOne();
+        assertThat(result.successfulRequestCount()).isOne();
         assertThat(result.failedRequestCount()).isZero();
     }
 
@@ -911,6 +912,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
 
         assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.successfulRequestCount()).isZero();
         assertThat(result.storedRowCount()).isZero();
         assertThat(result.externalApiCallCount()).isOne();
         verify(progressStore, never()).complete(any(), any(), any(), any());

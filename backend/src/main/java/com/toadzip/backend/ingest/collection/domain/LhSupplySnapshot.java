@@ -1,6 +1,10 @@
 package com.toadzip.backend.ingest.collection.domain;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -18,8 +22,34 @@ public final class LhSupplySnapshot {
         Map<RowIdentity, List<LhAnnouncementSupplySource>> previousGroups = groupsOf(previous);
         Map<RowIdentity, List<LhAnnouncementSupplySource>> incomingGroups = groupsOf(incoming);
         return previousGroups.entrySet().stream()
-                .mapToLong(entry -> missingCount(entry.getValue(), incomingGroups.getOrDefault(entry.getKey(), List.of())))
+                .mapToLong(entry -> missingCount(
+                        entry.getValue(), incomingGroups.getOrDefault(entry.getKey(), List.of())))
                 .sum();
+    }
+
+    public static String fingerprint(List<LhAnnouncementSupplySource> sources) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            sources.stream().map(source -> List.of(
+                            encoded(source.getComplexLabel()), encoded(source.getTypeName()),
+                            encoded(source.getExclusiveArea()), encoded(source.getSupplyArea()),
+                            encoded(source.getTotalUnitCount()), encoded(source.getSuppliedUnitCount()),
+                            encoded(source.getDepositText()), encoded(source.getMonthlyRentText())
+                    )).map(values -> String.join("", values))
+                    .sorted()
+                    .forEach(value -> digest.update(value.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of().formatHex(digest.digest());
+        }
+        catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("LH 공급 지문 알고리즘을 사용할 수 없습니다.", exception);
+        }
+    }
+
+    private static String encoded(String value) {
+        if (value == null) {
+            return "-1:";
+        }
+        return value.getBytes(StandardCharsets.UTF_8).length + ":" + value;
     }
 
     private static Map<RowIdentity, List<LhAnnouncementSupplySource>> groupsOf(

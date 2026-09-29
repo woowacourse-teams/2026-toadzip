@@ -11,6 +11,7 @@ import {
 } from './api'
 
 import { DataPipelineProgress, PipelineReport } from './DataPipelineProgress'
+import { LhAnnouncementQualityPanel } from './LhAnnouncementQualityPanel'
 
 
 type PipelineViewState = {
@@ -280,6 +281,7 @@ export function DataPipelineControl() {
           </section>
         ))}
       </div>
+      <LhAnnouncementQualityPanel collectionExecution={pipelineStates.ANNOUNCEMENT_COLLECTION.execution} />
     </section>
   )
 }

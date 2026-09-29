@@ -64,6 +64,17 @@ public class LhAnnouncementEnrichmentWriter {
             Set<Long> changedHousingTypeRows,
             Set<String> historicalSourceKeys
     ) {
+        return write(announcement, data, changedHousingTypeRows, historicalSourceKeys, false);
+    }
+
+    @Transactional
+    public LhAnnouncementEnrichmentWriteResult write(
+            Announcement announcement,
+            LhAnnouncementEnrichmentData data,
+            Set<Long> changedHousingTypeRows,
+            Set<String> historicalSourceKeys,
+            boolean verifiedEmptySupply
+    ) {
         Announcement managedAnnouncement = managedAnnouncement(announcement);
         String previousPanId = managedAnnouncement.getLhPanId();
         if (managedAnnouncement.isLhPanIdReviewed() && !data.panId().equals(previousPanId)) {
@@ -87,7 +98,7 @@ public class LhAnnouncementEnrichmentWriter {
                 managedAnnouncement, data, replacedPanIds, previousPanId
         );
         SupplyWriteResult supplies = writeSupplies(
-                managedAnnouncement, data, changedHousingTypeRows, historicalSourceKeys
+                managedAnnouncement, data, changedHousingTypeRows, historicalSourceKeys, verifiedEmptySupply
         );
         return new LhAnnouncementEnrichmentWriteResult(
                 new LhAnnouncementEnrichmentReport(
@@ -182,11 +193,16 @@ public class LhAnnouncementEnrichmentWriter {
             Announcement announcement,
             LhAnnouncementEnrichmentData data,
             Set<Long> changedHousingTypeRows,
-            Set<String> historicalSourceKeys
+            Set<String> historicalSourceKeys,
+            boolean verifiedEmptySupply
     ) {
         if (data.supplies().isEmpty()) {
             if (!changedHousingTypeRows.isEmpty()) {
                 throw missingAmountForChangedHousingType();
+            }
+            if (verifiedEmptySupply) {
+                List<SupplyRow> rows = supplyRowRepository.findAllByAnnouncement(announcement);
+                deleteStaleTargets(targetsByRow(rows), Set.of(), Set.of(data.panId()));
             }
             return new SupplyWriteResult(0, 0, 0, List.of());
         }
@@ -301,12 +317,19 @@ public class LhAnnouncementEnrichmentWriter {
                 .orElse(null);
         if (source.rentalDeposit() == null || source.monthlyRent() == null) {
             if (stored != null) {
+                stored.markLhAmountPreserved();
                 return new SupplyTargetWriteResult(identifier, 0, 0, false);
             }
             String previousTargetIdentifier = previousTargetIdentifier(storedTargets, previousSourceIdentifier);
             if (previousTargetIdentifier == null) {
                 previousTargetIdentifier = existingLhTargetIdentifier(storedTargets);
             }
+            String retainedIdentifier = previousTargetIdentifier;
+            storedTargets.stream()
+                    .filter(target -> retainedIdentifier != null
+                            && retainedIdentifier.equals(target.getSourceSupplyTargetIdentifier()))
+                    .findFirst()
+                    .ifPresent(SupplyTarget::markLhAmountPreserved);
             return new SupplyTargetWriteResult(
                     previousTargetIdentifier == null ? identifier : previousTargetIdentifier,
                     0,

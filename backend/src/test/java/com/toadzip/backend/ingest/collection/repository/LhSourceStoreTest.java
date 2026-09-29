@@ -29,6 +29,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -51,15 +52,22 @@ class LhSourceStoreTest {
     @Autowired
     private LhAnnouncementCollectionCheckpointRepository checkpointRepository;
 
+    @Autowired
+    private JdbcClient jdbc;
+
     private LhSourceStore store;
+
+    private VerifiedLhSupplyReplacementStore replacementStore;
 
     @BeforeEach
     void setUp() {
+        replacementStore = new VerifiedLhSupplyReplacementStore(jdbc);
         store = new LhSourceStore(
                 catalogRepository,
                 detailRepository,
                 supplyRepository,
                 checkpointRepository,
+                replacementStore,
                 Clock.fixed(COLLECTED_AT, ZoneOffset.UTC)
         );
     }
@@ -286,6 +294,102 @@ class LhSourceStoreTest {
 
         assertThat(supplyRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
                 .containsExactlyInAnyOrderElementsOf(previous);
+    }
+
+    @Test
+    void 공식_근거로_승인한_동일_공급_응답만_한_번_교체한다() {
+        String request = "PAN_ID=PAN-1&TYPE=A";
+        LhAnnouncementSupplySource first = supply(0, "가 단지", "24", "24", "30");
+        LhAnnouncementSupplySource removed = supply(1, "나 단지", "24", "24", "30");
+        store.replaceSupplies("PAN-1", request, List.of(first, removed));
+        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(request);
+        String fingerprint = com.toadzip.backend.ingest.collection.domain.LhSupplySnapshot.fingerprint(List.of(first));
+        long approvalId = replacementStore.approve(requestHash, fingerprint,
+                "https://apply.lh.or.kr/notice", "정정 공고 확인", "operator");
+
+        assertThat(store.replaceSupplies("PAN-1", request,
+                List.of(supply(0, "가 단지", "24", "24", "30")))).isOne();
+        assertThat(supplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc("PAN-1", requestHash))
+                .extracting(LhAnnouncementSupplySource::getComplexLabel).containsExactly("가 단지");
+        Long consumedCount = jdbc.sql("SELECT COUNT(*) FROM verified_lh_supply_replacements WHERE consumed_at IS NOT NULL")
+                .query(Long.class).single();
+        assertThat(consumedCount).isOne();
+        assertThat(replacementStore.finish(approvalId)).isTrue();
+
+        store.replaceSupplies("PAN-1", request, List.of(
+                supply(0, "가 단지", "24", "24", "30"),
+                supply(1, "나 단지", "24", "24", "30")));
+        assertThatThrownBy(() -> store.replaceSupplies("PAN-1", request,
+                List.of(supply(0, "가 단지", "24", "24", "30"))))
+                .isInstanceOf(IncompleteLhSupplyReplacementException.class);
+    }
+
+    @Test
+    void 승인한_공급_지문과_다른_부분_응답은_기존_원천을_유지한다() {
+        String request = "PAN_ID=PAN-1&TYPE=A";
+        LhAnnouncementSupplySource first = supply(0, "가 단지", "24", "24", "30");
+        LhAnnouncementSupplySource removed = supply(1, "나 단지", "24", "24", "30");
+        store.replaceSupplies("PAN-1", request, List.of(first, removed));
+        replacementStore.approve(LhAnnouncementCollectionCheckpoint.requestHashOf(request), "0".repeat(64),
+                "https://apply.lh.or.kr/notice", "정정 공고 확인", "operator");
+
+        assertThatThrownBy(() -> store.replaceSupplies("PAN-1", request,
+                List.of(supply(0, "가 단지", "24", "24", "30"))))
+                .isInstanceOf(IncompleteLhSupplyReplacementException.class);
+        assertThat(supplyRepository.count()).isEqualTo(2);
+    }
+
+    @Test
+    void 새_수집_버전에서_승인한_빈_응답은_다음_수집의_빈_기준이_된다() {
+        String previousRequest = "PAN_ID=PAN-1&TYPE=A&COLLECTION_VERSION=3";
+        String currentRequest = previousRequest.replace("VERSION=3", "VERSION=4");
+        store.replaceSupplies("PAN-1", previousRequest, List.of(
+                supply(0, "가 단지", "24", "24", "30"),
+                supply(1, "나 단지", "24", "24", "30")));
+        checkpointRepository.save(LhAnnouncementCollectionCheckpoint.complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "announcement", previousRequest, "PAN-1", COLLECTED_AT));
+        String currentHash = LhAnnouncementCollectionCheckpoint.requestHashOf(currentRequest);
+        long approvalId = replacementStore.approve(currentHash,
+                com.toadzip.backend.ingest.collection.domain.LhSupplySnapshot.fingerprint(List.of()),
+                "https://apply.lh.or.kr/notice", "공급 철회 확인", "operator");
+
+        assertThat(store.replaceSupplies("PAN-1", currentRequest, List.of())).isZero();
+        checkpointRepository.save(LhAnnouncementCollectionCheckpoint.complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "announcement", currentRequest, "PAN-1", COLLECTED_AT.plusSeconds(1)));
+        assertThat(replacementStore.finish(approvalId)).isTrue();
+
+        assertThat(store.replaceSupplies("PAN-1", currentRequest,
+                List.of(supply(0, "새 단지", "36", "36", "45")))).isOne();
+    }
+
+    @Test
+    void 공급_응답_지문은_null과_원문_기호를_구분한다() {
+        LhAnnouncementSupplySource missing = new LhAnnouncementSupplySource(0, "PAN-1",
+                new LhAnnouncementSupplySourceSnapshot("단지", "24", "24", "30", "100", "20", null, null));
+        LhAnnouncementSupplySource dash = new LhAnnouncementSupplySource(0, "PAN-1",
+                new LhAnnouncementSupplySourceSnapshot("단지", "24", "24", "30", "100", "20", "-", null));
+
+        assertThat(com.toadzip.backend.ingest.collection.domain.LhSupplySnapshot.fingerprint(List.of(missing)))
+                .isNotEqualTo(com.toadzip.backend.ingest.collection.domain.LhSupplySnapshot.fingerprint(List.of(dash)));
+    }
+
+    @Test
+    void 승인한_응답이_재조회에서_도착하지_않으면_승인을_폐기한다() {
+        String request = "PAN_ID=PAN-1&TYPE=A";
+        store.replaceSupplies("PAN-1", request, List.of(
+                supply(0, "가 단지", "24", "24", "30"),
+                supply(1, "나 단지", "24", "24", "30")));
+        String fingerprint = com.toadzip.backend.ingest.collection.domain.LhSupplySnapshot.fingerprint(
+                List.of(supply(0, "가 단지", "24", "24", "30")));
+        long approvalId = replacementStore.approve(LhAnnouncementCollectionCheckpoint.requestHashOf(request),
+                fingerprint, "https://apply.lh.or.kr/notice", "정정 공고 확인", "operator");
+
+        assertThat(replacementStore.finish(approvalId)).isFalse();
+        assertThatThrownBy(() -> store.replaceSupplies("PAN-1", request,
+                List.of(supply(0, "가 단지", "24", "24", "30"))))
+                .isInstanceOf(IncompleteLhSupplyReplacementException.class);
     }
 
     @ParameterizedTest

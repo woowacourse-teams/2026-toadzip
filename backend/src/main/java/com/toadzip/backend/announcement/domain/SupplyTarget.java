@@ -53,6 +53,13 @@ public class SupplyTarget {
 
     private String sourceSupplyTargetIdentifier;
 
+    @Column(length = 50)
+    private String lhAmountPreservedReason;
+
+    public void markLhAmountPreserved() {
+        lhAmountPreservedReason = "LH_AMOUNT_NOT_PROVIDED";
+    }
+
     private SupplyTarget(
             SupplyRow supplyRow,
             String target,
@@ -143,13 +150,15 @@ public class SupplyTarget {
                 supplyRow, sourceSupplyTargetIdentifier, target, supplyRank,
                 supplyHouseholdCount, rentalDeposit, monthlyRent, displayOrder
         );
+        boolean clearedPreservation = lhAmountPreservedReason != null;
+        lhAmountPreservedReason = null;
         if (this.target.equals(incoming.target)
                 && this.supplyRank.equals(incoming.supplyRank)
                 && java.util.Objects.equals(this.supplyHouseholdCount, incoming.supplyHouseholdCount)
                 && java.util.Objects.equals(this.rentalDeposit, incoming.rentalDeposit)
                 && java.util.Objects.equals(this.monthlyRent, incoming.monthlyRent)
                 && this.displayOrder == incoming.displayOrder) {
-            return false;
+            return clearedPreservation;
         }
         this.target = incoming.target;
         this.supplyRank = incoming.supplyRank;

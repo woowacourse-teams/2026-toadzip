@@ -44,6 +44,8 @@ import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRe
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
+import com.toadzip.backend.ingest.collection.repository.VerifiedLhSupplyReplacementStore;
+import com.toadzip.backend.ingest.collection.domain.LhSupplySnapshot;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
@@ -80,6 +82,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 
@@ -92,6 +95,12 @@ class LhAnnouncementEnrichmentServiceTest {
 
     @Autowired
     private LhSourceStore sourceStore;
+
+    @Autowired
+    private VerifiedLhSupplyReplacementStore verifiedReplacementStore;
+
+    @Autowired
+    private JdbcClient jdbc;
 
     @Autowired
     private ExternalDataFailureRecorder failureRecorder;
@@ -170,6 +179,7 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     private void cleanUp() {
+        jdbc.sql("DELETE FROM verified_lh_supply_replacements").update();
         supplyTargetRepository.deleteAll();
         supplyRowRepository.deleteAll();
         scheduleRepository.deleteAll();
@@ -783,6 +793,7 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
             assertThat(target.getRentalDeposit()).isEqualByComparingTo("10000000");
             assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000");
+            assertThat(target.getLhAmountPreservedReason()).isEqualTo("LH_AMOUNT_NOT_PROVIDED");
         });
     }
 
@@ -1362,6 +1373,38 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     @Test
+    void 확인한_빈_공급_응답은_LH_금액만_제거하고_관리자_금액은_유지한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        SupplyRow row = supplyRowRepository.findAll().getFirst();
+        supplyTargetRepository.save(SupplyTarget.create(
+                row, "관리자 확인 금액", null, null, null,
+                new BigDecimal("5000000"), new BigDecimal("100000"), null, null, 2
+        ));
+        String request = requestDescriptionFor(PAN_ID);
+        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(request);
+        long approvalId = verifiedReplacementStore.approve(requestHash,
+                LhSupplySnapshot.fingerprint(List.of()), "https://apply.lh.or.kr/notice",
+                "공급 철회 확인", "operator");
+
+        sourceStore.replaceSupplies(PAN_ID, request, List.of());
+        progressStore.complete(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                source.getPblancId(), request, PAN_ID);
+        assertThat(verifiedReplacementStore.finish(approvalId)).isTrue();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+
+        assertThat(supplyRowRepository.count()).isOne();
+        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
+            assertThat(target.getSourceSupplyTargetIdentifier()).isNull();
+            assertThat(target.getMonthlyRent()).isEqualByComparingTo("100000");
+        });
+    }
+
+    @Test
     void 정상_빈_LH_공급_응답은_기존_확장_공급행과_금액을_보존한다() {
         saveComplex();
         HousingComplex complex = housingComplexRepository.findAll().getFirst();
@@ -1693,6 +1736,7 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
             assertThat(target.getSourceSupplyTargetIdentifier()).isEqualTo("LH:200:SUPPLY:0:TARGET");
             assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000");
+            assertThat(target.getLhAmountPreservedReason()).isNull();
         });
     }
 
@@ -1809,6 +1853,7 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
             assertThat(target.getSourceSupplyTargetIdentifier()).isEqualTo("LH:" + PAN_ID + ":SUPPLY:0:TARGET");
             assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000");
+            assertThat(target.getLhAmountPreservedReason()).isEqualTo("LH_AMOUNT_NOT_PROVIDED");
         });
 
         sourceStore.replaceSupplies("200", requestDescriptionFor("200"), List.of(new LhAnnouncementSupplySource(0, "200",
@@ -1820,6 +1865,7 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
             assertThat(target.getSourceSupplyTargetIdentifier()).isEqualTo("LH:200:SUPPLY:0:TARGET");
             assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000");
+            assertThat(target.getLhAmountPreservedReason()).isNull();
         });
     }
 

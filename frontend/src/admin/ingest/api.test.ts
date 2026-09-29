@@ -151,6 +151,26 @@ describe('관리자 데이터 수집·정제 API', () => {
     expect(error).toBeInstanceOf(DataPipelineApiError)
     expect(error).toMatchObject({ status: 409, serverResponse: errorBody })
   })
+
+  it('확인된 LH 공급 정정에는 CSRF와 정확한 요청 지문을 보낸다', async () => {
+    const fetchMock = prepareFetch({ operation: 'lh-announcement-supply', failedRequestCount: 0 })
+    const { applyVerifiedLhSupplyReplacement } = await import('./api.ts')
+    const request = {
+      requestDescription: 'PAN_ID=pan-1', proposedFingerprint: 'a'.repeat(64),
+      evidenceUrl: 'https://apply.lh.or.kr/notice', reason: '철회 확인',
+    }
+
+    await applyVerifiedLhSupplyReplacement('myhome-1', request)
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:8080/api/admin/ingest/lh/announcements/supplies/myhome-1/verified-replacement',
+      {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CUSTOM-CSRF': 'csrf-token' },
+        body: JSON.stringify(request),
+      },
+    )
+  })
 })
 
 function prepareFetch(data: unknown) {

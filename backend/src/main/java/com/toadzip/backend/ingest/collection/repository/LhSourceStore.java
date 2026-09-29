@@ -28,6 +28,8 @@ public class LhSourceStore {
 
     private final LhAnnouncementCollectionCheckpointRepository checkpointRepository;
 
+    private final VerifiedLhSupplyReplacementStore verifiedReplacementStore;
+
     private final Clock clock;
 
     public LhSourceStore(
@@ -35,12 +37,14 @@ public class LhSourceStore {
             LhAnnouncementDetailSourceRepository detailRepository,
             LhAnnouncementSupplySourceRepository supplyRepository,
             LhAnnouncementCollectionCheckpointRepository checkpointRepository,
+            VerifiedLhSupplyReplacementStore verifiedReplacementStore,
             Clock clock
     ) {
         this.catalogRepository = catalogRepository;
         this.detailRepository = detailRepository;
         this.supplyRepository = supplyRepository;
         this.checkpointRepository = checkpointRepository;
+        this.verifiedReplacementStore = verifiedReplacementStore;
         this.clock = clock;
     }
 
@@ -101,11 +105,15 @@ public class LhSourceStore {
     ) {
         List<LhAnnouncementSupplySource> previous = previousSupplies(panId, requestDescription, requestHash);
         if (sources.isEmpty() && !previous.isEmpty()) {
-            throw new EmptyLhSupplyReplacementException();
+            if (!verifiedReplacementStore.consume(requestHash, LhSupplySnapshot.fingerprint(sources))) {
+                throw new EmptyLhSupplyReplacementException();
+            }
+            return;
         }
         long missingRowCount = LhSupplySnapshot.missingRowCount(previous, sources);
-        if (missingRowCount > 0) {
-            throw new IncompleteLhSupplyReplacementException(missingRowCount);
+        if (missingRowCount > 0
+                && !verifiedReplacementStore.consume(requestHash, LhSupplySnapshot.fingerprint(sources))) {
+            throw new IncompleteLhSupplyReplacementException(missingRowCount, LhSupplySnapshot.fingerprint(sources));
         }
     }
 
@@ -138,6 +146,9 @@ public class LhSourceStore {
                 .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
         if (!current.isEmpty()) {
             return current;
+        }
+        if (verifiedReplacementStore.hasConsumedEmpty(requestHash)) {
+            return List.of();
         }
         return checkpointRepository.findAllBySourceAndPanIdOrderByCompletedAtDesc(
                         ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, panId).stream()

@@ -89,7 +89,8 @@ class AnnouncementJpaMappingTest {
                         "convertedDeposit",
                         "applicationCondition",
                         "displayOrder",
-                        "sourceSupplyTargetIdentifier"
+                        "sourceSupplyTargetIdentifier",
+                        "lhAmountPreservedReason"
                 )
         );
         assertEntityAttributes(
