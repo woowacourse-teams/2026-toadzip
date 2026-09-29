@@ -16,7 +16,8 @@ FROM public.flyway_schema_history
 ORDER BY installed_rank;
 
 WITH expected(version) AS (
-    VALUES ('20260927.01'), ('20260928.01'), ('20260929.01'), ('20260929.02'), ('20260929.03')
+    VALUES ('20260922.02'), ('20260927.01'), ('20260928.01'), ('20260929.01'),
+           ('20260929.02'), ('20260929.03')
 )
 SELECT expected.version,
        COALESCE(bool_or(history.success), false) AS applied_successfully
@@ -42,4 +43,9 @@ SELECT to_regclass('public.notification_interest_events') IS NOT NULL AS event_t
                WHERE conname = 'notification_interest_events_event_type_check'
                  AND pg_get_constraintdef(oid) LIKE '%CANCELLED%') AS cancellation_allowed,
        EXISTS (SELECT 1 FROM pg_constraint
-               WHERE conname = 'uk_users_login_identifier') AS existing_login_identifier_constraint;
+               WHERE conrelid = to_regclass('public.users')
+                 AND conname = 'uk_users_login_identifier'
+                 AND pg_get_constraintdef(oid) = 'UNIQUE (login_identifier)') AS login_identifier_constraint_complete,
+       EXISTS (SELECT 1 FROM pg_constraint
+               WHERE conrelid = to_regclass('public.users')
+                 AND conname = 'uk_users_login_identifier_pre_flyway') AS temporary_login_constraint_remains;
