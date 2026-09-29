@@ -20,6 +20,12 @@ export interface NotificationInterestEvent {
 
 export interface NotificationInterestRepository {
   record(event: NotificationInterestEvent): Promise<void>
+  loadStatus?(): Promise<NotificationSubscriptionStatus | null>
+}
+
+export interface NotificationSubscriptionStatus {
+  readonly emailConfirmed: boolean
+  readonly targets: ReadonlyArray<{ readonly targetType: NotificationTargetType; readonly targetId: string }>
 }
 
 export function createNotificationInterestRepository(
@@ -42,6 +48,12 @@ export function createNotificationInterestRepository(
   }
 
   return {
+    async loadStatus() {
+      const response = await fetcher(`${baseUrl}/api/v1/notification-subscriptions/me`, { credentials: 'include' })
+      if (response.status === 401 || response.status === 403) return null
+      if (!response.ok) throw new Error('알림 상태를 불러오지 못했습니다.')
+      return await response.json() as NotificationSubscriptionStatus
+    },
     async record(event) {
       // Concurrent first exposures must share the same CSRF cookie initialization.
       csrfRequest ??= loadCsrf().finally(() => { csrfRequest = null })

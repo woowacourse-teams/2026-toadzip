@@ -8,6 +8,20 @@ const event: NotificationInterestEvent = {
 }
 
 describe('알림 수요 저장 경계', () => {
+  it('로그인 신청 상태를 조회하고 익명 응답은 구분한다', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ emailConfirmed: true, targets: [
+        { targetType: 'REGION', targetId: '11' },
+      ] })))
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+    const repository = createNotificationInterestRepository(fetcher)
+    expect(await repository.loadStatus?.()).toEqual({ emailConfirmed: true, targets: [
+      { targetType: 'REGION', targetId: '11' },
+    ] })
+    expect(await repository.loadStatus?.()).toBeNull()
+    expect(fetcher.mock.calls[0]?.[0]).toMatch(/\/api\/v1\/notification-subscriptions\/me$/)
+  })
+
   it('동시 노출 요청은 CSRF 초기화를 공유한다', async () => {
     const fetcher = vi.fn().mockImplementation(async (url: string) => url.endsWith('/csrf')
       ? new Response(JSON.stringify({ token: 'test-token', headerName: 'X-XSRF-TOKEN' }))

@@ -23,6 +23,37 @@ function example(repository: NotificationInterestRepository, loadUser = vi.fn().
 }
 
 describe('이메일 알림 신청', () => {
+  it('로그인 사용자는 서버의 신청 상태를 우선 표시하고 새 창에서 다시 읽는다', async () => {
+    localStorage.setItem('toadzip.notification-interest.requested:REGION:11', '1')
+    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
+    const loadStatus = vi.fn().mockResolvedValueOnce({ emailConfirmed: true, targets: [
+      { targetType: 'COMPLEX', targetId: '1' },
+    ] }).mockResolvedValue({ emailConfirmed: true, targets: [] })
+    const first = render(example({ record, loadStatus }))
+    expect(await screen.findByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '서울특별시 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
+    first.unmount()
+
+    render(example({ record, loadStatus }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: '서울특별시 알림 받기' }))
+    await waitFor(() => expect(record).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'CLICKED', targetType: 'REGION', targetId: '11',
+    })))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('다른 기기에서 바뀐 신청 상태를 창으로 돌아올 때 반영한다', async () => {
+    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
+    const loadStatus = vi.fn().mockResolvedValueOnce({ emailConfirmed: true, targets: [] })
+      .mockResolvedValueOnce({ emailConfirmed: true, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+    render(example({ record, loadStatus }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+    fireEvent.focus(window)
+    expect(await screen.findByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
+    expect(record).not.toHaveBeenCalled()
+  })
+
   it('비로그인 사용자는 첫 클릭에서 이메일을 입력하고 이후 다른 대상은 클릭만 기록한다', async () => {
     const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
     render(example({ record }))
