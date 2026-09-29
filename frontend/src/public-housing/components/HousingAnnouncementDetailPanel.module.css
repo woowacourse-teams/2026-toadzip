@@ -38,7 +38,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--ds-space-3);
-  padding: var(--ds-space-5);
+  padding: var(--ds-space-4) var(--ds-space-5);
   border-bottom: 1px solid var(--detail-line);
   background: var(--ds-color-surface);
 }
@@ -84,6 +84,44 @@
   overflow-wrap: anywhere;
 }
 
+.sectionNav {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid var(--detail-line);
+  background: var(--ds-color-surface);
+}
+
+.sectionNav a {
+  display: flex;
+  min-width: 0;
+  min-height: var(--ds-control-height-md);
+  align-items: center;
+  justify-content: center;
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border-bottom: 3px solid transparent;
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-body);
+  font-weight: 500;
+  line-height: var(--ds-line-height-body);
+  text-decoration: none;
+}
+
+.sectionNav a:hover {
+  background: var(--ds-color-surface-subtle);
+  color: var(--ds-color-text);
+}
+
+.sectionNav a[aria-current='location'] {
+  border-bottom-color: var(--detail-accent);
+  color: var(--detail-accent);
+  font-weight: 700;
+}
+
+.sectionGroup {
+  min-width: 0;
+}
+
 .scroll {
   --detail-content-inset: var(--ds-space-5);
   min-width: 0;
@@ -110,7 +148,7 @@
 .intro {
   display: grid;
   gap: var(--ds-space-1);
-  padding: var(--ds-space-5) 0;
+  padding: var(--ds-space-4) 0;
 }
 
 .intro p {
@@ -170,7 +208,7 @@
   flex-wrap: wrap;
   justify-content: space-between;
   gap: var(--ds-space-2);
-  margin-top: var(--ds-space-4);
+  margin-top: var(--ds-space-3);
   color: var(--detail-muted);
   font-size: var(--ds-text-caption);
   line-height: var(--ds-line-height-caption);
@@ -178,7 +216,7 @@
 
 .reason {
   margin-inline: calc(-1 * var(--detail-content-inset));
-  padding: var(--ds-space-5) var(--detail-content-inset);
+  padding: var(--ds-space-4) var(--detail-content-inset);
   border-top: 8px solid var(--ds-color-section-divider);
   color: var(--ds-color-text);
 }
@@ -197,17 +235,7 @@
   overflow-wrap: anywhere;
 }
 
-.audiences {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ds-space-2) var(--ds-space-4);
-  color: var(--ds-color-text);
-  font-size: var(--ds-text-body);
-  font-weight: 500;
-}
-
-.empty,
-.targetEmpty {
+.empty {
   margin: 0;
   color: var(--detail-muted);
   font-size: var(--ds-text-body);
@@ -232,10 +260,6 @@
   border-bottom: 1px solid var(--detail-line);
 }
 
-.receptionHeading {
-  margin-bottom: var(--ds-space-2);
-}
-
 .receptionList li:first-child,
 .attachmentList li:first-child {
   padding-top: 0;
@@ -248,11 +272,21 @@
 }
 
 .receptionHeading {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--ds-space-3);
+  margin-bottom: var(--ds-space-3);
+}
+
+.receptionIdentity {
   display: flex;
+  min-width: 0;
+  min-height: 36px;
   align-items: center;
   flex-wrap: wrap;
-  justify-content: space-between;
-  gap: var(--ds-space-2);
+  gap: var(--ds-space-1) var(--ds-space-2);
 }
 
 .receptionList strong,
@@ -264,7 +298,7 @@
   overflow-wrap: anywhere;
 }
 
-.receptionHeading span,
+.receptionIdentity span,
 .attachmentList li > span {
   color: var(--ds-color-label);
   font-size: var(--ds-text-caption);
@@ -301,7 +335,8 @@
 }
 
 .receptionList a {
-  margin-top: var(--ds-space-2);
+  margin: 0;
+  white-space: nowrap;
 }
 
 .complexList,
@@ -403,12 +438,6 @@
   overflow-wrap: anywhere;
 }
 
-.complexBody > small {
-  color: var(--detail-muted);
-  font-size: var(--ds-text-caption);
-  line-height: var(--ds-line-height-caption);
-}
-
 .complexCounts {
   display: flex;
   flex-wrap: wrap;
@@ -428,26 +457,34 @@
   margin-top: var(--ds-space-3);
 }
 
+.housingTypeGroup {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--ds-color-brand);
+  border-radius: var(--ds-radius-control);
+  background: var(--ds-color-surface);
+}
+
 .complexTabs {
   display: flex;
-  gap: var(--ds-space-2);
-  margin-bottom: var(--ds-space-4);
-  padding-bottom: var(--ds-space-1);
   overflow-x: auto;
+  border-bottom: 1px solid var(--ds-color-brand);
+  background: var(--ds-color-surface-subtle);
   scrollbar-width: thin;
 }
 
 .complexTabs button {
   display: flex;
   min-width: 0;
+  max-width: 100%;
   min-height: 44px;
-  flex: 0 0 auto;
+  flex: 1 0 200px;
   align-items: center;
   justify-content: space-between;
   gap: var(--ds-space-2);
   padding: var(--ds-space-2) var(--ds-space-3);
-  border: 1px solid var(--detail-line);
-  background: var(--ds-color-surface);
+  border: 0;
+  background: transparent;
   color: var(--ds-color-label);
   cursor: pointer;
   font-size: var(--ds-text-body);
@@ -455,8 +492,16 @@
   font-weight: 500;
 }
 
+.complexTabs button + button {
+  border-left: 1px solid var(--detail-line);
+}
+
+.complexTabs button:focus-visible {
+  outline-offset: -3px;
+}
+
 .complexTabs button span {
-  max-width: 220px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -474,6 +519,10 @@
   background: var(--ds-color-brand);
   color: var(--ds-color-on-brand);
   font-weight: 700;
+}
+
+.housingTypes {
+  padding: var(--ds-space-4);
 }
 
 .housingTypeCard {
@@ -546,10 +595,6 @@
   font-size: var(--ds-text-caption);
   line-height: var(--ds-line-height-caption);
   font-weight: 400;
-}
-
-.targetEmpty {
-  margin-top: var(--ds-space-4);
 }
 
 .attachmentList li {
@@ -700,8 +745,7 @@
   object-fit: contain;
 }
 
-.floorPlans figcaption,
-.floorPlanStatus {
+.floorPlans figcaption {
   margin-top: var(--ds-space-2);
   color: var(--detail-muted);
   font-size: var(--ds-text-caption);
@@ -723,7 +767,8 @@
   outline-offset: 2px;
 }
 
-.scroll:focus-visible {
+.scroll:focus-visible,
+.sectionNav a:focus-visible {
   outline-offset: -2px;
 }
 
@@ -761,12 +806,30 @@
     --detail-content-inset: var(--ds-space-4);
   }
 
+  .sectionNav a {
+    padding-inline: var(--ds-space-2);
+  }
+
+  .receptionHeading {
+    gap: var(--ds-space-2);
+  }
+
+  .receptionIdentity {
+    align-items: flex-start;
+    justify-content: center;
+    flex-direction: column;
+  }
+
   .complexSummary {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .complexImage {
     min-height: 132px;
+  }
+
+  .housingTypes {
+    padding: var(--ds-space-3);
   }
 
   .housingTypeHeading {
