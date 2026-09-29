@@ -218,33 +218,12 @@ public class MyHomeAnnouncementMappingWriter {
             boolean preserveLhRows = preserveExistingLhResolvedRows
                     || announcement.getProvider() == AgencyCode.LH && historical;
             if (preserveLhRows && hasLhResolvedRows(announcement, storedGroup)) {
-                for (SupplyRow stored : storedGroup) {
-                    if (historical
-                            && currentRowIdentifiers.contains(stored.getSourceSupplyRowIdentifier())) {
-                        continue;
-                    }
-                    storedRows.remove(stored.getSourceSupplyRowIdentifier());
-                    Integer householdCount = stored.getTotalSupplyHouseholdCount();
-                    if (stored.getSourceSupplyRowIdentifier().equals(data.sourceSupplyRowIdentifier())) {
-                        householdCount = data.totalSupplyHouseholdCount();
-                    }
-                    boolean changed = stored.updateFromMyHome(
-                            stored.getHousingComplex(),
-                            stored.getHousingType(),
-                            displayOrder++,
-                            data.sourceComplexName(),
-                            stored.getSourceHousingTypeName(),
-                            data.pnu(),
-                            data.supplyCategory(),
-                            stored.getMatchingFailureReason(),
-                            householdCount
-                    );
-                    if (changed) {
-                        updated++;
-                        continue;
-                    }
-                    unchanged++;
-                }
+                PreservedGroupWriteResult result = updatePreservedGroup(
+                        storedGroup, storedRows, data, historical, currentRowIdentifiers, displayOrder
+                );
+                updated += result.updated();
+                unchanged += result.unchanged();
+                displayOrder = result.nextDisplayOrder();
                 continue;
             }
             SupplyRow stored = storedRows.remove(data.sourceSupplyRowIdentifier());
@@ -260,16 +239,8 @@ public class MyHomeAnnouncementMappingWriter {
                 continue;
             }
             if (shouldPreservePreviousLhResolution(stored, data, match)) {
-                boolean changed = stored.updateFromMyHome(
-                        stored.getHousingComplex(),
-                        stored.getHousingType(),
-                        displayOrder++,
-                        data.sourceComplexName(),
-                        stored.getSourceHousingTypeName(),
-                        data.pnu(),
-                        data.supplyCategory(),
-                        stored.getMatchingFailureReason(),
-                        data.totalSupplyHouseholdCount()
+                boolean changed = updatePreservingLhResolution(
+                        stored, data, displayOrder++, data.totalSupplyHouseholdCount()
                 );
                 if (changed) {
                     updated++;
@@ -304,6 +275,54 @@ public class MyHomeAnnouncementMappingWriter {
         deleteStaleRows(staleRows);
         return new SupplyRowsWriteResult(
                 created, updated, unchanged, staleRows.size(), failures, changedHousingTypeRows
+        );
+    }
+
+    private PreservedGroupWriteResult updatePreservedGroup(
+            List<SupplyRow> storedGroup,
+            Map<String, SupplyRow> storedRows,
+            MyHomeSupplyRowMappingData data,
+            boolean historical,
+            Set<String> currentRowIdentifiers,
+            int displayOrder
+    ) {
+        int updated = 0;
+        int unchanged = 0;
+        for (SupplyRow stored : storedGroup) {
+            if (historical && currentRowIdentifiers.contains(stored.getSourceSupplyRowIdentifier())) {
+                continue;
+            }
+            storedRows.remove(stored.getSourceSupplyRowIdentifier());
+            Integer householdCount = stored.getTotalSupplyHouseholdCount();
+            if (stored.getSourceSupplyRowIdentifier().equals(data.sourceSupplyRowIdentifier())) {
+                householdCount = data.totalSupplyHouseholdCount();
+            }
+            boolean changed = updatePreservingLhResolution(stored, data, displayOrder++, householdCount);
+            if (changed) {
+                updated++;
+                continue;
+            }
+            unchanged++;
+        }
+        return new PreservedGroupWriteResult(updated, unchanged, displayOrder);
+    }
+
+    private boolean updatePreservingLhResolution(
+            SupplyRow stored,
+            MyHomeSupplyRowMappingData data,
+            int displayOrder,
+            Integer householdCount
+    ) {
+        return stored.updateFromMyHome(
+                stored.getHousingComplex(),
+                stored.getHousingType(),
+                displayOrder,
+                data.sourceComplexName(),
+                stored.getSourceHousingTypeName(),
+                data.pnu(),
+                data.supplyCategory(),
+                stored.getMatchingFailureReason(),
+                householdCount
         );
     }
 
@@ -404,6 +423,9 @@ public class MyHomeAnnouncementMappingWriter {
         int unchanged() {
             return 1 - created - updated;
         }
+    }
+
+    private record PreservedGroupWriteResult(int updated, int unchanged, int nextDisplayOrder) {
     }
 
     private record SupplyRowsWriteResult(

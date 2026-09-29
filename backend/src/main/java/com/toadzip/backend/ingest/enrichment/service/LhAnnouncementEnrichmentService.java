@@ -13,13 +13,13 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver.LinkedSource;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentFailureResponse;
@@ -141,22 +141,38 @@ public class LhAnnouncementEnrichmentService {
             return reject(source, null, LhAnnouncementEnrichmentFailureReason.UNSUPPORTED_SUPPLY_TYPE,
                     "지원하지 않는 공급유형의 LH 공고입니다.", failures, occurredAt);
         }
-        LhAnnouncementRequest request;
+        LinkedSource linked;
         try {
-            var linked = linkResolver.resolveFirstLinked(lhSources);
-            source = linked.source();
-            request = linked.request();
+            linked = linkResolver.resolveFirstLinked(lhSources);
         }
         catch (LhAnnouncementLinkResolutionException exception) {
-            LhAnnouncementEnrichmentFailureReason reason = switch (exception.reason()) {
-                case REQUEST_UNSUPPORTED -> LhAnnouncementEnrichmentFailureReason.LH_COLLECTION_REQUEST_UNSUPPORTED;
-                case LINK_NOT_FOUND -> LhAnnouncementEnrichmentFailureReason.LH_COLLECTION_LINK_NOT_FOUND;
-                case LINK_MISMATCH -> LhAnnouncementEnrichmentFailureReason.LH_COLLECTION_LINK_MISMATCH;
-            };
-            return reject(source, null, reason, exception.getMessage(), failures, occurredAt);
+            return reject(source, null, linkFailureReason(exception), exception.getMessage(), failures, occurredAt);
         }
-        String panId = request.panId();
-        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(request.requestDescription());
+        return enrichLinkedAnnouncement(
+                announcement, linked, sources, lhSources, failures, occurredAt, mappingIncomplete
+        );
+    }
+
+    private LhAnnouncementEnrichmentFailureReason linkFailureReason(LhAnnouncementLinkResolutionException exception) {
+        return switch (exception.reason()) {
+            case REQUEST_UNSUPPORTED -> LhAnnouncementEnrichmentFailureReason.LH_COLLECTION_REQUEST_UNSUPPORTED;
+            case LINK_NOT_FOUND -> LhAnnouncementEnrichmentFailureReason.LH_COLLECTION_LINK_NOT_FOUND;
+            case LINK_MISMATCH -> LhAnnouncementEnrichmentFailureReason.LH_COLLECTION_LINK_MISMATCH;
+        };
+    }
+
+    private LhAnnouncementEnrichmentReport enrichLinkedAnnouncement(
+            Announcement announcement,
+            LinkedSource linked,
+            List<MyHomeAnnouncementSource> sources,
+            List<MyHomeAnnouncementSource> currentSources,
+            List<LhAnnouncementEnrichmentFailure> failures,
+            Instant occurredAt,
+            boolean mappingIncomplete
+    ) {
+        MyHomeAnnouncementSource source = linked.source();
+        String panId = linked.request().panId();
+        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(linked.request().requestDescription());
         List<LhAnnouncementDetailSource> details = detailSourceRepository
                 .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
         if (details.isEmpty()) {
@@ -172,8 +188,9 @@ public class LhAnnouncementEnrichmentService {
                         "마이홈 공고 매핑 실패가 남아 LH 보강을 보류했습니다.", failures, occurredAt);
             }
             LhAnnouncementEnrichmentWriteResult result = writer.write(
-                    announcement, data, Set.of(), historicalSourceKeys(sources, lhSources),
-                    supplies.isEmpty() && sourceStore.hasVerifiedEmptySupplies(panId, request.requestDescription())
+                    announcement, data, Set.of(), historicalSourceKeys(sources, currentSources),
+                    supplies.isEmpty()
+                            && sourceStore.hasVerifiedEmptySupplies(panId, linked.request().requestDescription())
             );
             addSupplyFailures(source, panId, result.failures(), failures, occurredAt);
             return result.report();
