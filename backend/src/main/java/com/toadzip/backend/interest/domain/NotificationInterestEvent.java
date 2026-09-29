@@ -47,14 +47,11 @@ public class NotificationInterestEvent {
     @Column(nullable = false, length = 19)
     private String targetId;
 
-    @Column(length = 254)
-    private String email;
-
     @Column(nullable = false)
     private Instant createdAt;
 
     private NotificationInterestEvent(UUID eventId, UUID sessionId, NotificationEventType eventType,
-            NotificationEventSource source, NotificationTargetType targetType, String targetId, String email,
+            NotificationEventSource source, NotificationTargetType targetType, String targetId,
             Instant createdAt) {
         this.eventId = eventId;
         this.sessionId = sessionId;
@@ -62,7 +59,6 @@ public class NotificationInterestEvent {
         this.source = source;
         this.targetType = targetType;
         this.targetId = targetId;
-        this.email = email;
         this.createdAt = createdAt;
     }
 
@@ -87,7 +83,7 @@ public class NotificationInterestEvent {
         if (eventType != NotificationEventType.CONFIRMED && email != null) {
             throw new InvalidNotificationInterestException();
         }
-        return new NotificationInterestEvent(eventId, sessionId, eventType, source, targetType, targetId, email,
+        return new NotificationInterestEvent(eventId, sessionId, eventType, source, targetType, targetId,
                 createdAt);
     }
 }

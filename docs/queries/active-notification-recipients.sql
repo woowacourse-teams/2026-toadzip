@@ -7,14 +7,14 @@ FROM (
     SELECT preferences.email, subscriptions.target_type, subscriptions.target_id
     FROM notification_subscriptions subscriptions
     JOIN notification_email_preferences preferences ON preferences.user_id = subscriptions.user_id
-    WHERE subscriptions.active = true
+    WHERE subscriptions.active = true AND subscriptions.expires_at > CURRENT_TIMESTAMP
 
     UNION ALL
 
     SELECT preferences.email, subscriptions.target_type, subscriptions.target_id
     FROM notification_guest_subscriptions subscriptions
     JOIN notification_guest_email_preferences preferences ON preferences.client_id = subscriptions.client_id
-    WHERE subscriptions.active = true
+    WHERE subscriptions.active = true AND subscriptions.expires_at > CURRENT_TIMESTAMP
 ) recipients
 WHERE target_type = :'target_type' AND target_id = :'target_id'
 ORDER BY target_type, target_id, email;

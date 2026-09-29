@@ -37,6 +37,9 @@ public class NotificationGuestSubscription {
     @Column(nullable = false)
     private Instant updatedAt;
 
+    @Column(nullable = false)
+    private Instant expiresAt;
+
     protected NotificationGuestSubscription() {
     }
 }

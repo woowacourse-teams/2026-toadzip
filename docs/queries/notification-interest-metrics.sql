@@ -35,14 +35,14 @@ SELECT target_type, target_id,
 FROM (
     SELECT target_type, target_id, COUNT(*) AS member_count, 0::bigint AS guest_count
     FROM notification_subscriptions
-    WHERE active = true
+    WHERE active = true AND expires_at > CURRENT_TIMESTAMP
     GROUP BY target_type, target_id
 
     UNION ALL
 
     SELECT target_type, target_id, 0::bigint AS member_count, COUNT(*) AS guest_count
     FROM notification_guest_subscriptions
-    WHERE active = true
+    WHERE active = true AND expires_at > CURRENT_TIMESTAMP
     GROUP BY target_type, target_id
 ) subscriptions
 GROUP BY target_type, target_id

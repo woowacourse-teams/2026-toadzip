@@ -17,7 +17,7 @@ ORDER BY installed_rank;
 
 WITH expected(version) AS (
     VALUES ('20260922.02'), ('20260927.01'), ('20260928.01'), ('20260929.01'),
-           ('20260929.02'), ('20260929.03')
+           ('20260929.02'), ('20260929.03'), ('20260929.04')
 )
 SELECT expected.version,
        COALESCE(bool_or(history.success), false) AS applied_successfully
@@ -38,7 +38,13 @@ SELECT to_regclass('public.notification_interest_events') IS NOT NULL AS event_t
                WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'email') AS user_email_column_exists,
        EXISTS (SELECT 1 FROM information_schema.columns
                WHERE table_schema = 'public' AND table_name = 'notification_interest_events'
-                 AND column_name = 'email') AS event_email_column_exists,
+                 AND column_name = 'email') AS event_email_column_remains,
+       EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'notification_subscriptions'
+                 AND column_name = 'expires_at') AS member_expiry_column_exists,
+       EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'notification_guest_subscriptions'
+                 AND column_name = 'expires_at') AS guest_expiry_column_exists,
        EXISTS (SELECT 1 FROM pg_constraint
                WHERE conname = 'notification_interest_events_event_type_check'
                  AND pg_get_constraintdef(oid) LIKE '%CANCELLED%') AS cancellation_allowed,

@@ -13,6 +13,7 @@ import com.toadzip.backend.interest.domain.NotificationEventType;
 import com.toadzip.backend.interest.domain.NotificationInterestEvent;
 import com.toadzip.backend.interest.domain.NotificationTargetType;
 import com.toadzip.backend.interest.repository.NotificationInterestRepository;
+import com.toadzip.backend.interest.service.NotificationRetentionService;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
@@ -46,6 +47,38 @@ class NotificationInterestIntegrationTest {
     @Autowired
     private NotificationInterestRepository repository;
 
+    @Autowired
+    private NotificationRetentionService retentionService;
+
+    @Test
+    void 보관_기간이_지난_신청과_이벤트는_자동_정리된다() {
+        UUID clientId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO notification_guest_email_preferences (client_id, email, updated_at)
+                VALUES (?, 'expired@example.com', CURRENT_TIMESTAMP - INTERVAL '13 months')
+                """, clientId);
+        jdbcTemplate.update("""
+                INSERT INTO notification_guest_subscriptions
+                    (client_id, target_type, target_id, active, updated_at, expires_at)
+                VALUES (?, 'REGION', '11', true, CURRENT_TIMESTAMP - INTERVAL '13 months',
+                    CURRENT_TIMESTAMP - INTERVAL '1 month')
+                """, clientId);
+        jdbcTemplate.update("""
+                INSERT INTO notification_interest_events
+                    (event_id, session_id, event_type, source, target_type, target_id, created_at)
+                VALUES (?, ?, 'CLICKED', 'REGION_SEARCH', 'REGION', '11', CURRENT_TIMESTAMP - INTERVAL '91 days')
+                """, eventId, UUID.randomUUID());
+
+        retentionService.purgeExpiredData();
+
+        assertEquals(0, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM notification_guest_email_preferences WHERE client_id = ?",
+                Integer.class, clientId));
+        assertEquals(0, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM notification_interest_events WHERE event_id = ?", Integer.class, eventId));
+    }
+
     @Test
     void 비로그인_신청도_브라우저_식별자로_조회하고_취소한다() throws Exception {
         UUID clientId = UUID.randomUUID();
@@ -75,6 +108,28 @@ class NotificationInterestIntegrationTest {
                         .header("X-Notification-Client-Id", clientId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.targets[0].targetId").value("11680"));
+    }
+
+    @Test
+    void 마지막_비로그인_신청_취소는_알림용_이메일도_삭제한다() throws Exception {
+        UUID clientId = UUID.randomUUID();
+        String confirmed = request(UUID.randomUUID(), "CONFIRMED", "REGION_SEARCH", "REGION", "11")
+                .replace("\"targetId\": \"11\"", "\"targetId\": \"11\", \"email\": \"guest@example.com\", "
+                        + "\"clientId\": \"" + clientId + "\"");
+        submit(confirmed);
+        String cancelled = request(UUID.randomUUID(), "CANCELLED", "REGION_SEARCH", "REGION", "11")
+                .replace("\"targetId\": \"11\"", "\"targetId\": \"11\", "
+                        + "\"clientId\": \"" + clientId + "\"");
+        submit(cancelled);
+
+        assertEquals(0, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM notification_guest_email_preferences WHERE client_id = ?",
+                Integer.class, clientId));
+        mockMvc.perform(get("/api/v1/notification-subscriptions/guest")
+                        .header("X-Notification-Client-Id", clientId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.emailConfirmed").value(false))
+                .andExpect(jsonPath("$.targets").isEmpty());
     }
 
     @Test
@@ -173,8 +228,10 @@ class NotificationInterestIntegrationTest {
                 .replace("\"targetId\": \"11680\"", "\"targetId\": \"11680\", \"email\": \"guest@example.com\""));
         assertEquals("CONFIRMED", jdbcTemplate.queryForObject(
                 "SELECT event_type FROM notification_interest_events WHERE event_id = ?", String.class, eventId));
-        assertEquals("guest@example.com", jdbcTemplate.queryForObject(
-                "SELECT email FROM notification_interest_events WHERE event_id = ?", String.class, eventId));
+        assertEquals(0, jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'notification_interest_events' AND column_name = 'email'
+                """, Integer.class));
 
         UUID declinedId = UUID.randomUUID();
         submit(request(declinedId, "DECLINED", "SETTING", "REGION", "11680"));

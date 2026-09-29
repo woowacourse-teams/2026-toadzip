@@ -19,7 +19,7 @@ BEGIN
     END IF;
     FOREACH expected_version IN ARRAY ARRAY[
             '20260922.02', '20260927.01', '20260928.01', '20260929.01',
-            '20260929.02', '20260929.03'] LOOP
+            '20260929.02', '20260929.03', '20260929.04'] LOOP
         IF NOT EXISTS (
                 SELECT 1 FROM public.flyway_schema_history
                 WHERE version = expected_version AND success = true) THEN
@@ -37,9 +37,17 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                    WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'email')
             OR NOT EXISTS (SELECT 1 FROM information_schema.columns
-                   WHERE table_schema = 'public' AND table_name = 'notification_interest_events'
-                     AND column_name = 'email') THEN
-        RAISE EXCEPTION 'Notification email column is missing';
+                   WHERE table_schema = 'public' AND table_name = 'notification_subscriptions'
+                     AND column_name = 'expires_at')
+            OR NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public' AND table_name = 'notification_guest_subscriptions'
+                     AND column_name = 'expires_at') THEN
+        RAISE EXCEPTION 'Notification email or expiry column is missing';
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public' AND table_name = 'notification_interest_events'
+                 AND column_name = 'email') THEN
+        RAISE EXCEPTION 'Event email column still exists';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint
                    WHERE conrelid = 'public.notification_interest_events'::regclass

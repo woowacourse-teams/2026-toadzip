@@ -26,17 +26,23 @@ public class NotificationSubscriptionRepository {
 
     public boolean hasEmail(long userId) {
         Integer count = jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM notification_email_preferences WHERE user_id = ?", Integer.class, userId);
+                """
+                SELECT count(*) FROM notification_email_preferences preferences
+                WHERE preferences.user_id = ? AND EXISTS (
+                    SELECT 1 FROM notification_subscriptions subscriptions
+                    WHERE subscriptions.user_id = preferences.user_id
+                      AND subscriptions.active = true AND subscriptions.expires_at > CURRENT_TIMESTAMP)
+                """, Integer.class, userId);
         return count != null && count > 0;
     }
 
     public void activate(long userId, NotificationTargetType type, String id, Instant now) {
         jdbcTemplate.update("""
-                INSERT INTO notification_subscriptions (user_id, target_type, target_id, active, updated_at)
-                VALUES (?, ?, ?, true, ?)
+                INSERT INTO notification_subscriptions (user_id, target_type, target_id, active, updated_at, expires_at)
+                VALUES (?, ?, ?, true, ?, ?::timestamptz + INTERVAL '12 months')
                 ON CONFLICT ON CONSTRAINT uk_notification_subscription_target
-                DO UPDATE SET active = true, updated_at = EXCLUDED.updated_at
-                """, userId, type.name(), id, Timestamp.from(now));
+                DO UPDATE SET active = true, updated_at = EXCLUDED.updated_at, expires_at = EXCLUDED.expires_at
+                """, userId, type.name(), id, Timestamp.from(now), Timestamp.from(now));
     }
 
     public void cancel(long userId, NotificationTargetType type, String id, Instant now) {
@@ -45,12 +51,19 @@ public class NotificationSubscriptionRepository {
                 SET active = false, updated_at = ?
                 WHERE user_id = ? AND target_type = ? AND target_id = ?
                 """, Timestamp.from(now), userId, type.name(), id);
+        jdbcTemplate.update("""
+                DELETE FROM notification_email_preferences preferences
+                WHERE preferences.user_id = ? AND NOT EXISTS (
+                    SELECT 1 FROM notification_subscriptions subscriptions
+                    WHERE subscriptions.user_id = preferences.user_id
+                      AND subscriptions.active = true AND subscriptions.expires_at > CURRENT_TIMESTAMP)
+                """, userId);
     }
 
     public NotificationSubscriptionResponse findForUser(long userId) {
         List<NotificationSubscriptionResponse.Target> targets = jdbcTemplate.query("""
                 SELECT target_type, target_id FROM notification_subscriptions
-                WHERE user_id = ? AND active = true
+                WHERE user_id = ? AND active = true AND expires_at > CURRENT_TIMESTAMP
                 ORDER BY target_type, target_id
                 """, (row, number) -> new NotificationSubscriptionResponse.Target(
                 NotificationTargetType.valueOf(row.getString("target_type")), row.getString("target_id")), userId);

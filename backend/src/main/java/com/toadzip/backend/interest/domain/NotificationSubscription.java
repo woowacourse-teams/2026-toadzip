@@ -36,6 +36,9 @@ public class NotificationSubscription {
     @Column(nullable = false)
     private Instant updatedAt;
 
+    @Column(nullable = false)
+    private Instant expiresAt;
+
     protected NotificationSubscription() {
     }
 }
