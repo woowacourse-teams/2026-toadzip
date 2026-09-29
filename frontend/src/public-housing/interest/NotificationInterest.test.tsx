@@ -179,6 +179,17 @@ describe('이메일 알림 신청', () => {
     expect(await screen.findByRole('dialog', { name: '이메일 알림 신청' })).toBeVisible()
   })
 
+  it('이전 버전의 신청 표시만 남아 있으면 다시 신청해야 함을 안내한다', async () => {
+    localStorage.setItem('toadzip.notification-interest.requested:COMPLEX:1', '1')
+    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
+    const loadStatus = vi.fn().mockResolvedValue({ guest: true, emailConfirmed: false, targets: [] })
+    render(example({ record, loadStatus }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+
+    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
+    expect(await screen.findByRole('dialog')).toHaveTextContent('이전에 누른 알림은 현재 신청 목록에 포함되지 않았어요. 이메일을 입력해 다시 신청해 주세요.')
+  })
+
   it('늦은 로그인 응답은 사용자가 입력한 주소를 덮지 않는다', async () => {
     const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
     let resolveUser: (value: { id: number; email: string }) => void = () => {}

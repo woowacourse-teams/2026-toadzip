@@ -239,6 +239,9 @@ export function NotificationInterestProvider({ children, repository = notificati
     void send({ ...prompt, event, next: 'complete' })
   }
 
+  const previousClickNeedsApplication = prompt && serverStatus && !completed.current
+    && readStorage('localStorage', requestedKey(prompt.target)) === '1'
+
   return (
     <InterestContext.Provider value={context}>
       {children}
@@ -249,6 +252,7 @@ export function NotificationInterestProvider({ children, repository = notificati
             <h2 id="notification-interest-title">이메일 알림 신청</h2>
             <p className={styles.description}>{`이 ${{ REGION: '지역', COMPLEX: '단지', ANNOUNCEMENT: '공고' }[prompt.target.type]}에 대한 알림을 받으시겠습니까?`}</p>
             <p className={styles.target}>{prompt.target.name}</p>
+            {previousClickNeedsApplication && <p className={styles.hint}>이전에 누른 알림은 현재 신청 목록에 포함되지 않았어요. 이메일을 입력해 다시 신청해 주세요.</p>}
             <label className={styles.label} htmlFor="notification-email">알림 받을 이메일</label>
             <input id="notification-email" className={styles.input} type="email" autoComplete="email"
               placeholder="name@example.com" required maxLength={254} pattern={'[^\\s@]+@[^\\s@]+\\.[^\\s@]+'} value={email}
