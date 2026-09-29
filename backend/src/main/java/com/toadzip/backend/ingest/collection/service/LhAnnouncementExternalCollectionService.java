@@ -213,12 +213,28 @@ public class LhAnnouncementExternalCollectionService {
                 () -> candidateResolver.resolveAll(current));
         CandidateSelection selection = measurePreparation(targetSource, forceRefresh, "candidate_selection",
                 () -> selectCandidates(current, resolutions, visitedSourceAnnouncements, forceRefresh));
+        recordSelection(targetSource, forceRefresh, selection, sources.size() - current.size());
+        ExternalDataCollectionReport report = selectionReport(targetSource, selection);
+        return report.plus(collectCandidates(
+                targetSource, selection.candidates(), selection.refreshTtlByRequest(), forceRefresh
+        ));
+    }
+
+    private void recordSelection(
+            ExternalDataSource targetSource,
+            boolean forceRefresh,
+            CandidateSelection selection,
+            int historicalSourceCount
+    ) {
         recordCount(targetSource, forceRefresh, "source.rows", "candidate", selection.candidates().size());
         recordCount(targetSource, forceRefresh, "source.rows", "unsupported", selection.skipped().size());
         recordCount(targetSource, forceRefresh, "source.rows", "policy_excluded", selection.policyExcludedCount());
         recordCount(targetSource, forceRefresh, "source.rows", "duplicate", selection.duplicateCount());
-        recordCount(targetSource, forceRefresh, "source.rows", "historical", sources.size() - current.size());
+        recordCount(targetSource, forceRefresh, "source.rows", "historical", historicalSourceCount);
         recordCount(targetSource, forceRefresh, "candidates", "conflicting", selection.conflicts().size());
+    }
+
+    private ExternalDataCollectionReport selectionReport(ExternalDataSource targetSource, CandidateSelection selection) {
         failureRecorder.skipAll(targetSource,
                 selection.excludedSourceKeys().stream().map(this::sourceSelectionDescription).toList(),
                 "현재 마이홈 공고 원천이 모두 LH 수집 대상에서 제외되어 충돌 재처리를 건너뜁니다.");
@@ -229,9 +245,7 @@ public class LhAnnouncementExternalCollectionService {
         for (Skipped skipped : selection.skipped()) {
             report = report.plus(skipReport(targetSource, skipped.sourceDescription(), skipped.reason()));
         }
-        return report.plus(collectCandidates(
-                targetSource, selection.candidates(), selection.refreshTtlByRequest(), forceRefresh
-        ));
+        return report;
     }
 
     private CandidateSelection selectCandidates(
@@ -499,19 +513,23 @@ public class LhAnnouncementExternalCollectionService {
                     stopScheduling = true;
                 }
             }
-            Throwable failure = null;
-            for (Throwable additionalFailure : failures.values()) {
-                failure = appendFailure(failure, additionalFailure);
-            }
-            if (failure != null) {
-                throw propagate(failure);
-            }
+            throwCollectedFailures(failures);
         }
         catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("LH 공고 수집 대기가 중단되었습니다.", exception);
         }
         return report;
+    }
+
+    private void throwCollectedFailures(Map<Integer, Throwable> failures) {
+        Throwable failure = null;
+        for (Throwable additionalFailure : failures.values()) {
+            failure = appendFailure(failure, additionalFailure);
+        }
+        if (failure != null) {
+            throw propagate(failure);
+        }
     }
 
     private Throwable appendFailure(Throwable failure, Throwable additionalFailure) {
@@ -589,9 +607,7 @@ public class LhAnnouncementExternalCollectionService {
             return report;
         }
         for (Candidate linkedCandidate : requestCandidates.subList(1, requestCandidates.size())) {
-            if (!progress.isLinkedTo(linkedCandidate.sourceAnnouncementKey(), linkedCandidate.requestDescription())) {
-                progressManager.link(targetSource, linkedCandidate);
-            }
+            linkIfNeeded(targetSource, linkedCandidate, progress);
         }
         for (Candidate candidate : requestCandidates) {
             String conflictRequest = sourceSelectionDescription(candidate.sourceAnnouncementKey());
@@ -609,12 +625,16 @@ public class LhAnnouncementExternalCollectionService {
             boolean forceRefresh
     ) {
         if (!forceRefresh && progress.isFresh(candidate.requestDescription())) {
-            if (!progress.isLinkedTo(candidate.sourceAnnouncementKey(), candidate.requestDescription())) {
-                progressManager.link(targetSource, candidate);
-            }
+            linkIfNeeded(targetSource, candidate, progress);
             return ExternalDataCollectionReport.empty(targetSource.operation());
         }
         return candidateCollector.collect(targetSource, candidate);
+    }
+
+    private void linkIfNeeded(ExternalDataSource targetSource, Candidate candidate, BatchProgress progress) {
+        if (!progress.isLinkedTo(candidate.sourceAnnouncementKey(), candidate.requestDescription())) {
+            progressManager.link(targetSource, candidate);
+        }
     }
 
     private ExternalDataCollectionReport skipReport(
