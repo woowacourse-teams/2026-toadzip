@@ -42,19 +42,12 @@ export function LoginPage() {
       </header>
       <main className="user-login-main">
         <section className="user-login-intro" aria-label="서비스 소개">
-          <span className="user-login-eyebrow">내게 맞는 공공주택을 찾는 곳</span>
-          <h1>좋은 집을 찾는 시간,<br />공공주택 복덕방과 함께.</h1>
-          <p>관심 있는 집과 모집 공고를 한곳에서 살펴보세요.</p>
-          <div className="user-login-illustration" aria-hidden="true">
-            <span className="user-login-sun" />
-            <span className="user-login-house user-login-house--back" />
-            <span className="user-login-house user-login-house--front" />
-            <span className="user-login-ground" />
-          </div>
+          <span className="user-login-eyebrow">공공주택 탐색, 한곳에서</span>
+          <h1>집을 찾는 시간,<br />조금 더 명확하게.</h1>
+          <p>단지 정보부터 모집 공고와 신청 일정까지<br className="user-login-desktop-break" /> 한곳에서 살펴보세요.</p>
         </section>
         <section className="user-login-panel" aria-label="로그인">
           <div className="user-login-content">
-            <span className="user-login-step">공공주택 복덕방 시작하기</span>
             <h2>{session === 'signed-in' ? '로그인되었습니다' : '로그인'}</h2>
             {session === 'signed-in' ? (
               <>
@@ -66,7 +59,7 @@ export function LoginPage() {
               </>
             ) : (
               <>
-                <p>사용 중인 계정으로 간편하게 시작하세요.</p>
+                <p>카카오 또는 Google 계정으로 시작하세요.</p>
                 {loginFailed && <p className="user-login-alert" role="alert">로그인을 완료하지 못했습니다. 다시 시도해 주세요.</p>}
                 {session === 'error' && <p className="user-login-alert" role="alert">로그인 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.</p>}
                 {session === 'loading' ? (
