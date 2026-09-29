@@ -65,8 +65,11 @@ class RoadAddressGeocodingServiceTest {
         assertThatThrownBy(() -> service.geocode("서울특별시 중구 세종대로 110"))
                 .isInstanceOfSatisfying(
                         RoadAddressGeocodingException.class,
-                        exception -> assertThat(exception.getReason())
-                                .isEqualTo(RoadAddressGeocodingFailureReason.ADDRESS_NOT_FOUND)
+                        exception -> {
+                            assertThat(exception.getReason())
+                                    .isEqualTo(RoadAddressGeocodingFailureReason.ADDRESS_NOT_FOUND);
+                            assertThat(exception).hasMessageContaining("ZIP");
+                        }
                 );
     }
 

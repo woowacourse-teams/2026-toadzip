@@ -36,6 +36,8 @@ import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.LhCatalogSourceRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeComplexSourceRepository;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
+import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
+import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.service.RoadAddressGeocodingService;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -149,6 +151,23 @@ class MyHomeComplexMergeIntegrationTest {
         assertThat(complexes.findAll()).singleElement().satisfies(complex ->
                 assertThat(complex.getRentalPriceRange()).isEqualTo(
                         new RentalPriceRange(10_000_000L, 30_000_000L, 100_000L, 200_000L)));
+    }
+
+    @Test
+    void 확인된_통합_단지는_좌표가_없어도_금액을_갱신한다() throws Exception {
+        merge();
+        jdbc.sql("UPDATE myhome_complex_source SET bass_rent_gtn = 5000000 WHERE hsmp_sn = 31713153")
+                .update();
+        when(geocoding.geocode(anyString())).thenThrow(new RoadAddressGeocodingException(
+                RoadAddressGeocodingFailureReason.ADDRESS_NOT_FOUND, "선별 적재된 좌표가 없습니다."
+        ));
+
+        var report = mapping.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(complexes.findAll()).singleElement().satisfies(complex ->
+                assertThat(complex.getRentalPriceRange())
+                        .isEqualTo(new RentalPriceRange(5_000_000L, 5_000_000L, null, null)));
     }
 
     @Test

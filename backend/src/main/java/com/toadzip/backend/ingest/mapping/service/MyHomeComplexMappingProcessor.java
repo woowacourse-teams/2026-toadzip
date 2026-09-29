@@ -18,8 +18,11 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -41,13 +44,17 @@ class MyHomeComplexMappingProcessor {
         Instant occurredAt = clock.instant();
         List<MyHomeComplexMappingFailure> failures = new ArrayList<>();
         Map<String, List<MyHomeComplexSource>> groups = groupSources(failures, occurredAt);
-        recordMissingLinkedSources(groups, failures, occurredAt);
+        Set<String> verifiedIdentifiers = new LinkedHashSet<>();
+        linkRepository.findAllByMergeIdIsNotNull().forEach(link ->
+                verifiedIdentifiers.add(link.getSourceComplexIdentifier()));
+        recordMissingLinkedSources(verifiedIdentifiers, groups, failures, occurredAt);
 
         MyHomeComplexMappingReport report = MyHomeComplexMappingReport.failedRows(failures.size());
         var executionId = IngestExecutionContext.currentExecutionId().orElse(null);
         try {
             for (Map.Entry<String, List<MyHomeComplexSource>> group : groups.entrySet()) {
-                report = report.plus(mapGroup(group.getKey(), group.getValue(), failures, occurredAt));
+                report = report.plus(mapGroup(group.getKey(), group.getValue(),
+                        verifiedIdentifiers.contains(group.getKey()), failures, occurredAt));
             }
         }
         catch (RuntimeException exception) {
@@ -90,15 +97,16 @@ class MyHomeComplexMappingProcessor {
     }
 
     private void recordMissingLinkedSources(
+            Set<String> verifiedIdentifiers,
             Map<String, List<MyHomeComplexSource>> groups,
             List<MyHomeComplexMappingFailure> failures,
             Instant occurredAt
     ) {
-        linkRepository.findAllByMergeIdIsNotNull().stream()
-                .filter(link -> !groups.containsKey(link.getSourceComplexIdentifier()))
-                .forEach(link -> failures.add(MyHomeComplexMappingFailure.create(
-                        "linked-complex:" + link.getSourceComplexIdentifier(),
-                        link.getSourceComplexIdentifier(),
+        verifiedIdentifiers.stream()
+                .filter(identifier -> !groups.containsKey(identifier))
+                .forEach(identifier -> failures.add(MyHomeComplexMappingFailure.create(
+                        "linked-complex:" + identifier,
+                        identifier,
                         MyHomeComplexMappingFailureReason.CONFLICTING_SOURCE_VALUE,
                         "확인된 연결 원천이 누락되어 기존 단지와 주택형을 보존합니다.",
                         occurredAt
@@ -108,9 +116,14 @@ class MyHomeComplexMappingProcessor {
     private MyHomeComplexMappingReport mapGroup(
             String identifier,
             List<MyHomeComplexSource> sources,
+            boolean verified,
             List<MyHomeComplexMappingFailure> failures,
             Instant occurredAt
     ) {
+        if (verified) {
+            return writeGroup(identifier, sources, failures, occurredAt, () -> writer.writeVerified(identifier));
+        }
+
         MyHomeComplexMappingData data;
         try {
             data = sourceMapper.map(identifier, sources);
@@ -130,17 +143,25 @@ class MyHomeComplexMappingProcessor {
                     failures, occurredAt
             );
             return switch (exception.getReason()) {
-                case RATE_LIMIT_EXCEEDED ->
-                        MyHomeComplexMappingReport.rateLimitedRows(rejected.failedSourceRowCount());
-                case EXTERNAL_API_ERROR, COORDINATE_CONVERSION_ERROR, NOT_CONFIGURED ->
+                case COORDINATE_CONVERSION_ERROR ->
                         MyHomeComplexMappingReport.operationalFailedRows(rejected.failedSourceRowCount());
-                case INVALID_ADDRESS, ADDRESS_NOT_FOUND, AMBIGUOUS_ADDRESS, COORDINATE_NOT_FOUND -> rejected;
+                case INVALID_ADDRESS, ADDRESS_NOT_FOUND, COORDINATE_NOT_FOUND -> rejected;
             };
         }
 
         Address address = data.address().resolve(geocoded);
+        return writeGroup(identifier, sources, failures, occurredAt, () -> writer.write(data, address));
+    }
+
+    private MyHomeComplexMappingReport writeGroup(
+            String identifier,
+            List<MyHomeComplexSource> sources,
+            List<MyHomeComplexMappingFailure> failures,
+            Instant occurredAt,
+            Supplier<MyHomeComplexMappingReport> write
+    ) {
         try {
-            return writer.write(data, address);
+            return write.get();
         }
         catch (MyHomeComplexMappingRejectedException exception) {
             return reject(identifier, sources, exception.reason(), exception.getMessage(), failures, occurredAt);

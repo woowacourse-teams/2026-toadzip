@@ -454,27 +454,6 @@ class DataPipelineRunnerTest {
     }
 
     @Test
-    void 주소_API_호출_제한으로만_실패한_단지_정제는_건너뛴다() {
-        MyHomeComplexMappingReport rateLimited =
-                MyHomeComplexMappingReport.rateLimitedRows(2);
-        when(myHomeComplexMappingService.mapAll()).thenReturn(rateLimited);
-        when(householdEnrichmentService.enrichAll())
-                .thenReturn(new LhHousingTypeHouseholdEnrichmentReport(1, 1, 1, 0, 0, 0));
-
-        runner.run(DataPipelineType.COMPLEX_REFINEMENT, executionId);
-
-        verify(executionStateService).skipStep(
-                executionId,
-                DataPipelineStep.MAP_MYHOME_COMPLEXES,
-                "외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.",
-                resultAdapter.adapt(rateLimited).serverResponse()
-        );
-        assertThat(meterRegistry.get("ingest.pipeline.step")
-                .tag("result", "rate_limited").timer().count()).isOne();
-        verify(householdEnrichmentService).enrichAll();
-    }
-
-    @Test
     void 소유권을_잃으면_중지_조회와_단계_시작_전에_실행을_거절한다() {
         Lease lease = mock(Lease.class);
         DataPipelineExecutionMonitor monitor = mock(DataPipelineExecutionMonitor.class);

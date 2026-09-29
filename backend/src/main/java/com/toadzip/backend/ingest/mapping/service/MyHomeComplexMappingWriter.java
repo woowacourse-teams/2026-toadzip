@@ -43,7 +43,7 @@ public class MyHomeComplexMappingWriter {
     public MyHomeComplexMappingReport write(MyHomeComplexMappingData data, Address address) {
         MyHomeComplexLink link = linkRepository.findById(data.sourceComplexIdentifier()).orElse(null);
         if (link != null && link.getMergeId() != null) {
-            return writeVerifiedGroup(link);
+            throw mergedSourceConflict("확인된 원천 연결이 변경되어 재정제를 보류합니다.");
         }
         rejectChangedVerifiedSupplyType(data.sourceComplexIdentifier());
         ComplexWriteResult complexResult = upsertComplex(data, address);
@@ -64,6 +64,15 @@ public class MyHomeComplexMappingWriter {
                 housingTypeResult.deleted(),
                 0
         );
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public MyHomeComplexMappingReport writeVerified(String identifier) {
+        MyHomeComplexLink link = linkRepository.findById(identifier).orElse(null);
+        if (link == null || link.getMergeId() == null) {
+            throw mergedSourceConflict("확인된 원천 연결이 변경되어 재정제를 보류합니다.");
+        }
+        return writeVerifiedGroup(link);
     }
 
     private ComplexWriteResult upsertComplex(MyHomeComplexMappingData data, Address address) {

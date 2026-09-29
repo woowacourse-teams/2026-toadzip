@@ -31,6 +31,7 @@ public enum DataPipelineType {
                     DataPipelineStep.COLLECT_MYHOME_COMPLEXES,
                     DataPipelineStep.COLLECT_LH_LEASE_CATALOG
             );
+            // 새 단지 주소의 좌표가 필요하면 관리자가 위치정보요약DB ZIP을 별도 업로드한다.
             case COMPLEX_REFINEMENT -> List.of(
                     DataPipelineStep.MAP_MYHOME_COMPLEXES,
                     DataPipelineStep.ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS
