@@ -102,4 +102,16 @@ class LhAnnouncementDetailResponseParserTest {
         assertThat(parser.parse("PAN-1", root)).singleElement()
                 .extracting(source -> source.getComplexName()).isEqualTo("가 단지");
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"ETC_CTS\":\"안내\"}"})
+    void 앞선_행의_내용과_관계없이_마지막_dataset의_구조_오류를_보고한다(String firstRow) {
+        var root = objectMapper.readTree(
+                "[{\"dsEtcInfo\":[" + firstRow + "]},{\"dsSbdAhfl\":[42]}]"
+        );
+
+        assertThatThrownBy(() -> parser.parse("PAN-1", root))
+                .isInstanceOf(ExternalDataRequestException.class)
+                .hasMessage("외부 응답 dataset의 행은 객체여야 합니다.");
+    }
 }

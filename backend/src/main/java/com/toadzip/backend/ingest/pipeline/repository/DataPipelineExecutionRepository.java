@@ -43,6 +43,8 @@ public interface DataPipelineExecutionRepository
             UUID upstreamExecutionId
     );
 
+    boolean existsByTypeAndUpstreamExecutionId(DataPipelineType type, UUID upstreamExecutionId);
+
     @Query("""
             select collection
             from DataPipelineExecution collection

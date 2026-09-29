@@ -13,6 +13,7 @@ import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.announcement.service.AnnouncementQueryService;
 import com.toadzip.backend.housing.domain.Address;
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.RentalType;
@@ -44,6 +45,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -192,6 +194,52 @@ class MyHomeAnnouncementMappingServiceTest {
         assertThat(report.unchangedSupplyRowCount()).isOne();
         assertThat(announcementRepository.count()).isOne();
         assertThat(supplyRowRepository.count()).isOne();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 3})
+    void 공급기관이_바뀌면_기존_공급행들의_LH_공급대상만_삭제한다(int storedRowCount) {
+        saveMappedComplex();
+        var sources = List.of(
+                source(0, data("21026", 1, "LH", "동삼2")),
+                source(1, data("21026", 2, "LH", "동삼2")),
+                source(2, data("21026", 3, "LH", "동삼2"))
+        );
+        sourceRepository.saveAll(sources);
+        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver
+                .resolve(sources.getFirst());
+        completeLinks("21026", candidate);
+        assertThat(service.mapAll().createdSupplyRowCount()).isEqualTo(3);
+        Announcement announcement = announcementRepository.findAll().getFirst();
+        announcement.enrichFromLh("21026", null, null);
+        announcementRepository.save(announcement);
+        if (storedRowCount == 0) {
+            supplyRowRepository.deleteAll();
+        }
+        for (SupplyRow row : supplyRowRepository.findAll()) {
+            supplyTargetRepository.saveAll(List.of(
+                    SupplyTarget.createFromSource(row, "LH:" + row.getId(), "일반", null, 1, null, null, 1),
+                    SupplyTarget.createFromSource(row, "OTHER:" + row.getId(), "일반", null, 1, null, null, 2),
+                    SupplyTarget.create(row, "수동", null, 1, null, null, null, null, "공고문 참조", 3)
+            ));
+        }
+        for (MyHomeAnnouncementSource source : sources) {
+            source.replaceWith(data("21026", source.getHouseSn(), "서울주택도시공사", "동삼2"));
+        }
+        sourceRepository.saveAll(sources);
+
+        var report = service.mapAll();
+
+        assertThat(report.updatedAnnouncementCount()).isOne();
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(stored -> {
+            assertThat(stored.getProvider()).isEqualTo(AgencyCode.SH);
+            assertThat(stored.getLhPanId()).isNull();
+        });
+        assertThat(supplyTargetRepository.findAll()).hasSize(storedRowCount * 2)
+                .allSatisfy(target -> assertThat(target.getSourceSupplyTargetIdentifier())
+                        .satisfiesAnyOf(identifier -> assertThat(identifier).isNull(),
+                                identifier -> assertThat(identifier).startsWith("OTHER:")));
     }
 
     @Test

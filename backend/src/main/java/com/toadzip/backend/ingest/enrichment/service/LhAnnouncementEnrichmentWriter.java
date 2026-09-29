@@ -10,6 +10,12 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
+import com.toadzip.backend.housing.domain.RentalType;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
@@ -44,6 +50,43 @@ public class LhAnnouncementEnrichmentWriter {
     private final SupplyRowRepository supplyRowRepository;
     private final SupplyTargetRepository supplyTargetRepository;
     private final LhAnnouncementSupplyMatcher supplyMatcher;
+    private final LhAnnouncementDetailSourceRepository detailSourceRepository;
+    private final LhAnnouncementEnrichmentMapper mapper;
+
+    @Transactional
+    public void writeAfterMapping(
+            Announcement announcement,
+            LhAnnouncementRequest request,
+            List<LhAnnouncementSupplySource> supplies,
+            Set<Long> changedHousingTypeRows,
+            Set<String> historicalSourceKeys
+    ) {
+        if (announcement.getSupplyType() == RentalType.ETC) {
+            throw new LhAnnouncementEnrichmentRejectedException(
+                    LhAnnouncementEnrichmentFailureReason.UNSUPPORTED_SUPPLY_TYPE,
+                    "지원하지 않는 공급유형의 LH 공고입니다."
+            );
+        }
+        List<LhAnnouncementDetailSource> details = detailSourceRepository
+                .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
+                        request.panId(),
+                        LhAnnouncementCollectionCheckpoint.requestHashOf(request.requestDescription())
+                );
+        if (details.isEmpty()) {
+            throw new LhAnnouncementEnrichmentRejectedException(
+                    LhAnnouncementEnrichmentFailureReason.LH_DETAIL_SOURCE_NOT_FOUND,
+                    "연결된 LH 공고 상세 원본이 없습니다."
+            );
+        }
+        LhAnnouncementEnrichmentWriteResult result = write(
+                announcement, mapper.map(request.panId(), details, supplies),
+                changedHousingTypeRows, historicalSourceKeys
+        );
+        if (!result.failures().isEmpty()) {
+            LhSupplyMatchingFailureData failure = result.failures().getFirst();
+            throw new LhAnnouncementEnrichmentRejectedException(failure.reason(), failure.detail());
+        }
+    }
 
     @Transactional
     public LhAnnouncementEnrichmentWriteResult write(Announcement announcement, LhAnnouncementEnrichmentData data) {

@@ -217,11 +217,10 @@ public class DataPipelineScheduleOrchestrator {
 
     private boolean hasRefinement(UUID executionId, DataPipelineSchedule schedule) {
         return executionRepository
-                .findFirstByTypeAndUpstreamExecutionIdOrderByIdDesc(
+                .existsByTypeAndUpstreamExecutionId(
                         schedule.refinementType(),
                         executionId
-                )
-                .isPresent();
+                );
     }
 
     private DataPipelineExecutionTrigger collectionTrigger(

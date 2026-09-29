@@ -39,28 +39,28 @@ public class LhAnnouncementCollectionCandidateResolver {
     }
 
     public List<Resolution> resolveAll(List<MyHomeAnnouncementSource> sources) {
-        List<String> panIds = sources.stream()
-                .filter(this::isLhProvider)
-                .map(this::requestOf)
-                .flatMap(Optional::stream)
-                .map(LhAnnouncementRequest::panId)
+        List<Resolution> resolutions = sources.stream().map(this::infer).toList();
+        List<String> panIds = resolutions.stream()
+                .filter(Candidate.class::isInstance)
+                .map(Candidate.class::cast)
+                .map(Candidate::panId)
                 .distinct()
                 .toList();
         if (panIds.isEmpty()) {
-            return sources.stream().map(source -> resolve(source, List.of())).toList();
+            return resolutions;
         }
         Map<String, List<LhAnnouncementCatalogSource>> catalogByPanId = catalogRepository
                 .findAllByPanIdInAndPresentInLatestCatalogTrue(panIds)
                 .stream().collect(Collectors.groupingBy(LhAnnouncementCatalogSource::getPanId));
-        return sources.stream().map(source -> {
-            List<LhAnnouncementCatalogSource> catalog = requestOf(source)
-                    .map(request -> catalogByPanId.getOrDefault(request.panId(), List.of()))
-                    .orElseGet(List::of);
-            return resolve(source, catalog);
+        return resolutions.stream().map(resolution -> {
+            if (resolution instanceof Candidate candidate) {
+                return resolveFromCatalog(candidate, catalogByPanId.getOrDefault(candidate.panId(), List.of()));
+            }
+            return resolution;
         }).toList();
     }
 
-    private Resolution resolve(MyHomeAnnouncementSource source, List<LhAnnouncementCatalogSource> catalog) {
+    private Resolution infer(MyHomeAnnouncementSource source) {
         String sourceAnnouncementKey = sourceAnnouncementKey(source);
         String sourceDescription = sourceDescription(source);
         if (!isLhProvider(source)) {
@@ -70,19 +70,22 @@ public class LhAnnouncementCollectionCandidateResolver {
         if (request.isEmpty()) {
             return new Skipped(sourceAnnouncementKey, sourceDescription, UNSUPPORTED_REQUEST_REASON);
         }
-        LhAnnouncementRequest inferred = request.orElseThrow();
+        return new Candidate(sourceAnnouncementKey, sourceDescription, request.orElseThrow());
+    }
+
+    private Candidate resolveFromCatalog(Candidate candidate, List<LhAnnouncementCatalogSource> catalog) {
         List<LhAnnouncementCatalogSource> matches = catalog.stream()
-                .filter(row -> matches(inferred, row))
+                .filter(row -> matches(candidate.request(), row))
                 .toList();
         if (matches.size() != 1) {
-            return new Candidate(sourceAnnouncementKey, sourceDescription, inferred);
+            return candidate;
         }
         LhAnnouncementCatalogSource row = matches.getFirst();
         LhAnnouncementRequest canonical = new LhAnnouncementRequest(
                 row.getPanId(), row.getConnectionSystemDivisionCode(), row.getUpperAnnouncementTypeCode(),
                 row.getAnnouncementTypeCode(), row.getSupplyInfoTypeCode()
         );
-        return new Candidate(sourceAnnouncementKey, sourceDescription, canonical,
+        return new Candidate(candidate.sourceAnnouncementKey(), candidate.sourceDescription(), canonical,
                 row.getChangedAt(), row.getCollectedAt());
     }
 

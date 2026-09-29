@@ -76,9 +76,6 @@ class DataPipelineScheduleOrchestratorTest {
         lenient().when(executionRepository.findFirstByTypeAndScheduledAtBeforeOrderByScheduledAtDesc(
                 any(), any()
         )).thenReturn(Optional.empty());
-        lenient().when(executionRepository.findFirstByTypeAndUpstreamExecutionIdOrderByIdDesc(
-                any(), any()
-        )).thenReturn(Optional.empty());
         lenient().when(executionService.start(any(), any(), any(), any()))
                 .thenAnswer(invocation -> accepted(
                         invocation.getArgument(0, DataPipelineType.class),
@@ -174,6 +171,35 @@ class DataPipelineScheduleOrchestratorTest {
                 DataPipelineExecutionTrigger.SCHEDULED,
                 ANNOUNCEMENT_SLOT,
                 collectionId
+        );
+    }
+
+    @Test
+    void 완료된_수집에_정제_이력이_있으면_다시_시작하지_않는다() {
+        UUID collectionId = UUID.randomUUID();
+        DataPipelineExecution collection = scheduledExecution(
+                DataPipelineType.ANNOUNCEMENT_COLLECTION, collectionId, ANNOUNCEMENT_SLOT
+        );
+        complete(collection);
+        when(executionRepository.findFirstByTypeAndScheduledAtOrderByIdDesc(
+                DataPipelineType.ANNOUNCEMENT_COLLECTION, ANNOUNCEMENT_SLOT
+        )).thenReturn(Optional.of(collection));
+        when(executionService.find(collectionId)).thenReturn(accepted(
+                DataPipelineType.ANNOUNCEMENT_COLLECTION,
+                DataPipelineExecutionTrigger.SCHEDULED,
+                ANNOUNCEMENT_SLOT,
+                null,
+                collectionId,
+                DataPipelineExecutionStatus.COMPLETED
+        ));
+        when(executionRepository.existsByTypeAndUpstreamExecutionId(
+                DataPipelineType.ANNOUNCEMENT_REFINEMENT, collectionId
+        )).thenReturn(true);
+
+        orchestrator.runOnce(NOW);
+
+        verify(executionService, never()).start(
+                eq(DataPipelineType.ANNOUNCEMENT_REFINEMENT), any(), any(), any()
         );
     }
 

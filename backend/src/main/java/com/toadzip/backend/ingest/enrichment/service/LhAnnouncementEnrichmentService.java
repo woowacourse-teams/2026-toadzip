@@ -43,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -50,6 +51,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class LhAnnouncementEnrichmentService {
 
     private final MyHomeAnnouncementSourceRepository myHomeSourceRepository;
@@ -67,50 +69,9 @@ public class LhAnnouncementEnrichmentService {
     private final MyHomeAnnouncementCommonValuesMapper commonValuesMapper;
     private final Clock clock;
 
-    public LhAnnouncementEnrichmentService(
-            MyHomeAnnouncementSourceRepository myHomeSourceRepository,
-            AnnouncementRepository announcementRepository,
-            LhAnnouncementDetailSourceRepository detailSourceRepository,
-            LhAnnouncementSupplySourceRepository supplySourceRepository,
-            LhSourceStore sourceStore,
-            LhAnnouncementEnrichmentFailureRepository failureRepository,
-            LhAnnouncementEnrichmentFailureStore failureStore,
-            MyHomeAnnouncementMappingFailureRepository mappingFailureRepository,
-            IngestOperationLock executionLock,
-            LhAnnouncementEnrichmentMapper mapper,
-            LhAnnouncementEnrichmentWriter writer,
-            LhAnnouncementLinkResolver linkResolver,
-            MyHomeAnnouncementCommonValuesMapper commonValuesMapper,
-            Clock clock
-    ) {
-        this.myHomeSourceRepository = myHomeSourceRepository;
-        this.announcementRepository = announcementRepository;
-        this.detailSourceRepository = detailSourceRepository;
-        this.supplySourceRepository = supplySourceRepository;
-        this.sourceStore = sourceStore;
-        this.failureRepository = failureRepository;
-        this.failureStore = failureStore;
-        this.mappingFailureRepository = mappingFailureRepository;
-        this.executionLock = executionLock;
-        this.mapper = mapper;
-        this.writer = writer;
-        this.linkResolver = linkResolver;
-        this.commonValuesMapper = commonValuesMapper;
-        this.clock = clock;
-    }
-
     public LhAnnouncementEnrichmentReport enrichAll() {
         return executionLock.tryRun(LH_ANNOUNCEMENT_ENRICHMENT, this::enrichAllUnlocked)
                 .orElseThrow(this::alreadyRunning);
-    }
-
-    public List<LhAnnouncementEnrichmentFailure> enrichForAtomicMapping(
-            List<MyHomeAnnouncementSource> sources,
-            Set<Long> changedHousingTypeRows
-    ) {
-        List<LhAnnouncementEnrichmentFailure> failures = new ArrayList<>();
-        enrich(sources, failures, clock.instant(), changedHousingTypeRows, false);
-        return List.copyOf(failures);
     }
 
     private LhAnnouncementEnrichmentReport enrichAllUnlocked() {
@@ -125,7 +86,7 @@ public class LhAnnouncementEnrichmentService {
         for (Map.Entry<String, List<MyHomeAnnouncementSource>> group
                 : sourcesByAnnouncementWithLh().entrySet()) {
             report = report.plus(enrich(
-                    group.getValue(), failures, occurredAt, Set.of(),
+                    group.getValue(), failures, occurredAt,
                     incompleteMappingIds.contains(group.getKey())
             ));
         }
@@ -153,7 +114,6 @@ public class LhAnnouncementEnrichmentService {
             List<MyHomeAnnouncementSource> sources,
             List<LhAnnouncementEnrichmentFailure> failures,
             Instant occurredAt,
-            Set<Long> changedHousingTypeRows,
             boolean mappingIncomplete
     ) {
         List<MyHomeAnnouncementSource> lhSources = MyHomeAnnouncementCurrentSources.select(sources)
@@ -212,7 +172,7 @@ public class LhAnnouncementEnrichmentService {
                         "마이홈 공고 매핑 실패가 남아 LH 보강을 보류했습니다.", failures, occurredAt);
             }
             LhAnnouncementEnrichmentWriteResult result = writer.write(
-                    announcement, data, changedHousingTypeRows, historicalSourceKeys(sources, lhSources),
+                    announcement, data, Set.of(), historicalSourceKeys(sources, lhSources),
                     supplies.isEmpty() && sourceStore.hasVerifiedEmptySupplies(panId, request.requestDescription())
             );
             addSupplyFailures(source, panId, result.failures(), failures, occurredAt);

@@ -49,8 +49,7 @@ public class MyHomeAnnouncementSourceMapper {
                 common.originalUrl(),
                 ReceptionPlace.create(common.sourceProvider(), ReceptionMethod.ONLINE, null,
                         common.contact(), common.originalUrl()),
-                supplyRows,
-                false
+                supplyRows
         );
     }
 
@@ -102,8 +101,7 @@ public class MyHomeAnnouncementSourceMapper {
             LocalDate winnerAnnouncementDate,
             String originalUrl,
             ReceptionPlace receptionPlace,
-            List<MyHomeSupplyRowMappingData> supplyRows,
-            boolean preserveExistingLhResolvedRows
+            List<MyHomeSupplyRowMappingData> supplyRows
     ) {
 
         MyHomeAnnouncementMappingData withSupplyRows(List<MyHomeSupplyRowMappingData> resolvedSupplyRows) {
@@ -121,28 +119,7 @@ public class MyHomeAnnouncementSourceMapper {
                     winnerAnnouncementDate,
                     originalUrl,
                     receptionPlace,
-                    resolvedSupplyRows,
-                    false
-            );
-        }
-
-        MyHomeAnnouncementMappingData preservingExistingLhResolvedRows() {
-            return new MyHomeAnnouncementMappingData(
-                    sourceAnnouncementIdentifier,
-                    previousSourceAnnouncementIdentifier,
-                    name,
-                    publicationType,
-                    rentalType,
-                    recruitmentType,
-                    provider,
-                    postedDate,
-                    applicationStartDate,
-                    applicationEndDate,
-                    winnerAnnouncementDate,
-                    originalUrl,
-                    receptionPlace,
-                    supplyRows,
-                    true
+                    resolvedSupplyRows
             );
         }
     }

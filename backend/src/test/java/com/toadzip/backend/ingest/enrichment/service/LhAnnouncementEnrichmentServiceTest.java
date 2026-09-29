@@ -2,7 +2,11 @@ package com.toadzip.backend.ingest.enrichment.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.domain.Announcement;
@@ -54,6 +58,7 @@ import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCandidateCollector;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionProgressManager;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
@@ -80,6 +85,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import tools.jackson.databind.JsonNode;
@@ -138,11 +144,14 @@ class LhAnnouncementEnrichmentServiceTest {
     @Autowired
     private MyHomeAnnouncementMappingFailureRepository mappingFailureRepository;
 
-    @Autowired
+    @MockitoSpyBean
     private LhAnnouncementDetailSourceRepository detailSourceRepository;
 
-    @Autowired
+    @MockitoSpyBean
     private LhAnnouncementSupplySourceRepository supplySourceRepository;
+
+    @MockitoSpyBean
+    private LhAnnouncementLinkResolver linkResolver;
 
     @Autowired
     private LhAnnouncementEnrichmentFailureRepository enrichmentFailureRepository;
@@ -159,7 +168,7 @@ class LhAnnouncementEnrichmentServiceTest {
     @Autowired
     private SupplyTargetRepository supplyTargetRepository;
 
-    @Autowired
+    @MockitoSpyBean
     private SupplyRowRepository supplyRowRepository;
 
     @Autowired
@@ -1936,6 +1945,92 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     @Test
+    void 기관이_비어_있는_현재_원천의_기존_LH_금액은_재매핑에서_삭제하지_않는다() {
+        saveComplex();
+        HousingComplex complex = housingComplexRepository.findAll().getFirst();
+        housingTypeRepository.save(HousingType.createFromMyHome(
+                complex, "source-housing-type-id-59B", "59B",
+                new BigDecimal("59.8000"), new BigDecimal("84.0000")
+        ));
+        MyHomeAnnouncementSource first = myHomeSourceRepository.save(myHomeSource());
+        MyHomeAnnouncementSource second = myHomeSource();
+        ReflectionTestUtils.setField(second, "houseSn", 2);
+        ReflectionTestUtils.setField(second, "sourceKey", "5:210261:2");
+        ReflectionTestUtils.setField(second, "houseTyNm", "59B");
+        myHomeSourceRepository.save(second);
+        saveLhSources("10,000,000", "200,000");
+        LhAnnouncementSupplySource secondSupply = saveSupply(new LhAnnouncementSupplySource(1, PAN_ID,
+                new LhAnnouncementSupplySourceSnapshot(
+                        "동삼2", "59B", "59.8", "84.0", "80", "10", "20000000", "300000"
+                )));
+        completeLinks(first);
+        completeLinks(second);
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        Long previousTargetId = supplyTargetRepository.findAll().stream()
+                .filter(target -> target.getSourceSupplyTargetIdentifier().equals("LH:100:SUPPLY:1:TARGET"))
+                .findFirst().orElseThrow().getId();
+        ReflectionTestUtils.setField(second, "suplyInsttNm", null);
+        for (MyHomeAnnouncementSource source : List.of(first, second)) {
+            ReflectionTestUtils.setField(source, "pblancNm", "변경된 국민임대 입주자 모집공고");
+            myHomeSourceRepository.save(source);
+        }
+        supplySourceRepository.delete(secondSupply);
+
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+
+        assertThat(supplyTargetRepository.findById(previousTargetId)).hasValueSatisfying(target -> {
+            assertThat(target.getRentalDeposit()).isEqualByComparingTo("20000000");
+            assertThat(target.getMonthlyRent()).isEqualByComparingTo("300000");
+        });
+    }
+
+    @Test
+    void 최초_매핑은_LH_상세_원천이_없어도_공고와_공급행을_저장한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        detailSourceRepository.deleteAll();
+        clearInvocations(detailSourceRepository);
+
+        var report = mappingService.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(report.createdAnnouncementCount()).isOne();
+        assertThat(report.createdSupplyRowCount()).isOne();
+        verify(detailSourceRepository, never()).findAllByPanIdAndRequestHashOrderBySourceOrderAsc(any(), any());
+        assertThat(announcementRepository.findAll()).singleElement()
+                .satisfies(announcement -> assertThat(announcement.getLhPanId()).isNull());
+        assertThat(supplyTargetRepository.count()).isZero();
+    }
+
+    @Test
+    void 기존_LH_공고의_매핑_변경이_없으면_상세_누락에도_기존_보강을_유지한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        SupplyTarget previousTarget = supplyTargetRepository.findAll().getFirst();
+        detailSourceRepository.deleteAll();
+        clearInvocations(detailSourceRepository);
+
+        var report = mappingService.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(report.unchangedAnnouncementCount()).isOne();
+        assertThat(report.unchangedSupplyRowCount()).isOne();
+        verify(detailSourceRepository, never()).findAllByPanIdAndRequestHashOrderBySourceOrderAsc(any(), any());
+        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
+            assertThat(target.getId()).isEqualTo(previousTarget.getId());
+            assertThat(target.getRentalDeposit()).isEqualByComparingTo("10000000");
+            assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000");
+        });
+    }
+
+    @Test
     void 새_주택형의_보강이_실패하면_이전_주택형과_금액을_함께_보존한다() {
         saveComplex();
         HousingComplex complex = housingComplexRepository.findAll().getFirst();
@@ -1949,18 +2044,31 @@ class LhAnnouncementEnrichmentServiceTest {
         completeLinks(source);
         mappingService.mapAll();
         enrichmentService.enrichAll();
+        Long previousAnnouncementId = announcementRepository.findAll().getFirst().getId();
+        Long previousRowId = supplyRowRepository.findAll().getFirst().getId();
+        Long previousTargetId = supplyTargetRepository.findAll().getFirst().getId();
         switchLhSource(source, "59B", "12,000,000", "invalid-monthly-rent");
 
         assertThat(mappingService.mapAll().failedSourceRowCount()).isOne();
-        assertThat(enrichmentService.enrichAll().failedSourceCount()).isOne();
-
-        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row ->
-                assertThat(row.getHousingType().getId()).isEqualTo(previousType.getId())
-        );
+        assertThat(enrichmentFailureRepository.count()).isZero();
+        assertThat(mappingFailureRepository.findAll()).singleElement().satisfies(failure -> {
+            assertThat(failure.getReason()).isEqualTo(MyHomeAnnouncementMappingFailureReason.INVALID_VALUE);
+            assertThat(failure.getDetail()).startsWith("LH 보강 실패: INVALID_VALUE - ");
+        });
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement -> {
+            assertThat(announcement.getId()).isEqualTo(previousAnnouncementId);
+            assertThat(announcement.getLhPanId()).isEqualTo(PAN_ID);
+        });
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getId()).isEqualTo(previousRowId);
+            assertThat(row.getHousingType().getId()).isEqualTo(previousType.getId());
+        });
         assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
+            assertThat(target.getId()).isEqualTo(previousTargetId);
             assertThat(target.getRentalDeposit()).isEqualByComparingTo("10000000");
             assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000");
         });
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isOne();
     }
 
     @Test
@@ -2026,8 +2134,14 @@ class LhAnnouncementEnrichmentServiceTest {
         mappingService.mapAll();
         enrichmentService.enrichAll();
         switchLhSource(source, "59B", "12,000,000", "250,000");
+        clearInvocations(linkResolver, supplySourceRepository, supplyRowRepository);
 
         assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        verify(linkResolver, times(1)).resolveFirstLinked(any());
+        verify(supplySourceRepository, times(1)).findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
+                "200", LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescriptionFor("200"))
+        );
+        verify(supplyRowRepository, times(2)).findAllByAnnouncement(any());
 
         assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row ->
                 assertThat(row.getHousingType().getId()).isEqualTo(newType.getId())

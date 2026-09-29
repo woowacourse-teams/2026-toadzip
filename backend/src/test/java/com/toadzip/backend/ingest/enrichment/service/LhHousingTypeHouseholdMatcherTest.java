@@ -8,6 +8,8 @@ import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourc
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class LhHousingTypeHouseholdMatcherTest {
 
@@ -45,6 +47,17 @@ class LhHousingTypeHouseholdMatcherTest {
         LhHousingTypeHouseholdSource source = source("문산선유3단지", "국민임대", 504);
 
         assertThat(matcher.findMatches(List.of(complex), source)).isEmpty();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"능곡샘터02, 샘터2단지", "강릉송정동부, 강릉송정서부"})
+    void 포함_관계가_아닌_유사_이름도_숫자_정규화와_공통_문자열로_매칭한다(
+            String sourceName, String complexName
+    ) {
+        HousingComplex complex = complex(complexName, "NATIONAL_RENTAL", 504);
+
+        assertThat(matcher.findMatches(List.of(complex), source(sourceName, "국민임대", 504)))
+                .containsExactly(complex);
     }
 
     @Test

@@ -11,6 +11,8 @@ import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionStateSer
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -138,6 +140,60 @@ class DataPipelineExecutionRepositoryTest {
                 .isEqualTo(DataPipelineExecutionTrigger.SCHEDULED);
         assertThat(foundCollection.getScheduledAt()).isEqualTo(scheduledAt);
         assertThat(foundRefinement.getUpstreamExecutionId()).isEqualTo(collectionId);
+    }
+
+    @Test
+    void 정제_존재_확인은_유형과_상위_실행이_모두_일치해야_한다() {
+        UUID collectionId = UUID.randomUUID();
+        Instant startedAt = Instant.parse("2026-09-21T03:00:00Z");
+        DataPipelineExecution refinement = DataPipelineExecution.start(
+                UUID.randomUUID(), DataPipelineType.ANNOUNCEMENT_REFINEMENT, startedAt,
+                DataPipelineExecutionTrigger.SCHEDULED, startedAt, collectionId
+        );
+        executionRepository.saveAndFlush(refinement);
+        entityManager.clear();
+
+        assertThat(executionRepository.existsByTypeAndUpstreamExecutionId(
+                DataPipelineType.ANNOUNCEMENT_REFINEMENT, collectionId
+        )).isTrue();
+        assertThat(executionRepository.existsByTypeAndUpstreamExecutionId(
+                DataPipelineType.COMPLEX_REFINEMENT, collectionId
+        )).isFalse();
+        assertThat(executionRepository.existsByTypeAndUpstreamExecutionId(
+                DataPipelineType.ANNOUNCEMENT_REFINEMENT, UUID.randomUUID()
+        )).isFalse();
+    }
+
+    @Test
+    void 정제_존재_확인은_실행과_보고서를_로딩하지_않고_SQL_한_번만_실행한다() {
+        UUID collectionId = UUID.randomUUID();
+        Instant startedAt = Instant.parse("2026-09-21T03:00:00Z");
+        DataPipelineExecution refinement = DataPipelineExecution.start(
+                UUID.randomUUID(), DataPipelineType.ANNOUNCEMENT_REFINEMENT, startedAt,
+                DataPipelineExecutionTrigger.SCHEDULED, startedAt, collectionId
+        );
+        refinement.startStep(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+        refinement.completeStep(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS, "{\"mappedSourceRowCount\":3}");
+        executionRepository.saveAndFlush(refinement);
+        entityManager.clear();
+        Statistics statistics = entityManager.getEntityManagerFactory()
+                .unwrap(SessionFactory.class).getStatistics();
+        boolean previouslyEnabled = statistics.isStatisticsEnabled();
+        try {
+            statistics.setStatisticsEnabled(true);
+            statistics.clear();
+
+            assertThat(executionRepository.existsByTypeAndUpstreamExecutionId(
+                    DataPipelineType.ANNOUNCEMENT_REFINEMENT, collectionId
+            )).isTrue();
+
+            assertThat(statistics.getPrepareStatementCount()).isOne();
+            assertThat(statistics.getEntityLoadCount()).isZero();
+            assertThat(statistics.getCollectionLoadCount()).isZero();
+        }
+        finally {
+            statistics.setStatisticsEnabled(previouslyEnabled);
+        }
     }
 
     @Test

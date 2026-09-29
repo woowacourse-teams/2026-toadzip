@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.mapping.service;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.domain.LhProviderPolicy;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
@@ -20,9 +21,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class MyHomeAnnouncementSupplyRowResolver {
 
     private static final int AREA_SCALE = 4;
@@ -31,22 +36,23 @@ public class MyHomeAnnouncementSupplyRowResolver {
 
     private final LhAnnouncementSupplySourceRepository lhSupplyRepository;
 
-    public MyHomeAnnouncementSupplyRowResolver(
-            LhAnnouncementLinkResolver linkResolver,
-            LhAnnouncementSupplySourceRepository lhSupplyRepository
-    ) {
-        this.linkResolver = linkResolver;
-        this.lhSupplyRepository = lhSupplyRepository;
-    }
-
-    public MyHomeAnnouncementMappingData resolve(MyHomeAnnouncementMappingData data) {
-        if (data.provider() != AgencyCode.LH) {
-            return data;
-        }
+    public ResolvedAnnouncement resolve(MyHomeAnnouncementMappingData data) {
         List<MyHomeSupplyRowMappingData> currentRows = currentRows(data.supplyRows());
-        List<LhAnnouncementSupplySource> lhSupplies = findLhSupplies(currentRows);
+        Set<String> currentKeys = currentRows.stream().map(row -> row.source().getSourceKey())
+                .collect(Collectors.toSet());
+        Set<String> historicalKeys = data.supplyRows().stream().map(row -> row.source().getSourceKey())
+                .filter(key -> !currentKeys.contains(key)).collect(Collectors.toSet());
+        if (data.provider() != AgencyCode.LH) {
+            return new ResolvedAnnouncement(data, null, List.of(), historicalKeys);
+        }
+        LhAnnouncementRequest request = resolveRequest(currentRows);
+        List<LhAnnouncementSupplySource> lhSupplies = lhSupplyRepository
+                .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
+                        request.panId(),
+                        LhAnnouncementCollectionCheckpoint.requestHashOf(request.requestDescription())
+                );
         if (lhSupplies.isEmpty()) {
-            return data.preservingExistingLhResolvedRows();
+            return new ResolvedAnnouncement(data, request, lhSupplies, historicalKeys);
         }
         Map<MyHomeSupplyRowMappingData, List<LhAnnouncementSupplySource>> matched = matchByComplex(
                 currentRows,
@@ -69,13 +75,14 @@ public class MyHomeAnnouncementSupplyRowResolver {
                 ));
             }
         }
-        return data.withSupplyRows(List.copyOf(resolved));
+        return new ResolvedAnnouncement(
+                data.withSupplyRows(List.copyOf(resolved)), request, lhSupplies, historicalKeys
+        );
     }
 
-    private List<LhAnnouncementSupplySource> findLhSupplies(List<MyHomeSupplyRowMappingData> sourceRows) {
-        LhAnnouncementRequest request;
+    private LhAnnouncementRequest resolveRequest(List<MyHomeSupplyRowMappingData> sourceRows) {
         try {
-            request = linkResolver.resolveFirstLinked(
+            return linkResolver.resolveFirstLinked(
                     sourceRows.stream().map(MyHomeSupplyRowMappingData::source).toList()
             ).request();
         }
@@ -87,10 +94,6 @@ public class MyHomeAnnouncementSupplyRowResolver {
             };
             throw new MyHomeAnnouncementMappingRejectedException(reason, exception.getMessage());
         }
-        return lhSupplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
-                request.panId(),
-                LhAnnouncementCollectionCheckpoint.requestHashOf(request.requestDescription())
-        );
     }
 
     private List<MyHomeSupplyRowMappingData> currentRows(List<MyHomeSupplyRowMappingData> sourceRows) {
@@ -231,5 +234,25 @@ public class MyHomeAnnouncementSupplyRowResolver {
             return null;
         }
         return value.strip();
+    }
+
+    record ResolvedAnnouncement(
+            MyHomeAnnouncementMappingData data,
+            LhAnnouncementRequest request,
+            List<LhAnnouncementSupplySource> supplies,
+            Set<String> historicalSourceKeys
+    ) {
+
+        boolean preserveExistingLhResolvedRows() {
+            return request != null && supplies.isEmpty();
+        }
+
+        Set<String> lhHistoricalSourceKeys() {
+            return data.supplyRows().stream().map(MyHomeSupplyRowMappingData::source)
+                    .filter(source -> historicalSourceKeys.contains(source.getSourceKey())
+                            || !LhProviderPolicy.isLh(source.getSuplyInsttNm()))
+                    .map(MyHomeAnnouncementSource::getSourceKey)
+                    .collect(Collectors.toSet());
+        }
     }
 }

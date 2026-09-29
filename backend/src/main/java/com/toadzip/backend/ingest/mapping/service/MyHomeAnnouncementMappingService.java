@@ -5,7 +5,6 @@ import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
-import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
@@ -20,6 +19,7 @@ import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingWrite
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingWriter.MyHomeSupplyMatchingFailureData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyRowResolver.ResolvedAnnouncement;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import java.time.Clock;
 import java.time.Instant;
@@ -29,6 +29,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -36,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class MyHomeAnnouncementMappingService {
 
     private final MyHomeAnnouncementSourceRepository sourceRepository;
@@ -54,33 +56,7 @@ public class MyHomeAnnouncementMappingService {
 
     private final MyHomeAnnouncementMappingWriter writer;
 
-    private final MyHomeLhAnnouncementAtomicWriter atomicWriter;
-
     private final Clock clock;
-
-    public MyHomeAnnouncementMappingService(
-            MyHomeAnnouncementSourceRepository sourceRepository,
-            MyHomeAnnouncementMappingFailureRepository failureRepository,
-            MyHomeAnnouncementMappingFailureStore failureStore,
-            IngestOperationLock executionLock,
-            AnnouncementRepository announcementRepository,
-            MyHomeAnnouncementSourceMapper sourceMapper,
-            MyHomeAnnouncementSupplyRowResolver supplyRowResolver,
-            MyHomeAnnouncementMappingWriter writer,
-            MyHomeLhAnnouncementAtomicWriter atomicWriter,
-            Clock clock
-    ) {
-        this.sourceRepository = sourceRepository;
-        this.failureRepository = failureRepository;
-        this.failureStore = failureStore;
-        this.executionLock = executionLock;
-        this.announcementRepository = announcementRepository;
-        this.sourceMapper = sourceMapper;
-        this.supplyRowResolver = supplyRowResolver;
-        this.writer = writer;
-        this.atomicWriter = atomicWriter;
-        this.clock = clock;
-    }
 
     public MyHomeAnnouncementMappingReport mapAll() {
         return executionLock.tryRun(MYHOME_ANNOUNCEMENT_MAPPING, this::mapAllUnlocked)
@@ -134,7 +110,8 @@ public class MyHomeAnnouncementMappingService {
             );
         }
         try {
-            MyHomeAnnouncementMappingData data = supplyRowResolver.resolve(sourceMapper.map(sources));
+            ResolvedAnnouncement resolved = supplyRowResolver.resolve(sourceMapper.map(sources));
+            MyHomeAnnouncementMappingData data = resolved.data();
             PreviousAnnouncementResult previousResult = previousAnnouncementOf(
                     data,
                     groupedSources,
@@ -157,7 +134,7 @@ public class MyHomeAnnouncementMappingService {
                         occurredAt
                 ));
             }
-            MyHomeAnnouncementWriteResult result = write(data, previousResult.announcement(), sources);
+            MyHomeAnnouncementWriteResult result = writer.write(resolved, previousResult.announcement());
             addSupplyMatchingFailures(failures, result.failures(), occurredAt);
             processed.add(identifier);
             return previousResult.report().plus(result.report());
@@ -169,23 +146,6 @@ public class MyHomeAnnouncementMappingService {
         finally {
             processing.remove(identifier);
         }
-    }
-
-    private MyHomeAnnouncementWriteResult write(
-            MyHomeAnnouncementMappingData data,
-            Announcement previousAnnouncement,
-            List<MyHomeAnnouncementSource> sources
-    ) {
-        if (data.provider() != AgencyCode.LH) {
-            return writer.write(data, previousAnnouncement);
-        }
-        Announcement stored = announcementRepository
-                .findBySourceAnnouncementIdentifier(data.sourceAnnouncementIdentifier())
-                .orElse(null);
-        if (stored != null && stored.getLhPanId() != null) {
-            return atomicWriter.write(data, previousAnnouncement, sources, stored);
-        }
-        return writer.write(data, previousAnnouncement);
     }
 
     private PreviousAnnouncementResult previousAnnouncementOf(

@@ -296,7 +296,7 @@ public class LhAnnouncementEnrichmentMapper {
     ) {
     }
 
-    static class LhAnnouncementEnrichmentRejectedException extends RuntimeException {
+    public static class LhAnnouncementEnrichmentRejectedException extends RuntimeException {
 
         private final LhAnnouncementEnrichmentFailureReason reason;
 
@@ -305,7 +305,7 @@ public class LhAnnouncementEnrichmentMapper {
             this.reason = reason;
         }
 
-        LhAnnouncementEnrichmentFailureReason reason() {
+        public LhAnnouncementEnrichmentFailureReason reason() {
             return reason;
         }
     }

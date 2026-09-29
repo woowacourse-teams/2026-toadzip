@@ -11,19 +11,23 @@ import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepositor
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchResult;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyRowResolver.ResolvedAnnouncement;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -47,11 +51,14 @@ public class MyHomeAnnouncementMappingWriter {
 
     private final MyHomeAnnouncementSupplyMatcher supplyMatcher;
 
+    private final LhAnnouncementEnrichmentWriter enrichmentWriter;
+
     @Transactional
     public MyHomeAnnouncementWriteResult write(
-            MyHomeAnnouncementMappingData data,
+            ResolvedAnnouncement resolved,
             Announcement previousAnnouncement
     ) {
+        MyHomeAnnouncementMappingData data = resolved.data();
         AnnouncementWriteResult announcementResult = writeAnnouncement(data, previousAnnouncement);
         if (announcementResult.releasedLhOwnership()) {
             deleteLhEnrichment(announcementResult.announcement());
@@ -59,12 +66,42 @@ public class MyHomeAnnouncementMappingWriter {
         SupplyRowsWriteResult supplyRowsResult = writeSupplyRows(
                 announcementResult.announcement(),
                 data.supplyRows(),
-                data.preserveExistingLhResolvedRows()
+                resolved.preserveExistingLhResolvedRows(),
+                resolved.historicalSourceKeys()
         );
+        enrichChangedAnnouncement(resolved, announcementResult, supplyRowsResult);
         return new MyHomeAnnouncementWriteResult(
                 reportOf(announcementResult, supplyRowsResult),
                 supplyRowsResult.failures()
         );
+    }
+
+    private void enrichChangedAnnouncement(
+            ResolvedAnnouncement resolved,
+            AnnouncementWriteResult announcementResult,
+            SupplyRowsWriteResult supplyRowsResult
+    ) {
+        Announcement announcement = announcementResult.announcement();
+        if (resolved.request() == null || announcement.getProvider() != AgencyCode.LH
+                || announcement.getLhPanId() == null) {
+            return;
+        }
+        if (announcementResult.updated() == 0 && supplyRowsResult.created() == 0
+                && supplyRowsResult.updated() == 0 && supplyRowsResult.deleted() == 0) {
+            return;
+        }
+        try {
+            enrichmentWriter.writeAfterMapping(
+                    announcement, resolved.request(), resolved.supplies(),
+                    supplyRowsResult.changedHousingTypeRows(), resolved.lhHistoricalSourceKeys()
+            );
+        }
+        catch (LhAnnouncementEnrichmentRejectedException exception) {
+            throw new MyHomeAnnouncementMappingRejectedException(
+                    MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
+                    "LH 보강 실패: " + exception.reason() + " - " + exception.getMessage()
+            );
+        }
     }
 
     private AnnouncementWriteResult writeAnnouncement(
@@ -132,12 +169,16 @@ public class MyHomeAnnouncementMappingWriter {
                 .filter(attachment -> isLhSource(attachment.getSourceAttachmentIdentifier()))
                 .toList();
         attachmentRepository.deleteAll(attachments);
-        for (SupplyRow row : supplyRowRepository.findAllByAnnouncement(announcement)) {
-            List<SupplyTarget> targets = supplyTargetRepository.findAllBySupplyRow(row).stream()
-                    .filter(target -> isLhSource(target.getSourceSupplyTargetIdentifier()))
-                    .toList();
-            supplyTargetRepository.deleteAll(targets);
+        List<Long> supplyRowIds = supplyRowRepository.findAllByAnnouncement(announcement).stream()
+                .map(SupplyRow::getId)
+                .toList();
+        if (supplyRowIds.isEmpty()) {
+            return;
         }
+        List<SupplyTarget> targets = supplyTargetRepository.findAllBySupplyRowIdIn(supplyRowIds).stream()
+                .filter(target -> isLhSource(target.getSourceSupplyTargetIdentifier()))
+                .toList();
+        supplyTargetRepository.deleteAll(targets);
     }
 
     private boolean isLhSource(String identifier) {
@@ -147,7 +188,8 @@ public class MyHomeAnnouncementMappingWriter {
     private SupplyRowsWriteResult writeSupplyRows(
             Announcement announcement,
             List<MyHomeSupplyRowMappingData> rows,
-            boolean preserveExistingLhResolvedRows
+            boolean preserveExistingLhResolvedRows,
+            Set<String> historicalSourceKeys
     ) {
         Map<String, SupplyRow> storedRows = supplyRowRepository.findAllByAnnouncement(announcement)
                 .stream()
@@ -161,24 +203,23 @@ public class MyHomeAnnouncementMappingWriter {
         int updated = 0;
         int unchanged = 0;
         int displayOrder = 1;
+        Set<Long> changedHousingTypeRows = new HashSet<>();
         List<MyHomeSupplyMatchingFailureData> failures = new ArrayList<>();
         Map<String, List<SupplyRow>> storedGroups = MyHomeAnnouncementSupplyRowGroups.byMyHomeSource(
                 announcement.getSourceAnnouncementIdentifier(), storedRows.values()
         );
-        Set<MyHomeAnnouncementSource> currentSources = Set.copyOf(MyHomeAnnouncementCurrentSources.select(
-                rows.stream().map(MyHomeSupplyRowMappingData::source).distinct().toList()
-        ));
         Set<String> currentRowIdentifiers = rows.stream()
-                .filter(row -> currentSources.contains(row.source()))
+                .filter(row -> !historicalSourceKeys.contains(row.source().getSourceKey()))
                 .map(MyHomeSupplyRowMappingData::sourceSupplyRowIdentifier)
                 .collect(Collectors.toSet());
         for (MyHomeSupplyRowMappingData data : rows) {
             List<SupplyRow> storedGroup = storedGroups.get(data.sourceSupplyRowIdentifier());
+            boolean historical = historicalSourceKeys.contains(data.source().getSourceKey());
             boolean preserveLhRows = preserveExistingLhResolvedRows
-                    || announcement.getProvider() == AgencyCode.LH && !currentSources.contains(data.source());
+                    || announcement.getProvider() == AgencyCode.LH && historical;
             if (preserveLhRows && hasLhResolvedRows(announcement, storedGroup)) {
                 for (SupplyRow stored : storedGroup) {
-                    if (!currentSources.contains(data.source())
+                    if (historical
                             && currentRowIdentifiers.contains(stored.getSourceSupplyRowIdentifier())) {
                         continue;
                     }
@@ -237,6 +278,7 @@ public class MyHomeAnnouncementMappingWriter {
                 unchanged++;
                 continue;
             }
+            Long previousHousingTypeId = housingTypeId(stored);
             boolean changed = stored.updateFromMyHome(
                     match.complex(),
                     match.housingType(),
@@ -249,6 +291,9 @@ public class MyHomeAnnouncementMappingWriter {
                     data.totalSupplyHouseholdCount()
             );
             changed |= applyLhResolution(stored, data, match);
+            if (!Objects.equals(previousHousingTypeId, housingTypeId(stored))) {
+                changedHousingTypeRows.add(stored.getId());
+            }
             if (changed) {
                 updated++;
                 continue;
@@ -257,7 +302,16 @@ public class MyHomeAnnouncementMappingWriter {
         }
         List<SupplyRow> staleRows = List.copyOf(storedRows.values());
         deleteStaleRows(staleRows);
-        return new SupplyRowsWriteResult(created, updated, unchanged, staleRows.size(), failures);
+        return new SupplyRowsWriteResult(
+                created, updated, unchanged, staleRows.size(), failures, changedHousingTypeRows
+        );
+    }
+
+    private Long housingTypeId(SupplyRow row) {
+        if (row.getHousingType() == null) {
+            return null;
+        }
+        return row.getHousingType().getId();
     }
 
     private boolean applyLhResolution(
@@ -357,7 +411,8 @@ public class MyHomeAnnouncementMappingWriter {
             int updated,
             int unchanged,
             int deleted,
-            List<MyHomeSupplyMatchingFailureData> failures
+            List<MyHomeSupplyMatchingFailureData> failures,
+            Set<Long> changedHousingTypeRows
     ) {
     }
 
