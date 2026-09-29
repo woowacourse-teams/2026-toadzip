@@ -117,7 +117,7 @@ describe('이메일 알림 신청', () => {
     })))
   })
 
-  it('신청 후 다시 누르면 취소되고 새로고침 후 폼 없이 재신청한다', async () => {
+  it('마지막 신청을 취소하면 새로고침 후 이메일을 다시 입력한다', async () => {
     const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
     const loadUser = vi.fn().mockResolvedValue({ id: 7, email: 'member@example.com' })
     const first = render(example({ record }, loadUser))
@@ -142,12 +142,15 @@ describe('이메일 알림 신청', () => {
     expect(screen.getByRole('button', { name: '서울 단지 알림 받기' }).querySelector('svg'))
       .toHaveAttribute('data-state', 'idle')
     fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
+    expect(await screen.findByRole('dialog', { name: '이메일 알림 신청' })).toBeVisible()
+    await waitFor(() => expect(screen.getByRole('textbox', { name: '알림 받을 이메일' })).toHaveValue('member@example.com'))
+    fireEvent.click(screen.getByRole('button', { name: '알림 신청' }))
     await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true'))
     fireEvent.click(screen.getByRole('button', { name: '서울특별시 알림 받기' }))
-    await waitFor(() => expect(record).toHaveBeenCalledTimes(5))
-    expect(record.mock.calls.map(([event]) => event.eventType)).toEqual(['CLICKED', 'CONFIRMED', 'CANCELLED', 'CLICKED', 'CLICKED'])
+    await waitFor(() => expect(record).toHaveBeenCalledTimes(6))
+    expect(record.mock.calls.map(([event]) => event.eventType)).toEqual(['CLICKED', 'CONFIRMED', 'CANCELLED', 'CLICKED', 'CONFIRMED', 'CLICKED'])
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(loadUser).toHaveBeenCalledTimes(1)
+    expect(loadUser).toHaveBeenCalledTimes(2)
   })
 
   it('취소 저장이 실패하면 신청 상태를 유지하고 같은 취소 이벤트를 재시도한다', async () => {
@@ -212,7 +215,7 @@ describe('이메일 알림 신청', () => {
     const dialog = await screen.findByRole('dialog')
     fireEvent.keyDown(dialog, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(trigger).toHaveFocus()
+    await waitFor(() => expect(trigger).toHaveFocus())
     expect(record.mock.calls[1]?.[0]).toEqual(expect.objectContaining({ eventType: 'DECLINED' }))
     fireEvent.click(screen.getByRole('button', { name: '서울특별시 알림 받기' }))
     await waitFor(() => expect(record).toHaveBeenCalledTimes(3))

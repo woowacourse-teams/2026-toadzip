@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Outlet, useNavigate } from 'react-router'
+import { Link, Outlet, useNavigate } from 'react-router'
 import { useAdminAuth } from './useAdminAuth'
 
 export function AdminLayout() {
@@ -35,6 +35,10 @@ export function AdminLayout() {
           <button onClick={handleLogout} type="button">로그아웃</button>
         </div>
       </header>
+      <nav className="admin-nav" aria-label="관리 메뉴">
+        <Link to="/admin">데이터 등록</Link>
+        <Link to="/admin/notification-cancellations">알림 취소 요청</Link>
+      </nav>
       {error ? <p className="form-error admin-layout-error">{error}</p> : null}
       <main className="admin-content">
         <Outlet />

@@ -1801,6 +1801,19 @@ button {
   background: #334155;
 }
 
+.admin-nav {
+  display: flex;
+  gap: 16px;
+  padding: 12px 24px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.admin-nav a {
+  color: #277259;
+  font-weight: 700;
+  text-underline-offset: 3px;
+}
+
 .admin-content {
   display: block;
   min-height: auto;

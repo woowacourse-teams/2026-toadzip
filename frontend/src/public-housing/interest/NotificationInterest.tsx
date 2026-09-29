@@ -174,6 +174,10 @@ export function NotificationInterestProvider({ children, repository = notificati
       } else {
         const key = requestedKey(action.target)
         if (mode === 'guest') writeStorage('localStorage', key, '0')
+        if (![...requested].some(([targetKey, active]) => targetKey !== key && active)) {
+          completed.current = false
+          if (mode === 'guest') writeStorage('localStorage', emailPromptKey, '0')
+        }
         setRequested((current) => new Map(current).set(key, false))
         restoreFocus.current = true
         setMessage(`${action.target.name} 알림 신청을 취소했어요.`)
@@ -184,7 +188,7 @@ export function NotificationInterestProvider({ children, repository = notificati
       inFlight.current = false
       setBusy(false)
     }
-  }, [mode, repository])
+  }, [mode, repository, requested])
 
   const request = useCallback((selection: Selection, button: HTMLButtonElement) => {
     if (inFlight.current || prompt || failed) return
@@ -263,6 +267,8 @@ export function NotificationInterestProvider({ children, repository = notificati
               <button className={styles.cancel} type="button" disabled={busy}
                 onClick={() => { if (failed) clearFailure(); else answer('DECLINED') }}>취소</button>
             </div>
+            <p className={styles.hint}>신청은 12개월 동안 유지되며, 마지막 알림을 취소하면 알림용 이메일도 삭제됩니다.</p>
+            <a className={styles.helpLink} href="/notifications/cancel">브라우저 데이터를 지워 신청을 취소할 수 없나요?</a>
             {busy && <p role="status">알림 신청을 처리하는 중…</p>}
             {error}
           </form>
