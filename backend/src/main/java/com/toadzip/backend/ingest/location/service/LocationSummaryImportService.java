@@ -11,7 +11,6 @@ import com.toadzip.backend.ingest.location.dto.LocationSummaryImportReport;
 import com.toadzip.backend.ingest.location.repository.LocationSummaryStore;
 import com.toadzip.backend.ingest.location.repository.external.LocationSummaryFileParseResult;
 import com.toadzip.backend.ingest.location.repository.external.LocationSummaryFileParser;
-import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingCandidateStore;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -53,8 +52,6 @@ public class LocationSummaryImportService {
 
     private final MyHomeComplexSourceRepository sourceRepository;
 
-    private final MyHomeComplexMappingCandidateStore candidateStore;
-
     private final IngestOperationLock executionLock;
 
     private final TransactionTemplate transactionTemplate;
@@ -63,14 +60,12 @@ public class LocationSummaryImportService {
             LocationSummaryFileParser parser,
             LocationSummaryStore locationStore,
             MyHomeComplexSourceRepository sourceRepository,
-            MyHomeComplexMappingCandidateStore candidateStore,
             IngestOperationLock executionLock,
             TransactionTemplate transactionTemplate
     ) {
         this.parser = parser;
         this.locationStore = locationStore;
         this.sourceRepository = sourceRepository;
-        this.candidateStore = candidateStore;
         this.executionLock = executionLock;
         this.transactionTemplate = transactionTemplate;
     }
@@ -116,7 +111,7 @@ public class LocationSummaryImportService {
                 targetAddresses.size() - matchedAddresses.size(),
                 replacement.storedLocationCount(),
                 replacement.replacedRowCount(),
-                replacement.invalidatedCandidateCount(),
+                0, // 기존 관리자 응답과의 호환용 필드: 매핑 후보 상태는 더 이상 사용하지 않는다.
                 provinceCodes
         );
     }
@@ -128,7 +123,7 @@ public class LocationSummaryImportService {
                 addresses.add(new NormalizedRoadAddress(roadAddress).withoutReference());
             }
             catch (IllegalArgumentException ignored) {
-                // 비어 있는 원천 주소는 단지 매핑 준비 단계에서 별도 실패로 기록한다.
+                // 비어 있는 원천 주소는 단지 정제에서 별도 실패로 기록한다.
             }
         }
         return addresses;
@@ -161,12 +156,7 @@ public class LocationSummaryImportService {
             selectedRecords.forEach(writer::write);
             storedLocationCount = writer.complete();
         }
-        long invalidatedCandidateCount = candidateStore.invalidateAll();
-        return new ReplacementResult(
-                storedLocationCount,
-                replacedRowCount,
-                invalidatedCandidateCount
-        );
+        return new ReplacementResult(storedLocationCount, replacedRowCount);
     }
 
     private void validateNationwide(LocationSummaryFileParseResult parseResult) {
@@ -220,8 +210,7 @@ public class LocationSummaryImportService {
 
     private record ReplacementResult(
             long storedLocationCount,
-            long replacedRowCount,
-            long invalidatedCandidateCount
+            long replacedRowCount
     ) {
     }
 }

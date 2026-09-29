@@ -23,6 +23,11 @@ Spring은 생성자 주입으로 객체를 연결한다. `Runner.run()`에서 �
 수집은 원천을 보관하고 정제·보강은 그 원천을 읽어 단지·주택형·공고에 반영한다.
 각 작업은 별도 실행이며 수집 완료를 확인한 뒤 해당 정제를 직접 시작한다.
 
+단지 정제는 `MyHomeComplexMappingService.mapAll()` → `MyHomeComplexMappingProcessor.mapAll()`에서
+원천을 묶고 한 번 변환한 뒤 위치정보 DB의 좌표를 읽어 단지별 트랜잭션으로 저장한다.
+실패는 작업이 끝날 때 현재 원천과 대조해 갱신하며 이전 실패 이력은 보존한다.
+단계별 후보 준비·배치 실행 API는 제공하지 않는다.
+
 ## 공고 수집·정제를 따라가는 순서
 
 MyHome은 `MyHomeAnnouncementCollectionService.collect()` → `collectSupplyType()` → `fetchCompleteSupplyType()`을 읽는다.

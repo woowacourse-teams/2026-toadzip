@@ -5,7 +5,6 @@ import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock
 
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingFailureResponse;
-import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingPreparationReport;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingFailureRepository;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
@@ -21,26 +20,12 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class MyHomeComplexMappingService {
 
-    private static final int MAX_BATCH_SIZE = 1_000;
-
     private final IngestOperationLock executionLock;
-    private final MyHomeComplexMappingPreparer preparer;
-    private final MyHomeComplexMappingBatchProcessor batchProcessor;
+    private final MyHomeComplexMappingProcessor processor;
     private final MyHomeComplexMappingFailureRepository failureRepository;
 
-    public MyHomeComplexMappingPreparationReport prepare() {
-        return executionLock.tryRun(MYHOME_COMPLEX_MAPPING, preparer::prepare)
-                .orElseThrow(this::alreadyRunning);
-    }
-
-    public MyHomeComplexMappingReport mapNext(int batchSize) {
-        validateBatchSize(batchSize);
-        return executionLock.tryRun(MYHOME_COMPLEX_MAPPING, () -> batchProcessor.mapNext(batchSize))
-                .orElseThrow(this::alreadyRunning);
-    }
-
     public MyHomeComplexMappingReport mapAll() {
-        return executionLock.tryRun(MYHOME_COMPLEX_MAPPING, this::mapAllUnlocked)
+        return executionLock.tryRun(MYHOME_COMPLEX_MAPPING, processor::mapAll)
                 .orElseThrow(this::alreadyRunning);
     }
 
@@ -66,23 +51,6 @@ public class MyHomeComplexMappingService {
                 .stream()
                 .map(MyHomeComplexMappingFailureResponse::from)
                 .toList();
-    }
-
-    private MyHomeComplexMappingReport mapAllUnlocked() {
-        MyHomeComplexMappingPreparationReport preparation = preparer.prepare();
-        MyHomeComplexMappingReport report = MyHomeComplexMappingReport.failedRows(
-                preparation.failedSourceRowCount()
-        );
-        while (batchProcessor.hasProcessableCandidate()) {
-            report = report.plus(batchProcessor.mapNext(MAX_BATCH_SIZE));
-        }
-        return report;
-    }
-
-    private void validateBatchSize(int batchSize) {
-        if (batchSize < 1 || batchSize > MAX_BATCH_SIZE) {
-            throw new IllegalArgumentException("배치 크기는 1 이상 1000 이하여야 합니다.");
-        }
     }
 
     private IngestAlreadyRunningException alreadyRunning() {

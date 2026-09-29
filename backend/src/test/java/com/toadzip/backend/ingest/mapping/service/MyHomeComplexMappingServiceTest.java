@@ -3,7 +3,6 @@ package com.toadzip.backend.ingest.mapping.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -27,7 +26,6 @@ import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingExcepti
 import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.location.service.RoadAddressGeocodingService;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
-import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingCandidateRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingFailureRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -36,8 +34,6 @@ import java.time.YearMonth;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -67,9 +63,6 @@ class MyHomeComplexMappingServiceTest {
     private HousingTypeRepository housingTypeRepository;
 
     @Autowired
-    private MyHomeComplexMappingCandidateRepository candidateRepository;
-
-    @Autowired
     private AnnouncementRepository announcementRepository;
 
     @Autowired
@@ -84,7 +77,6 @@ class MyHomeComplexMappingServiceTest {
         announcementRepository.deleteAll();
         housingTypeRepository.deleteAll();
         complexRepository.deleteAll();
-        candidateRepository.deleteAll();
         failureRepository.deleteAll();
         sourceRepository.deleteAll();
         when(geocodingService.geocode(anyString())).thenReturn(new GeocodedRoadAddress(
@@ -95,30 +87,12 @@ class MyHomeComplexMappingServiceTest {
     }
 
     @Test
-    void 좌표_조회_전에는_후보만_저장하고_최종_단지는_저장하지_않는다() {
+    void 전체_정제가_좌표와_단지와_주택형을_한_번에_저장한다() {
         sourceRepository.saveAll(List.of(
                 source("46A", "46.8000", "20.2000"),
                 source("59A", "59.9500", "24.1000")
         ));
-
-        var report = service.prepare();
-
-        assertThat(report.stagedCandidateCount()).isOne();
-        assertThat(candidateRepository.count()).isOne();
-        assertThat(complexRepository.count()).isZero();
-        assertThat(housingTypeRepository.count()).isZero();
-        verify(geocodingService, never()).geocode(anyString());
-    }
-
-    @Test
-    void 준비된_후보를_좌표와_함께_단지와_주택형으로_승격한다() {
-        sourceRepository.saveAll(List.of(
-                source("46A", "46.8000", "20.2000"),
-                source("59A", "59.9500", "24.1000")
-        ));
-        service.prepare();
-
-        var report = service.mapNext(100);
+        var report = service.mapAll();
 
         assertThat(report.createdComplexCount()).isOne();
         assertThat(report.createdHousingTypeCount()).isEqualTo(2);
@@ -129,40 +103,18 @@ class MyHomeComplexMappingServiceTest {
     }
 
     @Test
-    void 같은_주소의_여러_단지는_저장된_좌표를_재사용한다() {
-        sourceRepository.saveAll(List.of(
-                source(data(123L, "46A", "46.8000", "20.2000", "서울주택도시공사", "20200101")),
-                source(data(456L, "59A", "59.9500", "24.1000", "경기주택도시공사", "20200101"))
-        ));
-        service.prepare();
-
-        service.mapNext(1);
-        service.mapNext(1);
-
-        assertThat(complexRepository.count()).isEqualTo(2);
-        verify(geocodingService, times(1)).geocode(anyString());
-    }
-
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void 준비_후_주소가_바뀌면_이전_좌표를_버리고_최신_주소로_매핑한다(boolean geocoded) {
+    void 주소가_바뀌면_현재_위치정보에서_새_좌표를_읽는다() {
         sourceRepository.save(source("46A", "46.8000", "20.2000"));
-        service.prepare();
-        if (geocoded) {
-            var candidate = candidateRepository.findAll().getFirst();
-            candidate.resolve(new GeocodedRoadAddress("서울특별시 종로구 테스트로 1",
-                    new BigDecimal("37.56620552"), new BigDecimal("126.97770648")));
-            candidateRepository.save(candidate);
-        }
+        service.mapAll();
         sourceRepository.deleteAll();
         sourceRepository.save(source(withAddress(data(123L, "46A", "46.8000", "20.2000",
                 "서울주택도시공사", "20200101"), NEW_ADDRESS, NEW_PNU)));
         when(geocodingService.geocode(NEW_ADDRESS)).thenReturn(new GeocodedRoadAddress(
                 NEW_ADDRESS, new BigDecimal("37.570000"), new BigDecimal("126.980000")));
 
-        var report = service.mapNext(100);
+        var report = service.mapAll();
 
-        assertThat(report.createdComplexCount()).isOne();
+        assertThat(report.updatedComplexCount()).isOne();
         verify(geocodingService).geocode(NEW_ADDRESS);
         assertThat(complexRepository.findAll()).singleElement().satisfies(complex -> {
             assertThat(complex.getAddress().getRoadAddress()).isEqualTo(NEW_ADDRESS);
@@ -175,14 +127,13 @@ class MyHomeComplexMappingServiceTest {
     void 바뀐_주소의_좌표_변환이_실패하면_기존_단지를_보존한다() {
         sourceRepository.save(source("46A", "46.8000", "20.2000"));
         service.mapAll();
-        service.prepare();
         sourceRepository.deleteAll();
         sourceRepository.save(source(withAddress(data(123L, "46A", "46.8000", "20.2000",
                 "서울주택도시공사", "20200101"), NEW_ADDRESS, NEW_PNU)));
         when(geocodingService.geocode(NEW_ADDRESS)).thenThrow(new RoadAddressGeocodingException(
                 RoadAddressGeocodingFailureReason.ADDRESS_NOT_FOUND, "새 주소를 찾지 못했습니다."));
 
-        var report = service.mapNext(100);
+        var report = service.mapAll();
 
         assertThat(report.failedSourceRowCount()).isOne();
         assertThat(complexRepository.findAll()).singleElement().satisfies(complex -> {
@@ -282,7 +233,26 @@ class MyHomeComplexMappingServiceTest {
         assertThat(report.createdHousingTypeCount()).isZero();
         assertThat(complexRepository.count()).isOne();
         assertThat(housingTypeRepository.count()).isOne();
-        verify(geocodingService, times(1)).geocode(anyString());
+        verify(geocodingService, times(2)).geocode(anyString());
+    }
+
+    @Test
+    void 위치정보의_좌표가_갱신되면_재정제에서_현재_좌표를_반영한다() {
+        sourceRepository.save(source("46A", "46.8000", "20.2000"));
+        service.mapAll();
+        when(geocodingService.geocode(anyString())).thenReturn(new GeocodedRoadAddress(
+                "서울특별시 종로구 테스트로 1",
+                new BigDecimal("37.570000"),
+                new BigDecimal("126.980000")
+        ));
+
+        var report = service.mapAll();
+
+        assertThat(report.updatedComplexCount()).isOne();
+        assertThat(complexRepository.findAll()).singleElement().satisfies(complex -> {
+            assertThat(complex.getAddress().getLatitude()).isEqualByComparingTo("37.570000");
+            assertThat(complex.getAddress().getLongitude()).isEqualByComparingTo("126.980000");
+        });
     }
 
     @Test
@@ -393,29 +363,10 @@ class MyHomeComplexMappingServiceTest {
     }
 
     @Test
-    void 준비된_후_변환_불가로_바뀐_후보는_실패만_기록하고_제거한다() {
+    void 변환_불가로_바뀐_원천은_전체_정제에서_한_번만_실패로_집계한다() {
         MyHomeComplexSource source = source("46A", "46.8000", "20.2000");
         sourceRepository.save(source);
-        service.prepare();
-        source.replaceWith(dataWith(
-                123L, "46A", "46.8000", "20.2000", "서울주택도시공사",
-                null, "국민임대", "20200101", "지역난방", "아파트", "복도식", "전체동 설치"
-        ));
-        sourceRepository.save(source);
-
-        var preparation = service.prepare();
-
-        assertThat(preparation.stagedCandidateCount()).isZero();
-        assertThat(preparation.failedSourceRowCount()).isOne();
-        assertThat(candidateRepository.findAll()).isEmpty();
-        assertThat(service.mapNext(100).failedSourceRowCount()).isZero();
-    }
-
-    @Test
-    void 준비된_후_변환_불가로_바뀐_원천은_전체_매핑에서_한_번만_실패로_집계한다() {
-        MyHomeComplexSource source = source("46A", "46.8000", "20.2000");
-        sourceRepository.save(source);
-        service.prepare();
+        service.mapAll();
         source.replaceWith(dataWith(
                 123L, "46A", "46.8000", "20.2000", "서울주택도시공사",
                 null, "국민임대", "20200101", "지역난방", "아파트", "복도식", "전체동 설치"
@@ -425,9 +376,8 @@ class MyHomeComplexMappingServiceTest {
         var report = service.mapAll();
 
         assertThat(report.failedSourceRowCount()).isOne();
-        assertThat(candidateRepository.findAll()).isEmpty();
-        assertThat(complexRepository.findAll()).isEmpty();
-        verify(geocodingService, never()).geocode(anyString());
+        assertThat(complexRepository.count()).isOne();
+        verify(geocodingService, times(1)).geocode(anyString());
     }
 
     @Test
@@ -463,17 +413,16 @@ class MyHomeComplexMappingServiceTest {
     }
 
     @Test
-    void 매입임대는_후보와_실패_대상에서_제외한다() {
+    void 매입임대는_정제와_실패_대상에서_제외한다() {
         sourceRepository.save(source(dataWith(
                 123L, "46A", "46.8000", "20.2000", "LH서울", "매입임대 주택",
                 "매입임대", null, null, null, null, null
         )));
 
-        var report = service.prepare();
+        var report = service.mapAll();
 
-        assertThat(report.stagedCandidateCount()).isZero();
         assertThat(report.failedSourceRowCount()).isZero();
-        assertThat(candidateRepository.count()).isZero();
+        assertThat(complexRepository.count()).isZero();
     }
 
     @Test
@@ -545,7 +494,7 @@ class MyHomeComplexMappingServiceTest {
         service.mapAll();
         sourceRepository.deleteAll();
 
-        service.prepare();
+        service.mapAll();
 
         assertThat(service.findFailures(0, 100)).isEmpty();
         assertThat(service.findFailureHistory(0, 100)).singleElement().satisfies(failure -> {
@@ -587,20 +536,37 @@ class MyHomeComplexMappingServiceTest {
     }
 
     @Test
-    void 좌표_조회의_일반_오류는_같은_후보를_재선택하지_않고_실행을_중단한다() {
+    void 좌표_조회의_일반_오류는_실행을_중단한다() {
         sourceRepository.save(source("46A", "46.8000", "20.2000"));
         when(geocodingService.geocode(anyString()))
                 .thenThrow(new IllegalStateException("좌표 저장소 연결 실패"))
-                .thenThrow(new AssertionError("같은 후보를 다시 선택했습니다."));
+                .thenThrow(new AssertionError("같은 주소를 다시 조회했습니다."));
 
         assertThatThrownBy(service::mapAll)
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("좌표 저장소 연결 실패");
 
         verify(geocodingService).geocode(anyString());
-        assertThat(candidateRepository.findAll()).singleElement().satisfies(candidate ->
-                assertThat(candidate.getStatus().name()).isEqualTo("PENDING")
-        );
+        assertThat(complexRepository.count()).isZero();
+    }
+
+    @Test
+    void 뒤쪽_단지에서_중단돼도_앞서_확인한_실패는_기록한다() {
+        sourceRepository.saveAll(List.of(
+                source(data(123L, "46A", "46.8000", "20.2000", "서울주택도시공사", "20200101")),
+                source(data(456L, "59A", "59.9500", "24.1000", "경기주택도시공사", "20200101"))
+        ));
+        when(geocodingService.geocode(anyString()))
+                .thenThrow(new RoadAddressGeocodingException(
+                        RoadAddressGeocodingFailureReason.ADDRESS_NOT_FOUND, "주소 없음"))
+                .thenThrow(new IllegalStateException("좌표 저장소 연결 실패"));
+
+        assertThatThrownBy(service::mapAll)
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("좌표 저장소 연결 실패");
+
+        assertThat(service.findFailures(0, 100)).singleElement().satisfies(failure ->
+                assertThat(failure.reason()).isEqualTo(MyHomeComplexMappingFailureReason.GEOCODING_ERROR));
     }
 
     private MyHomeComplexSource source(String styleName, String exclusiveArea, String commonArea) {

@@ -157,41 +157,22 @@ class IngestFailureLifecycleIntegrationTest {
     }
 
     @Test
-    void 단지별_갱신은_해당_단지의_사라진_실패만_해결한다() {
-        complexStore.replaceForComplex(
-                "complex-a",
-                List.of(complexFailure("source-a", "complex-a")),
-                null
-        );
-        complexStore.replaceForComplex(
-                "complex-b",
-                List.of(complexFailure("source-b", "complex-b")),
-                null
-        );
+    void 단지_재정제는_사라진_실패만_해결한다() {
+        complexStore.replaceAll(List.of(
+                complexFailure("source-a", "complex-a"),
+                complexFailure("source-b", "complex-b")
+        ), null);
 
-        complexStore.replaceForComplex("complex-a", List.of(), null);
+        complexStore.replaceAll(List.of(complexFailure("source-b", "complex-b")), null);
 
-        assertThat(complexRepository.findAllBySourceComplexIdentifier("complex-a"))
+        assertThat(complexRepository.findAll().stream()
+                .filter(failure -> failure.getSourceComplexIdentifier().equals("complex-a")).toList())
                 .singleElement()
                 .extracting(MyHomeComplexMappingFailure::getStatus)
                 .isEqualTo(RESOLVED);
-        assertThat(complexRepository.findAllBySourceComplexIdentifier("complex-b"))
+        assertThat(complexRepository.findAll().stream()
+                .filter(failure -> failure.getSourceComplexIdentifier().equals("complex-b")).toList())
                 .singleElement()
-                .extracting(MyHomeComplexMappingFailure::getStatus)
-                .isEqualTo(PENDING);
-    }
-
-    @Test
-    void 후보_준비_동기화는_아직_재처리하지_않은_좌표_실패를_해결하지_않는다() {
-        complexStore.replaceForComplex(
-                "complex-a",
-                List.of(complexFailure("source-a", "complex-a")),
-                null
-        );
-
-        complexStore.replacePreparationFailures(List.of(), null);
-
-        assertThat(complexRepository.findAll()).singleElement()
                 .extracting(MyHomeComplexMappingFailure::getStatus)
                 .isEqualTo(PENDING);
     }

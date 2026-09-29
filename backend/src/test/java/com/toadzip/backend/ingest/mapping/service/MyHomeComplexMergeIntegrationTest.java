@@ -94,7 +94,7 @@ class MyHomeComplexMergeIntegrationTest {
     void setUp() {
         jdbc.sql("""
                 TRUNCATE housing_complexes, myhome_complex_source, lh_catalog_source,
-                    myhome_complex_mapping_candidates, myhome_complex_mapping_failures,
+                    myhome_complex_mapping_failures,
                     announcements, users CASCADE
                 """).update();
         when(geocoding.geocode(anyString())).thenReturn(new GeocodedRoadAddress(
