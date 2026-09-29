@@ -17,7 +17,6 @@ import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -86,7 +85,7 @@ class LocalProfileSchemaPersistenceTest {
     }
 
     @Test
-    void 기존_스키마를_baseline_후_통합_마이그레이션으로_보정한다() throws Exception {
+    void 기존_스키마를_자동_baseline_후_통합_마이그레이션으로_보정한다() throws Exception {
         String databaseName = "toadzip_reconciliation_" + UUID.randomUUID().toString().replace("-", "");
         String jdbcUrl = primaryTestDatabaseUrl(databaseName);
         createDatabase(databaseName);
@@ -105,13 +104,11 @@ class LocalProfileSchemaPersistenceTest {
                         """);
             }
 
-            Flyway flyway = Flyway.configure()
-                    .dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
-                    .locations("classpath:db/migration")
-                    .baselineVersion("20260922.00")
-                    .load();
-            flyway.baseline();
-            flyway.migrate();
+            try (ConfigurableApplicationContext ignored = new SpringApplicationBuilder(BackendApplication.class)
+                    .environment(createIsolatedEnvironment(jdbcUrl))
+                    .run()) {
+                // Startup records the baseline and applies pending migrations.
+            }
 
             try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
                     Statement statement = connection.createStatement()) {
