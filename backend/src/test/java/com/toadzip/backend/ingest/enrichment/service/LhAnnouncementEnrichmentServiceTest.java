@@ -18,6 +18,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
+import com.toadzip.backend.announcement.service.AnnouncementQueryService;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
@@ -170,6 +171,45 @@ class LhAnnouncementEnrichmentServiceTest {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private AnnouncementQueryService announcementQueryService;
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void 원천_일정의_단지명을_신규와_기존_일정의_상세_응답에_보존한다(boolean existingSchedule) {
+        saveComplex();
+        myHomeSourceRepository.save(myHomeSource());
+        mapMyHomeSource();
+        saveLhSources("10000000", "200000");
+        detailSourceRepository.deleteAll();
+        saveDetails(new LhAnnouncementDetailResponseParser().parse(PAN_ID, JsonMapper.builder().build().readTree("""
+                [{"dsSplScdl":[{"SBD_LGO_NM":"동삼2", "ACP_DTTM":"2026.08.24 10:00 ~ 2026.08.31 18:00"}]}]
+                """)));
+        Announcement announcement = announcementRepository.findAll().getFirst();
+        if (existingSchedule) {
+            scheduleRepository.save(AnnouncementSchedule.createFromSource(
+                    announcement, "LH:" + PAN_ID + ":SCHEDULE:0:APPLICATION", ScheduleType.APPLICATION, "접수",
+                    LocalDateTime.of(2026, 8, 24, 10, 0), LocalDateTime.of(2026, 8, 31, 18, 0), 1
+            ));
+        }
+
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+
+        var json = JsonMapper.builder().build().valueToTree(announcementQueryService.getAnnouncement(announcement.getId()));
+        assertThat(json.path("schedules").get(0).path("complexName").asString()).isEqualTo("동삼2");
+        Long scheduleId = scheduleRepository.findAll().getFirst().getId();
+        var source = detailSourceRepository.findAll().getFirst();
+        ReflectionTestUtils.setField(source, "complexName", "동삼2단지");
+        detailSourceRepository.save(source);
+
+        assertThat(enrichmentService.enrichAll().updatedScheduleCount()).isOne();
+        assertThat(scheduleRepository.findAll()).singleElement().satisfies(schedule ->
+                assertThat(schedule.getId()).isEqualTo(scheduleId));
+        var updated = JsonMapper.builder().build().valueToTree(announcementQueryService.getAnnouncement(announcement.getId()));
+        assertThat(updated.path("schedules").get(0).path("complexName").asString()).isEqualTo("동삼2단지");
+        assertThat(enrichmentService.enrichAll().updatedScheduleCount()).isZero();
+    }
 
     @BeforeEach
     void setUp() {

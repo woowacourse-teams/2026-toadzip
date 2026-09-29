@@ -215,22 +215,6 @@
   line-height: var(--ds-line-height-body);
 }
 
-.scheduleHeading th {
-  padding: var(--ds-space-2);
-  border-top: 1px solid var(--ds-color-table-line);
-  background: var(--ds-color-surface);
-  color: var(--ds-color-text);
-  font-weight: 700;
-}
-
-.currentStep {
-  display: block;
-  margin-top: var(--ds-space-1);
-  color: var(--detail-accent);
-  font-size: inherit;
-  font-weight: 500;
-  line-height: inherit;
-}
 
 .receptionList,
 .attachmentList,

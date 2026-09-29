@@ -55,7 +55,8 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertTrue(history.next()),
-                        () -> assertEquals(19, history.getInt(1)),
+                        () -> assertEquals(20, history.getInt(1)),
+                        () -> assertEquals(1, countColumn(connection, "announcement_schedules", "complex_name")),
                         () -> assertEquals(1, countColumn(connection, "housing_complexes", "deposit_min")),
                         () -> assertEquals(1, countColumn(connection, "housing_complexes", "monthly_rent_min")),
                         () -> assertEquals(1, countColumn(connection,
@@ -156,7 +157,7 @@ class LocalProfileSchemaPersistenceTest {
                                 + ",SQL:20260923.02,SQL:20260924.01,SQL:20260925.01,SQL:20260925.02"
                                 + ",SQL:20260925.03,SQL:20260926.01,SQL:20260926.02,SQL:20260926.03"
                                 + ",SQL:20260926.04,SQL:20260926.05,SQL:20260926.06,SQL:20260927.01"
-                                + ",SQL:20260928.01,SQL:20260928.02,SQL:20260928.03,SQL:20260928.04",
+                                + ",SQL:20260928.01,SQL:20260928.02,SQL:20260928.03,SQL:20260928.04,SQL:20260929.01",
                         history.getString(1));
                 assertEquals(1, countColumn(connection, "verified_lh_supply_replacements", "evidence_url"));
                 assertEquals(1, countColumn(connection, "supply_targets", "lh_amount_preserved_reason"));

@@ -213,7 +213,8 @@ final class AnnouncementResponseMapper {
                 schedule.getScheduleType(),
                 schedule.getName(),
                 schedule.getStartAt(),
-                schedule.getEndAt()
+                schedule.getEndAt(),
+                schedule.getComplexName()
         );
     }
 

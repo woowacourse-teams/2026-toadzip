@@ -17,6 +17,15 @@ function decode(applicationSchedules: unknown) {
 }
 
 describe('공고의 단지·순위별 접수 일정', () => {
+  it('기존 일정의 원천 단지명도 응답 검증부터 상세 표시 데이터까지 보존한다', () => {
+    const data = toHousingAnnouncementDetailData(toAnnouncementDetail(decodeAnnouncementDetailEnvelope({ data: {
+      ...MINIMAL_PUBLIC_HOUSING_SNAPSHOT.announcementDetails[0],
+      schedules: [{ scheduleId: 1, type: 'APPLICATION', name: '접수', complexName: '새솔마을',
+        startAt: '2026-09-28T10:00:00', endAt: '2026-09-28T16:00:00' }],
+    } })))
+    expect(data.schedules[0]).toMatchObject({ complexName: '새솔마을' })
+  })
+
   it('ID를 정규화하고 조건과 공식 시각·근거를 화면까지 전달한다', () => {
     const data = toHousingAnnouncementDetailData(toAnnouncementDetail(decode([schedule])))
     expect(data.applicationSchedules).toEqual([{ ...schedule, scheduleId: '71', housingComplexId: '17' }])
@@ -42,5 +51,13 @@ describe('공고의 단지·순위별 접수 일정', () => {
     })))
     expect(data.applicationSchedules).toEqual([])
     expect(data.schedules.length).toBeGreaterThan(0)
+    expect(data.schedules[0]?.complexName).toBeNull()
+  })
+
+  it('기존 일정의 잘못된 단지명 타입을 경계에서 거부한다', () => {
+    const detail = MINIMAL_PUBLIC_HOUSING_SNAPSHOT.announcementDetails[0]!
+    expect(() => decodeAnnouncementDetailEnvelope({ data: {
+      ...detail, schedules: [{ ...detail.schedules[0], complexName: 123 }],
+    } })).toThrow(PublicHousingContractError)
   })
 })

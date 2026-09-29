@@ -456,7 +456,8 @@ class AnnouncementControllerTest {
                         ScheduleType.APPLICATION,
                         "인터넷 접수",
                         LocalDateTime.of(2026, 8, 10, 9, 30, 15),
-                        LocalDateTime.of(2026, 8, 10, 18, 0, 15)
+                        LocalDateTime.of(2026, 8, 10, 18, 0, 15),
+                        "새솔마을"
                 )),
                 List.of(new AnnouncementAttachmentResponse(
                         601L,
@@ -538,7 +539,8 @@ class AnnouncementControllerTest {
                       "type": "APPLICATION",
                       "name": "인터넷 접수",
                       "startAt": "2026-08-10T09:30:15",
-                      "endAt": "2026-08-10T18:00:15"
+                      "endAt": "2026-08-10T18:00:15",
+                      "complexName": "새솔마을"
                     }],
                     "attachments": [{
                       "attachmentId": 601,

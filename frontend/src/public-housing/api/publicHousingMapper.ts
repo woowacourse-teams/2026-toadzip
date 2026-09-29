@@ -168,6 +168,7 @@ function toAnnouncementSchedule(
   raw: RawAnnouncementSchedule,
 ): AnnouncementSchedule {
   return {
+    complexName: raw.complexName ?? null,
     scheduleId: canonicalId(raw.scheduleId),
     type: raw.type,
     name: raw.name,

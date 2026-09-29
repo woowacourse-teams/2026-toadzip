@@ -298,6 +298,9 @@ function decodeAnnouncementSchedule(
   const schedule = recordAt(value, path)
 
   return {
+    ...(schedule.complexName === undefined ? {} : {
+      complexName: nullableStringAt(schedule.complexName, `${path}.complexName`),
+    }),
     scheduleId: positiveSafeIntegerAt(
       recordField(schedule, 'scheduleId', path),
       `${path}.scheduleId`,

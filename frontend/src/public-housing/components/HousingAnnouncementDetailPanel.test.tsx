@@ -17,6 +17,104 @@ import {
 } from './HousingAnnouncementDetailPanel.tsx'
 
 describe('HousingAnnouncementDetailPanel', () => {
+  it('공통 일정 카드에서 단지명을 각각 보여 주고 일정은 한 번만 표시한다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({ schedules: [
+      legacySchedule({ scheduleId: 'a', complexName: '새솔마을' }),
+      legacySchedule({ scheduleId: 'b', complexName: '봇들마을' }),
+    ] })} onClose={vi.fn()} />)
+    const group = screen.getByRole('region', { name: '봇들마을 · 새솔마을 접수 일정' })
+    expect(within(group).getByRole('heading', { name: '공통 일정' })).toBeVisible()
+    const targets = within(group).getByRole('group', { name: '대상 단지' })
+    expect(within(targets).getByText('새솔마을')).toBeVisible()
+    expect(within(targets).getByText('봇들마을')).toBeVisible()
+    const timeline = within(group).getByRole('list', { name: '접수 일정' })
+    expect(within(timeline).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(timeline).getByRole('heading', { name: '접수' })).toBeVisible()
+  })
+
+  it('단지가 많으면 일부만 먼저 보여 주되 나머지 단지명을 펼쳐 확인할 수 있다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({ schedules:
+      ['가람마을', '나래마을', '다솜마을', '라온마을', '마루마을'].map((complexName, index) =>
+        legacySchedule({ scheduleId: `schedule-${index}`, complexName })),
+    })} onClose={vi.fn()} />)
+    const group = screen.getByRole('region', { name: '가람마을 · 나래마을 · 다솜마을 · 라온마을 · 마루마을 접수 일정' })
+    const toggle = within(group).getByRole('button', { name: '외 3개 단지' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(within(group).getByText('가람마을')).toBeVisible()
+    expect(within(group).getByText('마루마을')).not.toBeVisible()
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(within(group).getByText('마루마을')).toBeVisible()
+    expect(within(group).getAllByRole('listitem')).toHaveLength(1)
+    fireEvent.click(toggle)
+    expect(within(group).getByText('마루마을')).not.toBeVisible()
+  })
+
+  it('같은 일정의 대상 단지들을 모으고 서로 다른 접수일은 해당 단지명 아래 표시한다', () => {
+    const schedules = Object.freeze([
+      legacySchedule({ scheduleId: 'a', complexName: '새솔마을' }),
+      legacySchedule({ scheduleId: 'b', complexName: '봇들마을', startAt: '2026-09-30T10:00:00', endAt: '2026-09-30T16:10:00' }),
+      legacySchedule({ scheduleId: 'c', complexName: '가람마을' }),
+      legacySchedule({ scheduleId: 'duplicate-a', complexName: '새솔마을' }),
+      ...['새솔마을', '봇들마을', '가람마을'].map((complexName, index) => legacySchedule({
+        scheduleId: `winner-${index}`, complexName, type: 'WINNER_ANNOUNCEMENT', typeLabel: '당첨자 발표',
+        startAt: '2026-10-22', endAt: null,
+      })),
+    ])
+    const original = JSON.stringify(schedules)
+    render(<HousingAnnouncementDetailPanel detail={detail({ schedules })} onClose={vi.fn()} />)
+
+    const shared = screen.getByRole('region', { name: '가람마을 · 새솔마을 접수 일정' })
+    expect(within(shared).getByRole('heading', { name: '공통 일정' })).toBeVisible()
+    expect(within(shared).getAllByRole('heading', { name: '접수' })).toHaveLength(1)
+    expect(within(shared).getByText('2026.09.28 10:00')).toBeVisible()
+    const other = screen.getByRole('region', { name: '봇들마을 접수 일정' })
+    expect(within(other).getByText('2026.09.30 10:00')).toBeVisible()
+    expect(within(other).queryByText('2026.09.28 10:00')).not.toBeInTheDocument()
+    const followUps = screen.getByRole('region', { name: '가람마을 · 봇들마을 · 새솔마을 후속 일정' })
+    expect(within(followUps).getAllByRole('heading', { name: '당첨자 발표' })).toHaveLength(1)
+    expect(JSON.stringify(schedules)).toBe(original)
+  })
+
+  it('단지 미확인 일정은 같은 날짜라도 확인된 단지에 포함시키지 않는다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({ schedules: [
+      legacySchedule({ scheduleId: 'known', complexName: '새솔마을' }),
+      legacySchedule({ scheduleId: 'unknown', complexName: null }),
+    ] })} onClose={vi.fn()} />)
+    expect(screen.getByRole('region', { name: '새솔마을 접수 일정' })).toBeVisible()
+    const unknown = screen.getByRole('region', { name: '대상 단지: 공고문 확인 접수 일정' })
+    expect(within(unknown).getByRole('heading', { name: '접수' })).toBeVisible()
+    expect(screen.queryByRole('heading', { name: '전체 단지 공통' })).not.toBeInTheDocument()
+  })
+
+  it('검토된 일정도 내용과 출처가 같으면 대상 단지명 아래 한 번만 표시한다', () => {
+    render(<HousingAnnouncementDetailPanel detail={detail({ applicationSchedules: [
+      applicationSchedule(),
+      applicationSchedule({ scheduleId: 'other', housingComplexId: '102', complexName: '봇들마을' }),
+      applicationSchedule({ scheduleId: 'duplicate' }),
+      applicationSchedule({ scheduleId: 'later', startDate: '2026-09-02', endDate: '2026-09-02' }),
+    ] })} onClose={vi.fn()} />)
+    const shared = screen.getByRole('region', { name: '봇들마을 · 새솔마을 접수 일정' })
+    expect(within(shared).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(shared).getByText('2026.09.01 09:00')).toBeVisible()
+    expect(within(screen.getByRole('region', { name: '새솔마을 접수 일정' }))
+      .getByText('2026.09.02 09:00')).toBeVisible()
+  })
+
+  it.each([
+    { sourcePage: 4 },
+    { sourceUrl: 'https://example.com/corrected.pdf' },
+    { startTime: '10:00:00' },
+  ])('검토된 일정의 출처나 시각이 다르면 대상 단지를 합치지 않는다: %s', (overrides) => {
+    render(<HousingAnnouncementDetailPanel detail={detail({ applicationSchedules: [
+      applicationSchedule(),
+      applicationSchedule({ scheduleId: 'other', housingComplexId: '102', complexName: '봇들마을', ...overrides }),
+    ] })} onClose={vi.fn()} />)
+    expect(within(screen.getByRole('region', { name: '새솔마을 접수 일정' })).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(screen.getByRole('region', { name: '봇들마을 접수 일정' })).getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.queryByRole('region', { name: '봇들마을 · 새솔마을 접수 일정' })).not.toBeInTheDocument()
+  })
+
   it('중복된 후속 일정은 한 번만 표시하고 서로 다른 접수일은 날짜순으로 분리한다', () => {
     const schedules = Object.freeze(['2026-09-30', '2026-09-28', '2026-10-01'].flatMap((date, index) => [
       Object.freeze(legacySchedule({ scheduleId: `application-${index}`,
@@ -30,8 +128,8 @@ describe('HousingAnnouncementDetailPanel', () => {
     render(<HousingAnnouncementDetailPanel detail={detail({ schedules,
       winnerAnnouncementAt: '2026-10-22' })} onClose={vi.fn()} />)
 
-    const applications = screen.getByRole('table', { name: '접수 일정' })
-    expect(within(applications).getAllByRole('rowheader', { name: '접수' })).toHaveLength(3)
+    const applications = screen.getByRole('list', { name: '접수 일정' })
+    expect(within(applications).getAllByRole('heading', { name: '접수' })).toHaveLength(3)
     expect([...applications.querySelectorAll('time')].map((time) => time.dateTime)).toEqual([
       '2026-09-28T10:00:00', '2026-09-28T16:10:00',
       '2026-09-30T10:00:00', '2026-09-30T16:10:00',
@@ -39,9 +137,9 @@ describe('HousingAnnouncementDetailPanel', () => {
     ])
     expect(within(applications).queryByText('당첨자 발표')).not.toBeInTheDocument()
     expect(within(applications).queryByText('서류제출')).not.toBeInTheDocument()
-    const followUps = screen.getByRole('table', { name: '후속 일정' })
-    expect(within(followUps).getAllByRole('rowheader', { name: '당첨자 발표' })).toHaveLength(1)
-    expect(within(followUps).getAllByRole('rowheader', { name: '서류제출' })).toHaveLength(1)
+    const followUps = screen.getByRole('list', { name: '후속 일정' })
+    expect(within(followUps).getAllByRole('heading', { name: '당첨자 발표' })).toHaveLength(1)
+    expect(within(followUps).getAllByRole('heading', { name: '서류제출' })).toHaveLength(1)
     expect(JSON.stringify(schedules)).toBe(original)
   })
 
@@ -58,14 +156,14 @@ describe('HousingAnnouncementDetailPanel', () => {
         legacySchedule({ scheduleId: 'type', type: 'DOCUMENT_SUBMISSION', typeLabel: '서류제출' }),
       ],
     })} onClose={vi.fn()} />)
-    const applications = screen.getByRole('table', { name: '접수 일정' })
-    expect(applications.querySelectorAll('tbody')).toHaveLength(5)
-    expect(within(applications).getByRole('rowheader', { name: '현장 접수' })).toBeVisible()
+    const applications = screen.getByRole('list', { name: '접수 일정' })
+    expect(within(applications).getAllByRole('listitem')).toHaveLength(5)
+    expect(within(applications).getByRole('heading', { name: '현장 접수' })).toBeVisible()
     expect(within(applications).getByText('2026.09.28 11:00')).toBeVisible()
     expect(within(applications).getByText('2026.09.28 17:00')).toBeVisible()
-    expect(applications.querySelector('tbody:last-child')).toHaveTextContent('공고문 확인')
-    expect(within(screen.getByRole('table', { name: '후속 일정' }))
-      .getByRole('rowheader', { name: '서류제출' })).toBeVisible()
+    expect(within(applications).getAllByRole('listitem').at(-1)).toHaveTextContent('공고문 확인')
+    expect(within(screen.getByRole('list', { name: '후속 일정' }))
+      .getByRole('heading', { name: '서류제출' })).toBeVisible()
   })
 
   it('단지별 접수도 날짜순으로 표시하고 다른 단지·순위·조건은 유지한다', () => {
@@ -81,12 +179,14 @@ describe('HousingAnnouncementDetailPanel', () => {
     render(<HousingAnnouncementDetailPanel detail={detail({ applicationSchedules: schedules })} onClose={vi.fn()} />)
     const firstComplex = screen.getByRole('region', { name: '새솔마을 접수 일정' })
     const cards = within(firstComplex).getAllByRole('listitem')
-    expect(cards).toHaveLength(4)
-    expect(within(cards[0]!).getByRole('heading', { name: '1순위' })).toBeVisible()
-    expect(within(cards[3]!).getByRole('heading', { name: '2순위' })).toBeVisible()
+    expect(cards).toHaveLength(3)
+    expect(within(cards[0]!).getByRole('heading', { name: '우선공급' })).toBeVisible()
+    expect(within(cards[2]!).getByRole('heading', { name: '2순위' })).toBeVisible()
     expect(within(firstComplex).getByRole('heading', { name: '우선공급' })).toBeVisible()
     expect(within(firstComplex).getByText('미달 시 진행')).toBeVisible()
-    expect(within(screen.getByRole('region', { name: '봇들마을 접수 일정' })).getAllByRole('listitem')).toHaveLength(1)
+    const shared = screen.getByRole('region', { name: '봇들마을 · 새솔마을 접수 일정' })
+    expect(within(shared).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(shared).getByRole('heading', { name: '1순위' })).toBeVisible()
     expect(JSON.stringify(schedules)).toBe(original)
   })
 
@@ -96,8 +196,8 @@ describe('HousingAnnouncementDetailPanel', () => {
     const reception = screen.getByRole('heading', { name: '접수 일정' }).closest('section')!
     expect(within(reception).getByText('공고문 확인')).toBeVisible()
     expect(within(reception).queryByRole('table')).not.toBeInTheDocument()
-    expect(within(screen.getByRole('table', { name: '후속 일정' }))
-      .getByRole('rowheader', { name: '당첨자 발표' })).toBeVisible()
+    expect(within(screen.getByRole('list', { name: '후속 일정' }))
+      .getByRole('heading', { name: '당첨자 발표' })).toBeVisible()
   })
 
   it('단지 연결 ID가 없어도 제공된 단지명을 보존하고 전체 공통 일정과 구분한다', () => {
@@ -123,8 +223,8 @@ describe('HousingAnnouncementDetailPanel', () => {
           startAt: null, endAt: '2026-11-01' }),
       ],
     })} onClose={vi.fn()} />)
-    const followUps = screen.getByRole('table', { name: '후속 일정' })
-    expect(within(followUps).getAllByRole('rowheader')
+    const followUps = screen.getByRole('list', { name: '후속 일정' })
+    expect(within(followUps).getAllByRole('heading')
       .map((header) => header.textContent).filter((text) => !['시작', '종료'].includes(text!)))
       .toEqual(['추가 안내', '계약', '기타'])
     expect(within(followUps).getByText('2026.11.01')).toBeVisible()
@@ -144,19 +244,20 @@ describe('HousingAnnouncementDetailPanel', () => {
         name: '기존 접수', startAt: '2026-08-28T09:00:00', endAt: '2026-08-30T18:00:00' }],
     })} onClose={vi.fn()} />)
     const firstComplex = screen.getByRole('region', { name: '새솔마을 접수 일정' })
-    expect(within(firstComplex).getByRole('heading', { name: '1순위' })).toBeVisible()
+    const shared = screen.getByRole('region', { name: '봇들마을 · 새솔마을 접수 일정' })
+    expect(within(shared).getByRole('heading', { name: '1순위' })).toBeVisible()
     expect(within(firstComplex).getByRole('heading', { name: '2순위' })).toBeVisible()
-    expect(within(firstComplex).getByText('확정')).toBeVisible()
+    expect(within(shared).getByText('확정')).toBeVisible()
     expect(within(firstComplex).getByText('조건부')).toBeVisible()
     expect(within(firstComplex).getByText('1순위 미달 시 진행')).toBeVisible()
-    expect(within(firstComplex).getByText('2026.09.01 09:00')).toBeVisible()
-    expect(within(firstComplex).getByText('2026.09.01 18:00')).toBeVisible()
+    expect(within(shared).getByText('2026.09.01 09:00')).toBeVisible()
+    expect(within(shared).getByText('2026.09.01 18:00')).toBeVisible()
     expect(within(firstComplex).getByText('2026.09.02')).toBeVisible()
     expect(within(firstComplex).queryByText(/00:00/)).not.toBeInTheDocument()
-    expect(within(firstComplex).getAllByRole('link', { name: '공고문 3쪽' })[0])
+    expect(within(shared).getByRole('link', { name: '공고문 3쪽' }))
       .toHaveAttribute('href', 'https://example.com/schedule.pdf#page=3')
     expect(screen.getByRole('region', { name: '전체 단지 공통 접수 일정' })).toBeVisible()
-    expect(screen.getByRole('region', { name: '봇들마을 접수 일정' })).toBeVisible()
+    expect(within(shared).getAllByRole('listitem')).toHaveLength(1)
     expect(screen.queryByText('기존 접수')).not.toBeInTheDocument()
     expect(screen.queryByText('현재 단계')).not.toBeInTheDocument()
   })
@@ -326,21 +427,18 @@ describe('HousingAnnouncementDetailPanel', () => {
       .closest('section')
     expect(schedule).not.toBeNull()
     expect(within(schedule!).getByText('인터넷 접수')).toBeVisible()
-    const scheduleTable = within(schedule!).getByRole('table', { name: '접수 일정' })
-    expect(within(scheduleTable).getByText('2026.08.28 09:00')).toBeVisible()
-    expect(within(scheduleTable).getByText('2026.08.28 18:00')).toBeVisible()
-    expect(within(scheduleTable).getByText('2026.08.28 09:00'))
+    const scheduleList = within(schedule!).getByRole('list', { name: '접수 일정' })
+    expect(within(scheduleList).getByText('2026.08.28 09:00')).toBeVisible()
+    expect(within(scheduleList).getByText('2026.08.28 18:00')).toBeVisible()
+    expect(within(scheduleList).getByText('2026.08.28 09:00'))
       .toHaveAttribute('datetime', '2026-08-28T09:00:00')
-    const firstTimes = within(scheduleTable).getByText('2026.08.28 09:00').closest('tr')
-    expect(within(firstTimes!).getAllByRole('rowheader')).toHaveLength(2)
-    expect(within(firstTimes!).getAllByRole('cell')).toHaveLength(2)
-    expect(within(scheduleTable).getByText('2026.08.28 09:00').closest('td'))
-      .toHaveAttribute('headers', [
-        within(scheduleTable).getByRole('rowheader', { name: '인터넷 접수' }).id,
-        within(firstTimes!).getByRole('rowheader', { name: '시작' }).id,
-      ].join(' '))
-    expect(within(scheduleTable).queryByRole('columnheader', { name: '상태' }))
-      .not.toBeInTheDocument()
+    const firstItem = within(scheduleList).getAllByRole('listitem')[0]!
+    expect(within(firstItem).getByRole('heading', { name: '인터넷 접수' })).toBeVisible()
+    expect(within(firstItem).getAllByRole('term').map((term) => term.textContent))
+      .toEqual(['시작', '종료'])
+    expect(within(firstItem).getAllByRole('definition').map((definition) =>
+      definition.querySelector('time')?.dateTime))
+      .toEqual(['2026-08-28T09:00:00', '2026-08-28T18:00:00'])
     expect(within(schedule!).queryByText('접수 기간')).not.toBeInTheDocument()
     expect(within(schedule!).queryByText('현재 단계')).not.toBeInTheDocument()
   })
@@ -357,10 +455,11 @@ describe('HousingAnnouncementDetailPanel', () => {
       .closest('section')
     expect(schedule).not.toBeNull()
     expect(within(schedule!).getByText('접수 기간')).toBeVisible()
-    const scheduleTable = within(schedule!).getByRole('table', { name: '접수 일정' })
-    expect(within(scheduleTable).getByText('2026.08.28')).toBeVisible()
-    expect(within(scheduleTable).getByText('2026.08.30')).toBeVisible()
-    expect(within(scheduleTable).getByRole('rowheader', { name: '접수 기간 현재 단계' })).toBeVisible()
+    const scheduleList = within(schedule!).getByRole('list', { name: '접수 일정' })
+    expect(within(scheduleList).getByText('2026.08.28')).toBeVisible()
+    expect(within(scheduleList).getByText('2026.08.30')).toBeVisible()
+    expect(within(scheduleList).getByRole('heading', { name: '접수 기간' }).closest('li'))
+      .toHaveAttribute('aria-current', 'step')
     expect(within(schedule!).getByText('현재 단계')).toBeVisible()
   })
 
