@@ -200,6 +200,63 @@ class LhAnnouncementEnrichmentServiceTest {
         externalFailureRepository.deleteAll();
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void 과거_금액은_현재_보강_실패_집계에서_제외한다(boolean mappingRejected) {
+        saveComplex();
+        housingTypeRepository.save(HousingType.createFromMyHome(
+                housingComplexRepository.findAll().getFirst(), "source-housing-type-id-59B", "59B",
+                new BigDecimal("59.8000"), new BigDecimal("84.0000")));
+
+        MyHomeAnnouncementSource historical = myHomeSource();
+        historical.markSeen("earlier", Instant.parse("2026-08-28T00:00:00Z"));
+        myHomeSourceRepository.save(historical);
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(historical);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        Long historicalTargetId = supplyTargetRepository.findAll().getFirst().getId();
+        historical.markMissed();
+        historical.markMissed();
+        myHomeSourceRepository.save(historical);
+        MyHomeAnnouncementSource current = myHomeSource();
+        ReflectionTestUtils.setField(current, "houseTyNm", "통합형");
+        ReflectionTestUtils.setField(current, "houseSn", 2);
+        ReflectionTestUtils.setField(current, "sourceKey", "5:210261:2");
+        ReflectionTestUtils.setField(current, "url", current.getUrl().replace("aisTpCd=07", "aisTpCd=08"));
+        current.markSeen("latest", Instant.parse("2026-08-29T00:00:00Z"));
+        myHomeSourceRepository.save(current);
+        var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(current);
+        String request = candidate.requestDescription();
+        sourceStore.replaceDetails(PAN_ID, request, List.of(detail(
+                0, "ETC_INFO", null, null, null, null, null, null, null, "현재 원천"
+        )));
+        sourceStore.replaceSupplies(PAN_ID, request, List.of(new LhAnnouncementSupplySource(0, PAN_ID,
+                new LhAnnouncementSupplySourceSnapshot(
+                        "동삼2", "46A", "46.8", "67.0", "100", "20", "12,000,000", "250,000"
+                )), new LhAnnouncementSupplySource(1, PAN_ID, new LhAnnouncementSupplySourceSnapshot(
+                        "동삼2", "59B", "59.8", "84.0", "80", "10", "20000000", "300000"))));
+        completeLinks(current);
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        assertThat(supplyTargetRepository.count()).isEqualTo(3);
+        sourceStore.replaceSupplies(PAN_ID, request, List.of(new LhAnnouncementSupplySource(0, PAN_ID,
+                new LhAnnouncementSupplySourceSnapshot(
+                        "동삼2", "46A", "46.8", "67.0", "100", "20", "invalid-amount", "250,000"
+                )), new LhAnnouncementSupplySource(1, PAN_ID, new LhAnnouncementSupplySourceSnapshot(
+                        "동삼2", "59B", "59.8", "84.0", "80", "10", "20000000", "300000"))));
+        if (mappingRejected) {
+            ReflectionTestUtils.setField(current, "pblancNm", "현재 공고 정정");
+            myHomeSourceRepository.save(current);
+            assertThat(mappingService.mapAll().failedSourceRowCount()).isPositive();
+        }
+        assertThat(enrichmentService.enrichAll().failedSourceCount()).isOne();
+        String reason = mappingRejected ? "MYHOME_MAPPING_REJECTED" : "LH_ENRICHMENT_REJECTED";
+        assertThat(qualityService.snapshot().preservedAmountReasons()).containsEntry(reason, 2L);
+        assertThat(qualityService.snapshot().preservedAmountTargetCount()).isEqualTo(2);
+        assertThat(supplyTargetRepository.findById(historicalTargetId)).isPresent();
+    }
+
     @Test
     void 반복_LH_보강은_일정과_첨부를_다시_조회하지_않는다() {
         saveComplex();
@@ -1377,8 +1434,9 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(supplyTargetRepository.count()).isOne();
     }
 
-    @Test
-    void 확인한_빈_공급_응답은_LH_금액만_제거하고_관리자_금액은_유지한다() {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void 확인한_빈_공급_응답은_LH_금액만_제거하고_관리자_금액은_유지한다(boolean previousVersion) {
         saveComplex();
         MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
         saveLhSources("10,000,000", "200,000");
@@ -1391,15 +1449,31 @@ class LhAnnouncementEnrichmentServiceTest {
                 new BigDecimal("5000000"), new BigDecimal("100000"), null, null, 2
         ));
         String request = requestDescriptionFor(PAN_ID);
-        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(request);
+        String approvedRequest = request;
+        if (previousVersion) {
+            approvedRequest = new LhAnnouncementRequest(PAN_ID, "03", "06", "07", "062")
+                    .previousRequestDescription();
+            supplySourceRepository.deleteAll();
+            sourceStore.replaceSupplies(PAN_ID, approvedRequest, List.of(new LhAnnouncementSupplySource(0, PAN_ID,
+                    new LhAnnouncementSupplySourceSnapshot(
+                            "동삼2", "46A", "46.8", "67.0", "100", "20", "10000000", "200000"))));
+            progressStore.complete(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                    source.getPblancId(), approvedRequest, PAN_ID);
+        }
+        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(approvedRequest);
         long approvalId = verifiedReplacementStore.approve(requestHash,
                 LhSupplySnapshot.fingerprint(List.of()), "https://apply.lh.or.kr/notice",
                 "공급 철회 확인", "operator");
 
-        sourceStore.replaceSupplies(PAN_ID, request, List.of());
+        sourceStore.replaceSupplies(PAN_ID, approvedRequest, List.of());
         progressStore.complete(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
-                source.getPblancId(), request, PAN_ID);
+                source.getPblancId(), approvedRequest, PAN_ID);
         assertThat(verifiedReplacementStore.finish(approvalId)).isTrue();
+        if (previousVersion) {
+            sourceStore.replaceSupplies(PAN_ID, request, List.of());
+            progressStore.complete(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                    source.getPblancId(), request, PAN_ID);
+        }
         assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
 
         assertThat(supplyRowRepository.count()).isOne();

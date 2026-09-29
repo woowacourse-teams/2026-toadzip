@@ -73,6 +73,42 @@ class LhSourceStoreTest {
     }
 
     @Test
+    void 승인한_빈_응답은_버전_변경_후에도_기준이다() {
+        String previousRequest = "PAN_ID=PAN-1&TYPE=A&COLLECTION_VERSION=3";
+        String currentRequest = previousRequest.replace("VERSION=3", "VERSION=4");
+        store.replaceSupplies("PAN-1", previousRequest, List.of(
+                supply(0, "가 단지", "24", "24", "30"),
+                supply(1, "나 단지", "24", "24", "30")));
+        checkpointRepository.save(LhAnnouncementCollectionCheckpoint.complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "announcement", previousRequest, "PAN-1", COLLECTED_AT));
+        String currentHash = LhAnnouncementCollectionCheckpoint.requestHashOf(currentRequest);
+        long approvalId = replacementStore.approve(currentHash,
+                com.toadzip.backend.ingest.collection.domain.LhSupplySnapshot.fingerprint(List.of()),
+                "https://apply.lh.or.kr/notice", "공급 철회 확인", "operator");
+
+        assertThat(store.replaceSupplies("PAN-1", currentRequest, List.of())).isZero();
+        checkpointRepository.save(LhAnnouncementCollectionCheckpoint.complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "announcement", currentRequest, "PAN-1", COLLECTED_AT.plusSeconds(1)));
+        assertThat(replacementStore.finish(approvalId)).isTrue();
+
+        String nextRequest = currentRequest.replace("VERSION=4", "VERSION=5");
+        assertThat(store.replaceSupplies("PAN-1", nextRequest, List.of())).isZero();
+        assertThat(store.hasVerifiedEmptySupplies("PAN-1", nextRequest)).isTrue();
+        assertThat(store.hasVerifiedEmptySupplies("PAN-1", nextRequest.replace("TYPE=A", "TYPE=B"))).isFalse();
+
+        store.replaceSupplies("PAN-1", nextRequest, List.of(supply(0, "새 단지", "36", "36", "45")));
+        checkpointRepository.save(LhAnnouncementCollectionCheckpoint.complete(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "announcement", nextRequest, "PAN-1", COLLECTED_AT.plusSeconds(2)));
+        String afterRecovery = nextRequest.replace("VERSION=5", "VERSION=6");
+        assertThat(store.hasVerifiedEmptySupplies("PAN-1", afterRecovery)).isFalse();
+        assertThatThrownBy(() -> store.replaceSupplies("PAN-1", afterRecovery, List.of()))
+                .isInstanceOf(EmptyLhSupplyReplacementException.class);
+    }
+
+    @Test
     void LH_카탈로그_응답_항목을_각각_테이블_행으로_저장한다() {
         List<LhCatalogSourceSnapshot> snapshots = List.of(
                 catalog("강릉교동 행복주택", "36.97"),

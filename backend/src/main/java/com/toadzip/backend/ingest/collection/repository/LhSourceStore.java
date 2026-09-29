@@ -103,7 +103,7 @@ public class LhSourceStore {
             String requestHash,
             List<LhAnnouncementSupplySource> sources
     ) {
-        List<LhAnnouncementSupplySource> previous = previousSupplies(panId, requestDescription, requestHash);
+        List<LhAnnouncementSupplySource> previous = supplyBaseline(panId, requestDescription, requestHash).sources();
         if (sources.isEmpty() && !previous.isEmpty()) {
             if (!verifiedReplacementStore.consume(requestHash, LhSupplySnapshot.fingerprint(sources))) {
                 throw new EmptyLhSupplyReplacementException();
@@ -137,27 +137,40 @@ public class LhSourceStore {
                 .orElseGet(List::of);
     }
 
-    private List<LhAnnouncementSupplySource> previousSupplies(
-            String panId,
-            String requestDescription,
-            String requestHash
-    ) {
+    @Transactional(readOnly = true)
+    public boolean hasVerifiedEmptySupplies(String panId, String requestDescription) {
+        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescription);
+        return supplyBaseline(panId, requestDescription, requestHash).verifiedEmpty();
+    }
+
+    private SupplyBaseline supplyBaseline(String panId, String requestDescription, String requestHash) {
         List<LhAnnouncementSupplySource> current = supplyRepository
                 .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
         if (!current.isEmpty()) {
-            return current;
+            return new SupplyBaseline(current, false);
         }
         if (verifiedReplacementStore.hasConsumedEmpty(requestHash)) {
-            return List.of();
+            return new SupplyBaseline(List.of(), true);
         }
-        return checkpointRepository.findAllBySourceAndPanIdOrderByCompletedAtDesc(
-                        ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, panId).stream()
-                .filter(checkpoint -> checkpoint.hasSameQuery(requestDescription))
-                .map(checkpoint -> supplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
-                        panId, checkpoint.getRequestHash()))
-                .filter(previous -> !previous.isEmpty())
-                .findFirst()
-                .orElseGet(List::of);
+        var checkpoints = checkpointRepository.findAllBySourceAndPanIdOrderByCompletedAtDesc(
+                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, panId);
+        for (var checkpoint : checkpoints) {
+            if (!checkpoint.hasSameQuery(requestDescription) || checkpoint.getRequestHash().equals(requestHash)) {
+                continue;
+            }
+            List<LhAnnouncementSupplySource> previous = supplyRepository
+                    .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, checkpoint.getRequestHash());
+            if (!previous.isEmpty()) {
+                return new SupplyBaseline(previous, false);
+            }
+            if (verifiedReplacementStore.hasConsumedEmpty(checkpoint.getRequestHash())) {
+                return new SupplyBaseline(List.of(), true);
+            }
+        }
+        return new SupplyBaseline(List.of(), false);
+    }
+
+    private record SupplyBaseline(List<LhAnnouncementSupplySource> sources, boolean verifiedEmpty) {
     }
 
     private void requirePanId(String requestedPanId, String sourcePanId) {

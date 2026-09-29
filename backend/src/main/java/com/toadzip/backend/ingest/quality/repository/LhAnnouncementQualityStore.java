@@ -37,8 +37,8 @@ public class LhAnnouncementQualityStore {
     }
 
     public LhAnnouncementQualityResponse snapshot(Instant observedAt, Freshness supplyFreshness,
-            Freshness detailFreshness, Set<String> linkedPanIds) {
-        Map<String, Long> amountReasons = preservedAmountReasons();
+            Freshness detailFreshness, Set<String> linkedPanIds, Set<String> currentSourceKeys) {
+        Map<String, Long> amountReasons = preservedAmountReasons(currentSourceKeys);
         return new LhAnnouncementQualityResponse(
                 observedAt,
                 connection(),
@@ -159,14 +159,20 @@ public class LhAnnouncementQualityStore {
         return reasons;
     }
 
-    private Map<String, Long> preservedAmountReasons() {
+    private Map<String, Long> preservedAmountReasons(Set<String> currentSourceKeys) {
         Map<String, Long> reasons = new LinkedHashMap<>();
-        jdbc.sql("""
-                WITH preserved AS (
+        // MyHomeAnnouncementSupplyRowGroups와 같은 display_order, id 순서로 확장 행의 원천을 찾는다.
+        String currentSources = currentSourceKeys.isEmpty() ? "NULL" : ":currentSourceKeys";
+        var query = jdbc.sql("""
+                WITH current_sources AS (
+                    SELECT unnest(ARRAY[%s]::text[]) AS source_key
+                ), preserved AS (
                     SELECT CASE
                         WHEN EXISTS (
                             SELECT 1 FROM myhome_announcement_mapping_failures failure
                             WHERE failure.source_announcement_identifier = announcement.source_announcement_identifier
+                              AND source_group.source_key IN (SELECT source_key FROM current_sources)
+                              AND failure.source_key IN (SELECT source_key FROM current_sources)
                               AND failure.status = 'PENDING'
                               AND failure.reason NOT IN ('COMPLEX_NOT_FOUND', 'AMBIGUOUS_COMPLEX',
                                                          'HOUSING_TYPE_NOT_FOUND', 'AMBIGUOUS_HOUSING_TYPE')
@@ -174,19 +180,34 @@ public class LhAnnouncementQualityStore {
                         WHEN EXISTS (
                             SELECT 1 FROM lh_announcement_enrichment_failures failure
                             WHERE failure.source_announcement_identifier = announcement.source_announcement_identifier
-                              AND failure.status = 'PENDING' AND failure.source_key NOT LIKE 'LH:%'
+                              AND source_group.source_key IN (SELECT source_key FROM current_sources)
+                              AND failure.source_key IN (SELECT source_key FROM current_sources)
+                              AND failure.status = 'PENDING' AND failure.source_key NOT LIKE 'LH:%%'
                         ) THEN 'LH_ENRICHMENT_REJECTED'
                         ELSE target.lh_amount_preserved_reason END AS reason
                     FROM supply_targets target
                     JOIN supply_rows row ON row.id = target.supply_row_id
                     JOIN announcements announcement ON announcement.id = row.announcement_id
+                    LEFT JOIN LATERAL (
+                        SELECT root.source_supply_row_identifier AS source_key
+                        FROM supply_rows root
+                        WHERE root.announcement_id = row.announcement_id
+                          AND NOT starts_with(root.source_supply_row_identifier,
+                                              announcement.source_announcement_identifier || ':LH:')
+                          AND (root.display_order, root.id) <= (row.display_order, row.id)
+                        ORDER BY root.display_order DESC, root.id DESC LIMIT 1
+                    ) source_group ON true
                     WHERE announcement.provider = 'LH' AND NOT announcement.admin_deleted
-                      AND target.source_supply_target_identifier LIKE 'LH:%'
+                      AND target.source_supply_target_identifier LIKE 'LH:%%'
                       AND target.rental_deposit IS NOT NULL AND target.monthly_rent IS NOT NULL
                 )
                 SELECT reason, COUNT(*) AS target_count FROM preserved
                 WHERE reason IS NOT NULL GROUP BY reason ORDER BY reason
-                """).query((result, index) -> {
+                """.formatted(currentSources));
+        if (!currentSourceKeys.isEmpty()) {
+            query = query.param("currentSourceKeys", currentSourceKeys);
+        }
+        query.query((result, index) -> {
             reasons.put(result.getString("reason"), result.getLong("target_count"));
             return true;
         }).list();

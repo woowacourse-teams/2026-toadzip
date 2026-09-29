@@ -55,23 +55,30 @@ public class LhAnnouncementQualityService {
     @Transactional(readOnly = true)
     public LhAnnouncementQualityResponse snapshot() {
         Instant now = clock.instant();
-        List<CurrentRequest> requests = currentRequests();
+        List<MyHomeAnnouncementSource> currentSources = currentSources();
+        Set<String> currentSourceKeys = currentSources.stream()
+                .map(MyHomeAnnouncementSource::getSourceKey).collect(Collectors.toSet());
+        List<CurrentRequest> requests = currentRequests(currentSources);
         Map<String, RefreshRequirement> requirements = refreshRequirements(requests, now);
         Set<String> linkedPanIds = new HashSet<>();
         linkedPanIds.addAll(linkedPanIds(requests, ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY));
         linkedPanIds.addAll(linkedPanIds(requests, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL));
         return store.snapshot(now,
                 freshness(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, requirements),
-                freshness(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, requirements), linkedPanIds);
+                freshness(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, requirements), linkedPanIds, currentSourceKeys);
     }
 
-    private List<CurrentRequest> currentRequests() {
-        List<MyHomeAnnouncementSource> sources = sourceRepository.findAllByOrderByIdAsc().stream()
-                .filter(MyHomeAnnouncementSource::isActive)
+    private List<MyHomeAnnouncementSource> currentSources() {
+        return sourceRepository.findAllByOrderByIdAsc().stream()
                 .filter(source -> source.getPblancId() != null && !source.getPblancId().isBlank())
                 .collect(Collectors.groupingBy(MyHomeAnnouncementSource::getPblancId))
                 .values().stream()
                 .flatMap(group -> MyHomeAnnouncementCurrentSources.select(group).stream()).toList();
+    }
+
+    private List<CurrentRequest> currentRequests(List<MyHomeAnnouncementSource> currentSources) {
+        List<MyHomeAnnouncementSource> sources = currentSources.stream()
+                .filter(MyHomeAnnouncementSource::isActive).toList();
         var resolutions = candidateResolver.resolveAll(sources);
         Map<String, Set<String>> descriptions = new HashMap<>();
         List<CurrentRequest> requests = new ArrayList<>();
