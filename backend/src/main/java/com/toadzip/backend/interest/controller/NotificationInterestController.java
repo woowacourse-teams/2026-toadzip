@@ -5,6 +5,7 @@ import com.toadzip.backend.interest.service.NotificationInterestService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,7 +21,10 @@ public class NotificationInterestController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void record(@Valid @RequestBody NotificationInterestRequest request) {
-        service.record(request);
+    public void record(@Valid @RequestBody NotificationInterestRequest request, Authentication authentication) {
+        Long userId = authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_USER".equals(authority.getAuthority()))
+                ? Long.valueOf(authentication.getName()) : null;
+        service.record(request, userId);
     }
 }

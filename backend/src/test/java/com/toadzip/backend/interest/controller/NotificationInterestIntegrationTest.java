@@ -2,6 +2,7 @@ package com.toadzip.backend.interest.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -44,6 +45,44 @@ class NotificationInterestIntegrationTest {
 
     @Autowired
     private NotificationInterestRepository repository;
+
+    @Test
+    void 로그인_신청은_다른_요청에서도_조회되고_취소가_반영된다() throws Exception {
+        long userId = 90000001L;
+        jdbcTemplate.update("INSERT INTO users (id, login_identifier, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                userId, "notification-state-test");
+        String confirmed = request(UUID.randomUUID(), "CONFIRMED", "REGION_SEARCH", "REGION", "11")
+                .replace("\"targetId\": \"11\"", "\"targetId\": \"11\", \"email\": \"member@example.com\"");
+        mockMvc.perform(post(ENDPOINT).with(user(Long.toString(userId)).roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(confirmed))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/notification-subscriptions/me").with(user(Long.toString(userId)).roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.emailConfirmed").value(true))
+                .andExpect(jsonPath("$.targets[0].targetType").value("REGION"))
+                .andExpect(jsonPath("$.targets[0].targetId").value("11"));
+
+        mockMvc.perform(post(ENDPOINT).with(user(Long.toString(userId)).roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request(UUID.randomUUID(), "CLICKED", "REGION_SEARCH", "REGION", "11680")))
+                .andExpect(status().isNoContent());
+        assertEquals(2, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM notification_subscriptions WHERE user_id = ? AND active", Integer.class, userId));
+
+        mockMvc.perform(post(ENDPOINT).with(user(Long.toString(userId)).roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request(UUID.randomUUID(), "CANCELLED", "REGION_SEARCH", "REGION", "11")))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/notification-subscriptions/me").with(user(Long.toString(userId)).roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.targets[0].targetId").value("11680"));
+        mockMvc.perform(get("/api/v1/notification-subscriptions/me").with(user("90000002").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.emailConfirmed").value(false))
+                .andExpect(jsonPath("$.targets").isEmpty());
+        mockMvc.perform(get("/api/v1/notification-subscriptions/me"))
+                .andExpect(status().isUnauthorized());
+    }
 
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)

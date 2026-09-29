@@ -5,8 +5,10 @@ import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.interest.domain.NotificationInterestEvent;
 import com.toadzip.backend.interest.domain.NotificationTargetType;
 import com.toadzip.backend.interest.dto.NotificationInterestRequest;
+import com.toadzip.backend.interest.dto.NotificationSubscriptionResponse;
 import com.toadzip.backend.interest.exception.InvalidNotificationInterestException;
 import com.toadzip.backend.interest.repository.NotificationInterestRepository;
+import com.toadzip.backend.interest.repository.NotificationSubscriptionRepository;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
 import java.time.Clock;
 import lombok.RequiredArgsConstructor;
@@ -18,20 +20,45 @@ import org.springframework.transaction.annotation.Transactional;
 public class NotificationInterestService {
 
     private final NotificationInterestRepository repository;
+    private final NotificationSubscriptionRepository subscriptionRepository;
     private final RegionCodeResolver regionCodeResolver;
     private final HousingComplexRepository complexRepository;
     private final AnnouncementRepository announcementRepository;
     private final Clock clock;
 
     @Transactional
-    public void record(NotificationInterestRequest request) {
+    public void record(NotificationInterestRequest request, Long userId) {
         NotificationInterestEvent event = NotificationInterestEvent.create(
                 request.eventId(), request.sessionId(), request.eventType(), request.source(),
                 request.targetType(), request.targetId(), request.email(), clock.instant());
         if (!targetExists(request.targetType(), request.targetId())) {
             throw new InvalidNotificationInterestException();
         }
-        repository.record(event);
+        if (!repository.record(event) || userId == null) {
+            return;
+        }
+        switch (request.eventType()) {
+            case CONFIRMED -> {
+                if (request.email() != null) {
+                    subscriptionRepository.confirm(userId, request.targetType(), request.targetId(),
+                            request.email(), event.getCreatedAt());
+                }
+            }
+            case CLICKED -> {
+                if (subscriptionRepository.hasEmail(userId)) {
+                    subscriptionRepository.activate(userId, request.targetType(), request.targetId(),
+                            event.getCreatedAt());
+                }
+            }
+            case CANCELLED -> subscriptionRepository.cancel(userId, request.targetType(), request.targetId(),
+                    event.getCreatedAt());
+            case EXPOSED, DECLINED -> { }
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public NotificationSubscriptionResponse findForUser(long userId) {
+        return subscriptionRepository.findForUser(userId);
     }
 
     private boolean targetExists(NotificationTargetType type, String id) {

@@ -60,6 +60,7 @@ public class AdminSecurityConfiguration {
                         .requestMatchers(HttpMethod.POST, "/api/admin/auth/login").permitAll()
                         .requestMatchers("/api/admin/**").hasRole(AdminRole.ADMIN.name())
                         .requestMatchers("/api/auth/me", "/api/auth/logout").hasRole("USER")
+                        .requestMatchers("/api/v1/notification-subscriptions/**").hasRole("USER")
                         .anyRequest().permitAll()
                 )
                 .exceptionHandling(exceptionHandling -> exceptionHandling

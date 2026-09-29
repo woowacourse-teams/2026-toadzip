@@ -12,8 +12,8 @@ public class NotificationInterestRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public void record(NotificationInterestEvent event) {
-        jdbcTemplate.update("""
+    public boolean record(NotificationInterestEvent event) {
+        return jdbcTemplate.update("""
                 INSERT INTO notification_interest_events
                     (event_id, session_id, event_type, source, target_type, target_id, email, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -21,6 +21,6 @@ public class NotificationInterestRepository {
                 """,
                 event.getEventId(), event.getSessionId(), event.getEventType().name(), event.getSource().name(),
                 event.getTargetType().name(), event.getTargetId(), event.getEmail(),
-                Timestamp.from(event.getCreatedAt()));
+                Timestamp.from(event.getCreatedAt())) > 0;
     }
 }
