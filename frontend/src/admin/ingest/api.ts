@@ -61,6 +61,96 @@ export type DataPipelineExecution = {
   completedStepResults?: readonly DataPipelineWarningStep[]
 }
 
+export type LhQualityCoverage = { total: number; fulfilled: number }
+export type LhQualityFreshness = {
+  totalRequests: number
+  freshRequests: number
+  latestCollectedAt: string | null
+}
+export type LhAnnouncementQuality = {
+  observedAt: string
+  connection: {
+    total: number
+    complexLinked: number
+    housingTypeLinked: number
+    unlinkedReasons: Record<string, number>
+  }
+  amounts: LhQualityCoverage
+  schedules: { total: number; reviewed: number; withApplicationSchedule: number }
+  supplyCollection: LhQualityFreshness
+  detailCollection: LhQualityFreshness
+  unlinkedLhLeaseCatalogCount: number
+  unlinkedLhCandidates: readonly { panId: string; sourceKey: string; changedAt: string }[]
+  preservedSourceRequestCount: number
+  preservedReasons: Record<string, number>
+  preservedAmountTargetCount: number
+  preservedAmountReasons: Record<string, number>
+  heldRequests: readonly {
+    requestDescription: string
+    reason: string
+    lastOccurredAt: string
+    proposedFingerprint: string | null
+  }[]
+}
+
+export async function getLhAnnouncementQuality(): Promise<LhAnnouncementQuality> {
+  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/quality/lh-announcements`, {
+    credentials: 'include',
+  })
+  const body = await readJson(response)
+  if (!response.ok) throw apiError(response.status, body)
+  if (!isLhAnnouncementQuality(body)) throw new Error('LH 데이터 품질 응답 형식이 올바르지 않습니다.')
+  return body
+}
+
+export async function applyVerifiedLhSupplyReplacement(pblancId: string, request: {
+  requestDescription: string
+  proposedFingerprint: string
+  evidenceUrl: string
+  reason: string
+}): Promise<void> {
+  const csrfToken = await requestCsrfToken()
+  const response = await fetch(
+    `${apiBaseUrl}/api/admin/ingest/lh/announcements/supplies/${encodeURIComponent(pblancId)}/verified-replacement`,
+    {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', [csrfToken.headerName]: csrfToken.token },
+      body: JSON.stringify(request),
+    },
+  )
+  const body = await readJson(response)
+  if (!response.ok) throw apiError(response.status, body)
+}
+
+function isLhAnnouncementQuality(value: unknown): value is LhAnnouncementQuality {
+  if (!isRecord(value) || !isRecord(value.connection) || !isRecord(value.amounts)
+    || !isRecord(value.schedules) || !isRecord(value.supplyCollection)
+    || !isRecord(value.detailCollection) || !Array.isArray(value.heldRequests)
+    || !Array.isArray(value.unlinkedLhCandidates)) return false
+  const count = (input: unknown) => typeof input === 'number' && Number.isSafeInteger(input) && input >= 0
+  const counts = (input: unknown) => isRecord(input) && Object.values(input).every(count)
+  const freshness = (input: Record<string, unknown>) => count(input.totalRequests)
+    && count(input.freshRequests)
+    && (input.latestCollectedAt === null || typeof input.latestCollectedAt === 'string')
+  return typeof value.observedAt === 'string'
+    && count(value.connection.total) && count(value.connection.complexLinked)
+    && count(value.connection.housingTypeLinked) && counts(value.connection.unlinkedReasons)
+    && count(value.amounts.total) && count(value.amounts.fulfilled)
+    && count(value.schedules.total) && count(value.schedules.reviewed)
+    && count(value.schedules.withApplicationSchedule)
+    && freshness(value.supplyCollection) && freshness(value.detailCollection)
+    && count(value.unlinkedLhLeaseCatalogCount) && count(value.preservedSourceRequestCount)
+    && value.unlinkedLhCandidates.every((candidate) => isRecord(candidate)
+      && typeof candidate.panId === 'string' && typeof candidate.sourceKey === 'string'
+      && typeof candidate.changedAt === 'string')
+    && counts(value.preservedReasons) && count(value.preservedAmountTargetCount)
+    && counts(value.preservedAmountReasons)
+    && value.heldRequests.every((held) => isRecord(held)
+      && typeof held.requestDescription === 'string' && typeof held.reason === 'string'
+      && typeof held.lastOccurredAt === 'string'
+      && (held.proposedFingerprint === null || typeof held.proposedFingerprint === 'string'))
+}
+
 export type LocationSummaryImportReport = {
   sourceFileName: string
   textFileCount: number

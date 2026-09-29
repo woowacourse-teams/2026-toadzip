@@ -312,7 +312,7 @@ public class LhAnnouncementExternalCollectionService {
         failureRecorder.record(targetSource, sourceSelectionDescription(conflict.sourceAnnouncementKey()),
                 new IllegalStateException("현재 마이홈 공고 원천의 LH 요청이 서로 다릅니다: pblancId="
                         + conflict.sourceAnnouncementKey()), log, "LH 현재 원천 선택 실패");
-        return new ExternalDataCollectionReport(targetSource.operation(), 0, 1, 0);
+        return new ExternalDataCollectionReport(targetSource.operation(), 0, 1, 0, 0, 0, 0, 1);
     }
 
     private String sourceSelectionDescription(String sourceAnnouncementKey) {

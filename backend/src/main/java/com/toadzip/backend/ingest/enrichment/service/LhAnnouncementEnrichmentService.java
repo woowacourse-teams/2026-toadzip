@@ -15,6 +15,7 @@ import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
+import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
@@ -50,6 +51,7 @@ public class LhAnnouncementEnrichmentService {
     private final AnnouncementRepository announcementRepository;
     private final LhAnnouncementDetailSourceRepository detailSourceRepository;
     private final LhAnnouncementSupplySourceRepository supplySourceRepository;
+    private final LhSourceStore sourceStore;
     private final LhAnnouncementEnrichmentFailureRepository failureRepository;
     private final LhAnnouncementEnrichmentFailureStore failureStore;
     private final MyHomeAnnouncementMappingFailureRepository mappingFailureRepository;
@@ -65,6 +67,7 @@ public class LhAnnouncementEnrichmentService {
             AnnouncementRepository announcementRepository,
             LhAnnouncementDetailSourceRepository detailSourceRepository,
             LhAnnouncementSupplySourceRepository supplySourceRepository,
+            LhSourceStore sourceStore,
             LhAnnouncementEnrichmentFailureRepository failureRepository,
             LhAnnouncementEnrichmentFailureStore failureStore,
             MyHomeAnnouncementMappingFailureRepository mappingFailureRepository,
@@ -79,6 +82,7 @@ public class LhAnnouncementEnrichmentService {
         this.announcementRepository = announcementRepository;
         this.detailSourceRepository = detailSourceRepository;
         this.supplySourceRepository = supplySourceRepository;
+        this.sourceStore = sourceStore;
         this.failureRepository = failureRepository;
         this.failureStore = failureStore;
         this.mappingFailureRepository = mappingFailureRepository;
@@ -202,7 +206,8 @@ public class LhAnnouncementEnrichmentService {
                         "마이홈 공고 매핑 실패가 남아 LH 보강을 보류했습니다.", failures, occurredAt);
             }
             LhAnnouncementEnrichmentWriteResult result = writer.write(
-                    announcement, data, changedHousingTypeRows, historicalSourceKeys(sources, lhSources)
+                    announcement, data, changedHousingTypeRows, historicalSourceKeys(sources, lhSources),
+                    supplies.isEmpty() && sourceStore.hasVerifiedEmptySupplies(panId, request.requestDescription())
             );
             addSupplyFailures(source, panId, result.failures(), failures, occurredAt);
             return result.report();
