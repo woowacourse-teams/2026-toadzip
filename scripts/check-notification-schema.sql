@@ -18,7 +18,7 @@ BEGIN
         RAISE EXCEPTION 'Flyway history contains a failed migration';
     END IF;
     FOREACH expected_version IN ARRAY ARRAY[
-            '20260927.01', '20260928.01', '20260929.01',
+            '20260922.02', '20260927.01', '20260928.01', '20260929.01',
             '20260929.02', '20260929.03'] LOOP
         IF NOT EXISTS (
                 SELECT 1 FROM public.flyway_schema_history
@@ -54,6 +54,15 @@ BEGIN
                    WHERE conrelid = 'public.notification_guest_subscriptions'::regclass
                      AND conname = 'uk_notification_guest_subscription_target') THEN
         RAISE EXCEPTION 'Subscription uniqueness constraint is missing';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'public.users'::regclass
+                     AND conname = 'uk_users_login_identifier'
+                     AND pg_get_constraintdef(oid) = 'UNIQUE (login_identifier)')
+            OR EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conrelid = 'public.users'::regclass
+                     AND conname = 'uk_users_login_identifier_pre_flyway') THEN
+        RAISE EXCEPTION 'Login identifier constraint correction is incomplete';
     END IF;
     RAISE NOTICE 'Notification schema verified in %', current_database();
 END $$;
