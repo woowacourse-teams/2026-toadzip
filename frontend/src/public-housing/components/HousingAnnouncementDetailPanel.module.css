@@ -460,7 +460,7 @@
 .housingTypeGroup {
   min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--ds-color-brand);
+  border: 1px solid var(--detail-line);
   border-radius: var(--ds-radius-control);
   background: var(--ds-color-surface);
 }
@@ -468,7 +468,7 @@
 .complexTabs {
   display: flex;
   overflow-x: auto;
-  border-bottom: 1px solid var(--ds-color-brand);
+  border-bottom: 1px solid var(--detail-line);
   background: var(--ds-color-surface-subtle);
   scrollbar-width: thin;
 }
@@ -515,7 +515,7 @@
 }
 
 .complexTabs button[aria-selected='true'] {
-  border-color: var(--ds-color-brand);
+  border: 1px solid var(--ds-color-brand);
   background: var(--ds-color-brand);
   color: var(--ds-color-on-brand);
   font-weight: 700;
