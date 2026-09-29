@@ -8,6 +8,7 @@ import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineSchedule;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineScheduleDeferralReason;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineScheduleStage;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -139,39 +140,7 @@ public class DataPipelineScheduleOrchestrator {
 
     private void startCollection(DataPipelineSchedule schedule, Instant scheduledAt) {
         DataPipelineExecutionTrigger trigger = collectionTrigger(schedule, scheduledAt);
-        try {
-            DataPipelineExecutionResponse response = executionService.start(
-                    schedule.collectionType(),
-                    trigger,
-                    scheduledAt,
-                    null
-            );
-            clearDeferred(schedule);
-            meterRegistry.counter(
-                    "ingest.scheduler.started",
-                    "schedule", schedule.name(),
-                    "stage", DataPipelineScheduleStage.COLLECTION.metricValue(),
-                    "trigger", trigger.name()
-            ).increment();
-            log.info(
-                    "event=ingest.schedule.started schedule={} stage={} trigger={} "
-                            + "scheduledAt={} executionId={}",
-                    schedule,
-                    DataPipelineScheduleStage.COLLECTION.metricValue(),
-                    trigger,
-                    scheduledAt,
-                    response.executionId()
-            );
-        }
-        catch (IngestAlreadyRunningException exception) {
-            deferUntilNextPoll(
-                    schedule,
-                    DataPipelineScheduleStage.COLLECTION,
-                    scheduledAt,
-                    DataPipelineScheduleDeferralReason.EXECUTION_IN_PROGRESS,
-                    null
-            );
-        }
+        startScheduledExecution(schedule, DataPipelineScheduleStage.COLLECTION, scheduledAt, trigger, null);
     }
 
     private void startRefinement(
@@ -179,40 +148,82 @@ public class DataPipelineScheduleOrchestrator {
             Instant scheduledAt,
             DataPipelineExecutionResponse collection
     ) {
+        startScheduledExecution(
+                schedule, DataPipelineScheduleStage.REFINEMENT, scheduledAt,
+                collection.trigger(), collection.executionId()
+        );
+    }
+
+    private void startScheduledExecution(
+            DataPipelineSchedule schedule,
+            DataPipelineScheduleStage stage,
+            Instant scheduledAt,
+            DataPipelineExecutionTrigger trigger,
+            UUID upstreamExecutionId
+    ) {
         try {
+            DataPipelineType type = switch (stage) {
+                case COLLECTION -> schedule.collectionType();
+                case REFINEMENT -> schedule.refinementType();
+            };
             DataPipelineExecutionResponse response = executionService.start(
-                    schedule.refinementType(),
-                    collection.trigger(),
+                    type,
+                    trigger,
                     scheduledAt,
-                    collection.executionId()
+                    upstreamExecutionId
             );
             clearDeferred(schedule);
             meterRegistry.counter(
                     "ingest.scheduler.started",
                     "schedule", schedule.name(),
-                    "stage", DataPipelineScheduleStage.REFINEMENT.metricValue(),
-                    "trigger", collection.trigger().name()
+                    "stage", stage.metricValue(),
+                    "trigger", trigger.name()
             ).increment();
-            log.info(
-                    "event=ingest.schedule.started schedule={} stage={} trigger={} "
-                            + "scheduledAt={} executionId={} upstreamExecutionId={}",
-                    schedule,
-                    DataPipelineScheduleStage.REFINEMENT.metricValue(),
-                    collection.trigger(),
-                    scheduledAt,
-                    response.executionId(),
-                    collection.executionId()
+            logStartedExecution(
+                    schedule, stage, scheduledAt, trigger, response.executionId(), upstreamExecutionId
             );
         }
         catch (IngestAlreadyRunningException exception) {
             deferUntilNextPoll(
                     schedule,
-                    DataPipelineScheduleStage.REFINEMENT,
+                    stage,
                     scheduledAt,
                     DataPipelineScheduleDeferralReason.EXECUTION_IN_PROGRESS,
                     null
             );
         }
+    }
+
+    private void logStartedExecution(
+            DataPipelineSchedule schedule,
+            DataPipelineScheduleStage stage,
+            Instant scheduledAt,
+            DataPipelineExecutionTrigger trigger,
+            UUID executionId,
+            UUID upstreamExecutionId
+    ) {
+        if (stage == DataPipelineScheduleStage.COLLECTION) {
+            log.info(
+                    "event=ingest.schedule.started schedule={} stage={} trigger={} "
+                            + "scheduledAt={} executionId={}",
+                    schedule,
+                    stage.metricValue(),
+                    trigger,
+                    scheduledAt,
+                    executionId
+            );
+            return;
+        }
+        log.info(
+                "event=ingest.schedule.started schedule={} stage={} trigger={} "
+                        + "scheduledAt={} executionId={} upstreamExecutionId={}",
+                schedule,
+                stage.metricValue(),
+                trigger,
+                scheduledAt,
+                executionId,
+                upstreamExecutionId
+        );
     }
 
     private boolean hasRefinement(UUID executionId, DataPipelineSchedule schedule) {
