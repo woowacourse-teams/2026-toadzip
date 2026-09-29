@@ -54,6 +54,22 @@ describe('이메일 알림 신청', () => {
     expect(record).not.toHaveBeenCalled()
   })
 
+  it('비로그인 상태도 서버의 신청 목록으로 복원한다', async () => {
+    localStorage.setItem('toadzip.notification-interest.requested:REGION:11', '1')
+    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
+    const loadStatus = vi.fn().mockResolvedValue({ guest: true, emailConfirmed: true,
+      targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+    render(example({ record, loadStatus }))
+    expect(await screen.findByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '서울특별시 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
+    expect(loadStatus).toHaveBeenCalledWith(expect.stringMatching(/^[0-9a-f-]{36}$/))
+    fireEvent.click(screen.getByRole('button', { name: '서울특별시 알림 받기' }))
+    await waitFor(() => expect(record).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'CLICKED', clientId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    })))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
   it('비로그인 사용자는 첫 클릭에서 이메일을 입력하고 이후 다른 대상은 클릭만 기록한다', async () => {
     const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
     render(example({ record }))

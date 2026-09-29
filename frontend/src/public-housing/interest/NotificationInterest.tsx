@@ -4,6 +4,7 @@ import { getCurrentUser } from '../../user/auth/api'
 import styles from './NotificationInterest.module.css'
 
 const sessionKey = 'toadzip.notification-interest.session'
+const clientKey = 'toadzip.notification-interest.client'
 const emailPromptKey = 'toadzip.notification-interest.email-confirmed'
 const requestedKeyPrefix = 'toadzip.notification-interest.requested'
 
@@ -20,6 +21,7 @@ interface Action extends Selection {
 const InterestContext = createContext<{
   readonly blocked: boolean
   readonly mode: 'loading' | 'guest' | 'member' | 'error'
+  readonly serverStatus: boolean
   readonly requested: ReadonlyMap<string, boolean>
   readonly request: (selection: Selection, trigger: HTMLButtonElement) => void
   readonly expose: (selection: Selection) => void
@@ -45,12 +47,21 @@ function sessionId() {
   return id
 }
 
+function clientId() {
+  const stored = readStorage('localStorage', clientKey)
+  if (stored && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(stored)) return stored
+  const id = crypto.randomUUID()
+  writeStorage('localStorage', clientKey, id)
+  return id
+}
+
 export function NotificationInterestProvider({ children, repository = notificationInterestRepository, loadUser = getCurrentUser }: {
   readonly children: ReactNode
   readonly repository?: NotificationInterestRepository
   readonly loadUser?: typeof getCurrentUser
 }) {
   const [session] = useState(sessionId)
+  const [client] = useState(clientId)
   const [prompt, setPrompt] = useState<Selection | null>(null)
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState<Action | null>(null)
@@ -59,6 +70,7 @@ export function NotificationInterestProvider({ children, repository = notificati
   const [loadingUser, setLoadingUser] = useState(false)
   const [requested, setRequested] = useState<ReadonlyMap<string, boolean>>(() => new Map())
   const [mode, setMode] = useState<'loading' | 'guest' | 'member' | 'error'>('loading')
+  const [serverStatus, setServerStatus] = useState(false)
   const inFlight = useRef(false)
   const statusRequest = useRef(0)
   const completed = useRef(false)
@@ -72,21 +84,23 @@ export function NotificationInterestProvider({ children, repository = notificati
       return
     }
     const request = ++statusRequest.current
-    void repository.loadStatus().then((status) => {
+    void repository.loadStatus(client).then((status) => {
       if (request !== statusRequest.current) return
       if (!status) {
         completed.current = false
         setRequested(new Map())
+        setServerStatus(false)
         setMode('guest')
         return
       }
       completed.current = status.emailConfirmed
       setRequested(new Map(status.targets.map((target) => [requestedKey({ type: target.targetType, id: target.targetId }), true])))
-      setMode('member')
+      setServerStatus(true)
+      setMode(status.guest ? 'guest' : 'member')
     }).catch(() => {
       if (request === statusRequest.current) setMode((current) => current === 'loading' ? 'error' : current)
     })
-  }, [repository])
+  }, [client, repository])
 
   useEffect(() => {
     const requestCounter = statusRequest
@@ -123,9 +137,9 @@ export function NotificationInterestProvider({ children, repository = notificati
   }, [message])
 
   const eventFor = useCallback((selection: Selection, eventType: NotificationEventType): NotificationInterestEvent => ({
-    eventId: crypto.randomUUID(), sessionId: session, eventType, source: selection.source,
+    eventId: crypto.randomUUID(), sessionId: session, clientId: client, eventType, source: selection.source,
     targetType: selection.target.type, targetId: selection.target.id,
-  }), [session])
+  }), [client, session])
 
   const send = useCallback(async (action: Action) => {
     if (inFlight.current) return
@@ -176,14 +190,14 @@ export function NotificationInterestProvider({ children, repository = notificati
     if (inFlight.current || prompt || failed) return
     trigger.current = button
     const key = requestedKey(selection.target)
-    const isRequested = requested.get(key) ?? (mode === 'guest' && readStorage('localStorage', key) === '1')
+    const isRequested = requested.get(key) ?? (!serverStatus && mode === 'guest' && readStorage('localStorage', key) === '1')
     if (isRequested) {
       void send({ ...selection, event: eventFor(selection, 'CANCELLED'), next: 'cancel' })
       return
     }
-    const alreadyAsked = completed.current || (mode === 'guest' && readStorage('localStorage', emailPromptKey) === '1')
+    const alreadyAsked = completed.current || (!serverStatus && mode === 'guest' && readStorage('localStorage', emailPromptKey) === '1')
     void send({ ...selection, event: eventFor(selection, 'CLICKED'), next: alreadyAsked ? 'finish' : 'prompt' })
-  }, [eventFor, failed, mode, prompt, requested, send])
+  }, [eventFor, failed, mode, prompt, requested, send, serverStatus])
 
   const expose = useCallback((selection: Selection) => {
     const key = `toadzip.notification-interest.exposed:${selection.source}:${selection.target.type}:${selection.target.id}`
@@ -197,7 +211,7 @@ export function NotificationInterestProvider({ children, repository = notificati
     })
   }, [eventFor, repository])
 
-  const context = useMemo(() => ({ blocked: mode === 'loading' || mode === 'error' || busy || prompt !== null || failed !== null, mode, requested, request, expose }), [busy, expose, failed, mode, prompt, request, requested])
+  const context = useMemo(() => ({ blocked: mode === 'loading' || mode === 'error' || busy || prompt !== null || failed !== null, mode, serverStatus, requested, request, expose }), [busy, expose, failed, mode, prompt, request, requested, serverStatus])
   function clearFailure() {
     setFailed(null)
     if (prompt) {
@@ -295,7 +309,7 @@ export function NotificationInterestButton({ target, source, iconOnly = false }:
   const expose = context?.expose
   const { type, id, name } = target
   const key = requestedKey(target)
-  const isRequested = context?.requested.get(key) ?? (context?.mode === 'guest' && readStorage('localStorage', key) === '1')
+  const isRequested = context?.requested.get(key) ?? (!context?.serverStatus && context?.mode === 'guest' && readStorage('localStorage', key) === '1')
   useEffect(() => {
     const element = button.current
     if (!element || !expose || typeof IntersectionObserver === 'undefined') return

@@ -8,18 +8,22 @@ const event: NotificationInterestEvent = {
 }
 
 describe('알림 수요 저장 경계', () => {
-  it('로그인 신청 상태를 조회하고 익명 응답은 구분한다', async () => {
+  it('로그인 상태와 비로그인 브라우저 상태를 각각 조회한다', async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ emailConfirmed: true, targets: [
         { targetType: 'REGION', targetId: '11' },
       ] })))
       .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ emailConfirmed: false, targets: [] })))
     const repository = createNotificationInterestRepository(fetcher)
-    expect(await repository.loadStatus?.()).toEqual({ emailConfirmed: true, targets: [
+    expect(await repository.loadStatus?.('guest-client')).toEqual({ emailConfirmed: true, targets: [
       { targetType: 'REGION', targetId: '11' },
     ] })
-    expect(await repository.loadStatus?.()).toBeNull()
+    expect(await repository.loadStatus?.('guest-client')).toEqual({ guest: true, emailConfirmed: false, targets: [] })
     expect(fetcher.mock.calls[0]?.[0]).toMatch(/\/api\/v1\/notification-subscriptions\/me$/)
+    expect(fetcher.mock.calls[2]?.[0]).toMatch(/\/api\/v1\/notification-subscriptions\/guest$/)
+    expect(fetcher.mock.calls[2]?.[1]).toEqual({ credentials: 'include',
+      headers: { 'X-Notification-Client-Id': 'guest-client' } })
   })
 
   it('동시 노출 요청은 CSRF 초기화를 공유한다', async () => {

@@ -16,14 +16,16 @@ export interface NotificationInterestEvent {
   readonly targetType: NotificationTargetType
   readonly targetId: string
   readonly email?: string
+  readonly clientId?: string
 }
 
 export interface NotificationInterestRepository {
   record(event: NotificationInterestEvent): Promise<void>
-  loadStatus?(): Promise<NotificationSubscriptionStatus | null>
+  loadStatus?(clientId: string): Promise<NotificationSubscriptionStatus | null>
 }
 
 export interface NotificationSubscriptionStatus {
+  readonly guest?: boolean
   readonly emailConfirmed: boolean
   readonly targets: ReadonlyArray<{ readonly targetType: NotificationTargetType; readonly targetId: string }>
 }
@@ -48,9 +50,15 @@ export function createNotificationInterestRepository(
   }
 
   return {
-    async loadStatus() {
+    async loadStatus(clientId) {
       const response = await fetcher(`${baseUrl}/api/v1/notification-subscriptions/me`, { credentials: 'include' })
-      if (response.status === 401 || response.status === 403) return null
+      if (response.status === 401 || response.status === 403) {
+        const guestResponse = await fetcher(`${baseUrl}/api/v1/notification-subscriptions/guest`, {
+          credentials: 'include', headers: { 'X-Notification-Client-Id': clientId },
+        })
+        if (!guestResponse.ok) throw new Error('알림 상태를 불러오지 못했습니다.')
+        return { ...await guestResponse.json() as NotificationSubscriptionStatus, guest: true }
+      }
       if (!response.ok) throw new Error('알림 상태를 불러오지 못했습니다.')
       return await response.json() as NotificationSubscriptionStatus
     },
