@@ -1,9 +1,11 @@
 import { createContext, type KeyboardEvent, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { notificationInterestRepository, type NotificationEventSource, type NotificationEventType, type NotificationInterestEvent, type NotificationInterestRepository, type NotificationTarget } from './notificationInterestRepository'
+import { getCurrentUser } from '../../user/auth/api'
 import styles from './NotificationInterest.module.css'
 
-const promptKey = 'toadzip.notification-interest.prompt-completed'
 const sessionKey = 'toadzip.notification-interest.session'
+const emailPromptKey = 'toadzip.notification-interest.email-confirmed'
+const requestedKeyPrefix = 'toadzip.notification-interest.requested'
 
 interface Selection {
   readonly target: NotificationTarget
@@ -12,14 +14,19 @@ interface Selection {
 
 interface Action extends Selection {
   readonly event: NotificationInterestEvent
-  readonly next: 'prompt' | 'complete' | 'finish'
+  readonly next: 'prompt' | 'complete' | 'finish' | 'cancel'
 }
 
 const InterestContext = createContext<{
   readonly blocked: boolean
+  readonly requested: ReadonlyMap<string, boolean>
   readonly request: (selection: Selection, trigger: HTMLButtonElement) => void
   readonly expose: (selection: Selection) => void
 } | null>(null)
+
+function requestedKey(target: NotificationTarget) {
+  return `${requestedKeyPrefix}:${target.type}:${target.id}`
+}
 
 function readStorage(kind: 'localStorage' | 'sessionStorage', key: string) {
   try { return window[kind].getItem(key) } catch { return null }
@@ -37,15 +44,19 @@ function sessionId() {
   return id
 }
 
-export function NotificationInterestProvider({ children, repository = notificationInterestRepository }: {
+export function NotificationInterestProvider({ children, repository = notificationInterestRepository, loadUser = getCurrentUser }: {
   readonly children: ReactNode
   readonly repository?: NotificationInterestRepository
+  readonly loadUser?: typeof getCurrentUser
 }) {
   const [session] = useState(sessionId)
   const [prompt, setPrompt] = useState<Selection | null>(null)
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState<Action | null>(null)
   const [message, setMessage] = useState('')
+  const [email, setEmail] = useState('')
+  const [loadingUser, setLoadingUser] = useState(false)
+  const [requested, setRequested] = useState<ReadonlyMap<string, boolean>>(() => new Map())
   const inFlight = useRef(false)
   const completed = useRef(false)
   const trigger = useRef<HTMLButtonElement | null>(null)
@@ -58,6 +69,26 @@ export function NotificationInterestProvider({ children, repository = notificati
       trigger.current?.focus({ preventScroll: true })
     }
   }, [busy, prompt])
+
+  useEffect(() => {
+    if (!prompt) return
+    let active = true
+    setLoadingUser(true)
+    void loadUser().then((user) => {
+      if (active && user?.email) setEmail((current) => current || user.email || '')
+    }).catch(() => {
+      // Email can still be entered when the session lookup is unavailable.
+    }).finally(() => {
+      if (active) setLoadingUser(false)
+    })
+    return () => { active = false }
+  }, [loadUser, prompt])
+
+  useEffect(() => {
+    if (!message) return
+    const timer = window.setTimeout(() => setMessage(''), 5000)
+    return () => window.clearTimeout(timer)
+  }, [message])
 
   const eventFor = useCallback((selection: Selection, eventType: NotificationEventType): NotificationInterestEvent => ({
     eventId: crypto.randomUUID(), sessionId: session, eventType, source: selection.source,
@@ -73,17 +104,33 @@ export function NotificationInterestProvider({ children, repository = notificati
     try {
       await repository.record(action.event)
       if (action.next === 'prompt') {
+        setEmail('')
         setPrompt({ target: action.target, source: action.source })
-      } else {
-        restoreFocus.current = true
-        if (action.next === 'complete') {
+      } else if (action.next === 'complete') {
+        if (action.event.eventType === 'CONFIRMED') {
           completed.current = true
-          writeStorage('localStorage', promptKey, '1')
-          setPrompt(null)
+          writeStorage('localStorage', emailPromptKey, '1')
+          const key = requestedKey(action.target)
+          writeStorage('localStorage', key, '1')
+          setRequested((current) => new Map(current).set(key, true))
         }
+        restoreFocus.current = true
+        setPrompt(null)
         setMessage(action.event.eventType === 'DECLINED'
-          ? '응답이 기록되었습니다. 알림 기능은 준비 중입니다.'
-          : '관심이 기록되었습니다. 알림 기능은 준비 중이며 실제 알림은 발송되지 않습니다.')
+          ? '알림 신청을 하지 않았어요. 언제든 다시 신청할 수 있어요.'
+          : `${action.target.name} 알림 신청을 받았어요.`)
+      } else if (action.next === 'finish') {
+        const key = requestedKey(action.target)
+        writeStorage('localStorage', key, '1')
+        setRequested((current) => new Map(current).set(key, true))
+        restoreFocus.current = true
+        setMessage(`${action.target.name} 알림 신청을 받았어요.`)
+      } else {
+        const key = requestedKey(action.target)
+        writeStorage('localStorage', key, '0')
+        setRequested((current) => new Map(current).set(key, false))
+        restoreFocus.current = true
+        setMessage(`${action.target.name} 알림 신청을 취소했어요.`)
       }
     } catch {
       setFailed(action)
@@ -96,9 +143,15 @@ export function NotificationInterestProvider({ children, repository = notificati
   const request = useCallback((selection: Selection, button: HTMLButtonElement) => {
     if (inFlight.current || prompt || failed) return
     trigger.current = button
-    const alreadyAsked = completed.current || readStorage('localStorage', promptKey) === '1'
+    const key = requestedKey(selection.target)
+    const isRequested = requested.get(key) ?? readStorage('localStorage', key) === '1'
+    if (isRequested) {
+      void send({ ...selection, event: eventFor(selection, 'CANCELLED'), next: 'cancel' })
+      return
+    }
+    const alreadyAsked = completed.current || readStorage('localStorage', emailPromptKey) === '1'
     void send({ ...selection, event: eventFor(selection, 'CLICKED'), next: alreadyAsked ? 'finish' : 'prompt' })
-  }, [eventFor, failed, prompt, send])
+  }, [eventFor, failed, prompt, requested, send])
 
   const expose = useCallback((selection: Selection) => {
     const key = `toadzip.notification-interest.exposed:${selection.source}:${selection.target.type}:${selection.target.id}`
@@ -112,33 +165,57 @@ export function NotificationInterestProvider({ children, repository = notificati
     })
   }, [eventFor, repository])
 
-  const context = useMemo(() => ({ blocked: busy || prompt !== null || failed !== null, request, expose }), [busy, expose, failed, prompt, request])
+  const context = useMemo(() => ({ blocked: busy || prompt !== null || failed !== null, requested, request, expose }), [busy, expose, failed, prompt, request, requested])
+  function clearFailure() {
+    setFailed(null)
+    if (prompt) {
+      restoreFocus.current = true
+      setPrompt(null)
+    } else {
+      trigger.current?.focus({ preventScroll: true })
+    }
+  }
   const error = failed && (
     <div role="alert" className={styles.error}>
-      <p>관심을 기록하지 못했습니다.</p>
+      <p>{failed.event.eventType === 'CANCELLED'
+        ? '알림 취소를 완료하지 못했어요. 다시 시도해 주세요.'
+        : '알림 신청을 완료하지 못했어요. 다시 시도해 주세요.'}</p>
       <button type="button" disabled={busy} onClick={() => { void send(failed) }}>다시 시도</button>
+      <button type="button" disabled={busy} onClick={clearFailure}>닫기</button>
     </div>
   )
 
   function answer(eventType: 'CONFIRMED' | 'DECLINED') {
-    if (prompt && !failed) void send({ ...prompt, event: eventFor(prompt, eventType), next: 'complete' })
+    if (!prompt || failed || busy) return
+    const address = email.trim()
+    if (eventType === 'CONFIRMED' && !address) return
+    const event = { ...eventFor(prompt, eventType), ...(eventType === 'CONFIRMED' ? { email: address } : {}) }
+    void send({ ...prompt, event, next: 'complete' })
   }
 
   return (
     <InterestContext.Provider value={context}>
       {children}
       {prompt && (
-        <InterestDialog onDismiss={() => answer('DECLINED')}>
-          <h2 id="notification-interest-title">알림 신청 의사 확인</h2>
-          <p className={styles.target}>{prompt.target.name}</p>
-          <p>{`이 ${{ REGION: '지역', COMPLEX: '단지', ANNOUNCEMENT: '공고' }[prompt.target.type]}에 대한 알림을 받으시겠습니까?`}</p>
-          <p className={styles.notice}>알림 기능은 준비 중입니다. 신청 의사만 기록하며 실제 알림은 발송되지 않습니다.</p>
-          <div className={styles.actions}>
-            <button type="button" disabled={busy || failed !== null} onClick={() => answer('CONFIRMED')}>네, 받고 싶어요</button>
-            <button type="button" disabled={busy || failed !== null} onClick={() => answer('DECLINED')}>아니요</button>
-          </div>
-          {busy && <p role="status">관심을 기록하는 중입니다.</p>}
-          {error}
+        <InterestDialog onDismiss={() => { if (failed) clearFailure(); else answer('DECLINED') }}>
+          <form onSubmit={(event) => { event.preventDefault(); answer('CONFIRMED') }}>
+            <span className={styles.eyebrow}>공공주택 복덕방</span>
+            <h2 id="notification-interest-title">이메일 알림 신청</h2>
+            <p className={styles.description}>{`이 ${{ REGION: '지역', COMPLEX: '단지', ANNOUNCEMENT: '공고' }[prompt.target.type]}에 대한 알림을 받으시겠습니까?`}</p>
+            <p className={styles.target}>{prompt.target.name}</p>
+            <label className={styles.label} htmlFor="notification-email">알림 받을 이메일</label>
+            <input id="notification-email" className={styles.input} type="email" autoComplete="email"
+              placeholder="name@example.com" required maxLength={254} pattern={'[^\\s@]+@[^\\s@]+\\.[^\\s@]+'} value={email}
+              onChange={(event) => setEmail(event.target.value)} disabled={busy || failed !== null} />
+            {loadingUser && <p className={styles.hint} role="status">로그인 이메일을 확인하는 중…</p>}
+            <div className={styles.actions}>
+              <button className={styles.submit} type="submit" disabled={busy || failed !== null}>알림 신청</button>
+              <button className={styles.cancel} type="button" disabled={busy}
+                onClick={() => { if (failed) clearFailure(); else answer('DECLINED') }}>취소</button>
+            </div>
+            {busy && <p role="status">알림 신청을 처리하는 중…</p>}
+            {error}
+          </form>
         </InterestDialog>
       )}
       {!prompt && (error || message) && (
@@ -150,14 +227,14 @@ export function NotificationInterestProvider({ children, repository = notificati
 
 function InterestDialog({ children, onDismiss }: { readonly children: ReactNode; readonly onDismiss: () => void }) {
   const panel = useRef<HTMLDivElement>(null)
-  useEffect(() => { panel.current?.querySelector<HTMLButtonElement>('button')?.focus() }, [])
+  useEffect(() => { panel.current?.querySelector<HTMLInputElement>('input')?.focus() }, [])
 
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onDismiss() }
     if (event.key !== 'Tab') return
-    const buttons = Array.from(panel.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])
-    const first = buttons[0]
-    const last = buttons.at(-1)
+    const controls = Array.from(panel.current?.querySelectorAll<HTMLElement>('input:not(:disabled), button:not(:disabled)') ?? [])
+    const first = controls[0]
+    const last = controls.at(-1)
     if (!first || !last) { event.preventDefault(); return }
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
     if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
@@ -181,6 +258,8 @@ export function NotificationInterestButton({ target, source, iconOnly = false }:
   const button = useRef<HTMLButtonElement>(null)
   const expose = context?.expose
   const { type, id, name } = target
+  const key = requestedKey(target)
+  const isRequested = context?.requested.get(key) ?? readStorage('localStorage', key) === '1'
   useEffect(() => {
     const element = button.current
     if (!element || !expose || typeof IntersectionObserver === 'undefined') return
@@ -197,12 +276,14 @@ export function NotificationInterestButton({ target, source, iconOnly = false }:
   if (!context) return null
   return (
     <button ref={button} type="button" className={iconOnly ? styles.bell : styles.button}
-      aria-label={`${name} 알림 받기`} disabled={context.blocked}
+      aria-label={`${name} 알림 ${isRequested ? '취소' : '받기'}`} title={iconOnly ? (isRequested ? '알림 취소' : '알림 받기') : undefined}
+      aria-pressed={isRequested} data-requested={isRequested} disabled={context.blocked}
       onClick={(event) => context.request({ target, source }, event.currentTarget)}>
-      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" />
+      <svg aria-hidden="true" data-state={isRequested ? 'requested' : 'idle'} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" fill={isRequested ? 'currentColor' : 'none'} />
+        <path d="M10 21h4" />
       </svg>
-      {!iconOnly && '알림 받기'}
+      {!iconOnly && (isRequested ? '알림 취소' : '알림 받기')}
     </button>
   )
 }

@@ -47,22 +47,33 @@ public class NotificationInterestEvent {
     @Column(nullable = false, length = 19)
     private String targetId;
 
+    @Column(length = 254)
+    private String email;
+
     @Column(nullable = false)
     private Instant createdAt;
 
     private NotificationInterestEvent(UUID eventId, UUID sessionId, NotificationEventType eventType,
-            NotificationEventSource source, NotificationTargetType targetType, String targetId, Instant createdAt) {
+            NotificationEventSource source, NotificationTargetType targetType, String targetId, String email,
+            Instant createdAt) {
         this.eventId = eventId;
         this.sessionId = sessionId;
         this.eventType = eventType;
         this.source = source;
         this.targetType = targetType;
         this.targetId = targetId;
+        this.email = email;
         this.createdAt = createdAt;
     }
 
     public static NotificationInterestEvent create(UUID eventId, UUID sessionId, NotificationEventType eventType,
             NotificationEventSource source, NotificationTargetType targetType, String targetId, Instant createdAt) {
+        return create(eventId, sessionId, eventType, source, targetType, targetId, null, createdAt);
+    }
+
+    public static NotificationInterestEvent create(UUID eventId, UUID sessionId, NotificationEventType eventType,
+            NotificationEventSource source, NotificationTargetType targetType, String targetId, String email,
+            Instant createdAt) {
         if (eventId == null || sessionId == null || eventType == null || source == null || targetType == null
                 || targetId == null || !targetId.matches("[0-9]{1,19}") || createdAt == null) {
             throw new InvalidNotificationInterestException();
@@ -70,6 +81,13 @@ public class NotificationInterestEvent {
         if (!source.supports(targetType)) {
             throw new InvalidNotificationInterestException();
         }
-        return new NotificationInterestEvent(eventId, sessionId, eventType, source, targetType, targetId, createdAt);
+        if (email != null && (email.length() > 254 || !email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"))) {
+            throw new InvalidNotificationInterestException();
+        }
+        if (eventType != NotificationEventType.CONFIRMED && email != null) {
+            throw new InvalidNotificationInterestException();
+        }
+        return new NotificationInterestEvent(eventId, sessionId, eventType, source, targetType, targetId, email,
+                createdAt);
     }
 }

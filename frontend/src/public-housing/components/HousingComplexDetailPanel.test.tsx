@@ -125,8 +125,9 @@ describe('HousingComplexDetailPanel', () => {
         <HousingComplexDetailPanel detail={BASE_DETAIL} onClose={vi.fn()} />
       </NotificationInterestProvider>,
     )
+    expect(screen.getByText('단지 알림')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '서울가람 행복주택 알림 받기' }))
-    expect(await screen.findByRole('dialog', { name: '알림 신청 의사 확인' })).toBeVisible()
+    expect(await screen.findByRole('dialog', { name: '이메일 알림 신청' })).toBeVisible()
     expect(record).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'CLICKED', source: 'COMPLEX_DETAIL', targetType: 'COMPLEX', targetId: '17',
     }))

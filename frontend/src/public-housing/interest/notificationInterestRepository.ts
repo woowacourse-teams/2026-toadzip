@@ -1,6 +1,6 @@
 export type NotificationTargetType = 'REGION' | 'COMPLEX' | 'ANNOUNCEMENT'
 export type NotificationEventSource = 'SETTING' | 'REGION_SEARCH' | 'COMPLEX_DETAIL' | 'ANNOUNCEMENT_DETAIL'
-export type NotificationEventType = 'EXPOSED' | 'CLICKED' | 'CONFIRMED' | 'DECLINED'
+export type NotificationEventType = 'EXPOSED' | 'CLICKED' | 'CONFIRMED' | 'DECLINED' | 'CANCELLED'
 
 export interface NotificationTarget {
   readonly type: NotificationTargetType
@@ -15,6 +15,7 @@ export interface NotificationInterestEvent {
   readonly source: NotificationEventSource
   readonly targetType: NotificationTargetType
   readonly targetId: string
+  readonly email?: string
 }
 
 export interface NotificationInterestRepository {

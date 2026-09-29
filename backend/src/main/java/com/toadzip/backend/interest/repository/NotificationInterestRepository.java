@@ -15,11 +15,12 @@ public class NotificationInterestRepository {
     public void record(NotificationInterestEvent event) {
         jdbcTemplate.update("""
                 INSERT INTO notification_interest_events
-                    (event_id, session_id, event_type, source, target_type, target_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (event_id, session_id, event_type, source, target_type, target_id, email, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (event_id) DO NOTHING
                 """,
                 event.getEventId(), event.getSessionId(), event.getEventType().name(), event.getSource().name(),
-                event.getTargetType().name(), event.getTargetId(), Timestamp.from(event.getCreatedAt()));
+                event.getTargetType().name(), event.getTargetId(), event.getEmail(),
+                Timestamp.from(event.getCreatedAt()));
     }
 }

@@ -27,7 +27,7 @@ public class NotificationInterestService {
     public void record(NotificationInterestRequest request) {
         NotificationInterestEvent event = NotificationInterestEvent.create(
                 request.eventId(), request.sessionId(), request.eventType(), request.source(),
-                request.targetType(), request.targetId(), clock.instant());
+                request.targetType(), request.targetId(), request.email(), clock.instant());
         if (!targetExists(request.targetType(), request.targetId())) {
             throw new InvalidNotificationInterestException();
         }

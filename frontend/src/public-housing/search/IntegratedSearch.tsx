@@ -20,14 +20,12 @@ interface GroupState {
 }
 
 const searchTypes: readonly SearchType[] = ['REGION', 'ANNOUNCEMENT', 'COMPLEX']
-const notificationSearchTypes: readonly SearchType[] = ['REGION', 'COMPLEX']
 
 export interface IntegratedSearchProps {
   readonly onActiveChange?: (active: boolean) => void
   readonly onSelect: (item: SearchResultItem) => void
   readonly repository?: IntegratedSearchRepository
   readonly selectionControl?: ReactNode
-  readonly purpose?: 'explore' | 'notification'
 }
 
 export function IntegratedSearch({
@@ -35,14 +33,12 @@ export function IntegratedSearch({
   onSelect,
   repository = integratedSearchRepository,
   selectionControl,
-  purpose = 'explore',
 }: IntegratedSearchProps) {
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const normalizedQuery = normalizeQuery(query)
   const active = normalizedQuery.replaceAll(' ', '').length >= 2
-  const notificationSelection = purpose === 'notification'
-  const inputLabel = notificationSelection ? '지역, 단지 검색' : '지역, 단지, 공고 검색'
+  const inputLabel = '지역, 단지, 공고 검색'
 
   useEffect(() => {
     onActiveChange?.(active)
@@ -90,14 +86,13 @@ export function IntegratedSearch({
       {active && (
         <div className="integrated-search__body">
           <div className="integrated-search__results" key={normalizedQuery}>
-            {(notificationSelection ? notificationSearchTypes : searchTypes).map((type) => (
+            {searchTypes.map((type) => (
               <SearchGroup
                 key={type}
                 onSelect={onSelect}
                 query={normalizedQuery}
                 repository={repository}
                 type={type}
-                notificationSelection={notificationSelection}
               />
             ))}
           </div>
@@ -112,13 +107,11 @@ function SearchGroup({
   query,
   repository,
   type,
-  notificationSelection,
 }: {
   readonly onSelect: (item: SearchResultItem) => void
   readonly query: string
   readonly repository: IntegratedSearchRepository
   readonly type: SearchType
-  readonly notificationSelection: boolean
 }) {
   const [page, setPage] = useState(0)
   const [retryRevision, setRetryRevision] = useState(0)
@@ -174,11 +167,11 @@ function SearchGroup({
       <h3 className={styles.groupHeading} id={headingId}>{label}</h3>
       <ul>
         {state.items.map((item) => {
-          const unavailable = !notificationSelection && item.type === 'REGION'
+          const unavailable = item.type === 'REGION'
             && (item.latitude === null || item.longitude === null)
             && !findRegionBoundaryMetadata(item.regionCode ?? item.id)
           return (
-            <li key={`${item.type}-${item.id}`} className={item.type === 'REGION' ? styles.regionRow : undefined}>
+            <li key={`${item.type}-${item.id}`} className={item.type === 'REGION' && item.regionCode ? styles.regionRow : undefined}>
               <button
                 type="button"
                 disabled={unavailable}
@@ -191,7 +184,7 @@ function SearchGroup({
                 {item.applicationStatus && <span>{statusLabel(item.applicationStatus)}</span>}
                 {unavailable && <span className={styles.unavailable}>위치 정보 준비 중</span>}
               </button>
-              {!notificationSelection && item.type === 'REGION' && item.regionCode && (
+              {item.type === 'REGION' && item.regionCode && (
                 <NotificationInterestButton
                   target={{ type: 'REGION', id: item.regionCode, name: item.title }}
                   source="REGION_SEARCH"

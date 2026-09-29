@@ -2,8 +2,10 @@ package com.toadzip.backend.user.controller;
 
 import com.toadzip.backend.user.dto.CsrfTokenResponse;
 import com.toadzip.backend.user.dto.UserSessionResponse;
+import com.toadzip.backend.user.service.SocialUserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
@@ -16,7 +18,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/auth")
+@RequiredArgsConstructor
 public class UserAuthenticationController {
+
+    private final SocialUserService socialUserService;
 
     @GetMapping("/csrf")
     public CsrfTokenResponse csrf(CsrfToken csrfToken) {
@@ -25,7 +30,8 @@ public class UserAuthenticationController {
 
     @GetMapping("/me")
     public UserSessionResponse currentUser(Authentication authentication) {
-        return new UserSessionResponse(Long.valueOf(authentication.getName()));
+        Long id = Long.valueOf(authentication.getName());
+        return new UserSessionResponse(id, socialUserService.emailOf(id));
     }
 
     @PostMapping("/logout")

@@ -99,14 +99,33 @@ class NotificationInterestIntegrationTest {
     @Test
     void 최초_확인과_거절을_클릭과_구분하여_저장한다() throws Exception {
         UUID eventId = UUID.randomUUID();
-        submit(request(eventId, "CONFIRMED", "SETTING", "REGION", "11680"));
+        submit(request(eventId, "CONFIRMED", "SETTING", "REGION", "11680")
+                .replace("\"targetId\": \"11680\"", "\"targetId\": \"11680\", \"email\": \"guest@example.com\""));
         assertEquals("CONFIRMED", jdbcTemplate.queryForObject(
                 "SELECT event_type FROM notification_interest_events WHERE event_id = ?", String.class, eventId));
+        assertEquals("guest@example.com", jdbcTemplate.queryForObject(
+                "SELECT email FROM notification_interest_events WHERE event_id = ?", String.class, eventId));
 
         UUID declinedId = UUID.randomUUID();
         submit(request(declinedId, "DECLINED", "SETTING", "REGION", "11680"));
         assertEquals("DECLINED", jdbcTemplate.queryForObject(
                 "SELECT event_type FROM notification_interest_events WHERE event_id = ?", String.class, declinedId));
+    }
+
+    @Test
+    void 기존_클라이언트의_이메일_없는_확인_이벤트도_유지한다() throws Exception {
+        UUID eventId = UUID.randomUUID();
+        submit(request(eventId, "CONFIRMED", "SETTING", "REGION", "11"));
+        assertEquals("CONFIRMED", jdbcTemplate.queryForObject(
+                "SELECT event_type FROM notification_interest_events WHERE event_id = ?", String.class, eventId));
+    }
+
+    @Test
+    void 알림_취소_이벤트를_저장한다() throws Exception {
+        UUID eventId = UUID.randomUUID();
+        submit(request(eventId, "CANCELLED", "REGION_SEARCH", "REGION", "11"));
+        assertEquals("CANCELLED", jdbcTemplate.queryForObject(
+                "SELECT event_type FROM notification_interest_events WHERE event_id = ?", String.class, eventId));
     }
 
     @Test
@@ -131,6 +150,8 @@ class NotificationInterestIntegrationTest {
         reject(request(UUID.randomUUID(), "CLICKED", "ANNOUNCEMENT_DETAIL", "ANNOUNCEMENT", "-1"));
         reject(request(UUID.randomUUID(), "CLICKED", "REGION_SEARCH", "REGION", "11")
                 .replace("\"sessionId\": \"00000000-0000-4000-8000-000000000001\"", "\"sessionId\": null"));
+        reject(request(UUID.randomUUID(), "CONFIRMED", "SETTING", "REGION", "11")
+                .replace("\"targetId\": \"11\"", "\"targetId\": \"11\", \"email\": \"invalid\""));
     }
 
     private void submit(String request) throws Exception {

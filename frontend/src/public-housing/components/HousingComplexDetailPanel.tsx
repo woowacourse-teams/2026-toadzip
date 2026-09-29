@@ -191,10 +191,16 @@ export function HousingComplexDetailPanel({
             </p>
           </div>
           <p className={styles.address}>{displayAddress(detail)}</p>
-          <NotificationInterestButton
-            target={{ type: 'COMPLEX', id: detail.complexId, name: detail.name }}
-            source="COMPLEX_DETAIL"
-          />
+          <div className={styles.notificationCallout}>
+            <div className={styles.notificationCopy}>
+              <strong>단지 알림</strong>
+              <span>관심 있는 단지의 알림을 신청해 보세요.</span>
+            </div>
+            <NotificationInterestButton
+              target={{ type: 'COMPLEX', id: detail.complexId, name: detail.name }}
+              source="COMPLEX_DETAIL"
+            />
+          </div>
         </section>
 
         <CurrentAnnouncements

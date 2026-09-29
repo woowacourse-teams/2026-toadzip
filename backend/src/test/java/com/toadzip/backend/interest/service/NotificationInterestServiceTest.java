@@ -51,6 +51,6 @@ class NotificationInterestServiceTest {
     private NotificationInterestRequest request(
             NotificationEventSource source, NotificationTargetType targetType, String targetId) {
         return new NotificationInterestRequest(UUID.randomUUID(), UUID.randomUUID(), NotificationEventType.CLICKED,
-                source, targetType, targetId);
+                source, targetType, targetId, null);
     }
 }

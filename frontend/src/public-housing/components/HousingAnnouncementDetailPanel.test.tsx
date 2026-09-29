@@ -18,8 +18,8 @@ import {
 import { NotificationInterestProvider } from '../interest/NotificationInterest'
 
 describe('HousingAnnouncementDetailPanel', () => {
-  it('최초 질문을 마친 브라우저의 공고 알림은 확인창 없이 클릭만 기록한다', async () => {
-    localStorage.setItem('toadzip.notification-interest.prompt-completed', '1')
+  it('이메일 폼을 완료한 뒤에는 공고 알림 클릭만 기록한다', async () => {
+    localStorage.setItem('toadzip.notification-interest.email-confirmed', '1')
     const record = vi.fn().mockResolvedValue(undefined)
     render(
       <NotificationInterestProvider repository={{ record }}>

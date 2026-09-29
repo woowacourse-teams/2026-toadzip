@@ -98,30 +98,6 @@
   list-style: none;
 }
 
-.integrated-search__results li button {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.2rem 0.6rem;
-  width: 100%;
-  border: 0;
-  border-top: 1px solid #f1f5f9;
-  padding: 0.65rem 0.75rem;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-}
-
-.integrated-search__results li button:hover,
-.integrated-search__results li button:focus-visible {
-  background: var(--ds-color-action-soft);
-}
-
-.integrated-search__results li span,
-.integrated-search__results li time {
-  color: #64748b;
-  font-size: 0.75rem;
-}
-
 .integrated-search__partial-error {
   display: flex;
   align-items: center;
