@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import pdfViewerStyles from 'pdfjs-dist/legacy/web/pdf_viewer.css?inline'
+import DocumentOutline from './DocumentOutline.tsx'
 import { usePdfViewer } from './usePdfViewer.ts'
 import styles from './PdfDocumentPreview.module.css'
 
@@ -19,7 +20,7 @@ function PdfPreview({ url, name }: { readonly url: string; readonly name: string
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [scale, setScale] = useState('page-width')
-  const { page, pages, ready, error, result, search, closeSearch, setScale: applyScale } = usePdfViewer(url, containerRef, viewerRef)
+  const { page, pages, ready, error, result, search, closeSearch, setScale: applyScale, outline, activeOutlineId, navigateOutline } = usePdfViewer(url, containerRef, viewerRef)
 
   const openSearch = useCallback(() => {
     setSearchOpen(true)
@@ -50,7 +51,7 @@ function PdfPreview({ url, name }: { readonly url: string; readonly name: string
         event.preventDefault()
         event.stopPropagation()
         openSearch()
-      } else if (event.key === 'Escape' && searchOpen) {
+      } else if (event.key === 'Escape' && searchOpen && !(event.target instanceof Element && event.target.closest('[data-document-outline][data-outline-open="true"]'))) {
         event.preventDefault()
         event.stopPropagation()
         hideSearch()
@@ -100,10 +101,11 @@ function PdfPreview({ url, name }: { readonly url: string; readonly name: string
       </div>
     </div>}
     {error && <p role="alert" className={styles.error}>PDF를 표시하지 못했습니다. 다운로드해서 확인해 주세요.</p>}
-    <div className={styles.viewport}>
+    <div className={styles.viewport} data-has-outline={ready && !error && outline.length > 0}>
       <div ref={containerRef} className={styles.scroll} role="region" aria-label={`${name} 문서`} tabIndex={0}>
         <div ref={viewerRef} className="pdfViewer" />
       </div>
+      {ready && !error && <DocumentOutline entries={outline} activeId={activeOutlineId} onNavigate={navigateOutline} />}
     </div>
   </div>
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useHwpDocument } from './useHwpDocument.ts'
+import DocumentOutline from './DocumentOutline.tsx'
 import styles from './HwpDocumentPreview.module.css'
 
 export default function HwpDocumentPreview(props: { readonly url: string; readonly name: string }) {
@@ -10,7 +11,7 @@ function HwpPreview(props: { readonly url: string; readonly name: string }) {
   return <Document key={attempt} {...props} retry={() => setAttempt(attempt + 1)} />
 }
 function Document({ url, name, retry }: { readonly url: string; readonly name: string; readonly retry: () => void }) {
-  const { pages, images, failed, result, requestPages, search, fail, moveMatch } = useHwpDocument(url)
+  const { pages, outline, images, failed, result, requestPages, search, fail, moveMatch } = useHwpDocument(url)
   const lastNavigation = useRef<typeof result | null>(null)
   const root = useRef<HTMLElement>(null)
   const viewport = useRef<HTMLDivElement>(null)
@@ -21,6 +22,7 @@ function Document({ url, name, retry }: { readonly url: string; readonly name: s
   const [zoom, setZoom] = useState('fit')
   const [width, setWidth] = useState(800)
   const [page, setPage] = useState(0)
+  const [activeOutlineId, setActiveOutlineId] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [debouncing, setDebouncing] = useState(false)
@@ -36,6 +38,10 @@ function Document({ url, name, retry }: { readonly url: string; readonly name: s
   }, [pages, width, zoom])
   const last = layout.at(-1)
   const activeMatch = searchOpen && !result.pending ? result.matches[result.current] : undefined
+  const outlineAnchors = useMemo(() => outline.flatMap((entry) => {
+    const frame = layout[entry.pageNumber - 1]
+    return frame ? [{ id: entry.id, top: frame.top + Math.min(entry.y, frame.height / frame.scale) * frame.scale }] : []
+  }).sort((a, b) => a.top - b.top), [layout, outline])
 
   const updateViewport = useCallback(() => {
     const element = viewport.current
@@ -45,10 +51,18 @@ function Document({ url, name, retry }: { readonly url: string; readonly name: s
     let end = current
     while (end + 1 < layout.length && layout[end + 1]!.top < top + element.clientHeight) end++
     setPage(current)
+    const marker = top + 32
+    let low = 0, high = outlineAnchors.length
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2)
+      if (outlineAnchors[middle]!.top <= marker) low = middle + 1
+      else high = middle
+    }
+    setActiveOutlineId(low ? outlineAnchors[low - 1]!.id : null)
     // Current page first, followed by visible pages and one page of overscan.
     requestPages([current, ...Array.from({ length: end - current }, (_, i) => current + i + 1), end + 1, current - 1]
       .filter((number) => number >= 0 && number < layout.length))
-  }, [layout, requestPages])
+  }, [layout, outlineAnchors, requestPages])
 
   useEffect(() => {
     const element = viewport.current
@@ -98,7 +112,8 @@ function Document({ url, name, retry }: { readonly url: string; readonly name: s
       if (!(event instanceof KeyboardEvent) || event.isComposing) return
       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f' && ready) {
         event.preventDefault(); event.stopPropagation(); openSearch()
-      } else if (event.key === 'Escape' && searchOpen) {
+      } else if (event.key === 'Escape' && searchOpen
+        && !(event.target instanceof Element && event.target.closest('[data-document-outline][data-outline-open="true"]'))) {
         event.preventDefault(); event.stopPropagation(); hideSearch()
       }
     }
@@ -113,6 +128,14 @@ function Document({ url, name, retry }: { readonly url: string; readonly name: s
     search('')
     setDebouncing(!composing.current && !!value.trim())
     if (!composing.current && value.trim()) debounce.current = setTimeout(() => { setDebouncing(false); search(value) }, 200)
+  }
+  function navigateOutline(id: string) {
+    const anchor = outlineAnchors.find((value) => value.id === id)
+    if (!anchor || !viewport.current) return
+    viewport.current.scrollTop = Math.max(0, anchor.top - 24)
+    viewport.current.scrollLeft = 0
+    updateViewport()
+    viewport.current.focus({ preventScroll: true })
   }
   if (failed) return <div className={styles.error}>
     <p role="alert">한글 문서를 표시하지 못했습니다. 암호가 있거나 지원하지 않는 문서일 수 있습니다. 다운로드해서 확인해 주세요.</p>
@@ -149,6 +172,7 @@ function Document({ url, name, retry }: { readonly url: string; readonly name: s
         <button type="button" aria-label="검색 닫기" onClick={hideSearch}>닫기</button>
       </div>
     </div>}
+    <div className={`${styles.viewportShell} ${outline.length ? styles.withOutline : ''}`}>
     <div className={styles.viewport} ref={viewport} role="region" tabIndex={0} aria-label={`${name} 문서`} onScroll={updateViewport}>
       <div className={styles.pages} style={{ height: last ? last.top + last.height + 12 : 0, minWidth: Math.max(0, ...layout.map((frame) => frame.width + 24)) }}>
         {layout.map((frame, number) => <div key={number} className={styles.page} role="region" aria-label={`${number + 1}페이지`}
@@ -160,6 +184,8 @@ function Document({ url, name, retry }: { readonly url: string; readonly name: s
             style={{ left: rect.x * frame.scale, top: rect.y * frame.scale, width: rect.width * frame.scale, height: rect.height * frame.scale }} />) : [])}
         </div>)}
       </div>
+    </div>
+    <DocumentOutline entries={outline} activeId={activeOutlineId} onNavigate={navigateOutline} />
     </div>
     {ready && <details className={styles.text}><summary>현재 페이지 텍스트</summary>
       <pre>{images.get(page)?.text || '추출할 수 있는 텍스트가 없습니다.'}</pre>
