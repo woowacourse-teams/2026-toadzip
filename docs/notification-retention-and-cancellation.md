@@ -22,7 +22,7 @@
 - 주 DB에 `notification_subscriptions.expires_at`, `notification_guest_subscriptions.expires_at`, `notification_guest_cancellation_requests`가 추가된다. `notification_interest_events.email`은 삭제된다. Flyway 버전은 `20260929.04`와 `20260929.05`다.
 - 개발 서버에 브랜치를 병합·배포하면 개발 **주 DB**, 운영 서버에 배포하면 운영 **주 DB**에 각 서버 시작 시 Flyway가 적용된다. 공유 DB에는 알림 신청을 쓰지 않는다. 알림은 사용자 계정·세션과 묶인 서비스 데이터이므로 같은 주 DB 트랜잭션으로 관리한다.
 - 배포 후 각 환경의 DB 이름과 연결 대상을 먼저 확인하고 `scripts/check-notification-schema.sh` 또는 `scripts/check-notification-schema.sql`을 읽기 전용으로 실행한다. Flyway 이력 성공, 테이블·열·제약 조건을 자동 검사한다. `docs/queries/notification-retention-status.sql`로 정리 작업이 밀렸는지 확인한다.
-- 백업 보관 주기는 애플리케이션 저장소에서 제어하지 않는다. 운영 DB 백업 설정에서 **30일 보관**을 별도로 적용하고, 복원 시 Flyway 재적용과 만료 데이터 정리를 실행해야 한다. 백업의 삭제 기한과 복원 절차가 실제 적용됐는지는 인프라 설정·복원 연습으로 확인해야 한다.
+- 백업 보관 주기는 애플리케이션 저장소에서 제어하지 않는다. 운영 DB 백업 설정에서 **30일 보관**을 별도로 적용해야 한다. 복원 시 Flyway와 만료 데이터 정리만 실행하면 백업 시점 이후에 취소한 알림이 되살아날 수 있다. 현재는 별도 취소 원장이 없으므로, 복구 작업에서는 알림 발송을 중지하고 복원된 알림 신청·이메일 설정·취소 요청을 비운 뒤 사용자에게 재신청을 안내하는 절차가 필요하다. 실제 DB에서 이 삭제를 실행하기 전에는 복구 대상과 승인 여부를 확인해야 한다. 백업 삭제 기한과 복원 절차의 적용 여부는 인프라 설정·복원 연습으로 확인한다.
 
 ## 수동 운영 순서
 
