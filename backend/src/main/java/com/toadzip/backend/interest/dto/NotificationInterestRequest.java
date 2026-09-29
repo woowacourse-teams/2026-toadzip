@@ -16,6 +16,7 @@ public record NotificationInterestRequest(
         @NotNull NotificationEventSource source,
         @NotNull NotificationTargetType targetType,
         @NotNull @Pattern(regexp = "[0-9]{1,19}") String targetId,
-        @Email @Size(max = 254) String email
+        @Email @Size(max = 254) String email,
+        UUID clientId
 ) {
 }

@@ -47,6 +47,37 @@ class NotificationInterestIntegrationTest {
     private NotificationInterestRepository repository;
 
     @Test
+    void 비로그인_신청도_브라우저_식별자로_조회하고_취소한다() throws Exception {
+        UUID clientId = UUID.randomUUID();
+        String confirmed = request(UUID.randomUUID(), "CONFIRMED", "REGION_SEARCH", "REGION", "11")
+                .replace("\"targetId\": \"11\"", "\"targetId\": \"11\", \"email\": \"guest@example.com\", "
+                        + "\"clientId\": \"" + clientId + "\"");
+        submit(confirmed);
+        mockMvc.perform(get("/api/v1/notification-subscriptions/guest")
+                        .header("X-Notification-Client-Id", clientId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.emailConfirmed").value(true))
+                .andExpect(jsonPath("$.targets[0].targetId").value("11"));
+
+        String clicked = request(UUID.randomUUID(), "CLICKED", "REGION_SEARCH", "REGION", "11680")
+                .replace("\"targetId\": \"11680\"", "\"targetId\": \"11680\", "
+                        + "\"clientId\": \"" + clientId + "\"");
+        submit(clicked);
+        assertEquals(2, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM notification_guest_subscriptions WHERE client_id = ? AND active",
+                Integer.class, clientId));
+
+        String cancelled = request(UUID.randomUUID(), "CANCELLED", "REGION_SEARCH", "REGION", "11")
+                .replace("\"targetId\": \"11\"", "\"targetId\": \"11\", "
+                        + "\"clientId\": \"" + clientId + "\"");
+        submit(cancelled);
+        mockMvc.perform(get("/api/v1/notification-subscriptions/guest")
+                        .header("X-Notification-Client-Id", clientId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.targets[0].targetId").value("11680"));
+    }
+
+    @Test
     void 로그인_신청은_다른_요청에서도_조회되고_취소가_반영된다() throws Exception {
         long userId = 90000001L;
         jdbcTemplate.update("INSERT INTO users (id, login_identifier, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",

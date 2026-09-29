@@ -15,6 +15,7 @@ import com.toadzip.backend.interest.domain.NotificationTargetType;
 import com.toadzip.backend.interest.dto.NotificationInterestRequest;
 import com.toadzip.backend.interest.exception.InvalidNotificationInterestException;
 import com.toadzip.backend.interest.repository.NotificationInterestRepository;
+import com.toadzip.backend.interest.repository.NotificationGuestSubscriptionRepository;
 import com.toadzip.backend.interest.repository.NotificationSubscriptionRepository;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
 import java.time.Clock;
@@ -28,7 +29,8 @@ class NotificationInterestServiceTest {
     private final HousingComplexRepository complexes = mock(HousingComplexRepository.class);
     private final AnnouncementRepository announcements = mock(AnnouncementRepository.class);
     private final NotificationInterestService service = new NotificationInterestService(
-            repository, subscriptions, mock(RegionCodeResolver.class), complexes, announcements, Clock.systemUTC());
+            repository, subscriptions, mock(NotificationGuestSubscriptionRepository.class),
+            mock(RegionCodeResolver.class), complexes, announcements, Clock.systemUTC());
 
     @Test
     void 존재하는_단지와_공고의_수요를_저장한다() {
@@ -53,6 +55,6 @@ class NotificationInterestServiceTest {
     private NotificationInterestRequest request(
             NotificationEventSource source, NotificationTargetType targetType, String targetId) {
         return new NotificationInterestRequest(UUID.randomUUID(), UUID.randomUUID(), NotificationEventType.CLICKED,
-                source, targetType, targetId, null);
+                source, targetType, targetId, null, null);
     }
 }
