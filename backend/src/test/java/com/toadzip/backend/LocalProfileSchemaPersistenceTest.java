@@ -2,6 +2,7 @@ package com.toadzip.backend;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
@@ -13,10 +14,12 @@ import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -52,7 +55,7 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertTrue(history.next()),
-                        () -> assertEquals(18, history.getInt(1)),
+                        () -> assertEquals(28, history.getInt(1)),
                         () -> assertEquals(1, countColumn(connection,
                                 "notification_interest_events", "event_id")),
                         () -> assertEquals(0, countColumn(connection,
@@ -78,6 +81,11 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertTrue(constraintDefinition(connection,
                                 "notification_interest_events_event_type_check").contains("CANCELLED")),
                         () -> assertEquals(1, countColumn(connection, "users", "email")),
+                        () -> assertEquals(1, countColumn(connection, "announcement_schedules", "complex_name")),
+                        () -> assertEquals(1, countColumn(connection, "housing_complexes", "deposit_min")),
+                        () -> assertEquals(1, countColumn(connection, "housing_complexes", "monthly_rent_min")),
+                        () -> assertEquals(1, countColumn(connection,
+                                "announcement_views", "viewed_on")),
                         () -> assertEquals(1, countColumn(connection,
                                 "admin_announcement_imports", "original_json")),
                         () -> assertEquals(1, countColumn(connection,
@@ -170,10 +178,15 @@ class LocalProfileSchemaPersistenceTest {
                 assertTrue(history.next());
                 assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02,SQL:20260923.01"
                                 + ",SQL:20260923.02,SQL:20260924.01,SQL:20260925.01,SQL:20260925.02"
-                                + ",SQL:20260925.03,SQL:20260926.01,SQL:20260926.02,SQL:20260927.01"
-                                + ",SQL:20260928.01,SQL:20260929.01,SQL:20260929.02,SQL:20260929.03"
-                                + ",SQL:20260929.04,SQL:20260929.05,SQL:20260930.01",
+                                + ",SQL:20260925.03,SQL:20260926.01,SQL:20260926.02,SQL:20260926.03"
+                                + ",SQL:20260926.04,SQL:20260926.05,SQL:20260926.06,SQL:20260927.01"
+                                + ",SQL:20260928.01,SQL:20260928.02,SQL:20260928.03,SQL:20260928.04"
+                                + ",SQL:20260929.01,SQL:20260930.02,SQL:20260930.03,SQL:20260930.04"
+                                + ",SQL:20260930.05,SQL:20260930.06,SQL:20260930.07,SQL:20260930.08"
+                                + ",SQL:20260930.09",
                         history.getString(1));
+                assertEquals(1, countColumn(connection, "verified_lh_supply_replacements", "evidence_url"));
+                assertEquals(1, countColumn(connection, "supply_targets", "lh_amount_preserved_reason"));
                 assertEquals(1, countColumn(connection, "admin_announcement_imports", "original_json"));
                 assertEquals(1, countColumn(connection, "notification_interest_events", "event_id"));
                 assertEquals(1, countColumn(connection, "announcements", "lh_reception_place_owned"));
@@ -181,8 +194,14 @@ class LocalProfileSchemaPersistenceTest {
                 assertEquals(1, countColumn(connection, "announcements", "lh_pan_id_reviewed"));
                 assertEquals(1, countColumn(connection, "ingest_execution_ownership", "generation"));
                 assertEquals(1, countColumn(connection, "ingest_execution_ownership", "owner_id"));
+                assertEquals(1, countColumn(connection, "data_pipeline_executions", "stop_requested"));
+                assertEquals(1, countColumn(connection, "data_pipeline_executions", "work_progress"));
+                assertEquals(1, countColumn(connection, "data_pipeline_executions", "external_request_count"));
                 assertEquals(1, countAllRows(connection, "ingest_execution_ownership"));
                 assertEquals(0, countAllRows(connection, "announcement_application_schedules"));
+                assertEquals(1, countColumn(connection, "myhome_complex_links", "approved_household_count"));
+                assertEquals(1, countColumn(connection, "myhome_complex_merges", "before_state"));
+                assertEquals(1, countColumn(connection, "housing_complex_aliases", "housing_complex_id"));
                 assertEquals(1, countColumn(connection, "supply_rows", "lh_total_supply_household_count_enriched"));
                 assertEquals(1, countColumn(connection, "lh_announcement_detail_source", "request_hash"));
                 assertEquals(1, countColumn(connection, "lh_announcement_detail_source", "winner_announcement_date"));
@@ -195,6 +214,85 @@ class LocalProfileSchemaPersistenceTest {
                         constraintDefinition(connection, "uk_lh_detail_source_request_row"));
                 assertEquals("UNIQUE (pan_id, request_hash, source_order)",
                         constraintDefinition(connection, "uk_lh_supply_source_request_row"));
+            }
+        }
+        finally {
+            dropDatabase(databaseName);
+        }
+    }
+
+    @Test
+    void 기존_단지와_통합_단지의_마이홈_원천_금액을_마이그레이션에서_채운다() throws Exception {
+        String databaseName = "toadzip_price_backfill_" + UUID.randomUUID().toString().replace("-", "");
+        String jdbcUrl = primaryTestDatabaseUrl(databaseName);
+        createDatabase(databaseName);
+        try {
+            Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("classpath:db/migration").target("20260927.01").load().migrate();
+            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
+                    Statement statement = connection.createStatement()) {
+                statement.executeUpdate("""
+                        INSERT INTO housing_complexes (id, city_county_district_code, latitude, legal_dong_code,
+                            longitude, pnu, province_code, road_address, name, parking_space_count, provider,
+                            source_complex_identifier, supply_type, total_household_count, admin_modified)
+                        VALUES (1, '11110', 37.5, '1111010100', 126.9, '1111010100100010000', '11',
+                            '서울 테스트로 1', '테스트 단지', 80, 'LH', '123:NATIONAL_RENTAL', 'NATIONAL_RENTAL',
+                            200, TRUE)
+                        """);
+                statement.executeUpdate("""
+                        INSERT INTO myhome_complex_links (source_complex_identifier, housing_complex_id)
+                        VALUES ('123:NATIONAL_RENTAL', 1), ('456:NATIONAL_RENTAL', 1)
+                        """);
+                statement.executeUpdate("""
+                        INSERT INTO myhome_complex_source
+                            (source_key, hsmp_sn, suply_ty_nm, bass_rent_gtn, bass_mt_rntchrg)
+                        VALUES ('price-a', 123, '국민임대', 10000000, 200000),
+                               ('price-b', 123, '국민임대', 20000000, 300000),
+                               ('price-c', 456, '국민임대', 30000000, 100000),
+                               ('price-unknown', 456, '국민임대', -1, NULL)
+                        """);
+            }
+
+            Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("classpath:db/migration").target("20260928.01").load().migrate();
+
+            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
+                    Statement statement = connection.createStatement();
+                    ResultSet prices = statement.executeQuery("""
+                            SELECT deposit_min, deposit_max, monthly_rent_min, monthly_rent_max
+                            FROM housing_complexes WHERE id = 1
+                            """)) {
+                assertTrue(prices.next());
+                assertAll(
+                        () -> assertEquals(10000000L, prices.getLong("deposit_min")),
+                        () -> assertEquals(30000000L, prices.getLong("deposit_max")),
+                        () -> assertEquals(100000L, prices.getLong("monthly_rent_min")),
+                        () -> assertEquals(300000L, prices.getLong("monthly_rent_max"))
+                );
+            }
+
+            Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("classpath:db/migration").load().migrate();
+
+            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
+                    Statement statement = connection.createStatement()) {
+                statement.executeUpdate("""
+                        UPDATE housing_complexes
+                        SET monthly_rent_min = NULL, monthly_rent_max = NULL
+                        WHERE id = 1
+                        """);
+                assertEquals("23514", assertThrows(SQLException.class, () -> statement.executeUpdate("""
+                        UPDATE housing_complexes SET deposit_min = NULL WHERE id = 1
+                        """)).getSQLState());
+                assertEquals("23514", assertThrows(SQLException.class, () -> statement.executeUpdate("""
+                        UPDATE housing_complexes SET deposit_max = NULL WHERE id = 1
+                        """)).getSQLState());
+                assertEquals("23514", assertThrows(SQLException.class, () -> statement.executeUpdate("""
+                        UPDATE housing_complexes SET monthly_rent_min = 100000 WHERE id = 1
+                        """)).getSQLState());
+                assertEquals(1, statement.executeUpdate("""
+                        UPDATE housing_complexes SET deposit_min = NULL, deposit_max = NULL WHERE id = 1
+                        """));
             }
         }
         finally {

@@ -198,7 +198,7 @@ class NotificationInterestIntegrationTest {
 
     @Test
     void 마이그레이션은_중복_이벤트를_한번만_저장한다() throws Exception {
-        String migration = new ClassPathResource("db/migration/V20260927_01__create_notification_interest_events.sql")
+        String migration = new ClassPathResource("db/migration/V20260930_02__create_notification_interest_events.sql")
                 .getContentAsString(StandardCharsets.UTF_8);
         jdbcTemplate.execute(migration.replace("notification_interest_events", "notification_interest_migration_test"));
         UUID eventId = UUID.randomUUID();

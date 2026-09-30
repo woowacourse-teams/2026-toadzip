@@ -18,9 +18,9 @@ BEGIN
         RAISE EXCEPTION 'Flyway history contains a failed migration';
     END IF;
     FOREACH expected_version IN ARRAY ARRAY[
-            '20260922.02', '20260927.01', '20260928.01', '20260929.01',
-            '20260929.02', '20260929.03', '20260929.04', '20260929.05',
-            '20260930.01'] LOOP
+            '20260922.02', '20260930.02', '20260930.03', '20260930.04',
+            '20260930.05', '20260930.06', '20260930.07', '20260930.08',
+            '20260930.09'] LOOP
         IF NOT EXISTS (
                 SELECT 1 FROM public.flyway_schema_history
                 WHERE version = expected_version AND success = true) THEN

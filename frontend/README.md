@@ -20,6 +20,8 @@ nvm use
 
 프론트엔드 코드를 변경하기 전에 [AGENTS.md](AGENTS.md)에서 기술 경계와 완료 기준을 확인한다.
 
+새 UI에는 [디자인 시스템](docs/design-system.md)의 토큰과 공통 컴포넌트를 우선 사용한다.
+
 ## 의존성 설치
 
 ```shell
@@ -55,6 +57,17 @@ npm run dev
 ```
 
 명령어가 출력하는 로컬 주소를 브라우저에서 열어 애플리케이션을 확인한다.
+
+## 로컬 공공주택 mock
+
+로컬에서만 사용하는 `.codex/local-context/public-housing-mock.json`을 준비하고
+개발 서버에서 `VITE_PUBLIC_HOUSING_LOCAL_MOCK=true`를 설정하면 해당 snapshot으로
+지도·목록·상세·검색을 확인할 수 있다. 지도도 현재 `HousingMapRepository` 계약을
+사용하며, 확대 수준과 관계없이 항상 4단계 개별 단지 결과를 반환한다. 좌표 범위와
+검색 조건은 snapshot 데이터에 적용한다. 서버의 지역 집계·단계 전환 정책은
+재현하지 않으므로 해당 동작은 실제 지도 API를 연결해 확인한다. 통합 검색은
+snapshot의 지역명·단지명·공고명에서 일치하는 결과와 유형별 페이지를 제공하며,
+백엔드 검색 순위나 전체 데이터 검색을 재현하지 않는다.
 
 ## 환경별 지도 설정
 

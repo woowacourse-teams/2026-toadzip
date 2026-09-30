@@ -20,18 +20,6 @@ final class ComplexSummarySqlBuilder {
                        MAX(exclusive_area) AS exclusive_area_max
                 FROM housing_types
                 GROUP BY housing_complex_id
-            ), price_range AS (
-                SELECT supply_row.housing_complex_id,
-                       MIN(supply_target.rental_deposit) AS deposit_min,
-                       MAX(supply_target.rental_deposit) AS deposit_max,
-                       MIN(supply_target.monthly_rent) AS monthly_rent_min,
-                       MAX(supply_target.monthly_rent) AS monthly_rent_max
-                FROM representative
-                JOIN supply_rows supply_row
-                  ON supply_row.housing_complex_id = representative.housing_complex_id
-                 AND supply_row.announcement_id = representative.announcement_id
-                JOIN supply_targets supply_target ON supply_target.supply_row_id = supply_row.id
-                GROUP BY supply_row.housing_complex_id
             )
             SELECT housing_complex.id AS complex_id,
                    housing_complex.name,
@@ -44,10 +32,10 @@ final class ComplexSummarySqlBuilder {
                    housing_complex.longitude,
                    area_range.exclusive_area_min,
                    area_range.exclusive_area_max,
-                   price_range.deposit_min,
-                   price_range.deposit_max,
-                   price_range.monthly_rent_min,
-                   price_range.monthly_rent_max,
+                   housing_complex.deposit_min,
+                   housing_complex.deposit_max,
+                   housing_complex.monthly_rent_min,
+                   housing_complex.monthly_rent_max,
                    representative.announcement_id,
                    representative.publication_type,
                    representative.posted_date,
@@ -60,8 +48,8 @@ final class ComplexSummarySqlBuilder {
             + HousingComplexRepresentativeSql.LEFT_JOIN
             + ApplicationScheduleSql.displayPeriodJoin("representative", "housing_complex.id") + """
             LEFT JOIN area_range ON area_range.housing_complex_id = housing_complex.id
-            LEFT JOIN price_range ON price_range.housing_complex_id = housing_complex.id
-            WHERE housing_complex.latitude BETWEEN :southWestLat AND :northEastLat
+            WHERE housing_complex.admin_deleted = false
+              AND housing_complex.latitude BETWEEN :southWestLat AND :northEastLat
               AND housing_complex.longitude BETWEEN :southWestLng AND :northEastLng
             """;
 
@@ -184,8 +172,8 @@ final class ComplexSummarySqlBuilder {
     private static Map<ComplexSort, SortSpec> sortSpecs() {
         Map<ComplexSort, SortSpec> specifications = Map.of(
                 ComplexSort.LATEST_ANNOUNCEMENT, new SortSpec("representative.posted_date", Direction.DESC),
-                ComplexSort.DEPOSIT_ASC, new SortSpec("price_range.deposit_min", Direction.ASC),
-                ComplexSort.MONTHLY_RENT_ASC, new SortSpec("price_range.monthly_rent_min", Direction.ASC),
+                ComplexSort.DEPOSIT_ASC, new SortSpec("housing_complex.deposit_min", Direction.ASC),
+                ComplexSort.MONTHLY_RENT_ASC, new SortSpec("housing_complex.monthly_rent_min", Direction.ASC),
                 ComplexSort.AREA_DESC, new SortSpec("area_range.exclusive_area_max", Direction.DESC),
                 ComplexSort.COMPLETION_DATE_DESC, new SortSpec("housing_complex.completion_date", Direction.DESC)
         );

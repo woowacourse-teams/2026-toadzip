@@ -1,13 +1,17 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.housing.domain.Address;
+import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.housing.domain.RentalPriceRange;
 import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
+import com.toadzip.backend.ingest.location.domain.NormalizedRoadAddress;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -81,7 +85,24 @@ public class MyHomeComplexSourceMapper {
                 corridorType,
                 elevatorInstalled,
                 parkingSpaceCount,
+                rentalPriceRange(sources),
                 housingTypes
+        );
+    }
+
+    public RentalPriceRange rentalPriceRange(List<MyHomeComplexSource> sources) {
+        List<Long> deposits = sources.stream().map(MyHomeComplexSource::getBassRentGtn)
+                .filter(value -> value != null && value >= 0).toList();
+        List<Long> monthlyRents = sources.stream().map(MyHomeComplexSource::getBassMtRntchrg)
+                .filter(value -> value != null && value >= 0).toList();
+        if (deposits.isEmpty() && monthlyRents.isEmpty()) {
+            return null;
+        }
+        return new RentalPriceRange(
+                deposits.stream().min(Long::compareTo).orElse(null),
+                deposits.stream().max(Long::compareTo).orElse(null),
+                monthlyRents.stream().min(Long::compareTo).orElse(null),
+                monthlyRents.stream().max(Long::compareTo).orElse(null)
         );
     }
 
@@ -129,8 +150,24 @@ record MyHomeComplexMappingData(
         String corridorType,
         Boolean elevatorInstalled,
         int parkingSpaceCount,
+        RentalPriceRange rentalPriceRange,
         List<MyHomeHousingTypeMappingData> housingTypes
 ) {
+
+    boolean matchesVerifiedProduct(HousingComplex product) {
+        return name.equals(product.getName()) && provider.equals(product.getProvider())
+                && supplyType.equals(product.getSupplyType())
+                && address.pnu().equals(product.getAddress().getPnu())
+                && address.provinceCode().equals(product.getAddress().getProvinceCode())
+                && address.cityCountyDistrictCode().equals(product.getAddress().getCityCountyDistrictCode())
+                && new NormalizedRoadAddress(address.sourceRoadAddress()).matches(product.getAddress().getRoadAddress())
+                && Objects.equals(completionDate, product.getCompletionDate())
+                && Objects.equals(heatingType, product.getHeatingType())
+                && Objects.equals(housingType, product.getHousingType())
+                && Objects.equals(corridorType, product.getCorridorType())
+                && Objects.equals(elevatorInstalled, product.getElevatorInstalled())
+                && parkingSpaceCount == product.getParkingSpaceCount();
+    }
 }
 
 record MyHomeAddressMappingData(

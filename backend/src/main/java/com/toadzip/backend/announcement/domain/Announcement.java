@@ -42,6 +42,40 @@ import org.hibernate.annotations.JdbcType;
 @NoArgsConstructor(access = PROTECTED)
 public class Announcement {
 
+    @org.hibernate.annotations.CreationTimestamp
+    @Column(updatable = false)
+    @org.hibernate.annotations.ColumnDefault("CURRENT_TIMESTAMP")
+    private java.time.Instant createdAt;
+
+    @jakarta.persistence.Version
+    @org.hibernate.annotations.ColumnDefault("0")
+    private long version;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminModified;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminDeleted;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean sourceReviewRequired;
+
+    private java.time.Instant adminUpdatedAt;
+
+    public void moveToTrash() {
+        adminDeleted = true;
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
+    public void restore() {
+        adminDeleted = false;
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
+
     @Column(nullable = false)
     private boolean applicationScheduleReviewed;
 
@@ -111,7 +145,7 @@ public class Announcement {
     @Column(nullable = false)
     private boolean lhReceptionPlaceOwned;
 
-    @Column(nullable = false)
+    @Column(nullable = false, updatable = false)
     private long viewCount;
 
     @Column(precision = 12, scale = 4)
@@ -314,6 +348,12 @@ public class Announcement {
                 ownedReceptionPlace
         );
         boolean releasesLhEnrichment = !remainsLh && (lhPanId != null || lhReceptionPlaceOwned);
+        if (adminModified || adminDeleted) {
+            if (adminModified && !hasSameSourceValues(incoming)) {
+                sourceReviewRequired = true;
+            }
+            return false;
+        }
         if (hasSameSourceValues(incoming) && !releasesLhEnrichment) {
             return false;
         }
@@ -323,6 +363,36 @@ public class Announcement {
             lhReceptionPlaceOwned = false;
         }
         return true;
+    }
+
+    public void recordAdminSupplyChange() {
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
+    public void reviseByAdmin(Announcement incoming) {
+        if (adminDeleted) {
+            throw new IllegalArgumentException("휴지통에서 복구한 뒤 수정해 주세요.");
+        }
+        if (lhPanIdReviewed && incoming.provider != provider) {
+            throw new IllegalArgumentException("원천 확인된 공고의 공급기관은 변경할 수 없습니다.");
+        }
+        name = incoming.name;
+        supplyType = incoming.supplyType;
+        recruitmentType = incoming.recruitmentType;
+        provider = incoming.provider;
+        postedDate = incoming.postedDate;
+        if (applicationScheduleReviewed && (!applicationStartDate.equals(incoming.applicationStartDate)
+                || !applicationEndDate.equals(incoming.applicationEndDate))) {
+            throw new IllegalArgumentException("검증된 접수 일정은 일정 관리에서 수정해 주세요.");
+        }
+        applicationStartDate = incoming.applicationStartDate;
+        applicationEndDate = incoming.applicationEndDate;
+        winnerAnnouncementDate = incoming.winnerAnnouncementDate;
+        originalUrl = incoming.originalUrl;
+        receptionPlace = incoming.receptionPlace;
+        adminModified = true;
+        sourceReviewRequired = false;
+        adminUpdatedAt = java.time.Instant.now();
     }
 
     private boolean hasSameSourceValues(Announcement incoming) {
@@ -367,6 +437,12 @@ public class Announcement {
     }
 
     public boolean enrichFromLh(String panId, String correctionReason, ReceptionPlace receptionPlace) {
+        if (adminModified || adminDeleted) {
+            if (adminModified && receptionPlace != null && !hasSameReceptionPlace(receptionPlace)) {
+                sourceReviewRequired = true;
+            }
+            return false;
+        }
         if (lhPanIdReviewed && !Objects.equals(lhPanId, panId)) {
             throw new IllegalArgumentException("확인된 LH 공고의 원천을 바꿀 수 없습니다.");
         }

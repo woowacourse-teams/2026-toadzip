@@ -27,7 +27,8 @@ class HousingJpaMappingTest {
         assertEntityAttributes(
                 "HousingComplex",
                 Set.of(
-                        "id",
+                        "id", "createdAt", "version", "adminModified", "adminDeleted",
+                        "sourceReviewRequired", "adminUpdatedAt",
                         "name",
                         "sourceComplexIdentifier",
                         "supplyType",
@@ -41,7 +42,8 @@ class HousingJpaMappingTest {
                         "elevatorInstalled",
                         "parkingSpaceCount",
                         "imageUrl",
-                        "recentOneYearMoveOutCount"
+                        "recentOneYearMoveOutCount",
+                        "rentalPriceRange"
                 )
         );
         assertEntityAttributes(
@@ -70,6 +72,10 @@ class HousingJpaMappingTest {
                         "latitude",
                         "longitude"
                 )
+        );
+        assertEmbeddableAttributes(
+                "RentalPriceRange",
+                Set.of("depositMin", "depositMax", "monthlyRentMin", "monthlyRentMax")
         );
     }
 

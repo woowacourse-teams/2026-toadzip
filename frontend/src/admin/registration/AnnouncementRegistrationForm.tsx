@@ -1,3 +1,4 @@
+import { Link } from 'react-router'
 import { useState, type FormEvent } from 'react'
 import {
   createAnnouncement,
@@ -39,6 +40,7 @@ export function AnnouncementRegistrationForm({
   onSubmittingChange: (isSubmitting: boolean) => void
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [createdId, setCreatedId] = useState<number | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Readonly<Record<string, string>>>({})
@@ -60,6 +62,7 @@ export function AnnouncementRegistrationForm({
       const created = await createAnnouncement(
         announcementRequest(new FormData(form), housingComplexId),
       )
+      setCreatedId(created.announcementId)
       form.reset()
       setSuccess(`${created.name} 공고를 저장했습니다.`)
     } catch (requestError) {
@@ -80,7 +83,7 @@ export function AnnouncementRegistrationForm({
           선택 단지: <strong>{housingComplex.name}</strong> · {housingComplex.roadAddress}
         </p>
       ) : (
-        <p className="selected-complex-guide">먼저 이 페이지에서 단지를 등록해 주세요.</p>
+        <p className="selected-complex-guide">위에서 등록된 단지를 확인하거나, 단지 입력 화면에서 새 단지를 등록해 주세요.</p>
       )}
       <form className="registration-form" onSubmit={handleSubmit}>
         <fieldset>
@@ -244,6 +247,7 @@ export function AnnouncementRegistrationForm({
           {isSubmitting ? '공고 저장 중…' : '공고 저장'}
         </button>
       </form>
+      {createdId ? <Link className="admin-primary" to={`/admin/announcements/${createdId}`}>등록한 공고 상세 보기 →</Link> : null}
     </section>
   )
 }

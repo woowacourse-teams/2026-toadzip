@@ -1,3 +1,4 @@
+import { labels } from '../management/fields'
 import { AdminRegistrationApiError } from './api'
 
 export function registrationFailure(error: unknown, fallback: string) {
@@ -24,5 +25,5 @@ export function numberValue(formData: FormData, name: string): number {
 }
 
 export function options(values: ReadonlyArray<string>) {
-  return values.map((value) => ({ label: value, value }))
+  return values.map((value) => ({ label: labels[value] ?? value, value }))
 }

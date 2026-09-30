@@ -377,19 +377,19 @@ function countdownPresentation(announcement: HousingComplexCardAnnouncement) {
       return null
     }
     return {
-      accessible: `접수 마감일 ${MISSING_DATA_LABEL}`,
+      accessible: `접수 ${announcement.applicationStatus === 'BEFORE_APPLICATION' ? '시작일' : '마감일'} ${MISSING_DATA_LABEL}`,
       visible: MISSING_DATA_LABEL,
     }
   }
   return {
-    accessible: `접수 마감까지 ${announcement.dDay}일`,
+    accessible: `접수 ${announcement.applicationStatus === 'BEFORE_APPLICATION' ? '시작' : '마감'}까지 ${announcement.dDay}일`,
     visible: countdownLabel(announcement.applicationStatus, announcement.dDay),
   }
 }
 
 function countdownLabel(status: string, dDay: number) {
   const value = dDay === 0 ? 'D-Day' : `D-${dDay}`
-  return status === 'BEFORE_APPLICATION' ? `마감 ${value}` : value
+  return status === 'BEFORE_APPLICATION' ? `접수 시작 ${value}` : value
 }
 
 function isUrgent(announcement: HousingComplexCardAnnouncement) {

@@ -4,16 +4,27 @@ import {
   loadLocalPublicHousingMock,
   localPublicHousingMockEnabled,
 } from './api/defaultPublicHousingRepository.ts'
-import { housingMapRepository } from './api/housingMapRepository.ts'
+import {
+  housingMapRepository,
+  type HousingMapRepository,
+} from './api/housingMapRepository.ts'
 import type { PublicHousingRepository } from './api/publicHousingRepository.ts'
 import type { PublicHousingRegionRepository } from './api/publicHousingRegionRepository.ts'
-import { decodePublicHousingSnapshot } from './api/snapshotPublicHousingRepository.ts'
+import {
+  createSnapshotPublicHousingRepositories,
+  decodePublicHousingSnapshot,
+} from './api/snapshotPublicHousingRepository.ts'
 import { createSnapshotPublicHousingRegionRepository } from './api/snapshotPublicHousingRegionRepository.ts'
+import { createSnapshotIntegratedSearchRepository } from './api/snapshotIntegratedSearchRepository.ts'
+import type { IntegratedSearchRepository } from './search/integratedSearchRepository.ts'
 import { PublicHousingExplorer } from './PublicHousingExplorer.tsx'
 
 type LocalSnapshotState =
   | { readonly status: 'loading' }
   | {
+    readonly searchRepository: IntegratedSearchRepository
+    readonly repository: PublicHousingRepository
+    readonly mapRepository: HousingMapRepository
     readonly regionRepository: PublicHousingRegionRepository
     readonly status: 'ready'
   }
@@ -38,7 +49,7 @@ export function DefaultPublicHousingExplorer() {
 
 export function LocalPublicHousingExplorer({
   loadSnapshot = loadLocalPublicHousingMock,
-  repository = defaultPublicHousingRepository,
+  repository,
 }: LocalPublicHousingExplorerProps) {
   const [retryRevision, setRetryRevision] = useState(0)
   const [state, setState] = useState<LocalSnapshotState>({
@@ -53,6 +64,8 @@ export function LocalPublicHousingExplorer({
       .then((snapshot) => {
         if (active) {
           setState({
+            ...createSnapshotPublicHousingRepositories(snapshot),
+            searchRepository: createSnapshotIntegratedSearchRepository(snapshot),
             regionRepository:
               createSnapshotPublicHousingRegionRepository(snapshot),
             status: 'ready',
@@ -72,8 +85,10 @@ export function LocalPublicHousingExplorer({
   if (state.status === 'ready') {
     return (
       <PublicHousingExplorer
+        mapRepository={state.mapRepository}
         regionRepository={state.regionRepository}
-        repository={repository}
+        searchRepository={state.searchRepository}
+        repository={repository ?? state.repository}
       />
     )
   }

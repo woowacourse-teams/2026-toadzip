@@ -16,6 +16,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.RentalPriceRange;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
@@ -222,6 +223,50 @@ class MyHomeComplexMappingServiceTest {
                 })
                 .extracting(type -> type.getName())
                 .containsExactlyInAnyOrder("46A", "59A");
+    }
+
+    @Test
+    void 주택형별_마이홈_금액을_단지_범위로_저장하고_재매핑에서_갱신한다() {
+        MyHomeComplexSourceSnapshot firstData = data(
+                123L, "46A", "46.8000", "20.2000", "서울주택도시공사", "20200101");
+        MyHomeComplexSourceSnapshot secondData = data(
+                123L, "59A", "59.9500", "24.1000", "서울주택도시공사", "20200101");
+        MyHomeComplexSource first = source(withPrices(firstData, 10_000_000L, 200_000L));
+        MyHomeComplexSource second = source(withPrices(secondData, 20_000_000L, 100_000L));
+        sourceRepository.saveAll(List.of(first, second));
+
+        service.mapAll();
+
+        assertThat(complexRepository.findAll()).singleElement().satisfies(complex ->
+                assertThat(complex.getRentalPriceRange()).isEqualTo(
+                        new RentalPriceRange(
+                                10_000_000L, 20_000_000L, 100_000L, 200_000L)));
+
+        first.replaceWith(withPrices(firstData, null, null));
+        second.replaceWith(withPrices(secondData, 30_000_000L, 300_000L));
+        sourceRepository.saveAll(List.of(first, second));
+
+        var report = service.mapAll();
+
+        assertThat(report.updatedComplexCount()).isOne();
+        assertThat(complexRepository.findAll()).singleElement().satisfies(complex ->
+                assertThat(complex.getRentalPriceRange()).isEqualTo(
+                        new RentalPriceRange(
+                                30_000_000L, 30_000_000L, 300_000L, 300_000L)));
+    }
+
+    @Test
+    void 마이홈_금액이_전혀_없으면_단지_금액을_미제공으로_유지한다() {
+        sourceRepository.save(source(withPrices(
+                data(123L, "46A", "46.8000", "20.2000", "서울주택도시공사", "20200101"),
+                null, null)));
+
+        service.mapAll();
+        var repeated = service.mapAll();
+
+        assertThat(complexRepository.findAll()).singleElement()
+                .satisfies(complex -> assertThat(complex.getRentalPriceRange()).isNull());
+        assertThat(repeated.unchangedComplexCount()).isOne();
     }
 
     @Test
@@ -680,4 +725,18 @@ class MyHomeComplexMappingServiceTest {
                 original.bassCnvrsGtnLmt()
         );
     }
+
+    private MyHomeComplexSourceSnapshot withPrices(
+            MyHomeComplexSourceSnapshot original, Long deposit, Long monthlyRent
+    ) {
+        return new MyHomeComplexSourceSnapshot(
+                original.hsmpSn(), original.insttNm(), original.brtcCode(), original.brtcNm(),
+                original.signguCode(), original.signguNm(), original.hsmpNm(), original.rnAdres(), original.pnu(),
+                original.competDe(), original.hshldCo(), original.suplyTyNm(), original.styleNm(),
+                original.suplyPrvuseAr(), original.suplyCmnuseAr(), original.houseTyNm(),
+                original.heatMthdDetailNm(), original.buldStleNm(), original.elvtrInstlAtNm(),
+                original.parkngCo(), deposit, monthlyRent, original.bassCnvrsGtnLmt()
+        );
+    }
+
 }

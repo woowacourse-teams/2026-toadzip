@@ -80,11 +80,13 @@ final class HousingComplexFilterPredicateBuilder {
                 JOIN announcements cancelled_announcement
                   ON cancelled_announcement.id = cancelled_supply_row.announcement_id
                 WHERE cancelled_supply_row.housing_complex_id = housing_complex.id
+                  AND cancelled_announcement.admin_deleted = false
                   AND cancelled_announcement.status IN ('CANCELLATION', '취소공고')
                   AND NOT EXISTS (
                       SELECT 1
                       FROM announcements cancelled_successor
                       WHERE cancelled_successor.previous_announcement_id = cancelled_announcement.id
+                        AND cancelled_successor.admin_deleted = false
                   )
             )
             """.strip();
@@ -96,36 +98,24 @@ final class HousingComplexFilterPredicateBuilder {
                     WHERE matched_housing_type.housing_complex_id = housing_complex.id
             """;
 
-    private static final String SUPPLY_TARGET_EXISTS_START = """
-              AND EXISTS (
-                    SELECT 1
-                    FROM supply_rows matched_supply_row
-                    JOIN supply_targets matched_supply_target
-                      ON matched_supply_target.supply_row_id = matched_supply_row.id
-                    LEFT JOIN housing_types matched_housing_type
-                      ON matched_housing_type.id = matched_supply_row.housing_type_id
-                    WHERE matched_supply_row.housing_complex_id = housing_complex.id
-                      AND matched_supply_row.announcement_id = representative.announcement_id
-            """;
-
     private static final String EXISTS_END = """
               )
             """;
 
     private static final String MIN_DEPOSIT_FILTER = """
-                      AND matched_supply_target.rental_deposit >= :minDeposit
+              AND housing_complex.deposit_min >= :minDeposit
             """;
 
     private static final String MAX_DEPOSIT_FILTER = """
-                      AND matched_supply_target.rental_deposit <= :maxDeposit
+              AND housing_complex.deposit_min <= :maxDeposit
             """;
 
     private static final String MIN_MONTHLY_RENT_FILTER = """
-                      AND matched_supply_target.monthly_rent >= :minMonthlyRent
+              AND housing_complex.monthly_rent_min >= :minMonthlyRent
             """;
 
     private static final String MAX_MONTHLY_RENT_FILTER = """
-                      AND matched_supply_target.monthly_rent <= :maxMonthlyRent
+              AND housing_complex.monthly_rent_min <= :maxMonthlyRent
             """;
 
     private static final String MIN_EXCLUSIVE_AREA_FILTER = """
@@ -257,27 +247,21 @@ final class HousingComplexFilterPredicateBuilder {
             StringBuilder sql,
             Map<String, Object> parameters
     ) {
-        if (hasPriceFilter(condition)) {
-            addSupplyTargetExists(condition, sql, parameters);
-            return;
-        }
+        addPriceBounds(condition, sql, parameters);
         if (hasAreaFilter(condition)) {
             addAreaExists(condition, sql, parameters);
         }
     }
 
-    private void addSupplyTargetExists(
+    private void addPriceBounds(
             HousingComplexFilterCondition condition,
             StringBuilder sql,
             Map<String, Object> parameters
     ) {
-        sql.append(SUPPLY_TARGET_EXISTS_START);
         addFilter(condition.minDeposit(), MIN_DEPOSIT_FILTER, "minDeposit", sql, parameters);
         addFilter(condition.maxDeposit(), MAX_DEPOSIT_FILTER, "maxDeposit", sql, parameters);
         addFilter(condition.minMonthlyRent(), MIN_MONTHLY_RENT_FILTER, "minMonthlyRent", sql, parameters);
         addFilter(condition.maxMonthlyRent(), MAX_MONTHLY_RENT_FILTER, "maxMonthlyRent", sql, parameters);
-        addAreaBounds(condition, sql, parameters);
-        sql.append(EXISTS_END);
     }
 
     private void addAreaExists(
@@ -297,13 +281,6 @@ final class HousingComplexFilterPredicateBuilder {
     ) {
         addFilter(condition.minExclusiveArea(), MIN_EXCLUSIVE_AREA_FILTER, "minExclusiveArea", sql, parameters);
         addFilter(condition.maxExclusiveArea(), MAX_EXCLUSIVE_AREA_FILTER, "maxExclusiveArea", sql, parameters);
-    }
-
-    private boolean hasPriceFilter(HousingComplexFilterCondition condition) {
-        return condition.minDeposit() != null
-                || condition.maxDeposit() != null
-                || condition.minMonthlyRent() != null
-                || condition.maxMonthlyRent() != null;
     }
 
     private boolean hasAreaFilter(HousingComplexFilterCondition condition) {

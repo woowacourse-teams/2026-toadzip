@@ -12,6 +12,10 @@ import org.springframework.data.repository.query.Param;
 
 public interface SupplyRowRepository extends JpaRepository<SupplyRow, Long> {
 
+    java.util.List<SupplyRow> findAllByHousingComplexId(long complexId);
+
+    boolean existsByHousingComplexIdAndAnnouncementAdminDeletedFalse(long complexId);
+
     Optional<SupplyRow> findBySourceSupplyRowIdentifier(String sourceSupplyRowIdentifier);
 
     List<SupplyRow> findAllByAnnouncement(Announcement announcement);

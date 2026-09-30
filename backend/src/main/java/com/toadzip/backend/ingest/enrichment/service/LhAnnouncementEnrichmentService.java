@@ -10,10 +10,12 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionChec
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhProviderPolicy;
+import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
+import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
@@ -28,7 +30,6 @@ import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningExcept
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper;
-import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCurrentSources;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -50,6 +51,7 @@ public class LhAnnouncementEnrichmentService {
     private final AnnouncementRepository announcementRepository;
     private final LhAnnouncementDetailSourceRepository detailSourceRepository;
     private final LhAnnouncementSupplySourceRepository supplySourceRepository;
+    private final LhSourceStore sourceStore;
     private final LhAnnouncementEnrichmentFailureRepository failureRepository;
     private final LhAnnouncementEnrichmentFailureStore failureStore;
     private final MyHomeAnnouncementMappingFailureRepository mappingFailureRepository;
@@ -65,6 +67,7 @@ public class LhAnnouncementEnrichmentService {
             AnnouncementRepository announcementRepository,
             LhAnnouncementDetailSourceRepository detailSourceRepository,
             LhAnnouncementSupplySourceRepository supplySourceRepository,
+            LhSourceStore sourceStore,
             LhAnnouncementEnrichmentFailureRepository failureRepository,
             LhAnnouncementEnrichmentFailureStore failureStore,
             MyHomeAnnouncementMappingFailureRepository mappingFailureRepository,
@@ -79,6 +82,7 @@ public class LhAnnouncementEnrichmentService {
         this.announcementRepository = announcementRepository;
         this.detailSourceRepository = detailSourceRepository;
         this.supplySourceRepository = supplySourceRepository;
+        this.sourceStore = sourceStore;
         this.failureRepository = failureRepository;
         this.failureStore = failureStore;
         this.mappingFailureRepository = mappingFailureRepository;
@@ -202,7 +206,8 @@ public class LhAnnouncementEnrichmentService {
                         "마이홈 공고 매핑 실패가 남아 LH 보강을 보류했습니다.", failures, occurredAt);
             }
             LhAnnouncementEnrichmentWriteResult result = writer.write(
-                    announcement, data, changedHousingTypeRows
+                    announcement, data, changedHousingTypeRows, historicalSourceKeys(sources, lhSources),
+                    supplies.isEmpty() && sourceStore.hasVerifiedEmptySupplies(panId, request.requestDescription())
             );
             addSupplyFailures(source, panId, result.failures(), failures, occurredAt);
             return result.report();
@@ -210,6 +215,17 @@ public class LhAnnouncementEnrichmentService {
         catch (LhAnnouncementEnrichmentRejectedException exception) {
             return reject(source, panId, exception.reason(), exception.getMessage(), failures, occurredAt);
         }
+    }
+
+    private Set<String> historicalSourceKeys(
+            List<MyHomeAnnouncementSource> sources,
+            List<MyHomeAnnouncementSource> currentSources
+    ) {
+        Set<String> currentKeys = currentSources.stream()
+                .map(MyHomeAnnouncementSource::getSourceKey).collect(Collectors.toSet());
+        return sources.stream().map(MyHomeAnnouncementSource::getSourceKey)
+                .filter(key -> !currentKeys.contains(key))
+                .collect(Collectors.toSet());
     }
 
     private void addSupplyFailures(

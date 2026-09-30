@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.collection.service;
 
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionReport;
@@ -43,6 +44,7 @@ public class MyHomeComplexCollectionService {
                 MAX_CONCURRENT_REGIONS
         );
         List<MyHomeRegion> regions = regionsFor(request);
+        IngestExecutionScope.beginWork("마이홈 단지 · 전체 지역", "지역", regions.size());
         MyHomeComplexCollectionReport report = collectRegions(regions, request);
         log.info(
                 "마이홈 단지 수집을 완료했습니다: storedRowCount={}, failedRequestCount={}, externalApiCallCount={}",
@@ -58,7 +60,9 @@ public class MyHomeComplexCollectionService {
             MyHomeComplexCollectionRequest request
     ) {
         if (regions.size() == 1) {
-            return regionCollector.collect(regions.getFirst(), request);
+            MyHomeComplexCollectionReport report = regionCollector.collect(regions.getFirst(), request);
+            IngestExecutionScope.workCompleted();
+            return report;
         }
         return collectRegionsConcurrently(regions, request);
     }
@@ -108,7 +112,7 @@ public class MyHomeComplexCollectionService {
             cancelRemaining = true;
         }
         finally {
-            if (cancelRemaining) {
+            if (cancelRemaining && !(failure instanceof DataPipelineStoppedException)) {
                 cancelNeverStarted(executor.shutdownNow());
             }
             else {
@@ -182,7 +186,9 @@ public class MyHomeComplexCollectionService {
             if (context != null) {
                 MDC.setContextMap(context);
             }
-            return regionCollector.collect(region, request, rateLimitReached);
+            MyHomeComplexCollectionReport report = regionCollector.collect(region, request, rateLimitReached);
+            IngestExecutionScope.workCompleted();
+            return report;
         }
         finally {
             MDC.clear();

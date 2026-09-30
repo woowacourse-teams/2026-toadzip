@@ -62,6 +62,10 @@ public class HousingComplexDetailMapper {
                 complex.moveOutCountLastYear(),
                 complex.totalHouseholdCount(),
                 complex.totalParkingCount(),
+                complex.depositMin(),
+                complex.depositMax(),
+                complex.monthlyRentMin(),
+                complex.monthlyRentMax(),
                 toImages(complex.imageUrl()),
                 null,
                 toHousingTypes(housingTypes, conditionsByHousingType),
@@ -180,6 +184,9 @@ public class HousingComplexDetailMapper {
         if (row.confirmedApplicationEndDate() == null || "CONDITIONAL".equals(row.applicationStatus())
                 || "CANCELLED".equals(row.applicationStatus()) || "CLOSED".equals(row.applicationStatus())) {
             return null;
+        }
+        if ("BEFORE_APPLICATION".equals(row.applicationStatus())) {
+            return Math.toIntExact(ChronoUnit.DAYS.between(today, row.applicationStartAt()));
         }
         return Math.toIntExact(ChronoUnit.DAYS.between(today, row.confirmedApplicationEndDate()));
     }

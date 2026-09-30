@@ -173,6 +173,10 @@ public class HousingType {
         return Boolean.TRUE.equals(duplex);
     }
 
+    public boolean hasSupplementalInformation() {
+        return totalHouseholdCount != null || floorPlanUrl != null || duplex != null || maintenanceFee != null;
+    }
+
     private static boolean sameAmount(BigDecimal left, BigDecimal right) {
         if (left == null || right == null) {
             return left == right;

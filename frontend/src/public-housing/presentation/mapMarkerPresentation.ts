@@ -1,8 +1,8 @@
 import { MISSING_DATA_LABEL } from './missingData.ts'
-import { housingMoneyParts, type HousingMoneyParts } from './housingMoney.ts'
+import { compactMarkerAmountParts, type MapMarkerAmountParts } from './mapMarkerAmount.ts'
 import type { HousingAgency, MapComplex } from '../model/publicHousing.ts'
 
-export interface MapMarkerAmount extends HousingMoneyParts {
+export interface MapMarkerAmount extends MapMarkerAmountParts {
   readonly exactLabel: string
 }
 
@@ -53,25 +53,18 @@ export function presentMapComplexMarker(
 export function presentComplexDetailMarker(
   detail: DetailMarkerSource,
 ): MapMarkerPresentation {
-  const conditions = detail.housingTypes.flatMap(
-    ({ currentSupplyConditions }) => currentSupplyConditions,
-  )
   return presentMarker(
     detail.agency,
     detail.rentalType,
-    minimumAmount(conditions.map(({ deposit }) => deposit)),
-    minimumAmount(conditions.map(({ monthlyRent }) => monthlyRent)),
+    detail.depositMin,
+    detail.monthlyRentMin,
   )
 }
 
 interface DetailMarkerSource {
   readonly agency: HousingAgency | null
-  readonly housingTypes: readonly {
-    readonly currentSupplyConditions: readonly {
-      readonly deposit: number | null
-      readonly monthlyRent: number | null
-    }[]
-  }[]
+  readonly depositMin: number | null
+  readonly monthlyRentMin: number | null
   readonly rentalType: string | null
 }
 
@@ -119,19 +112,8 @@ function nonBlank(value: string | null | undefined): string | null {
   return trimmed ? trimmed : null
 }
 
-function isValidAmount(value: number | null): value is number {
-  return value !== null && Number.isFinite(value) && value >= 0
-}
-
-function minimumAmount(values: readonly (number | null)[]): number | null {
-  return values.reduce<number | null>((minimum, value) => {
-    if (!isValidAmount(value)) return minimum
-    return minimum === null || value < minimum ? value : minimum
-  }, null)
-}
-
 function presentAmount(value: number | null): MapMarkerAmount | null {
-  const parts = housingMoneyParts(value)
+  const parts = compactMarkerAmountParts(value)
   if (parts === null || value === null) return null
   const exactLabel = `${value.toLocaleString('ko-KR', { maximumFractionDigits: 20 })}원`
   return { ...parts, exactLabel }

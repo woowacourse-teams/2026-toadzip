@@ -16,9 +16,9 @@ FROM public.flyway_schema_history
 ORDER BY installed_rank;
 
 WITH expected(version) AS (
-    VALUES ('20260922.02'), ('20260927.01'), ('20260928.01'), ('20260929.01'),
-           ('20260929.02'), ('20260929.03'), ('20260929.04'), ('20260929.05'),
-           ('20260930.01')
+    VALUES ('20260922.02'), ('20260930.02'), ('20260930.03'), ('20260930.04'),
+           ('20260930.05'), ('20260930.06'), ('20260930.07'), ('20260930.08'),
+           ('20260930.09')
 )
 SELECT expected.version,
        COALESCE(bool_or(history.success), false) AS applied_successfully

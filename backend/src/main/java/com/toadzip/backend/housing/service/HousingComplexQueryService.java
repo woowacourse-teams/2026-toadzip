@@ -15,7 +15,6 @@ import com.toadzip.backend.housing.domain.MapBounds;
 import com.toadzip.backend.housing.dto.request.HousingComplexSearchRequest;
 import com.toadzip.backend.housing.dto.response.HousingComplexDetailResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexListResponse;
-import com.toadzip.backend.housing.dto.response.HousingComplexMapResponse;
 import com.toadzip.backend.housing.exception.HousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.InvalidComplexRequestException;
 import com.toadzip.backend.housing.repository.ComplexDetailQueryRepository;
@@ -73,16 +72,6 @@ public class HousingComplexQueryService {
     }
 
     @Transactional(readOnly = true)
-    public HousingComplexMapResponse getComplexesForMap(HousingComplexSearchRequest request) {
-        MapBounds bounds = requestNormalizer.normalizeBounds(request);
-        HousingComplexFilterCondition filters = requestNormalizer.normalizeFilters(request);
-        HousingComplexSearchCondition condition = new HousingComplexSearchCondition(bounds, filters);
-        return new HousingComplexMapResponse(repository.findAll(condition).stream()
-                .map(summaryMapper::toMapItem)
-                .toList());
-    }
-
-    @Transactional(readOnly = true)
     public HousingComplexListResponse getComplexes(
             HousingComplexSearchRequest request,
             ComplexSort sort,
@@ -115,12 +104,13 @@ public class HousingComplexQueryService {
         LocalDate today = today();
         ComplexDetailRow complex = detailRepository.findComplex(complexId)
                 .orElseThrow(HousingComplexNotFoundException::new);
+        long resolvedId = complex.complexId();
         return detailMapper.toResponse(
                 complex,
-                detailRepository.findHousingTypes(complexId),
-                detailRepository.findCurrentSupplyConditions(complexId, today),
-                detailRepository.findCurrentAnnouncements(complexId, today),
-                detailRepository.findCurrentAnnouncementTargets(complexId, today),
+                detailRepository.findHousingTypes(resolvedId),
+                detailRepository.findCurrentSupplyConditions(resolvedId, today),
+                detailRepository.findCurrentAnnouncements(resolvedId, today),
+                detailRepository.findCurrentAnnouncementTargets(resolvedId, today),
                 today
         );
     }

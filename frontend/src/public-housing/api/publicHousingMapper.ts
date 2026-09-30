@@ -76,6 +76,11 @@ export function toAnnouncementDetail(
     documentLinkUrl: raw.documentLinkUrl,
     receptionPlaces: raw.receptionPlaces,
     schedules: raw.schedules.map(toAnnouncementSchedule),
+    applicationSchedules: (raw.applicationSchedules ?? []).map((schedule) => ({
+      ...schedule,
+      scheduleId: canonicalId(schedule.scheduleId),
+      housingComplexId: schedule.housingComplexId === null ? null : canonicalId(schedule.housingComplexId),
+    })),
     attachments: raw.attachments.map(toAnnouncementAttachment),
     supplyRows: raw.supplyRows.map(toAnnouncementSupplyRow),
     competition: raw.competition,
@@ -98,6 +103,10 @@ export function toComplexDetail(raw: RawComplexDetail): ComplexDetail {
     moveOutCountLastYear: raw.moveOutCountLastYear,
     totalHouseholdCount: raw.totalHouseholdCount,
     totalParkingCount: raw.totalParkingCount,
+    depositMin: raw.depositMin,
+    depositMax: raw.depositMax,
+    monthlyRentMin: raw.monthlyRentMin,
+    monthlyRentMax: raw.monthlyRentMax,
     images: raw.images,
     overviewImageUrl: raw.overviewImageUrl,
     housingTypes: raw.housingTypes.map(toComplexHousingType),
@@ -106,12 +115,6 @@ export function toComplexDetail(raw: RawComplexDetail): ComplexDetail {
     ),
     raw,
   }
-}
-
-export function toMapComplexes(
-  rawItems: readonly RawMapComplex[],
-): readonly MapComplex[] {
-  return rawItems.filter(hasValidCoordinates).map(toMapComplex)
 }
 
 function toComplexListItem(raw: RawComplexListItem): ComplexListItem {
@@ -165,6 +168,7 @@ function toAnnouncementSchedule(
   raw: RawAnnouncementSchedule,
 ): AnnouncementSchedule {
   return {
+    complexName: raw.complexName ?? null,
     scheduleId: canonicalId(raw.scheduleId),
     type: raw.type,
     name: raw.name,
@@ -320,13 +324,4 @@ export function toMapComplex(raw: RawMapComplex): MapComplex {
 
 function canonicalId(id: number): string {
   return String(id)
-}
-
-function hasValidCoordinates(raw: RawMapComplex): boolean {
-  return (
-    raw.latitude >= -90 &&
-    raw.latitude <= 90 &&
-    raw.longitude >= -180 &&
-    raw.longitude <= 180
-  )
 }

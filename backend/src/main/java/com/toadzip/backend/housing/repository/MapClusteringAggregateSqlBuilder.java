@@ -22,7 +22,7 @@ final class MapClusteringAggregateSqlBuilder {
             JOIN region_assignment
               ON region_assignment.stored_region_code = housing_complex.city_county_district_code
             """ + HousingComplexRepresentativeSql.LEFT_JOIN + """
-            WHERE 1 = 1
+            WHERE housing_complex.admin_deleted = false
             """;
 
     private static final String GROUP_AND_ORDER = """

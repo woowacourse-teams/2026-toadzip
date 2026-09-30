@@ -22,8 +22,10 @@ import java.util.List;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 
 @Getter
+@DynamicUpdate
 @Entity
 @Table(
         name = "data_pipeline_executions",
@@ -110,6 +112,36 @@ public class DataPipelineExecution {
 
     private Instant finishedAt;
 
+    @Column(nullable = false)
+    private boolean stopRequested;
+
+    @Column(nullable = false)
+    private long externalRequestCount;
+
+    @Column(length = 500)
+    private String lastRequestDescription;
+
+    private Instant lastProgressAt;
+
+    @Column(columnDefinition = "text")
+    private String workProgress;
+
+    public void requestStop() {
+        if (isRunning()) {
+            stopRequested = true;
+        }
+    }
+
+    public void stop(Instant stoppedAt) {
+        requireRunning();
+        if (!stopRequested) {
+            throw new IllegalStateException("중지가 요청되지 않은 실행입니다.");
+        }
+        status = DataPipelineExecutionStatus.STOPPED;
+        finishedAt = stoppedAt;
+    }
+
+
     private DataPipelineExecution(
             UUID executionId,
             DataPipelineType type,
@@ -181,6 +213,7 @@ public class DataPipelineExecution {
             throw new IllegalStateException("다음 순서의 단계만 시작할 수 있습니다.");
         }
         currentStep = step;
+        workProgress = null;
     }
 
     public void completeStep(DataPipelineStep step, String report) {
@@ -215,6 +248,7 @@ public class DataPipelineExecution {
             throw new IllegalStateException("부분 실패한 단계의 바로 다음 단계만 시작할 수 있습니다.");
         }
         currentStep = nextStep;
+        workProgress = null;
     }
 
     public void recordPartialFailure(DataPipelineStep step, String report) {

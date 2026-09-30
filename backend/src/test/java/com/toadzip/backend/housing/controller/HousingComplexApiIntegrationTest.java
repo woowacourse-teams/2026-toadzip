@@ -26,6 +26,7 @@ import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.ComplexSort;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.RentalPriceRange;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -167,6 +168,7 @@ class HousingComplexApiIntegrationTest {
         );
 
         persistCorrectionChain(sameDateType);
+        insideComplex.updateRentalPriceRange(new RentalPriceRange(10000000L, 30000000L, 100000L, 300000L));
         persistCancellationChain(boundaryType);
         persistEndedLeaf();
         persistUnmatchedCurrentRow();
@@ -302,7 +304,7 @@ class HousingComplexApiIntegrationTest {
     void 잘못된_지도_경계는_정확한_INVALID_MAP_BOUNDS_계약으로_반환한다(HttpErrorCase errorCase)
             throws Exception {
         assertHttpError(
-                requestFor("/api/v1/complexes/map", errorCase),
+                requestFor("/api/v2/complexes/map", errorCase).param("zoom", "14.00"),
                 "INVALID_MAP_BOUNDS",
                 "지도 범위 좌표가 올바르지 않습니다.",
                 errorCase.expectedField()
@@ -326,21 +328,23 @@ class HousingComplexApiIntegrationTest {
 
     @Test
     void 지도는_경계를_포함하고_영역_밖을_제외해_ID_순으로_모두_반환한다() throws Exception {
-        mockMvc.perform(get("/api/v1/complexes/map")
+        mockMvc.perform(get("/api/v2/complexes/map").param("zoom", "14.00")
                         .param("southWestLat", SOUTH_WEST_LATITUDE)
                         .param("southWestLng", SOUTH_WEST_LONGITUDE)
                         .param("northEastLat", NORTH_EAST_LATITUDE)
                         .param("northEastLng", NORTH_EAST_LONGITUDE))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items.length()").value(3))
-                .andExpect(jsonPath("$.data.items[*].complexId", contains(
+                .andExpect(jsonPath("$.data.resolvedStage").value(4))
+                .andExpect(jsonPath("$.data.representation").value("INDIVIDUAL"))
+                .andExpect(jsonPath("$.data.nodes.length()").value(3))
+                .andExpect(jsonPath("$.data.nodes[*].complexId", contains(
                         boundaryComplex.getId().intValue(),
                         sameDateComplex.getId().intValue(),
                         insideComplex.getId().intValue()
                 )))
-                .andExpect(jsonPath("$.data.items[*].complexId", not(hasItem(outsideComplex.getId().intValue()))))
-                .andExpect(jsonPath("$.data.items[0].latitude").value(37.400000))
-                .andExpect(jsonPath("$.data.items[0].longitude").value(126.800000))
+                .andExpect(jsonPath("$.data.nodes[*].complexId", not(hasItem(outsideComplex.getId().intValue()))))
+                .andExpect(jsonPath("$.data.nodes[0].latitude").value(37.400000))
+                .andExpect(jsonPath("$.data.nodes[0].longitude").value(126.800000))
                 .andExpect(jsonPath("$.data.nextCursor").doesNotExist())
                 .andExpect(jsonPath("$.data.hasNext").doesNotExist());
     }
@@ -413,6 +417,10 @@ class HousingComplexApiIntegrationTest {
     void 상세는_좌표와_정렬된_주택형_정정_leaf의_현재_공급조건만_반환한다() throws Exception {
         mockMvc.perform(get("/api/v1/complexes/{complexId}", insideComplex.getId()))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.depositMin").value(10000000))
+                .andExpect(jsonPath("$.data.depositMax").value(30000000))
+                .andExpect(jsonPath("$.data.monthlyRentMin").value(100000))
+                .andExpect(jsonPath("$.data.monthlyRentMax").value(300000))
                 .andExpect(jsonPath("$.data.address.regionName").value("서울특별시 중구"))
                 .andExpect(jsonPath("$.data.address.latitude").value(37.500000))
                 .andExpect(jsonPath("$.data.address.longitude").value(126.900000))
@@ -691,6 +699,9 @@ class HousingComplexApiIntegrationTest {
         );
         SupplyRow supplyRow = persistSupplyRow(announcement, complex, housingType, suffix + "-row", 1);
         persistSupplyTarget(supplyRow, suffix + "-target", deposit, monthlyRent, null, 1);
+        complex.updateRentalPriceRange(new RentalPriceRange(
+                Long.valueOf(deposit), Long.valueOf(deposit),
+                Long.valueOf(monthlyRent), Long.valueOf(monthlyRent)));
     }
 
     private List<Long> fetchEveryFilteredListPage() throws Exception {
@@ -729,10 +740,13 @@ class HousingComplexApiIntegrationTest {
     }
 
     private List<Long> fetchFilteredMapIds() throws Exception {
-        MvcResult response = mockMvc.perform(allFilterRequest("/api/v1/complexes/map"))
+        MvcResult response = mockMvc.perform(allFilterRequest("/api/v2/complexes/map").param("zoom", "14.00"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.resolvedStage").value(4))
+                .andExpect(jsonPath("$.data.representation").value("INDIVIDUAL"))
                 .andReturn();
-        return readComplexIds(response.getResponse().getContentAsString());
+        List<Number> rawIds = JsonPath.read(response.getResponse().getContentAsString(), "$.data.nodes[*].complexId");
+        return rawIds.stream().map(Number::longValue).toList();
     }
 
     private MockHttpServletRequestBuilder allFilterRequest(String path) {

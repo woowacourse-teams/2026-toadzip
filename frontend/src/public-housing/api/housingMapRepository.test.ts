@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest'
 import type { MapBounds } from '../model/publicHousing.ts'
 import { PublicHousingContractError } from './publicHousingContract.ts'
 import {
-  createHttpPublicHousingRepository,
   PublicHousingHttpError,
 } from './publicHousingRepository.ts'
 import {
@@ -56,33 +55,42 @@ describe('지도 v2 HTTP repository', () => {
     )
   })
 
-  it('v1 지도와 같은 bounds 및 필터 query 직렬화를 사용한다', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(v1MapResponse())
-      .mockResolvedValueOnce(aggregateResponse())
-    const v1Repository = createHttpPublicHousingRepository({
-      apiBaseUrl: 'https://api.example.test',
-      fetcher: fetchMock as unknown as typeof globalThis.fetch,
-    })
-    const v2Repository = createRepository(fetchMock)
-    const signal = new AbortController().signal
+  it('bounds와 모든 단지 필터를 query로 직렬화한다', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(aggregateResponse())
+    const repository = createRepository(fetchMock)
 
-    await v1Repository.findMapComplexes(BOUNDS, signal, FILTERS)
-    await v2Repository.findMap({
+    await repository.findMap({
       bounds: BOUNDS,
       zoom: 9,
       previousResolvedStage: 1,
       filters: FILTERS,
-    }, signal)
+    }, new AbortController().signal)
 
-    const [v1Url] = fetchMock.mock.calls[0] ?? []
-    const [v2Url] = fetchMock.mock.calls[1] ?? []
-    const v1Params = entries(new URL(String(v1Url)).searchParams)
-    const v2Search = new URL(String(v2Url)).searchParams
-    v2Search.delete('zoom')
-    v2Search.delete('previousResolvedStage')
-
-    expect(entries(v2Search)).toEqual(v1Params)
+    const [requestUrl] = fetchMock.mock.calls[0] ?? []
+    const search = new URL(String(requestUrl)).searchParams
+    expect(Object.fromEntries(search)).toEqual({
+      southWestLat: '37.4',
+      southWestLng: '126.8',
+      northEastLat: '37.6',
+      northEastLng: '127.1',
+      zoom: '9',
+      previousResolvedStage: '1',
+      agencyCodes: 'LH',
+      applicationStatuses: 'APPLYING',
+      builtYearFrom: '2015',
+      builtYearTo: '2026',
+      maxDeposit: '30000000',
+      maxExclusiveArea: '60',
+      maxMonthlyRent: '500000',
+      minDeposit: '1000000',
+      minExclusiveArea: '20',
+      minMonthlyRent: '100000',
+      recruitmentTypes: 'WAITLIST',
+      regionCode: '41',
+      rentalTypes: 'HAPPY_HOUSING',
+    })
+    expect(search.getAll('recruitmentTypes')).toEqual(['NEW', 'WAITLIST'])
+    expect(search.getAll('rentalTypes')).toEqual(['NATIONAL_RENTAL', 'HAPPY_HOUSING'])
   })
 
   it.each([
@@ -178,19 +186,9 @@ function aggregateResponse() {
   })
 }
 
-function v1MapResponse() {
-  return jsonResponse({ data: { items: [] } })
-}
-
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     headers: { 'Content-Type': 'application/json' },
     status,
   })
-}
-
-function entries(search: URLSearchParams) {
-  return [...search.entries()].sort(([leftKey, leftValue], [rightKey, rightValue]) =>
-    `${leftKey}:${leftValue}`.localeCompare(`${rightKey}:${rightValue}`),
-  )
 }

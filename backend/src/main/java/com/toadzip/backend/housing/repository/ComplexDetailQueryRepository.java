@@ -31,9 +31,15 @@ public class ComplexDetailQueryRepository {
                    housing_complex.corridor_type,
                    housing_complex.recent_one_year_move_out_count AS move_out_count_last_year,
                    housing_complex.total_household_count,
-                   housing_complex.parking_space_count AS total_parking_count
+                   housing_complex.parking_space_count AS total_parking_count,
+                   housing_complex.deposit_min,
+                   housing_complex.deposit_max,
+                   housing_complex.monthly_rent_min,
+                   housing_complex.monthly_rent_max
             FROM housing_complexes housing_complex
-            WHERE housing_complex.id = :complexId
+            WHERE housing_complex.id = COALESCE(
+                (SELECT alias.housing_complex_id FROM housing_complex_aliases alias WHERE alias.id = :complexId),
+                :complexId) AND housing_complex.admin_deleted = false
             """;
 
     private static final String FIND_HOUSING_TYPES = """
@@ -53,10 +59,10 @@ public class ComplexDetailQueryRepository {
             WITH current_leaf AS (
                 SELECT announcement.*
                 FROM announcements announcement
-                WHERE NOT EXISTS (
+                WHERE announcement.admin_deleted = false AND NOT EXISTS (
                     SELECT 1
                     FROM announcements successor
-                    WHERE successor.previous_announcement_id = announcement.id
+                    WHERE successor.previous_announcement_id = announcement.id AND successor.admin_deleted = false
                 )
                   AND announcement.status NOT IN ('CANCELLATION', '취소공고')
                   AND %s NOT IN ('CLOSED', 'CANCELLED')
@@ -208,7 +214,11 @@ public class ComplexDetailQueryRepository {
                 resultSet.getString("corridor_type"),
                 resultSet.getObject("move_out_count_last_year", Integer.class),
                 resultSet.getInt("total_household_count"),
-                resultSet.getInt("total_parking_count")
+                resultSet.getInt("total_parking_count"),
+                resultSet.getObject("deposit_min", Long.class),
+                resultSet.getObject("deposit_max", Long.class),
+                resultSet.getObject("monthly_rent_min", Long.class),
+                resultSet.getObject("monthly_rent_max", Long.class)
         );
     }
 

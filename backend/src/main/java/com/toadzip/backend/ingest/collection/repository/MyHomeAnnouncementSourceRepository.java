@@ -15,6 +15,8 @@ public interface MyHomeAnnouncementSourceRepository extends JpaRepository<MyHome
 
     List<MyHomeAnnouncementSource> findAllByPblancIdOrderByIdAsc(String pblancId);
 
+    List<MyHomeAnnouncementSource> findAllByPblancIdInOrderByIdAsc(Collection<String> pblancIds);
+
     @Query("""
             select source
             from MyHomeAnnouncementSource source

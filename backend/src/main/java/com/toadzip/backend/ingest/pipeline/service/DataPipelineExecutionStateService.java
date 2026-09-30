@@ -1,10 +1,13 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
+import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineWorkProgress;
+import tools.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -15,10 +18,18 @@ public class DataPipelineExecutionStateService {
 
     private final DataPipelineExecutionRepository executionRepository;
 
+    private final ObjectMapper objectMapper;
+
     public DataPipelineExecutionStateService(
-            DataPipelineExecutionRepository executionRepository
+            DataPipelineExecutionRepository executionRepository, ObjectMapper objectMapper
     ) {
         this.executionRepository = executionRepository;
+        this.objectMapper = objectMapper;
+    }
+
+    @Transactional
+    public void recordWorkProgress(UUID executionId, DataPipelineWorkProgress progress) {
+        executionRepository.recordWorkProgress(executionId, objectMapper.writeValueAsString(progress));
     }
 
     @Transactional
@@ -116,6 +127,10 @@ public class DataPipelineExecutionStateService {
     @Transactional
     public void complete(UUID executionId, Instant completedAt) {
         DataPipelineExecution execution = find(executionId);
+        if (execution.isStopRequested()) {
+            execution.stop(completedAt);
+            return;
+        }
         execution.complete(completedAt);
         executionRepository.flush();
     }
@@ -161,11 +176,47 @@ public class DataPipelineExecutionStateService {
 
     @Transactional(readOnly = true)
     public DataPipelineStep findCurrentStep(UUID executionId) {
-        return find(executionId).getCurrentStep();
+        return executionRepository.findByExecutionId(executionId)
+                .orElseThrow(() -> new IllegalStateException("실행을 찾을 수 없습니다: " + executionId))
+                .getCurrentStep();
+    }
+
+    @Transactional
+    public DataPipelineExecution requestStop(UUID executionId) {
+        DataPipelineExecution execution = executionRepository.findByExecutionIdForUpdate(executionId)
+                .orElseThrow(() -> new DataPipelineExecutionNotFoundException(
+                        "데이터 파이프라인 실행을 찾을 수 없습니다: " + executionId
+                ));
+        execution.requestStop();
+        executionRepository.flush();
+        return execution;
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isStopRequested(UUID executionId) {
+        return executionRepository.existsByExecutionIdAndStopRequestedTrue(executionId);
+    }
+
+    @Transactional
+    public void stop(UUID executionId, Instant stoppedAt) {
+        DataPipelineExecution execution = find(executionId);
+        if (execution.isRunning()) {
+            execution.stop(stoppedAt);
+        }
+    }
+
+    @Transactional
+    public void recordRequestStarted(UUID executionId, String description, Instant now) {
+        executionRepository.recordRequestStarted(executionId, description, now);
+    }
+
+    @Transactional
+    public void recordRequestFinished(UUID executionId, Instant now) {
+        executionRepository.recordRequestFinished(executionId, now);
     }
 
     private DataPipelineExecution find(UUID executionId) {
-        return executionRepository.findByExecutionId(executionId)
+        return executionRepository.findByExecutionIdForUpdate(executionId)
                 .orElseThrow(() -> new IllegalStateException(
                         "데이터 파이프라인 실행을 찾을 수 없습니다: " + executionId
                 ));

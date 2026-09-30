@@ -24,18 +24,37 @@ public class VerifiedApplicationScheduleService {
     private final AnnouncementRepository announcementRepository;
     private final AnnouncementApplicationScheduleRepository scheduleRepository;
     private final SupplyRowRepository supplyRowRepository;
+    private final com.toadzip.backend.admin.repository.AdminDataChangeRepository changes;
+    private final tools.jackson.databind.ObjectMapper json;
 
     public VerifiedApplicationScheduleService(AnnouncementRepository announcementRepository,
-            AnnouncementApplicationScheduleRepository scheduleRepository, SupplyRowRepository supplyRowRepository) {
+            AnnouncementApplicationScheduleRepository scheduleRepository, SupplyRowRepository supplyRowRepository,
+            com.toadzip.backend.admin.repository.AdminDataChangeRepository changes,
+            tools.jackson.databind.ObjectMapper json) {
         this.announcementRepository = announcementRepository;
         this.scheduleRepository = scheduleRepository;
         this.supplyRowRepository = supplyRowRepository;
+        this.changes = changes;
+        this.json = json;
     }
 
     @Transactional
     public void replace(long announcementId, VerifiedApplicationSchedulesRequest request) {
+        replace(announcementId, request, null, "system");
+    }
+
+    @Transactional
+    public void replace(long announcementId, VerifiedApplicationSchedulesRequest request, Long version, String actor) {
         Announcement announcement = announcementRepository.findByIdForUpdate(announcementId)
                 .orElseThrow(AnnouncementNotFoundException::new);
+        if (announcement.isAdminDeleted()) { throw new InvalidAnnouncementRequestException(); }
+        if (version != null && version != announcement.getVersion()) {
+            throw new com.toadzip.backend.admin.exception.AdminDataConflictException("공고가 변경되었습니다. 새로 조회해 주세요.");
+        }
+        var previous = scheduleRepository.findAllByAnnouncementIdIn(List.of(announcementId)).stream()
+                .map(value -> new VerifiedApplicationSchedulesRequest.Schedule(complexId(value), value.getSupplyRank(),
+                        value.getState(), value.getCondition(), value.getStartDate(), value.getEndDate(),
+                        value.getStartTime(), value.getEndTime(), value.getSourceUrl(), value.getSourcePage())).toList();
         Map<Long, HousingComplex> complexes = supplyRowRepository.findAllByAnnouncementIdIn(List.of(announcementId))
                 .stream().map(row -> row.getHousingComplex()).filter(complex -> complex != null)
                 .collect(Collectors.toMap(HousingComplex::getId, Function.identity(), (left, right) -> left));
@@ -57,6 +76,14 @@ public class VerifiedApplicationScheduleService {
         scheduleRepository.deleteAll(scheduleRepository.findAllByAnnouncementIdIn(List.of(announcementId)));
         scheduleRepository.saveAll(schedules);
         announcement.confirmApplicationPeriod(start, end);
+        announcement.recordAdminSupplyChange();
+        changes.save(new com.toadzip.backend.admin.domain.AdminDataChange("ANNOUNCEMENT", announcementId,
+                "UPDATE_SCHEDULE", actor, json.writeValueAsString(previous), json.writeValueAsString(request.schedules())));
+    }
+
+    private Long complexId(AnnouncementApplicationSchedule schedule) {
+        if (schedule.getHousingComplex() == null) { return null; }
+        return schedule.getHousingComplex().getId();
     }
 
     private AnnouncementApplicationSchedule schedule(Announcement announcement, HousingComplex complex,

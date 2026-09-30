@@ -5,6 +5,8 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.ExternalDataFailureStore;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import java.time.Clock;
+import java.util.Collection;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -55,6 +57,13 @@ public class ExternalDataFailureRecorder {
         );
     }
 
+    public Set<String> findPendingRequestDescriptions(
+            ExternalDataSource source,
+            Collection<String> requestDescriptions
+    ) {
+        return store.findPendingRequestDescriptions(source, requestDescriptions);
+    }
+
     public void resolve(ExternalDataSource source, String requestDescription) {
         store.resolve(source, requestDescription, clock.instant(), currentExecutionId());
     }
@@ -65,6 +74,10 @@ public class ExternalDataFailureRecorder {
 
     public void skip(ExternalDataSource source, String requestDescription, String skipReason) {
         store.skip(source, requestDescription, clock.instant(), skipReason, currentExecutionId());
+    }
+
+    public void skipAll(ExternalDataSource source, Collection<String> requestDescriptions, String skipReason) {
+        store.skipAll(source, requestDescriptions, clock.instant(), skipReason, currentExecutionId());
     }
 
     private UUID currentExecutionId() {

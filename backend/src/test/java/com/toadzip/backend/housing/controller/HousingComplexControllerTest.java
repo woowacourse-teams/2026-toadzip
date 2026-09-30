@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -42,8 +43,6 @@ import com.toadzip.backend.housing.dto.response.CurrentAnnouncementResponse;
 import com.toadzip.backend.housing.dto.response.CurrentSupplyConditionResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexAddressResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexDetailResponse;
-import com.toadzip.backend.housing.dto.response.HousingComplexMapItemResponse;
-import com.toadzip.backend.housing.dto.response.HousingComplexMapResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexListItemResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexListResponse;
 import com.toadzip.backend.housing.dto.response.HousingTypeDetailResponse;
@@ -134,39 +133,6 @@ class HousingComplexControllerTest {
         );
     }
 
-    @Test
-    void 지도의_검색_필터와_경계를_Service에_전달한다() throws Exception {
-        when(queryService.getComplexesForMap(any(HousingComplexSearchRequest.class)))
-                .thenReturn(new HousingComplexMapResponse(List.of()));
-
-        mockMvc.perform(get("/api/v1/complexes/map")
-                        .param("keyword", " 행복 단지 ")
-                        .param("regionCode", "11140")
-                        .param("rentalTypes", "HAPPY_HOUSING", "NATIONAL_RENTAL")
-                        .param("applicationStatuses", "APPLYING", "CLOSED")
-                        .param("agencyCodes", "LH", "SH")
-                        .param("recruitmentTypes", "NEW", "WAITLIST")
-                        .param("minDeposit", "10000000")
-                        .param("maxDeposit", "70000000")
-                        .param("minMonthlyRent", "100000")
-                        .param("maxMonthlyRent", "300000")
-                        .param("minExclusiveArea", "36.12")
-                        .param("maxExclusiveArea", "44.87")
-                        .param("builtYearFrom", "2018")
-                        .param("builtYearTo", "2026")
-                        .param("hasElevator", "true")
-                        .param("southWestLat", "37.4")
-                        .param("southWestLng", "126.8")
-                        .param("northEastLat", "37.6")
-                        .param("northEastLng", "127.1"))
-                .andExpect(status().isOk());
-
-        ArgumentCaptor<HousingComplexSearchRequest> requestCaptor =
-                ArgumentCaptor.forClass(HousingComplexSearchRequest.class);
-        verify(queryService).getComplexesForMap(requestCaptor.capture());
-        assertBoundSearchRequest(requestCaptor.getValue());
-    }
-
     @ParameterizedTest
     @MethodSource("malformedSearchParameters")
     void 변환할_수_없는_검색값은_VALIDATION_FAILED와_field를_반환한다(
@@ -223,168 +189,6 @@ class HousingComplexControllerTest {
                 eq(20)
         );
         assertThat(requestCaptor.getValue().agencyCodes()).containsExactly(AgencyCode.LH, null);
-    }
-
-    @Test
-    void 네_좌표로_지도_영역_단지_요약을_조회한다() throws Exception {
-        when(queryService.getComplexesForMap(any(HousingComplexSearchRequest.class)))
-                .thenReturn(new HousingComplexMapResponse(List.of(
-                new HousingComplexMapItemResponse(
-                        17L,
-                        "행복 단지",
-                        new BigDecimal("37.500000"),
-                        new BigDecimal("126.900000"),
-                        "HAPPY_HOUSING",
-                        new AgencyResponse("LH", "한국토지주택공사"),
-                        new BigDecimal("36.12"),
-                        new BigDecimal("44.87"),
-                        50000000L,
-                        70000000L,
-                        200000L,
-                        300000L
-                )
-        )));
-
-        mockMvc.perform(get("/api/v1/complexes/map")
-                        .param("southWestLat", "37.400000")
-                        .param("southWestLng", "126.800000")
-                        .param("northEastLat", "37.600000")
-                        .param("northEastLng", "127.100000"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.keys()", containsInAnyOrder("data")))
-                .andExpect(jsonPath("$.data.keys()", containsInAnyOrder("items")))
-                .andExpect(jsonPath("$.data.items.length()").value(1))
-                .andExpect(jsonPath("$.data.items[0].keys()", containsInAnyOrder(
-                        "complexId",
-                        "name",
-                        "latitude",
-                        "longitude",
-                        "rentalType",
-                        "agency",
-                        "exclusiveAreaMin",
-                        "exclusiveAreaMax",
-                        "depositMin",
-                        "depositMax",
-                        "monthlyRentMin",
-                        "monthlyRentMax"
-                )))
-                .andExpect(jsonPath("$.data.items[0].complexId").value(17))
-                .andExpect(jsonPath("$.data.items[0].name").value("행복 단지"))
-                .andExpect(jsonPath("$.data.items[0].latitude").value(37.500000))
-                .andExpect(jsonPath("$.data.items[0].longitude").value(126.900000))
-                .andExpect(jsonPath("$.data.items[0].rentalType").value("HAPPY_HOUSING"))
-                .andExpect(jsonPath("$.data.items[0].agency.code").value("LH"))
-                .andExpect(jsonPath("$.data.items[0].agency.name").value("한국토지주택공사"))
-                .andExpect(jsonPath("$.data.items[0].exclusiveAreaMin").value(36.12))
-                .andExpect(jsonPath("$.data.items[0].exclusiveAreaMax").value(44.87))
-                .andExpect(jsonPath("$.data.items[0].depositMin").value(50000000))
-                .andExpect(jsonPath("$.data.items[0].depositMax").value(70000000))
-                .andExpect(jsonPath("$.data.items[0].monthlyRentMin").value(200000))
-                .andExpect(jsonPath("$.data.items[0].monthlyRentMax").value(300000))
-                .andExpect(jsonPath("$.data.nextCursor").doesNotExist())
-                .andExpect(jsonPath("$.data.hasNext").doesNotExist());
-    }
-
-    @Test
-    void 좌표_하나를_생략하면_INVALID_MAP_BOUNDS를_반환한다() throws Exception {
-        when(queryService.getComplexesForMap(any(HousingComplexSearchRequest.class)))
-                .thenThrow(new InvalidMapBoundsException());
-
-        mockMvc.perform(get("/api/v1/complexes/map")
-                        .param("southWestLat", "37.400000")
-                        .param("southWestLng", "126.800000")
-                        .param("northEastLat", "37.600000"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId")))
-                .andExpect(jsonPath("$.code").value("INVALID_MAP_BOUNDS"))
-                .andExpect(jsonPath("$.message").value("지도 범위 좌표가 올바르지 않습니다."))
-                .andExpect(jsonPath("$.traceId").isNotEmpty())
-                .andExpect(noInternalDetails());
-    }
-
-    @Test
-    void 네_지도_경계를_모두_생략하면_INVALID_MAP_BOUNDS를_반환한다() throws Exception {
-        when(queryService.getComplexesForMap(any(HousingComplexSearchRequest.class)))
-                .thenThrow(new InvalidMapBoundsException());
-
-        mockMvc.perform(get("/api/v1/complexes/map"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId")))
-                .andExpect(jsonPath("$.code").value("INVALID_MAP_BOUNDS"))
-                .andExpect(jsonPath("$.message").value("지도 범위 좌표가 올바르지 않습니다."))
-                .andExpect(jsonPath("$.traceId").isNotEmpty())
-                .andExpect(noInternalDetails());
-    }
-
-    @Test
-    void 뒤집힌_지도_경계는_INVALID_MAP_BOUNDS를_반환한다() throws Exception {
-        when(queryService.getComplexesForMap(any(HousingComplexSearchRequest.class)))
-                .thenThrow(new InvalidMapBoundsException());
-
-        mockMvc.perform(get("/api/v1/complexes/map")
-                        .param("southWestLat", "37.600000")
-                        .param("southWestLng", "126.800000")
-                        .param("northEastLat", "37.400000")
-                        .param("northEastLng", "127.100000"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId")))
-                .andExpect(jsonPath("$.code").value("INVALID_MAP_BOUNDS"))
-                .andExpect(jsonPath("$.message").value("지도 범위 좌표가 올바르지 않습니다."))
-                .andExpect(jsonPath("$.traceId").isNotEmpty())
-                .andExpect(noInternalDetails());
-    }
-
-    @Test
-    void 동일한_지도_경계는_INVALID_MAP_BOUNDS를_반환한다() throws Exception {
-        when(queryService.getComplexesForMap(any(HousingComplexSearchRequest.class)))
-                .thenThrow(new InvalidMapBoundsException());
-
-        mockMvc.perform(get("/api/v1/complexes/map")
-                        .param("southWestLat", "37.400000")
-                        .param("southWestLng", "126.800000")
-                        .param("northEastLat", "37.400000")
-                        .param("northEastLng", "127.100000"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId")))
-                .andExpect(jsonPath("$.code").value("INVALID_MAP_BOUNDS"))
-                .andExpect(jsonPath("$.message").value("지도 범위 좌표가 올바르지 않습니다."))
-                .andExpect(jsonPath("$.traceId").isNotEmpty())
-                .andExpect(noInternalDetails());
-    }
-
-    @Test
-    void 허용_범위를_벗어난_지도_경계는_INVALID_MAP_BOUNDS를_반환한다() throws Exception {
-        when(queryService.getComplexesForMap(any(HousingComplexSearchRequest.class)))
-                .thenThrow(new InvalidMapBoundsException());
-
-        mockMvc.perform(get("/api/v1/complexes/map")
-                        .param("southWestLat", "-91")
-                        .param("southWestLng", "126.800000")
-                        .param("northEastLat", "37.600000")
-                        .param("northEastLng", "127.100000"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId")))
-                .andExpect(jsonPath("$.code").value("INVALID_MAP_BOUNDS"))
-                .andExpect(jsonPath("$.message").value("지도 범위 좌표가 올바르지 않습니다."))
-                .andExpect(jsonPath("$.traceId").isNotEmpty())
-                .andExpect(noInternalDetails());
-    }
-
-    @Test
-    void 숫자가_아닌_bounds는_VALIDATION_FAILED를_반환한다() throws Exception {
-        mockMvc.perform(get("/api/v1/complexes/map")
-                        .param("southWestLat", "not-a-number")
-                        .param("southWestLng", "126.800000")
-                        .param("northEastLat", "37.600000")
-                        .param("northEastLng", "127.100000"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId", "errors")))
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.message").value("요청값이 올바르지 않습니다."))
-                .andExpect(jsonPath("$.traceId").isNotEmpty())
-                .andExpect(jsonPath("$.errors.length()").value(1))
-                .andExpect(jsonPath("$.errors[0].keys()", containsInAnyOrder("field", "reason")))
-                .andExpect(jsonPath("$.errors[0].field").value("southWestLat"));
     }
 
     @Test
@@ -586,9 +390,14 @@ class HousingComplexControllerTest {
                 .andExpect(noInternalDetails());
     }
 
-    @Test
-    void 숫자가_아닌_단지_ID는_VALIDATION_FAILED를_반환한다() throws Exception {
-        mockMvc.perform(get("/api/v1/complexes/not-a-number"))
+    @ParameterizedTest
+    @ValueSource(strings = {"not-a-number", "map"})
+    void 숫자가_아닌_단지_ID는_VALIDATION_FAILED를_반환한다(String complexId) throws Exception {
+        mockMvc.perform(get("/api/v1/complexes/{complexId}", complexId)
+                        .param("southWestLat", "37.4")
+                        .param("southWestLng", "126.8")
+                        .param("northEastLat", "37.6")
+                        .param("northEastLng", "127.1"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.keys()", containsInAnyOrder("code", "message", "traceId", "errors")))
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
@@ -621,6 +430,10 @@ class HousingComplexControllerTest {
                         "moveOutCountLastYear",
                         "totalHouseholdCount",
                         "totalParkingCount",
+                        "depositMin",
+                        "depositMax",
+                        "monthlyRentMin",
+                        "monthlyRentMax",
                         "images",
                         "overviewImageUrl",
                         "housingTypes",
@@ -764,6 +577,10 @@ class HousingComplexControllerTest {
                 7,
                 100,
                 80,
+                50000000L,
+                70000000L,
+                200000L,
+                300000L,
                 List.of("https://example.com/complex.png"),
                 null,
                 List.of(new HousingTypeDetailResponse(

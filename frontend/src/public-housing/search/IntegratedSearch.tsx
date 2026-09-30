@@ -259,7 +259,7 @@ function typeLabel(type: SearchType) {
 function statusLabel(status: string) {
   return {
     APPLYING: '접수 중',
-    BEFORE_APPLICATION: '접수 예정',
+    BEFORE_APPLICATION: '공고중',
     CANCELLED: '취소',
     CLOSED: '접수 종료',
   }[status] ?? status

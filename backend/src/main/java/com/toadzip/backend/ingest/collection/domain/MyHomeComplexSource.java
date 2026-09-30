@@ -102,6 +102,19 @@ public class MyHomeComplexSource {
         bassCnvrsGtnLmt = snapshot.bassCnvrsGtnLmt();
     }
 
+    public static boolean sameSourceComplex(String leftKey, String rightKey) {
+        return firstKeyPart(leftKey).equals(firstKeyPart(rightKey));
+    }
+
+    private static String firstKeyPart(String key) {
+        int separator = key.indexOf(':');
+        int length = Integer.parseInt(key.substring(0, separator));
+        if (length < 1 || separator + 1 + length > key.length()) {
+            throw new IllegalArgumentException("유효하지 않은 마이홈 원천 식별자입니다.");
+        }
+        return key.substring(separator + 1, separator + 1 + length);
+    }
+
     public void markCollectedAt(Instant collectedAt) {
         if (collectedAt == null) {
             throw new IllegalArgumentException("수집 시각은 필수입니다.");

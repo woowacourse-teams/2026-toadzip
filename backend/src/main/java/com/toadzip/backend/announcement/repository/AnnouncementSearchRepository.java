@@ -68,6 +68,7 @@ public class AnnouncementSearchRepository {
             Root<Announcement> announcement,
             List<Predicate> predicates
     ) {
+        predicates.add(criteriaBuilder.isFalse(announcement.get("adminDeleted")));
         predicates.add(storedValueIn(
                 criteriaBuilder,
                 announcement.get("status"),
@@ -85,7 +86,8 @@ public class AnnouncementSearchRepository {
         Subquery<Long> successorQuery = query.subquery(Long.class);
         Root<Announcement> successor = successorQuery.from(Announcement.class);
         successorQuery.select(successor.get("id"))
-                .where(criteriaBuilder.equal(successor.get("previousAnnouncement"), announcement));
+                .where(criteriaBuilder.equal(successor.get("previousAnnouncement"), announcement),
+                        criteriaBuilder.isFalse(successor.get("adminDeleted")));
         predicates.add(criteriaBuilder.not(criteriaBuilder.exists(successorQuery)));
     }
 

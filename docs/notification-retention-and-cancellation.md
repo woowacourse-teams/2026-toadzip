@@ -49,7 +49,7 @@ https://bokduckbang.com/notifications/cancel 에서 신청 이메일과 코드�
 
 ## DB와 배포 확인
 
-- 주 DB에 `notification_subscriptions.expires_at`, `notification_guest_subscriptions.expires_at`, `notification_guest_cancellation_requests`가 추가된다. `notification_interest_events.email`은 삭제된다. 취소 요청에는 수동 발송 시각·관리자 계정을 위한 `code_sent_at`, `code_sent_by`가 추가된다. Flyway 버전은 `20260929.04`, `20260929.05`, `20260930.01`이다. 기존 요청의 발송 기록은 비어 있는 값으로 시작한다.
+- 주 DB에 `notification_subscriptions.expires_at`, `notification_guest_subscriptions.expires_at`, `notification_guest_cancellation_requests`가 추가된다. `notification_interest_events.email`은 삭제된다. 취소 요청에는 수동 발송 시각·관리자 계정을 위한 `code_sent_at`, `code_sent_by`가 추가된다. 해당 Flyway 버전은 `20260930.07`, `20260930.08`, `20260930.09`이다. 기존 요청의 발송 기록은 비어 있는 값으로 시작한다.
 - 개발 서버에 브랜치를 병합·배포하면 개발 **주 DB**, 운영 서버에 배포하면 운영 **주 DB**에 각 서버 시작 시 Flyway가 적용된다. 공유 DB에는 알림 신청을 쓰지 않는다. 알림은 사용자 계정·세션과 묶인 서비스 데이터이므로 같은 주 DB 트랜잭션으로 관리한다.
 - 배포 후 각 환경의 DB 이름과 연결 대상을 먼저 확인하고 `scripts/check-notification-schema.sh` 또는 `scripts/check-notification-schema.sql`을 읽기 전용으로 실행한다. Flyway 이력 성공, 테이블·열·제약 조건을 자동 검사한다. `docs/queries/notification-retention-status.sql`로 정리 작업이 밀렸는지 확인한다.
 - 백업은 DB 서버의 별도 작업으로 하루 한 번 S3에 저장하고 **30일 보관**하도록 구성했다. AWS에 독립 감시를 설치하면 백업 누락·보관 정책 이상과 감시 중단을 자동으로 확인해 팀 공식 Gmail로 알린다. 실제 설정 절차, 자동 검사와 격리 복원 절차는 [DB 백업 운영](../infra/db/BACKUP.md)에 있다. 복원 시 Flyway와 만료 데이터 정리만 실행하면 백업 시점 이후에 취소한 알림이 되살아날 수 있다. `scripts/reset-restored-notifications.sql`은 **격리된 복원 DB**에서 알림 신청·이메일 설정·취소 요청을 비운다. 서비스를 열기 전에 0건을 확인하고 사용자에게 재신청을 안내한다. AWS 계정과 서버 역할이 아직 확인되지 않아 실제 설치는 미완료 상태다.

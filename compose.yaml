@@ -32,6 +32,7 @@ services:
       APP_DATASOURCE_SHARED_USERNAME: "${SHARED_DB_USERNAME:-toadzip}"
       APP_DATASOURCE_SHARED_PASSWORD: "${SHARED_DB_PASSWORD:?SHARED_DB_PASSWORD is required}"
       DATA_GO_KR_SERVICE_KEY: "${DATA_GO_KR_SERVICE_KEY:-}"
+      ANNOUNCEMENT_ATTACHMENT_MAX_SIZE: "${ANNOUNCEMENT_ATTACHMENT_MAX_SIZE:-100MB}"
       INGEST_SCHEDULER_ENABLED: "${INGEST_SCHEDULER_ENABLED:-false}"
       ADMIN_CORS_ALLOWED_ORIGIN: "${ADMIN_CORS_ALLOWED_ORIGIN:-http://localhost:5173}"
       SESSION_COOKIE_SECURE: "${SESSION_COOKIE_SECURE:-false}"
@@ -50,3 +51,21 @@ services:
       - "${BACKEND_PORT:-8080}:8080"
       - "${MANAGEMENT_PORT:-8081}:8081"
     restart: unless-stopped
+
+  alloy:
+    image: grafana/alloy:v1.20.0
+    command:
+      - run
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    environment:
+      DEPLOY_ENVIRONMENT: "${SPRING_PROFILES_ACTIVE:?SPRING_PROFILES_ACTIVE is required}"
+      LOKI_PUSH_URL: "${LOKI_PUSH_URL:?LOKI_PUSH_URL is required}"
+    volumes:
+      - ./infra/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
+    restart: unless-stopped
+
+volumes:
+  alloy_data:
