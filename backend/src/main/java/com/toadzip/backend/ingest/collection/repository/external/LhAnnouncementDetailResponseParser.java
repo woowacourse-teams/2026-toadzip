@@ -3,6 +3,8 @@ package com.toadzip.backend.ingest.collection.repository.external;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 
@@ -50,11 +52,38 @@ public class LhAnnouncementDetailResponseParser {
             JsonNode root
     ) {
         for (JsonNode row : ExternalResponseRows.find(root, "dsEtcInfo")) {
-            sources.add(detail(sources.size(), panId, "ETC_INFO")
+            LhAnnouncementDetailSource source = detail(sources.size(), panId, "ETC_INFO")
                     .correctionReason(text(row, "CRC_RSN"))
-                    .etcContents(text(row, "ETC_CTS"))
-                    .build());
+                    .etcContents(etcContents(row))
+                    .build();
+            if (!source.hasContent() && isKnownEmptyEtcInfo(row)) {
+                continue;
+            }
+            sources.add(source);
         }
+    }
+
+    private String etcContents(JsonNode row) {
+        return Stream.of(text(row, "ETC_CTS"), text(row, "ETC_FCTS"), text(row, "PAN_DTL_CTS"))
+                .filter(value -> value != null && !value.isBlank())
+                .collect(Collectors.joining("\n"));
+    }
+
+    private boolean isKnownEmptyEtcInfo(JsonNode row) {
+        return isKnownEmptyRow(row, List.of("CRC_RSN", "ETC_CTS"))
+                || isKnownEmptyRow(row, List.of("ETC_FCTS", "PAN_DTL_CTS"));
+    }
+
+    private boolean isKnownEmptyRow(JsonNode row, List<String> fields) {
+        return row.size() == fields.size()
+                && fields.stream().allMatch(field -> isExplicitlyEmptyText(row.get(field)));
+    }
+
+    private boolean isExplicitlyEmptyText(JsonNode value) {
+        if (value == null) {
+            return false;
+        }
+        return value.isNull() || (value.isTextual() && value.asString().isBlank());
     }
 
     private void addComplexes(
@@ -103,6 +132,10 @@ public class LhAnnouncementDetailResponseParser {
             JsonNode root
     ) {
         for (JsonNode row : ExternalResponseRows.find(root, "dsCtrtPlc")) {
+            if (isKnownEmptyRow(row, List.of("CTRT_PLC_ADR", "CTRT_PLC_DTL_ADR", "TSK_ST_DTTM",
+                    "TSK_ED_DTTM", "SIL_OFC_TLNO", "SIL_OFC_GUD_FCTS"))) {
+                continue;
+            }
             sources.add(detail(sources.size(), panId, "RECEPTION")
                     .receptionAddress(text(row, "CTRT_PLC_ADR"))
                     .receptionDetailAddress(text(row, "CTRT_PLC_DTL_ADR"))

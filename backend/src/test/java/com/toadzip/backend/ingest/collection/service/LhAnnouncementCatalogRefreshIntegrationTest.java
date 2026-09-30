@@ -4,8 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCatalogSnapshot;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
@@ -145,6 +148,32 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
         assertThat(catalog.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100")))
                 .singleElement().satisfies(row -> assertThat(row.getAnnouncementTypeCode()).isEqualTo("07"));
         assertThat(catalog.count()).isEqualTo(2);
+    }
+
+    @Test
+    void 목록으로_보정된_조회코드는_실제_호출과_체크포인트와_원천_연결에_동일하게_사용된다() {
+        sources.save(source("100", 1, "20261030"));
+        catalogStore.store(List.of(new Entry(new LhAnnouncementCatalogSnapshot(
+                "100", "03", "06", "06", "064", "공고", "공고중", "", "", "20261030", "", ""
+        ), "{}")));
+        var expectedRequest = new LhAnnouncementRequest("100", "03", "06", "06", "064");
+        String description = expectedRequest.requestDescription();
+        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(description);
+
+        var report = service.collect(DETAIL);
+
+        assertThat(report.externalApiCallCount()).isOne();
+        assertThat(report.failedRequestCount()).isZero();
+        verify(external).fetchDetail(expectedRequest);
+        assertThat(checkpoints.findAll()).singleElement().satisfies(checkpoint -> {
+            assertThat(checkpoint.getRequestDescription()).isEqualTo(description);
+            assertThat(checkpoint.getRequestHash()).isEqualTo(requestHash);
+        });
+        assertThat(links.findAll()).singleElement().satisfies(link -> {
+            assertThat(link.getRequestDescription()).isEqualTo(description);
+            assertThat(link.getRequestHash()).isEqualTo(requestHash);
+        });
+        assertThat(service.collect(DETAIL).externalApiCallCount()).isZero();
     }
 
     private void observeAgain(Instant now, String status) {

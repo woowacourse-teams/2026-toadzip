@@ -52,6 +52,87 @@ class LhAnnouncementDetailResponseParserTest {
     }
 
     @Test
+    void 공공임대_실응답의_기타사항과_공고내용을_정정사유로_오인하지_않고_보존한다() {
+        var root = objectMapper.readTree("""
+                [{"dsEtcInfo":[{"ETC_FCTS":"기타 안내","PAN_DTL_CTS":"공고문 11쪽의 계약 포기 안내 변경"}]}]
+                """);
+
+        assertThat(parser.parse("0000061177", root)).singleElement().satisfies(source -> {
+            assertThat(source.getDatasetType()).isEqualTo("ETC_INFO");
+            assertThat(source.getEtcContents()).isEqualTo("기타 안내\n공고문 11쪽의 계약 포기 안내 변경");
+            assertThat(source.getCorrectionReason()).isNull();
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"ETC_CTS\":\"\",\"CRC_RSN\":\"\"}",
+            "{\"ETC_FCTS\":\" \",\"PAN_DTL_CTS\":\"\"}"
+    })
+    void 확인된_빈_선택_안내_행은_생략하고_유효한_단지_원천을_보존한다(String emptyEtcInfo) {
+        var root = objectMapper.readTree(
+                "[{\"dsEtcInfo\":[" + emptyEtcInfo + "],\"dsSbd\":[{\"LCC_NT_NM\":\"가 단지\"}]}]"
+        );
+
+        assertThat(parser.parse("PAN-1", root)).singleElement().satisfies(source -> {
+            assertThat(source.getSourceOrder()).isZero();
+            assertThat(source.getComplexName()).isEqualTo("가 단지");
+        });
+    }
+
+    @Test
+    void 빈_선택_안내에_알_수_없는_필드가_추가되면_조용히_생략하지_않는다() {
+        var root = objectMapper.readTree("""
+                [{"dsEtcInfo":[{"ETC_CTS":"","CRC_RSN":"","RENAMED_CONTENT":"안내"}]}]
+                """);
+
+        assertThatThrownBy(() -> parser.parse("PAN-1", root))
+                .isInstanceOf(ExternalDataRequestException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"CRC_RSN\":{},\"ETC_CTS\":[]}",
+            "{\"ETC_FCTS\":[],\"PAN_DTL_CTS\":{}}"
+    })
+    void 선택_안내의_객체나_배열_값은_빈_문자열로_오인하지_않는다(String invalidEtcInfo) {
+        var root = objectMapper.readTree("[{\"dsEtcInfo\":[" + invalidEtcInfo + "]}]");
+
+        assertThatThrownBy(() -> parser.parse("PAN-1", root))
+                .isInstanceOf(ExternalDataRequestException.class);
+    }
+
+    @Test
+    void 행복주택_실응답의_빈_접수처_안내는_생략하고_일정과_첨부를_보존한다() {
+        var root = objectMapper.readTree("""
+                [{"dsCtrtPlc":[{"CTRT_PLC_DTL_ADR":"","SIL_OFC_GUD_FCTS":"","CTRT_PLC_ADR":"",
+                  "TSK_ST_DTTM":"","TSK_ED_DTTM":"","SIL_OFC_TLNO":""}],
+                  "dsSplScdl":[{"ACP_DTTM":"2026.09.30 ~ 2026.10.02"}],
+                  "dsAhflInfo":[{"CMN_AHFL_NM":"공고문.pdf"}]}]
+                """);
+
+        var sources = parser.parse("2015122300020806", root);
+
+        assertThat(sources).extracting(source -> source.getDatasetType())
+                .containsExactly("SCHEDULE", "ANNOUNCEMENT_FILE");
+        assertThat(sources).extracting(source -> source.getSourceOrder()).containsExactly(0, 1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"CTRT_PLC_DTL_ADR\":\"\",\"SIL_OFC_GUD_FCTS\":\"\",\"CTRT_PLC_ADR\":\"\","
+                    + "\"TSK_ST_DTTM\":\"\",\"TSK_ED_DTTM\":\"\",\"SIL_OFC_TLNO\":\"\",\"NEW_FIELD\":\"안내\"}",
+            "{\"CTRT_PLC_DTL_ADR\":\"\",\"SIL_OFC_GUD_FCTS\":\"\",\"CTRT_PLC_ADR\":\"\","
+                    + "\"TSK_ST_DTTM\":\"\",\"TSK_ED_DTTM\":\"\",\"SIL_OFC_TLNO\":[]}"
+    })
+    void 접수처의_알_수_없는_필드나_구조_오류는_빈_안내로_생략하지_않는다(String invalidReception) {
+        var root = objectMapper.readTree("[{\"dsCtrtPlc\":[" + invalidReception + "]}]");
+
+        assertThatThrownBy(() -> parser.parse("PAN-1", root))
+                .isInstanceOf(ExternalDataRequestException.class);
+    }
+
+    @Test
     @DisplayName("LH 공고 상세 dataset이 하나도 없으면 실패한다")
     void rejectsMissingDetailDataset() {
         var root = objectMapper.readTree("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]}]");

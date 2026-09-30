@@ -201,7 +201,7 @@ public class DataPipelineExecution {
 
     public void startStep(DataPipelineStep step) {
         requireRunning();
-        if (!step.belongsTo(type)) {
+        if (!type.steps().contains(step)) {
             throw new IllegalStateException("실행 유형에 속하지 않는 단계입니다.");
         }
         if (currentStep != null) {
@@ -325,12 +325,12 @@ public class DataPipelineExecution {
     private DataPipelineStep nextStep() {
         int lastCompletedSequence = completedStepResults.stream()
                 .map(DataPipelineCompletedStep::getStep)
-                .mapToInt(DataPipelineStep::sequence)
+                .mapToInt(type::sequenceOf)
                 .max()
                 .orElse(0);
         int lastSkippedSequence = skippedSteps.stream()
                 .map(DataPipelineSkippedStep::getStep)
-                .mapToInt(DataPipelineStep::sequence)
+                .mapToInt(type::sequenceOf)
                 .max()
                 .orElse(0);
         int nextStepIndex = Math.max(lastCompletedSequence, lastSkippedSequence);

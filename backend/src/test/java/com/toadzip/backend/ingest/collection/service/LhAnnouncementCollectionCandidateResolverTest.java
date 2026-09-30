@@ -82,6 +82,25 @@ class LhAnnouncementCollectionCandidateResolverTest {
     }
 
     @Test
+    void URL에_공고유형이_없으면_유일하게_연결된_목록의_조회코드로_보완한다() {
+        Instant collectedAt = Instant.parse("2026-09-25T00:00:00Z");
+        var row = LhAnnouncementCatalogSource.from(new LhAnnouncementCatalogSnapshot(
+                "100", "03", "06", "48", "064", "공고", "공고중", "", "", "", "", ""
+        ), "{}", collectedAt);
+        when(catalogRepository.findAllByPanIdInAndPresentInLatestCatalogTrue(List.of("100")))
+                .thenReturn(List.of(row));
+
+        var resolution = resolver.resolve(source("LH", "행복주택",
+                "https://apply.lh.or.kr/panDetail?panId=100&ccrCnntSysDsCd=03&uppAisTpCd=06"));
+
+        assertThat(resolution).isInstanceOfSatisfying(Candidate.class, candidate -> {
+            assertThat(candidate.request().announcementTypeCode()).isEqualTo("48");
+            assertThat(candidate.request().supplyInfoTypeCode()).isEqualTo("064");
+            assertThat(candidate.catalogCollectedAt()).isEqualTo(collectedAt);
+        });
+    }
+
+    @Test
     void 같은_공고ID여도_유형이_다르면_기존_마이홈_조회조건을_유지한다() {
         var row = LhAnnouncementCatalogSource.from(new LhAnnouncementCatalogSnapshot(
                 "100", "03", "06", "10", "061", "공고", "공고중", "", "", "", "", ""

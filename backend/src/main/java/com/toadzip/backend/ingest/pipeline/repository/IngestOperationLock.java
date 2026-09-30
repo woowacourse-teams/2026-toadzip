@@ -2,10 +2,7 @@ package com.toadzip.backend.ingest.pipeline.repository;
 
 import com.toadzip.backend.global.persistence.PostgresAdvisoryLock;
 import java.sql.SQLException;
-import java.util.EnumMap;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.springframework.stereotype.Repository;
@@ -14,21 +11,13 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class IngestOperationLock {
 
-    private final Map<Operation, ReentrantLock> localLocks = new EnumMap<>(Operation.class);
     private final PostgresAdvisoryLock databaseLock;
 
     public IngestOperationLock(DataSource dataSource) {
         databaseLock = new PostgresAdvisoryLock(dataSource);
-        for (Operation operation : Operation.values()) {
-            localLocks.put(operation, new ReentrantLock());
-        }
     }
 
     public <T> Optional<T> tryRun(Operation operation, Supplier<T> action) {
-        ReentrantLock localLock = localLocks.get(operation);
-        if (!localLock.tryLock()) {
-            return Optional.empty();
-        }
         try {
             Optional<PostgresAdvisoryLock.Lease> lease = databaseLock.tryAcquire(
                     operation.key, operation.lockName
@@ -42,9 +31,6 @@ public class IngestOperationLock {
         }
         catch (SQLException exception) {
             throw new IllegalStateException(operation.failureMessage, exception);
-        }
-        finally {
-            localLock.unlock();
         }
     }
 

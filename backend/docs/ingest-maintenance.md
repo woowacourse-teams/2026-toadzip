@@ -5,7 +5,7 @@
 
 ## 시작할 파일 두 개
 
-1. [DataPipelineType](../src/main/java/com/toadzip/backend/ingest/pipeline/domain/DataPipelineType.java)의 `steps()`: 네 작업의 단계와 순서.
+1. [DataPipelineType](../src/main/java/com/toadzip/backend/ingest/pipeline/domain/DataPipelineType.java)의 `steps()`: 독립·통합 작업의 단계와 순서.
 2. [DataPipelineRunner](../src/main/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineRunner.java)의 `execute()`: 단계별로 실제 호출하는 서비스.
 
 Spring은 생성자 주입으로 객체를 연결한다. `Runner.run()`에서 단계 실행 → `StateService` 결과 저장을 따라간다.
@@ -21,7 +21,7 @@ Spring은 생성자 주입으로 객체를 연결한다. `Runner.run()`에서 �
 | 공고 정제 | [MyHomeAnnouncementMappingService](../src/main/java/com/toadzip/backend/ingest/mapping/service/MyHomeAnnouncementMappingService.java) → LH 공고 보강 |
 
 수집은 원천을 보관하고 정제·보강은 그 원천을 읽어 단지·주택형·공고에 반영한다.
-각 작업은 별도 실행이며 수집 완료를 확인한 뒤 해당 정제를 직접 시작한다.
+통합 실행은 수집 뒤 정제까지 이어간다. 수집 부분 실패·호출 제한이면 자동 정제를 막고 독립 정제 실행으로 복구한다. 기존 네 단독 실행은 유지한다.
 
 단지 정제는 `MyHomeComplexMappingService.mapAll()` → `MyHomeComplexMappingProcessor.mapAll()`에서
 원천을 묶는다. 일반 단지는 위치정보 DB의 좌표를 읽어 저장하고, 확인된 통합 단지는 기존 주소를 검증해

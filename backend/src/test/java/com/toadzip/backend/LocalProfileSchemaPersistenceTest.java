@@ -2,6 +2,7 @@ package com.toadzip.backend;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -25,6 +26,8 @@ import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailure;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingFailureRepository;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -33,10 +36,14 @@ import java.sql.Statement;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.exception.FlywayValidateException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.data.domain.PageRequest;
@@ -55,7 +62,8 @@ class LocalProfileSchemaPersistenceTest {
         createDatabase(databaseName);
 
         try {
-            try (ConfigurableApplicationContext applicationContext = new SpringApplicationBuilder(BackendApplication.class)
+            try (ConfigurableApplicationContext applicationContext =
+                    new SpringApplicationBuilder(BackendApplication.class)
                     .environment(createIsolatedEnvironment(jdbcUrl))
                     .run()) {
                 String ddlAuto = applicationContext.getEnvironment().getProperty("spring.jpa.hibernate.ddl-auto");
@@ -74,7 +82,7 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertTrue(history.next()),
-                        () -> assertEquals(28, history.getInt(1)),
+                        () -> assertEquals(29, history.getInt(1)),
                         () -> assertEquals(1, countColumn(connection,
                                 "notification_interest_events", "event_id")),
                         () -> assertEquals(0, countColumn(connection,
@@ -180,6 +188,133 @@ class LocalProfileSchemaPersistenceTest {
     }
 
     @Test
+    void 통합_유형을_먼저_적용한_DB에_develop_마이그레이션을_보충한다(
+            @TempDir Path branchMigrations
+    ) throws Exception {
+        Set<String> developMigrations = Set.of(
+                "V20260928_03__announcement_daily_views.sql",
+                "V20260928_04__verified_lh_supply_replacements.sql",
+                "V20260929_01__announcement_schedule_complex_name.sql"
+        );
+        try (Stream<Path> migrations = Files.list(Path.of("src/main/resources/db/migration"))) {
+            for (Path migration : migrations.toList()) {
+                String migrationName = migration.getFileName().toString();
+                if (developMigrations.contains(migrationName) || migrationName.compareTo("V20260930_02") >= 0) {
+                    continue;
+                }
+                Files.copy(migration, branchMigrations.resolve(migration.getFileName()));
+            }
+        }
+        String databaseName = "toadzip_branch_upgrade_" + UUID.randomUUID().toString().replace("-", "");
+        String jdbcUrl = primaryTestDatabaseUrl(databaseName);
+        createDatabase(databaseName);
+        try {
+            Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("filesystem:" + branchMigrations).load().migrate();
+            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
+                    Statement statement = connection.createStatement()) {
+                statement.executeUpdate("""
+                        INSERT INTO data_pipeline_executions
+                            (execution_id, type, status, started_at, heartbeat_at)
+                        VALUES ('00000000-0000-0000-0000-000000000001',
+                                'COMPLEX_SYNC', 'COMPLETED', now(), now())
+                        """);
+                assertEquals(18, countAllRows(connection, "flyway_schema_history"));
+            }
+
+            Flyway merged = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("classpath:db/migration").load();
+            FlywayValidateException pending = assertThrows(FlywayValidateException.class, merged::migrate);
+            for (String version : List.of("20260928.03", "20260928.04", "20260929.01")) {
+                assertTrue(pending.getMessage().contains(version));
+            }
+            try (ConfigurableApplicationContext oneTimeUpgrade = new SpringApplicationBuilder(BackendApplication.class)
+                    .environment(createIsolatedEnvironment(jdbcUrl))
+                    .run("--spring.flyway.out-of-order=true", "--spring.flyway.target=20260930.09")) {
+                assertTrue(oneTimeUpgrade.getBean(Flyway.class).getConfiguration().isOutOfOrder());
+            }
+            merged.validate();
+            assertEquals(0, merged.migrate().migrationsExecuted);
+
+            try (ConfigurableApplicationContext applicationContext =
+                    new SpringApplicationBuilder(BackendApplication.class)
+                    .environment(createIsolatedEnvironment(jdbcUrl)).run();
+                    Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test")) {
+                assertEquals(29, countAllRows(connection, "flyway_schema_history"));
+                assertEquals(1, countAllRows(connection, "data_pipeline_executions"));
+                assertEquals(1, countColumn(connection, "announcement_schedules", "complex_name"));
+                assertEquals(1, countColumn(connection, "supply_targets", "lh_amount_preserved_reason"));
+                assertEquals("validate", applicationContext.getEnvironment()
+                        .getProperty("spring.jpa.hibernate.ddl-auto"));
+                assertFalse(applicationContext.getBean(Flyway.class).getConfiguration().isOutOfOrder());
+            }
+        }
+        finally {
+            dropDatabase(databaseName);
+        }
+    }
+
+    @Test
+    void 최신_develop_DB에_통합_실행_유형을_보충하고_기존_이력을_보존한다(
+            @TempDir Path developMigrations
+    ) throws Exception {
+        try (Stream<Path> migrations = Files.list(Path.of("src/main/resources/db/migration"))) {
+            for (Path migration : migrations.toList()) {
+                if (migration.getFileName().toString().equals("V20260930_01__allow_combined_ingest_pipelines.sql")) {
+                    continue;
+                }
+                Files.copy(migration, developMigrations.resolve(migration.getFileName()));
+            }
+        }
+        String databaseName = "toadzip_develop_upgrade_" + UUID.randomUUID().toString().replace("-", "");
+        String jdbcUrl = primaryTestDatabaseUrl(databaseName);
+        createDatabase(databaseName);
+        try {
+            Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("filesystem:" + developMigrations).load().migrate();
+            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
+                    Statement statement = connection.createStatement()) {
+                statement.executeUpdate("""
+                        INSERT INTO data_pipeline_executions
+                            (execution_id, type, status, started_at, heartbeat_at)
+                        VALUES ('00000000-0000-0000-0000-000000000001',
+                                'COMPLEX_COLLECTION', 'COMPLETED', now(), now())
+                        """);
+                assertEquals(28, countAllRows(connection, "flyway_schema_history"));
+            }
+            Flyway merged = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("classpath:db/migration").load();
+            FlywayValidateException pending = assertThrows(FlywayValidateException.class, merged::migrate);
+            assertTrue(pending.getMessage().contains("20260930.01"));
+            try (ConfigurableApplicationContext oneTimeUpgrade = new SpringApplicationBuilder(BackendApplication.class)
+                    .environment(createIsolatedEnvironment(jdbcUrl))
+                    .run("--spring.flyway.out-of-order=true", "--spring.flyway.target=20260930.09")) {
+                assertTrue(oneTimeUpgrade.getBean(Flyway.class).getConfiguration().isOutOfOrder());
+            }
+            merged.validate();
+            assertEquals(0, merged.migrate().migrationsExecuted);
+            try (ConfigurableApplicationContext applicationContext =
+                    new SpringApplicationBuilder(BackendApplication.class)
+                    .environment(createIsolatedEnvironment(jdbcUrl)).run();
+                    Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
+                    Statement statement = connection.createStatement()) {
+                assertEquals(29, countAllRows(connection, "flyway_schema_history"));
+                assertEquals(1, countAllRows(connection, "data_pipeline_executions"));
+                assertFalse(applicationContext.getBean(Flyway.class).getConfiguration().isOutOfOrder());
+                assertEquals(1, statement.executeUpdate("""
+                        INSERT INTO data_pipeline_executions
+                            (execution_id, type, status, started_at, heartbeat_at)
+                        VALUES ('00000000-0000-0000-0000-000000000002',
+                                'COMPLEX_SYNC', 'COMPLETED', now(), now())
+                        """));
+            }
+        }
+        finally {
+            dropDatabase(databaseName);
+        }
+    }
+
+    @Test
     void 기존_스키마를_자동_baseline_후_통합_마이그레이션으로_보정한다() throws Exception {
         String databaseName = "toadzip_reconciliation_" + UUID.randomUUID().toString().replace("-", "");
         String jdbcUrl = primaryTestDatabaseUrl(databaseName);
@@ -226,7 +361,8 @@ class LocalProfileSchemaPersistenceTest {
                         """);
             }
 
-            try (ConfigurableApplicationContext applicationContext = new SpringApplicationBuilder(BackendApplication.class)
+            try (ConfigurableApplicationContext applicationContext =
+                    new SpringApplicationBuilder(BackendApplication.class)
                     .environment(createIsolatedEnvironment(jdbcUrl))
                     .run();
                     Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
@@ -258,9 +394,9 @@ class LocalProfileSchemaPersistenceTest {
                                 + ",SQL:20260925.03,SQL:20260926.01,SQL:20260926.02,SQL:20260926.03"
                                 + ",SQL:20260926.04,SQL:20260926.05,SQL:20260926.06,SQL:20260927.01"
                                 + ",SQL:20260928.01,SQL:20260928.02,SQL:20260928.03,SQL:20260928.04"
-                                + ",SQL:20260929.01,SQL:20260930.02,SQL:20260930.03,SQL:20260930.04"
-                                + ",SQL:20260930.05,SQL:20260930.06,SQL:20260930.07,SQL:20260930.08"
-                                + ",SQL:20260930.09",
+                                + ",SQL:20260929.01,SQL:20260930.01,SQL:20260930.02,SQL:20260930.03"
+                                + ",SQL:20260930.04,SQL:20260930.05,SQL:20260930.06,SQL:20260930.07"
+                                + ",SQL:20260930.08,SQL:20260930.09",
                         history.getString(1));
                 assertEquals(1, countColumn(connection, "verified_lh_supply_replacements", "evidence_url"));
                 assertEquals(1, countColumn(connection, "supply_targets", "lh_amount_preserved_reason"));

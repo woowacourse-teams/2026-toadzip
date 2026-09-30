@@ -53,24 +53,27 @@ public class DataPipelineRunner {
         DataPipelinePartialFailureException firstReportedPartialFailure = null;
         DataPipelineStep partiallyFailedStep = null;
         boolean lhRateLimited = false;
+        boolean collectionRateLimited = false;
         for (DataPipelineStep step : type.steps()) {
-            try {
-                lhRateLimited |= runStep(
-                        executionId, step, partiallyFailedStep, lhRateLimited && isLhAnnouncementCollection(step)
-                );
-                partiallyFailedStep = null;
+            if (type.requiresSuccessfulCollection(step) && firstReportedPartialFailure != null
+                    && firstReportedPartialFailure.getStep().isCollection()) {
+                throw firstReportedPartialFailure;
             }
-            catch (DataPipelinePartialFailureException exception) {
-                lhRateLimited |= exception.hasLhRateLimit();
-                executionStateService.recordPartialFailure(
-                        executionId,
-                        exception.getStep(),
-                        exception.getServerResponse()
+            StepOutcome outcome = runStep(
+                    executionId, step, partiallyFailedStep,
+                    skipReason(type, step, collectionRateLimited, lhRateLimited)
+            );
+            lhRateLimited |= outcome.rateLimited() && isLhAnnouncementCollection(step);
+            collectionRateLimited |= outcome.rateLimited() && step.isCollection();
+            partiallyFailedStep = null;
+            if (outcome.partialFailure() == null) {
+                continue;
+            }
+            partiallyFailedStep = step;
+            if (firstReportedPartialFailure == null) {
+                firstReportedPartialFailure = new DataPipelinePartialFailureException(
+                        step, outcome.partialFailure().serverResponse()
                 );
-                partiallyFailedStep = exception.getStep();
-                if (firstReportedPartialFailure == null) {
-                    firstReportedPartialFailure = exception;
-                }
             }
         }
         if (firstReportedPartialFailure != null) {
@@ -78,38 +81,46 @@ public class DataPipelineRunner {
         }
     }
 
-    private boolean runStep(
+    private StepOutcome runStep(
             UUID executionId,
             DataPipelineStep step,
             DataPipelineStep partiallyFailedStep,
-            boolean blockedByLhRateLimit
+            String skipReason
     ) {
         Timer.Sample sample = Timer.start(meterRegistry);
         String outcome = "failed";
         try {
             startStep(executionId, step, partiallyFailedStep);
-            if (blockedByLhRateLimit) {
+            if (skipReason != null) {
                 executionStateService.skipStep(
-                        executionId, step, "앞선 LH 공고 단계의 호출 제한으로 이 단계를 건너뛰었습니다.", "{}"
+                        executionId, step, skipReason, "{}"
                 );
-                outcome = "rate_limited";
-                return true;
+                outcome = "skipped";
+                if (isLhAnnouncementCollection(step)) {
+                    outcome = "rate_limited";
+                }
+                return new StepOutcome(false, null);
             }
             DataPipelineStepResult result = execute(step);
             if (result.failedOnlyByRateLimit()) {
                 executionStateService.skipStep(executionId, step, RATE_LIMIT_SKIP_REASON, result.serverResponse());
                 outcome = "rate_limited";
-                return isLhAnnouncementCollection(step);
+                return new StepOutcome(true, null);
             }
-            rejectPartialFailure(step, result);
+            if (result.failed()) {
+                executionStateService.recordPartialFailure(executionId, step, result.serverResponse());
+                return new StepOutcome(
+                        result.rateLimitedFailureCount() > 0, result
+                );
+            }
             if (result.hasWarnings()) {
                 executionStateService.completeStepWithWarnings(executionId, step, result.serverResponse());
                 outcome = "completed_with_warnings";
-                return false;
+                return new StepOutcome(false, null);
             }
             executionStateService.completeStep(executionId, step, result.serverResponse());
             outcome = "completed";
-            return false;
+            return new StepOutcome(false, null);
         }
         finally {
             long durationNanos = sample.stop(meterRegistry.timer(
@@ -118,6 +129,19 @@ public class DataPipelineRunner {
             log.info("event=ingest.pipeline.step.finished executionId={} step={} result={} durationMs={}",
                     MDC.get("executionId"), step, outcome, durationNanos / 1_000_000);
         }
+    }
+
+    private String skipReason(
+            DataPipelineType type, DataPipelineStep step, boolean collectionRateLimited, boolean lhRateLimited
+    ) {
+        if (type.requiresSuccessfulCollection(step) && collectionRateLimited) {
+            return "수집이 호출 제한으로 완료되지 않아 자동 정제를 실행하지 않았습니다. "
+                    + "수집 결과를 확인한 뒤 저장된 원천으로 정제를 실행할 수 있습니다.";
+        }
+        if (lhRateLimited && isLhAnnouncementCollection(step)) {
+            return "앞선 LH 공고 단계의 호출 제한으로 이 단계를 건너뛰었습니다.";
+        }
+        return null;
     }
 
     private void startStep(UUID executionId, DataPipelineStep step, DataPipelineStep partiallyFailedStep) {
@@ -169,12 +193,6 @@ public class DataPipelineRunner {
         };
     }
 
-    private void rejectPartialFailure(DataPipelineStep step, DataPipelineStepResult result) {
-        if (result.failed()) {
-            throw new DataPipelinePartialFailureException(
-                    step, result.serverResponse(),
-                    isLhAnnouncementCollection(step) && result.rateLimitedFailureCount() > 0
-            );
-        }
+    private record StepOutcome(boolean rateLimited, DataPipelineStepResult partialFailure) {
     }
 }

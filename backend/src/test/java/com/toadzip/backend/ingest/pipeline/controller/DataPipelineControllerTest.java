@@ -41,9 +41,11 @@ class DataPipelineControllerTest {
             "complex-collection, COMPLEX_COLLECTION",
             "complex-refinement, COMPLEX_REFINEMENT",
             "announcement-collection, ANNOUNCEMENT_COLLECTION",
-            "announcement-refinement, ANNOUNCEMENT_REFINEMENT"
+            "announcement-refinement, ANNOUNCEMENT_REFINEMENT",
+            "complex-sync, COMPLEX_SYNC",
+            "announcement-sync, ANNOUNCEMENT_SYNC"
     })
-    void 분리된_실행을_접수하고_진행_상태를_조회한다(
+    void 독립_및_통합_실행을_접수하고_진행_상태를_조회한다(
             String pathValue,
             DataPipelineType type
     ) throws Exception {

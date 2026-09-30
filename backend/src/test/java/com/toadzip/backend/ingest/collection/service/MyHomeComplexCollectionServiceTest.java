@@ -159,14 +159,17 @@ class MyHomeComplexCollectionServiceTest {
     }
 
     @Test
-    @DisplayName("페이지 간 저장 키가 중복되면 기존 지역 원천을 교체하지 않는다")
-    void doesNotReplaceRegionWhenSourceKeysOverlapBetweenPages() {
+    @DisplayName("페이지 간 같은 원천 키의 내용이 다르면 기존 지역 원천을 교체하지 않는다")
+    void doesNotReplaceRegionWhenSourceContentsConflictBetweenPages() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
         when(externalRepository.fetch(region, request(), 1))
                 .thenReturn(response(itemsFor(region, 1, 2), 4));
         when(externalRepository.fetch(region, request(), 2))
-                .thenReturn(response(itemsFor(region, 2, 3), 4));
+                .thenReturn(response("""
+                        [{"hsmpSn":2,"brtcCode":"11","signguCode":"110","bassMtRntchrg":100000},
+                         {"hsmpSn":3,"brtcCode":"11","signguCode":"110"}]
+                        """, 4));
 
         MyHomeComplexCollectionReport result = service.collect(request());
 
@@ -183,14 +186,72 @@ class MyHomeComplexCollectionServiceTest {
     }
 
     @Test
-    @DisplayName("한 페이지에 저장 키가 중복되면 기존 지역 원천을 교체하지 않는다")
-    void doesNotReplaceRegionWhenSourceKeysRepeatWithinPage() {
+    void 페이지_간_동일_원천_반복은_허용하고_원본_행_수로_마지막_페이지를_판정한다() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1))
+                .thenReturn(response(itemsFor(region, 1, 2), 4));
+        when(externalRepository.fetch(region, request(), 2))
+                .thenReturn(response(itemsFor(region, 2, 3), 4));
+        when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(3);
+
+        var result = service.collect(request());
+
+        verify(sourceStore).replaceComplexRegion(eq(region), any());
+        verify(externalRepository, never()).fetch(region, request(), 3);
+        verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isZero();
+        assertThat(result.storedRowCount()).isEqualTo(3);
+        assertThat(result.externalApiCallCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("한 페이지의 동일 원천 반복은 허용하고 저장소의 중복 제거 결과를 보고한다")
+    void storesIdenticalSourcesRepeatedWithinPage() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
         when(externalRepository.fetch(region, request(), 1))
                 .thenReturn(response(itemsFor(region, 1, 1), 2));
+        when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(1);
 
         MyHomeComplexCollectionReport result = service.collect(request());
+
+        verify(sourceStore).replaceComplexRegion(eq(region), any());
+        verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isZero();
+        assertThat(result.storedRowCount()).isOne();
+    }
+
+    @Test
+    void 저장_정규화_뒤_내용이_같은_원천은_동일한_행으로_취급한다() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1)).thenReturn(response("""
+                [{"hsmpSn":1,"brtcCode":"11","signguCode":"110","styleNm":"C",\
+                  "rnAdres":"서울 주소","suplyPrvuseAr":22.03},
+                 {"hsmpSn":1,"brtcCode":"11","signguCode":"110","styleNm":"C ",\
+                  "rnAdres":" 서울 주소 ","suplyPrvuseAr":22.0300}]
+                """, 2));
+        when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(1);
+
+        var result = service.collect(request());
+
+        verify(sourceStore).replaceComplexRegion(eq(region), any());
+        verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isZero();
+        assertThat(result.storedRowCount()).isOne();
+    }
+
+    @Test
+    void 한_페이지의_같은_원천_키에_다른_금액이_있으면_지역을_교체하지_않는다() {
+        MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
+        when(regionCatalog.find("11", "110")).thenReturn(region);
+        when(externalRepository.fetch(region, request(), 1)).thenReturn(response("""
+                [{"hsmpSn":1,"brtcCode":"11","signguCode":"110","bassMtRntchrg":100000},
+                 {"hsmpSn":1,"brtcCode":"11","signguCode":"110","bassMtRntchrg":200000}]
+                """, 2));
+
+        var result = service.collect(request());
 
         verify(sourceStore, never()).replaceComplexRegion(any(), any());
         verify(failureRecorder).record(any(), any(), any(), any(), any());

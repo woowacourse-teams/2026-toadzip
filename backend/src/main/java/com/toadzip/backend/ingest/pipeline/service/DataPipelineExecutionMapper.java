@@ -36,7 +36,7 @@ public class DataPipelineExecutionMapper {
                 execution.getStatus(),
                 currentStep,
                 stepName(currentStep),
-                currentStepIndex(currentStep),
+                currentStepIndex(execution),
                 execution.getType().steps().size(),
                 completedSteps,
                 completedStepResponses(execution),
@@ -103,11 +103,12 @@ public class DataPipelineExecutionMapper {
         );
     }
 
-    private int currentStepIndex(DataPipelineStep currentStep) {
+    private int currentStepIndex(DataPipelineExecution execution) {
+        DataPipelineStep currentStep = execution.getCurrentStep();
         if (currentStep == null) {
             return 0;
         }
-        return currentStep.sequence();
+        return execution.getType().sequenceOf(currentStep);
     }
 
     private String stepName(DataPipelineStep step) {

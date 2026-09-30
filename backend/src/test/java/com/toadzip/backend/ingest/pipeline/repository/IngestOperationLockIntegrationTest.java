@@ -22,7 +22,7 @@ class IngestOperationLockIntegrationTest {
     private IngestOperationLock executionLock;
 
     @Test
-    void 서로_독립된_작업은_같은_빈에서도_동시에_실행한다() throws Exception {
+    void 같은_작업은_거절하고_독립된_작업은_같은_빈에서도_동시에_실행한다() throws Exception {
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         try (var executor = Executors.newSingleThreadExecutor()) {
@@ -33,6 +33,7 @@ class IngestOperationLockIntegrationTest {
             }));
             try {
                 assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(executionLock.tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> "duplicate")).isEmpty();
                 assertThat(executionLock.tryRun(MYHOME_ANNOUNCEMENT_COLLECTION, () -> "myhome"))
                         .contains("myhome");
             }

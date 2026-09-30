@@ -1,15 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getPipelineHistory, type DataPipelineExecution } from './api'
 import { PipelineResult } from './DataPipelineControl'
-import { pipelineStatusLabels } from './pipelineLabels'
-
-const labels = {
-  COMPLEX_COLLECTION: '단지 수집',
-  COMPLEX_REFINEMENT: '단지 정제',
-  ANNOUNCEMENT_COLLECTION: '공고 수집',
-  ANNOUNCEMENT_REFINEMENT: '공고 정제',
-}
-
+import { pipelineLabels as labels, pipelineStatusLabels } from './pipelineLabels'
 export function PipelineHistory() {
   const [page, setPage] = useState(0)
   const [items, setItems] = useState<DataPipelineExecution[]>([])

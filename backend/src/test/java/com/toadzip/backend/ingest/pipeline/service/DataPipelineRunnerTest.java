@@ -496,6 +496,120 @@ class DataPipelineRunnerTest {
         verifyNoInteractions(lhLeaseCatalogCollectionService);
     }
 
+    @Test
+    void 단지_통합_실행은_수집_뒤_정제와_보강까지_순서대로_실행한다() {
+        DataPipelineType type = DataPipelineType.fromPathValue("complex-sync");
+        givenSuccessfulComplexCollectionReports();
+        givenSuccessfulComplexRefinementReports();
+
+        runner.run(type, executionId);
+
+        InOrder order = inOrder(myHomeComplexCollectionService, lhLeaseCatalogCollectionService,
+                myHomeComplexMappingService, householdEnrichmentService);
+        order.verify(myHomeComplexCollectionService).collect(any());
+        order.verify(lhLeaseCatalogCollectionService).collect(any());
+        order.verify(myHomeComplexMappingService).mapAll();
+        order.verify(householdEnrichmentService).enrichAll();
+    }
+
+    @Test
+    void 공고_통합_실행은_TTL_생략만_있으면_정제를_이어간다() {
+        DataPipelineType type = DataPipelineType.fromPathValue("announcement-sync");
+        givenSuccessfulAnnouncementCollectionReports();
+        givenSuccessfulAnnouncementRefinementReports();
+        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY))
+                .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 0, 0, 0, 3, 0));
+
+        runner.run(type, executionId);
+
+        InOrder order = inOrder(myHomeAnnouncementCollectionService, lhAnnouncementCatalogCollectionService,
+                collectionService, myHomeAnnouncementMappingService, announcementEnrichmentService);
+        order.verify(myHomeAnnouncementCollectionService).collect(any());
+        order.verify(lhAnnouncementCatalogCollectionService).collect();
+        order.verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+        order.verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        order.verify(myHomeAnnouncementMappingService).mapAll();
+        order.verify(announcementEnrichmentService).enrichAll();
+    }
+
+    @Test
+    void 통합_수집의_부분_실패는_후속_수집을_유지하고_자동_정제를_막는다() {
+        DataPipelineType type = DataPipelineType.fromPathValue("announcement-sync");
+        givenSuccessfulAnnouncementCollectionReports();
+        when(myHomeAnnouncementCollectionService.collect(any()))
+                .thenReturn(new ExternalDataCollectionReport("myhome-announcement", 1, 1, 1));
+
+        assertThatThrownBy(() -> runner.run(type, executionId))
+                .isInstanceOf(DataPipelinePartialFailureException.class)
+                .extracting("step").isEqualTo(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+
+        verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        verifyNoInteractions(myHomeAnnouncementMappingService, announcementEnrichmentService);
+        verify(executionStateService, never()).startStep(executionId, DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+    }
+
+    @Test
+    void 마이홈_호출_제한도_통합_실행의_자동_정제를_막는다() {
+        DataPipelineType type = DataPipelineType.fromPathValue("announcement-sync");
+        givenSuccessfulAnnouncementCollectionReports();
+        when(myHomeAnnouncementCollectionService.collect(any()))
+                .thenReturn(new ExternalDataCollectionReport("myhome-announcement", 0, 1, 0, 0, 1));
+
+        runner.run(type, executionId);
+
+        verify(collectionService).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        verifyNoInteractions(myHomeAnnouncementMappingService, announcementEnrichmentService);
+        verify(executionStateService).skipStep(eq(executionId),
+                eq(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS), any(), eq("{}"));
+        verify(executionStateService).skipStep(eq(executionId),
+                eq(DataPipelineStep.ENRICH_LH_ANNOUNCEMENTS), any(), eq("{}"));
+    }
+
+    @Test
+    void LH_호출_제한은_후속_외부_수집과_자동_정제를_모두_막는다() {
+        DataPipelineType type = DataPipelineType.fromPathValue("announcement-sync");
+        when(myHomeAnnouncementCollectionService.collect(any())).thenReturn(collectionReport("myhome-announcement"));
+        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY))
+                .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 0, 1, 0, 0, 1));
+
+        runner.run(type, executionId);
+
+        verify(collectionService, never()).collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        verifyNoInteractions(myHomeAnnouncementMappingService, announcementEnrichmentService);
+        verify(executionStateService).skipStep(eq(executionId),
+                eq(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS), any(), eq("{}"));
+    }
+
+    @Test
+    void 수집_직후_중지_요청은_통합_실행의_정제_시작_전에_반영된다() {
+        DataPipelineType type = DataPipelineType.fromPathValue("complex-sync");
+        givenSuccessfulComplexCollectionReports();
+        Lease lease = mock(Lease.class);
+        DataPipelineExecutionMonitor monitor = mock(DataPipelineExecutionMonitor.class);
+        doNothing().doNothing().doThrow(new DataPipelineStoppedException()).when(monitor).checkStopRequested();
+
+        try (var ignored = IngestExecutionScope.open(lease, monitor)) {
+            assertThatThrownBy(() -> runner.run(type, executionId))
+                    .isInstanceOf(DataPipelineStoppedException.class);
+        }
+
+        verifyNoInteractions(myHomeComplexMappingService, householdEnrichmentService);
+        verify(executionStateService, never()).startStep(executionId, DataPipelineStep.MAP_MYHOME_COMPLEXES);
+    }
+
+    @Test
+    void 통합_실행의_정제_운영_실패는_기존처럼_보강_후_실패로_종료한다() {
+        givenSuccessfulComplexCollectionReports();
+        when(myHomeComplexMappingService.mapAll()).thenReturn(MyHomeComplexMappingReport.operationalFailedRows(1));
+        when(householdEnrichmentService.enrichAll()).thenReturn(LhHousingTypeHouseholdEnrichmentReport.empty(0));
+
+        assertThatThrownBy(() -> runner.run(DataPipelineType.COMPLEX_SYNC, executionId))
+                .isInstanceOf(DataPipelinePartialFailureException.class)
+                .extracting("step").isEqualTo(DataPipelineStep.MAP_MYHOME_COMPLEXES);
+
+        verify(householdEnrichmentService).enrichAll();
+    }
+
     private void givenSuccessfulComplexCollectionReports() {
         when(myHomeComplexCollectionService.collect(any()))
                 .thenReturn(new MyHomeComplexCollectionReport("myhome-complex", 1, 0, 1));

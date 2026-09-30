@@ -42,6 +42,9 @@ class LhAnnouncementCollectionLockIntegrationTest {
             }));
             try {
                 assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(first.tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> "duplicate detail")).isEmpty();
+                assertThat(first.tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> "supply"))
+                        .isEmpty();
                 assertThat(second.tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> "supply")).isEmpty();
                 assertThat(second.tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> "catalog")).isEmpty();
             }
