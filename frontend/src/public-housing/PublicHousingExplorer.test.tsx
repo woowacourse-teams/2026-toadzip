@@ -1305,8 +1305,8 @@ describe('PublicHousingExplorer', () => {
     })
     expect(marker).toHaveAttribute('data-agency-label', 'LH')
     expect(marker).toHaveAttribute('data-rental-type-label', '행복')
-    expect(marker).toHaveAttribute('data-deposit-label', '5,000만원~')
-    expect(marker).toHaveAttribute('data-monthly-rent-label', '20만원~')
+    expect(marker).toHaveAttribute('data-deposit-label', '5천~')
+    expect(marker).toHaveAttribute('data-monthly-rent-label', '20만~')
   })
 
   it('이후 지도 이동은 같은 영역을 지도와 목록에 자동 적용한다', async () => {
@@ -2482,8 +2482,8 @@ describe('PublicHousingExplorer', () => {
       name: '서울가람 행복주택 지도 마커 선택',
     })
     expect(marker).toBeVisible()
-    expect(marker).toHaveAttribute('data-deposit-label', '5,000만원~')
-    expect(marker).toHaveAttribute('data-monthly-rent-label', '20만원~')
+    expect(marker).toHaveAttribute('data-deposit-label', '5천~')
+    expect(marker).toHaveAttribute('data-monthly-rent-label', '20만~')
     expect(repository.findComplexPage).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
