@@ -9,12 +9,23 @@ it('비로그인 사용자는 카카오와 구글 로그인 경로를 선택할 
   vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.com')
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 401, ok: false }))
   render(<MemoryRouter><LoginPage /></MemoryRouter>)
-  expect(await screen.findByRole('link', { name: '카카오로 계속하기' })).toHaveAttribute(
+  const brand = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
+  expect(brand).toHaveTextContent('공공주택 복덕방')
+  expect(brand.querySelector('img'))
+    .toHaveAttribute('src', '/logo-bok-search.svg')
+  expect(screen.getByRole('heading', { name: '공공주택, 한눈에.' })).toBeVisible()
+  expect(screen.getByRole('region', { name: '서비스 소개' }).querySelector('img'))
+    .toHaveAttribute('src', '/login-product-preview.svg')
+  const kakaoLink = await screen.findByRole('link', { name: '카카오로 계속하기' })
+  expect(kakaoLink).toHaveAttribute(
     'href', 'https://api.example.com/api/auth/oauth2/authorization/kakao',
   )
-  expect(screen.getByRole('link', { name: 'Google로 계속하기' })).toHaveAttribute(
+  expect(kakaoLink.querySelector('img')).toHaveAttribute('src', '/auth/kakao-symbol.svg')
+  const googleLink = screen.getByRole('link', { name: 'Google로 계속하기' })
+  expect(googleLink).toHaveAttribute(
     'href', 'https://api.example.com/api/auth/oauth2/authorization/google',
   )
+  expect(googleLink.querySelector('img')).toHaveAttribute('src', '/auth/google-g.png')
 })
 
 it('로그인 실패 후 재시도 안내를 표시한다', async () => {

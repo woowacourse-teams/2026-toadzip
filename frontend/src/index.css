@@ -173,34 +173,19 @@ a {
   outline-offset: 3px;
 }
 
-.brand-mark {
-  display: grid;
-  width: 34px;
+.brand-logo {
+  width: 88px;
   height: 34px;
-  margin-right: 9px;
-  border-radius: 9px;
-  background: var(--brand);
-  color: var(--ds-color-on-brand);
-  place-items: center;
-}
-
-.brand-mark svg {
-  width: 21px;
-  height: 21px;
+  flex: none;
+  object-fit: contain;
 }
 
 .brand-name {
-  font-size: 18px;
+  margin-left: 9px;
+  font-size: 17px;
   font-weight: 750;
   letter-spacing: -0.025em;
-}
-
-.brand-tagline {
-  margin-left: 8px;
-  padding-left: 8px;
-  border-left: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 13px;
+  white-space: nowrap;
 }
 
 .service-header:has([aria-controls="notification-settings"]) .brand-tagline {
@@ -285,7 +270,7 @@ a {
 
 .user-login-page {
   min-height: 100dvh;
-  background: #f6f8f7;
+  background: #f5f7f5;
   color: #182b28;
 }
 
@@ -295,6 +280,7 @@ a {
   align-items: center;
   justify-content: space-between;
   padding: 0 clamp(20px, 5vw, 72px);
+  border-bottom: 1px solid #e7ece9;
   background: #fff;
 }
 
@@ -309,136 +295,64 @@ a {
 
 .user-login-main {
   display: grid;
-  width: min(1120px, calc(100% - 40px));
-  min-height: min(690px, calc(100dvh - 116px));
-  grid-template-columns: 1fr 0.88fr;
-  margin: 24px auto;
+  width: min(1080px, calc(100% - 48px));
+  min-height: min(650px, calc(100dvh - 132px));
+  grid-template-columns: 1.02fr 0.98fr;
+  margin: 32px auto;
   overflow: hidden;
-  border: 1px solid #e5eae7;
-  border-radius: 28px;
+  border: 1px solid #e2e9e4;
+  border-radius: 18px;
   background: #fff;
-  box-shadow: 0 18px 55px rgb(28 58 46 / 7%);
+  box-shadow: 0 16px 48px rgb(20 52 38 / 5%);
 }
 
 .user-login-intro {
   position: relative;
-  min-height: 560px;
+  min-height: 600px;
   overflow: hidden;
-  padding: clamp(36px, 5vw, 76px);
-  background: #e5f0e9;
-}
-
-.user-login-eyebrow,
-.user-login-step {
-  color: #277259;
-  font-size: 13px;
-  font-weight: 750;
-  letter-spacing: .01em;
+  padding: clamp(40px, 5vw, 64px);
+  background: #164735;
+  color: #fff;
 }
 
 .user-login-intro h1 {
   position: relative;
   z-index: 1;
-  margin: 26px 0 16px;
-  font-size: clamp(31px, 3.2vw, 46px);
-  font-weight: 760;
-  letter-spacing: -.055em;
-  line-height: 1.28;
+  margin: 0;
+  font-size: clamp(33px, 3.2vw, 42px);
+  font-weight: 700;
+  letter-spacing: -.05em;
+  line-height: 1.24;
 }
 
-.user-login-intro p {
-  position: relative;
-  z-index: 1;
-  color: #4e655c;
-  line-height: 1.6;
-}
-
-.user-login-illustration {
+.user-login-product-preview {
   position: absolute;
-  right: 0;
   bottom: 0;
-  left: 0;
-  height: 50%;
-}
-
-.user-login-ground {
-  position: absolute;
-  right: -10%;
-  bottom: -40px;
-  left: -10%;
-  height: 100px;
-  border-radius: 50% 50% 0 0;
-  background: #b8d5c3;
-}
-
-.user-login-sun {
-  position: absolute;
-  right: 18%;
-  top: 2%;
-  width: 92px;
-  height: 92px;
-  border-radius: 50%;
-  background: #f8d98c;
-}
-
-.user-login-house {
-  position: absolute;
-  z-index: 1;
-  bottom: 40px;
+  left: clamp(40px, 5vw, 64px);
   display: block;
-  border-radius: 7px 7px 0 0;
-}
-
-.user-login-house::before {
-  position: absolute;
-  right: -12%;
-  bottom: 100%;
-  left: -12%;
-  height: 70px;
-  background: inherit;
-  clip-path: polygon(50% 0, 100% 100%, 0 100%);
-  content: '';
-}
-
-.user-login-house--back {
-  right: 12%;
-  width: 145px;
-  height: 125px;
-  background: #8bb69e;
-}
-
-.user-login-house--front {
-  right: 37%;
-  width: 175px;
-  height: 150px;
-  background: #4b9478;
-}
-
-.user-login-house--front::after {
-  position: absolute;
-  right: 28px;
-  bottom: 0;
-  width: 45px;
-  height: 85px;
-  border-radius: 23px 23px 0 0;
-  background: #e5f0e9;
-  content: '';
+  width: max(500px, 120%);
+  max-width: none;
+  height: auto;
+  transform: translateY(64px);
+  border-radius: 16px;
+  box-shadow: 0 18px 48px rgb(5 33 20 / 24%);
 }
 
 .user-login-panel {
   display: grid;
-  min-height: 560px;
-  padding: 36px;
+  min-height: 600px;
+  padding: clamp(36px, 5vw, 72px);
   place-items: center;
 }
 
 .user-login-content { width: min(100%, 352px); }
 .user-login-content h2 {
-  margin: 14px 0 9px;
+  margin: 0 0 10px;
   font-size: 32px;
   letter-spacing: -.04em;
 }
 .user-login-content > p {
+  margin: 0;
   color: #65736e;
   font-size: 14px;
   line-height: 1.6;
@@ -447,30 +361,36 @@ a {
 .user-login-actions {
   display: grid;
   gap: 12px;
-  margin-top: 36px;
+  margin-top: 32px;
 }
 
 .user-login-provider,
 .user-login-map-link {
-  display: flex;
-  min-height: 52px;
+  display: grid;
+  min-height: 54px;
+  grid-template-columns: 24px 1fr 24px;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
+  gap: 10px;
+  padding: 0 16px;
   border: 1px solid #d7dfda;
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 15px;
   font-weight: 700;
   text-decoration: none;
 }
 
-.user-login-provider--kakao { border-color: #fee500; background: #fee500; color: #251c00; }
-.user-login-provider--kakao:hover { background: #f4dc00; }
-.user-login-provider--google { background: #fff; color: #263b33; }
-.user-login-provider--google:hover { background: #f7f9f8; }
-.user-login-provider-mark { color: #392d00; font-size: 17px; }
-.user-login-google-mark { color: #4285f4; font-size: 21px; font-weight: 800; }
-.user-login-map-link { margin-top: 28px; background: #277259; color: #fff; }
+.user-login-provider::after { content: ''; }
+.user-login-provider span { text-align: center; }
+.user-login-provider-icon { width: 20px; height: 20px; object-fit: contain; }
+.user-login-provider--kakao { border-color: #fee500; background: #fee500; color: rgb(0 0 0 / 85%); }
+.user-login-provider--google { border-color: #747775; background: #fff; color: #1f1f1f; }
+.user-login-provider:hover { box-shadow: 0 3px 12px rgb(28 58 46 / 13%); }
+.user-login-map-link {
+  display: flex;
+  margin-top: 28px;
+  background: #277259;
+  color: #fff;
+}
 .user-login-map-link:hover { background: #1e6049; }
 .user-login-logout {
   display: block;
@@ -483,12 +403,17 @@ a {
   text-decoration: underline;
 }
 .user-login-logout:disabled { cursor: wait; opacity: .6; }
-.user-login-content .user-login-note { margin-top: 24px; font-size: 12px; }
+.user-login-content .user-login-note { margin-top: 24px; font-size: 12px; text-align: center; }
 .user-login-content .user-login-alert {
+  margin-top: 16px;
   padding: 12px;
   border-radius: 8px;
   background: #fff0ed;
   color: #9c3322;
+}
+
+@media (max-width: 480px) {
+  .user-login-header { padding: 0 20px; }
 }
 
 @media (max-width: 760px) {
@@ -501,11 +426,10 @@ a {
     border-radius: 0;
     box-shadow: none;
   }
-  .user-login-intro { min-height: 200px; padding: 30px 24px; }
-  .user-login-intro h1 { margin: 12px 0 8px; font-size: 28px; }
-  .user-login-intro p { margin: 0; font-size: 13px; }
-  .user-login-illustration { right: 0; bottom: -55px; left: auto; width: 210px; height: 180px; opacity: .35; }
-  .user-login-panel { min-height: 420px; padding: 40px 24px; place-items: start center; }
+  .user-login-intro { min-height: 280px; padding: 34px 24px; }
+  .user-login-intro h1 { font-size: 29px; }
+  .user-login-product-preview { left: 24px; width: 450px; transform: translateY(110px); }
+  .user-login-panel { min-height: 420px; padding: 48px 24px; place-items: start center; }
 }
 
 .map-main {
@@ -1542,6 +1466,12 @@ a {
   text-underline-offset: 4px;
 }
 
+.not-found-main .brand-link {
+  margin: 0 0 24px;
+  color: var(--ds-color-text);
+  text-decoration: none;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -1563,10 +1493,6 @@ a {
 @media (max-width: 420px) {
   .service-header {
     padding: 0 12px;
-  }
-
-  .brand-tagline {
-    display: none;
   }
 
   .map-state-layer {
@@ -1693,10 +1619,17 @@ button {
   display: grid;
   min-height: 100vh;
   min-height: 100dvh;
+  gap: 16px;
   padding: 24px;
   text-align: center;
   place-content: center;
 }
+
+.admin-auth-state .brand-link {
+  justify-self: center;
+}
+
+.admin-auth-state p { margin: 0; }
 
 .admin-login-form {
   display: grid;
@@ -1712,6 +1645,10 @@ button {
 .admin-login-form h1 {
   margin: 0;
   font-size: 24px;
+}
+
+.admin-login-brand {
+  margin-bottom: 4px;
 }
 
 .admin-login-form label {
@@ -1750,18 +1687,28 @@ button {
   padding: 16px 24px;
   align-items: center;
   justify-content: space-between;
-  color: #ffffff;
-  background: #0f172a;
+  border-bottom: 1px solid #d9e3e1;
+  color: var(--ds-color-text);
+  background: #ffffff;
 }
 
-.admin-header div {
+.admin-brand,
+.admin-header-account {
   display: flex;
   gap: 12px;
   align-items: center;
 }
 
+.admin-brand-context {
+  padding-left: 12px;
+  border-left: 1px solid #d9e3e1;
+  color: #516761;
+  font-size: 14px;
+  font-weight: 700;
+}
+
 .admin-header button {
-  background: #334155;
+  background: #17685b;
 }
 
 .admin-content {
@@ -2356,7 +2303,7 @@ button {
 @media (max-width: 600px) { .admin-navigation { padding: 10px 16px; gap: 2px; } .admin-navigation a { padding: 10px 12px; } }
 @media (max-width: 600px) {
   .admin-header { flex-wrap: wrap; gap: 12px; }
-  .admin-header > span { flex-basis: 100%; }
-  .admin-header > div { width: 100%; justify-content: space-between; }
+  .admin-brand { flex-basis: 100%; }
+  .admin-header-account { width: 100%; justify-content: space-between; }
   .admin-header button { white-space: nowrap; flex-shrink: 0; }
 }
