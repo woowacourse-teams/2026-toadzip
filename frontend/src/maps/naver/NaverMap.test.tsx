@@ -324,8 +324,8 @@ const unsubscribeAuthenticationFailure = vi.fn()
 const markerPresentation = {
   agencyLabel: 'LH',
   agencyName: '한국토지주택공사',
-  deposit: { digits: '1,000', unit: '만원', exactLabel: '10,000,000원' },
-  monthlyRent: { digits: '23.4', unit: '만원', exactLabel: '234,000원' },
+  deposit: { digits: '1', unit: '천', exactLabel: '10,000,000원' },
+  monthlyRent: { digits: '23', unit: '만', exactLabel: '234,000원' },
   rentalTypeLabel: '국민',
   rentalTypeName: '국민임대',
 } satisfies MapMarkerPresentation
@@ -1411,11 +1411,11 @@ describe('NaverMap', () => {
 
     rerender(<NaverMap representation="INDIVIDUAL"
       markers={[{ ...marker, monthlyRent: {
-        digits: '24', unit: '만원', exactLabel: '240,000원',
+        digits: '24', unit: '만', exactLabel: '240,000원',
       } }]} />)
     expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2)
     expect(firstButton).not.toBeInTheDocument()
-    expect(createdMarkerButton(fakeSdk, 1)).toHaveTextContent('월24만원~')
+    expect(createdMarkerButton(fakeSdk, 1)).toHaveTextContent('월24만~')
     expect(createdMarkerButton(fakeSdk, 1)).toHaveClass('is-selected')
     expect(fakeSdk.markerInstances[1].setZIndex).toHaveBeenLastCalledWith(30)
     rerender(<NaverMap representation="INDIVIDUAL" markers={[]} />)
@@ -1495,14 +1495,14 @@ describe('NaverMap', () => {
 
     rerender(<NaverMap representation="INDIVIDUAL" markers={[
       { ...a, selected: true, highlighted: true },
-      { ...c, monthlyRent: { digits: '25', unit: '만원', exactLabel: '250,000원' } },
+      { ...c, monthlyRent: { digits: '25', unit: '만', exactLabel: '250,000원' } },
     ]} onMarkerSelect={nextMarkerSelect} onMarkerHighlight={onMarkerHighlight} />)
     act(() => fakeSdk.emitIdle())
     expect(screen.getByRole('button', { name: /^a 단지,/ })).toBe(aButton)
     expect(aButton).toHaveClass('is-selected', 'is-highlighted')
     expect(aButton.parentElement).not.toHaveClass('housing-marker-enter')
     const updatedC = screen.getByRole('button', { name: /^c 단지,/ })
-    expect(updatedC).toHaveTextContent('월25만원~')
+    expect(updatedC).toHaveTextContent('월25만~')
     expect(updatedC.parentElement).not.toHaveClass('housing-marker-enter')
     focus.mockRestore()
     unmount()
@@ -1629,8 +1629,8 @@ describe('NaverMap', () => {
     )
     const markerButton = createdMarkerButton(fakeSdk, 0)
 
-    expect(markerButton).toHaveTextContent('보1,000만원~')
-    expect(markerButton).toHaveTextContent('월23.4만원~')
+    expect(markerButton).toHaveTextContent('보1천~')
+    expect(markerButton).toHaveTextContent('월23만~')
     expect(markerButton).not.toHaveTextContent('㎡')
     expect(markerButton).toHaveAccessibleName(
       '서울 공공임대 1단지, 한국토지주택공사 · 국민임대, 보증금 최소 10,000,000원, 월 임대료 최소 234,000원, 단지 상세 보기',
@@ -1646,7 +1646,7 @@ describe('NaverMap', () => {
     expect(Array.from(markerButton.querySelectorAll('.housing-map-marker__name'))
       .map((node) => node.textContent)).toEqual(['LH', '국민'])
     expect(markerButton.querySelector('.housing-map-marker__body')).toHaveTextContent(
-      '보1,000만원~월23.4만원~',
+      '보1천~월23만~',
     )
     expect(fakeSdk.markerConstructor.mock.calls[0]?.[0]).toMatchObject({
       icon: { anchor: { x: 56, y: 66 }, size: { width: 112, height: 66 } },
@@ -1672,15 +1672,15 @@ describe('NaverMap', () => {
 
     rerender(renderMap({
       ...marker,
-      deposit: { digits: '9,999.9999', unit: '만원', exactLabel: '99,999,999원' },
+      deposit: { digits: '90,071,992.5', unit: '억', exactLabel: '9,007,199,254,740,991원' },
     }))
     expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2)
     const button = createdMarkerButton(fakeSdk, 1)
     const width = Number.parseFloat(button.style.getPropertyValue('--marker-width'))
 
     expect(originalButton).not.toBeInTheDocument()
-    expect(button).toHaveTextContent('보9,999.9999만원~')
-    expect(button).toHaveAccessibleName(expect.stringContaining('보증금 최소 99,999,999원'))
+    expect(button).toHaveTextContent('보90,071,992.5억~')
+    expect(button).toHaveAccessibleName(expect.stringContaining('보증금 최소 9,007,199,254,740,991원'))
     expect(button).toHaveClass('is-selected')
     expect(width).toBeGreaterThan(originalWidth)
     expect(fakeSdk.markerConstructor.mock.calls[1]?.[0]).toMatchObject({
@@ -1723,7 +1723,7 @@ describe('NaverMap', () => {
         markers={[{
           ...marker,
           deposit: { digits: '1', unit: '억', exactLabel: '100,000,000원' },
-          monthlyRent: { digits: '24', unit: '만원', exactLabel: '240,000원' },
+          monthlyRent: { digits: '24', unit: '만', exactLabel: '240,000원' },
           rentalTypeLabel: '통합',
           rentalTypeName: '통합공공임대',
         }]}
@@ -1737,7 +1737,7 @@ describe('NaverMap', () => {
     expect(previousButton).not.toBeInTheDocument()
     expect(nextButton).toHaveTextContent('LH통합')
     expect(nextButton).toHaveTextContent('보1억~')
-    expect(nextButton).toHaveTextContent('월24만원~')
+    expect(nextButton).toHaveTextContent('월24만~')
     expect(nextButton).toHaveAccessibleName(
       '테스트 단지, 한국토지주택공사 · 통합공공임대, 보증금 최소 100,000,000원, 월 임대료 최소 240,000원, 단지 상세 보기',
     )
@@ -1787,7 +1787,7 @@ describe('NaverMap', () => {
     expect(nextButton.title).toContain(expected)
   })
 
-  it('금액 결측은 공고문 확인으로 표시하고 확인된 0원과 구분한다', async () => {
+  it('금액 결측은 하이픈으로 표시하고 확인된 0원과 구분한다', async () => {
     const fakeSdk = createFakeSdk()
     const marker: NaverMapMarker = {
       ...markerPresentation,
@@ -1802,7 +1802,7 @@ describe('NaverMap', () => {
     const { rerender } = render(<NaverMap representation="INDIVIDUAL" markers={[marker]} />)
     await waitFor(() => expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce())
     const missingButton = createdMarkerButton(fakeSdk, 0)
-    expect(missingButton).toHaveTextContent('보공고문 확인월공고문 확인')
+    expect(missingButton).toHaveTextContent('보-월-')
     expect(missingButton).not.toHaveTextContent('~')
     expect(missingButton).toHaveAccessibleName(
       '금액 확인 단지, 한국토지주택공사 · 국민임대, 보증금 공고문 확인, 월 임대료 공고문 확인, 단지 상세 보기',
@@ -1814,7 +1814,7 @@ describe('NaverMap', () => {
     }]} />)
 
     const zeroButton = createdMarkerButton(fakeSdk, 1)
-    expect(zeroButton).toHaveTextContent('보0원~월공고문 확인')
+    expect(zeroButton).toHaveTextContent('보0원~월-')
     expect(zeroButton.querySelectorAll('.housing-map-marker__from')).toHaveLength(1)
     expect(zeroButton).toHaveAccessibleName(
       '금액 확인 단지, 한국토지주택공사 · 국민임대, 보증금 최소 0원, 월 임대료 공고문 확인, 단지 상세 보기',

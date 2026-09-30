@@ -86,7 +86,7 @@ function createMarkerAmountRow(label: string, amount: MapMarkerAmount | null) {
   row.className = 'housing-map-marker__row'
   row.append(createMarkerText('label', label))
   if (amount === null) {
-    row.append(createMarkerText('missing', MISSING_DATA_LABEL))
+    row.append(createMarkerText('missing', '-'))
     return row
   }
   const value = document.createElement('span')
