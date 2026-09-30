@@ -1,0 +1,43 @@
+.scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar::-webkit-scrollbar-track,
+.scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 8px;
+  background: transparent;
+}
+
+.scrollbar[data-scrolling='true']::-webkit-scrollbar-thumb {
+  background: var(--ds-color-muted);
+}
+
+.scrollbar::-webkit-scrollbar-thumb:active {
+  background: var(--ds-color-label);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .scrollbar[data-scrolling='true'] {
+    scrollbar-color: var(--ds-color-muted) transparent;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .scrollbar::-webkit-scrollbar-thumb {
+    transition: background-color 200ms ease;
+  }
+
+  @supports not selector(::-webkit-scrollbar) {
+    .scrollbar { transition: scrollbar-color 200ms ease; }
+  }
+}

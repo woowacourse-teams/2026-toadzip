@@ -11,7 +11,7 @@ class PreviewWorker {
   terminate = vi.fn()
   constructor() { PreviewWorker.instances.push(this) }
   send(data: unknown) { act(() => this.onmessage?.({ data: data as HwpResponse })) }
-  ready(count = 8) { this.send({ type: 'ready', pages: Array.from({ length: count }, () => ({ width: 794, height: 1123 })) }) }
+  ready(count = 8, outline?: unknown) { this.send({ type: 'ready', pages: Array.from({ length: count }, () => ({ width: 794, height: 1123 })), outline }) }
   page(page = 0) { this.send({ type: 'page', page, svg: '<svg/>', text: '<script>공고문</script>' }) }
   results(id: number, matches = [{ page: 4, rects: [{ x: 10, y: 20, width: 40, height: 12 }] }, { page: 6, rects: [{ x: 10, y: 30, width: 40, height: 12 }] }]) {
     this.send({ type: 'search', id, matches })
@@ -36,6 +36,72 @@ function search(query = '임대', modifier = 'metaKey') {
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: query } })
   act(() => vi.advanceTimersByTime(250))
 }
+
+it('원본 개요가 없는 문서는 목차를 표시하지 않는다', () => {
+  render(<HwpDocumentPreview url="blob:original" name="공고.hwp" />)
+  ready()
+  expect(screen.queryByRole('button', { name: '목차' })).not.toBeInTheDocument()
+})
+
+it('원본 개요를 누르면 해당 문단으로 이동하고 스크롤 위치에 맞게 활성 항목을 바꾼다', () => {
+  render(<HwpDocumentPreview url="blob:original" name="공고.hwp" />)
+  const worker = PreviewWorker.instances.at(-1)!
+  worker.ready(8, [
+    { id: '0:1', title: '첫 제목', depth: 0, pageNumber: 1, y: 161.7 },
+    { id: '0:2', title: '둘째 제목', depth: 0, pageNumber: 2, y: 142.5 },
+  ])
+  const viewport = screen.getByRole('region', { name: '공고.hwp 문서' })
+  fireEvent.click(screen.getByRole('button', { name: '목차' }))
+  expect(screen.getByRole('navigation', { name: '문서 목차' })).toBeVisible()
+  expect(screen.getByRole('button', { name: /첫 제목/ })).not.toHaveAttribute('aria-current')
+  fireEvent.click(screen.getByRole('button', { name: /둘째 제목/ }))
+  expect(viewport.scrollTop).toBeGreaterThan(1_000)
+  expect(viewport).toHaveFocus()
+  fireEvent.click(screen.getByRole('button', { name: '목차' }))
+  expect(screen.getByRole('button', { name: /둘째 제목/ })).toHaveAttribute('aria-current', 'location')
+  fireEvent.scroll(viewport, { target: { scrollTop: 0 } })
+  expect(screen.getByRole('button', { name: /첫 제목/ })).not.toHaveAttribute('aria-current')
+  fireEvent.scroll(viewport, { target: { scrollTop: 160 } })
+  expect(screen.getByRole('button', { name: /첫 제목/ })).toHaveAttribute('aria-current', 'location')
+})
+
+it('파일을 바꾸면 이전 문서의 목차와 늦은 응답을 버린다', () => {
+  const { rerender } = render(<HwpDocumentPreview url="blob:first" name="첫 문서.hwp" />)
+  const first = PreviewWorker.instances.at(-1)!
+  first.ready(2, [{ id: '0:1', title: '첫 제목', depth: 0, pageNumber: 1, y: 20 }])
+  expect(screen.getByRole('button', { name: '목차' })).toBeInTheDocument()
+  const late = first.onmessage
+  rerender(<HwpDocumentPreview url="blob:second" name="둘째 문서.hwp" />)
+  act(() => late?.({ data: { type: 'ready', pages: [{ width: 794, height: 1123 }], outline: [{ id: '0:1', title: '늦은 제목', depth: 0, pageNumber: 1, y: 20 }] } as HwpResponse }))
+  expect(screen.queryByRole('button', { name: '목차' })).not.toBeInTheDocument()
+  PreviewWorker.instances.at(-1)!.ready(2)
+  expect(screen.queryByRole('button', { name: '목차' })).not.toBeInTheDocument()
+})
+
+it('첫 Escape는 목차를 닫고 두 번째 Escape는 검색만 닫는다', () => {
+  render(<dialog open><HwpDocumentPreview url="blob:original" name="공고.hwp" /></dialog>)
+  PreviewWorker.instances.at(-1)!.ready(2, [{ id: '0:1', title: '첫 제목', depth: 0, pageNumber: 1, y: 20 }])
+  fireEvent.click(screen.getByRole('button', { name: '문서 검색' }))
+  fireEvent.click(screen.getByRole('button', { name: '목차' }))
+  fireEvent.keyDown(screen.getByRole('button', { name: /첫 제목/ }), { key: 'Escape' })
+  expect(screen.getByRole('searchbox')).toBeInTheDocument()
+  const toggle = screen.getByRole('button', { name: '목차' })
+  expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  fireEvent.keyDown(toggle, { key: 'Escape' })
+  expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+  expect(screen.getByRole('dialog')).toBeVisible()
+})
+
+it('확대된 문서에서 목차로 이동하면 가로 스크롤도 되돌린다', () => {
+  render(<HwpDocumentPreview url="blob:original" name="공고.hwp" />)
+  PreviewWorker.instances.at(-1)!.ready(2, [{ id: '0:1', title: '첫 제목', depth: 0, pageNumber: 1, y: 20 }])
+  const viewport = screen.getByRole('region', { name: '공고.hwp 문서' })
+  fireEvent.change(screen.getByRole('combobox', { name: '한글 문서 크기' }), { target: { value: '200' } })
+  viewport.scrollLeft = 400
+  fireEvent.click(screen.getByRole('button', { name: '목차' }))
+  fireEvent.click(screen.getByRole('button', { name: /첫 제목/ }))
+  expect(viewport.scrollLeft).toBe(0)
+})
 
 it('여러 페이지를 세로로 배치하고 스크롤한 쪽수·확대를 반영하며 먼 이미지 URL을 해제한다', () => {
   const { unmount } = render(<HwpDocumentPreview url="blob:original" name="공고.hwp" />)

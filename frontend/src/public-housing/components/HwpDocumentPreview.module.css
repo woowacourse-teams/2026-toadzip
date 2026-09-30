@@ -8,7 +8,8 @@
 .result { white-space: nowrap; }
 .searchActions { display: flex; gap: var(--ds-space-1); margin-left: auto; }
 .searchActions button { min-width: 36px; }
-.viewport { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; }
+.viewportShell { position: relative; display: flex; flex: 1; min-height: 0; min-width: 0; }
+.viewport { flex: 1; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; }
 .pages { position: relative; }
 .page { position: absolute; left: 0; right: 0; margin: 0 auto; background: white; box-shadow: 0 1px 4px #0002; }
 .page img { display: block; width: 100%; height: 100%; }

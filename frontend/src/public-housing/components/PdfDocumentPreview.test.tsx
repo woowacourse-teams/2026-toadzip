@@ -4,7 +4,7 @@ import PdfDocumentPreview from './PdfDocumentPreview.tsx'
 
 const sdk = vi.hoisted(() => ({
   getDocument: vi.fn(), destroy: vi.fn(), reset: vi.fn(), localizeDestroy: vi.fn(),
-  dispatch: vi.fn(), options: vi.fn(), scale: vi.fn(),
+  dispatch: vi.fn(), options: vi.fn(), scale: vi.fn(), navigate: vi.fn(), outline: vi.fn(),
 }))
 vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({
   AnnotationMode: { ENABLE: 1 }, GlobalWorkerOptions: {}, version: '6.3.289', getDocument: sdk.getDocument,
@@ -25,7 +25,7 @@ vi.mock('pdfjs-dist/legacy/web/pdf_viewer.mjs', () => {
   return {
     EventBus, ScrollMode: { VERTICAL: 0 }, LinkTarget: { BLANK: 2 },
     FindState: { FOUND: 0, NOT_FOUND: 1, WRAPPED: 2, PENDING: 3 },
-    PDFLinkService: class { setViewer() {} setDocument() {} },
+    PDFLinkService: class { setViewer() {} setDocument() {} goToDestination = sdk.navigate },
     PDFFindController: class {},
     PDFViewer: class {
       l10n = { destroy: sdk.localizeDestroy }
@@ -48,7 +48,9 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
   sdk.destroy.mockResolvedValue(undefined)
   sdk.localizeDestroy.mockResolvedValue(undefined)
-  sdk.getDocument.mockReturnValue({ promise: Promise.resolve({ numPages: 32 }), destroy: sdk.destroy })
+  sdk.navigate.mockResolvedValue(undefined)
+  sdk.outline.mockResolvedValue(null)
+  sdk.getDocument.mockReturnValue({ promise: Promise.resolve({ numPages: 32, getOutline: sdk.outline }), destroy: sdk.destroy })
 })
 afterEach(() => vi.unstubAllGlobals())
 
@@ -179,4 +181,60 @@ describe('PDF 연속 열람과 검색', () => {
     expect(screen.queryByText('7 / 9 페이지')).not.toBeInTheDocument()
     expect(sdk.destroy).toHaveBeenCalledOnce()
   })
+})
+
+
+describe('PDF 목차 탐색', () => {
+  it('내장 목차를 표시하고 클릭 목적지와 현재 스크롤 구간을 연결한다', async () => {
+    sdk.outline.mockResolvedValue([
+      { title: '공급 개요', dest: [1, { name: 'XYZ' }, 0, 700, null], items: [] },
+      { title: '신청 자격', dest: [4, { name: 'Fit' }], items: [] },
+    ])
+    render(<PdfDocumentPreview url="blob:outline" name="공고문.pdf" />)
+    fireEvent.click(await screen.findByRole('button', { name: '목차' }))
+    const first = screen.getByRole('button', { name: /공급 개요/ })
+    expect(first).not.toHaveAttribute('aria-current')
+    act(() => eventBus().dispatch('updateviewarea', { location: { pageNumber: 3, top: 700 } }))
+    expect(first).toHaveAttribute('aria-current', 'location')
+    fireEvent.click(screen.getByRole('button', { name: /신청 자격/ }))
+    expect(sdk.navigate).toHaveBeenCalledWith([4, { name: 'Fit' }])
+    await waitFor(() => expect(screen.getByRole('region', { name: '공고문.pdf 문서' })).toHaveFocus())
+  })
+
+  it.each(['empty', 'failure'])('목차가 없거나 추출에 실패해도 문서는 계속 열람한다: %s', async (kind) => {
+    if (kind === 'failure') sdk.outline.mockRejectedValue(new Error('Invalid outline'))
+    render(<PdfDocumentPreview url="blob:no-outline" name="공고문.pdf" />)
+    await ready()
+    await waitFor(() => expect(sdk.outline).toHaveBeenCalled())
+    expect(screen.queryByRole('button', { name: '목차' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '문서 검색' })).toBeEnabled()
+  })
+
+  it('파일 전환 뒤 늦게 도착한 이전 목차를 표시하지 않는다', async () => {
+    let resolveOutline: (value: unknown) => void = () => {}
+    sdk.outline.mockReturnValueOnce(new Promise((resolve) => { resolveOutline = resolve }))
+    const { rerender } = render(<PdfDocumentPreview url="blob:old-outline" name="이전.pdf" />)
+    await waitFor(() => expect(sdk.outline).toHaveBeenCalledOnce())
+    rerender(<PdfDocumentPreview url="blob:new-outline" name="현재.pdf" />)
+    await screen.findByRole('region', { name: '현재.pdf 문서' })
+    await act(async () => resolveOutline([{ title: '이전 목차', dest: [0, { name: 'Fit' }], items: [] }]))
+    expect(screen.queryByRole('button', { name: '목차' })).not.toBeInTheDocument()
+  })
+})
+
+it('검색과 목차가 열렸을 때 Escape는 목차 다음 검색 순서로 닫는다', async () => {
+  sdk.outline.mockResolvedValue([{ title: '개요', dest: [0, { name: 'Fit' }], items: [] }])
+  render(<dialog open><PdfDocumentPreview url="blob:escape" name="공고문.pdf" /></dialog>)
+  const toggle = await screen.findByRole('button', { name: '목차' })
+  fireEvent.click(screen.getByRole('button', { name: '문서 검색' }))
+  fireEvent.click(toggle)
+  fireEvent.keyDown(toggle, { key: 'Escape' })
+  expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.getByRole('searchbox')).toBeVisible()
+  const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+  fireEvent(toggle, escape)
+  expect(escape.defaultPrevented).toBe(true)
+  expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+  expect(screen.getByRole('dialog')).toBeVisible()
 })

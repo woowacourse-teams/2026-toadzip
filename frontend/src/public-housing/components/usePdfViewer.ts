@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { AnnotationMode, getDocument, GlobalWorkerOptions, version, type PDFDocumentProxy, type PDFDocumentLoadingTask } from 'pdfjs-dist/legacy/build/pdf.mjs'
-import type { EventBus, PDFViewer } from 'pdfjs-dist/legacy/web/pdf_viewer.mjs'
+import type { EventBus, PDFViewer, PDFLinkService } from 'pdfjs-dist/legacy/web/pdf_viewer.mjs'
+import { activePdfOutlineId, readPdfOutline, type PdfLocation, type PdfOutlineEntry } from './pdfOutline.ts'
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 
 // Bypass immutable responses cached before Nginx served .mjs as JavaScript.
@@ -22,7 +23,9 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
   const [ready, setReady] = useState(false)
   const [error, setError] = useState(false)
   const [result, setResult] = useState(emptyResult)
-  const runtime = useRef<{ viewer: PDFViewer; events: EventBus } | null>(null)
+  const [outline, setOutline] = useState<readonly PdfOutlineEntry[]>([])
+  const [location, setLocation] = useState<PdfLocation>({ pageNumber: 1, top: Infinity })
+  const runtime = useRef<{ viewer: PDFViewer; events: EventBus; linkService: PDFLinkService } | null>(null)
   const queryRef = useRef('')
   const scaleRef = useRef('page-width')
 
@@ -51,7 +54,7 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
       viewer = new PDFViewer(options)
       viewer.scrollMode = ScrollMode.VERTICAL
       linkService.setViewer(viewer)
-      runtime.current = { viewer, events }
+      runtime.current = { viewer, events, linkService }
       events.on('pagesinit', () => {
         if (lifecycle.signal.aborted || !viewer) return
         viewer.currentScaleValue = scaleRef.current
@@ -59,6 +62,9 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
       })
       events.on('pagechanging', ({ pageNumber }: { pageNumber: number }) => {
         if (!lifecycle.signal.aborted) setPage(pageNumber)
+      })
+      events.on('updateviewarea', ({ location: position }: { location: PdfLocation }) => {
+        if (!lifecycle.signal.aborted) setLocation({ pageNumber: position.pageNumber, top: position.top })
       })
       events.on('pagerendered', ({ error: renderError }: { error?: unknown }) => { if (renderError) fail() })
       events.on('updatefindmatchescount', ({ matchesCount }: { matchesCount: { current: number; total: number } }) => {
@@ -86,6 +92,10 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
       setPages(document.numPages)
       linkService.setDocument(document)
       viewer.setDocument(document)
+      // Outline metadata is optional. Its absence or failure must not block rendering.
+      void readPdfOutline(document).then((entries) => {
+        if (!lifecycle.signal.aborted) setOutline(entries)
+      }).catch(() => {})
       const pagesReady: Promise<unknown> | undefined = viewer.pagesPromise
       void pagesReady?.catch(fail)
     }
@@ -118,5 +128,14 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
     scaleRef.current = value
     if (runtime.current) runtime.current.viewer.currentScaleValue = value
   }, [])
-  return { page, pages, ready, error, result, search, closeSearch, setScale }
+  const navigateOutline = useCallback((id: string) => {
+    const entry = outline.find((item) => item.id === id)
+    const current = runtime.current
+    if (!entry || !current) return
+    void current.linkService.goToDestination(entry.destination).then(() => {
+      if (runtime.current === current) containerRef.current?.focus({ preventScroll: true })
+    }).catch(() => {})
+  }, [outline, containerRef])
+  const activeOutlineId = activePdfOutlineId(outline, location)
+  return { page, pages, ready, error, result, search, closeSearch, setScale, outline, activeOutlineId, navigateOutline }
 }

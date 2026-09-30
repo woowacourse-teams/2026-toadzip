@@ -2,11 +2,13 @@ import init, { HwpDocument } from '@rhwp/core'
 import wasmUrl from '@rhwp/core/rhwp_bg.wasm?url'
 import { readPageSize, readPageText, searchPageText } from './hwpTextSearch.ts'
 import type { PageSize, TextMatch } from './hwpTextSearch.ts'
+import { readHwpOutline } from './hwpOutline.ts'
+import type { HwpOutlineEntry } from './hwpOutline.ts'
 
 export type HwpRequest = { readonly type: 'open'; readonly url: string }
   | { readonly type: 'page'; readonly page: number }
   | { readonly type: 'search'; readonly id: number; readonly query: string }
-export type HwpResponse = { readonly type: 'ready'; readonly pages: readonly PageSize[] }
+export type HwpResponse = { readonly type: 'ready'; readonly pages: readonly PageSize[]; readonly outline?: readonly HwpOutlineEntry[] }
   | { readonly type: 'page'; readonly page: number; readonly svg: string; readonly text: string }
   | { readonly type: 'search'; readonly id: number; readonly matches: readonly TextMatch[] }
   | { readonly type: 'searchError'; readonly id: number }
@@ -53,7 +55,8 @@ self.onmessage = async ({ data }: MessageEvent<HwpRequest>) => {
       document = new HwpDocument(new Uint8Array(await response.arrayBuffer()))
       const count = document.pageCount()
       if (count < 1) throw new Error('Empty document')
-      post({ type: 'ready', pages: Array.from({ length: count }, (_, page) => readPageSize(document!.getPageInfo(page))) })
+      const pages = Array.from({ length: count }, (_, page) => readPageSize(document!.getPageInfo(page)))
+      post({ type: 'ready', pages, outline: readHwpOutline(document, count) })
       return
     }
     if (!document || data.page < 0 || data.page >= document.pageCount()) throw new Error('Invalid page')

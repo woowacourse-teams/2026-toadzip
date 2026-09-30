@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { HwpRequest, HwpResponse } from './hwpPreview.worker.ts'
 import type { PageSize, TextMatch } from './hwpTextSearch.ts'
+import type { HwpOutlineEntry } from './hwpOutline.ts'
 
 type PageImage = { readonly url: string; readonly text: string }
 type SearchResult = { readonly pending: boolean; readonly error: boolean; readonly matches: readonly TextMatch[]; readonly current: number }
@@ -8,6 +9,7 @@ const emptySearch: SearchResult = { pending: false, error: false, matches: [], c
 
 export function useHwpDocument(url: string) {
   const [pages, setPages] = useState<readonly PageSize[]>([])
+  const [outline, setOutline] = useState<readonly HwpOutlineEntry[]>([])
   const [images, setImages] = useState<ReadonlyMap<number, PageImage>>(new Map())
   const [failed, setFailed] = useState(false)
   const [result, setResult] = useState<SearchResult>(emptySearch)
@@ -33,7 +35,7 @@ export function useHwpDocument(url: string) {
       urls.clear()
       session.current = null
     }
-    const fail = () => { dispose(); setImages(new Map()); setFailed(true) }
+    const fail = () => { dispose(); setImages(new Map()); setOutline([]); setFailed(true) }
     const post = (request: HwpRequest) => worker.postMessage(request)
     const renderNext = () => {
       if (!alive || !ready || inflight !== null) return
@@ -68,7 +70,7 @@ export function useHwpDocument(url: string) {
       if (data.type === 'error') { fail(); return }
       if (data.type === 'ready') {
         clearTimeout(pageTimer)
-        ready = true; setPages(data.pages); renderNext()
+        ready = true; setPages(data.pages); setOutline(Array.isArray(data.outline) ? data.outline : []); renderNext()
       } else if (data.type === 'page') {
         if (data.page !== inflight) return
         clearTimeout(pageTimer); inflight = null
@@ -93,5 +95,5 @@ export function useHwpDocument(url: string) {
   const fail = useCallback(() => session.current?.fail(), [])
   const moveMatch = useCallback((backward = false) => setResult((value) => value.matches.length
     ? { ...value, current: (value.current + (backward ? -1 : 1) + value.matches.length) % value.matches.length } : value), [])
-  return { pages, images, failed, result, requestPages, search, fail, moveMatch }
+  return { pages, outline, images, failed, result, requestPages, search, fail, moveMatch }
 }
