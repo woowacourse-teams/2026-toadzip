@@ -184,8 +184,11 @@ public class SupplyRow {
             String matchingFailureReason,
             Integer totalSupplyHouseholdCount
     ) {
-        if (adminModified || announcement.isAdminDeleted()) {
+        if (announcement.isAdminDeleted()) {
             return false;
+        }
+        if (adminModified) {
+            return updateDisplayOrder(displayOrder);
         }
         boolean releasesLhEnrichment = announcement.getProvider() != null
                 && announcement.getProvider() != AgencyCode.LH;
@@ -219,6 +222,15 @@ public class SupplyRow {
             lhTotalSupplyHouseholdCountOwned = false;
             lhTotalSupplyHouseholdCountEnriched = false;
         }
+        return true;
+    }
+
+    private boolean updateDisplayOrder(int displayOrder) {
+        validateNonNegative(displayOrder, "표시 순서");
+        if (this.displayOrder == displayOrder) {
+            return false;
+        }
+        this.displayOrder = displayOrder;
         return true;
     }
 

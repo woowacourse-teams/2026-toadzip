@@ -8,6 +8,7 @@ import {
   HousingComplexDetailPanel,
   type HousingComplexDetailData,
 } from './HousingComplexDetailPanel'
+import { NotificationInterestProvider } from '../interest/NotificationInterest'
 
 const BASE_DETAIL: HousingComplexDetailData = {
   complexId: '17',
@@ -116,6 +117,22 @@ function factValue(container: HTMLElement, term: string) {
 }
 
 describe('HousingComplexDetailPanel', () => {
+  it('단지 알림 클릭은 단지 ID와 함께 최초 신청 의사를 묻는다', async () => {
+    localStorage.clear()
+    const record = vi.fn().mockResolvedValue(undefined)
+    render(
+      <NotificationInterestProvider repository={{ record }}>
+        <HousingComplexDetailPanel detail={BASE_DETAIL} onClose={vi.fn()} />
+      </NotificationInterestProvider>,
+    )
+    expect(screen.getByText('단지 알림')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '서울가람 행복주택 알림 받기' }))
+    expect(await screen.findByRole('dialog', { name: '이메일 알림 신청' })).toBeVisible()
+    expect(record).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'CLICKED', source: 'COMPLEX_DETAIL', targetType: 'COMPLEX', targetId: '17',
+    }))
+  })
+
   it('상단에 선택한 단지명과 아이콘 닫기를 표시한다', () => {
     const { panel } = renderPanel()
     const header = panel.querySelector('header')

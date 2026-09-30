@@ -51,7 +51,10 @@ public class LhAnnouncementCandidateCollector {
                 targetSource.operation(),
                 storedRowCount,
                 0,
-                callCounter.count()
+                callCounter.count(),
+                0,
+                0,
+                1
         );
     }
 

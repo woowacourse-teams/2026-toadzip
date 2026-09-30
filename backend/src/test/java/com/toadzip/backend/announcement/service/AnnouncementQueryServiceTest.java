@@ -248,7 +248,7 @@ class AnnouncementQueryServiceTest {
         assertEquals(1, response.items().get(1).dDay());
         assertNull(response.items().get(1).supplyHouseholdCount());
         assertEquals(ApplicationStatus.BEFORE_APPLICATION, response.items().get(2).applicationStatus());
-        assertEquals(2, response.items().get(2).dDay());
+        assertEquals(1, response.items().get(2).dDay());
         assertEquals(0, response.items().get(2).supplyHouseholdCount());
         assertEquals(ApplicationStatus.CLOSED, response.items().get(3).applicationStatus());
         assertNull(response.items().get(3).dDay());

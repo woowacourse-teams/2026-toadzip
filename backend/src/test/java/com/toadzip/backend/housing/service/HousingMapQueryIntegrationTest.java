@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.dto.request.HousingComplexSearchRequest;
-import com.toadzip.backend.housing.dto.response.HousingComplexMapResponse;
+import com.toadzip.backend.housing.dto.response.AgencyResponse;
 import com.toadzip.backend.housing.dto.response.HousingMapAggregateNodeResponse;
 import com.toadzip.backend.housing.dto.response.HousingMapIndividualNodeResponse;
 import com.toadzip.backend.housing.dto.response.HousingMapResponse;
@@ -30,9 +30,6 @@ class HousingMapQueryIntegrationTest {
 
     @Autowired
     private EntityManager entityManager;
-
-    @Autowired
-    private HousingComplexQueryService legacyService;
 
     @Autowired
     private HousingMapQueryService clusteringService;
@@ -62,18 +59,21 @@ class HousingMapQueryIntegrationTest {
     }
 
     @Test
-    void 개별_단계는_v1과_같은_filter와_viewport의_모든_지도_필드를_반환한다() {
+    void 개별_단계는_viewport_안의_단지를_ID_순서와_모든_지도_필드로_반환한다() {
         HousingComplex first = persistComplex("첫 단지", "41131", "37.45", "127.14");
         HousingComplex second = persistComplex("둘째 단지", "41135", "37.45", "127.14");
         persistComplex("영역 밖 단지", "41131", "36.00", "127.14");
         entityManager.flush();
         HousingComplexSearchRequest request = request(null, "37.0", "126.0", "38.0", "128.0");
 
-        HousingComplexMapResponse legacy = legacyService.getComplexesForMap(request);
         HousingMapResponse clustering = clusteringService.getMap(request, decimal("14.0"), 3);
 
-        assertEquals(List.of(first.getId(), second.getId()), legacyIds(legacy));
-        assertEquals(expectedIndividualNodes(legacy), individualNodes(clustering));
+        assertEquals(4, clustering.resolvedStage());
+        assertEquals(HousingMapRepresentation.INDIVIDUAL, clustering.representation());
+        assertEquals(List.of(
+                expectedIndividualNode(first.getId(), "첫 단지"),
+                expectedIndividualNode(second.getId(), "둘째 단지")
+        ), individualNodes(clustering));
     }
 
     @Test
@@ -133,14 +133,12 @@ class HousingMapQueryIntegrationTest {
         );
     }
 
-    private static List<Long> legacyIds(HousingComplexMapResponse response) {
-        return response.items().stream().map(item -> item.complexId()).toList();
-    }
-
-    private static List<HousingMapIndividualNodeResponse> expectedIndividualNodes(
-            HousingComplexMapResponse response
-    ) {
-        return response.items().stream().map(HousingMapIndividualNodeResponse::new).toList();
+    private static HousingMapIndividualNodeResponse expectedIndividualNode(long complexId, String name) {
+        return new HousingMapIndividualNodeResponse(
+                "INDIVIDUAL", complexId, name, decimal("37.450000"), decimal("127.140000"),
+                "HAPPY_HOUSING", new AgencyResponse("LH", "한국토지주택공사"),
+                null, null, null, null, null, null
+        );
     }
 
     private static List<HousingMapIndividualNodeResponse> individualNodes(HousingMapResponse response) {

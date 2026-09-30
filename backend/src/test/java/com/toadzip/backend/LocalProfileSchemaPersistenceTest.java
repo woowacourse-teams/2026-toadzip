@@ -55,9 +55,37 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertTrue(history.next()),
-                        () -> assertEquals(17, history.getInt(1)),
+                        () -> assertEquals(28, history.getInt(1)),
+                        () -> assertEquals(1, countColumn(connection,
+                                "notification_interest_events", "event_id")),
+                        () -> assertEquals(0, countColumn(connection,
+                                "notification_interest_events", "email")),
+                        () -> assertEquals(1, countColumn(connection,
+                                "notification_subscriptions", "expires_at")),
+                        () -> assertEquals(1, countColumn(connection,
+                                "notification_guest_subscriptions", "expires_at")),
+                        () -> assertEquals(1, countColumn(connection,
+                                "notification_subscriptions", "active")),
+                        () -> assertEquals(1, countColumn(connection,
+                                "notification_email_preferences", "email")),
+                        () -> assertEquals(1, countColumn(connection,
+                                "notification_guest_email_preferences", "email")),
+                        () -> assertEquals(1, countColumn(connection,
+                                "notification_guest_subscriptions", "active")),
+                        () -> assertEquals(1, countColumn(connection,
+                                "notification_guest_cancellation_requests", "code_hash")),
+                        () -> assertEquals(1, countColumn(connection,
+                                "notification_guest_cancellation_requests", "code_sent_at")),
+                        () -> assertEquals(1, countColumn(connection,
+                                "notification_guest_cancellation_requests", "code_sent_by")),
+                        () -> assertTrue(constraintDefinition(connection,
+                                "notification_interest_events_event_type_check").contains("CANCELLED")),
+                        () -> assertEquals(1, countColumn(connection, "users", "email")),
+                        () -> assertEquals(1, countColumn(connection, "announcement_schedules", "complex_name")),
                         () -> assertEquals(1, countColumn(connection, "housing_complexes", "deposit_min")),
                         () -> assertEquals(1, countColumn(connection, "housing_complexes", "monthly_rent_min")),
+                        () -> assertEquals(1, countColumn(connection,
+                                "announcement_views", "viewed_on")),
                         () -> assertEquals(1, countColumn(connection,
                                 "admin_announcement_imports", "original_json")),
                         () -> assertEquals(1, countColumn(connection,
@@ -75,7 +103,7 @@ class LocalProfileSchemaPersistenceTest {
     }
 
     @Test
-    void 기존_스키마를_baseline_후_통합_마이그레이션으로_보정한다() throws Exception {
+    void 기존_스키마를_자동_baseline_후_통합_마이그레이션으로_보정한다() throws Exception {
         String databaseName = "toadzip_reconciliation_" + UUID.randomUUID().toString().replace("-", "");
         String jdbcUrl = primaryTestDatabaseUrl(databaseName);
         createDatabase(databaseName);
@@ -94,13 +122,11 @@ class LocalProfileSchemaPersistenceTest {
                         """);
             }
 
-            Flyway flyway = Flyway.configure()
-                    .dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
-                    .locations("classpath:db/migration")
-                    .baselineVersion("20260922.00")
-                    .load();
-            flyway.baseline();
-            flyway.migrate();
+            try (ConfigurableApplicationContext ignored = new SpringApplicationBuilder(BackendApplication.class)
+                    .environment(createIsolatedEnvironment(jdbcUrl))
+                    .run()) {
+                // Startup records the baseline and applies pending migrations.
+            }
 
             try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
                     Statement statement = connection.createStatement()) {
@@ -154,9 +180,15 @@ class LocalProfileSchemaPersistenceTest {
                                 + ",SQL:20260923.02,SQL:20260924.01,SQL:20260925.01,SQL:20260925.02"
                                 + ",SQL:20260925.03,SQL:20260926.01,SQL:20260926.02,SQL:20260926.03"
                                 + ",SQL:20260926.04,SQL:20260926.05,SQL:20260926.06,SQL:20260927.01"
-                                + ",SQL:20260928.01,SQL:20260928.02",
+                                + ",SQL:20260928.01,SQL:20260928.02,SQL:20260928.03,SQL:20260928.04"
+                                + ",SQL:20260929.01,SQL:20260930.02,SQL:20260930.03,SQL:20260930.04"
+                                + ",SQL:20260930.05,SQL:20260930.06,SQL:20260930.07,SQL:20260930.08"
+                                + ",SQL:20260930.09",
                         history.getString(1));
+                assertEquals(1, countColumn(connection, "verified_lh_supply_replacements", "evidence_url"));
+                assertEquals(1, countColumn(connection, "supply_targets", "lh_amount_preserved_reason"));
                 assertEquals(1, countColumn(connection, "admin_announcement_imports", "original_json"));
+                assertEquals(1, countColumn(connection, "notification_interest_events", "event_id"));
                 assertEquals(1, countColumn(connection, "announcements", "lh_reception_place_owned"));
                 assertEquals(1, countColumn(connection, "announcements", "application_schedule_reviewed"));
                 assertEquals(1, countColumn(connection, "announcements", "lh_pan_id_reviewed"));

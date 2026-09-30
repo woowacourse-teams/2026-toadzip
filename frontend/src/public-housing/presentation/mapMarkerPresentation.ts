@@ -1,8 +1,8 @@
 import { MISSING_DATA_LABEL } from './missingData.ts'
-import { housingMoneyParts, type HousingMoneyParts } from './housingMoney.ts'
+import { compactMarkerAmountParts, type MapMarkerAmountParts } from './mapMarkerAmount.ts'
 import type { HousingAgency, MapComplex } from '../model/publicHousing.ts'
 
-export interface MapMarkerAmount extends HousingMoneyParts {
+export interface MapMarkerAmount extends MapMarkerAmountParts {
   readonly exactLabel: string
 }
 
@@ -113,7 +113,7 @@ function nonBlank(value: string | null | undefined): string | null {
 }
 
 function presentAmount(value: number | null): MapMarkerAmount | null {
-  const parts = housingMoneyParts(value)
+  const parts = compactMarkerAmountParts(value)
   if (parts === null || value === null) return null
   const exactLabel = `${value.toLocaleString('ko-KR', { maximumFractionDigits: 20 })}원`
   return { ...parts, exactLabel }

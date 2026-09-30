@@ -6,7 +6,7 @@ export function socialLoginUrl(provider: 'kakao' | 'google'): string {
   return `${apiBaseUrl()}/api/auth/oauth2/authorization/${provider}`
 }
 
-export async function getCurrentUser(): Promise<{ id: number } | null> {
+export async function getCurrentUser(): Promise<{ id: number; email: string | null } | null> {
   const response = await fetch(`${apiBaseUrl()}/api/auth/me`, { credentials: 'include' })
   if (response.status === 401 || response.status === 403) return null
   if (!response.ok) throw new Error('로그인 상태를 확인하지 못했습니다.')
@@ -14,7 +14,10 @@ export async function getCurrentUser(): Promise<{ id: number } | null> {
   if (typeof body !== 'object' || body === null || !('id' in body) || typeof body.id !== 'number') {
     throw new Error('로그인 응답이 올바르지 않습니다.')
   }
-  return { id: body.id }
+  if ('email' in body && body.email !== null && typeof body.email !== 'string') {
+    throw new Error('로그인 응답이 올바르지 않습니다.')
+  }
+  return { id: body.id, email: 'email' in body ? body.email as string | null : null }
 }
 
 export async function logoutUser(): Promise<void> {

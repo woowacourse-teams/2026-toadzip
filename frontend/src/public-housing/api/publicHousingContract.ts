@@ -1,6 +1,7 @@
 import type {
   HousingAgency,
   RawAnnouncementAttachment,
+  RawAnnouncementApplicationSchedule,
   RawAnnouncementCompetition,
   RawAnnouncementDetail,
   RawAnnouncementHousingType,
@@ -199,6 +200,10 @@ function decodeAnnouncementDetail(
       recordField(detail, 'schedules', path),
       `${path}.schedules`,
     ),
+    ...(detail.applicationSchedules === undefined ? {} : {
+      applicationSchedules: arrayAt(detail.applicationSchedules, `${path}.applicationSchedules`)
+        .map((schedule, index) => decodeApplicationSchedule(schedule, `${path}.applicationSchedules[${index}]`)),
+    }),
     attachments: decodeAnnouncementAttachments(
       recordField(detail, 'attachments', path),
       `${path}.attachments`,
@@ -212,6 +217,36 @@ function decodeAnnouncementDetail(
       `${path}.competition`,
     ),
   }
+}
+
+function decodeApplicationSchedule(value: unknown, path: string): RawAnnouncementApplicationSchedule {
+  const schedule = recordAt(value, path)
+  return {
+    scheduleId: positiveSafeIntegerAt(schedule.scheduleId, `${path}.scheduleId`),
+    housingComplexId: schedule.housingComplexId === null
+      ? null : positiveSafeIntegerAt(schedule.housingComplexId, `${path}.housingComplexId`),
+    complexName: nullableStringAt(schedule.complexName, `${path}.complexName`),
+    supplyRank: nullableStringAt(schedule.supplyRank, `${path}.supplyRank`),
+    state: stringAt(schedule.state, `${path}.state`),
+    condition: nullableStringAt(schedule.condition, `${path}.condition`),
+    startDate: dateStringAt(schedule.startDate, `${path}.startDate`),
+    endDate: dateStringAt(schedule.endDate, `${path}.endDate`),
+    startTime: nullableTimeAt(schedule.startTime, `${path}.startTime`),
+    endTime: nullableTimeAt(schedule.endTime, `${path}.endTime`),
+    sourceUrl: stringAt(schedule.sourceUrl, `${path}.sourceUrl`),
+    sourcePage: positiveSafeIntegerAt(schedule.sourcePage, `${path}.sourcePage`),
+  }
+}
+
+function nullableTimeAt(value: unknown, path: string): string | null {
+  if (value === null) {
+    return null
+  }
+  const time = stringAt(value, path)
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?$/.test(time)) {
+    throw new PublicHousingContractError(path)
+  }
+  return time
 }
 
 function decodeAnnouncementReceptionPlaces(
@@ -263,6 +298,9 @@ function decodeAnnouncementSchedule(
   const schedule = recordAt(value, path)
 
   return {
+    ...(schedule.complexName === undefined ? {} : {
+      complexName: nullableStringAt(schedule.complexName, `${path}.complexName`),
+    }),
     scheduleId: positiveSafeIntegerAt(
       recordField(schedule, 'scheduleId', path),
       `${path}.scheduleId`,

@@ -9,6 +9,7 @@ import {
 import { useRef, useState } from 'react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { trackEvent } from '../analytics/googleAnalytics.ts'
 import type { RegionBoundary } from './regions/regionBoundary.ts'
 import type { RegionBoundaryRepository } from './regions/regionBoundaryRepository.ts'
 import type { NaverMapProps } from '../maps/naver/NaverMap.tsx'
@@ -48,6 +49,11 @@ import type {
 
 vi.mock('../maps/naver/NaverMap.tsx', () => ({
   default: FakeNaverMap,
+}))
+
+vi.mock('../analytics/googleAnalytics.ts', () => ({
+  setAnalyticsPageActive: vi.fn(),
+  trackEvent: vi.fn(() => true),
 }))
 
 const { boundaryMetadata, defaultBoundaryRepository } = vi.hoisted(() => ({
@@ -146,6 +152,7 @@ const TEST_REGIONS = [
 
 beforeEach(() => {
   localStorage.clear()
+  vi.mocked(trackEvent).mockClear()
 })
 
 afterEach(() => {
@@ -1247,7 +1254,7 @@ describe('PublicHousingExplorer', () => {
       target: { value: '41' },
     })
     fireEvent.click(screen.getByRole('checkbox', { name: '행복주택' }))
-    fireEvent.click(screen.getByRole('checkbox', { name: '접수예정' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '공고중' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'GH' }))
     fireEvent.click(screen.getByRole('checkbox', {
       name: '예비입주자 모집',
@@ -1305,8 +1312,8 @@ describe('PublicHousingExplorer', () => {
     })
     expect(marker).toHaveAttribute('data-agency-label', 'LH')
     expect(marker).toHaveAttribute('data-rental-type-label', '행복')
-    expect(marker).toHaveAttribute('data-deposit-label', '5,000만원~')
-    expect(marker).toHaveAttribute('data-monthly-rent-label', '20만원~')
+    expect(marker).toHaveAttribute('data-deposit-label', '5천~')
+    expect(marker).toHaveAttribute('data-monthly-rent-label', '20만~')
   })
 
   it('이후 지도 이동은 같은 영역을 지도와 목록에 자동 적용한다', async () => {
@@ -2482,8 +2489,8 @@ describe('PublicHousingExplorer', () => {
       name: '서울가람 행복주택 지도 마커 선택',
     })
     expect(marker).toBeVisible()
-    expect(marker).toHaveAttribute('data-deposit-label', '5,000만원~')
-    expect(marker).toHaveAttribute('data-monthly-rent-label', '20만원~')
+    expect(marker).toHaveAttribute('data-deposit-label', '5천~')
+    expect(marker).toHaveAttribute('data-monthly-rent-label', '20만~')
     expect(repository.findComplexPage).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
@@ -2622,10 +2629,10 @@ describe('PublicHousingExplorer', () => {
     const detail = await screen.findByRole('complementary', {
       name: '성남 청년 행복주택 입주자 모집 공고 상세 정보',
     })
-    expect(within(detail).getByRole('heading', {
+    await waitFor(() => expect(within(detail).getByRole('heading', {
       name: '성남 청년 행복주택 입주자 모집 공고',
       level: 2,
-    })).toHaveFocus()
+    })).toHaveFocus())
     expect(screen.getByTestId('location-search')).toHaveTextContent(
       '?announcementId=201',
     )
@@ -3003,6 +3010,148 @@ describe('PublicHousingExplorer', () => {
     })).toBeVisible()
   })
 })
+
+describe('PublicHousingExplorer GA4 행동 연결', () => {
+  it('직접 접속의 상세 로딩 완료를 한 번 기록하고 지도와 필터 변경에 중복하지 않는다', async () => {
+    const repository = createRepository()
+    const pending = createDeferred<ComplexDetail>()
+    repository.findComplexDetail.mockReturnValue(pending.promise)
+    renderExplorer(repository, '/?complexId=17')
+    await waitFor(() => expect(trackEvent).toHaveBeenCalledWith('page_view', {}))
+    expect(analyticsCalls('view_complex')).toEqual([])
+
+    await act(() => pending.resolve(complexDetail()))
+    await waitFor(() => expect(trackEvent).toHaveBeenCalledWith('view_complex', {
+      complex_id: '17', entry_point: 'direct',
+    }))
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    applyProvinceFilter('41')
+    await act(async () => Promise.resolve())
+    expect(analyticsCalls('view_complex')).toHaveLength(1)
+    expect(analyticsCalls('page_view')).toHaveLength(1)
+  })
+
+  it('상세 오류는 집계하지 않고 재시도 성공 시 최초 열람을 기록한다', async () => {
+    const repository = createRepository()
+    repository.findComplexDetail.mockRejectedValueOnce(new Error('network')).mockResolvedValue(complexDetail())
+    renderExplorer(repository, '/?complexId=17')
+    await screen.findByText('단지 상세를 불러오지 못했습니다.')
+    expect(analyticsCalls('view_complex')).toEqual([])
+    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+    await waitFor(() => expect(trackEvent).toHaveBeenCalledWith('view_complex', {
+      complex_id: '17', entry_point: 'direct',
+    }))
+  })
+
+  it('지도 마커와 닫은 뒤 최근 단지 선택을 서로 다른 새 열람으로 기록한다', async () => {
+    renderExplorer(createRepository())
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    fireEvent.click(await screen.findByRole('button', { name: '서울가람 행복주택 지도 마커 선택' }))
+    await waitFor(() => expect(trackEvent).toHaveBeenCalledWith('view_complex', {
+      complex_id: '17', entry_point: 'map',
+    }))
+    fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
+    fireEvent.click(screen.getByRole('button', { name: '최근 본 단지 1곳' }))
+    const recent = screen.getByRole('region', { name: '최근 본 단지' })
+    fireEvent.click(within(recent).getByRole('button', { name: /서울가람 행복주택/ }))
+    await waitFor(() => expect(analyticsCalls('view_complex')).toEqual([
+      ['view_complex', { complex_id: '17', entry_point: 'map' }],
+      ['view_complex', { complex_id: '17', entry_point: 'recent' }],
+    ]))
+  })
+
+  it('목록에서 연 공고와 연결 단지, 브라우저 복귀를 구분한다', async () => {
+    renderExplorer(createRepository())
+    fireEvent.click(screen.getByRole('tab', { name: '공고 목록' }))
+    fireEvent.click(await screen.findByRole('button', { name: '성남 청년 행복주택 입주자 모집 공고 상세 보기' }))
+    await waitFor(() => expect(trackEvent).toHaveBeenCalledWith('view_announcement', {
+      announcement_id: '201', entry_point: 'list',
+    }))
+    fireEvent.click(screen.getByRole('button', { name: '서울가람 행복주택 단지 상세 보기' }))
+    await waitFor(() => expect(trackEvent).toHaveBeenCalledWith('view_complex', {
+      complex_id: '17', entry_point: 'detail',
+    }))
+    fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' }))
+    await waitFor(() => expect(trackEvent).toHaveBeenCalledWith('view_announcement', {
+      announcement_id: '201', entry_point: 'history',
+    }))
+    expect(analyticsCalls('page_view')).toHaveLength(1)
+  })
+
+  it.each([
+    { type: 'COMPLEX', id: '17', params: { result_type: 'complex', complex_id: '17' }, view: 'view_complex' },
+    { type: 'ANNOUNCEMENT', id: '201', params: { result_type: 'announcement', announcement_id: '201' }, view: 'view_announcement' },
+    { type: 'REGION', id: '41111', params: { result_type: 'region' }, view: null },
+  ] as const)('검색 결과 $type 선택에는 검색 원문이나 지역 좌표를 보내지 않는다', async ({ type, id, params, view }) => {
+    const item = searchItem(type, id, '선택할 검색 결과', 37.5, 126.9)
+    renderExplorer(createRepository(), '/', searchRepository(type === 'REGION' ? [] : [item], type === 'REGION' ? [item] : []))
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '민감한 검색 문구' } })
+    fireEvent.click(await screen.findByRole('button', { name: /선택할 검색 결과/ }))
+    expect(analyticsCalls('select_search_result')).toEqual([['select_search_result', params]])
+    if (view) {
+      await waitFor(() => expect(analyticsCalls(view)[0]?.[1]).toEqual({
+        [type === 'COMPLEX' ? 'complex_id' : 'announcement_id']: id,
+        entry_point: 'search',
+      }))
+    }
+    expect(JSON.stringify(vi.mocked(trackEvent).mock.calls)).not.toContain('민감한 검색 문구')
+  })
+
+  it('초기 필터와 뒤로가기는 기록하지 않고 실제 적용과 초기화만 기록한다', async () => {
+    renderExplorer(createRepository(), '/?complexRegionCode=11')
+    await waitFor(() => expect(trackEvent).toHaveBeenCalledWith('page_view', {}))
+    expect(analyticsCalls('apply_filter')).toEqual([])
+    applyProvinceFilter('41')
+    applyProvinceFilter('41')
+    fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' }))
+    await waitFor(() => expectCurrentSearch({ complexRegionCode: '11' }))
+    applyProvinceFilter('')
+    expect(analyticsCalls('apply_filter')).toEqual([
+      ['apply_filter', { filter_target: 'complex', filter_types: 'region', filter_count: 1 }],
+      ['apply_filter', { filter_target: 'complex', filter_types: 'none', filter_count: 0 }],
+    ])
+  })
+
+  it('즉시 적용되는 데스크톱 필터와 적용 버튼이 있는 모바일 필터를 실제 적용 시점에 기록한다', async () => {
+    renderExplorer(createRepository())
+    await waitFor(() => expect(trackEvent).toHaveBeenCalledWith('page_view', {}))
+    fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '행복주택' }))
+    expect(analyticsCalls('apply_filter')).toEqual([
+      ['apply_filter', { filter_target: 'complex', filter_types: 'rental', filter_count: 1 }],
+    ])
+    fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent.click(screen.getByRole('button', { name: '전체 단지 필터 열기, 1개 적용' }))
+    const sheet = screen.getByRole('dialog', { name: '단지 필터' })
+    fireEvent.click(within(sheet).getByRole('button', { name: '전체 필터 초기화' }))
+    expect(analyticsCalls('apply_filter')).toHaveLength(1)
+    fireEvent.click(within(sheet).getByRole('button', { name: '단지 보기' }))
+    expect(analyticsCalls('apply_filter')).toEqual([
+      ['apply_filter', { filter_target: 'complex', filter_types: 'rental', filter_count: 1 }],
+      ['apply_filter', { filter_target: 'complex', filter_types: 'none', filter_count: 0 }],
+    ])
+  })
+
+  it('공고 필터는 초안 변경을 보내지 않고 적용한 조건의 종류만 기록한다', async () => {
+    renderExplorer(createRepository())
+    await waitFor(() => expect(trackEvent).toHaveBeenCalledWith('page_view', {}))
+    fireEvent.click(screen.getByRole('tab', { name: '공고 목록' }))
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '행복주택' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'GH' }))
+    expect(analyticsCalls('apply_filter')).toEqual([])
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
+    expect(analyticsCalls('apply_filter')).toEqual([
+      ['apply_filter', { filter_target: 'announcement', filter_types: 'rental,agency', filter_count: 2 }],
+    ])
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
+    expect(analyticsCalls('apply_filter')).toHaveLength(1)
+  })
+})
+
+function analyticsCalls(name: string) {
+  return vi.mocked(trackEvent).mock.calls.filter(([event]) => event === name)
+}
 
 function applyProvinceFilter(provinceCode: string) {
   fireEvent.click(screen.getByRole('button', { name: '상세 필터 열기' }))

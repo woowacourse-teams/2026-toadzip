@@ -16,18 +16,34 @@ public class SocialUserService {
     private final Clock clock;
 
     public Long findOrCreate(String provider, String subject) {
-        String identifier = identifier(provider, subject);
-        return userRepository.findByLoginIdentifier(identifier)
-                .map(User::getId)
-                .orElseGet(() -> createOrFind(identifier));
+        return findOrCreate(provider, subject, null);
     }
 
-    private Long createOrFind(String identifier) {
+    public Long findOrCreate(String provider, String subject, String email) {
+        String identifier = identifier(provider, subject);
+        return userRepository.findByLoginIdentifier(identifier)
+                .map(user -> updateEmail(user, email))
+                .orElseGet(() -> createOrFind(identifier, email));
+    }
+
+    public String emailOf(Long id) {
+        return userRepository.findById(id).orElseThrow().getEmail();
+    }
+
+    private Long updateEmail(User user, String email) {
+        user.updateEmail(email);
+        userRepository.save(user);
+        return user.getId();
+    }
+
+    private Long createOrFind(String identifier, String email) {
         try {
-            return userRepository.saveAndFlush(User.create(identifier, LocalDateTime.now(clock))).getId();
+            User user = User.create(identifier, LocalDateTime.now(clock));
+            user.updateEmail(email);
+            return userRepository.saveAndFlush(user).getId();
         } catch (DataIntegrityViolationException exception) {
             return userRepository.findByLoginIdentifier(identifier)
-                    .map(User::getId)
+                    .map(user -> updateEmail(user, email))
                     .orElseThrow(() -> exception);
         }
     }

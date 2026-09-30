@@ -27,7 +27,7 @@ class UserJpaMappingTest {
     void 유저_도메인을_JPA_엔티티로_등록한다() {
         assertEntityAttributes(
                 "User",
-                Set.of("id", "loginIdentifier", "createdAt")
+                Set.of("id", "loginIdentifier", "createdAt", "email")
         );
         assertEntityAttributes(
                 "UserEligibilityInfo",

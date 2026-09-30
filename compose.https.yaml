@@ -1,0 +1,32 @@
+services:
+  frontend:
+    command: ["nginx", "-c", "/tmp/https.conf", "-g", "daemon off;"]
+    environment:
+      TOADZIP_TLS_DOMAIN: "${TOADZIP_TLS_DOMAIN:?TOADZIP_TLS_DOMAIN is required}"
+      NGINX_ENVSUBST_TEMPLATE_DIR: /etc/nginx/toadzip/templates
+      NGINX_ENVSUBST_OUTPUT_DIR: /tmp
+      # Substitute only our domain; preserve Nginx variables such as $host.
+      NGINX_ENVSUBST_FILTER: "^TOADZIP_TLS_DOMAIN$$"
+    ports:
+      - "443:8443"
+    group_add:
+      - "${TOADZIP_TLS_GID:?TOADZIP_TLS_GID is required}"
+    volumes:
+      - type: bind
+        source: /var/www/certbot
+        target: /var/www/certbot
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /etc/letsencrypt/live/${TOADZIP_TLS_DOMAIN:?TOADZIP_TLS_DOMAIN is required}
+        target: /etc/letsencrypt/live/${TOADZIP_TLS_DOMAIN:?TOADZIP_TLS_DOMAIN is required}
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /etc/letsencrypt/archive/${TOADZIP_TLS_DOMAIN:?TOADZIP_TLS_DOMAIN is required}
+        target: /etc/letsencrypt/archive/${TOADZIP_TLS_DOMAIN:?TOADZIP_TLS_DOMAIN is required}
+        read_only: true
+        bind:
+          create_host_path: false

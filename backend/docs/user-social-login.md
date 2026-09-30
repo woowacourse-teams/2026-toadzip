@@ -7,7 +7,8 @@
 `/api/auth/oauth2/callback/{provider}`로 돌아오며 성공 시 설정한 프론트엔드 URL,
 실패 시 실패 URL로 이동한다. 쿼리의 인가 코드나 공급자 토큰을 프론트엔드에 전달하지 않는다.
 
-- `GET /api/auth/me`: 로그인한 사용자에게 `{ "id": 123 }`, 비로그인 401, 관리자만 로그인한 경우 403.
+- `GET /api/auth/me`: 로그인한 사용자에게 `{ "id": 123, "email": "user@example.com" }`.
+  공급자가 이메일을 제공하지 않으면 `email`은 `null`이다. 비로그인 401, 관리자만 로그인한 경우 403.
 - `GET /api/auth/csrf`: `{ "token": "...", "headerName": "X-XSRF-TOKEN" }`와 CSRF 쿠키.
 - `POST /api/auth/logout`: CSRF 헤더와 세션 쿠키가 필요하며 성공 시 204.
 - 브라우저 요청에 세션 쿠키를 포함한다. 관리자 권한과 사용자 권한은 분리된다.
@@ -24,7 +25,8 @@
 3. 같은 REST API 키 설정에서 클라이언트 시크릿을 발급하고 활성화한다. 이 값이
    **KAKAO_CLIENT_SECRET**이다.
 4. **카카오 로그인 > 사용 설정**을 켠다.
-5. REST API 키의 Redirect URI에 아래 주소를 정확히 등록한다.
+5. **카카오 로그인 > 동의항목**에서 이메일(`account_email`) 동의를 설정한다.
+6. REST API 키의 Redirect URI에 아래 주소를 정확히 등록한다.
 
 ~~~text
 http://localhost/api/auth/oauth2/callback/kakao
@@ -91,9 +93,10 @@ docker compose -f compose.yaml -f compose.local.yaml -f compose.monitoring.yaml 
 운영에서는 서비스 오리진으로 명시한다. 카카오 개발자 콘솔에서 로그인과 Redirect URI를 등록하고,
 구글 OAuth 클라이언트에도 해당 Redirect URI를 등록한다. 비밀 값은 저장소에 넣지 않는다.
 
-기존 스키마는 [Flyway 도입 절차](flyway-adoption.md)에 따라 `20260922.00`으로 baseline 한 뒤
+기존 스키마는 [Flyway 도입 절차](flyway-adoption.md)에 따라 `20260922.00`으로 자동 baseline 한 뒤
 통합 스키마 `V20260922_01`과 사용자 식별자 제약 `V20260922_02`를 순서대로 적용한다.
 새 빈 DB에서는 baseline 스키마 `B20260922_01`을 사용한다. 이미 중복된 `login_identifier`가
 있다면 `V20260922_02`가 실패하므로 계정 소유권을 확인하고 처리한 뒤 재시도한다.
 새 로그인은 `google:{sub}` 또는 `kakao:{id}`로 저장하며 기존 사용자 ID와 연관 데이터는 유지한다.
+이메일은 로그인 시 공급자가 제공한 경우에만 저장하고, 알림 신청 창에서는 사용자가 수정할 수 있다.
 서로 다른 공급자 계정은 동일 이메일이어도 자동 연결하지 않는다.

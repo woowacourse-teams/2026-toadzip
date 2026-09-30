@@ -8,6 +8,7 @@ public record AnnouncementScheduleResponse(
         ScheduleType type,
         String name,
         LocalDateTime startAt,
-        LocalDateTime endAt
+        LocalDateTime endAt,
+        String complexName
 ) {
 }

@@ -2,6 +2,7 @@ import {
   type KeyboardEvent,
   type RefObject,
   type ReactNode,
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -15,8 +16,12 @@ import {
   DetailSection,
   DetailTable,
 } from './DetailPrimitives.tsx'
+import { AttachmentDialog, AttachmentList } from './AnnouncementAttachments.tsx'
+import { hasAttachmentUrl } from '../api/announcementAttachments.ts'
 import { AnnouncementStatusBadge } from './AnnouncementStatusBadge.tsx'
+import { ApplicationScheduleGroups } from './ApplicationScheduleGroups'
 import type {
+  AnnouncementApplicationSchedule,
   AnnouncementHousingType,
   AnnouncementSupplyComplex,
   AnnouncementSupplyTarget,
@@ -26,8 +31,14 @@ import {
   type HousingAnnouncementSupplyComplexGroup,
 } from '../presentation/announcementDetailPresentation.ts'
 import { MISSING_DATA_LABEL } from '../presentation/missingData'
+import { formatPhoneNumber } from '../presentation/phoneNumber'
+import { groupAnnouncementSchedules } from '../presentation/announcementSchedulePresentation'
+import { ScheduleGroupCard } from './ScheduleGroupCard'
+import { SchedulePeriod } from './SchedulePeriod'
+import scheduleStyles from './ScheduleGroups.module.css'
 import { formatHousingMoney } from '../presentation/housingMoney'
 import styles from './HousingAnnouncementDetailPanel.module.css'
+import { NotificationInterestButton } from '../interest/NotificationInterest'
 
 export interface HousingAnnouncementDetailReceptionPlace {
   readonly name: string | null
@@ -39,6 +50,7 @@ export interface HousingAnnouncementDetailReceptionPlace {
 
 export interface HousingAnnouncementDetailSchedule {
   readonly scheduleId: string
+  readonly complexName?: string | null
   readonly type: string | null
   readonly typeLabel: string
   readonly name: string | null
@@ -89,6 +101,7 @@ export interface HousingAnnouncementDetailData {
   readonly documentLinkUrl: string | null
   readonly receptionPlaces: readonly HousingAnnouncementDetailReceptionPlace[]
   readonly schedules: readonly HousingAnnouncementDetailSchedule[]
+  readonly applicationSchedules?: readonly AnnouncementApplicationSchedule[]
   readonly attachments: readonly HousingAnnouncementDetailAttachment[]
   readonly supplyRows: readonly HousingAnnouncementDetailSupplyRow[]
 }
@@ -112,12 +125,23 @@ interface FloorPlanSelection {
   readonly threeDimensionalUrl: string | null
 }
 
+const DETAIL_SECTIONS = [
+  { key: 'summary', label: '요약' },
+  { key: 'schedule', label: '일정' },
+  { key: 'housing', label: '주택형' },
+] as const
+
+type DetailSectionKey = typeof DETAIL_SECTIONS[number]['key']
+
 export function HousingAnnouncementDetailPanel({
   detail,
   onClose,
   onOpenComplex,
   backButton,
 }: HousingAnnouncementDetailPanelProps) {
+  const sectionId = useId()
+  const { scrollRef, sectionRefs, activeSection, trackSection, scrollToSection } =
+    useAnnouncementSections(detail.announcementId)
   const groups = useMemo(
     () => groupAnnouncementSupplyRows(detail.supplyRows),
     [detail.supplyRows],
@@ -128,6 +152,7 @@ export function HousingAnnouncementDetailPanel({
     groupKey: firstGroupKey,
   })
   const [floorPlan, setFloorPlan] = useState<FloorPlanSelection | null>(null)
+  const [attachmentAnnouncementId, setAttachmentAnnouncementId] = useState<string | null>(null)
   const selectedGroupKey = selection.announcementId === detail.announcementId
     ? selection.groupKey
     : firstGroupKey
@@ -189,44 +214,132 @@ export function HousingAnnouncementDetailPanel({
         onClose={onClose}
       />
 
+      <nav className={styles.sectionNav} aria-label="공고 상세 섹션">
+        {DETAIL_SECTIONS.map(({ key, label }) => (
+          <a key={key} href={`#${sectionId}-${key}`}
+            aria-current={activeSection === key ? 'location' : undefined}
+            onClick={(event) => {
+              event.preventDefault()
+              scrollToSection(key)
+            }}>
+            {label}
+          </a>
+        ))}
+      </nav>
+
       <div
+        ref={scrollRef}
+        onScroll={trackSection}
         className={styles.scroll}
         role="region"
         aria-label={`${title} 상세 내용`}
         tabIndex={0}
       >
-        <NoticeIntro detail={detail} groups={groups} />
-        <CoreInformation detail={detail} />
-        <ReasonNotice detail={detail} />
-        <AudienceSection targets={detail.targets} />
-        <ScheduleSection detail={detail} />
-        <ReceptionPlaces places={detail.receptionPlaces} />
-        <ComplexComparison
-          groups={groups}
-          rentalTypeLabel={detail.rentalTypeLabel}
-          supplyComplexCount={detail.supplyComplexCount}
-          supplyHouseholdCount={detail.supplyHouseholdCount}
-          onOpenComplex={onOpenComplex}
-        />
-        {selectedGroup && (
-          <HousingTypeComparison
-            groups={groups}
-            selectedGroup={selectedGroup}
-            tabRefs={tabRefs.current}
-            onSelectGroup={selectGroup}
-            onGroupKeyDown={handleGroupKeyDown}
-            onOpenFloorPlan={setFloorPlan}
+        <div id={`${sectionId}-summary`} className={styles.sectionGroup}
+          role="region" aria-label="요약 영역" tabIndex={-1}
+          ref={(node) => { sectionRefs.current.summary = node }}>
+          <NoticeIntro detail={detail} groups={groups} />
+          <NotificationInterestButton
+            target={{ type: 'ANNOUNCEMENT', id: detail.announcementId, name: title }}
+            source="ANNOUNCEMENT_DETAIL"
           />
-        )}
-        <AttachmentList attachments={detail.attachments} />
+          <CoreInformation detail={detail} />
+          <ReasonNotice detail={detail} />
+        </div>
+        <div id={`${sectionId}-schedule`} className={styles.sectionGroup}
+          role="region" aria-label="일정 영역" tabIndex={-1}
+          ref={(node) => { sectionRefs.current.schedule = node }}>
+          <ScheduleSection detail={detail} groups={groups} />
+          <ReceptionPlaces places={detail.receptionPlaces} />
+        </div>
+        <div id={`${sectionId}-housing`} className={styles.sectionGroup}
+          role="region" aria-label="주택형 영역" tabIndex={-1}
+          ref={(node) => { sectionRefs.current.housing = node }}>
+          <ComplexComparison
+            groups={groups}
+            rentalTypeLabel={detail.rentalTypeLabel}
+            supplyComplexCount={detail.supplyComplexCount}
+            supplyHouseholdCount={detail.supplyHouseholdCount}
+            onOpenComplex={onOpenComplex}
+          />
+          {selectedGroup && (
+            <HousingTypeComparison
+              groups={groups}
+              selectedGroup={selectedGroup}
+              tabRefs={tabRefs.current}
+              onSelectGroup={selectGroup}
+              onGroupKeyDown={handleGroupKeyDown}
+              onOpenFloorPlan={setFloorPlan}
+            />
+          )}
+          <AttachmentList key={detail.announcementId} announcementId={detail.announcementId} attachments={detail.attachments} />
+        </div>
       </div>
 
-      <DocumentActions detail={detail} />
+      <DocumentActions detail={detail} onOpenAttachments={() => setAttachmentAnnouncementId(detail.announcementId)} />
+      {attachmentAnnouncementId === detail.announcementId && (
+        <AttachmentDialog key={detail.announcementId} announcementId={detail.announcementId} attachments={detail.attachments}
+          onClose={() => setAttachmentAnnouncementId(null)} />
+      )}
       {floorPlan && (
         <FloorPlanDialog selection={floorPlan} onClose={() => setFloorPlan(null)} />
       )}
     </aside>
   )
+}
+
+function useAnnouncementSections(announcementId: string) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const sectionRefs = useRef<Record<DetailSectionKey, HTMLDivElement | null>>({
+    summary: null, schedule: null, housing: null,
+  })
+  const [selection, setSelection] = useState<{ announcementId: string; key: DetailSectionKey }>({
+    announcementId, key: 'summary',
+  })
+  const activeSection = selection.announcementId === announcementId ? selection.key : 'summary'
+
+  const trackSection = useCallback(() => {
+    const scroll = scrollRef.current
+    if (!scroll) return
+    let key: DetailSectionKey = 'summary'
+    if (scroll.scrollTop > 0) {
+      const top = scroll.getBoundingClientRect().top
+      for (const section of DETAIL_SECTIONS) {
+        const node = sectionRefs.current[section.key]
+        if (node && node.getBoundingClientRect().top <= top + 24) key = section.key
+      }
+      // A short final section may never reach the top of the scroll container.
+      if (scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 1) key = 'housing'
+    }
+    setSelection((previous) => previous.announcementId === announcementId && previous.key === key
+      ? previous : { announcementId, key })
+  }, [announcementId])
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0
+  }, [announcementId])
+
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(trackSection)
+    if (scrollRef.current) observer.observe(scrollRef.current)
+    for (const section of Object.values(sectionRefs.current)) {
+      if (section) observer.observe(section)
+    }
+    return () => observer.disconnect()
+  }, [trackSection])
+
+  function scrollToSection(key: DetailSectionKey) {
+    const scroll = scrollRef.current
+    const section = sectionRefs.current[key]
+    if (!scroll || !section) return
+    const top = section.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop
+    section.focus({ preventScroll: true })
+    scroll.scrollTo({ top: Math.max(0, top),
+      behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })
+  }
+
+  return { scrollRef, sectionRefs, activeSection, trackSection, scrollToSection }
 }
 
 function StickyHeader({
@@ -323,7 +436,7 @@ function NoticeIntro({
       </p>
       {firstGroup && (
         <p>
-          <span>{firstGroup.name}</span>
+          <strong>{firstGroup.name}</strong>
           {remainingComplexes > 0 && <em>외 {remainingComplexes}곳</em>}
         </p>
       )}
@@ -333,6 +446,7 @@ function NoticeIntro({
 }
 
 function CoreInformation({ detail }: { detail: HousingAnnouncementDetailData }) {
+  const audiences = detail.targets.map((target) => target.trim()).filter(Boolean)
   return (
     <DetailSection title="공고 핵심 정보">
       <DetailFacts>
@@ -342,6 +456,7 @@ function CoreInformation({ detail }: { detail: HousingAnnouncementDetailData }) 
         <DetailFact term="공급 세대" value={formatNullableCount(detail.supplyHouseholdCount, '세대')} />
         <DetailFact term="지역" value={regionLabel(detail.regionNames)} />
         <DetailFact term="공사" value={agencyLabel(detail)} />
+        <DetailFact term="신청 대상" value={audiences.join(' · ') || MISSING_DATA_LABEL} wide />
       </DetailFacts>
       <div className={styles.meta}>
         <span>게시 {formatDate(detail.publishedAt)}</span>
@@ -363,77 +478,66 @@ function ReasonNotice({ detail }: { detail: HousingAnnouncementDetailData }) {
   )
 }
 
-function AudienceSection({ targets }: { targets: readonly string[] }) {
-  return (
-    <DetailSection
-      title="신청 대상"
-      description="세부 소득·자산 기준과 최종 신청자격은 공고문에서 확인해 주세요."
-    >
-      {targets.length === 0 && (
-        <EmptyState>{MISSING_DATA_LABEL}</EmptyState>
-      )}
-      {targets.length > 0 && (
-        <div className={styles.audiences}>
-          {targets.map((target, index) => (
-            <span key={`${target}-${index}`}>{target}</span>
-          ))}
-        </div>
-      )}
-    </DetailSection>
-  )
-}
-
-function ScheduleSection({ detail }: { detail: HousingAnnouncementDetailData }) {
-  const hasApplicationSchedule = detail.schedules.some(
-    (schedule) => schedule.type === 'APPLICATION',
-  )
-  const hasWinnerSchedule = detail.schedules.some(
+function ScheduleSection({ detail, groups }: {
+  detail: HousingAnnouncementDetailData
+  groups: readonly HousingAnnouncementSupplyComplexGroup[]
+}) {
+  const applicationSchedules = detail.applicationSchedules ?? []
+  const hasVerifiedSchedules = applicationSchedules.length > 0
+  const schedules = detail.schedules
+  const legacyApplicationSchedules = schedules.filter((schedule) => schedule.type === 'APPLICATION')
+  const hasApplicationSchedule = hasVerifiedSchedules || legacyApplicationSchedules.length > 0
+  const hasWinnerSchedule = schedules.some(
     (schedule) => schedule.type === 'WINNER_ANNOUNCEMENT',
   )
   const hasApplicationFallback = !hasApplicationSchedule && (
     detail.applicationStartAt !== null || detail.applicationEndAt !== null
   )
   const hasWinnerDate = detail.winnerAnnouncementAt !== null && !hasWinnerSchedule
-  const hasSchedule = hasApplicationFallback
-    || detail.schedules.length > 0
-    || hasWinnerDate
+  const followUpSchedules = [
+    ...schedules.filter((schedule) => schedule.type !== 'APPLICATION'),
+    ...(hasWinnerDate ? [{ scheduleId: 'winner-fallback', type: 'WINNER_ANNOUNCEMENT',
+      typeLabel: '당첨자 발표', name: null, startAt: detail.winnerAnnouncementAt, endAt: null }] : []),
+  ]
+  const receptionSchedules = hasApplicationFallback ? [{
+    scheduleId: 'application-fallback', type: 'APPLICATION', typeLabel: '접수 기간', name: null,
+    startAt: detail.applicationStartAt, endAt: detail.applicationEndAt,
+  }] : legacyApplicationSchedules
 
   return (
-    <DetailSection title="접수 일정">
-      {!hasSchedule && <EmptyState>{MISSING_DATA_LABEL}</EmptyState>}
-      {hasSchedule && (
-        <DetailTable caption="접수 일정">
-          <colgroup>
-            <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-            <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-          </colgroup>
-          {hasApplicationFallback && (
-            <ScheduleItem
-              label="접수 기간"
-              startAt={detail.applicationStartAt}
-              endAt={detail.applicationEndAt}
-              current={detail.applicationStatus === 'APPLYING'}
-            />
-          )}
-          {detail.schedules.map((schedule) => (
-            <ScheduleItem
-              key={schedule.scheduleId}
-              label={schedule.name ?? schedule.typeLabel}
-              startAt={schedule.startAt}
-              endAt={schedule.endAt}
-            />
-          ))}
-          {hasWinnerDate && (
-            <ScheduleItem
-              label="당첨자 발표"
-              startAt={detail.winnerAnnouncementAt}
-              endAt={null}
-            />
-          )}
-        </DetailTable>
+    <>
+      <DetailSection title="접수 일정">
+        {hasVerifiedSchedules && <ApplicationScheduleGroups schedules={applicationSchedules} complexes={groups} />}
+        {!hasApplicationSchedule && !hasApplicationFallback && <EmptyState>{MISSING_DATA_LABEL}</EmptyState>}
+        {!hasVerifiedSchedules && receptionSchedules.length > 0 && (
+          <AnnouncementScheduleGroups schedules={receptionSchedules} caption="접수 일정"
+            current={hasApplicationFallback && detail.applicationStatus === 'APPLYING'} />
+        )}
+      </DetailSection>
+      {followUpSchedules.length > 0 && (
+        <DetailSection title="후속 일정">
+          <AnnouncementScheduleGroups schedules={followUpSchedules} caption="후속 일정" />
+        </DetailSection>
       )}
-    </DetailSection>
+    </>
   )
+}
+
+function AnnouncementScheduleGroups({ schedules, caption, current = false }: {
+  schedules: readonly HousingAnnouncementDetailSchedule[]
+  caption: string
+  current?: boolean
+}) {
+  return <div className={scheduleStyles.groups}>
+    {groupAnnouncementSchedules(schedules).map((group) => (
+      <ScheduleGroupCard key={group.key} name={group.name} targets={group.targets} caption={caption}>
+        {group.schedules.map((schedule) => (
+          <ScheduleItem key={schedule.scheduleId} label={schedule.name ?? schedule.typeLabel}
+            startAt={schedule.startAt} endAt={schedule.endAt} current={current} />
+        ))}
+      </ScheduleGroupCard>
+    ))}
+  </div>
 }
 
 function ScheduleItem({
@@ -447,44 +551,14 @@ function ScheduleItem({
   endAt: string | null
   current?: boolean
 }) {
-  const idPrefix = useId()
-  const groupId = `${idPrefix}-schedule`
-  const startId = `${idPrefix}-start`
-  const endId = `${idPrefix}-end`
-  const hasEnd = endAt !== null && startAt !== endAt
   return (
-    <tbody data-current={current || undefined} aria-current={current ? 'step' : undefined}>
-      {hasEnd ? (
-        <>
-          <tr className={styles.scheduleHeading}>
-            <th id={groupId} scope="rowgroup" colSpan={4}>
-              {label}
-              {current && <>{' '}<span className={styles.currentStep}>현재 단계</span></>}
-            </th>
-          </tr>
-          <tr>
-            <th id={startId} scope="row">시작</th>
-            <td headers={`${groupId} ${startId}`}>
-              <time dateTime={startAt ?? undefined}>{formatDateTime(startAt)}</time>
-            </td>
-            <th id={endId} scope="row">종료</th>
-            <td headers={`${groupId} ${endId}`}>
-              <time dateTime={endAt}>{formatDateTime(endAt)}</time>
-            </td>
-          </tr>
-        </>
-      ) : (
-        <tr>
-          <th id={groupId} scope="row">
-            {label}
-            {current && <>{' '}<span className={styles.currentStep}>현재 단계</span></>}
-          </th>
-          <td headers={groupId} colSpan={3}>
-            <time dateTime={startAt ?? undefined}>{formatDateTime(startAt)}</time>
-          </td>
-        </tr>
-      )}
-    </tbody>
+    <li className={scheduleStyles.item} data-current={current || undefined} aria-current={current ? 'step' : undefined}>
+      <header className={scheduleStyles.heading}>
+        <h5>{label}</h5>
+        {current && <span className={scheduleStyles.state} data-confirmed="true">현재 단계</span>}
+      </header>
+      <SchedulePeriod startAt={startAt} endAt={endAt} hideMidnight />
+    </li>
   )
 }
 
@@ -504,16 +578,18 @@ function ReceptionPlaces({
           return (
             <li key={`${place.name ?? 'place'}-${index}`}>
               <div className={styles.receptionHeading}>
-                <strong>{place.name ?? MISSING_DATA_LABEL}</strong>
-                <span>{place.methodLabel}</span>
+                <div className={styles.receptionIdentity}>
+                  <strong>{place.name ?? MISSING_DATA_LABEL}</strong>
+                  <span>{place.methodLabel}</span>
+                </div>
+                {url && <ExternalLink href={url}>접수처 열기</ExternalLink>}
               </div>
               {(hasText(place.address) || hasText(place.phoneNumber)) && (
                 <DetailFacts>
                   {hasText(place.address) && <DetailFact term="주소" value={place.address} wide />}
-                  {hasText(place.phoneNumber) && <DetailFact term="문의" value={place.phoneNumber} />}
+                  {hasText(place.phoneNumber) && <DetailFact term="문의" value={formatPhoneNumber(place.phoneNumber) ?? MISSING_DATA_LABEL} wide />}
                 </DetailFacts>
               )}
-              {url && <ExternalLink href={url}>접수처 열기</ExternalLink>}
             </li>
           )
         })}
@@ -538,10 +614,9 @@ function ComplexComparison({
   return (
     <DetailSection
       title="단지 비교"
-      description="주소와 주택형별 면적·임대조건 범위를 한눈에 비교합니다."
-      aside={`${formatNullableCount(supplyComplexCount, '개 단지')} · ${formatNullableCount(supplyHouseholdCount, '세대')}`}
+      aside={`${formatNullableCount(supplyComplexCount, '개 단지')} · ${supplyHouseholdSummary(supplyHouseholdCount)}`}
     >
-      {groups.length === 0 && <EmptyState>{MISSING_DATA_LABEL}</EmptyState>}
+      {groups.length === 0 && <EmptyState>단지 정보: {MISSING_DATA_LABEL}</EmptyState>}
       <div className={styles.complexList}>
         {groups.map((group) => (
           <ComplexCard
@@ -601,8 +676,7 @@ function ComplexCard({
           </div>
         )}
         <div className={styles.complexBody}>
-          <p>{group.address ?? MISSING_DATA_LABEL}</p>
-          {!imageUrl && <small>조감도 {MISSING_DATA_LABEL}</small>}
+          <p>{group.address ?? `주소: ${MISSING_DATA_LABEL}`}</p>
           <div className={styles.complexCounts}>
             <span>총 <b>{formatNullableCount(group.totalHouseholdCount, '세대')}</b></span>
             <span>공급 <b>{formatNullableCount(group.supplyHouseholdCount, '세대')}</b></span>
@@ -653,46 +727,44 @@ function HousingTypeComparison({
   return (
     <DetailSection
       title="주택형 비교"
-      description="단지를 고른 뒤 공급 구분·면적·공급량·비용을 비교하세요."
     >
-      {groups.length > 1 && (
-        <div className={styles.complexTabs} role="tablist" aria-label="주택형을 볼 단지 선택">
-          {groups.map((group, index) => (
-            <button
-              key={group.key}
-              ref={(node) => setTabRef(tabRefs, group.key, node)}
-              id={`${idPrefix}-complex-tab-${index}`}
-              type="button"
-              role="tab"
-              aria-controls={panelId}
-              aria-selected={group.key === selectedGroup.key}
-              tabIndex={group.key === selectedGroup.key ? 0 : -1}
-              onClick={() => onSelectGroup(group)}
-              onKeyDown={(event) => onGroupKeyDown(event, index)}
-            >
-              <span>{group.name}</span>
-              <b>{formatNullableCount(group.supplyHouseholdCount, '세대')}</b>
-            </button>
+      <div className={styles.housingTypeGroup}>
+        {groups.length > 0 && (
+          <div className={styles.complexTabs} role="tablist" aria-label="주택형을 볼 단지 선택">
+            {groups.map((group, index) => (
+              <button
+                key={group.key}
+                ref={(node) => setTabRef(tabRefs, group.key, node)}
+                id={`${idPrefix}-complex-tab-${index}`}
+                type="button"
+                role="tab"
+                aria-controls={panelId}
+                aria-selected={group.key === selectedGroup.key}
+                tabIndex={group.key === selectedGroup.key ? 0 : -1}
+                onClick={() => onSelectGroup(group)}
+                onKeyDown={(event) => onGroupKeyDown(event, index)}
+              >
+                <span>{group.name}</span>
+                <b>{supplyHouseholdSummary(group.supplyHouseholdCount)}</b>
+              </button>
+            ))}
+          </div>
+        )}
+        <div
+          className={styles.housingTypes}
+          id={panelId}
+          role="tabpanel"
+          aria-labelledby={`${idPrefix}-complex-tab-${selectedIndex}`}
+        >
+          {selectedGroup.rows.map((row) => (
+            <HousingTypeCard
+              key={row.supplyRowId}
+              complexName={selectedGroup.name}
+              row={row}
+              onOpenFloorPlan={onOpenFloorPlan}
+            />
           ))}
         </div>
-      )}
-      <div
-        className={styles.housingTypes}
-        id={panelId}
-        role={groups.length > 1 ? 'tabpanel' : 'region'}
-        aria-labelledby={groups.length > 1
-          ? `${idPrefix}-complex-tab-${selectedIndex}`
-          : undefined}
-        aria-label={groups.length === 1 ? `${selectedGroup.name} 주택형 비교` : undefined}
-      >
-        {selectedGroup.rows.map((row) => (
-          <HousingTypeCard
-            key={row.supplyRowId}
-            complexName={selectedGroup.name}
-            row={row}
-            onOpenFloorPlan={onOpenFloorPlan}
-          />
-        ))}
       </div>
     </DetailSection>
   )
@@ -736,7 +808,6 @@ function HousingTypeCard({
             평면도 보기
           </button>
         )}
-        {!hasFloorPlan && <small>{MISSING_DATA_LABEL}</small>}
       </div>
       <DetailTable caption={`${complexName} ${housingTypeName} 공급 정보`}>
         <colgroup>
@@ -765,12 +836,14 @@ function HousingTypeCard({
 
 function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget[] }) {
   const idPrefix = useId()
-  if (targets.length === 0) {
-    return <p className={styles.targetEmpty}>{MISSING_DATA_LABEL}</p>
-  }
+  const visibleTargets = targets.filter((target) => (
+    [target.target, target.priority, target.applicationCondition].some(hasText)
+    || [target.supplyHouseholdCount, target.waitlistCount, target.deposit, target.monthlyRent].some(Number.isFinite)
+  ))
+  if (visibleTargets.length === 0) return null
   return (
     <ul className={styles.targetList} aria-label="대상별 공급 조건">
-      {targets.map((target, index) => (
+      {visibleTargets.map((target, index) => (
         <li key={target.supplyTargetId}>
           <header className={styles.targetHeading}>
             <strong>{target.target ?? MISSING_DATA_LABEL}</strong>
@@ -816,81 +889,21 @@ function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget
   )
 }
 
-function AttachmentList({
-  attachments,
-}: {
-  attachments: readonly HousingAnnouncementDetailAttachment[]
+function DocumentActions({ detail, onOpenAttachments }: {
+  detail: HousingAnnouncementDetailData
+  onOpenAttachments: () => void
 }) {
-  if (attachments.length <= 1) {
-    return null
-  }
-  return (
-    <DetailSection title="첨부파일">
-      <ul className={styles.attachmentList}>
-        {attachments.map((attachment) => {
-          const url = safeHttpUrl(attachment.fileUrl)
-          const name = attachment.fileName ?? MISSING_DATA_LABEL
-          return (
-            <li key={attachment.attachmentId}>
-              <span>{attachment.fileTypeLabel}</span>
-              <strong>{name}</strong>
-              {url && <ExternalLink href={url}>열기</ExternalLink>}
-              {!url && <small>{MISSING_DATA_LABEL}</small>}
-            </li>
-          )
-        })}
-      </ul>
-    </DetailSection>
-  )
-}
-
-function DocumentActions({ detail }: { detail: HousingAnnouncementDetailData }) {
   const sourceUrl = safeHttpUrl(detail.documentLinkUrl)
-  const primaryAttachment = findPrimaryNoticeAttachment(detail.attachments)
-  const attachmentUrl = safeHttpUrl(primaryAttachment?.fileUrl ?? null)
-  const attachmentName = primaryAttachment?.fileName ?? MISSING_DATA_LABEL
-  const linkStatus = [...new Set([
-    attachmentUrl ? '첨부파일 연결됨' : MISSING_DATA_LABEL,
-    sourceUrl ? '원문 연결됨' : MISSING_DATA_LABEL,
-  ])].join(' · ')
-
+  const hasFiles = detail.attachments.some(hasAttachmentUrl)
   return (
     <footer className={styles.documents}>
-      <div>
-        <span aria-hidden="true">▤</span>
-        <p>
-          <strong>공고문</strong>
-          <small title={attachmentName}>{attachmentName}</small>
-          {linkStatus !== attachmentName && <em>{linkStatus}</em>}
-        </p>
-      </div>
       <nav aria-label="공고문 바로가기">
-        {attachmentUrl && <ExternalLink href={attachmentUrl}>첨부파일</ExternalLink>}
-        {!attachmentUrl && <DisabledLink>첨부파일</DisabledLink>}
+        <button type="button" disabled={!hasFiles} onClick={onOpenAttachments}>공고문 보기</button>
         {sourceUrl && <ExternalLink href={sourceUrl}>공고 원문</ExternalLink>}
         {!sourceUrl && <DisabledLink>공고 원문</DisabledLink>}
       </nav>
     </footer>
   )
-}
-
-function findPrimaryNoticeAttachment(
-  attachments: readonly HousingAnnouncementDetailAttachment[],
-) {
-  const noticeAttachments = attachments.filter((attachment) => (
-    isNoticeAttachmentLabel(attachment.fileTypeLabel)
-  ))
-  return noticeAttachments.find(
-    (attachment) => safeHttpUrl(attachment.fileUrl) !== null,
-  ) ?? noticeAttachments[0] ?? attachments.find(
-    (attachment) => safeHttpUrl(attachment.fileUrl) !== null,
-  ) ?? attachments[0]
-}
-
-function isNoticeAttachmentLabel(label: string) {
-  return label === '공고문'
-    || label === '정정공고문'
-    || label === '취소공고문'
 }
 
 function FloorPlanDialog({
@@ -949,7 +962,6 @@ function FloorPlanDialog({
             </figure>
           )}
         </div>
-        {!selection.threeDimensionalUrl && <p className={styles.floorPlanStatus}>{MISSING_DATA_LABEL}</p>}
       </section>
     </div>
   )
@@ -970,14 +982,20 @@ function DisabledLink({ children }: { children: ReactNode }) {
 }
 
 function deadlineLabel(detail: HousingAnnouncementDetailData) {
+  if (detail.applicationStatus === 'CONDITIONAL') {
+    return '조건부 접수'
+  }
   if (detail.applicationStatus === 'CANCELLED') {
     return '공고 취소'
   }
   if (detail.applicationStatus === 'CLOSED') {
     return '접수 마감'
   }
-  if (detail.dDay === null) {
+  if (detail.dDay === null || !Number.isInteger(detail.dDay)) {
     return MISSING_DATA_LABEL
+  }
+  if (detail.applicationStatus === 'BEFORE_APPLICATION' && detail.dDay >= 0) {
+    return `접수 시작 ${detail.dDay === 0 ? 'D-Day' : `D-${detail.dDay}`}`
   }
   if (detail.dDay === 0) {
     return 'D-day'
@@ -989,14 +1007,20 @@ function deadlineLabel(detail: HousingAnnouncementDetailData) {
 }
 
 function deadlineAccessibleLabel(detail: HousingAnnouncementDetailData) {
+  if (detail.applicationStatus === 'CONDITIONAL') {
+    return '조건부 접수'
+  }
   if (detail.applicationStatus === 'CANCELLED') {
     return '공고 취소'
   }
   if (detail.applicationStatus === 'CLOSED' || (detail.dDay !== null && detail.dDay < 0)) {
     return '접수 마감'
   }
-  if (detail.dDay === null) {
+  if (detail.dDay === null || !Number.isInteger(detail.dDay)) {
     return MISSING_DATA_LABEL
+  }
+  if (detail.applicationStatus === 'BEFORE_APPLICATION') {
+    return detail.dDay === 0 ? '접수 시작일 당일' : `접수 시작까지 ${detail.dDay}일`
   }
   if (detail.dDay === 0) {
     return '접수 마감일'
@@ -1036,18 +1060,6 @@ function formatDate(value: string | null) {
   return `${match[1]}.${match[2]}.${match[3]}`
 }
 
-function formatDateTime(value: string | null) {
-  const date = formatDate(value)
-  if (date === MISSING_DATA_LABEL || !value) {
-    return date
-  }
-  const time = /T(\d{2}):(\d{2})/.exec(value)
-  if (!time || (time[1] === '00' && time[2] === '00')) {
-    return date
-  }
-  return `${date} ${time[1]}:${time[2]}`
-}
-
 function formatYearMonth(value: string | null) {
   if (!value) {
     return MISSING_DATA_LABEL
@@ -1064,6 +1076,10 @@ function formatNullableCount(value: number | null, unit: string) {
     return MISSING_DATA_LABEL
   }
   return `${value.toLocaleString('ko-KR')}${unit}`
+}
+
+function supplyHouseholdSummary(value: number | null) {
+  return value === null ? `공급 세대수: ${MISSING_DATA_LABEL}` : formatNullableCount(value, '세대')
 }
 
 function formatArea(value: number | null) {

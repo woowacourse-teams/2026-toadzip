@@ -7,6 +7,7 @@
 ```dotenv
 SPRING_PROFILES_ACTIVE=local
 LOKI_PUSH_URL=http://loki:3100/loki/api/v1/push
+GRAFANA_ADMIN_PASSWORD=
 PRIMARY_DB_HOST=db
 PRIMARY_DB_PORT=5432
 PRIMARY_DB_PASSWORD=
@@ -15,6 +16,12 @@ SHARED_DB_PORT=5432
 SHARED_DB_PASSWORD=
 VITE_NAVER_MAPS_CLIENT_ID=
 ```
+
+`PRIMARY_DB_PASSWORD`, `SHARED_DB_PASSWORD`, `GRAFANA_ADMIN_PASSWORD`는
+Git이 추적하지 않는 로컬 `.env`에 직접 채운다. `GRAFANA_ADMIN_PASSWORD`는
+아래 실행 명령에 포함된 `compose.monitoring.yaml`의 Grafana 관리자 비밀번호다.
+기존 모니터링 구성의 필수값으로, 비어 있으면 Compose 실행이 실패한다. HTTPS용
+환경변수는 아니다. 실제 비밀번호를 `.env.example`이나 문서에 기록하지 않는다.
 
 사용자 소셜 로그인 설정은
 [백엔드 소셜 로그인 문서](../backend/docs/user-social-login.md)의 로컬 설정 절차를 따른다.
@@ -26,9 +33,10 @@ docker compose -f compose.yaml -f compose.local.yaml -f compose.monitoring.yaml 
 ```
 
 새 빈 primary DB는 백엔드 시작 시 Flyway가 초기 스키마와 후속 마이그레이션을 적용한다.
-기존 로컬 DB에 Flyway 이력이 없다면 백엔드를 시작하기 전에
-[Flyway 도입 절차](../backend/docs/flyway-adoption.md)에 따라 백업, 명시적 baseline,
-통합 보정을 진행한다. Compose가 기존 DB를 자동으로 보정하지 않는다.
+기존 로컬 DB에 Flyway 이력이 없다면 먼저 백업하고
+[Flyway 도입 절차](../backend/docs/flyway-adoption.md)의 스키마·제약 확인을 진행한다.
+백엔드 기동 시 자동 기준선과 후속 마이그레이션이 적용된다. 알려진 제약 충돌이 있는 DB는
+문서의 수동 보정 절차가 필요하다.
 
 ## 관리자 데이터 등록 수동 검증
 
