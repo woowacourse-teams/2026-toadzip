@@ -7,6 +7,7 @@
 ```dotenv
 SPRING_PROFILES_ACTIVE=local
 LOKI_PUSH_URL=http://loki:3100/loki/api/v1/push
+GRAFANA_ADMIN_PASSWORD=
 PRIMARY_DB_HOST=db
 PRIMARY_DB_PORT=5432
 PRIMARY_DB_PASSWORD=
@@ -15,6 +16,12 @@ SHARED_DB_PORT=5432
 SHARED_DB_PASSWORD=
 VITE_NAVER_MAPS_CLIENT_ID=
 ```
+
+`PRIMARY_DB_PASSWORD`, `SHARED_DB_PASSWORD`, `GRAFANA_ADMIN_PASSWORD`는
+Git이 추적하지 않는 로컬 `.env`에 직접 채운다. `GRAFANA_ADMIN_PASSWORD`는
+아래 실행 명령에 포함된 `compose.monitoring.yaml`의 Grafana 관리자 비밀번호다.
+기존 모니터링 구성의 필수값으로, 비어 있으면 Compose 실행이 실패한다. HTTPS용
+환경변수는 아니다. 실제 비밀번호를 `.env.example`이나 문서에 기록하지 않는다.
 
 사용자 소셜 로그인 설정은
 [백엔드 소셜 로그인 문서](../backend/docs/user-social-login.md)의 로컬 설정 절차를 따른다.

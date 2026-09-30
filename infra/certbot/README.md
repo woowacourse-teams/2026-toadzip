@@ -35,6 +35,8 @@ EC2의 `.env`에 추가할 설정은 세 가지다. 로컬 개발에는 필요�
 ## 1. 적용 전 확인과 백업
 
 서버의 기존 배포 커밋 SHA를 기록한 뒤 이 변경이 포함된 Git 버전을 반영한다.
+개발 서버는 `develop`, 운영 서버는 `main`에 반영된 버전을 사용한다.
+브랜치 반영과 릴리스 순서는 [기여 규칙](../../CONTRIBUTING.md#브랜치-생성)을 따른다.
 아래 명령은 프로젝트 루트에서 실행한다. 같은 Compose 프로젝트에서 `backend`가
 실행 중이어야 한다. 초기 서버라면
 기존 [개발](../../docs/DEV_SERVER_SETUP.md) 또는 [운영](../../docs/PROD_SERVER_SETUP.md)
@@ -53,12 +55,17 @@ sudo certbot certificates
   있다면 IPv6로도 연결되어야 한다. 사용하지 않는 잘못된 AAAA 레코드는 정리한다.
 - EC2 보안 그룹과 서버 방화벽에서 외부 TCP 80·443 접속을 허용한다. 80은 갱신에도
   사용하므로 HTTPS 전환 후에도 유지한다.
+- 백엔드 `8080`에 인터넷에서 직접 접근할 수 없는지 확인한다. 열려 있으면 Nginx의
+  HTTPS를 거치지 않고 HTTP로 API에 접근할 수 있다. 관리 포트 `8081`은 필요한
+  모니터링 서버의 사설 주소나 보안 그룹에서만 접근하도록 범위를 확인한다.
+  호스트 포트를 바꾼 서버는 실제 포트를 기준으로 점검한다. Compose에 포트가
+  연결되어 있다는 사실만으로 인터넷 접근 가능 여부를 판단하지 않는다.
 - Certbot 설치 방식과 버전을 확인한다. 미설치라면 EC2 OS에 맞게 먼저 설치하며,
   설치 방식이 다른 Certbot을 중복 설치하지 않는다.
 - 기존 인증서가 있다면 이름·도메인·만료일과 저장된 인증 방식을 확인한다. 이 구성은
   인증서 이름이 도메인과 같아야 한다. `-0001` 등이 붙은 인증서를 무작정 추가하거나
-  기존 인증서를 삭제하지 않는다. 기존 구성이 다르면 설치된 Certbot 버전에 맞춰
-  `webroot`와 `/var/www/certbot`을 사용하도록 전환한 뒤 진행한다.
+  기존 인증서를 삭제하지 않는다. 여기서는 상태만 확인한다. 갱신 방식 변경은
+  **2단계의 HTTP 확인 파일이 외부에서 제공되는 것을 검증한 뒤** 3단계에서 진행한다.
 
 현재 설정과 프론트엔드 이미지를 보관한다. `.env` 내용은 출력하지 않는다.
 
@@ -110,7 +117,11 @@ curl --fail --connect-timeout 5 --max-time 10 "http://$toadzip_tls_domain/health
 sudo rm /var/www/certbot/.well-known/acme-challenge/toadzip-check
 ```
 
-## 3. 인증서 발급과 읽기 권한 준비
+## 3. 최초 발급 또는 기존 인증서 전환과 읽기 권한 준비
+
+2단계의 외부 HTTP 확인이 성공한 뒤, 인증서 유무에 따라 아래 둘 중 하나를 진행한다.
+
+### 기존 인증서가 없는 경우
 
 기존 인증서가 없는 최초 발급은 아래 명령으로 진행한다. 안내에 따라 담당 이메일과
 약관 동의를 입력한다. 실패하면 원인을 해결하며 반복 강제 발급하지 않는다.
@@ -119,6 +130,29 @@ sudo rm /var/www/certbot/.well-known/acme-challenge/toadzip-check
 sudo certbot certonly --webroot -w /var/www/certbot \
   --cert-name "$toadzip_tls_domain" -d "$toadzip_tls_domain"
 ```
+
+### 기존 인증서가 있는 경우
+
+위 최초 발급 명령을 반복하지 않는다. 인증서 이름이 해당 도메인과 일치하는지 먼저
+확인한다. 다른 이름이거나 여러 도메인을 포함한다면 기존 사용처와 각 도메인의 확인
+경로부터 점검한다. 이름이나 도메인을 임의로 바꾸지 않는다.
+
+이미 `webroot` 방식과 `/var/www/certbot`을 사용한다면 변경 없이 다음 권한 준비로
+진행한다. 갱신 설정을 바꿔야 한다면 Certbot 2.3.0 이상에서는 다음 명령을 사용한다.
+
+```shell
+sudo certbot reconfigure --cert-name "$toadzip_tls_domain" \
+  --authenticator webroot --webroot-path /var/www/certbot
+```
+
+시험 인증 서버에서 갱신 검증이 성공해야 새 설정이 저장된다.
+이 명령은 기존의 웹서버 설치 플러그인이나 중지·시작 hook을 모두 제거하는 명령은
+아니다. 이전 Nginx 설치나 서버 중지를 전제로 한 설정이 있다면 현재 Docker 구성에
+맞게 정리하고 검증한다. 실패한 상태로 HTTPS 적용 단계로 넘어가지 않는다.
+2.2.0 이하 버전은 [Certbot의 버전별 갱신 설정 변경 절차](https://eff-certbot.readthedocs.io/en/stable/using.html#modifying-the-renewal-configuration-of-existing-certificates)를
+따른다. 갱신 설정 파일을 직접 고치거나 강제 발급을 반복하지 않는다.
+
+### 두 경우 모두: 인증서 읽기 권한 준비
 
 Nginx는 일반 사용자로 실행된다. 개인키를 모두에게 공개하는 대신 `toadzip-tls`
 그룹에 읽기 권한을 주고, 컨테이너 Nginx에 그 그룹을 추가한다.
@@ -192,7 +226,8 @@ curl --fail --connect-timeout 5 --max-time 10 "https://$toadzip_tls_domain/api/h
 curl --head --connect-timeout 5 --max-time 10 "http://$toadzip_tls_domain/"
 ```
 
-HTTPS 상태 확인은 `ok`, HTTP `/`는 해당 도메인의 HTTPS로 `308` 이동해야 한다.
+HTTPS `/healthz`는 `ok`, HTTPS `/api/health`는 `{"status":"UP"}`가 정상 응답이다.
+HTTP `/`는 해당 도메인의 HTTPS로 `308` 이동해야 한다.
 HTTP `/healthz`와 `/.well-known/acme-challenge/`는 상태 확인과 갱신을 위해 유지한다.
 `curl -k`로 인증서 오류를 숨기지 않는다.
 

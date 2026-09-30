@@ -145,17 +145,18 @@ docker build -t toadzip-frontend:local frontend
 프론트엔드와 백엔드는 루트 [`compose.yaml`](../compose.yaml)에서 함께 실행한다.
 루트 [`.env.example`](../.env.example)을 참고해 DB·모니터링 등 필수값을 준비하고,
 지도를 표시하려면 루트 `.env`의 `VITE_NAVER_MAPS_CLIENT_ID`에 환경에 맞는 공개
-Client ID를 설정한다. 로컬 전체 환경은 [개발 환경 안내](../docs/SETUP.md), EC2는
-[개발 서버](../docs/DEV_SERVER_SETUP.md) 또는 [운영 서버](../docs/PROD_SERVER_SETUP.md)
-안내를 따른다.
+Client ID를 설정한다. 실행·종료 명령과 필요한 Compose 파일은 환경별 안내를 따른다.
 
-```shell
-docker compose up --detach --build
-```
+| 환경 | 접속 주소와 실행 안내 |
+| --- | --- |
+| 로컬 | HTTP, [로컬 환경 설정](../docs/LOCAL_SETUP.md) |
+| 개발 EC2 | `https://dev.bokduckbang.com`, [개발 서버 설정](../docs/DEV_SERVER_SETUP.md) |
+| 운영 EC2 | `https://bokduckbang.com`, [운영 서버 설정](../docs/PROD_SERVER_SETUP.md) |
 
-기본 접속 주소는 `http://localhost`이고 상태 확인 주소는
-`http://localhost/healthz`다. 호스트 포트를 바꾸려면 명령 앞에
-`FRONTEND_PORT=8088`을 지정한다. 이 구성은 프로덕션 API 주소를 별도로 넣지 않고
+개발과 운영은 서로 다른 EC2에서 실행하며 각각 인증서를 발급받아 HTTPS를 적용한다.
+로컬 기본 접속 주소는 `http://localhost`이고 상태 확인 주소는
+`http://localhost/healthz`다. 로컬 호스트 포트를 바꾸려면 루트 `.env`에
+`FRONTEND_PORT=8088`처럼 지정한다. Docker 빌드는 API 주소를 별도로 넣지 않고
 같은 주소의 `/api`를 사용한다.
 
 Nginx는 `/api`와 `/api/*`를 같은 Compose 네트워크의 `backend:8080`으로 전달한다.
@@ -170,7 +171,3 @@ HTTPS용 Compose 설정을 선택한 서버에서는 해당 도메인의 HTTPS �
 실행 중인 컨테이너의 환경값만 바꿔서는 화면이 바뀌지 않으므로 환경별 Client ID로
 각각 다시 빌드한다. Client Secret은 `.env.local`, 빌드 인자와 이미지 어디에도
 넣지 않는다.
-
-```shell
-docker compose down
-```
