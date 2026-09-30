@@ -246,6 +246,8 @@ class LhAnnouncementExternalCollectionServiceTest {
         ExternalDataCollectionReport report = collectOrRefresh(forced, "P1");
 
         assertThat(report.failedRequestCount()).isOne();
+        assertThat(report.selectionFailedRequestCount()).isOne();
+        assertThat(report.successfulRequestCount()).isZero();
         assertThat(report.externalApiCallCount()).isZero();
         verify(externalRepository, never()).fetchDetail(any());
         verify(progressStore, never()).complete(any(), any(), any(), any());
@@ -789,6 +791,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         verify(externalRepository).fetchDetail(any());
         verify(externalRepository, never()).fetchSupply(any());
         assertThat(result.storedRowCount()).isOne();
+        assertThat(result.successfulRequestCount()).isOne();
         assertThat(result.failedRequestCount()).isZero();
     }
 
@@ -911,6 +914,7 @@ class LhAnnouncementExternalCollectionServiceTest {
         ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
 
         assertThat(result.failedRequestCount()).isOne();
+        assertThat(result.successfulRequestCount()).isZero();
         assertThat(result.storedRowCount()).isZero();
         assertThat(result.externalApiCallCount()).isOne();
         verify(progressStore, never()).complete(any(), any(), any(), any());

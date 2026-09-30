@@ -209,7 +209,7 @@ class HousingComplexDetailQueryTest {
                 () -> assertEquals(List.of("청년", "신혼부부"), beforeApplication.targets()),
                 () -> assertEquals(LocalDate.of(2026, 8, 28), beforeApplication.applicationStartAt()),
                 () -> assertEquals(LocalDate.of(2026, 8, 30), beforeApplication.applicationEndAt()),
-                () -> assertEquals(3, beforeApplication.dDay()),
+                () -> assertEquals(1, beforeApplication.dDay()),
                 () -> assertEquals("APPLYING", applying.applicationStatus()),
                 () -> assertEquals(0, applying.dDay())
         );

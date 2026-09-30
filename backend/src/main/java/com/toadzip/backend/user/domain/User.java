@@ -28,6 +28,9 @@ public class User {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
+    @Column(length = 254)
+    private String email;
+
     private User(String loginIdentifier, LocalDateTime createdAt) {
         validateLoginIdentifier(loginIdentifier);
         validateCreatedAt(createdAt);
@@ -37,6 +40,12 @@ public class User {
 
     public static User create(String loginIdentifier, LocalDateTime createdAt) {
         return new User(loginIdentifier, createdAt);
+    }
+
+    public void updateEmail(String email) {
+        if (email != null && email.length() <= 254 && email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+            this.email = email;
+        }
     }
 
     private void validateLoginIdentifier(String loginIdentifier) {

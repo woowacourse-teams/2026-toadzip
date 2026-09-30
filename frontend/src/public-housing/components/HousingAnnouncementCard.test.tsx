@@ -204,7 +204,7 @@ describe('HousingAnnouncementCard', () => {
   })
 
   it.each([
-    ['BEFORE_APPLICATION', 3, '공고중', '마감 D-3', '접수 마감까지 3일'],
+    ['BEFORE_APPLICATION', 3, '공고중', '접수 시작 D-3', '접수 시작까지 3일'],
     ['APPLYING', 3, '접수중', 'D-3', '접수 마감까지 3일'],
     ['APPLYING', 0, '접수중', 'D-Day', '접수 마감일 당일'],
     ['CLOSED', 1, '접수마감', null, '접수 마감 완료'],
@@ -238,7 +238,7 @@ describe('HousingAnnouncementCard', () => {
     const status = requiredRow(card, 'status')
 
     expect(within(status).getByText('공고중')).toBeInTheDocument()
-    expect(within(status).getByLabelText('접수 마감일 공고문 확인'))
+    expect(within(status).getByLabelText('접수 시작일 공고문 확인'))
       .toHaveTextContent('공고문 확인')
   })
 

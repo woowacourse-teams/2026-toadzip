@@ -37,7 +37,7 @@ const GYEONGGI_REGIONS = [
 ] as const
 
 describe('SearchFilterPanel', () => {
-  it('공고 모집상태는 접수예정과 접수중만 선택해 적용할 수 있다', () => {
+  it('공고 모집상태는 공고중과 접수중만 선택해 적용할 수 있다', () => {
     const onApply = vi.fn()
     renderFilter({ kind: 'announcement', onApply })
 
@@ -45,7 +45,7 @@ describe('SearchFilterPanel', () => {
     const statusGroup = within(screen.getByRole('group', { name: '모집상태' }))
     expect(statusGroup.queryByRole('checkbox', { name: '접수마감' }))
       .not.toBeInTheDocument()
-    fireEvent.click(statusGroup.getByRole('checkbox', { name: '접수예정' }))
+    fireEvent.click(statusGroup.getByRole('checkbox', { name: '공고중' }))
     fireEvent.click(statusGroup.getByRole('checkbox', { name: '접수중' }))
     fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
 

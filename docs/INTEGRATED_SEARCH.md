@@ -20,6 +20,7 @@
 
 ## 지역 단지 조회
 
-`GET /api/v1/complexes` 또는 `GET /api/v1/complexes/map`에 `regionCode`를 보낸다.
+`GET /api/v1/complexes` 또는 `GET /api/v2/complexes/map`에 `regionCode`를 보낸다.
 
+지도 조회에는 현재 지도 확대 수준인 `zoom`도 필수로 보낸다.
 지도와 목록에는 같은 행정구역과 필터를 적용한다.

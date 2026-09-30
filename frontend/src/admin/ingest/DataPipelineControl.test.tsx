@@ -8,6 +8,7 @@ const apiMocks = vi.hoisted(() => ({
   getDataPipelineStatus: vi.fn(),
   startDataPipeline: vi.fn(),
   stopDataPipeline: vi.fn(),
+  getLhAnnouncementQuality: vi.fn(),
 }))
 
 vi.mock('./api', async (importOriginal) => ({
@@ -19,6 +20,22 @@ beforeEach(() => {
   apiMocks.getDataPipelineStatus.mockReset()
   apiMocks.startDataPipeline.mockReset()
   apiMocks.stopDataPipeline.mockReset()
+  apiMocks.getLhAnnouncementQuality.mockReset()
+  apiMocks.getLhAnnouncementQuality.mockResolvedValue({
+    observedAt: '2026-09-28T00:00:00Z',
+    connection: { total: 0, complexLinked: 0, housingTypeLinked: 0, unlinkedReasons: {} },
+    amounts: { total: 0, fulfilled: 0 },
+    schedules: { total: 0, reviewed: 0, withApplicationSchedule: 0 },
+    supplyCollection: { totalRequests: 0, freshRequests: 0, latestCollectedAt: null },
+    detailCollection: { totalRequests: 0, freshRequests: 0, latestCollectedAt: null },
+    unlinkedLhLeaseCatalogCount: 0,
+    unlinkedLhCandidates: [],
+    preservedSourceRequestCount: 0,
+    preservedReasons: {},
+    preservedAmountTargetCount: 0,
+    preservedAmountReasons: {},
+    heldRequests: [],
+  })
   apiMocks.getDataPipelineStatus.mockImplementation(
     (type: DataPipelineType) => Promise.resolve(execution(type, 'IDLE')),
   )

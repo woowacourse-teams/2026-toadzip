@@ -250,6 +250,33 @@ afterEach(() => {
 })
 
 describe('공공주택 HTTP repository', () => {
+  it('정상 상세 응답 뒤 조회를 기록하고 서버가 반환한 조회수를 사용한다', async () => {
+    vi.stubGlobal('navigator', { locks: { request: (_key: string, _options: unknown, run: () => unknown) => run() } })
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ data: ANNOUNCEMENT_DETAIL }))
+      .mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', token: 'csrf-test' }))
+      .mockResolvedValueOnce(jsonResponse({ data: { viewCount: 15 } }))
+    try {
+      const repository = createHttpPublicHousingRepository({ apiBaseUrl: '', fetcher })
+      const result = await repository.findAnnouncementDetail('117', new AbortController().signal)
+      expect(result.viewCount).toBe(15)
+      expect(result.raw.viewCount).toBe(15)
+      expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+        '/api/v1/announcements/117', '/api/auth/csrf', '/api/v1/announcements/117/views',
+      ])
+    } finally {
+      vi.unstubAllGlobals()
+      localStorage.clear()
+    }
+  })
+
+  it('실패한 상세 응답에는 조회를 기록하지 않는다', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ code: 'ANNOUNCEMENT_NOT_FOUND' }, 404))
+    const repository = createHttpPublicHousingRepository({ apiBaseUrl: '', fetcher })
+    await expect(repository.findAnnouncementDetail('117', new AbortController().signal)).rejects.toMatchObject({ status: 404 })
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
   it('공고 목록은 공고 전용 필터를 반복 query key로 직렬화한다', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({ data: { items: [], nextCursor: null, hasNext: false } }),

@@ -1,0 +1,17 @@
+.page { color: #263b33; }
+.heading { display: flex; justify-content: space-between; align-items: start; gap: 20px; flex-wrap: wrap; }
+.heading h1 { margin: 0 0 8px; }
+.heading p { margin: 0; color: #66796e; line-height: 1.5; }
+.page button { min-height: 40px; padding: 8px 14px; border: 1px solid #277259; border-radius: 8px; background: #fff; color: #277259; font: inherit; font-weight: 700; cursor: pointer; }
+.page button:disabled { opacity: .5; cursor: default; }
+.page button:focus-visible, .code input:focus-visible { outline: 2px solid #277259; outline-offset: 2px; }
+.list { display: grid; gap: 12px; margin: 24px 0; padding: 0; list-style: none; }
+.list li { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; padding: 18px; border: 1px solid #dce8df; border-radius: 12px; background: #fff; }
+.list li > div:first-child { display: grid; gap: 4px; }
+.list span { color: #66796e; font-size: .85rem; }
+.code { display: grid; gap: 6px; width: min(320px, 100%); }
+.code label { font-size: .82rem; font-weight: 700; }
+.code input { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #cbd9d0; border-radius: 8px; font: inherit; }
+.error { color: #a12622; }
+.confirmation { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+.confirmation p { width: 100%; margin: 0; line-height: 1.5; }

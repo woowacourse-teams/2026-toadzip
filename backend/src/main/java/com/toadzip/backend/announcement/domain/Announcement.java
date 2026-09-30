@@ -145,7 +145,7 @@ public class Announcement {
     @Column(nullable = false)
     private boolean lhReceptionPlaceOwned;
 
-    @Column(nullable = false)
+    @Column(nullable = false, updatable = false)
     private long viewCount;
 
     @Column(precision = 12, scale = 4)

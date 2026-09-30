@@ -89,14 +89,15 @@ class AnnouncementJpaMappingTest {
                         "convertedDeposit",
                         "applicationCondition",
                         "displayOrder",
-                        "sourceSupplyTargetIdentifier"
+                        "sourceSupplyTargetIdentifier",
+                        "lhAmountPreservedReason"
                 )
         );
         assertEntityAttributes(
                 "AnnouncementSchedule",
                 Set.of(
                         "id", "announcement", "scheduleType", "name", "startAt", "endAt", "displayOrder",
-                        "sourceScheduleIdentifier"
+                        "sourceScheduleIdentifier", "complexName"
                 )
         );
         assertEntityAttributes(

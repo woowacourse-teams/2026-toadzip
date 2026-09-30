@@ -11,6 +11,8 @@ import {
   useState,
 } from 'react'
 import { useLocation, useNavigate } from 'react-router'
+import { type DetailEntryPoint, trackEvent } from '../analytics/googleAnalytics.ts'
+import { trackAppliedFilters, useHousingAnalytics } from '../analytics/useHousingAnalytics.ts'
 import NaverMap, {
   type NaverMapAggregateMarker,
   type NaverMapCameraTarget,
@@ -312,6 +314,15 @@ export function PublicHousingExplorer({
     () => parseDetailLocation(new URLSearchParams(detailLocationSearch)),
     [detailLocationSearch],
   )
+  const prepareDetailVisit = useHousingAnalytics({
+    detailLocation,
+    readyComplexId: complexDetail.status === 'ready'
+      && complexDetail.detail?.complexId === complexDetail.complexId
+      ? complexDetail.complexId : null,
+    readyAnnouncementId: announcementDetail.status === 'ready'
+      && announcementDetail.detail?.announcementId === announcementDetail.announcementId
+      ? announcementDetail.announcementId : null,
+  })
   const mapLocation = useMemo(
     () => parseMapLocation(new URLSearchParams(location.search)),
     [location.search],
@@ -392,6 +403,7 @@ export function PublicHousingExplorer({
     announcementFilters,
     announcementFiltersKey,
   )
+  const updateAnnouncementViewCount = announcementResults.updateViewCount
 
   useEffect(() => {
     setRecentComplexes((current) => enrichRecentComplexes(current, complexResults.items.map((item) => ({
@@ -557,6 +569,7 @@ export function PublicHousingExplorer({
           if (!active) {
             return
           }
+          updateAnnouncementViewCount(announcementId, detail.viewCount)
           setAnnouncementDetail({
             announcementId,
             detail,
@@ -589,6 +602,7 @@ export function PublicHousingExplorer({
     location.state,
     navigate,
     repository,
+    updateAnnouncementViewCount,
   ])
 
   useEffect(() => {
@@ -651,7 +665,7 @@ export function PublicHousingExplorer({
     return () => window.clearTimeout(timeout)
   }, [announcementDetail, complexDetail, detailLocation])
 
-  const openDetail = useCallback((kind: ResultTab, id: string) => {
+  const openDetail = useCallback((kind: ResultTab, id: string, entryPoint: DetailEntryPoint) => {
     const currentSearch = new URLSearchParams(location.search)
     const activeElement = document.activeElement
     const opener = activeElement instanceof HTMLElement
@@ -687,6 +701,7 @@ export function PublicHousingExplorer({
     const nextSearch = kind === 'complexes'
       ? setComplexIdQuery(currentSearch, id)
       : setAnnouncementIdQuery(currentSearch, id)
+    prepareDetailVisit(kind === 'complexes' ? 'complex' : 'announcement', id, entryPoint)
     navigate({
       hash: location.hash,
       pathname: location.pathname,
@@ -703,6 +718,7 @@ export function PublicHousingExplorer({
     location.search,
     location.state,
     navigate,
+    prepareDetailVisit,
   ])
 
   const selectResultTab = useCallback((tab: ResultTab) => {
@@ -718,6 +734,7 @@ export function PublicHousingExplorer({
     if (nextSearch.toString() === currentSearch.toString()) {
       return
     }
+    trackAppliedFilters('complex', currentSearch, nextSearch)
     navigate({
       hash: location.hash,
       pathname: location.pathname,
@@ -739,6 +756,7 @@ export function PublicHousingExplorer({
     if (nextSearch.toString() === currentSearch.toString()) {
       return
     }
+    trackAppliedFilters('announcement', currentSearch, nextSearch)
     navigate({
       hash: location.hash,
       pathname: location.pathname,
@@ -752,23 +770,23 @@ export function PublicHousingExplorer({
     navigate,
   ])
 
-  const openComplexDetail = useCallback((complexId: string) => {
+  const openComplexDetail = useCallback((complexId: string, entryPoint: DetailEntryPoint = 'list') => {
     pendingDetailCameraRef.current = {
       id: complexId,
       revision: viewportRevisionRef.current,
     }
     setDetailCameraRevision((current) => current + 1)
-    openDetail('complexes', complexId)
+    openDetail('complexes', complexId, entryPoint)
   }, [openDetail])
 
   const openComplexMarker = useCallback((complexId: string) => {
     pendingDetailCameraRef.current = null
-    openDetail('complexes', complexId)
+    openDetail('complexes', complexId, 'map')
   }, [openDetail])
 
-  const openAnnouncementDetail = useCallback((announcementId: string) => {
+  const openAnnouncementDetail = useCallback((announcementId: string, entryPoint: DetailEntryPoint = 'list') => {
     pendingDetailCameraRef.current = null
-    openDetail('announcements', announcementId)
+    openDetail('announcements', announcementId, entryPoint)
   }, [openDetail])
 
   const closeDetail = useCallback(() => {
@@ -804,6 +822,7 @@ export function PublicHousingExplorer({
     const nextSearch = previous.kind === 'complex'
       ? setComplexIdQuery(query, previous.id)
       : setAnnouncementIdQuery(query, previous.id)
+    prepareDetailVisit(previous.kind, previous.id, 'history')
     navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(nextSearch) }, {
       replace: true,
       state: {
@@ -811,7 +830,7 @@ export function PublicHousingExplorer({
         [DETAIL_RETURN_FOCUS_STACK_KEY]: detailReturnFocusStack.slice(0, -1),
       },
     })
-  }, [detailReturnFocusStack, location, navigate])
+  }, [detailReturnFocusStack, location, navigate, prepareDetailVisit])
 
   useLayoutEffect(() => {
     const pending = pendingDetailCameraRef.current
@@ -1116,6 +1135,13 @@ export function PublicHousingExplorer({
     finishClusterTransition, requestServerMapWithListIntent])
 
   const handleIntegratedSearchSelect = useCallback((item: SearchResultItem) => {
+    if (item.type === 'COMPLEX') {
+      trackEvent('select_search_result', { result_type: 'complex', complex_id: item.id })
+    } else if (item.type === 'ANNOUNCEMENT') {
+      trackEvent('select_search_result', { result_type: 'announcement', announcement_id: item.id })
+    } else {
+      trackEvent('select_search_result', { result_type: 'region' })
+    }
     if (item.type === 'REGION') {
       const code = item.regionCode ?? item.id
       if (!findRegionBoundaryMetadata(code) && (item.latitude === null || item.longitude === null)) {
@@ -1135,11 +1161,11 @@ export function PublicHousingExplorer({
         setMapCameraTarget({ latitude: item.latitude, longitude: item.longitude, zoom: 14 })
         setCameraRequestId((current) => current + 1)
       }
-      openAnnouncementDetail(item.id)
+      openAnnouncementDetail(item.id, 'search')
       return
     }
     setSelectedSearchComplex(item)
-    openComplexDetail(item.id)
+    openComplexDetail(item.id, 'search')
   }, [boundaryRegionCode, changeBoundarySelection, focusBoundary, openAnnouncementDetail, openComplexDetail])
 
   useEffect(() => {
@@ -1406,7 +1432,7 @@ export function PublicHousingExplorer({
                       return (
                         <li key={recent.complexId}>
                           <button type="button" aria-current={selectedComplexId === recent.complexId ? 'true' : undefined}
-                            onClick={() => openComplexDetail(recent.complexId)}>
+                            onClick={() => openComplexDetail(recent.complexId, 'recent')}>
                             <strong className="housing-recent__name">{recent.name}</strong>
                             <span className="housing-recent__meta" aria-label={`공급기관 ${agency}, 임대유형 ${rental}`}>
                               <strong data-agency={agencyCode}>{agency}</strong>
@@ -1562,7 +1588,7 @@ export function PublicHousingExplorer({
           onClose={closeDetail}
           backTarget={detailReturnFocusStack.at(-1)}
           onBack={returnToDetail}
-          onOpenAnnouncement={openAnnouncementDetail}
+          onOpenAnnouncement={(id) => openAnnouncementDetail(id, 'detail')}
           onRetry={() => setDetailRetryRevision((current) => current + 1)}
         />
         <AnnouncementDetailLayer
@@ -1570,7 +1596,7 @@ export function PublicHousingExplorer({
           onClose={closeDetail}
           backTarget={detailReturnFocusStack.at(-1)}
           onBack={returnToDetail}
-          onOpenComplex={openComplexDetail}
+          onOpenComplex={(id) => openComplexDetail(id, 'detail')}
           onRetry={() => setDetailRetryRevision((current) => current + 1)}
         />
       </main>

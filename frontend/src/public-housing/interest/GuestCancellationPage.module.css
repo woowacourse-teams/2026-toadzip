@@ -1,0 +1,18 @@
+.page { min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: #f5f8f5; color: #263b33; }
+.card { box-sizing: border-box; width: min(560px, 100%); padding: 32px; border: 1px solid #dce8df; border-radius: 18px; background: #fff; box-shadow: 0 12px 36px rgb(12 39 26 / 8%); }
+.back { display: inline-block; margin-bottom: 28px; color: #277259; text-underline-offset: 3px; }
+.eyebrow { display: block; color: #277259; font-size: .78rem; font-weight: 700; }
+.card h1 { margin: 8px 0 12px; font-size: 1.7rem; }
+.intro { line-height: 1.6; color: #53675b; }
+.steps { padding-left: 20px; line-height: 1.8; font-size: .92rem; }
+.card form { display: grid; gap: 10px; margin-top: 24px; }
+.card label { font-weight: 700; font-size: .9rem; }
+.card input { box-sizing: border-box; width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid #cbd9d0; border-radius: 10px; font: inherit; }
+.card input:focus-visible, .card button:focus-visible { outline: 2px solid #277259; outline-offset: 2px; }
+.card button { min-height: 46px; border: 0; border-radius: 10px; background: #277259; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.card button:disabled { opacity: .6; cursor: default; }
+.card .secondary { margin-top: 8px; padding: 8px 12px; border: 1px solid #cbd9d0; background: #fff; color: #277259; }
+.notice { margin-top: 24px; padding: 12px; border-radius: 10px; background: #f1f7f2; line-height: 1.6; }
+.error { color: #a12622; }
+.footnote { margin-top: 28px; color: #66796e; font-size: .83rem; line-height: 1.5; }
+@media (max-width: 480px) { .page { padding: 16px; } .card { padding: 24px; } }

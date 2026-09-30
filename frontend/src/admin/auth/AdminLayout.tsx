@@ -50,6 +50,9 @@ export function AdminLayout() {
           <NavLink to="/admin/failures">실패·검토 항목</NavLink>
           <NavLink to="/admin/locations">주소 데이터</NavLink>
         </div>
+        <div className="admin-nav-group"><span>알림 운영</span>
+          <NavLink to="/admin/notification-cancellations">알림 취소 요청</NavLink>
+        </div>
       </nav>
       <main className="admin-content" id="admin-main">
         <Outlet />

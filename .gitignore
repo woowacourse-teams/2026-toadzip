@@ -31,3 +31,8 @@ hs_err_pid*
 **/node_modules/
 **/dist/
 **/coverage/
+
+# Generated PDF.js character maps, fonts and decoders
+frontend/public/pdfjs-*/
+
+frontend/public/rhwp-*/

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 
 @DataJpaTest
@@ -34,12 +35,15 @@ class LhSourceStoreQueryCountTest {
     private LhAnnouncementCollectionCheckpointRepository checkpointRepository;
 
     @Autowired
+    private JdbcClient jdbc;
+
+    @Autowired
     private EntityManager entityManager;
 
     @Test
     void 같은_공급_원천_100행을_교체할_때_개별_삭제_SQL을_발행하지_않는다() {
         LhSourceStore store = new LhSourceStore(catalogRepository, detailRepository,
-                supplyRepository, checkpointRepository, Clock.systemUTC());
+                supplyRepository, checkpointRepository, new VerifiedLhSupplyReplacementStore(jdbc), Clock.systemUTC());
         store.replaceSupplies("PROBE", "PROBE-REQUEST", rows());
         entityManager.flush();
         entityManager.clear();

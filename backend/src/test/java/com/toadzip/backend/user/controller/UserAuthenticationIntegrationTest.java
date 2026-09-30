@@ -112,14 +112,16 @@ class UserAuthenticationIntegrationTest {
         MockHttpServletRequest request = loginRequest("kakao");
         MockHttpServletResponse response = new MockHttpServletResponse();
         successHandler.onAuthenticationSuccess(
-                request, response, authentication("kakao", Map.of("id", 1890123L), "id"));
+                request, response, authentication("kakao", Map.of("id", 1890123L,
+                        "kakao_account", Map.of("email", "kakao@example.com")), "id"));
         MockHttpSession session = (MockHttpSession) request.getSession(false);
         Long id = userRepository.findByLoginIdentifier("kakao:1890123").orElseThrow().getId();
 
         assertEquals("http://localhost:5173/login", response.getRedirectedUrl());
         mockMvc.perform(get("/api/auth/me").session(session))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(id));
+                .andExpect(jsonPath("$.id").value(id))
+                .andExpect(jsonPath("$.email").value("kakao@example.com"));
         mockMvc.perform(get("/api/admin/auth/me").session(session))
                 .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/auth/logout").session(session).with(csrf()))
@@ -131,10 +133,11 @@ class UserAuthenticationIntegrationTest {
     @Test
     void 같은_공급자_계정은_기존_유저를_사용하고_공급자가_다르면_분리한다() {
         Long first = socialUserService.findOrCreate("google", "google-sub-189");
-        Long repeated = socialUserService.findOrCreate("google", "google-sub-189");
+        Long repeated = socialUserService.findOrCreate("google", "google-sub-189", "member@example.com");
         Long kakao = socialUserService.findOrCreate("kakao", "google-sub-189");
 
         assertEquals(first, repeated);
+        assertEquals("member@example.com", userRepository.findById(first).orElseThrow().getEmail());
         assertNotEquals(first, kakao);
     }
 
@@ -152,13 +155,15 @@ class UserAuthenticationIntegrationTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         successHandler.onAuthenticationSuccess(
-                request, response, authentication("google", Map.of("sub", "google-sub-190"), "sub"));
+                request, response, authentication("google", Map.of("sub", "google-sub-190",
+                        "email", "google@example.com"), "sub"));
 
         assertEquals("http://localhost:5173/login", response.getRedirectedUrl());
         Long id = userRepository.findByLoginIdentifier("google:google-sub-190").orElseThrow().getId();
         mockMvc.perform(get("/api/auth/me").session((MockHttpSession) request.getSession(false)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(id));
+                .andExpect(jsonPath("$.id").value(id))
+                .andExpect(jsonPath("$.email").value("google@example.com"));
     }
 
     @Test

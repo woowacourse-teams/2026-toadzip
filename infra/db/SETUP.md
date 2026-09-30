@@ -15,3 +15,7 @@ docker compose up -d
 ```shell
 docker compose down
 ```
+
+## 백업
+
+개발·운영·공유 DB의 일일 백업, S3 30일 보관 설정과 복원 연습은 [BACKUP.md](BACKUP.md)를 따른다.

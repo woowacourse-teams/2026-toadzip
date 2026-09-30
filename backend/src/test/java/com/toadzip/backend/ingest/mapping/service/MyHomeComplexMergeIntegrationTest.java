@@ -226,10 +226,6 @@ class MyHomeComplexMergeIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.complexId").value(ids.getFirst()))
                 .andExpect(jsonPath("$.data.housingTypes.length()").value(4));
-        mvc.perform(get("/api/v1/complexes/map")
-                        .param("southWestLat", "37").param("southWestLng", "126")
-                        .param("northEastLat", "38").param("northEastLng", "128"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items.length()").value(1));
         mvc.perform(get("/api/v1/complexes")
                         .param("southWestLat", "37").param("southWestLng", "126")
                         .param("northEastLat", "38").param("northEastLng", "128"))
