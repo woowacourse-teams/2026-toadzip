@@ -8,7 +8,6 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bash "$script_dir/check-backup-policy.sh"
 
-now="$(date -u +%s)"
 for service in db-prod db-dev db-shared; do
     prefix="backups/$service/"
     latest="$(aws s3api list-objects-v2 --region "$AWS_REGION" \
@@ -19,7 +18,7 @@ for service in db-prod db-dev db-shared; do
     [[ "$key" == "$prefix"* && "$size" =~ ^[0-9]+$ && "$size" -gt 0 ]] || {
         echo "Backup missing or empty: $service" >&2; exit 1;
     }
-    age=$((now - $(date -u -d "$created" +%s)))
+    age=$(($(date -u +%s) - $(date -u -d "$created" +%s)))
     [[ "$age" -ge 0 && "$age" -le 93600 ]] || {
         echo "Backup outside 26-hour window: $service ($key, created=$created, age=${age}s)" >&2; exit 1;
     }

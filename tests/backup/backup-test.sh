@@ -31,6 +31,9 @@ case "$1 $2" in
         fi ;;
     's3api get-public-access-block') printf 'True\tTrue\tTrue\tTrue\n' ;;
     's3api get-bucket-encryption') echo AES256 ;;
+    'sns publish')
+        echo 'failure alert attempted' >> "$MOCK_ALERT_LOG"
+        [[ "${MOCK_ALERT_FAIL:-}" != 1 ]] ;;
     's3api list-objects-v2')
         for arg in "$@"; do
             if [[ "$arg" == backups/db-*/ ]]; then
@@ -50,6 +53,7 @@ export TOADZIP_BACKUP_BUCKET=toadzip-test-backup
 export TOADZIP_BACKUP_ACCOUNT_ID=123456789012
 export AWS_REGION=ap-northeast-2
 export MOCK_REMOTE_SIZE_FILE="$temp_dir/remote-size"
+export MOCK_ALERT_LOG="$temp_dir/alerts"
 
 bash "$repo_dir/infra/db/backup-all.sh" > "$temp_dir/output"
 grep -q 'Backup verified: db-prod' "$temp_dir/output"
@@ -69,6 +73,17 @@ if MOCK_WRONG_RETENTION=1 bash "$repo_dir/infra/db/check-backups.sh" > /dev/null
 fi
 if bash "$repo_dir/infra/db/backup.sh" wrong-service > /dev/null 2>&1; then
     echo 'Unknown DB service must fail' >&2
+    exit 1
+fi
+printf 'TOADZIP_REPO_DIR=%q\nTOADZIP_BACKUP_ALERT_TOPIC_ARN=%q\n' \
+    "$repo_dir" 'arn:aws:sns:ap-northeast-2:123456789012:test-alerts' > "$temp_dir/backup.env"
+if MOCK_BAD_SIZE=1 bash "$repo_dir/infra/db/run-scheduled-backup.sh" "$temp_dir/backup.env" > /dev/null 2>&1; then
+    echo 'Backup failure must remain a failure after alert delivery' >&2
+    exit 1
+fi
+grep -q 'failure alert attempted' "$MOCK_ALERT_LOG"
+if MOCK_BAD_SIZE=1 MOCK_ALERT_FAIL=1 bash "$repo_dir/infra/db/run-scheduled-backup.sh" "$temp_dir/backup.env" > /dev/null 2>&1; then
+    echo 'Alert delivery failure must not hide backup failure' >&2
     exit 1
 fi
 echo 'Backup script tests passed'

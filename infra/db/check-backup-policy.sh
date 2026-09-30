@@ -12,7 +12,7 @@ versioning="$(aws s3api get-bucket-versioning "${bucket_args[@]}" --query Status
 [[ "$versioning" == None ]] || { echo "Backup bucket versioning must be disabled: $versioning" >&2; exit 1; }
 
 lifecycle="$(aws s3api get-bucket-lifecycle-configuration "${bucket_args[@]}" \
-    --query "Rules[?ID=='toadzip-db-backup-30d'].{Status:Status,Days:Expiration.Days,Prefix:Filter.Prefix}" \
+    --query "Rules[?ID=='toadzip-db-backup-30d'].{Status:Status,Days:Expiration.Days,Prefix:not_null(Filter.Prefix,Prefix)}" \
     --output json)"
 [[ "$lifecycle" == *'"Days": 30'* && "$lifecycle" == *'"Prefix": "backups/"'* \
     && "$lifecycle" == *'"Status": "Enabled"'* ]] || {

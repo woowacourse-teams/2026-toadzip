@@ -59,6 +59,22 @@ jobs:
           docker compose --project-name toadzip-test --file compose.test.yaml
           down --volumes --remove-orphans
 
+  backup:
+    name: Backup Automation Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check backup scripts and monitoring
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          bash -n infra/db/deploy-backup-stack.sh infra/db/install-backup-automation.sh infra/db/run-scheduled-backup.sh
+          bash tests/backup/backup-test.sh
+          python3 tests/backup/monitor-test.py
+          python3 infra/db/automation/render-template.py > /tmp/toadzip-backup-stack.json
+          python3 -m json.tool /tmp/toadzip-backup-stack.json > /dev/null
+
   frontend:
     name: Frontend Check
     runs-on: ubuntu-latest
