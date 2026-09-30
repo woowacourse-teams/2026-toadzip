@@ -21,7 +21,7 @@
 | `logo-bok.png` | 투명 배경의 기본 로고, 가로 1220px |
 | `logo-bok-white.png` | 흰 배경의 기본 로고, 가로 1220px |
 | `logo-on-dark.svg`, `logo-on-dark.png` | 어두운 배경용. 글자와 얼굴 윤곽이 밝은 크림색인 컬러 로고 |
-| `social-card.svg`, `social-card.png` | 공유·소개용 1200×630 흰 배경 이미지. 공유 메타 태그에는 아직 연결하지 않았다. |
+| `social-card.svg`, `social-card.png` | 링크 공유용 1200×630 이미지. `index.html`의 Open Graph와 Twitter Card 메타 태그에 연결했다. |
 
 기본 로고의 편집 원본은 `public/logo-bok-search.svg`다. SVG는 확대해도 선명하며, PNG는 SVG에서 만든 배포본이다.
 
@@ -49,3 +49,9 @@
 파비콘의 볼터치와 배 무늬는 승인된 이미지 그대로 유지한다. `public/brand/favicon-toad.png`를 원본으로 같은 비율의 크기별 PNG·ICO를 만든다. 작은 UI에는 `toad-icon`, 충분히 큰 캐릭터 표시에는 `toad-symbol`을 사용한다. 로고·UI 심볼 PNG는 기본 크기 하나만 보관하고 다른 크기가 필요하면 SVG를 사용한다. 컬러 로고를 임의로 한 색으로 덮거나 가로·세로 비율을 변형하지 않는다.
 
 첨부 원본과 이전 활성 로고·파비콘, 미리보기는 저장소 루트 `tmp/brand-assets/`에 보관한다. 현재 배포 파일과 이 안내를 묶은 ZIP은 같은 폴더의 `bok-brand-assets.zip`이다.
+
+## 링크 미리보기
+
+`index.html`에 제목, 설명, 이미지 주소를 직접 넣어 JavaScript 실행 없이도 공유 서비스가 읽을 수 있게 했다. 이미지 URL은 현재 공유한 운영 주소 `http://bokduckbang.com/brand/social-card.png?v=20260930-centered`이며, 운영 URL을 HTTPS로 전환하면 `og:url`, `og:image`, `twitter:image`의 프로토콜도 함께 바꾼다. 모든 화면은 공통 서비스 미리보기를 사용한다.
+
+배포 후 카카오톡에서 이전 이미지가 계속 나오면 [카카오 공유 디버거](https://developers.kakao.com/tool/debugger/sharing)에 공유 URL을 입력해 미리보기 캐시를 초기화한다. 서버의 HTML과 이미지가 외부에 공개되어 있어야 수집할 수 있다.
