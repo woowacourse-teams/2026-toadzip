@@ -14,7 +14,6 @@ import com.toadzip.backend.housing.domain.ComplexSort;
 import com.toadzip.backend.housing.dto.request.HousingComplexSearchRequest;
 import com.toadzip.backend.housing.dto.response.HousingComplexDetailResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexListResponse;
-import com.toadzip.backend.housing.dto.response.HousingComplexMapResponse;
 import com.toadzip.backend.housing.service.HousingComplexQueryService;
 
 @RestController
@@ -42,12 +41,5 @@ public class HousingComplexController {
             @PathVariable long complexId
     ) {
         return new ApiResponse<>(queryService.getComplex(complexId));
-    }
-
-    @GetMapping("/map")
-    public ApiResponse<HousingComplexMapResponse> getComplexesForMap(
-            @Valid @ParameterObject @ModelAttribute HousingComplexSearchRequest request
-    ) {
-        return new ApiResponse<>(queryService.getComplexesForMap(request));
     }
 }

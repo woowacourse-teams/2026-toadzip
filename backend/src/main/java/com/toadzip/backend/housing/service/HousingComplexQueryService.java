@@ -15,7 +15,6 @@ import com.toadzip.backend.housing.domain.MapBounds;
 import com.toadzip.backend.housing.dto.request.HousingComplexSearchRequest;
 import com.toadzip.backend.housing.dto.response.HousingComplexDetailResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexListResponse;
-import com.toadzip.backend.housing.dto.response.HousingComplexMapResponse;
 import com.toadzip.backend.housing.exception.HousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.InvalidComplexRequestException;
 import com.toadzip.backend.housing.repository.ComplexDetailQueryRepository;
@@ -70,16 +69,6 @@ public class HousingComplexQueryService {
             Clock clock
     ) {
         this(repository, summaryMapper, null, null, requestNormalizer, clock);
-    }
-
-    @Transactional(readOnly = true)
-    public HousingComplexMapResponse getComplexesForMap(HousingComplexSearchRequest request) {
-        MapBounds bounds = requestNormalizer.normalizeBounds(request);
-        HousingComplexFilterCondition filters = requestNormalizer.normalizeFilters(request);
-        HousingComplexSearchCondition condition = new HousingComplexSearchCondition(bounds, filters);
-        return new HousingComplexMapResponse(repository.findAll(condition).stream()
-                .map(summaryMapper::toMapItem)
-                .toList());
     }
 
     @Transactional(readOnly = true)
