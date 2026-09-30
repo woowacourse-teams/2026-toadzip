@@ -13,3 +13,5 @@
 .code label { font-size: .82rem; font-weight: 700; }
 .code input { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #cbd9d0; border-radius: 8px; font: inherit; }
 .error { color: #a12622; }
+.confirmation { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+.confirmation p { width: 100%; margin: 0; line-height: 1.5; }

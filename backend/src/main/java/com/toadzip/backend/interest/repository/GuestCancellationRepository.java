@@ -78,6 +78,12 @@ public class GuestCancellationRepository {
                 """, Timestamp.from(sentAt), sender, id);
     }
 
+    public boolean matchesCode(UUID id, String hash) {
+        return Boolean.TRUE.equals(jdbcTemplate.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM notification_guest_cancellation_requests WHERE id = ? AND code_hash = ?)
+                """, Boolean.class, id, hash));
+    }
+
     public void failedAttempt(UUID id) {
         jdbcTemplate.update("""
                 UPDATE notification_guest_cancellation_requests

@@ -114,16 +114,19 @@ class GuestCancellationIntegrationTest {
                 "SELECT id FROM notification_guest_cancellation_requests WHERE email = ?", UUID.class, email);
         String path = "/api/admin/notification-guest-cancellations/" + id + "/sent";
 
-        mockMvc.perform(post(path).with(user("admin").roles("ADMIN")).with(csrf()))
+        mockMvc.perform(post(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"code\":\"not-issued\"}"))
                 .andExpect(status().isConflict());
-        mockMvc.perform(post("/api/admin/notification-guest-cancellations/" + id + "/code")
+        String issued = mockMvc.perform(post("/api/admin/notification-guest-cancellations/" + id + "/code")
                         .with(user("admin").roles("ADMIN")).with(csrf()))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String code = objectMapper.readTree(issued).get("code").asText();
         mockMvc.perform(get("/api/admin/notification-guest-cancellations")
                         .with(user("admin").roles("ADMIN")))
                 .andExpect(jsonPath("$[0].codeSentAt").isEmpty());
         mockMvc.perform(post(path).with(csrf())).andExpect(status().isUnauthorized());
-        mockMvc.perform(post(path).with(user("admin").roles("ADMIN")).with(csrf()))
+        mockMvc.perform(post(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"code\":\"" + code + "\"}"))
                 .andExpect(status().isNoContent());
         mockMvc.perform(get("/api/admin/notification-guest-cancellations")
                         .with(user("admin").roles("ADMIN")))
@@ -143,5 +146,46 @@ class GuestCancellationIntegrationTest {
                 VALUES (?, 'REGION', '11', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '12 months')
                 """, clientId);
         return clientId;
+    }
+
+    @Test
+    void 코드를_즉시_재발급하면_이전_코드는_무효이며_발송_기록도_초기화된다() throws Exception {
+        String email = "reissue@example.com";
+        subscribeGuest(email);
+        mockMvc.perform(post("/api/v1/notification-guest-cancellations").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"email\":\"" + email + "\"}"))
+                .andExpect(status().isAccepted());
+        UUID id = jdbcTemplate.queryForObject(
+                "SELECT id FROM notification_guest_cancellation_requests WHERE email = ?", UUID.class, email);
+        String path = "/api/admin/notification-guest-cancellations/" + id;
+        String first = mockMvc.perform(post(path + "/code").with(user("admin").roles("ADMIN")).with(csrf()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String oldCode = objectMapper.readTree(first).get("code").asText();
+        mockMvc.perform(post(path + "/sent").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"code\":\"" + oldCode + "\"}"))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(post(path + "/code/reissue").with(csrf())).andExpect(status().isUnauthorized());
+        mockMvc.perform(post(path + "/code/reissue").with(user("member").roles("USER")).with(csrf()))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post(path + "/code/reissue").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+        String reissued = mockMvc.perform(post(path + "/code/reissue")
+                        .with(user("admin").roles("ADMIN")).with(csrf()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        mockMvc.perform(post(path + "/sent").with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"code\":\"" + oldCode + "\"}"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(get("/api/admin/notification-guest-cancellations").with(user("admin").roles("ADMIN")))
+                .andExpect(jsonPath("$[0].codeSentAt").isEmpty())
+                .andExpect(jsonPath("$[0].codeSentBy").isEmpty());
+        mockMvc.perform(post("/api/v1/notification-guest-cancellations/verify").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"code\":\"" + oldCode + "\"}"))
+                .andExpect(status().isBadRequest());
+        String newCode = objectMapper.readTree(reissued).get("code").asText();
+        mockMvc.perform(post("/api/v1/notification-guest-cancellations/verify").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"code\":\"" + newCode + "\"}"))
+                .andExpect(status().isNoContent());
     }
 }

@@ -52,10 +52,16 @@ public class GuestCancellationController {
         return service.issue(id);
     }
 
+    @PostMapping("/api/admin/notification-guest-cancellations/{id}/code/reissue")
+    public IssuedCode reissue(@PathVariable UUID id) {
+        return service.reissue(id);
+    }
+
     @PostMapping("/api/admin/notification-guest-cancellations/{id}/sent")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void markSent(@PathVariable UUID id, Authentication authentication) {
-        service.markSent(id, authentication.getName());
+    public void markSent(@PathVariable UUID id, Authentication authentication,
+                         @Valid @RequestBody CodeSentRequest request) {
+        service.markSent(id, authentication.getName(), request.code());
     }
 
     @ExceptionHandler(ResponseStatusException.class)
@@ -64,6 +70,9 @@ public class GuestCancellationController {
     }
 
     public record EmailRequest(@NotBlank @Email @Size(max = 254) String email) {
+    }
+
+    public record CodeSentRequest(@NotBlank @Size(max = 128) String code) {
     }
 
     public record VerificationRequest(@NotBlank @Email @Size(max = 254) String email,

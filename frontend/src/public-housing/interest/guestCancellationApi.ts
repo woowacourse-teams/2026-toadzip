@@ -48,13 +48,19 @@ export async function loadGuestCancellationRequests(): Promise<GuestCancellation
 
 export async function issueGuestCancellationCode(id: string) {
   const response = await post(`/api/admin/notification-guest-cancellations/${id}/code`, undefined, true)
-  if (response.status === 409) throw new Error('이미 유효한 코드가 있습니다. 만료 후 다시 발급할 수 있습니다.')
+  if (response.status === 409) throw new Error('이미 만든 코드가 있습니다. 목록을 새로고침한 뒤 필요하면 다시 만들어 주세요.')
   if (!response.ok) throw new Error('확인 코드를 만들지 못했습니다.')
   return response.json() as Promise<{ code: string; expiresAt: string }>
 }
 
-export async function markGuestCancellationCodeSent(id: string) {
-  const response = await post(`/api/admin/notification-guest-cancellations/${id}/sent`, undefined, true)
-  if (response.status === 409) throw new Error('유효한 코드가 없습니다. 코드를 다시 확인해 주세요.')
+export async function markGuestCancellationCodeSent(id: string, code: string) {
+  const response = await post(`/api/admin/notification-guest-cancellations/${id}/sent`, { code }, true)
+  if (response.status === 409) throw new Error('코드가 만료됐거나 다시 발급됐습니다. 목록을 새로고침해 확인해 주세요.')
   if (!response.ok) throw new Error('발송 완료를 기록하지 못했습니다.')
+}
+
+export async function reissueGuestCancellationCode(id: string) {
+  const response = await post(`/api/admin/notification-guest-cancellations/${id}/code/reissue`, undefined, true)
+  if (!response.ok) throw new Error('코드를 다시 만들지 못했습니다. 목록을 새로고침해 주세요.')
+  return response.json() as Promise<{ code: string; expiresAt: string }>
 }

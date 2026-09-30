@@ -48,6 +48,18 @@ public class GuestCancellationService {
         if (request.codeExpiresAt() != null && request.codeExpiresAt().isAfter(clock.instant())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 유효한 코드가 있습니다.");
         }
+        return createCode(id);
+    }
+
+    @Transactional
+    public IssuedCode reissue(UUID id) {
+        if (repository.findForUpdate(id) == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return createCode(id);
+    }
+
+    private IssuedCode createCode(UUID id) {
         byte[] bytes = new byte[18];
         RANDOM.nextBytes(bytes);
         String code = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
@@ -57,13 +69,16 @@ public class GuestCancellationService {
     }
 
     @Transactional
-    public void markSent(UUID id, String sender) {
+    public void markSent(UUID id, String sender, String code) {
         Request request = repository.findForUpdate(id);
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
         if (request.codeExpiresAt() == null || !request.codeExpiresAt().isAfter(clock.instant())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "발송할 유효한 코드가 없습니다.");
+        }
+        if (!repository.matchesCode(id, hash(code))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "다른 코드가 재발급되었습니다.");
         }
         if (request.codeSentAt() != null) {
             return;

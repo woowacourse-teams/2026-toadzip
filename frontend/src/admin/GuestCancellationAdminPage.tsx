@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { issueGuestCancellationCode, loadGuestCancellationRequests, markGuestCancellationCodeSent, type GuestCancellationRequest } from '../public-housing/interest/guestCancellationApi'
+import { issueGuestCancellationCode, loadGuestCancellationRequests, markGuestCancellationCodeSent, reissueGuestCancellationCode, type GuestCancellationRequest } from '../public-housing/interest/guestCancellationApi'
 import styles from './GuestCancellationAdminPage.module.css'
 
 export function GuestCancellationAdminPage() {
@@ -7,6 +7,7 @@ export function GuestCancellationAdminPage() {
   const [codes, setCodes] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [confirmationId, setConfirmationId] = useState<string | null>(null)
 
   async function refresh() {
     setError('')
@@ -19,11 +20,19 @@ export function GuestCancellationAdminPage() {
 
   useEffect(() => { void refresh() }, [])
 
-  async function issue(id: string) {
+  async function issue(id: string, reissue = false) {
     setBusy(true)
     setError('')
+    setConfirmationId(null)
+    if (reissue) {
+      setCodes((current) => {
+        const next = { ...current }
+        delete next[id]
+        return next
+      })
+    }
     try {
-      const issued = await issueGuestCancellationCode(id)
+      const issued = await (reissue ? reissueGuestCancellationCode(id) : issueGuestCancellationCode(id))
       setCodes((current) => ({ ...current, [id]: issued.code }))
       await refresh()
     } catch (cause) {
@@ -37,7 +46,7 @@ export function GuestCancellationAdminPage() {
     setBusy(true)
     setError('')
     try {
-      await markGuestCancellationCodeSent(id)
+      await markGuestCancellationCodeSent(id, codes[id])
       setCodes((current) => {
         const next = { ...current }
         delete next[id]
@@ -56,6 +65,7 @@ export function GuestCancellationAdminPage() {
       <div>
         <h1>비로그인 알림 취소 요청</h1>
         <p>코드를 신청 주소로 직접 보낸 뒤 발송 완료를 기록하세요. 사용자가 코드를 입력하면 취소됩니다.</p>
+        <p>발신: toadzip.official@gmail.com · 확인: 평일 10:00 / 17:00 (한국 시간)</p>
       </div>
       <button type="button" onClick={() => { void refresh() }}>목록 새로고침</button>
     </div>
@@ -74,8 +84,15 @@ export function GuestCancellationAdminPage() {
           <input id={`code-${request.id}`} readOnly value={codes[request.id]} onFocus={(event) => event.target.select()} />
           <button type="button" disabled={busy} onClick={() => { void markSent(request.id) }}>이메일 발송 완료 기록</button>
         </div> : request.codeExpiresAt && new Date(request.codeExpiresAt) > new Date()
-          ? <span>{request.codeSentAt ? '코드 발송 완료 · 사용자 확인 대기' : '발급된 코드가 있습니다. 화면을 닫았다면 만료 후 다시 발급하세요.'}</span>
-          : <button type="button" disabled={busy} onClick={() => { void issue(request.id) }}>확인 코드 만들기</button>}
+          ? <span>{request.codeSentAt ? '코드 발송 완료 · 사용자 확인 대기' : '발급된 코드를 잃어버렸다면 다시 만들 수 있습니다.'}</span>
+          : !request.codeExpiresAt && <button type="button" disabled={busy} onClick={() => { void issue(request.id) }}>확인 코드 만들기</button>}
+        {request.codeExpiresAt && (confirmationId === request.id
+          ? <div className={styles.confirmation}>
+            <p>새 코드를 만들면 기존 코드는 사용할 수 없습니다. 다시 만들어 발송할까요?</p>
+            <button type="button" disabled={busy} onClick={() => { void issue(request.id, true) }}>기존 코드 무효화하고 다시 만들기</button>
+            <button type="button" disabled={busy} onClick={() => setConfirmationId(null)}>돌아가기</button>
+          </div>
+          : <button type="button" disabled={busy} onClick={() => setConfirmationId(request.id)}>코드 다시 만들기</button>)}
       </li>)}
     </ul>
   </section>
