@@ -1,0 +1,10 @@
+# First issuance: keep HTTP serving while Certbot writes its challenge on the host.
+services:
+  frontend:
+    volumes:
+      - type: bind
+        source: /var/www/certbot
+        target: /var/www/certbot
+        read_only: true
+        bind:
+          create_host_path: false
