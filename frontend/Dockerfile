@@ -16,9 +16,10 @@ RUN VITE_API_BASE_URL="${VITE_API_BASE_URL}" \
 
 FROM nginx:1.29.5-alpine
 
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY nginx/http.conf /etc/nginx/nginx.conf
+COPY nginx/ /etc/nginx/toadzip/
 COPY --from=builder --chown=nginx:nginx /workspace/frontend/dist/ /usr/share/nginx/html/
 
 USER nginx
 
-EXPOSE 8080
+EXPOSE 8080 8443

@@ -135,40 +135,39 @@ npm run preview
 
 ## Docker와 Nginx로 실행
 
-아래 명령은 프로젝트 루트에서 실행한다. 지도 없이 이미지 빌드가 가능한지 먼저
-확인하려면 다음 명령을 사용한다.
+아래 명령은 프로젝트 루트에서 실행한다. 프론트엔드 이미지만 확인하려면 실제
+서버 환경변수 없이 빌드할 수 있다.
 
 ```shell
-docker compose --project-name toadzip-frontend \
-  --file compose.frontend.yaml build
+docker build -t toadzip-frontend:local frontend
 ```
 
-지도를 표시하려면 `frontend/.env.local`에
-`VITE_NAVER_MAPS_CLIENT_ID=발급받은_Client_ID`를 넣고 이미지를 다시 빌드해
-실행한다.
+프론트엔드와 백엔드는 루트 [`compose.yaml`](../compose.yaml)에서 함께 실행한다.
+루트 [`.env.example`](../.env.example)을 참고해 DB·모니터링 등 필수값을 준비하고,
+지도를 표시하려면 루트 `.env`의 `VITE_NAVER_MAPS_CLIENT_ID`에 환경에 맞는 공개
+Client ID를 설정한다. 실행·종료 명령과 필요한 Compose 파일은 환경별 안내를 따른다.
 
-```shell
-docker compose --project-name toadzip-frontend \
-  --file compose.frontend.yaml \
-  --env-file frontend/.env.local \
-  up --detach --build --wait
-```
+| 환경 | 접속 주소와 실행 안내 |
+| --- | --- |
+| 로컬 | HTTP, [로컬 환경 설정](../docs/LOCAL_SETUP.md) |
+| 개발 EC2 | `https://dev.bokduckbang.com`, [개발 서버 설정](../docs/DEV_SERVER_SETUP.md) |
+| 운영 EC2 | `https://bokduckbang.com`, [운영 서버 설정](../docs/PROD_SERVER_SETUP.md) |
 
-기본 접속 주소는 `http://localhost`이고 상태 확인 주소는
-`http://localhost/healthz`다. 호스트 포트를 바꾸려면 명령 앞에
-`FRONTEND_PORT=8081`을 지정한다. 이 구성은 프로덕션 API 주소를 별도로 넣지 않고
+개발과 운영은 서로 다른 EC2에서 실행하며 각각 인증서를 발급받아 HTTPS를 적용한다.
+로컬 기본 접속 주소는 `http://localhost`이고 상태 확인 주소는
+`http://localhost/healthz`다. 로컬 호스트 포트를 바꾸려면 루트 `.env`에
+`FRONTEND_PORT=8088`처럼 지정한다. Docker 빌드는 API 주소를 별도로 넣지 않고
 같은 주소의 `/api`를 사용한다.
 
-현재는 백엔드가 연결되지 않았으므로 `/api`와 `/api/*`가 `503` JSON을 반환한다.
-백엔드 배포 작업에서 이 경로를 `backend:8080` 프록시로 교체한다. `/`,
-`/admin/login`과 그 밖의 화면 주소는 Nginx가 React 애플리케이션으로 연결한다.
+Nginx는 `/api`와 `/api/*`를 같은 Compose 네트워크의 `backend:8080`으로 전달한다.
+`/`, `/admin/login`과 그 밖의 화면 주소는 React 애플리케이션으로 연결한다.
+HTTP·HTTPS 설정은 [`nginx/`](nginx/)에 모으고 화면·API 처리 규칙은 공유한다.
+
+EC2 HTTPS와 인증서 갱신은 [Certbot 적용 안내](../infra/certbot/README.md)를 따른다.
+HTTPS용 Compose 설정을 선택한 서버에서는 해당 도메인의 HTTPS 주소로 접속한다.
+일반 로컬 개발에는 인증서나 HTTPS용 서버 환경변수가 필요하지 않다.
 
 `VITE_NAVER_MAPS_CLIENT_ID`는 브라우저 공개값이며 정적 빌드 결과에 포함된다.
 실행 중인 컨테이너의 환경값만 바꿔서는 화면이 바뀌지 않으므로 환경별 Client ID로
 각각 다시 빌드한다. Client Secret은 `.env.local`, 빌드 인자와 이미지 어디에도
 넣지 않는다.
-
-```shell
-docker compose --project-name toadzip-frontend \
-  --file compose.frontend.yaml down --remove-orphans
-```

@@ -70,7 +70,7 @@ PDF를 선택하면 원본 파일 요청과 동시에 뷰어 컴포넌트·코�
 
 `npm run dev`와 `npm run build`의 pre 스크립트가 `scripts/prepare-pdf-assets.mjs`를 실행해 설치 버전의 CMap, 표준 폰트, WASM 및 라이선스를 `public/pdfjs-{version}/`에 준비한다. 생성 디렉터리는 Git에서 제외되지만 dist에는 포함된다. PDF.js 교체·제거 경계는 PdfDocumentPreview 컴포넌트와 이 자산 준비 스크립트다.
 
-배포 Nginx는 `nginx.conf`에서 `.mjs`를 `application/javascript`로 제공해야 한다. PDF worker가 `application/octet-stream`으로 응답하면 첨부 API가 성공해도 브라우저의 모듈 MIME 검사에서 미리보기가 실패한다. 설정 변경은 프론트 이미지를 다시 빌드하고 컨테이너를 재생성해 반영한다. `/assets/`의 기존 잘못된 MIME 응답도 장기 캐시되므로 worker URL에 `mime=javascript` 쿼리를 붙여 이전 캐시를 우회한다. 이 쿼리는 캐시 키를 바꾸는 용도이며 응답 형식은 Nginx의 MIME 매핑이 결정한다. 배포 후 페이지를 새로고침하고 worker 요청의 `Content-Type`을 확인한다.
+배포 Nginx는 [`nginx/`](../nginx/)의 HTTP·HTTPS 설정에서 `.mjs`를 `application/javascript`로 제공해야 한다. PDF worker가 `application/octet-stream`으로 응답하면 첨부 API가 성공해도 브라우저의 모듈 MIME 검사에서 미리보기가 실패한다. 설정 변경은 프론트 이미지를 다시 빌드하고 컨테이너를 재생성해 반영한다. `/assets/`의 기존 잘못된 MIME 응답도 장기 캐시되므로 worker URL에 `mime=javascript` 쿼리를 붙여 이전 캐시를 우회한다. 이 쿼리는 캐시 키를 바꾸는 용도이며 응답 형식은 Nginx의 MIME 매핑이 결정한다. 배포 후 페이지를 새로고침하고 worker 요청의 `Content-Type`을 확인한다.
 
 `usePdfViewer`는 PDFViewer의 연속 스크롤·렌더 버퍼와 PDFFindController의 전체 문서 검색·텍스트 강조를 연결한다. build 모듈 초기화 후 web viewer를 읽고, 문서 해제·AbortSignal·지역화 객체·worker를 함께 정리한다. SDK 스타일은 `@scope` 안에 두어 전역 색상과 다른 화면에 영향을 주지 않는다. 검색 단축키는 현재 모달에만 등록하며 PDF 스크립트와 폼 편집은 활성화하지 않는다.
 
