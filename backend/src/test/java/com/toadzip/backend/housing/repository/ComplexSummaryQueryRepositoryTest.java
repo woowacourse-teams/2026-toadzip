@@ -18,6 +18,7 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.MapBounds;
 import com.toadzip.backend.housing.domain.RentalType;
+import com.toadzip.backend.housing.domain.RentalPriceRange;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -77,8 +78,43 @@ class ComplexSummaryQueryRepositoryTest {
     }
 
     @Test
-    void 대표_공고의_모든_공급행에서만_가격_범위를_집계한다() {
+    void 공고가_없는_단지도_마이홈_금액을_지도에_반환한다() {
+        HousingComplex complex = persistComplex("공고 없는 단지", "37.500000", "126.900000");
+        complex.updateRentalPriceRange(new RentalPriceRange(
+                50000000L, 70000000L, 200000L, 300000L));
+        entityManager.flush();
+
+        ComplexSummaryRow row = repository.findAll(noFilters(SEOUL_BOUNDS)).getFirst();
+
+        assertAll(
+                () -> assertNull(row.announcementId()),
+                () -> assertBigDecimalEquals("50000000", row.depositMin()),
+                () -> assertBigDecimalEquals("70000000", row.depositMax()),
+                () -> assertBigDecimalEquals("200000", row.monthlyRentMin()),
+                () -> assertBigDecimalEquals("300000", row.monthlyRentMax())
+        );
+    }
+
+    @Test
+    void 공고가_없는_단지도_표시되는_마이홈_최소_금액으로_검색한다() {
+        HousingComplex matched = persistComplex("마이홈 가격 일치", "37.500000", "126.900000");
+        matched.updateRentalPriceRange(new RentalPriceRange(
+                50000000L, 70000000L, 200000L, 300000L));
+        HousingComplex excluded = persistComplex("마이홈 가격 불일치", "37.500000", "126.900000");
+        excluded.updateRentalPriceRange(new RentalPriceRange(
+                40000000L, 70000000L, 100000L, 300000L));
+        entityManager.flush();
+
+        assertBothQueryPaths(priceAreaFilters(
+                new BigDecimal("50000000"), new BigDecimal("50000000"),
+                new BigDecimal("200000"), new BigDecimal("200000"), null, null), matched.getId());
+    }
+
+    @Test
+    void 공고_공급대상_금액과_관계없이_단지의_마이홈_금액을_조회한다() {
         HousingComplex complex = persistComplex("가격 집계 단지", "37.500000", "126.900000");
+        complex.updateRentalPriceRange(new RentalPriceRange(
+                30000000L, 80000000L, 150000L, 350000L));
         HousingType housingType = persistHousingType(complex, "36A", "36.12");
         HousingType secondHousingType = persistHousingType(complex, "44B", "44.87");
         Announcement oldAnnouncement = persistAnnouncement(null, "ORIGINAL", LocalDate.of(2026, 7, 1), "old");
@@ -113,17 +149,19 @@ class ComplexSummaryQueryRepositoryTest {
         assertAll(
                 () -> assertEquals(new BigDecimal("36.1200"), row.exclusiveAreaMin()),
                 () -> assertEquals(new BigDecimal("44.8700"), row.exclusiveAreaMax()),
-                () -> assertBigDecimalEquals("50000000", row.depositMin()),
-                () -> assertBigDecimalEquals("70000000", row.depositMax()),
-                () -> assertBigDecimalEquals("200000", row.monthlyRentMin()),
-                () -> assertBigDecimalEquals("300000", row.monthlyRentMax()),
+                () -> assertBigDecimalEquals("30000000", row.depositMin()),
+                () -> assertBigDecimalEquals("80000000", row.depositMax()),
+                () -> assertBigDecimalEquals("150000", row.monthlyRentMin()),
+                () -> assertBigDecimalEquals("350000", row.monthlyRentMax()),
                 () -> assertEquals(representative.getId(), row.announcementId())
         );
     }
 
     @Test
-    void 대표_공고의_공급행에_공급대상이_없으면_가격_범위를_null로_조회한다() {
+    void 공고_공급대상이_없어도_단지_금액을_조회한다() {
         HousingComplex complex = persistComplex("공급대상 없는 단지", "37.500000", "126.900000");
+        complex.updateRentalPriceRange(new RentalPriceRange(
+                10000000L, 20000000L, 100000L, 200000L));
         HousingType housingType = persistHousingType(complex, "36A", "36.00");
         Announcement representative = persistAnnouncement(
                 null,
@@ -138,16 +176,18 @@ class ComplexSummaryQueryRepositoryTest {
 
         assertAll(
                 () -> assertEquals(representative.getId(), row.announcementId()),
-                () -> assertNull(row.depositMin()),
-                () -> assertNull(row.depositMax()),
-                () -> assertNull(row.monthlyRentMin()),
-                () -> assertNull(row.monthlyRentMax())
+                () -> assertBigDecimalEquals("10000000", row.depositMin()),
+                () -> assertBigDecimalEquals("20000000", row.depositMax()),
+                () -> assertBigDecimalEquals("100000", row.monthlyRentMin()),
+                () -> assertBigDecimalEquals("200000", row.monthlyRentMax())
         );
     }
 
     @Test
     void 취소_후속_공고가_있으면_취소된_이전_공고를_대표로_되살리지_않는다() {
         HousingComplex complex = persistComplex("취소 단지", "37.500000", "126.900000");
+        complex.updateRentalPriceRange(new RentalPriceRange(
+                10000000L, 10000000L, 100000L, 100000L));
         HousingType housingType = persistHousingType(complex, "36A", "36.00");
         Announcement original = persistAnnouncement(null, "ORIGINAL", LocalDate.of(2026, 7, 1), "original");
         Announcement cancellation = persistAnnouncement(
@@ -167,10 +207,10 @@ class ComplexSummaryQueryRepositoryTest {
         assertAll(
                 () -> assertNull(row.announcementId()),
                 () -> assertNull(row.publicationType()),
-                () -> assertNull(row.depositMin()),
-                () -> assertNull(row.depositMax()),
-                () -> assertNull(row.monthlyRentMin()),
-                () -> assertNull(row.monthlyRentMax())
+                () -> assertBigDecimalEquals("10000000", row.depositMin()),
+                () -> assertBigDecimalEquals("10000000", row.depositMax()),
+                () -> assertBigDecimalEquals("100000", row.monthlyRentMin()),
+                () -> assertBigDecimalEquals("100000", row.monthlyRentMax())
         );
     }
 
@@ -872,8 +912,10 @@ class ComplexSummaryQueryRepositoryTest {
     }
 
     @Test
-    void 보증금과_월세는_대표공고의_같은_공급대상이_양끝을_동시에_만족해야_한다() {
+    void 보증금과_월세는_단지의_마이홈_최솟값이_모두_범위에_들어야_한다() {
         HousingComplex crossTarget = persistComplex("교차 공급대상", "37.500000", "126.900000");
+        crossTarget.updateRentalPriceRange(new RentalPriceRange(
+                40000000L, 50000000L, 100000L, 300000L));
         Announcement crossAnnouncement = persistAnnouncement(
                 null,
                 "ORIGINAL",
@@ -885,6 +927,8 @@ class ComplexSummaryQueryRepositoryTest {
         persistSupplyTarget(crossRow, "월세만 일치", "40000000", "300000", 2);
 
         HousingComplex matched = persistComplex("동일 공급대상", "37.500000", "126.900000");
+        matched.updateRentalPriceRange(new RentalPriceRange(
+                50000000L, 50000000L, 300000L, 300000L));
         Announcement matchedAnnouncement = persistAnnouncement(
                 null,
                 "ORIGINAL",
@@ -909,8 +953,10 @@ class ComplexSummaryQueryRepositoryTest {
     }
 
     @Test
-    void 가격_filter는_선택된_대표공고의_공급대상만_검색한다() {
+    void 가격_filter는_대표공고의_금액과_무관하게_단지_최솟값을_검색한다() {
         HousingComplex historicalMatch = persistComplex("과거 가격만 일치", "37.500000", "126.900000");
+        historicalMatch.updateRentalPriceRange(new RentalPriceRange(
+                50000000L, 50000000L, 200000L, 200000L));
         Announcement olderAnnouncement = persistAnnouncement(
                 null,
                 "ORIGINAL",
@@ -941,6 +987,8 @@ class ComplexSummaryQueryRepositoryTest {
         persistSupplyTarget(latestRow, "대표 가격 불일치", "40000000", "200000", 1);
 
         HousingComplex representativeMatch = persistComplex("대표 가격 일치", "37.500000", "126.900000");
+        representativeMatch.updateRentalPriceRange(new RentalPriceRange(
+                40000000L, 40000000L, 200000L, 200000L));
         Announcement matchingRepresentative = persistAnnouncement(
                 null,
                 "ORIGINAL",
@@ -966,13 +1014,15 @@ class ComplexSummaryQueryRepositoryTest {
                         null,
                         null
                 ),
-                representativeMatch.getId()
+                historicalMatch.getId()
         );
     }
 
     @Test
-    void 가격과_면적은_대표공고의_같은_공급행에_연결된_주택형에서_만족해야_한다() {
+    void 가격과_면적은_단지_최솟값과_주택형에서_각각_확인한다() {
         HousingComplex crossRow = persistComplex("교차 공급행", "37.500000", "126.900000");
+        crossRow.updateRentalPriceRange(new RentalPriceRange(
+                50000000L, 50000000L, 200000L, 200000L));
         HousingType priceOnlyType = persistHousingType(crossRow, "20A", "20.00");
         HousingType areaOnlyType = persistHousingType(crossRow, "40A", "40.00");
         Announcement crossAnnouncement = persistAnnouncement(
@@ -999,6 +1049,8 @@ class ComplexSummaryQueryRepositoryTest {
         persistSupplyTarget(areaOnlyRow, "면적만 일치", "40000000", "200000", 1);
 
         HousingComplex matched = persistComplex("같은 공급행", "37.500000", "126.900000");
+        matched.updateRentalPriceRange(new RentalPriceRange(
+                60000000L, 60000000L, 200000L, 200000L));
         HousingType matchedType = persistHousingType(matched, "50A", "50.00");
         Announcement matchedAnnouncement = persistAnnouncement(
                 null,
@@ -1025,7 +1077,7 @@ class ComplexSummaryQueryRepositoryTest {
                         new BigDecimal("30.00"),
                         new BigDecimal("50.00")
                 ),
-                matched.getId()
+                crossRow.getId(), matched.getId()
         );
     }
 
@@ -1042,6 +1094,7 @@ class ComplexSummaryQueryRepositoryTest {
         persistNullableSupplyTarget(nullRow, "가격 없음", null, null, 1);
 
         HousingComplex matched = persistComplex("가격 있음", "37.500000", "126.900000");
+        matched.updateRentalPriceRange(new RentalPriceRange(0L, 0L, 0L, 0L));
         Announcement matchedAnnouncement = persistAnnouncement(
                 null,
                 "ORIGINAL",
@@ -1059,8 +1112,10 @@ class ComplexSummaryQueryRepositoryTest {
     }
 
     @Test
-    void 가격만_검색할_때는_대표공고_공급행의_주택형이_없어도_일치한다() {
+    void 가격만_검색할_때는_주택형이_없어도_단지_최솟값으로_일치한다() {
         HousingComplex complex = persistComplex("주택형 없는 가격", "37.500000", "126.900000");
+        complex.updateRentalPriceRange(new RentalPriceRange(
+                50000000L, 50000000L, 200000L, 200000L));
         Announcement announcement = persistAnnouncement(
                 null,
                 "ORIGINAL",
@@ -1077,6 +1132,8 @@ class ComplexSummaryQueryRepositoryTest {
         persistSupplyTarget(supplyRow, "가격 일치", "50000000", "200000", 1);
 
         HousingComplex other = persistComplex("주택형 없는 다른 가격", "37.500000", "126.900000");
+        other.updateRentalPriceRange(new RentalPriceRange(
+                40000000L, 40000000L, 200000L, 200000L));
         Announcement otherAnnouncement = persistAnnouncement(
                 null,
                 "ORIGINAL",
@@ -1102,6 +1159,8 @@ class ComplexSummaryQueryRepositoryTest {
     @Test
     void 가격과_면적_filter가_있어도_응답_범위는_대표공고와_전체_주택형으로_집계한다() {
         HousingComplex complex = persistComplex("집계 유지 단지", "37.500000", "126.900000");
+        complex.updateRentalPriceRange(new RentalPriceRange(
+                10000000L, 50000000L, 100000L, 500000L));
         HousingType small = persistHousingType(complex, "20A", "20.00");
         HousingType large = persistHousingType(complex, "60A", "60.00");
         Announcement announcement = persistAnnouncement(
@@ -1389,6 +1448,9 @@ class ComplexSummaryQueryRepositoryTest {
             String suffix
     ) {
         HousingComplex complex = persistComplex(name, "37.500000", "126.900000");
+        complex.updateRentalPriceRange(new RentalPriceRange(
+                Long.valueOf(rentalDeposit), Long.valueOf(rentalDeposit),
+                Long.valueOf(monthlyRent), Long.valueOf(monthlyRent)));
         Announcement announcement = persistRepresentative(
                 complex,
                 "ORIGINAL",
@@ -1507,6 +1569,9 @@ class ComplexSummaryQueryRepositoryTest {
 
     private HousingComplex persistPricedComplex(String suffix, String rentalDeposit, String monthlyRent) {
         HousingComplex complex = persistComplex(suffix, "37.500000", "126.900000");
+        complex.updateRentalPriceRange(new RentalPriceRange(
+                Long.valueOf(rentalDeposit), Long.valueOf(rentalDeposit),
+                Long.valueOf(monthlyRent), Long.valueOf(monthlyRent)));
         Announcement announcement = persistAnnouncement(
                 null,
                 "ORIGINAL",

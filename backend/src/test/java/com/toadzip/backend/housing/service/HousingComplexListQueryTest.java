@@ -465,7 +465,7 @@ class HousingComplexListQueryTest {
                 () -> assertEquals("BEFORE_APPLICATION", item.representativeAnnouncement().applicationStatus()),
                 () -> assertEquals(LocalDate.of(2026, 8, 30),
                         item.representativeAnnouncement().applicationEndAt()),
-                () -> assertEquals(3, item.representativeAnnouncement().dDay())
+                () -> assertEquals(1, item.representativeAnnouncement().dDay())
         );
     }
 
@@ -540,7 +540,7 @@ class HousingComplexListQueryTest {
 
     @ParameterizedTest
     @CsvSource(nullValues = "NULL", value = {
-            "2026-08-28, 2026-08-30, BEFORE_APPLICATION, 3",
+            "2026-08-28, 2026-08-30, BEFORE_APPLICATION, 1",
             "2026-08-20, 2026-08-27, APPLYING, 0",
             "2026-08-20, 2026-08-26, CLOSED, NULL"
     })
@@ -624,7 +624,9 @@ class HousingComplexListQueryTest {
                 null,
                 null,
                 null,
-                LocalDate.of(2020, 1, 1)
+                LocalDate.of(2020, 1, 1),
+                null,
+                null
         );
         when(repository.findPage(any(), eq(ComplexSort.LATEST_ANNOUNCEMENT), isNull(), eq(2)))
                 .thenReturn(List.of(unresolved));
@@ -859,8 +861,20 @@ class HousingComplexListQueryTest {
                 postedDate,
                 applicationStartDate,
                 applicationEndDate,
-                LocalDate.of(2020, 1, 1)
+                LocalDate.of(2020, 1, 1),
+                fixtureStatus(applicationStartDate, applicationEndDate),
+                applicationEndDate
         );
+    }
+
+    private String fixtureStatus(LocalDate start, LocalDate end) {
+        if (LocalDate.now(CLOCK.withZone(java.time.ZoneId.of("Asia/Seoul"))).isBefore(start)) {
+            return "BEFORE_APPLICATION";
+        }
+        if (LocalDate.now(CLOCK.withZone(java.time.ZoneId.of("Asia/Seoul"))).isAfter(end)) {
+            return "CLOSED";
+        }
+        return "APPLYING";
     }
 
     private ComplexSummaryRow rowWithoutAnnouncement(long complexId) {
@@ -885,7 +899,9 @@ class HousingComplexListQueryTest {
                 null,
                 null,
                 null,
-                LocalDate.of(2020, 1, 1)
+                LocalDate.of(2020, 1, 1),
+                null,
+                null
         );
     }
 

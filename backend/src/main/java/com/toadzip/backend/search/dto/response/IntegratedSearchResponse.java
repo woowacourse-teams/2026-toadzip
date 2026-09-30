@@ -2,6 +2,9 @@ package com.toadzip.backend.search.dto.response;
 
 import java.util.List;
 
+/**
+ * @param totalCount 유형별 검색의 전체 건수. 전체 통합 검색 또는 집계 실패 시 null.
+ */
 public record IntegratedSearchResponse(
         String query,
         List<SearchResultItemResponse> announcements,
@@ -10,7 +13,8 @@ public record IntegratedSearchResponse(
         List<SearchFailureResponse> failures,
         int page,
         int size,
-        boolean hasNext
+        boolean hasNext,
+        Long totalCount
 ) {
     public IntegratedSearchResponse {
         announcements = List.copyOf(announcements);

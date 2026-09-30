@@ -56,10 +56,11 @@ class HousingComplexFilterPredicateBuilderTest {
 
         assertThat(active.sql())
                 .contains("representative.announcement_id IS NOT NULL")
-                .contains("representative.application_start_date <= :today");
+                .contains("schedule.state = 'CONFIRMED'")
+                .contains("= 'APPLYING'");
         assertThat(inactive.sql())
                 .contains("representative.announcement_id IS NULL")
-                .contains("representative.application_start_date > :today");
+                .contains("<> 'APPLYING'");
         assertThat(active.parameters()).containsEntry("today", TODAY);
         assertThat(inactive.parameters()).containsEntry("today", TODAY);
     }
@@ -70,8 +71,10 @@ class HousingComplexFilterPredicateBuilderTest {
 
         assertThat(predicate.sql())
                 .contains("representative.application_start_date > :today")
-                .contains("representative.application_start_date <= :today")
+                .contains("schedule.state = 'CONFIRMED'")
+                .contains("= 'APPLYING'")
                 .contains("representative.application_end_date < :today")
+                .contains("= 'CONDITIONAL'")
                 .contains("cancelled_announcement.status IN ('CANCELLATION', '취소공고')");
         assertThat(predicate.parameters()).containsEntry("today", TODAY);
     }

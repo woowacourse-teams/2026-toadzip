@@ -1,0 +1,6 @@
+# Offline build tools only; never included in the browser application.
+pyshp==2.3.1
+pyproj==3.6.1
+shapely==2.0.6
+numpy==2.5.3
+certifi==2026.7.22

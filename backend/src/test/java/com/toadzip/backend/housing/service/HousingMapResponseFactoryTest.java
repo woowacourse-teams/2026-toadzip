@@ -98,7 +98,9 @@ class HousingMapResponseFactoryTest {
         return new ComplexSummaryRow(
                 complexId, name, null, "41", "41130", "행복주택", "LH",
                 decimal("37.4"), decimal("127.1"), null, null, null, null,
-                null, null, null, null, null, null, null, null
+                null, null, null, null, null, null, null, null,
+                null,
+                null
         );
     }
 

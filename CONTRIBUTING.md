@@ -36,6 +36,19 @@ docs/21-branch-convention
 
 ## 커밋 메시지
 
+### 로컬 계획·설계 자료
+
+`docs/superpowers/plans/`와 `docs/superpowers/specs/`의 모든 파일은 로컬 작업 자료이며
+절대 커밋하지 않는다. `.gitignore`를 우회하는 `git add -f`도 사용하지 않는다.
+팀이 공유해야 하는 최종 규칙은 관련 서비스·개발 문서에 정리한다.
+이미 추적 중인 자료를 정리할 때는 로컬 파일을 보존하고 `git rm --cached`로 추적만
+해제한다. 이 추적 해제 변경은 허용하며 과거 커밋 이력은 재작성하지 않는다.
+
+`sh scripts/validate-local-artifacts.sh`는 Git index에 금지 경로가 있으면 실패한다.
+pre-commit과 CI가 같은 검사를 실행하므로 변경 내용을 stage한 뒤에도 확인한다.
+
+### 메시지 형식
+
 AngularJS 컨벤션을 따른다.
 
 ```text

@@ -1,0 +1,25 @@
+.document { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; background: var(--ds-color-surface-subtle); color-scheme: light; }
+.controls, .search { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: var(--ds-space-2); padding: var(--ds-space-2) var(--ds-space-3); border-top: 1px solid var(--ds-color-divider); background: var(--ds-color-surface); font-size: var(--ds-text-caption); }
+.controls > span { margin-right: auto; }
+.controls label { white-space: nowrap; }
+.controls button, .controls select, .search button, .search input, .error button { min-height: 36px; border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); padding: var(--ds-space-1) var(--ds-space-2); background: var(--ds-color-surface); color: var(--ds-color-text); font: inherit; }
+.document :is(button, select, input, summary):focus-visible, .viewport:focus-visible, .error button:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: -2px; }
+.search input { flex: 1 1 180px; width: 0; min-width: 100px; }
+.result { white-space: nowrap; }
+.searchActions { display: flex; gap: var(--ds-space-1); margin-left: auto; }
+.searchActions button { min-width: 36px; }
+.viewportShell { position: relative; display: flex; flex: 1; min-height: 0; min-width: 0; }
+.viewport { flex: 1; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; }
+.pages { position: relative; }
+.page { position: absolute; left: 0; right: 0; margin: 0 auto; background: white; box-shadow: 0 1px 4px #0002; }
+.page img { display: block; width: 100%; height: 100%; }
+.placeholder { display: block; padding: var(--ds-space-4); color: var(--ds-color-label); text-align: center; }
+.highlight { position: absolute; pointer-events: none; background: #ffdf0080; mix-blend-mode: multiply; }
+.highlight[data-search-active="true"] { background: #ff8b0099; outline: 2px solid #c05600; }
+.error { padding: var(--ds-space-4); text-align: center; color: var(--ds-color-label); }
+@media (max-width: 600px) { .search input { flex-basis: calc(100% - 140px); } .searchActions { margin-left: 0; } }
+@media (forced-colors: active) { .highlight { forced-color-adjust: none; } }
+
+.text { flex: 0 0 auto; max-height: 30%; overflow: auto; padding: var(--ds-space-2) var(--ds-space-3); background: var(--ds-color-surface); font-size: var(--ds-text-caption); }
+.text summary { cursor: pointer; }
+.text pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }

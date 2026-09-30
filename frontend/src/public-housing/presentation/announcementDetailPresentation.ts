@@ -1,3 +1,4 @@
+import { MISSING_DATA_LABEL } from './missingData.ts'
 import type {
   HousingAnnouncementDetailAttachment,
   HousingAnnouncementDetailData,
@@ -43,6 +44,7 @@ export function toHousingAnnouncementDetailData(
     regionNames: detail.regionNames,
     rentalTypeLabel: rentalTypeLabel(detail.rentalType),
     schedules: detail.schedules.map(toSchedule),
+    applicationSchedules: detail.applicationSchedules ?? [],
     supplyComplexCount: detail.supplyComplexCount,
     supplyHouseholdCount: detail.supplyHouseholdCount,
     supplyRows: detail.supplyRows.map(toSupplyRow),
@@ -75,7 +77,7 @@ export function groupAnnouncementSupplyRows(
       key,
       name: complex?.name
         ?? first.sourceComplexName
-        ?? '단지명 정보 확인 중',
+        ?? MISSING_DATA_LABEL,
       overviewImageUrl: complex?.overviewImageUrl ?? null,
       rows: groupedRows,
       supplyHouseholdCount: sumNullable(
@@ -102,6 +104,7 @@ function toSchedule(
   schedule: AnnouncementDetail['schedules'][number],
 ): HousingAnnouncementDetailSchedule {
   return {
+    complexName: schedule.complexName ?? null,
     endAt: schedule.endAt,
     name: schedule.name,
     scheduleId: schedule.scheduleId,
@@ -156,10 +159,11 @@ function sumNullable(values: readonly (number | null)[]) {
 function applicationStatusLabel(value: string | null) {
   return codeLabel(value, {
     APPLYING: '접수중',
-    BEFORE_APPLICATION: '접수예정',
+    BEFORE_APPLICATION: '공고중',
     CANCELLED: '공고취소',
+    CONDITIONAL: '조건부 접수',
     CLOSED: '접수마감',
-  }, '접수상태 정보 확인 중')
+  }, MISSING_DATA_LABEL)
 }
 
 function publicationTypeLabel(value: string | null) {
@@ -167,7 +171,7 @@ function publicationTypeLabel(value: string | null) {
     CANCELLATION: '취소공고',
     CORRECTION: '정정공고',
     ORIGINAL: '원공고',
-  }, '공고유형 정보 확인 중')
+  }, MISSING_DATA_LABEL)
 }
 
 function rentalTypeLabel(value: string | null) {
@@ -179,7 +183,7 @@ function rentalTypeLabel(value: string | null) {
     PERMANENT_RENTAL: '영구임대',
     PUBLIC_RENTAL_50Y: '50년 공공임대',
     REDEVELOPMENT_RENTAL: '재개발임대',
-  }, '임대유형 정보 확인 중')
+  }, MISSING_DATA_LABEL)
 }
 
 function recruitmentTypeLabel(value: string | null) {
@@ -187,7 +191,7 @@ function recruitmentTypeLabel(value: string | null) {
     ETC: '기타 모집',
     NEW: '신규 입주자 모집',
     WAITLIST: '예비입주자 모집',
-  }, '모집유형 정보 확인 중')
+  }, MISSING_DATA_LABEL)
 }
 
 function scheduleTypeLabel(value: string | null) {
@@ -198,7 +202,7 @@ function scheduleTypeLabel(value: string | null) {
     ETC: '기타 일정',
     MOVE_IN: '입주',
     WINNER_ANNOUNCEMENT: '당첨자 발표',
-  }, '일정')
+  }, MISSING_DATA_LABEL)
 }
 
 function receptionMethodLabel(value: string | null) {
@@ -207,7 +211,7 @@ function receptionMethodLabel(value: string | null) {
     MAIL: '우편',
     ONLINE: '온라인',
     VISIT: '방문',
-  }, '접수방법 정보 확인 중')
+  }, MISSING_DATA_LABEL)
 }
 
 function attachmentTypeLabel(value: string | null) {
@@ -217,14 +221,14 @@ function attachmentTypeLabel(value: string | null) {
     CORRECTION: '정정공고문',
     ETC: '기타 첨부파일',
     REFERENCE: '참고자료',
-  }, '첨부파일')
+  }, MISSING_DATA_LABEL)
 }
 
 function supplyTypeLabel(value: string | null) {
   return codeLabel(value, {
     NEW: '신규공급',
     RESUPPLY: '재공급',
-  }, '공급구분 정보 확인 중')
+  }, MISSING_DATA_LABEL)
 }
 
 function codeLabel(

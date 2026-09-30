@@ -16,7 +16,7 @@ describe('toHousingAnnouncementCardData', () => {
       applicationStartAt: '2026-08-28',
       applicationStatus: 'APPLYING',
       dDay: 2,
-      recruitmentTypeLabel: '예비입주자',
+      recruitmentTypeLabel: '예비',
       regionNames: ['서울특별시 중구'],
       rentalTypeLabel: '행복주택',
       supplyHouseholdCount: 0,
@@ -25,6 +25,16 @@ describe('toHousingAnnouncementCardData', () => {
     })
     expect(result).not.toHaveProperty('supplyComplexCount')
     expect(result).not.toHaveProperty('predictedCompetitionRate')
+  })
+
+  it.each([
+    ['NEW', '신규'],
+    ['WAITLIST', '예비'],
+    ['ETC', '기타 모집'],
+  ])('%s 모집유형을 카드용 짧은 라벨로 변환한다', (recruitmentType, label) => {
+    const result = toHousingAnnouncementCardData(announcement({ recruitmentType }))
+
+    expect(result.recruitmentTypeLabel).toBe(label)
   })
 
   it('알 수 없는 코드와 null은 raw code 대신 null로 전달한다', () => {

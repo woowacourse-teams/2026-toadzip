@@ -14,6 +14,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
+import java.util.Objects;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcType;
@@ -50,6 +51,8 @@ public class AnnouncementSchedule {
     private int displayOrder;
 
     private String sourceScheduleIdentifier;
+
+    private String complexName;
 
     private AnnouncementSchedule(
             Announcement announcement,
@@ -94,8 +97,23 @@ public class AnnouncementSchedule {
             LocalDateTime endAt,
             int displayOrder
     ) {
+        return createFromSource(announcement, sourceScheduleIdentifier, scheduleType, name,
+                startAt, endAt, displayOrder, null);
+    }
+
+    public static AnnouncementSchedule createFromSource(
+            Announcement announcement,
+            String sourceScheduleIdentifier,
+            ScheduleType scheduleType,
+            String name,
+            LocalDateTime startAt,
+            LocalDateTime endAt,
+            int displayOrder,
+            String complexName
+    ) {
         AnnouncementSchedule schedule = create(announcement, scheduleType, name, startAt, endAt, displayOrder);
         schedule.sourceScheduleIdentifier = sourceScheduleIdentifier;
+        schedule.complexName = normalizeComplexName(complexName);
         return schedule;
     }
 
@@ -104,14 +122,17 @@ public class AnnouncementSchedule {
             String name,
             LocalDateTime startAt,
             LocalDateTime endAt,
-            int displayOrder
+            int displayOrder,
+            String complexName
     ) {
         AnnouncementSchedule incoming = create(announcement, scheduleType, name, startAt, endAt, displayOrder);
+        incoming.complexName = normalizeComplexName(complexName);
         if (this.scheduleType == incoming.scheduleType
                 && this.name.equals(incoming.name)
                 && this.startAt.equals(incoming.startAt)
                 && this.endAt.equals(incoming.endAt)
-                && this.displayOrder == incoming.displayOrder) {
+                && this.displayOrder == incoming.displayOrder
+                && Objects.equals(this.complexName, incoming.complexName)) {
             return false;
         }
         this.scheduleType = incoming.scheduleType;
@@ -119,7 +140,15 @@ public class AnnouncementSchedule {
         this.startAt = incoming.startAt;
         this.endAt = incoming.endAt;
         this.displayOrder = incoming.displayOrder;
+        this.complexName = incoming.complexName;
         return true;
+    }
+
+    private static String normalizeComplexName(String complexName) {
+        if (complexName == null || complexName.isBlank()) {
+            return null;
+        }
+        return complexName.strip();
     }
 
     public static AnnouncementSchedule create(

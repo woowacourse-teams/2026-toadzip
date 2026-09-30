@@ -1,0 +1,34 @@
+.root {
+  padding: 0 var(--ds-space-4);
+  border: 0;
+  border-radius: var(--ds-radius-control);
+  background: var(--ds-color-brand);
+  color: var(--ds-color-on-brand);
+  font-family: inherit;
+  font-weight: var(--ds-weight-strong);
+  cursor: pointer;
+}
+
+.md {
+  min-height: var(--ds-control-height-md);
+  font-size: var(--ds-text-body);
+}
+
+.lg {
+  min-height: var(--ds-control-height-lg);
+  font-size: var(--ds-text-control-lg);
+}
+
+.root:hover:not(:disabled) {
+  background: var(--ds-color-brand-hover);
+}
+
+.root:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+}
+
+.root:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

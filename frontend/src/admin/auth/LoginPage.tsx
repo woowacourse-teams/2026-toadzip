@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router'
+import { BrandLink } from '../../BrandLink'
 import { useAdminAuth } from './useAdminAuth'
 
 export function LoginPage() {
@@ -40,6 +41,7 @@ export function LoginPage() {
   return (
     <main className="admin-login-page">
       <form className="admin-login-form" onSubmit={handleSubmit}>
+        <BrandLink className="admin-login-brand" />
         <h1>관리자 로그인</h1>
         <label>
           로그인 식별자

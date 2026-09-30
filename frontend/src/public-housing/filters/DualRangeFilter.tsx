@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, type InputHTMLAttributes, useEffect, useRef, useState } from 'react'
 import styles from './DualRangeFilter.module.css'
 
 const RANGE_TOUCH_TARGET_SIZE = 44
@@ -23,6 +23,7 @@ export interface DualRangeFilterProps {
   readonly formatTick: (value: number) => string
   readonly presets: readonly DualRangeFilterPreset[]
   readonly preserveInitialValuesUntilChange?: boolean
+  readonly onChange?: (minimum: number | null, maximum: number | null) => void
 }
 
 export function DualRangeFilter({
@@ -39,9 +40,12 @@ export function DualRangeFilter({
   formatTick,
   presets,
   preserveInitialValuesUntilChange = false,
+  onChange,
 }: DualRangeFilterProps) {
   validateDomain(minimum, maximum, step, majorStep)
   const fieldsetRef = useRef<HTMLFieldSetElement>(null)
+  const interactingRef = useRef(false)
+  const pendingRangeRef = useRef<readonly [number | null, number | null] | null>(null)
   const [normalizedInitialMinimum, normalizedInitialMaximum] = normalizeRange(
     initialMinimum,
     initialMaximum,
@@ -95,6 +99,58 @@ export function DualRangeFilter({
     return () => form.removeEventListener('reset', reset)
   }, [normalizedInitialMaximum, normalizedInitialMinimum])
 
+  function changeRange(nextMinimum: number, nextMaximum: number, changeMinimum: boolean, changeMaximum: boolean) {
+    const minimumWasChanged = minimumChanged || changeMinimum
+    const maximumWasChanged = maximumChanged || changeMaximum
+    setSelectedMinimum(nextMinimum)
+    setSelectedMaximum(nextMaximum)
+    setMinimumChanged(minimumWasChanged)
+    setMaximumChanged(maximumWasChanged)
+    const submittedMinimum = preservedSubmissionValue(
+      initialMinimum, nextMinimum, minimum, maximum, minimum,
+      preserveInitialValuesUntilChange, minimumWasChanged, maximumWasChanged,
+      initialMinimum === null || initialMinimum <= nextMaximum,
+    )
+    const submittedMaximum = preservedSubmissionValue(
+      initialMaximum, nextMaximum, minimum, maximum, maximum,
+      preserveInitialValuesUntilChange, maximumWasChanged, minimumWasChanged,
+      initialMaximum === null || nextMinimum <= initialMaximum,
+    )
+    const values = [
+      submittedMinimum === '' ? null : submittedMinimum,
+      submittedMaximum === '' ? null : submittedMaximum,
+    ] as const
+    if (interactingRef.current) {
+      pendingRangeRef.current = values
+    } else {
+      onChange?.(...values)
+    }
+  }
+
+  function finishInteraction() {
+    interactingRef.current = false
+    const pending = pendingRangeRef.current
+    pendingRangeRef.current = null
+    if (pending !== null) onChange?.(...pending)
+  }
+
+  const interactionEvents: InputHTMLAttributes<HTMLInputElement> = onChange ? {
+    onPointerDown: (event) => {
+      interactingRef.current = true
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+    },
+    onPointerUp: finishInteraction,
+    onPointerCancel: finishInteraction,
+    onLostPointerCapture: finishInteraction,
+    onBlur: finishInteraction,
+    onKeyDown: (event) => {
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) {
+        interactingRef.current = true
+      }
+    },
+    onKeyUp: finishInteraction,
+  } : {}
+
   return (
     <fieldset ref={fieldsetRef} className={styles.filter} style={rangeStyle}>
       <legend className={styles.legend}>{legend}</legend>
@@ -138,10 +194,7 @@ export function DualRangeFilter({
                 type="button"
                 aria-pressed={selected}
                 onClick={() => {
-                  setSelectedMinimum(presetMinimum)
-                  setSelectedMaximum(presetMaximum)
-                  setMinimumChanged(true)
-                  setMaximumChanged(true)
+                  changeRange(presetMinimum, presetMaximum, true, true)
                 }}
               >
                 {preset.label}
@@ -156,6 +209,7 @@ export function DualRangeFilter({
           <span className={styles.selectedTrack} />
         </div>
         <input
+          {...interactionEvents}
           className={`${styles.rangeInput} ${styles.minimumInput}${
             selectedMinimum === maximum ? ` ${styles.minimumOnTop}` : ''
           }`}
@@ -175,11 +229,11 @@ export function DualRangeFilter({
               maximum,
               step,
             )
-            setSelectedMinimum(Math.min(nextValue, selectedMaximum))
-            setMinimumChanged(true)
+            changeRange(Math.min(nextValue, selectedMaximum), selectedMaximum, true, false)
           }}
         />
         <input
+          {...interactionEvents}
           className={`${styles.rangeInput} ${styles.maximumInput}`}
           type="range"
           aria-label={`${legend} 최댓값`}
@@ -197,8 +251,7 @@ export function DualRangeFilter({
               maximum,
               step,
             )
-            setSelectedMaximum(Math.max(nextValue, selectedMinimum))
-            setMaximumChanged(true)
+            changeRange(selectedMinimum, Math.max(nextValue, selectedMinimum), false, true)
           }}
         />
       </div>

@@ -4,4 +4,5 @@ set -eu
 root=$(git rev-parse --show-toplevel)
 cd "$root"
 
+sh scripts/validate-local-artifacts.sh
 sh scripts/validate-harness.sh

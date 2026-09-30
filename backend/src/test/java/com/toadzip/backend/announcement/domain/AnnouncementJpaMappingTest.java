@@ -27,7 +27,7 @@ class AnnouncementJpaMappingTest {
         assertEntityAttributes(
                 "Announcement",
                 Set.of(
-                        "id",
+                        "id", "createdAt", "version", "adminModified", "adminDeleted", "sourceReviewRequired", "adminUpdatedAt",
                         "sourceAnnouncementIdentifier",
                         "previousSourceAnnouncementIdentifier",
                         "previousAnnouncement",
@@ -43,6 +43,11 @@ class AnnouncementJpaMappingTest {
                         "originalUrl",
                         "correctionCancellationReason",
                         "lhPanId",
+                        "lhReceptionPlaceOwned",
+                        "applicationScheduleReviewed",
+                        "revisionEvidenceUrl",
+                        "previousLhPanId",
+                        "lhPanIdReviewed",
                         "viewCount",
                         "actualCompetitionRate",
                         "predictedCompetitionRate",
@@ -65,7 +70,9 @@ class AnnouncementJpaMappingTest {
                         "supplyCategory",
                         "matchingFailureReason",
                         "totalSupplyHouseholdCount",
-                        "lhSourceSupplyRowIdentifier"
+                        "lhSourceSupplyRowIdentifier",
+                        "lhTotalSupplyHouseholdCountOwned",
+                        "lhTotalSupplyHouseholdCountEnriched", "adminModified"
                 )
         );
         assertEntityAttributes(
@@ -82,14 +89,15 @@ class AnnouncementJpaMappingTest {
                         "convertedDeposit",
                         "applicationCondition",
                         "displayOrder",
-                        "sourceSupplyTargetIdentifier"
+                        "sourceSupplyTargetIdentifier",
+                        "lhAmountPreservedReason"
                 )
         );
         assertEntityAttributes(
                 "AnnouncementSchedule",
                 Set.of(
                         "id", "announcement", "scheduleType", "name", "startAt", "endAt", "displayOrder",
-                        "sourceScheduleIdentifier"
+                        "sourceScheduleIdentifier", "complexName"
                 )
         );
         assertEntityAttributes(

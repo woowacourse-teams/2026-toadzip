@@ -2,6 +2,7 @@ package com.toadzip.backend.global.config;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -76,7 +77,7 @@ class OpenApiDocumentationIntegrationTest {
         HttpResponse<String> response = TestHttpClient.get(port, "/v3/api-docs");
 
         assertEquals(200, response.statusCode());
-        assertEquals("두꺼비집 API", JsonPath.read(response.body(), "$.info.title"));
+        assertEquals("공공주택 복덕방 API", JsonPath.read(response.body(), "$.info.title"));
         assertEquals("0.0.1", JsonPath.read(response.body(), "$.info.version"));
     }
 
@@ -87,7 +88,8 @@ class OpenApiDocumentationIntegrationTest {
         assertEquals(200, response.statusCode());
         assertAll(
                 () -> assertNotNull(JsonPath.read(response.body(), "$.paths['/api/v1/complexes'].get")),
-                () -> assertNotNull(JsonPath.read(response.body(), "$.paths['/api/v1/complexes/map'].get")),
+                () -> assertFalse(JsonPath.<Map<String, Object>>read(response.body(), "$.paths")
+                        .containsKey("/api/v1/complexes/map")),
                 () -> assertNotNull(JsonPath.read(response.body(), "$.paths['/api/v2/complexes/map'].get")),
                 () -> assertNotNull(JsonPath.read(
                         response.body(),
@@ -106,10 +108,10 @@ class OpenApiDocumentationIntegrationTest {
                 () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes", "southWestLng"),
                 () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes", "northEastLat"),
                 () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes", "northEastLng"),
-                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes/map", "southWestLat"),
-                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes/map", "southWestLng"),
-                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes/map", "northEastLat"),
-                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes/map", "northEastLng")
+                () -> assertRequiredQueryParameter(response.body(), "/api/v2/complexes/map", "southWestLat"),
+                () -> assertRequiredQueryParameter(response.body(), "/api/v2/complexes/map", "southWestLng"),
+                () -> assertRequiredQueryParameter(response.body(), "/api/v2/complexes/map", "northEastLat"),
+                () -> assertRequiredQueryParameter(response.body(), "/api/v2/complexes/map", "northEastLng")
         );
     }
 
@@ -138,13 +140,11 @@ class OpenApiDocumentationIntegrationTest {
         Set<String> expectedListParameters = new HashSet<>(COMMON_SEARCH_PARAMETERS);
         expectedListParameters.addAll(LIST_ONLY_PARAMETERS);
         List<Map<String, Object>> listParameters = parameters(response.body(), "/api/v1/complexes");
-        List<Map<String, Object>> mapParameters = parameters(response.body(), "/api/v1/complexes/map");
         Set<String> expectedV2MapParameters = new HashSet<>(COMMON_SEARCH_PARAMETERS);
         expectedV2MapParameters.addAll(V2_MAP_ONLY_PARAMETERS);
         List<Map<String, Object>> v2MapParameters = parameters(response.body(), "/api/v2/complexes/map");
         assertAll(
                 () -> assertExactQueryParameters(listParameters, expectedListParameters),
-                () -> assertExactQueryParameters(mapParameters, COMMON_SEARCH_PARAMETERS),
                 () -> assertExactQueryParameters(v2MapParameters, expectedV2MapParameters)
         );
     }
@@ -180,7 +180,7 @@ class OpenApiDocumentationIntegrationTest {
                 () -> assertEquals(20, sizeSchema.get("default")),
                 () -> assertTrue(queryParameterNames(response.body(), "/api/v1/complexes")
                         .containsAll(LIST_ONLY_PARAMETERS)),
-                () -> assertTrue(queryParameterNames(response.body(), "/api/v1/complexes/map")
+                () -> assertTrue(queryParameterNames(response.body(), "/api/v2/complexes/map")
                         .stream()
                         .noneMatch(LIST_ONLY_PARAMETERS::contains))
         );

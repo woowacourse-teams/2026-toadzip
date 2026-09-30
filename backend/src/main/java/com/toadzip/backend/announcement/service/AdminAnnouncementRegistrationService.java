@@ -56,7 +56,8 @@ public class AdminAnnouncementRegistrationService {
     }
 
     private HousingComplex findHousingComplex(long housingComplexId) {
-        return housingComplexRepository.findById(housingComplexId)
+        return housingComplexRepository.findByIdForUpdate(housingComplexId)
+                .filter(value -> !value.isAdminDeleted())
                 .orElseThrow(AdminHousingComplexNotFoundException::new);
     }
 

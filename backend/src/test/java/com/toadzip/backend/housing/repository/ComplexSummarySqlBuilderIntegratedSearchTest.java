@@ -43,8 +43,9 @@ class ComplexSummarySqlBuilderIntegratedSearchTest {
 
     private void assertActiveAnnouncementFilter(ComplexSummarySqlQuery query) {
         assertThat(query.sql())
-                .contains("representative.application_start_date <= :today")
-                .contains("representative.application_end_date >= :today");
+                .contains("schedule.state = 'CONFIRMED'")
+                .contains("schedule.housing_complex_id = housing_complex.id")
+                .contains("= 'APPLYING'");
         assertThat(query.parameters()).containsEntry("today", LocalDate.of(2026, 9, 1));
     }
 

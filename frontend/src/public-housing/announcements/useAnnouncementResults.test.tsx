@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type {
   AnnouncementSearchFilters,
@@ -13,6 +13,20 @@ import type {
 import { useAnnouncementResults } from './useAnnouncementResults.ts'
 
 describe('useAnnouncementResults', () => {
+  it('상세에서 확인한 조회수를 목록에 반영하고 늦은 페이지 응답으로 되돌리지 않는다', async () => {
+    const pending = deferred<AnnouncementPage>()
+    const repository = createRepository()
+    repository.findAnnouncementPage.mockReturnValueOnce(pending.promise)
+    const { result } = renderHook(() => useAnnouncementResults(repository, true))
+    act(() => result.current.updateViewCount('101', 7))
+    await act(async () => pending.resolve(announcementPage(['101'], null, false)))
+    await waitFor(() => expect(result.current.state.items[0]?.viewCount).toBe(7))
+    act(() => result.current.updateViewCount('101', 8))
+    expect(result.current.state.items[0]?.viewCount).toBe(8)
+    act(() => result.current.updateViewCount('101', 3))
+    expect(result.current.state.items[0]?.viewCount).toBe(8)
+  })
+
   it('공고 탭을 처음 열 때만 첫 페이지를 요청하고 탭을 오가도 유지한다', async () => {
     const repository = createRepository()
     const { rerender } = render(
@@ -27,6 +41,7 @@ describe('useAnnouncementResults', () => {
       null,
       20,
       expect.any(AbortSignal),
+      { applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
     )
 
     rerender(<Harness enabled={false} repository={repository} />)
@@ -72,6 +87,7 @@ describe('useAnnouncementResults', () => {
       'next',
       20,
       expect.any(AbortSignal),
+      { applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
     )
   })
 
@@ -125,7 +141,7 @@ describe('useAnnouncementResults', () => {
       'next',
       20,
       expect.any(AbortSignal),
-      seoulFilters,
+      { ...seoulFilters, applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
     )
 
     rerender(
@@ -142,7 +158,7 @@ describe('useAnnouncementResults', () => {
       null,
       20,
       expect.any(AbortSignal),
-      gyeonggiFilters,
+      { ...gyeonggiFilters, applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
     )
   })
 
@@ -189,6 +205,12 @@ describe('useAnnouncementResults', () => {
 
     expect(await screen.findByText('201')).toBeVisible()
     expect(repository.findAnnouncementPage).toHaveBeenCalledTimes(2)
+    expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(
+      null,
+      20,
+      expect.any(AbortSignal),
+      { applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
+    )
   })
 
   it('cursor 요청 오류는 기존 결과와 cursor를 보존해 같은 페이지를 재시도한다', async () => {
@@ -210,7 +232,39 @@ describe('useAnnouncementResults', () => {
       'next',
       20,
       expect.any(AbortSignal),
+      { applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
     )
+  })
+
+  it.each([
+    { selected: ['BEFORE_APPLICATION'], expected: ['BEFORE_APPLICATION'] },
+    { selected: ['APPLYING'], expected: ['APPLYING'] },
+    { selected: ['APPLYING', 'CLOSED'], expected: ['APPLYING'] },
+    { selected: ['CLOSED'], expected: ['BEFORE_APPLICATION', 'APPLYING'] },
+    { selected: [], expected: ['BEFORE_APPLICATION', 'APPLYING'] },
+  ] as const)('선택한 $selected 상태에서 마감을 제외하고 초기화 뒤에도 제외한다', async ({ selected, expected }) => {
+    const repository = createRepository()
+    const { rerender } = render(
+      <Harness enabled filters={{ applicationStatuses: selected }} repository={repository} />,
+    )
+    await screen.findByText('101')
+
+    expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(
+      null,
+      20,
+      expect.any(AbortSignal),
+      { applicationStatuses: expected },
+    )
+
+    rerender(<Harness enabled filters={{}} repository={repository} />)
+
+    expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(
+      null,
+      20,
+      expect.any(AbortSignal),
+      { applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
+    )
+    expect(await screen.findByText('101')).toBeVisible()
   })
 })
 
@@ -249,7 +303,6 @@ function createRepository(): PublicHousingRepository & {
     ),
     findComplexDetail: vi.fn(),
     findComplexPage: vi.fn(),
-    findMapComplexes: vi.fn(),
   }
 }
 

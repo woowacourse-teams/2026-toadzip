@@ -146,7 +146,8 @@ class HousingComplexDetailQueryTest {
                 "STAIR",
                 null,
                 100,
-                80
+                80,
+                null, null, null, null
         ));
 
         HousingComplexDetailResponse response = getExistingComplex();
@@ -177,7 +178,8 @@ class HousingComplexDetailQueryTest {
                 null,
                 null,
                 100,
-                80
+                80,
+                null, null, null, null
         ));
         when(detailRepository.findHousingTypes(COMPLEX_ID)).thenReturn(List.of(new HousingTypeDetailRow(
                 101L,
@@ -207,7 +209,7 @@ class HousingComplexDetailQueryTest {
                 () -> assertEquals(List.of("청년", "신혼부부"), beforeApplication.targets()),
                 () -> assertEquals(LocalDate.of(2026, 8, 28), beforeApplication.applicationStartAt()),
                 () -> assertEquals(LocalDate.of(2026, 8, 30), beforeApplication.applicationEndAt()),
-                () -> assertEquals(3, beforeApplication.dDay()),
+                () -> assertEquals(1, beforeApplication.dDay()),
                 () -> assertEquals("APPLYING", applying.applicationStatus()),
                 () -> assertEquals(0, applying.dDay())
         );
@@ -309,7 +311,8 @@ class HousingComplexDetailQueryTest {
                 row.corridorType(),
                 row.moveOutCountLastYear(),
                 row.totalHouseholdCount(),
-                row.totalParkingCount()
+                row.totalParkingCount(),
+                row.depositMin(), row.depositMax(), row.monthlyRentMin(), row.monthlyRentMax()
         ));
 
         assertThrows(IllegalStateException.class, () -> service.getComplex(COMPLEX_ID));
@@ -381,7 +384,9 @@ class HousingComplexDetailQueryTest {
                         LocalDate.of(2026, 8, 26),
                         LocalDate.of(2026, 8, 28),
                         LocalDate.of(2026, 8, 30),
-                        new BigDecimal("2.5000")
+                        new BigDecimal("2.5000"),
+                        "BEFORE_APPLICATION",
+                        LocalDate.of(2026, 8, 30)
                 ),
                 new CurrentAnnouncementRow(
                         201L,
@@ -390,7 +395,9 @@ class HousingComplexDetailQueryTest {
                         LocalDate.of(2026, 8, 25),
                         LocalDate.of(2026, 8, 20),
                         TODAY,
-                        null
+                        null,
+                        "APPLYING",
+                        TODAY
                 )
         ));
         when(detailRepository.findCurrentAnnouncementTargets(COMPLEX_ID, TODAY)).thenReturn(List.of(
@@ -424,7 +431,8 @@ class HousingComplexDetailQueryTest {
                 corridorType,
                 7,
                 100,
-                80
+                80,
+                null, null, null, null
         );
     }
 

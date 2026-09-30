@@ -14,9 +14,9 @@ class HibernateDdlProfileConfigurationTest {
     private final YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
 
     @Test
-    void 로컬과_개발_환경에서는_스키마를_자동으로_갱신한다() throws IOException {
-        assertThat(ddlAutoOf("local")).isEqualTo("update");
-        assertThat(ddlAutoOf("dev")).isEqualTo("update");
+    void 로컬과_개발_환경에서도_스키마를_검증만_한다() throws IOException {
+        assertThat(ddlAutoOf("local")).isEqualTo("validate");
+        assertThat(ddlAutoOf("dev")).isEqualTo("validate");
     }
 
     @Test

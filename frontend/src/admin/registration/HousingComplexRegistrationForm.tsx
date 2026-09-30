@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react'
+import { AddressPicker } from './AddressPicker'
+import { useRef, useState, type FormEvent } from 'react'
 import {
   createHousingComplex,
   type HousingComplexCreateRequest,
@@ -38,6 +39,7 @@ export function HousingComplexRegistrationForm({
   disabled: boolean
   onCreated: (housingComplex: HousingComplexCreateResponse) => void
 }) {
+  const formRef = useRef<HTMLFormElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -73,8 +75,8 @@ export function HousingComplexRegistrationForm({
   return (
     <section className="registration-card" aria-labelledby="housing-registration-title">
       <h2 id="housing-registration-title">단지 등록</h2>
-      <form className="registration-form" onSubmit={handleSubmit}>
-        <fieldset disabled={disabled}>
+      <form ref={formRef} className="registration-form" onSubmit={handleSubmit}>
+        <fieldset disabled={disabled || isSubmitting}>
           <legend>기본 정보</legend>
           <div className="registration-grid">
             <RegistrationTextField errors={fieldErrors} label="단지명" maxLength={255} name="name" required />
@@ -104,8 +106,14 @@ export function HousingComplexRegistrationForm({
           </div>
         </fieldset>
 
-        <fieldset disabled={disabled}>
+        <fieldset disabled={disabled || isSubmitting}>
           <legend>주소</legend>
+          <AddressPicker onSelect={address => {
+            for (const [key,value] of Object.entries(address)) {
+              const input = formRef.current?.elements.namedItem(`address.${key}`)
+              if (input instanceof HTMLInputElement && (typeof value === 'string' || typeof value === 'number')) input.value = String(value)
+            }
+          }} />
           <div className="registration-grid">
             <RegistrationTextField
               errors={fieldErrors}
@@ -159,7 +167,7 @@ export function HousingComplexRegistrationForm({
           </div>
         </fieldset>
 
-        <fieldset disabled={disabled}>
+        <fieldset disabled={disabled || isSubmitting}>
           <legend>시설 정보</legend>
           <div className="registration-grid">
             <RegistrationTextField

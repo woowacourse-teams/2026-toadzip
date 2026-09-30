@@ -22,11 +22,14 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     private String loginIdentifier;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;
+
+    @Column(length = 254)
+    private String email;
 
     private User(String loginIdentifier, LocalDateTime createdAt) {
         validateLoginIdentifier(loginIdentifier);
@@ -37,6 +40,12 @@ public class User {
 
     public static User create(String loginIdentifier, LocalDateTime createdAt) {
         return new User(loginIdentifier, createdAt);
+    }
+
+    public void updateEmail(String email) {
+        if (email != null && email.length() <= 254 && email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+            this.email = email;
+        }
     }
 
     private void validateLoginIdentifier(String loginIdentifier) {

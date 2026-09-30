@@ -1,0 +1,61 @@
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { RegionBoundaryControl } from './RegionBoundaryControl.tsx'
+
+function props() {
+  return {
+    name: '경기도 수원시 장안구',
+    status: 'ready' as const,
+    supported: true,
+    canRecenter: true,
+    onRecenter: vi.fn(),
+    onClear: vi.fn(),
+    onRetry: vi.fn(),
+  }
+}
+
+describe('RegionBoundaryControl', () => {
+  it('보이는 문구와 접근 가능한 이름이 일치하며 두 조작은 독립적으로 동작한다', () => {
+    const callbacks = props()
+    render(<RegionBoundaryControl {...callbacks} />)
+    const recenter = screen.getByRole('button', { name: '전체 보기' })
+    const clear = screen.getByRole('button', { name: '경계 지우기' })
+    expect(recenter).toHaveTextContent('전체 보기')
+    expect(clear).toHaveTextContent('경계 지우기')
+    recenter.focus()
+    expect(recenter).toHaveFocus()
+    fireEvent.click(recenter)
+    expect(callbacks.onRecenter).toHaveBeenCalledOnce()
+    expect(callbacks.onClear).not.toHaveBeenCalled()
+    fireEvent.click(clear)
+    expect(callbacks.onClear).toHaveBeenCalledOnce()
+  })
+
+  it('긴 지역명을 보존하고 조작부에서 출처 설명을 표시하지 않는다', () => {
+    const name = '제주특별자치도 서귀포시 아주 긴 지역 이름'
+    render(<RegionBoundaryControl {...props()} name={name} />)
+    expect(screen.getByText(name)).toHaveAttribute('title', name)
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('지도 표시에 맞게 단순화한 경계입니다.')).not.toBeInTheDocument()
+  })
+
+  it('실패 안내의 재시도는 전체 보기와 별도로 동작한다', () => {
+    const callbacks = props()
+    render(<RegionBoundaryControl {...callbacks} status="error" />)
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('지역 경계를 불러오지 못했습니다.')
+    fireEvent.click(within(alert).getByRole('button', { name: '경계 다시 시도' }))
+    expect(callbacks.onRetry).toHaveBeenCalledOnce()
+    expect(callbacks.onRecenter).not.toHaveBeenCalled()
+  })
+
+  it('로딩과 미지원 안내를 유지하고 좌표 없는 미지원 지역의 다시 보기는 비활성화한다', () => {
+    const callbacks = props()
+    const { rerender } = render(<RegionBoundaryControl {...callbacks} status="loading" />)
+    expect(screen.getByRole('status')).toHaveTextContent('지역 경계를 불러오는 중입니다.')
+    rerender(<RegionBoundaryControl {...callbacks} supported={false} canRecenter={false} status="idle" />)
+    expect(screen.getByRole('status')).toHaveTextContent('이 지역은 경계 정보를 제공하지 않습니다.')
+    expect(screen.getByRole('button', { name: '전체 보기' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '경계 지우기' })).toBeEnabled()
+  })
+})

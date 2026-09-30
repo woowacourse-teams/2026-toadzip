@@ -1,6 +1,8 @@
 package com.toadzip.backend.announcement.controller;
 
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
+import com.toadzip.backend.announcement.exception.AnnouncementImportDuplicatedException;
+import com.toadzip.backend.announcement.exception.InvalidAnnouncementImportException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementCursorException;
 import com.toadzip.backend.announcement.exception.InvalidAnnouncementRequestException;
 import com.toadzip.backend.announcement.exception.InvalidRegionCodeException;
@@ -26,6 +28,8 @@ public class AnnouncementExceptionAdvice {
     private static final String INVALID_REGION_CODE_MESSAGE = "지역 코드를 확인해 주세요.";
     private static final String ANNOUNCEMENT_NOT_FOUND = "ANNOUNCEMENT_NOT_FOUND";
     private static final String ANNOUNCEMENT_NOT_FOUND_MESSAGE = "모집 공고를 찾을 수 없습니다.";
+    private static final String ANNOUNCEMENT_IMPORT_INVALID = "ANNOUNCEMENT_IMPORT_INVALID";
+    private static final String ANNOUNCEMENT_IMPORT_DUPLICATED = "ANNOUNCEMENT_IMPORT_DUPLICATED";
 
     @ExceptionHandler(InvalidAnnouncementRequestException.class)
     public ResponseEntity<ErrorResponse> handleInvalidRequest(HttpServletRequest request) {
@@ -50,6 +54,27 @@ public class AnnouncementExceptionAdvice {
                 traceIdOf(request)
         );
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+    }
+
+    @ExceptionHandler(InvalidAnnouncementImportException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidAnnouncementImport(
+            InvalidAnnouncementImportException exception,
+            HttpServletRequest request
+    ) {
+        return badRequest(ANNOUNCEMENT_IMPORT_INVALID, exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(AnnouncementImportDuplicatedException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicatedAnnouncementImport(
+            AnnouncementImportDuplicatedException exception,
+            HttpServletRequest request
+    ) {
+        ErrorResponse response = new ErrorResponse(
+                ANNOUNCEMENT_IMPORT_DUPLICATED,
+                exception.getMessage(),
+                traceIdOf(request)
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
     }
 
     private ResponseEntity<ErrorResponse> badRequest(

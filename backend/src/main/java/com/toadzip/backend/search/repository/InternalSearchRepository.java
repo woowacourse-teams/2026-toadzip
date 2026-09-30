@@ -1,6 +1,7 @@
 package com.toadzip.backend.search.repository;
 
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
+import com.toadzip.backend.announcement.repository.ApplicationScheduleSql;
 import com.toadzip.backend.global.persistence.LegacyStoredValue;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.search.domain.SearchType;
@@ -28,9 +29,9 @@ public class InternalSearchRepository {
             """.strip();
 
     private static final String LATEST_LEAF = """
-            NOT EXISTS (
+            announcement.admin_deleted = false AND NOT EXISTS (
                 SELECT 1 FROM announcements successor
-                WHERE successor.previous_announcement_id = announcement.id
+                WHERE successor.previous_announcement_id = announcement.id AND successor.admin_deleted = false
             )
             """;
 
@@ -41,7 +42,8 @@ public class InternalSearchRepository {
     }
 
     public List<SearchSourceItem> findAnnouncements(IntegratedSearchCondition condition, int limit) {
-        Map<String, Object> parameters = baseParameters(condition, limit);
+        Map<String, Object> parameters = baseParameters(condition);
+        parameters.put("limit", limit);
         StringBuilder sql = new StringBuilder("""
                 SELECT announcement.id,
                        announcement.name,
@@ -49,12 +51,7 @@ public class InternalSearchRepository {
                        announcement.posted_date,
                        announcement.application_start_date,
                        announcement.application_end_date,
-                       CASE
-                           WHEN announcement.status IN ('CANCELLATION', '취소공고') THEN 'CANCELLED'
-                           WHEN announcement.application_start_date > :today THEN 'BEFORE_APPLICATION'
-                           WHEN announcement.application_end_date < :today THEN 'CLOSED'
-                           ELSE 'APPLYING'
-                       END AS application_status,
+                       %s AS application_status,
                        COALESCE((
                            SELECT STRING_AGG(DISTINCT complex.road_address, ' ')
                            FROM supply_rows supply_row
@@ -83,17 +80,16 @@ public class InternalSearchRepository {
                        ) AS longitude
                 FROM announcements announcement
                 WHERE
-                """).append(LATEST_LEAF);
-        addAnnouncementTokens(sql, parameters, condition);
-        addRentalTypes(sql, parameters, "announcement.supply_type", condition);
-        addAnnouncementStatuses(sql, parameters, condition);
+                """.formatted(ApplicationScheduleSql.status("announcement", null))).append(LATEST_LEAF);
+        addAnnouncementFilters(sql, parameters, condition);
         addAnnouncementOrder(sql);
         sql.append(", announcement.posted_date DESC, announcement.id DESC LIMIT :limit");
         return jdbcClient.sql(sql.toString()).params(parameters).query(this::mapAnnouncement).list();
     }
 
     public List<SearchSourceItem> findComplexes(IntegratedSearchCondition condition, int limit) {
-        Map<String, Object> parameters = baseParameters(condition, limit);
+        Map<String, Object> parameters = baseParameters(condition);
+        parameters.put("limit", limit);
         StringBuilder sql = new StringBuilder("""
                 SELECT complex.id,
                        complex.name,
@@ -105,9 +101,7 @@ public class InternalSearchRepository {
                 FROM housing_complexes complex
                 WHERE 1 = 1
                 """);
-        addComplexTokens(sql, parameters, condition);
-        addRentalTypes(sql, parameters, "complex.supply_type", condition);
-        addComplexAnnouncementFilter(sql, parameters, condition);
+        addComplexFilters(sql, parameters, condition);
         sql.append("""
                  ORDER BY CASE
                      WHEN LOWER(complex.name) = :exactQuery
@@ -120,10 +114,45 @@ public class InternalSearchRepository {
         return jdbcClient.sql(sql.toString()).params(parameters).query(this::mapComplex).list();
     }
 
-    private Map<String, Object> baseParameters(IntegratedSearchCondition condition, int limit) {
+    public long countAnnouncements(IntegratedSearchCondition condition) {
+        Map<String, Object> parameters = baseParameters(condition);
+        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM announcements announcement WHERE ")
+                .append(LATEST_LEAF);
+        addAnnouncementFilters(sql, parameters, condition);
+        return jdbcClient.sql(sql.toString()).params(parameters).query(Long.class).single();
+    }
+
+    public long countComplexes(IntegratedSearchCondition condition) {
+        Map<String, Object> parameters = baseParameters(condition);
+        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM housing_complexes complex WHERE 1 = 1");
+        addComplexFilters(sql, parameters, condition);
+        return jdbcClient.sql(sql.toString()).params(parameters).query(Long.class).single();
+    }
+
+    private void addAnnouncementFilters(
+            StringBuilder sql,
+            Map<String, Object> parameters,
+            IntegratedSearchCondition condition
+    ) {
+        addAnnouncementTokens(sql, parameters, condition);
+        addRentalTypes(sql, parameters, "announcement.supply_type", condition);
+        addAnnouncementStatuses(sql, parameters, condition);
+    }
+
+    private void addComplexFilters(
+            StringBuilder sql,
+            Map<String, Object> parameters,
+            IntegratedSearchCondition condition
+    ) {
+        sql.append(" AND complex.admin_deleted = false");
+        addComplexTokens(sql, parameters, condition);
+        addRentalTypes(sql, parameters, "complex.supply_type", condition);
+        addComplexAnnouncementFilter(sql, parameters, condition);
+    }
+
+    private Map<String, Object> baseParameters(IntegratedSearchCondition condition) {
         Map<String, Object> parameters = new HashMap<>();
         parameters.put("today", condition.today());
-        parameters.put("limit", limit);
         parameters.put("exactQuery", condition.match().normalizedQuery().toLowerCase(java.util.Locale.ROOT));
         parameters.put("prefixQuery", prefixLike(condition.match().normalizedQuery()));
         return parameters;
@@ -196,16 +225,7 @@ public class InternalSearchRepository {
     }
 
     private String announcementStatus(ApplicationStatus status) {
-        return switch (status) {
-            case BEFORE_APPLICATION -> "announcement.status NOT IN ('CANCELLATION', '취소공고')"
-                    + " AND announcement.application_start_date > :today";
-            case APPLYING -> "announcement.status NOT IN ('CANCELLATION', '취소공고')"
-                    + " AND announcement.application_start_date <= :today"
-                    + " AND announcement.application_end_date >= :today";
-            case CLOSED -> "announcement.status NOT IN ('CANCELLATION', '취소공고')"
-                    + " AND announcement.application_end_date < :today";
-            case CANCELLED -> "announcement.status IN ('CANCELLATION', '취소공고')";
-        };
+        return ApplicationScheduleSql.status("announcement", null) + " = '" + status.name() + "'";
     }
 
     private void addComplexAnnouncementFilter(
@@ -240,10 +260,7 @@ public class InternalSearchRepository {
     }
 
     private String activeAnnouncementExists() {
-        return statusAnnouncementStart()
-                + " AND announcement.status NOT IN ('CANCELLATION', '취소공고')"
-                + " AND announcement.application_start_date <= :today"
-                + " AND announcement.application_end_date >= :today";
+        return statusAnnouncementStart() + " AND " + complexStatus(ApplicationStatus.APPLYING);
     }
 
     private String statusAnnouncementStart() {
@@ -253,13 +270,7 @@ public class InternalSearchRepository {
     }
 
     private String complexStatus(ApplicationStatus status) {
-        return switch (status) {
-            case BEFORE_APPLICATION -> "announcement.application_start_date > :today";
-            case APPLYING -> "announcement.application_start_date <= :today"
-                    + " AND announcement.application_end_date >= :today";
-            case CLOSED -> "announcement.application_end_date < :today";
-            case CANCELLED -> "1 = 0";
-        };
+        return ApplicationScheduleSql.status("announcement", "complex.id") + " = '" + status.name() + "'";
     }
 
     private SearchSourceItem mapAnnouncement(ResultSet resultSet, int rowNumber) throws SQLException {

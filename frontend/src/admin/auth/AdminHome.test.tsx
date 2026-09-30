@@ -6,7 +6,14 @@ import {
   type HousingComplexCreateResponse,
 } from '../registration/api'
 import type { DataPipelineType } from '../ingest/api'
-import { AdminHome } from './AdminHome'
+import { MemoryRouter, Route, Routes, Link } from 'react-router'
+import { HousingComplexRegistrationPage } from '../registration/HousingComplexRegistrationPage'
+import { AnnouncementRegistrationPage } from '../registration/AnnouncementRegistrationPage'
+
+vi.mock('../management/api', async importOriginal => ({
+  ...(await importOriginal<typeof import('../management/api')>()),
+  detail: vi.fn(async () => ({summary:{name:'두꺼비 행복주택',subtitle:'서울시 중구 세종대로 1',deleted:false}})),
+}))
 
 const apiMocks = vi.hoisted(() => ({
   createAnnouncement: vi.fn(),
@@ -25,6 +32,9 @@ vi.mock('../ingest/api', async (importOriginal) => ({
   getDataPipelineStatus: apiMocks.getDataPipelineStatus,
   startDataPipeline: apiMocks.startDataPipeline,
 }))
+
+vi.mock('../ingest/DataPipelineControl', () => ({ DataPipelineControl: () => null }))
+vi.mock('../ingest/LocationSummaryUpload', () => ({ LocationSummaryUpload: () => null }))
 
 beforeEach(() => {
   apiMocks.createAnnouncement.mockReset()
@@ -46,20 +56,19 @@ beforeEach(() => {
   ))
 })
 
-describe('AdminHome', () => {
-  it('단지와 공고 등록 폼을 표시하고 단지가 없으면 공고 저장을 막는다', () => {
-    render(<AdminHome />)
-
-    expect(screen.getByRole('heading', { name: '단지 등록' })).toBeVisible()
-    expect(screen.getByRole('heading', { name: '공고 등록' })).toBeVisible()
-    expect(screen.getByRole('button', { name: '단지 저장' })).toBeEnabled()
+describe('분리된 단지·공고 등록 흐름', () => {
+  it('공고 직접 입력은 단지 확인 전 저장을 막고 다른 업무 폼은 표시하지 않는다', () => {
+    renderPages('/admin/announcements?mode=direct')
+    expect(screen.getByRole('heading', { name: '직접 입력' })).toBeVisible()
+    expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'JSON 가져오기' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '공고 저장' })).toBeDisabled()
   })
 
   it('단지 저장 중 버튼을 잠그고 성공한 단지를 공고 폼에 자동 선택한다', async () => {
     const response = deferred<HousingComplexCreateResponse>()
     apiMocks.createHousingComplex.mockReturnValue(response.promise)
-    render(<AdminHome />)
+    renderPages()
     fillHousingForm()
 
     submitWithButton('단지 저장')
@@ -81,15 +90,11 @@ describe('AdminHome', () => {
       response.resolve(housingResponse())
     })
 
-    expect(screen.getByText(/선택 단지:/)).toHaveTextContent(
-      '선택 단지: 두꺼비 행복주택 · 서울시 중구 세종대로 1',
-    )
+    expect(screen.getByRole('heading', {name:'등록한 단지 상세'})).toBeVisible()
+    fireEvent.click(screen.getByRole('link', { name: '이 단지에 공고 입력 →' }))
+    expect(await screen.findByText(/선택 단지:/)).toHaveTextContent('두꺼비 행복주택 · 서울시 중구 세종대로 1')
     expect(screen.getByRole('button', { name: '공고 저장' })).toBeEnabled()
-    expect(screen.getByText('두꺼비 행복주택 단지를 저장했습니다.')).toHaveAttribute(
-      'role',
-      'status',
-    )
-    expect(screen.getByLabelText('단지명')).toHaveValue('')
+
   })
 
   it('단지 저장 실패 시 입력값과 필드 오류를 유지한다', async () => {
@@ -98,7 +103,7 @@ describe('AdminHome', () => {
         name: '필수 값입니다.',
       }),
     )
-    render(<AdminHome />)
+    renderPages()
     fillHousingForm()
 
     submitWithButton('단지 저장')
@@ -113,9 +118,10 @@ describe('AdminHome', () => {
     apiMocks.createHousingComplex.mockResolvedValue(housingResponse())
     const announcementResponse = deferred<AnnouncementCreateResponse>()
     apiMocks.createAnnouncement.mockReturnValue(announcementResponse.promise)
-    render(<AdminHome />)
+    renderPages()
     fillHousingForm()
     submitWithButton('단지 저장')
+    fireEvent.click(await screen.findByRole('link', { name: '이 단지에 공고 입력 →' }))
     await screen.findByText(/선택 단지:/)
     fillAnnouncementForm()
 
@@ -170,16 +176,17 @@ describe('AdminHome', () => {
     apiMocks.createHousingComplex.mockResolvedValue(housingResponse())
     const announcementResponse = deferred<AnnouncementCreateResponse>()
     apiMocks.createAnnouncement.mockReturnValue(announcementResponse.promise)
-    render(<AdminHome />)
+    renderPages()
     fillHousingForm()
     submitWithButton('단지 저장')
+    fireEvent.click(await screen.findByRole('link', { name: '이 단지에 공고 입력 →' }))
     await screen.findByText(/선택 단지:/)
     fillAnnouncementForm()
 
     submitWithButton('공고 저장')
 
-    expect(screen.getByRole('button', { name: '단지 저장' })).toBeDisabled()
-    expect(screen.getByLabelText('단지명')).toBeDisabled()
+    expect(screen.getByRole('button', { name: '단지 검색' })).toBeDisabled()
+    expect(screen.getByLabelText('단지명·주소 검색')).toBeDisabled()
 
     await act(async () => {
       announcementResponse.resolve({
@@ -190,7 +197,7 @@ describe('AdminHome', () => {
       })
     })
 
-    expect(screen.getByRole('button', { name: '단지 저장' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '단지 검색' })).toBeEnabled()
   })
 
   it('공고 저장 실패 시 입력값을 유지한다', async () => {
@@ -198,9 +205,10 @@ describe('AdminHome', () => {
     apiMocks.createAnnouncement.mockRejectedValue(
       new AdminRegistrationApiError(400, '접수 기간이 올바르지 않습니다.'),
     )
-    render(<AdminHome />)
+    renderPages()
     fillHousingForm()
     submitWithButton('단지 저장')
+    fireEvent.click(await screen.findByRole('link', { name: '이 단지에 공고 입력 →' }))
     await screen.findByText(/선택 단지:/)
     fillAnnouncementForm()
 
@@ -270,4 +278,13 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
     resolvePromise = resolve
   })
   return { promise, resolve: resolvePromise! }
+}
+
+function renderPages(path = '/admin/complexes') {
+  return render(<MemoryRouter initialEntries={[path]}><Routes>
+    <Route path="/admin/complexes" element={<HousingComplexRegistrationPage />} />
+    <Route path="/admin/complexes/:id" element={<><h1>등록한 단지 상세</h1><Link to="/admin/announcements/new?mode=direct&complexId=42">이 단지에 공고 입력 →</Link></>} />
+    <Route path="/admin/announcements/new" element={<AnnouncementRegistrationPage />} />
+    <Route path="/admin/announcements" element={<AnnouncementRegistrationPage />} />
+  </Routes></MemoryRouter>)
 }

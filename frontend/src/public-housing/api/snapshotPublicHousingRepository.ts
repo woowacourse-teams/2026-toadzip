@@ -1,3 +1,7 @@
+import {
+  createHttpHousingMapRepository,
+  type HousingMapRepository,
+} from './housingMapRepository.ts'
 import type {
   MapBounds,
   RawAnnouncementDetail,
@@ -55,12 +59,18 @@ interface CursorResult {
   readonly offset: number
 }
 
-export function createSnapshotPublicHousingRepository(
+export function createSnapshotPublicHousingRepositories(
   source: SnapshotSource,
-): PublicHousingRepository {
+): {
+  readonly repository: PublicHousingRepository
+  readonly mapRepository: HousingMapRepository
+} {
   const loadSnapshot = createSnapshotLoader(source)
   const fetcher = createSnapshotFetcher(loadSnapshot)
-  return createHttpPublicHousingRepository({ apiBaseUrl: '', fetcher })
+  return {
+    repository: createHttpPublicHousingRepository({ apiBaseUrl: '', fetcher }),
+    mapRepository: createHttpHousingMapRepository({ apiBaseUrl: '', fetcher }),
+  }
 }
 
 function createSnapshotLoader(source: SnapshotSource) {
@@ -98,7 +108,7 @@ function routeSnapshotRequest(
   snapshot: PublicHousingSnapshotV1,
   url: URL,
 ): Response {
-  if (url.pathname === '/api/v1/complexes/map') {
+  if (url.pathname === '/api/v2/complexes/map') {
     return mapResponse(snapshot, url)
   }
   if (url.pathname === '/api/v1/complexes') {
@@ -131,7 +141,13 @@ function mapResponse(snapshot: PublicHousingSnapshotV1, url: URL): Response {
     isInsideBounds(item, bounds)
     && (!filterRequested || matchingIds.has(item.complexId))
   ))
-  return successResponse({ items })
+  return successResponse({
+    resolvedStage: 4,
+    representation: 'INDIVIDUAL',
+    policyVersion: 'local-snapshot-individual-v1',
+    regionDatasetVersion: 'local-snapshot-v1',
+    nodes: items.map((item) => ({ ...item, type: 'INDIVIDUAL' })),
+  })
 }
 
 function complexPageResponse(
@@ -341,12 +357,6 @@ function complexMatchesFilters(
         (candidate) => candidate.announcementId
           === representative.announcementId,
       )
-  const announcementDetail = representative === null
-    ? undefined
-    : snapshot.announcementDetails.find(
-        (candidate) => candidate.announcementId
-          === representative.announcementId,
-      )
   const detail = snapshot.complexDetails.find(
     (candidate) => candidate.complexId === item.complexId,
   )
@@ -377,9 +387,8 @@ function complexMatchesFilters(
     )
     && matchesHousingFilters(
       search,
-      item.complexId,
+      item,
       detail,
-      announcementDetail,
     )
     && matchesYearRange(search, completionYear)
 }
@@ -444,62 +453,20 @@ function matchesRepeated(
 
 function matchesHousingFilters(
   search: URLSearchParams,
-  complexId: number,
+  item: RawComplexListItem,
   detail: RawComplexDetail | undefined,
-  representativeDetail: RawAnnouncementDetail | undefined,
 ) {
   const areaRequested = rangeRequested(
     search,
     'minExclusiveArea',
     'maxExclusiveArea',
   )
-  const depositRequested = rangeRequested(
-    search,
-    'minDeposit',
-    'maxDeposit',
-  )
-  const monthlyRentRequested = rangeRequested(
-    search,
-    'minMonthlyRent',
-    'maxMonthlyRent',
-  )
-  if (!areaRequested && !depositRequested && !monthlyRentRequested) {
-    return true
-  }
-  if (!depositRequested && !monthlyRentRequested) {
-    return detail?.housingTypes.some((housingType) => matchesValueRange(
-      search,
-      'minExclusiveArea',
-      'maxExclusiveArea',
-      housingType.exclusiveArea,
-    )) ?? false
-  }
-  if (representativeDetail === undefined) {
-    return false
-  }
-  return representativeDetail.supplyRows.some((supplyRow) => (
-    supplyRow.complex?.complexId === complexId
-    && matchesValueRange(
-      search,
-      'minExclusiveArea',
-      'maxExclusiveArea',
-      supplyRow.housingType?.exclusiveArea ?? null,
-    )
-    && supplyRow.targets.some((target) => (
-      matchesValueRange(
-        search,
-        'minDeposit',
-        'maxDeposit',
-        target.deposit,
-      )
-      && matchesValueRange(
-        search,
-        'minMonthlyRent',
-        'maxMonthlyRent',
-        target.monthlyRent,
-      )
-    ))
-  ))
+  const areaMatches = !areaRequested || (detail?.housingTypes.some((housingType) =>
+    matchesValueRange(search, 'minExclusiveArea', 'maxExclusiveArea', housingType.exclusiveArea)
+  ) ?? false)
+  return areaMatches
+    && matchesValueRange(search, 'minDeposit', 'maxDeposit', item.depositMin)
+    && matchesValueRange(search, 'minMonthlyRent', 'maxMonthlyRent', item.monthlyRentMin)
 }
 
 function rangeRequested(

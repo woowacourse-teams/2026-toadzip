@@ -178,7 +178,9 @@ function parseSharedFilters(
   const applicationStatuses = enumValues(
     search,
     `${prefix}ApplicationStatuses`,
-    APPLICATION_STATUSES,
+    prefix === 'announcement'
+      ? APPLICATION_STATUSES.filter((value) => value !== 'CLOSED')
+      : APPLICATION_STATUSES,
   )
   const agencyCodes = enumValues(
     search,
@@ -212,7 +214,9 @@ function appendSharedFilters(
   appendRepeated(
     search,
     `${prefix}ApplicationStatuses`,
-    filters.applicationStatuses,
+    prefix === 'announcement'
+      ? filters.applicationStatuses?.filter((value) => value !== 'CLOSED')
+      : filters.applicationStatuses,
   )
   appendRepeated(search, `${prefix}AgencyCodes`, filters.agencyCodes)
   appendRepeated(

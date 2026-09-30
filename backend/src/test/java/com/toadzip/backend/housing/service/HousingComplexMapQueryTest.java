@@ -16,11 +16,13 @@ import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.MapBounds;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.dto.request.HousingComplexSearchRequest;
-import com.toadzip.backend.housing.dto.response.HousingComplexMapItemResponse;
-import com.toadzip.backend.housing.dto.response.HousingComplexMapResponse;
+import com.toadzip.backend.housing.dto.response.HousingMapIndividualNodeResponse;
+import com.toadzip.backend.housing.dto.response.HousingMapResponse;
+import com.toadzip.backend.housing.dto.response.HousingMapRepresentation;
 import com.toadzip.backend.housing.exception.InvalidRegionCodeException;
 import com.toadzip.backend.housing.repository.ComplexSummaryQueryRepository;
 import com.toadzip.backend.housing.repository.ComplexSummaryRow;
+import com.toadzip.backend.housing.repository.CsvMapClusteringZoomPolicyRepository;
 import com.toadzip.backend.housing.repository.HousingComplexFilterCondition;
 import com.toadzip.backend.housing.repository.HousingComplexSearchCondition;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
@@ -38,6 +40,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.springframework.core.io.ClassPathResource;
 
 class HousingComplexMapQueryTest {
 
@@ -55,7 +58,7 @@ class HousingComplexMapQueryTest {
 
     private ComplexSummaryQueryRepository repository;
 
-    private HousingComplexQueryService service;
+    private HousingMapQueryService service;
 
     private RegionCodeResolver regionCodeResolver;
 
@@ -75,11 +78,14 @@ class HousingComplexMapQueryTest {
         when(regionCodeResolver.filterCodes("99")).thenReturn(Optional.empty());
         HousingComplexCodeMapper codeMapper = new HousingComplexCodeMapper();
         HousingComplexSummaryMapper summaryMapper = new HousingComplexSummaryMapper(codeMapper);
-        service = new HousingComplexQueryService(
-                repository,
-                summaryMapper,
+        service = new HousingMapQueryService(
                 new HousingComplexSearchRequestNormalizer(regionCodeResolver, CLOCK),
-                CLOCK
+                new CsvMapClusteringZoomPolicyRepository(
+                        new ClassPathResource("map-clustering/stage-transitions.csv")
+                ),
+                new HousingMapResponseFactory(
+                        mock(MapClusteringAggregateNodeQuery.class), repository, summaryMapper
+                )
         );
     }
 
@@ -87,7 +93,7 @@ class HousingComplexMapQueryTest {
     void 목록과_같은_정규화로_지도_검색조건을_조립해_repository에_전달한다() {
         when(repository.findAll(any(HousingComplexSearchCondition.class))).thenReturn(List.of());
 
-        service.getComplexesForMap(fullSearchRequest("12210"));
+        individualNodes(fullSearchRequest("12210"));
 
         ArgumentCaptor<HousingComplexSearchCondition> conditionCaptor =
                 ArgumentCaptor.forClass(HousingComplexSearchCondition.class);
@@ -124,7 +130,7 @@ class HousingComplexMapQueryTest {
     void 통합_시도_지역은_현행과_과거_시군구_코드_집합으로_지도_검색조건에_전달한다() {
         when(repository.findAll(any(HousingComplexSearchCondition.class))).thenReturn(List.of());
 
-        service.getComplexesForMap(fullSearchRequest("12"));
+        individualNodes(fullSearchRequest("12"));
 
         ArgumentCaptor<HousingComplexSearchCondition> conditionCaptor =
                 ArgumentCaptor.forClass(HousingComplexSearchCondition.class);
@@ -143,7 +149,7 @@ class HousingComplexMapQueryTest {
     void 등록되지_않은_시도_지역은_repository_호출_전에_거부한다() {
         assertThrows(
                 InvalidRegionCodeException.class,
-                () -> service.getComplexesForMap(fullSearchRequest("99"))
+                () -> individualNodes(fullSearchRequest("99"))
         );
 
         verifyNoInteractions(repository);
@@ -153,7 +159,7 @@ class HousingComplexMapQueryTest {
     void 상위_시_지역은_하위_구만_지도_검색조건에_포함한다() {
         when(repository.findAll(any(HousingComplexSearchCondition.class))).thenReturn(List.of());
 
-        service.getComplexesForMap(fullSearchRequest("41110"));
+        individualNodes(fullSearchRequest("41110"));
 
         ArgumentCaptor<HousingComplexSearchCondition> conditionCaptor =
                 ArgumentCaptor.forClass(HousingComplexSearchCondition.class);
@@ -181,8 +187,8 @@ class HousingComplexMapQueryTest {
                 "300000"
         )));
 
-        HousingComplexMapResponse response = service.getComplexesForMap(baseSearchRequest());
-        HousingComplexMapItemResponse item = response.items().getFirst();
+        List<HousingMapIndividualNodeResponse> response = individualNodes(baseSearchRequest());
+        HousingMapIndividualNodeResponse item = response.getFirst();
 
         assertAll(
                 () -> assertEquals(17L, item.complexId()),
@@ -228,7 +234,7 @@ class HousingComplexMapQueryTest {
                 null
         )));
 
-        String rentalType = service.getComplexesForMap(baseSearchRequest()).items().getFirst().rentalType();
+        String rentalType = individualNodes(baseSearchRequest()).getFirst().rentalType();
 
         assertEquals(expectedCode, rentalType);
     }
@@ -260,7 +266,7 @@ class HousingComplexMapQueryTest {
                 null
         )));
 
-        HousingComplexMapItemResponse item = service.getComplexesForMap(baseSearchRequest()).items().getFirst();
+        HousingMapIndividualNodeResponse item = individualNodes(baseSearchRequest()).getFirst();
 
         assertAll(
                 () -> assertEquals(expectedCode, item.agency().code()),
@@ -281,7 +287,7 @@ class HousingComplexMapQueryTest {
                 null
         )));
 
-        assertThrows(IllegalStateException.class, () -> service.getComplexesForMap(baseSearchRequest()));
+        assertThrows(IllegalStateException.class, () -> individualNodes(baseSearchRequest()));
     }
 
     @Test
@@ -297,7 +303,7 @@ class HousingComplexMapQueryTest {
                 null
         )));
 
-        assertThrows(IllegalStateException.class, () -> service.getComplexesForMap(baseSearchRequest()));
+        assertThrows(IllegalStateException.class, () -> individualNodes(baseSearchRequest()));
     }
 
     @Test
@@ -313,7 +319,7 @@ class HousingComplexMapQueryTest {
                 null
         )));
 
-        HousingComplexMapItemResponse item = service.getComplexesForMap(baseSearchRequest()).items().getFirst();
+        HousingMapIndividualNodeResponse item = individualNodes(baseSearchRequest()).getFirst();
 
         assertAll(
                 () -> assertNull(item.depositMin()),
@@ -330,8 +336,8 @@ class HousingComplexMapQueryTest {
                 row(9L, "큰 ID 단지", "NATIONAL_RENTAL", "SH", null, null, null, null)
         ));
 
-        List<Long> complexIds = service.getComplexesForMap(baseSearchRequest()).items().stream()
-                .map(HousingComplexMapItemResponse::complexId)
+        List<Long> complexIds = individualNodes(baseSearchRequest()).stream()
+                .map(HousingMapIndividualNodeResponse::complexId)
                 .toList();
 
         assertEquals(List.of(3L, 9L), complexIds);
@@ -351,7 +357,16 @@ class HousingComplexMapQueryTest {
                 null
         )));
 
-        assertThrows(ArithmeticException.class, () -> service.getComplexesForMap(baseSearchRequest()));
+        assertThrows(ArithmeticException.class, () -> individualNodes(baseSearchRequest()));
+    }
+
+    private List<HousingMapIndividualNodeResponse> individualNodes(HousingComplexSearchRequest request) {
+        HousingMapResponse response = service.getMap(request, new BigDecimal("14.00"), 3);
+        assertEquals(4, response.resolvedStage());
+        assertEquals(HousingMapRepresentation.INDIVIDUAL, response.representation());
+        return response.nodes().stream()
+                .map(HousingMapIndividualNodeResponse.class::cast)
+                .toList();
     }
 
     private HousingComplexSearchRequest fullSearchRequest(String regionCode) {
@@ -434,7 +449,9 @@ class HousingComplexMapQueryTest {
                 null,
                 null,
                 null,
-                LocalDate.of(2020, 1, 1)
+                LocalDate.of(2020, 1, 1),
+                null,
+                null
         );
     }
 

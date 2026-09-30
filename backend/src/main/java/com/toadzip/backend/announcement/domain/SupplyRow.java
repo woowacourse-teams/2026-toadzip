@@ -4,6 +4,7 @@ import static jakarta.persistence.EnumType.STRING;
 import static jakarta.persistence.FetchType.LAZY;
 import static lombok.AccessLevel.PROTECTED;
 
+import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import jakarta.persistence.Column;
@@ -33,6 +34,27 @@ import lombok.NoArgsConstructor;
 )
 @NoArgsConstructor(access = PROTECTED)
 public class SupplyRow {
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminModified;
+
+    public void reviseByAdmin(HousingComplex complex, HousingType type, String complexName,
+            String typeName, String pnu, YearMonth moveInMonth, SupplyCategory category, Integer count) {
+        SupplyRow incoming = create(announcement, complex, type, sourceSupplyRowIdentifier, displayOrder,
+                complexName, typeName, pnu, moveInMonth, category, null, count);
+        housingComplex = incoming.housingComplex;
+        housingType = incoming.housingType;
+        sourceComplexName = incoming.sourceComplexName;
+        sourceHousingTypeName = incoming.sourceHousingTypeName;
+        supplyPnu = incoming.supplyPnu;
+        expectedMoveInMonth = incoming.expectedMoveInMonth;
+        supplyCategory = incoming.supplyCategory;
+        totalSupplyHouseholdCount = incoming.totalSupplyHouseholdCount;
+        matchingFailureReason = null;
+        adminModified = true;
+    }
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -77,6 +99,12 @@ public class SupplyRow {
     private Integer totalSupplyHouseholdCount;
 
     private String lhSourceSupplyRowIdentifier;
+
+    @Column(nullable = false)
+    private boolean lhTotalSupplyHouseholdCountOwned;
+
+    @Column(nullable = false)
+    private boolean lhTotalSupplyHouseholdCountEnriched;
 
     private SupplyRow(
             Announcement announcement,
@@ -145,18 +173,30 @@ public class SupplyRow {
         );
     }
 
-    public boolean updateFromSource(
+    public boolean updateFromMyHome(
             HousingComplex housingComplex,
             HousingType housingType,
             int displayOrder,
             String sourceComplexName,
             String sourceHousingTypeName,
             String supplyPnu,
-            YearMonth expectedMoveInMonth,
             SupplyCategory supplyCategory,
             String matchingFailureReason,
             Integer totalSupplyHouseholdCount
     ) {
+        if (announcement.isAdminDeleted()) {
+            return false;
+        }
+        if (adminModified) {
+            return updateDisplayOrder(displayOrder);
+        }
+        boolean releasesLhEnrichment = announcement.getProvider() != null
+                && announcement.getProvider() != AgencyCode.LH;
+        boolean preserveLhHouseholdCount = !releasesLhEnrichment && lhTotalSupplyHouseholdCountOwned;
+        YearMonth ownedExpectedMoveInMonth = releasesLhEnrichment ? null : expectedMoveInMonth;
+        Integer ownedTotalSupplyHouseholdCount = preserveLhHouseholdCount
+                ? this.totalSupplyHouseholdCount
+                : totalSupplyHouseholdCount;
         SupplyRow incoming = new SupplyRow(
                 announcement,
                 housingComplex,
@@ -166,15 +206,63 @@ public class SupplyRow {
                 sourceComplexName,
                 sourceHousingTypeName,
                 supplyPnu,
-                expectedMoveInMonth,
+                ownedExpectedMoveInMonth,
                 supplyCategory,
                 matchingFailureReason,
-                totalSupplyHouseholdCount
+                ownedTotalSupplyHouseholdCount
         );
-        if (hasSameSourceValues(incoming)) {
+        boolean clearsLhOwnership = releasesLhEnrichment
+                && (lhSourceSupplyRowIdentifier != null || lhTotalSupplyHouseholdCountOwned);
+        if (hasSameSourceValues(incoming) && !clearsLhOwnership) {
             return false;
         }
         applySourceValues(incoming);
+        if (clearsLhOwnership) {
+            lhSourceSupplyRowIdentifier = null;
+            lhTotalSupplyHouseholdCountOwned = false;
+            lhTotalSupplyHouseholdCountEnriched = false;
+        }
+        return true;
+    }
+
+    private boolean updateDisplayOrder(int displayOrder) {
+        validateNonNegative(displayOrder, "표시 순서");
+        if (this.displayOrder == displayOrder) {
+            return false;
+        }
+        this.displayOrder = displayOrder;
+        return true;
+    }
+
+    public boolean resolveFromLhSupply(
+            String sourceSupplyRowIdentifier,
+            Integer resolvedTotalSupplyHouseholdCount,
+            Integer lhSuppliedHouseholdCount
+    ) {
+        if (adminModified || announcement.isAdminDeleted()) {
+            return false;
+        }
+        boolean sourceChanged = !Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier);
+        if (sourceChanged) {
+            boolean changed = !Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier)
+                    || !Objects.equals(totalSupplyHouseholdCount, resolvedTotalSupplyHouseholdCount)
+                    || lhTotalSupplyHouseholdCountOwned != (lhSuppliedHouseholdCount != null)
+                    || lhTotalSupplyHouseholdCountEnriched;
+            lhSourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
+            totalSupplyHouseholdCount = resolvedTotalSupplyHouseholdCount;
+            lhTotalSupplyHouseholdCountOwned = lhSuppliedHouseholdCount != null;
+            lhTotalSupplyHouseholdCountEnriched = false;
+            return changed;
+        }
+        if (lhSuppliedHouseholdCount == null || lhTotalSupplyHouseholdCountEnriched) {
+            return false;
+        }
+        if (Objects.equals(totalSupplyHouseholdCount, lhSuppliedHouseholdCount)
+                && lhTotalSupplyHouseholdCountOwned) {
+            return false;
+        }
+        totalSupplyHouseholdCount = lhSuppliedHouseholdCount;
+        lhTotalSupplyHouseholdCountOwned = true;
         return true;
     }
 
@@ -209,14 +297,31 @@ public class SupplyRow {
             YearMonth expectedMoveInMonth,
             Integer totalSupplyHouseholdCount
     ) {
+        if (adminModified || announcement.isAdminDeleted()) {
+            return false;
+        }
+        YearMonth ownedExpectedMoveInMonth = expectedMoveInMonth == null
+                ? this.expectedMoveInMonth
+                : expectedMoveInMonth;
+        Integer ownedTotalSupplyHouseholdCount = totalSupplyHouseholdCount == null
+                ? this.totalSupplyHouseholdCount
+                : totalSupplyHouseholdCount;
+        boolean ownsTotalSupplyHouseholdCount = totalSupplyHouseholdCount != null
+                || lhTotalSupplyHouseholdCountOwned;
+        boolean enrichesTotalSupplyHouseholdCount = totalSupplyHouseholdCount != null
+                || lhTotalSupplyHouseholdCountEnriched;
         if (Objects.equals(lhSourceSupplyRowIdentifier, sourceSupplyRowIdentifier)
-                && Objects.equals(this.expectedMoveInMonth, expectedMoveInMonth)
-                && Objects.equals(this.totalSupplyHouseholdCount, totalSupplyHouseholdCount)) {
+                && Objects.equals(this.expectedMoveInMonth, ownedExpectedMoveInMonth)
+                && Objects.equals(this.totalSupplyHouseholdCount, ownedTotalSupplyHouseholdCount)
+                && lhTotalSupplyHouseholdCountOwned == ownsTotalSupplyHouseholdCount
+                && lhTotalSupplyHouseholdCountEnriched == enrichesTotalSupplyHouseholdCount) {
             return false;
         }
         lhSourceSupplyRowIdentifier = sourceSupplyRowIdentifier;
-        this.expectedMoveInMonth = expectedMoveInMonth;
-        this.totalSupplyHouseholdCount = totalSupplyHouseholdCount;
+        this.expectedMoveInMonth = ownedExpectedMoveInMonth;
+        this.totalSupplyHouseholdCount = ownedTotalSupplyHouseholdCount;
+        lhTotalSupplyHouseholdCountOwned = ownsTotalSupplyHouseholdCount;
+        lhTotalSupplyHouseholdCountEnriched = enrichesTotalSupplyHouseholdCount;
         return true;
     }
 

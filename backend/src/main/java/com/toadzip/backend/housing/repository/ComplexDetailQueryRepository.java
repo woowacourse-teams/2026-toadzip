@@ -1,5 +1,7 @@
 package com.toadzip.backend.housing.repository;
 
+import com.toadzip.backend.announcement.repository.ApplicationScheduleSql;
+
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
@@ -29,9 +31,15 @@ public class ComplexDetailQueryRepository {
                    housing_complex.corridor_type,
                    housing_complex.recent_one_year_move_out_count AS move_out_count_last_year,
                    housing_complex.total_household_count,
-                   housing_complex.parking_space_count AS total_parking_count
+                   housing_complex.parking_space_count AS total_parking_count,
+                   housing_complex.deposit_min,
+                   housing_complex.deposit_max,
+                   housing_complex.monthly_rent_min,
+                   housing_complex.monthly_rent_max
             FROM housing_complexes housing_complex
-            WHERE housing_complex.id = :complexId
+            WHERE housing_complex.id = COALESCE(
+                (SELECT alias.housing_complex_id FROM housing_complex_aliases alias WHERE alias.id = :complexId),
+                :complexId) AND housing_complex.admin_deleted = false
             """;
 
     private static final String FIND_HOUSING_TYPES = """
@@ -51,15 +59,15 @@ public class ComplexDetailQueryRepository {
             WITH current_leaf AS (
                 SELECT announcement.*
                 FROM announcements announcement
-                WHERE NOT EXISTS (
+                WHERE announcement.admin_deleted = false AND NOT EXISTS (
                     SELECT 1
                     FROM announcements successor
-                    WHERE successor.previous_announcement_id = announcement.id
+                    WHERE successor.previous_announcement_id = announcement.id AND successor.admin_deleted = false
                 )
                   AND announcement.status NOT IN ('CANCELLATION', '취소공고')
-                  AND announcement.application_end_date >= :today
+                  AND %s NOT IN ('CLOSED', 'CANCELLED')
             )
-            """;
+            """.formatted(ApplicationScheduleSql.status("announcement", ":complexId"));
 
     private static final String FIND_CURRENT_SUPPLY_CONDITIONS = CURRENT_LEAF_CTE + """
             SELECT announcement.id AS announcement_id,
@@ -91,10 +99,11 @@ public class ComplexDetailQueryRepository {
                    announcement.name AS title,
                    announcement.status AS publication_type,
                    announcement.posted_date,
-                   announcement.application_start_date,
-                   announcement.application_end_date,
-                   announcement.actual_competition_rate
+                   announcement.actual_competition_rate,
+                   %s AS application_status,
+                   %s
             FROM current_leaf announcement
+            %s
             WHERE EXISTS (
                 SELECT 1
                 FROM supply_rows supply_row
@@ -102,7 +111,9 @@ public class ComplexDetailQueryRepository {
                   AND supply_row.housing_complex_id = :complexId
             )
             ORDER BY announcement.posted_date DESC, announcement.id DESC
-            """;
+            """.formatted(ApplicationScheduleSql.status("announcement", ":complexId"),
+                    ApplicationScheduleSql.displayPeriodColumns("announcement"),
+                    ApplicationScheduleSql.displayPeriodJoin("announcement", ":complexId"));
 
     private static final String FIND_CURRENT_ANNOUNCEMENT_TARGETS = CURRENT_LEAF_CTE + """
             , ranked_target AS (
@@ -203,7 +214,11 @@ public class ComplexDetailQueryRepository {
                 resultSet.getString("corridor_type"),
                 resultSet.getObject("move_out_count_last_year", Integer.class),
                 resultSet.getInt("total_household_count"),
-                resultSet.getInt("total_parking_count")
+                resultSet.getInt("total_parking_count"),
+                resultSet.getObject("deposit_min", Long.class),
+                resultSet.getObject("deposit_max", Long.class),
+                resultSet.getObject("monthly_rent_min", Long.class),
+                resultSet.getObject("monthly_rent_max", Long.class)
         );
     }
 
@@ -241,7 +256,9 @@ public class ComplexDetailQueryRepository {
                 resultSet.getObject("posted_date", LocalDate.class),
                 resultSet.getObject("application_start_date", LocalDate.class),
                 resultSet.getObject("application_end_date", LocalDate.class),
-                resultSet.getBigDecimal("actual_competition_rate")
+                resultSet.getBigDecimal("actual_competition_rate"),
+                resultSet.getString("application_status"),
+                resultSet.getObject("confirmed_application_end_date", java.time.LocalDate.class)
         );
     }
 

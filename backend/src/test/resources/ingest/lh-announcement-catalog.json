@@ -1,0 +1,60 @@
+[
+  {
+    "dsSch": [
+      {
+        "PAN_ED_DT": "20260925",
+        "PG_SZ": "500",
+        "PAN_ST_DT": "20260725",
+        "PAGE": "1"
+      }
+    ]
+  },
+  {
+    "dsList": [
+      {
+        "PAN_NT_ST_DT": "2026.09.23",
+        "PAN_ID": "0000061182",
+        "AIS_TP_CD_NM": "분양주택",
+        "CNP_CD_NM": "인천광역시",
+        "ALL_CNT": "2",
+        "SPL_INF_TP_CD": "050",
+        "AIS_TP_CD": "05",
+        "PAN_DT": "20260923",
+        "RNUM": "1",
+        "CCR_CNNT_SYS_DS_CD": "02",
+        "DTL_URL": "https://apply.lh.or.kr/lhapply/apply/wt/wrtanc/selectWrtancInfo.do?panId=0000061182&ccrCnntSysDsCd=02&uppAisTpCd=05&aisTpCd=05&mi=1027",
+        "CLSG_DT": "2026.10.07",
+        "UPP_AIS_TP_CD": "05",
+        "PAN_NM": "인천가정2 B2블록 공공분양 잔여세대 추가 입주자모집공고",
+        "UPP_AIS_TP_NM": "분양주택",
+        "PAN_SS": "공고중",
+        "DTL_URL_MOB": "https://apply.lh.or.kr/lhapply/apply/wt/wrtanc/selectWrtancInfo.do?panId=0000061182&ccrCnntSysDsCd=02&uppAisTpCd=05&aisTpCd=05&mi=1027"
+      },
+      {
+        "PAN_NT_ST_DT": "2026.09.23",
+        "PAN_ID": "2015122300020822",
+        "AIS_TP_CD_NM": "영구임대",
+        "CNP_CD_NM": "전북특별자치도",
+        "ALL_CNT": "2",
+        "SPL_INF_TP_CD": "062",
+        "AIS_TP_CD": "09",
+        "PAN_DT": "20260923",
+        "RNUM": "2",
+        "CCR_CNNT_SYS_DS_CD": "03",
+        "DTL_URL": "https://apply.lh.or.kr/lhapply/apply/wt/wrtanc/selectWrtancInfo.do?panId=2015122300020822&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=09&mi=1026",
+        "CLSG_DT": "2026.10.06",
+        "UPP_AIS_TP_CD": "06",
+        "PAN_NM": "군산나운4 영구임대주택 입주자격완화 예비입주자 모집 공고",
+        "UPP_AIS_TP_NM": "임대주택",
+        "PAN_SS": "공고중",
+        "DTL_URL_MOB": "https://apply.lh.or.kr/lhapply/apply/wt/wrtanc/selectWrtancInfo.do?panId=2015122300020822&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=09&mi=1026"
+      }
+    ],
+    "resHeader": [
+      {
+        "RS_DTTM": "20260925034359",
+        "SS_CODE": "Y"
+      }
+    ]
+  }
+]

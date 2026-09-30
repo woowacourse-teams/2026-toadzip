@@ -42,6 +42,51 @@ import org.hibernate.annotations.JdbcType;
 @NoArgsConstructor(access = PROTECTED)
 public class Announcement {
 
+    @org.hibernate.annotations.CreationTimestamp
+    @Column(updatable = false)
+    @org.hibernate.annotations.ColumnDefault("CURRENT_TIMESTAMP")
+    private java.time.Instant createdAt;
+
+    @jakarta.persistence.Version
+    @org.hibernate.annotations.ColumnDefault("0")
+    private long version;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminModified;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminDeleted;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean sourceReviewRequired;
+
+    private java.time.Instant adminUpdatedAt;
+
+    public void moveToTrash() {
+        adminDeleted = true;
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
+    public void restore() {
+        adminDeleted = false;
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
+
+    @Column(nullable = false)
+    private boolean applicationScheduleReviewed;
+
+    @Column(length = 2000)
+    private String revisionEvidenceUrl;
+
+    private String previousLhPanId;
+
+    @Column(nullable = false)
+    private boolean lhPanIdReviewed;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -98,6 +143,9 @@ public class Announcement {
     private String lhPanId;
 
     @Column(nullable = false)
+    private boolean lhReceptionPlaceOwned;
+
+    @Column(nullable = false, updatable = false)
     private long viewCount;
 
     @Column(precision = 12, scale = 4)
@@ -172,6 +220,39 @@ public class Announcement {
         this.receptionPlace = receptionPlace;
     }
 
+    public void confirmApplicationPeriod(LocalDate start, LocalDate end) {
+        if (start == null || end == null || end.isBefore(start)) {
+            throw new IllegalArgumentException("접수 기간이 올바르지 않습니다.");
+        }
+        applicationStartDate = start;
+        applicationEndDate = end;
+        applicationScheduleReviewed = true;
+    }
+
+    public void confirmLhRevision(Announcement previous, String previousPanId, String correctedPanId,
+            String evidenceUrl, String reason) {
+        if (previous == null || previous == this || previousPanId == null || correctedPanId == null
+                || previousPanId.equals(correctedPanId) || evidenceUrl == null || evidenceUrl.isBlank()) {
+            throw new IllegalArgumentException("정정 공고 연결과 공식 근거가 필요합니다.");
+        }
+        previous.confirmLhPanId(previousPanId);
+        confirmLhPanId(correctedPanId);
+        previousAnnouncement = previous;
+        previousSourceAnnouncementIdentifier = previous.getSourceAnnouncementIdentifier();
+        previousLhPanId = previousPanId;
+        revisionEvidenceUrl = evidenceUrl;
+        correctionCancellationReason = reason;
+        status = AnnouncementPublicationType.CORRECTION;
+    }
+
+    private void confirmLhPanId(String panId) {
+        if (lhPanIdReviewed && !Objects.equals(lhPanId, panId)) {
+            throw new IllegalArgumentException("확인된 LH 공고 원천을 바꿀 수 없습니다.");
+        }
+        lhPanId = panId;
+        lhPanIdReviewed = true;
+    }
+
     public static Announcement create(
             String sourceAnnouncementIdentifier,
             String previousSourceAnnouncementIdentifier,
@@ -212,7 +293,7 @@ public class Announcement {
         );
     }
 
-    public boolean updateFromSource(
+    public boolean updateFromMyHome(
             String previousSourceAnnouncementIdentifier,
             Announcement previousAnnouncement,
             String name,
@@ -225,9 +306,27 @@ public class Announcement {
             LocalDate applicationEndDate,
             LocalDate winnerAnnouncementDate,
             String originalUrl,
-            String correctionCancellationReason,
             ReceptionPlace receptionPlace
     ) {
+        if (applicationScheduleReviewed) {
+            applicationStartDate = this.applicationStartDate;
+            applicationEndDate = this.applicationEndDate;
+        }
+        if (lhPanIdReviewed && provider != AgencyCode.LH) {
+            throw new IllegalArgumentException("확인된 LH 공고의 기관을 바꿀 수 없습니다.");
+        }
+        if (revisionEvidenceUrl != null) {
+            previousSourceAnnouncementIdentifier = this.previousSourceAnnouncementIdentifier;
+            previousAnnouncement = this.previousAnnouncement;
+            if (status != AnnouncementPublicationType.CANCELLATION) {
+                status = this.status;
+            }
+        }
+        boolean remainsLh = provider == AgencyCode.LH;
+        boolean preserveLhCorrection = remainsLh && lhPanId != null;
+        boolean preserveLhReceptionPlace = remainsLh && lhReceptionPlaceOwned;
+        String ownedCorrectionReason = preserveLhCorrection ? correctionCancellationReason : null;
+        ReceptionPlace ownedReceptionPlace = preserveLhReceptionPlace ? this.receptionPlace : receptionPlace;
         Announcement incoming = new Announcement(
                 sourceAnnouncementIdentifier,
                 previousSourceAnnouncementIdentifier,
@@ -242,17 +341,58 @@ public class Announcement {
                 applicationEndDate,
                 winnerAnnouncementDate,
                 originalUrl,
-                correctionCancellationReason,
+                ownedCorrectionReason,
                 viewCount,
                 actualCompetitionRate,
                 predictedCompetitionRate,
-                receptionPlace
+                ownedReceptionPlace
         );
-        if (hasSameSourceValues(incoming)) {
+        boolean releasesLhEnrichment = !remainsLh && (lhPanId != null || lhReceptionPlaceOwned);
+        if (adminModified || adminDeleted) {
+            if (adminModified && !hasSameSourceValues(incoming)) {
+                sourceReviewRequired = true;
+            }
+            return false;
+        }
+        if (hasSameSourceValues(incoming) && !releasesLhEnrichment) {
             return false;
         }
         applySourceValues(incoming);
+        if (releasesLhEnrichment) {
+            lhPanId = null;
+            lhReceptionPlaceOwned = false;
+        }
         return true;
+    }
+
+    public void recordAdminSupplyChange() {
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
+    public void reviseByAdmin(Announcement incoming) {
+        if (adminDeleted) {
+            throw new IllegalArgumentException("휴지통에서 복구한 뒤 수정해 주세요.");
+        }
+        if (lhPanIdReviewed && incoming.provider != provider) {
+            throw new IllegalArgumentException("원천 확인된 공고의 공급기관은 변경할 수 없습니다.");
+        }
+        name = incoming.name;
+        supplyType = incoming.supplyType;
+        recruitmentType = incoming.recruitmentType;
+        provider = incoming.provider;
+        postedDate = incoming.postedDate;
+        if (applicationScheduleReviewed && (!applicationStartDate.equals(incoming.applicationStartDate)
+                || !applicationEndDate.equals(incoming.applicationEndDate))) {
+            throw new IllegalArgumentException("검증된 접수 일정은 일정 관리에서 수정해 주세요.");
+        }
+        applicationStartDate = incoming.applicationStartDate;
+        applicationEndDate = incoming.applicationEndDate;
+        winnerAnnouncementDate = incoming.winnerAnnouncementDate;
+        originalUrl = incoming.originalUrl;
+        receptionPlace = incoming.receptionPlace;
+        adminModified = true;
+        sourceReviewRequired = false;
+        adminUpdatedAt = java.time.Instant.now();
     }
 
     private boolean hasSameSourceValues(Announcement incoming) {
@@ -297,14 +437,35 @@ public class Announcement {
     }
 
     public boolean enrichFromLh(String panId, String correctionReason, ReceptionPlace receptionPlace) {
+        if (adminModified || adminDeleted) {
+            if (adminModified && receptionPlace != null && !hasSameReceptionPlace(receptionPlace)) {
+                sourceReviewRequired = true;
+            }
+            return false;
+        }
+        if (lhPanIdReviewed && !Objects.equals(lhPanId, panId)) {
+            throw new IllegalArgumentException("확인된 LH 공고의 원천을 바꿀 수 없습니다.");
+        }
+        if (revisionEvidenceUrl != null) {
+            correctionReason = correctionCancellationReason;
+        }
+        String ownedCorrectionReason = correctionReason == null
+                ? correctionCancellationReason
+                : correctionReason;
+        ReceptionPlace ownedReceptionPlace = receptionPlace == null
+                ? this.receptionPlace
+                : receptionPlace;
+        boolean ownsReceptionPlace = receptionPlace != null || lhReceptionPlaceOwned;
         if (Objects.equals(lhPanId, panId)
-                && Objects.equals(correctionCancellationReason, correctionReason)
-                && hasSameReceptionPlace(receptionPlace)) {
+                && Objects.equals(correctionCancellationReason, ownedCorrectionReason)
+                && hasSameReceptionPlace(ownedReceptionPlace)
+                && lhReceptionPlaceOwned == ownsReceptionPlace) {
             return false;
         }
         lhPanId = panId;
-        correctionCancellationReason = correctionReason;
-        this.receptionPlace = receptionPlace;
+        correctionCancellationReason = ownedCorrectionReason;
+        this.receptionPlace = ownedReceptionPlace;
+        lhReceptionPlaceOwned = ownsReceptionPlace;
         return true;
     }
 

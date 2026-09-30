@@ -3,10 +3,7 @@ import type {
   AnnouncementSearchFilters,
   PublicHousingRepository,
 } from '../api/publicHousingRepository.ts'
-import {
-  hasSearchFilters,
-  searchFiltersSignature,
-} from '../filters/searchFilterLocation.ts'
+import { searchFiltersSignature } from '../filters/searchFilterLocation.ts'
 import type { AnnouncementListItem } from '../model/publicHousing.ts'
 
 const PAGE_SIZE = 20
@@ -45,6 +42,20 @@ export function useAnnouncementResults(
   const requestRevisionRef = useRef(0)
   const firstPageAbortRef = useRef<AbortController | null>(null)
   const paginationAbortRef = useRef<AbortController | null>(null)
+  const observedViewCountsRef = useRef(new Map<string, number>())
+
+  const mergeViewCounts = useCallback((items: readonly AnnouncementListItem[]) => (
+    items.map((item) => {
+      const viewCount = Math.max(item.viewCount, observedViewCountsRef.current.get(item.announcementId) ?? 0)
+      return viewCount === item.viewCount ? item : { ...item, viewCount, raw: { ...item.raw, viewCount } }
+    })
+  ), [])
+
+  const updateViewCount = useCallback((announcementId: string, viewCount: number) => {
+    const previous = observedViewCountsRef.current.get(announcementId) ?? 0
+    observedViewCountsRef.current.set(announcementId, Math.max(previous, viewCount))
+    setState((current) => ({ ...current, items: mergeViewCounts(current.items) }))
+  }, [mergeViewCounts])
 
   const cancelInFlightRequests = useCallback((restorePaginationStatus = false) => {
     const firstPageController = firstPageAbortRef.current
@@ -82,14 +93,12 @@ export function useAnnouncementResults(
       status: 'loading',
     }))
 
-    const request = hasSearchFilters(filters)
-      ? repository.findAnnouncementPage(
-          null,
-          PAGE_SIZE,
-          controller.signal,
-          filters,
-        )
-      : repository.findAnnouncementPage(null, PAGE_SIZE, controller.signal)
+    const request = repository.findAnnouncementPage(
+      null,
+      PAGE_SIZE,
+      controller.signal,
+      activeAnnouncementFilters(filters),
+    )
 
     request
       .then((page) => {
@@ -102,7 +111,7 @@ export function useAnnouncementResults(
         setState({
           errorMessage: null,
           hasNext: page.hasNext,
-          items: page.items,
+          items: mergeViewCounts(page.items),
           nextCursor: page.nextCursor,
           status: 'ready',
         })
@@ -120,7 +129,7 @@ export function useAnnouncementResults(
           status: 'error',
         }))
       })
-  }, [cancelInFlightRequests, filters, filtersKey, repository])
+  }, [cancelInFlightRequests, filters, filtersKey, mergeViewCounts, repository])
 
   const loadMore = useCallback(() => {
     if (
@@ -142,18 +151,12 @@ export function useAnnouncementResults(
       status: 'loading-more',
     }))
 
-    const request = hasSearchFilters(filters)
-      ? repository.findAnnouncementPage(
-          state.nextCursor,
-          PAGE_SIZE,
-          controller.signal,
-          filters,
-        )
-      : repository.findAnnouncementPage(
-          state.nextCursor,
-          PAGE_SIZE,
-          controller.signal,
-        )
+    const request = repository.findAnnouncementPage(
+      state.nextCursor,
+      PAGE_SIZE,
+      controller.signal,
+      activeAnnouncementFilters(filters),
+    )
 
     request
       .then((page) => {
@@ -166,7 +169,7 @@ export function useAnnouncementResults(
         setState((current) => ({
           errorMessage: null,
           hasNext: page.hasNext,
-          items: appendUniqueAnnouncements(current.items, page.items),
+          items: mergeViewCounts(appendUniqueAnnouncements(current.items, page.items)),
           nextCursor: page.nextCursor,
           status: 'ready',
         }))
@@ -184,7 +187,7 @@ export function useAnnouncementResults(
           status: 'error',
         }))
       })
-  }, [enabled, filters, repository, state])
+  }, [enabled, filters, mergeViewCounts, repository, state])
 
   useEffect(() => {
     if (!enabled) {
@@ -210,7 +213,23 @@ export function useAnnouncementResults(
     ? loadMore
     : loadFirstPage
 
-  return { loadMore, retry, state }
+  return { loadMore, retry, state, updateViewCount }
+}
+
+function activeAnnouncementFilters(
+  filters: AnnouncementSearchFilters,
+): AnnouncementSearchFilters {
+  const selectedStatuses = filters.applicationStatuses?.filter(
+    (status) => status !== 'CLOSED',
+  )
+
+  // 서버가 페이지를 나누기 전에 마감 공고를 제외한다.
+  return {
+    ...filters,
+    applicationStatuses: selectedStatuses?.length
+      ? selectedStatuses
+      : ['BEFORE_APPLICATION', 'APPLYING'],
+  }
 }
 
 function appendUniqueAnnouncements(

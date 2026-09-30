@@ -6,4 +6,12 @@ scrape_configs:
     metrics_path: /actuator/prometheus
     static_configs:
       - targets:
-          - backend:8081
+          - 10.0.0.181:8081
+        labels:
+          environment: dev
+          application: toadzip-backend
+      - targets:
+          - 10.0.0.236:8081
+        labels:
+          environment: prod
+          application: toadzip-backend

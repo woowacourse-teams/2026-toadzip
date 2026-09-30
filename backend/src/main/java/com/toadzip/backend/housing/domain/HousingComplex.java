@@ -26,6 +26,40 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = PROTECTED)
 public class HousingComplex {
 
+    @org.hibernate.annotations.CreationTimestamp
+    @Column(updatable = false)
+    @org.hibernate.annotations.ColumnDefault("CURRENT_TIMESTAMP")
+    private java.time.Instant createdAt;
+
+    @jakarta.persistence.Version
+    @org.hibernate.annotations.ColumnDefault("0")
+    private long version;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminModified;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean adminDeleted;
+
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean sourceReviewRequired;
+
+    private java.time.Instant adminUpdatedAt;
+
+    public void moveToTrash() {
+        adminDeleted = true;
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
+    public void restore() {
+        adminDeleted = false;
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -69,6 +103,9 @@ public class HousingComplex {
     private String imageUrl;
 
     private Integer recentOneYearMoveOutCount;
+
+    @Embedded
+    private RentalPriceRange rentalPriceRange;
 
     private HousingComplex(
             String name,
@@ -206,10 +243,44 @@ public class HousingComplex {
                 elevatorInstalled,
                 parkingSpaceCount
         );
+        if (adminModified || adminDeleted) {
+            if (adminModified && !hasSameMyHomeValues(incoming)) {
+                sourceReviewRequired = true;
+            }
+            return false;
+        }
         if (hasSameMyHomeValues(incoming)) {
             return false;
         }
         applyMyHomeValues(incoming);
+        return true;
+    }
+
+    public void reviseByAdmin(HousingComplex incoming) {
+        if (adminDeleted) {
+            throw new IllegalArgumentException("휴지통에서 복구한 뒤 수정해 주세요.");
+        }
+        applyMyHomeValues(incoming);
+        imageUrl = incoming.imageUrl;
+        recentOneYearMoveOutCount = incoming.recentOneYearMoveOutCount;
+        adminModified = true;
+        sourceReviewRequired = false;
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
+    public void adoptVerifiedMerge(int householdCount, String imageUrl, Integer moveOutCount) {
+        validateNonNegative(householdCount, "확인된 전체 세대수");
+        validateNonNegativeIfPresent(moveOutCount, "최근 1년 퇴거자 수");
+        totalHouseholdCount = householdCount;
+        this.imageUrl = imageUrl;
+        recentOneYearMoveOutCount = moveOutCount;
+    }
+
+    public boolean updateRentalPriceRange(RentalPriceRange incoming) {
+        if (java.util.Objects.equals(rentalPriceRange, incoming)) {
+            return false;
+        }
+        rentalPriceRange = incoming;
         return true;
     }
 

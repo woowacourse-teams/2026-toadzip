@@ -1,0 +1,52 @@
+{
+  "schemaVersion": "admin-announcement-import/v1",
+  "source": {
+    "originalUrl": "https://example.com/announcements/multiple-rows",
+    "sourceDocumentId": "2026-MULTI-1",
+    "extractedAt": "2026-09-18T10:30:00+09:00"
+  },
+  "announcement": {
+    "name": "2026년 행복주택 통합 모집",
+    "rentalType": "HAPPY_HOUSING",
+    "recruitmentType": "NEW",
+    "agencyCode": "LH",
+    "postedDate": "2026-09-01",
+    "applicationStartDate": "2026-09-10",
+    "applicationEndDate": "2026-09-12",
+    "winnerAnnouncementDate": "2026-10-01"
+  },
+  "receptionPlace": {
+    "name": "LH 청약플러스",
+    "method": "ONLINE",
+    "address": null,
+    "contact": "1600-1004",
+    "url": "https://apply.lh.or.kr"
+  },
+  "supplyRows": [
+    {
+      "complexReference": {
+        "sourceComplexName": "두꺼비 행복주택 A단지",
+        "pnu": "1114010100100010000"
+      },
+      "sourceHousingTypeName": "36A",
+      "expectedMoveInMonth": "2027-03",
+      "supplyCategory": "NEW_SUPPLY",
+      "totalSupplyHouseholdCount": 20,
+      "targets": []
+    },
+    {
+      "complexReference": {
+        "sourceComplexName": "두꺼비 행복주택 B단지",
+        "pnu": "4113510500100020000"
+      },
+      "sourceHousingTypeName": "44A",
+      "expectedMoveInMonth": "2027-04",
+      "supplyCategory": "NEW_SUPPLY",
+      "totalSupplyHouseholdCount": 15,
+      "targets": []
+    }
+  ],
+  "schedules": [],
+  "attachments": [],
+  "unresolvedFields": []
+}

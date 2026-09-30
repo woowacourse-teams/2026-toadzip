@@ -31,20 +31,29 @@ describe('toHousingAnnouncementDetailData', () => {
     expect(result).not.toHaveProperty('predictedCompetitionRate')
   })
 
-  it('알 수 없는 코드와 null을 추정하지 않고 정보 확인 상태로 바꾼다', () => {
+  it('알 수 없는 코드와 null은 공고문 확인으로 바꾼다', () => {
+    const source = announcementDetail()
     const result = toHousingAnnouncementDetailData(announcementDetail({
       applicationStatus: null,
       publicationType: 'NEW_CODE',
       recruitmentType: null,
       rentalType: 'NEW_CODE',
+      schedules: [{ ...source.schedules[0]!, type: null }],
+      attachments: [{ ...source.attachments[0]!, fileType: null }],
+      receptionPlaces: [{ ...source.receptionPlaces[0]!, method: null }],
+      supplyRows: [{ ...source.supplyRows[0]!, supplyType: null }],
     }))
 
     expect(result).toMatchObject({
-      applicationStatusLabel: '접수상태 정보 확인 중',
-      publicationTypeLabel: '공고유형 정보 확인 중',
-      recruitmentTypeLabel: '모집유형 정보 확인 중',
-      rentalTypeLabel: '임대유형 정보 확인 중',
+      applicationStatusLabel: '공고문 확인',
+      publicationTypeLabel: '공고문 확인',
+      recruitmentTypeLabel: '공고문 확인',
+      rentalTypeLabel: '공고문 확인',
     })
+    expect(result.schedules[0]?.typeLabel).toBe('공고문 확인')
+    expect(result.attachments[0]?.fileTypeLabel).toBe('공고문 확인')
+    expect(result.receptionPlaces[0]?.methodLabel).toBe('공고문 확인')
+    expect(result.supplyRows[0]?.supplyTypeLabel).toBe('공고문 확인')
   })
 })
 
@@ -68,7 +77,7 @@ describe('groupAnnouncementSupplyRows', () => {
     expect(groups[0]?.rows).toHaveLength(2)
   })
 
-  it('공급 세대수가 전부 null이면 합계도 정보 없음으로 유지한다', () => {
+  it('공급 세대수가 전부 null이면 합계도 null로 유지한다', () => {
     const data = toHousingAnnouncementDetailData(announcementDetail())
     const row = { ...data.supplyRows[0]!, totalSupplyHouseholdCount: null }
 

@@ -1,0 +1,79 @@
+[
+  {
+    "dsSch": [
+      {
+        "PAN_ID": "0000061177",
+        "CCR_CNNT_SYS_DS_CD": "02",
+        "SPL_INF_TP_CD": "060",
+        "UPP_AIS_TP_CD": "06",
+        "AIS_TP_CD": "08"
+      }
+    ]
+  },
+  {
+    "dsSplScdl": [
+      {
+        "RMK": "인터넷접수",
+        "PZWR_ANC_DT": "20261006",
+        "CTRT_ED_DT": "",
+        "HS_SBSC_ACP_TRG_CD_NM": "무순위",
+        "ACP_DTTM": "2026.09.29 09:00 ~ 2026.09.30 16:00",
+        "PZWR_PPR_SBM_ST_DT": "20261007",
+        "SPL_SCD_GUD_FCTS": "",
+        "CTRT_ST_DT": "",
+        "PZWR_PPR_SBM_ED_DT": "20261014"
+      }
+    ],
+    "dsSbdNm": [
+      {
+        "LCT_ARA_DTL_ADR": "단지상세주소",
+        "BZDT_NM": "단지명",
+        "EDC_FCL_CTS": "교육환경",
+        "MIN_MAX_RSDN_DDO_AR": "전용면적",
+        "SUM_TOT_HSH_CNT": "총세대수",
+        "TFFC_FCL_CTS": "교통여건",
+        "LCT_ARA_ADR": "단지주소",
+        "CVN_FCL_CTS": "편의시설",
+        "HTN_FMLA_DS_CD_NM": "난방방식",
+        "IDT_FCL_CTS": "부대시설",
+        "SPL_INF_GUD_FCTS": "안내사항",
+        "MVIN_XPC_YM": "입주예정월"
+      }
+    ],
+    "dsSbd": [
+      {
+        "LCT_ARA_DTL_ADR": "화성동탄2 A40블록(센트럴힐즈)",
+        "BZDT_NM": "화성동탄2A-40(공임리츠) A-40",
+        "EDC_FCL_CTS": "입주자모집공고문 참조",
+        "MIN_MAX_RSDN_DDO_AR": "74.99 ~ 84.96",
+        "SUM_TOT_HSH_CNT": "652",
+        "TFFC_FCL_CTS": "입주자모집공고문 참조",
+        "LCT_ARA_ADR": "경기도 화성시 동탄대로12길 71",
+        "CVN_FCL_CTS": "입주자모집공고문 참조",
+        "HTN_FMLA_DS_CD_NM": "지역난방",
+        "IDT_FCL_CTS": "입주자모집공고문 참조",
+        "SPL_INF_GUD_FCTS": "* 임대보증금 및 월 임대료는 입주자모집공고일 현재의 조건이며, 예비입주자의 임대차계약을 체결하는 시점 당해 주택의 임대조건이 변경된 때에는 변경된 임대조건으로 계약하셔야 합니다.",
+        "MVIN_XPC_YM": "2017년 02월"
+      }
+    ],
+    "dsSplScdlNm": [
+      {
+        "RMK": "신청방법",
+        "PZWR_ANC_DT": "당첨자발표일자",
+        "CTRT_ED_DT": "계약체결기간종료일",
+        "HS_SBSC_ACP_TRG_CD_NM": "구분",
+        "ACP_DTTM": "신청일시",
+        "PZWR_PPR_SBM_ST_DT": "당첨자서류제출기간시작일",
+        "SPL_SCD_GUD_FCTS": "공급일정안내사항",
+        "CTRT_ST_DT": "계약체결기간시작일",
+        "PZWR_PPR_SBM_ED_DT": "당첨자서류제출기간종료일"
+      }
+    ],
+    "resHeader": [
+      {
+        "RS_DTTM": "20260925051744",
+        "SS_CODE": "Y"
+      }
+    ]
+  }
+]

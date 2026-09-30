@@ -26,6 +26,7 @@ export interface IntegratedSearchResponse {
   readonly query: string
   readonly regions: readonly SearchResultItem[]
   readonly size: number
+  readonly totalCount: number | null
 }
 
 export interface IntegratedSearchRepository {
@@ -34,6 +35,7 @@ export interface IntegratedSearchRepository {
     preview: boolean,
     page: number,
     signal: AbortSignal,
+    type?: SearchType,
   ): Promise<IntegratedSearchResponse>
 }
 
@@ -41,13 +43,16 @@ export function createIntegratedSearchRepository(
   fetcher: typeof globalThis.fetch = globalThis.fetch,
 ): IntegratedSearchRepository {
   return {
-    async search(query, preview, page, signal) {
+    async search(query, preview, page, signal, type) {
       const params = new URLSearchParams({
         page: String(page),
         preview: String(preview),
         query,
-        size: '20',
+        size: type ? '5' : '20',
       })
+      if (type) {
+        params.set('type', type)
+      }
       const response = await fetcher(`${apiBaseUrl()}/api/v1/search?${params}`, {
         headers: { Accept: 'application/json' },
         signal,
@@ -74,6 +79,7 @@ function decodeResponse(value: unknown): IntegratedSearchResponse {
     query: string(data.query, '$.data.query'),
     regions: array(data.regions, '$.data.regions').map(decodeItem),
     size: number(data.size, '$.data.size'),
+    totalCount: data.totalCount == null ? null : number(data.totalCount, '$.data.totalCount'),
   }
 }
 

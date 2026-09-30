@@ -3,6 +3,7 @@ package com.toadzip.backend.housing.domain;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
@@ -24,6 +25,10 @@ final class MapClusteringRegionPoints {
             return coordinate;
         }
         throw new IllegalArgumentException("Missing representative point: " + groupKey.value());
+    }
+
+    Optional<MapCoordinate> coordinate(MapClusteringGroupKey groupKey) {
+        return Optional.ofNullable(coordinateByGroupKey.get(groupKey));
     }
 
     void validateGroups(List<MapClusteringRegionGroup> groups) {

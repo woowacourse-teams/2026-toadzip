@@ -4,14 +4,12 @@ import type {
   ComplexDetail,
   ComplexPage,
   MapBounds,
-  MapComplex,
 } from '../model/publicHousing.ts'
 import {
   decodeAnnouncementDetailEnvelope,
   decodeAnnouncementPageEnvelope,
   decodeComplexDetailEnvelope,
   decodeComplexPageEnvelope,
-  decodeMapComplexEnvelope,
   PublicHousingContractError,
 } from './publicHousingContract.ts'
 import {
@@ -19,8 +17,8 @@ import {
   toAnnouncementPage,
   toComplexDetail,
   toComplexPage,
-  toMapComplexes,
 } from './publicHousingMapper.ts'
+import { recordAnnouncementView } from './announcementViews.ts'
 
 const COMPLEXES_PATH = '/api/v1/complexes'
 const ANNOUNCEMENTS_PATH = '/api/v1/announcements'
@@ -83,11 +81,6 @@ export interface PublicHousingRepository {
     signal: AbortSignal,
     filters?: ComplexSearchFilters,
   ): Promise<ComplexPage>
-  findMapComplexes(
-    bounds: MapBounds,
-    signal: AbortSignal,
-    filters?: ComplexSearchFilters,
-  ): Promise<readonly MapComplex[]>
   findComplexDetail(
     complexId: string,
     signal: AbortSignal,
@@ -140,16 +133,6 @@ export function createHttpPublicHousingRepository(
       return toComplexPage(decodeComplexPageEnvelope(payload))
     },
 
-    async findMapComplexes(bounds, signal, filters = {}) {
-      const search = createComplexSearchParams(bounds, filters)
-      const payload = await requestPublicHousingJson(
-        fetcher,
-        `${apiBaseUrl}${COMPLEXES_PATH}/map?${search.toString()}`,
-        signal,
-      )
-      return toMapComplexes(decodeMapComplexEnvelope(payload).items)
-    },
-
     async findComplexDetail(complexId, signal) {
       validateCanonicalId(complexId, '단지')
       const payload = await requestPublicHousingJson(
@@ -182,7 +165,11 @@ export function createHttpPublicHousingRepository(
         `${apiBaseUrl}${ANNOUNCEMENTS_PATH}/${announcementId}`,
         signal,
       )
-      return toAnnouncementDetail(decodeAnnouncementDetailEnvelope(payload))
+      const detail = toAnnouncementDetail(decodeAnnouncementDetailEnvelope(payload))
+      const recordedCount = await recordAnnouncementView(apiBaseUrl, fetcher, announcementId, signal)
+      if (recordedCount === null) return detail
+      const viewCount = Math.max(detail.viewCount, recordedCount)
+      return { ...detail, viewCount, raw: { ...detail.raw, viewCount } }
     },
   }
 }
