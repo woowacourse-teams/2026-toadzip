@@ -22,7 +22,7 @@ export default function DocumentOutline({ entries, activeId, onNavigate }: Docum
   const [focused, setFocused] = useState(false)
   const [mode, setMode] = useState<'auto' | 'pinned' | 'dismissed'>('auto')
   const open = mode === 'pinned' || (mode === 'auto' && (hovered || focused))
-  const railStride = Math.ceil(entries.length / 18)
+  const railStride = Math.ceil(entries.length / 12)
   const activeIndex = entries.findIndex((entry) => entry.id === activeId)
   const railEntries = entries.filter((_, index) =>
     index === 0 || index === entries.length - 1 || index === activeIndex || index % railStride === 0,
@@ -77,35 +77,37 @@ export default function DocumentOutline({ entries, activeId, onNavigate }: Docum
           {railEntries.map((entry) => (
             <span
               key={entry.id}
+              data-nested={entry.depth > 0}
               className={`${styles.mark} ${entry.id === activeId ? styles.activeMark : ''}`}
             />
           ))}
         </span>
-        <span className={styles.mobileLabel}>목차</span>
       </button>
-      <nav id={navigationId} className={styles.panel} aria-label="문서 목차" hidden={!open}>
-        {open && (
-          <>
-            <div className={styles.heading}>목차</div>
-            <ol className={styles.list}>
-              {entries.map((entry) => (
-                <li key={entry.id}>
-                  <button
-                    type="button"
-                    className={styles.item}
-                    data-depth={entry.depth}
-                    aria-current={entry.id === activeId ? 'location' : undefined}
-                    style={{ paddingInlineStart: `${12 + Math.min(Math.max(entry.depth, 0), 4) * 12}px` }}
-                    onClick={() => handleNavigate(entry.id)}
-                  >
-                    <span className={styles.title}>{entry.title}</span>
-                    <span className={styles.page}>{entry.pageNumber}쪽</span>
-                  </button>
-                </li>
-              ))}
-            </ol>
-          </>
-        )}
+      <nav
+        id={navigationId}
+        className={`${styles.panel} ${open ? styles.panelOpen : ''}`}
+        aria-label="문서 목차"
+        aria-hidden={!open}
+        inert={!open}
+      >
+        <div className={styles.heading}>목차</div>
+        <ol className={styles.list}>
+          {entries.map((entry) => (
+            <li key={entry.id}>
+              <button
+                type="button"
+                className={styles.item}
+                data-depth={entry.depth}
+                aria-current={entry.id === activeId ? 'location' : undefined}
+                style={{ paddingInlineStart: `${12 + Math.min(Math.max(entry.depth, 0), 4) * 12}px` }}
+                onClick={() => handleNavigate(entry.id)}
+              >
+                <span className={styles.title}>{entry.title}</span>
+                <span className={styles.page}>{entry.pageNumber}쪽</span>
+              </button>
+            </li>
+          ))}
+        </ol>
       </nav>
     </aside>
   )

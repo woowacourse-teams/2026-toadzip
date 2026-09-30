@@ -13,6 +13,25 @@ it('추출된 목차가 없으면 토글과 탐색 영역을 표시하지 않는
   expect(container).toBeEmptyDOMElement()
 })
 
+it('접힌 패널의 제목은 전환을 위해 유지하지만 탐색과 포커스에서는 제외한다', () => {
+  const { container } = render(<DocumentOutline entries={entries} activeId={null} onNavigate={vi.fn()} />)
+  const toggle = screen.getByRole('button', { name: '목차' })
+  const panel = container.querySelector('nav[aria-label="문서 목차"]')
+  expect(panel).toHaveAttribute('aria-hidden', 'true')
+  expect(panel).toHaveAttribute('inert')
+  expect(panel).toHaveTextContent('공급 개요')
+  expect(screen.queryByRole('button', { name: /공급 개요/ })).not.toBeInTheDocument()
+
+  fireEvent.mouseEnter(toggle)
+  expect(panel).toHaveAttribute('aria-hidden', 'false')
+  expect(panel).not.toHaveAttribute('inert')
+  expect(screen.getByRole('button', { name: /공급 개요/ })).toBeInTheDocument()
+
+  fireEvent.mouseLeave(toggle)
+  expect(panel).toHaveAttribute('inert')
+  expect(panel).toHaveTextContent('공급 개요')
+})
+
 it('토글을 누르거나 키보드 포커스와 마우스를 올리면 목차를 열 수 있다', () => {
   render(<DocumentOutline entries={entries} activeId={null} onNavigate={vi.fn()} />)
   const toggle = screen.getByRole('button', { name: '목차' })

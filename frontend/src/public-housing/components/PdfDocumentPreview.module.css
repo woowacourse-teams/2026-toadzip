@@ -43,7 +43,6 @@
 .searchActions button { min-width: 36px; }
 .error { margin: 0; padding: var(--ds-space-3); color: var(--ds-color-label); text-align: center; }
 .viewport { position: relative; flex: 1; min-height: 0; }
-.viewport[data-has-outline="true"] .scroll { right: 40px; }
 .scroll { position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; }
 @media (max-width: 600px) {
   .search input { flex-basis: calc(100% - 140px); }

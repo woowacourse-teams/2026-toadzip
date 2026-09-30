@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useHwpDocument } from './useHwpDocument.ts'
 import DocumentOutline from './DocumentOutline.tsx'
 import styles from './HwpDocumentPreview.module.css'
+import { useDocumentScrollActivity } from './useDocumentScrollActivity.ts'
+import scrollbarStyles from './DocumentScrollbar.module.css'
 
 export default function HwpDocumentPreview(props: { readonly url: string; readonly name: string }) {
   return <HwpPreview key={props.url} {...props} />
@@ -15,6 +17,7 @@ function Document({ url, name, retry }: { readonly url: string; readonly name: s
   const lastNavigation = useRef<typeof result | null>(null)
   const root = useRef<HTMLElement>(null)
   const viewport = useRef<HTMLDivElement>(null)
+  useDocumentScrollActivity(viewport)
   const input = useRef<HTMLInputElement>(null)
   const composing = useRef(false)
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -172,8 +175,8 @@ function Document({ url, name, retry }: { readonly url: string; readonly name: s
         <button type="button" aria-label="검색 닫기" onClick={hideSearch}>닫기</button>
       </div>
     </div>}
-    <div className={`${styles.viewportShell} ${outline.length ? styles.withOutline : ''}`}>
-    <div className={styles.viewport} ref={viewport} role="region" tabIndex={0} aria-label={`${name} 문서`} onScroll={updateViewport}>
+    <div className={styles.viewportShell}>
+    <div className={`${styles.viewport} ${scrollbarStyles.scrollbar}`} ref={viewport} role="region" tabIndex={0} aria-label={`${name} 문서`} onScroll={updateViewport}>
       <div className={styles.pages} style={{ height: last ? last.top + last.height + 12 : 0, minWidth: Math.max(0, ...layout.map((frame) => frame.width + 24)) }}>
         {layout.map((frame, number) => <div key={number} className={styles.page} role="region" aria-label={`${number + 1}페이지`}
           style={{ top: frame.top, width: frame.width, height: frame.height }} aria-busy={!images.has(number)}>

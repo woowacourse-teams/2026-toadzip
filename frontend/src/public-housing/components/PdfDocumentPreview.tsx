@@ -3,6 +3,8 @@ import pdfViewerStyles from 'pdfjs-dist/legacy/web/pdf_viewer.css?inline'
 import DocumentOutline from './DocumentOutline.tsx'
 import { usePdfViewer } from './usePdfViewer.ts'
 import styles from './PdfDocumentPreview.module.css'
+import { useDocumentScrollActivity } from './useDocumentScrollActivity.ts'
+import scrollbarStyles from './DocumentScrollbar.module.css'
 
 // Keep the SDK's :root variables and generic annotation styles inside this viewer.
 const scopedViewerStyles = `@scope (.${styles.document}) { ${pdfViewerStyles.replaceAll(':root', ':scope')} }`
@@ -15,6 +17,7 @@ function PdfPreview({ url, name }: { readonly url: string; readonly name: string
   const rootRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<HTMLDivElement>(null)
+  useDocumentScrollActivity(containerRef)
   const inputRef = useRef<HTMLInputElement>(null)
   const composing = useRef(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -101,8 +104,8 @@ function PdfPreview({ url, name }: { readonly url: string; readonly name: string
       </div>
     </div>}
     {error && <p role="alert" className={styles.error}>PDF를 표시하지 못했습니다. 다운로드해서 확인해 주세요.</p>}
-    <div className={styles.viewport} data-has-outline={ready && !error && outline.length > 0}>
-      <div ref={containerRef} className={styles.scroll} role="region" aria-label={`${name} 문서`} tabIndex={0}>
+    <div className={styles.viewport}>
+      <div ref={containerRef} className={`${styles.scroll} ${scrollbarStyles.scrollbar}`} role="region" aria-label={`${name} 문서`} tabIndex={0}>
         <div ref={viewerRef} className="pdfViewer" />
       </div>
       {ready && !error && <DocumentOutline entries={outline} activeId={activeOutlineId} onNavigate={navigateOutline} />}
