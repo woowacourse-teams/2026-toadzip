@@ -38,6 +38,7 @@ import { SchedulePeriod } from './SchedulePeriod'
 import scheduleStyles from './ScheduleGroups.module.css'
 import { formatHousingMoney } from '../presentation/housingMoney'
 import styles from './HousingAnnouncementDetailPanel.module.css'
+import { NotificationInterestButton } from '../interest/NotificationInterest'
 
 export interface HousingAnnouncementDetailReceptionPlace {
   readonly name: string | null
@@ -238,6 +239,10 @@ export function HousingAnnouncementDetailPanel({
           role="region" aria-label="요약 영역" tabIndex={-1}
           ref={(node) => { sectionRefs.current.summary = node }}>
           <NoticeIntro detail={detail} groups={groups} />
+          <NotificationInterestButton
+            target={{ type: 'ANNOUNCEMENT', id: detail.announcementId, name: title }}
+            source="ANNOUNCEMENT_DETAIL"
+          />
           <CoreInformation detail={detail} />
           <ReasonNotice detail={detail} />
         </div>

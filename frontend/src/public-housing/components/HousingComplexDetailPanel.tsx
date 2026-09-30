@@ -17,6 +17,7 @@ import { formatHousingMoney } from '../presentation/housingMoney'
 import { MISSING_DATA_LABEL } from '../presentation/missingData'
 import { AnnouncementStatusBadge } from './AnnouncementStatusBadge'
 import styles from './HousingComplexDetailPanel.module.css'
+import { NotificationInterestButton } from '../interest/NotificationInterest'
 
 export interface HousingComplexDetailSupplyCondition {
   readonly target: string | null
@@ -190,6 +191,16 @@ export function HousingComplexDetailPanel({
             </p>
           </div>
           <p className={styles.address}>{displayAddress(detail)}</p>
+          <div className={styles.notificationCallout}>
+            <div className={styles.notificationCopy}>
+              <strong>단지 알림</strong>
+              <span>관심 있는 단지의 알림을 신청해 보세요.</span>
+            </div>
+            <NotificationInterestButton
+              target={{ type: 'COMPLEX', id: detail.complexId, name: detail.name }}
+              source="COMPLEX_DETAIL"
+            />
+          </div>
         </section>
 
         <CurrentAnnouncements

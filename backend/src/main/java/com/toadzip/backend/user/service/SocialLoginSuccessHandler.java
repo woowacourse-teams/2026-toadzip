@@ -4,6 +4,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,7 +46,15 @@ public class SocialLoginSuccessHandler implements AuthenticationSuccessHandler {
             if ("google".equals(oauth.getAuthorizedClientRegistrationId())) {
                 subject = oauth.getPrincipal().getAttribute("sub");
             }
-            userId = socialUserService.findOrCreate(oauth.getAuthorizedClientRegistrationId(), subject);
+            Object emailAttribute = oauth.getPrincipal().getAttribute("email");
+            String email = emailAttribute instanceof String value ? value : null;
+            if ("kakao".equals(oauth.getAuthorizedClientRegistrationId())) {
+                Object account = oauth.getPrincipal().getAttribute("kakao_account");
+                if (account instanceof Map<?, ?> accountDetails && accountDetails.get("email") instanceof String value) {
+                    email = value;
+                }
+            }
+            userId = socialUserService.findOrCreate(oauth.getAuthorizedClientRegistrationId(), subject, email);
         } catch (RuntimeException exception) {
             LOGGER.warn("event=user.login.failed phase=session reason={}", exception.getClass().getSimpleName());
             failureHandler.failAfterProviderAuthentication(response);

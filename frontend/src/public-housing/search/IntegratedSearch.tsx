@@ -9,6 +9,7 @@ import {
 } from './integratedSearchRepository.ts'
 import styles from './IntegratedSearch.module.css'
 import { findRegionBoundaryMetadata } from '../regions/regionBoundaryCatalog.ts'
+import { NotificationInterestButton } from '../interest/NotificationInterest'
 
 interface GroupState {
   readonly items: readonly SearchResultItem[]
@@ -37,6 +38,7 @@ export function IntegratedSearch({
   const inputRef = useRef<HTMLInputElement>(null)
   const normalizedQuery = normalizeQuery(query)
   const active = normalizedQuery.replaceAll(' ', '').length >= 2
+  const inputLabel = '지역, 단지, 공고 검색'
 
   useEffect(() => {
     onActiveChange?.(active)
@@ -46,7 +48,7 @@ export function IntegratedSearch({
     <section className={`integrated-search${active ? ' is-active' : ''}`} aria-label="통합 검색">
       <div className={selectionControl ? `${styles.top} ${styles.withSelection}` : styles.top}>
         <label className="integrated-search__input">
-          <span className="visually-hidden">지역, 단지, 공고 검색</span>
+          <span className="visually-hidden">{inputLabel}</span>
           <svg
             className="integrated-search__icon"
             aria-hidden="true"
@@ -63,7 +65,7 @@ export function IntegratedSearch({
             ref={inputRef}
             type="search"
             value={query}
-            placeholder="지역, 단지, 공고 검색"
+            placeholder={inputLabel}
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
@@ -169,7 +171,7 @@ function SearchGroup({
             && (item.latitude === null || item.longitude === null)
             && !findRegionBoundaryMetadata(item.regionCode ?? item.id)
           return (
-            <li key={`${item.type}-${item.id}`}>
+            <li key={`${item.type}-${item.id}`} className={item.type === 'REGION' && item.regionCode ? styles.regionRow : undefined}>
               <button
                 type="button"
                 disabled={unavailable}
@@ -182,6 +184,13 @@ function SearchGroup({
                 {item.applicationStatus && <span>{statusLabel(item.applicationStatus)}</span>}
                 {unavailable && <span className={styles.unavailable}>위치 정보 준비 중</span>}
               </button>
+              {item.type === 'REGION' && item.regionCode && (
+                <NotificationInterestButton
+                  target={{ type: 'REGION', id: item.regionCode, name: item.title }}
+                  source="REGION_SEARCH"
+                  iconOnly
+                />
+              )}
             </li>
           )
         })}

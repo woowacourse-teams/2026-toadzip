@@ -153,6 +153,59 @@
   overflow-wrap: anywhere;
 }
 
+.notificationCallout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-4);
+  margin-top: var(--ds-space-5);
+  padding: var(--ds-space-4);
+  border: 1px solid var(--ds-color-action-selected);
+  border-radius: 10px;
+  background: var(--ds-color-action-soft);
+}
+
+.notificationCopy {
+  display: grid;
+  min-width: 0;
+  gap: var(--ds-space-1);
+}
+
+.notificationCopy strong {
+  color: var(--ds-color-text);
+  font-size: var(--ds-text-body);
+  line-height: var(--ds-line-height-body);
+}
+
+.notificationCopy span {
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+  line-height: var(--ds-line-height-caption);
+}
+
+.notificationCallout button {
+  min-height: 44px;
+  flex-shrink: 0;
+  padding: var(--ds-space-2) var(--ds-space-4);
+  border: 1px solid var(--ds-color-action);
+  border-radius: 8px;
+  background: var(--ds-color-action);
+  color: var(--ds-color-surface);
+  font-family: inherit;
+  font-size: var(--ds-text-body);
+  font-weight: 700;
+  line-height: var(--ds-line-height-body);
+}
+
+.notificationCallout button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ds-color-action) 85%, black);
+}
+
+.notificationCallout button:focus-visible {
+  outline: 3px solid var(--ds-color-action);
+  outline-offset: 2px;
+}
+
 .announcementList,
 .supplyList {
   display: grid;
@@ -416,6 +469,15 @@
 @container housing-complex-detail (max-width: 330px) {
   .scroll {
     --detail-content-inset: var(--ds-space-4);
+  }
+
+  .notificationCallout {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .notificationCallout button {
+    width: 100%;
   }
 }
 

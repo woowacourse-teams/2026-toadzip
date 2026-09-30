@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { IntegratedSearch } from './IntegratedSearch.tsx'
+import { NotificationInterestProvider } from '../interest/NotificationInterest'
 import type {
   IntegratedSearchRepository,
   IntegratedSearchResponse,
@@ -12,6 +13,30 @@ vi.mock('../regions/regionBoundaryCatalog.ts', () => ({
 }))
 
 describe('IntegratedSearch', () => {
+  it('지역 종 버튼은 지역 이동 없이 알림 의사만 묻는다', async () => {
+    localStorage.clear()
+    const record = vi.fn().mockResolvedValue(undefined)
+    const onSelect = vi.fn()
+    render(
+      <NotificationInterestProvider repository={{ record }}>
+        <IntegratedSearch repository={repositoryWith(response([], [], [item('REGION', '11', '서울특별시')]))} onSelect={onSelect} />
+      </NotificationInterestProvider>,
+    )
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })
+    const bell = await screen.findByRole('button', { name: '서울특별시 알림 받기' })
+    expect(bell.querySelector('svg')).toHaveAttribute('data-state', 'idle')
+    fireEvent.click(bell)
+    expect(await screen.findByRole('dialog')).toHaveTextContent('이 지역에 대한 알림을 받으시겠습니까?')
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(record).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'CLICKED', source: 'REGION_SEARCH', targetType: 'REGION', targetId: '11',
+    }))
+    fireEvent.change(screen.getByRole('textbox', { name: '알림 받을 이메일' }), { target: { value: 'guest@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: '알림 신청' }))
+    await waitFor(() => expect(bell).toHaveAccessibleName('서울특별시 알림 취소'))
+    expect(bell.querySelector('svg')).toHaveAttribute('data-state', 'requested')
+  })
+
   it('검색창만 표시하다 공백을 제외한 두 글자부터 검색하고 지우면 목록을 닫는다', async () => {
     vi.useFakeTimers()
     try {

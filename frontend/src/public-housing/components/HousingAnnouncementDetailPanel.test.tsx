@@ -15,8 +15,25 @@ import {
   HousingAnnouncementDetailPanel,
   type HousingAnnouncementDetailData,
 } from './HousingAnnouncementDetailPanel.tsx'
+import { NotificationInterestProvider } from '../interest/NotificationInterest'
 
 describe('HousingAnnouncementDetailPanel', () => {
+  it('이메일 신청을 마친 뒤 공고 알림 클릭을 기록한다', async () => {
+    localStorage.setItem('toadzip.notification-interest.email-confirmed', '1')
+    const record = vi.fn().mockResolvedValue(undefined)
+    render(
+      <NotificationInterestProvider repository={{ record }}>
+        <HousingAnnouncementDetailPanel detail={detail()} onClose={vi.fn()} />
+      </NotificationInterestProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '성남 행복주택 예비입주자 모집 알림 받기' }))
+    await waitFor(() => expect(record).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'CLICKED', source: 'ANNOUNCEMENT_DETAIL', targetType: 'ANNOUNCEMENT', targetId: '201',
+    })))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    localStorage.clear()
+  })
+
   it('유효한 조감도만 표시하고 이미지가 없는 단지의 빈 안내는 숨긴다', () => {
     renderPanel()
     const withoutImage = screen.getByRole('article', { name: '새솔마을 단지 비교' })

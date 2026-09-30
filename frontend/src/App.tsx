@@ -8,14 +8,18 @@ import { ManagementList } from './admin/management/ManagementList'
 import { ManagementDetail } from './admin/management/ManagementDetail'
 import { AdminHome } from './admin/auth/AdminHome'
 import { AdminLayout } from './admin/auth/AdminLayout'
+import { GuestCancellationAdminPage } from './admin/GuestCancellationAdminPage'
 import { LoginPage } from './admin/auth/LoginPage'
 import { RequireAdmin } from './admin/auth/RequireAdmin'
 import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHousingExplorer.tsx'
 import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { UserSessionControl } from './user/auth/UserSessionControl'
+import { NotificationInterestProvider } from './public-housing/interest/NotificationInterest'
+import { GuestCancellationPage } from './public-housing/interest/GuestCancellationPage'
 
 function Home() {
   return (
+    <NotificationInterestProvider>
     <div className="app-shell">
       <header className="service-header" aria-label="서비스 헤더">
         <Link className="brand-link" to="/" aria-label="공공주택 복덕방 홈">
@@ -43,6 +47,7 @@ function Home() {
         <DefaultPublicHousingExplorer />
       </main>
     </div>
+    </NotificationInterestProvider>
   )
 }
 
@@ -73,6 +78,7 @@ function AdminRoutes() {
             <Route path="announcements/:id" element={<ManagementDetail resource="announcements" />} />
             <Route path="failures" element={<FailureReviewPage />} />
             <Route path="locations" element={<LocationDataPage />} />
+            <Route path="notification-cancellations" element={<GuestCancellationAdminPage />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFound />} />
@@ -86,6 +92,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<UserLoginPage />} />
+      <Route path="/notifications/cancel" element={<GuestCancellationPage />} />
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
