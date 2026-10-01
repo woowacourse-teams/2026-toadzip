@@ -21,7 +21,6 @@ import com.toadzip.backend.ingest.collection.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogSourceRepository;
@@ -52,6 +51,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
@@ -398,19 +398,19 @@ class LhAnnouncementCurrentSourceIntegrationTest {
         return JsonMapper.builder().build().readValue(payload, MyHomeAnnouncementSourceSnapshot.class);
     }
 
-    private ExternalDataResponse detailResponse() {
+    private JsonNode detailResponse() {
         return response("""
                 [{"resHeader":[{"SS_CODE":"Y"}],"dsSbd":[{"LCC_NT_NM":"테스트 단지"}]}]
                 """);
     }
 
-    private ExternalDataResponse supplyResponse() {
+    private JsonNode supplyResponse() {
         return response("""
                 [{"resHeader":[{"SS_CODE":"Y"}],"dsList01":[]}]
                 """);
     }
 
-    private ExternalDataResponse response(String payload) {
-        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+    private JsonNode response(String payload) {
+        return JsonMapper.builder().build().readTree(payload);
     }
 }

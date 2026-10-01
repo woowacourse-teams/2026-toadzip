@@ -7,16 +7,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
-import com.toadzip.backend.ingest.pipeline.domain.DataPipelineSchedule;
-import com.toadzip.backend.ingest.pipeline.domain.DataPipelineScheduleDeferralReason;
-import com.toadzip.backend.ingest.pipeline.domain.DataPipelineScheduleStage;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
-import com.toadzip.backend.ingest.pipeline.dto.DataPipelineScheduleDeferralResponse;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineScheduleDeferralService;
-import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -43,17 +36,16 @@ class DataPipelineControllerTest {
     @MockitoBean
     private DataPipelineExecutionService executionService;
 
-    @MockitoBean
-    private DataPipelineScheduleDeferralService scheduleDeferralService;
-
     @ParameterizedTest
     @CsvSource({
             "complex-collection, COMPLEX_COLLECTION",
             "complex-refinement, COMPLEX_REFINEMENT",
             "announcement-collection, ANNOUNCEMENT_COLLECTION",
-            "announcement-refinement, ANNOUNCEMENT_REFINEMENT"
+            "announcement-refinement, ANNOUNCEMENT_REFINEMENT",
+            "complex-sync, COMPLEX_SYNC",
+            "announcement-sync, ANNOUNCEMENT_SYNC"
     })
-    void 분리된_실행을_접수하고_진행_상태를_조회한다(
+    void 독립_및_통합_실행을_접수하고_진행_상태를_조회한다(
             String pathValue,
             DataPipelineType type
     ) throws Exception {
@@ -91,33 +83,6 @@ class DataPipelineControllerTest {
                 ))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.type").value("ANNOUNCEMENT_COLLECTION"));
-    }
-
-    @Test
-    void 정기_실행_지연_상태를_조회한다() throws Exception {
-        Instant observedAt = Instant.parse("2026-09-21T05:15:00Z");
-        when(scheduleDeferralService.findAll()).thenReturn(List.of(
-                new DataPipelineScheduleDeferralResponse(
-                        DataPipelineSchedule.ANNOUNCEMENT,
-                        DataPipelineScheduleStage.COLLECTION,
-                        Instant.parse("2026-09-21T03:00:00Z"),
-                        DataPipelineScheduleDeferralReason.EXECUTION_IN_PROGRESS,
-                        null,
-                        observedAt,
-                        observedAt.plusSeconds(60),
-                        null,
-                        true
-                )
-        ));
-
-        mockMvc.perform(get("/api/admin/ingest/pipelines/schedule-deferrals"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$[0].schedule").value("ANNOUNCEMENT"))
-                .andExpect(jsonPath("$[0].reason").value("EXECUTION_IN_PROGRESS"))
-                .andExpect(jsonPath("$[0].nextRetryAt")
-                        .value("2026-09-21T05:16:00Z"))
-                .andExpect(jsonPath("$[0].active").value(true));
     }
 
     @Test

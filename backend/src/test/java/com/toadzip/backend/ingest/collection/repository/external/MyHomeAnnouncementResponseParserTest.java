@@ -5,9 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 class MyHomeAnnouncementResponseParserTest {
@@ -18,7 +18,7 @@ class MyHomeAnnouncementResponseParserTest {
     @Test
     @DisplayName("마이홈 공고 응답의 항목과 전체 건수를 파싱한다")
     void parsesItemsAndTotalCount() {
-        ExternalDataResponse response = response("""
+        JsonNode response = response("""
                 {"response":{"header":{"resultCode":"00"},
                 "body":{"totalCount":1,"item":[{"pblancId":"A-1","houseSn":1,"pblancNm":"행복주택"}]}}}
                 """);
@@ -35,11 +35,11 @@ class MyHomeAnnouncementResponseParserTest {
     @Test
     @DisplayName("공고 식별자가 없거나 공백인 항목은 수집에 실패한다")
     void rejectsItemsWithoutAnnouncementIdentifier() {
-        ExternalDataResponse missing = response("""
+        JsonNode missing = response("""
                 {"response":{"header":{"resultCode":"00"},
                 "body":{"totalCount":2,"item":[{},{}]}}}
                 """);
-        ExternalDataResponse blank = response("""
+        JsonNode blank = response("""
                 {"response":{"header":{"resultCode":"00"},
                 "body":{"totalCount":1,"item":[{"pblancId":"   "}]}}}
                 """);
@@ -55,7 +55,7 @@ class MyHomeAnnouncementResponseParserTest {
     @Test
     @DisplayName("주택 일련번호가 없는 공고 항목은 수집에 실패한다")
     void rejectsItemsWithoutHouseSerialNumber() {
-        ExternalDataResponse response = response("""
+        JsonNode response = response("""
                 {"response":{"header":{"resultCode":"00"},
                 "body":{"totalCount":2,"item":[{"pblancId":"A-1"},{"pblancId":"A-1"}]}}}
                 """);
@@ -68,7 +68,7 @@ class MyHomeAnnouncementResponseParserTest {
     @Test
     @DisplayName("성공 응답에 전체 건수가 없으면 실패한다")
     void rejectsMissingTotalCount() {
-        ExternalDataResponse response = response("""
+        JsonNode response = response("""
                 {"response":{"header":{"resultCode":"00"},"body":{"item":[{"pblancId":"A-1"}]}}}
                 """);
 
@@ -104,7 +104,7 @@ class MyHomeAnnouncementResponseParserTest {
     @Test
     @DisplayName("성공 응답에 body가 없으면 실패한다")
     void rejectsMissingBody() {
-        ExternalDataResponse response = response("""
+        JsonNode response = response("""
                 {"response":{"header":{"resultCode":"00"}}}
                 """);
 
@@ -118,7 +118,7 @@ class MyHomeAnnouncementResponseParserTest {
     @Test
     @DisplayName("성공 응답의 item이 스칼라이면 실패한다")
     void rejectsInvalidItemType() {
-        ExternalDataResponse response = response("""
+        JsonNode response = response("""
                 {"response":{"header":{"resultCode":"00"},"body":{"totalCount":1,"item":"invalid"}}}
                 """);
 
@@ -132,10 +132,10 @@ class MyHomeAnnouncementResponseParserTest {
     @Test
     @DisplayName("성공 응답의 전체 건수가 음수거나 숫자 타입이 아니면 실패한다")
     void rejectsInvalidTotalCount() {
-        ExternalDataResponse negative = response("""
+        JsonNode negative = response("""
                 {"response":{"header":{"resultCode":"00"},"body":{"totalCount":-1,"item":[]}}}
                 """);
-        ExternalDataResponse booleanValue = response("""
+        JsonNode booleanValue = response("""
                 {"response":{"header":{"resultCode":"00"},"body":{"totalCount":true,"item":[]}}}
                 """);
 
@@ -148,7 +148,7 @@ class MyHomeAnnouncementResponseParserTest {
     @Test
     @DisplayName("일부 행을 수집한 뒤 데이터 없음 응답이 오면 실패한다")
     void rejectsNoDataResponseAfterRowsWereCollected() {
-        ExternalDataResponse response = response("""
+        JsonNode response = response("""
                 {"response":{"header":{"resultCode":"03"}}}
                 """);
 
@@ -156,7 +156,7 @@ class MyHomeAnnouncementResponseParserTest {
                 .isInstanceOf(ExternalDataRequestException.class);
     }
 
-    private ExternalDataResponse response(String payload) {
-        return new ExternalDataResponse(payload, objectMapper.readTree(payload));
+    private JsonNode response(String payload) {
+        return objectMapper.readTree(payload);
     }
 }

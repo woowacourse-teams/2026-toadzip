@@ -11,10 +11,11 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
+import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
@@ -128,10 +129,10 @@ class DataPipelineExecutionServiceTest {
         when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         doAnswer(invocation -> {
             DataPipelineType type = invocation.getArgument(0);
-            DataPipelineProgressListener listener = invocation.getArgument(1);
+            UUID executionId = invocation.getArgument(1);
             type.steps().forEach(step -> {
-                listener.started(step);
-                listener.completed(step, "{\"processedCount\":1}");
+                executionStateService.startStep(executionId, step);
+                executionStateService.completeStep(executionId, step, "{\"processedCount\":1}");
             });
             return null;
         }).when(runner).run(any(), any());
@@ -141,6 +142,9 @@ class DataPipelineExecutionServiceTest {
 
         assertThat(started.executionId()).isNotNull();
         assertThat(started.status()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
+        assertThat(started.trigger()).isEqualTo(DataPipelineExecutionTrigger.MANUAL);
+        assertThat(started.scheduledAt()).isNull();
+        assertThat(started.upstreamExecutionId()).isNull();
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
         assertThat(status.completedSteps()).hasSize(4);
         verify(lease).close();
@@ -155,10 +159,10 @@ class DataPipelineExecutionServiceTest {
         when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         doAnswer(invocation -> {
             DataPipelineType type = invocation.getArgument(0);
-            DataPipelineProgressListener listener = invocation.getArgument(1);
+            UUID executionId = invocation.getArgument(1);
             type.steps().forEach(step -> {
-                listener.started(step);
-                listener.completed(step, "{\"processedCount\":1}");
+                executionStateService.startStep(executionId, step);
+                executionStateService.completeStep(executionId, step, "{\"processedCount\":1}");
             });
             return null;
         }).when(runner).run(any(), any());
@@ -234,9 +238,10 @@ class DataPipelineExecutionServiceTest {
         when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         String serverResponse = "{\"failedSourceRowCount\":3}";
         doAnswer(invocation -> {
-            DataPipelineProgressListener listener = invocation.getArgument(1);
-            listener.started(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
-            listener.partiallyFailed(
+            UUID executionId = invocation.getArgument(1);
+            executionStateService.startStep(executionId, DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+            executionStateService.recordPartialFailure(
+                    executionId,
                     DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS,
                     serverResponse
             );
@@ -267,25 +272,29 @@ class DataPipelineExecutionServiceTest {
         when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         String serverResponse = "{\"rateLimitedRequestCount\":1}";
         doAnswer(invocation -> {
-            DataPipelineProgressListener listener = invocation.getArgument(1);
-            listener.started(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
-            listener.skipped(
+            UUID executionId = invocation.getArgument(1);
+            executionStateService.startStep(executionId, DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+            executionStateService.skipStep(
+                    executionId,
                     DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
                     "외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.",
                     serverResponse
             );
-            listener.started(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
-            listener.completed(
+            executionStateService.startStep(executionId, DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
+            executionStateService.completeStep(
+                    executionId,
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
                     "{\"collectedSourceRowCount\":1}"
             );
-            listener.started(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
-            listener.completed(
+            executionStateService.startStep(executionId, DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
+            executionStateService.completeStep(
+                    executionId,
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
                     "{\"collectedSourceRowCount\":1}"
             );
-            listener.started(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
-            listener.completed(
+            executionStateService.startStep(executionId, DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
+            executionStateService.completeStep(
+                    executionId,
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS,
                     "{\"collectedSourceRowCount\":1}"
             );
@@ -313,10 +322,10 @@ class DataPipelineExecutionServiceTest {
         configureStoredExecution();
         when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         doAnswer(invocation -> {
-            DataPipelineProgressListener listener = invocation.getArgument(1);
-            listener.started(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
-            listener.completed(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS, "{}");
-            listener.started(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
+            UUID executionId = invocation.getArgument(1);
+            executionStateService.startStep(executionId, DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+            executionStateService.completeStep(executionId, DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS, "{}");
+            executionStateService.startStep(executionId, DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
             throw new com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException(
                     "LH 공고 API 장애로 호출을 잠시 중단했습니다. 잠시 후 재실행해주세요.");
         }).when(runner).run(any(), any());
@@ -339,10 +348,10 @@ class DataPipelineExecutionServiceTest {
         }).when(executionStateService).complete(any(), any());
         doAnswer(invocation -> {
             DataPipelineType type = invocation.getArgument(0);
-            DataPipelineProgressListener listener = invocation.getArgument(1);
+            UUID executionId = invocation.getArgument(1);
             type.steps().forEach(step -> {
-                listener.started(step);
-                listener.completed(step, "{\"processedCount\":1}");
+                executionStateService.startStep(executionId, step);
+                executionStateService.completeStep(executionId, step, "{\"processedCount\":1}");
             });
             return null;
         }).when(runner).run(any(), any());
@@ -407,7 +416,8 @@ class DataPipelineExecutionServiceTest {
 
     private void configureStoredExecution() {
         AtomicReference<DataPipelineExecution> savedExecution = new AtomicReference<>();
-        lenient().when(executionStateService.create(any(), any(), any())).thenAnswer(invocation -> {
+        lenient().when(executionStateService.create(any(), any(), any()))
+                .thenAnswer(invocation -> {
             DataPipelineExecution execution = DataPipelineExecution.start(
                     invocation.getArgument(0),
                     invocation.getArgument(1),

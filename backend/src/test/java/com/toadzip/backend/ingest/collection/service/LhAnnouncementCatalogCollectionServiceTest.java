@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.collection.service;
 
+import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.LH_ANNOUNCEMENT_COLLECTION;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -10,15 +11,14 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCatalogSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementCatalogPage;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementCatalogPage.Entry;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogStore;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementCatalogPage;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogStore.StoreResult;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionExecutionLock;
+import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogStore;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementCatalogResponseParser;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
@@ -43,7 +43,7 @@ class LhAnnouncementCatalogCollectionServiceTest {
     @Mock
     private LhAnnouncementCatalogStore store;
     @Mock
-    private LhAnnouncementCollectionExecutionLock lock;
+    private IngestOperationLock lock;
     @Mock
     private ExternalDataFailureRecorder failureRecorder;
 
@@ -52,12 +52,13 @@ class LhAnnouncementCatalogCollectionServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(lock.<ExternalDataCollectionReport>tryRun(any(), any())).thenAnswer(invocation -> {
-            Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(1);
-            return Optional.of(operation.get());
-        });
+        when(lock.<ExternalDataCollectionReport>tryRun(eq(LH_ANNOUNCEMENT_COLLECTION), any()))
+                .thenAnswer(invocation -> {
+                    Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(1);
+                    return Optional.of(operation.get());
+                });
         when(externalRepository.fetchCatalog(anyInt(), eq(500))).thenReturn(
-                new ExternalDataResponse("{}", JsonMapper.builder().build().createObjectNode())
+                JsonMapper.builder().build().createObjectNode()
         );
         meterRegistry = new SimpleMeterRegistry();
         service = new LhAnnouncementCatalogCollectionService(

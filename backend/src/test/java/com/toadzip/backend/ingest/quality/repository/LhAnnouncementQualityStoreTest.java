@@ -9,7 +9,6 @@ import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollection
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementRefreshPolicy;
-import com.toadzip.backend.ingest.collection.service.LhSupplyInfoTypeCodeResolver;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse;
 import com.toadzip.backend.ingest.quality.service.LhAnnouncementQualityService;
 import jakarta.persistence.EntityManager;
@@ -31,7 +30,7 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles("test")
 @Import({LhAnnouncementQualityStore.class, LhAnnouncementQualityService.class,
         LhAnnouncementCollectionProgressStore.class, LhAnnouncementCollectionCandidateResolver.class,
-        LhAnnouncementRefreshPolicy.class, LhSupplyInfoTypeCodeResolver.class,
+        LhAnnouncementRefreshPolicy.class,
         LhAnnouncementQualityStoreTest.TimeConfiguration.class})
 class LhAnnouncementQualityStoreTest {
 

@@ -2,7 +2,6 @@ package com.toadzip.backend.ingest.collection.repository.external;
 
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -20,10 +19,9 @@ public class MyHomeAnnouncementResponseParser {
     private final ObjectMapper objectMapper;
 
     public ExternalDataPage<MyHomeAnnouncementSourceSnapshot> parse(
-            ExternalDataResponse response,
+            JsonNode root,
             int collectedCount
     ) {
-        JsonNode root = response.body();
         String resultCode = root.at("/response/header/resultCode").asString("");
         if (NO_DATA.equals(resultCode)) {
             return emptyPageOrThrow(collectedCount, 0);
@@ -35,7 +33,7 @@ public class MyHomeAnnouncementResponseParser {
         if (!body.isObject()) {
             throw invalidResponseSchema();
         }
-        int totalCount = totalCountOf(body);
+        int totalCount = MyHomeResponseTotalCountParser.parse(body, this::invalidResponseSchema);
         JsonNode item = body.path("item");
         if (item.isMissingNode() || item.isNull()) {
             return emptyPageOrThrow(collectedCount, totalCount);
@@ -65,33 +63,6 @@ public class MyHomeAnnouncementResponseParser {
             return new ExternalDataPage<>(List.of(), totalCount);
         }
         throw invalidResponseSchema();
-    }
-
-    private int totalCountOf(JsonNode body) {
-        JsonNode totalCount = body.path("totalCount");
-        if (totalCount.isIntegralNumber() && totalCount.canConvertToInt()) {
-            return requireNonNegativeTotalCount(totalCount.intValue());
-        }
-        if (totalCount.isTextual()) {
-            return textualTotalCount(totalCount.textValue());
-        }
-        throw invalidResponseSchema();
-    }
-
-    private int textualTotalCount(String totalCount) {
-        try {
-            return requireNonNegativeTotalCount(Integer.parseInt(totalCount));
-        }
-        catch (NumberFormatException exception) {
-            throw invalidResponseSchema();
-        }
-    }
-
-    private int requireNonNegativeTotalCount(int totalCount) {
-        if (totalCount < 0) {
-            throw invalidResponseSchema();
-        }
-        return totalCount;
     }
 
     private MyHomeAnnouncementSourceSnapshot sourceSnapshotOf(JsonNode row) {

@@ -102,6 +102,16 @@ public class MyHomeComplexSource {
         bassCnvrsGtnLmt = snapshot.bassCnvrsGtnLmt();
     }
 
+    public MyHomeComplexSourceSnapshot snapshot() {
+        return new MyHomeComplexSourceSnapshot(
+                hsmpSn, insttNm, brtcCode, brtcNm, signguCode, signguNm,
+                hsmpNm, rnAdres, pnu, competDe, hshldCo, suplyTyNm, styleNm,
+                suplyPrvuseAr, suplyCmnuseAr, houseTyNm, heatMthdDetailNm,
+                buldStleNm, elvtrInstlAtNm, parkngCo,
+                bassRentGtn, bassMtRntchrg, bassCnvrsGtnLmt
+        );
+    }
+
     public static boolean sameSourceComplex(String leftKey, String rightKey) {
         return firstKeyPart(leftKey).equals(firstKeyPart(rightKey));
     }

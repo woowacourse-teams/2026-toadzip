@@ -34,9 +34,9 @@ public class LhLeaseCatalogCollectionService {
     public ExternalDataCollectionReport collect(LhLeaseCatalogCollectionRequest request) {
         ExternalDataCallCounter callCounter = new ExternalDataCallCounter();
         log.info("LH 임대 카탈로그 수집을 시작합니다: pageSize={}, maxPages={}", request.pageSize(), request.maxPages());
-        FetchedCatalog fetchedCatalog;
+        List<LhCatalogSourceSnapshot> snapshots;
         try {
-            fetchedCatalog = fetchCompleteCatalog(request, callCounter);
+            snapshots = fetchCompleteCatalog(request, callCounter);
         }
         catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
             failureRecorder.record(
@@ -55,7 +55,7 @@ public class LhLeaseCatalogCollectionService {
                     ExternalDataRateLimit.count(exception)
             );
         }
-        int storedRowCount = sourceStore.replaceCatalog(fetchedCatalog.snapshots());
+        int storedRowCount = sourceStore.replaceCatalog(snapshots);
         failureRecorder.resolveStartingWith(ExternalDataSource.LH_LEASE_CATALOG, "PG_SZ=");
         ExternalDataCollectionReport report = new ExternalDataCollectionReport(
                 ExternalDataSource.LH_LEASE_CATALOG.operation(),
@@ -71,7 +71,7 @@ public class LhLeaseCatalogCollectionService {
         return report;
     }
 
-    private FetchedCatalog fetchCompleteCatalog(
+    private List<LhCatalogSourceSnapshot> fetchCompleteCatalog(
             LhLeaseCatalogCollectionRequest request,
             ExternalDataCallCounter callCounter
     ) {
@@ -89,12 +89,9 @@ public class LhLeaseCatalogCollectionService {
             IngestExecutionScope.pageCompleted(page, parsedPage.totalCount(), request.pageSize());
             snapshots.addAll(parsedPage.items());
             if (parsedPage.completesCollection(snapshots.size(), request.pageSize())) {
-                return new FetchedCatalog(snapshots);
+                return snapshots;
             }
         }
         throw new ExternalDataRequestException("LH 임대 카탈로그 조회가 최대 페이지 안에 끝나지 않았습니다.");
-    }
-
-    private record FetchedCatalog(List<LhCatalogSourceSnapshot> snapshots) {
     }
 }

@@ -1,6 +1,5 @@
 package com.toadzip.backend.ingest.collection.repository;
 
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSupplyType;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
@@ -8,6 +7,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import tools.jackson.databind.JsonNode;
 
 @Repository
 public class MyHomeAnnouncementExternalRepository {
@@ -22,7 +22,7 @@ public class MyHomeAnnouncementExternalRepository {
         this.client = client;
     }
 
-    public ExternalDataResponse fetch(
+    public JsonNode fetch(
             MyHomeAnnouncementSupplyType supplyType,
             MyHomeAnnouncementCollectionRequest request,
             int page

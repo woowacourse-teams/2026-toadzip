@@ -1,3 +1,4 @@
+import type { DataPipelineType } from './api'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 afterEach(() => {
@@ -7,6 +8,17 @@ afterEach(() => {
 })
 
 describe('관리자 데이터 수집·정제 API', () => {
+  it.each([
+    ['COMPLEX_SYNC', 'complex-sync'], ['ANNOUNCEMENT_SYNC', 'announcement-sync'],
+  ] as const)('%s 통합 실행은 기존 세션과 CSRF 계약으로 시작한다', async (type, path) => {
+    const fetchMock = prepareFetch(execution(type, 'RUNNING'))
+    const { startDataPipeline } = await import('./api.ts')
+    await expect(startDataPipeline(type)).resolves.toMatchObject({ type, status: 'RUNNING' })
+    expect(fetchMock).toHaveBeenLastCalledWith(`http://localhost:8080/api/admin/ingest/pipelines/${path}`, {
+      method: 'POST', credentials: 'include', headers: { 'X-CUSTOM-CSRF': 'csrf-token' },
+    })
+  })
+
   it('중지는 실행 ID와 CSRF 헤더를 포함하고 서버의 대기 상태를 보존한다', async () => {
     const fetchMock = prepareFetch({ ...execution('COMPLEX_COLLECTION', 'RUNNING'), stopRequested: true })
     const { stopDataPipeline } = await import('./api.ts')
@@ -187,7 +199,7 @@ function prepareFetch(data: unknown) {
 }
 
 function execution(
-  type: 'COMPLEX_COLLECTION' | 'COMPLEX_REFINEMENT' | 'ANNOUNCEMENT_COLLECTION',
+  type: DataPipelineType,
   status: string,
 ) {
   return {

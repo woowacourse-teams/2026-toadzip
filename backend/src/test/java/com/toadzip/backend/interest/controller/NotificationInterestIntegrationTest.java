@@ -1,6 +1,7 @@
 package com.toadzip.backend.interest.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -16,6 +17,7 @@ import com.toadzip.backend.interest.repository.NotificationInterestRepository;
 import com.toadzip.backend.interest.service.NotificationRetentionService;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Test;
@@ -25,6 +27,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,6 +52,19 @@ class NotificationInterestIntegrationTest {
 
     @Autowired
     private NotificationRetentionService retentionService;
+
+    @Autowired(required = false)
+    private ScheduledAnnotationBeanPostProcessor schedulingProcessor;
+
+    @Test
+    void 예약_작업은_알림_보관_기간_정리만_등록한다() {
+        assertNotNull(schedulingProcessor);
+        var scheduledMethods = schedulingProcessor.getScheduledTasks().stream()
+                .map(task -> task.getTask().toString())
+                .toList();
+
+        assertEquals(List.of(NotificationRetentionService.class.getName() + ".purgeExpiredData"), scheduledMethods);
+    }
 
     @Test
     void 보관_기간이_지난_신청과_이벤트는_자동_정리된다() {

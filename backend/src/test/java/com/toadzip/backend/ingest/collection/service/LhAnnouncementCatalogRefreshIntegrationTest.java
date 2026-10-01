@@ -4,12 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
+import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
+import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCatalogSnapshot;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementCatalogPage.Entry;
 import com.toadzip.backend.ingest.collection.repository.ExternalDataCollectionFailureRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogSourceRepository;
@@ -19,8 +21,8 @@ import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollection
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -32,6 +34,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
@@ -147,6 +150,32 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
         assertThat(catalog.count()).isEqualTo(2);
     }
 
+    @Test
+    void 목록으로_보정된_조회코드는_실제_호출과_체크포인트와_원천_연결에_동일하게_사용된다() {
+        sources.save(source("100", 1, "20261030"));
+        catalogStore.store(List.of(new Entry(new LhAnnouncementCatalogSnapshot(
+                "100", "03", "06", "06", "064", "공고", "공고중", "", "", "20261030", "", ""
+        ), "{}")));
+        var expectedRequest = new LhAnnouncementRequest("100", "03", "06", "06", "064");
+        String description = expectedRequest.requestDescription();
+        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(description);
+
+        var report = service.collect(DETAIL);
+
+        assertThat(report.externalApiCallCount()).isOne();
+        assertThat(report.failedRequestCount()).isZero();
+        verify(external).fetchDetail(expectedRequest);
+        assertThat(checkpoints.findAll()).singleElement().satisfies(checkpoint -> {
+            assertThat(checkpoint.getRequestDescription()).isEqualTo(description);
+            assertThat(checkpoint.getRequestHash()).isEqualTo(requestHash);
+        });
+        assertThat(links.findAll()).singleElement().satisfies(link -> {
+            assertThat(link.getRequestDescription()).isEqualTo(description);
+            assertThat(link.getRequestHash()).isEqualTo(requestHash);
+        });
+        assertThat(service.collect(DETAIL).externalApiCallCount()).isZero();
+    }
+
     private void observeAgain(Instant now, String status) {
         when(clock.instant()).thenReturn(now);
         List<MyHomeAnnouncementSource> current = sources.findAll();
@@ -163,7 +192,8 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
     private MyHomeAnnouncementSource source(String panId, int houseSn, String endDate) {
         String payload = """
                 {"pblancId":"%s","houseSn":%d,"suplyInsttNm":"한국토지주택공사","suplyTyNm":"행복주택",
-                 "endDe":"%s","url":"https://apply.lh.or.kr/panDetail?panId=%s&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"}
+                 "endDe":"%s",
+                 "url":"https://apply.lh.or.kr/panDetail?panId=%s&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=06"}
                 """.formatted(panId, houseSn, endDate, panId);
         var source = MyHomeAnnouncementSource.from(0,
                 JsonMapper.builder().build().readValue(payload, MyHomeAnnouncementSourceSnapshot.class));
@@ -171,11 +201,11 @@ class LhAnnouncementCatalogRefreshIntegrationTest {
         return source;
     }
 
-    private ExternalDataResponse response() {
+    private JsonNode response() {
         String payload = """
                 [{"resHeader":[{"SS_CODE":"Y","RS_DTTM":"20260925120000"}],
                   "dsSbd":[{"LCC_NT_NM":"테스트 단지"}]}]
                 """;
-        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+        return JsonMapper.builder().build().readTree(payload);
     }
 }

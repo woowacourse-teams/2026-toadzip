@@ -133,27 +133,27 @@ public class LhHousingTypeHouseholdSourceMapper {
                 .replace("경상북도", "경북")
                 .replace("경상남도", "경남");
     }
-}
 
-record LhHousingTypeHouseholdSourceKey(String areaName, String supplyTypeName, String complexName) {
+    record LhHousingTypeHouseholdSourceKey(String areaName, String supplyTypeName, String complexName) {
 
-    String failureKey() {
-        return component(areaName) + component(supplyTypeName) + component(complexName);
+        String failureKey() {
+            return component(areaName) + component(supplyTypeName) + component(complexName);
+        }
+
+        private String component(String value) {
+            return value.length() + ":" + value;
+        }
     }
 
-    private String component(String value) {
-        return value.length() + ":" + value;
+    record LhHousingTypeHouseholdSource(
+            String areaName,
+            String supplyTypeName,
+            String complexName,
+            int totalHouseholdCount,
+            List<LhHousingTypeHousehold> housingTypes
+    ) {
     }
-}
 
-record LhHousingTypeHouseholdSource(
-        String areaName,
-        String supplyTypeName,
-        String complexName,
-        int totalHouseholdCount,
-        List<LhHousingTypeHousehold> housingTypes
-) {
-}
-
-record LhHousingTypeHousehold(BigDecimal exclusiveArea, int totalHouseholdCount) {
+    record LhHousingTypeHousehold(BigDecimal exclusiveArea, int totalHouseholdCount) {
+    }
 }

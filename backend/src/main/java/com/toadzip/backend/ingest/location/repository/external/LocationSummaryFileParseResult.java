@@ -7,20 +7,13 @@ import java.util.Set;
 public record LocationSummaryFileParseResult(
         int entryCount,
         long rowCount,
-        long coordinateRowCount,
-        Set<String> entryNames,
         Map<String, Set<String>> provinceCodesByEntry,
         Set<String> provinceCodes
 ) {
 
     public LocationSummaryFileParseResult {
-        entryNames = Set.copyOf(entryNames);
         provinceCodesByEntry = immutableProvinceCodesByEntry(provinceCodesByEntry);
         provinceCodes = Set.copyOf(provinceCodes);
-    }
-
-    public long missingCoordinateRowCount() {
-        return rowCount - coordinateRowCount;
     }
 
     private static Map<String, Set<String>> immutableProvinceCodesByEntry(

@@ -15,7 +15,8 @@ class LocationSummaryRecordTest {
         assertThat(record.roadAddress()).isEqualTo("제주특별자치도 서귀포시 성산읍 일출로 지하 42-3");
         assertThat(record.normalizedRoadAddress()).isEqualTo(record.roadAddress());
         assertThat(record.provinceCode()).isEqualTo("50");
-        assertThat(record.hasCoordinate()).isTrue();
+        assertThat(record.x()).isEqualByComparingTo("906000.123456");
+        assertThat(record.y()).isEqualByComparingTo("1480000.123456");
     }
 
     @Test

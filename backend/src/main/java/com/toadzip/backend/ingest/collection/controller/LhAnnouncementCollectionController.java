@@ -1,14 +1,15 @@
 package com.toadzip.backend.ingest.collection.controller;
 
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.dto.VerifiedLhSupplyReplacementRequest;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCatalogCollectionService;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementDetailCollectionService;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementSupplyCollectionService;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementExternalCollectionService;
+import com.toadzip.backend.ingest.collection.dto.VerifiedLhSupplyReplacementRequest;
 import com.toadzip.backend.ingest.collection.service.VerifiedLhSupplyReplacementService;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import jakarta.validation.Valid;
 import java.security.Principal;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,27 +20,14 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/admin/ingest/lh/announcements")
+@RequiredArgsConstructor
 public class LhAnnouncementCollectionController {
 
     private final LhAnnouncementCatalogCollectionService catalogCollectionService;
 
-    private final LhAnnouncementDetailCollectionService detailCollectionService;
-
-    private final LhAnnouncementSupplyCollectionService supplyCollectionService;
+    private final LhAnnouncementExternalCollectionService collectionService;
 
     private final VerifiedLhSupplyReplacementService replacementService;
-
-    public LhAnnouncementCollectionController(
-            LhAnnouncementCatalogCollectionService catalogCollectionService,
-            LhAnnouncementDetailCollectionService detailCollectionService,
-            LhAnnouncementSupplyCollectionService supplyCollectionService,
-            VerifiedLhSupplyReplacementService replacementService
-    ) {
-        this.catalogCollectionService = catalogCollectionService;
-        this.detailCollectionService = detailCollectionService;
-        this.supplyCollectionService = supplyCollectionService;
-        this.replacementService = replacementService;
-    }
 
     @PostMapping("/catalog")
     public ResponseEntity<ExternalDataCollectionReport> collectCatalog() {
@@ -48,22 +36,22 @@ public class LhAnnouncementCollectionController {
 
     @PostMapping("/details")
     public ResponseEntity<ExternalDataCollectionReport> collectDetails() {
-        return responseOf(detailCollectionService.collect());
+        return responseOf(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL));
     }
 
     @PostMapping("/supplies")
     public ResponseEntity<ExternalDataCollectionReport> collectSupplies() {
-        return responseOf(supplyCollectionService.collect());
+        return responseOf(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY));
     }
 
     @PostMapping("/details/{pblancId}/refresh")
     public ResponseEntity<ExternalDataCollectionReport> refreshDetails(@PathVariable String pblancId) {
-        return responseOf(detailCollectionService.refresh(pblancId));
+        return responseOf(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, pblancId));
     }
 
     @PostMapping("/supplies/{pblancId}/refresh")
     public ResponseEntity<ExternalDataCollectionReport> refreshSupplies(@PathVariable String pblancId) {
-        return responseOf(supplyCollectionService.refresh(pblancId));
+        return responseOf(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, pblancId));
     }
 
     @PostMapping("/supplies/{pblancId}/verified-replacement")
@@ -73,7 +61,7 @@ public class LhAnnouncementCollectionController {
         long approvalId = replacementService.approve(pblancId, request, principal.getName());
         ExternalDataCollectionReport report;
         try {
-            report = supplyCollectionService.refresh(pblancId);
+            report = collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, pblancId);
         }
         catch (RuntimeException exception) {
             replacementService.finish(approvalId);

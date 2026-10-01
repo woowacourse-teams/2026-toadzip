@@ -1,11 +1,12 @@
 package com.toadzip.backend.ingest.collection.service;
 
+import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.LH_ANNOUNCEMENT_COLLECTION;
+
 import com.toadzip.backend.ingest.collection.configuration.LhAnnouncementClientProperties;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionExecutionLock;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore.BatchProgress;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
@@ -13,10 +14,12 @@ import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCan
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Skipped;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -50,7 +53,7 @@ public class LhAnnouncementExternalCollectionService {
     private static final int ANNOUNCEMENT_BATCH_SIZE = 500;
 
     private final MyHomeAnnouncementSourceRepository myHomeAnnouncementRepository;
-    private final LhAnnouncementCollectionExecutionLock executionLock;
+    private final IngestOperationLock executionLock;
     private final LhAnnouncementCollectionProgressManager progressManager;
     private final ExternalDataFailureRecorder failureRecorder;
     private final LhAnnouncementCollectionCandidateResolver candidateResolver;
@@ -63,10 +66,11 @@ public class LhAnnouncementExternalCollectionService {
         validateTargetSource(targetSource);
         log.info("{} 수집을 시작합니다.", targetSource.operation());
         ExternalDataCollectionReport report = executionLock
-                .tryRun(targetSource, () -> collectAnnouncements(targetSource))
+                .tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> collectAnnouncements(targetSource))
                 .orElseThrow(() -> alreadyRunning(targetSource));
         log.info(
-                "{} 수집을 완료했습니다: storedRowCount={}, failedRequestCount={}, externalApiCallCount={}, skippedRequestCount={}",
+                "{} 수집을 완료했습니다: storedRowCount={}, failedRequestCount={}, "
+                        + "externalApiCallCount={}, skippedRequestCount={}",
                 targetSource.operation(),
                 report.storedRowCount(),
                 report.failedRequestCount(),
@@ -81,7 +85,7 @@ public class LhAnnouncementExternalCollectionService {
         validatePblancId(pblancId);
         log.info("{} 강제 갱신을 시작합니다: pblancId={}", targetSource.operation(), pblancId);
         ExternalDataCollectionReport report = executionLock
-                .tryRun(targetSource, () -> refreshAnnouncement(targetSource, pblancId.strip()))
+                .tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> refreshAnnouncement(targetSource, pblancId.strip()))
                 .orElseThrow(() -> alreadyRunning(targetSource));
         log.info(
                 "{} 강제 갱신을 완료했습니다: pblancId={}, storedRowCount={}, failedRequestCount={}, "
@@ -98,8 +102,8 @@ public class LhAnnouncementExternalCollectionService {
 
     private ExternalDataCollectionReport collectAnnouncements(ExternalDataSource targetSource) {
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
-        Set<String> visitedSourceAnnouncements = new HashSet<>();
-        Set<String> readSourceAnnouncements = new HashSet<>();
+        Set<String> handledAnnouncementKeys = new HashSet<>();
+        Set<String> loadedAnnouncementKeys = new HashSet<>();
         long lastSeenId = 0L;
         while (true) {
             IngestExecutionScope.checkStopRequested();
@@ -109,7 +113,7 @@ public class LhAnnouncementExternalCollectionService {
             }
             lastSeenId = sources.getLast().getId();
             List<MyHomeAnnouncementSource> completeSources = completeSourceGroups(
-                    targetSource, sources, readSourceAnnouncements
+                    targetSource, sources, loadedAnnouncementKeys
             );
             if (completeSources.isEmpty()) {
                 continue;
@@ -117,7 +121,7 @@ public class LhAnnouncementExternalCollectionService {
             ExternalDataCollectionReport batchReport = collectBatch(
                     targetSource,
                     completeSources,
-                    visitedSourceAnnouncements,
+                    handledAnnouncementKeys,
                     false
             );
             report = report.plus(batchReport);
@@ -149,10 +153,10 @@ public class LhAnnouncementExternalCollectionService {
     private List<MyHomeAnnouncementSource> completeSourceGroups(
             ExternalDataSource targetSource,
             List<MyHomeAnnouncementSource> batch,
-            Set<String> readSourceAnnouncements
+            Set<String> loadedAnnouncementKeys
     ) {
         List<MyHomeAnnouncementSource> unread = batch.stream()
-                .filter(source -> readSourceAnnouncements.add(sourceGroupKey(source)))
+                .filter(source -> loadedAnnouncementKeys.add(sourceGroupKey(source)))
                 .toList();
         if (unread.isEmpty()) {
             return List.of();
@@ -200,7 +204,7 @@ public class LhAnnouncementExternalCollectionService {
     private ExternalDataCollectionReport collectBatch(
             ExternalDataSource targetSource,
             List<MyHomeAnnouncementSource> sources,
-            Set<String> visitedSourceAnnouncements,
+            Set<String> handledAnnouncementKeys,
             boolean forceRefresh
     ) {
         List<MyHomeAnnouncementSource> current = measurePreparation(
@@ -209,15 +213,35 @@ public class LhAnnouncementExternalCollectionService {
         List<Resolution> resolutions = measurePreparation(targetSource, forceRefresh, "candidate_resolution",
                 () -> candidateResolver.resolveAll(current));
         CandidateSelection selection = measurePreparation(targetSource, forceRefresh, "candidate_selection",
-                () -> selectCandidates(current, resolutions, visitedSourceAnnouncements, forceRefresh));
+                () -> selectCandidates(current, resolutions, handledAnnouncementKeys, forceRefresh));
+        recordSelection(targetSource, forceRefresh, selection, sources.size() - current.size());
+        ExternalDataCollectionReport report = selectionReport(targetSource, selection);
+        return report.plus(collectCandidates(
+                targetSource, selection.candidates(), selection.refreshTtlByRequest(), forceRefresh
+        ));
+    }
+
+    private void recordSelection(
+            ExternalDataSource targetSource,
+            boolean forceRefresh,
+            CandidateSelection selection,
+            int historicalSourceCount
+    ) {
         recordCount(targetSource, forceRefresh, "source.rows", "candidate", selection.candidates().size());
         recordCount(targetSource, forceRefresh, "source.rows", "unsupported", selection.skipped().size());
         recordCount(targetSource, forceRefresh, "source.rows", "policy_excluded", selection.policyExcludedCount());
         recordCount(targetSource, forceRefresh, "source.rows", "duplicate", selection.duplicateCount());
-        recordCount(targetSource, forceRefresh, "source.rows", "historical", sources.size() - current.size());
+        recordCount(targetSource, forceRefresh, "source.rows", "historical", historicalSourceCount);
         recordCount(targetSource, forceRefresh, "candidates", "conflicting", selection.conflicts().size());
+    }
+
+    private ExternalDataCollectionReport selectionReport(
+            ExternalDataSource targetSource,
+            CandidateSelection selection
+    ) {
         failureRecorder.skipAll(targetSource,
-                selection.excludedSourceKeys().stream().map(this::sourceSelectionDescription).toList(),
+                selection.sourceKeysWithoutEligibleCandidates().stream()
+                        .map(this::sourceSelectionDescription).toList(),
                 "현재 마이홈 공고 원천이 모두 LH 수집 대상에서 제외되어 충돌 재처리를 건너뜁니다.");
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
         for (Candidate conflict : selection.conflicts()) {
@@ -226,29 +250,26 @@ public class LhAnnouncementExternalCollectionService {
         for (Skipped skipped : selection.skipped()) {
             report = report.plus(skipReport(targetSource, skipped.sourceDescription(), skipped.reason()));
         }
-        return report.plus(collectCandidates(
-                targetSource, selection.candidates(), selection.refreshTtlByRequest(), forceRefresh
-        ));
+        return report;
     }
 
     private CandidateSelection selectCandidates(
             List<MyHomeAnnouncementSource> sources,
             List<Resolution> resolutions,
-            Set<String> visitedSourceAnnouncements,
+            Set<String> handledAnnouncementKeys,
             boolean forceRefresh
     ) {
         Set<String> conflictingKeys = conflictingSourceKeys(resolutions);
-        Set<String> excludedSourceKeys = resolutions.stream()
+        Set<String> sourceKeysWithoutEligibleCandidates = resolutions.stream()
                 .map(Resolution::sourceAnnouncementKey)
                 .collect(Collectors.toSet());
+        List<Skipped> skippedSources = new ArrayList<>();
         List<Candidate> conflicts = new ArrayList<>();
         List<Candidate> candidates = new ArrayList<>();
-        List<Skipped> skippedSources = new ArrayList<>();
         Map<String, Duration> refreshTtlByRequest = new HashMap<>();
         int policyExcludedCount = 0;
         int duplicateCount = 0;
         for (int sourceIndex = 0; sourceIndex < sources.size(); sourceIndex++) {
-            MyHomeAnnouncementSource source = sources.get(sourceIndex);
             Resolution resolution = resolutions.get(sourceIndex);
             if (resolution instanceof Skipped skipped) {
                 skippedSources.add(skipped);
@@ -257,15 +278,15 @@ public class LhAnnouncementExternalCollectionService {
             Candidate candidate = (Candidate) resolution;
             Optional<Duration> refreshTtl = Optional.empty();
             if (!forceRefresh) {
-                refreshTtl = refreshPolicy.scheduledRefreshTtl(source, candidate);
-                if (refreshTtl.isEmpty()) {
-                    policyExcludedCount++;
-                    continue;
-                }
+                refreshTtl = refreshPolicy.scheduledRefreshTtl(sources.get(sourceIndex), candidate);
             }
-            excludedSourceKeys.remove(candidate.sourceAnnouncementKey());
+            if (!forceRefresh && refreshTtl.isEmpty()) {
+                policyExcludedCount++;
+                continue;
+            }
+            sourceKeysWithoutEligibleCandidates.remove(candidate.sourceAnnouncementKey());
             if (conflictingKeys.contains(candidate.sourceAnnouncementKey())) {
-                addConflict(candidate, visitedSourceAnnouncements, conflicts);
+                addConflict(candidate, handledAnnouncementKeys, conflicts);
                 continue;
             }
             if (!forceRefresh) {
@@ -275,14 +296,14 @@ public class LhAnnouncementExternalCollectionService {
                         BinaryOperator.minBy(Duration::compareTo)
                 );
             }
-            if (!visitedSourceAnnouncements.add(candidate.sourceAnnouncementKey())) {
+            if (!handledAnnouncementKeys.add(candidate.sourceAnnouncementKey())) {
                 duplicateCount++;
                 continue;
             }
             candidates.add(candidate);
         }
         return new CandidateSelection(
-                candidates, refreshTtlByRequest, skippedSources, conflicts, excludedSourceKeys,
+                candidates, refreshTtlByRequest, skippedSources, conflicts, sourceKeysWithoutEligibleCandidates,
                 policyExcludedCount, duplicateCount
         );
     }
@@ -344,18 +365,15 @@ public class LhAnnouncementExternalCollectionService {
                 () -> failureRecorder.findPendingRequestDescriptions(targetSource, candidates.stream()
                         .map(candidate -> sourceSelectionDescription(candidate.sourceAnnouncementKey())).toList()));
         // 배치의 판정 결과다. 이후 수집이 중단되면 실제 호출 수는 더 적을 수 있다.
-        recordDecisions(targetSource, forceRefresh, requests, progress);
-        BatchProgress requestProgress = progress;
-        long requestCount = requests.stream()
-                .filter(request -> forceRefresh || !requestProgress.isFresh(request.getFirst().requestDescription()))
-                .count();
-        IngestExecutionScope.beginWork(targetSource.operation() + " · 현재 묶음 (최대 500개 원천 행)", "요청", requestCount);
+        int pendingRequestCount = recordRequestDecisions(targetSource, forceRefresh, requests, progress);
+        IngestExecutionScope.beginWork(
+                targetSource.operation() + " · 현재 묶음 (최대 500개 원천 행)", "요청", pendingRequestCount
+        );
         return collectRequests(
                 targetSource,
                 requests,
                 progress,
-                pendingConflicts,
-                forceRefresh
+                pendingConflicts
         );
     }
 
@@ -383,7 +401,7 @@ public class LhAnnouncementExternalCollectionService {
         return progress;
     }
 
-    private void recordDecisions(
+    private int recordRequestDecisions(
             ExternalDataSource targetSource,
             boolean forceRefresh,
             List<List<Candidate>> requests,
@@ -394,7 +412,7 @@ public class LhAnnouncementExternalCollectionService {
         int freshRequestCount = 0;
         for (List<Candidate> request : requests) {
             candidateCount += request.size();
-            if (!forceRefresh && progress.isFresh(request.getFirst().requestDescription())) {
+            if (progress.isFresh(request.getFirst().requestDescription())) {
                 freshCandidateCount += request.size();
                 freshRequestCount++;
             }
@@ -402,7 +420,9 @@ public class LhAnnouncementExternalCollectionService {
         recordCount(targetSource, forceRefresh, "candidates", "ttl_fresh", freshCandidateCount);
         recordCount(targetSource, forceRefresh, "candidates", "refresh", candidateCount - freshCandidateCount);
         recordCount(targetSource, forceRefresh, "requests", "ttl_fresh", freshRequestCount);
-        recordCount(targetSource, forceRefresh, "requests", "refresh", requests.size() - freshRequestCount);
+        int pendingRequestCount = requests.size() - freshRequestCount;
+        recordCount(targetSource, forceRefresh, "requests", "refresh", pendingRequestCount);
+        return pendingRequestCount;
     }
 
     private <T> T measurePreparation(
@@ -440,7 +460,7 @@ public class LhAnnouncementExternalCollectionService {
             Map<String, Duration> refreshTtlByRequest,
             List<Skipped> skipped,
             List<Candidate> conflicts,
-            Set<String> excludedSourceKeys,
+            Set<String> sourceKeysWithoutEligibleCandidates,
             int policyExcludedCount,
             int duplicateCount
     ) {
@@ -450,59 +470,48 @@ public class LhAnnouncementExternalCollectionService {
             ExternalDataSource targetSource,
             List<List<Candidate>> requests,
             BatchProgress progress,
-            Set<String> pendingConflicts,
-            boolean forceRefresh
+            Set<String> pendingConflicts
     ) {
         ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
         try (ExecutorService executor = Executors.newFixedThreadPool(clientProperties.maxConcurrentRequests())) {
             CompletionService<ExternalDataCollectionReport> completedRequests =
                     new ExecutorCompletionService<>(executor);
-            List<Integer> pending = new ArrayList<>();
+            List<CollectionRequest> pending = new ArrayList<>();
             for (int index = 0; index < requests.size(); index++) {
-                pending.add(index);
+                pending.add(new CollectionRequest(index, requests.get(index)));
             }
-            Map<Future<ExternalDataCollectionReport>, Integer> running = new HashMap<>();
-            Set<String> runningPanIds = new HashSet<>();
+            Map<Future<ExternalDataCollectionReport>, CollectionRequest> running = new HashMap<>();
             Map<Integer, Throwable> failures = new TreeMap<>();
             boolean stopScheduling = false;
             while (!pending.isEmpty() || !running.isEmpty()) {
                 while (!stopScheduling && running.size() < clientProperties.maxConcurrentRequests()) {
-                    Integer index = takeNextEligible(pending, requests, runningPanIds);
-                    if (index == null) {
+                    CollectionRequest next = takeNextEligible(pending, running.values());
+                    if (next == null) {
                         break;
                     }
-                    List<Candidate> request = requests.get(index);
                     Future<ExternalDataCollectionReport> result = completedRequests.submit(
-                            collectionTask(targetSource, request, progress, pendingConflicts, forceRefresh)
+                            collectionTask(targetSource, next.candidates(), progress, pendingConflicts)
                     );
-                    running.put(result, index);
-                    runningPanIds.add(request.getFirst().panId());
+                    running.put(result, next);
                 }
                 if (running.isEmpty()) {
                     break;
                 }
                 Future<ExternalDataCollectionReport> completed = completedRequests.take();
-                int index = running.remove(completed);
-                runningPanIds.remove(requests.get(index).getFirst().panId());
+                CollectionRequest finished = running.remove(completed);
                 try {
                     report = report.plus(completed.get());
-                    if (forceRefresh || !progress.isFresh(requests.get(index).getFirst().requestDescription())) {
+                    if (!progress.isFresh(finished.description())) {
                         IngestExecutionScope.workCompleted();
                     }
                     stopScheduling |= report.rateLimitedRequestCount() > 0;
                 }
                 catch (ExecutionException exception) {
-                    failures.put(index, exception.getCause());
+                    failures.put(finished.index(), exception.getCause());
                     stopScheduling = true;
                 }
             }
-            Throwable failure = null;
-            for (Throwable additionalFailure : failures.values()) {
-                failure = appendFailure(failure, additionalFailure);
-            }
-            if (failure != null) {
-                throw propagate(failure);
-            }
+            throwCollectedFailures(failures);
         }
         catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -511,14 +520,20 @@ public class LhAnnouncementExternalCollectionService {
         return report;
     }
 
-    private Throwable appendFailure(Throwable failure, Throwable additionalFailure) {
-        if (failure == null) {
-            return additionalFailure;
+    private void throwCollectedFailures(Map<Integer, Throwable> failures) {
+        Throwable failure = null;
+        for (Throwable additionalFailure : failures.values()) {
+            if (failure == null) {
+                failure = additionalFailure;
+                continue;
+            }
+            if (failure != additionalFailure) {
+                failure.addSuppressed(additionalFailure);
+            }
         }
-        if (failure != additionalFailure) {
-            failure.addSuppressed(additionalFailure);
+        if (failure != null) {
+            throw propagate(failure);
         }
-        return failure;
     }
 
     private RuntimeException propagate(Throwable failure) {
@@ -531,29 +546,38 @@ public class LhAnnouncementExternalCollectionService {
         return new IllegalStateException("LH 공고 수집 작업이 실패했습니다.", failure);
     }
 
-    private Integer takeNextEligible(
-            List<Integer> pending,
-            List<List<Candidate>> requests,
-            Set<String> runningPanIds
+    private CollectionRequest takeNextEligible(
+            List<CollectionRequest> pending,
+            Collection<CollectionRequest> running
     ) {
-        Iterator<Integer> iterator = pending.iterator();
+        Iterator<CollectionRequest> iterator = pending.iterator();
         while (iterator.hasNext()) {
-            int index = iterator.next();
-            if (runningPanIds.contains(requests.get(index).getFirst().panId())) {
+            CollectionRequest next = iterator.next();
+            if (running.stream().anyMatch(request -> request.panId().equals(next.panId()))) {
                 continue;
             }
             iterator.remove();
-            return index;
+            return next;
         }
         return null;
+    }
+
+    private record CollectionRequest(int index, List<Candidate> candidates) {
+
+        String panId() {
+            return candidates.getFirst().panId();
+        }
+
+        String description() {
+            return candidates.getFirst().requestDescription();
+        }
     }
 
     private Callable<ExternalDataCollectionReport> collectionTask(
             ExternalDataSource targetSource,
             List<Candidate> requestCandidates,
             BatchProgress progress,
-            Set<String> pendingConflicts,
-            boolean forceRefresh
+            Set<String> pendingConflicts
     ) {
         Map<String, String> context = MDC.getCopyOfContextMap();
         return IngestExecutionScope.propagate(() -> {
@@ -561,7 +585,7 @@ public class LhAnnouncementExternalCollectionService {
                 if (context != null) {
                     MDC.setContextMap(context);
                 }
-                return collectRequest(targetSource, requestCandidates, progress, pendingConflicts, forceRefresh);
+                return collectSharedRequest(targetSource, requestCandidates, progress, pendingConflicts);
             }
             finally {
                 MDC.clear();
@@ -569,29 +593,29 @@ public class LhAnnouncementExternalCollectionService {
         });
     }
 
-    private ExternalDataCollectionReport collectRequest(
+    private ExternalDataCollectionReport collectSharedRequest(
             ExternalDataSource targetSource,
             List<Candidate> requestCandidates,
             BatchProgress progress,
-            Set<String> pendingConflicts,
-            boolean forceRefresh
+            Set<String> pendingConflicts
     ) {
-        ExternalDataCollectionReport report = collectCandidate(
-                targetSource,
-                requestCandidates.getFirst(),
-                progress,
-                forceRefresh
-        );
+        Candidate representativeCandidate = requestCandidates.getFirst();
+        boolean requestFresh = progress.isFresh(representativeCandidate.requestDescription());
+        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
+        if (requestFresh) {
+            linkIfNeeded(targetSource, representativeCandidate, progress);
+        }
+        if (!requestFresh) {
+            report = candidateCollector.collect(targetSource, representativeCandidate);
+        }
         if (report.failedRequestCount() > 0) {
             return report;
         }
         for (Candidate linkedCandidate : requestCandidates.subList(1, requestCandidates.size())) {
-            if (!progress.isLinkedTo(linkedCandidate.sourceAnnouncementKey(), linkedCandidate.requestDescription())) {
-                progressManager.link(targetSource, linkedCandidate);
-            }
+            linkIfNeeded(targetSource, linkedCandidate, progress);
         }
-        for (Candidate candidate : requestCandidates) {
-            String conflictRequest = sourceSelectionDescription(candidate.sourceAnnouncementKey());
+        for (Candidate linkedCandidate : requestCandidates) {
+            String conflictRequest = sourceSelectionDescription(linkedCandidate.sourceAnnouncementKey());
             if (pendingConflicts.contains(conflictRequest)) {
                 failureRecorder.resolve(targetSource, conflictRequest);
             }
@@ -599,19 +623,10 @@ public class LhAnnouncementExternalCollectionService {
         return report;
     }
 
-    private ExternalDataCollectionReport collectCandidate(
-            ExternalDataSource targetSource,
-            Candidate candidate,
-            BatchProgress progress,
-            boolean forceRefresh
-    ) {
-        if (!forceRefresh && progress.isFresh(candidate.requestDescription())) {
-            if (!progress.isLinkedTo(candidate.sourceAnnouncementKey(), candidate.requestDescription())) {
-                progressManager.link(targetSource, candidate);
-            }
-            return ExternalDataCollectionReport.empty(targetSource.operation());
+    private void linkIfNeeded(ExternalDataSource targetSource, Candidate candidate, BatchProgress progress) {
+        if (!progress.isLinkedTo(candidate.sourceAnnouncementKey(), candidate.requestDescription())) {
+            progressManager.link(targetSource, candidate);
         }
-        return candidateCollector.collect(targetSource, candidate);
     }
 
     private ExternalDataCollectionReport skipReport(

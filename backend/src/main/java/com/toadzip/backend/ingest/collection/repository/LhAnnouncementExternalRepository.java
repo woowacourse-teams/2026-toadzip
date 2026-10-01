@@ -1,6 +1,5 @@
 package com.toadzip.backend.ingest.collection.repository;
 
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementCircuitBreaker;
@@ -8,6 +7,7 @@ import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementR
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.LinkedMultiValueMap;
+import tools.jackson.databind.JsonNode;
 
 @Repository
 public class LhAnnouncementExternalRepository {
@@ -29,24 +29,24 @@ public class LhAnnouncementExternalRepository {
         this.circuitBreaker = circuitBreaker;
     }
 
-    public ExternalDataResponse fetchDetail(LhAnnouncementRequest request) {
+    public JsonNode fetchDetail(LhAnnouncementRequest request) {
         return fetch(DETAIL_PATH, request);
     }
 
-    public ExternalDataResponse fetchSupply(LhAnnouncementRequest request) {
+    public JsonNode fetchSupply(LhAnnouncementRequest request) {
         return fetch(SUPPLY_PATH, request);
     }
 
-    public ExternalDataResponse fetchCatalog(int page, int pageSize) {
+    public JsonNode fetchCatalog(int page, int pageSize) {
         var params = new LinkedMultiValueMap<String, String>();
         params.add("PAGE", String.valueOf(page));
         params.add("PG_SZ", String.valueOf(pageSize));
         return circuitBreaker.execute(() -> client.get("lhLeaseNoticeInfo1/lhLeaseNoticeInfo1", params));
     }
 
-    private ExternalDataResponse fetch(String path, LhAnnouncementRequest request) {
-        ExternalDataResponse response = circuitBreaker.execute(() -> client.get(path, request.toParams()));
-        identityValidator.validate(request, response.body());
+    private JsonNode fetch(String path, LhAnnouncementRequest request) {
+        JsonNode response = circuitBreaker.execute(() -> client.get(path, request.toParams()));
+        identityValidator.validate(request, response);
         return response;
     }
 }

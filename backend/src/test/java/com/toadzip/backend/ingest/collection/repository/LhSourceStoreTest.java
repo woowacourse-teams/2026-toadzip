@@ -9,7 +9,6 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
 import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
 import com.toadzip.backend.ingest.collection.repository.external.LhLeaseCatalogResponseParser;
@@ -31,6 +30,7 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 @DataJpaTest
@@ -137,8 +137,7 @@ class LhSourceStoreTest {
     void 내용_없는_카탈로그_응답은_기존_원천을_보존한다() {
         store.replaceCatalog(List.of(catalog("강릉교동 행복주택", "36.97")));
         String payload = "[{\"dsList\":[{}]}]";
-        ExternalDataResponse response = new ExternalDataResponse(payload,
-                JsonMapper.builder().build().readTree(payload));
+        JsonNode response = JsonMapper.builder().build().readTree(payload);
 
         assertThatThrownBy(() -> new LhLeaseCatalogResponseParser().parse(response))
                 .isInstanceOf(ExternalDataRequestException.class);

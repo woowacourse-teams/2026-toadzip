@@ -2,7 +2,6 @@ package com.toadzip.backend.ingest.collection.repository.external;
 
 import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -17,14 +16,13 @@ public class MyHomeComplexResponseParser {
 
     private final ObjectMapper objectMapper;
 
-    public ValidatedPage validate(ExternalDataResponse response, int collectedCount) {
-        JsonNode root = response.body();
+    public ExternalDataPage<MyHomeComplexSourceSnapshot> parse(JsonNode root, int collectedCount) {
         String resultCode = root.at("/response/header/resultCode").asString("");
         if ("03".equals(resultCode)) {
             if (collectedCount > 0) {
                 throw new ExternalDataRequestException("마이홈 단지 후속 페이지가 데이터 없음으로 응답했습니다.");
             }
-            return new ValidatedPage(List.of(), -1);
+            return new ExternalDataPage<>(List.of(), -1);
         }
         if (!"00".equals(resultCode)) {
             throw new ExternalDataRequestException("마이홈 단지 응답 결과 코드가 올바르지 않습니다.");
@@ -33,7 +31,7 @@ public class MyHomeComplexResponseParser {
         if (!body.isObject()) {
             throw invalidResponseSchema();
         }
-        int totalCount = totalCountOf(body);
+        int totalCount = MyHomeResponseTotalCountParser.parse(body, this::invalidResponseSchema);
         JsonNode item = body.path("item");
         if (item.isMissingNode() || item.isNull()) {
             return emptyPageOrThrow(totalCount, collectedCount);
@@ -41,26 +39,22 @@ public class MyHomeComplexResponseParser {
         if (!item.isArray() && !item.isObject()) {
             throw invalidResponseSchema();
         }
-        List<JsonNode> rows = ExternalResponseRows.at(response.body(), LIST_POINTER);
+        List<JsonNode> rows = ExternalResponseRows.at(root, LIST_POINTER);
         if (rows.isEmpty() && collectedCount < totalCount) {
             throw invalidResponseSchema();
         }
         if (collectedCount + rows.size() > totalCount) {
             throw invalidResponseSchema();
         }
-        return new ValidatedPage(rows, totalCount);
-    }
-
-    public ExternalDataPage<MyHomeComplexSourceSnapshot> parseItems(ValidatedPage page) {
-        List<MyHomeComplexSourceSnapshot> snapshots = page.rows().stream()
+        List<MyHomeComplexSourceSnapshot> snapshots = rows.stream()
                 .map(this::sourceSnapshotOf)
                 .toList();
-        return new ExternalDataPage<>(snapshots, page.totalCount());
+        return new ExternalDataPage<>(snapshots, totalCount);
     }
 
-    private ValidatedPage emptyPageOrThrow(int totalCount, int collectedCount) {
+    private ExternalDataPage<MyHomeComplexSourceSnapshot> emptyPageOrThrow(int totalCount, int collectedCount) {
         if (totalCount == 0 && collectedCount == 0) {
-            return new ValidatedPage(List.of(), totalCount);
+            return new ExternalDataPage<>(List.of(), totalCount);
         }
         throw invalidResponseSchema();
     }
@@ -79,40 +73,7 @@ public class MyHomeComplexResponseParser {
         return snapshot;
     }
 
-    private int totalCountOf(JsonNode body) {
-        JsonNode totalCount = body.path("totalCount");
-        if (totalCount.isMissingNode() || totalCount.isNull()) {
-            throw invalidResponseSchema();
-        }
-        if (totalCount.isIntegralNumber() && totalCount.canConvertToInt()) {
-            return requireNonNegativeTotalCount(totalCount.intValue());
-        }
-        if (totalCount.isTextual()) {
-            return textualTotalCount(totalCount.textValue());
-        }
-        throw invalidResponseSchema();
-    }
-
-    private int textualTotalCount(String totalCount) {
-        try {
-            return requireNonNegativeTotalCount(Integer.parseInt(totalCount));
-        }
-        catch (NumberFormatException exception) {
-            throw invalidResponseSchema();
-        }
-    }
-
-    private int requireNonNegativeTotalCount(int totalCount) {
-        if (totalCount < 0) {
-            throw invalidResponseSchema();
-        }
-        return totalCount;
-    }
-
     private ExternalDataRequestException invalidResponseSchema() {
         return new ExternalDataRequestException("마이홈 단지 응답에 body, item 또는 totalCount 구조가 올바르지 않습니다.");
-    }
-
-    public record ValidatedPage(List<JsonNode> rows, int totalCount) {
     }
 }

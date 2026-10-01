@@ -1,9 +1,11 @@
 package com.toadzip.backend.ingest.collection.service;
 
+import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.MYHOME_ANNOUNCEMENT_COLLECTION;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -14,15 +16,14 @@ import static org.mockito.Mockito.when;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementCollectionRequest;
 import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSupplyType;
-import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementCollectionExecutionLock;
 import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeAnnouncementResponseParser;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -38,6 +39,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
@@ -47,7 +49,7 @@ class MyHomeAnnouncementCollectionServiceTest {
     private MyHomeAnnouncementExternalRepository externalRepository;
 
     @Mock
-    private MyHomeAnnouncementCollectionExecutionLock executionLock;
+    private IngestOperationLock executionLock;
 
     @Mock
     private MyHomeSourceStore sourceStore;
@@ -60,22 +62,18 @@ class MyHomeAnnouncementCollectionServiceTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        lenient().when(executionLock.tryRun(any())).thenAnswer(invocation -> {
-            Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(0);
+        lenient().when(executionLock.tryRun(eq(MYHOME_ANNOUNCEMENT_COLLECTION), any())).thenAnswer(invocation -> {
+            Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(1);
             return Optional.of(operation.get());
         });
-        MyHomeAnnouncementSupplyTypeCollector supplyTypeCollector = new MyHomeAnnouncementSupplyTypeCollector(
-                new MyHomeAnnouncementResponseParser(JsonMapper.builder().build()),
-                externalRepository,
-                sourceStore,
-                failureRecorder,
-                new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry()),
-                new SimpleMeterRegistry()
-        );
         service = new MyHomeAnnouncementCollectionService(
                 executionLock,
                 sourceStore,
-                supplyTypeCollector
+                new MyHomeAnnouncementResponseParser(JsonMapper.builder().build()),
+                externalRepository,
+                failureRecorder,
+                new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry()),
+                new SimpleMeterRegistry()
         );
     }
 
@@ -114,7 +112,7 @@ class MyHomeAnnouncementCollectionServiceTest {
     @Test
     @DisplayName("이미 실행 중이면 중복 수집을 거절한다")
     void rejectsConcurrentCollection() {
-        doReturn(Optional.empty()).when(executionLock).tryRun(any());
+        doReturn(Optional.empty()).when(executionLock).tryRun(eq(MYHOME_ANNOUNCEMENT_COLLECTION), any());
 
         assertThatThrownBy(() -> service.collect(new MyHomeAnnouncementCollectionRequest(2, 10)))
                 .isInstanceOf(IngestAlreadyRunningException.class)
@@ -200,10 +198,7 @@ class MyHomeAnnouncementCollectionServiceTest {
     void preservesSourcesWhenSuccessfulResponseSchemaIsInvalid() {
         MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"}}}";
-        ExternalDataResponse invalidResponse = new ExternalDataResponse(
-                payload,
-                JsonMapper.builder().build().readTree(payload)
-        );
+        JsonNode invalidResponse = JsonMapper.builder().build().readTree(payload);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenReturn(invalidResponse);
 
@@ -466,19 +461,19 @@ class MyHomeAnnouncementCollectionServiceTest {
         verify(failureRecorder, never()).resolve(any(), any());
     }
 
-    private ExternalDataResponse response(String items) {
+    private JsonNode response(String items) {
         return responseWithTotalCount(items, totalCountOf(items));
     }
 
-    private ExternalDataResponse responseWithTotalCount(String items, int totalCount) {
+    private JsonNode responseWithTotalCount(String items, int totalCount) {
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"00\"},"
                 + "\"body\":{\"totalCount\":" + totalCount + ",\"item\":" + items + "}}}";
-        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+        return JsonMapper.builder().build().readTree(payload);
     }
 
-    private ExternalDataResponse noDataResponse() {
+    private JsonNode noDataResponse() {
         String payload = "{\"response\":{\"header\":{\"resultCode\":\"03\"}}}";
-        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+        return JsonMapper.builder().build().readTree(payload);
     }
 
     private int totalCountOf(String items) {

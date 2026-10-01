@@ -9,10 +9,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCatalogCollectionService;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementDetailCollectionService;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementSupplyCollectionService;
+import com.toadzip.backend.ingest.collection.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.collection.service.VerifiedLhSupplyReplacementService;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.pipeline.configuration.DataPipelineExecutionWebConfiguration;
@@ -38,13 +38,10 @@ class LhAnnouncementCollectionControllerTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private LhAnnouncementDetailCollectionService detailCollectionService;
+    private LhAnnouncementExternalCollectionService collectionService;
 
     @MockitoBean
     private LhAnnouncementCatalogCollectionService catalogCollectionService;
-
-    @MockitoBean
-    private LhAnnouncementSupplyCollectionService supplyCollectionService;
 
     @MockitoBean
     private VerifiedLhSupplyReplacementService replacementService;
@@ -85,9 +82,9 @@ class LhAnnouncementCollectionControllerTest {
 
     @Test
     void LH_상세와_공급_원본을_서로_다른_경로에서_수집한다() throws Exception {
-        when(detailCollectionService.collect())
+        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL))
                 .thenReturn(new ExternalDataCollectionReport("lh-announcement-detail", 1, 0, 1));
-        when(supplyCollectionService.collect())
+        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY))
                 .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 2, 0, 1));
 
         mockMvc.perform(post("/api/admin/ingest/lh/announcements/details"))
@@ -103,7 +100,7 @@ class LhAnnouncementCollectionControllerTest {
 
     @Test
     void LH_상세_수집의_중복_실행은_409를_반환한다() throws Exception {
-        when(detailCollectionService.collect())
+        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL))
                 .thenThrow(new IngestAlreadyRunningException(
                         "lh-announcement-detail 수집이 이미 실행 중입니다."
                 ));
@@ -117,7 +114,7 @@ class LhAnnouncementCollectionControllerTest {
 
     @Test
     void LH_공급_수집이_실패하면_502와_수집_결과를_반환한다() throws Exception {
-        when(supplyCollectionService.collect())
+        when(collectionService.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY))
                 .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 2, 1, 4));
 
         mockMvc.perform(post("/api/admin/ingest/lh/announcements/supplies"))
@@ -128,9 +125,9 @@ class LhAnnouncementCollectionControllerTest {
 
     @Test
     void 공고_식별자로_LH_상세와_공급을_강제_갱신한다() throws Exception {
-        when(detailCollectionService.refresh("announcement-100"))
+        when(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, "announcement-100"))
                 .thenReturn(new ExternalDataCollectionReport("lh-announcement-detail", 1, 0, 1));
-        when(supplyCollectionService.refresh("announcement-100"))
+        when(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "announcement-100"))
                 .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 2, 0, 1));
 
         mockMvc.perform(post("/api/admin/ingest/lh/announcements/details/announcement-100/refresh"))
@@ -146,7 +143,7 @@ class LhAnnouncementCollectionControllerTest {
     void 확인한_공급_감소를_승인한_뒤_즉시_재조회한다() throws Exception {
         when(replacementService.approve(eq("announcement-100"), any(), eq("operator"))).thenReturn(1L);
         when(replacementService.finish(1L)).thenReturn(true);
-        when(supplyCollectionService.refresh("announcement-100"))
+        when(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "announcement-100"))
                 .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 1, 0, 1, 0, 0, 1));
 
         mockMvc.perform(post("/api/admin/ingest/lh/announcements/supplies/announcement-100/verified-replacement")
@@ -166,7 +163,7 @@ class LhAnnouncementCollectionControllerTest {
     void 감소하지_않은_새_응답도_정상_재조회_결과로_반환한다() throws Exception {
         when(replacementService.approve(eq("announcement-100"), any(), eq("operator"))).thenReturn(1L);
         when(replacementService.finish(1L)).thenReturn(false);
-        when(supplyCollectionService.refresh("announcement-100"))
+        when(collectionService.refresh(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, "announcement-100"))
                 .thenReturn(new ExternalDataCollectionReport("lh-announcement-supply", 2, 0, 1, 0, 0, 1));
 
         mockMvc.perform(post("/api/admin/ingest/lh/announcements/supplies/announcement-100/verified-replacement")

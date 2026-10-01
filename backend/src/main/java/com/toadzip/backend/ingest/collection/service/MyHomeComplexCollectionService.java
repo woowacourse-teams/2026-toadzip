@@ -1,22 +1,21 @@
 package com.toadzip.backend.ingest.collection.service;
 
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
-import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
-
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.collection.dto.MyHomeRegion;
 import com.toadzip.backend.ingest.collection.repository.MyHomeRegionCatalog;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.RequiredArgsConstructor;
@@ -73,50 +72,51 @@ public class MyHomeComplexCollectionService {
     ) {
         ExecutorService executor = Executors.newFixedThreadPool(MAX_CONCURRENT_REGIONS);
         AtomicBoolean rateLimitReached = new AtomicBoolean();
-        BlockingQueue<Future<MyHomeComplexCollectionReport>> completedTasks =
-                new LinkedBlockingQueue<>();
-        List<FutureTask<MyHomeComplexCollectionReport>> tasks = submit(
-                executor,
-                completedTasks,
-                regions,
-                request,
-                rateLimitReached
-        );
-        List<MyHomeComplexCollectionReport> reports = new ArrayList<>();
+        CompletionService<MyHomeComplexCollectionReport> completedTasks =
+                new ExecutorCompletionService<>(executor);
+        List<Future<MyHomeComplexCollectionReport>> pendingTasks = new ArrayList<>();
+        Iterator<MyHomeRegion> remainingRegions = regions.iterator();
+        Map<String, String> context = MDC.getCopyOfContextMap();
+        while (remainingRegions.hasNext() && pendingTasks.size() < MAX_CONCURRENT_REGIONS) {
+            pendingTasks.add(submit(completedTasks, remainingRegions.next(), request, rateLimitReached, context));
+        }
+        MyHomeComplexCollectionReport result = MyHomeComplexCollectionReport.empty();
         RuntimeException failure = null;
         boolean interrupted = false;
-        int completedTaskCount = 0;
-        boolean cancelRemaining = false;
+        boolean stopScheduling = false;
         try {
-            while (completedTaskCount < tasks.size()) {
+            while (!pendingTasks.isEmpty()) {
                 Future<MyHomeComplexCollectionReport> completedTask = completedTasks.take();
-                completedTaskCount++;
+                pendingTasks.remove(completedTask);
                 try {
                     MyHomeComplexCollectionReport report = completedTask.get();
-                    reports.add(report);
+                    result = result.plus(report);
                     if (report.rateLimitedRequestCount() > 0) {
-                        cancelRemaining = true;
+                        stopScheduling = true;
                         break;
                     }
                 }
                 catch (ExecutionException exception) {
                     failure = runtimeExceptionOf(exception.getCause());
-                    cancelRemaining = true;
+                    stopScheduling = true;
                     break;
+                }
+                if (remainingRegions.hasNext()) {
+                    pendingTasks.add(submit(
+                            completedTasks, remainingRegions.next(), request, rateLimitReached, context
+                    ));
                 }
             }
         }
         catch (InterruptedException exception) {
             failure = interruptedFailure(exception);
             interrupted = true;
-            cancelRemaining = true;
+            stopScheduling = true;
         }
         finally {
-            if (cancelRemaining && !(failure instanceof DataPipelineStoppedException)) {
-                cancelNeverStarted(executor.shutdownNow());
-            }
-            else {
-                executor.shutdown();
+            executor.shutdown();
+            if (stopScheduling && !(failure instanceof DataPipelineStoppedException)) {
+                executor.shutdownNow();
             }
             InterruptedException terminationInterruption = awaitTermination(executor);
             if (terminationInterruption != null) {
@@ -124,22 +124,23 @@ public class MyHomeComplexCollectionService {
                 interrupted = true;
             }
         }
-        while (completedTaskCount < tasks.size()) {
-            Future<MyHomeComplexCollectionReport> completedTask = completedTasks.remove();
-            completedTaskCount++;
-            if (completedTask.isCancelled()) {
+        for (Future<MyHomeComplexCollectionReport> task : pendingTasks) {
+            // shutdownNow가 큐에서 꺼낸 작업은 실행되지 않으므로 완료될 수 없다.
+            if (!task.isDone()) {
+                task.cancel(false);
+            }
+            if (task.isCancelled()) {
                 continue;
             }
             try {
-                reports.add(completedTask.get());
+                result = result.plus(task.get());
             }
             catch (InterruptedException exception) {
                 failure = appendFailure(failure, interruptedFailure(exception));
                 interrupted = true;
             }
             catch (ExecutionException exception) {
-                RuntimeException additionalFailure = runtimeExceptionOf(exception.getCause());
-                failure = appendFailure(failure, additionalFailure);
+                failure = appendFailure(failure, runtimeExceptionOf(exception.getCause()));
             }
         }
         if (interrupted) {
@@ -148,32 +149,19 @@ public class MyHomeComplexCollectionService {
         if (failure != null) {
             throw failure;
         }
-        return reports.stream()
-                .reduce(MyHomeComplexCollectionReport.empty(), MyHomeComplexCollectionReport::plus);
+        return result;
     }
 
-    private List<FutureTask<MyHomeComplexCollectionReport>> submit(
-            ExecutorService executor,
-            BlockingQueue<Future<MyHomeComplexCollectionReport>> completedTasks,
-            List<MyHomeRegion> regions,
+    private Future<MyHomeComplexCollectionReport> submit(
+            CompletionService<MyHomeComplexCollectionReport> completedTasks,
+            MyHomeRegion region,
             MyHomeComplexCollectionRequest request,
-            AtomicBoolean rateLimitReached
+            AtomicBoolean rateLimitReached,
+            Map<String, String> context
     ) {
-        List<FutureTask<MyHomeComplexCollectionReport>> tasks = new ArrayList<>();
-        Map<String, String> context = MDC.getCopyOfContextMap();
-        for (MyHomeRegion region : regions) {
-            FutureTask<MyHomeComplexCollectionReport> task = new FutureTask<>(
-                    IngestExecutionScope.propagate(() -> collectRegion(region, request, rateLimitReached, context))
-            ) {
-                @Override
-                protected void done() {
-                    completedTasks.add(this);
-                }
-            };
-            tasks.add(task);
-            executor.execute(task);
-        }
-        return tasks;
+        return completedTasks.submit(
+                IngestExecutionScope.propagate(() -> collectRegion(region, request, rateLimitReached, context))
+        );
     }
 
     private MyHomeComplexCollectionReport collectRegion(
@@ -195,14 +183,6 @@ public class MyHomeComplexCollectionService {
         }
     }
 
-    private void cancelNeverStarted(List<Runnable> neverStartedTasks) {
-        for (Runnable neverStartedTask : neverStartedTasks) {
-            if (neverStartedTask instanceof Future<?> future) {
-                future.cancel(false);
-            }
-        }
-    }
-
     private InterruptedException awaitTermination(ExecutorService executor) {
         InterruptedException interruption = null;
         while (!executor.isTerminated()) {
@@ -213,10 +193,9 @@ public class MyHomeComplexCollectionService {
                 executor.shutdownNow();
                 if (interruption == null) {
                     interruption = exception;
+                    continue;
                 }
-                else {
-                    interruption.addSuppressed(exception);
-                }
+                interruption.addSuppressed(exception);
             }
         }
         return interruption;
@@ -247,7 +226,9 @@ public class MyHomeComplexCollectionService {
         if (primaryFailure == null) {
             return additionalFailure;
         }
-        primaryFailure.addSuppressed(additionalFailure);
+        if (primaryFailure != additionalFailure) {
+            primaryFailure.addSuppressed(additionalFailure);
+        }
         return primaryFailure;
     }
 }

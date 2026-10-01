@@ -23,7 +23,8 @@ public final class LhSupplySnapshot {
         Map<RowIdentity, List<LhAnnouncementSupplySource>> incomingGroups = groupsOf(incoming);
         return previousGroups.entrySet().stream()
                 .mapToLong(entry -> missingCount(
-                        entry.getValue(), incomingGroups.getOrDefault(entry.getKey(), List.of())))
+                        entry.getValue(), incomingGroups.getOrDefault(entry.getKey(), List.of())
+                ))
                 .sum();
     }
 

@@ -62,8 +62,7 @@ class LhAnnouncementCollectionProgressStoreTest {
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
                 List.of(request, request + "&AIS_TP_CD=06"),
                 List.of(),
-                COMPLETED_AT.minusSeconds(1)
-        );
+                COMPLETED_AT.minusSeconds(1), Map.of());
 
         assertThat(progress.isFresh(request)).isTrue();
         assertThat(progress.isFresh(request + "&AIS_TP_CD=06")).isFalse();
@@ -144,8 +143,7 @@ class LhAnnouncementCollectionProgressStoreTest {
                 ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
                 List.of(request),
                 List.of("announcement-100"),
-                COMPLETED_AT
-        );
+                COMPLETED_AT, Map.of());
 
         assertThat(progress.isFresh(request)).isFalse();
     }
@@ -161,8 +159,7 @@ class LhAnnouncementCollectionProgressStoreTest {
                 ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
                 List.of(request),
                 List.of("announcement-100", "announcement-101"),
-                COMPLETED_AT.minusSeconds(1)
-        );
+                COMPLETED_AT.minusSeconds(1), Map.of());
 
         assertThat(progress.isFresh(request)).isTrue();
         assertThat(progress.isLinkedTo("announcement-100", request)).isTrue();
@@ -185,8 +182,7 @@ class LhAnnouncementCollectionProgressStoreTest {
                 ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
                 List.of(currentRequest),
                 List.of("announcement-100"),
-                COMPLETED_AT.minusSeconds(1)
-        );
+                COMPLETED_AT.minusSeconds(1), Map.of());
 
         assertThat(progress.isLinkedTo("announcement-100", currentRequest)).isFalse();
     }

@@ -16,6 +16,9 @@ import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySour
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -49,7 +52,7 @@ class MyHomeAnnouncementSupplyRowResolverTest {
                 "current-pan", LhAnnouncementCollectionCheckpoint.requestHashOf(currentRequest.requestDescription())))
                 .thenReturn(List.of(lhSupply("같은 단지", "current-pan", "59A")));
 
-        MyHomeAnnouncementMappingData result = resolver.resolve(data(List.of(pastRow, currentRow)));
+        MyHomeAnnouncementMappingData result = resolver.resolve(data(List.of(pastRow, currentRow))).data();
 
         assertThat(result.supplyRows()).extracting(MyHomeSupplyRowMappingData::sourceHousingTypeName)
                 .containsExactly("기존 주택형", "59A");
@@ -115,8 +118,7 @@ class MyHomeAnnouncementSupplyRowResolverTest {
                 null,
                 "https://example.com",
                 null,
-                List.of(sourceRow),
-                false
+                List.of(sourceRow)
         );
         LhAnnouncementRequest request = new LhAnnouncementRequest("pan-id", "03", "06", "07", "062");
         when(linkResolver.resolveFirstLinked(List.of(source)))
@@ -125,7 +127,7 @@ class MyHomeAnnouncementSupplyRowResolverTest {
                 "pan-id", LhAnnouncementCollectionCheckpoint.requestHashOf(request.requestDescription())))
                 .thenReturn(List.of(lhSupply(lhComplexName)));
 
-        MyHomeAnnouncementMappingData result = resolver.resolve(data);
+        MyHomeAnnouncementMappingData result = resolver.resolve(data).data();
 
         assertThat(result.supplyRows()).containsExactly(sourceRow);
     }
@@ -165,7 +167,7 @@ class MyHomeAnnouncementSupplyRowResolverTest {
     private MyHomeAnnouncementMappingData data(List<MyHomeSupplyRowMappingData> rows) {
         return new MyHomeAnnouncementMappingData(
                 "announcement", null, "공고", null, null, null, AgencyCode.LH,
-                null, null, null, null, "https://example.com", null, rows, false
+                null, null, null, null, "https://example.com", null, rows
         );
     }
 }

@@ -135,80 +135,81 @@ public class MyHomeComplexSourceMapper {
         );
     }
 
-}
 
-record MyHomeComplexMappingData(
-        String sourceComplexIdentifier,
-        String name,
-        String supplyType,
-        MyHomeAddressMappingData address,
-        int totalHouseholdCount,
-        String provider,
-        LocalDate completionDate,
-        String heatingType,
-        String housingType,
-        String corridorType,
-        Boolean elevatorInstalled,
-        int parkingSpaceCount,
-        RentalPriceRange rentalPriceRange,
-        List<MyHomeHousingTypeMappingData> housingTypes
-) {
+    record MyHomeComplexMappingData(
+            String sourceComplexIdentifier,
+            String name,
+            String supplyType,
+            MyHomeAddressMappingData address,
+            int totalHouseholdCount,
+            String provider,
+            LocalDate completionDate,
+            String heatingType,
+            String housingType,
+            String corridorType,
+            Boolean elevatorInstalled,
+            int parkingSpaceCount,
+            RentalPriceRange rentalPriceRange,
+            List<MyHomeHousingTypeMappingData> housingTypes
+    ) {
 
-    boolean matchesVerifiedProduct(HousingComplex product) {
-        return name.equals(product.getName()) && provider.equals(product.getProvider())
-                && supplyType.equals(product.getSupplyType())
-                && address.pnu().equals(product.getAddress().getPnu())
-                && address.provinceCode().equals(product.getAddress().getProvinceCode())
-                && address.cityCountyDistrictCode().equals(product.getAddress().getCityCountyDistrictCode())
-                && new NormalizedRoadAddress(address.sourceRoadAddress()).matches(product.getAddress().getRoadAddress())
-                && Objects.equals(completionDate, product.getCompletionDate())
-                && Objects.equals(heatingType, product.getHeatingType())
-                && Objects.equals(housingType, product.getHousingType())
-                && Objects.equals(corridorType, product.getCorridorType())
-                && Objects.equals(elevatorInstalled, product.getElevatorInstalled())
-                && parkingSpaceCount == product.getParkingSpaceCount();
-    }
-}
-
-record MyHomeAddressMappingData(
-        String sourceRoadAddress,
-        String pnu,
-        String legalDongCode,
-        String provinceCode,
-        String cityCountyDistrictCode
-) {
-
-    Address resolve(GeocodedRoadAddress geocodedAddress) {
-        return Address.create(
-                geocodedAddress.roadAddress(),
-                pnu,
-                legalDongCode,
-                provinceCode,
-                cityCountyDistrictCode,
-                geocodedAddress.latitude(),
-                geocodedAddress.longitude()
-        );
-    }
-}
-
-record MyHomeHousingTypeMappingData(
-        String sourceHousingTypeIdentifier,
-        String name,
-        BigDecimal exclusiveArea,
-        BigDecimal supplyArea
-) {
-}
-
-class MyHomeComplexMappingRejectedException extends RuntimeException {
-
-    private final MyHomeComplexMappingFailureReason reason;
-
-    MyHomeComplexMappingRejectedException(MyHomeComplexMappingFailureReason reason, String detail) {
-        super(detail);
-        this.reason = reason;
+        boolean matchesVerifiedProduct(HousingComplex product) {
+            return name.equals(product.getName()) && provider.equals(product.getProvider())
+                    && supplyType.equals(product.getSupplyType())
+                    && address.pnu().equals(product.getAddress().getPnu())
+                    && address.provinceCode().equals(product.getAddress().getProvinceCode())
+                    && address.cityCountyDistrictCode().equals(product.getAddress().getCityCountyDistrictCode())
+                    && new NormalizedRoadAddress(address.sourceRoadAddress())
+                            .matches(product.getAddress().getRoadAddress())
+                    && Objects.equals(completionDate, product.getCompletionDate())
+                    && Objects.equals(heatingType, product.getHeatingType())
+                    && Objects.equals(housingType, product.getHousingType())
+                    && Objects.equals(corridorType, product.getCorridorType())
+                    && Objects.equals(elevatorInstalled, product.getElevatorInstalled())
+                    && parkingSpaceCount == product.getParkingSpaceCount();
+        }
     }
 
-    MyHomeComplexMappingFailureReason reason() {
-        return reason;
+    record MyHomeAddressMappingData(
+            String sourceRoadAddress,
+            String pnu,
+            String legalDongCode,
+            String provinceCode,
+            String cityCountyDistrictCode
+    ) {
+
+        Address resolve(GeocodedRoadAddress geocodedAddress) {
+            return Address.create(
+                    geocodedAddress.roadAddress(),
+                    pnu,
+                    legalDongCode,
+                    provinceCode,
+                    cityCountyDistrictCode,
+                    geocodedAddress.latitude(),
+                    geocodedAddress.longitude()
+            );
+        }
+    }
+
+    record MyHomeHousingTypeMappingData(
+            String sourceHousingTypeIdentifier,
+            String name,
+            BigDecimal exclusiveArea,
+            BigDecimal supplyArea
+    ) {
+    }
+
+    static class MyHomeComplexMappingRejectedException extends RuntimeException {
+
+        private final MyHomeComplexMappingFailureReason reason;
+
+        MyHomeComplexMappingRejectedException(MyHomeComplexMappingFailureReason reason, String detail) {
+            super(detail);
+            this.reason = reason;
+        }
+
+        MyHomeComplexMappingFailureReason reason() {
+            return reason;
+        }
     }
 }

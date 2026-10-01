@@ -4,6 +4,7 @@ import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementCurrentSources;
 import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -86,21 +87,21 @@ public class MyHomeAnnouncementCommonValuesMapper {
         }
         return parser.normalizedText(source.getMobileUrl());
     }
-}
 
-record MyHomeAnnouncementCommonValues(
-        String identifier,
-        String name,
-        String sourceSupplyType,
-        String sourceProvider,
-        String previousIdentifier,
-        String originalUrl,
-        String contact,
-        AnnouncementPublicationType publicationType,
-        RentalType rentalType,
-        LocalDate postedDate,
-        LocalDate applicationStartDate,
-        LocalDate applicationEndDate,
-        LocalDate winnerAnnouncementDate
-) {
+    record MyHomeAnnouncementCommonValues(
+            String identifier,
+            String name,
+            String sourceSupplyType,
+            String sourceProvider,
+            String previousIdentifier,
+            String originalUrl,
+            String contact,
+            AnnouncementPublicationType publicationType,
+            RentalType rentalType,
+            LocalDate postedDate,
+            LocalDate applicationStartDate,
+            LocalDate applicationEndDate,
+            LocalDate winnerAnnouncementDate
+    ) {
+    }
 }

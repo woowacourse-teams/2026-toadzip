@@ -53,12 +53,11 @@ public record LocationSummaryRecord(
         return new NormalizedRoadAddress(roadAddress()).withoutReference();
     }
 
-    public boolean hasCoordinate() {
-        return x != null;
-    }
-
     private String buildingNumber() {
-        String prefix = "1".equals(underground) ? "지하 " : "";
+        String prefix = "";
+        if ("1".equals(underground)) {
+            prefix = "지하 ";
+        }
         if (buildingSubNumber == 0) {
             return prefix + buildingMainNumber;
         }

@@ -9,14 +9,12 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import com.toadzip.backend.ingest.collection.dto.LhLeaseCatalogCollectionRequest;
 import com.toadzip.backend.ingest.collection.repository.LhLeaseCatalogExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
 import com.toadzip.backend.ingest.collection.repository.external.LhLeaseCatalogResponseParser;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,6 +22,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(MockitoExtension.class)
@@ -88,10 +87,7 @@ class LhLeaseCatalogCollectionServiceTest {
     void preservesCatalogWhenDatasetTypeIsInvalid() {
         LhLeaseCatalogCollectionRequest request = new LhLeaseCatalogCollectionRequest(2, 10);
         String payload = "[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsList\":1}]";
-        when(externalRepository.fetch(request, 1)).thenReturn(new ExternalDataResponse(
-                payload,
-                JsonMapper.builder().build().readTree(payload)
-        ));
+        when(externalRepository.fetch(request, 1)).thenReturn(JsonMapper.builder().build().readTree(payload));
 
         var result = service.collect(request);
 
@@ -121,10 +117,7 @@ class LhLeaseCatalogCollectionServiceTest {
         when(externalRepository.fetch(request, 1))
                 .thenReturn(response("[" + catalogRow("서울") + "]"));
         String invalidPayload = "[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsList\":1}]";
-        when(externalRepository.fetch(request, 2)).thenReturn(new ExternalDataResponse(
-                invalidPayload,
-                JsonMapper.builder().build().readTree(invalidPayload)
-        ));
+        when(externalRepository.fetch(request, 2)).thenReturn(JsonMapper.builder().build().readTree(invalidPayload));
 
         ExternalDataCollectionReport result = service.collect(request);
 
@@ -160,9 +153,9 @@ class LhLeaseCatalogCollectionServiceTest {
         verify(failureRecorder, never()).resolve(any(), any());
     }
 
-    private ExternalDataResponse response(String rows) {
+    private JsonNode response(String rows) {
         String payload = "[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]},{\"dsList\":" + rows + "}]";
-        return new ExternalDataResponse(payload, JsonMapper.builder().build().readTree(payload));
+        return JsonMapper.builder().build().readTree(payload);
     }
 
     private String catalogRow(String areaName) {

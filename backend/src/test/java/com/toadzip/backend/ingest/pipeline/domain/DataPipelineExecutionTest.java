@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class DataPipelineExecutionTest {
 
@@ -103,6 +105,24 @@ class DataPipelineExecutionTest {
         ))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("부분 실패한 단계의 바로 다음 단계만 시작할 수 있습니다.");
+    }
+
+    @ParameterizedTest
+    @EnumSource(DataPipelineType.class)
+    void 모든_유형은_자기_순서대로_완료하거나_건너뛰어_끝낼_수_있다(DataPipelineType type) {
+        DataPipelineExecution execution = execution(type);
+        for (DataPipelineStep step : type.steps()) {
+            execution.startStep(step);
+            if (step == type.steps().getFirst()) {
+                execution.skipStep(step, "호출 제한", "{}");
+                continue;
+            }
+            execution.completeStep(step, "{}");
+        }
+
+        execution.complete(STARTED_AT.plusSeconds(1));
+
+        assertThat(execution.getStatus()).isEqualTo(DataPipelineExecutionStatus.COMPLETED_WITH_SKIPS);
     }
 
     private DataPipelineExecution execution(DataPipelineType type) {

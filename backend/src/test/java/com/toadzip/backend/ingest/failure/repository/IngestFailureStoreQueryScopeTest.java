@@ -6,7 +6,6 @@ import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PEND
 import static com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason.COMPLEX_NOT_FOUND;
 import static com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason.INVALID_VALUE;
 import static org.mockito.ArgumentMatchers.anyCollection;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -44,7 +43,7 @@ class IngestFailureStoreQueryScopeTest {
         when(repository.findAllBySourceKeyIn(anyCollection())).thenReturn(List.of());
         var store = new MyHomeAnnouncementMappingFailureStore(repository, CLOCK);
 
-        store.replaceAll(List.of(MyHomeAnnouncementMappingFailure.create(
+        store.reconcileAfterRun(List.of(MyHomeAnnouncementMappingFailure.create(
                 "source-key", "announcement-id", 1, COMPLEX_NOT_FOUND, "실패", OCCURRED_AT
         )), null);
 
@@ -62,7 +61,7 @@ class IngestFailureStoreQueryScopeTest {
         when(repository.findAllBySourceKeyIn(anyCollection())).thenReturn(List.of());
         var store = new LhAnnouncementEnrichmentFailureStore(repository, CLOCK);
 
-        store.replaceAll(List.of(LhAnnouncementEnrichmentFailure.create(
+        store.reconcileAfterRun(List.of(LhAnnouncementEnrichmentFailure.create(
                 "source-key", "announcement-id", "pan-id", ANNOUNCEMENT_NOT_FOUND,
                 "실패", OCCURRED_AT
         )), null);
@@ -81,7 +80,7 @@ class IngestFailureStoreQueryScopeTest {
         when(repository.findAllBySourceKeyIn(anyCollection())).thenReturn(List.of());
         var store = new LhHouseholdEnrichmentFailureStore(repository, CLOCK);
 
-        store.replaceAll(List.of(LhHouseholdEnrichmentFailure.create(
+        store.reconcileAfterRun(List.of(LhHouseholdEnrichmentFailure.create(
                 "source-key", "서울", "국민임대", "단지", INVALID_SOURCE, "실패", OCCURRED_AT
         )), null);
 
@@ -91,24 +90,20 @@ class IngestFailureStoreQueryScopeTest {
     }
 
     @Test
-    void 마이홈_단지_준비_실패_조정은_준비_사유와_이번_실행의_원천만_조회한다() {
+    void 마이홈_단지_실패_조정은_현재_실패와_이번_실행의_원천만_조회한다() {
         MyHomeComplexMappingFailureRepository repository = mock(
                 MyHomeComplexMappingFailureRepository.class
         );
-        when(repository.findAllByReasonInAndStatus(anyCollection(), eq(PENDING)))
-                .thenReturn(List.of());
-        when(repository.findAllByReasonInAndSourceKeyIn(anyCollection(), anyCollection()))
-                .thenReturn(List.of());
+        when(repository.findAllByStatusOrderBySourceKeyAsc(PENDING)).thenReturn(List.of());
+        when(repository.findAllBySourceKeyIn(anyCollection())).thenReturn(List.of());
         var store = new MyHomeComplexMappingFailureStore(repository, CLOCK);
 
-        store.replacePreparationFailures(List.of(MyHomeComplexMappingFailure.create(
+        store.reconcileAfterRun(List.of(MyHomeComplexMappingFailure.create(
                 "source-key", "complex-id", INVALID_VALUE, "실패", OCCURRED_AT
         )), null);
 
-        verify(repository).findAllByReasonInAndStatus(anyCollection(), eq(PENDING));
-        verify(repository).findAllByReasonInAndSourceKeyIn(
-                anyCollection(), eq(List.of("source-key"))
-        );
+        verify(repository).findAllByStatusOrderBySourceKeyAsc(PENDING);
+        verify(repository).findAllBySourceKeyIn(List.of("source-key"));
         verify(repository, never()).findAll();
     }
 }
