@@ -1483,8 +1483,10 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void 확인한_빈_공급_응답은_LH_금액만_제거하고_관리자_금액은_유지한다(boolean previousVersion) {
+    @CsvSource({"false, false", "false, true", "true, false", "true, true"})
+    void 확인한_빈_공급_응답은_LH_금액만_제거하고_관리자_금액은_유지한다(
+            boolean previousVersion, boolean mappingOnly
+    ) {
         saveComplex();
         MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
         saveLhSources("10,000,000", "200,000");
@@ -1522,7 +1524,14 @@ class LhAnnouncementEnrichmentServiceTest {
             progressStore.complete(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
                     source.getPblancId(), request, PAN_ID);
         }
-        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        if (mappingOnly) {
+            ReflectionTestUtils.setField(source, "pblancNm", "변경된 국민임대 입주자 모집공고");
+            myHomeSourceRepository.save(source);
+            assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        }
+        if (!mappingOnly) {
+            assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        }
 
         assertThat(supplyRowRepository.count()).isOne();
         assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
@@ -1556,8 +1565,9 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(supplyRowRepository.count()).isOne();
     }
 
-    @Test
-    void 빈_공급_승인은_현재_원천의_금액만_제거하고_과거_원천의_금액을_보존한다() {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void 빈_공급_승인은_현재_원천의_금액만_제거하고_과거_원천의_금액을_보존한다(boolean mappingOnly) {
         saveComplex();
         MyHomeAnnouncementSource historical = myHomeSource();
         historical.markSeen("earlier", Instant.parse("2026-08-28T00:00:00Z"));
@@ -1596,7 +1606,14 @@ class LhAnnouncementEnrichmentServiceTest {
 
         sourceStore.replaceSupplies(PAN_ID, request, List.of());
         assertThat(verifiedReplacementStore.finish(approvalId)).isTrue();
-        assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        if (mappingOnly) {
+            ReflectionTestUtils.setField(current, "pblancNm", "변경된 국민임대 입주자 모집공고");
+            myHomeSourceRepository.save(current);
+            assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        }
+        if (!mappingOnly) {
+            assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        }
 
         assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
             assertThat(target.getId()).isEqualTo(historicalTargetId);

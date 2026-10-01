@@ -15,6 +15,7 @@ import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFo
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
@@ -141,6 +142,9 @@ class DataPipelineExecutionServiceTest {
 
         assertThat(started.executionId()).isNotNull();
         assertThat(started.status()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
+        assertThat(started.trigger()).isEqualTo(DataPipelineExecutionTrigger.MANUAL);
+        assertThat(started.scheduledAt()).isNull();
+        assertThat(started.upstreamExecutionId()).isNull();
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
         assertThat(status.completedSteps()).hasSize(4);
         verify(lease).close();

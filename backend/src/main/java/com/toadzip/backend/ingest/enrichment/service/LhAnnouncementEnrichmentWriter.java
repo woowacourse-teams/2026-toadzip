@@ -16,6 +16,7 @@ import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
 import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
 import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
 import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
+import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
@@ -51,6 +52,7 @@ public class LhAnnouncementEnrichmentWriter {
     private final LhAnnouncementSupplyMatcher supplyMatcher;
     private final LhAnnouncementDetailSourceRepository detailSourceRepository;
     private final LhAnnouncementEnrichmentMapper mapper;
+    private final LhSourceStore sourceStore;
 
     @Transactional
     public void writeAfterMapping(
@@ -77,9 +79,11 @@ public class LhAnnouncementEnrichmentWriter {
                     "연결된 LH 공고 상세 원본이 없습니다."
             );
         }
+        boolean verifiedEmptySupply = supplies.isEmpty()
+                && sourceStore.hasVerifiedEmptySupplies(request.panId(), request.requestDescription());
         LhAnnouncementEnrichmentWriteResult result = write(
                 announcement, mapper.map(request.panId(), details, supplies),
-                changedHousingTypeRowIds, sourceKeysExcludedFromLhEnrichment
+                changedHousingTypeRowIds, sourceKeysExcludedFromLhEnrichment, verifiedEmptySupply
         );
         if (!result.failures().isEmpty()) {
             LhSupplyMatchingFailureData failure = result.failures().getFirst();
