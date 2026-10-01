@@ -4,7 +4,7 @@
 
 원천 수집과 제품 정제의 저장 경계를 유지하면서 **단지 수집·정제 / 공고 수집·정제** 통합 실행을 추가했다. 수집이 부분 실패하거나 호출 제한을 만나면 자동 정제는 시작하지 않는다. 관리자는 결과를 확인한 뒤 **저장된 원천으로 정제 실행**을 선택할 수 있다. 기존 네 독립 실행과 이력을 보존한다. 예상된 부분 실패는 결과로 처리하고, 중복된 로컬 잠금은 제거했다.
 
-이 문서는 기준 커밋 `2b957df`와 이후 로컬 리팩터링 판단을 반영했다. 응답 대역·격리 PostgreSQL 검증 후 사용자 승인으로 [실제 API·격리 DB 검증](ingest-live-verification.md)을 수행했다. 운영 DB는 조회하지 않았다. 2026-09-25 실응답·성능 수치와 2026-09-26 오류 목록은 당시 기록이며 현재 운영 품질을 증명하지 않는다. [성능 실측](announcement-collection-performance.md)과 [LH 정확성 검토](lh-announcement-correctness-audit.md)를 함께 판단 근거로 사용한다.
+이 문서는 기준 커밋 `2b957df`와 이후 리팩터링 판단이다. 최신 develop `71be00d` 정책과 두 브랜치의 최종 통합은 [통합 검토](ingest-branch-integration.md)를 따른다. 사용자 승인으로 [실제 API·격리 DB 검증](ingest-live-verification.md)을 수행했고 운영 DB는 조회하지 않았다. 2026-09-25 실응답·성능 수치와 2026-09-26 오류 목록은 당시 기록이며 현재 운영 품질을 증명하지 않는다. [성능 실측](announcement-collection-performance.md)과 [LH 정확성 검토](lh-announcement-correctness-audit.md)를 함께 판단 근거로 사용한다.
 
 ## 현재 데이터 경로
 

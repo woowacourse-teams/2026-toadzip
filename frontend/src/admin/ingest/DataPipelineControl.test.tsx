@@ -1,5 +1,5 @@
 import { MemoryRouter } from 'react-router'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DataPipelineExecution, DataPipelineType } from './api'
 import { DataPipelineControl } from './DataPipelineControl'
@@ -378,6 +378,25 @@ describe('DataPipelineControl', () => {
 
     expect(await screen.findByText(/최근 수집 포함 실행: 실패/)).toHaveTextContent('이전 수집의 원천이 포함될 수 있습니다.')
     expect(screen.queryByText(/최근 수집 포함 실행: 선택된 작업 완료/)).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['2026-09-30T02:00:00Z', '2026-09-29T02:00:00Z', '2/3 (67%)'],
+    ['2026-09-29T02:00:00Z', '2026-09-30T02:00:00Z', '4/5 (80%)'],
+  ])('LH 품질 지표는 통합·단독 수집 중 최신 실행의 성공률을 표시한다 (%s, %s)', async (syncAt, collectionAt, rate) => {
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
+      type === 'ANNOUNCEMENT_SYNC' || type === 'ANNOUNCEMENT_COLLECTION' ? execution(type, 'FAILED', {
+        startedAt: type === 'ANNOUNCEMENT_SYNC' ? syncAt : collectionAt,
+        partiallyFailedSteps: [{
+          step: 'COLLECT_LH_ANNOUNCEMENT_SUPPLIES', stepName: 'LH 공고 공급 원본 수집',
+          report: { successfulRequestCount: type === 'ANNOUNCEMENT_SYNC' ? 2 : 4, failedRequestCount: 1 },
+        }],
+      }) : execution(type, 'IDLE'),
+    ))
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+
+    const metric = within((await screen.findByRole('heading', { name: '최근 LH 공급 수집' })).parentElement!)
+    await waitFor(() => expect(metric.getByText(rate)).toBeVisible())
   })
 
   it('통합 실행 수집 합계에 성공 단계와 부분 실패 단계를 중복 없이 포함한다', async () => {

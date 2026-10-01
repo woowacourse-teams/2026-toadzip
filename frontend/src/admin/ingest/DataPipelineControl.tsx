@@ -290,7 +290,9 @@ export function DataPipelineControl() {
           </section>
         ))}
       </div>
-      <LhAnnouncementQualityPanel collectionExecution={pipelineStates.ANNOUNCEMENT_COLLECTION.execution} />
+      <LhAnnouncementQualityPanel collectionExecution={latestCollectionExecution(
+        pipelineStates.ANNOUNCEMENT_SYNC.execution, pipelineStates.ANNOUNCEMENT_COLLECTION.execution,
+      )} />
     </section>
   )
 }
