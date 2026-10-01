@@ -152,7 +152,7 @@ public class DataPipelineExecutionService {
         var monitor = new DataPipelineExecutionMonitor(executionId, executionStateService, clock);
         try (lease; var ignored = IngestExecutionScope.open(lease, monitor)) {
             lease.verifyHeld();
-            runUntilStopped(executionId, type);
+            runAndRecordOutcome(executionId, type);
         }
         catch (IngestOwnershipLostException exception) {
             recordFailure(executionId, type, findCurrentStep(executionId), exception.getMessage(), null);
@@ -189,7 +189,7 @@ public class DataPipelineExecutionService {
         }
     }
 
-    private void runUntilStopped(UUID executionId, DataPipelineType type) {
+    private void runAndRecordOutcome(UUID executionId, DataPipelineType type) {
         try {
             runner.run(type, executionId);
         }

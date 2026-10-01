@@ -263,9 +263,12 @@ public class LhAnnouncementExternalCollectionService {
         Set<String> sourceKeysWithoutEligibleCandidates = resolutions.stream()
                 .map(Resolution::sourceAnnouncementKey)
                 .collect(Collectors.toSet());
-        List<EligibleCandidate> eligible = new ArrayList<>();
         List<Skipped> skippedSources = new ArrayList<>();
+        List<Candidate> conflicts = new ArrayList<>();
+        List<Candidate> candidates = new ArrayList<>();
+        Map<String, Duration> refreshTtlByRequest = new HashMap<>();
         int policyExcludedCount = 0;
+        int duplicateCount = 0;
         for (int sourceIndex = 0; sourceIndex < sources.size(); sourceIndex++) {
             Resolution resolution = resolutions.get(sourceIndex);
             if (resolution instanceof Skipped skipped) {
@@ -282,15 +285,6 @@ public class LhAnnouncementExternalCollectionService {
                 continue;
             }
             sourceKeysWithoutEligibleCandidates.remove(candidate.sourceAnnouncementKey());
-            eligible.add(new EligibleCandidate(candidate, refreshTtl));
-        }
-
-        List<Candidate> conflicts = new ArrayList<>();
-        List<Candidate> candidates = new ArrayList<>();
-        Map<String, Duration> refreshTtlByRequest = new HashMap<>();
-        int duplicateCount = 0;
-        for (EligibleCandidate selected : eligible) {
-            Candidate candidate = selected.candidate();
             if (conflictingKeys.contains(candidate.sourceAnnouncementKey())) {
                 addConflict(candidate, handledAnnouncementKeys, conflicts);
                 continue;
@@ -298,7 +292,7 @@ public class LhAnnouncementExternalCollectionService {
             if (!forceRefresh) {
                 refreshTtlByRequest.merge(
                         candidate.requestDescription(),
-                        selected.refreshTtl().orElseThrow(),
+                        refreshTtl.orElseThrow(),
                         BinaryOperator.minBy(Duration::compareTo)
                 );
             }
@@ -472,9 +466,6 @@ public class LhAnnouncementExternalCollectionService {
     ) {
     }
 
-    private record EligibleCandidate(Candidate candidate, Optional<Duration> refreshTtl) {
-    }
-
     private ExternalDataCollectionReport collectRequests(
             ExternalDataSource targetSource,
             List<List<Candidate>> requests,
@@ -594,7 +585,7 @@ public class LhAnnouncementExternalCollectionService {
                 if (context != null) {
                     MDC.setContextMap(context);
                 }
-                return collectRequest(targetSource, requestCandidates, progress, pendingConflicts);
+                return collectSharedRequest(targetSource, requestCandidates, progress, pendingConflicts);
             }
             finally {
                 MDC.clear();
@@ -602,42 +593,34 @@ public class LhAnnouncementExternalCollectionService {
         });
     }
 
-    private ExternalDataCollectionReport collectRequest(
+    private ExternalDataCollectionReport collectSharedRequest(
             ExternalDataSource targetSource,
             List<Candidate> requestCandidates,
             BatchProgress progress,
             Set<String> pendingConflicts
     ) {
-        ExternalDataCollectionReport report = collectCandidate(
-                targetSource,
-                requestCandidates.getFirst(),
-                progress
-        );
+        Candidate representativeCandidate = requestCandidates.getFirst();
+        boolean requestFresh = progress.isFresh(representativeCandidate.requestDescription());
+        ExternalDataCollectionReport report = ExternalDataCollectionReport.empty(targetSource.operation());
+        if (requestFresh) {
+            linkIfNeeded(targetSource, representativeCandidate, progress);
+        }
+        if (!requestFresh) {
+            report = candidateCollector.collect(targetSource, representativeCandidate);
+        }
         if (report.failedRequestCount() > 0) {
             return report;
         }
         for (Candidate linkedCandidate : requestCandidates.subList(1, requestCandidates.size())) {
             linkIfNeeded(targetSource, linkedCandidate, progress);
         }
-        for (Candidate candidate : requestCandidates) {
-            String conflictRequest = sourceSelectionDescription(candidate.sourceAnnouncementKey());
+        for (Candidate linkedCandidate : requestCandidates) {
+            String conflictRequest = sourceSelectionDescription(linkedCandidate.sourceAnnouncementKey());
             if (pendingConflicts.contains(conflictRequest)) {
                 failureRecorder.resolve(targetSource, conflictRequest);
             }
         }
         return report;
-    }
-
-    private ExternalDataCollectionReport collectCandidate(
-            ExternalDataSource targetSource,
-            Candidate candidate,
-            BatchProgress progress
-    ) {
-        if (progress.isFresh(candidate.requestDescription())) {
-            linkIfNeeded(targetSource, candidate, progress);
-            return ExternalDataCollectionReport.empty(targetSource.operation());
-        }
-        return candidateCollector.collect(targetSource, candidate);
     }
 
     private void linkIfNeeded(ExternalDataSource targetSource, Candidate candidate, BatchProgress progress) {

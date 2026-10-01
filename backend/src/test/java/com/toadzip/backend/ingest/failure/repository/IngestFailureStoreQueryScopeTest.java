@@ -43,7 +43,7 @@ class IngestFailureStoreQueryScopeTest {
         when(repository.findAllBySourceKeyIn(anyCollection())).thenReturn(List.of());
         var store = new MyHomeAnnouncementMappingFailureStore(repository, CLOCK);
 
-        store.replaceAll(List.of(MyHomeAnnouncementMappingFailure.create(
+        store.reconcileAfterRun(List.of(MyHomeAnnouncementMappingFailure.create(
                 "source-key", "announcement-id", 1, COMPLEX_NOT_FOUND, "실패", OCCURRED_AT
         )), null);
 
@@ -61,7 +61,7 @@ class IngestFailureStoreQueryScopeTest {
         when(repository.findAllBySourceKeyIn(anyCollection())).thenReturn(List.of());
         var store = new LhAnnouncementEnrichmentFailureStore(repository, CLOCK);
 
-        store.replaceAll(List.of(LhAnnouncementEnrichmentFailure.create(
+        store.reconcileAfterRun(List.of(LhAnnouncementEnrichmentFailure.create(
                 "source-key", "announcement-id", "pan-id", ANNOUNCEMENT_NOT_FOUND,
                 "실패", OCCURRED_AT
         )), null);
@@ -80,7 +80,7 @@ class IngestFailureStoreQueryScopeTest {
         when(repository.findAllBySourceKeyIn(anyCollection())).thenReturn(List.of());
         var store = new LhHouseholdEnrichmentFailureStore(repository, CLOCK);
 
-        store.replaceAll(List.of(LhHouseholdEnrichmentFailure.create(
+        store.reconcileAfterRun(List.of(LhHouseholdEnrichmentFailure.create(
                 "source-key", "서울", "국민임대", "단지", INVALID_SOURCE, "실패", OCCURRED_AT
         )), null);
 
@@ -98,7 +98,7 @@ class IngestFailureStoreQueryScopeTest {
         when(repository.findAllBySourceKeyIn(anyCollection())).thenReturn(List.of());
         var store = new MyHomeComplexMappingFailureStore(repository, CLOCK);
 
-        store.replaceAll(List.of(MyHomeComplexMappingFailure.create(
+        store.reconcileAfterRun(List.of(MyHomeComplexMappingFailure.create(
                 "source-key", "complex-id", INVALID_VALUE, "실패", OCCURRED_AT
         )), null);
 

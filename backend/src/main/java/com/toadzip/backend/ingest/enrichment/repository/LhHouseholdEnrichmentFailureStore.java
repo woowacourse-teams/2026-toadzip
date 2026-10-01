@@ -20,7 +20,7 @@ public class LhHouseholdEnrichmentFailureStore {
     private final Clock clock;
 
     @Transactional
-    public void replaceAll(List<LhHouseholdEnrichmentFailure> failures, UUID executionId) {
+    public void reconcileAfterRun(List<LhHouseholdEnrichmentFailure> failures, UUID executionId) {
         Instant resolvedAt = clock.instant();
         List<LhHouseholdEnrichmentFailure> stored = repository.findAllByStatus(PENDING);
         List<LhHouseholdEnrichmentFailure> history = List.of();

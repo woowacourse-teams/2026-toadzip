@@ -247,7 +247,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
             return request != null && supplies.isEmpty();
         }
 
-        Set<String> lhHistoricalSourceKeys() {
+        Set<String> sourceKeysExcludedFromLhEnrichment() {
             return data.supplyRows().stream().map(MyHomeSupplyRowMappingData::source)
                     .filter(source -> historicalSourceKeys.contains(source.getSourceKey())
                             || !LhProviderPolicy.isLh(source.getSuplyInsttNm()))

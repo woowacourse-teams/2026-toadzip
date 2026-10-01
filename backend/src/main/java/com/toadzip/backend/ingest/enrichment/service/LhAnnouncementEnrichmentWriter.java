@@ -58,7 +58,7 @@ public class LhAnnouncementEnrichmentWriter {
             LhAnnouncementRequest request,
             List<LhAnnouncementSupplySource> supplies,
             Set<Long> changedHousingTypeRowIds,
-            Set<String> historicalSourceKeys
+            Set<String> sourceKeysExcludedFromLhEnrichment
     ) {
         if (announcement.getSupplyType() == RentalType.ETC) {
             throw new LhAnnouncementEnrichmentRejectedException(
@@ -79,7 +79,7 @@ public class LhAnnouncementEnrichmentWriter {
         }
         LhAnnouncementEnrichmentWriteResult result = write(
                 announcement, mapper.map(request.panId(), details, supplies),
-                changedHousingTypeRowIds, historicalSourceKeys
+                changedHousingTypeRowIds, sourceKeysExcludedFromLhEnrichment
         );
         if (!result.failures().isEmpty()) {
             LhSupplyMatchingFailureData failure = result.failures().getFirst();
@@ -92,9 +92,9 @@ public class LhAnnouncementEnrichmentWriter {
             Announcement announcement,
             LhAnnouncementEnrichmentData data,
             Set<Long> changedHousingTypeRowIds,
-            Set<String> historicalSourceKeys
+            Set<String> sourceKeysExcludedFromLhEnrichment
     ) {
-        return write(announcement, data, changedHousingTypeRowIds, historicalSourceKeys, false);
+        return write(announcement, data, changedHousingTypeRowIds, sourceKeysExcludedFromLhEnrichment, false);
     }
 
     @Transactional
@@ -102,7 +102,7 @@ public class LhAnnouncementEnrichmentWriter {
             Announcement announcement,
             LhAnnouncementEnrichmentData data,
             Set<Long> changedHousingTypeRowIds,
-            Set<String> historicalSourceKeys,
+            Set<String> sourceKeysExcludedFromLhEnrichment,
             boolean verifiedEmptySupply
     ) {
         Announcement managedAnnouncement = announcementRepository.findByIdForUpdate(announcement.getId())
@@ -132,7 +132,8 @@ public class LhAnnouncementEnrichmentWriter {
                 managedAnnouncement, data, replacedPanIds, previousPanId
         );
         SupplyWriteResult supplies = writeSupplies(
-                managedAnnouncement, data, changedHousingTypeRowIds, historicalSourceKeys, verifiedEmptySupply
+                managedAnnouncement, data, changedHousingTypeRowIds,
+                sourceKeysExcludedFromLhEnrichment, verifiedEmptySupply
         );
         return new LhAnnouncementEnrichmentWriteResult(
                 new LhAnnouncementEnrichmentReport(
@@ -223,10 +224,10 @@ public class LhAnnouncementEnrichmentWriter {
             Announcement announcement,
             LhAnnouncementEnrichmentData data,
             Set<Long> changedHousingTypeRowIds,
-            Set<String> historicalSourceKeys,
+            Set<String> sourceKeysExcludedFromLhEnrichment,
             boolean verifiedEmptySupply
     ) {
-        List<SupplyRow> rows = enrichmentRows(announcement, historicalSourceKeys);
+        List<SupplyRow> rows = enrichmentRows(announcement, sourceKeysExcludedFromLhEnrichment);
         if (data.supplies().isEmpty()) {
             if (!changedHousingTypeRowIds.isEmpty()) {
                 throw missingAmountForChangedHousingType();
@@ -262,19 +263,19 @@ public class LhAnnouncementEnrichmentWriter {
         }
     }
 
-    private List<SupplyRow> enrichmentRows(Announcement announcement, Set<String> historicalSourceKeys) {
+    private List<SupplyRow> enrichmentRows(Announcement announcement, Set<String> sourceKeysExcludedFromLhEnrichment) {
         List<SupplyRow> rows = supplyRowRepository.findAllByAnnouncement(announcement);
-        if (historicalSourceKeys.isEmpty()) {
+        if (sourceKeysExcludedFromLhEnrichment.isEmpty()) {
             return rows;
         }
-        Set<Long> historicalRowIds = MyHomeAnnouncementSupplyRowGroups.byMyHomeSource(
+        Set<Long> rowIdsExcludedFromLhEnrichment = MyHomeAnnouncementSupplyRowGroups.byMyHomeSource(
                 announcement.getSourceAnnouncementIdentifier(), rows
         ).entrySet().stream()
-                .filter(group -> historicalSourceKeys.contains(group.getKey()))
+                .filter(group -> sourceKeysExcludedFromLhEnrichment.contains(group.getKey()))
                 .flatMap(group -> group.getValue().stream())
                 .map(SupplyRow::getId)
                 .collect(Collectors.toSet());
-        return rows.stream().filter(row -> !historicalRowIds.contains(row.getId())).toList();
+        return rows.stream().filter(row -> !rowIdsExcludedFromLhEnrichment.contains(row.getId())).toList();
     }
 
     private SupplyMatches matchSupplies(List<SupplyRow> rows, List<LhSupplyData> supplies) {

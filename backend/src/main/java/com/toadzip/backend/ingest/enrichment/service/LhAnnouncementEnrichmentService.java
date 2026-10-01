@@ -90,7 +90,7 @@ public class LhAnnouncementEnrichmentService {
                     incompleteMappingIds.contains(group.getKey())
             ));
         }
-        failureStore.replaceAll(
+        failureStore.reconcileAfterRun(
                 failures,
                 IngestExecutionContext.currentExecutionId().orElse(null)
         );
@@ -165,7 +165,7 @@ public class LhAnnouncementEnrichmentService {
             Announcement announcement,
             LinkedSource linked,
             List<MyHomeAnnouncementSource> sources,
-            List<MyHomeAnnouncementSource> currentSources,
+            List<MyHomeAnnouncementSource> currentLhSources,
             List<LhAnnouncementEnrichmentFailure> failures,
             Instant occurredAt,
             boolean mappingIncomplete
@@ -188,9 +188,10 @@ public class LhAnnouncementEnrichmentService {
                         "마이홈 공고 매핑 실패가 남아 LH 보강을 보류했습니다.", failures, occurredAt);
             }
             LhAnnouncementEnrichmentWriteResult result = writer.write(
-                    announcement, data, Set.of(), historicalSourceKeys(sources, currentSources),
-                    supplies.isEmpty()
-                            && sourceStore.hasVerifiedEmptySupplies(panId, linked.request().requestDescription())
+                    announcement, data, Set.of(), sourceKeysExcludedFromLhEnrichment(sources, currentLhSources),
+                    supplies.isEmpty() && sourceStore.hasVerifiedEmptySupplies(
+                            panId, linked.request().requestDescription()
+                    )
             );
             addSupplyFailures(source, panId, result.failures(), failures, occurredAt);
             return result.report();
@@ -200,14 +201,14 @@ public class LhAnnouncementEnrichmentService {
         }
     }
 
-    private Set<String> historicalSourceKeys(
+    private Set<String> sourceKeysExcludedFromLhEnrichment(
             List<MyHomeAnnouncementSource> sources,
-            List<MyHomeAnnouncementSource> currentSources
+            List<MyHomeAnnouncementSource> currentLhSources
     ) {
-        Set<String> currentKeys = currentSources.stream()
+        Set<String> currentLhSourceKeys = currentLhSources.stream()
                 .map(MyHomeAnnouncementSource::getSourceKey).collect(Collectors.toSet());
         return sources.stream().map(MyHomeAnnouncementSource::getSourceKey)
-                .filter(key -> !currentKeys.contains(key))
+                .filter(key -> !currentLhSourceKeys.contains(key))
                 .collect(Collectors.toSet());
     }
 

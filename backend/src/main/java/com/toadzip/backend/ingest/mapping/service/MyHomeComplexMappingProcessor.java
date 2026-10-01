@@ -66,7 +66,7 @@ class MyHomeComplexMappingProcessor {
             }
             throw exception;
         }
-        failureStore.replaceAll(failures, executionId);
+        failureStore.reconcileAfterRun(failures, executionId);
         return report;
     }
 

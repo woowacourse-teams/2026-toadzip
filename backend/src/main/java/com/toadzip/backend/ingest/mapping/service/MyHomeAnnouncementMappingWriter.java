@@ -94,7 +94,7 @@ public class MyHomeAnnouncementMappingWriter {
         try {
             enrichmentWriter.writeAfterMapping(
                     announcement, resolved.request(), resolved.supplies(),
-                    supplyRowsResult.changedHousingTypeRowIds(), resolved.lhHistoricalSourceKeys()
+                    supplyRowsResult.changedHousingTypeRowIds(), resolved.sourceKeysExcludedFromLhEnrichment()
             );
         }
         catch (LhAnnouncementEnrichmentRejectedException exception) {

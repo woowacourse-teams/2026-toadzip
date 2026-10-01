@@ -183,7 +183,7 @@ public class MyHomeComplexMappingWriter {
             List<MyHomeHousingTypeMappingData> incoming,
             boolean preserveSupplementalValues
     ) {
-        Map<String, HousingType> storedByIdentifier = housingTypeRepository.findAllByHousingComplex(complex)
+        Map<String, HousingType> remainingStoredByIdentifier = housingTypeRepository.findAllByHousingComplex(complex)
                 .stream()
                 .filter(type -> type.getSourceHousingTypeIdentifier() != null)
                 .collect(Collectors.toMap(
@@ -192,23 +192,25 @@ public class MyHomeComplexMappingWriter {
                         (first, second) -> first,
                         LinkedHashMap::new
                 ));
-        MatchedHousingTypes matched = updateMatchedHousingTypes(storedByIdentifier, incoming);
-        HousingTypeWriteResult unmatched = writeUnmatchedHousingTypes(complex, storedByIdentifier, matched.unmatched());
-        int deleted = deleteStaleHousingTypes(storedByIdentifier, preserveSupplementalValues);
+        MatchedHousingTypes matched = updateMatchedHousingTypes(remainingStoredByIdentifier, incoming);
+        HousingTypeWriteResult unmatched = writeUnmatchedHousingTypes(
+                complex, remainingStoredByIdentifier, matched.unmatched()
+        );
+        int deleted = deleteStaleHousingTypes(remainingStoredByIdentifier, preserveSupplementalValues);
         return new HousingTypeWriteResult(
                 unmatched.created(), matched.updated() + unmatched.updated(), matched.unchanged(), deleted
         );
     }
 
     private MatchedHousingTypes updateMatchedHousingTypes(
-            Map<String, HousingType> storedByIdentifier,
+            Map<String, HousingType> remainingStoredByIdentifier,
             List<MyHomeHousingTypeMappingData> incoming
     ) {
         int updated = 0;
         int unchanged = 0;
         List<MyHomeHousingTypeMappingData> unmatchedIncoming = new ArrayList<>();
         for (MyHomeHousingTypeMappingData data : incoming) {
-            HousingType housingType = storedByIdentifier.remove(data.sourceHousingTypeIdentifier());
+            HousingType housingType = remainingStoredByIdentifier.remove(data.sourceHousingTypeIdentifier());
             if (housingType == null) {
                 unmatchedIncoming.add(data);
                 continue;
@@ -229,13 +231,13 @@ public class MyHomeComplexMappingWriter {
 
     private HousingTypeWriteResult writeUnmatchedHousingTypes(
             HousingComplex complex,
-            Map<String, HousingType> storedByIdentifier,
+            Map<String, HousingType> remainingStoredByIdentifier,
             List<MyHomeHousingTypeMappingData> unmatchedIncoming
     ) {
         int created = 0;
         int updated = 0;
         for (MyHomeHousingTypeMappingData data : unmatchedIncoming) {
-            HousingType corrected = findUniqueStoredTypeByName(storedByIdentifier, data);
+            HousingType corrected = findUniqueStoredTypeByName(remainingStoredByIdentifier, data);
             if (corrected == null) {
                 housingTypeRepository.save(HousingType.createFromMyHome(
                         complex,
@@ -247,7 +249,7 @@ public class MyHomeComplexMappingWriter {
                 created++;
                 continue;
             }
-            storedByIdentifier.remove(corrected.getSourceHousingTypeIdentifier());
+            remainingStoredByIdentifier.remove(corrected.getSourceHousingTypeIdentifier());
             corrected.updateFromMyHome(
                     data.sourceHousingTypeIdentifier(),
                     data.name(),
@@ -260,10 +262,10 @@ public class MyHomeComplexMappingWriter {
     }
 
     private int deleteStaleHousingTypes(
-            Map<String, HousingType> storedByIdentifier,
+            Map<String, HousingType> remainingStoredByIdentifier,
             boolean preserveSupplementalValues
     ) {
-        List<HousingType> stale = List.copyOf(storedByIdentifier.values());
+        List<HousingType> stale = List.copyOf(remainingStoredByIdentifier.values());
         List<HousingType> deletable = stale.stream()
                 .filter(type -> !supplyRowRepository.existsByHousingType(type))
                 .filter(type -> !preserveSupplementalValues || !type.hasSupplementalInformation())
@@ -273,10 +275,10 @@ public class MyHomeComplexMappingWriter {
     }
 
     private HousingType findUniqueStoredTypeByName(
-            Map<String, HousingType> storedByIdentifier,
+            Map<String, HousingType> remainingStoredByIdentifier,
             MyHomeHousingTypeMappingData incoming
     ) {
-        List<HousingType> sameName = storedByIdentifier.values()
+        List<HousingType> sameName = remainingStoredByIdentifier.values()
                 .stream()
                 .filter(type -> type.getName().equals(incoming.name()))
                 .filter(type -> MyHomeComplexSource.sameSourceComplex(

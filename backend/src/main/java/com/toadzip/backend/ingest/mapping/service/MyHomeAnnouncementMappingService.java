@@ -80,7 +80,7 @@ public class MyHomeAnnouncementMappingService {
                     occurredAt
             ));
         }
-        failureStore.replaceAll(
+        failureStore.reconcileAfterRun(
                 failures,
                 IngestExecutionContext.currentExecutionId().orElse(null)
         );

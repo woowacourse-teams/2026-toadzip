@@ -51,7 +51,7 @@ public class DataPipelineRunner {
 
     public void run(DataPipelineType type, UUID executionId) {
         DataPipelinePartialFailureException firstReportedPartialFailure = null;
-        DataPipelineStep partiallyFailedStep = null;
+        DataPipelineStep previousPartiallyFailedStep = null;
         boolean lhRateLimited = false;
         boolean collectionRateLimited = false;
         for (DataPipelineStep step : type.steps()) {
@@ -60,16 +60,16 @@ public class DataPipelineRunner {
                 throw firstReportedPartialFailure;
             }
             StepOutcome outcome = runStep(
-                    executionId, step, partiallyFailedStep,
+                    executionId, step, previousPartiallyFailedStep,
                     skipReason(type, step, collectionRateLimited, lhRateLimited)
             );
             lhRateLimited |= outcome.rateLimited() && isLhAnnouncementCollection(step);
             collectionRateLimited |= outcome.rateLimited() && step.isCollection();
-            partiallyFailedStep = null;
+            previousPartiallyFailedStep = null;
             if (outcome.partialFailure() == null) {
                 continue;
             }
-            partiallyFailedStep = step;
+            previousPartiallyFailedStep = step;
             if (firstReportedPartialFailure == null) {
                 firstReportedPartialFailure = new DataPipelinePartialFailureException(
                         step, outcome.partialFailure().serverResponse()
@@ -84,13 +84,13 @@ public class DataPipelineRunner {
     private StepOutcome runStep(
             UUID executionId,
             DataPipelineStep step,
-            DataPipelineStep partiallyFailedStep,
+            DataPipelineStep previousPartiallyFailedStep,
             String skipReason
     ) {
         Timer.Sample sample = Timer.start(meterRegistry);
         String outcome = "failed";
         try {
-            startStep(executionId, step, partiallyFailedStep);
+            startStep(executionId, step, previousPartiallyFailedStep);
             if (skipReason != null) {
                 executionStateService.skipStep(
                         executionId, step, skipReason, "{}"
@@ -144,11 +144,11 @@ public class DataPipelineRunner {
         return null;
     }
 
-    private void startStep(UUID executionId, DataPipelineStep step, DataPipelineStep partiallyFailedStep) {
+    private void startStep(UUID executionId, DataPipelineStep step, DataPipelineStep previousPartiallyFailedStep) {
         IngestExecutionScope.verifyHeld();
         IngestExecutionScope.checkStopRequested();
-        if (partiallyFailedStep != null) {
-            executionStateService.startStepAfterPartialFailure(executionId, partiallyFailedStep, step);
+        if (previousPartiallyFailedStep != null) {
+            executionStateService.startStepAfterPartialFailure(executionId, previousPartiallyFailedStep, step);
             return;
         }
         executionStateService.startStep(executionId, step);

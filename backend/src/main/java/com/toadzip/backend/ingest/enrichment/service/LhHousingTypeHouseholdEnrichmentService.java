@@ -87,7 +87,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
             matchedSources.add(matchedSource.get());
         }
         report = report.plus(writeUniqueMatches(matchedSources, failures, occurredAt));
-        failureStore.replaceAll(
+        failureStore.reconcileAfterRun(
                 failures,
                 IngestExecutionContext.currentExecutionId().orElse(null)
         );

@@ -20,7 +20,7 @@ public class MyHomeAnnouncementMappingFailureStore {
     private final Clock clock;
 
     @Transactional
-    public void replaceAll(List<MyHomeAnnouncementMappingFailure> failures, UUID executionId) {
+    public void reconcileAfterRun(List<MyHomeAnnouncementMappingFailure> failures, UUID executionId) {
         Instant resolvedAt = clock.instant();
         List<MyHomeAnnouncementMappingFailure> stored = repository.findAllByStatus(PENDING);
         List<MyHomeAnnouncementMappingFailure> history = List.of();

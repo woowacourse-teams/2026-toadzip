@@ -19,7 +19,7 @@ public class MyHomeComplexMappingFailureStore {
     private final Clock clock;
 
     @Transactional
-    public void replaceAll(List<MyHomeComplexMappingFailure> failures, UUID executionId) {
+    public void reconcileAfterRun(List<MyHomeComplexMappingFailure> failures, UUID executionId) {
         reconcile(repository.findAllByStatusOrderBySourceKeyAsc(PENDING), failures, executionId);
     }
 
