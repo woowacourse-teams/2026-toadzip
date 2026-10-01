@@ -19,13 +19,15 @@ export function AnnouncementImportForm({
   const [validation, setValidation] = useState<AnnouncementImportValidationResponse | null>(null)
   const [selections, setSelections] = useState<Readonly<Record<number, number>>>({})
   const [isValidating, setIsValidating] = useState(false)
+  const [isReadingFile, setIsReadingFile] = useState(false)
+  const [fileName, setFileName] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [createdId, setCreatedId] = useState<number | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const inputVersion = useRef(0)
   const summary = useMemo(() => documentSummary(validatedDocument), [validatedDocument])
-  const canSubmit = !isValidating && validation?.registerable === true
+  const canSubmit = !isReadingFile && !isValidating && validation?.registerable === true
     && validation.supplyRows.every((row) => selections[row.supplyRowIndex] !== undefined)
 
   function changeJson(value: string) {
@@ -36,11 +38,41 @@ export function AnnouncementImportForm({
     setValidation(null)
     setSelections({})
     setIsValidating(false)
+    setIsReadingFile(false)
+    setFileName(null)
     setError(null)
     setSuccess(null)
+    setCreatedId(null)
+  }
+
+  async function readJsonFile(file: File) {
+    changeJson('')
+    if (!/\.json$/i.test(file.name)) {
+      setError('.json 파일을 선택해 주세요.')
+      return
+    }
+    const fileInputVersion = inputVersion.current
+    setFileName(file.name)
+    setIsReadingFile(true)
+    try {
+      const text = (await file.text()).replace(/^\uFEFF/, '')
+      if (inputVersion.current !== fileInputVersion) return
+      if (text.trim().length === 0) {
+        setError('파일이 비어 있습니다. JSON 내용이 있는 파일을 선택해 주세요.')
+        return
+      }
+      setJsonText(text)
+    } catch {
+      if (inputVersion.current === fileInputVersion) {
+        setError('JSON 파일을 읽지 못했습니다. 파일을 다시 선택해 주세요.')
+      }
+    } finally {
+      if (inputVersion.current === fileInputVersion) setIsReadingFile(false)
+    }
   }
 
   async function validateJson() {
+    if (isReadingFile || isValidating || isSubmitting) return
     let document: unknown
     try {
       document = JSON.parse(jsonText) as unknown
@@ -103,6 +135,7 @@ export function AnnouncementImportForm({
         `공고 #${created.announcementId}를 저장했습니다. 공급행 ${created.supplyRowCount}건, 일정 ${created.scheduleCount}건, 첨부 ${created.attachmentCount}건입니다.`,
       )
       setJsonText('')
+      setFileName(null)
       setValidatedJsonText(null)
       setValidatedDocument(null)
       setValidation(null)
@@ -118,7 +151,22 @@ export function AnnouncementImportForm({
   return (
     <section className="registration-card" aria-labelledby="announcement-import-title">
       <h2 id="announcement-import-title">JSON 가져오기</h2>
-      <p>Codex가 만든 v1 JSON을 붙여넣고 서버 검증 결과와 단지 연결을 확인한 뒤 등록합니다.</p>
+      <p>공고 JSON을 붙여넣거나 .json 파일을 선택하고, 검증 결과와 단지 연결을 확인한 뒤 등록합니다.</p>
+      <label htmlFor="announcement-import-file">공고 JSON 파일</label>
+      <input
+        id="announcement-import-file"
+        type="file"
+        accept=".json,application/json"
+        disabled={isSubmitting}
+        aria-describedby="announcement-import-file-help"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0]
+          event.currentTarget.value = ''
+          if (file) void readJsonFile(file)
+        }}
+      />
+      <p id="announcement-import-file-help">UTF-8 형식의 JSON 파일 하나를 선택해 주세요. 가져온 내용은 아래에서 수정할 수 있습니다.</p>
+      {fileName ? <p role="status">{isReadingFile ? `파일 읽는 중… ${fileName}` : `선택한 파일: ${fileName}`}</p> : null}
       <label htmlFor="announcement-import-json">공고 JSON</label>
       <textarea
         id="announcement-import-json"
@@ -130,7 +178,7 @@ export function AnnouncementImportForm({
       />
       <button
         className="registration-submit"
-        disabled={isValidating || isSubmitting || jsonText.trim().length === 0}
+        disabled={isReadingFile || isValidating || isSubmitting || jsonText.trim().length === 0}
         onClick={() => void validateJson()}
         type="button"
       >
@@ -365,5 +413,5 @@ function documentSummary(value: unknown): {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
