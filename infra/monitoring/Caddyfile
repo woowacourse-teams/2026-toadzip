@@ -1,0 +1,3 @@
+monitoring.bokduckbang.com {
+    reverse_proxy grafana:3000
+}
