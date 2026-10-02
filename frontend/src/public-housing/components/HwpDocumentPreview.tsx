@@ -1,3 +1,4 @@
+import { useDocumentSearchShortcuts } from './useDocumentSearchShortcuts.ts'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useHwpDocument } from './useHwpDocument.ts'
 import DocumentOutline from './DocumentOutline.tsx'
@@ -108,21 +109,7 @@ function Document({ url, name, retry }: { readonly url: string; readonly name: s
     setSearchOpen(false); setQuery(''); setDebouncing(false); search('')
     viewport.current?.focus({ preventScroll: true })
   }, [search])
-  useEffect(() => {
-    const target = root.current?.closest('dialog') ?? root.current
-    if (!target) return
-    const onKey = (event: Event) => {
-      if (!(event instanceof KeyboardEvent) || event.isComposing) return
-      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f' && ready) {
-        event.preventDefault(); event.stopPropagation(); openSearch()
-      } else if (event.key === 'Escape' && searchOpen
-        && !(event.target instanceof Element && event.target.closest('[data-document-outline][data-outline-open="true"]'))) {
-        event.preventDefault(); event.stopPropagation(); hideSearch()
-      }
-    }
-    target.addEventListener('keydown', onKey)
-    return () => target.removeEventListener('keydown', onKey)
-  }, [hideSearch, openSearch, ready, searchOpen])
+  useDocumentSearchShortcuts({ root: root, ready, searchOpen, openSearch, hideSearch })
 
   function changeQuery(value: string) {
     setQuery(value)

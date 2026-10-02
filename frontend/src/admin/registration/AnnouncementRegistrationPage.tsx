@@ -1,5 +1,5 @@
 import { ComplexPicker } from '../management/ComplexPicker'
-import { detail } from '../management/api'
+import { getManagementDetail } from '../management/api'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { AnnouncementImportForm } from './AnnouncementImportForm'
@@ -47,7 +47,7 @@ function DirectAnnouncement({ complexId, submitting, onSubmittingChange, onSelec
         if (!/^[1-9]\d*$/.test(complexId) || !Number.isSafeInteger(Number(complexId))) {
           throw new Error('유효한 단지 ID를 입력해 주세요.')
         }
-        const found = await detail('complexes', complexId, controller.signal)
+        const found = await getManagementDetail('complexes', complexId, controller.signal)
         if (found.summary.deleted) throw new Error('삭제된 단지는 연결할 수 없습니다.')
         if (!controller.signal.aborted) setHousingComplex({
           housingComplexId: Number(complexId), name: found.summary.name,

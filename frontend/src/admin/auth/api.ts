@@ -1,3 +1,4 @@
+import { resolveApiBaseUrl } from '../../api/apiBaseUrl'
 export type AdminSession = {
   loginIdentifier: string
   role: 'ADMIN'
@@ -12,7 +13,7 @@ type ApiErrorBody = {
   message?: string
 }
 
-const apiBaseUrl = resolveApiBaseUrl()
+const apiBaseUrl = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, import.meta.env.DEV)
 
 export class AdminApiError extends Error {
   readonly status: number
@@ -78,15 +79,4 @@ async function errorMessage(response: Response): Promise<string> {
     return body.message
   }
   return '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-}
-
-function resolveApiBaseUrl(): string {
-  const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL
-  if (configuredApiBaseUrl) {
-    return configuredApiBaseUrl
-  }
-  if (import.meta.env.DEV) {
-    return 'http://localhost:8080'
-  }
-  return ''
 }

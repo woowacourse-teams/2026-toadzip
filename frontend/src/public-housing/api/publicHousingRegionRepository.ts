@@ -1,3 +1,4 @@
+import { resolveApiBaseUrl } from '../../api/apiBaseUrl'
 import type { PublicHousingRegion } from '../model/publicHousingRegion.ts'
 
 const REGIONS_PATH = '/api/v1/regions'
@@ -47,7 +48,7 @@ export class PublicHousingRegionContractError extends Error {
 export function createHttpPublicHousingRegionRepository(
   options: RepositoryOptions = {},
 ): PublicHousingRegionRepository {
-  const apiBaseUrl = options.apiBaseUrl ?? resolveApiBaseUrl()
+  const apiBaseUrl = options.apiBaseUrl ?? resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, import.meta.env.DEV)
   const fetcher = options.fetcher ?? globalThis.fetch
 
   return {
@@ -203,15 +204,4 @@ function isAbortError(error: unknown) {
     && error !== null
     && 'name' in error
     && error.name === 'AbortError'
-}
-
-function resolveApiBaseUrl(): string {
-  const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL
-  if (configuredApiBaseUrl) {
-    return configuredApiBaseUrl
-  }
-  if (import.meta.env.DEV) {
-    return 'http://localhost:8080'
-  }
-  return ''
 }

@@ -3,6 +3,20 @@ import type { ComplexDetail, RawComplexDetail } from '../model/publicHousing.ts'
 import { toHousingComplexDetailData } from './complexDetailPresentation.ts'
 
 describe('toHousingComplexDetailData', () => {
+  it.each([
+    ['ETC', '기타 공공임대'],
+    ['HAPPY_HOUSING', '행복주택'],
+    ['INTEGRATED_PUBLIC_RENTAL', '통합공공임대'],
+    ['NATIONAL_RENTAL', '국민임대'],
+    ['PERMANENT_RENTAL', '영구임대'],
+    ['PUBLIC_RENTAL_50Y', '50년 공공임대'],
+    ['REDEVELOPMENT_RENTAL', '재개발임대'],
+    [null, '공고문 확인'],
+    ['UNRECOGNIZED', '공고문 확인'],
+  ])('%s 임대유형의 표시와 누락 정책을 보존한다', (rentalType, expected) => {
+    expect(toHousingComplexDetailData(complexDetail({ rentalType })).rentalTypeLabel).toBe(expected)
+  })
+
   it('API 상세 값을 확정 화면 라벨로 변환하고 0과 null을 보존한다', () => {
     const result = toHousingComplexDetailData(complexDetail())
 

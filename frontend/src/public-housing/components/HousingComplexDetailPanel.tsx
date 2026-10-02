@@ -1,3 +1,4 @@
+import { toHttpUrl } from '../presentation/httpUrl.ts'
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -107,7 +108,7 @@ export function HousingComplexDetailPanel({
   const housingTypeIdPrefix = useId()
   const headingRef = useRef<HTMLHeadingElement>(null)
   const validImages = detail.images.filter(isSafeHttpUrl)
-  const validOverviewImage = safeHttpUrl(detail.overviewImageUrl)
+  const validOverviewImage = toHttpUrl(detail.overviewImageUrl)
   const usesOverviewAsCover = validImages.length === 0 && validOverviewImage !== null
   const coverImages = validImages.length > 0
     ? validImages
@@ -619,8 +620,8 @@ function setChoiceRef(
 
 function floorPlanUrls(housingType: HousingComplexDetailHousingType) {
   return [
-    { label: '평면도', url: safeHttpUrl(housingType.floorPlanImageUrl) },
-    { label: '3D 평면도', url: safeHttpUrl(housingType.floorPlan3dImageUrl) },
+    { label: '평면도', url: toHttpUrl(housingType.floorPlanImageUrl) },
+    { label: '3D 평면도', url: toHttpUrl(housingType.floorPlan3dImageUrl) },
   ].filter((image): image is { label: string; url: string } => image.url !== null)
 }
 
@@ -629,22 +630,7 @@ function housingTypeName(housingType: HousingComplexDetailHousingType) {
 }
 
 function isSafeHttpUrl(value: string) {
-  return safeHttpUrl(value) !== null
-}
-
-function safeHttpUrl(value: string | null) {
-  if (value === null) {
-    return null
-  }
-  try {
-    const url = new URL(value)
-    if (url.protocol === 'http:' || url.protocol === 'https:') {
-      return url.href
-    }
-  } catch {
-    return null
-  }
-  return null
+  return toHttpUrl(value) !== null
 }
 
 function displayAddress(detail: HousingComplexDetailData) {

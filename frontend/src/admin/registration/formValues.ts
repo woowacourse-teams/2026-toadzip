@@ -24,6 +24,6 @@ export function numberValue(formData: FormData, name: string): number {
   return Number(stringValue(formData, name))
 }
 
-export function options(values: ReadonlyArray<string>) {
+export function toRegistrationOptions(values: ReadonlyArray<string>) {
   return values.map((value) => ({ label: labels[value] ?? value, value }))
 }

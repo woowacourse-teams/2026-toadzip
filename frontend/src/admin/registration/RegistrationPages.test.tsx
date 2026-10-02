@@ -4,56 +4,30 @@ import {
   AdminRegistrationApiError,
   type AnnouncementCreateResponse,
   type HousingComplexCreateResponse,
-} from '../registration/api'
-import type { DataPipelineType } from '../ingest/api'
+} from './api'
 import { MemoryRouter, Route, Routes, Link } from 'react-router'
-import { HousingComplexRegistrationPage } from '../registration/HousingComplexRegistrationPage'
-import { AnnouncementRegistrationPage } from '../registration/AnnouncementRegistrationPage'
+import { HousingComplexRegistrationPage } from './HousingComplexRegistrationPage'
+import { AnnouncementRegistrationPage } from './AnnouncementRegistrationPage'
 
 vi.mock('../management/api', async importOriginal => ({
   ...(await importOriginal<typeof import('../management/api')>()),
-  detail: vi.fn(async () => ({summary:{name:'두꺼비 행복주택',subtitle:'서울시 중구 세종대로 1',deleted:false}})),
+  getManagementDetail: vi.fn(async () => ({summary:{name:'두꺼비 행복주택',subtitle:'서울시 중구 세종대로 1',deleted:false}})),
 }))
 
 const apiMocks = vi.hoisted(() => ({
   createAnnouncement: vi.fn(),
   createHousingComplex: vi.fn(),
-  getDataPipelineStatus: vi.fn(),
-  startDataPipeline: vi.fn(),
 }))
 
-vi.mock('../registration/api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../registration/api')>()),
+vi.mock('./api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./api')>()),
   ...apiMocks,
 }))
-
-vi.mock('../ingest/api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../ingest/api')>()),
-  getDataPipelineStatus: apiMocks.getDataPipelineStatus,
-  startDataPipeline: apiMocks.startDataPipeline,
-}))
-
-vi.mock('../ingest/DataPipelineControl', () => ({ DataPipelineControl: () => null }))
-vi.mock('../ingest/LocationSummaryUpload', () => ({ LocationSummaryUpload: () => null }))
 
 beforeEach(() => {
   apiMocks.createAnnouncement.mockReset()
   apiMocks.createHousingComplex.mockReset()
-  apiMocks.getDataPipelineStatus.mockReset()
-  apiMocks.startDataPipeline.mockReset()
-  apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => (
-    Promise.resolve({
-      executionId: null,
-      type,
-      status: 'IDLE',
-      currentStepName: null,
-      currentStepIndex: 0,
-      totalStepCount: type === 'ANNOUNCEMENT_COLLECTION' ? 3 : 2,
-      completedSteps: [],
-      skippedSteps: [],
-      failure: null,
-    })
-  ))
+
 })
 
 describe('분리된 단지·공고 등록 흐름', () => {

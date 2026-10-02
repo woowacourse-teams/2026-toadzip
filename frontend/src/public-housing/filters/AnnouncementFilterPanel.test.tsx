@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { type ComponentProps, createElement } from 'react'
+import { type ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { SearchFilterPanel } from './SearchFilterPanel.tsx'
+import { AnnouncementFilterPanel } from './AnnouncementFilterPanel.tsx'
 
 const GYEONGGI_REGIONS = [
   {
@@ -36,10 +36,56 @@ const GYEONGGI_REGIONS = [
   },
 ] as const
 
-describe('SearchFilterPanel', () => {
+describe('AnnouncementFilterPanel', () => {
+  it('적용된 조건을 다시 열어 수정해도 적용 버튼을 누르기 전에는 조회하지 않는다', () => {
+    const onApply = vi.fn()
+    renderFilter({
+      filters: { rentalTypes: ['NATIONAL_RENTAL'], agencyCodes: ['SH'], recruitmentTypes: ['WAITLIST'] },
+      onApply,
+    })
+    expect(screen.getByRole('button', { name: '공고 필터 열기' }))
+      .toHaveAccessibleDescription('3개 적용')
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    expect(screen.getByRole('checkbox', { name: '국민임대' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'SH' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: '예비입주자 모집' })).toBeChecked()
+    fireEvent.click(screen.getByRole('checkbox', { name: '국민임대' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'LH' }))
+    expect(onApply).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
+    expect(onApply).toHaveBeenLastCalledWith({
+      agencyCodes: ['LH', 'SH'], recruitmentTypes: ['WAITLIST'],
+    })
+  })
+
+  it('외부 탐색에서 적용 조건이 바뀌면 열려 있는 이전 입력을 새 조건으로 복원한다', () => {
+    const onApply = vi.fn()
+    const regionRepository = { search: vi.fn().mockResolvedValue([]) }
+    const { rerender } = render(<AnnouncementFilterPanel
+      filters={{ rentalTypes: ['HAPPY_HOUSING'] }}
+      onApply={onApply}
+      regionRepository={regionRepository}
+    />)
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'LH' }))
+    rerender(<AnnouncementFilterPanel
+      filters={{ applicationStatuses: ['BEFORE_APPLICATION'], agencyCodes: ['GH'] }}
+      onApply={onApply}
+      regionRepository={regionRepository}
+    />)
+    expect(screen.getByRole('checkbox', { name: '행복주택' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'LH' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: '공고중' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'GH' })).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
+    expect(onApply).toHaveBeenLastCalledWith({
+      applicationStatuses: ['BEFORE_APPLICATION'], agencyCodes: ['GH'],
+    })
+  })
+
   it('공고 모집상태는 공고중과 접수중만 선택해 적용할 수 있다', () => {
     const onApply = vi.fn()
-    renderFilter({ kind: 'announcement', onApply })
+    renderFilter({ onApply })
 
     fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
     const statusGroup = within(screen.getByRole('group', { name: '모집상태' }))
@@ -54,20 +100,9 @@ describe('SearchFilterPanel', () => {
     })
   })
 
-  it('단지 모집상태에서는 접수마감도 선택해 적용할 수 있다', () => {
-    const onApply = vi.fn()
-    renderFilter({ kind: 'complex', onApply })
-
-    fireEvent.click(screen.getByRole('button', { name: '단지 필터 열기' }))
-    fireEvent.click(screen.getByRole('checkbox', { name: '접수마감' }))
-    fireEvent.click(screen.getByRole('button', { name: '단지 필터 적용' }))
-
-    expect(onApply).toHaveBeenLastCalledWith({ applicationStatuses: ['CLOSED'] })
-  })
-
   it('공고 조건을 함께 선택해 적용하고 초기화한다', () => {
     const onApply = vi.fn()
-    renderFilter({ kind: 'announcement', onApply })
+    renderFilter({ onApply })
 
     fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
     fireEvent.click(within(screen.getByRole('group', { name: '임대유형' }))
@@ -88,7 +123,7 @@ describe('SearchFilterPanel', () => {
 
   it('헤더에서 닫거나 Escape를 누르면 적용 없이 닫고 열기 버튼으로 포커스를 돌린다', () => {
     const onApply = vi.fn()
-    renderFilter({ kind: 'announcement', onApply })
+    renderFilter({ onApply })
 
     fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
     expect(screen.getByRole('heading', { name: '공고 필터' })).toBeVisible()
@@ -115,7 +150,7 @@ describe('SearchFilterPanel', () => {
     }
     renderFilter({ onApply, regionRepository })
 
-    fireEvent.click(screen.getByRole('button', { name: '단지 필터 열기' }))
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
     fireEvent.change(screen.getByLabelText('시·도'), {
       target: { value: '41' },
     })
@@ -133,11 +168,11 @@ describe('SearchFilterPanel', () => {
       name: '수원시 장안구',
     })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '단지 필터 적용' }))
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
     expect(onApply).toHaveBeenLastCalledWith({ regionCode: '41' })
 
     fireEvent.change(districtSelect, { target: { value: '41110' } })
-    fireEvent.click(screen.getByRole('button', { name: '단지 필터 적용' }))
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
     expect(onApply).toHaveBeenLastCalledWith({ regionCode: '41110' })
   })
 
@@ -150,7 +185,7 @@ describe('SearchFilterPanel', () => {
       regionRepository,
     })
 
-    fireEvent.click(screen.getByRole('button', { name: '단지 필터 열기' }))
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
 
     expect(screen.getByLabelText('시·도')).toHaveValue('41')
     await waitFor(() => {
@@ -167,7 +202,7 @@ describe('SearchFilterPanel', () => {
     }
     renderFilter({ filters: { regionCode: '41' }, regionRepository })
 
-    fireEvent.click(screen.getByRole('button', { name: '단지 필터 열기' }))
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('시·군·구를 불러오지 못했습니다.')
@@ -175,70 +210,21 @@ describe('SearchFilterPanel', () => {
       .toHaveAttribute('aria-describedby', alert.id)
   })
 
-  it('보증금·월세·면적을 승인된 간격의 슬라이더와 빠른 선택으로 적용한다', () => {
-    const onApply = vi.fn()
-    renderFilter({ onApply })
 
-    fireEvent.click(screen.getByRole('button', { name: '단지 필터 열기' }))
-    const depositMinimum = screen.getByRole('slider', {
-      name: '임대보증금 최솟값',
-    })
-    const depositMaximum = screen.getByRole('slider', {
-      name: '임대보증금 최댓값',
-    })
-    const monthlyMinimum = screen.getByRole('slider', {
-      name: '월 임대료 최솟값',
-    })
-    const areaMinimum = screen.getByRole('slider', {
-      name: '전용면적 최솟값',
-    })
-
-    expect(depositMinimum).toHaveAttribute('step', '10000000')
-    expect(depositMaximum).toHaveAttribute('max', '500000000')
-    expect(monthlyMinimum).toHaveAttribute('step', '10000')
-    expect(monthlyMinimum).toHaveAttribute('max', '600000')
-    expect(areaMinimum).toHaveAttribute('step', '3.3')
-    expect(areaMinimum).toHaveAttribute('max', '132')
-
-    fireEvent.change(depositMinimum, { target: { value: '100000000' } })
-    fireEvent.change(depositMaximum, { target: { value: '300000000' } })
-    expect(screen.getByRole('status', {
-      name: '임대보증금 선택 범위',
-    })).toHaveTextContent('1억~3억')
-
-    fireEvent.click(screen.getByRole('button', { name: '10평대' }))
-    fireEvent.click(screen.getByRole('button', { name: '단지 필터 적용' }))
-
-    expect(onApply).toHaveBeenLastCalledWith({
-      maxDeposit: 300_000_000,
-      maxExclusiveArea: 62.7,
-      minDeposit: 100_000_000,
-      minExclusiveArea: 33,
-    })
-  })
 })
 
 function renderFilter({
   filters = {},
-  kind = 'complex',
   onApply = vi.fn(),
   regionRepository = { search: vi.fn().mockResolvedValue([]) },
 }: {
-  readonly filters?: ComponentProps<typeof SearchFilterPanel>['filters']
-  readonly kind?: ComponentProps<typeof SearchFilterPanel>['kind']
-  readonly onApply?: ComponentProps<typeof SearchFilterPanel>['onApply']
-  readonly regionRepository?: {
-    readonly search: (
-      keyword: string,
-      signal: AbortSignal,
-    ) => Promise<readonly unknown[]>
-  }
+  readonly filters?: ComponentProps<typeof AnnouncementFilterPanel>['filters']
+  readonly onApply?: ComponentProps<typeof AnnouncementFilterPanel>['onApply']
+  readonly regionRepository?: ComponentProps<typeof AnnouncementFilterPanel>['regionRepository']
 } = {}) {
-  const props = {
-    filters,
-    kind,
-    onApply,
-    regionRepository,
-  } as ComponentProps<typeof SearchFilterPanel>
-  return render(createElement(SearchFilterPanel, props))
+  return render(<AnnouncementFilterPanel
+    filters={filters}
+    onApply={onApply}
+    regionRepository={regionRepository}
+  />)
 }

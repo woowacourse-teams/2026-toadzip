@@ -1,3 +1,4 @@
+import { agencyOptions, rentalTypeOptions } from './registrationOptions'
 import { AddressPicker } from './AddressPicker'
 import { useRef, useState, type FormEvent } from 'react'
 import {
@@ -8,7 +9,7 @@ import {
 import {
   numberValue,
   optionalStringValue,
-  options,
+  toRegistrationOptions,
   registrationFailure,
   stringValue,
 } from './formValues'
@@ -18,19 +19,9 @@ import {
   RegistrationTextField,
 } from './RegistrationFields'
 
-const rentalTypes = options([
-  'HAPPY_HOUSING',
-  'NATIONAL_RENTAL',
-  'PERMANENT_RENTAL',
-  'PUBLIC_RENTAL_50Y',
-  'INTEGRATED_PUBLIC_RENTAL',
-  'REDEVELOPMENT_RENTAL',
-  'ETC',
-])
-const agencyCodes = options(['LH', 'SH', 'GH', 'ETC'])
-const heatingTypes = options(['INDIVIDUAL', 'CENTRAL', 'DISTRICT', 'ETC'])
-const buildingTypes = options(['APARTMENT', 'OFFICETEL', 'ETC'])
-const corridorTypes = options(['STAIR', 'CORRIDOR', 'MIXED', 'UNKNOWN'])
+const heatingTypes = toRegistrationOptions(['INDIVIDUAL', 'CENTRAL', 'DISTRICT', 'ETC'])
+const buildingTypes = toRegistrationOptions(['APARTMENT', 'OFFICETEL', 'ETC'])
+const corridorTypes = toRegistrationOptions(['STAIR', 'CORRIDOR', 'MIXED', 'UNKNOWN'])
 
 export function HousingComplexRegistrationForm({
   disabled,
@@ -85,7 +76,7 @@ export function HousingComplexRegistrationForm({
               errors={fieldErrors}
               label="공급 유형"
               name="rentalType"
-              options={rentalTypes}
+              options={rentalTypeOptions}
               required
             />
             <RegistrationSelectField
@@ -93,7 +84,7 @@ export function HousingComplexRegistrationForm({
               errors={fieldErrors}
               label="공급 기관"
               name="agencyCode"
-              options={agencyCodes}
+              options={agencyOptions}
               required
             />
             <RegistrationTextField

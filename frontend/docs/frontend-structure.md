@@ -1,0 +1,61 @@
+# 프론트엔드 구조
+
+## 탐색 화면
+
+`src/public-housing/PublicHousingExplorer.tsx`는 지도, 목록, URL과 상세 화면을 연결한다.
+기능별 상태와 변환은 아래 모듈이 소유한다. 화면이 사용하는 같은 상태를 다른 계층에 복제하지 않는다.
+
+| 위치 | 책임 |
+| --- | --- |
+| `complexes/useComplexResults.ts` | 단지 첫 페이지·더보기·재시도, 요청 취소와 늦은 응답 차단, 적용된 지도 범위 |
+| `announcements/` | 공고 목록 조회와 공고 탭 상태 |
+| `filters/AnnouncementFilterPanel.tsx` | 공고 필터 입력·적용·초기화 |
+| `filters/ComplexFilterToolbar.tsx` | 단지 필터 팝오버·모바일 시트와 적용 동작 |
+| `filters/ComplexFilterFields.tsx` | 두 단지 필터 UI가 사용하는 입력 필드 |
+| `filters/complexFilterForm.ts`, `complexFilterTopics.ts`, `complexFilterPresentation.ts` | 폼 변환, 주제별 조건 교체, 선택값 표시 |
+| `filters/useRegionSelection.ts`, `searchFilterOptions.ts` | 실제 두 필터가 공유하는 지역 조회·취소·선택 fallback과 옵션 |
+| `navigation/detailLocation.ts`, `detailHistory.ts` | 상세 URL와 history state의 검증·변환 |
+| `components/HousingDetailStatePanel.tsx` | 단지·공고 상세의 로딩·미발견·오류 표시와 포커스·닫기 |
+| `presentation/` | API 모델에서 카드·상세 표시 모델로 변환, 라벨·HTTP(S) 링크 정책 |
+
+목록 요청 성공 후의 스크롤·강조 초기화와 지도 정책은 Explorer에 둔다.
+URL은 공유 가능한 필터·상세 선택을 소유하고, history state는 상세 간 이동의 복귀 대상과 포커스 정보를 가진다.
+컴포넌트 분리는 줄 수보다 별도 상태·부수효과·검증 가능한 계약을 기준으로 한다.
+
+`AnnouncementFilterPanel`에는 실제 사용하는 공고 조건만 있다. 단지 조건을 추가할 때는
+`ComplexFilterToolbar`를 수정한다. 두 필터가 제공하는 모집 상태와 적용 시점 차이를 유지한다.
+
+## 지도 SDK 경계
+
+`src/maps/naver/NaverMap.tsx`가 SDK 로딩, 지도 인스턴스, 이벤트와 overlay 수명주기를 소유한다.
+
+- `naverMapTypes.ts`: 이 연동에서 필요한 SDK·마커·카메라 계약.
+- `mapCamera.ts`: 좌표·bounds 변환과 카메라 이동 계산.
+- `markerData.ts`: 마커 종류·표시 데이터와 내용 비교 키.
+- `markerOverlays.ts`: overlay 생성·갱신·선택·포커스·이벤트 해제.
+- `regionBoundaryOverlay.ts`: 지역 경계 polygon 생성과 해제.
+
+지도 객체를 새 전역 상태로 옮기지 않는다. 추가한 SDK 이벤트와 DOM 핸들러는 해당 소유자에서 해제한다.
+마커 표시 필드를 추가하면 내용 비교 키와 갱신 행동 테스트도 함께 확인한다.
+
+## 관리자와 API
+
+- `src/api/apiBaseUrl.ts`는 기본 주소 정책만 공유한다. CSRF, 인증, 응답 검증과 오류는 각 API 모듈이 소유한다.
+- 주소 결정 시점도 계약이다. 관리자 API는 모듈 초기화, repository는 생성, 사용자 인증·통합 검색은 호출 시점의 환경 설정을 사용한다.
+- `admin/management/api.ts`는 HTTP 요청, `managementContract.ts`는 관리 모델과 응답 검증을 담당한다.
+- `ManagementSummaryTable`과 `ManagementStatus`는 목록·상세·선택 화면에서 실제 공유하는 표시다.
+- `admin/ingest/PipelineResult.tsx`는 실행 제어와 실행 이력이 공유한다. 폴링·실행·중지는 `DataPipelineControl`에 남는다.
+- `admin/registration/registrationOptions.ts`는 두 등록 폼의 옵션을 공유한다. 관리 검색의 더 넓은 허용 값과 합치지 않는다.
+- 등록 페이지 테스트는 검증 대상과 함께 `admin/registration/RegistrationPages.test.tsx`에 둔다.
+
+## 문서 미리보기
+
+`components/useDocumentSearchShortcuts.ts`는 PDF·HWP 모달 내부의 검색 열기·닫기 단축키와 이벤트 정리만 공유한다.
+문서별 검색 상태, IME·debounce 처리, Blob·worker·객체 URL 수명주기는 기존 뷰어가 계속 소유한다.
+
+## 검증 위치
+
+각 모듈 옆의 `*.test.ts(x)`가 가장 가까운 계약을 검증한다. 통합 연결은 `PublicHousingExplorer.test.tsx`,
+지도 SDK 연결은 `NaverMap.test.tsx`, 지역 요청 경합은 `RegionFilterBehavior.test.tsx`에서 확인한다.
+리팩터링 전에 기존 동작을 검증하는 테스트를 추가하고, 구조 변경 후에도 같은 사용자 행동을 확인한다.
+최종 명령과 실제 브라우저 확인 범위는 [품질 게이트](quality-gates.md)를 따른다.

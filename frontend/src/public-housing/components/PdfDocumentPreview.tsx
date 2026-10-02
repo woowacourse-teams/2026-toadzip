@@ -1,3 +1,4 @@
+import { useDocumentSearchShortcuts } from './useDocumentSearchShortcuts.ts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import pdfViewerStyles from 'pdfjs-dist/legacy/web/pdf_viewer.css?inline'
 import DocumentOutline from './DocumentOutline.tsx'
@@ -44,25 +45,7 @@ function PdfPreview({ url, name }: { readonly url: string; readonly name: string
     }
   }, [searchOpen])
 
-  useEffect(() => {
-    const target = rootRef.current?.closest('dialog') ?? rootRef.current
-    if (!target) return
-    function onKeyDown(event: Event) {
-      if (!(event instanceof KeyboardEvent) || event.isComposing) return
-      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f') {
-        if (!ready) return
-        event.preventDefault()
-        event.stopPropagation()
-        openSearch()
-      } else if (event.key === 'Escape' && searchOpen && !(event.target instanceof Element && event.target.closest('[data-document-outline][data-outline-open="true"]'))) {
-        event.preventDefault()
-        event.stopPropagation()
-        hideSearch()
-      }
-    }
-    target.addEventListener('keydown', onKeyDown)
-    return () => target.removeEventListener('keydown', onKeyDown)
-  }, [hideSearch, openSearch, ready, searchOpen])
+  useDocumentSearchShortcuts({ root: rootRef, ready, searchOpen, openSearch, hideSearch })
 
   const resultText = !query ? '' : result.pending ? '검색 중…' : result.notFound ? '검색 결과 없음' : `${result.current} / ${result.total}개`
   return <div className={styles.document} ref={rootRef}>

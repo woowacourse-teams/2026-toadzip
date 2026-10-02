@@ -1,3 +1,4 @@
+import { toHttpUrl } from '../presentation/httpUrl.ts'
 import { MISSING_DATA_LABEL } from '../presentation/missingData.ts'
 import { formatHousingMoney } from '../presentation/housingMoney.ts'
 import { useRef, useState, type FocusEvent } from 'react'
@@ -56,7 +57,7 @@ export function HousingComplexCard({
   const announcement = complex.representativeAnnouncement?.applicationStatus === 'CLOSED'
     ? null
     : complex.representativeAnnouncement
-  const safeImageUrl = safeHttpUrl(complex.thumbnailImageUrl)
+  const safeImageUrl = toHttpUrl(complex.thumbnailImageUrl)
   const [imageLoadState, setImageLoadState] = useState<{
     readonly failed: boolean
     readonly url: string | null
@@ -407,19 +408,4 @@ function agencyTone(code: string | null) {
     return code
   }
   return 'unknown'
-}
-
-function safeHttpUrl(value: string | null) {
-  if (!value) {
-    return null
-  }
-  try {
-    const url = new URL(value)
-    if (url.protocol === 'http:' || url.protocol === 'https:') {
-      return url.href
-    }
-  } catch {
-    return null
-  }
-  return null
 }

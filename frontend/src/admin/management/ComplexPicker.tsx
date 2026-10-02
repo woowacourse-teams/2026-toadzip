@@ -1,13 +1,14 @@
 import { useState } from 'react'
-import { list, type Summary } from './api'
-export function ComplexPicker({ onSelect, disabled = false }: { onSelect: (item: Summary) => void; disabled?: boolean }) {
+import { getManagementPage } from './api'
+import { type ManagementSummary } from './managementContract'
+export function ComplexPicker({ onSelect, disabled = false }: { onSelect: (item: ManagementSummary) => void; disabled?: boolean }) {
   const [query, setQuery] = useState('')
-  const [items, setItems] = useState<Summary[] | null>(null)
+  const [items, setItems] = useState<ManagementSummary[] | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   async function search() {
     setBusy(true); setError(''); setItems(null)
-    try { setItems((await list('complexes', new URLSearchParams({keyword:query, size:'20'}))).items) }
+    try { setItems((await getManagementPage('complexes', new URLSearchParams({keyword:query, size:'20'}))).items) }
     catch (cause) { setError(cause instanceof Error ? cause.message : '단지를 검색하지 못했습니다.') }
     finally { setBusy(false) }
   }

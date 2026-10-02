@@ -1,4 +1,4 @@
-import type { JsonValue, Values } from './api'
+import { type JsonValue, type ManagementValues } from './managementContract'
 export const labels: Record<string, string> = {
   LONG_TERM_JEONSE: '장기전세', HAPPY_HOUSING: '행복주택', NATIONAL_RENTAL: '국민임대', PERMANENT_RENTAL: '영구임대',
   PUBLIC_RENTAL_5Y: '5년 공공임대', PUBLIC_RENTAL_10Y: '10년 공공임대', PUBLIC_RENTAL_50Y: '50년 공공임대',
@@ -47,13 +47,13 @@ export const supplyFields: Field[] = [{name:'sourceComplexName',label:'원문 �
   {name:'expectedMoveInMonth',label:'입주 예정 연월',type:'month'},
   {name:'supplyCategory',label:'공급 구분',options:['NEW_SUPPLY','RESUPPLY'],required:true},
   {name:'totalSupplyHouseholdCount',label:'공급세대수',type:'number',min:0}]
-export function valueAt(data: Values, name: string): JsonValue | undefined {
+export function valueAt(data: ManagementValues, name: string): JsonValue | undefined {
   const [parent, child] = name.split('.')
   const value = data[parent]
   if (!child) return value
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value[child] : null
 }
-export function formValues(form: HTMLFormElement, fields: Field[], original: Values): Values {
+export function formValues(form: HTMLFormElement, fields: Field[], original: ManagementValues): ManagementValues {
   const result = structuredClone(original)
   const values = new FormData(form)
   for (const field of fields) {

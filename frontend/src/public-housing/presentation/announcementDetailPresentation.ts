@@ -1,3 +1,4 @@
+import { rentalTypeLabel } from './rentalTypeLabel.ts'
 import { MISSING_DATA_LABEL } from './missingData.ts'
 import type {
   HousingAnnouncementDetailAttachment,
@@ -42,7 +43,7 @@ export function toHousingAnnouncementDetailData(
     receptionPlaces: detail.receptionPlaces.map(toReceptionPlace),
     recruitmentTypeLabel: recruitmentTypeLabel(detail.recruitmentType),
     regionNames: detail.regionNames,
-    rentalTypeLabel: rentalTypeLabel(detail.rentalType),
+    rentalTypeLabel: rentalTypeLabel(detail.rentalType) ?? MISSING_DATA_LABEL,
     schedules: detail.schedules.map(toSchedule),
     applicationSchedules: detail.applicationSchedules ?? [],
     supplyComplexCount: detail.supplyComplexCount,
@@ -171,18 +172,6 @@ function publicationTypeLabel(value: string | null) {
     CANCELLATION: '취소공고',
     CORRECTION: '정정공고',
     ORIGINAL: '원공고',
-  }, MISSING_DATA_LABEL)
-}
-
-function rentalTypeLabel(value: string | null) {
-  return codeLabel(value, {
-    ETC: '기타 공공임대',
-    HAPPY_HOUSING: '행복주택',
-    INTEGRATED_PUBLIC_RENTAL: '통합공공임대',
-    NATIONAL_RENTAL: '국민임대',
-    PERMANENT_RENTAL: '영구임대',
-    PUBLIC_RENTAL_50Y: '50년 공공임대',
-    REDEVELOPMENT_RENTAL: '재개발임대',
   }, MISSING_DATA_LABEL)
 }
 

@@ -1,3 +1,4 @@
+import { resolveApiBaseUrl } from '../../api/apiBaseUrl'
 import type {
   AnnouncementDetail,
   AnnouncementPage,
@@ -332,12 +333,5 @@ function nullableString(value: unknown): string | null {
 }
 
 export function resolvePublicHousingApiBaseUrl(): string {
-  const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL
-  if (configuredApiBaseUrl) {
-    return configuredApiBaseUrl
-  }
-  if (import.meta.env.DEV) {
-    return 'http://localhost:8080'
-  }
-  return ''
+  return resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, import.meta.env.DEV)
 }

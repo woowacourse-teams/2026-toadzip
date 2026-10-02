@@ -1,3 +1,4 @@
+import { resolveApiBaseUrl } from '../../api/apiBaseUrl'
 export type SearchType = 'ANNOUNCEMENT' | 'COMPLEX' | 'REGION'
 
 export interface SearchResultItem {
@@ -159,8 +160,5 @@ function nullableNumber(value: unknown): number | null {
 }
 
 function apiBaseUrl() {
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL
-  }
-  return import.meta.env.DEV ? 'http://localhost:8080' : ''
+  return resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, import.meta.env.DEV)
 }
