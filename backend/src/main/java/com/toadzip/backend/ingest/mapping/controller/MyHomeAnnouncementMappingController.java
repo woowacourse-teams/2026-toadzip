@@ -28,11 +28,6 @@ public class MyHomeAnnouncementMappingController {
         return ResponseEntity.ok(mappingService.mapAll());
     }
 
-    @GetMapping("/failures")
-    public ResponseEntity<List<MyHomeAnnouncementMappingFailureResponse>> findFailures() {
-        return ResponseEntity.ok(mappingService.findFailures());
-    }
-
     @GetMapping("/failures/page")
     public ResponseEntity<List<MyHomeAnnouncementMappingFailureResponse>> findFailurePage(
             @RequestParam(defaultValue = "0") @Min(0) int page,

@@ -70,7 +70,7 @@ class MyHomeComplexMappingControllerTest {
 
     @Test
     void 매핑에_실패한_원천과_사유를_조회한다() throws Exception {
-        when(mappingService.findFailures()).thenReturn(List.of(new MyHomeComplexMappingFailureResponse(
+        when(mappingService.findFailures(0, 100)).thenReturn(List.of(new MyHomeComplexMappingFailureResponse(
                 "source-key",
                 "123",
                 MyHomeComplexMappingFailureReason.INVALID_VALUE,
@@ -78,12 +78,14 @@ class MyHomeComplexMappingControllerTest {
                 Instant.parse("2026-08-27T00:00:00Z")
         )));
 
-        mockMvc.perform(get("/api/admin/ingest/myhome/complex-mappings/failures"))
+        mockMvc.perform(get("/api/admin/ingest/myhome/complex-mappings/failures/page"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].sourceKey").value("source-key"))
                 .andExpect(jsonPath("$[0].sourceComplexIdentifier").value("123"))
                 .andExpect(jsonPath("$[0].reason").value("INVALID_VALUE"))
                 .andExpect(jsonPath("$[0].detail").value("준공일 형식이 올바르지 않습니다."));
+
+        verify(mappingService).findFailures(0, 100);
     }
 
     @Test

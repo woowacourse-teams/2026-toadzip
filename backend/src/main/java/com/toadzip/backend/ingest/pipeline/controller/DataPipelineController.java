@@ -53,10 +53,4 @@ public class DataPipelineController {
         return ResponseEntity.accepted().body(executionService.requestStop(executionId));
     }
 
-    @GetMapping("/executions/{executionId}")
-    public ResponseEntity<DataPipelineExecutionResponse> find(
-            @PathVariable UUID executionId
-    ) {
-        return ResponseEntity.ok(executionService.find(executionId));
-    }
 }

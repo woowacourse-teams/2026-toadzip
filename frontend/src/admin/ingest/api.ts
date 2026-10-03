@@ -474,6 +474,3 @@ export async function getPipelineHistory(page: number): Promise<DataPipelineExec
   if (!Array.isArray(body) || !body.every(isDataPipelineExecution)) throw new Error('실행 이력 응답 형식이 올바르지 않습니다.')
   return body
 }
-export async function getPipelineExecution(id: string): Promise<DataPipelineExecution> {
-  return readExecutionResponse(await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/executions/${encodeURIComponent(id)}`, {credentials:'include'}))
-}
