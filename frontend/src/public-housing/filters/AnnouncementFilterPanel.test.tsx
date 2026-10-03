@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { type ComponentProps } from 'react'
+import { type ComponentProps, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { AnnouncementFilterPanel } from './AnnouncementFilterPanel.tsx'
 
@@ -37,6 +37,27 @@ const GYEONGGI_REGIONS = [
 ] as const
 
 describe('AnnouncementFilterPanel', () => {
+  it('적용과 초기화로 입력 폼이 교체되어도 패널 안에 포커스를 유지하고 Escape로 되돌린다', () => {
+    function AppliedFilters() {
+      const [filters, setFilters] = useState<ComponentProps<typeof AnnouncementFilterPanel>['filters']>({})
+      return <AnnouncementFilterPanel filters={filters} onApply={setFilters} />
+    }
+    render(<AppliedFilters />)
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'LH' }))
+    const apply = screen.getByRole('button', { name: '공고 필터 적용' })
+    apply.focus()
+    fireEvent.click(apply)
+    expect(screen.getByRole('button', { name: '공고 필터 닫기' })).toHaveFocus()
+    const reset = screen.getByRole('button', { name: '초기화' })
+    reset.focus()
+    fireEvent.click(reset)
+    const close = screen.getByRole('button', { name: '공고 필터 닫기' })
+    expect(close).toHaveFocus()
+    fireEvent.keyDown(close, { key: 'Escape' })
+    expect(screen.getByRole('button', { name: '공고 필터 열기' })).toHaveFocus()
+  })
+
   it('적용된 조건을 다시 열어 수정해도 적용 버튼을 누르기 전에는 조회하지 않는다', () => {
     const onApply = vi.fn()
     renderFilter({

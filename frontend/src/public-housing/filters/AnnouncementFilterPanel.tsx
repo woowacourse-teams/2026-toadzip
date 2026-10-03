@@ -35,6 +35,7 @@ export function AnnouncementFilterPanel({
   const panelId = 'announcement-search-filter-panel'
   const summaryId = `${panelId}-summary`
   const appliedCount = appliedFilterCount(filters)
+  const filtersKey = searchFiltersSignature(filters)
 
   useEffect(() => {
     if (open) {
@@ -43,7 +44,7 @@ export function AnnouncementFilterPanel({
       toggleRef.current?.focus()
       restoreFocusRef.current = false
     }
-  }, [open])
+  }, [open, filtersKey])
 
   function close() {
     restoreFocusRef.current = true
@@ -89,7 +90,7 @@ export function AnnouncementFilterPanel({
       {open && (
         <form
           ref={formRef}
-          key={searchFiltersSignature(filters)}
+          key={filtersKey}
           id={panelId}
           className={styles.form}
           onSubmit={submit}
