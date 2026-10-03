@@ -1,34 +1,40 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MINIMAL_PUBLIC_HOUSING_SNAPSHOT } from '../testing/minimalPublicHousingSnapshot.ts'
 import {
   createLocalPublicHousingMockLoader,
   LOCAL_PUBLIC_HOUSING_SNAPSHOT_ENDPOINT,
   LocalPublicHousingMockLoadError,
-  shouldEnableLocalPublicHousingMock,
 } from './defaultPublicHousingRepository.ts'
 
-describe('shouldEnableLocalPublicHousingMock', () => {
-  it('개발 serve 조건에서만 명시적인 true flag를 허용한다', () => {
-    expect(shouldEnableLocalPublicHousingMock({
-      development: true,
-      flag: 'true',
-      mode: 'development',
-    })).toBe(true)
-    expect(shouldEnableLocalPublicHousingMock({
-      development: true,
-      flag: 'true',
-      mode: 'test',
-    })).toBe(false)
-    expect(shouldEnableLocalPublicHousingMock({
-      development: false,
-      flag: 'true',
-      mode: 'production',
-    })).toBe(false)
-    expect(shouldEnableLocalPublicHousingMock({
-      development: true,
-      flag: undefined,
-      mode: 'development',
-    })).toBe(false)
+afterEach(() => {
+  vi.unstubAllEnvs()
+  vi.resetModules()
+})
+
+describe('실제 local mock repository 선택', () => {
+  it.each([
+    { development: true, flag: 'true', mode: 'development', enabled: true },
+    { development: true, flag: 'true', mode: 'test', enabled: false },
+    { development: false, flag: 'true', mode: 'production', enabled: false },
+    { development: true, flag: undefined, mode: 'development', enabled: false },
+    { development: true, flag: 'false', mode: 'development', enabled: false },
+    { development: true, flag: 'TRUE', mode: 'development', enabled: false },
+    { development: true, flag: ' true ', mode: 'development', enabled: false },
+  ])('$development/$mode/$flag 설정으로 제품 repository를 선택한다', async ({ development, flag, mode, enabled }) => {
+    vi.stubEnv('DEV', development)
+    vi.stubEnv('MODE', mode)
+    vi.stubEnv('VITE_PUBLIC_HOUSING_LOCAL_MOCK', flag)
+    vi.resetModules()
+    const { localPublicHousingMockEnabled, defaultPublicHousingRepository } =
+      await import('./defaultPublicHousingRepository.ts')
+    const { publicHousingRepository } = await import('./publicHousingRepository.ts')
+
+    expect(localPublicHousingMockEnabled).toBe(enabled)
+    if (enabled) {
+      expect(defaultPublicHousingRepository).not.toBe(publicHousingRepository)
+    } else {
+      expect(defaultPublicHousingRepository).toBe(publicHousingRepository)
+    }
   })
 })
 

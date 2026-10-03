@@ -1,3 +1,4 @@
+import { getApiBaseUrl } from '../../api/apiBaseUrl'
 import type {
   HousingMapResult,
   HousingMapStage,
@@ -9,7 +10,6 @@ import {
   type ComplexSearchFilters,
   type PublicHousingRepositoryOptions,
   requestPublicHousingJson,
-  resolvePublicHousingApiBaseUrl,
 } from './publicHousingRepository.ts'
 
 const HOUSING_MAP_PATH = '/api/v2/complexes/map'
@@ -31,7 +31,7 @@ export interface HousingMapRepository {
 export function createHttpHousingMapRepository(
   options: PublicHousingRepositoryOptions = {},
 ): HousingMapRepository {
-  const apiBaseUrl = options.apiBaseUrl ?? resolvePublicHousingApiBaseUrl()
+  const apiBaseUrl = options.apiBaseUrl ?? getApiBaseUrl()
   const fetcher = options.fetcher ?? globalThis.fetch
 
   return {

@@ -1,4 +1,4 @@
-import { resolveApiBaseUrl } from '../../api/apiBaseUrl'
+import { getApiBaseUrl } from '../../api/apiBaseUrl'
 export type NotificationTargetType = 'REGION' | 'COMPLEX' | 'ANNOUNCEMENT'
 export type NotificationEventSource = 'SETTING' | 'REGION_SEARCH' | 'COMPLEX_DETAIL' | 'ANNOUNCEMENT_DETAIL'
 export type NotificationEventType = 'EXPOSED' | 'CLICKED' | 'CONFIRMED' | 'DECLINED' | 'CANCELLED'
@@ -34,7 +34,7 @@ export interface NotificationSubscriptionStatus {
 export function createNotificationInterestRepository(
   fetcher: typeof globalThis.fetch = globalThis.fetch,
 ): NotificationInterestRepository {
-  const baseUrl = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, import.meta.env.DEV)
+  const baseUrl = getApiBaseUrl()
   let csrfRequest: Promise<{ token: string; headerName: string }> | null = null
 
   async function loadCsrf() {

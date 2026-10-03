@@ -216,8 +216,6 @@ export function PublicHousingExplorer({
   const [integratedSearchActive, setIntegratedSearchActive] = useState(false)
   const [activeResultTab, setActiveResultTab] =
     useState<ResultTab>('complexes')
-  const [announcementListRequested, setAnnouncementListRequested] =
-    useState(false)
   const {
     cancel: cancelServerMapRequest,
     request: requestServerMap,
@@ -251,11 +249,9 @@ export function PublicHousingExplorer({
   const previousDetailKindRef = useRef<ResultTab | null>(null)
   const complexDetailOpenerRef = useRef<HTMLElement | null>(null)
   const complexDetailOpenerIdRef = useRef<string | null>(null)
-  const complexDetailOpenerTabRef = useRef<ResultTab | null>(null)
   const complexDetailOpenerWasMarkerRef = useRef(false)
   const announcementDetailOpenerRef = useRef<HTMLElement | null>(null)
   const announcementDetailOpenerIdRef = useRef<string | null>(null)
-  const announcementDetailOpenerTabRef = useRef<ResultTab | null>(null)
   const detailReturnFocusStack = useMemo(
     () => readDetailReturnFocusStack(location.state),
     [location.state],
@@ -355,8 +351,7 @@ export function PublicHousingExplorer({
   }, [announcementFiltersKey])
   const announcementResults = useAnnouncementResults(
     repository,
-    announcementListRequested
-      && activeResultTab === 'announcements',
+    activeResultTab === 'announcements',
     announcementFilters,
     announcementFiltersKey,
   )
@@ -444,10 +439,8 @@ export function PublicHousingExplorer({
       clearDetailOpenerRefs({
         announcementDetailOpenerIdRef,
         announcementDetailOpenerRef,
-        announcementDetailOpenerTabRef,
         complexDetailOpenerIdRef,
         complexDetailOpenerRef,
-        complexDetailOpenerTabRef,
         complexDetailOpenerWasMarkerRef,
       })
       return
@@ -462,10 +455,8 @@ export function PublicHousingExplorer({
       clearDetailOpenerRefs({
         announcementDetailOpenerIdRef,
         announcementDetailOpenerRef,
-        announcementDetailOpenerTabRef,
         complexDetailOpenerIdRef,
         complexDetailOpenerRef,
-        complexDetailOpenerTabRef,
         complexDetailOpenerWasMarkerRef,
       })
       const nextSearch = clearDetailQuery(
@@ -657,7 +648,6 @@ export function PublicHousingExplorer({
     if (kind === 'complexes' && currentDetail === null) {
       complexDetailOpenerRef.current = opener
       complexDetailOpenerIdRef.current = id
-      complexDetailOpenerTabRef.current = activeResultTab
       complexDetailOpenerWasMarkerRef.current = Boolean(
         opener?.classList.contains('housing-map-marker'),
       )
@@ -666,7 +656,6 @@ export function PublicHousingExplorer({
     if (kind === 'announcements' && currentDetail === null) {
       announcementDetailOpenerRef.current = opener
       announcementDetailOpenerIdRef.current = id
-      announcementDetailOpenerTabRef.current = activeResultTab
     }
     const currentKind = detailResultTab(detailLocation)
     const replace = currentKind === kind
@@ -686,7 +675,6 @@ export function PublicHousingExplorer({
       state: internalState,
     })
   }, [
-    activeResultTab,
     detailLocation,
     location.hash,
     location.pathname,
@@ -695,13 +683,6 @@ export function PublicHousingExplorer({
     navigate,
     prepareDetailVisit,
   ])
-
-  const selectResultTab = useCallback((tab: ResultTab) => {
-    if (tab === 'announcements') {
-      setAnnouncementListRequested(true)
-    }
-    setActiveResultTab(tab)
-  }, [])
 
   const applyComplexFilters = useCallback((filters: ComplexSearchFilters) => {
     const currentSearch = new URLSearchParams(location.search)
@@ -1190,7 +1171,7 @@ export function PublicHousingExplorer({
         />
 
         <div className="housing-results__browse" hidden={integratedSearchActive}>
-          <ResultTabs activeTab={activeResultTab} onSelect={selectResultTab} />
+          <ResultTabs activeTab={activeResultTab} onSelect={setActiveResultTab} />
 
           <ViewportAction
             announcementsActive={activeResultTab === 'announcements'}
@@ -2091,18 +2072,14 @@ function setAnnouncementCardRef(
 function clearDetailOpenerRefs(refs: {
   announcementDetailOpenerIdRef: { current: string | null }
   announcementDetailOpenerRef: { current: HTMLElement | null }
-  announcementDetailOpenerTabRef: { current: ResultTab | null }
   complexDetailOpenerIdRef: { current: string | null }
   complexDetailOpenerRef: { current: HTMLElement | null }
-  complexDetailOpenerTabRef: { current: ResultTab | null }
   complexDetailOpenerWasMarkerRef: { current: boolean }
 }) {
   refs.announcementDetailOpenerIdRef.current = null
   refs.announcementDetailOpenerRef.current = null
-  refs.announcementDetailOpenerTabRef.current = null
   refs.complexDetailOpenerIdRef.current = null
   refs.complexDetailOpenerRef.current = null
-  refs.complexDetailOpenerTabRef.current = null
   refs.complexDetailOpenerWasMarkerRef.current = false
 }
 

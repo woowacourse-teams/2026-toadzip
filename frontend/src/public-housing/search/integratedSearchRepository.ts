@@ -1,4 +1,4 @@
-import { resolveApiBaseUrl } from '../../api/apiBaseUrl'
+import { getApiBaseUrl } from '../../api/apiBaseUrl'
 export type SearchType = 'ANNOUNCEMENT' | 'COMPLEX' | 'REGION'
 
 export interface SearchResultItem {
@@ -54,7 +54,7 @@ export function createIntegratedSearchRepository(
       if (type) {
         params.set('type', type)
       }
-      const response = await fetcher(`${apiBaseUrl()}/api/v1/search?${params}`, {
+      const response = await fetcher(`${getApiBaseUrl()}/api/v1/search?${params}`, {
         headers: { Accept: 'application/json' },
         signal,
       })
@@ -157,8 +157,4 @@ function nullableString(value: unknown): string | null {
 
 function nullableNumber(value: unknown): number | null {
   return value === null ? null : number(value, 'nullable number')
-}
-
-function apiBaseUrl() {
-  return resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, import.meta.env.DEV)
 }

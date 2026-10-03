@@ -110,12 +110,12 @@ export function parseManagementDetail(value: unknown): ManagementDetailData {
     }
   }
 
-  if (value.announcements !== undefined
-    && (!Array.isArray(value.announcements) || !value.announcements.every(isManagementSummary))) {
+  const announcements = value.announcements === undefined ? [] : value.announcements
+  if (!Array.isArray(announcements) || !announcements.every(isManagementSummary)) {
     throw new Error('연결 공고 응답이 올바르지 않습니다.')
   }
-  if (value.schedules !== undefined
-    && (!Array.isArray(value.schedules) || !value.schedules.every(isManagementValues))) {
+  const schedules = value.schedules === undefined ? [] : value.schedules
+  if (!Array.isArray(schedules) || !schedules.every(isManagementValues)) {
     throw new Error('접수 일정 응답이 올바르지 않습니다.')
   }
 
@@ -124,10 +124,10 @@ export function parseManagementDetail(value: unknown): ManagementDetailData {
     data: value.data,
     sourceIdentifier: value.sourceIdentifier,
     housingTypes,
-    announcements: Array.isArray(value.announcements) ? value.announcements.filter(isManagementSummary) : [],
+    announcements,
     supplyRows,
     scheduleReviewed: value.scheduleReviewed === true,
-    schedules: Array.isArray(value.schedules) && value.schedules.every(isManagementValues) ? value.schedules : [],
+    schedules,
   }
 }
 

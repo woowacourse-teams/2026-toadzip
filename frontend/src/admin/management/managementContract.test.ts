@@ -39,4 +39,12 @@ describe('관리 상세 응답 계약', () => {
   it('검토 플래그를 생략한 응답은 검토 완료로 추정하지 않는다', () => {
     expect(parseManagementDetail({ ...detail(), scheduleReviewed: undefined }).scheduleReviewed).toBe(false)
   })
+
+  it('생략된 연결 공고·일정은 빈 배열이지만 명시적인 null은 오류다', () => {
+    const parsed = parseManagementDetail({ ...detail(), announcements: undefined, schedules: undefined })
+    expect(parsed.announcements).toEqual([])
+    expect(parsed.schedules).toEqual([])
+    expect(() => parseManagementDetail({ ...detail(), announcements: null })).toThrow('연결 공고 응답')
+    expect(() => parseManagementDetail({ ...detail(), schedules: null })).toThrow('접수 일정 응답')
+  })
 })

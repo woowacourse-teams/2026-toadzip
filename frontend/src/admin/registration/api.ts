@@ -1,4 +1,4 @@
-import { resolveApiBaseUrl } from '../../api/apiBaseUrl'
+import { getApiBaseUrl } from '../../api/apiBaseUrl'
 export type HousingComplexCreateRequest = {
   name: string
   rentalType: string
@@ -122,7 +122,7 @@ export class AdminRegistrationApiError extends Error {
   }
 }
 
-const apiBaseUrl = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, import.meta.env.DEV)
+const apiBaseUrl = getApiBaseUrl()
 
 export async function createHousingComplex(
   request: HousingComplexCreateRequest,

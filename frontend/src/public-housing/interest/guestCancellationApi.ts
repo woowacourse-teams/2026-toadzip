@@ -1,5 +1,5 @@
-import { resolveApiBaseUrl } from '../../api/apiBaseUrl'
-const baseUrl = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, import.meta.env.DEV)
+import { getApiBaseUrl } from '../../api/apiBaseUrl'
+const baseUrl = getApiBaseUrl()
 
 async function csrf(path: string) {
   const response = await fetch(`${baseUrl}${path}`, { credentials: 'include' })

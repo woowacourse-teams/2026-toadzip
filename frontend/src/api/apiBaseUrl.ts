@@ -1,3 +1,3 @@
-export function resolveApiBaseUrl(configuredBaseUrl: string | undefined, isDevelopment: boolean): string {
-  return configuredBaseUrl || (isDevelopment ? 'http://localhost:8080' : '')
+export function getApiBaseUrl(): string {
+  return import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:8080' : '')
 }

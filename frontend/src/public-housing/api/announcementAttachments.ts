@@ -1,4 +1,4 @@
-import { resolvePublicHousingApiBaseUrl } from './publicHousingRepository.ts'
+import { getApiBaseUrl } from '../../api/apiBaseUrl'
 
 class AttachmentError extends Error {
   readonly code: string
@@ -27,7 +27,7 @@ export async function loadAnnouncementAttachment(
     throw new AttachmentError('ATTACHMENT_NOT_FOUND')
   }
   const response = await fetch(
-    `${resolvePublicHousingApiBaseUrl()}/api/v1/announcements/${announcementId}/attachments/${attachmentId}/content?download=${download}`,
+    `${getApiBaseUrl()}/api/v1/announcements/${announcementId}/attachments/${attachmentId}/content?download=${download}`,
     { signal: AbortSignal.any([signal, AbortSignal.timeout(150_000)]) },
   )
   if (!response.ok) {

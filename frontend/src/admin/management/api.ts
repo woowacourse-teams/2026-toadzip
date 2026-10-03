@@ -1,4 +1,4 @@
-import { resolveApiBaseUrl } from '../../api/apiBaseUrl'
+import { getApiBaseUrl } from '../../api/apiBaseUrl'
 import {
   isRecord,
   parseManagementDetail,
@@ -10,7 +10,7 @@ import {
   type ManagementResource,
 } from './managementContract'
 
-const apiBaseUrl = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, import.meta.env.DEV)
+const apiBaseUrl = getApiBaseUrl()
 
 export function managementResourcePath(resource: ManagementResource): string {
   return `/api/admin/${resource === 'complexes' ? 'housing-complexes' : 'announcements'}`

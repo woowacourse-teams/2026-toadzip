@@ -142,38 +142,6 @@ export function parseMapLocation(
   return { kind: 'valid', ...location }
 }
 
-function formatFixed(value: number, fractionDigits: number): string {
-  const formatted = value.toFixed(fractionDigits)
-  if (Number(formatted) === 0) {
-    return (0).toFixed(fractionDigits)
-  }
-
-  return formatted
-}
-
-export function setMapLocationQuery(
-  searchParams: URLSearchParams,
-  location: MapLocation,
-  options: MapLocationOptions = {},
-): URLSearchParams {
-  const zoomRange = resolveZoomRange(options)
-  if (!isValidLocation(location, zoomRange)) {
-    throw new TypeError('유효한 지도 위치가 아닙니다.')
-  }
-
-  const nextSearchParams = clearMapLocationQuery(searchParams)
-  nextSearchParams.set(
-    MAP_LATITUDE_QUERY_KEY,
-    formatFixed(location.center.latitude, 5),
-  )
-  nextSearchParams.set(
-    MAP_LONGITUDE_QUERY_KEY,
-    formatFixed(location.center.longitude, 5),
-  )
-  nextSearchParams.set(MAP_ZOOM_QUERY_KEY, formatFixed(location.zoom, 2))
-  return nextSearchParams
-}
-
 export function clearMapLocationQuery(
   searchParams: URLSearchParams,
 ): URLSearchParams {

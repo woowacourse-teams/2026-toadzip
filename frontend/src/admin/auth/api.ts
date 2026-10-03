@@ -1,4 +1,4 @@
-import { resolveApiBaseUrl } from '../../api/apiBaseUrl'
+import { getApiBaseUrl } from '../../api/apiBaseUrl'
 export type AdminSession = {
   loginIdentifier: string
   role: 'ADMIN'
@@ -13,7 +13,7 @@ type ApiErrorBody = {
   message?: string
 }
 
-const apiBaseUrl = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, import.meta.env.DEV)
+const apiBaseUrl = getApiBaseUrl()
 
 export class AdminApiError extends Error {
   readonly status: number

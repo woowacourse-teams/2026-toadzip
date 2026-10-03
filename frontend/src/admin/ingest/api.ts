@@ -1,4 +1,4 @@
-import { resolveApiBaseUrl } from '../../api/apiBaseUrl'
+import { getApiBaseUrl } from '../../api/apiBaseUrl'
 export type DataPipelineType =
   | 'COMPLEX_COLLECTION'
   | 'COMPLEX_REFINEMENT'
@@ -172,7 +172,7 @@ type CsrfToken = {
   headerName: string
 }
 
-const apiBaseUrl = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, import.meta.env.DEV)
+const apiBaseUrl = getApiBaseUrl()
 
 export class DataPipelineApiError extends Error {
   readonly status: number
