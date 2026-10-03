@@ -201,6 +201,7 @@ export function PublicHousingExplorer({
   const viewportRef = useRef<ViewportSnapshot | null>(null)
   const viewportRevisionRef = useRef(0)
   const viewportTimerRef = useRef<number | null>(null)
+  const interruptedSearchRef = useRef(false)
   const mapWorkspaceRef = useRef<HTMLElement>(null)
   const initialDetail = parseDetailLocation(new URLSearchParams(location.search))
   const pendingDetailCameraRef = useRef<{ id: string; revision: number } | null>(
@@ -311,6 +312,14 @@ export function PublicHousingExplorer({
     revision: searchRevision,
   }, announcementListRequested ? announcementFilters : undefined)
   const cancelSearch = searchResults.cancel
+  const resumeInterruptedSearch = useCallback(() => {
+    if (!interruptedSearchRef.current) return
+    interruptedSearchRef.current = false
+    setSearchRevision((value) => value + 1)
+  }, [])
+  useEffect(() => {
+    interruptedSearchRef.current = false
+  }, [searchResults.signature])
   const complexResults = searchResults.state
   const appliedScope = complexResults.scope
   const scopedAnnouncementFilters = useMemo(() => ({
@@ -649,6 +658,7 @@ export function PublicHousingExplorer({
       window.clearTimeout(viewportTimerRef.current)
       viewportTimerRef.current = null
       setViewportRefreshPending(false)
+      resumeInterruptedSearch()
     }
     const currentSearch = new URLSearchParams(location.search)
     const activeElement = document.activeElement
@@ -700,6 +710,7 @@ export function PublicHousingExplorer({
     location.state,
     navigate,
     prepareDetailVisit,
+    resumeInterruptedSearch,
   ])
 
   const selectResultTab = useCallback((tab: ResultTab) => {
@@ -724,6 +735,7 @@ export function PublicHousingExplorer({
     if (viewportTimerRef.current !== null) window.clearTimeout(viewportTimerRef.current)
     setViewportRefreshPending(false)
     if (nextSearch.toString() === currentSearch.toString()) {
+      resumeInterruptedSearch()
       return
     }
     trackAppliedFilters('complex', currentSearch, nextSearch)
@@ -739,6 +751,7 @@ export function PublicHousingExplorer({
     location.state,
     navigate,
     searchScope,
+    resumeInterruptedSearch,
   ])
 
   const applyAnnouncementFilters = useCallback((
@@ -755,6 +768,7 @@ export function PublicHousingExplorer({
     if (viewportTimerRef.current !== null) window.clearTimeout(viewportTimerRef.current)
     setViewportRefreshPending(false)
     if (nextSearch.toString() === currentSearch.toString()) {
+      resumeInterruptedSearch()
       return
     }
     trackAppliedFilters('announcement', currentSearch, nextSearch)
@@ -770,6 +784,7 @@ export function PublicHousingExplorer({
     location.state,
     navigate,
     searchScope,
+    resumeInterruptedSearch,
   ])
 
   const openComplexDetail = useCallback((complexId: string, entryPoint: DetailEntryPoint = 'list') => {
@@ -890,7 +905,15 @@ export function PublicHousingExplorer({
       if (searchArea) {
         preserveListRef.current = currentScope !== null
         fitResultsRef.current = false
-        query = setSearchScopeQuery(query, { mode: 'area', bounds: nextViewport.bounds })
+        const nextScope: SearchScope = { mode: 'area', bounds: nextViewport.bounds }
+        if (searchScopeSignature(currentScope) === searchScopeSignature(nextScope)) {
+          resumeInterruptedSearch()
+        } else {
+          interruptedSearchRef.current = false
+        }
+        query = setSearchScopeQuery(query, nextScope)
+      } else {
+        resumeInterruptedSearch()
       }
       const camera = parseMapLocation(query)
       if (camera.kind === 'valid') writtenCameraRef.current = `${camera.center.latitude}|${camera.center.longitude}|${camera.zoom}`
@@ -901,6 +924,7 @@ export function PublicHousingExplorer({
       })
     }
     if (cause === 'user' && searchScope?.mode === 'area') {
+      if (complexResults.status === 'loading') interruptedSearchRef.current = true
       cancelSearch()
       setViewportRefreshPending(true)
       viewportTimerRef.current = window.setTimeout(() => {
@@ -909,7 +933,7 @@ export function PublicHousingExplorer({
         commit()
       }, 300)
     } else commit()
-  }, [location.pathname, location.hash, location.state, navigate, searchScope?.mode, cancelSearch])
+  }, [location.pathname, location.hash, location.state, navigate, searchScope?.mode, complexResults.status, cancelSearch, resumeInterruptedSearch])
 
   const handleIntegratedSearchSelect = useCallback((item: SearchResultItem) => {
     if (item.type === 'COMPLEX') {

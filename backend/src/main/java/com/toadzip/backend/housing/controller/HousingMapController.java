@@ -4,6 +4,8 @@ import com.toadzip.backend.global.response.ApiResponse;
 import com.toadzip.backend.housing.dto.request.HousingComplexSearchRequest;
 import com.toadzip.backend.housing.dto.response.HousingMapResponse;
 import com.toadzip.backend.housing.service.HousingMapQueryService;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
 import jakarta.validation.Valid;
 import java.math.BigDecimal;
 import org.springdoc.core.annotations.ParameterObject;
@@ -24,6 +26,13 @@ public class HousingMapController {
     }
 
     @GetMapping("/map")
+    @Parameters({
+            @Parameter(name = "southWestLat", required = true),
+            @Parameter(name = "southWestLng", required = true),
+            @Parameter(name = "northEastLat", required = true),
+            @Parameter(name = "northEastLng", required = true),
+            @Parameter(name = "scope", hidden = true)
+    })
     public ApiResponse<HousingMapResponse> getMap(
             @Valid @ParameterObject @ModelAttribute HousingComplexSearchRequest request,
             @RequestParam BigDecimal zoom,

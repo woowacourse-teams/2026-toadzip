@@ -163,6 +163,62 @@ afterEach(() => {
 })
 
 describe('PublicHousingExplorer', () => {
+  it.each([true, false])('같은 확정 영역으로 되돌아오면 취소된 검색을 재시작한다 (이전 결과: %s)', async (hasPreviousResults) => {
+    vi.useFakeTimers()
+    const repository = createRepository()
+    const interrupted = createDeferred<ComplexSearchSnapshot>()
+    const latest = searchSnapshot(complexPageFor(18, '복귀 영역 단지'), [mapComplexFor(18, '복귀 영역 단지')])
+    if (hasPreviousResults) repository.findComplexSearch.mockResolvedValueOnce(searchSnapshot())
+    repository.findComplexSearch.mockReturnValueOnce(interrupted.promise).mockResolvedValueOnce(latest)
+    renderExplorer(repository, hasPreviousResults ? '/' : '/?searchMode=area&searchBounds=37.4,126.8,37.55,127')
+    if (hasPreviousResults) {
+      fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+      await act(async () => Promise.resolve())
+      fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
+      await act(async () => vi.advanceTimersByTimeAsync(300))
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
+      await act(async () => Promise.resolve())
+    }
+    const requestCount = hasPreviousResults ? 2 : 1
+    expect(repository.findComplexSearch).toHaveBeenCalledTimes(requestCount)
+    const signal = repository.findComplexSearch.mock.calls[requestCount - 1][2] as AbortSignal
+    fireEvent.click(screen.getByRole('button', { name: '전국 영역 알림' }))
+    expect(signal.aborted).toBe(true)
+    await act(async () => vi.advanceTimersByTimeAsync(100))
+    fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
+    await act(async () => vi.advanceTimersByTimeAsync(299))
+    expect(repository.findComplexSearch).toHaveBeenCalledTimes(requestCount)
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(repository.findComplexSearch).toHaveBeenCalledTimes(requestCount + 1)
+    expect(repository.findComplexSearch).toHaveBeenLastCalledWith({ mode: 'area', bounds: NEXT_BOUNDS }, 20, expect.any(AbortSignal), {})
+    expect(screen.getByRole('article', { name: '복귀 영역 단지' })).toBeVisible()
+    await act(async () => interrupted.resolve(searchSnapshot()))
+    expect(screen.getByRole('article', { name: '복귀 영역 단지' })).toBeVisible()
+    expect(screen.queryByRole('article', { name: '서울가람 행복주택' })).not.toBeInTheDocument()
+  })
+
+  it('예약 이동 중 단지 선택은 새 영역 예약만 취소하고 중단된 확정 검색을 재개한다', async () => {
+    vi.useFakeTimers()
+    const repository = createRepository()
+    const interrupted = createDeferred<ComplexSearchSnapshot>()
+    repository.findComplexSearch.mockResolvedValueOnce(searchSnapshot()).mockReturnValueOnce(interrupted.promise)
+      .mockResolvedValueOnce(searchSnapshot(complexPageFor(18, '확정 영역 단지'), [mapComplexFor(18, '확정 영역 단지')]))
+    renderExplorer(repository)
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    await act(async () => Promise.resolve())
+    fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
+    await act(async () => vi.advanceTimersByTimeAsync(300))
+    fireEvent.click(screen.getByRole('button', { name: '전국 영역 알림' }))
+    fireEvent.click(screen.getByRole('button', { name: '서울가람 행복주택 지도 마커 선택' }))
+    await act(async () => vi.advanceTimersByTimeAsync(350))
+    expect(repository.findComplexSearch).toHaveBeenCalledTimes(3)
+    expect(repository.findComplexSearch).toHaveBeenLastCalledWith({ mode: 'area', bounds: NEXT_BOUNDS }, 20, expect.any(AbortSignal), {})
+    expect(screen.getByRole('article', { name: '확정 영역 단지' })).toBeVisible()
+    expect(screen.getByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })).toBeVisible()
+    expect(new URLSearchParams(screen.getByTestId('location-search').textContent ?? '').get('searchBounds')).toBe('37.4,126.8,37.55,127')
+  })
+
   it('최초 검색 실패는 완료된 0곳으로 표시하지 않으며 같은 범위를 재시도한다', async () => {
     const repository = createRepository()
     repository.findComplexSearch.mockRejectedValueOnce(new Error('첫 검색 실패')).mockResolvedValueOnce(searchSnapshot())
