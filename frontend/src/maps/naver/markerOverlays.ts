@@ -1,3 +1,4 @@
+import type { ComplexMarkerCluster } from './markerClustering.ts'
 import { createComplexMarkerButton, markerSummary, markerWidth } from './complexMarkerButton.ts'
 import { renderedMarkerContentKey, renderedMarkerId, type RenderedMarker } from './markerData.ts'
 import type {
@@ -44,6 +45,7 @@ interface CreateMarkerOptions {
   readonly onAggregateMarkerSelect: (
     marker: NaverMapAggregateMarker,
   ) => void
+  readonly onClusterSelect: (cluster: ComplexMarkerCluster) => void
   readonly onMarkerHighlight: ((complexId: string | null) => void) | undefined
   readonly onMarkerSelect: ((complexId: string) => void) | undefined
 }
@@ -54,22 +56,28 @@ export function createMarker({
   maps,
   marker,
   onAggregateMarkerSelect,
+  onClusterSelect,
   onMarkerHighlight,
   onMarkerSelect,
 }: CreateMarkerOptions): CreatedMarker {
   const controller = new AbortController()
-  const isAggregate = marker.kind === 'aggregate'
-  const button = isAggregate
-    ? aggregateMarkerButton(marker.marker)
-    : createComplexMarkerButton(marker.marker)
-  const width = isAggregate ? 104 : markerWidth(marker.marker)
-  const height = isAggregate ? 68 : 66
-  const title = isAggregate
-    ? aggregateMarkerTitle(marker.marker)
-    : markerSummary(marker.marker)
+  const button = marker.kind === 'complex'
+    ? createComplexMarkerButton(marker.marker)
+    : aggregateMarkerButton(aggregateMarkerData(marker))
+  const width = marker.kind === 'complex' ? markerWidth(marker.marker) : 104
+  const height = marker.kind === 'complex' ? 66 : 68
+  const title = marker.kind === 'complex'
+    ? markerSummary(marker.marker) : aggregateMarkerTitle(aggregateMarkerData(marker))
+  if (marker.kind === 'cluster') {
+    delete button.dataset.mapAggregateMarker
+    button.dataset.mapClusterMarker = 'true'
+    button.setAttribute('aria-label', `단지 ${marker.marker.members.length}곳, 모여 있는 단지 확대해서 보기`)
+  }
   bindMarkerActivation(button, () => {
     if (marker.kind === 'aggregate') {
       onAggregateMarkerSelect(marker.marker)
+    } else if (marker.kind === 'cluster') {
+      onClusterSelect(marker.marker)
     } else {
       onMarkerSelect?.(marker.marker.id)
     }
@@ -97,6 +105,13 @@ export function createMarker({
     overlay,
     rendered: marker,
     presentation: null,
+  }
+}
+
+function aggregateMarkerData(marker: Exclude<RenderedMarker, { kind: 'complex' }>): NaverMapAggregateMarker {
+  return marker.kind === 'aggregate' ? marker.marker : {
+    ...marker.marker, groupKey: marker.marker.id, groupLabel: '단지',
+    uniqueComplexCount: marker.marker.members.length, expansionZoom: 17, nextStage: 4,
   }
 }
 
@@ -259,6 +274,9 @@ function markerIsHighlighted(
   if (marker.kind === 'aggregate') {
     return false
   }
+  if (marker.kind === 'cluster') {
+    return marker.marker.members.some((member) => highlightedIds.has(member.id))
+  }
   return highlightedIds.has(marker.marker.id)
 }
 
@@ -320,7 +338,12 @@ function findMarkerFocusTarget(
   createdMarkers: readonly CreatedMarker[],
   focus: MarkerFocusTarget,
 ) {
-  return createdMarkers.find(({ rendered }) =>
+  const exact = createdMarkers.find(({ rendered }) =>
     rendered.kind === focus.kind && renderedMarkerId(rendered) === focus.id,
   )
+  if (exact || focus.kind !== 'cluster') return exact
+  const previousMembers = new Set(focus.id.split(','))
+  return createdMarkers.find(({ rendered }) => rendered.kind === 'complex'
+    ? previousMembers.has(rendered.marker.id)
+    : rendered.kind === 'cluster' && rendered.marker.members.some((member) => previousMembers.has(member.id)))
 }

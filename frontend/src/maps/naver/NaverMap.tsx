@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import './markerClusterPicker.css'
+import { IconButton } from '../../design-system/components/IconButton.tsx'
+import { markerWidth } from './complexMarkerButton.ts'
+import type { ComplexMarkerCluster } from './markerClustering.ts'
+import { DEFAULT_MINIMUM_MAP_ZOOM, DEFAULT_MAXIMUM_MAP_ZOOM } from '../../public-housing/navigation/mapLocation.ts'
 import {
   cameraCoordinatesChanged,
   cameraZoomChanged,
@@ -6,9 +11,11 @@ import {
   isValidCameraTarget,
   offsetCameraTarget,
   readViewport,
+  revealCameraTarget,
 } from './mapCamera.ts'
 import {
   createMarkerContentKey,
+  createMarkerGeometryKey,
   renderedMarkerContentKey,
   renderedMarkerIdentity,
   toRenderedMarkers,
@@ -23,7 +30,7 @@ import {
   updateAggregateMarkerAvailability,
   type CreatedMarker,
 } from './markerOverlays.ts'
-import type { NaverMapCameraTarget, NaverMapProps } from './naverMapTypes.ts'
+import type { NaverMapCameraTarget, NaverMapProps, NaverMapViewportChangeMetadata } from './naverMapTypes.ts'
 import { clearBoundaryOverlays, createRegionBoundaryOverlay } from './regionBoundaryOverlay.ts'
 import {
   loadNaverMapsSdk,
@@ -38,6 +45,8 @@ export type {
   NaverMapComplexMarker,
   NaverMapMarker,
   NaverMapProps,
+  NaverMapScreenPadding,
+  NaverMapViewportChangeMetadata,
 } from './naverMapTypes.ts'
 
 type MapFailureReason = NaverMapsSdkErrorCode | 'configuration' | 'initialization'
@@ -158,6 +167,7 @@ export default function NaverMap({
   regionBoundary,
   representation,
   transitioning = false,
+  visiblePadding,
 }: NaverMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<naver.maps.Map | null>(null)
@@ -184,6 +194,14 @@ export default function NaverMap({
   if (!transitioning || !wasTransitioning) {
     transitionInterruptedRef.current = false
   }
+  const viewportCauseRef = useRef<NaverMapViewportChangeMetadata['cause']>('initial')
+  const programmaticMovingRef = useRef(false)
+  const [projectionRevision, setProjectionRevision] = useState(0)
+  const visiblePaddingRef = useRef(visiblePadding)
+  visiblePaddingRef.current = visiblePadding
+  const [expandedCluster, setExpandedCluster] = useState<ComplexMarkerCluster | null>(null)
+  const clusterPickerRef = useRef<HTMLDivElement>(null)
+  const clusterTriggerRef = useRef<HTMLButtonElement | null>(null)
   const markerFocusTimerRef = useRef<number | undefined>(undefined)
   const appliedCameraTargetRef = useRef<NaverMapCameraTarget | null>(null)
   const appliedCameraRequestIdRef = useRef<number | undefined>(undefined)
@@ -208,7 +226,21 @@ export default function NaverMap({
   const cameraPaddingRight = cameraTarget?.boundsPadding?.right
   const cameraPaddingBottom = cameraTarget?.boundsPadding?.bottom
   const cameraPaddingLeft = cameraTarget?.boundsPadding?.left
+  const cameraMaxZoom = cameraTarget?.maxZoom
+  const revealPaddingTop = cameraTarget?.revealPadding?.top
+  const revealPaddingRight = cameraTarget?.revealPadding?.right
+  const revealPaddingBottom = cameraTarget?.revealPadding?.bottom
+  const revealPaddingLeft = cameraTarget?.revealPadding?.left
+  const markerGeometryKey = createMarkerGeometryKey(aggregateMarkers, markers, representation)
   const markerContentKey = createMarkerContentKey(aggregateMarkers, markers, representation)
+
+  useEffect(() => {
+    setExpandedCluster(null)
+  }, [markerGeometryKey])
+
+  useEffect(() => {
+    if (expandedCluster) clusterPickerRef.current?.focus({ preventScroll: true })
+  }, [expandedCluster])
 
   useEffect(() => {
     onAggregateMarkerSelectRef.current = onAggregateMarkerSelect
@@ -243,12 +275,21 @@ export default function NaverMap({
     let resizeObserver: ResizeObserver | null = null
     let dragStartListener: naver.maps.MapEventListener | null = null
     let idleListener: naver.maps.MapEventListener | null = null
+    let boundsListener: naver.maps.MapEventListener | null = null
+    let projectionTimer: number | undefined
     let initListener: naver.maps.MapEventListener | null = null
     let mapSurface: HTMLDivElement | null = null
-    let wheelListener: (() => void) | null = null
+    let interactionController: AbortController | null = null
+    viewportCauseRef.current = 'initial'
     setStatus({ kind: 'loading' })
 
     const removeIdleListener = () => {
+      window.clearTimeout(projectionTimer)
+      projectionTimer = undefined
+      if (boundsListener && mapsRef.current) {
+        mapsRef.current.Event.removeListener(boundsListener)
+        boundsListener = null
+      }
       if (!idleListener || !mapsRef.current) {
         return
       }
@@ -269,11 +310,9 @@ export default function NaverMap({
         mapsRef.current.Event.removeListener(dragStartListener)
         dragStartListener = null
       }
-      if (mapSurface && wheelListener) {
-        mapSurface.removeEventListener('wheel', wheelListener)
-      }
+      interactionController?.abort()
+      interactionController = null
       mapSurface = null
-      wheelListener = null
     }
 
     const handleAuthenticationFailure = () => {
@@ -319,6 +358,8 @@ export default function NaverMap({
             ),
             gl: true,
             keyboardShortcuts: true,
+            minZoom: DEFAULT_MINIMUM_MAP_ZOOM,
+            maxZoom: DEFAULT_MAXIMUM_MAP_ZOOM,
             logoControlOptions: {
               position: maps.Position.BOTTOM_LEFT,
             },
@@ -338,6 +379,7 @@ export default function NaverMap({
           // Bounds and screen offsets need an initialized map; apply them once afterward.
           appliedCameraRequestIdRef.current = cameraTargetRef.current?.screenOffset
             || cameraTargetRef.current?.bounds
+            || cameraTargetRef.current?.revealPadding
             ? undefined
             : cameraRequestIdRef.current
 
@@ -349,7 +391,11 @@ export default function NaverMap({
           })
 
           const emitViewport = () => {
+            window.clearTimeout(projectionTimer)
+            projectionTimer = undefined
             transitionInterruptedRef.current = false
+            programmaticMovingRef.current = false
+            setProjectionRevision((revision) => revision + 1)
             const viewport = readViewport(createdMap)
             if (viewport) {
               appliedCameraTargetRef.current = {
@@ -357,7 +403,7 @@ export default function NaverMap({
                 longitude: viewport.center.longitude,
                 zoom: viewport.zoom,
               }
-              onViewportChangeRef.current?.(viewport)
+              onViewportChangeRef.current?.(viewport, { cause: viewportCauseRef.current })
             }
           }
 
@@ -366,29 +412,61 @@ export default function NaverMap({
             'idle',
             emitViewport,
           )
+          boundsListener = maps.Event.addListener(createdMap, 'bounds_changed', () => {
+            if (projectionTimer !== undefined || representationRef.current !== 'INDIVIDUAL') return
+            // Reveal newly visible cards while dragging without notifying the search owner.
+            projectionTimer = window.setTimeout(() => {
+              projectionTimer = undefined
+              if (!cancelled) setProjectionRevision((revision) => revision + 1)
+            }, 80)
+          })
           const interruptTransition = () => {
-            if (
-              !transitioningRef.current ||
-              transitionInterruptedRef.current
-            ) {
-              return
+            // Keep the cause until the next genuine gesture or camera request. One animation
+            // can emit several idle events; clearing a flag on its first idle re-searches lists.
+            viewportCauseRef.current = 'user'
+            setExpandedCluster(null)
+            const interruptingTransition = transitioningRef.current && !transitionInterruptedRef.current
+            if (interruptingTransition) {
+              transitionInterruptedRef.current = true
+              onTransitionInterruptRef.current?.()
             }
-            transitionInterruptedRef.current = true
-            onTransitionInterruptRef.current?.()
-            stopMapSafely(createdMap)
+            if (programmaticMovingRef.current || interruptingTransition) {
+              programmaticMovingRef.current = false
+              stopMapSafely(createdMap)
+            }
           }
-          dragStartListener = maps.Event.addListener(
-            createdMap,
-            'dragstart',
-            interruptTransition,
-          )
+          dragStartListener = maps.Event.addListener(createdMap, 'dragstart', interruptTransition)
           mapSurface = mapContainerRef.current
-          wheelListener = interruptTransition
-          mapSurface.addEventListener('wheel', wheelListener, { passive: true })
+          interactionController = new AbortController()
+          const interactionOptions = { capture: true, signal: interactionController.signal }
+          const isMarkerEvent = (event: Event) => event.target instanceof Element
+            && event.target.closest('[data-map-complex-marker], [data-map-aggregate-marker], [data-map-cluster-marker]')
+          const onPointerInput = (event: Event) => {
+            if (!isMarkerEvent(event)) interruptTransition()
+          }
+          mapSurface.addEventListener('wheel', interruptTransition, { ...interactionOptions, passive: true })
+          mapSurface.addEventListener('pointerdown', onPointerInput, interactionOptions)
+          mapSurface.addEventListener('dblclick', onPointerInput, interactionOptions)
+          mapSurface.addEventListener('click', onPointerInput, interactionOptions)
+          mapSurface.addEventListener('keydown', (event) => {
+            if (!isMarkerEvent(event)
+              && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', '+', '-', '=', 'PageUp', 'PageDown'].includes(event.key)) {
+              interruptTransition()
+            }
+          }, interactionOptions)
 
           if (typeof ResizeObserver === 'function') {
+            let previousSize = { width: mapContainerRef.current.clientWidth, height: mapContainerRef.current.clientHeight }
             resizeObserver = new ResizeObserver(() => {
+              const surface = mapContainerRef.current
+              if (!surface) return
+              const nextSize = { width: surface.clientWidth, height: surface.clientHeight }
+              if (previousSize.width === nextSize.width && previousSize.height === nextSize.height) return
+              previousSize = nextSize
+              viewportCauseRef.current = 'resize'
+              programmaticMovingRef.current = false
               createdMap.autoResize()
+              setProjectionRevision((revision) => revision + 1)
             })
             resizeObserver.observe(mapContainerRef.current)
           }
@@ -468,6 +546,8 @@ export default function NaverMap({
       aggregateMarkersRef.current,
       markersRef.current,
       representationRef.current,
+      maps,
+      mapInstance,
     )
     const previousMarkers = createdMarkersRef.current
     const animateNewMarkers = appliedMarkerContentKeyRef.current !== markerContentKey
@@ -512,6 +592,27 @@ export default function NaverMap({
           }
           onAggregateMarkerSelectRef.current?.(aggregateMarker)
         },
+        onClusterSelect: (cluster) => {
+          const { bounds } = cluster
+          if (mapInstance.getZoom() >= 17
+            || (bounds.southWestLat === bounds.northEastLat && bounds.southWestLng === bounds.northEastLng)) {
+            clusterTriggerRef.current = document.activeElement instanceof HTMLButtonElement
+              ? document.activeElement : null
+            setExpandedCluster(cluster)
+            return
+          }
+          viewportCauseRef.current = 'programmatic'
+          programmaticMovingRef.current = true
+          const padding = visiblePaddingRef.current
+          mapInstance.fitBounds([
+            new maps.LatLng(bounds.southWestLat, bounds.southWestLng),
+            new maps.LatLng(bounds.northEastLat, bounds.northEastLng),
+          ], {
+            top: (padding?.top ?? 0) + 96, right: (padding?.right ?? 0) + 80,
+            bottom: (padding?.bottom ?? 0) + 80, left: (padding?.left ?? 0) + 80,
+            maxZoom: 17,
+          })
+        },
         onMarkerHighlight: (complexId) => {
           onMarkerHighlightRef.current?.(complexId)
         },
@@ -534,7 +635,7 @@ export default function NaverMap({
     applyMarkerPresentation(createdMarkers, markersRef.current)
     createdMarkersRef.current = createdMarkers
     markerFocusTimerRef.current = restoreMarkerFocus(createdMarkers, previousFocus)
-  }, [markerContentKey, status.kind])
+  }, [markerContentKey, markerGeometryKey, projectionRevision, status.kind])
 
   useEffect(() => {
     applyMarkerPresentation(createdMarkersRef.current, markers)
@@ -567,27 +668,32 @@ export default function NaverMap({
       }
       if (!isValidCameraTarget(cameraSouthWestLat, cameraSouthWestLng, undefined)
         || !isValidCameraTarget(cameraNorthEastLat, cameraNorthEastLng, undefined)
-        || cameraSouthWestLat >= cameraNorthEastLat
-        || cameraSouthWestLng >= cameraNorthEastLng) {
+        || cameraSouthWestLat > cameraNorthEastLat
+        || cameraSouthWestLng > cameraNorthEastLng) {
         return
       }
       appliedCameraRequestIdRef.current = cameraRequestId
+      // A single coordinate still needs non-zero geographic extents for the SDK.
+      const latitudePadding = cameraSouthWestLat === cameraNorthEastLat ? 0.00005 : 0
+      const longitudePadding = cameraSouthWestLng === cameraNorthEastLng ? 0.00005 : 0
       const bounds = [
-        new maps.LatLng(cameraSouthWestLat, cameraSouthWestLng),
-        new maps.LatLng(cameraNorthEastLat, cameraNorthEastLng),
+        new maps.LatLng(Math.max(-90, cameraSouthWestLat - latitudePadding), Math.max(-180, cameraSouthWestLng - longitudePadding)),
+        new maps.LatLng(Math.min(90, cameraNorthEastLat + latitudePadding), Math.min(180, cameraNorthEastLng + longitudePadding)),
       ]
+      viewportCauseRef.current = 'programmatic'
+      programmaticMovingRef.current = true
+      const fitOptions: naver.maps.FitBoundsOptions = {}
       if (cameraPaddingTop !== undefined && cameraPaddingRight !== undefined
         && cameraPaddingBottom !== undefined && cameraPaddingLeft !== undefined) {
-        mapInstance.fitBounds(bounds, {
-          top: cameraPaddingTop,
-          right: cameraPaddingRight,
-          bottom: cameraPaddingBottom,
-          left: cameraPaddingLeft,
+        Object.assign(fitOptions, {
+          top: cameraPaddingTop, right: cameraPaddingRight,
+          bottom: cameraPaddingBottom, left: cameraPaddingLeft,
         })
-      } else {
-        // Omit the optional margins argument unless the caller provided all four sides.
-        mapInstance.fitBounds(bounds)
       }
+      if (cameraMaxZoom !== undefined && Number.isFinite(cameraMaxZoom)) {
+        fitOptions.maxZoom = cameraMaxZoom
+      }
+      mapInstance.fitBounds(bounds, fitOptions)
       return
     }
 
@@ -599,7 +705,27 @@ export default function NaverMap({
       return
     }
 
-    const nextTarget = offsetCameraTarget(maps, mapInstance, {
+    const revealPadding = revealPaddingTop !== undefined && revealPaddingRight !== undefined
+      && revealPaddingBottom !== undefined && revealPaddingLeft !== undefined
+      ? { top: revealPaddingTop, right: revealPaddingRight, bottom: revealPaddingBottom, left: revealPaddingLeft }
+      : undefined
+    if (revealPadding && initializedAttempt !== attempt) return
+    const targetMarker = markersRef.current.find((marker) => marker.selected)
+    const revealTarget = revealPadding
+      ? revealCameraTarget(maps, mapInstance, {
+        latitude: cameraLatitude, longitude: cameraLongitude, revealPadding,
+      }, targetMarker ? markerWidth(targetMarker) : 112)
+      : undefined
+    if (revealTarget === null) {
+      viewportCauseRef.current = 'programmatic'
+      if (programmaticMovingRef.current) stopMapSafely(mapInstance)
+      programmaticMovingRef.current = false
+      appliedCameraRequestIdRef.current = cameraRequestId
+      const viewport = readViewport(mapInstance)
+      if (viewport) onViewportChangeRef.current?.(viewport, { cause: 'programmatic' })
+      return
+    }
+    const nextTarget = revealTarget ?? offsetCameraTarget(maps, mapInstance, {
       latitude: cameraLatitude,
       longitude: cameraLongitude,
       screenOffset: cameraOffsetX !== undefined && cameraOffsetY !== undefined
@@ -620,6 +746,10 @@ export default function NaverMap({
       && (cameraZoom === undefined
         || !cameraZoomChanged(currentViewport.zoom, cameraZoom))
 
+    if (cameraRequested || coordinatesChanged || zoomChanged) {
+      viewportCauseRef.current = 'programmatic'
+      programmaticMovingRef.current = !cameraRequestDidNotMove
+    }
     if (cameraRequested && cameraZoom !== undefined) {
       mapInstance.morph(
         nextCenter,
@@ -645,16 +775,22 @@ export default function NaverMap({
     appliedCameraRequestIdRef.current = cameraRequestId
     if (cameraRequestDidNotMove) {
       transitionInterruptedRef.current = false
-      onViewportChangeRef.current?.(currentViewport)
+      onViewportChangeRef.current?.(currentViewport, { cause: 'programmatic' })
     }
   }, [cameraLatitude, cameraLongitude, cameraOffsetX, cameraOffsetY, cameraRequestId, cameraZoom,
     cameraSouthWestLat, cameraSouthWestLng, cameraNorthEastLat, cameraNorthEastLng,
-    cameraPaddingTop, cameraPaddingRight, cameraPaddingBottom, cameraPaddingLeft,
+    cameraPaddingTop, cameraPaddingRight, cameraPaddingBottom, cameraPaddingLeft, cameraMaxZoom,
+    revealPaddingTop, revealPaddingRight, revealPaddingBottom, revealPaddingLeft,
     initializedAttempt, attempt, status.kind])
 
   const retry = () => {
     setStatus({ kind: 'loading' })
     setAttempt((currentAttempt) => currentAttempt + 1)
+  }
+
+  const closeClusterPicker = () => {
+    setExpandedCluster(null)
+    clusterTriggerRef.current?.focus({ preventScroll: true })
   }
 
   const isLoading = status.kind === 'loading'
@@ -678,6 +814,41 @@ export default function NaverMap({
         ref={mapContainerRef}
         aria-hidden={!isReady}
       />
+      {expandedCluster && isReady && (
+        <div
+          className="map-cluster-picker"
+          ref={clusterPickerRef}
+          role="region"
+          aria-label="모여 있는 단지"
+          tabIndex={-1}
+          style={{ left: `calc(50% + ${((visiblePadding?.left ?? 0) - (visiblePadding?.right ?? 0)) / 2}px)` }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.stopPropagation()
+              closeClusterPicker()
+            }
+          }}
+        >
+          <div className="map-cluster-picker__heading">
+            <strong>모여 있는 단지 {expandedCluster.members.length}곳</strong>
+            <IconButton label="단지 모음 닫기" onClick={closeClusterPicker}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" focusable="false">
+                <path d="m5 5 14 14M19 5 5 19" />
+              </svg>
+            </IconButton>
+          </div>
+          <ul>
+            {expandedCluster.members.map((marker) => (
+              <li key={marker.id}>
+                <button type="button" onClick={() => {
+                  setExpandedCluster(null)
+                  onMarkerSelectRef.current?.(marker.id)
+                }}>{marker.name}</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {isLoading && <MapLoading />}
       {status.kind === 'unavailable' && (
         <MapUnavailable reason={status.reason} onRetry={retry} />

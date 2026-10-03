@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.service;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
 import com.toadzip.backend.announcement.domain.AnnouncementAttachment;
 import com.toadzip.backend.announcement.domain.AnnouncementSchedule;
@@ -23,14 +24,22 @@ import com.toadzip.backend.announcement.repository.AnnouncementSearchRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
+import com.toadzip.backend.housing.domain.Address;
+import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.housing.domain.MapBounds;
+import com.toadzip.backend.housing.domain.MapCoordinate;
+import com.toadzip.backend.housing.domain.SearchScope;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 @Service
 @Transactional(readOnly = true)
@@ -78,6 +87,7 @@ public class AnnouncementQueryService {
         this.regionCodeResolver = regionCodeResolver;
     }
 
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public AnnouncementListResponse getAnnouncements(AnnouncementSearchRequest request, String cursor, int size) {
         validateSize(size);
         LocalDate today = currentSeoulDate();
@@ -89,17 +99,57 @@ public class AnnouncementQueryService {
         boolean hasNext = fetchedAnnouncements.size() > size;
         List<Announcement> announcements = fetchedAnnouncements.stream().limit(size).toList();
         List<SupplyRow> supplyRows = findSupplyRows(announcementIds(announcements));
+        List<SupplyRow> matchingRows = supplyRows;
+        if (condition.scope() != null) {
+            matchingRows = supplyRows.stream()
+                    .filter(row -> matchesSpatialCondition(row.getHousingComplex(), condition)).toList();
+        }
+        Map<Long, Set<Long>> matchingComplexIds = matchingRows.stream()
+                .filter(row -> row.getHousingComplex() != null)
+                .collect(Collectors.groupingBy(row -> row.getAnnouncement().getId(),
+                        Collectors.mapping(row -> row.getHousingComplex().getId(), Collectors.toSet())));
+        List<AnnouncementApplicationSchedule> schedules = applicationScheduleRepository
+                .findAllByAnnouncementIdIn(announcementIds(announcements)).stream()
+                .filter(schedule -> matchesSchedule(schedule, condition, matchingComplexIds)).toList();
         List<AnnouncementListItemResponse> items = announcementResponseMapper.toListItemResponses(
-                announcements,
-                supplyRows,
-                applicationScheduleRepository.findAllByAnnouncementIdIn(announcementIds(announcements)).stream()
-                        .filter(schedule -> condition.regionCodes().isEmpty() || schedule.getHousingComplex() == null
-                                || condition.regionCodes().contains(schedule.getHousingComplex().getAddress()
-                                        .getCityCountyDistrictCode()))
-                        .toList(),
-                today
+                announcements, matchingRows, schedules, today
         );
-        return new AnnouncementListResponse(items, nextCursor(announcements, hasNext), hasNext);
+        return new AnnouncementListResponse(items, nextCursor(announcements, hasNext), hasNext,
+                announcementSearchRepository.countLatestLeaves(condition));
+    }
+
+    private boolean matchesSchedule(
+            AnnouncementApplicationSchedule schedule, AnnouncementSearchCondition condition,
+            Map<Long, Set<Long>> complexIds
+    ) {
+        HousingComplex complex = schedule.getHousingComplex();
+        if (complex == null) {
+            return true;
+        }
+        Set<Long> announcementComplexIds = complexIds.getOrDefault(schedule.getAnnouncement().getId(), Set.of());
+        if (condition.scope() != null && !announcementComplexIds.contains(complex.getId())) {
+            return false;
+        }
+        return matchesSpatialCondition(complex, condition);
+    }
+
+    private boolean matchesSpatialCondition(HousingComplex complex, AnnouncementSearchCondition condition) {
+        if (complex == null || (condition.scope() != null && complex.isAdminDeleted())) {
+            return false;
+        }
+        Address address = complex.getAddress();
+        if (!condition.regionCodes().isEmpty()
+                && !condition.regionCodes().contains(address.getCityCountyDistrictCode())) {
+            return false;
+        }
+        MapBounds bounds = condition.bounds();
+        if (bounds == null) {
+            return true;
+        }
+        if (address.getLatitude() == null || address.getLongitude() == null) {
+            return false;
+        }
+        return bounds.contains(new MapCoordinate(address.getLatitude(), address.getLongitude()));
     }
 
     public AnnouncementDetailResponse getAnnouncement(long announcementId) {
@@ -142,6 +192,7 @@ public class AnnouncementQueryService {
             throw new InvalidAnnouncementRequestException();
         }
         String keyword = normalizedKeyword(request.keyword());
+        MapBounds bounds = searchBounds(request);
         validateApplicationPeriod(request.applicationFrom(), request.applicationTo());
         validatePublicationTypes(request.publicationTypes());
         validateApplicationStatuses(request.applicationStatuses());
@@ -149,8 +200,25 @@ public class AnnouncementQueryService {
                 keyword, regionCodes(request.regionCode()), normalizedValues(request.rentalTypes()),
                 normalizedValues(request.applicationStatuses()), normalizedValues(request.publicationTypes()),
                 normalizedValues(request.agencyCodes()), normalizedValues(request.recruitmentTypes()),
-                request.applicationFrom(), request.applicationTo(), today
+                request.applicationFrom(), request.applicationTo(), today, request.scope(), bounds
         );
+    }
+
+    private MapBounds searchBounds(AnnouncementSearchRequest request) {
+        if (request.scope() == null) {
+            return null;
+        }
+        if (request.scope() == SearchScope.REGION) {
+            if (request.regionCode() == null) {
+                throw new InvalidRegionCodeException();
+            }
+            return null;
+        }
+        if (request.regionCode() != null) {
+            throw new InvalidAnnouncementRequestException();
+        }
+        return MapBounds.of(request.southWestLat(), request.southWestLng(),
+                request.northEastLat(), request.northEastLng());
     }
 
     private String normalizedKeyword(String keyword) {

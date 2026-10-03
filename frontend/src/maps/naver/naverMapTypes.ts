@@ -24,6 +24,17 @@ export interface NaverMapAggregateMarker {
   readonly uniqueComplexCount: number
 }
 
+export interface NaverMapViewportChangeMetadata {
+  readonly cause: 'initial' | 'user' | 'programmatic' | 'resize'
+}
+
+export interface NaverMapScreenPadding {
+  readonly top: number
+  readonly right: number
+  readonly bottom: number
+  readonly left: number
+}
+
 export interface NaverMapCameraTarget {
   readonly latitude: number
   readonly longitude: number
@@ -35,6 +46,10 @@ export interface NaverMapCameraTarget {
     readonly bottom: number
     readonly left: number
   }
+  /** Limit fitBounds zoom for a small number of results. */
+  readonly maxZoom?: number
+  /** Reveal the marker only when its card is clipped or covered by these panels. */
+  readonly revealPadding?: NaverMapScreenPadding
   /** Target position relative to the map center, in pixels at the destination zoom. */
   readonly screenOffset?: { readonly x: number; readonly y: number }
   readonly zoom?: number
@@ -47,8 +62,9 @@ interface NaverMapCommonProps {
   onMarkerHighlight?: (complexId: string | null) => void
   onMarkerSelect?: (complexId: string) => void
   onTransitionInterrupt?: () => void
-  onViewportChange?: (viewport: ViewportSnapshot) => void
+  onViewportChange?: (viewport: ViewportSnapshot, metadata?: NaverMapViewportChangeMetadata) => void
   regionBoundary?: RegionBoundary | null
+  visiblePadding?: NaverMapScreenPadding
   transitioning?: boolean
 }
 

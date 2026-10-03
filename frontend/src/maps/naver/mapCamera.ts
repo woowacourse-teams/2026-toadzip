@@ -170,3 +170,38 @@ function readCoordinateValue(
 
   return { latitude, longitude }
 }
+
+export function revealCameraTarget(
+  maps: typeof naver.maps,
+  map: naver.maps.Map,
+  target: NaverMapCameraTarget,
+  markerWidth: number,
+): NaverMapCameraTarget | null {
+  const padding = target.revealPadding
+  if (!padding || !Object.values(padding).every(Number.isFinite)) return target
+  const { width, height } = map.getSize()
+  if (width <= 0 || height <= 0) return null
+  const projection = map.getProjection()
+  const mapCenter = projection.fromCoordToOffset(map.getCenter())
+  const point = projection.fromCoordToOffset(new maps.LatLng(target.latitude, target.longitude))
+  const x = point.x - mapCenter.x + width / 2
+  const y = point.y - mapCenter.y + height / 2
+  const availableWidth = Math.max(1, width - padding.left - padding.right)
+  const availableHeight = Math.max(1, height - padding.top - padding.bottom)
+  const horizontalInset = Math.min(markerWidth / 2 + 12, availableWidth / 2)
+  const topInset = Math.min(78, availableHeight / 2)
+  const bottomInset = Math.min(12, availableHeight / 2)
+  const left = padding.left + horizontalInset
+  const right = width - padding.right - horizontalInset
+  const top = padding.top + topInset
+  const bottom = height - padding.bottom - bottomInset
+  if (x >= left && x <= right && y >= top && y <= bottom) return null
+  const outsideMap = x < 0 || x > width || y < 0 || y > height
+  const destinationX = outsideMap ? (left + right) / 2 : Math.min(right, Math.max(left, x))
+  const destinationY = outsideMap ? (top + bottom) / 2 : Math.min(bottom, Math.max(top, y))
+  const coordinate = readCoordinateValue(projection.fromOffsetToCoord(new maps.Point(
+    mapCenter.x + x - destinationX,
+    mapCenter.y + y - destinationY,
+  )))
+  return coordinate ?? target
+}

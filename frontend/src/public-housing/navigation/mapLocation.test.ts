@@ -5,6 +5,7 @@ import {
   DEFAULT_MAXIMUM_MAP_ZOOM,
   DEFAULT_MINIMUM_MAP_ZOOM,
   parseMapLocation,
+  setMapLocationQuery,
 } from './mapLocation.ts'
 
 describe('parseMapLocation', () => {
@@ -111,6 +112,24 @@ describe('기존 지도 URL 소비', () => {
     const current = new URLSearchParams(`complexId=7&mapLat=37.5&mapLng=127&mapZoom=${zoom}`)
     expect(parseMapLocation(current)).toEqual({ kind: 'invalid' })
     expect(clearMapLocationQuery(current).toString()).toBe('complexId=7')
+  })
+})
+
+describe('setMapLocationQuery', () => {
+  it('카메라만 갱신하고 검색 범위·필터와 원본 URL은 유지한다', () => {
+    const original = new URLSearchParams('searchMode=region&complexRegionCode=11380&complexRentalTypes=HAPPY_HOUSING&mapLat=1&mapLat=2&mapLng=3&mapZoom=14')
+    const next = setMapLocationQuery(original, { center: { latitude: 37.5666103, longitude: 126.9783882 }, zoom: 14.256 })
+    expect(parseMapLocation(next)).toEqual({ kind: 'valid', center: { latitude: 37.56661, longitude: 126.97839 }, zoom: 14.26 })
+    expect(next.get('searchMode')).toBe('region')
+    expect(next.get('complexRegionCode')).toBe('11380')
+    expect(next.get('complexRentalTypes')).toBe('HAPPY_HOUSING')
+    expect(next.getAll('mapLat')).toEqual(['37.56661'])
+    expect(original.getAll('mapLat')).toEqual(['1', '2'])
+  })
+
+  it('유효하지 않은 좌표나 줌을 저장하지 않는다', () => {
+    expect(() => setMapLocationQuery(new URLSearchParams(), { center: { latitude: NaN, longitude: 127 }, zoom: 14 })).toThrow(TypeError)
+    expect(() => setMapLocationQuery(new URLSearchParams(), { center: { latitude: 37, longitude: 127 }, zoom: 22 })).toThrow(TypeError)
   })
 })
 

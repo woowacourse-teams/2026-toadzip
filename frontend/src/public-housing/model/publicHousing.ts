@@ -5,6 +5,28 @@ export interface MapBounds {
   readonly northEastLng: number
 }
 
+export type SearchScope =
+  | { readonly mode: 'region'; readonly regionCode: string }
+  | { readonly mode: 'area'; readonly bounds: MapBounds }
+
+export interface RawComplexSearchSnapshot {
+  readonly totalCount: number
+  readonly locatedCount: number
+  readonly complexIds: readonly number[]
+  readonly bounds: MapBounds | null
+  readonly mapItems: readonly RawMapComplex[]
+  readonly page: RawComplexPage
+}
+
+export interface ComplexSearchSnapshot {
+  readonly totalCount: number
+  readonly locatedCount: number
+  readonly complexIds: readonly string[]
+  readonly bounds: MapBounds | null
+  readonly mapItems: readonly MapComplex[]
+  readonly page: ComplexPage
+}
+
 export interface HousingAgency {
   readonly code: string | null
   readonly name: string | null
@@ -249,6 +271,7 @@ export interface RawAnnouncementListItem {
 }
 
 export interface RawAnnouncementPage {
+  readonly totalCount?: number
   readonly items: readonly RawAnnouncementListItem[]
   readonly nextCursor: string | null
   readonly hasNext: boolean
@@ -277,6 +300,7 @@ export interface AnnouncementListItem {
 }
 
 export interface AnnouncementPage {
+  readonly totalCount?: number
   readonly items: readonly AnnouncementListItem[]
   readonly nextCursor: string | null
   readonly hasNext: boolean

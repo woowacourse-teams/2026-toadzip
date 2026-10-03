@@ -15,11 +15,11 @@ export function createRegionBoundaryOverlay(
   const path = document.createElementNS(SVG_NAMESPACE, 'path')
   svg.setAttribute('aria-hidden', 'true')
   svg.style.cssText = 'position:absolute;pointer-events:none;overflow:hidden;'
-  path.setAttribute('fill', '#D34F3E')
+  path.setAttribute('fill', '#226b3b')
   path.setAttribute('fill-opacity', '0.08')
   path.setAttribute('fill-rule', 'evenodd')
-  path.setAttribute('stroke', '#D34F3E')
-  path.setAttribute('stroke-width', '2')
+  path.setAttribute('stroke', '#226b3b')
+  path.setAttribute('stroke-width', '3')
   path.setAttribute('stroke-linejoin', 'round')
   svg.append(path)
 

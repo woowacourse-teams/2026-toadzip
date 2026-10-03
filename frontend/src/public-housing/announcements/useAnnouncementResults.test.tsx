@@ -162,12 +162,13 @@ describe('useAnnouncementResults', () => {
     )
   })
 
-  it('필터 변경 뒤 첫 페이지가 실패해도 이전 필터의 공고를 표시하지 않는다', async () => {
+  it('필터 변경 대기와 실패에는 이전 결과를 유지하고 재시도 성공 뒤 교체한다', async () => {
     const nextFiltersPage = deferred<AnnouncementPage>()
     const repository = createRepository()
     repository.findAnnouncementPage
-      .mockResolvedValueOnce(announcementPage(['101'], null, false))
+      .mockResolvedValueOnce(announcementPage(['101'], 'old-next', true))
       .mockReturnValueOnce(nextFiltersPage.promise)
+      .mockResolvedValueOnce(announcementPage(['201'], null, false))
     const { rerender } = render(
       <Harness
         enabled
@@ -186,11 +187,22 @@ describe('useAnnouncementResults', () => {
     )
 
     expect(screen.getByText('loading')).toBeVisible()
-    expect(screen.queryByText('101')).not.toBeInTheDocument()
+    expect(screen.getByText('101')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '더 보기' }))
+    expect(repository.findAnnouncementPage).toHaveBeenCalledTimes(2)
     nextFiltersPage.reject(new Error('새 공고 연결 실패'))
 
     expect(await screen.findByText('새 공고 연결 실패')).toBeVisible()
+    expect(screen.getByText('101')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '더 보기' }))
+    expect(repository.findAnnouncementPage).toHaveBeenCalledTimes(2)
+    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+    expect(await screen.findByText('201')).toBeVisible()
     expect(screen.queryByText('101')).not.toBeInTheDocument()
+    expect(repository.findAnnouncementPage).toHaveBeenLastCalledWith(
+      null, 20, expect.any(AbortSignal),
+      { regionCode: '41', applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] },
+    )
   })
 
   it('첫 페이지 오류는 다시 시도하고 성공한 결과로 교체한다', async () => {

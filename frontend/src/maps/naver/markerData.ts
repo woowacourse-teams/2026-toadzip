@@ -1,25 +1,22 @@
+import { clusterComplexMarkers, type ClusteredComplexMarker } from './markerClustering.ts'
 import type {
   NaverMapAggregateMarker,
-  NaverMapComplexMarker,
   NaverMapMarker,
 } from './naverMapTypes.ts'
-
-interface RenderedComplexMarker {
-  readonly kind: 'complex'
-  readonly marker: NaverMapComplexMarker
-}
 
 interface RenderedAggregateMarker {
   readonly kind: 'aggregate'
   readonly marker: NaverMapAggregateMarker
 }
 
-export type RenderedMarker = RenderedAggregateMarker | RenderedComplexMarker
+export type RenderedMarker = RenderedAggregateMarker | ClusteredComplexMarker
 
 export function toRenderedMarkers(
   aggregateMarkers: readonly NaverMapAggregateMarker[],
   markers: readonly NaverMapMarker[],
   representation: 'AGGREGATE' | 'INDIVIDUAL',
+  maps: typeof naver.maps,
+  map: naver.maps.Map,
 ): RenderedMarker[] {
   if (representation === 'AGGREGATE') {
     return uniqueSortedById(aggregateMarkers, (marker) => marker.groupKey).map((marker) => ({
@@ -27,10 +24,7 @@ export function toRenderedMarkers(
       marker,
     }))
   }
-  return uniqueSortedById(markers, (marker) => marker.id).map((marker) => ({
-    kind: 'complex',
-    marker,
-  }))
+  return clusterComplexMarkers(maps, map, uniqueSortedById(markers, (marker) => marker.id))
 }
 
 function uniqueSortedById<T>(markers: readonly T[], getId: (marker: T) => string): T[] {
@@ -71,6 +65,12 @@ export function renderedMarkerContentKey(marker: RenderedMarker) {
       marker.marker.expansionZoom,
     ])
   }
+  if (marker.kind === 'cluster') {
+    return JSON.stringify([
+      marker.kind, marker.marker.id, marker.marker.latitude, marker.marker.longitude, marker.marker.bounds,
+      ...marker.marker.members.map((member) => [member.id, member.name, member.latitude, member.longitude]),
+    ])
+  }
   return JSON.stringify([
     marker.kind,
     marker.marker.id,
@@ -97,6 +97,23 @@ export function createMarkerContentKey(
 ): string {
   return JSON.stringify([
     representation,
-    ...toRenderedMarkers(aggregateMarkers, markers, representation).map(renderedMarkerContentKey),
+    ...(representation === 'AGGREGATE'
+      ? uniqueSortedById(aggregateMarkers, (marker) => marker.groupKey)
+        .map((marker) => renderedMarkerContentKey({ kind: 'aggregate', marker }))
+      : uniqueSortedById(markers, (marker) => marker.id)
+        .map((marker) => renderedMarkerContentKey({ kind: 'complex', marker }))),
+  ])
+}
+
+/** Selection changes overlap groups but should not replay the entry animation. */
+export function createMarkerGeometryKey(
+  aggregateMarkers: readonly NaverMapAggregateMarker[],
+  markers: readonly NaverMapMarker[],
+  representation: 'AGGREGATE' | 'INDIVIDUAL',
+): string {
+  return JSON.stringify([
+    createMarkerContentKey(aggregateMarkers, markers, representation),
+    ...uniqueSortedById(markers, (marker) => marker.id)
+      .filter((marker) => marker.selected).map((marker) => marker.id),
   ])
 }

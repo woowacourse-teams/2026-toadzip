@@ -47,17 +47,11 @@ afterEach(() => {
 const SNAPSHOT = MINIMAL_PUBLIC_HOUSING_SNAPSHOT
 
 describe('DefaultPublicHousingExplorer', () => {
-  it('일반 실행에서는 서버 지도 repository를 연결한다', async () => {
-    const findMap = vi.spyOn(housingMapRepository, 'findMap').mockResolvedValue({
-      resolvedStage: 1,
-      representation: 'AGGREGATE',
-      policyVersion: 'test',
-      regionDatasetVersion: 'test',
-      nodes: [],
-    })
-    vi.spyOn(defaultPublicHousingRepository, 'findComplexPage').mockResolvedValue({
-      items: [], nextCursor: null, hasNext: false,
-      raw: { items: [], nextCursor: null, hasNext: false },
+  it('일반 실행에서는 통합 검색 repository를 연결한다', async () => {
+    const findMap = vi.spyOn(housingMapRepository, 'findMap')
+    const findSearch = vi.spyOn(defaultPublicHousingRepository, 'findComplexSearch').mockResolvedValue({
+      totalCount: 0, locatedCount: 0, complexIds: [], bounds: null, mapItems: [],
+      page: { items: [], nextCursor: null, hasNext: false, raw: { items: [], nextCursor: null, hasNext: false } },
     })
     render(
       <MemoryRouter>
@@ -67,8 +61,9 @@ describe('DefaultPublicHousingExplorer', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '지도 범위 알림' }))
 
-    await waitFor(() => expect(findMap).toHaveBeenCalledOnce())
-    expect(screen.getByTestId('map-representation')).toHaveTextContent('AGGREGATE')
+    await waitFor(() => expect(findSearch).toHaveBeenCalledOnce())
+    expect(screen.getByTestId('map-representation')).toHaveTextContent('INDIVIDUAL')
+    expect(findMap).not.toHaveBeenCalled()
   })
 })
 

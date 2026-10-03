@@ -374,7 +374,7 @@ class AnnouncementControllerTest {
                 null,
                 List.of()
         );
-        return new AnnouncementListResponse(List.of(item), null, false);
+        return new AnnouncementListResponse(List.of(item), null, false, 1L);
     }
 
     private AnnouncementDetailResponse detailResponse() {
@@ -498,7 +498,8 @@ class AnnouncementControllerTest {
                       "applicationSchedules": []
                     }],
                     "nextCursor": null,
-                    "hasNext": false
+                    "hasNext": false,
+                    "totalCount": 1
                   }
                 }
                 """;

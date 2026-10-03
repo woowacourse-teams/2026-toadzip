@@ -18,6 +18,7 @@ import type {
   RawComplexHousingType,
   RawComplexListItem,
   RawComplexPage,
+  RawComplexSearchSnapshot,
   RawComplexSupplyCondition,
   RawMapComplex,
   RawMapComplexResponse,
@@ -39,6 +40,51 @@ export function decodeComplexPageEnvelope(value: unknown): RawComplexPage {
   return decodeComplexPage(recordField(envelope, 'data', '$'), '$.data')
 }
 
+export function decodeComplexSearchEnvelope(value: unknown): RawComplexSearchSnapshot {
+  const envelope = recordAt(value, '$')
+  const data = recordAt(recordField(envelope, 'data', '$'), '$.data')
+  const totalCount = nonNegativeIntegerAt(data.totalCount, '$.data.totalCount')
+  const locatedCount = nonNegativeIntegerAt(data.locatedCount, '$.data.locatedCount')
+  const complexIds = arrayAt(data.complexIds, '$.data.complexIds')
+    .map((id, index) => positiveSafeIntegerAt(id, `$.data.complexIds[${index}]`))
+  const mapItems = arrayAt(data.mapItems, '$.data.mapItems')
+    .map((item, index) => decodeMapComplex(item, `$.data.mapItems[${index}]`))
+  const page = decodeComplexPage(data.page, '$.data.page')
+  const bounds = data.bounds === null ? null : decodeSearchBounds(data.bounds)
+  const ids = new Set(complexIds)
+  if (totalCount !== complexIds.length || ids.size !== complexIds.length
+    || locatedCount !== mapItems.length || locatedCount > totalCount
+    || new Set(mapItems.map((item) => item.complexId)).size !== mapItems.length
+    || mapItems.some((item) => !ids.has(item.complexId))
+    || page.items.some((item) => !ids.has(item.complexId))
+    || (locatedCount === 0) !== (bounds === null)
+    || (bounds !== null && mapItems.some((item) => item.latitude < bounds.southWestLat
+      || item.latitude > bounds.northEastLat || item.longitude < bounds.southWestLng
+      || item.longitude > bounds.northEastLng))) {
+    throw new PublicHousingContractError('$.data (검색 결과 수·목록·지도 불일치)')
+  }
+  return { totalCount, locatedCount, complexIds, bounds, mapItems, page }
+}
+
+function decodeSearchBounds(value: unknown) {
+  const data = recordAt(value, '$.data.bounds')
+  const southWestLat = finiteNumberAt(data.southWestLat, '$.data.bounds.southWestLat')
+  const southWestLng = finiteNumberAt(data.southWestLng, '$.data.bounds.southWestLng')
+  const northEastLat = finiteNumberAt(data.northEastLat, '$.data.bounds.northEastLat')
+  const northEastLng = finiteNumberAt(data.northEastLng, '$.data.bounds.northEastLng')
+  if (southWestLat < -90 || northEastLat > 90 || southWestLng < -180 || northEastLng > 180
+    || southWestLat > northEastLat || southWestLng > northEastLng) {
+    throw new PublicHousingContractError('$.data.bounds')
+  }
+  return { southWestLat, southWestLng, northEastLat, northEastLng }
+}
+
+function nonNegativeIntegerAt(value: unknown, path: string): number {
+  const count = safeIntegerAt(value, path)
+  if (count < 0) throw new PublicHousingContractError(path)
+  return count
+}
+
 export function decodeAnnouncementPageEnvelope(
   value: unknown,
 ): RawAnnouncementPage {
@@ -47,6 +93,9 @@ export function decodeAnnouncementPageEnvelope(
   const items = arrayAt(recordField(data, 'items', '$.data'), '$.data.items')
 
   return {
+    ...(Object.hasOwn(data, 'totalCount') && data.totalCount !== null
+      ? { totalCount: nonNegativeIntegerAt(data.totalCount, '$.data.totalCount') }
+      : {}),
     items: items.map((item, index) =>
       decodeAnnouncementListItem(item, `$.data.items[${index}]`),
     ),
