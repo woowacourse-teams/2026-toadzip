@@ -753,6 +753,38 @@ a {
   min-height: 0;
 }
 
+.housing-search-mode {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ds-color-border, #dfe5e1);
+  background: #edf8f1;
+  color: #205c38;
+  font-size: 13px;
+}
+.housing-search-mode--area { background: #edf4ff; color: #254e84; }
+.housing-search-mode > strong { border: 1px solid currentColor; border-radius: 6px; padding: 3px 7px; }
+.housing-search-mode > small { flex-basis: 100%; }
+.housing-region-path { width: 100%; }
+.housing-region-path button { color: inherit; background: transparent; border: 0; cursor: pointer; padding: 4px; font: inherit; }
+.housing-region-path button[aria-current] { font-weight: 700; }
+.housing-region-path summary { cursor: pointer; padding: 6px 0; }
+.housing-region-path ul { list-style: none; margin: 0; padding: 0; max-height: 160px; overflow: auto; }
+.housing-region-path li { display: flex; justify-content: space-between; }
+.housing-region-path button:hover { text-decoration: underline; }
+.housing-area-search { position: absolute; z-index: 210; right: 0; bottom: 28px; left: 0; display: flex; justify-content: center; pointer-events: none; }
+.housing-area-search button { pointer-events: auto; display: flex; align-items: center; gap: 8px; border: 1px solid #24783e; border-radius: 28px; background: white; color: #18572e; box-shadow: 0 3px 12px #0002; font: inherit; font-weight: 700; padding: 12px 20px; cursor: pointer; }
+.housing-area-search button:hover { background: #edf8f1; }
+.housing-area-search button:disabled { opacity: .65; cursor: wait; }
+.housing-explorer.has-detail .housing-area-search { left: min(468px, 50%); }
+.housing-policy-feedback { position: absolute; z-index: 310; right: 20px; top: 80px; max-width: min(360px, calc(100% - 40px)); border-radius: 8px; padding: 10px 14px; background: #fff; box-shadow: 0 2px 10px #0002; color: var(--ds-color-text, #1e2124); font-size: 13px; pointer-events: none; }
+@media (max-width: 767px) {
+  .housing-search-mode { padding: 8px 12px; }
+  .housing-explorer.has-detail .housing-area-search, .housing-explorer.has-detail .housing-policy-feedback { display: none; }
+}
+
 .housing-map-filter {
   position: absolute;
   z-index: 200;

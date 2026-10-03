@@ -28,7 +28,7 @@ export function RegionBoundaryControl({ name, status, supported, canRecenter, on
           type="button"
           onClick={onClear}
         >
-          경계 지우기
+          지역 해제
         </button>
       </div>
       {!supported && <p className={styles.message} role="status">이 지역은 경계 정보를 제공하지 않습니다.</p>}

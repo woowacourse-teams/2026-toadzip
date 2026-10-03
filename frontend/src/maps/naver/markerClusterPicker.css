@@ -1,0 +1,52 @@
+.map-cluster-picker {
+  position: absolute;
+  z-index: 6;
+  bottom: 96px;
+  width: min(320px, calc(100% - 32px));
+  padding: 12px;
+  transform: translateX(-50%);
+  border: 1px solid var(--ds-color-divider);
+  border-radius: 12px;
+  background: var(--ds-color-surface);
+  color: var(--ds-color-text);
+  font-family: var(--ds-font-family-ui);
+  box-shadow: 0 4px 20px rgb(0 0 0 / 12%);
+}
+
+.map-cluster-picker__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.map-cluster-picker ul {
+  max-height: min(240px, 30vh);
+  margin: 8px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.map-cluster-picker li button {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.map-cluster-picker li button:hover {
+  background: var(--ds-color-action-soft);
+}
+
+.map-cluster-picker li button:focus-visible,
+.map-cluster-picker:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+}

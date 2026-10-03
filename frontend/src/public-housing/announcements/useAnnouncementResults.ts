@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type {
   AnnouncementSearchFilters,
   PublicHousingRepository,
 } from '../api/publicHousingRepository.ts'
 import { searchFiltersSignature } from '../filters/searchFilterLocation.ts'
-import type { AnnouncementListItem } from '../model/publicHousing.ts'
+import type { AnnouncementListItem, AnnouncementPage } from '../model/publicHousing.ts'
+import { searchScopeSignature } from '../navigation/searchScopeLocation.ts'
 
 const PAGE_SIZE = 20
+const MAX_CACHED_SEARCHES = 30
 
 export type AnnouncementRequestStatus =
   | 'idle'
@@ -16,11 +18,24 @@ export type AnnouncementRequestStatus =
   | 'error'
 
 export interface AnnouncementResultsState {
+  readonly totalCount?: number
+  readonly appliedFiltersKey?: string
+  readonly restored?: boolean
   readonly errorMessage: string | null
   readonly hasNext: boolean
   readonly items: readonly AnnouncementListItem[]
   readonly nextCursor: string | null
   readonly status: AnnouncementRequestStatus
+}
+
+export interface PreparedAnnouncementPage {
+  readonly filtersKey: string
+  readonly page: AnnouncementPage
+  readonly restore?: boolean
+}
+
+interface CachedAnnouncementResultsState extends AnnouncementResultsState {
+  readonly requestKey?: string
 }
 
 const INITIAL_STATE: AnnouncementResultsState = {
@@ -36,13 +51,29 @@ export function useAnnouncementResults(
   enabled: boolean,
   filters: AnnouncementSearchFilters = {},
   filtersKey = searchFiltersSignature(filters),
+  preparedPage?: PreparedAnnouncementPage,
 ) {
-  const [state, setState] = useState<AnnouncementResultsState>(INITIAL_STATE)
+  const requestKey = `${filtersKey}|${searchScopeSignature(filters.scope)}`
+  const [state, setState] = useState<CachedAnnouncementResultsState>(INITIAL_STATE)
+  const cacheRef = useRef(new Map<string, CachedAnnouncementResultsState>())
+  const appliedPreparedPageRef = useRef<AnnouncementPage | null>(null)
   const requestedFiltersKeyRef = useRef<string | null>(null)
+  const appliedRequestKeyRef = useRef<string | null>(null)
   const requestRevisionRef = useRef(0)
   const firstPageAbortRef = useRef<AbortController | null>(null)
   const paginationAbortRef = useRef<AbortController | null>(null)
   const observedViewCountsRef = useRef(new Map<string, number>())
+  const retryFirstPageRef = useRef(true)
+
+  useEffect(() => {
+    if (state.status !== 'ready' || state.requestKey === undefined) return
+    cacheRef.current.delete(state.requestKey)
+    cacheRef.current.set(state.requestKey, state)
+    if (cacheRef.current.size > MAX_CACHED_SEARCHES) {
+      const oldest = cacheRef.current.keys().next().value
+      if (oldest !== undefined) cacheRef.current.delete(oldest)
+    }
+  }, [state])
 
   const mergeViewCounts = useCallback((items: readonly AnnouncementListItem[]) => (
     items.map((item) => {
@@ -83,13 +114,11 @@ export function useAnnouncementResults(
     const revision = requestRevisionRef.current + 1
     requestRevisionRef.current = revision
     firstPageAbortRef.current = controller
-    requestedFiltersKeyRef.current = filtersKey
+    requestedFiltersKeyRef.current = requestKey
+    retryFirstPageRef.current = true
     setState((current) => ({
       ...current,
       errorMessage: null,
-      hasNext: false,
-      items: [],
-      nextCursor: null,
       status: 'loading',
     }))
 
@@ -108,7 +137,12 @@ export function useAnnouncementResults(
         if (requestRevisionRef.current !== revision) {
           return
         }
+        appliedRequestKeyRef.current = requestKey
         setState({
+          requestKey,
+          restored: false,
+          totalCount: page.totalCount,
+          appliedFiltersKey: filtersKey,
           errorMessage: null,
           hasNext: page.hasNext,
           items: mergeViewCounts(page.items),
@@ -129,7 +163,7 @@ export function useAnnouncementResults(
           status: 'error',
         }))
       })
-  }, [cancelInFlightRequests, filters, filtersKey, mergeViewCounts, repository])
+  }, [cancelInFlightRequests, filters, filtersKey, mergeViewCounts, repository, requestKey])
 
   const loadMore = useCallback(() => {
     if (
@@ -137,14 +171,18 @@ export function useAnnouncementResults(
       || !state.hasNext
       || !state.nextCursor
       || state.status === 'loading-more'
+      || state.status === 'loading'
+      || requestedFiltersKeyRef.current !== requestKey
+      || appliedRequestKeyRef.current !== requestKey
+      || paginationAbortRef.current !== null
     ) {
       return
     }
 
-    paginationAbortRef.current?.abort()
     const controller = new AbortController()
     const revision = requestRevisionRef.current
     paginationAbortRef.current = controller
+    retryFirstPageRef.current = false
     setState((current) => ({
       ...current,
       errorMessage: null,
@@ -167,6 +205,10 @@ export function useAnnouncementResults(
           return
         }
         setState((current) => ({
+          requestKey,
+          restored: current.restored,
+          totalCount: page.totalCount ?? current.totalCount,
+          appliedFiltersKey: current.appliedFiltersKey,
           errorMessage: null,
           hasNext: page.hasNext,
           items: mergeViewCounts(appendUniqueAnnouncements(current.items, page.items)),
@@ -187,7 +229,42 @@ export function useAnnouncementResults(
           status: 'error',
         }))
       })
-  }, [enabled, filters, mergeViewCounts, repository, state])
+  }, [enabled, filters, mergeViewCounts, repository, requestKey, state])
+
+  // Apply an atomic map/list response before paint so the old announcement
+  // list cannot appear alongside the newly committed map scope.
+  useLayoutEffect(() => {
+    if (!enabled || preparedPage?.filtersKey !== filtersKey) return
+    if (requestedFiltersKeyRef.current === requestKey
+      && appliedPreparedPageRef.current === preparedPage.page) return
+    cancelInFlightRequests()
+    requestedFiltersKeyRef.current = requestKey
+    appliedRequestKeyRef.current = requestKey
+    appliedPreparedPageRef.current = preparedPage.page
+    retryFirstPageRef.current = true
+    const cached = preparedPage.restore ? cacheRef.current.get(requestKey) : undefined
+    if (cached !== undefined) {
+      setState({
+        ...cached,
+        items: mergeViewCounts(cached.items),
+        errorMessage: null,
+        status: 'ready',
+        restored: true,
+      })
+      return
+    }
+    setState({
+      requestKey,
+      restored: false,
+      totalCount: preparedPage.page.totalCount,
+      appliedFiltersKey: filtersKey,
+      errorMessage: null,
+      hasNext: preparedPage.page.hasNext,
+      items: mergeViewCounts(preparedPage.page.items),
+      nextCursor: preparedPage.page.nextCursor,
+      status: 'ready',
+    })
+  }, [cancelInFlightRequests, enabled, filtersKey, mergeViewCounts, preparedPage, requestKey])
 
   useEffect(() => {
     if (!enabled) {
@@ -197,11 +274,9 @@ export function useAnnouncementResults(
       }
       return
     }
-    if (requestedFiltersKeyRef.current === filtersKey) {
-      return
-    }
+    if (requestedFiltersKeyRef.current === requestKey) return
     loadFirstPage()
-  }, [cancelInFlightRequests, enabled, filtersKey, loadFirstPage])
+  }, [cancelInFlightRequests, enabled, loadFirstPage, requestKey])
 
   useEffect(() => {
     return () => {
@@ -209,14 +284,12 @@ export function useAnnouncementResults(
     }
   }, [cancelInFlightRequests])
 
-  const retry = state.items.length > 0 && state.nextCursor
-    ? loadMore
-    : loadFirstPage
+  const retry = retryFirstPageRef.current ? loadFirstPage : loadMore
 
   return { loadMore, retry, state, updateViewCount }
 }
 
-function activeAnnouncementFilters(
+export function activeAnnouncementFilters(
   filters: AnnouncementSearchFilters,
 ): AnnouncementSearchFilters {
   const selectedStatuses = filters.applicationStatuses?.filter(

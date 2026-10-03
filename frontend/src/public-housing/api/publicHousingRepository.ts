@@ -3,13 +3,16 @@ import type {
   AnnouncementPage,
   ComplexDetail,
   ComplexPage,
+  ComplexSearchSnapshot,
   MapBounds,
+  SearchScope,
 } from '../model/publicHousing.ts'
 import {
   decodeAnnouncementDetailEnvelope,
   decodeAnnouncementPageEnvelope,
   decodeComplexDetailEnvelope,
   decodeComplexPageEnvelope,
+  decodeComplexSearchEnvelope,
   PublicHousingContractError,
 } from './publicHousingContract.ts'
 import {
@@ -17,6 +20,7 @@ import {
   toAnnouncementPage,
   toComplexDetail,
   toComplexPage,
+  toComplexSearchSnapshot,
 } from './publicHousingMapper.ts'
 import { recordAnnouncementView } from './announcementViews.ts'
 
@@ -54,6 +58,7 @@ export type AgencyCodeFilter = 'LH' | 'SH' | 'GH' | 'ETC'
 export type RecruitmentTypeFilter = 'NEW' | 'WAITLIST' | 'ETC'
 
 export interface SharedSearchFilters {
+  readonly scope?: SearchScope
   readonly agencyCodes?: readonly AgencyCodeFilter[]
   readonly applicationStatuses?: readonly ApplicationStatusFilter[]
   readonly recruitmentTypes?: readonly RecruitmentTypeFilter[]
@@ -74,6 +79,12 @@ export interface ComplexSearchFilters extends SharedSearchFilters {
 
 export type AnnouncementSearchFilters = SharedSearchFilters
 export interface PublicHousingRepository {
+  findComplexSearch?(
+    scope: SearchScope,
+    size: number,
+    signal: AbortSignal,
+    filters?: ComplexSearchFilters,
+  ): Promise<ComplexSearchSnapshot>
   findComplexPage(
     bounds: MapBounds,
     cursor: string | null,
@@ -118,6 +129,19 @@ export function createHttpPublicHousingRepository(
   const fetcher = options.fetcher ?? globalThis.fetch
 
   return {
+    async findComplexSearch(scope, size, signal, filters = {}) {
+      validatePageSize(size)
+      const search = new URLSearchParams({ size: String(size) })
+      appendComplexFilters(search, filters)
+      appendSearchScope(search, scope)
+      const payload = await requestPublicHousingJson(
+        fetcher,
+        `${apiBaseUrl}/api/v2/complexes/search?${search.toString()}`,
+        signal,
+      )
+      return toComplexSearchSnapshot(decodeComplexSearchEnvelope(payload))
+    },
+
     async findComplexPage(bounds, cursor, size, signal, filters = {}) {
       validatePageSize(size)
       const search = createComplexSearchParams(bounds, filters)
@@ -147,6 +171,7 @@ export function createHttpPublicHousingRepository(
       validatePageSize(size)
       const search = new URLSearchParams({ size: String(size) })
       appendSharedFilters(search, filters)
+      if (filters.scope !== undefined) appendSearchScope(search, filters.scope)
       if (cursor !== null) {
         search.set('cursor', cursor)
       }
@@ -234,15 +259,32 @@ export function createComplexSearchParams(
   bounds: MapBounds,
   filters: ComplexSearchFilters = {},
 ): URLSearchParams {
-  validateBounds(bounds)
-  const search = new URLSearchParams({
-    southWestLat: String(bounds.southWestLat),
-    southWestLng: String(bounds.southWestLng),
-    northEastLat: String(bounds.northEastLat),
-    northEastLng: String(bounds.northEastLng),
-  })
+  const search = new URLSearchParams()
   appendComplexFilters(search, filters)
+  if (filters.scope !== undefined) appendSearchScope(search, filters.scope)
+  else appendBounds(search, bounds)
   return search
+}
+
+function appendSearchScope(search: URLSearchParams, scope: SearchScope) {
+  search.set('scope', scope.mode === 'region' ? 'REGION' : 'AREA')
+  search.delete('regionCode')
+  if (scope.mode === 'region') {
+    if (!/^(?:\d{2}|\d{5})$/.test(scope.regionCode)) {
+      throw new RangeError('지역 코드를 확인해 주세요.')
+    }
+    search.set('regionCode', scope.regionCode)
+  } else {
+    appendBounds(search, scope.bounds)
+  }
+}
+
+function appendBounds(search: URLSearchParams, bounds: MapBounds) {
+  validateBounds(bounds)
+  search.set('southWestLat', String(bounds.southWestLat))
+  search.set('southWestLng', String(bounds.southWestLng))
+  search.set('northEastLat', String(bounds.northEastLat))
+  search.set('northEastLng', String(bounds.northEastLng))
 }
 
 function appendComplexFilters(

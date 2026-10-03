@@ -10,14 +10,14 @@ import {
   useRef,
   useState,
 } from 'react'
-import { useLocation, useNavigate } from 'react-router'
+import { useLocation, useNavigate, useNavigationType } from 'react-router'
 import { type DetailEntryPoint, trackEvent } from '../analytics/googleAnalytics.ts'
 import { trackAppliedFilters, useHousingAnalytics } from '../analytics/useHousingAnalytics.ts'
 import NaverMap, {
-  type NaverMapAggregateMarker,
   type NaverMapCameraTarget,
   type NaverMapMarker,
   type NaverMapProps,
+  type NaverMapViewportChangeMetadata,
 } from '../maps/naver/NaverMap.tsx'
 import { defaultPublicHousingRepository } from './api/defaultPublicHousingRepository.ts'
 import type { HousingMapRepository } from './api/housingMapRepository.ts'
@@ -54,19 +54,18 @@ import {
 import {
   createBoundsSignature,
   evaluateServerMapRequest,
-  evaluateViewportRequest,
-  type ViewportBlockReason,
   type ViewportSnapshot,
 } from './map/viewportPolicy.ts'
-import { useHousingMapResults } from './map/useHousingMapResults.ts'
+import { useComplexSearchResults, type ComplexResultsState } from './map/useComplexSearchResults.ts'
+import { parseSearchScope, setSearchScopeQuery, searchScopeSignature } from './navigation/searchScopeLocation.ts'
 import type {
   AnnouncementDetail,
   ComplexDetail,
   ComplexListItem,
   MapBounds,
   MapComplex,
+  SearchScope,
 } from './model/publicHousing.ts'
-import type { HousingMapResult } from './model/housingMap.ts'
 import {
   clearDetailQuery,
   parseDetailLocation,
@@ -74,7 +73,7 @@ import {
   setComplexIdQuery,
 } from './navigation/detailLocation.ts'
 import {
-  clearMapLocationQuery,
+  setMapLocationQuery,
   parseMapLocation,
 } from './navigation/mapLocation.ts'
 import { toHousingAnnouncementDetailData } from './presentation/announcementDetailPresentation.ts'
@@ -90,13 +89,13 @@ import type {
   IntegratedSearchRepository,
   SearchResultItem,
 } from './search/integratedSearchRepository.ts'
-import { parseRegionBoundaryCode, setRegionBoundaryCode } from './navigation/regionBoundaryLocation.ts'
-import { findRegionBoundaryMetadata, findRegionBoundaryName, regionBoundaryRepository } from './regions/regionBoundaryCatalog.ts'
+import { findRegionBoundaryMetadata, findRegionBoundaryName, findRegionSearchBounds, regionBoundaryRepository } from './regions/regionBoundaryCatalog.ts'
 import type { RegionBoundaryRepository } from './regions/regionBoundaryRepository.ts'
 import { useRegionBoundary } from './regions/useRegionBoundary.ts'
 import { RegionBoundaryControl } from './regions/RegionBoundaryControl.tsx'
+import { RegionSearchPath } from './regions/RegionSearchPath.tsx'
+import { useSearchHistoryScroll } from './navigation/useSearchHistoryScroll.ts'
 
-const PAGE_SIZE = 20
 const EMPTY_MAP_ITEMS: readonly MapComplex[] = []
 const DEFAULT_MAP_LOCATION = {
   center: {
@@ -109,23 +108,6 @@ const DETAIL_HISTORY_STATE_KEY = 'toadzipDetailEntry'
 const DETAIL_RETURN_FOCUS_STACK_KEY = 'toadzipDetailReturnFocusStack'
 
 type ResultTab = 'complexes' | 'announcements'
-
-type RequestStatus = 'idle' | 'loading' | 'loading-more' | 'ready' | 'error'
-
-interface ComplexResultsState {
-  readonly errorMessage: string | null
-  readonly hasNext: boolean
-  readonly items: readonly ComplexListItem[]
-  readonly nextCursor: string | null
-  readonly status: RequestStatus
-  readonly totalCount: number | null
-}
-
-interface AppliedViewport {
-  readonly bounds: MapBounds
-  readonly options: ComplexSearchFilters
-  readonly signature: string
-}
 
 type DetailStatus =
   | 'closed'
@@ -172,15 +154,6 @@ export interface PublicHousingExplorerProps {
   searchRepository?: IntegratedSearchRepository
 }
 
-const INITIAL_COMPLEX_RESULTS: ComplexResultsState = {
-  errorMessage: null,
-  hasNext: false,
-  items: [],
-  nextCursor: null,
-  status: 'idle',
-  totalCount: null,
-}
-
 const INITIAL_COMPLEX_DETAIL: ComplexDetailState = {
   complexId: null,
   detail: null,
@@ -197,13 +170,13 @@ const INITIAL_ANNOUNCEMENT_DETAIL: AnnouncementDetailState = {
 
 export function PublicHousingExplorer({
   boundaryRepository = regionBoundaryRepository,
-  mapRepository,
   regionRepository = publicHousingRegionRepository,
   repository = defaultPublicHousingRepository,
   searchRepository,
 }: PublicHousingExplorerProps) {
   const location = useLocation()
   const navigate = useNavigate()
+  const navigationType = useNavigationType()
   const [mapCameraTarget, setMapCameraTarget] = useState<NaverMapCameraTarget>(
     () => {
       const initialMapLocation = parseMapLocation(
@@ -215,6 +188,13 @@ export function PublicHousingExplorer({
           longitude: initialMapLocation.center.longitude,
           zoom: initialMapLocation.zoom,
         }
+      }
+      const initialScope = parseSearchScope(new URLSearchParams(location.search))
+      if (initialScope?.mode === 'area') {
+        const { bounds } = initialScope
+        return { latitude: (bounds.southWestLat + bounds.northEastLat) / 2,
+          longitude: (bounds.southWestLng + bounds.northEastLng) / 2,
+          bounds, maxZoom: 15 }
       }
       return {
         latitude: DEFAULT_MAP_LOCATION.center.latitude,
@@ -235,38 +215,31 @@ export function PublicHousingExplorer({
       ? { id: initialDetail.complexId, revision: 0 }
       : null,
   )
+  const pendingAnnouncementCameraRef = useRef<{ id: string; latitude: number; longitude: number; revision: number } | null>(null)
   const [recentComplexes, setRecentComplexes] = useState(readRecentComplexes)
   const [recentExpanded, setRecentExpanded] = useState(false)
-  const [clusterTransitioning, setClusterTransitioning] = useState(false)
   const [cameraRequestId, setCameraRequestId] = useState(0)
   const [detailCameraRevision, setDetailCameraRevision] = useState(0)
   const [selectedSearchComplex, setSelectedSearchComplex] =
     useState<SearchResultItem | null>(null)
   const [integratedSearchActive, setIntegratedSearchActive] = useState(false)
   const [activeResultTab, setActiveResultTab] =
-    useState<ResultTab>('complexes')
+    useState<ResultTab>(() => new URLSearchParams(location.search).get('resultTab') === 'announcements' ? 'announcements' : 'complexes')
   const [announcementListRequested, setAnnouncementListRequested] =
-    useState(false)
-  const {
-    cancel: cancelServerMapRequest,
-    request: requestServerMap,
-    retry: retryServerMap,
-    state: serverMapState,
-  } = useHousingMapResults(mapRepository)
-  const clusterTransitionRef = useRef(false)
-  const transitionWaitingForIdleRef = useRef(false)
-  const previousServerRepresentationRef =
-    useRef<'AGGREGATE' | 'INDIVIDUAL' | null>(null)
-  const handledServerMapResultRef = useRef<object | null>(null)
-  const refreshListAfterMapRef = useRef<string | null>(null)
+    useState(new URLSearchParams(location.search).get('resultTab') === 'announcements')
+  const preserveListRef = useRef(false)
+  const fitResultsRef = useRef(parseMapLocation(new URLSearchParams(location.search)).kind !== 'valid')
+  const [searchRevision, setSearchRevision] = useState(0)
+  const writtenCameraRef = useRef('')
+  const resultsScrollCacheRef = useRef(new Map<string, number>())
+  const announcementScrollCacheRef = useRef(new Map<string, number>())
+  const lastListRevisionRef = useRef(-1)
+  const lastAnnouncementPageRef = useRef<unknown>(null)
+  const [actionMessage, setActionMessage] = useState('')
   const activeResultTabRef = useRef<ResultTab>(activeResultTab)
   activeResultTabRef.current = activeResultTab
   const locationSearchRef = useRef(location.search)
   locationSearchRef.current = location.search
-  const [appliedViewport, setAppliedViewport] =
-    useState<AppliedViewport | null>(null)
-  const [complexResults, setComplexResults] =
-    useState<ComplexResultsState>(INITIAL_COMPLEX_RESULTS)
   const [selectedComplexId, setSelectedComplexId] = useState<string | null>(
     null,
   )
@@ -279,16 +252,8 @@ export function PublicHousingExplorer({
   const [announcementDetail, setAnnouncementDetail] =
     useState<AnnouncementDetailState>(INITIAL_ANNOUNCEMENT_DETAIL)
   const [detailRetryRevision, setDetailRetryRevision] = useState(0)
-  const appliedViewportRef = useRef<AppliedViewport | null>(null)
   const complexResultsScrollRef = useRef<HTMLDivElement | null>(null)
   const announcementResultsScrollRef = useRef<HTMLDivElement | null>(null)
-  const failedViewportRef = useRef<ViewportSnapshot | null>(null)
-  const failedViewportOptionsRef = useRef<ComplexSearchFilters>({})
-  const failedPaginationCursorRef = useRef<string | null>(null)
-  const pendingViewportSignatureRef = useRef<string | null>(null)
-  const requestRevisionRef = useRef(0)
-  const searchAbortRef = useRef<AbortController | null>(null)
-  const paginationAbortRef = useRef<AbortController | null>(null)
   const previousDetailKindRef = useRef<ResultTab | null>(null)
   const complexDetailOpenerRef = useRef<HTMLElement | null>(null)
   const complexDetailOpenerIdRef = useRef<string | null>(null)
@@ -327,82 +292,118 @@ export function PublicHousingExplorer({
     () => parseMapLocation(new URLSearchParams(location.search)),
     [location.search],
   )
-  const boundaryRegionCode = parseRegionBoundaryCode(new URLSearchParams(location.search))
+  const searchScope = useMemo(() => parseSearchScope(new URLSearchParams(location.search)), [location.search])
+  const boundaryRegionCode = searchScope?.mode === 'region' ? searchScope.regionCode : null
   const boundaryMetadata = boundaryRegionCode ? findRegionBoundaryMetadata(boundaryRegionCode) : null
   const [selectedSearchRegion, setSelectedSearchRegion] = useState<SearchResultItem | null>(null)
-  const boundarySelectionRef = useRef<SearchResultItem | null>(null)
-  const handledBoundaryCodeRef = useRef<string | null>(null)
   const boundaryState = useRegionBoundary(boundaryMetadata?.regionCode ?? null, boundaryRepository)
   const selectedBoundarySearchItem = selectedSearchRegion
     && (selectedSearchRegion.regionCode ?? selectedSearchRegion.id) === boundaryRegionCode
       ? selectedSearchRegion : null
 
-  const focusBoundary = useCallback((code: string) => {
-    const metadata = findRegionBoundaryMetadata(code)
-    const item = boundarySelectionRef.current
-    pendingDetailCameraRef.current = null
-    if (metadata) {
-      const { bounds } = metadata
-      setMapCameraTarget({
-        latitude: (bounds.southWestLat + bounds.northEastLat) / 2,
-        longitude: (bounds.southWestLng + bounds.northEastLng) / 2,
-        bounds,
-        boundsPadding: boundaryScreenPadding(mapWorkspaceRef.current),
-      })
-      setCameraRequestId((current) => current + 1)
-    } else if (item && (item.regionCode ?? item.id) === code
-      && item.latitude !== null && item.longitude !== null) {
-      setMapCameraTarget({ latitude: item.latitude, longitude: item.longitude })
-      setCameraRequestId((current) => current + 1)
-    }
-  }, [])
-
-  useLayoutEffect(() => {
-    if (handledBoundaryCodeRef.current === boundaryRegionCode) {
-      return
-    }
-    handledBoundaryCodeRef.current = boundaryRegionCode
-    if (boundaryRegionCode !== null) {
-      focusBoundary(boundaryRegionCode)
-    }
-  }, [boundaryRegionCode, focusBoundary])
-
-  const changeBoundarySelection = useCallback((code: string | null) => {
-    const query = setRegionBoundaryCode(new URLSearchParams(location.search), code)
-    navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(query) }, { state: location.state })
-  }, [location.hash, location.pathname, location.search, location.state, navigate])
-
   const complexFilters = useMemo(
     () => parseComplexSearchFilters(new URLSearchParams(location.search)),
     [location.search],
   )
-  const effectiveMapFilters = complexFilters
   const announcementFilters = useMemo(
     () => parseAnnouncementSearchFilters(new URLSearchParams(location.search)),
     [location.search],
   )
-  const effectiveMapFiltersKey = useMemo(
-    () => searchFiltersSignature(effectiveMapFilters),
-    [effectiveMapFilters],
-  )
-  const activeComplexFiltersKey = effectiveMapFiltersKey
   const announcementFiltersKey = useMemo(
     () => searchFiltersSignature(announcementFilters),
     [announcementFilters],
   )
 
-  useLayoutEffect(() => {
-    if (announcementResultsScrollRef.current) {
-      announcementResultsScrollRef.current.scrollTop = 0
-    }
-  }, [announcementFiltersKey])
+  const searchResults = useComplexSearchResults(repository, searchScope, complexFilters, {
+    preserveList: preserveListRef.current,
+    restore: navigationType === 'POP',
+    revision: searchRevision,
+  }, announcementListRequested ? announcementFilters : undefined)
+  const cancelSearch = searchResults.cancel
+  const complexResults = searchResults.state
+  const appliedScope = complexResults.scope
+  const scopedAnnouncementFilters = useMemo(() => ({
+    ...announcementFilters,
+    ...(appliedScope ? { scope: appliedScope, regionCode: appliedScope.mode === 'region' ? appliedScope.regionCode : null } : {}),
+  }), [announcementFilters, appliedScope])
+  const scopedAnnouncementKey = `${announcementFiltersKey}|${appliedScope ? searchScopeSignature(appliedScope) : ''}`
   const announcementResults = useAnnouncementResults(
     repository,
-    announcementListRequested
-      && activeResultTab === 'announcements',
-    announcementFilters,
-    announcementFiltersKey,
+    announcementListRequested && appliedScope !== null && complexResults.status !== 'loading'
+      && complexResults.signature === searchResults.signature,
+    scopedAnnouncementFilters,
+    scopedAnnouncementKey,
+    complexResults.announcementPage ? { ...complexResults.announcementPage, restore: complexResults.restored } : undefined,
   )
+  useLayoutEffect(() => {
+    const scroll = complexResultsScrollRef.current
+    if (!scroll) return
+    if (lastListRevisionRef.current === complexResults.listRevision) {
+      resultsScrollCacheRef.current.set(complexResults.signature, scroll.scrollTop)
+      return
+    }
+    lastListRevisionRef.current = complexResults.listRevision
+    scroll.scrollTop = complexResults.restored
+      ? resultsScrollCacheRef.current.get(complexResults.signature) ?? 0 : 0
+  }, [complexResults.listRevision, complexResults.restored, complexResults.signature])
+  useEffect(() => {
+    const tab = new URLSearchParams(location.search).get('resultTab') === 'announcements' ? 'announcements' : 'complexes'
+    setActiveResultTab(tab)
+    if (tab === 'announcements') setAnnouncementListRequested(true)
+  }, [location.search])
+  useEffect(() => {
+    if (!actionMessage) return
+    const timer = window.setTimeout(() => setActionMessage(''), 3500)
+    return () => window.clearTimeout(timer)
+  }, [actionMessage])
+
+  const fitBounds = useCallback((bounds: MapBounds) => {
+    setMapCameraTarget({
+      latitude: (bounds.southWestLat + bounds.northEastLat) / 2,
+      longitude: (bounds.southWestLng + bounds.northEastLng) / 2,
+      bounds, boundsPadding: boundaryScreenPadding(mapWorkspaceRef.current), maxZoom: 15,
+    })
+    setCameraRequestId((value) => value + 1)
+  }, [])
+  const focusBoundary = useCallback((code: string) => {
+    const resultBounds = complexResults.scope?.mode === 'region'
+      && complexResults.scope.regionCode === code ? complexResults.snapshot?.bounds : null
+    const bounds = resultBounds ?? findRegionSearchBounds(code)
+    if (bounds) fitBounds(bounds)
+  }, [complexResults.scope, complexResults.snapshot, fitBounds])
+  useEffect(() => {
+    if (complexResults.status !== 'ready' || !fitResultsRef.current
+      || complexResults.scope?.mode !== 'region') return
+    fitResultsRef.current = false
+    focusBoundary(complexResults.scope.regionCode)
+  }, [complexResults.status, complexResults.scope, focusBoundary])
+
+  const changeBoundarySelection = useCallback((code: string | null) => {
+    const scope: SearchScope | null = code
+      ? { mode: 'region', regionCode: code }
+      : viewportRef.current ? { mode: 'area', bounds: viewportRef.current.bounds } : null
+    if (!scope) return
+    if (viewportTimerRef.current !== null) window.clearTimeout(viewportTimerRef.current)
+    setViewportRefreshPending(false)
+    preserveListRef.current = false
+    fitResultsRef.current = code !== null
+    pendingDetailCameraRef.current = null
+    const query = setSearchScopeQuery(clearDetailQuery(new URLSearchParams(locationSearchRef.current)), scope)
+    setSearchRevision((value) => value + 1)
+    navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(query) },
+      { state: clearDetailHistoryState(location.state) })
+    setActionMessage(code ? '선택한 지역 전체를 검색합니다.' : '지역 조건을 해제하고 현재 지도 영역을 검색합니다.')
+  }, [location.pathname, location.hash, location.state, navigate])
+
+  useLayoutEffect(() => {
+    const scroll = announcementResultsScrollRef.current
+    if (!scroll || announcementResults.state.status !== 'ready'
+      || announcementResults.state.appliedFiltersKey !== scopedAnnouncementKey
+      || lastAnnouncementPageRef.current === complexResults.announcementPage?.page) return
+    lastAnnouncementPageRef.current = complexResults.announcementPage?.page
+    scroll.scrollTop = announcementResults.state.restored
+      ? announcementScrollCacheRef.current.get(scopedAnnouncementKey) ?? 0 : 0
+  }, [announcementResults.state.status, announcementResults.state.restored, announcementResults.state.appliedFiltersKey, complexResults.announcementPage, scopedAnnouncementKey])
   const updateAnnouncementViewCount = announcementResults.updateViewCount
 
   useEffect(() => {
@@ -415,25 +416,15 @@ export function PublicHousingExplorer({
   }, [complexResults.items])
 
   useEffect(() => {
-    if (mapLocation.kind === 'absent') {
-      return
-    }
-    const nextSearch = clearMapLocationQuery(
-      new URLSearchParams(location.search),
-    )
-    navigate({
-      hash: location.hash,
-      pathname: location.pathname,
-      search: toSearchString(nextSearch),
-    }, { replace: true, state: location.state })
-  }, [
-    location.hash,
-    location.pathname,
-    location.search,
-    location.state,
-    mapLocation.kind,
-    navigate,
-  ])
+    if (mapLocation.kind !== 'valid') return
+    const key = `${mapLocation.center.latitude}|${mapLocation.center.longitude}|${mapLocation.zoom}`
+    if (key === writtenCameraRef.current) return
+    writtenCameraRef.current = key
+    pendingDetailCameraRef.current = null
+    fitResultsRef.current = false
+    setMapCameraTarget({ ...mapLocation.center, zoom: mapLocation.zoom })
+    setCameraRequestId((value) => value + 1)
+  }, [mapLocation])
 
   useEffect(() => {
     if (detailLocation.kind === 'none') {
@@ -666,6 +657,11 @@ export function PublicHousingExplorer({
   }, [announcementDetail, complexDetail, detailLocation])
 
   const openDetail = useCallback((kind: ResultTab, id: string, entryPoint: DetailEntryPoint) => {
+    if (viewportTimerRef.current !== null) {
+      window.clearTimeout(viewportTimerRef.current)
+      viewportTimerRef.current = null
+      setViewportRefreshPending(false)
+    }
     const currentSearch = new URLSearchParams(location.search)
     const activeElement = document.activeElement
     const opener = activeElement instanceof HTMLElement
@@ -726,11 +722,22 @@ export function PublicHousingExplorer({
       setAnnouncementListRequested(true)
     }
     setActiveResultTab(tab)
-  }, [])
+    const query = new URLSearchParams(locationSearchRef.current)
+    query.set('resultTab', tab)
+    navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(query) }, { state: location.state })
+  }, [location.pathname, location.hash, location.state, navigate])
 
   const applyComplexFilters = useCallback((filters: ComplexSearchFilters) => {
     const currentSearch = new URLSearchParams(location.search)
-    const nextSearch = setComplexSearchFilters(currentSearch, filters)
+    let nextSearch = setComplexSearchFilters(clearDetailQuery(currentSearch), filters)
+    const nextScope = filters.regionCode
+      ? { mode: 'region' as const, regionCode: filters.regionCode }
+      : viewportRef.current ? { mode: 'area' as const, bounds: viewportRef.current.bounds } : searchScope
+    if (nextScope) nextSearch = setSearchScopeQuery(nextSearch, nextScope)
+    preserveListRef.current = false
+    fitResultsRef.current = nextScope?.mode === 'region'
+    if (viewportTimerRef.current !== null) window.clearTimeout(viewportTimerRef.current)
+    setViewportRefreshPending(false)
     if (nextSearch.toString() === currentSearch.toString()) {
       return
     }
@@ -746,13 +753,22 @@ export function PublicHousingExplorer({
     location.search,
     location.state,
     navigate,
+    searchScope,
   ])
 
   const applyAnnouncementFilters = useCallback((
     filters: AnnouncementSearchFilters,
   ) => {
     const currentSearch = new URLSearchParams(location.search)
-    const nextSearch = setAnnouncementSearchFilters(currentSearch, filters)
+    let nextSearch = setAnnouncementSearchFilters(clearDetailQuery(currentSearch), filters)
+    const nextScope = filters.regionCode
+      ? { mode: 'region' as const, regionCode: filters.regionCode }
+      : viewportRef.current ? { mode: 'area' as const, bounds: viewportRef.current.bounds } : searchScope
+    if (nextScope) nextSearch = setSearchScopeQuery(nextSearch, nextScope)
+    preserveListRef.current = false
+    fitResultsRef.current = nextScope?.mode === 'region'
+    if (viewportTimerRef.current !== null) window.clearTimeout(viewportTimerRef.current)
+    setViewportRefreshPending(false)
     if (nextSearch.toString() === currentSearch.toString()) {
       return
     }
@@ -768,6 +784,7 @@ export function PublicHousingExplorer({
     location.search,
     location.state,
     navigate,
+    searchScope,
   ])
 
   const openComplexDetail = useCallback((complexId: string, entryPoint: DetailEntryPoint = 'list') => {
@@ -780,7 +797,8 @@ export function PublicHousingExplorer({
   }, [openDetail])
 
   const openComplexMarker = useCallback((complexId: string) => {
-    pendingDetailCameraRef.current = null
+    pendingDetailCameraRef.current = { id: complexId, revision: viewportRevisionRef.current }
+    setDetailCameraRevision((value) => value + 1)
     openDetail('complexes', complexId, 'map')
   }, [openDetail])
 
@@ -843,7 +861,7 @@ export function PublicHousingExplorer({
     }
     const searchItem = selectedSearchComplex?.id === pending.id ? selectedSearchComplex : null
     const target = searchItem?.latitude != null && searchItem.longitude !== null
-      ? { latitude: searchItem.latitude, longitude: searchItem.longitude, zoom: 16 }
+      ? { latitude: searchItem.latitude, longitude: searchItem.longitude }
       : toDetailMapTarget(complexDetail.detail)
     if (!target) {
       return
@@ -851,288 +869,66 @@ export function PublicHousingExplorer({
     pendingDetailCameraRef.current = null
     setMapCameraTarget({
       ...target,
-      screenOffset: detailScreenOffset(mapWorkspaceRef.current),
+      revealPadding: boundaryScreenPadding(mapWorkspaceRef.current),
     })
     setCameraRequestId((current) => current + 1)
   }, [complexDetail, detailCameraRevision, selectedSearchComplex])
 
-  const cancelComplexListRequest = useCallback(() => {
-    searchAbortRef.current?.abort()
-    paginationAbortRef.current?.abort()
-    searchAbortRef.current = null
-    paginationAbortRef.current = null
-    requestRevisionRef.current += 1
-    pendingViewportSignatureRef.current = null
-    const restoredStatus = appliedViewportRef.current === null ? 'idle' : 'ready'
-    setComplexResults((current) => current.status === 'loading' || current.status === 'loading-more'
-      ? { ...current, errorMessage: null, status: restoredStatus }
-      : current)
-  }, [])
+  useLayoutEffect(() => {
+    const pending = pendingAnnouncementCameraRef.current
+    if (!pending || pending.id !== announcementDetail.announcementId || announcementDetail.status === 'closed') return
+    pendingAnnouncementCameraRef.current = null
+    if (pending.revision !== viewportRevisionRef.current) return
+    setMapCameraTarget({ latitude: pending.latitude, longitude: pending.longitude,
+      revealPadding: boundaryScreenPadding(mapWorkspaceRef.current) })
+    setCameraRequestId((value) => value + 1)
+  }, [announcementDetail.announcementId, announcementDetail.status, detailCameraRevision])
 
-  const applyViewport = useCallback((
-    nextViewport: ViewportSnapshot,
-    force = false,
-    options: ComplexSearchFilters = complexFilters,
-  ) => {
-    const decision = evaluateViewportRequest(nextViewport)
-    if (!decision.allowed) {
-      return
-    }
-    const boundsSignature = decision.allowed
-      ? decision.boundsSignature
-      : JSON.stringify(nextViewport.bounds)
-    const signature = `${boundsSignature}|${searchFiltersSignature(options)}`
-    const appliedMap = serverMapState.applied
-    const totalCount = appliedMap?.result.representation === 'INDIVIDUAL'
-      && mapListRefreshKey(appliedMap.query.bounds, appliedMap.query.filters ?? {})
-        === mapListRefreshKey(nextViewport.bounds, options)
-      ? new Set(appliedMap.result.nodes.map((item) => item.complexId)).size
-      : null
-    if (!force && pendingViewportSignatureRef.current === signature) {
-      return
-    }
-    if (!force && appliedViewportRef.current?.signature === signature) {
-      setComplexResults((current) => ({ ...current, errorMessage: null, status: 'ready' }))
-      return
-    }
-
-    searchAbortRef.current?.abort()
-    paginationAbortRef.current?.abort()
-    const controller = new AbortController()
-    const revision = requestRevisionRef.current + 1
-    requestRevisionRef.current = revision
-    searchAbortRef.current = controller
-    pendingViewportSignatureRef.current = signature
-    failedPaginationCursorRef.current = null
-    setComplexResults((current) => ({
-      ...current,
-      errorMessage: null,
-      status: 'loading',
-    }))
-
-    findComplexPage(
-      repository,
-      nextViewport.bounds,
-      null,
-      PAGE_SIZE,
-      controller.signal,
-      options,
-    )
-      .then((page) => {
-        if (requestRevisionRef.current !== revision) {
-          return
-        }
-        const applied = { bounds: nextViewport.bounds, options, signature }
-        appliedViewportRef.current = applied
-        failedViewportRef.current = null
-        pendingViewportSignatureRef.current = null
-        setAppliedViewport(applied)
-        setComplexResults({
-          errorMessage: null,
-          hasNext: page.hasNext,
-          items: page.items,
-          nextCursor: page.nextCursor,
-          status: 'ready',
-          totalCount: page.hasNext ? totalCount : page.items.length,
-        })
-        setCardHighlightedComplexId(null)
-        setMarkerHighlightedComplexId(null)
-        if (complexResultsScrollRef.current) {
-          complexResultsScrollRef.current.scrollTop = 0
-        }
-      })
-      .catch((error: unknown) => {
-        if (isAbortError(error) || requestRevisionRef.current !== revision) {
-          return
-        }
-        failedViewportRef.current = nextViewport
-        failedViewportOptionsRef.current = options
-        pendingViewportSignatureRef.current = null
-        setComplexResults((current) => ({
-          ...current,
-          errorMessage: requestErrorMessage(error),
-          status: 'error',
-        }))
-      })
-  }, [complexFilters, repository, serverMapState.applied])
-
-  const previousComplexFiltersKeyRef = useRef(activeComplexFiltersKey)
-
-  const requestServerMapWithListIntent = useCallback((
-    nextViewport: ViewportSnapshot,
-    filters: ComplexSearchFilters,
-    refreshList: boolean,
-  ) => {
-    if (refreshList) {
-      refreshListAfterMapRef.current = mapListRefreshKey(
-        nextViewport.bounds,
-        filters,
-      )
-    }
-    const outcome = requestServerMap(nextViewport, filters)
-    if (!refreshList || outcome === 'started' || outcome === 'pending') {
-      return outcome
-    }
-    refreshListAfterMapRef.current = null
-    if (outcome === 'applied'
-      && serverMapState.applied?.result.representation === 'AGGREGATE') {
-      cancelComplexListRequest()
-      return outcome
-    }
-    applyViewport(nextViewport, false, filters)
-    return outcome
-  }, [applyViewport, cancelComplexListRequest, requestServerMap, serverMapState.applied])
-
-  useEffect(() => {
-    if (previousComplexFiltersKeyRef.current === activeComplexFiltersKey) {
-      return
-    }
-    previousComplexFiltersKeyRef.current = activeComplexFiltersKey
-    if (viewportTimerRef.current !== null) {
-      window.clearTimeout(viewportTimerRef.current)
-      viewportTimerRef.current = null
-    }
-    setViewportRefreshPending(false)
-    cancelComplexListRequest()
-    if (viewport === null) {
-      return
-    }
-    refreshListAfterMapRef.current = mapListRefreshKey(
-      viewport.bounds,
-      effectiveMapFilters,
-    )
-    if (clusterTransitionRef.current
-      && transitionWaitingForIdleRef.current) {
-      return
-    }
-    requestServerMapWithListIntent(viewport, effectiveMapFilters, true)
-  }, [
-    activeComplexFiltersKey,
-    applyViewport,
-    cancelComplexListRequest,
-    effectiveMapFilters,
-    requestServerMapWithListIntent,
-    viewport,
-  ])
-
-  useEffect(() => {
-    if (serverMapState.applied === null) {
-      return
-    }
-    if (handledServerMapResultRef.current === serverMapState.applied) {
-      return
-    }
-    handledServerMapResultRef.current = serverMapState.applied
-    const representation = serverMapState.applied.result.representation
-    const previousRepresentation = previousServerRepresentationRef.current
-    previousServerRepresentationRef.current = representation
-    const query = serverMapState.applied.query
-    const appliedListRefreshKey = mapListRefreshKey(
-      query.bounds,
-      query.filters ?? {},
-    )
-    const listRefreshRequested = refreshListAfterMapRef.current
-      === appliedListRefreshKey
-    if (representation === 'AGGREGATE') {
-      if (listRefreshRequested) {
-        refreshListAfterMapRef.current = null
-      }
-      cancelComplexListRequest()
-      return
-    }
-    if (listRefreshRequested) {
-      refreshListAfterMapRef.current = null
-    }
-    if (!listRefreshRequested
-      && previousRepresentation !== 'AGGREGATE'
-      && appliedViewportRef.current !== null) {
-      return
-    }
-    applyViewport(
-      viewportForMapQuery(query.bounds, query.zoom),
-      false,
-      query.filters ?? {},
-    )
-  }, [applyViewport, cancelComplexListRequest, serverMapState.applied])
-
-  const finishClusterTransition = useCallback(() => {
-    clusterTransitionRef.current = false
-    transitionWaitingForIdleRef.current = false
-    setClusterTransitioning(false)
-  }, [])
-
-  useEffect(() => {
-    if (!clusterTransitionRef.current
-      || transitionWaitingForIdleRef.current) {
-      return
-    }
-    if (serverMapState.status === 'ready'
-      || serverMapState.status === 'error') {
-      finishClusterTransition()
-    }
-  }, [finishClusterTransition, serverMapState])
-
-  const selectAggregateMarker = useCallback((
-    marker: NaverMapAggregateMarker,
-  ) => {
-    if (clusterTransitionRef.current) {
-      return
-    }
-    clusterTransitionRef.current = true
-    transitionWaitingForIdleRef.current = true
-    setClusterTransitioning(true)
-    cancelServerMapRequest()
-    setMapCameraTarget({
-      latitude: marker.latitude,
-      longitude: marker.longitude,
-      zoom: marker.expansionZoom,
-    })
-    setCameraRequestId((current) => current + 1)
-  }, [cancelServerMapRequest])
-
-  const interruptClusterTransition = useCallback(() => {
-    if (!clusterTransitionRef.current) {
-      return
-    }
-    transitionWaitingForIdleRef.current = true
-    cancelServerMapRequest()
-  }, [cancelServerMapRequest])
-
-  const handleViewportChange = useCallback((nextViewport: ViewportSnapshot) => {
+  const handleViewportChange = useCallback((nextViewport: ViewportSnapshot, metadata?: NaverMapViewportChangeMetadata) => {
+    const cause = metadata?.cause ?? 'user'
     const previous = viewportRef.current
-    if (previous !== null
-      && createBoundsSignature(previous.bounds) === createBoundsSignature(nextViewport.bounds)
-      && previous.zoom === nextViewport.zoom
-      && !transitionWaitingForIdleRef.current) {
-      return
-    }
-    if (viewportRef.current !== null) {
-      viewportRevisionRef.current += 1
-    }
+    if (previous && createBoundsSignature(previous.bounds) === createBoundsSignature(nextViewport.bounds)
+      && previous.zoom === nextViewport.zoom) return
     viewportRef.current = nextViewport
-    if (clusterTransitionRef.current) {
-      transitionWaitingForIdleRef.current = false
-    }
     setViewport(nextViewport)
-    if (viewportTimerRef.current !== null) {
-      window.clearTimeout(viewportTimerRef.current)
+    if (cause === 'user') {
+      viewportRevisionRef.current += 1
+      fitResultsRef.current = false
+      pendingAnnouncementCameraRef.current = null
+      pendingDetailCameraRef.current = null
     }
-    cancelServerMapRequest()
-    cancelComplexListRequest()
-    setViewportRefreshPending(true)
-    viewportTimerRef.current = window.setTimeout(() => {
-      viewportTimerRef.current = null
-      setViewportRefreshPending(false)
-      if (clusterTransitionRef.current) {
-        transitionWaitingForIdleRef.current = false
+    if (viewportTimerRef.current !== null) window.clearTimeout(viewportTimerRef.current)
+    setViewportRefreshPending(false)
+    const commit = () => {
+      const currentQuery = new URLSearchParams(locationSearchRef.current)
+      let query = setMapLocationQuery(currentQuery, nextViewport)
+      const currentScope = parseSearchScope(currentQuery)
+      const searchArea = currentScope === null || (currentScope.mode === 'area' && cause === 'user')
+      if (currentScope) query = setSearchScopeQuery(query, currentScope)
+      if (searchArea) {
+        preserveListRef.current = currentScope !== null
+        fitResultsRef.current = false
+        query = setSearchScopeQuery(query, { mode: 'area', bounds: nextViewport.bounds })
+        setSearchRevision((value) => value + 1)
       }
-      const outcome = requestServerMapWithListIntent(nextViewport, effectiveMapFilters, true)
-      if (clusterTransitionRef.current && (outcome === 'applied' || outcome === 'ignored')) {
-        finishClusterTransition()
-      }
-    }, 100)
-  }, [cancelComplexListRequest, cancelServerMapRequest, effectiveMapFilters,
-    finishClusterTransition, requestServerMapWithListIntent])
+      const camera = parseMapLocation(query)
+      if (camera.kind === 'valid') writtenCameraRef.current = `${camera.center.latitude}|${camera.center.longitude}|${camera.zoom}`
+      if (query.toString() === currentQuery.toString()) return
+      navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(query) }, {
+        replace: cause !== 'user' || previous === null,
+        state: location.state,
+      })
+    }
+    if (cause === 'user' && searchScope?.mode === 'area') {
+      cancelSearch()
+      setViewportRefreshPending(true)
+      viewportTimerRef.current = window.setTimeout(() => {
+        viewportTimerRef.current = null
+        setViewportRefreshPending(false)
+        commit()
+      }, 300)
+    } else commit()
+  }, [location.pathname, location.hash, location.state, navigate, searchScope?.mode, cancelSearch])
 
   const handleIntegratedSearchSelect = useCallback((item: SearchResultItem) => {
     if (item.type === 'COMPLEX') {
@@ -1144,134 +940,29 @@ export function PublicHousingExplorer({
     }
     if (item.type === 'REGION') {
       const code = item.regionCode ?? item.id
-      if (!findRegionBoundaryMetadata(code) && (item.latitude === null || item.longitude === null)) {
-        return
-      }
-      boundarySelectionRef.current = item
       setSelectedSearchRegion(item)
-      if (code === boundaryRegionCode) {
-        focusBoundary(code)
-      } else {
-        changeBoundarySelection(code)
-      }
+      changeBoundarySelection(code)
       return
     }
     if (item.type === 'ANNOUNCEMENT') {
       if (item.latitude !== null && item.longitude !== null) {
-        setMapCameraTarget({ latitude: item.latitude, longitude: item.longitude, zoom: 14 })
-        setCameraRequestId((current) => current + 1)
+        pendingAnnouncementCameraRef.current = { id: item.id, latitude: item.latitude, longitude: item.longitude, revision: viewportRevisionRef.current }
+        setDetailCameraRevision((value) => value + 1)
       }
       openAnnouncementDetail(item.id, 'search')
       return
     }
     setSelectedSearchComplex(item)
     openComplexDetail(item.id, 'search')
-  }, [boundaryRegionCode, changeBoundarySelection, focusBoundary, openAnnouncementDetail, openComplexDetail])
+  }, [changeBoundarySelection, openAnnouncementDetail, openComplexDetail])
 
-  useEffect(() => {
-    return () => {
-      searchAbortRef.current?.abort()
-      paginationAbortRef.current?.abort()
-      if (viewportTimerRef.current !== null) {
-        window.clearTimeout(viewportTimerRef.current)
-      }
-    }
+  useEffect(() => () => {
+    if (viewportTimerRef.current !== null) window.clearTimeout(viewportTimerRef.current)
   }, [])
-
-  const loadMore = useCallback((retryFailedCursor = false) => {
-    const cursor = retryFailedCursor
-      ? failedPaginationCursorRef.current
-      : complexResults.nextCursor
-    if (
-      viewportRefreshPending ||
-      serverMapState.status === 'loading' ||
-      !appliedViewport ||
-      !complexResults.hasNext ||
-      !cursor ||
-      (!retryFailedCursor && complexResults.status !== 'ready') ||
-      (retryFailedCursor && complexResults.status !== 'error')
-    ) {
-      return
-    }
-
-    paginationAbortRef.current?.abort()
-    const controller = new AbortController()
-    const revision = requestRevisionRef.current
-    paginationAbortRef.current = controller
-    setComplexResults((current) => ({
-      ...current,
-      errorMessage: null,
-      status: 'loading-more',
-    }))
-
-    findComplexPage(
-      repository,
-      appliedViewport.bounds,
-      cursor,
-      PAGE_SIZE,
-      controller.signal,
-      appliedViewport.options,
-    )
-      .then((page) => {
-        if (requestRevisionRef.current !== revision) {
-          return
-        }
-        setComplexResults((current) => {
-          const items = appendUniqueComplexes(current.items, page.items)
-          return {
-            errorMessage: null,
-            hasNext: page.hasNext,
-            items,
-            nextCursor: page.nextCursor,
-            status: 'ready',
-            totalCount: page.hasNext ? current.totalCount : items.length,
-          }
-        })
-        failedPaginationCursorRef.current = null
-      })
-      .catch((error: unknown) => {
-        if (isAbortError(error) || requestRevisionRef.current !== revision) {
-          return
-        }
-        failedPaginationCursorRef.current = cursor
-        setComplexResults((current) => ({
-          ...current,
-          errorMessage: requestErrorMessage(error),
-          status: 'error',
-        }))
-      })
-  }, [appliedViewport, complexResults, repository,
-    serverMapState.status, viewportRefreshPending])
-
-  const retryComplexResults = useCallback(() => {
-    if (failedPaginationCursorRef.current) {
-      loadMore(true)
-      return
-    }
-    const failedViewport = failedViewportRef.current
-    if (failedViewport) {
-      applyViewport(failedViewport, true, failedViewportOptionsRef.current)
-    }
-  }, [applyViewport, loadMore])
-
-  const serverMapResult = serverMapState.applied?.result ?? null
-  const aggregateMapResult = serverMapResult?.representation === 'AGGREGATE'
-    ? serverMapResult
-    : null
-  const aggregateMapEmpty = aggregateMapResult !== null
-    && aggregateMapResult.nodes.length === 0
-  const mapItems = serverMapResult?.representation === 'INDIVIDUAL'
-    ? serverMapResult.nodes
-    : EMPTY_MAP_ITEMS
-  const aggregateMapActive = aggregateMapResult !== null
-  const viewportDecision = viewport
-    ? evaluateServerMapRequest(viewport)
-    : null
-  const requestBlocked = viewportDecision !== null && !viewportDecision.allowed
-  const listViewportDecision = viewport
-    ? evaluateViewportRequest(viewport)
-    : null
-  const activeMapTarget = mapCameraTarget
+  const loadMore = searchResults.loadMore
+  const retryComplexResults = complexResults.status === 'ready' && complexResults.errorMessage ? searchResults.loadMore : searchResults.retry
+  const mapItems = complexResults.snapshot?.mapItems ?? EMPTY_MAP_ITEMS
+  const requestBlocked = viewport !== null && !evaluateServerMapRequest(viewport).allowed
   const highlightedComplexIds = useMemo(() => new Set([
     cardHighlightedComplexId,
     markerHighlightedComplexId,
@@ -1303,39 +994,28 @@ export function PublicHousingExplorer({
     complexResults,
     announcementResults.state,
     requestBlocked,
-    aggregateMapActive,
-    aggregateMapEmpty,
-    serverMapState.status === 'loading',
+    false,
+    false,
+    viewportRefreshPending,
   )
-  const complexFilterResultCountLabel = mapFilterResultCountLabel({
-    aggregateMapActive,
-    requestBlocked,
-    serverMapResult,
-  })
-  const naverMapProps: NaverMapProps = aggregateMapResult !== null
-    ? {
-        aggregateMarkers: aggregateMapResult.nodes,
-        cameraRequestId,
-        cameraTarget: activeMapTarget,
-        dataBusy: serverMapState.status === 'loading',
-        onAggregateMarkerSelect: selectAggregateMarker,
-        onTransitionInterrupt: interruptClusterTransition,
-        onViewportChange: handleViewportChange,
-        representation: 'AGGREGATE',
-        transitioning: clusterTransitioning,
-      }
-    : {
-        cameraRequestId,
-        cameraTarget: activeMapTarget,
-        dataBusy: serverMapState.status === 'loading',
-        markers,
-        onMarkerHighlight: setMarkerHighlightedComplexId,
-        onMarkerSelect: openComplexMarker,
-        onTransitionInterrupt: interruptClusterTransition,
-        onViewportChange: handleViewportChange,
-        representation: 'INDIVIDUAL',
-        transitioning: clusterTransitioning,
-      }
+  const complexFilterResultCountLabel = complexResults.totalCount === null ? undefined : `${complexResults.totalCount}곳`
+  const naverMapProps: NaverMapProps = {
+    cameraRequestId, cameraTarget: mapCameraTarget,
+    dataBusy: complexResults.status === 'loading', markers,
+    onMarkerHighlight: setMarkerHighlightedComplexId,
+    onMarkerSelect: openComplexMarker,
+    onViewportChange: handleViewportChange,
+    representation: 'INDIVIDUAL',
+    visiblePadding: boundaryScreenPadding(mapWorkspaceRef.current),
+  }
+  const cameraDiffers = appliedScope?.mode === 'area' && viewport !== null
+    && createBoundsSignature(appliedScope.bounds) !== createBoundsSignature(viewport.bounds)
+  const outsideSelection = selectedComplexId !== null && complexResults.snapshot !== null
+    && !complexResults.snapshot.complexIds.includes(selectedComplexId)
+  useSearchHistoryScroll(location.key, navigationType === 'POP',
+    complexResults.status === 'ready' && complexResults.signature === searchResults.signature
+      && (!announcementListRequested || announcementResults.state.status === 'ready'),
+    complexResultsScrollRef, announcementResultsScrollRef)
   const hasDetail = complexDetail.status !== 'closed'
     || announcementDetail.status !== 'closed'
   const selectedAnnouncementId = detailLocation.kind === 'announcement'
@@ -1388,7 +1068,7 @@ export function PublicHousingExplorer({
               name={findRegionBoundaryName(boundaryRegionCode) ?? selectedBoundarySearchItem?.title ?? `지역 ${boundaryRegionCode}`}
               status={boundaryState.status}
               supported={boundaryMetadata !== null}
-              canRecenter={boundaryMetadata !== null || (selectedBoundarySearchItem?.latitude != null && selectedBoundarySearchItem?.longitude != null)}
+              canRecenter={complexResults.snapshot?.bounds != null || findRegionSearchBounds(boundaryRegionCode) !== null}
               onRecenter={() => focusBoundary(boundaryRegionCode)}
               onClear={() => changeBoundarySelection(null)}
               onRetry={boundaryState.retry}
@@ -1399,12 +1079,14 @@ export function PublicHousingExplorer({
         <div className="housing-results__browse" hidden={integratedSearchActive}>
           <ResultTabs activeTab={activeResultTab} onSelect={selectResultTab} />
 
-          <ViewportAction
-            announcementsActive={activeResultTab === 'announcements'}
-            decision={listViewportDecision}
-          />
+          <section className={`housing-search-mode housing-search-mode--${searchScope?.mode ?? 'area'}`} aria-label="현재 검색 상태">
+            <strong>{searchScope?.mode === 'region' ? '지역 검색' : '지도 탐색'}</strong>
+            <span>{boundaryRegionCode ? findRegionBoundaryName(boundaryRegionCode) ?? selectedBoundarySearchItem?.title ?? `지역 ${boundaryRegionCode}` : cameraDiffers ? '마지막 검색 영역 · 목록 유지' : '현재 지도 영역'}</span>
+            <small>{complexResults.status === 'loading' || viewportRefreshPending ? '갱신 중 · 이전 결과 유지' : complexResults.status === 'error' ? '검색 실패 · 다시 시도해 주세요' : `${complexResults.totalCount?.toLocaleString('ko-KR') ?? '—'}곳`}</small>
+            {searchScope?.mode === 'region' && <RegionSearchPath regionCode={searchScope.regionCode} onSelect={changeBoundarySelection} repository={regionRepository} />}
+          </section>
 
-          {!requestBlocked && !aggregateMapActive && complexResults.status !== 'error' && (
+          {!requestBlocked && complexResults.status !== 'error' && (
             <ComplexRequestFeedback state={complexResults} onRetry={retryComplexResults} />
           )}
 
@@ -1419,6 +1101,7 @@ export function PublicHousingExplorer({
             <div
               ref={complexResultsScrollRef}
               className="housing-results__scroll"
+              onScroll={(event) => resultsScrollCacheRef.current.set(complexResults.signature, event.currentTarget.scrollTop)}
               aria-busy={complexResults.status === 'loading'}
             >
               {recentComplexes.length > 0 && (
@@ -1449,24 +1132,10 @@ export function PublicHousingExplorer({
                   </ul>
                 </section>
               )}
-              {activeResultTab === 'complexes' && (
-                <HousingMapRequestFeedback
-                  errorMessage={serverMapState.errorMessage}
-                  onRetry={retryServerMap}
-                  status={serverMapState.status}
-                />
-              )}
-              {!requestBlocked && !aggregateMapActive && complexResults.status === 'error' && (
+              {!requestBlocked && complexResults.status === 'error' && (
                 <ComplexRequestFeedback state={complexResults} onRetry={retryComplexResults} />
               )}
-              {aggregateMapActive && (
-                <div className="housing-results__state" role="status">
-                  <strong>{aggregateMapEmpty
-                    ? '현재 지도 영역에 표시할 지역 마커가 없습니다.'
-                    : '지역 마커를 선택해 지도를 확대해 주세요.'}</strong>
-                </div>
-              )}
-              {!requestBlocked && !aggregateMapActive && <ComplexResultContent
+              {!requestBlocked && <ComplexResultContent
                 state={complexResults}
                 selectedComplexId={selectedComplexId}
                 highlightedComplexIds={highlightedComplexIds}
@@ -1480,7 +1149,6 @@ export function PublicHousingExplorer({
             </div>
 
             {!requestBlocked
-              && !aggregateMapActive
               && complexResults.hasNext
               && (complexResults.status === 'ready'
                 || complexResults.status === 'loading-more') && (
@@ -1490,7 +1158,7 @@ export function PublicHousingExplorer({
                 onClick={() => loadMore()}
                 disabled={complexResults.status === 'loading-more'
                   || viewportRefreshPending
-                  || serverMapState.status === 'loading'}
+}
               >
                 <span>{complexResults.status === 'loading-more'
                   ? '불러오는 중'
@@ -1524,20 +1192,14 @@ export function PublicHousingExplorer({
               <div
                 ref={announcementResultsScrollRef}
                 className="housing-results__scroll"
+                onScroll={(event) => announcementScrollCacheRef.current.set(announcementResults.state.appliedFiltersKey ?? scopedAnnouncementKey, event.currentTarget.scrollTop)}
                 aria-busy={announcementResults.state.status === 'loading'
-                  || announcementResults.state.status === 'loading-more'}
+                  || announcementResults.state.status === 'loading-more' || complexResults.status === 'loading'}
               >
-                {!requestBlocked && !aggregateMapActive
+                {!requestBlocked
                   && activeResultTab === 'announcements'
                   && complexResults.status === 'error' && (
                   <ComplexRequestFeedback state={complexResults} onRetry={retryComplexResults} />
-                )}
-                {activeResultTab === 'announcements' && (
-                  <HousingMapRequestFeedback
-                    errorMessage={serverMapState.errorMessage}
-                    onRetry={retryServerMap}
-                    status={serverMapState.status}
-                  />
                 )}
                 <AnnouncementResultContent
                   state={announcementResults.state}
@@ -1559,7 +1221,7 @@ export function PublicHousingExplorer({
                 className="housing-results__more"
                 type="button"
                 onClick={announcementResults.loadMore}
-                disabled={announcementResults.state.status === 'loading-more'}
+                disabled={announcementResults.state.status === 'loading-more' || complexResults.status === 'loading' || viewportRefreshPending}
               >
                 {announcementResults.state.status === 'loading-more'
                   ? '불러오는 중'
@@ -1580,6 +1242,17 @@ export function PublicHousingExplorer({
           />
         </div>
         <NaverMap {...naverMapProps} regionBoundary={boundaryState.boundary} />
+        <div className="housing-area-search">
+          <button type="button" onClick={() => changeBoundarySelection(null)} disabled={viewport === null || complexResults.status === 'loading'}>
+            <span aria-hidden="true">↻</span> 이 영역 다시 검색
+          </button>
+        </div>
+        {(actionMessage || outsideSelection) && <div className="housing-policy-feedback" role="status">
+          {outsideSelection ? '현재 결과 밖의 단지 · 목록 유지' : actionMessage}
+        </div>}
+        {complexResults.status === 'ready' && complexResults.scope?.mode === 'region' && complexResults.snapshot?.locatedCount === 0 && <p className="housing-map-notice" role="status">
+          {complexResults.totalCount === 0 ? '조건에 맞는 단지가 없습니다.' : '검색된 단지의 좌표가 없어 지도에 핀을 표시할 수 없습니다.'}
+        </p>}
         {boundaryState.boundary !== null && (
           <a className="housing-map-credits" href="/map-data-credits.html" target="_blank" rel="noreferrer">저작권</a>
         )}
@@ -1954,10 +1627,10 @@ function resultCountLabel(
     }
   }
   if (activeTab === 'announcements') {
-    const count = announcements.items.length
-    const suffix = announcements.hasNext ? '건 이상' : '건'
+    const count = announcements.totalCount ?? announcements.items.length
+    const suffix = announcements.totalCount === undefined && announcements.hasNext ? '건 이상' : '건'
     return {
-      accessibleLabel: `현재 불러온 공고 ${count}${suffix}`,
+      accessibleLabel: `공고 결과 ${count}${suffix}, 현재 ${announcements.items.length}건 표시`,
       visibleLabel: `${count}${suffix}`,
     }
   }
@@ -2006,62 +1679,6 @@ function resultCountLabel(
   }
 }
 
-function mapFilterResultCountLabel({
-  aggregateMapActive,
-  requestBlocked,
-  serverMapResult,
-}: {
-  aggregateMapActive: boolean
-  requestBlocked: boolean
-  serverMapResult: HousingMapResult | null
-}) {
-  if (requestBlocked || aggregateMapActive) {
-    return undefined
-  }
-  return serverMapResult?.representation === 'INDIVIDUAL'
-    ? `${serverMapResult.nodes.length}곳`
-    : undefined
-}
-
-function ViewportAction({
-  announcementsActive,
-  decision,
-}: {
-  announcementsActive: boolean
-  decision: ReturnType<typeof evaluateViewportRequest> | null
-}) {
-  if (decision && !decision.allowed) {
-    return (
-      <div className="housing-viewport-action housing-viewport-action--blocked" role="status">
-        <span>{viewportGuidance(decision.reason, announcementsActive)}</span>
-      </div>
-    )
-  }
-
-  return null
-}
-
-function HousingMapRequestFeedback({
-  errorMessage,
-  onRetry,
-  status,
-}: {
-  errorMessage: string | null
-  onRetry: () => boolean
-  status: 'idle' | 'loading' | 'ready' | 'error'
-}) {
-  if (status !== 'error') {
-    return null
-  }
-  return (
-    <div className="housing-results__inline-error" role="alert">
-      <strong>지도 정보를 불러오지 못했습니다.</strong>
-      <span>{errorMessage}</span>
-      <button type="button" onClick={onRetry}>지도 다시 시도</button>
-    </div>
-  )
-}
-
 function ComplexRequestFeedback({
   state,
   onRetry,
@@ -2069,10 +1686,10 @@ function ComplexRequestFeedback({
   state: ComplexResultsState
   onRetry: () => void
 }) {
-  if (state.status === 'error') {
+  if (state.status === 'error' || state.errorMessage) {
     return (
       <div className="housing-results__inline-error" role="alert">
-        <strong>단지 목록을 불러오지 못했습니다.</strong>
+        <strong>검색 결과를 불러오지 못했습니다.</strong>
         <span>{state.errorMessage}</span>
         <button type="button" onClick={onRetry}>다시 시도</button>
       </div>
@@ -2434,23 +2051,6 @@ function boundaryScreenPadding(workspace: HTMLElement | null) {
   return padding
 }
 
-function detailScreenOffset(workspace: HTMLElement | null) {
-  if (window.innerWidth < 768) {
-    return undefined
-  }
-  const map = workspace?.querySelector('.map-surface')?.getBoundingClientRect()
-  const panel = workspace?.querySelector('.housing-detail-layer')?.getBoundingClientRect()
-  if (!map || !panel || map.width <= 0) {
-    return undefined
-  }
-  const left = Math.max(0, panel.right - map.left + 16)
-  const right = map.width - 24
-  if (left >= right) {
-    return undefined
-  }
-  return { x: (left + right - map.width) / 2, y: 0 }
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -2702,84 +2302,6 @@ function isAvailableFocusTarget(
   element: HTMLElement | null | undefined,
 ): element is HTMLElement {
   return Boolean(element?.isConnected && !element.closest('[hidden]'))
-}
-
-function appendUniqueComplexes(
-  current: readonly ComplexListItem[],
-  next: readonly ComplexListItem[],
-): readonly ComplexListItem[] {
-  const knownIds = new Set(current.map((complex) => complex.complexId))
-  return [
-    ...current,
-    ...next.filter((complex) => !knownIds.has(complex.complexId)),
-  ]
-}
-
-function findComplexPage(
-  repository: PublicHousingRepository,
-  bounds: MapBounds,
-  cursor: string | null,
-  size: number,
-  signal: AbortSignal,
-  options: ComplexSearchFilters,
-) {
-  if (Object.keys(options).length === 0) {
-    return repository.findComplexPage(bounds, cursor, size, signal)
-  }
-  return repository.findComplexPage(bounds, cursor, size, signal, options)
-}
-
-function viewportForBounds(bounds: MapBounds): ViewportSnapshot {
-  return {
-    bounds,
-    center: {
-      latitude: (bounds.southWestLat + bounds.northEastLat) / 2,
-      longitude: (bounds.southWestLng + bounds.northEastLng) / 2,
-    },
-    zoom: 14,
-  }
-}
-
-function viewportForMapQuery(
-  bounds: MapBounds,
-  zoom: number,
-): ViewportSnapshot {
-  return { ...viewportForBounds(bounds), zoom }
-}
-
-function mapListRefreshKey(
-  bounds: MapBounds,
-  filters: ComplexSearchFilters,
-) {
-  const boundsSignature = createBoundsSignature(bounds)
-  if (boundsSignature === null) {
-    return null
-  }
-  return `${boundsSignature}|${searchFiltersSignature(filters)}`
-}
-
-function viewportGuidance(
-  reason: ViewportBlockReason,
-  announcementsActive: boolean,
-) {
-  const subject = announcementsActive ? '지도 마커를' : '단지를'
-  if (reason === 'zoom-too-low') {
-    return `${subject} 불러오려면 지도를 조금 더 확대해 주세요.`
-  }
-  if (
-    reason === 'latitude-span-too-large' ||
-    reason === 'longitude-span-too-large'
-  ) {
-    return '요청 범위가 넓습니다. 지도를 조금 더 확대해 주세요.'
-  }
-  return '현재 지도 범위를 확인하지 못했습니다. 지도를 다시 움직여 주세요.'
-}
-
-function requestErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message
-  }
-  return '잠시 후 다시 시도해 주세요.'
 }
 
 function isAbortError(error: unknown) {

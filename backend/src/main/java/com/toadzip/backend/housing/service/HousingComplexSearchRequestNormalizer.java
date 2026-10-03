@@ -14,6 +14,7 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.MapBounds;
 import com.toadzip.backend.housing.domain.RentalType;
+import com.toadzip.backend.housing.domain.SearchScope;
 import com.toadzip.backend.housing.dto.request.HousingComplexSearchRequest;
 import com.toadzip.backend.housing.exception.InvalidComplexRequestException;
 import com.toadzip.backend.housing.exception.InvalidRegionCodeException;
@@ -40,6 +41,20 @@ final class HousingComplexSearchRequestNormalizer {
                 request.southWestLat(), request.southWestLng(),
                 request.northEastLat(), request.northEastLng()
         );
+    }
+
+    MapBounds normalizeSearchBounds(HousingComplexSearchRequest request) {
+        requireRequest(request);
+        if (request.scope() == SearchScope.REGION) {
+            if (request.regionCode() == null) {
+                throw new InvalidRegionCodeException();
+            }
+            return null;
+        }
+        if (request.scope() == SearchScope.AREA && request.regionCode() != null) {
+            throw new InvalidComplexRequestException();
+        }
+        return normalizeBounds(request);
     }
 
     HousingComplexFilterCondition normalizeFilters(HousingComplexSearchRequest request) {

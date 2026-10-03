@@ -15,6 +15,8 @@ import com.toadzip.backend.housing.domain.MapBounds;
 import com.toadzip.backend.housing.dto.request.HousingComplexSearchRequest;
 import com.toadzip.backend.housing.dto.response.HousingComplexDetailResponse;
 import com.toadzip.backend.housing.dto.response.HousingComplexListResponse;
+import com.toadzip.backend.housing.dto.response.HousingComplexSearchResponse;
+import com.toadzip.backend.housing.dto.response.HousingComplexSearchBoundsResponse;
 import com.toadzip.backend.housing.exception.HousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.InvalidComplexRequestException;
 import com.toadzip.backend.housing.repository.ComplexDetailQueryRepository;
@@ -78,23 +80,64 @@ public class HousingComplexQueryService {
             String cursor,
             int size
     ) {
-        MapBounds bounds = requestNormalizer.normalizeBounds(request);
+        MapBounds bounds = requestNormalizer.normalizeSearchBounds(request);
         requireValidSize(size);
         ComplexSort normalizedSort = normalizedSort(sort);
         HousingComplexFilterCondition filters = requestNormalizer.normalizeFilters(request);
         HousingComplexSearchCondition condition = new HousingComplexSearchCondition(bounds, filters);
-        ComplexSummaryCursor decodedCursor = decodeCursor(cursor, normalizedSort);
+        return findPage(condition, normalizedSort, cursor, size);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public HousingComplexSearchResponse searchComplexes(
+            HousingComplexSearchRequest request,
+            ComplexSort sort,
+            int size
+    ) {
+        if (request == null || request.scope() == null) {
+            throw new InvalidComplexRequestException();
+        }
+        requireValidSize(size);
+        MapBounds bounds = requestNormalizer.normalizeSearchBounds(request);
+        HousingComplexFilterCondition filters = requestNormalizer.normalizeFilters(request);
+        HousingComplexSearchCondition condition = new HousingComplexSearchCondition(bounds, filters);
+        List<ComplexSummaryRow> allRows = repository.findAll(condition);
+        List<ComplexSummaryRow> locatedRows = allRows.stream()
+                .filter(row -> row.latitude() != null && row.longitude() != null).toList();
+        return new HousingComplexSearchResponse(
+                allRows.size(), locatedRows.size(), allRows.stream().map(ComplexSummaryRow::complexId).toList(),
+                resultBounds(locatedRows), locatedRows.stream().map(summaryMapper::toMapItem).toList(),
+                findPage(condition, normalizedSort(sort), null, size)
+        );
+    }
+
+    private HousingComplexSearchBoundsResponse resultBounds(List<ComplexSummaryRow> rows) {
+        if (rows.isEmpty()) {
+            return null;
+        }
+        return new HousingComplexSearchBoundsResponse(
+                rows.stream().map(ComplexSummaryRow::latitude).min(BigDecimal::compareTo).orElseThrow(),
+                rows.stream().map(ComplexSummaryRow::longitude).min(BigDecimal::compareTo).orElseThrow(),
+                rows.stream().map(ComplexSummaryRow::latitude).max(BigDecimal::compareTo).orElseThrow(),
+                rows.stream().map(ComplexSummaryRow::longitude).max(BigDecimal::compareTo).orElseThrow()
+        );
+    }
+
+    private HousingComplexListResponse findPage(
+            HousingComplexSearchCondition condition, ComplexSort sort, String cursor, int size
+    ) {
+        ComplexSummaryCursor decodedCursor = decodeCursor(cursor, sort);
         List<ComplexSummaryRow> fetched = repository.findPage(
                 condition,
-                normalizedSort,
+                sort,
                 decodedCursor,
                 size + 1
         );
         boolean hasNext = fetched.size() > size;
         List<ComplexSummaryRow> page = fetched.stream().limit(size).toList();
         return new HousingComplexListResponse(
-                summaryMapper.toListItems(page, filters.today()),
-                nextCursor(page, hasNext, normalizedSort),
+                summaryMapper.toListItems(page, condition.filters().today()),
+                nextCursor(page, hasNext, sort),
                 hasNext
         );
     }

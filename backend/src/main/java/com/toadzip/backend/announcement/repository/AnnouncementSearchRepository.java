@@ -7,6 +7,7 @@ import com.toadzip.backend.announcement.domain.AnnouncementPublicationType;
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
 import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.housing.domain.MapBounds;
 import com.toadzip.backend.global.persistence.LegacyStoredValue;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaQuery;
@@ -62,9 +63,22 @@ public class AnnouncementSearchRepository {
                 .getResultList();
     }
 
+    public long countLatestLeaves(AnnouncementSearchCondition condition) {
+        HibernateCriteriaBuilder builder = (HibernateCriteriaBuilder) entityManager.getCriteriaBuilder();
+        CriteriaQuery<Long> query = builder.createQuery(Long.class);
+        Root<Announcement> announcement = query.from(Announcement.class);
+        List<Predicate> predicates = new ArrayList<>();
+        addVisibilityPredicates(builder, query, announcement, predicates);
+        addDirectFilterPredicates(builder, announcement, condition, predicates);
+        addDerivedFilterPredicates(builder, query, announcement, condition, predicates);
+        query.select(builder.countDistinct(announcement.get("id")))
+                .where(predicates.toArray(Predicate[]::new));
+        return entityManager.createQuery(query).getSingleResult();
+    }
+
     private void addVisibilityPredicates(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             List<Predicate> predicates
     ) {
@@ -142,19 +156,19 @@ public class AnnouncementSearchRepository {
 
     private void addDerivedFilterPredicates(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             List<Predicate> predicates
     ) {
         addApplicationStatusPredicate(criteriaBuilder, query, announcement, condition, predicates);
         addApplicationPeriodPredicates(criteriaBuilder, query, announcement, condition, predicates);
-        addRegionPredicate(criteriaBuilder, query, announcement, condition, predicates);
+        addSpatialPredicate(criteriaBuilder, query, announcement, condition, predicates);
     }
 
     private void addApplicationStatusPredicate(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             List<Predicate> predicates
@@ -181,7 +195,7 @@ public class AnnouncementSearchRepository {
 
     private Predicate applicationStatusPredicate(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             ApplicationStatus applicationStatus,
@@ -220,7 +234,7 @@ public class AnnouncementSearchRepository {
 
     private void addApplicationPeriodPredicates(
             HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             List<Predicate> predicates
@@ -247,7 +261,7 @@ public class AnnouncementSearchRepository {
     }
 
     private Predicate scheduleExists(
-            HibernateCriteriaBuilder builder, CriteriaQuery<Announcement> query,
+            HibernateCriteriaBuilder builder, CriteriaQuery<?> query,
             Root<Announcement> announcement, AnnouncementSearchCondition condition,
             ApplicationScheduleState state, LocalDate from, LocalDate to, boolean startsAfter
     ) {
@@ -268,37 +282,73 @@ public class AnnouncementSearchRepository {
         if (to != null) {
             predicates.add(builder.lessThanOrEqualTo(schedule.get("startDate"), to));
         }
-        if (hasValues(condition.regionCodes())) {
+        if (hasSpatialCondition(condition)) {
             Join<AnnouncementApplicationSchedule, HousingComplex> complex = schedule.join(
                     "housingComplex", jakarta.persistence.criteria.JoinType.LEFT);
-            predicates.add(builder.or(builder.isNull(schedule.get("housingComplex")),
-                    complex.get("address").get("cityCountyDistrictCode").in(condition.regionCodes())));
+            Predicate spatial = spatialComplexPredicate(builder, complex, condition);
+            if (condition.scope() != null) {
+                spatial = builder.and(spatial, connectedComplexPredicate(builder, scheduleQuery, announcement, complex));
+            }
+            predicates.add(builder.or(builder.isNull(schedule.get("housingComplex")), spatial));
         }
         scheduleQuery.select(schedule.get("id")).where(predicates.toArray(Predicate[]::new));
         return builder.exists(scheduleQuery);
     }
 
-    private void addRegionPredicate(
-            HibernateCriteriaBuilder criteriaBuilder,
-            CriteriaQuery<Announcement> query,
+    private void addSpatialPredicate(
+            HibernateCriteriaBuilder builder,
+            CriteriaQuery<?> query,
             Root<Announcement> announcement,
             AnnouncementSearchCondition condition,
             List<Predicate> predicates
     ) {
-        if (!hasValues(condition.regionCodes())) {
+        if (!hasSpatialCondition(condition)) {
             return;
         }
-
         Subquery<Long> supplyRowQuery = query.subquery(Long.class);
         Root<SupplyRow> supplyRow = supplyRowQuery.from(SupplyRow.class);
-        Join<SupplyRow, HousingComplex> housingComplex = supplyRow.join("housingComplex");
+        Join<SupplyRow, HousingComplex> complex = supplyRow.join("housingComplex");
         supplyRowQuery.select(supplyRow.get("id"))
-                .where(
-                        criteriaBuilder.equal(supplyRow.get("announcement"), announcement),
-                        criteriaBuilder.isNotNull(supplyRow.get("housingComplex")),
-                        housingComplex.get("address").get("cityCountyDistrictCode").in(condition.regionCodes())
-                );
-        predicates.add(criteriaBuilder.exists(supplyRowQuery));
+                .where(builder.equal(supplyRow.get("announcement"), announcement),
+                        spatialComplexPredicate(builder, complex, condition));
+        predicates.add(builder.exists(supplyRowQuery));
+    }
+
+    private Predicate spatialComplexPredicate(
+            HibernateCriteriaBuilder builder, Path<HousingComplex> complex, AnnouncementSearchCondition condition
+    ) {
+        List<Predicate> predicates = new ArrayList<>();
+        if (condition.scope() != null) {
+            predicates.add(builder.isFalse(complex.get("adminDeleted")));
+        }
+        if (hasValues(condition.regionCodes())) {
+            predicates.add(complex.get("address").get("cityCountyDistrictCode").in(condition.regionCodes()));
+        }
+        MapBounds bounds = condition.bounds();
+        if (bounds != null) {
+            predicates.add(builder.between(complex.get("address").get("latitude"),
+                    bounds.southWestLat(), bounds.northEastLat()));
+            predicates.add(builder.between(complex.get("address").get("longitude"),
+                    bounds.southWestLng(), bounds.northEastLng()));
+        }
+        return builder.and(predicates.toArray(Predicate[]::new));
+    }
+
+    private Predicate connectedComplexPredicate(
+            HibernateCriteriaBuilder builder, Subquery<?> query,
+            Root<Announcement> announcement, Path<HousingComplex> complex
+    ) {
+        Subquery<Long> supplyRowQuery = query.subquery(Long.class);
+        Root<SupplyRow> supplyRow = supplyRowQuery.from(SupplyRow.class);
+        supplyRowQuery.select(supplyRow.get("id")).where(
+                builder.equal(supplyRow.get("announcement"), announcement),
+                builder.equal(supplyRow.get("housingComplex"), complex)
+        );
+        return builder.exists(supplyRowQuery);
+    }
+
+    private boolean hasSpatialCondition(AnnouncementSearchCondition condition) {
+        return condition.scope() != null || condition.bounds() != null || hasValues(condition.regionCodes());
     }
 
     private boolean hasValues(Collection<?> values) {

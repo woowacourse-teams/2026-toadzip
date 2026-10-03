@@ -13,6 +13,7 @@ import type {
   ComplexHousingType,
   ComplexListItem,
   ComplexPage,
+  ComplexSearchSnapshot,
   MapComplex,
   RawAnnouncementAttachment,
   RawAnnouncementDetail,
@@ -28,6 +29,7 @@ import type {
   RawComplexHousingType,
   RawComplexListItem,
   RawComplexPage,
+  RawComplexSearchSnapshot,
   RawMapComplex,
   RawRepresentativeAnnouncement,
   RepresentativeAnnouncement,
@@ -42,8 +44,20 @@ export function toComplexPage(raw: RawComplexPage): ComplexPage {
   }
 }
 
+export function toComplexSearchSnapshot(raw: RawComplexSearchSnapshot): ComplexSearchSnapshot {
+  return {
+    totalCount: raw.totalCount,
+    locatedCount: raw.locatedCount,
+    complexIds: raw.complexIds.map(canonicalId),
+    bounds: raw.bounds,
+    mapItems: raw.mapItems.map(toMapComplex),
+    page: toComplexPage(raw.page),
+  }
+}
+
 export function toAnnouncementPage(raw: RawAnnouncementPage): AnnouncementPage {
   return {
+    ...(raw.totalCount === undefined ? {} : { totalCount: raw.totalCount }),
     items: raw.items.map(toAnnouncementListItem),
     nextCursor: raw.nextCursor,
     hasNext: raw.hasNext,

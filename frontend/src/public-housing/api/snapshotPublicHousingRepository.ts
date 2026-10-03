@@ -108,6 +108,9 @@ function routeSnapshotRequest(
   snapshot: PublicHousingSnapshotV1,
   url: URL,
 ): Response {
+  if (url.pathname === '/api/v2/complexes/search') {
+    return complexSearchResponse(snapshot, url)
+  }
   if (url.pathname === '/api/v2/complexes/map') {
     return mapResponse(snapshot, url)
   }
@@ -127,6 +130,47 @@ function routeSnapshotRequest(
     return announcementDetailResponse(snapshot, announcementId)
   }
   return errorResponse(404, 'NOT_FOUND', '로컬 snapshot 경로를 찾을 수 없습니다.')
+}
+
+function scopedComplexItems(snapshot: PublicHousingSnapshotV1, url: URL): readonly RawComplexListItem[] | null {
+  const regionMode = url.searchParams.get('scope') === 'REGION'
+  if (regionMode && !/^(?:\d{2}|\d{5})$/.test(url.searchParams.get('regionCode') ?? '')) return null
+  const bounds = regionMode ? null : boundsFrom(url)
+  if (!regionMode && bounds === null) return null
+  const visibleIds = bounds === null ? null : new Set(snapshot.mapComplexItems
+    .filter((item) => isInsideBounds(item, bounds))
+    .map((item) => item.complexId))
+  return snapshot.complexListItems.filter((item) => (
+    (visibleIds === null || visibleIds.has(item.complexId))
+    && complexMatchesFilters(snapshot, item, url)
+  ))
+}
+
+function complexSearchResponse(snapshot: PublicHousingSnapshotV1, url: URL): Response {
+  const items = scopedComplexItems(snapshot, url)
+  if (items === null) return invalidBoundsResponse()
+  const complexIds = items.map((item) => item.complexId)
+  const matchingIds = new Set(complexIds)
+  const mapItems = snapshot.mapComplexItems.filter((item) => matchingIds.has(item.complexId))
+  const bounds = mapItems.length === 0 ? null : mapItems.reduce((current, item) => ({
+    southWestLat: Math.min(current.southWestLat, item.latitude),
+    southWestLng: Math.min(current.southWestLng, item.longitude),
+    northEastLat: Math.max(current.northEastLat, item.latitude),
+    northEastLng: Math.max(current.northEastLng, item.longitude),
+  }), {
+    southWestLat: mapItems[0].latitude,
+    southWestLng: mapItems[0].longitude,
+    northEastLat: mapItems[0].latitude,
+    northEastLng: mapItems[0].longitude,
+  })
+  return successResponse({
+    totalCount: items.length,
+    locatedCount: mapItems.length,
+    complexIds,
+    bounds,
+    mapItems,
+    page: page(items, 0, pageSize(url), COMPLEX_CURSOR_PREFIX),
+  })
 }
 
 function mapResponse(snapshot: PublicHousingSnapshotV1, url: URL): Response {
@@ -154,8 +198,8 @@ function complexPageResponse(
   snapshot: PublicHousingSnapshotV1,
   url: URL,
 ): Response {
-  const bounds = boundsFrom(url)
-  if (bounds === null) {
+  const items = scopedComplexItems(snapshot, url)
+  if (items === null) {
     return invalidBoundsResponse()
   }
   const cursor = cursorOffset(
@@ -166,15 +210,6 @@ function complexPageResponse(
     return invalidCursorResponse()
   }
 
-  const visibleIds = new Set(
-    snapshot.mapComplexItems
-      .filter((item) => isInsideBounds(item, bounds))
-      .map((item) => item.complexId),
-  )
-  const items = snapshot.complexListItems.filter((item) => (
-    visibleIds.has(item.complexId)
-    && complexMatchesFilters(snapshot, item, url)
-  ))
   return successResponse(page(
     items,
     cursor.offset,
@@ -187,6 +222,7 @@ function announcementPageResponse(
   snapshot: PublicHousingSnapshotV1,
   url: URL,
 ): Response {
+  if (url.searchParams.get('scope') === 'AREA' && boundsFrom(url) === null) return invalidBoundsResponse()
   const cursor = cursorOffset(
     url.searchParams.get('cursor'),
     ANNOUNCEMENT_CURSOR_PREFIX,
@@ -198,12 +234,10 @@ function announcementPageResponse(
   const items = snapshot.announcementListItems.filter((item) => (
     announcementMatchesFilters(snapshot, item, url)
   ))
-  return successResponse(page(
-    items,
-    cursor.offset,
-    pageSize(url),
-    ANNOUNCEMENT_CURSOR_PREFIX,
-  ))
+  return successResponse({
+    ...page(items, cursor.offset, pageSize(url), ANNOUNCEMENT_CURSOR_PREFIX),
+    totalCount: items.length,
+  })
 }
 
 function complexDetailResponse(
@@ -280,6 +314,8 @@ function pageSize(url: URL): number {
 }
 
 function boundsFrom(url: URL): MapBounds | null {
+  if (['southWestLat', 'southWestLng', 'northEastLat', 'northEastLng']
+    .some((key) => !url.searchParams.has(key) || url.searchParams.get(key)?.trim() === '')) return null
   const bounds = {
     southWestLat: Number(url.searchParams.get('southWestLat')),
     southWestLng: Number(url.searchParams.get('southWestLng')),
@@ -399,7 +435,7 @@ function announcementMatchesFilters(
   url: URL,
 ) {
   const search = url.searchParams
-  return matchesRegion(
+  return announcementMatchesScope(snapshot, item, url) && matchesRegion(
     search.get('regionCode'),
     item.regionNames,
     snapshot.announcementRegionCodes[String(item.announcementId)] ?? [],
@@ -413,6 +449,17 @@ function announcementMatchesFilters(
     )
     && matchesRepeated(search, 'agencyCodes', item.agency?.code ?? null)
     && matchesRepeated(search, 'recruitmentTypes', item.recruitmentType)
+}
+
+function announcementMatchesScope(snapshot: PublicHousingSnapshotV1, item: RawAnnouncementListItem, url: URL): boolean {
+  if (url.searchParams.get('scope') !== 'AREA') return true
+  const bounds = boundsFrom(url)
+  if (bounds === null) return false
+  const visibleIds = new Set(snapshot.mapComplexItems
+    .filter((complex) => isInsideBounds(complex, bounds))
+    .map((complex) => complex.complexId))
+  const detail = snapshot.announcementDetails.find((candidate) => candidate.announcementId === item.announcementId)
+  return detail?.supplyRows.some((row) => row.complex !== null && visibleIds.has(row.complex.complexId)) ?? false
 }
 
 function matchesRegion(
