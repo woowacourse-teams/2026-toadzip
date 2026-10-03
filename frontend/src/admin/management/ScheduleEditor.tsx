@@ -10,20 +10,33 @@ const fields: Field[] = [{name:'supplyRank',label:'공급 순위'}, {name:'state
   {name:'sourceUrl',label:'근거 URL',type:'url',required:true},{name:'sourcePage',label:'공고문 페이지',type:'number',min:1,required:true}]
 export function ScheduleEditor({ value, id, onSaved }: {value:ManagementDetailData;id:string;onSaved:(value:ManagementDetailData)=>void}) {
   const [editing,setEditing] = useState(false)
-  const [rows,setRows] = useState<ManagementValues[]>(value.schedules.length ? value.schedules : [{housingComplexId:null,supplyRank:null,state:'CONFIRMED',condition:null,
-    startDate:value.data.applicationStartDate,endDate:value.data.applicationEndDate,startTime:null,endTime:null,sourceUrl:value.data.originalUrl,sourcePage:null}])
+  const [rows,setRows] = useState<ManagementValues[]>([])
   const [busy,setBusy] = useState(false)
   const [error,setError] = useState('')
   useUnsavedChanges(editing)
-  return <section className="admin-detail-section"><header className="admin-inline"><h2>세부 접수 일정</h2>{!value.summary.deleted && !editing ? <button onClick={() => setEditing(true)}>접수 일정 관리</button> : null}</header>
+  function startEditing() {
+    setRows(value.schedules.length ? value.schedules : [{
+      housingComplexId: null, supplyRank: null, state: 'CONFIRMED', condition: null,
+      startDate: value.data.applicationStartDate, endDate: value.data.applicationEndDate,
+      startTime: null, endTime: null, sourceUrl: value.data.originalUrl, sourcePage: null,
+    }])
+    setError('')
+    setEditing(true)
+  }
+  return <section className="admin-detail-section"><header className="admin-inline"><h2>세부 접수 일정</h2>{!value.summary.deleted && !editing ? <button onClick={startEditing}>접수 일정 관리</button> : null}</header>
     {!editing ? <>{!value.schedules.length ? <p>아직 공고문으로 확인한 세부 일정이 없습니다.</p> : value.schedules.map((row,index) => <p key={index}>{String(row.startDate)} ~ {String(row.endDate)} · {String(row.supplyRank ?? '전체 순위')} · {row.state === 'CONFIRMED' ? '확정' : '조건부'} · {String(row.condition ?? '')}</p>)}</> :
       <form onSubmit={event => {
-        event.preventDefault();const form = event.currentTarget
-        const schedules = rows.map((row,index) => {
-          const extracted = formValues(form,fields.map(field => ({...field,name:`${index}.${field.name}`})),{})
-          const values = extracted[String(index)]
-          const complex = new FormData(form).get(`${index}.housingComplexId`)
-          return {...row,...(values && typeof values === 'object' && !Array.isArray(values) ? values : {}),housingComplexId:complex ? Number(complex) : null}
+        event.preventDefault()
+        const formData = new FormData(event.currentTarget)
+        const schedules = rows.map((row, index) => {
+          const rowFields = fields.map(field => ({ ...field, name: `${index}.${field.name}` }))
+          const values = formValues(formData, rowFields, {})[String(index)]
+          const complexId = formData.get(`${index}.housingComplexId`)
+          return {
+            ...row,
+            ...(values && typeof values === 'object' && !Array.isArray(values) ? values : {}),
+            housingComplexId: complexId ? Number(complexId) : null,
+          }
         })
         setBusy(true);setError('')
         void requestManagementApi(`/api/admin/announcements/${id}/application-schedules?version=${value.data.version}`,'PUT',{schedules})

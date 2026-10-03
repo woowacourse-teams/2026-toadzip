@@ -176,6 +176,30 @@ describe('App', () => {
     expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
   })
 
+  it.each([false, true])('인증 복원 대기 중 로그인하면 관리자 화면을 연다 (실패 후 재시도: %s)', async retry => {
+    const restoring = deferredResponse()
+    const fetchMock = vi.fn().mockReturnValueOnce(restoring.promise)
+    if (retry) {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ token: 'csrf-token', headerName: 'X-XSRF-TOKEN' }))
+        .mockResolvedValueOnce(jsonResponse({ message: '로그인 실패' }, 401))
+    }
+    fetchMock.mockResolvedValueOnce(jsonResponse({ token: 'csrf-token', headerName: 'X-XSRF-TOKEN' }))
+      .mockResolvedValueOnce(jsonResponse({ loginIdentifier: 'current-admin', role: 'ADMIN' }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<MemoryRouter initialEntries={['/admin/login']}><App /></MemoryRouter>)
+    fireEvent.change(await screen.findByLabelText('로그인 식별자'), { target: { value: 'current-admin' } })
+    fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password1' } })
+    fireEvent.click(screen.getByRole('button', { name: '로그인' }))
+    if (retry) {
+      expect(await screen.findByText('로그인 실패')).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: '로그인' }))
+    }
+    expect(await screen.findByRole('heading', { name: '단지 관리', level: 1 })).toBeVisible()
+    await act(async () => restoring.resolve(jsonResponse({ loginIdentifier: 'stale-admin', role: 'ADMIN' })))
+    expect(screen.getByText('current-admin')).toBeVisible()
+    expect(screen.queryByText('stale-admin')).not.toBeInTheDocument()
+  })
+
   it('StrictMode의 오래된 인증 상태 응답이 로그인 후 세션을 덮어쓰지 않는다', async () => {
     const firstSessionResponse = deferredResponse()
     const latestSessionResponse = deferredResponse()

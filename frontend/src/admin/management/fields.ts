@@ -53,9 +53,9 @@ export function valueAt(data: ManagementValues, name: string): JsonValue | undef
   if (!child) return value
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value[child] : null
 }
-export function formValues(form: HTMLFormElement, fields: Field[], original: ManagementValues): ManagementValues {
+export function formValues(form: HTMLFormElement | FormData, fields: Field[], original: ManagementValues): ManagementValues {
   const result = structuredClone(original)
-  const values = new FormData(form)
+  const values = form instanceof FormData ? form : new FormData(form)
   for (const field of fields) {
     const text = String(values.get(field.name) ?? '').trim()
     const value = text === '' ? null : field.boolean ? text === 'true' : field.type === 'number' ? Number(text) : text
