@@ -12,8 +12,8 @@
 | `filters/AnnouncementFilterPanel.tsx` | 공고 필터 입력·적용·초기화 |
 | `filters/ComplexFilterToolbar.tsx` | 단지 필터 팝오버·모바일 시트와 적용 동작 |
 | `filters/ComplexFilterFields.tsx` | 두 단지 필터 UI가 사용하는 입력 필드 |
-| `filters/complexFilterForm.ts`, `complexFilterTopics.ts`, `complexFilterPresentation.ts` | 폼 변환, 주제별 조건 교체, 선택값 표시 |
-| `filters/useRegionSelection.ts`, `searchFilterOptions.ts` | 실제 두 필터가 공유하는 지역 조회·취소·선택 fallback과 옵션 |
+| `filters/searchFilterForm.ts`, `complexFilterTopics.ts`, `complexFilterPresentation.ts` | 두 화면의 폼 해석, 주제별 조건 교체, 선택값 표시 |
+| `filters/RegionFilterFields.tsx`, `searchFilterOptions.ts` | 두 필터가 공유하는 지역 선택 UI·조회·취소·fallback과 옵션(화면별 CSS·로딩 문구는 호출부 소유) |
 | `navigation/detailLocation.ts`, `detailHistory.ts` | 상세 URL와 history state의 검증·변환 |
 | `components/HousingDetailStatePanel.tsx` | 단지·공고 상세의 로딩·미발견·오류 표시와 포커스·닫기 |
 | `presentation/` | API 모델에서 카드·상세 표시 모델로 변환, 라벨·HTTP(S) 링크 정책 |
@@ -24,13 +24,14 @@ URL은 공유 가능한 필터·상세 선택을 소유하고, history state는 
 
 `AnnouncementFilterPanel`에는 실제 사용하는 공고 조건만 있다. 단지 조건을 추가할 때는
 `ComplexFilterToolbar`를 수정한다. 두 필터가 제공하는 모집 상태와 적용 시점 차이를 유지한다.
+입력 폼을 적용 조건의 key로 교체할 때는 새 폼 안에 포커스를 복원한다.
 
 ## 지도 SDK 경계
 
 `src/maps/naver/NaverMap.tsx`가 SDK 로딩, 지도 인스턴스, 이벤트와 overlay 수명주기를 소유한다.
 
 - `naverMapTypes.ts`: 이 연동에서 필요한 SDK·마커·카메라 계약.
-- `mapCamera.ts`: 좌표·bounds 변환과 카메라 이동 계산.
+- `mapCamera.ts`: SDK 좌표의 유한성·위경도 범위 검증, bounds 변환과 카메라 이동 계산.
 - `markerData.ts`: 마커 종류·표시 데이터와 내용 비교 키.
 - `markerOverlays.ts`: overlay 생성·갱신·선택·포커스·이벤트 해제.
 - `regionBoundaryOverlay.ts`: 지역 경계 polygon 생성과 해제.
@@ -41,12 +42,22 @@ URL은 공유 가능한 필터·상세 선택을 소유하고, history state는 
 ## 관리자와 API
 
 - `src/api/apiBaseUrl.ts`는 기본 주소 정책만 공유한다. CSRF, 인증, 응답 검증과 오류는 각 API 모듈이 소유한다.
-- 주소 결정 시점도 계약이다. 관리자 API는 모듈 초기화, repository는 생성, 사용자 인증·통합 검색은 호출 시점의 환경 설정을 사용한다.
+- 주소 결정 시점도 계약이다. 관리자 API·알림 취소 API는 모듈 초기화, repository는 생성, 사용자 인증·통합 검색·첨부파일은 호출 시점의 환경 설정을 사용한다. 명시적 빈 repository 주소는 환경 기본값보다 우선한다.
+- `public-housing/api/httpErrorBody.ts`는 두 공개 repository의 오류 body 해석·AbortError 재전파만 공유한다. 오류 class와 기본 메시지는 각 repository에 둔다.
 - `admin/management/api.ts`는 HTTP 요청, `managementContract.ts`는 관리 모델과 응답 검증을 담당한다.
 - `ManagementSummaryTable`과 `ManagementStatus`는 목록·상세·선택 화면에서 실제 공유하는 표시다.
 - `admin/ingest/PipelineResult.tsx`는 실행 제어와 실행 이력이 공유한다. 폴링·실행·중지는 `DataPipelineControl`에 남는다.
 - `admin/registration/registrationOptions.ts`는 두 등록 폼의 옵션을 공유한다. 관리 검색의 더 넓은 허용 값과 합치지 않는다.
 - 등록 페이지 테스트는 검증 대상과 함께 `admin/registration/RegistrationPages.test.tsx`에 둔다.
+- 일정 편집은 편집 시작마다 최신 서버 값에서 draft를 만든다. 제출은 FormData 한 번과 기존 `formValues`를 사용해 native 입력의 빈값·숫자·날짜 정규화를 보존한다.
+- 공급 편집은 최초 연결 단지와 새 선택 단지의 조회를 같은 소유자에서 취소한다. 이전 응답이 최신 주택형 선택을 덮지 않게 한다.
+
+## 알림과 세션 변경
+
+`NotificationInterestProvider`가 상태 조회·신청/취소·세션 초기화의 요청 세대를 함께 관리한다.
+홈의 `NotificationInterestSessionControl`은 성공한 로그아웃을 이 소유자에게 전달한다.
+검색 화면을 다시 mount하거나 별도 전역 인증 상태를 추가하지 않는다.
+모달의 키보드 순환에는 이메일 입력, 활성 버튼과 도움 링크를 포함한다.
 
 ## 문서 미리보기
 
