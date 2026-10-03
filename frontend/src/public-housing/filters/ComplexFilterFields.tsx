@@ -1,12 +1,11 @@
 import type { PublicHousingRegionRepository } from '../api/publicHousingRegionRepository.ts'
 import type { ComplexSearchFilters } from '../api/publicHousingRepository.ts'
-import { PUBLIC_HOUSING_PROVINCE_OPTIONS } from '../model/publicHousingRegion.ts'
 import { formatHousingMoney } from '../presentation/housingMoney.ts'
 import { DualRangeFilter, type DualRangeFilterPreset } from './DualRangeFilter.tsx'
 import { AGENCY_OPTIONS, APPLICATION_STATUS_OPTIONS, RECRUITMENT_TYPE_OPTIONS, RENTAL_TYPE_OPTIONS } from './searchFilterOptions.ts'
 import { DETAIL_FILTER_TOPICS, type FilterTopic } from './complexFilterTopics.ts'
 import { formatArea, formatAreaTick, formatDepositTick, formatMonthlyRentTick } from './complexFilterPresentation.ts'
-import { useRegionSelection } from './useRegionSelection.ts'
+import { RegionFilterFields } from './RegionFilterFields.tsx'
 import styles from './ComplexFilterToolbar.module.css'
 
 const DEPOSIT_PRESETS = [
@@ -69,8 +68,15 @@ export function ComplexFilterFields({
   switch (topic) {
     case 'region':
       return (
-        <RegionFields
+        <RegionFilterFields
           initialRegionCode={filters.regionCode ?? ''}
+          messageId="complex-region-load-error"
+          loadingMessage="시·군·구를 불러오는 중입니다."
+          styles={{
+            regionFields: styles.regionFields,
+            field: styles.field,
+            regionError: styles.regionError,
+          }}
           repository={regionRepository}
         />
       )
@@ -181,66 +187,6 @@ function ChoiceGroup({
         ))}
       </div>
     </fieldset>
-  )
-}
-
-function RegionFields({
-  initialRegionCode,
-  repository,
-}: {
-  readonly initialRegionCode: string
-  readonly repository: PublicHousingRegionRepository
-}) {
-  const {
-    provinceCode, districtCode, districtOptions, loadStatus, provinceSelectRef,
-    selectProvince, selectDistrict,
-  } = useRegionSelection(initialRegionCode, repository)
-  const loadErrorId = 'complex-region-load-error'
-
-  return (
-    <div className={styles.regionFields}>
-      <label className={styles.field}>
-        <span>시·도</span>
-        <select
-          ref={provinceSelectRef}
-          name="provinceCode"
-          value={provinceCode}
-          onChange={(event) => selectProvince(event.currentTarget.value)}
-        >
-          <option value="">전체</option>
-          {PUBLIC_HOUSING_PROVINCE_OPTIONS.map(([code, label]) => (
-            <option key={code} value={code}>{label}</option>
-          ))}
-        </select>
-      </label>
-      <label className={styles.field}>
-        <span>시·군·구</span>
-        <select
-          name="districtCode"
-          value={districtCode}
-          disabled={provinceCode === ''}
-          aria-describedby={loadStatus === 'error' ? loadErrorId : undefined}
-          onChange={(event) => selectDistrict(event.currentTarget.value)}
-        >
-          <option value="">{provinceCode === '' ? '시·도를 먼저 선택' : '전체'}</option>
-          {districtOptions.map(({ districtName, regionCode }) => (
-            <option key={regionCode} value={regionCode}>
-              {districtName ?? regionCode}
-            </option>
-          ))}
-        </select>
-      </label>
-      {loadStatus === 'loading' && <small role="status">시·군·구를 불러오는 중입니다.</small>}
-      {loadStatus === 'error' && (
-        <small
-          className={styles.regionError}
-          id={loadErrorId}
-          role="alert"
-        >
-          시·군·구를 불러오지 못했습니다. 시·도만 적용할 수 있습니다.
-        </small>
-      )}
-    </div>
   )
 }
 

@@ -5,18 +5,12 @@ import {
   type PublicHousingRegionRepository,
   publicHousingRegionRepository,
 } from '../api/publicHousingRegionRepository.ts'
-import type {
-  AgencyCodeFilter,
-  ApplicationStatusFilter,
-  AnnouncementSearchFilters,
-  RecruitmentTypeFilter,
-  RentalTypeFilter,
-} from '../api/publicHousingRepository.ts'
-import { PUBLIC_HOUSING_PROVINCE_OPTIONS } from '../model/publicHousingRegion.ts'
+import type { AnnouncementSearchFilters } from '../api/publicHousingRepository.ts'
 import {
   RENTAL_TYPE_OPTIONS, ANNOUNCEMENT_STATUS_OPTIONS, AGENCY_OPTIONS, RECRUITMENT_TYPE_OPTIONS,
 } from './searchFilterOptions.ts'
-import { useRegionSelection } from './useRegionSelection.ts'
+import { RegionFilterFields } from './RegionFilterFields.tsx'
+import { announcementFiltersFromForm } from './searchFilterForm.ts'
 import { searchFiltersSignature } from './searchFilterLocation.ts'
 import styles from './AnnouncementFilterPanel.module.css'
 
@@ -58,7 +52,7 @@ export function AnnouncementFilterPanel({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const nextFilters = filtersFromForm(event.currentTarget)
+    const nextFilters = announcementFiltersFromForm(new FormData(event.currentTarget))
     onApply(nextFilters)
   }
 
@@ -122,9 +116,16 @@ export function AnnouncementFilterPanel({
           </div>
           <div className={styles.fields}>
             <div className={styles.grid}>
-              <RegionSelect
-                defaultValue={filters.regionCode ?? ''}
+              <RegionFilterFields
+                initialRegionCode={filters.regionCode ?? ''}
                 messageId="announcement-region-district-load-error"
+                loadingMessage="시·군·구 목록을 불러오는 중입니다."
+                styles={{
+                  regionFields: styles.regionFields,
+                  field: styles.field,
+                  regionError: styles.regionError,
+                  regionMessage: styles.regionMessage,
+                }}
                 repository={regionRepository}
               />
               <FilterCheckboxGroup
@@ -165,73 +166,6 @@ export function AnnouncementFilterPanel({
   )
 }
 
-function RegionSelect({ defaultValue, messageId, repository }: {
-  readonly defaultValue: string
-  readonly messageId: string
-  readonly repository: PublicHousingRegionRepository
-}) {
-  const {
-    provinceCode, districtCode, districtOptions, loadStatus, provinceSelectRef,
-    selectProvince, selectDistrict,
-  } = useRegionSelection(defaultValue, repository)
-
-  return (
-    <div className={styles.regionFields}>
-      <label className={styles.field}>
-        <span>시·도</span>
-        <select
-          ref={provinceSelectRef}
-          name="provinceCode"
-          value={provinceCode}
-          onChange={(event) => selectProvince(event.currentTarget.value)}
-        >
-          <option value="">전체</option>
-          {PUBLIC_HOUSING_PROVINCE_OPTIONS.map(([value, optionLabel]) => (
-            <option key={value} value={value}>{optionLabel}</option>
-          ))}
-        </select>
-      </label>
-
-      <label className={styles.field}>
-        <span>시·군·구</span>
-        <select
-          name="districtCode"
-          value={districtCode}
-          disabled={provinceCode === ''}
-          aria-describedby={loadStatus === 'error'
-            ? messageId
-            : undefined}
-          onChange={(event) => selectDistrict(event.currentTarget.value)}
-        >
-          <option value="">
-            {provinceCode === '' ? '시·도를 먼저 선택' : '전체'}
-          </option>
-          {districtOptions.map(({ districtName, regionCode }) => (
-            <option key={regionCode} value={regionCode}>
-              {districtName ?? regionCode}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {loadStatus === 'loading' && (
-        <small className={styles.regionMessage} role="status">
-          시·군·구 목록을 불러오는 중입니다.
-        </small>
-      )}
-      {loadStatus === 'error' && (
-        <small
-          className={styles.regionError}
-          id={messageId}
-          role="alert"
-        >
-          시·군·구를 불러오지 못했습니다. 시·도만 적용할 수 있습니다.
-        </small>
-      )}
-    </div>
-  )
-}
-
 function FilterCheckboxGroup({
   defaultValues = [],
   label,
@@ -264,51 +198,12 @@ function FilterCheckboxGroup({
   )
 }
 
-function filtersFromForm(
-  form: HTMLFormElement,
-): AnnouncementSearchFilters {
-  const data = new FormData(form)
-  const provinceCode = textValue(data, 'provinceCode')
-  const districtCode = textValue(data, 'districtCode')
-  const regionCode = districtCode || provinceCode
-  const rentalTypes = formValues<RentalTypeFilter>(data, 'rentalTypes')
-  const applicationStatuses = formValues<ApplicationStatusFilter>(
-    data,
-    'applicationStatuses',
-  )
-  const agencyCodes = formValues<AgencyCodeFilter>(data, 'agencyCodes')
-  const recruitmentTypes = formValues<RecruitmentTypeFilter>(
-    data,
-    'recruitmentTypes',
-  )
-  const shared: AnnouncementSearchFilters = {
-    ...(regionCode === '' ? {} : { regionCode }),
-    ...(rentalTypes.length === 0 ? {} : { rentalTypes }),
-    ...(applicationStatuses.length === 0 ? {} : { applicationStatuses }),
-    ...(agencyCodes.length === 0 ? {} : { agencyCodes }),
-    ...(recruitmentTypes.length === 0 ? {} : { recruitmentTypes }),
-  }
-  return shared
-}
-
 function appliedFilterCount(filters: AnnouncementSearchFilters) {
-  const common = [
+  return [
     filters.regionCode,
     filters.rentalTypes?.length,
     filters.applicationStatuses?.length,
     filters.agencyCodes?.length,
     filters.recruitmentTypes?.length,
   ].filter(Boolean).length
-  return common
-}
-
-function textValue(data: FormData, name: string) {
-  const value = data.get(name)
-  return typeof value === 'string' ? value.trim() : ''
-}
-
-function formValues<Value extends string>(data: FormData, name: string) {
-  return data.getAll(name).filter(
-    (value): value is Value => typeof value === 'string',
-  )
 }

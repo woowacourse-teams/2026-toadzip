@@ -7,7 +7,85 @@ import {
   type PublicHousingRegion,
 } from '../model/publicHousingRegion.ts'
 
-export function useRegionSelection(
+interface RegionFilterFieldsProps {
+  readonly initialRegionCode: string
+  readonly messageId: string
+  readonly loadingMessage: string
+  readonly repository: PublicHousingRegionRepository
+  readonly styles: {
+    readonly regionFields: string
+    readonly field: string
+    readonly regionMessage?: string
+    readonly regionError: string
+  }
+}
+
+export function RegionFilterFields({
+  initialRegionCode, messageId, loadingMessage, repository, styles,
+}: RegionFilterFieldsProps) {
+  const {
+    provinceCode, districtCode, districtOptions, loadStatus, provinceSelectRef,
+    selectProvince, selectDistrict,
+  } = useRegionSelection(initialRegionCode, repository)
+
+  return (
+    <div className={styles.regionFields}>
+      <label className={styles.field}>
+        <span>시·도</span>
+        <select
+          ref={provinceSelectRef}
+          name="provinceCode"
+          value={provinceCode}
+          onChange={(event) => selectProvince(event.currentTarget.value)}
+        >
+          <option value="">전체</option>
+          {PUBLIC_HOUSING_PROVINCE_OPTIONS.map(([value, optionLabel]) => (
+            <option key={value} value={value}>{optionLabel}</option>
+          ))}
+        </select>
+      </label>
+
+      <label className={styles.field}>
+        <span>시·군·구</span>
+        <select
+          name="districtCode"
+          value={districtCode}
+          disabled={provinceCode === ''}
+          aria-describedby={loadStatus === 'error'
+            ? messageId
+            : undefined}
+          onChange={(event) => selectDistrict(event.currentTarget.value)}
+        >
+          <option value="">
+            {provinceCode === '' ? '시·도를 먼저 선택' : '전체'}
+          </option>
+          {districtOptions.map(({ districtName, regionCode }) => (
+            <option key={regionCode} value={regionCode}>
+              {districtName ?? regionCode}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {loadStatus === 'loading' && (
+        <small className={styles.regionMessage} role="status">
+          {loadingMessage}
+        </small>
+      )}
+      {loadStatus === 'error' && (
+        <small
+          className={styles.regionError}
+          id={messageId}
+          role="alert"
+        >
+          시·군·구를 불러오지 못했습니다. 시·도만 적용할 수 있습니다.
+        </small>
+      )}
+    </div>
+  )
+}
+
+function useRegionSelection(
   initialRegionCode: string,
   repository: PublicHousingRegionRepository,
 ) {

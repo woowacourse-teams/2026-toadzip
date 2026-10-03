@@ -1,11 +1,22 @@
 import type {
   AgencyCodeFilter,
+  AnnouncementSearchFilters,
   ApplicationStatusFilter,
   ComplexSearchFilters,
   RecruitmentTypeFilter,
   RentalTypeFilter,
 } from '../api/publicHousingRepository.ts'
 import { TOPIC_KEYS, type FilterTopic } from './complexFilterTopics.ts'
+
+export function announcementFiltersFromForm(data: FormData): AnnouncementSearchFilters {
+  return {
+    ...topicDraftFromForm('region', data),
+    ...topicDraftFromForm('rentalType', data),
+    ...topicDraftFromForm('applicationStatus', data),
+    ...topicDraftFromForm('agency', data),
+    ...topicDraftFromForm('recruitmentType', data),
+  }
+}
 
 export function topicDraftFromForm(topic: FilterTopic, data: FormData) {
   switch (topic) {

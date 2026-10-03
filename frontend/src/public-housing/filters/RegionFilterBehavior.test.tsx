@@ -30,7 +30,9 @@ describe.each([
     renderPanel({ onApply, regionRepository: { search } })
     fireEvent.click(screen.getByRole('button', { name: open }))
     fireEvent.change(screen.getByLabelText('시·도'), { target: { value: '11' } })
-    expect(screen.getByRole('status')).toHaveTextContent('불러오는 중')
+    expect(screen.getByRole('status')).toHaveTextContent(kind === 'announcement'
+      ? '시·군·구 목록을 불러오는 중입니다.'
+      : '시·군·구를 불러오는 중입니다.')
     fireEvent.change(screen.getByLabelText('시·도'), { target: { value: '41' } })
     expect(search.mock.calls[0][1].aborted).toBe(true)
     await act(async () => second.resolve(GYEONGGI_REGIONS))
@@ -140,6 +142,36 @@ it('공고 초기화는 적용된 지역과 선택 조건도 지우고 다시 �
   expect(screen.getByRole('button', { name: '공고 필터 열기' })).toHaveAccessibleDescription('조건 선택')
   fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
   expect(screen.getByLabelText('시·도')).toHaveValue('')
+})
+
+it.each(['announcement', 'complex'] as const)('%s 전체 폼은 선택 배열을 화면 순서로 제출하고 화면에 없는 조건은 추가하지 않는다', async (kind) => {
+  const filters: ComplexSearchFilters = {
+    regionCode: '41110',
+    rentalTypes: ['NATIONAL_RENTAL', 'HAPPY_HOUSING'],
+    applicationStatuses: ['CLOSED', 'APPLYING', 'BEFORE_APPLICATION'],
+    agencyCodes: ['GH', 'SH', 'LH'],
+    recruitmentTypes: ['WAITLIST', 'NEW'],
+    maxDeposit: 0,
+  }
+  const regionRepository = { search: vi.fn().mockResolvedValue(GYEONGGI_REGIONS) }
+  const onApply = vi.fn()
+  render(kind === 'announcement'
+    ? <AnnouncementFilterPanel filters={filters} onApply={onApply} regionRepository={regionRepository} />
+    : <ComplexFilterToolbar filters={filters} onApply={onApply} regionRepository={regionRepository} />)
+  fireEvent.click(screen.getByRole('button', { name: kind === 'announcement'
+    ? '공고 필터 열기' : '전체 단지 필터 열기, 6개 적용' }))
+  await screen.findByRole('option', { name: '수원시' })
+  expect(onApply).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: kind === 'announcement' ? '공고 필터 적용' : '단지 보기' }))
+  expect(onApply).toHaveBeenCalledExactlyOnceWith({
+    regionCode: '41110',
+    rentalTypes: ['HAPPY_HOUSING', 'NATIONAL_RENTAL'],
+    applicationStatuses: kind === 'announcement'
+      ? ['BEFORE_APPLICATION', 'APPLYING'] : ['BEFORE_APPLICATION', 'APPLYING', 'CLOSED'],
+    agencyCodes: ['LH', 'SH', 'GH'],
+    recruitmentTypes: ['NEW', 'WAITLIST'],
+    ...(kind === 'complex' ? { maxDeposit: 0 } : {}),
+  })
 })
 
 function deferred<Value>() {

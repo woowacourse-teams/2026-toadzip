@@ -19,7 +19,7 @@ import { provinceNameForRegionCode } from '../model/publicHousingRegion.ts'
 import { ComplexFilterFields, DetailFilterFields } from './ComplexFilterFields.tsx'
 import {
   topicDraftFromForm, topicsDraftFromForm, replaceTopic, replaceTopics, topicRangeError,
-} from './complexFilterForm.ts'
+} from './searchFilterForm.ts'
 import {
   type DesktopFilterTopic, type FilterTopic,
   TOPICS, DESKTOP_PRIMARY_TOPICS, DESKTOP_TOPICS, DETAIL_FILTER_TOPICS,
