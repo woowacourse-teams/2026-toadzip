@@ -4,7 +4,7 @@
 
 원천 수집과 제품 정제의 저장 경계를 유지하면서 **단지 수집·정제 / 공고 수집·정제** 통합 실행을 추가했다. 수집이 부분 실패하거나 호출 제한을 만나면 자동 정제는 시작하지 않는다. 관리자는 결과를 확인한 뒤 **저장된 원천으로 정제 실행**을 선택할 수 있다. 기존 네 독립 실행과 이력을 보존한다. 예상된 부분 실패는 결과로 처리하고, 중복된 로컬 잠금은 제거했다.
 
-이 문서는 기준 커밋 `2b957df`와 이후 리팩터링 판단이다. 최신 develop `71be00d` 정책과 두 브랜치의 최종 통합은 [통합 검토](ingest-branch-integration.md)를 따른다. 사용자 승인으로 [실제 API·격리 DB 검증](ingest-live-verification.md)을 수행했고 운영 DB는 조회하지 않았다. 2026-09-25 실응답·성능 수치와 2026-09-26 오류 목록은 당시 기록이며 현재 운영 품질을 증명하지 않는다. [성능 실측](announcement-collection-performance.md)과 [LH 정확성 검토](lh-announcement-correctness-audit.md)를 함께 판단 근거로 사용한다.
+이 문서는 기준 커밋 `2b957df`와 이후 리팩터링 판단이다. 현재 실행·배포 계약은 [파이프라인 실행](data-pipeline-execution.md), 공급 정정과 금액 보호 정책은 [LH 품질 운영](lh-announcement-quality-operations.md)을 따른다. 사용자 승인으로 [실제 API·격리 DB 검증](ingest-live-verification.md)을 수행했고 운영 DB는 조회하지 않았다. 2026-09-25 실응답·성능 수치와 2026-09-26 오류 목록은 당시 기록이며 현재 운영 품질을 증명하지 않는다. [성능 실측](announcement-collection-performance.md)과 [LH 정확성 검토](lh-announcement-correctness-audit.md)를 함께 판단 근거로 사용한다.
 
 ## 현재 데이터 경로
 
@@ -67,4 +67,4 @@ LH 목록은 유일하게 연결된 후보의 조회 코드를 보완하고 목�
 - 수집과 정제의 독립 재실행을 유지한다. 정제 차단 결과에는 원천 재사용 안내와 정제 실행 버튼을 제공한다. 단지 좌표가 없으면 수집 → 위치정보 ZIP 업로드 → 정제 순서로 복구한다.
 - 운영 품질·조회 코드 보정 기여도는 아직 미측정이다. 추가 감사는 원천·목록·체크포인트·연결을 격리 복제하고 현재 resolver/policy로 계산한다. 기존 실측을 현재 운영 성과로 해석하지 않는다.
 
-구현 순서와 각 변경의 검증 기준은 [리팩터링 계획](ingest-refactoring-plan.md)에 기록한다.
+현재 실행 유형·잠금·배포 조건은 [파이프라인 실행](data-pipeline-execution.md), 중지·실패 조회·수동 정제 복구는 [운영자 제어](pipeline-operator-controls.md)를 따른다.

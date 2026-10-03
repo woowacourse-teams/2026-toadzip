@@ -1,3 +1,4 @@
+import { toHttpUrl } from '../presentation/httpUrl.ts'
 import {
   type KeyboardEvent,
   type RefObject,
@@ -574,7 +575,7 @@ function ReceptionPlaces({
     <DetailSection title="접수 방법">
       <ul className={styles.receptionList}>
         {places.map((place, index) => {
-          const url = safeHttpUrl(place.url)
+          const url = toHttpUrl(place.url)
           return (
             <li key={`${place.name ?? 'place'}-${index}`}>
               <div className={styles.receptionHeading}>
@@ -640,7 +641,7 @@ function ComplexCard({
   rentalTypeLabel: string
   onOpenComplex?: (complexId: string) => void
 }) {
-  const imageUrl = safeHttpUrl(group.overviewImageUrl)
+  const imageUrl = toHttpUrl(group.overviewImageUrl)
   const depositRange = moneyRange(group.rows, 'deposit')
   const monthlyRentRange = moneyRange(group.rows, 'monthlyRent')
 
@@ -783,8 +784,8 @@ function HousingTypeCard({
   const housingTypeName = row.housingType?.name
     ?? row.sourceHousingTypeName
     ?? MISSING_DATA_LABEL
-  const twoDimensionalUrl = safeHttpUrl(row.housingType?.floorPlanImageUrl ?? null)
-  const threeDimensionalUrl = safeHttpUrl(row.housingType?.floorPlan3dImageUrl ?? null)
+  const twoDimensionalUrl = toHttpUrl(row.housingType?.floorPlanImageUrl ?? null)
+  const threeDimensionalUrl = toHttpUrl(row.housingType?.floorPlan3dImageUrl ?? null)
   const hasFloorPlan = twoDimensionalUrl !== null || threeDimensionalUrl !== null
 
   return (
@@ -893,7 +894,7 @@ function DocumentActions({ detail, onOpenAttachments }: {
   detail: HousingAnnouncementDetailData
   onOpenAttachments: () => void
 }) {
-  const sourceUrl = safeHttpUrl(detail.documentLinkUrl)
+  const sourceUrl = toHttpUrl(detail.documentLinkUrl)
   const hasFiles = detail.attachments.some(hasAttachmentUrl)
   return (
     <footer className={styles.documents}>
@@ -1119,21 +1120,6 @@ function numericRange(
     return format(minimum)
   }
   return `${format(minimum)} – ${format(maximum)}`
-}
-
-function safeHttpUrl(value: string | null) {
-  if (!value) {
-    return null
-  }
-  try {
-    const url = new URL(value)
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-      return null
-    }
-    return url.toString()
-  } catch {
-    return null
-  }
 }
 
 function tabIndexForKey(key: string, currentIndex: number, length: number) {

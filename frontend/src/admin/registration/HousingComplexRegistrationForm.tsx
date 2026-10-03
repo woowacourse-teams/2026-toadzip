@@ -1,3 +1,4 @@
+import { agencyOptions, rentalTypeOptions } from './registrationOptions'
 import { AddressPicker } from './AddressPicker'
 import { useRef, useState, type FormEvent } from 'react'
 import {
@@ -8,7 +9,7 @@ import {
 import {
   numberValue,
   optionalStringValue,
-  options,
+  toRegistrationOptions,
   registrationFailure,
   stringValue,
 } from './formValues'
@@ -18,51 +19,32 @@ import {
   RegistrationTextField,
 } from './RegistrationFields'
 
-const rentalTypes = options([
-  'HAPPY_HOUSING',
-  'NATIONAL_RENTAL',
-  'PERMANENT_RENTAL',
-  'PUBLIC_RENTAL_50Y',
-  'INTEGRATED_PUBLIC_RENTAL',
-  'REDEVELOPMENT_RENTAL',
-  'ETC',
-])
-const agencyCodes = options(['LH', 'SH', 'GH', 'ETC'])
-const heatingTypes = options(['INDIVIDUAL', 'CENTRAL', 'DISTRICT', 'ETC'])
-const buildingTypes = options(['APARTMENT', 'OFFICETEL', 'ETC'])
-const corridorTypes = options(['STAIR', 'CORRIDOR', 'MIXED', 'UNKNOWN'])
+const heatingTypes = toRegistrationOptions(['INDIVIDUAL', 'CENTRAL', 'DISTRICT', 'ETC'])
+const buildingTypes = toRegistrationOptions(['APARTMENT', 'OFFICETEL', 'ETC'])
+const corridorTypes = toRegistrationOptions(['STAIR', 'CORRIDOR', 'MIXED', 'UNKNOWN'])
 
 export function HousingComplexRegistrationForm({
-  disabled,
   onCreated,
 }: {
-  disabled: boolean
   onCreated: (housingComplex: HousingComplexCreateResponse) => void
 }) {
   const formRef = useRef<HTMLFormElement>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Readonly<Record<string, string>>>({})
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (disabled) {
-      return
-    }
     void submit(event.currentTarget)
   }
 
   async function submit(form: HTMLFormElement) {
     setIsSubmitting(true)
-    setSuccess(null)
     setError(null)
     setFieldErrors({})
     try {
       const created = await createHousingComplex(housingRequest(new FormData(form)))
       onCreated(created)
-      form.reset()
-      setSuccess(`${created.name} 단지를 저장했습니다.`)
     } catch (requestError) {
       const failure = registrationFailure(requestError, '단지 저장 요청을 처리하지 못했습니다.')
       setError(failure.message)
@@ -76,7 +58,7 @@ export function HousingComplexRegistrationForm({
     <section className="registration-card" aria-labelledby="housing-registration-title">
       <h2 id="housing-registration-title">단지 등록</h2>
       <form ref={formRef} className="registration-form" onSubmit={handleSubmit}>
-        <fieldset disabled={disabled || isSubmitting}>
+        <fieldset disabled={isSubmitting}>
           <legend>기본 정보</legend>
           <div className="registration-grid">
             <RegistrationTextField errors={fieldErrors} label="단지명" maxLength={255} name="name" required />
@@ -85,7 +67,7 @@ export function HousingComplexRegistrationForm({
               errors={fieldErrors}
               label="공급 유형"
               name="rentalType"
-              options={rentalTypes}
+              options={rentalTypeOptions}
               required
             />
             <RegistrationSelectField
@@ -93,7 +75,7 @@ export function HousingComplexRegistrationForm({
               errors={fieldErrors}
               label="공급 기관"
               name="agencyCode"
-              options={agencyCodes}
+              options={agencyOptions}
               required
             />
             <RegistrationTextField
@@ -106,7 +88,7 @@ export function HousingComplexRegistrationForm({
           </div>
         </fieldset>
 
-        <fieldset disabled={disabled || isSubmitting}>
+        <fieldset disabled={isSubmitting}>
           <legend>주소</legend>
           <AddressPicker onSelect={address => {
             for (const [key,value] of Object.entries(address)) {
@@ -167,7 +149,7 @@ export function HousingComplexRegistrationForm({
           </div>
         </fieldset>
 
-        <fieldset disabled={disabled || isSubmitting}>
+        <fieldset disabled={isSubmitting}>
           <legend>시설 정보</legend>
           <div className="registration-grid">
             <RegistrationTextField
@@ -239,9 +221,8 @@ export function HousingComplexRegistrationForm({
           </div>
         </fieldset>
 
-        {success ? <p className="registration-message registration-success" role="status">{success}</p> : null}
         {error ? <RegistrationError fieldErrors={fieldErrors} message={error} /> : null}
-        <button className="registration-submit" disabled={isSubmitting || disabled} type="submit">
+        <button className="registration-submit" disabled={isSubmitting} type="submit">
           {isSubmitting ? '단지 저장 중…' : '단지 저장'}
         </button>
       </form>

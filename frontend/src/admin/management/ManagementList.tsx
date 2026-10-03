@@ -1,12 +1,14 @@
+import { ManagementSummaryTable } from './ManagementSummaryTable'
 import { ListPagination } from './ListPagination'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { list, type Page, type Resource, type Summary } from './api'
+import { getManagementPage } from './api'
+import { type ManagementPage, type ManagementResource } from './managementContract'
 import { labels, provinces, rentals } from './fields'
 
-export function ManagementList({ resource }: { resource: Resource }) {
+export function ManagementList({ resource }: { resource: ManagementResource }) {
   const [params, setParams] = useSearchParams()
-  const [page, setPage] = useState<Page | null>(null)
+  const [page, setPage] = useState<ManagementPage | null>(null)
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
   const search = params.toString()
@@ -15,7 +17,7 @@ export function ManagementList({ resource }: { resource: Resource }) {
   useEffect(() => {
     const controller = new AbortController()
     setPage(null); setError('')
-    void list(resource, new URLSearchParams(search), controller.signal).then(setPage).catch(cause => {
+    void getManagementPage(resource, new URLSearchParams(search), controller.signal).then(setPage).catch(cause => {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '목록을 불러오지 못했습니다.')
     })
     return () => controller.abort()
@@ -40,16 +42,7 @@ export function ManagementList({ resource }: { resource: Resource }) {
     </form>
     {error ? <div role="alert" className="registration-error"><p>{error}</p><button onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></div> : null}
     {!page && !error ? <p role="status">목록을 불러오는 중…</p> : null}
-    {page ? <><p className="ingest-meta">등록일 최신순 · 총 {page.totalElements.toLocaleString('ko-KR')}건</p><SummaryTable items={page.items} resource={resource} returnTo={returnTo} />
+    {page ? <><p className="ingest-meta">등록일 최신순 · 총 {page.totalElements.toLocaleString('ko-KR')}건</p><ManagementSummaryTable items={page.items} resource={resource} returnTo={returnTo} />
       <ListPagination page={page.page} totalPages={page.totalPages} onMove={move} /></> : null}
   </section>
-}
-export function SummaryTable({ items, resource, returnTo }: { items: Summary[]; resource: Resource; returnTo?: string }) {
-  if (!items.length) return <div className="admin-empty"><h2>표시할 {resource === 'complexes' ? '단지' : '공고'}가 없습니다.</h2><p>검색 조건을 바꾸거나 새 데이터를 등록해 주세요.</p></div>
-  return <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>이름</th><th>{resource === 'complexes' ? '주소' : '게시일'}</th><th>기관·유형</th><th>데이터 상태</th></tr></thead>
-    <tbody>{items.map(item => <tr key={item.id}><td><Link to={`/admin/${resource}/${item.id}${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`}>{item.name}</Link></td>
-      <td>{item.subtitle}</td><td>{item.provider} · {labels[item.rental] ?? item.rental}</td><td><Status summary={item} /></td></tr>)}</tbody></table></div>
-}
-export function Status({ summary }: { summary: Summary }) {
-  return <span className="admin-status" title="데이터의 보관·관리 상태입니다. 입주 여부나 공고 모집 상태를 뜻하지 않습니다.">{summary.deleted ? '휴지통' : summary.reviewRequired ? '원천 변경 확인 필요' : summary.modified ? '관리자 수정 보호' : '등록됨'}</span>
 }

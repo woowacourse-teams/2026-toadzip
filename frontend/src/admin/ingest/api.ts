@@ -1,3 +1,4 @@
+import { getApiBaseUrl } from '../../api/apiBaseUrl'
 export type DataPipelineType =
   | 'COMPLEX_COLLECTION'
   | 'COMPLEX_REFINEMENT'
@@ -171,7 +172,7 @@ type CsrfToken = {
   headerName: string
 }
 
-const apiBaseUrl = resolveApiBaseUrl()
+const apiBaseUrl = getApiBaseUrl()
 
 export class DataPipelineApiError extends Error {
   readonly status: number
@@ -391,16 +392,6 @@ function pipelinePath(type: DataPipelineType): string {
   return `/api/admin/ingest/pipelines/${paths[type]}`
 }
 
-function resolveApiBaseUrl(): string {
-  const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL
-  if (configuredApiBaseUrl) {
-    return configuredApiBaseUrl
-  }
-  if (import.meta.env.DEV) {
-    return 'http://localhost:8080'
-  }
-  return ''
-}
 
 export async function stopDataPipeline(executionId: string): Promise<DataPipelineExecution> {
   const csrfToken = await requestCsrfToken()

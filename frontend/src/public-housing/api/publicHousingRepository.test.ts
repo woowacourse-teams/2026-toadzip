@@ -736,6 +736,19 @@ describe('공공주택 HTTP repository', () => {
     })
   })
 
+  it.each([null, [], { code: 7, message: {}, traceId: false }])(
+    '잘못된 HTTP 오류 본문 %j은 공개 오류 필드를 추정하지 않는다', async (body) => {
+      const repository = createRepository(vi.fn().mockResolvedValue(jsonResponse(body, 503)), '')
+
+      await expect(repository.findComplexPage(
+        BOUNDS, null, 20, new AbortController().signal,
+      )).rejects.toMatchObject({
+        name: 'PublicHousingHttpError', status: 503,
+        code: null, message: '공공주택 정보를 불러오지 못했습니다.', traceId: null,
+      })
+    },
+  )
+
   it('성공 응답이 JSON이 아니면 계약 오류로 처리한다', async () => {
     const fetchMock = vi
       .fn()

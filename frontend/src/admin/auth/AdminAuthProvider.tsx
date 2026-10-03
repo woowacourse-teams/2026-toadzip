@@ -36,9 +36,15 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   async function login(loginIdentifier: string, password: string) {
     setError(null)
     const generation = nextSessionStateGeneration()
-    const authenticatedSession = await loginAdmin(loginIdentifier, password)
-    if (isLatestSessionStateGeneration(generation)) {
-      setSession(authenticatedSession)
+    try {
+      const authenticatedSession = await loginAdmin(loginIdentifier, password)
+      if (isLatestSessionStateGeneration(generation)) {
+        setSession(authenticatedSession)
+      }
+    } finally {
+      if (isLatestSessionStateGeneration(generation)) {
+        setIsLoading(false)
+      }
     }
   }
 

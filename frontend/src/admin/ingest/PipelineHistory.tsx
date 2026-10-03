@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getPipelineHistory, type DataPipelineExecution } from './api'
-import { PipelineResult } from './DataPipelineControl'
+import { PipelineResult } from './PipelineResult'
 import { pipelineLabels as labels, pipelineStatusLabels } from './pipelineLabels'
 export function PipelineHistory() {
   const [page, setPage] = useState(0)

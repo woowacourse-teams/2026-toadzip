@@ -1,3 +1,4 @@
+import { agencyOptions, rentalTypeOptions } from './registrationOptions'
 import { Link } from 'react-router'
 import { useState, type FormEvent } from 'react'
 import {
@@ -8,7 +9,7 @@ import {
 import {
   numberValue,
   optionalStringValue,
-  options,
+  toRegistrationOptions,
   registrationFailure,
   stringValue,
 } from './formValues'
@@ -18,19 +19,9 @@ import {
   RegistrationTextField,
 } from './RegistrationFields'
 
-const rentalTypes = options([
-  'HAPPY_HOUSING',
-  'NATIONAL_RENTAL',
-  'PERMANENT_RENTAL',
-  'PUBLIC_RENTAL_50Y',
-  'INTEGRATED_PUBLIC_RENTAL',
-  'REDEVELOPMENT_RENTAL',
-  'ETC',
-])
-const agencyCodes = options(['LH', 'SH', 'GH', 'ETC'])
-const recruitmentTypes = options(['NEW', 'WAITLIST', 'ETC'])
-const receptionMethods = options(['ONLINE', 'VISIT', 'MAIL', 'ETC'])
-const supplyCategories = options(['NEW_SUPPLY', 'RESUPPLY'])
+const recruitmentTypes = toRegistrationOptions(['NEW', 'WAITLIST', 'ETC'])
+const receptionMethods = toRegistrationOptions(['ONLINE', 'VISIT', 'MAIL', 'ETC'])
+const supplyCategories = toRegistrationOptions(['NEW_SUPPLY', 'RESUPPLY'])
 
 export function AnnouncementRegistrationForm({
   housingComplex,
@@ -95,7 +86,7 @@ export function AnnouncementRegistrationForm({
               errors={fieldErrors}
               label="공급 유형"
               name="rentalType"
-              options={rentalTypes}
+              options={rentalTypeOptions}
               required
             />
             <RegistrationSelectField
@@ -111,7 +102,7 @@ export function AnnouncementRegistrationForm({
               errors={fieldErrors}
               label="공급 기관"
               name="agencyCode"
-              options={agencyCodes}
+              options={agencyOptions}
               required
             />
             <RegistrationTextField errors={fieldErrors} label="게시일" name="postedDate" required type="date" />

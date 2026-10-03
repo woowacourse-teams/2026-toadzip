@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
-import { history, type Change, type Resource } from './api'
+import { getManagementHistory } from './api'
+import { type ManagementChange, type ManagementResource } from './managementContract'
 import { labels } from './fields'
-export function ChangeHistory({ resource, id, version }: {resource:Resource;id:string;version:number}) {
-  const [items, setItems] = useState<Change[]>([])
+export function ChangeHistory({ resource, id, version }: {resource:ManagementResource;id:string;version:number}) {
+  const [items, setItems] = useState<ManagementChange[]>([])
   const [page, setPage] = useState(0)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(true)
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     let active = true; setBusy(true); setError('')
-    void history(resource,id,page).then(value => { if(active) setItems(value) }).catch(cause => {
+    void getManagementHistory(resource,id,page).then(value => { if(active) setItems(value) }).catch(cause => {
       if(active) setError(cause instanceof Error ? cause.message : '이력을 불러오지 못했습니다.')
     }).finally(() => { if(active) setBusy(false) })
     return () => { active = false }
