@@ -4,7 +4,7 @@ import { getCurrentUser, logoutUser } from './api'
 
 type SessionState = 'loading' | 'guest' | 'signed-in' | 'error'
 
-export function UserSessionControl() {
+export function UserSessionControl({ onLogout }: { readonly onLogout?: () => void }) {
   const [session, setSession] = useState<SessionState>('loading')
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [logoutError, setLogoutError] = useState(false)
@@ -33,6 +33,7 @@ export function UserSessionControl() {
     try {
       await logoutUser()
       setSession('guest')
+      onLogout?.()
     } catch {
       setLogoutError(true)
     } finally {

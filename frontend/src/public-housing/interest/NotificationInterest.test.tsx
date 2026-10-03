@@ -23,6 +23,117 @@ function example(repository: NotificationInterestRepository, loadUser = vi.fn().
 }
 
 describe('이메일 알림 신청', () => {
+  it.each(['resolve', 'reject'] as const)('저장소 교체 전 요청이 %s되어도 새 신청 화면을 막거나 덮지 않는다', async (settlement) => {
+    const previousWrite = deferred<void>()
+    const previousRepository = {
+      record: vi.fn().mockReturnValue(previousWrite.promise),
+      loadStatus: vi.fn().mockResolvedValue({ emailConfirmed: true, targets: [] }),
+    }
+    const nextRepository = {
+      record: vi.fn().mockResolvedValue(undefined),
+      loadStatus: vi.fn().mockResolvedValue({ guest: true, emailConfirmed: false, targets: [] }),
+    }
+    const view = render(example(previousRepository))
+    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
+    expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeDisabled()
+
+    view.rerender(example(nextRepository))
+    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+    await act(async () => {
+      if (settlement === 'resolve') previousWrite.resolve()
+      else previousWrite.reject(new Error('이전 저장소 실패'))
+    })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText('서울 단지 알림 신청을 받았어요.')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
+    expect(await screen.findByRole('dialog')).toBeVisible()
+    expect(nextRepository.record).toHaveBeenCalledOnce()
+  })
+
+  it.each([false, true])('늦은 focus 상태조회가 신청 여부 %s의 변경 성공을 되돌리지 않는다', async (initiallyRequested) => {
+    const snapshot = {
+      emailConfirmed: true,
+      targets: initiallyRequested ? [{ targetType: 'COMPLEX' as const, targetId: '1' }] : [],
+    }
+    const pending = deferred<typeof snapshot>()
+    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
+    const loadStatus = vi.fn().mockResolvedValueOnce(snapshot).mockReturnValueOnce(pending.promise)
+    render(example({ record, loadStatus }))
+    const beforeName = initiallyRequested ? '서울 단지 알림 취소' : '서울 단지 알림 받기'
+    await waitFor(() => expect(screen.getByRole('button', { name: beforeName })).toBeEnabled())
+    fireEvent.focus(window)
+    fireEvent.click(screen.getByRole('button', { name: beforeName }))
+    const afterName = initiallyRequested ? '서울 단지 알림 받기' : '서울 단지 알림 취소'
+    await screen.findByRole('button', { name: afterName })
+
+    await act(async () => pending.resolve(snapshot))
+
+    expect(screen.getByRole('button', { name: afterName })).toHaveAttribute('aria-pressed', String(!initiallyRequested))
+    expect(record).toHaveBeenCalledOnce()
+  })
+
+  it('늦은 조회가 완료되어도 실패한 취소를 같은 이벤트로 재시도한다', async () => {
+    const snapshot = { emailConfirmed: true, targets: [{ targetType: 'COMPLEX' as const, targetId: '1' }] }
+    const pending = deferred<typeof snapshot>()
+    const record = vi.fn<NotificationInterestRepository['record']>()
+      .mockRejectedValueOnce(new Error('취소 실패')).mockResolvedValue(undefined)
+    const loadStatus = vi.fn().mockResolvedValueOnce(snapshot).mockReturnValueOnce(pending.promise)
+    render(example({ record, loadStatus }))
+    fireEvent.click(await screen.findByRole('button', { name: '서울 단지 알림 취소' }))
+    await screen.findByRole('alert')
+    fireEvent.focus(window)
+    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+    await screen.findByRole('button', { name: '서울 단지 알림 받기' })
+
+    await act(async () => pending.resolve(snapshot))
+
+    expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
+    expect(record.mock.calls[0]?.[0]).toEqual(record.mock.calls[1]?.[0])
+  })
+
+  it('모달의 도움 링크를 포함해 Tab과 Shift+Tab으로 순환하고 닫으면 시작 버튼으로 돌아온다', async () => {
+    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
+    render(example({ record }))
+    const trigger = screen.getByRole('button', { name: '서울 단지 알림 받기' })
+    fireEvent.click(trigger)
+    const dialog = await screen.findByRole('dialog')
+    const email = screen.getByRole('textbox', { name: '알림 받을 이메일' })
+    const help = screen.getByRole('link', { name: '브라우저 데이터를 지워 신청을 취소할 수 없나요?' })
+    expect(email).toHaveFocus()
+    fireEvent.keyDown(email, { key: 'Tab', shiftKey: true })
+    expect(help).toHaveFocus()
+    fireEvent.keyDown(help, { key: 'Tab' })
+    expect(email).toHaveFocus()
+    const cancel = screen.getByRole('button', { name: '취소' })
+    cancel.focus()
+    expect(fireEvent.keyDown(cancel, { key: 'Tab' })).toBe(true)
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(trigger).toHaveFocus()
+  })
+
+  it('처리 중인 모달에서는 활성 도움 링크 안에 포커스를 유지한다', async () => {
+    const pending = deferred<void>()
+    const record = vi.fn<NotificationInterestRepository['record']>()
+      .mockResolvedValueOnce(undefined).mockReturnValueOnce(pending.promise)
+    render(example({ record }))
+    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
+    const email = await screen.findByRole('textbox', { name: '알림 받을 이메일' })
+    fireEvent.change(email, { target: { value: 'guest@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: '알림 신청' }))
+    const help = screen.getByRole('link', { name: '브라우저 데이터를 지워 신청을 취소할 수 없나요?' })
+    help.focus()
+    fireEvent.keyDown(help, { key: 'Tab' })
+    expect(help).toHaveFocus()
+    fireEvent.keyDown(help, { key: 'Tab', shiftKey: true })
+    expect(help).toHaveFocus()
+    fireEvent.keyDown(help, { key: 'Escape' })
+    expect(screen.getByRole('dialog')).toBeVisible()
+    await act(async () => pending.resolve())
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
   it('로그인 사용자는 서버의 신청 상태를 우선 표시하고 새 창에서 다시 읽는다', async () => {
     localStorage.setItem('toadzip.notification-interest.requested:REGION:11', '1')
     const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
@@ -303,3 +414,10 @@ describe('이메일 알림 신청', () => {
     expect(await screen.findByRole('dialog')).toBeVisible()
   })
 })
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((complete, fail) => { resolve = complete; reject = fail })
+  return { promise, resolve, reject }
+}
