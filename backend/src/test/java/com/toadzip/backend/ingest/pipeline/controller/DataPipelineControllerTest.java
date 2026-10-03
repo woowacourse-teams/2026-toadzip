@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.pipeline.controller;
 
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -10,6 +11,7 @@ import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFo
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -70,30 +72,30 @@ class DataPipelineControllerTest {
     }
 
     @Test
-    void 실행_ID로_파이프라인_결과를_조회한다() throws Exception {
-        UUID executionId = UUID.randomUUID();
+    void 파이프라인_실행_이력을_페이지로_조회한다() throws Exception {
         DataPipelineExecutionResponse response = DataPipelineExecutionResponse.idle(
                 DataPipelineType.ANNOUNCEMENT_COLLECTION
         );
-        when(executionService.find(executionId)).thenReturn(response);
+        when(executionService.history(2, 20)).thenReturn(List.of(response));
 
-        mockMvc.perform(get(
-                        "/api/admin/ingest/pipelines/executions/{executionId}",
-                        executionId
-                ))
+        mockMvc.perform(get("/api/admin/ingest/pipelines/history")
+                        .param("page", "2")
+                        .param("size", "20"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.type").value("ANNOUNCEMENT_COLLECTION"));
+                .andExpect(jsonPath("$[0].type").value("ANNOUNCEMENT_COLLECTION"));
+
+        verify(executionService).history(2, 20);
     }
 
     @Test
     void 존재하지_않는_실행_ID는_404를_반환한다() throws Exception {
         UUID executionId = UUID.randomUUID();
-        when(executionService.find(executionId)).thenThrow(
+        when(executionService.requestStop(executionId)).thenThrow(
                 new DataPipelineExecutionNotFoundException("실행 없음")
         );
 
-        mockMvc.perform(get(
-                        "/api/admin/ingest/pipelines/executions/{executionId}",
+        mockMvc.perform(post(
+                        "/api/admin/ingest/pipelines/executions/{executionId}/stop",
                         executionId
                 ))
                 .andExpect(status().isNotFound())

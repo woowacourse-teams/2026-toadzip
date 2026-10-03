@@ -48,7 +48,7 @@ class MyHomeAnnouncementMappingControllerTest {
 
     @Test
     void 매핑에_실패한_원천과_사유를_조회한다() throws Exception {
-        when(mappingService.findFailures()).thenReturn(List.of(new MyHomeAnnouncementMappingFailureResponse(
+        when(mappingService.findFailures(2, 50)).thenReturn(List.of(new MyHomeAnnouncementMappingFailureResponse(
                 "source-key",
                 "21026",
                 1,
@@ -57,11 +57,15 @@ class MyHomeAnnouncementMappingControllerTest {
                 Instant.parse("2026-08-28T00:00:00Z")
         )));
 
-        mockMvc.perform(get("/api/admin/ingest/myhome/announcement-mappings/failures"))
+        mockMvc.perform(get("/api/admin/ingest/myhome/announcement-mappings/failures/page")
+                        .param("page", "2")
+                        .param("size", "50"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].sourceKey").value("source-key"))
                 .andExpect(jsonPath("$[0].sourceAnnouncementIdentifier").value("21026"))
                 .andExpect(jsonPath("$[0].sourceHouseSerialNumber").value(1))
                 .andExpect(jsonPath("$[0].reason").value("COMPLEX_NOT_FOUND"));
+
+        verify(mappingService).findFailures(2, 50);
     }
 }
