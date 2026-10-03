@@ -58,3 +58,13 @@ export function createRegionBoundaryOverlay(
   overlay.setMap(map)
   return overlay
 }
+
+export function clearBoundaryOverlays(polygons: naver.maps.OverlayView[]) {
+  for (const polygon of polygons.splice(0)) {
+    try {
+      polygon.setMap(null)
+    } catch {
+      // 인증 실패 시 NAVER SDK가 도형을 먼저 무효화할 수 있습니다.
+    }
+  }
+}

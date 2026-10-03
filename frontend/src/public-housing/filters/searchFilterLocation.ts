@@ -1,41 +1,22 @@
 import type {
-  AgencyCodeFilter,
   AnnouncementSearchFilters,
-  ApplicationStatusFilter,
   ComplexSearchFilters,
-  RecruitmentTypeFilter,
-  RentalTypeFilter,
   SharedSearchFilters,
 } from '../api/publicHousingRepository.ts'
 
-const RENTAL_TYPES = [
-  'HAPPY_HOUSING',
-  'NATIONAL_RENTAL',
-  'PERMANENT_RENTAL',
-  'PUBLIC_RENTAL_50Y',
-  'INTEGRATED_PUBLIC_RENTAL',
-  'REDEVELOPMENT_RENTAL',
-  'ETC',
-] as const satisfies readonly RentalTypeFilter[]
+import {
+  AGENCY_OPTIONS,
+  ANNOUNCEMENT_STATUS_OPTIONS,
+  APPLICATION_STATUS_OPTIONS,
+  RECRUITMENT_TYPE_OPTIONS,
+  RENTAL_TYPE_OPTIONS,
+} from './searchFilterOptions.ts'
 
-const APPLICATION_STATUSES = [
-  'BEFORE_APPLICATION',
-  'APPLYING',
-  'CLOSED',
-] as const satisfies readonly ApplicationStatusFilter[]
-
-const AGENCY_CODES = [
-  'LH',
-  'SH',
-  'GH',
-  'ETC',
-] as const satisfies readonly AgencyCodeFilter[]
-
-const RECRUITMENT_TYPES = [
-  'NEW',
-  'WAITLIST',
-  'ETC',
-] as const satisfies readonly RecruitmentTypeFilter[]
+const RENTAL_TYPES = RENTAL_TYPE_OPTIONS.map(([value]) => value)
+const APPLICATION_STATUSES = APPLICATION_STATUS_OPTIONS.map(([value]) => value)
+const ANNOUNCEMENT_STATUSES = ANNOUNCEMENT_STATUS_OPTIONS.map(([value]) => value)
+const AGENCY_CODES = AGENCY_OPTIONS.map(([value]) => value)
+const RECRUITMENT_TYPES = RECRUITMENT_TYPE_OPTIONS.map(([value]) => value)
 
 const COMPLEX_KEYS = [
   'complexRegionCode',
@@ -179,7 +160,7 @@ function parseSharedFilters(
     search,
     `${prefix}ApplicationStatuses`,
     prefix === 'announcement'
-      ? APPLICATION_STATUSES.filter((value) => value !== 'CLOSED')
+      ? ANNOUNCEMENT_STATUSES
       : APPLICATION_STATUSES,
   )
   const agencyCodes = enumValues(

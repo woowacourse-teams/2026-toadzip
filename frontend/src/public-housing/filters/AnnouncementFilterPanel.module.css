@@ -189,8 +189,7 @@
   color: #b43b28;
 }
 
-.field,
-.range label {
+.field {
   display: grid;
   min-width: 0;
   align-content: start;
@@ -276,8 +275,7 @@
   outline-offset: 2px;
 }
 
-.field select,
-.range input {
+.field select {
   width: 100%;
   min-width: 0;
   min-height: 40px;
@@ -294,65 +292,9 @@
   color: var(--ds-color-muted);
 }
 
-.field select:focus,
-.range input:focus {
+.field select:focus {
   border-color: var(--ds-color-action);
   outline: 2px solid var(--ds-color-action);
-}
-
-.ranges {
-  display: grid;
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid var(--ds-color-divider);
-  gap: 20px;
-}
-
-.range {
-  display: grid;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.range legend {
-  margin-bottom: 12px;
-  padding: 0;
-  color: var(--ds-color-text);
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.inputWithUnit {
-  position: relative;
-  display: block;
-}
-
-.inputWithUnit input {
-  padding-right: 32px;
-}
-
-.inputWithUnit small {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  color: var(--ds-color-muted);
-  font-size: 12px;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.error {
-  flex: 0 0 auto;
-  margin: 0;
-  padding: 10px var(--list-inset, 20px);
-  border-top: 1px solid #f2c9c1;
-  background: #fdefec;
-  color: #b43b28;
-  font-size: var(--ds-text-caption);
 }
 
 .actions {
@@ -380,7 +322,6 @@
   .close,
   .reset,
   .field select,
-  .range input,
   .choice span {
     min-height: 44px;
   }
@@ -395,8 +336,7 @@
     width: 44px;
   }
 
-  .field select,
-  .range input {
+  .field select {
     font-size: 16px;
   }
 }

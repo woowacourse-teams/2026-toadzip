@@ -81,7 +81,7 @@ import { IconButton } from '../design-system/components/IconButton'
 내비게이션은 실제 링크를 사용하고, 링크를 버튼으로 위장하거나 버튼 안에 또 버튼을 넣지 않는다.
 텍스트 닫기 버튼, 보조 동작, 탭, 상태 배지는 주 행동 Button으로 일괄 교체하지 않는다.
 
-실제 적용 예시는 [공고 필터](../src/public-housing/filters/SearchFilterPanel.tsx)와
+실제 적용 예시는 [공고 필터](../src/public-housing/filters/AnnouncementFilterPanel.tsx)와
 [단지 필터](../src/public-housing/filters/ComplexFilterToolbar.tsx)다.
 
 ## 서비스 패턴
@@ -120,7 +120,7 @@ import { IconButton } from '../design-system/components/IconButton'
 | 상세 구역·항목/값·표·닫기 | [DetailPrimitives](../src/public-housing/components/DetailPrimitives.tsx): 기존 heading·dl·table·키보드 계약 유지 |
 | 단지·공고 상세 | [HousingComplexDetailPanel](../src/public-housing/components/HousingComplexDetailPanel.tsx), [HousingAnnouncementDetailPanel](../src/public-housing/components/HousingAnnouncementDetailPanel.tsx): 제목 포커스, Escape, 내부 스크롤과 원문 이동 |
 | 통합 검색 | [IntegratedSearch](../src/public-housing/search/IntegratedSearch.tsx): 지역·단지·공고 결과, 로딩·빈 결과·부분 실패 구분 |
-| 필터 | [ComplexFilterToolbar](../src/public-housing/filters/ComplexFilterToolbar.tsx), [SearchFilterPanel](../src/public-housing/filters/SearchFilterPanel.tsx): 즉시 적용과 명시적 적용의 현재 구분, 초기화, 닫기·포커스 복귀 |
+| 필터 | [ComplexFilterToolbar](../src/public-housing/filters/ComplexFilterToolbar.tsx), [AnnouncementFilterPanel](../src/public-housing/filters/AnnouncementFilterPanel.tsx): 즉시 적용과 명시적 적용의 현재 구분, 초기화, 닫기·포커스 복귀 |
 | 금액·면적 범위 | [DualRangeFilter](../src/public-housing/filters/DualRangeFilter.tsx): 두 범위 입력, 키보드, 터치 영역, forced-colors 유지 |
 
 각 기능의 행동 테스트는 같은 디렉터리의 `*.test.tsx`다. 기본 컴포넌트가 API 요청·모집 상태 판단·

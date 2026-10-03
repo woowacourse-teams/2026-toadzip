@@ -42,6 +42,38 @@ const BASE_FILTERS: ComplexSearchFilters = {
 }
 
 describe('ComplexFilterToolbar', () => {
+  it('다른 조건을 선택해도 0과 한쪽만 있는 금액·면적 조건을 보존한다', () => {
+    const initialFilters = {
+      maxDeposit: 0,
+      minMonthlyRent: 0,
+      maxExclusiveArea: 0,
+      builtYearFrom: 1970,
+    }
+    render(<StatefulToolbar initialFilters={initialFilters} />)
+    expect(screen.getByRole('button', { name: '가격 필터 열기' }))
+      .toHaveAttribute('data-active', 'true')
+    expect(screen.getByRole('button', { name: '전용면적 필터 열기' }))
+      .toHaveAttribute('data-active', 'true')
+    fireEvent.click(screen.getByRole('button', { name: '모집상태 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '접수마감' }))
+    expect(appliedFilters()).toEqual({ ...initialFilters, applicationStatuses: ['CLOSED'] })
+    fireEvent.click(screen.getByRole('button', { name: '가격 필터 열기' }))
+    fireEvent.click(screen.getByRole('button', { name: '가격 필터 초기화' }))
+    expect(appliedFilters()).toEqual({
+      maxExclusiveArea: 0, builtYearFrom: 1970, applicationStatuses: ['CLOSED'],
+    })
+  })
+
+  it('모바일에서 수정 없이 적용하면 0과 제한 없는 범위의 다른 끝점을 그대로 유지한다', () => {
+    const filters = { maxDeposit: 0, minMonthlyRent: 0, maxExclusiveArea: 0, builtYearTo: 1970 }
+    const onApply = vi.fn()
+    renderToolbar({ filters, onApply })
+    fireEvent.click(screen.getByRole('button', { name: '전체 단지 필터 열기, 3개 적용' }))
+    fireEvent.click(screen.getByRole('button', { name: '단지 보기' }))
+    expect(onApply).toHaveBeenLastCalledWith(filters)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
   it('기본 필터 선택과 해제를 즉시 반영하고 팝오버와 포커스를 유지한다', () => {
     render(<StatefulToolbar initialFilters={{ agencyCodes: ['SH'] }} />)
     fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 열기' }))

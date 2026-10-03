@@ -1,3 +1,4 @@
+import { getApiBaseUrl } from '../../api/apiBaseUrl'
 import type {
   AnnouncementDetail,
   AnnouncementPage,
@@ -23,6 +24,7 @@ import {
   toComplexSearchSnapshot,
 } from './publicHousingMapper.ts'
 import { recordAnnouncementView } from './announcementViews.ts'
+import { decodeHttpErrorBody, isAbortError, type HttpErrorBody } from './httpErrorBody.ts'
 
 const COMPLEXES_PATH = '/api/v1/complexes'
 const ANNOUNCEMENTS_PATH = '/api/v1/announcements'
@@ -31,12 +33,6 @@ const MAX_JAVA_LONG = 9_223_372_036_854_775_807n
 export interface PublicHousingRepositoryOptions {
   readonly apiBaseUrl?: string
   readonly fetcher?: typeof globalThis.fetch
-}
-
-interface ErrorBody {
-  readonly code: string | null
-  readonly message: string | null
-  readonly traceId: string | null
 }
 
 export type RentalTypeFilter =
@@ -113,7 +109,7 @@ export class PublicHousingHttpError extends Error {
   readonly code: string | null
   readonly traceId: string | null
 
-  constructor(status: number, body: ErrorBody) {
+  constructor(status: number, body: HttpErrorBody) {
     super(body.message ?? '공공주택 정보를 불러오지 못했습니다.')
     this.name = 'PublicHousingHttpError'
     this.status = status
@@ -125,7 +121,7 @@ export class PublicHousingHttpError extends Error {
 export function createHttpPublicHousingRepository(
   options: PublicHousingRepositoryOptions = {},
 ): PublicHousingRepository {
-  const apiBaseUrl = options.apiBaseUrl ?? resolvePublicHousingApiBaseUrl()
+  const apiBaseUrl = options.apiBaseUrl ?? getApiBaseUrl()
   const fetcher = options.fetcher ?? globalThis.fetch
 
   return {
@@ -212,7 +208,7 @@ export async function requestPublicHousingJson(
   })
 
   if (!response.ok) {
-    throw new PublicHousingHttpError(response.status, await decodeErrorBody(response))
+    throw new PublicHousingHttpError(response.status, await decodeHttpErrorBody(response))
   }
 
   try {
@@ -225,34 +221,6 @@ export async function requestPublicHousingJson(
       error instanceof Error ? '$ (invalid JSON)' : '$',
     )
   }
-}
-
-async function decodeErrorBody(response: Response): Promise<ErrorBody> {
-  let value: unknown
-  try {
-    value = (await response.json()) as unknown
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw error
-    }
-    value = null
-  }
-  if (!isRecord(value)) {
-    return { code: null, message: null, traceId: null }
-  }
-
-  return {
-    code: nullableString(value.code),
-    message: nullableString(value.message),
-    traceId: nullableString(value.traceId),
-  }
-}
-
-function isAbortError(error: unknown) {
-  return typeof error === 'object'
-    && error !== null
-    && 'name' in error
-    && error.name === 'AbortError'
 }
 
 export function createComplexSearchParams(
@@ -363,23 +331,4 @@ function validateCanonicalId(id: string, entity: string) {
   ) {
     throw new RangeError(`${entity} ID는 양의 Java Long 정수 문자열이어야 합니다.`)
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function nullableString(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
-}
-
-export function resolvePublicHousingApiBaseUrl(): string {
-  const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL
-  if (configuredApiBaseUrl) {
-    return configuredApiBaseUrl
-  }
-  if (import.meta.env.DEV) {
-    return 'http://localhost:8080'
-  }
-  return ''
 }

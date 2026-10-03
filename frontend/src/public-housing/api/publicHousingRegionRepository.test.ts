@@ -114,6 +114,19 @@ describe('public housing region HTTP repository', () => {
     })
   })
 
+  it.each([true, false])('지역 응답의 ok=%s 본문 읽기 취소는 오류로 바꾸지 않는다', async (ok) => {
+    const abortError = new DOMException('요청이 취소되었습니다.', 'AbortError')
+    const repository = createHttpPublicHousingRegionRepository({
+      fetcher: vi.fn().mockResolvedValue({
+        ok, status: ok ? 200 : 499,
+        json: vi.fn().mockRejectedValue(abortError),
+      }),
+    })
+
+    await expect(repository.search('서울', new AbortController().signal))
+      .rejects.toBe(abortError)
+  })
+
   it.each([
     ['missing data', {}, '$.data'],
     ['non-object data', { data: null }, '$.data'],

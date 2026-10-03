@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { GuestCancellationAdminPage } from './GuestCancellationAdminPage'
 import { issueGuestCancellationCode, loadGuestCancellationRequests, markGuestCancellationCodeSent, reissueGuestCancellationCode } from '../public-housing/interest/guestCancellationApi'
@@ -58,4 +59,45 @@ it('관리자가 취소 요청을 보고 수동 발송할 코드를 한 번 발�
   await waitFor(() => expect(issueGuestCancellationCode).toHaveBeenCalledWith('request-1'))
   expect(await screen.findByDisplayValue('manual-code')).toBeVisible()
   expect(screen.getByText('한 번만 표시되는 코드 · 신청 주소로 수동 발송')).toBeVisible()
+})
+
+it('조회 중에는 로딩을 표시하고 성공한 빈 목록에서만 대기 요청 없음을 표시한다', async () => {
+  let resolve!: (value: []) => void
+  vi.mocked(loadGuestCancellationRequests).mockReturnValue(new Promise<[]>(yes => { resolve = yes }))
+  render(<GuestCancellationAdminPage />)
+  expect(screen.getByRole('status')).toHaveTextContent('목록을 불러오는 중')
+  expect(screen.queryByText('대기 중인 요청이 없습니다.')).not.toBeInTheDocument()
+  await act(async () => resolve([]))
+  expect(screen.getByText('대기 중인 요청이 없습니다.')).toBeVisible()
+  expect(screen.queryByRole('status')).not.toBeInTheDocument()
+})
+
+it('조회 실패를 빈 목록으로 표시하지 않으며 새로고침으로 회복한다', async () => {
+  vi.mocked(loadGuestCancellationRequests).mockRejectedValueOnce(new Error('조회 실패')).mockResolvedValue([])
+  render(<GuestCancellationAdminPage />)
+  expect(await screen.findByRole('alert')).toHaveTextContent('조회 실패')
+  expect(screen.queryByText('대기 중인 요청이 없습니다.')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '목록 새로고침' }))
+  expect(await screen.findByText('대기 중인 요청이 없습니다.')).toBeVisible()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
+it('StrictMode의 이전 목록 응답이 뒤늦게 실패해도 최신 목록에 오류를 붙이지 않는다', async () => {
+  let reject!: (error: Error) => void
+  vi.mocked(loadGuestCancellationRequests).mockReturnValueOnce(new Promise<never>((_yes, no) => { reject = no }))
+  render(<StrictMode><GuestCancellationAdminPage /></StrictMode>)
+  expect(await screen.findByText('guest@example.com')).toBeVisible()
+  await act(async () => reject(new Error('오래된 실패')))
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
+it('겹친 새로고침 중 오래된 빈 응답은 최신 요청 목록을 지우지 않는다', async () => {
+  let resolve!: (value: []) => void
+  vi.mocked(loadGuestCancellationRequests).mockReturnValueOnce(new Promise<[]>(yes => { resolve = yes }))
+  render(<GuestCancellationAdminPage />)
+  fireEvent.click(screen.getByRole('button', { name: '목록 새로고침' }))
+  expect(await screen.findByText('guest@example.com')).toBeVisible()
+  await act(async () => resolve([]))
+  expect(screen.getByText('guest@example.com')).toBeVisible()
+  expect(screen.queryByText('대기 중인 요청이 없습니다.')).not.toBeInTheDocument()
 })

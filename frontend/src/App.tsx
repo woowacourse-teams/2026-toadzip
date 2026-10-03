@@ -13,9 +13,8 @@ import { LoginPage } from './admin/auth/LoginPage'
 import { RequireAdmin } from './admin/auth/RequireAdmin'
 import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHousingExplorer.tsx'
 import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
-import { UserSessionControl } from './user/auth/UserSessionControl'
 import { BrandLink } from './BrandLink'
-import { NotificationInterestProvider } from './public-housing/interest/NotificationInterest'
+import { NotificationInterestProvider, NotificationInterestSessionControl } from './public-housing/interest/NotificationInterest'
 import { GuestCancellationPage } from './public-housing/interest/GuestCancellationPage'
 
 function Home() {
@@ -24,7 +23,7 @@ function Home() {
       <div className="app-shell">
         <header className="service-header" aria-label="서비스 헤더">
           <BrandLink />
-          <UserSessionControl />
+          <NotificationInterestSessionControl />
         </header>
         <main className="map-main">
           <DefaultPublicHousingExplorer />

@@ -1,6 +1,6 @@
 import type { MapMarkerAmount } from '../../public-housing/presentation/mapMarkerPresentation.ts'
 import { MISSING_DATA_LABEL } from '../../public-housing/presentation/missingData.ts'
-import type { NaverMapComplexMarker } from './NaverMap.tsx'
+import type { NaverMapComplexMarker } from './naverMapTypes.ts'
 
 /** SDK 연결 없이도 서비스와 같은 마커 표시를 재사용한다. */
 export function createComplexMarkerButton(marker: NaverMapComplexMarker): HTMLButtonElement {

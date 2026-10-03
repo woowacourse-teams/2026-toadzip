@@ -33,10 +33,10 @@ describe('regionBoundaryOverlay', () => {
     expect(svg.getAttribute('aria-hidden')).toBe('true')
     expect(path.getAttribute('d')).toBe('M0,0L10,0L10,10L0,0ZM2,2L3,3L4,2L2,2ZM20,0L30,0L30,10L20,0Z')
     expect(path.getAttribute('fill-rule')).toBe('evenodd')
-    expect(path.getAttribute('fill')).toBe('#D34F3E')
+    expect(path.getAttribute('fill')).toBe('#226b3b')
     expect(path.getAttribute('fill-opacity')).toBe('0.08')
-    expect(path.getAttribute('stroke')).toBe('#D34F3E')
-    expect(path.getAttribute('stroke-width')).toBe('2')
+    expect(path.getAttribute('stroke')).toBe('#226b3b')
+    expect(path.getAttribute('stroke-width')).toBe('3')
     center = { x: 110, y: 90 }
     overlay.draw()
     expect(svg.style.left).toBe('10px')

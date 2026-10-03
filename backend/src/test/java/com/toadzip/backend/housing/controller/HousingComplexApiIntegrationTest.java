@@ -177,6 +177,97 @@ class HousingComplexApiIntegrationTest {
     }
 
     @Test
+    void 지역_검색의_개수와_범위는_화면과_첫_페이지에_잘리지_않는다() throws Exception {
+        MockHttpServletRequestBuilder request = get("/api/v2/complexes/search")
+                .param("scope", "REGION")
+                .param("regionCode", "11140")
+                .param("keyword", "경계")
+                .param("size", "1");
+        addDefaultBounds(request);
+
+        mockMvc.perform(request)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(3))
+                .andExpect(jsonPath("$.data.locatedCount").value(3))
+                .andExpect(jsonPath("$.data.complexIds", org.hamcrest.Matchers.containsInAnyOrder(
+                        boundaryComplex.getId().intValue(), insideComplex.getId().intValue(),
+                        outsideComplex.getId().intValue())))
+                .andExpect(jsonPath("$.data.mapItems.length()").value(3))
+                .andExpect(jsonPath("$.data.bounds.southWestLat").value(37.4))
+                .andExpect(jsonPath("$.data.bounds.northEastLat").value(37.7))
+                .andExpect(jsonPath("$.data.page.items.length()").value(1))
+                .andExpect(jsonPath("$.data.page.hasNext").value(true))
+                .andExpect(jsonPath("$.data.page.nextCursor").isString());
+    }
+
+    @Test
+    void 영역_검색의_개수와_핀은_같은_화면_경계에_해당하는_단지만_포함한다() throws Exception {
+        MockHttpServletRequestBuilder request = get("/api/v2/complexes/search")
+                .param("scope", "AREA")
+                .param("keyword", "경계");
+        addDefaultBounds(request);
+
+        mockMvc.perform(request)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(2))
+                .andExpect(jsonPath("$.data.complexIds", org.hamcrest.Matchers.containsInAnyOrder(
+                        boundaryComplex.getId().intValue(), insideComplex.getId().intValue())))
+                .andExpect(jsonPath("$.data.mapItems.length()").value(2))
+                .andExpect(jsonPath("$.data.page.items.length()").value(2))
+                .andExpect(jsonPath("$.data.page.hasNext").value(false));
+    }
+
+    @Test
+    void 지역_검색의_단일_결과는_한_점의_범위를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/v2/complexes/search")
+                        .param("scope", "REGION")
+                        .param("regionCode", "11140")
+                        .param("keyword", "경계 밖 단지"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.bounds.southWestLat").value(37.7))
+                .andExpect(jsonPath("$.data.bounds.northEastLat").value(37.7))
+                .andExpect(jsonPath("$.data.bounds.southWestLng").value(126.9))
+                .andExpect(jsonPath("$.data.bounds.northEastLng").value(126.9));
+    }
+
+    @Test
+    void 빈_지역_검색은_빈_집계와_null_범위를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/v2/complexes/search")
+                        .param("scope", "REGION")
+                        .param("regionCode", "11140")
+                        .param("keyword", "존재하지않는단지"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(0))
+                .andExpect(jsonPath("$.data.locatedCount").value(0))
+                .andExpect(jsonPath("$.data.bounds").value(nullValue()))
+                .andExpect(jsonPath("$.data.complexIds").isEmpty())
+                .andExpect(jsonPath("$.data.mapItems").isEmpty())
+                .andExpect(jsonPath("$.data.page.items").isEmpty());
+    }
+
+    @Test
+    void 검색_범위가_없거나_지역과_영역_조건이_모순되면_거절한다() throws Exception {
+        MockHttpServletRequestBuilder missingScope = get("/api/v2/complexes/search");
+        addDefaultBounds(missingScope);
+        mockMvc.perform(missingScope)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        mockMvc.perform(get("/api/v2/complexes/search").param("scope", "REGION"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REGION_CODE"));
+        mockMvc.perform(get("/api/v2/complexes/search").param("scope", "AREA"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_MAP_BOUNDS"));
+        MockHttpServletRequestBuilder conflictingScope = get("/api/v2/complexes/search")
+                .param("scope", "AREA").param("regionCode", "11140");
+        addDefaultBounds(conflictingScope);
+        mockMvc.perform(conflictingScope)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
     void 같은_전체_검색조건의_목록과_지도는_같은_단지_ID_집합을_반환한다() throws Exception {
         List<Long> listIds = fetchEveryFilteredListPage();
         List<Long> mapIds = fetchFilteredMapIds();

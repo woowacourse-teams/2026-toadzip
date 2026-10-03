@@ -1,6 +1,6 @@
 import type { MapBounds } from '../../public-housing/model/publicHousing.ts'
 import { markerWidth } from './complexMarkerButton.ts'
-import type { NaverMapComplexMarker } from './NaverMap.tsx'
+import type { NaverMapComplexMarker } from './naverMapTypes.ts'
 
 export interface ComplexMarkerCluster {
   readonly id: string
@@ -20,6 +20,7 @@ export function clusterComplexMarkers(
   map: naver.maps.Map,
   markers: readonly NaverMapComplexMarker[],
 ): ClusteredComplexMarker[] {
+  if (markers.length === 0) return []
   const projection = map.getProjection()
   const center = projection.fromCoordToOffset(map.getCenter())
   const { width, height } = map.getSize()

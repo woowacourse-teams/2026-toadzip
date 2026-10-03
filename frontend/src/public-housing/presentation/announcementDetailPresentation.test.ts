@@ -9,6 +9,20 @@ import {
 } from './announcementDetailPresentation.ts'
 
 describe('toHousingAnnouncementDetailData', () => {
+  it.each([
+    ['ETC', '기타 공공임대'],
+    ['HAPPY_HOUSING', '행복주택'],
+    ['INTEGRATED_PUBLIC_RENTAL', '통합공공임대'],
+    ['NATIONAL_RENTAL', '국민임대'],
+    ['PERMANENT_RENTAL', '영구임대'],
+    ['PUBLIC_RENTAL_50Y', '50년 공공임대'],
+    ['REDEVELOPMENT_RENTAL', '재개발임대'],
+    [null, '공고문 확인'],
+    ['UNRECOGNIZED', '공고문 확인'],
+  ])('%s 임대유형의 표시와 누락 정책을 보존한다', (rentalType, expected) => {
+    expect(toHousingAnnouncementDetailData(announcementDetail({ rentalType })).rentalTypeLabel).toBe(expected)
+  })
+
   it('공고 상세 DTO의 코드와 중첩 데이터를 시안 B 표시 모델로 변환한다', () => {
     const result = toHousingAnnouncementDetailData(announcementDetail())
 

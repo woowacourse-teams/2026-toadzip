@@ -18,7 +18,7 @@ describe('public housing explorer layer order', () => {
       /\.housing-detail-layer\s*\{[\s\S]*?z-index:\s*300;/,
     )
     expect(stylesheet).not.toMatch(
-      /@media \(max-width: 767px\)[\s\S]*?\.housing-detail-layer\s*\{[\s\S]*?z-index:\s*(?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-9]{2});/,
+      /@media \(max-width: 767px\)[\s\S]*?\.housing-detail-layer\s*\{[^}]*?z-index:\s*(?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-9]{2});/,
     )
   })
 

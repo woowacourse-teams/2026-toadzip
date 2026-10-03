@@ -99,15 +99,15 @@ class OpenApiDocumentationIntegrationTest {
     }
 
     @Test
-    void 단지_OpenAPI는_지도_경계를_필수_query_parameter로_제공한다() throws Exception {
+    void 단지_OpenAPI는_지역_목록의_선택_경계와_지도_API의_필수_경계를_구분한다() throws Exception {
         HttpResponse<String> response = TestHttpClient.get(port, "/v3/api-docs");
 
         assertEquals(200, response.statusCode());
         assertAll(
-                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes", "southWestLat"),
-                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes", "southWestLng"),
-                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes", "northEastLat"),
-                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes", "northEastLng"),
+                () -> assertOptionalQueryParameter(response.body(), "/api/v1/complexes", "southWestLat"),
+                () -> assertOptionalQueryParameter(response.body(), "/api/v1/complexes", "southWestLng"),
+                () -> assertOptionalQueryParameter(response.body(), "/api/v1/complexes", "northEastLat"),
+                () -> assertOptionalQueryParameter(response.body(), "/api/v1/complexes", "northEastLng"),
                 () -> assertRequiredQueryParameter(response.body(), "/api/v2/complexes/map", "southWestLat"),
                 () -> assertRequiredQueryParameter(response.body(), "/api/v2/complexes/map", "southWestLng"),
                 () -> assertRequiredQueryParameter(response.body(), "/api/v2/complexes/map", "northEastLat"),
@@ -139,6 +139,7 @@ class OpenApiDocumentationIntegrationTest {
         assertEquals(200, response.statusCode());
         Set<String> expectedListParameters = new HashSet<>(COMMON_SEARCH_PARAMETERS);
         expectedListParameters.addAll(LIST_ONLY_PARAMETERS);
+        expectedListParameters.add("scope");
         List<Map<String, Object>> listParameters = parameters(response.body(), "/api/v1/complexes");
         Set<String> expectedV2MapParameters = new HashSet<>(COMMON_SEARCH_PARAMETERS);
         expectedV2MapParameters.addAll(V2_MAP_ONLY_PARAMETERS);
@@ -147,6 +148,22 @@ class OpenApiDocumentationIntegrationTest {
                 () -> assertExactQueryParameters(listParameters, expectedListParameters),
                 () -> assertExactQueryParameters(v2MapParameters, expectedV2MapParameters)
         );
+    }
+
+    @Test
+    void 통합_검색_OpenAPI는_범위와_집계_응답_계약을_제공한다() throws Exception {
+        HttpResponse<String> response = TestHttpClient.get(port, "/v3/api-docs");
+
+        assertEquals(200, response.statusCode());
+        Set<String> expectedParameters = new HashSet<>(COMMON_SEARCH_PARAMETERS);
+        expectedParameters.addAll(Set.of("scope", "sort", "size"));
+        assertExactQueryParameters(parameters(response.body(), "/api/v2/complexes/search"), expectedParameters);
+        assertEquals(List.of("REGION", "AREA"),
+                schema(queryParameter(response.body(), "/api/v2/complexes/search", "scope")).get("enum"));
+        Map<String, Object> properties = JsonPath.read(response.body(),
+                "$.components.schemas.HousingComplexSearchResponse.properties");
+        assertEquals(Set.of("totalCount", "locatedCount", "complexIds", "bounds", "mapItems", "page"),
+                properties.keySet());
     }
 
     @Test

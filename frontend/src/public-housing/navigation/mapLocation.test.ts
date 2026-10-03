@@ -85,52 +85,51 @@ describe('parseMapLocation', () => {
   })
 })
 
-describe('setMapLocationQuery', () => {
-  it('관련 없는 query를 보존하고 지도 query를 5, 5, 2자리로 설정한다', () => {
-    const current = new URLSearchParams(
-      'tab=map&filter=one&mapLat=1&filter=two&mapLng=2&mapZoom=3&empty=',
-    )
+describe('기존 지도 URL 소비', () => {
+  it('기존 소수 좌표를 그대로 읽고 지도 query만 제거하며 다른 값과 원본을 보존한다', () => {
+    const original = 'tab=map&filter=one&mapLat=37.5666103&filter=two&mapLng=126.9783882&mapZoom=14.256&empty='
+    const current = new URLSearchParams(original)
 
-    const next = setMapLocationQuery(current, {
+    expect(parseMapLocation(current)).toEqual({
+      kind: 'valid',
       center: { latitude: 37.5666103, longitude: 126.9783882 },
       zoom: 14.256,
     })
-
-    expect(next.toString()).toBe(
-      'tab=map&filter=one&filter=two&empty=&mapLat=37.56661&mapLng=126.97839&mapZoom=14.26',
-    )
-    expect(current.toString()).toBe(
-      'tab=map&filter=one&mapLat=1&filter=two&mapLng=2&mapZoom=3&empty=',
-    )
+    const next = clearMapLocationQuery(current)
+    expect(next.toString()).toBe('tab=map&filter=one&filter=two&empty=')
+    expect(parseMapLocation(next)).toEqual({ kind: 'absent' })
+    expect(current.toString()).toBe(original)
   })
 
-  it('중복된 지도 query를 각각 하나의 정규 값으로 바꾼다', () => {
-    const current = new URLSearchParams(
-      'mapLat=1&mapLat=2&tab=map&mapLng=3&mapLng=4&mapZoom=5&mapZoom=6',
-    )
-
-    expect(
-      setMapLocationQuery(current, {
-        center: { latitude: -0, longitude: -0 },
-        zoom: 14,
-      }).toString(),
-    ).toBe('tab=map&mapLat=0.00000&mapLng=0.00000&mapZoom=14.00')
+  it('중복된 기존 지도 위치를 선택하지 않고 모든 지도 query를 제거한다', () => {
+    const current = new URLSearchParams('mapLat=1&mapLat=2&tab=map&mapLng=3&mapLng=4&mapZoom=14&mapZoom=15')
+    expect(parseMapLocation(current)).toEqual({ kind: 'invalid' })
+    expect(clearMapLocationQuery(current).toString()).toBe('tab=map')
+    expect(current.getAll('mapLat')).toEqual(['1', '2'])
   })
 
-  it('유효하지 않은 지도 위치로 URL을 만들지 않는다', () => {
-    expect(() =>
-      setMapLocationQuery(new URLSearchParams(), {
-        center: { latitude: Number.NaN, longitude: 127 },
-        zoom: 14,
-      }),
-    ).toThrowError('유효한 지도 위치가 아닙니다.')
+  it.each(['NaN', String(DEFAULT_MAXIMUM_MAP_ZOOM + 1)])('유효하지 않은 zoom %s는 카메라에 적용하지 않고 무관 query를 보존한다', (zoom) => {
+    const current = new URLSearchParams(`complexId=7&mapLat=37.5&mapLng=127&mapZoom=${zoom}`)
+    expect(parseMapLocation(current)).toEqual({ kind: 'invalid' })
+    expect(clearMapLocationQuery(current).toString()).toBe('complexId=7')
+  })
+})
 
-    expect(() =>
-      setMapLocationQuery(new URLSearchParams(), {
-        center: { latitude: 37.5, longitude: 127 },
-        zoom: DEFAULT_MAXIMUM_MAP_ZOOM + 1,
-      }),
-    ).toThrowError('유효한 지도 위치가 아닙니다.')
+describe('setMapLocationQuery', () => {
+  it('카메라만 갱신하고 검색 범위·필터와 원본 URL은 유지한다', () => {
+    const original = new URLSearchParams('searchMode=region&complexRegionCode=11380&complexRentalTypes=HAPPY_HOUSING&mapLat=1&mapLat=2&mapLng=3&mapZoom=14')
+    const next = setMapLocationQuery(original, { center: { latitude: 37.5666103, longitude: 126.9783882 }, zoom: 14.256 })
+    expect(parseMapLocation(next)).toEqual({ kind: 'valid', center: { latitude: 37.56661, longitude: 126.97839 }, zoom: 14.26 })
+    expect(next.get('searchMode')).toBe('region')
+    expect(next.get('complexRegionCode')).toBe('11380')
+    expect(next.get('complexRentalTypes')).toBe('HAPPY_HOUSING')
+    expect(next.getAll('mapLat')).toEqual(['37.56661'])
+    expect(original.getAll('mapLat')).toEqual(['1', '2'])
+  })
+
+  it('유효하지 않은 좌표나 줌을 저장하지 않는다', () => {
+    expect(() => setMapLocationQuery(new URLSearchParams(), { center: { latitude: NaN, longitude: 127 }, zoom: 14 })).toThrow(TypeError)
+    expect(() => setMapLocationQuery(new URLSearchParams(), { center: { latitude: 37, longitude: 127 }, zoom: 22 })).toThrow(TypeError)
   })
 })
 

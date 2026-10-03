@@ -24,7 +24,7 @@
 | DB 변경 | [persistence.md](persistence.md), [ingest-branch-db-upgrade.md](ingest-branch-db-upgrade.md) | 모델·트랜잭션, 기존 ingest 작업 DB 통합 업그레이드 |
 | Flyway 최초 적용 | [flyway-adoption.md](flyway-adoption.md) | 기존 DB baseline과 새 DB 생성 경로 |
 | ingest 처음 읽기 | [ingest-maintenance.md](ingest-maintenance.md) | 시작할 두 파일, 단계별 서비스와 수집 흐름 |
-| ingest 전체 흐름·브랜치 통합 | [ingest-flow-review.md](ingest-flow-review.md), [ingest-refactoring-plan.md](ingest-refactoring-plan.md), [ingest-branch-integration.md](ingest-branch-integration.md) | 기존 판단, 최신 develop 정책과 두 브랜치 통합·검증 |
+| ingest 전체 흐름·실행 제어 | [ingest-flow-review.md](ingest-flow-review.md), [data-pipeline-execution.md](data-pipeline-execution.md), [pipeline-operator-controls.md](pipeline-operator-controls.md) | 수집·정제 경계, 통합 실행과 수동 복구 |
 | ingest 실제 API 검증 | [ingest-live-verification.md](ingest-live-verification.md) | 격리 DB 실행 증거, 실응답 수정과 남은 데이터 품질 |
 | 관리자 데이터 파이프라인 | [data-pipeline-execution.md](data-pipeline-execution.md) | 실행 상태와 스키마 배포 |
 | 마이홈 단지 통합 | [myhome-complex-linking.md](myhome-complex-linking.md) | 원천 연결, 확인된 통합, 재정제와 복구 |

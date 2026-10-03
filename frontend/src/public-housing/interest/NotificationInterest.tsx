@@ -1,6 +1,7 @@
 import { createContext, type KeyboardEvent, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { notificationInterestRepository, type NotificationEventSource, type NotificationEventType, type NotificationInterestEvent, type NotificationInterestRepository, type NotificationTarget } from './notificationInterestRepository'
 import { getCurrentUser } from '../../user/auth/api'
+import { UserSessionControl } from '../../user/auth/UserSessionControl'
 import styles from './NotificationInterest.module.css'
 
 const sessionKey = 'toadzip.notification-interest.session'
@@ -23,9 +24,15 @@ const InterestContext = createContext<{
   readonly mode: 'loading' | 'guest' | 'member' | 'error'
   readonly serverStatus: boolean
   readonly requested: ReadonlyMap<string, boolean>
+  readonly resetSession: () => void
   readonly request: (selection: Selection, trigger: HTMLButtonElement) => void
   readonly expose: (selection: Selection) => void
 } | null>(null)
+
+export function NotificationInterestSessionControl() {
+  const context = useContext(InterestContext)
+  return <UserSessionControl onLogout={context?.resetSession} />
+}
 
 function requestedKey(target: Pick<NotificationTarget, 'type' | 'id'>) {
   return `${requestedKeyPrefix}:${target.type}:${target.id}`
@@ -72,7 +79,7 @@ export function NotificationInterestProvider({ children, repository = notificati
   const [mode, setMode] = useState<'loading' | 'guest' | 'member' | 'error'>('loading')
   const [serverStatus, setServerStatus] = useState(false)
   const inFlight = useRef(false)
-  const statusRequest = useRef(0)
+  const requestVersion = useRef(0)
   const completed = useRef(false)
   const trigger = useRef<HTMLButtonElement | null>(null)
   const restoreFocus = useRef(false)
@@ -83,9 +90,9 @@ export function NotificationInterestProvider({ children, repository = notificati
       if (!repository.loadStatus) setMode('guest')
       return
     }
-    const request = ++statusRequest.current
+    const request = ++requestVersion.current
     void repository.loadStatus(client).then((status) => {
-      if (request !== statusRequest.current) return
+      if (request !== requestVersion.current) return
       if (!status) {
         completed.current = false
         setRequested(new Map())
@@ -98,16 +105,32 @@ export function NotificationInterestProvider({ children, repository = notificati
       setServerStatus(true)
       setMode(status.guest ? 'guest' : 'member')
     }).catch(() => {
-      if (request === statusRequest.current) setMode((current) => current === 'loading' ? 'error' : current)
+      if (request === requestVersion.current) setMode((current) => current === 'loading' ? 'error' : current)
     })
   }, [client, repository])
 
-  useEffect(() => {
-    const requestCounter = statusRequest
+  const resetSession = useCallback(() => {
+    requestVersion.current++
+    inFlight.current = false
+    completed.current = false
+    restoreFocus.current = false
+    setBusy(false)
+    setFailed(null)
+    setPrompt(null)
+    setEmail('')
+    setMessage('')
+    setRequested(new Map())
+    setServerStatus(false)
+    setMode('loading')
     refreshStatus()
+  }, [refreshStatus])
+
+  useEffect(() => {
+    const requestCounter = requestVersion
+    resetSession()
     window.addEventListener('focus', refreshStatus)
     return () => { requestCounter.current++; window.removeEventListener('focus', refreshStatus) }
-  }, [refreshStatus])
+  }, [refreshStatus, resetSession])
 
   useEffect(() => {
     if (!prompt && !busy && restoreFocus.current) {
@@ -143,12 +166,14 @@ export function NotificationInterestProvider({ children, repository = notificati
 
   const send = useCallback(async (action: Action) => {
     if (inFlight.current) return
+    const request = ++requestVersion.current
     inFlight.current = true
     setBusy(true)
     setFailed(null)
     setMessage('')
     try {
       await repository.record(action.event)
+      if (request !== requestVersion.current) return
       if (action.next === 'prompt') {
         setEmail('')
         setPrompt({ target: action.target, source: action.source })
@@ -183,10 +208,12 @@ export function NotificationInterestProvider({ children, repository = notificati
         setMessage(`${action.target.name} 알림 신청을 취소했어요.`)
       }
     } catch {
-      setFailed(action)
+      if (request === requestVersion.current) setFailed(action)
     } finally {
-      inFlight.current = false
-      setBusy(false)
+      if (request === requestVersion.current) {
+        inFlight.current = false
+        setBusy(false)
+      }
     }
   }, [mode, repository, requested])
 
@@ -215,7 +242,7 @@ export function NotificationInterestProvider({ children, repository = notificati
     })
   }, [eventFor, repository])
 
-  const context = useMemo(() => ({ blocked: mode === 'loading' || mode === 'error' || busy || prompt !== null || failed !== null, mode, serverStatus, requested, request, expose }), [busy, expose, failed, mode, prompt, request, requested, serverStatus])
+  const context = useMemo(() => ({ blocked: mode === 'loading' || mode === 'error' || busy || prompt !== null || failed !== null, mode, serverStatus, requested, request, expose, resetSession }), [busy, expose, failed, mode, prompt, request, requested, resetSession, serverStatus])
   function clearFailure() {
     setFailed(null)
     if (prompt) {
@@ -292,7 +319,7 @@ function InterestDialog({ children, onDismiss }: { readonly children: ReactNode;
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onDismiss() }
     if (event.key !== 'Tab') return
-    const controls = Array.from(panel.current?.querySelectorAll<HTMLElement>('input:not(:disabled), button:not(:disabled)') ?? [])
+    const controls = Array.from(panel.current?.querySelectorAll<HTMLElement>('input:not(:disabled), button:not(:disabled), a[href]') ?? [])
     const first = controls[0]
     const last = controls.at(-1)
     if (!first || !last) { event.preventDefault(); return }

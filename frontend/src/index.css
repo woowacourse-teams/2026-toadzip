@@ -106,13 +106,6 @@
   font-size: 0.75rem;
 }
 
-.integrated-search__pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-}
-
 * {
   box-sizing: border-box;
 }
@@ -186,10 +179,6 @@ a {
   font-weight: 750;
   letter-spacing: -0.025em;
   white-space: nowrap;
-}
-
-.service-header:has([aria-controls="notification-settings"]) .brand-tagline {
-  display: none;
 }
 
 .service-header:has([aria-controls="notification-settings"]) .brand-link {
@@ -825,27 +814,6 @@ a {
 .housing-map-credits:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
-}
-
-.housing-map-notice {
-  position: absolute;
-  z-index: 4;
-  right: 16px;
-  bottom: 16px;
-  display: flex;
-  width: min(360px, calc(100% - 32px));
-  padding: 16px;
-  border: 1px solid #bd2c0f;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #8a240f;
-  flex-direction: column;
-}
-
-.housing-map-notice span {
-  margin-top: 4px;
-  color: #464c53;
-  line-height: 1.5;
 }
 
 .housing-detail-layer {
@@ -1585,7 +1553,6 @@ a {
 
   .housing-explorer.has-detail .housing-results,
   .housing-explorer.has-detail .map-region,
-  .housing-explorer.has-detail .housing-map-notice,
   .housing-explorer.has-detail .housing-map-credits {
     visibility: hidden;
   }
@@ -2329,11 +2296,6 @@ button {
 .admin-navigation a:focus-visible { outline: 3px solid #8abfb3; outline-offset: 2px; }
 .admin-mode-switch { display: flex; gap: 8px; }
 .admin-mode-switch button[aria-pressed="true"] { background: #17685b; color: #fff; border-color: #17685b; }
-.admin-next-action { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 20px; background: #eaf5f0; border: 1px solid #b4d8ca; border-radius: 10px; }
-.admin-next-action a, .admin-complex-select a { color: #17685b; font-weight: 600; }
-.admin-complex-select { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
-.admin-complex-select label { display: grid; gap: 8px; }
-.admin-complex-select input { min-height: 42px; border: 1px solid #b6c7c1; border-radius: 6px; padding: 8px 12px; }
 .pipeline-work-caption { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
 .pipeline-eta { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin: 12px 0; padding: 14px 16px; border-radius: 8px; background: #edf5f2; color: #245e50; }
 .pipeline-eta strong { font-size: 1.2rem; font-variant-numeric: tabular-nums; }

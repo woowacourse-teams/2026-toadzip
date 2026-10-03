@@ -43,7 +43,7 @@ export function createLocalPublicHousingMockLoader(
           throw new LocalPublicHousingMockLoadError(response.status)
         }
         const snapshot = (await response.json()) as unknown
-        validateLocalPublicHousingSnapshot(snapshot)
+        decodePublicHousingSnapshot(snapshot)
         return snapshot
       })
       .catch((error: unknown) => {
@@ -54,25 +54,9 @@ export function createLocalPublicHousingMockLoader(
   }
 }
 
-function validateLocalPublicHousingSnapshot(value: unknown) {
-  decodePublicHousingSnapshot(value)
-}
-
 export const localPublicHousingMockEnabled = import.meta.env.DEV
   && import.meta.env.MODE !== 'test'
   && import.meta.env.VITE_PUBLIC_HOUSING_LOCAL_MOCK === 'true'
-
-export function shouldEnableLocalPublicHousingMock({
-  development,
-  flag,
-  mode,
-}: {
-  readonly development: boolean
-  readonly flag: string | undefined
-  readonly mode: string
-}) {
-  return development && mode !== 'test' && flag === 'true'
-}
 
 let localPublicHousingMockLoader: (() => Promise<unknown>) | null = null
 
