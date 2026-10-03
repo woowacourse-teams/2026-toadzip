@@ -163,7 +163,8 @@ function readCoordinateValue(
 
   const latitude: unknown = Reflect.apply(latitudeMethod, coordinate, [])
   const longitude: unknown = Reflect.apply(longitudeMethod, coordinate, [])
-  if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+  if (typeof latitude !== 'number' || typeof longitude !== 'number'
+    || !isValidCameraTarget(latitude, longitude, undefined)) {
     return null
   }
 

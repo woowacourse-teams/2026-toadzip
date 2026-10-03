@@ -35,6 +35,7 @@ interface FakeSdk {
   fitBoundsMap: ReturnType<typeof vi.fn>
   fromCoordToOffset: ReturnType<typeof vi.fn>
   fromOffsetToCoord: ReturnType<typeof vi.fn>
+  getBoundsMap: ReturnType<typeof vi.fn>
   getCenterMap: ReturnType<typeof vi.fn>
   getMaxZoomMap: ReturnType<typeof vi.fn>
   getMinZoomMap: ReturnType<typeof vi.fn>
@@ -82,6 +83,10 @@ function createFakeSdk(): FakeSdk {
   const getCenterMap = vi.fn(() => ({
     lat: () => currentCenter.latitude,
     lng: () => currentCenter.longitude,
+  }))
+  const getBoundsMap = vi.fn(() => ({
+    getNE: () => ({ lat: () => 37.7, lng: () => 127.1 }),
+    getSW: () => ({ lat: () => 37.5, lng: () => 126.8 }),
   }))
   const getMaxZoomMap = vi.fn(() => 21)
   const getMinZoomMap = vi.fn(() => 6)
@@ -145,10 +150,7 @@ function createFakeSdk(): FakeSdk {
     autoResize: autoResizeMap,
     destroy: destroyMap,
     fitBounds: fitBoundsMap,
-    getBounds: () => ({
-      getNE: () => ({ lat: () => 37.7, lng: () => 127.1 }),
-      getSW: () => ({ lat: () => 37.5, lng: () => 126.8 }),
-    }),
+    getBounds: getBoundsMap,
     getCenter: getCenterMap,
     getSize: () => ({ width: 1024, height: 768 }),
     getMaxZoom: getMaxZoomMap,
@@ -245,6 +247,7 @@ function createFakeSdk(): FakeSdk {
     fitBoundsMap,
     fromCoordToOffset,
     fromOffsetToCoord,
+    getBoundsMap,
     getCenterMap,
     getMaxZoomMap,
     getMinZoomMap,
@@ -1114,6 +1117,45 @@ describe('NaverMap', () => {
     act(() => fakeSdk.emitIdle())
 
     expect(onViewportChange).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['center', Number.NaN, 127],
+    ['center', 37.6, Number.POSITIVE_INFINITY],
+    ['center', 91, 127],
+    ['center', 37.6, -181],
+    ['southWest', Number.NEGATIVE_INFINITY, 126.8],
+    ['southWest', -91, 126.8],
+    ['northEast', 37.7, Number.NaN],
+    ['northEast', 37.7, 181],
+  ] as const)('SDK %s의 잘못된 좌표 %s/%s는 viewport로 전달하지 않고 회복 후 다시 알린다', async (source, latitude, longitude) => {
+    const fakeSdk = createFakeSdk()
+    const onViewportChange = vi.fn()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    render(<NaverMap representation="INDIVIDUAL" markers={[]}
+      onViewportChange={onViewportChange} />)
+    await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
+    const invalidCoordinate = { lat: () => latitude, lng: () => longitude }
+    if (source === 'center') {
+      fakeSdk.getCenterMap.mockReturnValueOnce(invalidCoordinate)
+    } else {
+      fakeSdk.getBoundsMap.mockReturnValueOnce({
+        getSW: () => source === 'southWest'
+          ? invalidCoordinate : { lat: () => 37.5, lng: () => 126.8 },
+        getNE: () => source === 'northEast'
+          ? invalidCoordinate : { lat: () => 37.7, lng: () => 127.1 },
+      })
+    }
+
+    act(() => fakeSdk.emitIdle())
+    expect(onViewportChange).not.toHaveBeenCalled()
+
+    act(() => fakeSdk.emitIdle())
+    expect(onViewportChange).toHaveBeenCalledExactlyOnceWith({
+      bounds: { southWestLat: 37.5, southWestLng: 126.8, northEastLat: 37.7, northEastLng: 127.1 },
+      center: { latitude: 37.5666103, longitude: 126.9783882 },
+      zoom: 14,
+    })
   })
 
   it.each([Number.NaN, Number.POSITIVE_INFINITY])('SDK 확대 수준이 %s이면 viewport를 알리지 않는다', async (zoom) => {
