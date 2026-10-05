@@ -1,0 +1,38 @@
+name: Backend CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - name: Start test PostgreSQL
+        run: >-
+          docker compose --project-name toadzip-test --file compose.test.yaml
+          up --detach --wait --wait-timeout 60 --force-recreate db db-shared
+      - name: Verify backend against PostgreSQL
+        working-directory: backend
+        run: ./gradlew --rerun-tasks check
+      - name: Show PostgreSQL logs on failure
+        if: failure()
+        run: >-
+          docker compose --project-name toadzip-test --file compose.test.yaml
+          logs --no-color db db-shared
+      - name: Stop test PostgreSQL
+        if: always()
+        run: >-
+          docker compose --project-name toadzip-test --file compose.test.yaml
+          down --volumes --remove-orphans
