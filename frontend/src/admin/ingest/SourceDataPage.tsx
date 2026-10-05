@@ -114,7 +114,7 @@ export function SourceDataPage() {
               {category === 'LH_ANNOUNCEMENT_CATALOG' ? <th scope="col">원천 변경 감지 <span>(changed_at)</span></th> : null}
               <th scope="col">원천 식별자 <span>(source_key)</span></th><th scope="col">공식 공고 URL <span>(originalUrl)</span></th>
             </tr></thead>
-            <tbody>{rows.map(({ row, fields }) => <tr key={row.id}>
+            <tbody>{rows.map(({ row, fields }) => <tr key={`${row.sourceKey}:${row.id}`}>
               {columns.map((path, index) => {
                 const content = storedDataValue(path, fields.get(path))
                 const title = typeof content === 'string' ? content : undefined

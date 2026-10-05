@@ -44,7 +44,9 @@ public class MyHomeComplexMergeStore {
     }
 
     public void lockEvidence() {
-        jdbc.sql("LOCK TABLE myhome_complex_source, lh_catalog_source IN SHARE MODE").update();
+        jdbc.sql("LOCK TABLE myhome_complex_source_rows, "
+                + "myhome_complex_source_bundles, myhome_complex_source_regions, lh_lease_catalog_source_rows, "
+                + "lh_lease_catalog_source_bundles IN SHARE MODE").update();
     }
 
     public String state(List<Long> ids) {
@@ -74,10 +76,14 @@ public class MyHomeComplexMergeStore {
     public String evidence(List<Long> sourceIds, List<Long> lhIds) {
         return jdbc.sql("""
                 SELECT jsonb_build_object(
-                    'myhome', (SELECT jsonb_agg(to_jsonb(s) ORDER BY s.source_key)
-                        FROM myhome_complex_source s WHERE s.id IN (:sourceIds)),
-                    'lh', (SELECT jsonb_agg(to_jsonb(l) ORDER BY l.id)
-                        FROM lh_catalog_source l WHERE l.id IN (:lhIds))
+                    'myhome', (SELECT jsonb_agg(s.payload ORDER BY s.id) FROM (
+                        SELECT current.id, to_jsonb(current) payload FROM myhome_complex_source_rows current
+                        WHERE current.id IN (:sourceIds)
+                    ) s),
+                    'lh', (SELECT jsonb_agg(l.payload ORDER BY l.id) FROM (
+                        SELECT current.id, to_jsonb(current) payload FROM lh_lease_catalog_source_rows current
+                        WHERE current.id IN (:lhIds)
+                    ) l)
                 )::text
                 """).param("sourceIds", sourceIds).param("lhIds", lhIds).query(String.class).single();
     }

@@ -6,12 +6,20 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
+import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
+import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecordService;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.repository.LhDetailResponseParser;
+import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
+import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementCollectionRequest;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementStorageService;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailure;
@@ -26,6 +34,7 @@ import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailure;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingFailureRepository;
+import jakarta.persistence.EntityManagerFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -39,6 +48,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.exception.FlywayValidateException;
@@ -46,12 +56,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.StandardEnvironment;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 class LocalProfileSchemaPersistenceTest {
 
@@ -82,7 +94,7 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertTrue(history.next()),
-                        () -> assertEquals(29, history.getInt(1)),
+                        () -> assertEquals(migrationCount(), history.getInt(1)),
                         () -> assertEquals(1, countColumn(connection,
                                 "notification_interest_events", "event_id")),
                         () -> assertEquals(0, countColumn(connection,
@@ -115,11 +127,11 @@ class LocalProfileSchemaPersistenceTest {
                                 "announcement_views", "viewed_on")),
                         () -> assertEquals(1, countColumn(connection,
                                 "admin_announcement_imports", "original_json")),
-                        () -> assertEquals(1, countColumn(connection,
+                        () -> assertEquals(0, countColumn(connection,
                                 "lh_announcement_detail_source", "request_hash")),
-                        () -> assertEquals(1, countColumn(connection,
+                        () -> assertEquals(0, countColumn(connection,
                                 "lh_announcement_supply_source", "request_hash")),
-                        () -> assertEquals(1, countColumn(connection,
+                        () -> assertEquals(0, countColumn(connection,
                                 "lh_announcement_catalog_source", "present_in_latest_catalog"))
                 );
             }
@@ -228,19 +240,19 @@ class LocalProfileSchemaPersistenceTest {
             for (String version : List.of("20260928.03", "20260928.04", "20260929.01")) {
                 assertTrue(pending.getMessage().contains(version));
             }
-            try (ConfigurableApplicationContext oneTimeUpgrade = new SpringApplicationBuilder(BackendApplication.class)
-                    .environment(createIsolatedEnvironment(jdbcUrl))
-                    .run("--spring.flyway.out-of-order=true", "--spring.flyway.target=20260930.09")) {
-                assertTrue(oneTimeUpgrade.getBean(Flyway.class).getConfiguration().isOutOfOrder());
-            }
+            Flyway oneTimeUpgrade = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("classpath:db/migration").outOfOrder(true).target("20260930.09").load();
+            oneTimeUpgrade.migrate();
+            assertTrue(oneTimeUpgrade.getConfiguration().isOutOfOrder());
+            int pendingMigrationCount = merged.info().pending().length;
+            assertEquals(pendingMigrationCount, merged.migrate().migrationsExecuted);
             merged.validate();
-            assertEquals(0, merged.migrate().migrationsExecuted);
 
             try (ConfigurableApplicationContext applicationContext =
                     new SpringApplicationBuilder(BackendApplication.class)
                     .environment(createIsolatedEnvironment(jdbcUrl)).run();
                     Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test")) {
-                assertEquals(29, countAllRows(connection, "flyway_schema_history"));
+                assertEquals(migrationCount(), countAllRows(connection, "flyway_schema_history"));
                 assertEquals(1, countAllRows(connection, "data_pipeline_executions"));
                 assertEquals(1, countColumn(connection, "announcement_schedules", "complex_name"));
                 assertEquals(1, countColumn(connection, "supply_targets", "lh_amount_preserved_reason"));
@@ -280,7 +292,7 @@ class LocalProfileSchemaPersistenceTest {
                         VALUES ('00000000-0000-0000-0000-000000000001',
                                 'COMPLEX_COLLECTION', 'COMPLETED', now(), now())
                         """);
-                assertEquals(28, countAllRows(connection, "flyway_schema_history"));
+                assertEquals(migrationCount() - 1, countAllRows(connection, "flyway_schema_history"));
             }
             Flyway merged = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
                     .locations("classpath:db/migration").load();
@@ -298,7 +310,7 @@ class LocalProfileSchemaPersistenceTest {
                     .environment(createIsolatedEnvironment(jdbcUrl)).run();
                     Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
                     Statement statement = connection.createStatement()) {
-                assertEquals(29, countAllRows(connection, "flyway_schema_history"));
+                assertEquals(migrationCount(), countAllRows(connection, "flyway_schema_history"));
                 assertEquals(1, countAllRows(connection, "data_pipeline_executions"));
                 assertFalse(applicationContext.getBean(Flyway.class).getConfiguration().isOutOfOrder());
                 assertEquals(1, statement.executeUpdate("""
@@ -343,17 +355,6 @@ class LocalProfileSchemaPersistenceTest {
             try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
                     Statement statement = connection.createStatement()) {
                 statement.executeUpdate("""
-                        INSERT INTO lh_announcement_detail_source
-                            (pan_id, request_hash, source_order, dataset_type)
-                        VALUES ('legacy-pan', repeat('a', 64), 0, 'ETC_INFO'),
-                               ('legacy-pan', repeat('b', 64), 0, 'ETC_INFO')
-                        """);
-                statement.executeUpdate("""
-                        INSERT INTO lh_announcement_supply_source (pan_id, request_hash, source_order)
-                        VALUES ('legacy-pan', repeat('a', 64), 0),
-                               ('legacy-pan', repeat('b', 64), 0)
-                        """);
-                statement.executeUpdate("""
                         INSERT INTO data_pipeline_executions
                             (execution_id, type, status, started_at, heartbeat_at)
                         VALUES ('00000000-0000-0000-0000-000000000001',
@@ -371,33 +372,35 @@ class LocalProfileSchemaPersistenceTest {
                             SELECT string_agg(type || ':' || version, ',' ORDER BY installed_rank)
                             FROM flyway_schema_history
                             """)) {
-                String replayRequest = new LhAnnouncementRequest(
-                        "legacy-pan", "03", "06", "07", "062"
-                ).requestDescription();
-                LhSourceStore sourceStore = applicationContext.getBean(LhSourceStore.class);
-                sourceStore.replaceDetails("legacy-pan", replayRequest, List.of(new LhAnnouncementDetailSource(
-                        0, "legacy-pan", "ETC_INFO", null, null, null, null, null, null,
-                        null, null, null, null, null, null, null, null, null, null, null,
-                        null, null, null, null, null, null, null, "재수집", null
-                )));
-                sourceStore.replaceSupplies("legacy-pan", replayRequest, List.of(
-                        new LhAnnouncementSupplySource(0, "legacy-pan", new LhAnnouncementSupplySourceSnapshot(
-                                "재수집 단지", "46A", "46.8", "67.0", "100", "20", null, null
-                        ))
-                ));
-                String replayHash = LhAnnouncementCollectionCheckpoint.requestHashOf(replayRequest);
-                assertEquals(1, countRequestRows(connection, "lh_announcement_detail_source", replayHash));
-                assertEquals(1, countRequestRows(connection, "lh_announcement_supply_source", replayHash));
+                assertEquals(0, applicationContext.getBeanNamesForType(LhStorageFixtures.class).length);
+                var managedTypes = applicationContext.getBean(EntityManagerFactory.class).getMetamodel().getEntities()
+                        .stream().map(entity -> entity.getJavaType()).toList();
+                assertFalse(managedTypes.contains(LhAnnouncementDetailSource.class));
+                assertFalse(managedTypes.contains(LhAnnouncementSupplySource.class));
+                assertFalse(managedTypes.contains(LhCatalogSource.class));
+                assertFalse(managedTypes.contains(LhAnnouncementCatalogSource.class));
+                assertFalse(managedTypes.contains(MyHomeComplexSource.class));
+                assertFalse(managedTypes.contains(MyHomeAnnouncementSource.class));
+                var query = new LhAnnouncementQuery("legacy-pan", "03", "06", "07", "062");
+                var detailRequest = new LhAnnouncementCollectionRequest(null, CollectionSource.LH_ANNOUNCEMENT_DETAIL,
+                        query, 6, Instant.now().minusSeconds(1));
+                var supplyRequest = new LhAnnouncementCollectionRequest(null, CollectionSource.LH_ANNOUNCEMENT_SUPPLY,
+                        query, 6, Instant.now().minusSeconds(1));
+                var records = applicationContext.getBean(SourceCollectionRecordService.class);
+                var storage = applicationContext.getBean(LhAnnouncementStorageService.class);
+                JsonNode detailResponse = JsonMapper.builder().build().readTree(
+                        "[{\"dsEtcInfo\":[{\"CRC_RSN\":\"재수집\"}]}]");
+                storage.completeDetail(records.start(detailRequest), detailRequest, Instant.now(),
+                        new LhDetailResponseParser().parse(detailResponse));
+                storage.completeSupply(records.start(supplyRequest), supplyRequest, Instant.now(), List.of(
+                        new LhAnnouncementSupplySourceSnapshot(
+                                "재수집 단지", "46A", "46.8", "67.0", "100", "20", null, null)));
+                assertEquals(1,
+                        countRequestRows(connection, "lh_announcement_detail_rows", detailRequest.requestHash()));
+                assertEquals(1,
+                        countRequestRows(connection, "lh_announcement_supply_rows", supplyRequest.requestHash()));
                 assertTrue(history.next());
-                assertEquals("BASELINE:20260922.00,SQL:20260922.01,SQL:20260922.02,SQL:20260923.01"
-                                + ",SQL:20260923.02,SQL:20260924.01,SQL:20260925.01,SQL:20260925.02"
-                                + ",SQL:20260925.03,SQL:20260926.01,SQL:20260926.02,SQL:20260926.03"
-                                + ",SQL:20260926.04,SQL:20260926.05,SQL:20260926.06,SQL:20260927.01"
-                                + ",SQL:20260928.01,SQL:20260928.02,SQL:20260928.03,SQL:20260928.04"
-                                + ",SQL:20260929.01,SQL:20260930.01,SQL:20260930.02,SQL:20260930.03"
-                                + ",SQL:20260930.04,SQL:20260930.05,SQL:20260930.06,SQL:20260930.07"
-                                + ",SQL:20260930.08,SQL:20260930.09",
-                        history.getString(1));
+                assertEquals("BASELINE:20260922.00," + versionedMigrationHistory(), history.getString(1));
                 assertEquals(1, countColumn(connection, "verified_lh_supply_replacements", "evidence_url"));
                 assertEquals(1, countColumn(connection, "supply_targets", "lh_amount_preserved_reason"));
                 assertEquals(1, countColumn(connection, "admin_announcement_imports", "original_json"));
@@ -416,17 +419,13 @@ class LocalProfileSchemaPersistenceTest {
                 assertEquals(1, countColumn(connection, "myhome_complex_merges", "before_state"));
                 assertEquals(1, countColumn(connection, "housing_complex_aliases", "housing_complex_id"));
                 assertEquals(1, countColumn(connection, "supply_rows", "lh_total_supply_household_count_enriched"));
-                assertEquals(1, countColumn(connection, "lh_announcement_detail_source", "request_hash"));
-                assertEquals(1, countColumn(connection, "lh_announcement_detail_source", "winner_announcement_date"));
-                assertEquals(1, countColumn(connection, "lh_announcement_supply_source", "request_hash"));
-                assertEquals(1, countLegacyRow(connection, "lh_announcement_detail_source"));
-                assertEquals(1, countLegacyRow(connection, "lh_announcement_supply_source"));
-                assertEquals(4, countRows(connection, "lh_announcement_detail_source"));
-                assertEquals(4, countRows(connection, "lh_announcement_supply_source"));
-                assertEquals("UNIQUE (pan_id, request_hash, source_order, dataset_type)",
-                        constraintDefinition(connection, "uk_lh_detail_source_request_row"));
-                assertEquals("UNIQUE (pan_id, request_hash, source_order)",
-                        constraintDefinition(connection, "uk_lh_supply_source_request_row"));
+                assertEquals(0, countColumn(connection, "lh_announcement_detail_source", "request_hash"));
+                assertEquals(1, countColumn(connection, "lh_announcement_detail_rows", "winner_announcement_date"));
+                assertEquals(0, countColumn(connection, "lh_announcement_supply_source", "request_hash"));
+                assertEquals("UNIQUE (source_id, source_order)",
+                        constraintDefinition(connection, "lh_announcement_detail_rows_source_id_source_order_key"));
+                assertEquals("UNIQUE (source_id, source_order)",
+                        constraintDefinition(connection, "lh_announcement_supply_rows_source_id_source_order_key"));
             }
         }
         finally {
@@ -527,27 +526,11 @@ class LocalProfileSchemaPersistenceTest {
         }
     }
 
-    private int countLegacyRow(Connection connection, String tableName) throws Exception {
-        try (Statement statement = connection.createStatement();
-                ResultSet rows = statement.executeQuery("SELECT COUNT(*) FROM " + tableName
-                        + " WHERE pan_id = 'legacy-pan' AND request_hash IS NULL")) {
-            rows.next();
-            return rows.getInt(1);
-        }
-    }
-
-    private int countRows(Connection connection, String tableName) throws Exception {
-        try (Statement statement = connection.createStatement();
-                ResultSet rows = statement.executeQuery("SELECT COUNT(*) FROM " + tableName
-                        + " WHERE pan_id = 'legacy-pan'")) {
-            rows.next();
-            return rows.getInt(1);
-        }
-    }
-
     private int countRequestRows(Connection connection, String tableName, String requestHash) throws Exception {
         try (var statement = connection.prepareStatement(
-                "SELECT COUNT(*) FROM " + tableName + " WHERE pan_id = 'legacy-pan' AND request_hash = ?"
+                "SELECT COUNT(*) FROM " + tableName + " rows JOIN lh_announcement_query_sources source"
+                        + " ON source.id = rows.source_id"
+                        + " WHERE source.pan_id = 'legacy-pan' AND source.request_hash = ?"
         )) {
             statement.setString(1, requestHash);
             try (ResultSet rows = statement.executeQuery()) {
@@ -612,6 +595,22 @@ class LocalProfileSchemaPersistenceTest {
     private String sharedTestDatabaseUrl() {
         return "jdbc:postgresql://127.0.0.1:" + testPort("TEST_SHARED_POSTGRES_PORT", "55433")
                 + "/toadzip_shared_test";
+    }
+
+    private int migrationCount() throws Exception {
+        return versionedMigrations().size();
+    }
+
+    private String versionedMigrationHistory() throws Exception {
+        return versionedMigrations().stream().map(name -> "SQL:" + name.substring(1, name.indexOf("__"))
+                .replace('_', '.')).collect(Collectors.joining(","));
+    }
+
+    private List<String> versionedMigrations() throws Exception {
+        try (Stream<Path> migrations = Files.list(Path.of("src/main/resources/db/migration"))) {
+            return migrations.map(path -> path.getFileName().toString())
+                    .filter(name -> name.startsWith("V") && name.endsWith(".sql")).sorted().toList();
+        }
     }
 
     private String primaryTestDatabaseUrl(String databaseName) {

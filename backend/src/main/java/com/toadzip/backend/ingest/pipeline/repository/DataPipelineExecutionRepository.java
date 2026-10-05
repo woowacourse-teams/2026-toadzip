@@ -71,6 +71,19 @@ public interface DataPipelineExecutionRepository
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select execution from DataPipelineExecution execution
+            where execution.status <> com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus.RUNNING
+              and exists (
+                  select record.id from SourceCollectionRecord record
+                  where record.executionId = execution.executionId
+                    and record.status = com.toadzip.backend.ingest.collection.history.domain.CollectionStatus.RUNNING
+              )
+            order by execution.id asc
+            """)
+    List<DataPipelineExecution> findTerminalWithRunningCollectionsForUpdate();
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select execution from DataPipelineExecution execution
             where execution.executionId = :executionId
               and execution.status = com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus.RUNNING
               and execution.heartbeatAt < :cutoff

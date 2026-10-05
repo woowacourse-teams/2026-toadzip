@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import {
   applyVerifiedLhSupplyReplacement,
@@ -13,31 +13,54 @@ export function LhAnnouncementQualityPanel({ collectionExecution }: {
   const [quality, setQuality] = useState<LhAnnouncementQuality | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedRequest, setSelectedRequest] = useState<string | null>(null)
+  const [selectedRequest, setSelectedRequest] = useState<{
+    requestDescription: string
+    proposedFingerprint: string | null
+  } | null>(null)
   const [pblancId, setPblancId] = useState('')
   const [evidenceUrl, setEvidenceUrl] = useState('')
   const [reason, setReason] = useState('')
   const [confirmed, setConfirmed] = useState(false)
   const [applying, setApplying] = useState(false)
   const [result, setResult] = useState<string | null>(null)
+  const reloadVersion = useRef(0)
 
   useEffect(() => {
     void reload()
+    return () => { reloadVersion.current += 1 }
   }, [collectionExecution.executionId, collectionExecution.status])
 
   async function reload() {
+    const version = ++reloadVersion.current
     setLoading(true)
     try {
-      setQuality(await getLhAnnouncementQuality())
+      const nextQuality = await getLhAnnouncementQuality()
+      if (version !== reloadVersion.current) return
+      setQuality(nextQuality)
       setError(null)
     } catch (cause) {
+      if (version !== reloadVersion.current) return
       setError(cause instanceof Error ? cause.message : 'LH 데이터 품질을 조회하지 못했습니다.')
     } finally {
-      setLoading(false)
+      if (version === reloadVersion.current) setLoading(false)
     }
   }
 
-  const held = quality?.heldRequests.find((item) => item.requestDescription === selectedRequest)
+  const held = quality?.heldRequests.find((item) =>
+    selectedRequest !== null && item.requestDescription === selectedRequest.requestDescription
+      && item.proposedFingerprint === selectedRequest.proposedFingerprint,
+  )
+
+  useEffect(() => {
+    if (selectedRequest !== null && !held) {
+      setSelectedRequest(null)
+      setPblancId('')
+      setEvidenceUrl('')
+      setReason('')
+      setConfirmed(false)
+      setResult('선택한 보류 요청이 변경되었습니다. 현재 목록에서 대상을 다시 확인해 주세요.')
+    }
+  }, [selectedRequest, held])
 
   async function apply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -85,10 +108,10 @@ export function LhAnnouncementQualityPanel({ collectionExecution }: {
                 <small>원천 선택 충돌 {selectionFailures(collectionExecution, 'COLLECT_LH_ANNOUNCEMENT_SUPPLIES')}건</small></div>
               <div><h5>최근 LH 상세 수집</h5><p>{collectionRate(collectionExecution, 'COLLECT_LH_ANNOUNCEMENT_DETAILS')}</p>
                 <small>원천 선택 충돌 {selectionFailures(collectionExecution, 'COLLECT_LH_ANNOUNCEMENT_DETAILS')}건</small></div>
-              <div><h5>공급 최신성</h5><p>{coverage(quality.supplyCollection.freshRequests, quality.supplyCollection.totalRequests)}</p>
-                <small>마지막 수집 {time(quality.supplyCollection.latestCollectedAt)}</small></div>
-              <div><h5>상세 최신성</h5><p>{coverage(quality.detailCollection.freshRequests, quality.detailCollection.totalRequests)}</p>
-                <small>마지막 수집 {time(quality.detailCollection.latestCollectedAt)}</small></div>
+              <div><h5>공급 원천 확보</h5><p>{coverage(quality.supplyCollection.collectedRequests, quality.supplyCollection.totalRequests)}</p>
+                <small>가장 최근 실제 수집 {time(quality.supplyCollection.latestCollectedAt)}</small></div>
+              <div><h5>상세 원천 확보</h5><p>{coverage(quality.detailCollection.collectedRequests, quality.detailCollection.totalRequests)}</p>
+                <small>가장 최근 실제 수집 {time(quality.detailCollection.latestCollectedAt)}</small></div>
             </div>
           </section>
           <section className="lh-quality-metric-group" aria-labelledby="lh-product-metrics">
@@ -101,7 +124,7 @@ export function LhAnnouncementQualityPanel({ collectionExecution }: {
                 <small>확인한 접수 일정 {quality.schedules.withApplicationSchedule}건</small></div>
             </div>
           </section>
-          <p className="ingest-meta">최신성은 현재 재수집 대상 요청의 주기와 원천 변경 시각으로 판정합니다. 성공 기록이 없는 요청도 포함합니다. 금액 확보는 공급행에 보증금·월세 숫자 쌍이 하나 이상 있는 경우입니다.</p>
+          <p className="ingest-meta">원천 확보는 현재 수집 대상의 조회 조건에 맞는 성공 원천 유무입니다. 과거 성공도 포함하며 이번 실행의 성공률이나 현재 값의 최신성을 뜻하지 않습니다. 가장 최근 실제 수집 시각은 대상 중 최댓값입니다. 금액 확보는 공급행에 보증금·월세 숫자 쌍이 하나 이상 있는 경우입니다.</p>
           <div className="lh-quality-review-grid">
             <section className="lh-quality-summary">
               <h4>연결되지 않은 공급행 사유</h4>
@@ -148,8 +171,13 @@ export function LhAnnouncementQualityPanel({ collectionExecution }: {
                 <li key={item.requestDescription}>
                   <strong>{item.requestDescription}</strong> · {time(item.lastOccurredAt)}
                   <p>{item.reason}</p>
-                  {item.proposedFingerprint ? <button type="button" onClick={() => {
-                    setSelectedRequest(item.requestDescription)
+                  {item.proposedFingerprint ? <button type="button" disabled={applying} onClick={() => {
+                    setSelectedRequest({ requestDescription: item.requestDescription,
+                      proposedFingerprint: item.proposedFingerprint })
+                    setPblancId('')
+                    setEvidenceUrl('')
+                    setReason('')
+                    setConfirmed(false)
                     setResult(null)
                   }}>확인한 정정 반영</button> : <p>새 수집에서 응답 지문을 확보한 뒤 승인할 수 있습니다.</p>}
                 </li>

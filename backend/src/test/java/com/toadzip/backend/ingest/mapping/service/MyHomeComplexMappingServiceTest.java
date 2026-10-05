@@ -18,12 +18,12 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.RentalPriceRange;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
-import com.toadzip.backend.ingest.collection.repository.MyHomeComplexSourceRepository;
+import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
-import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
+import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.service.RoadAddressGeocodingService;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingFailureRepository;
@@ -51,7 +51,7 @@ class MyHomeComplexMappingServiceTest {
     private MyHomeComplexMappingService service;
 
     @Autowired
-    private MyHomeComplexSourceRepository sourceRepository;
+    private MyHomeComplexSourceFixtures sourceRepository;
 
     @Autowired
     private MyHomeComplexMappingFailureRepository failureRepository;

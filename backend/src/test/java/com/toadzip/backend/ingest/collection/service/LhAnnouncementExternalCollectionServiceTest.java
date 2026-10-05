@@ -16,31 +16,34 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.ingest.collection.configuration.LhAnnouncementClientProperties;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogSourceRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore.BatchProgress;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRepository;
-import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
-import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
+import com.toadzip.backend.ingest.collection.lh.configuration.LhAnnouncementClientProperties;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionProgressStore;
+import com.toadzip.backend.ingest.collection.lh.repository.external.LhAnnouncementCircuitBreaker;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCandidateCollector;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionPolicy;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionProgressManager;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementCircuitBreaker;
-import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
-import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhDetailReplacementException;
 import com.toadzip.backend.ingest.exception.exception.EmptyLhSupplyReplacementException;
+import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
+import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
@@ -56,7 +59,6 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -87,7 +89,7 @@ class LhAnnouncementExternalCollectionServiceTest {
     private static final Instant NOW = Instant.parse("2026-09-19T00:00:00Z");
 
     @Mock
-    private MyHomeAnnouncementSourceRepository myHomeAnnouncementRepository;
+    private MyHomeAnnouncementSourceReader myHomeAnnouncementRepository;
 
     @Mock
     private LhAnnouncementExternalRepository externalRepository;
@@ -96,10 +98,10 @@ class LhAnnouncementExternalCollectionServiceTest {
     private IngestOperationLock executionLock;
 
     @Mock
-    private LhAnnouncementCatalogSourceRepository catalogRepository;
+    private LhAnnouncementCatalogSourceReader catalogRepository;
 
     @Mock
-    private LhSourceStore sourceStore;
+    private LhStorageFixtures sourceStore;
 
     @Mock
     private LhAnnouncementCollectionProgressStore progressStore;
@@ -130,29 +132,18 @@ class LhAnnouncementExternalCollectionServiceTest {
                     Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(1);
                     return Optional.of(operation.get());
                 });
-        lenient().when(progressStore.findBatch(any(), any(), any(), any(), any()))
-                .thenReturn(BatchProgress.empty());
         LhAnnouncementCollectionProgressManager progressManager =
                 new LhAnnouncementCollectionProgressManager(
                         progressStore,
-                        failureRecorder,
-                        Clock.fixed(NOW, ZoneOffset.UTC)
+                        failureRecorder
                 );
+        var fixture = new CollectionServiceTestFixture();
         LhAnnouncementCandidateCollector candidateCollector = new LhAnnouncementCandidateCollector(
-                externalRepository,
-                new LhAnnouncementDetailResponseParser(),
-                new LhAnnouncementSupplyResponseParser(),
-                new ExternalDataRetryExecutor(Duration.ZERO, meterRegistry),
-                sourceStore,
-                failureRecorder,
-                progressManager,
-                meterRegistry
-        );
-        LhAnnouncementRefreshPolicy refreshPolicy = new LhAnnouncementRefreshPolicy(
+                fixture.query(externalRepository, sourceStore), fixture.records,
+                new ExternalDataRetryExecutor(Duration.ZERO, meterRegistry), Clock.fixed(NOW, ZoneOffset.UTC), meterRegistry,
+                failureRecorder, progressManager);
+        LhAnnouncementCollectionPolicy collectionPolicy = new LhAnnouncementCollectionPolicy(
                 Clock.fixed(NOW, ZoneOffset.UTC),
-                Duration.ofHours(6),
-                Duration.ofHours(24),
-                Duration.ofHours(24),
                 Period.ofDays(30)
         );
         service = new LhAnnouncementExternalCollectionService(
@@ -162,7 +153,7 @@ class LhAnnouncementExternalCollectionServiceTest {
                 failureRecorder,
                 new LhAnnouncementCollectionCandidateResolver(catalogRepository),
                 candidateCollector,
-                refreshPolicy,
+                collectionPolicy,
                 new LhAnnouncementClientProperties(2, Duration.ofSeconds(3), Duration.ofSeconds(10)),
                 meterRegistry
         );
@@ -221,7 +212,6 @@ class LhAnnouncementExternalCollectionServiceTest {
         verify(externalRepository).fetchDetail(request.capture());
         assertThat(request.getValue().panId()).isEqualTo("200");
         assertThat(report.failedRequestCount()).isZero();
-        verify(progressStore).findBatch(any(), any(), any(), eq(NOW.minus(Duration.ofHours(24))), any());
     }
 
     @ParameterizedTest
@@ -301,7 +291,7 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
-    void 읽은_행과_후보_제외_사유를_페이지에_걸쳐_집계하고_TTL_공고수와_요청수를_구분한다() {
+    void 읽은_행과_후보_제외_사유를_페이지에_걸쳐_집계하고_공고수와_요청수를_구분한다() {
         MyHomeAnnouncementSource first = announcementSource("a", "100");
         MyHomeAnnouncementSource linked = announcementSource("b", "100");
         MyHomeAnnouncementSource duplicate = announcementSource("a", "100");
@@ -312,40 +302,34 @@ class LhAnnouncementExternalCollectionServiceTest {
                 .thenReturn(List.of(first, linked),
                         List.of(duplicate, expired, old, nonLhAnnouncementSource(), unsupportedLhAnnouncementSource()),
                         List.of());
-        when(progressStore.findBatch(any(), any(), any(), any(), any()))
-                .thenReturn(progressWithCompletedRequest(announcementRequestDescription()));
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
-        when(sourceStore.replaceDetails(eq("200"), any(), any())).thenReturn(1);
+        when(sourceStore.replaceDetails(any(), any(), any())).thenReturn(1);
 
         var monitor = mock(DataPipelineExecutionMonitor.class);
         ExternalDataCollectionReport result;
         try (var scope = IngestExecutionScope.open(null, monitor)) {
             result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
         }
-        verify(monitor).beginWork(any(), eq("요청"), eq(0L));
-        verify(monitor).beginWork(any(), eq("요청"), eq(1L));
-        verify(monitor).workCompleted();
+        verify(monitor, times(2)).beginWork(any(), eq("요청"), eq(1L));
+        verify(monitor, times(2)).workCompleted();
 
         assertMetricCount("source.rows", "scheduled", "read", 7);
         assertMetricCount("source.rows", "scheduled", "candidate", 3);
         assertMetricCount("source.rows", "scheduled", "duplicate", 1);
         assertMetricCount("source.rows", "scheduled", "policy_excluded", 1);
         assertMetricCount("source.rows", "scheduled", "unsupported", 2);
-        assertMetricCount("candidates", "scheduled", "ttl_fresh", 2);
-        assertMetricCount("candidates", "scheduled", "refresh", 1);
-        assertMetricCount("requests", "scheduled", "ttl_fresh", 1);
-        assertMetricCount("requests", "scheduled", "refresh", 1);
+        assertMetricCount("candidates", "scheduled", "refresh", 3);
+        assertMetricCount("requests", "scheduled", "refresh", 2);
         assertThat(preparationTimer("scheduled", "source_read").count()).isEqualTo(3);
         assertThat(preparationTimer("scheduled", "candidate_resolution").count()).isEqualTo(2);
         assertThat(preparationTimer("scheduled", "candidate_selection").count()).isEqualTo(2);
-        assertThat(preparationTimer("scheduled", "checkpoint_read").count()).isEqualTo(2);
-        assertThat(result.externalApiCallCount()).isOne();
+        assertThat(result.externalApiCallCount()).isEqualTo(2);
         assertThat(result.skippedRequestCount()).isEqualTo(2);
         verify(progressStore).link(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), eq("b"), any(), eq("100"));
     }
 
     @Test
-    void 준비_시간은_원천_조회와_후보_해석과_체크포인트를_나누고_외부호출과_저장을_제외한다() {
+    void 준비_시간은_원천_조회와_후보_해석을_나누고_외부호출과_저장을_제외한다() {
         MyHomeAnnouncementSource candidate = announcementSource();
         MyHomeAnnouncementSource unsupported = nonLhAnnouncementSource();
         when(myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(anyLong(), any()))
@@ -359,10 +343,6 @@ class LhAnnouncementExternalCollectionServiceTest {
         when(catalogRepository.findAllByPanIdInAndPresentInLatestCatalogTrue(any())).thenAnswer(invocation -> {
             metricClock.add(Duration.ofMillis(20));
             return List.of();
-        });
-        when(progressStore.findBatch(any(), any(), any(), any(), any())).thenAnswer(invocation -> {
-            metricClock.add(Duration.ofMillis(30));
-            return BatchProgress.empty();
         });
         org.mockito.Mockito.doAnswer(invocation -> {
             metricClock.add(Duration.ofMillis(400));
@@ -383,7 +363,6 @@ class LhAnnouncementExternalCollectionServiceTest {
         assertThat(preparationTimer("scheduled", "candidate_resolution").totalTime(TimeUnit.MILLISECONDS))
                 .isEqualTo(20);
         assertThat(preparationTimer("scheduled", "candidate_selection").totalTime(TimeUnit.MILLISECONDS)).isZero();
-        assertThat(preparationTimer("scheduled", "checkpoint_read").totalTime(TimeUnit.MILLISECONDS)).isEqualTo(30);
         assertThat(meterRegistry.get("ingest.external.request").timer().totalTime(TimeUnit.MILLISECONDS))
                 .isEqualTo(100);
         assertThat(meterRegistry.get("ingest.announcement.store").timer().totalTime(TimeUnit.MILLISECONDS))
@@ -392,7 +371,7 @@ class LhAnnouncementExternalCollectionServiceTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "source_read", "source_group_read", "candidate_resolution", "checkpoint_read", "failure_read"
+            "source_read", "source_group_read", "candidate_resolution", "failure_read"
     })
     void 준비_실패도_걸린_시간을_기록하고_원래_예외를_전파한다(String phase) {
         IllegalStateException failure = new IllegalStateException("준비 실패");
@@ -411,9 +390,6 @@ class LhAnnouncementExternalCollectionServiceTest {
         }
         if (phase.equals("candidate_resolution")) {
             when(catalogRepository.findAllByPanIdInAndPresentInLatestCatalogTrue(any())).thenAnswer(fail);
-        }
-        if (phase.equals("checkpoint_read")) {
-            when(progressStore.findBatch(any(), any(), any(), any(), any())).thenAnswer(fail);
         }
         if (phase.equals("failure_read")) {
             doAnswer(fail).when(failureRecorder).findPendingRequestDescriptions(any(), any());
@@ -509,6 +485,40 @@ class LhAnnouncementExternalCollectionServiceTest {
         assertMetricCount("source.rows", "scheduled", "read", 3);
         assertMetricCount("requests", "scheduled", "refresh", 3);
         assertThat(preparationTimer("scheduled", "source_read").count()).isOne();
+    }
+
+    @Test
+    void 배치간_공유_요청의_연결_정리_후_중지하면_다음_공유_요청을_시작하지_않는다() {
+        MyHomeAnnouncementSource first = announcementSource("first", "100");
+        MyHomeAnnouncementSource second = announcementSource("second", "200");
+        MyHomeAnnouncementSource nextFirst = announcementSource("next-first", "100");
+        MyHomeAnnouncementSource nextSecond = announcementSource("next-second", "200");
+        source(first, second, nextFirst, nextSecond);
+        when(myHomeAnnouncementRepository.findByIdGreaterThanOrderByIdAsc(anyLong(), any()))
+                .thenReturn(List.of(first, second), List.of(nextFirst, nextSecond), List.of());
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(any(), any(), any())).thenReturn(1);
+        var stopped = new java.util.concurrent.atomic.AtomicBoolean();
+        var monitor = mock(DataPipelineExecutionMonitor.class);
+        doAnswer(invocation -> {
+            if (stopped.get()) {
+                throw new IllegalStateException("중지 요청");
+            }
+            return null;
+        }).when(monitor).checkStopRequested();
+        doAnswer(invocation -> {
+            stopped.set(true);
+            return null;
+        }).when(progressStore).link(any(), eq("next-first"), any(), any());
+
+        try (var scope = IngestExecutionScope.open(null, monitor)) {
+            assertThatThrownBy(() -> service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL))
+                    .isInstanceOf(IllegalStateException.class).hasMessage("중지 요청");
+        }
+
+        verify(externalRepository, times(2)).fetchDetail(any());
+        verify(progressStore).link(any(), eq("next-first"), any(), any());
+        verify(progressStore, never()).link(any(), eq("next-second"), any(), any());
     }
 
     @Test
@@ -1144,90 +1154,31 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
-    void 완료된_동일_요청은_외부_API를_재호출하지_않는다() {
+    void 일반_수집은_동일한_응답도_실행마다_조회하고_저장한다() {
         source(announcementSource());
-        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY), any(), any(), any(), any()))
-                .thenReturn(progressWithCompletedRequest(announcementRequestDescription()));
-
-        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
-
-        verify(externalRepository, never()).fetchSupply(any());
-        verify(sourceStore, never()).replaceSupplies(any(), any(), any());
-        assertThat(result.storedRowCount()).isZero();
-        assertThat(result.failedRequestCount()).isZero();
-        assertThat(result.externalApiCallCount()).isZero();
-        assertThat(meterRegistry.get("ingest.announcement.requests")
-                .tags("source", "LH_ANNOUNCEMENT_SUPPLY", "mode", "scheduled", "result", "ttl_fresh")
-                .counter().count()).isOne();
-        assertThat(meterRegistry.find("ingest.announcement.requests")
-                .tag("source", "LH_ANNOUNCEMENT_DETAIL").counters()).isEmpty();
-    }
-
-    @Test
-    void 구버전_완료_요청은_현재_계약으로_다시_수집한다() {
-        source(announcementSource());
-        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY), any(), any(), any(), any()))
-                .thenReturn(progressWithCompletedRequest(legacyAnnouncementRequestDescription()));
         when(externalRepository.fetchSupply(any())).thenReturn(supplyResponse());
         when(sourceStore.replaceSupplies(eq("100"), any(), any())).thenReturn(1);
 
-        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+        assertThat(service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY).externalApiCallCount()).isOne();
+        assertThat(service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY).externalApiCallCount()).isOne();
 
-        verify(externalRepository).fetchSupply(any());
-        verify(sourceStore).replaceSupplies(eq("100"), any(), any());
-        verify(progressStore).complete(
-                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
-                "100",
-                announcementRequestDescription(),
-                "100"
-        );
-        assertThat(result.externalApiCallCount()).isOne();
+        verify(externalRepository, times(2)).fetchSupply(any());
+        verify(sourceStore, times(2)).replaceSupplies(eq("100"), any(), any());
+        verify(progressStore, times(2)).complete(any(), any(), any(), any());
     }
 
     @Test
-    void 단일_응답_수정_전_완료_요청은_다시_수집한다() {
+    void 일반_수집에_성공하면_현재_요청의_완료와_연결을_갱신한다() {
         source(announcementSource());
-        String previousVersion = announcementRequestDescription()
-                .replace("COLLECTION_VERSION=6", "COLLECTION_VERSION=4");
-        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY), any(), any(), any(), any()))
-                .thenReturn(progressWithCompletedRequest(previousVersion));
         when(externalRepository.fetchSupply(any())).thenReturn(supplyResponse());
-        when(sourceStore.replaceSupplies(eq("100"), eq(announcementRequestDescription()), any()))
-                .thenReturn(1);
+        when(sourceStore.replaceSupplies(eq("100"), any(), any())).thenReturn(1);
 
-        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
+        var result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
 
         verify(externalRepository).fetchSupply(any());
-        verify(progressStore).complete(
-                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
-                "100",
-                announcementRequestDescription(),
-                "100"
-        );
+        verify(progressStore).complete(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
+                "100", announcementRequestDescription(), "100");
         assertThat(result.externalApiCallCount()).isOne();
-    }
-
-    @Test
-    void 현재_요청이_완료됐어도_공고_링크가_이전_요청이면_갱신한다() {
-        source(announcementSource());
-        String currentRequest = announcementRequestDescription();
-        String previousRequest = currentRequest + "&PREVIOUS=true";
-        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY), any(), any(), any(), any()))
-                .thenReturn(new BatchProgress(
-                        Set.of(LhAnnouncementCollectionCheckpoint.requestHashOf(currentRequest)),
-                        Map.of("100", LhAnnouncementCollectionCheckpoint.requestHashOf(previousRequest))
-                ));
-
-        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY);
-
-        verify(externalRepository, never()).fetchSupply(any());
-        verify(progressStore).link(
-                ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
-                "100",
-                currentRequest,
-                "100"
-        );
-        assertThat(result.externalApiCallCount()).isZero();
     }
 
     @Test
@@ -1255,8 +1206,6 @@ class LhAnnouncementExternalCollectionServiceTest {
     @Test
     void 완료_체크포인트가_없으면_다시_호출한다() {
         source(announcementSource());
-        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any(), any(), any()))
-                .thenReturn(BatchProgress.empty());
         when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
         when(sourceStore.replaceDetails(eq("100"), any(), any())).thenReturn(1);
 
@@ -1270,24 +1219,6 @@ class LhAnnouncementExternalCollectionServiceTest {
                 any(),
                 eq("100")
         );
-        assertThat(result.externalApiCallCount()).isOne();
-    }
-
-    @Test
-    void 완료된_이전_요청과_다른_조회_조건은_다시_호출한다() {
-        source(announcementSource());
-        String previousRequest = announcementRequestDescription() + "&AIS_TP_CD=05";
-        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any(), any(), any()))
-                .thenReturn(new BatchProgress(
-                        Set.of(LhAnnouncementCollectionCheckpoint.requestHashOf(previousRequest)),
-                        Map.of()
-                ));
-        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
-        when(sourceStore.replaceDetails(eq("100"), any(), any())).thenReturn(1);
-
-        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
-
-        verify(externalRepository).fetchDetail(any());
         assertThat(result.externalApiCallCount()).isOne();
     }
 
@@ -1332,55 +1263,32 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
-    void 동일한_완료_요청의_공고_링크가_모두_최신이면_다시_저장하지_않는다() {
-        MyHomeAnnouncementSource first = announcementSource("announcement-100");
-        MyHomeAnnouncementSource second = announcementSource("announcement-101");
-        source(first, second);
-        String request = announcementRequestDescription();
-        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(request);
-        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any(), any(), any()))
-                .thenReturn(new BatchProgress(
-                        Set.of(requestHash),
-                        Map.of("announcement-100", requestHash, "announcement-101", requestHash)
-                ));
+    void 일반_수집은_공유_요청을_조회한_뒤_모든_공고를_연결한다() {
+        source(announcementSource("announcement-100"), announcementSource("announcement-101"));
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("100"), any(), any())).thenReturn(1);
 
-        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        var result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
-        verify(externalRepository, never()).fetchDetail(any());
-        verify(progressStore, never()).complete(any(), any(), any(), any());
-        verify(progressStore, never()).link(any(), any(), any(), any());
-        assertThat(result.externalApiCallCount()).isZero();
+        verify(externalRepository).fetchDetail(any());
+        verify(progressStore).complete(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
+                eq("announcement-100"), any(), eq("100"));
+        verify(progressStore).link(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
+                eq("announcement-101"), any(), eq("100"));
+        assertThat(result.externalApiCallCount()).isOne();
     }
 
     @Test
-    void 동일한_완료_요청을_공유해도_이전_요청을_가리키는_링크만_갱신한다() {
-        MyHomeAnnouncementSource first = announcementSource("announcement-100");
-        MyHomeAnnouncementSource second = announcementSource("announcement-101");
-        source(first, second);
-        String currentRequest = announcementRequestDescription();
-        String currentRequestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(currentRequest);
-        String previousRequestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(
-                currentRequest + "&PREVIOUS=true"
-        );
-        when(progressStore.findBatch(eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL), any(), any(), any(), any()))
-                .thenReturn(new BatchProgress(
-                        Set.of(currentRequestHash),
-                        Map.of(
-                                "announcement-100", currentRequestHash,
-                                "announcement-101", previousRequestHash
-                        )
-                ));
+    void 공유_요청_조회가_실패하면_공고별_기존_연결을_갱신하지_않는다() {
+        source(announcementSource("announcement-100"), announcementSource("announcement-101"));
+        when(externalRepository.fetchDetail(any())).thenThrow(new ExternalDataRequestException("조회 실패"));
 
-        ExternalDataCollectionReport result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        var result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
-        verify(externalRepository, never()).fetchDetail(any());
-        verify(progressStore).link(
-                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
-                "announcement-101",
-                currentRequest,
-                "100"
-        );
-        assertThat(result.externalApiCallCount()).isZero();
+        verify(externalRepository).fetchDetail(any());
+        verify(progressStore, never()).complete(any(), any(), any(), any());
+        verify(progressStore, never()).link(any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isOne();
     }
 
     @Test
@@ -1398,11 +1306,6 @@ class LhAnnouncementExternalCollectionServiceTest {
                 .findByIdGreaterThanOrderByIdAsc(cursor.capture(), pageable.capture());
         assertThat(cursor.getAllValues()).containsExactly(0L, source.getId());
         assertThat(pageable.getAllValues()).allSatisfy(value -> assertThat(value.getPageSize()).isEqualTo(500));
-        verify(progressStore).findBatch(
-                eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
-                any(),
-                any(),
-                eq(NOW.minus(Duration.ofHours(6))), any());
     }
 
     @Test
@@ -1499,7 +1402,6 @@ class LhAnnouncementExternalCollectionServiceTest {
                 "announcement-100"
         );
 
-        verify(progressStore, never()).findBatch(any(), any(), any(), any(), any());
         verify(externalRepository).fetchDetail(any());
         verify(progressStore).complete(
                 eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
@@ -1512,7 +1414,6 @@ class LhAnnouncementExternalCollectionServiceTest {
         assertMetricCount("source.rows", "forced", "policy_excluded", 0);
         assertMetricCount("candidates", "forced", "refresh", 1);
         assertMetricCount("requests", "forced", "refresh", 1);
-        assertMetricCount("requests", "forced", "ttl_fresh", 0);
         assertThat(preparationTimer("forced", "source_read").count()).isOne();
         assertThat(meterRegistry.find("ingest.announcement.prepare").tag("phase", "checkpoint_read").timer()).isNull();
         assertThat(meterRegistry.find("ingest.announcement.prepare").tag("mode", "scheduled").timers()).isEmpty();
@@ -1534,20 +1435,17 @@ class LhAnnouncementExternalCollectionServiceTest {
     }
 
     @Test
-    void 최근_종료_공고는_24시간_주기로_재수집한다() {
+    void 최근_종료_공고도_실행마다_실제_조회한다() {
         MyHomeAnnouncementSource source = announcementSource("announcement-100");
         ReflectionTestUtils.setField(source, "endDe", "20260918");
         source(source);
-        when(progressStore.findBatch(any(), any(), any(), any(), any()))
-                .thenReturn(progressWithCompletedRequest(announcementRequestDescription()));
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("100"), any(), any())).thenReturn(1);
 
         service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
-        verify(progressStore).findBatch(
-                eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
-                any(),
-                any(),
-                eq(NOW.minus(Duration.ofHours(24))), any());
+        verify(externalRepository, times(2)).fetchDetail(any());
     }
 
     @Test
@@ -1574,60 +1472,38 @@ class LhAnnouncementExternalCollectionServiceTest {
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL
         );
 
-        verify(progressStore, never()).findBatch(any(), any(), any(), any(), any());
         verify(externalRepository, never()).fetchDetail(any());
         assertThat(result.externalApiCallCount()).isZero();
     }
 
     @Test
-    void 요청을_공유하면_가장_짧은_재수집_주기를_적용한다() {
+    void 진행중과_최근_종료_공고가_요청을_공유하면_한_번만_조회한다() {
         MyHomeAnnouncementSource active = announcementSource("announcement-active", "100");
-        MyHomeAnnouncementSource recentlyEnded = announcementSource("announcement-ended", "100");
-        ReflectionTestUtils.setField(recentlyEnded, "endDe", "20260918");
-        source(active, recentlyEnded);
-        when(progressStore.findBatch(any(), any(), any(), any(), any()))
-                .thenReturn(progressWithCompletedRequest(announcementRequestDescription()));
+        MyHomeAnnouncementSource ended = announcementSource("announcement-ended", "100");
+        ReflectionTestUtils.setField(ended, "endDe", "20260918");
+        source(active, ended);
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("100"), any(), any())).thenReturn(1);
 
-        service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        var result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
-        verify(progressStore).findBatch(
-                eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
-                any(),
-                any(),
-                eq(NOW.minus(Duration.ofHours(6))), any());
-        verify(progressStore, never()).findBatch(
-                eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
-                any(),
-                any(),
-                eq(NOW.minus(Duration.ofHours(24))), any());
-        verify(externalRepository, never()).fetchDetail(any());
+        verify(externalRepository).fetchDetail(any());
+        assertThat(result.successfulRequestCount()).isOne();
     }
 
     @Test
-    void 서로_다른_주기의_신선한_요청을_합쳐서_외부_호출을_생략한다() {
+    void 진행중과_최근_종료_공고의_요청이_다르면_각각_조회한다() {
         MyHomeAnnouncementSource active = announcementSource("announcement-active", "100");
-        MyHomeAnnouncementSource recentlyEnded = announcementSource("announcement-ended", "200");
-        ReflectionTestUtils.setField(recentlyEnded, "endDe", "20260918");
-        source(active, recentlyEnded);
-        when(progressStore.findBatch(any(), any(), any(), any(), any()))
-                .thenAnswer(invocation -> {
-                    List<?> requestDescriptions = invocation.getArgument(1);
-                    return progressWithCompletedRequest(requestDescriptions.getFirst().toString());
-                });
+        MyHomeAnnouncementSource ended = announcementSource("announcement-ended", "200");
+        ReflectionTestUtils.setField(ended, "endDe", "20260918");
+        source(active, ended);
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(any(), any(), any())).thenReturn(1);
 
-        service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
+        var result = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
-        ArgumentCaptor<Instant> cutoff = ArgumentCaptor.forClass(Instant.class);
-        verify(progressStore, times(2)).findBatch(
-                eq(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL),
-                any(),
-                any(),
-                cutoff.capture(), any());
-        assertThat(cutoff.getAllValues()).containsExactlyInAnyOrder(
-                NOW.minus(Duration.ofHours(6)),
-                NOW.minus(Duration.ofHours(24))
-        );
-        verify(externalRepository, never()).fetchDetail(any());
+        verify(externalRepository, times(2)).fetchDetail(any());
+        assertThat(result.successfulRequestCount()).isEqualTo(2);
     }
 
     @Test
@@ -1790,20 +1666,9 @@ class LhAnnouncementExternalCollectionServiceTest {
         return JsonMapper.builder().build().readTree(payload);
     }
 
-    private BatchProgress progressWithCompletedRequest(String requestDescription) {
-        return new BatchProgress(
-                Set.of(LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescription)),
-                Map.of()
-        );
-    }
-
     private String announcementRequestDescription() {
         return "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06"
                 + "&SPL_INF_TP_CD=063&AIS_TP_CD=06&COLLECTION_VERSION=6";
     }
 
-    private String legacyAnnouncementRequestDescription() {
-        return "PAN_ID=100&CCR_CNNT_SYS_DS_CD=03&UPP_AIS_TP_CD=06"
-                + "&SPL_INF_TP_CD=063&AIS_TP_CD=06";
-    }
 }

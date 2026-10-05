@@ -1,14 +1,14 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { beforeEach, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { FailureReviewPage } from './FailureReviewPage'
 import { getFailureReviews, type FailureReview } from './failureReviewApi'
-import { getDataPipelineStatus, startDataPipeline } from './api'
+import { getDataPipelineStatus, refreshLhAnnouncement, startDataPipeline } from './api'
 
 vi.mock('./failureReviewApi', () => ({ getFailureReviews: vi.fn() }))
 vi.mock('./api', async (original) => ({ ...(await original<typeof import('./api')>()),
   getIngestFailures: vi.fn().mockResolvedValue([]), getDataPipelineStatus: vi.fn(),
-  startDataPipeline: vi.fn(),
+  startDataPipeline: vi.fn(), refreshLhAnnouncement: vi.fn(),
 }))
 const reviews = vi.mocked(getFailureReviews)
 const row: FailureReview = {
@@ -118,4 +118,38 @@ it('도메인을 바꾼 뒤 도착한 이전 도메인 상태 응답을 무시�
   await act(() => initial.resolve({status:'RUNNING',executionId:'old-complex-run',type:'COMPLEX_REFINEMENT'} as Awaited<ReturnType<typeof getDataPipelineStatus>>))
   expect(screen.getByText(message)).toBeVisible()
   expect(screen.getByRole('button',{name:'공고 정제 다시 실행'})).toBeEnabled()
+})
+
+describe('실패 요청 재처리', () => {
+  it.each(['supplies', 'details'] as const)('%s를 공고별로 강제 재조회하고 실제 처리 결과를 표시한다', async (source) => {
+    vi.mocked(refreshLhAnnouncement).mockResolvedValue({ operation: 'LH_ANNOUNCEMENT_SUPPLY',
+      rateLimitedRequestCount: 0, selectionFailedRequestCount: 0, storedRowCount: 3, externalApiCallCount: 1,
+      successfulRequestCount: 1, failedRequestCount: 0, skippedRequestCount: 0 })
+    render(<MemoryRouter initialEntries={['/admin/ingest/failures?domain=announcement']}><FailureReviewPage /></MemoryRouter>)
+    fireEvent.change(screen.getByLabelText('마이홈 공고 ID'), { target: { value: ' myhome-1 ' } })
+    fireEvent.change(screen.getByLabelText('재조회 원천'), { target: { value: source } })
+    fireEvent.click(screen.getByRole('button', { name: '공고 원천 강제 재조회' }))
+    expect(await screen.findByText(/외부 호출 1회 · 성공 요청 1건 · 저장·갱신 3행/)).toHaveAttribute('role', 'status')
+    expect(vi.mocked(refreshLhAnnouncement)).toHaveBeenCalledWith(source, 'myhome-1')
+    expect(vi.mocked(startDataPipeline)).not.toHaveBeenCalled()
+  })
+
+  it('조회 대상이 없으면 수집 성공이라고 표시하지 않는다', async () => {
+    vi.mocked(refreshLhAnnouncement).mockResolvedValue({ operation: 'LH_ANNOUNCEMENT_SUPPLY',
+      rateLimitedRequestCount: 0, selectionFailedRequestCount: 0, storedRowCount: 0, externalApiCallCount: 0,
+      successfulRequestCount: 0, failedRequestCount: 0, skippedRequestCount: 0 })
+    render(<MemoryRouter initialEntries={['/admin/ingest/failures?domain=announcement']}><FailureReviewPage /></MemoryRouter>)
+    fireEvent.change(screen.getByLabelText('마이홈 공고 ID'), { target: { value: 'missing' } })
+    fireEvent.click(screen.getByRole('button', { name: '공고 원천 강제 재조회' }))
+    expect(await screen.findByText(/재조회할 LH 요청이 없습니다/)).toHaveAttribute('role', 'status')
+  })
+
+  it('재조회 실패를 표시하고 다시 요청할 수 있다', async () => {
+    vi.mocked(refreshLhAnnouncement).mockRejectedValue(new Error('공급행 누락으로 기존 원천을 보존했습니다.'))
+    render(<MemoryRouter initialEntries={['/admin/ingest/failures?domain=announcement']}><FailureReviewPage /></MemoryRouter>)
+    fireEvent.change(screen.getByLabelText('마이홈 공고 ID'), { target: { value: 'myhome-1' } })
+    fireEvent.click(screen.getByRole('button', { name: '공고 원천 강제 재조회' }))
+    expect((await screen.findAllByRole('alert'))[0]).toHaveTextContent('공급행 누락')
+    expect(screen.getByRole('button', { name: '공고 원천 강제 재조회' })).toBeEnabled()
+  })
 })

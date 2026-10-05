@@ -20,26 +20,33 @@ import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionCheckpointRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionLinkRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
+import com.toadzip.backend.ingest.collection.fixture.repository.CollectedSourceRows;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementSupplySourceFixtures;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
+import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
+import com.toadzip.backend.ingest.collection.history.repository.SourceCollectionRecordRepository;
+import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecordService;
+import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
+import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionLinkRepository;
+import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionProgressStore;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.projection.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectedResponse;
+import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementCollectionRepository;
+import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementStorageService;
 import com.toadzip.backend.ingest.exception.exception.IncompleteLhSupplyReplacementException;
-import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
-import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,10 +57,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest
 @ActiveProfiles("test")
 class MyHomeAnnouncementMappingServiceTest {
+
+    @Autowired
+    private CollectedSourceRows fixtures;
 
     private static final Instant COLLECTED_AT = Instant.parse("2026-08-28T00:00:00Z");
 
@@ -63,7 +74,7 @@ class MyHomeAnnouncementMappingServiceTest {
     private MyHomeAnnouncementMappingService service;
 
     @Autowired
-    private MyHomeAnnouncementSourceRepository sourceRepository;
+    private MyHomeAnnouncementSourceFixtures sourceRepository;
 
     @Autowired
     private MyHomeAnnouncementMappingFailureRepository failureRepository;
@@ -86,11 +97,9 @@ class MyHomeAnnouncementMappingServiceTest {
     @Autowired
     private HousingTypeRepository housingTypeRepository;
 
-    @Autowired
-    private LhAnnouncementCollectionCheckpointRepository checkpointRepository;
 
     @Autowired
-    private LhAnnouncementSupplySourceRepository lhSupplyRepository;
+    private LhAnnouncementSupplySourceFixtures lhSupplyRepository;
 
     @Autowired
     private LhAnnouncementCollectionLinkRepository linkRepository;
@@ -102,11 +111,27 @@ class MyHomeAnnouncementMappingServiceTest {
     private LhAnnouncementCollectionCandidateResolver candidateResolver;
 
     @Autowired
-    private LhSourceStore lhSourceStore;
+    private LhStorageFixtures lhSourceStore;
+
+    @Autowired
+    private MyHomeAnnouncementStorageService collectedSourceStorage;
+
+    @Autowired
+    private MyHomeAnnouncementCollectionRepository collectedSources;
+
+    @Autowired
+    private SourceCollectionRecordService collectionHistory;
+
+    @Autowired
+    private SourceCollectionRecordRepository collectionRecords;
+
+    @Autowired
+    private ObjectMapper json;
 
     @BeforeEach
     @AfterEach
     void cleanUp() {
+        fixtures.clear();
         supplyTargetRepository.deleteAll();
         supplyRowRepository.deleteAll();
         announcementRepository.deleteAll();
@@ -114,9 +139,111 @@ class MyHomeAnnouncementMappingServiceTest {
         complexRepository.deleteAll();
         failureRepository.deleteAll();
         sourceRepository.deleteAll();
-        checkpointRepository.deleteAll();
         linkRepository.deleteAll();
         lhSupplyRepository.deleteAll();
+        collectedSources.deleteAll();
+        collectionRecords.deleteAll();
+    }
+
+    @Test
+    void 재수집에서_빠진_주택의_과거_공급행과_공급대상을_정제해도_보존한다() {
+        saveMappedComplex();
+        storeCollectedHouses(COLLECTED_AT, List.of(1, 2));
+        assertThat(service.mapAll().failedSourceRowCount()).isZero();
+        List<Long> previousRowIds = supplyRowRepository.findAll().stream().map(SupplyRow::getId).sorted().toList();
+        SupplyRow missingHouse = supplyRow(MyHomeAnnouncementSource.sourceKeyOf(
+                data("21026", 2, "부산도시공사", "동삼2")));
+        SupplyTarget target = supplyTargetRepository.save(SupplyTarget.create(
+                missingHouse, "청년", null, 1, null, null, null, null, null, 1));
+
+        storeCollectedHouses(COLLECTED_AT.plusSeconds(60), List.of(1));
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(report.deletedSupplyRowCount()).isZero();
+        assertThat(supplyRowRepository.findAll().stream().map(SupplyRow::getId).sorted().toList())
+                .containsExactlyElementsOf(previousRowIds);
+        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(saved -> {
+            assertThat(saved.getId()).isEqualTo(target.getId());
+            assertThat(saved.getSupplyRow().getId()).isEqualTo(missingHouse.getId());
+        });
+    }
+
+    @Test
+    void 과거_주택의_충돌도_정제_실패로_기록하고_다른_공고는_계속_처리한다() {
+        saveMappedComplex();
+        storeCollectedSources(COLLECTED_AT, List.of(
+                withNameAndSupplyCount(data("21026", 2, "부산도시공사", "동삼2"), "국민임대 모집공고", 5),
+                withNameAndSupplyCount(data("21026", 2, "부산도시공사", "동삼2"), "국민임대 모집공고", 6)
+        ));
+        storeCollectedSources(COLLECTED_AT.plusSeconds(60), List.of(
+                data("21026", 1, "부산도시공사", "동삼2"),
+                data("21027", 1, "부산도시공사", "동삼2")
+        ));
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isEqualTo(3);
+        assertThat(report.createdAnnouncementCount()).isOne();
+        assertThat(announcementRepository.findBySourceAnnouncementIdentifier("21026")).isEmpty();
+        assertThat(announcementRepository.findBySourceAnnouncementIdentifier("21027")).isPresent();
+        assertThat(supplyRowRepository.count()).isOne();
+        assertThat(failureRepository.findAll()).hasSize(2).allSatisfy(failure ->
+                assertThat(failure.getReason())
+                        .isEqualTo(MyHomeAnnouncementMappingFailureReason.CONFLICTING_SOURCE_VALUE));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void 관리자_보호로_기관변경을_거절하면_LH_파생행과_모든_공급대상을_보존한다(boolean deleted) {
+        saveMappedComplex();
+        MyHomeAnnouncementSource source = sourceRepository.save(source(0, data("21026", 1, "LH", "동삼2")));
+        saveLhSupplyLink("21026", "PAN-1");
+        lhSourceStore.replaceSupplies("PAN-1", lhRequestDescription("PAN-1"), List.of(
+                lhSupply(0, "PAN-1", "동삼2", "46A", "46.8000", "67.0000"),
+                lhSupply(1, "PAN-1", "동삼2", "46A", "46.8000", "67.0000")
+        ));
+        assertThat(service.mapAll().createdSupplyRowCount()).isEqualTo(2);
+        Announcement announcement = announcementRepository.findAll().getFirst();
+        announcement.enrichFromLh("PAN-1", null, null);
+        if (deleted) {
+            announcement.moveToTrash();
+        }
+        if (!deleted) {
+            announcement.reviseByAdmin(announcement);
+        }
+        announcementRepository.save(announcement);
+        List<SupplyRow> rows = supplyRowRepository.findAll();
+        List<Long> rowIds = rows.stream().map(SupplyRow::getId).toList();
+        for (SupplyRow row : rows) {
+            supplyTargetRepository.saveAll(List.of(
+                    SupplyTarget.createFromSource(row, "LH:" + row.getId(), "일반", null, 1, null, null, 1),
+                    SupplyTarget.createFromSource(row, "OTHER:" + row.getId(), "일반", null, 1, null, null, 2),
+                    SupplyTarget.create(row, "수동", null, 1, null, null, null, null, "공고문 참조", 3)
+            ));
+        }
+        List<Long> targetIds = supplyTargetRepository.findAll().stream().map(SupplyTarget::getId).toList();
+        source.replaceWith(data("21026", 1, "서울주택도시공사", "동삼2"));
+        sourceRepository.save(source);
+
+        var report = service.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isZero();
+        assertThat(report.updatedAnnouncementCount()).isZero();
+        assertThat(report.updatedSupplyRowCount()).isZero();
+        assertThat(report.deletedSupplyRowCount()).isZero();
+        assertThat(report.unchangedSupplyRowCount()).isEqualTo(2);
+        assertThat(supplyRowRepository.findAll()).extracting(SupplyRow::getId)
+                .containsExactlyInAnyOrderElementsOf(rowIds);
+        assertThat(supplyTargetRepository.findAll()).extracting(SupplyTarget::getId)
+                .containsExactlyInAnyOrderElementsOf(targetIds);
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(stored -> {
+            assertThat(stored.getProvider()).isEqualTo(AgencyCode.LH);
+            assertThat(stored.getLhPanId()).isEqualTo("PAN-1");
+            if (!deleted) {
+                assertThat(stored.isSourceReviewRequired()).isTrue();
+            }
+        });
     }
 
     @Test
@@ -833,6 +960,22 @@ class MyHomeAnnouncementMappingServiceTest {
         assertThat(repeatedReport.unchangedSupplyRowCount()).isOne();
     }
 
+    private void storeCollectedHouses(Instant collectedAt, List<Integer> houses) {
+        storeCollectedSources(collectedAt, houses.stream()
+                .map(house -> data("21026", house, "부산도시공사", "동삼2")).toList());
+    }
+
+    private void storeCollectedSources(Instant collectedAt, List<MyHomeAnnouncementSourceSnapshot> snapshots) {
+        var request = new MyHomeAnnouncementCollectionRequest(UUID.randomUUID(), "01", 500, 1_000,
+                collectedAt.minusSeconds(1));
+        var rows = snapshots.stream().map(snapshot -> json.convertValue(snapshot,
+                com.toadzip.backend.ingest.collection.myhome.announcement.domain.
+                        MyHomeAnnouncementSourceSnapshot.class)).toList();
+        UUID recordId = collectionHistory.start(request);
+        collectedSourceStorage.complete(recordId, request,
+                new MyHomeAnnouncementCollectedResponse(rows.size(), collectedAt, rows));
+    }
+
     private void saveMappedComplex() {
         saveMappedComplex("동삼2", "123:NATIONAL_RENTAL");
     }
@@ -945,7 +1088,7 @@ class MyHomeAnnouncementMappingServiceTest {
                 )
         );
         source.markCollectedAt(COLLECTED_AT);
-        source.assignRequestHash(LhAnnouncementCollectionCheckpoint.requestHashOf(lhRequestDescription(panId)));
+        source.assignRequestHash(LhAnnouncementQuery.requestHashOf(lhRequestDescription(panId)));
         return source;
     }
 

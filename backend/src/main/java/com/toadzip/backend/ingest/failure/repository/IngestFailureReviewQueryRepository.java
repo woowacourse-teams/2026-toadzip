@@ -3,6 +3,8 @@ package com.toadzip.backend.ingest.failure.repository;
 import com.toadzip.backend.ingest.failure.dto.IngestFailureReviewPageResponse;
 import com.toadzip.backend.ingest.failure.dto.IngestFailureReviewPageResponse.Item;
 import com.toadzip.backend.ingest.failure.dto.IngestFailureReviewPageResponse.Product;
+import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
+import com.toadzip.backend.ingest.source.repository.IngestSourceRows;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -37,7 +39,7 @@ public class IngestFailureReviewQueryRepository {
                 LIMIT :size OFFSET :offset
             )
             SELECT totals.total_elements, failure.*,
-                COALESCE(complex_source.hsmp_nm, announcement_source.pblanc_nm,
+                COALESCE(complex_source.name, announcement_source.name,
                          complex.name, announcement.name, failure.target_name) AS target_name_value,
                 COALESCE(complex.id, announcement.id) AS product_id,
                 COALESCE(complex.name, announcement.name) AS product_name,
@@ -96,14 +98,15 @@ public class IngestFailureReviewQueryRepository {
                 AND NULLIF(BTRIM(failure.source_announcement_identifier), '') IS NOT NULL
                 AND announcement.source_announcement_identifier = failure.source_announcement_identifier
             LEFT JOIN LATERAL (
-                SELECT hsmp_nm FROM myhome_complex_source
-                WHERE failure.category = 'complex' AND source_key = failure.source_key
-                ORDER BY id DESC LIMIT 1
+                SELECT source.name FROM (%s) source
+                WHERE failure.category = 'complex' AND source.source_key = failure.source_key
+                ORDER BY source.collected_at DESC NULLS LAST, source.id DESC LIMIT 1
             ) complex_source ON TRUE
             LEFT JOIN LATERAL (
-                SELECT pblanc_nm FROM myhome_announcement_source
-                WHERE failure.category IN ('announcement', 'enrichment') AND source_key = failure.source_key
-                ORDER BY id DESC LIMIT 1
+                SELECT source.name FROM (%s) source
+                WHERE failure.category IN ('announcement', 'enrichment') AND source.source_key = failure.source_key
+                ORDER BY (source.raw_payload::jsonb ->> 'active')::boolean DESC NULLS LAST,
+                         source.collected_at DESC NULLS LAST, source.id DESC LIMIT 1
             ) announcement_source ON TRUE
             LEFT JOIN LATERAL (
                 SELECT EXISTS(SELECT 1 FROM announcements next_announcement
@@ -124,7 +127,9 @@ public class IngestFailureReviewQueryRepository {
     public IngestFailureReviewPageResponse findReviews(
             String domain, String category, String status, int page, int size
     ) {
-        List<ReviewRow> rows = jdbc.sql(PAGE_SQL.formatted(failureUnion()))
+        List<ReviewRow> rows = jdbc.sql(PAGE_SQL.formatted(failureUnion(),
+                        IngestSourceRows.query(IngestSourceCategory.MYHOME_COMPLEX),
+                        IngestSourceRows.query(IngestSourceCategory.MYHOME_ANNOUNCEMENT)))
                 .param("domain", domain).param("category", category).param("status", status)
                 .param("size", size).param("offset", (long) page * size)
                 .query((row, index) -> reviewRow(row)).list();

@@ -15,29 +15,29 @@
 | 공고 수집 | 마이홈 공급유형별 원천 → LH 목록 → LH 공급 → LH 상세 | 공고 원천과 LH 조회별 원천·연결 |
 | 공고 정제 | 마이홈 공고 매핑 → LH 공고 보강 | 제품 공고·공급행·일정·첨부 |
 
-순서는 [DataPipelineType](../src/main/java/com/toadzip/backend/ingest/pipeline/domain/DataPipelineType.java)과 [DataPipelineRunner](../src/main/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineRunner.java)에 있다. 네 실행은 독립적으로 시작할 수 있고, 두 통합 유형은 각 수집 뒤 정제를 같은 실행 ID와 잠금으로 연결한다. 마이홈 공고 원천은 성공한 공급유형마다 저장하고, **전체 공급유형이 성공했을 때만** 미조회 원천을 판정한다([MyHomeAnnouncementCollectionService](../src/main/java/com/toadzip/backend/ingest/collection/service/MyHomeAnnouncementCollectionService.java), [MyHomeSourceStore](../src/main/java/com/toadzip/backend/ingest/collection/repository/MyHomeSourceStore.java)). 위치정보 ZIP 업로드는 단지 정제 전의 별도 관리자 작업이다.
+순서는 [DataPipelineType](../src/main/java/com/toadzip/backend/ingest/pipeline/domain/DataPipelineType.java)과 [DataPipelineRunner](../src/main/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineRunner.java)에 있다. 네 실행은 독립적으로 시작할 수 있고, 두 통합 유형은 각 수집 뒤 정제를 같은 실행 ID와 잠금으로 연결한다. 마이홈 공고 원천은 성공한 공급유형마다 저장하고, **전체 공급유형이 성공했을 때만** 미조회 원천을 판정한다([MyHomeAnnouncementCollectionService](../src/main/java/com/toadzip/backend/ingest/collection/myhome/announcement/service/MyHomeAnnouncementCollectionService.java), [MyHomeAnnouncementLifecycleService](../src/main/java/com/toadzip/backend/ingest/collection/myhome/announcement/service/MyHomeAnnouncementLifecycleService.java)). 위치정보 ZIP 업로드는 단지 정제 전의 별도 관리자 작업이다.
 
 ## 남은 문제와 판단
 
 ### 1. `COMPLETED`는 원천의 최신성을 보증하지 않는다
 
-LH 공급·상세의 일반 수집은 마이홈 원천 중 선택된 후보에 마감일 정책과 성공 체크포인트의 TTL을 적용해 실제 호출을 생략한다([후보 선택](../src/main/java/com/toadzip/backend/ingest/collection/service/LhAnnouncementExternalCollectionService.java), [갱신 정책](../src/main/java/com/toadzip/backend/ingest/collection/service/LhAnnouncementRefreshPolicy.java)). 종료 후 30일을 넘긴 공고는 일반 수집에서 제외된다. 현재 파이프라인 시작은 수동이며, 개별 공고 강제 갱신 API가 별도로 있다.
+LH 공급·상세의 일반 수집은 선택된 대상 요청을 매 실행 실제 조회한다([수집 서비스](../src/main/java/com/toadzip/backend/ingest/collection/lh/service/LhAnnouncementExternalCollectionService.java), [대상 정책](../src/main/java/com/toadzip/backend/ingest/collection/lh/service/LhAnnouncementCollectionPolicy.java)). 같은 실행의 공유 요청만 합치며 종료 후 30일을 넘긴 공고는 제외한다. 실행 시작은 수동이고 공고별 재조회는 오래된 종료 공고도 포함한다.
 
-단계 결과에는 `skippedRequestCount`가 있지만 [DataPipelineStepResultAdapter](../src/main/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineStepResultAdapter.java)는 실패와 행별 누락만 상태로 환산한다. 따라서 `COMPLETED`는 **이 실행에서 선택된 작업을 끝냈다**는 뜻이며, 모든 공고를 새로 조회했거나 제품 데이터가 충분하다는 뜻이 아니다. 화면은 저장·실제 호출·건너뜀·실패를 함께 보여주고, 이 의미를 명시해야 한다. TTL에 따른 정상 생략을 실패 상태로 바꾸지는 않는다.
+단계 결과에는 `skippedRequestCount`가 있지만 [DataPipelineStepResultAdapter](../src/main/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineStepResultAdapter.java)는 실패와 행별 누락만 상태로 환산한다. 따라서 `COMPLETED`는 **이 실행에서 선택된 작업을 끝냈다**는 뜻이며, 모든 공고를 새로 조회했거나 제품 데이터가 충분하다는 뜻이 아니다. 화면은 저장·실제 호출·건너뜀·실패를 함께 보여주고, 이 의미를 명시해야 한다.
 
 ### 2. 부분 실패 뒤의 계속 실행은 의도된 동작이지만 입력 시점이 섞일 수 있다
 
 마이홈 수집에 일부 실패가 있어도 Runner는 LH 단계까지 실행한다. [회귀 테스트](../src/test/java/com/toadzip/backend/ingest/pipeline/service/DataPipelineRunnerTest.java)는 이 동작을 고정한다. 후속 LH 수집은 저장된 마이홈 원천을 읽으므로, 같은 실행에서 새로 저장된 행과 이전 실행의 행을 함께 대상으로 삼을 수 있다. 파이프라인은 최종 `FAILED`를 남기지만, 이미 성공한 원천 저장은 되돌리지 않는다.
 
-성공한 공급유형의 새 원천도 저장되므로 LH를 일괄 중단하면 해당 범위의 갱신까지 놓친다. 수집 구간의 계속 실행과 실패 보고를 유지한다. 통합 실행은 수집 부분 실패·호출 제한 뒤 자동 정제를 차단한다. TTL에 따른 정상 생략은 정제로 이어진다. 이전 원천까지 사용할지는 관리자가 독립 정제 버튼으로 선택한다. 정제는 현재 저장 원천 전체를 대상으로 하며 실패 행만 재시도하는 기능은 아니다.
+성공한 공급유형의 새 원천도 저장되므로 LH를 일괄 중단하면 해당 범위의 갱신까지 놓친다. 수집 구간의 계속 실행과 실패 보고를 유지한다. 통합 실행은 수집 부분 실패·호출 제한 뒤 자동 정제를 차단한다. 이전 원천까지 사용할지는 관리자가 독립 정제 버튼으로 선택한다. 정제는 현재 저장 원천 전체를 대상으로 하며 실패 행만 재시도하는 기능은 아니다.
 
 ### 3. LH 목록은 유지한다
 
-LH 목록은 유일하게 연결된 후보의 조회 코드를 보완하고 목록 변경 시 TTL 전에 재조회하며, 목록과 연결된 변경 없는 공고에는 24시간 TTL을 적용한다([CandidateResolver](../src/main/java/com/toadzip/backend/ingest/collection/service/LhAnnouncementCollectionCandidateResolver.java)). 목록에만 있는 공고를 제품에 등록하는 기능은 없다.
+LH 목록은 유일하게 연결된 후보의 조회 코드를 보완하고 변경 시각을 보존한다. 목록 불변을 근거로 공급·상세 조회를 생략하지 않는다([CandidateResolver](../src/main/java/com/toadzip/backend/ingest/collection/lh/service/LhAnnouncementCollectionCandidateResolver.java)). 목록에만 있는 공고를 제품에 등록하는 기능은 없다.
 
-[2026-09-25 격리 DB·실제 API 측정](announcement-collection-performance.md)에서는 83개 요청 중 72개가 목록과 연결됐다. 시계만 6시간 1초 진행한 재수집에서 LH 공급·상세 호출은 166회에서 22회로 줄었다. 최초 수집과 변경 없는 재수집의 비교이며 현재 운영 성능이나 조회 코드 보정의 성공률을 증명하지 않는다. 초기 보고서가 이 근거를 빠뜨린 점을 수정한다.
+[2026-09-25 격리 DB·실제 API 측정](announcement-collection-performance.md)에서는 83개 요청 중 72개가 목록과 연결됐다. 당시 TTL 정책으로 시계만 6시간 1초 진행한 재수집에서 LH 공급·상세 호출은 166회에서 22회로 줄었다. 최초 수집과 변경 없는 재수집의 비교이며 현재 운영 성능이나 조회 코드 보정의 성공률을 증명하지 않는다. 초기 보고서가 이 근거를 빠뜨린 점을 수정한다.
 
-목록 제거는 조회 보정·재조회 정책을 바꾸므로 적용하지 않는다. 누락 `AIS_TP_CD` 보완, 보정 요청의 외부 호출·체크포인트·연결 일치, 6시간/24시간 경계·목록 변경 즉시 재조회·실패 시 원천 보존을 회귀 검증한다. 현재 snapshot은 연결과 코드 차이를 보여주지만, 덮어쓴 체크포인트만으로 과거 보정 효과나 조기 재조회 횟수를 복원할 수 없다.
+목록 제거는 조회 보정·재조회 정책을 바꾸므로 적용하지 않는다. 누락 `AIS_TP_CD` 보완, 보정 요청의 외부 호출·체크포인트·연결 일치, 매 실행 실제 재조회·배치 간 공유 요청 중복 제거·실패 시 원천 보존을 회귀 검증한다. 현재 snapshot은 연결과 코드 차이를 보여주지만, 덮어쓴 체크포인트만으로 과거 보정 효과나 조기 재조회 횟수를 복원할 수 없다.
 
 ### 4. 정상 HTTP 진입점에서 실행 잠금이 겹친다
 

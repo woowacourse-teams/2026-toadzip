@@ -38,7 +38,8 @@ public class IngestSourceQueryRepository {
     public IngestSourcePageResponse findSources(
             IngestSourceCategory category, int page, int size, String keyword, String sourceUrl
     ) {
-        SourceQuery source = sourceQuery(category);
+        SourceQuery source = new SourceQuery("(" + IngestSourceRows.query(category) + ")",
+                "source.source_key", "source.name", "source.original_url", "source.updated_at", "source.raw_payload");
         String from = " FROM " + source.table() + " source";
         String filter = filter(source, keyword);
         long total = statement("SELECT COUNT(*)" + from + filter, keyword).query(Long.class).single();
@@ -48,7 +49,8 @@ public class IngestSourceQueryRepository {
                 """.formatted(source.key(), source.name(), source.key(), source.originalUrl(),
                         source.updatedAt(), source.raw());
         List<Item> items = statement(select + from + filter
-                        + " ORDER BY source.collected_at DESC NULLS LAST, source.id DESC LIMIT :size OFFSET :offset",
+                        + " ORDER BY source.collected_at DESC NULLS LAST, source.id DESC, source.source_key ASC"
+                        + " LIMIT :size OFFSET :offset",
                         keyword)
                 .param("size", size).param("offset", (long) page * size)
                 .query((row, index) -> item(row, sourceUrl)).list();
@@ -109,31 +111,6 @@ public class IngestSourceQueryRepository {
             return null;
         }
         return timestamp.toInstant();
-    }
-
-    private SourceQuery sourceQuery(IngestSourceCategory category) {
-        return switch (category) {
-            case MYHOME_COMPLEX -> typed("myhome_complex_source", "source.source_key", "source.hsmp_nm", "NULL");
-            case LH_LEASE_CATALOG -> typed("lh_catalog_source", "source.id::text", "source.complex_label", "NULL");
-            case MYHOME_ANNOUNCEMENT -> typed("myhome_announcement_source", "source.source_key", "source.pblanc_nm",
-                    "COALESCE(NULLIF(source.url, ''), NULLIF(source.pc_url, ''), NULLIF(source.mobile_url, ''))");
-            case LH_ANNOUNCEMENT_CATALOG -> new SourceQuery("lh_announcement_catalog_source", "source.source_key",
-                    "source.raw_payload::jsonb ->> 'PAN_NM'",
-                    "COALESCE(NULLIF(source.raw_payload::jsonb ->> 'DTL_URL', ''), "
-                            + "NULLIF(source.raw_payload::jsonb ->> 'DTL_URL_MOB', ''))",
-                    "source.changed_at", "source.raw_payload");
-            case LH_ANNOUNCEMENT_DETAIL -> typed("lh_announcement_detail_source",
-                    "CONCAT(source.pan_id, ':', source.request_hash, ':', "
-                            + "source.dataset_type, ':', source.source_order)",
-                    "COALESCE(source.complex_name, source.name, source.pan_id)", "NULL");
-            case LH_ANNOUNCEMENT_SUPPLY -> typed("lh_announcement_supply_source",
-                    "CONCAT(source.pan_id, ':', source.request_hash, ':', source.source_order)",
-                    "source.complex_label", "NULL");
-        };
-    }
-
-    private SourceQuery typed(String table, String key, String name, String originalUrl) {
-        return new SourceQuery(table, key, name, originalUrl, "NULL::timestamptz", "row_to_json(source)::text");
     }
 
     private record SourceQuery(

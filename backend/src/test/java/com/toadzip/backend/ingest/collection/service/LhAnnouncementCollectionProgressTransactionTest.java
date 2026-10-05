@@ -5,10 +5,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionCheckpointRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionLinkRepository;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
+import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionLinkRepository;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionProgressManager;
+import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,8 +24,6 @@ class LhAnnouncementCollectionProgressTransactionTest {
     @Autowired
     private LhAnnouncementCollectionProgressManager progressManager;
 
-    @Autowired
-    private LhAnnouncementCollectionCheckpointRepository checkpointRepository;
 
     @Autowired
     private LhAnnouncementCollectionLinkRepository linkRepository;
@@ -35,11 +34,10 @@ class LhAnnouncementCollectionProgressTransactionTest {
     @AfterEach
     void cleanUp() {
         linkRepository.deleteAll();
-        checkpointRepository.deleteAll();
     }
 
     @Test
-    void 실패_기록_갱신이_실패하면_체크포인트와_공고_연결을_함께_롤백한다() {
+    void 실패_기록_갱신이_실패하면_공고_연결을_롤백한다() {
         Candidate candidate = new Candidate(
                 "announcement-1",
                 "myhomeAnnouncementSourceId=1",
@@ -55,7 +53,6 @@ class LhAnnouncementCollectionProgressTransactionTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("실패 기록 갱신 실패");
 
-        assertThat(checkpointRepository.count()).isZero();
         assertThat(linkRepository.count()).isZero();
     }
 }

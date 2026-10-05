@@ -3,7 +3,7 @@ package com.toadzip.backend.ingest.mapping.service;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.RentalPriceRange;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.NormalizedRoadAddress;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
@@ -134,7 +134,6 @@ public class MyHomeComplexSourceMapper {
                 supplyArea
         );
     }
-
 
     record MyHomeComplexMappingData(
             String sourceComplexIdentifier,

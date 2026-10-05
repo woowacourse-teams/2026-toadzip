@@ -7,14 +7,14 @@ import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.housing.domain.AgencyCode;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutionException;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
+import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
+import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.projection.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
@@ -27,8 +27,8 @@ import org.junit.jupiter.params.provider.CsvSource;
 class MyHomeAnnouncementSupplyRowResolverTest {
 
     private final LhAnnouncementLinkResolver linkResolver = mock(LhAnnouncementLinkResolver.class);
-    private final LhAnnouncementSupplySourceRepository supplyRepository =
-            mock(LhAnnouncementSupplySourceRepository.class);
+    private final LhAnnouncementSupplySourceReader supplyRepository =
+            mock(LhAnnouncementSupplySourceReader.class);
     private final MyHomeAnnouncementSupplyRowResolver resolver =
             new MyHomeAnnouncementSupplyRowResolver(linkResolver, supplyRepository);
 
@@ -46,10 +46,10 @@ class MyHomeAnnouncementSupplyRowResolverTest {
         when(linkResolver.resolveFirstLinked(List.of(current)))
                 .thenReturn(new LhAnnouncementLinkResolver.LinkedSource(current, currentRequest));
         when(supplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
-                "past-pan", LhAnnouncementCollectionCheckpoint.requestHashOf(pastRequest.requestDescription())))
+                "past-pan", LhAnnouncementQuery.requestHashOf(pastRequest.requestDescription())))
                 .thenReturn(List.of(lhSupply("같은 단지", "past-pan", "46A")));
         when(supplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
-                "current-pan", LhAnnouncementCollectionCheckpoint.requestHashOf(currentRequest.requestDescription())))
+                "current-pan", LhAnnouncementQuery.requestHashOf(currentRequest.requestDescription())))
                 .thenReturn(List.of(lhSupply("같은 단지", "current-pan", "59A")));
 
         MyHomeAnnouncementMappingData result = resolver.resolve(data(List.of(pastRow, currentRow))).data();
@@ -124,7 +124,7 @@ class MyHomeAnnouncementSupplyRowResolverTest {
         when(linkResolver.resolveFirstLinked(List.of(source)))
                 .thenReturn(new LhAnnouncementLinkResolver.LinkedSource(source, request));
         when(supplyRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
-                "pan-id", LhAnnouncementCollectionCheckpoint.requestHashOf(request.requestDescription())))
+                "pan-id", LhAnnouncementQuery.requestHashOf(request.requestDescription())))
                 .thenReturn(List.of(lhSupply(lhComplexName)));
 
         MyHomeAnnouncementMappingData result = resolver.resolve(data).data();

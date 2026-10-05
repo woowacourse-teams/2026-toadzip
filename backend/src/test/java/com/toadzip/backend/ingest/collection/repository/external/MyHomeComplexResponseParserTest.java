@@ -3,8 +3,9 @@ package com.toadzip.backend.ingest.collection.repository.external;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataPage;
+import com.toadzip.backend.ingest.collection.fixture.dto.ExternalDataPage;
+import com.toadzip.backend.ingest.collection.fixture.repository.external.MyHomeComplexResponseParser;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -50,7 +51,6 @@ class MyHomeComplexResponseParserTest {
                 {"response":{"header":{"resultCode":"00"},
                 "body":{"totalCount":1,"item":[{"brtcCode":"11","signguCode":"110"}]}}}
                 """);
-
 
         assertThatThrownBy(() -> parser.parse(response, 0))
                 .isInstanceOf(ExternalDataRequestException.class)

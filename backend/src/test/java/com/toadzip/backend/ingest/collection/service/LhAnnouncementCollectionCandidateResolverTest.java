@@ -6,21 +6,22 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCatalogSnapshot;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCatalogSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogSourceRepository;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Skipped;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSource;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.projection.LhAnnouncementCatalogSnapshot;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogSourceReader;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Skipped;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class LhAnnouncementCollectionCandidateResolverTest {
 
-    private final LhAnnouncementCatalogSourceRepository catalogRepository =
-            mock(LhAnnouncementCatalogSourceRepository.class);
+    private final LhAnnouncementCatalogSourceReader catalogRepository =
+            mock(LhAnnouncementCatalogSourceReader.class);
     private final LhAnnouncementCollectionCandidateResolver resolver =
             new LhAnnouncementCollectionCandidateResolver(catalogRepository);
 

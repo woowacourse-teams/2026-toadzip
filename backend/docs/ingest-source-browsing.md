@@ -13,16 +13,19 @@
 
 | 분류 | 저장 테이블 |
 |---|---|
-| `MYHOME_COMPLEX` | `myhome_complex_source` |
-| `LH_LEASE_CATALOG` | `lh_catalog_source` |
-| `MYHOME_ANNOUNCEMENT` | `myhome_announcement_source` |
-| `LH_ANNOUNCEMENT_CATALOG` | `lh_announcement_catalog_source` |
-| `LH_ANNOUNCEMENT_DETAIL` | `lh_announcement_detail_source` |
-| `LH_ANNOUNCEMENT_SUPPLY` | `lh_announcement_supply_source` |
+| `MYHOME_COMPLEX` | `myhome_complex_source_rows` |
+| `LH_LEASE_CATALOG` | `lh_lease_catalog_source_rows` |
+| `MYHOME_ANNOUNCEMENT` | `myhome_announcement_source_rows` |
+| `LH_ANNOUNCEMENT_CATALOG` | `lh_announcement_catalog_entries` |
+| `LH_ANNOUNCEMENT_DETAIL` | `lh_announcement_detail_rows` |
+| `LH_ANNOUNCEMENT_SUPPLY` | `lh_announcement_supply_rows` |
+
+현행 수집 원천만 조회한다. 빈 수집 묶음은 빈 목록으로 표시한다.
+활성·비활성 원천 행은 모두 표시하며 정제용 snapshot 중복 제거를 적용하지 않는다.
 
 성공 응답은 `{data: {items, page, totalElements, totalPages, hasNext}}`다.
 잘못된 분류·페이지·크기·검색 길이는 HTTP 400 `VALIDATION_FAILED`로 거부한다.
-정렬은 수집 시각 내림차순, ID 내림차순이며 미기록 수집 시각은 마지막에 둔다.
+정렬은 수집 시각 내림차순, ID 내림차순, 원천 키 오름차순이며 미기록 수집 시각은 마지막에 둔다.
 빈 목록과 마지막 페이지 뒤에도 전체 개수와 전체 페이지 수를 반환한다.
 
 | `items` 필드 | 의미 |
@@ -36,6 +39,7 @@
 
 `raw`는 LH 공고 목록에서는 저장된 `rawPayload` 원천 객체다.
 나머지 다섯 분류는 저장 행의 `snake_case` 필드 객체이며 수집 응답 전체를 의미하지 않는다.
+LH 상세·공급의 `pan_id`·`request_hash`는 요청 묶음에서 보완한다. 테이블 간 ID 중복은 `sourceKey`와 함께 구분한다.
 LH 상세의 첨부파일 URL은 `raw.url`에 보존하고 공고 원문으로 표시하지 않는다.
 마이홈 공고의 원문 URL 선택 순서는 기존 정제와 같은 `url` → `pc_url` → `mobile_url`이다.
 

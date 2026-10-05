@@ -430,17 +430,16 @@ class DataPipelineExecutionServiceTest {
         staleExecution.startStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
         when(executionRepository.findFirstByTypeOrderByIdDesc(any()))
                 .thenReturn(Optional.of(staleExecution));
-        when(executionStateService.recoverInterrupted(any(), any(), any(), any()))
+        when(executionStateService.recoverInterruptedBefore(any(), any(), any()))
                 .thenAnswer(invocation -> {
                     staleExecution.fail(
                             staleExecution.getCurrentStep(),
-                            invocation.getArgument(3),
+                            invocation.getArgument(2),
                             null,
-                            invocation.getArgument(2)
+                            invocation.getArgument(1)
                     );
-                    return true;
+                    return 1;
                 });
-        when(executionRepository.findByExecutionId(any())).thenReturn(Optional.of(staleExecution));
 
         var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
@@ -464,7 +463,7 @@ class DataPipelineExecutionServiceTest {
         var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
-        verify(executionStateService, never()).recoverInterrupted(any(), any(), any(), any());
+        verify(executionStateService, never()).recoverInterruptedBefore(any(), any(), any());
     }
 
     private void configureStoredExecution() {

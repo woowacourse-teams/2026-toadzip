@@ -5,10 +5,10 @@ import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.RentalPriceRange;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
-import com.toadzip.backend.ingest.collection.domain.LhCatalogSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
-import com.toadzip.backend.ingest.collection.repository.LhCatalogSourceRepository;
-import com.toadzip.backend.ingest.collection.repository.MyHomeComplexSourceRepository;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.repository.LhLeaseCatalogSourceReader;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdMatcher;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink;
@@ -48,8 +48,8 @@ public class MyHomeComplexMergeService {
     private final HousingComplexRepository complexes;
     private final MyHomeComplexLinkRepository links;
     private final MyHomeComplexMergeRepository merges;
-    private final MyHomeComplexSourceRepository sources;
-    private final LhCatalogSourceRepository lhSources;
+    private final MyHomeComplexSourceReader sources;
+    private final LhLeaseCatalogSourceReader lhSources;
     private final MyHomeComplexSourceMapper mapper;
     private final LhHousingTypeHouseholdMatcher matcher;
     private final MyHomeComplexMergeStore store;
@@ -59,8 +59,8 @@ public class MyHomeComplexMergeService {
 
     public MyHomeComplexMergeService(
             HousingComplexRepository complexes, MyHomeComplexLinkRepository links,
-            MyHomeComplexMergeRepository merges, MyHomeComplexSourceRepository sources,
-            LhCatalogSourceRepository lhSources, MyHomeComplexSourceMapper mapper,
+            MyHomeComplexMergeRepository merges, MyHomeComplexSourceReader sources,
+            LhLeaseCatalogSourceReader lhSources, MyHomeComplexSourceMapper mapper,
             LhHousingTypeHouseholdMatcher matcher, MyHomeComplexMergeStore store,
             IngestOperationLock executionLock, PlatformTransactionManager transactionManager, Clock clock
     ) {

@@ -3,8 +3,10 @@ package com.toadzip.backend.ingest.collection.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atMost;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -12,15 +14,19 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
-import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionReport;
-import com.toadzip.backend.ingest.collection.dto.MyHomeComplexCollectionRequest;
-import com.toadzip.backend.ingest.collection.dto.MyHomeRegion;
-import com.toadzip.backend.ingest.collection.repository.MyHomeComplexExternalRepository;
-import com.toadzip.backend.ingest.collection.repository.MyHomeRegionCatalog;
-import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
+import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexExternalRepository;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeRegion;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectedResponse;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeRegionCatalog;
+import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
+import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexRegionCollectionService;
+import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexStorageService;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.collection.repository.external.MyHomeComplexResponseParser;
+import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
+import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
@@ -59,7 +65,7 @@ class MyHomeComplexCollectionServiceTest {
     private MyHomeRegionCatalog regionCatalog;
 
     @Mock
-    private MyHomeSourceStore sourceStore;
+    private MyHomeComplexStorageService storage;
 
     @Mock
     private ExternalDataFailureRecorder failureRecorder;
@@ -68,17 +74,9 @@ class MyHomeComplexCollectionServiceTest {
 
     @BeforeEach
     void setUp() {
-        MyHomeComplexRegionCollector regionCollector = new MyHomeComplexRegionCollector(
-                new MyHomeComplexResponseParser(JsonMapper.builder().build()),
-                externalRepository,
-                sourceStore,
-                failureRecorder,
-                new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry())
-        );
-        service = new MyHomeComplexCollectionService(
-                regionCatalog,
-                regionCollector
-        );
+        var regionCollector = new CollectionServiceTestFixture().complex(externalRepository, regionCatalog,
+                storage, failureRecorder, new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry()));
+        service = new MyHomeComplexCollectionService(regionCatalog, regionCollector, CollectionServiceTestFixture.lock());
     }
 
     @Test
@@ -89,13 +87,13 @@ class MyHomeComplexCollectionServiceTest {
         when(externalRepository.fetch(region, request(), 1))
                 .thenReturn(response(itemsFor(region, 1, 2), 3));
         when(externalRepository.fetch(region, request(), 2)).thenReturn(response(itemsFor(region, 3), 3));
-        when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(3);
 
         var result = service.collect(request());
 
-        ArgumentCaptor<List<MyHomeComplexSourceSnapshot>> snapshots = ArgumentCaptor.captor();
-        verify(sourceStore).replaceComplexRegion(eq(region), snapshots.capture());
-        assertThat(snapshots.getValue()).extracting(MyHomeComplexSourceSnapshot::hsmpSn)
+        ArgumentCaptor<MyHomeComplexCollectedResponse> snapshots = ArgumentCaptor.captor();
+        verify(storage).complete(any(), argThat(r -> r.provinceCode().equals(region.provinceCode())
+                        && r.districtCode().equals(region.districtCode())), snapshots.capture());
+        assertThat(snapshots.getValue().rows()).extracting(com.toadzip.backend.ingest.collection.myhome.complex.domain.MyHomeComplexSourceSnapshot::hsmpSn)
                 .containsExactly(1L, 2L, 3L);
         assertThat(result.storedRowCount()).isEqualTo(3);
         assertThat(result.failedRequestCount()).isZero();
@@ -116,7 +114,7 @@ class MyHomeComplexCollectionServiceTest {
 
         var result = service.collect(request());
 
-        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(storage, never()).complete(any(), any(), any());
         verify(failureRecorder).record(any(), any(), any(), any(), any());
         assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isOne();
@@ -135,7 +133,7 @@ class MyHomeComplexCollectionServiceTest {
 
         MyHomeComplexCollectionReport result = service.collect(request());
 
-        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(storage, never()).complete(any(), any(), any());
         verify(failureRecorder).record(any(), any(), any(), any(), any());
         assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isOne();
@@ -152,7 +150,7 @@ class MyHomeComplexCollectionServiceTest {
 
         MyHomeComplexCollectionReport result = service.collect(request());
 
-        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(storage, never()).complete(any(), any(), any());
         verify(failureRecorder).record(any(), any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
         assertThat(result.storedRowCount()).isZero();
@@ -180,7 +178,7 @@ class MyHomeComplexCollectionServiceTest {
                 exception -> assertThat(exception.getRequestDescription())
                         .isEqualTo("brtcCode=11&signguCode=110&pageNo=2&numOfRows=2")
         );
-        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(storage, never()).complete(any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
         assertThat(result.storedRowCount()).isZero();
     }
@@ -193,33 +191,33 @@ class MyHomeComplexCollectionServiceTest {
                 .thenReturn(response(itemsFor(region, 1, 2), 4));
         when(externalRepository.fetch(region, request(), 2))
                 .thenReturn(response(itemsFor(region, 2, 3), 4));
-        when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(3);
 
         var result = service.collect(request());
 
-        verify(sourceStore).replaceComplexRegion(eq(region), any());
+        verify(storage).complete(any(), argThat(r -> r.provinceCode().equals(region.provinceCode())
+                        && r.districtCode().equals(region.districtCode())), any());
         verify(externalRepository, never()).fetch(region, request(), 3);
         verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isZero();
-        assertThat(result.storedRowCount()).isEqualTo(3);
+        assertThat(result.storedRowCount()).isEqualTo(4);
         assertThat(result.externalApiCallCount()).isEqualTo(2);
     }
 
     @Test
-    @DisplayName("한 페이지의 동일 원천 반복은 허용하고 저장소의 중복 제거 결과를 보고한다")
+    @DisplayName("한 페이지의 동일 원천 반복은 허용하고 원본 행 모두의 저장 건수를 보고한다")
     void storesIdenticalSourcesRepeatedWithinPage() {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
         when(externalRepository.fetch(region, request(), 1))
                 .thenReturn(response(itemsFor(region, 1, 1), 2));
-        when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(1);
 
         MyHomeComplexCollectionReport result = service.collect(request());
 
-        verify(sourceStore).replaceComplexRegion(eq(region), any());
+        verify(storage).complete(any(), argThat(r -> r.provinceCode().equals(region.provinceCode())
+                        && r.districtCode().equals(region.districtCode())), any());
         verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isZero();
-        assertThat(result.storedRowCount()).isOne();
+        assertThat(result.storedRowCount()).isEqualTo(2);
     }
 
     @Test
@@ -232,14 +230,14 @@ class MyHomeComplexCollectionServiceTest {
                  {"hsmpSn":1,"brtcCode":"11","signguCode":"110","styleNm":"C ",\
                   "rnAdres":" 서울 주소 ","suplyPrvuseAr":22.0300}]
                 """, 2));
-        when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(1);
 
         var result = service.collect(request());
 
-        verify(sourceStore).replaceComplexRegion(eq(region), any());
+        verify(storage).complete(any(), argThat(r -> r.provinceCode().equals(region.provinceCode())
+                        && r.districtCode().equals(region.districtCode())), any());
         verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isZero();
-        assertThat(result.storedRowCount()).isOne();
+        assertThat(result.storedRowCount()).isEqualTo(2);
     }
 
     @Test
@@ -253,7 +251,7 @@ class MyHomeComplexCollectionServiceTest {
 
         var result = service.collect(request());
 
-        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(storage, never()).complete(any(), any(), any());
         verify(failureRecorder).record(any(), any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
     }
@@ -268,7 +266,7 @@ class MyHomeComplexCollectionServiceTest {
 
         MyHomeComplexCollectionReport result = service.collect(request());
 
-        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(storage, never()).complete(any(), any(), any());
         verify(failureRecorder).record(any(), any(), any(), any(), any());
         assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isOne();
@@ -285,7 +283,7 @@ class MyHomeComplexCollectionServiceTest {
 
         MyHomeComplexCollectionReport result = service.collect(request());
 
-        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(storage, never()).complete(any(), any(), any());
         verify(failureRecorder).record(any(), any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
         assertThat(result.storedRowCount()).isZero();
@@ -303,7 +301,7 @@ class MyHomeComplexCollectionServiceTest {
 
         MyHomeComplexCollectionReport result = service.collect(request());
 
-        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(storage, never()).complete(any(), any(), any());
         verify(failureRecorder).record(any(), any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
         assertThat(result.storedRowCount()).isZero();
@@ -333,10 +331,10 @@ class MyHomeComplexCollectionServiceTest {
                             .isEqualTo("brtcCode=11&signguCode=110&pageNo=2&numOfRows=2");
                     assertThat(exception.getAttemptCount()).isOne();
                     assertThat(exception.getCause())
-                            .hasMessage("마이홈 단지 응답 항목의 지역 코드가 요청 지역과 다릅니다.");
+                            .hasMessage("응답 행의 지역이 요청한 지역과 다릅니다.");
                 }
         );
-        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(storage, never()).complete(any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
         assertThat(result.externalApiCallCount()).isEqualTo(2);
     }
@@ -352,7 +350,7 @@ class MyHomeComplexCollectionServiceTest {
 
         var result = service.collect(request());
 
-        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(storage, never()).complete(any(), any(), any());
         verify(failureRecorder).record(any(), any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
         assertThat(result.externalApiCallCount()).isEqualTo(2);
@@ -369,7 +367,6 @@ class MyHomeComplexCollectionServiceTest {
                         new IllegalStateException("504")
                 ))
                 .thenReturn(response(itemsFor(region, 1), 1));
-        when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(1);
 
         var result = service.collect(request());
 
@@ -408,7 +405,6 @@ class MyHomeComplexCollectionServiceTest {
                 .thenReturn(response(itemsFor(region, 1), 2));
         when(externalRepository.fetch(region, request(), 2))
                 .thenReturn(response(itemsFor(region, 2), 2));
-        when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(2);
 
         var result = service.collect(request());
 
@@ -424,11 +420,11 @@ class MyHomeComplexCollectionServiceTest {
         when(regionCatalog.find("11", "110")).thenReturn(region);
         when(externalRepository.fetch(region, request(), 1))
                 .thenReturn(responseWithTextualTotalCount(itemsFor(region, 1), "1"));
-        when(sourceStore.replaceComplexRegion(eq(region), any())).thenReturn(1);
 
         var result = service.collect(request());
 
-        verify(sourceStore).replaceComplexRegion(eq(region), any());
+        verify(storage).complete(any(), argThat(r -> r.provinceCode().equals(region.provinceCode())
+                        && r.districtCode().equals(region.districtCode())), any());
         assertThat(result.storedRowCount()).isOne();
         assertThat(result.failedRequestCount()).isZero();
         assertThat(result.externalApiCallCount()).isOne();
@@ -488,7 +484,7 @@ class MyHomeComplexCollectionServiceTest {
                 ExternalDataSource.MYHOME_COMPLEX,
                 "brtcCode=11&signguCode=110&pageNo=2&numOfRows=2"
         );
-        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(storage, never()).complete(any(), any(), any());
         verify(failureRecorder, never()).resolveStartingWith(any(), any());
         assertThat(result.failedRequestCount()).isOne();
     }
@@ -502,7 +498,7 @@ class MyHomeComplexCollectionServiceTest {
 
         var result = service.collect(request());
 
-        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(storage, never()).complete(any(), any(), any());
         verify(failureRecorder).record(any(), any(), any(), any(), any());
         assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isOne();
@@ -514,11 +510,11 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
         when(externalRepository.fetch(region, request(), 1)).thenReturn(response("[]", 0));
-        when(sourceStore.replaceComplexRegion(region, List.of())).thenReturn(0);
 
         var result = service.collect(request());
 
-        verify(sourceStore).replaceComplexRegion(region, List.of());
+        verify(storage).complete(any(), argThat(r -> r.provinceCode().equals(region.provinceCode())
+                        && r.districtCode().equals(region.districtCode())), argThat(response -> response.rows().isEmpty()));
         assertThat(result.failedRequestCount()).isZero();
     }
 
@@ -541,7 +537,7 @@ class MyHomeComplexCollectionServiceTest {
                             .isEqualTo("brtcCode=11&signguCode=110&pageNo=1&numOfRows=2");
                     assertThat(exception.getAttemptCount()).isOne();
                     assertThat(exception.getCause())
-                            .hasMessage("마이홈 단지 응답 항목 형식이 올바르지 않습니다.");
+                            .hasMessage("마이홈 단지 응답 행 형식이 올바르지 않습니다.");
                 }
         );
         verify(externalRepository).fetch(region, request(), 1);
@@ -553,8 +549,8 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeRegion region = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         when(regionCatalog.find("11", "110")).thenReturn(region);
         when(externalRepository.fetch(region, request(), 1)).thenReturn(response(itemsFor(region, 1), 1));
-        when(sourceStore.replaceComplexRegion(eq(region), any()))
-                .thenThrow(new IllegalStateException("DB 저장 실패"));
+        doThrow(new IllegalStateException("DB 저장 실패")).when(storage).complete(any(), argThat(r -> r.provinceCode().equals(region.provinceCode())
+                        && r.districtCode().equals(region.districtCode())), any());
 
         assertThatThrownBy(() -> service.collect(request()))
                 .isInstanceOf(IllegalStateException.class)
@@ -573,9 +569,8 @@ class MyHomeComplexCollectionServiceTest {
         when(regionCatalog.findAll()).thenReturn(List.of(busan, seoul));
         when(externalRepository.fetch(seoul, request, 1)).thenReturn(response(itemsFor(seoul, 1), 1));
         when(externalRepository.fetch(busan, request, 1)).thenReturn(response(itemsFor(busan, 2), 1));
-        when(sourceStore.replaceComplexRegion(eq(busan), any())).thenReturn(1);
-        when(sourceStore.replaceComplexRegion(eq(seoul), any()))
-                .thenThrow(new IllegalStateException("DB 저장 실패"));
+        doThrow(new IllegalStateException("DB 저장 실패")).when(storage).complete(any(), argThat(r -> r.provinceCode().equals(seoul.provinceCode())
+                        && r.districtCode().equals(seoul.districtCode())), any());
 
         assertThatThrownBy(() -> service.collect(request))
                 .isInstanceOf(IllegalStateException.class)
@@ -590,10 +585,10 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeRegion seoul = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion busan = new MyHomeRegion("26", "110", "부산광역시", "중구");
         MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
-        MyHomeComplexRegionCollector concurrentCollector = mock(MyHomeComplexRegionCollector.class);
+        MyHomeComplexRegionCollectionService concurrentCollector = mock(MyHomeComplexRegionCollectionService.class);
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
                 regionCatalog,
-                concurrentCollector
+                concurrentCollector, CollectionServiceTestFixture.lock()
         );
         String executionId = UUID.randomUUID().toString();
         when(regionCatalog.findAll()).thenReturn(List.of(seoul, busan));
@@ -641,7 +636,7 @@ class MyHomeComplexCollectionServiceTest {
         assertThat(result.rateLimitedRequestCount()).isBetween(1, 4);
         assertThat(result.failedRequestCount()).isEqualTo(result.rateLimitedRequestCount());
         verify(externalRepository, atMost(4)).fetch(any(), eq(request), eq(1));
-        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(storage, never()).complete(any(), any(), any());
     }
 
     @Test
@@ -650,18 +645,20 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeRegion rateLimitedRegion = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion slowRegion = new MyHomeRegion("26", "110", "부산광역시", "중구");
         MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
-        MyHomeComplexRegionCollector concurrentCollector = mock(MyHomeComplexRegionCollector.class);
+        MyHomeComplexRegionCollectionService concurrentCollector = mock(MyHomeComplexRegionCollectionService.class);
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
                 regionCatalog,
-                concurrentCollector
+                concurrentCollector, CollectionServiceTestFixture.lock()
         );
         CountDownLatch slowWorkerStarted = new CountDownLatch(1);
+        CountDownLatch rateLimitReturned = new CountDownLatch(1);
         CountDownLatch slowWorkerInterrupted = new CountDownLatch(1);
         CountDownLatch allowSlowWorkerToFinish = new CountDownLatch(1);
         when(regionCatalog.findAll()).thenReturn(List.of(rateLimitedRegion, slowRegion));
         when(concurrentCollector.collect(eq(rateLimitedRegion), eq(request), any(AtomicBoolean.class)))
                 .thenAnswer(invocation -> {
                     slowWorkerStarted.await(2, TimeUnit.SECONDS);
+                    rateLimitReturned.countDown();
                     return new MyHomeComplexCollectionReport(
                             ExternalDataSource.MYHOME_COMPLEX.operation(),
                             0,
@@ -688,7 +685,8 @@ class MyHomeComplexCollectionServiceTest {
                     () -> concurrentService.collect(request)
             );
 
-            assertThat(slowWorkerInterrupted.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(rateLimitReturned.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(slowWorkerInterrupted.getCount()).isOne();
             assertThat(collection.isDone()).isFalse();
             allowSlowWorkerToFinish.countDown();
 
@@ -706,21 +704,14 @@ class MyHomeComplexCollectionServiceTest {
 
     @Test
     @DisplayName("호출 제한으로 재시도 대기 worker를 취소해도 수집 실패로 바꾸지 않는다")
-    void treatsInterruptedRetryWaitAsRateLimitCancellation() throws Exception {
+    void cancelsRetryWaitAfterRateLimitWithoutAddingFailure() throws Exception {
         MyHomeRegion retryingRegion = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion rateLimitedRegion = new MyHomeRegion("26", "110", "부산광역시", "중구");
         MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
-        MyHomeComplexRegionCollector retryingCollector = new MyHomeComplexRegionCollector(
-                new MyHomeComplexResponseParser(JsonMapper.builder().build()),
-                externalRepository,
-                sourceStore,
-                failureRecorder,
-                new ExternalDataRetryExecutor(Duration.ofSeconds(30), new SimpleMeterRegistry())
-        );
+        var retryingCollector = new CollectionServiceTestFixture().complex(externalRepository, regionCatalog,
+                storage, failureRecorder, new ExternalDataRetryExecutor(Duration.ofSeconds(30), new SimpleMeterRegistry()));
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
-                regionCatalog,
-                retryingCollector
-        );
+                regionCatalog, retryingCollector, CollectionServiceTestFixture.lock());
         CountDownLatch retryRequestStarted = new CountDownLatch(1);
         when(regionCatalog.findAll()).thenReturn(List.of(retryingRegion, rateLimitedRegion));
         when(externalRepository.fetch(retryingRegion, request, 1))
@@ -746,7 +737,7 @@ class MyHomeComplexCollectionServiceTest {
         assertThat(report.rateLimitedRequestCount()).isOne();
         assertThat(report.failedRequestCount()).isOne();
         assertThat(report.externalApiCallCount()).isEqualTo(2);
-        verify(sourceStore, never()).replaceComplexRegion(any(), any());
+        verify(storage, never()).complete(any(), any(), any());
     }
 
     @Test
@@ -755,10 +746,10 @@ class MyHomeComplexCollectionServiceTest {
         MyHomeRegion failedRegion = new MyHomeRegion("11", "110", "서울특별시", "종로구");
         MyHomeRegion slowRegion = new MyHomeRegion("26", "110", "부산광역시", "중구");
         MyHomeComplexCollectionRequest request = MyHomeComplexCollectionRequest.allRegions(2, 10);
-        MyHomeComplexRegionCollector concurrentCollector = mock(MyHomeComplexRegionCollector.class);
+        MyHomeComplexRegionCollectionService concurrentCollector = mock(MyHomeComplexRegionCollectionService.class);
         MyHomeComplexCollectionService concurrentService = new MyHomeComplexCollectionService(
                 regionCatalog,
-                concurrentCollector
+                concurrentCollector, CollectionServiceTestFixture.lock()
         );
         CountDownLatch slowWorkerStarted = new CountDownLatch(1);
         CountDownLatch slowWorkerInterrupted = new CountDownLatch(1);

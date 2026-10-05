@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.collection.repository.external;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogPageParser;
 import java.io.IOException;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -11,16 +12,16 @@ import tools.jackson.databind.node.ObjectNode;
 
 class LhAnnouncementCatalogResponseParserTest {
 
-    private final LhAnnouncementCatalogResponseParser parser = new LhAnnouncementCatalogResponseParser();
+    private final LhAnnouncementCatalogPageParser parser = new LhAnnouncementCatalogPageParser();
 
     @Test
     void 실응답의_조회_조건과_목록_내용을_읽는다() throws IOException {
         var page = parser.parse(response(), 1, 500);
 
-        assertThat(page.totalCount()).isEqualTo(2);
-        assertThat(page.entries()).hasSize(2);
-        assertThat(page.entries().getFirst().snapshot().panId()).isNotBlank();
-        assertThat(page.entries().getFirst().snapshot().supplyInfoTypeCode()).isNotBlank();
+        assertThat(page.page().totalCount()).isEqualTo(2);
+        assertThat(page.page().rows()).hasSize(2);
+        assertThat(page.page().rows().getFirst().snapshot().panId()).isNotBlank();
+        assertThat(page.page().rows().getFirst().snapshot().supplyInfoTypeCode()).isNotBlank();
         assertThat(page.startDate()).isEqualTo("20260725");
     }
 
@@ -30,7 +31,7 @@ class LhAnnouncementCatalogResponseParserTest {
         ((ObjectNode) root.get(1).path("dsList").get(0)).remove("PAN_ID");
 
         assertThatThrownBy(() -> parser.parse(root, 1, 500))
-                .isInstanceOf(ExternalDataRequestException.class).hasMessageContaining("PAN_ID");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("필수 식별자");
     }
 
     @Test

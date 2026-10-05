@@ -2,11 +2,16 @@ package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
+import com.toadzip.backend.ingest.exception.exception.ExternalDataRetryInterruptedException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,11 +44,20 @@ public class ExternalDataRetryExecutor {
             Supplier<T> action,
             ExternalDataCallCounter callCounter
     ) {
+        return execute(source, requestDescription, action, callCounter, () -> {});
+    }
+
+    private <T> T execute(
+            ExternalDataSource source, String requestDescription, Supplier<T> action,
+            ExternalDataCallCounter callCounter, Runnable beforeAttempt
+    ) {
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            beforeAttempt.run();
             IngestExecutionScope.verifyHeld();
             IngestExecutionScope.checkStopRequested();
             IngestExecutionScope.requestStarted(source.operation() + " · " + requestDescription);
             callCounter.increment();
+            boolean attempted = true;
             if (attempt > 1) {
                 meterRegistry.counter("ingest.external.retry", "source", source.name()).increment();
             }
@@ -52,6 +66,7 @@ public class ExternalDataRetryExecutor {
             }
             catch (LhAnnouncementUnavailableException exception) {
                 callCounter.decrement();
+                attempted = false;
                 throw exception;
             }
             catch (ExternalDataRequestException exception) {
@@ -70,13 +85,45 @@ public class ExternalDataRetryExecutor {
                         attempt,
                         MAX_ATTEMPTS
                 );
-                waitBeforeRetry(source, attempt);
+                waitBeforeRetry(source, attempt, beforeAttempt);
             }
             finally {
-                IngestExecutionScope.requestFinished();
+                if (attempted) {
+                    IngestExecutionScope.requestFinished();
+                }
             }
         }
         throw new IllegalStateException("외부 API 재시도 흐름이 올바르게 종료되지 않았습니다.");
+    }
+
+    /** 전체 페이지 검증과 저장은 재시도하지 않고, 실패한 실제 페이지의 호출 정보를 보존한다. */
+    public <T, R> R collectPages(
+            ExternalDataSource source, IntFunction<String> description, ExternalDataCallCounter counter,
+            IntFunction<T> fetch, Function<IntFunction<T>, R> collection
+    ) {
+        return collectPages(source, description, counter, fetch, collection, () -> {});
+    }
+
+    public <T, R> R collectPages(
+            ExternalDataSource source, IntFunction<String> description, ExternalDataCallCounter counter,
+            IntFunction<T> fetch, Function<IntFunction<T>, R> collection, Runnable beforeAttempt
+    ) {
+        var lastPage = new AtomicInteger(1);
+        var attempts = new AtomicInteger();
+        try {
+            return collection.apply(page -> {
+                lastPage.set(page);
+                int before = counter.count();
+                try {
+                    return execute(source, description.apply(page), () -> fetch.apply(page), counter, beforeAttempt);
+                } finally {
+                    attempts.set(counter.count() - before);
+                }
+            });
+        } catch (IllegalArgumentException failure) {
+            throw new ExternalDataCallFailureException(source, description.apply(lastPage.get()), attempts.get(),
+                    new ExternalDataRequestException(failure.getMessage()));
+        }
     }
 
     private <T> T executeAttempt(ExternalDataSource source, Supplier<T> action) {
@@ -108,10 +155,18 @@ public class ExternalDataRetryExecutor {
                 && attempt < MAX_ATTEMPTS;
     }
 
-    private void waitBeforeRetry(ExternalDataSource source, int attempt) {
+    private void waitBeforeRetry(ExternalDataSource source, int attempt, Runnable beforeAttempt) {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
-            Thread.sleep(retryDelay.multipliedBy(attempt));
+            long deadline = System.nanoTime() + retryDelay.multipliedBy(attempt).toNanos();
+            while (System.nanoTime() < deadline) {
+                beforeAttempt.run();
+                IngestExecutionScope.checkStopRequested();
+                long remaining = deadline - System.nanoTime();
+                if (remaining > 0) {
+                    Thread.sleep(Duration.ofNanos(Math.min(remaining, Duration.ofMillis(100).toNanos())));
+                }
+            }
         }
         catch (InterruptedException exception) {
             Thread.currentThread().interrupt();

@@ -5,22 +5,22 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
-import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
-import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
+import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementLifecycleService;
+import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
-import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,8 +42,8 @@ class IngestExecutionOwnershipIntegrationTest {
     @Autowired private DataPipelineExecutionService executionService;
     @Autowired private DataPipelineExecutionStateService executionStateService;
     @Autowired private DataPipelineExecutionRepository executionRepository;
-    @Autowired private MyHomeAnnouncementSourceRepository sourceRepository;
-    @Autowired private MyHomeSourceStore sourceStore;
+    @Autowired private MyHomeAnnouncementSourceFixtures sourceRepository;
+    @Autowired private MyHomeAnnouncementLifecycleService lifecycle;
     @Autowired private PausingWriter pausingWriter;
     @MockitoBean private DataPipelineRunner runner;
     @MockitoBean(name = "dataPipelineExecutor") private Executor executor;
@@ -71,7 +71,7 @@ class IngestExecutionOwnershipIntegrationTest {
             assertThat(jdbc.queryForObject("select pg_terminate_backend(?, 5000)", Boolean.class, ownerPid)).isTrue();
             DataPipelineExecutionLock second = new DataPipelineExecutionLock(dataSource);
             try (var ignored = second.tryAcquire().orElseThrow()) {
-                sourceStore.completeAnnouncementCollection("stale-owner");
+                lifecycle.completeRun(java.util.UUID.randomUUID());
             }
             return null;
         }).when(runner).run(any(), any());
@@ -93,7 +93,7 @@ class IngestExecutionOwnershipIntegrationTest {
             new JdbcTemplate(dataSource).update(
                     "update ingest_execution_ownership set generation = generation + 1 where id = 1");
 
-            assertThatThrownBy(() -> sourceStore.completeAnnouncementCollection("old-generation"))
+            assertThatThrownBy(() -> lifecycle.completeRun(java.util.UUID.randomUUID()))
                     .isInstanceOf(IngestOwnershipLostException.class);
         }
     }
@@ -193,7 +193,7 @@ class IngestExecutionOwnershipIntegrationTest {
         var secondLock = new DataPipelineExecutionLock(dataSource);
         try (var first = firstLock.tryAcquire().orElseThrow(); var ignored = IngestExecutionScope.open(first)) {
             var pending = IngestExecutionScope.propagate(() -> {
-                sourceStore.completeAnnouncementCollection("stale-queued-owner");
+                lifecycle.completeRun(java.util.UUID.randomUUID());
                 return null;
             });
             terminateOwner();
@@ -221,15 +221,15 @@ class IngestExecutionOwnershipIntegrationTest {
     @TestConfiguration(proxyBeanMethods = false)
     static class ProbeConfiguration {
         @Bean
-        PausingWriter pausingWriter(MyHomeAnnouncementSourceRepository repository) {
+        PausingWriter pausingWriter(MyHomeAnnouncementSourceFixtures repository) {
             return new PausingWriter(repository);
         }
     }
 
     static class PausingWriter {
-        private final MyHomeAnnouncementSourceRepository repository;
+        private final MyHomeAnnouncementSourceFixtures repository;
 
-        PausingWriter(MyHomeAnnouncementSourceRepository repository) {
+        PausingWriter(MyHomeAnnouncementSourceFixtures repository) {
             this.repository = repository;
         }
 

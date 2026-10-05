@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { IngestFailurePanel } from './IngestFailurePanel'
-import { getDataPipelineStatus, startDataPipeline, type DataPipelineExecution, type DataPipelineType } from './api'
+import { DataPipelineApiError, isExternalDataCollectionReport, refreshLhAnnouncement, type LhRefreshSource, getDataPipelineStatus, startDataPipeline, type DataPipelineExecution, type DataPipelineType } from './api'
 import { pipelineStatusLabels } from './pipelineLabels'
 import type { FailureDomain } from './failureReviewApi'
 import styles from './IngestFailurePanel.module.css'
@@ -19,8 +19,11 @@ export function FailureReviewPage() {
   const [error, setError] = useState('')
   const [runNotice, setRunNotice] = useState('')
   const [refresh, setRefresh] = useState(0)
+  const [pblancId, setPblancId] = useState('')
+  const [source, setSource] = useState<LhRefreshSource>('supplies')
+  const [refreshing, setRefreshing] = useState(false)
   const statusGeneration = useRef(0)
-  const busy = starting || execution?.data.status === 'RUNNING'
+  const busy = refreshing || starting || execution?.data.status === 'RUNNING'
 
   useEffect(() => {
     let active = true
@@ -74,6 +77,27 @@ export function FailureReviewPage() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : '재처리를 시작하지 못했습니다.') }
     finally { setStarting(false) }
   }
+  async function refreshAnnouncement(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (busy || !pblancId.trim()) return
+    setRefreshing(true); setError(''); setRunNotice('')
+    try {
+      const report = await refreshLhAnnouncement(source, pblancId.trim())
+      setRunNotice(report.externalApiCallCount === 0 && report.failedRequestCount === 0
+        ? '재조회할 LH 요청이 없습니다. 마이홈 공고 ID와 LH 원천 연결을 확인해 주세요.'
+        : `외부 호출 ${report.externalApiCallCount}회 · 성공 요청 ${report.successfulRequestCount}건 · 저장·갱신 ${report.storedRowCount}행. 원천 반영 후 공고 정제를 실행해 주세요.`)
+    } catch (cause) {
+      if (cause instanceof DataPipelineApiError && isExternalDataCollectionReport(cause.serverResponse)) {
+        const report = cause.serverResponse
+        setError(`외부 호출 ${report.externalApiCallCount}회 · 성공 요청 ${report.successfulRequestCount}건 · 실패 요청 ${report.failedRequestCount}건 · 저장·갱신 ${report.storedRowCount}행. 실패 목록에서 원인과 기존 원천 보존 여부를 확인해 주세요.`)
+      } else {
+        setError(cause instanceof Error ? cause.message : 'LH 원천을 재조회하지 못했습니다.')
+      }
+    } finally {
+      setRefreshing(false)
+      setRefresh(value => value + 1)
+    }
+  }
   function selectDomain(next: FailureDomain) {
     setParams(currentParams => {
       currentParams.set('domain', next)
@@ -109,6 +133,20 @@ export function FailureReviewPage() {
       {runMessage ? <p role="status" className={styles.runMessage}>{runMessage}</p> : null}
       {runNotice ? <p role="status">{runNotice}</p> : null}
       {error ? <p role="alert">{error}</p> : null}
+      {domain === 'announcement' ? (
+        <section className="admin-detail-section">
+          <h2>공고별 LH 원천 강제 재조회</h2>
+          <p>마이홈 공고 ID에 연결된 LH 요청을 조회합니다. 오래된 종료 공고 제외를 우회하며, 빈 응답 보호와 공급행 감소 승인 규칙은 유지합니다.</p>
+          <form onSubmit={(event) => void refreshAnnouncement(event)}>
+            <label>마이홈 공고 ID<input required value={pblancId} disabled={busy} onChange={(event) => setPblancId(event.target.value)} /></label>
+            <label>재조회 원천<select value={source} disabled={busy} onChange={(event) => setSource(event.target.value as LhRefreshSource)}>
+              <option value="supplies">LH 공급</option><option value="details">LH 상세</option>
+            </select></label>
+            <button disabled={busy || !pblancId.trim()} type="submit">{refreshing ? '처리 중…' : '공고 원천 강제 재조회'}</button>
+          </form>
+          <Link to="/admin/ingest">공급 감소 승인·수집 결과 확인</Link>
+        </section>
+      ) : null}
       <IngestFailurePanel domain={domain} executionId={params.get('executionId')} refreshToken={refresh}
         onRetry={() => void retry()} retryDisabled={busy} runMessage={runMessage} runError={error} />
     </div>
