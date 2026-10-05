@@ -44,9 +44,6 @@ docs/21-branch-convention
 이미 추적 중인 자료를 정리할 때는 로컬 파일을 보존하고 `git rm --cached`로 추적만
 해제한다. 이 추적 해제 변경은 허용하며 과거 커밋 이력은 재작성하지 않는다.
 
-`sh scripts/validate-local-artifacts.sh`는 Git index에 금지 경로가 있으면 실패한다.
-pre-commit과 CI가 같은 검사를 실행하므로 변경 내용을 stage한 뒤에도 확인한다.
-
 ### 메시지 형식
 
 AngularJS 컨벤션을 따른다.

@@ -14,9 +14,7 @@
 - 프론트엔드 작업은 [frontend/AGENTS.md](frontend/AGENTS.md)를 추가로 따른다.
 - 저장소 기여와 Git 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)를 따른다.
 
-## 저장소 공통 하네스
+## 저장소 공통 설정
 
 - Codex 역할은 `.codex/agents/`에 둔다.
-- Git hook은 `.githooks/`, 자동 검사는 `scripts/`와 `tests/harness/`에 둔다.
-- GitHub 검증은 `.github/workflows/harness-check.yml`에서 실행한다.
-- 로컬 계획·설계의 Git 추적은 `scripts/validate-local-artifacts.sh`로 커밋 전과 CI에서 차단한다.
+- GitHub 검증은 `.github/workflows/`의 백엔드·프론트엔드 CI에서 실행한다.

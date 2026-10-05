@@ -1,9 +1,0 @@
-[Unit]
-Description=Back up Toadzip PostgreSQL databases to S3
-After=network-online.target docker.service
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-User=REPLACE_WITH_DB_SERVER_USER
-ExecStart=/usr/bin/bash /usr/local/libexec/toadzip-db-backup-runner
