@@ -1,5 +1,32 @@
 # 공공주택 복덕방 프론트엔드
 
+공공주택 지도·목록·공고 탐색과 로그인·관리자 화면을 제공하는 React 애플리케이션이다.
+
+## 디렉터리 구성
+
+| 경로 | 역할 |
+| --- | --- |
+| [`src/`](src/) | 화면, API 연동, 지도, 공통 디자인 요소와 기능별 테스트 |
+| [`public/`](public/) | 로고·인증 이미지, 지역 경계 등 브라우저에 제공할 정적 자산 |
+| [`docs/`](docs/) | 개발 기준, 디자인 시스템, 구조와 자산 관리 안내 |
+| [`scripts/`](scripts/) | PDF 자산 준비와 지역 경계 데이터 변환·검증 도구 |
+| [`nginx/`](nginx/) | HTTP·HTTPS 설정과 화면·API 요청 처리 규칙 |
+
+기능별 코드 위치와 상태 소유자는 [프론트엔드 구조](docs/frontend-structure.md)에서 확인한다.
+
+## 주요 파일
+
+| 파일 | 역할 |
+| --- | --- |
+| [`AGENTS.md`](AGENTS.md) | 프론트엔드 작업 지침과 문서 읽기 순서 |
+| [`package.json`](package.json), [`package-lock.json`](package-lock.json), [`.nvmrc`](.nvmrc) | 실행 명령, 의존성과 Node.js·npm 사용 기준 |
+| [`index.html`](index.html) | 애플리케이션을 불러오는 HTML 진입점 |
+| [`vite.config.ts`](vite.config.ts) | Vite·Vitest와 로컬 공공주택 mock 설정 |
+| [`tsconfig.json`](tsconfig.json), [`tsconfig.app.json`](tsconfig.app.json), [`tsconfig.node.json`](tsconfig.node.json) | 애플리케이션·개발 도구의 TypeScript 검사 설정 |
+| [`.oxlintrc.json`](.oxlintrc.json) | 코드 린트 규칙 |
+| [`.env.example`](.env.example) | 브라우저용 환경 변수 예시 |
+| [`Dockerfile`](Dockerfile), [`.dockerignore`](.dockerignore) | 정적 파일 빌드와 Nginx 이미지 구성·빌드 제외 경로 |
+
 ## 사전 준비
 
 - Node.js 계약은 [`.nvmrc`](.nvmrc)와 [`package.json`](package.json)의 `engines.node`가 함께 정의한다.
