@@ -12,6 +12,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.cfg.JsonNodeFeature;
 
 public class DataGoKrOpenApiClient {
 
@@ -112,7 +113,10 @@ public class DataGoKrOpenApiClient {
 
     private JsonNode parsePayload(String rawPayload) {
         try {
-            return objectMapper.readTree(rawPayload);
+            return objectMapper.reader()
+                    .with(JsonNodeFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+                    .without(JsonNodeFeature.STRIP_TRAILING_BIGDECIMAL_ZEROES)
+                    .readTree(rawPayload);
         }
         catch (RuntimeException exception) {
             throw new ExternalDataRequestException(sourceName + " 응답 형식이 올바르지 않습니다.", exception);

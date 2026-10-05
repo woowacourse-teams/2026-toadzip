@@ -8,6 +8,31 @@ afterEach(() => {
 })
 
 describe('관리자 데이터 수집·정제 API', () => {
+  it.each(['supplies', 'details'] as const)('%s 강제 재조회는 공고 ID, 세션과 CSRF를 전달한다', async (source) => {
+    const report = refreshReport()
+    const fetchMock = prepareFetch(report)
+    const { refreshLhAnnouncement } = await import('./api.ts')
+    await expect(refreshLhAnnouncement(source, 'myhome 1')).resolves.toEqual(report)
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `http://localhost:8080/api/admin/ingest/lh/announcements/${source}/myhome%201/refresh`,
+      { method: 'POST', credentials: 'include', headers: { 'X-CUSTOM-CSRF': 'csrf-token' } },
+    )
+  })
+
+  it('강제 재조회 부분 실패 보고서를 오류 응답에 보존한다', async () => {
+    const report = { ...refreshReport(), failedRequestCount: 1 }
+    prepareFetch(report, 502)
+    const { refreshLhAnnouncement, DataPipelineApiError } = await import('./api.ts')
+    const error = await refreshLhAnnouncement('supplies', 'myhome-1').catch((cause) => cause)
+    expect(error).toBeInstanceOf(DataPipelineApiError)
+    expect(error).toMatchObject({ status: 502, serverResponse: report })
+  })
+
+  it('강제 재조회 결과의 잘못된 수치를 성공으로 반환하지 않는다', async () => {
+    prepareFetch({ ...refreshReport(), externalApiCallCount: -1 })
+    const { refreshLhAnnouncement } = await import('./api.ts')
+    await expect(refreshLhAnnouncement('details', 'myhome-1')).rejects.toThrow('재조회 응답 형식')
+  })
   it.each([
     ['COMPLEX_SYNC', 'complex-sync'], ['ANNOUNCEMENT_SYNC', 'announcement-sync'],
   ] as const)('%s 통합 실행은 기존 세션과 CSRF 계약으로 시작한다', async (type, path) => {
@@ -213,7 +238,13 @@ describe('관리자 데이터 수집·정제 API', () => {
   })
 })
 
-function prepareFetch(data: unknown) {
+function refreshReport() {
+  return { operation: 'lh-announcement-supply', storedRowCount: 2, failedRequestCount: 0,
+    externalApiCallCount: 1, skippedRequestCount: 0, rateLimitedRequestCount: 0,
+    successfulRequestCount: 1, selectionFailedRequestCount: 0 }
+}
+
+function prepareFetch(data: unknown, status = 202) {
   vi.stubEnv('DEV', true)
   vi.stubEnv('VITE_API_BASE_URL', '')
   const fetchMock = vi
@@ -221,7 +252,7 @@ function prepareFetch(data: unknown) {
     .mockResolvedValueOnce(
       jsonResponse({ token: 'csrf-token', headerName: 'X-CUSTOM-CSRF' }),
     )
-    .mockResolvedValueOnce(jsonResponse(data, 202))
+    .mockResolvedValueOnce(jsonResponse(data, status))
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }

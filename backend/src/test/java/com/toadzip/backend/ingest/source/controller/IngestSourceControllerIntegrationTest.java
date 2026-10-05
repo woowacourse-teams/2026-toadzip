@@ -6,8 +6,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -39,39 +41,186 @@ class IngestSourceControllerIntegrationTest {
 
     @BeforeEach
     void storeSources() {
+        for (String category : java.util.List.of("MYHOME_COMPLEX", "MYHOME_ANNOUNCEMENT", "LH_LEASE_CATALOG",
+                "LH_ANNOUNCEMENT_CATALOG", "LH_ANNOUNCEMENT_DETAIL", "LH_ANNOUNCEMENT_SUPPLY")) {
+            storeCurrentSource(category);
+        }
+        jdbc.sql("UPDATE myhome_complex_source_rows SET hsmp_nm = '두꺼비 단지'").update();
+        jdbc.sql("UPDATE lh_lease_catalog_source_rows SET complex_label = '두꺼비 임대'").update();
+        jdbc.sql("UPDATE myhome_announcement_source_rows SET pblanc_nm = '두꺼비 공고', "
+                + "pc_url = 'https://official.test/myhome'").update();
+        jdbc.sql("UPDATE lh_announcement_detail_rows SET dataset_type = 'COMPLEX', complex_name = '두꺼비 상세', "
+                + "url = 'https://official.test/attachment.pdf'").update();
+        jdbc.sql("UPDATE lh_announcement_supply_rows SET complex_label = '두꺼비 공급'").update();
+        jdbc.sql("UPDATE lh_announcement_catalog_entries SET changed_at = '2026-10-01T01:00:00Z', raw_payload = "
+                + "'{\"PAN_NM\":\"두꺼비 LH 공고\",\"DTL_URL\":\"https://official.test/lh\",\"EXTRA_FIELD\":\"보존값\"}'").update();
+        for (String table : java.util.List.of("myhome_complex_source_rows", "myhome_announcement_source_rows",
+                "lh_lease_catalog_source_rows", "lh_announcement_catalog_entries", "lh_announcement_detail_rows",
+                "lh_announcement_supply_rows")) {
+            jdbc.sql("UPDATE " + table + " SET collected_at = '2026-10-02T01:00:00Z'").update();
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "MYHOME_COMPLEX, 신규 단지, hsmp_nm, 3:123-1:-1:-1:-1:-1:",
+            "LH_LEASE_CATALOG, 신규 임대, complex_label,",
+            "MYHOME_ANNOUNCEMENT, 신규 공고, pblanc_nm, 10:MYHOME-1231:1",
+            "LH_ANNOUNCEMENT_CATALOG, 신규 LH 공고, PAN_NM, lh-key",
+            "LH_ANNOUNCEMENT_DETAIL, 신규 상세, complex_name,",
+            "LH_ANNOUNCEMENT_SUPPLY, 신규 공급, complex_label,"
+    })
+    void 새_수집_원천의_필드와_식별자를_조회한다(
+            String category, String name, String rawField, String key
+    ) throws Exception {
+        updateCurrentSource(category, name);
+        var result = mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
+                        .param("category", category))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.items[0].name").value(name))
+                .andExpect(jsonPath("$.data.items[0].raw." + rawField).value(name))
+                .andExpect(jsonPath("$.data.items[0].collectedAt").value("2026-10-04T01:00:00Z"));
+        if (key != null) result.andExpect(jsonPath("$.data.items[0].sourceKey").value(key));
+        if (category.equals("LH_ANNOUNCEMENT_DETAIL") || category.equals("LH_ANNOUNCEMENT_SUPPLY")) {
+            result.andExpect(jsonPath("$.data.items[0].raw.pan_id").value("LH-123"))
+                    .andExpect(jsonPath("$.data.items[0].raw.request_hash").isString());
+        }
+    }
+
+    @Test
+    void 원천키는_기존_정제와_같이_탭과_유니코드_공백을_제거하고_raw는_보존한다() throws Exception {
+        String rawIdentifier = "\tMYHOME-123\u3000";
+        jdbc.sql("UPDATE myhome_announcement_source_rows SET pblanc_id = :identifier")
+                .param("identifier", rawIdentifier).update();
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
+                        .param("category", "MYHOME_ANNOUNCEMENT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].sourceKey").value("10:MYHOME-1231:1"))
+                .andExpect(jsonPath("$.data.items[0].raw.pblanc_id").value(rawIdentifier));
+    }
+
+    @Test
+    void 빈_지역_수집은_원천_목록을_비운다() throws Exception {
+        jdbc.sql("DELETE FROM myhome_complex_source_rows").update();
+        jdbc.sql("DELETE FROM myhome_complex_source_bundles").update();
+        assertEmptyCurrent("MYHOME_COMPLEX");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"LH_LEASE_CATALOG, lh_lease_catalog_source_rows", "LH_ANNOUNCEMENT_DETAIL, lh_announcement_detail_rows",
+            "LH_ANNOUNCEMENT_SUPPLY, lh_announcement_supply_rows"})
+    void 빈_수집_묶음의_원천은_빈_목록으로_조회한다(String category, String table) throws Exception {
+        jdbc.sql("DELETE FROM " + table).update();
+        assertEmptyCurrent(category);
+    }
+
+    private void assertEmptyCurrent(String category) throws Exception {
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
+                        .param("category", category))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(0));
+    }
+
+    private void updateCurrentSource(String category, String name) {
+        String table = switch (category) {
+            case "MYHOME_COMPLEX" -> "myhome_complex_source_rows";
+            case "MYHOME_ANNOUNCEMENT" -> "myhome_announcement_source_rows";
+            case "LH_LEASE_CATALOG" -> "lh_lease_catalog_source_rows";
+            case "LH_ANNOUNCEMENT_DETAIL" -> "lh_announcement_detail_rows";
+            case "LH_ANNOUNCEMENT_SUPPLY" -> "lh_announcement_supply_rows";
+            default -> "lh_announcement_catalog_entries";
+        };
+        String field = switch (category) {
+            case "MYHOME_COMPLEX" -> "hsmp_nm";
+            case "MYHOME_ANNOUNCEMENT" -> "pblanc_nm";
+            case "LH_ANNOUNCEMENT_DETAIL" -> "complex_name";
+            default -> "complex_label";
+        };
+        if (category.equals("LH_ANNOUNCEMENT_CATALOG")) {
+            jdbc.sql("UPDATE " + table + " SET raw_payload = :raw, collected_at = '2026-10-04T01:00:00Z'")
+                    .param("raw", "{\"PAN_NM\":\"" + name + "\"}").update();
+            return;
+        }
+        jdbc.sql("UPDATE " + table + " SET " + field + " = :name, collected_at = '2026-10-04T01:00:00Z'")
+                .param("name", name).update();
+    }
+
+    private void storeCurrentSource(String category) {
+        UUID record = UUID.randomUUID();
         jdbc.sql("""
-                INSERT INTO myhome_complex_source (source_key, hsmp_nm, hsmp_sn, collected_at)
-                VALUES ('complex-key', '두꺼비 단지', 123, :collectedAt)
-                """).param("collectedAt", Timestamp.from(Instant.parse("2026-10-02T01:00:00Z"))).update();
-        jdbc.sql("""
-                INSERT INTO lh_catalog_source (source_order, complex_label, collected_at)
-                VALUES (1, '두꺼비 임대', :collectedAt)
-                """).param("collectedAt", Timestamp.from(Instant.parse("2026-10-02T01:00:00Z"))).update();
-        jdbc.sql("""
-                INSERT INTO myhome_announcement_source
-                    (source_key, pblanc_id, pblanc_nm, pc_url, active, consecutive_miss_count, collected_at)
-                VALUES ('announcement-key', 'MYHOME-123', '두꺼비 공고', 'https://official.test/myhome', false, 2,
-                        :collectedAt)
-                """).param("collectedAt", Timestamp.from(Instant.parse("2026-10-02T01:00:00Z"))).update();
-        jdbc.sql("""
-                INSERT INTO lh_announcement_catalog_source
-                    (source_key, pan_id, connection_system_division_code, upper_announcement_type_code,
-                     announcement_type_code, supply_info_type_code, content_fingerprint, raw_payload,
-                     changed_at, collected_at, present_in_latest_catalog)
-                VALUES ('lh-key', 'LH-123', '03', '06', '060', '01', 'fingerprint',
-                        '{"PAN_NM":"두꺼비 LH 공고","DTL_URL":"https://official.test/lh","EXTRA_FIELD":"보존값"}',
-                        :changedAt, :collectedAt, false)
-                """).param("changedAt", Timestamp.from(Instant.parse("2026-10-01T01:00:00Z")))
-                .param("collectedAt", Timestamp.from(Instant.parse("2026-10-02T01:00:00Z"))).update();
-        jdbc.sql("""
-                INSERT INTO lh_announcement_detail_source
-                    (source_order, pan_id, dataset_type, complex_name, url, collected_at)
-                VALUES (1, 'LH-123', 'COMPLEX', '두꺼비 상세', 'https://official.test/attachment.pdf', :collectedAt)
-                """).param("collectedAt", Timestamp.from(Instant.parse("2026-10-02T01:00:00Z"))).update();
-        jdbc.sql("""
-                INSERT INTO lh_announcement_supply_source (source_order, pan_id, complex_label, collected_at)
-                VALUES (1, 'LH-123', '두꺼비 공급', :collectedAt)
-                """).param("collectedAt", Timestamp.from(Instant.parse("2026-10-02T01:00:00Z"))).update();
+                INSERT INTO source_collection_records
+                    (id, version, source, started_at, finished_at, status, stored_row_count)
+                VALUES (:id, 0, :source, '2026-10-04T01:00:00Z', '2026-10-04T01:00:00Z', 'SUCCESS', 1)
+                """).param("id", record).param("source", category).update();
+        switch (category) {
+            case "MYHOME_COMPLEX" -> {
+                long region = jdbc.sql("""
+                        INSERT INTO myhome_complex_source_regions
+                            (version, province_code, district_code, collected_at, last_collection_record_id)
+                        VALUES (0, '11', '110', '2026-10-04T01:00:00Z', :record) RETURNING id
+                        """).param("record", record).query(Long.class).single();
+                long bundle = jdbc.sql("""
+                        INSERT INTO myhome_complex_source_bundles (version, hsmp_sn, region_id)
+                        VALUES (0, 123, :region) RETURNING id
+                        """).param("region", region).query(Long.class).single();
+                jdbc.sql("""
+                        INSERT INTO myhome_complex_source_rows (source_id, source_order, hsmp_sn, hsmp_nm, collected_at)
+                        VALUES (:bundle, 0, 123, '신규 단지', '2026-10-04T01:00:00Z')
+                        """).param("bundle", bundle).update();
+            }
+            case "MYHOME_ANNOUNCEMENT" -> {
+                long bundle = jdbc.sql("""
+                        INSERT INTO myhome_announcement_source_bundles (version, pblanc_id, last_collection_record_id)
+                        VALUES (0, 'MYHOME-123', :record) RETURNING id
+                        """).param("record", record).query(Long.class).single();
+                jdbc.sql("""
+                        INSERT INTO myhome_announcement_source_rows
+                            (source_id, collection_record_id, request_supply_type_code, collected_at, source_order,
+                             pblanc_id, house_sn, pblanc_nm, active, consecutive_miss_count)
+                        VALUES (:bundle, :record, '01', '2026-10-04T01:00:00Z', 0, 'MYHOME-123', 1, '신규 공고', false, 2)
+                        """).param("bundle", bundle).param("record", record).update();
+            }
+            case "LH_LEASE_CATALOG" -> {
+                long bundle = jdbc.sql("""
+                        INSERT INTO lh_lease_catalog_source_bundles
+                            (version, scope_key, collected_at, last_collection_record_id)
+                        VALUES (0, 'ALL', '2026-10-04T01:00:00Z', :record) RETURNING id
+                        """).param("record", record).query(Long.class).single();
+                jdbc.sql("""
+                        INSERT INTO lh_lease_catalog_source_rows (source_id, source_order, complex_label, collected_at)
+                        VALUES (:bundle, 0, '신규 임대', '2026-10-04T01:00:00Z')
+                        """).param("bundle", bundle).update();
+            }
+            case "LH_ANNOUNCEMENT_CATALOG" -> jdbc.sql("""
+                    INSERT INTO lh_announcement_catalog_entries
+                        (version, source_key, raw_payload, query_start_date, query_end_date, changed_at, collected_at,
+                         present_in_latest_catalog, last_collection_record_id)
+                    VALUES (0, 'lh-key', '{"PAN_NM":"신규 LH 공고"}', '20261001', '20261004',
+                            '2026-10-03T01:00:00Z', '2026-10-04T01:00:00Z', false, :record)
+                    """).param("record", record).update();
+            default -> {
+                String table = "lh_announcement_supply";
+                String field = "complex_label";
+                String name = "신규 공급";
+                if (category.equals("LH_ANNOUNCEMENT_DETAIL")) {
+                    table = "lh_announcement_detail";
+                    field = "complex_name";
+                    name = "신규 상세";
+                }
+                String requestHash = LhAnnouncementQuery.requestHashOf("fixture");
+                long bundle = jdbc.sql("""
+                        INSERT INTO lh_announcement_query_sources
+                            (version, source, pan_id, query_hash, request_hash, request_description, collected_at,
+                             verified_empty, last_collection_record_id)
+                        VALUES (0, :source, 'LH-123', :hash, :hash, 'fixture',
+                                '2026-10-04T01:00:00Z', false, :record) RETURNING id
+                        """).param("source", category).param("record", record)
+                        .param("hash", requestHash).query(Long.class).single();
+                jdbc.sql("INSERT INTO " + table + "_rows (source_id, source_order, " + field + ", collected_at)"
+                                + " VALUES (:bundle, 0, :name, '2026-10-04T01:00:00Z')")
+                        .param("bundle", bundle).param("name", name).update();
+            }
+        }
     }
 
     @ParameterizedTest
@@ -117,7 +266,7 @@ class IngestSourceControllerIntegrationTest {
 
     @Test
     void 마이홈_원문_URL은_기존_공고_정제의_URL_선택_순서와_같다() throws Exception {
-        jdbc.sql("UPDATE myhome_announcement_source SET url = 'https://official.test/preferred'").update();
+        jdbc.sql("UPDATE myhome_announcement_source_rows SET url = 'https://official.test/preferred'").update();
         mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
                         .param("category", "MYHOME_ANNOUNCEMENT"))
                 .andExpect(status().isOk())
@@ -145,9 +294,10 @@ class IngestSourceControllerIntegrationTest {
     @Test
     void 이름으로_검색하고_최신_수집순으로_안정된_페이지를_조회한다() throws Exception {
         jdbc.sql("""
-                INSERT INTO myhome_complex_source (source_key, hsmp_nm, collected_at)
-                VALUES ('second-key', '두꺼비 신규', :collectedAt), ('last-key', '두꺼비 최신', :collectedAt),
-                       ('other-key', '다른 단지', :collectedAt)
+                INSERT INTO myhome_complex_source_rows (source_id, source_order, hsmp_sn, hsmp_nm, collected_at)
+                SELECT id, 1, 124, '두꺼비 신규', CAST(:collectedAt AS timestamptz) FROM myhome_complex_source_bundles
+                UNION ALL SELECT id, 2, 125, '두꺼비 최신', CAST(:collectedAt AS timestamptz) FROM myhome_complex_source_bundles
+                UNION ALL SELECT id, 3, 126, '다른 단지', CAST(:collectedAt AS timestamptz) FROM myhome_complex_source_bundles
                 """).param("collectedAt", Timestamp.from(Instant.parse("2026-10-03T01:00:00Z"))).update();
 
         mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
@@ -162,17 +312,17 @@ class IngestSourceControllerIntegrationTest {
                         .param("category", "MYHOME_COMPLEX").param("keyword", "두꺼비")
                         .param("page", "2").param("size", "1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items[0].sourceKey").value("complex-key"))
+                .andExpect(jsonPath("$.data.items[0].sourceKey").value("3:123-1:-1:-1:-1:-1:"))
                 .andExpect(jsonPath("$.data.hasNext").value(false));
     }
 
     @Test
     void 식별자_검색은_SQL_와일드카드를_문자로_취급한다() throws Exception {
         jdbc.sql("""
-                INSERT INTO myhome_complex_source (source_key, hsmp_nm) VALUES ('complex%_key', '특수문자 단지')
+                INSERT INTO lh_announcement_catalog_entries(version, source_key, raw_payload, query_start_date, query_end_date, changed_at, collected_at, present_in_latest_catalog, last_collection_record_id) SELECT 0, 'complex%_key', '{\"PAN_NM\":\"특수문자 단지\"}', '20261001', '20261004', now(), now(), true, last_collection_record_id FROM lh_announcement_catalog_entries LIMIT 1
                 """).update();
         mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
-                        .param("category", "MYHOME_COMPLEX").param("keyword", "%_"))
+                        .param("category", "LH_ANNOUNCEMENT_CATALOG").param("keyword", "%_"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalElements").value(1))
                 .andExpect(jsonPath("$.data.items[0].sourceKey").value("complex%_key"));
@@ -191,7 +341,7 @@ class IngestSourceControllerIntegrationTest {
     @Test
     void 자바스크립트_안전_정수_범위_밖의_원천_식별자와_금액은_문자열로_보존한다() throws Exception {
         jdbc.sql("""
-                UPDATE myhome_complex_source SET hsmp_sn = 9007199254740993, bass_rent_gtn = 9007199254740993
+                UPDATE myhome_complex_source_rows SET hsmp_sn = 9007199254740993, bass_rent_gtn = 9007199254740993
                 """).update();
         mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("category", "MYHOME_COMPLEX"))
                 .andExpect(status().isOk())
@@ -205,7 +355,7 @@ class IngestSourceControllerIntegrationTest {
     @Test
     void LH_중첩_객체와_배열의_큰_정수도_문자열로_보존한다() throws Exception {
         jdbc.sql("""
-                UPDATE lh_announcement_catalog_source SET raw_payload =
+                UPDATE lh_announcement_catalog_entries SET raw_payload =
                     '{"PAN_NM":"두꺼비 LH 공고","nested":{"identifier":9007199254740993},
                       "values":[-9007199254740993,{"identifier":123456789012345678901234567890}]}'
                 """).update();
@@ -224,7 +374,7 @@ class IngestSourceControllerIntegrationTest {
     @Test
     void 안전_범위의_원천_정수와_페이지_개수는_숫자로_유지한다() throws Exception {
         jdbc.sql("""
-                UPDATE myhome_complex_source
+                UPDATE myhome_complex_source_rows
                 SET hshld_co = 0, bass_rent_gtn = 9007199254740991, bass_mt_rntchrg = -9007199254740991
                 """).update();
         mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("category", "MYHOME_COMPLEX"))
@@ -244,7 +394,7 @@ class IngestSourceControllerIntegrationTest {
     @Test
     void 원천_소수값은_브라우저_반올림_없이_문자열로_전달한다() throws Exception {
         jdbc.sql("""
-                UPDATE lh_announcement_catalog_source SET raw_payload =
+                UPDATE lh_announcement_catalog_entries SET raw_payload =
                     '{"PAN_NM":"두꺼비 LH 공고","amount":0.1234567890123456789}'
                 """).update();
         mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))

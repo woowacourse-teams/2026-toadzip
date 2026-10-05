@@ -96,6 +96,7 @@ public class DataPipelineExecutionService {
                     startedAt,
                     INTERRUPTED_FAILURE_MESSAGE
             );
+            recoverTerminalCollections(startedAt);
             execution = executionStateService.create(executionId, type, startedAt);
         }
         catch (RuntimeException exception) {
@@ -126,6 +127,7 @@ public class DataPipelineExecutionService {
     }
 
     public List<DataPipelineExecutionResponse> history(int page, int size) {
+        recoverInterruptedExecutions();
         var request = PageRequest.of(
                 page, size, Sort.by("id").descending()
         );
@@ -135,8 +137,8 @@ public class DataPipelineExecutionService {
     }
 
     public DataPipelineExecutionResponse findLatest(DataPipelineType type) {
+        recoverInterruptedExecutions();
         return executionRepository.findFirstByTypeOrderByIdDesc(type)
-                .map(this::recoverInterruptedExecution)
                 .map(executionMapper::response)
                 .orElseGet(() -> DataPipelineExecutionResponse.idle(type));
     }
@@ -146,8 +148,8 @@ public class DataPipelineExecutionService {
     }
 
     public DataPipelineExecutionResponse find(UUID executionId) {
+        recoverInterruptedExecutions();
         return executionRepository.findByExecutionId(executionId)
-                .map(this::recoverInterruptedExecution)
                 .map(executionMapper::response)
                 .orElseThrow(() -> new DataPipelineExecutionNotFoundException(
                         "데이터 파이프라인 실행을 찾을 수 없습니다: " + executionId
@@ -295,32 +297,27 @@ public class DataPipelineExecutionService {
         }
     }
 
-    private DataPipelineExecution recoverInterruptedExecution(DataPipelineExecution execution) {
-        if (!isLeaseExpired(execution) || executionLock.isHeld()) {
-            return execution;
+    private void recoverInterruptedExecutions() {
+        if (executionLock.isHeld()) {
+            return;
         }
+        Instant now = Instant.now(clock);
         try {
-            Instant failedAt = Instant.now(clock);
-            executionStateService.recoverInterrupted(
-                    execution.getExecutionId(),
-                    failedAt.minus(EXECUTION_LEASE_TIMEOUT),
-                    failedAt,
-                    INTERRUPTED_FAILURE_MESSAGE
-            );
+            executionStateService.recoverInterruptedBefore(
+                    now.minus(EXECUTION_LEASE_TIMEOUT), now, INTERRUPTED_FAILURE_MESSAGE);
         }
         catch (RuntimeException exception) {
-            log.error("중단된 데이터 파이프라인 실행을 복구하지 못했습니다: executionId={}",
-                    execution.getExecutionId(), exception);
+            log.error("중단된 데이터 파이프라인 실행을 복구하지 못했습니다.", exception);
         }
-        return executionRepository.findByExecutionId(execution.getExecutionId())
-                .orElse(execution);
+        recoverTerminalCollections(now);
     }
 
-    private boolean isLeaseExpired(DataPipelineExecution execution) {
-        if (!execution.isRunning()) {
-            return false;
+    private void recoverTerminalCollections(Instant now) {
+        try {
+            executionStateService.recoverTerminalCollections(now);
         }
-        Instant leaseDeadline = execution.getHeartbeatAt().plus(EXECUTION_LEASE_TIMEOUT);
-        return leaseDeadline.isBefore(Instant.now(clock));
+        catch (RuntimeException exception) {
+            log.error("종료된 실행의 미완료 수집 기록을 복구하지 못했습니다.", exception);
+        }
     }
 }

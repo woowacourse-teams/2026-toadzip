@@ -6,8 +6,8 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
-import com.toadzip.backend.ingest.collection.repository.MyHomeComplexSourceRepository;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
@@ -36,7 +36,7 @@ public class MyHomeComplexMappingWriter {
 
     private final SupplyRowRepository supplyRowRepository;
     private final MyHomeComplexLinkRepository linkRepository;
-    private final MyHomeComplexSourceRepository sourceRepository;
+    private final MyHomeComplexSourceReader sourceRepository;
     private final MyHomeComplexSourceMapper sourceMapper;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

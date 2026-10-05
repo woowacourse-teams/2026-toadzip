@@ -5,7 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.toadzip.backend.ingest.collection.service.MyHomeComplexCollectionService;
+import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

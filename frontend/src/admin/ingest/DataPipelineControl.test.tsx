@@ -26,8 +26,8 @@ beforeEach(() => {
     connection: { total: 0, complexLinked: 0, housingTypeLinked: 0, unlinkedReasons: {} },
     amounts: { total: 0, fulfilled: 0 },
     schedules: { total: 0, reviewed: 0, withApplicationSchedule: 0 },
-    supplyCollection: { totalRequests: 0, freshRequests: 0, latestCollectedAt: null },
-    detailCollection: { totalRequests: 0, freshRequests: 0, latestCollectedAt: null },
+    supplyCollection: { totalRequests: 0, collectedRequests: 0, latestCollectedAt: null },
+    detailCollection: { totalRequests: 0, collectedRequests: 0, latestCollectedAt: null },
     unlinkedLhLeaseCatalogCount: 0,
     unlinkedLhCandidates: [],
     preservedSourceRequestCount: 0,
@@ -42,6 +42,32 @@ beforeEach(() => {
 })
 
 describe('DataPipelineControl', () => {
+  it('최초 상태 조회가 실패해도 재조회하여 기존 실행과 중지 버튼을 복원한다', async () => {
+    vi.useFakeTimers()
+    let attempts = 0
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => {
+      if (type !== 'COMPLEX_SYNC') return Promise.resolve(execution(type, 'IDLE'))
+      attempts += 1
+      if (attempts === 1) return Promise.reject(new Error('상태 조회 일시 실패'))
+      return Promise.resolve(execution(type, 'RUNNING', { executionId: 'running-sync' }))
+    })
+    const view = render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+    try {
+      await act(async () => {})
+      expect(screen.getByRole('alert')).toHaveTextContent('상태 조회 일시 실패')
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+
+      expect(screen.getByRole('button', { name: '단지 수집·정제 실행 중지' })).toBeVisible()
+      expect(screen.getByRole('button', { name: '공고 수집' })).toBeDisabled()
+      expect(screen.queryByText('상태 조회 일시 실패')).not.toBeInTheDocument()
+      expect(apiMocks.startDataPipeline).not.toHaveBeenCalled()
+    } finally {
+      view.unmount()
+      vi.useRealTimers()
+    }
+  })
+
   it.each([
     ['단지 수집', 'COMPLEX_COLLECTION'], ['공고 수집', 'ANNOUNCEMENT_COLLECTION'],
     ['단지 수집·정제', 'COMPLEX_SYNC'], ['공고 수집·정제', 'ANNOUNCEMENT_SYNC'],
@@ -117,17 +143,35 @@ describe('DataPipelineControl', () => {
   })
 
   it('중지를 요청한 뒤 실제 종료 응답이 오기 전까지 새 실행을 막는다', async () => {
+    vi.useFakeTimers()
     const running = execution('COMPLEX_COLLECTION', 'RUNNING', { executionId: 'run-1' })
+    let current: DataPipelineExecution = { ...running, stopRequested: true }
     apiMocks.startDataPipeline.mockResolvedValue(running)
-    apiMocks.stopDataPipeline.mockResolvedValue({ ...running, stopRequested: true })
-    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
-    startCollection('단지 수집')
-    const stop = await screen.findByRole('button', { name: '단지 수집 실행 중지' })
-    fireEvent.click(stop)
-    expect(await screen.findByText(/중지 요청됨/)).toBeVisible()
-    expect(apiMocks.stopDataPipeline).toHaveBeenCalledWith('run-1')
-    expect(screen.getByRole('button', { name: '중지 요청 중…' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '공고 수집' })).toBeDisabled()
+    apiMocks.stopDataPipeline.mockResolvedValue(current)
+    const view = render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+    try {
+      await act(async () => {})
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '단지 수집' })) })
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('공공데이터포털 API 키'), { target: { value: 'fixture-execution-key' } })
+        fireEvent.click(screen.getByRole('button', { name: '단지 수집 시작' }))
+      })
+      apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) =>
+        Promise.resolve(type === 'COMPLEX_COLLECTION' ? current : execution(type, 'IDLE')))
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '단지 수집 실행 중지' })) })
+      expect(screen.getByText(/중지 요청됨/)).toBeVisible()
+      expect(apiMocks.stopDataPipeline).toHaveBeenCalledWith('run-1')
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+      expect(screen.getByRole('button', { name: '중지 요청 중…' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: '공고 수집' })).toBeDisabled()
+
+      current = execution('COMPLEX_COLLECTION', 'STOPPED', { executionId: 'run-1', stopRequested: true })
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+      expect(screen.getByRole('button', { name: '공고 수집' })).toBeEnabled()
+    } finally {
+      view.unmount()
+      vi.useRealTimers()
+    }
   })
 
   it('중지 API가 실패하면 완료로 표시하지 않고 다시 중지할 수 있다', async () => {

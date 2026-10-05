@@ -5,8 +5,8 @@ import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock
 
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
@@ -40,7 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class MyHomeAnnouncementMappingService {
 
-    private final MyHomeAnnouncementSourceRepository sourceRepository;
+    private final MyHomeAnnouncementSourceReader sourceRepository;
 
     private final MyHomeAnnouncementMappingFailureRepository failureRepository;
 

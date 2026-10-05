@@ -1,13 +1,13 @@
 package com.toadzip.backend.ingest.quality.repository;
 
-import com.toadzip.backend.ingest.collection.domain.LhSupplySnapshot;
-import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhSupplySnapshot;
+import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.CollectionCoverage;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.Connection;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.Coverage;
-import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.Freshness;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.HeldRequest;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.Schedule;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.UnlinkedLhCandidate;
+import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -26,7 +26,7 @@ public class LhAnnouncementQualityStore {
     private static final Pattern FINGERPRINT = Pattern.compile("proposedFingerprint=([0-9a-f]{64})");
 
     private static final String UNLINKED_LH_LEASE_CATALOG = """
-            FROM lh_announcement_catalog_source catalog
+            FROM lh_announcement_catalog_entries catalog
             WHERE catalog.present_in_latest_catalog AND catalog.upper_announcement_type_code = '06'
             """;
 
@@ -36,16 +36,16 @@ public class LhAnnouncementQualityStore {
         this.jdbc = jdbc;
     }
 
-    public LhAnnouncementQualityResponse snapshot(Instant observedAt, Freshness supplyFreshness,
-            Freshness detailFreshness, Set<String> linkedPanIds, Set<String> currentSourceKeys) {
+    public LhAnnouncementQualityResponse snapshot(Instant observedAt, CollectionCoverage supplyCollectionCoverage,
+            CollectionCoverage detailCollectionCoverage, Set<String> linkedPanIds, Set<String> currentSourceKeys) {
         Map<String, Long> amountReasons = preservedAmountReasons(currentSourceKeys);
         return new LhAnnouncementQualityResponse(
                 observedAt,
                 connection(),
                 amounts(),
                 schedules(),
-                supplyFreshness,
-                detailFreshness,
+                supplyCollectionCoverage,
+                detailCollectionCoverage,
                 unlinkedLhLeaseCatalogCount(linkedPanIds),
                 unlinkedLhCandidates(linkedPanIds),
                 preservedSourceRequestCount(),

@@ -65,9 +65,9 @@ export type DataPipelineExecution = {
 }
 
 export type LhQualityCoverage = { total: number; fulfilled: number }
-export type LhQualityFreshness = {
+export type LhQualityCollectionCoverage = {
   totalRequests: number
-  freshRequests: number
+  collectedRequests: number
   latestCollectedAt: string | null
 }
 export type LhAnnouncementQuality = {
@@ -80,8 +80,8 @@ export type LhAnnouncementQuality = {
   }
   amounts: LhQualityCoverage
   schedules: { total: number; reviewed: number; withApplicationSchedule: number }
-  supplyCollection: LhQualityFreshness
-  detailCollection: LhQualityFreshness
+  supplyCollection: LhQualityCollectionCoverage
+  detailCollection: LhQualityCollectionCoverage
   unlinkedLhLeaseCatalogCount: number
   unlinkedLhCandidates: readonly { panId: string; sourceKey: string; changedAt: string }[]
   preservedSourceRequestCount: number
@@ -132,8 +132,8 @@ function isLhAnnouncementQuality(value: unknown): value is LhAnnouncementQuality
     || !Array.isArray(value.unlinkedLhCandidates)) return false
   const count = (input: unknown) => typeof input === 'number' && Number.isSafeInteger(input) && input >= 0
   const counts = (input: unknown) => isRecord(input) && Object.values(input).every(count)
-  const freshness = (input: Record<string, unknown>) => count(input.totalRequests)
-    && count(input.freshRequests)
+  const collectionCoverage = (input: Record<string, unknown>) => count(input.totalRequests)
+    && count(input.collectedRequests)
     && (input.latestCollectedAt === null || typeof input.latestCollectedAt === 'string')
   return typeof value.observedAt === 'string'
     && count(value.connection.total) && count(value.connection.complexLinked)
@@ -141,7 +141,7 @@ function isLhAnnouncementQuality(value: unknown): value is LhAnnouncementQuality
     && count(value.amounts.total) && count(value.amounts.fulfilled)
     && count(value.schedules.total) && count(value.schedules.reviewed)
     && count(value.schedules.withApplicationSchedule)
-    && freshness(value.supplyCollection) && freshness(value.detailCollection)
+    && collectionCoverage(value.supplyCollection) && collectionCoverage(value.detailCollection)
     && count(value.unlinkedLhLeaseCatalogCount) && count(value.preservedSourceRequestCount)
     && value.unlinkedLhCandidates.every((candidate) => isRecord(candidate)
       && typeof candidate.panId === 'string' && typeof candidate.sourceKey === 'string'
@@ -184,6 +184,40 @@ export class DataPipelineApiError extends Error {
     this.status = status
     this.serverResponse = serverResponse
   }
+}
+
+export type LhRefreshSource = 'supplies' | 'details'
+export type ExternalDataCollectionReport = {
+  operation: string
+  storedRowCount: number
+  failedRequestCount: number
+  externalApiCallCount: number
+  skippedRequestCount: number
+  rateLimitedRequestCount: number
+  successfulRequestCount: number
+  selectionFailedRequestCount: number
+}
+
+export async function refreshLhAnnouncement(
+  source: LhRefreshSource, pblancId: string,
+): Promise<ExternalDataCollectionReport> {
+  const csrfToken = await requestCsrfToken()
+  const response = await fetch(
+    `${apiBaseUrl}/api/admin/ingest/lh/announcements/${source}/${encodeURIComponent(pblancId)}/refresh`,
+    { method: 'POST', credentials: 'include', headers: { [csrfToken.headerName]: csrfToken.token } },
+  )
+  const body = await readJson(response)
+  if (!response.ok) throw apiError(response.status, body)
+  if (!isExternalDataCollectionReport(body)) throw new Error('LH 재조회 응답 형식이 올바르지 않습니다.')
+  return body
+}
+
+export function isExternalDataCollectionReport(value: unknown): value is ExternalDataCollectionReport {
+  return isRecord(value) && typeof value.operation === 'string' && value.operation.trim().length > 0
+    && ['storedRowCount', 'failedRequestCount', 'externalApiCallCount', 'skippedRequestCount',
+      'rateLimitedRequestCount', 'successfulRequestCount', 'selectionFailedRequestCount'].every(
+      (key) => typeof value[key] === 'number' && Number.isSafeInteger(value[key]) && value[key] >= 0,
+    )
 }
 
 export async function startDataPipeline(

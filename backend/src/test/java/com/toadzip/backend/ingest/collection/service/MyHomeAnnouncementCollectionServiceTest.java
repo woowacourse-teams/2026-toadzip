@@ -4,9 +4,9 @@ import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -14,19 +14,22 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementCollectionRequest;
-import com.toadzip.backend.ingest.collection.dto.MyHomeAnnouncementSupplyType;
-import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementExternalRepository;
-import com.toadzip.backend.ingest.collection.repository.MyHomeSourceStore;
+import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSupplyType;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectedResponse;
+import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeAnnouncementCollectionRequest;
+import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
+import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementLifecycleService;
+import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementStorageService;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.collection.repository.external.MyHomeAnnouncementResponseParser;
+import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -52,7 +55,10 @@ class MyHomeAnnouncementCollectionServiceTest {
     private IngestOperationLock executionLock;
 
     @Mock
-    private MyHomeSourceStore sourceStore;
+    private MyHomeAnnouncementStorageService storage;
+
+    @Mock
+    private MyHomeAnnouncementLifecycleService lifecycle;
 
     @Mock
     private ExternalDataFailureRecorder failureRecorder;
@@ -66,25 +72,12 @@ class MyHomeAnnouncementCollectionServiceTest {
             Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(1);
             return Optional.of(operation.get());
         });
-        service = new MyHomeAnnouncementCollectionService(
-                executionLock,
-                sourceStore,
-                new MyHomeAnnouncementResponseParser(JsonMapper.builder().build()),
-                externalRepository,
-                failureRecorder,
-                new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry()),
-                new SimpleMeterRegistry()
-        );
+        service = new CollectionServiceTestFixture().announcement(externalRepository, storage, lifecycle, executionLock,
+                failureRecorder, new ExternalDataRetryExecutor(Duration.ZERO, new SimpleMeterRegistry()));
     }
 
     @Test
     void 페이지를_확대해도_7개_공급유형의_모든_원천_행을_동일하게_저장한다() {
-        List<List<MyHomeAnnouncementSourceSnapshot>> storedBatches = new ArrayList<>();
-        when(sourceStore.storeAnnouncements(anyString(), any())).thenAnswer(invocation -> {
-            List<MyHomeAnnouncementSourceSnapshot> rows = invocation.getArgument(1);
-            storedBatches.add(List.copyOf(rows));
-            return rows.size();
-        });
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
             MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
             MyHomeAnnouncementCollectionRequest request = invocation.getArgument(1);
@@ -101,12 +94,15 @@ class MyHomeAnnouncementCollectionServiceTest {
         ExternalDataCollectionReport small = service.collect(new MyHomeAnnouncementCollectionRequest(10, 1_000));
         ExternalDataCollectionReport large = service.collect(new MyHomeAnnouncementCollectionRequest(500, 1_000));
 
+        ArgumentCaptor<MyHomeAnnouncementCollectedResponse> collected = ArgumentCaptor.captor();
+        verify(storage, times(14)).complete(any(), any(), collected.capture());
+        var storedBatches = collected.getAllValues().stream().map(MyHomeAnnouncementCollectedResponse::rows).toList();
         assertThat(storedBatches.subList(7, 14)).containsExactlyElementsOf(storedBatches.subList(0, 7));
         assertThat(large.storedRowCount()).isEqualTo(1_705).isEqualTo(small.storedRowCount());
         assertThat(large.failedRequestCount()).isZero();
         assertThat(small.externalApiCallCount()).isEqualTo(174);
         assertThat(large.externalApiCallCount()).isEqualTo(8);
-        verify(sourceStore, times(2)).completeAnnouncementCollection(anyString());
+        verify(lifecycle, times(2)).completeRun(any());
     }
 
     @Test
@@ -132,24 +128,19 @@ class MyHomeAnnouncementCollectionServiceTest {
             }
             return response("[]");
         });
-        when(sourceStore.storeAnnouncements(anyString(), any())).thenAnswer(invocation -> {
-            List<?> items = invocation.getArgument(1);
-            return items.size();
-        });
 
         var result = service.collect(request);
 
-        ArgumentCaptor<String> runIds = ArgumentCaptor.captor();
-        ArgumentCaptor<List<MyHomeAnnouncementSourceSnapshot>> snapshots = ArgumentCaptor.captor();
-        verify(sourceStore, org.mockito.Mockito.times(MyHomeAnnouncementSupplyType.values().length))
-                .storeAnnouncements(runIds.capture(), snapshots.capture());
-        String runId = runIds.getAllValues().getFirst();
-        assertThat(runIds.getAllValues()).containsOnly(runId);
-        verify(sourceStore).completeAnnouncementCollection(runId);
-        assertThat(snapshots.getAllValues()).filteredOn(value -> !value.isEmpty())
+        ArgumentCaptor<com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectionRequest> runIds = ArgumentCaptor.captor();
+        ArgumentCaptor<MyHomeAnnouncementCollectedResponse> snapshots = ArgumentCaptor.captor();
+        verify(storage, org.mockito.Mockito.times(MyHomeAnnouncementSupplyType.values().length)).complete(any(), runIds.capture(), snapshots.capture());
+        var runId = runIds.getAllValues().getFirst().executionId();
+        assertThat(runIds.getAllValues()).extracting(com.toadzip.backend.ingest.collection.myhome.announcement.dto.MyHomeAnnouncementCollectionRequest::executionId).containsOnly(runId);
+        verify(lifecycle).completeRun(runId);
+        assertThat(snapshots.getAllValues().stream().map(MyHomeAnnouncementCollectedResponse::rows).toList()).filteredOn(value -> !value.isEmpty())
                 .singleElement()
                 .extracting(List::getFirst)
-                .extracting(value -> ((MyHomeAnnouncementSourceSnapshot) value).pblancId())
+                .extracting(value -> ((com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot) value).pblancId())
                 .isEqualTo("1");
         assertThat(result.storedRowCount()).isOne();
         assertThat(result.failedRequestCount()).isZero();
@@ -169,7 +160,7 @@ class MyHomeAnnouncementCollectionServiceTest {
 
         verify(failureRecorder, org.mockito.Mockito.times(MyHomeAnnouncementSupplyType.values().length))
                 .record(any(), any(), any(), any(), any());
-        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        verify(lifecycle, never()).completeRun(any());
         verify(failureRecorder, never()).resolveStartingWith(any(), any());
         assertThat(result.storedRowCount()).isZero();
         assertThat(result.failedRequestCount()).isEqualTo(MyHomeAnnouncementSupplyType.values().length);
@@ -189,7 +180,7 @@ class MyHomeAnnouncementCollectionServiceTest {
 
         var result = service.collect(request);
 
-        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        verify(lifecycle, never()).completeRun(any());
         assertThat(result.failedRequestCount()).isOne();
     }
 
@@ -204,8 +195,8 @@ class MyHomeAnnouncementCollectionServiceTest {
 
         var result = service.collect(request);
 
-        verify(sourceStore, never()).storeAnnouncements(anyString(), any());
-        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        verify(storage, never()).complete(any(), any(), any());
+        verify(lifecycle, never()).completeRun(any());
         assertThat(result.failedRequestCount()).isEqualTo(MyHomeAnnouncementSupplyType.values().length);
     }
 
@@ -223,9 +214,8 @@ class MyHomeAnnouncementCollectionServiceTest {
 
         ExternalDataCollectionReport result = service.collect(request);
 
-        verify(sourceStore, times(MyHomeAnnouncementSupplyType.values().length - 1))
-                .storeAnnouncements(anyString(), any());
-        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        verify(storage, times(MyHomeAnnouncementSupplyType.values().length - 1)).complete(any(), any(), any());
+        verify(lifecycle, never()).completeRun(any());
         assertThat(result.failedRequestCount()).isOne();
     }
 
@@ -243,17 +233,16 @@ class MyHomeAnnouncementCollectionServiceTest {
 
         ExternalDataCollectionReport result = service.collect(request);
 
-        verify(sourceStore, times(MyHomeAnnouncementSupplyType.values().length - 1))
-                .storeAnnouncements(anyString(), any());
-        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        verify(storage, times(MyHomeAnnouncementSupplyType.values().length - 1)).complete(any(), any(), any());
+        verify(lifecycle, never()).completeRun(any());
         verify(failureRecorder).record(any(), any(), any(), any(), any());
         assertThat(result.failedRequestCount()).isOne();
         assertThat(result.storedRowCount()).isZero();
     }
 
     @Test
-    @DisplayName("페이지 간 저장 키가 중복되면 해당 공급유형 저장과 전체 미조회 판정을 보류한다")
-    void preservesSourcesWhenAnnouncementSourceKeysOverlapBetweenPages() {
+    @DisplayName("서로 다른 페이지의 같은 주택 행도 원천 응답 그대로 저장한다")
+    void keepsRawAnnouncementRowsRepeatedAcrossDifferentPages() {
         MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenAnswer(invocation -> {
             MyHomeAnnouncementSupplyType supplyType = invocation.getArgument(0);
@@ -271,11 +260,14 @@ class MyHomeAnnouncementCollectionServiceTest {
 
         ExternalDataCollectionReport result = service.collect(request);
 
-        verify(sourceStore, times(MyHomeAnnouncementSupplyType.values().length - 1))
-                .storeAnnouncements(anyString(), any());
-        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
-        verify(failureRecorder).record(any(), any(), any(), any(), any());
-        assertThat(result.failedRequestCount()).isOne();
+        ArgumentCaptor<MyHomeAnnouncementCollectedResponse> batches = ArgumentCaptor.captor();
+        verify(storage, times(MyHomeAnnouncementSupplyType.values().length)).complete(any(), any(), batches.capture());
+        assertThat(batches.getAllValues().stream().map(MyHomeAnnouncementCollectedResponse::rows).toList()).filteredOn(batch -> !batch.isEmpty()).singleElement()
+                .satisfies(batch -> assertThat(batch).extracting(com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementSourceSnapshot::houseSn)
+                        .containsExactly(1, 2, 2, 3));
+        verify(lifecycle).completeRun(any());
+        verify(failureRecorder, never()).record(any(), any(), any(), any(), any());
+        assertThat(result.failedRequestCount()).isZero();
     }
 
     @Test
@@ -298,9 +290,8 @@ class MyHomeAnnouncementCollectionServiceTest {
 
         var result = service.collect(request);
 
-        verify(sourceStore, times(MyHomeAnnouncementSupplyType.values().length - 1))
-                .storeAnnouncements(anyString(), any());
-        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        verify(storage, times(MyHomeAnnouncementSupplyType.values().length - 1)).complete(any(), any(), any());
+        verify(lifecycle, never()).completeRun(any());
         assertThat(result.failedRequestCount()).isOne();
     }
 
@@ -324,9 +315,8 @@ class MyHomeAnnouncementCollectionServiceTest {
 
         var result = service.collect(request);
 
-        verify(sourceStore, times(MyHomeAnnouncementSupplyType.values().length - 1))
-                .storeAnnouncements(anyString(), any());
-        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        verify(storage, times(MyHomeAnnouncementSupplyType.values().length - 1)).complete(any(), any(), any());
+        verify(lifecycle, never()).completeRun(any());
         assertThat(result.failedRequestCount()).isOne();
     }
 
@@ -350,9 +340,8 @@ class MyHomeAnnouncementCollectionServiceTest {
 
         var result = service.collect(request);
 
-        verify(sourceStore, times(MyHomeAnnouncementSupplyType.values().length - 1))
-                .storeAnnouncements(anyString(), any());
-        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        verify(storage, times(MyHomeAnnouncementSupplyType.values().length - 1)).complete(any(), any(), any());
+        verify(lifecycle, never()).completeRun(any());
         assertThat(result.failedRequestCount()).isOne();
     }
 
@@ -387,7 +376,7 @@ class MyHomeAnnouncementCollectionServiceTest {
         );
         verify(failureRecorder, never())
                 .resolve(ExternalDataSource.MYHOME_ANNOUNCEMENT, "suplyTy=10&pageNo=2&numOfRows=1");
-        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        verify(lifecycle, never()).completeRun(any());
         assertThat(result.failedRequestCount()).isOne();
     }
 
@@ -422,7 +411,7 @@ class MyHomeAnnouncementCollectionServiceTest {
         );
         verify(failureRecorder, never())
                 .resolve(ExternalDataSource.MYHOME_ANNOUNCEMENT, "suplyTy=10&pageNo=2&numOfRows=1");
-        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        verify(lifecycle, never()).completeRun(any());
         assertThat(result.failedRequestCount()).isOne();
     }
 
@@ -442,7 +431,7 @@ class MyHomeAnnouncementCollectionServiceTest {
 
         assertThat(result.rateLimitedRequestCount()).isOne();
         verify(externalRepository, times(1)).fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt());
-        verify(sourceStore, never()).completeAnnouncementCollection(anyString());
+        verify(lifecycle, never()).completeRun(any());
     }
 
     @Test
@@ -451,7 +440,7 @@ class MyHomeAnnouncementCollectionServiceTest {
         MyHomeAnnouncementCollectionRequest request = new MyHomeAnnouncementCollectionRequest(2, 10);
         when(externalRepository.fetch(any(), any(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenReturn(response("[]"));
-        when(sourceStore.storeAnnouncements(anyString(), any())).thenThrow(new IllegalStateException("DB 저장 실패"));
+        doThrow(new IllegalStateException("DB 저장 실패")).when(storage).complete(any(), any(), any());
 
         assertThatThrownBy(() -> service.collect(request))
                 .isInstanceOf(IllegalStateException.class)

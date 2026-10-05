@@ -52,4 +52,8 @@ public class ExternalDataRequestException extends RuntimeException {
     public boolean isRateLimited() {
         return rateLimited;
     }
+
+    public ExternalDataRequestException withContext(String context) {
+        return new ExternalDataRequestException(context + ": " + getMessage(), this, retryable, rateLimited);
+    }
 }

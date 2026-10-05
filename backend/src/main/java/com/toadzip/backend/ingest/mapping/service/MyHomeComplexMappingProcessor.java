@@ -1,8 +1,8 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.housing.domain.Address;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
-import com.toadzip.backend.ingest.collection.repository.MyHomeComplexSourceRepository;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
@@ -32,7 +32,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 class MyHomeComplexMappingProcessor {
 
-    private final MyHomeComplexSourceRepository sourceRepository;
+    private final MyHomeComplexSourceReader sourceRepository;
     private final MyHomeComplexLinkRepository linkRepository;
     private final MyHomeComplexMappingFailureStore failureStore;
     private final MyHomeComplexSourceMapper sourceMapper;

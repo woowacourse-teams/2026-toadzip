@@ -30,7 +30,7 @@
 | 마이홈 단지 통합 | [myhome-complex-linking.md](myhome-complex-linking.md) | 원천 연결, 확인된 통합, 재정제와 복구 |
 | 수집·정제 코드 리뷰 | [ingest-review-2026-09-26.md](ingest-review-2026-09-26.md) | 9월 28일 재검토: 해결 상태, 원천 선택 결함, 책임·성능·죽은 코드와 개선 순서 |
 | 공고 수집 성능 | [announcement-collection-performance.md](announcement-collection-performance.md) | 페이지 크기, LH 동시성, 실측과 메트릭 |
-| LH 공고 연결·복구 | [lh-announcement-link-resolution.md](lh-announcement-link-resolution.md) | 매핑·보강의 성공 연결 기준과 fallback 종료 |
+| LH 공고 연결·복구 | [lh-announcement-link-resolution.md](lh-announcement-link-resolution.md) | 매핑·보강의 성공 연결 기준과 원천 초기화 |
 | LH 수집 정확성·운영 | [lh-announcement-correctness-audit.md](lh-announcement-correctness-audit.md), [lh-announcement-quality-operations.md](lh-announcement-quality-operations.md) | 검증 한계, 품질 지표와 확인된 공급 감소 승인 |
 | 공고 원천 수명주기 | [announcement-source-lifecycle.md](announcement-source-lifecycle.md) | 미조회 정책과 스키마 배포 |
 | 테스트 | [testing.md](testing.md) | 테스트 범위와 대역 기준 |

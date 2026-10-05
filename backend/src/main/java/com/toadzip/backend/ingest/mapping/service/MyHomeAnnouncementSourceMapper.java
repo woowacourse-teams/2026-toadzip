@@ -7,7 +7,7 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper.MyHomeAnnouncementCommonValues;
 import java.math.BigDecimal;
@@ -30,6 +30,15 @@ public class MyHomeAnnouncementSourceMapper {
     }
 
     public MyHomeAnnouncementMappingData map(List<MyHomeAnnouncementSource> sources) {
+        java.util.Map<String, Object> identities = new java.util.HashMap<>();
+        for (MyHomeAnnouncementSource source : sources) {
+            Object previous = identities.putIfAbsent(source.getSourceKey(), source.snapshot());
+            if (previous != null && !previous.equals(source.snapshot())) {
+                throw new MyHomeAnnouncementMappingRejectedException(
+                        MyHomeAnnouncementMappingFailureReason.CONFLICTING_SOURCE_VALUE,
+                        "같은 공고·주택 식별자에 서로 다른 원천 응답이 있습니다.");
+            }
+        }
         MyHomeAnnouncementCommonValues common = commonValuesMapper.map(sources);
         List<MyHomeSupplyRowMappingData> supplyRows = ordered(sources).stream()
                 .map(source -> supplyRowOf(source, common.name(), common.sourceSupplyType()))

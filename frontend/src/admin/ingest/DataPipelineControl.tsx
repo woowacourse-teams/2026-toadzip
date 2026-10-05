@@ -78,7 +78,7 @@ export function DataPipelineControl() {
 
   useEffect(() => {
     mounted.current = true
-    pipelineTypes.forEach((type) => void refresh(type))
+    pipelineTypes.forEach((type) => void refresh(type, true))
     return () => {
       mounted.current = false
       pipelineTypes.forEach(clearPoll)

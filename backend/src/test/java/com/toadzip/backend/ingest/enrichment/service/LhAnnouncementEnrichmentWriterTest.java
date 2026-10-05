@@ -14,10 +14,10 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
-import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
+import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
@@ -54,7 +54,7 @@ class LhAnnouncementEnrichmentWriterTest {
     private LhAnnouncementSupplyMatcher supplyMatcher;
 
     @Mock
-    private LhAnnouncementDetailSourceRepository detailSourceRepository;
+    private LhAnnouncementDetailSourceReader detailSourceRepository;
 
     @Mock
     private LhAnnouncementEnrichmentMapper mapper;
@@ -63,7 +63,7 @@ class LhAnnouncementEnrichmentWriterTest {
     private LhAnnouncementEnrichmentFailureStore failureStore;
 
     @Mock
-    private LhSourceStore sourceStore;
+    private LhAnnouncementSupplySourceReader sourceStore;
 
     @Test
     void 매핑_후_보강_저장이_중지되면_실패를_해결하지_않는다() {

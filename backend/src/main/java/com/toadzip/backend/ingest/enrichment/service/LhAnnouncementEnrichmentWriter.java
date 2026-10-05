@@ -11,12 +11,12 @@ import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepositor
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.RentalType;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
-import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
+import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
+import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
@@ -52,11 +52,10 @@ public class LhAnnouncementEnrichmentWriter {
     private final SupplyRowRepository supplyRowRepository;
     private final SupplyTargetRepository supplyTargetRepository;
     private final LhAnnouncementSupplyMatcher supplyMatcher;
-    private final LhAnnouncementDetailSourceRepository detailSourceRepository;
+    private final LhAnnouncementDetailSourceReader detailSourceRepository;
     private final LhAnnouncementEnrichmentMapper mapper;
-
     private final LhAnnouncementEnrichmentFailureStore failureStore;
-    private final LhSourceStore sourceStore;
+    private final LhAnnouncementSupplySourceReader sourceStore;
 
     @Transactional
     public void writeAfterMapping(
@@ -75,7 +74,7 @@ public class LhAnnouncementEnrichmentWriter {
         List<LhAnnouncementDetailSource> details = detailSourceRepository
                 .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
                         request.panId(),
-                        LhAnnouncementCollectionCheckpoint.requestHashOf(request.requestDescription())
+                        LhAnnouncementQuery.requestHashOf(request.requestDescription())
                 );
         if (details.isEmpty()) {
             throw new LhAnnouncementEnrichmentRejectedException(
@@ -120,7 +119,9 @@ public class LhAnnouncementEnrichmentWriter {
         Announcement managedAnnouncement = announcementRepository.findByIdForUpdate(announcement.getId())
                 .orElseThrow(() -> new IllegalStateException("보강할 공고가 없습니다."));
         String previousPanId = managedAnnouncement.getLhPanId();
-        if (managedAnnouncement.isLhPanIdReviewed() && !data.panId().equals(previousPanId)) {
+        if ((managedAnnouncement.isLhPanIdReviewed()
+                || managedAnnouncement.isAdminModified() || managedAnnouncement.isAdminDeleted())
+                && !data.panId().equals(previousPanId)) {
             throw new LhAnnouncementEnrichmentRejectedException(
                     LhAnnouncementEnrichmentFailureReason.LH_COLLECTION_LINK_MISMATCH,
                     "확인된 공고의 LH 원천과 보강 대상이 다릅니다."
@@ -532,7 +533,6 @@ public class LhAnnouncementEnrichmentWriter {
             int updated
     ) {
     }
-
 
     record LhAnnouncementEnrichmentWriteResult(
             LhAnnouncementEnrichmentReport report,

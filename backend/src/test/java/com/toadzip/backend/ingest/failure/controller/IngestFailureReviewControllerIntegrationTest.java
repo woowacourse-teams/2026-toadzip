@@ -28,6 +28,55 @@ class IngestFailureReviewControllerIntegrationTest {
     @Autowired private MockMvc mockMvc;
     @Autowired private JdbcClient jdbc;
 
+    @ParameterizedTest
+    @CsvSource({"complex, 3:123-1:-1:-1:-1:-1:", "announcement, 6:notice1:1"})
+    void 실패_대상_이름은_현재_원천을_우선한다(String domain, String key) throws Exception {
+        UUID record = UUID.randomUUID();
+        jdbc.sql("""
+                INSERT INTO source_collection_records
+                    (id, version, source, started_at, finished_at, status, stored_row_count)
+                VALUES (:record, 0, :source, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'SUCCESS', 1)
+                """).param("record", record).param("source", "MYHOME_" + domain.toUpperCase()).update();
+        if (domain.equals("complex")) {
+            long region = jdbc.sql("""
+                    INSERT INTO myhome_complex_source_regions
+                        (version, province_code, district_code, collected_at, last_collection_record_id)
+                    VALUES (0, '11', '110', CURRENT_TIMESTAMP, :record) RETURNING id
+                    """).param("record", record).query(Long.class).single();
+            long bundle = jdbc.sql("""
+                    INSERT INTO myhome_complex_source_bundles (version, hsmp_sn, region_id)
+                    VALUES (0, 123, :region) RETURNING id
+                    """).param("region", region).query(Long.class).single();
+            jdbc.sql("""
+                    INSERT INTO myhome_complex_source_rows (source_id, source_order, hsmp_sn, hsmp_nm, collected_at)
+                    VALUES (:bundle, 0, 123, '최신 원천명', CURRENT_TIMESTAMP)
+                    """).param("bundle", bundle).update();
+            stageFailure("myhome_complex_mapping_failures", key, "source_complex_identifier", "123",
+                    "GEOCODING_ERROR");
+        }
+        if (domain.equals("announcement")) {
+            long bundle = jdbc.sql("""
+                    INSERT INTO myhome_announcement_source_bundles (version, pblanc_id, last_collection_record_id)
+                    VALUES (0, 'notice', :record) RETURNING id
+                    """).param("record", record).query(Long.class).single();
+            jdbc.sql("""
+                    INSERT INTO myhome_announcement_source_rows
+                        (source_id, collection_record_id, request_supply_type_code, collected_at, source_order,
+                         pblanc_id, house_sn, pblanc_nm, active, consecutive_miss_count)
+                    VALUES (:bundle, :record, '01', CURRENT_TIMESTAMP, 0, 'notice', 1, '과거 비활성명', false, 2),
+                           (:bundle, :record, '02', '2026-10-01T00:00:00Z', 0, 'notice', 1, '최신 원천명', true, 0)
+                    """).param("bundle", bundle).param("record", record).update();
+            jdbc.sql("UPDATE myhome_announcement_source_rows SET pblanc_id = :identifier")
+                    .param("identifier", "\tnotice\u3000").update();
+            stageFailure("myhome_announcement_mapping_failures", key, "source_announcement_identifier", "notice",
+                    "COMPLEX_NOT_FOUND");
+        }
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("domain", domain))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].targetName").value("최신 원천명"))
+                .andExpect(jsonPath("$.data.items[0].productLinkStatus").value("NOT_FOUND"));
+    }
+
     @Test
     void 실패가_없는_페이지에도_정확한_전체_건수를_반환한다() throws Exception {
         mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("domain", "complex"))

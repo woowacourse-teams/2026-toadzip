@@ -6,10 +6,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.lh.repository.external.LhAnnouncementCircuitBreaker;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementCircuitBreaker;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import org.junit.jupiter.api.BeforeEach;

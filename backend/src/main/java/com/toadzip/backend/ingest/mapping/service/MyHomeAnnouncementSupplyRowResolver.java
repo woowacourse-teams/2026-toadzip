@@ -1,16 +1,16 @@
 package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.housing.domain.AgencyCode;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.domain.LhProviderPolicy;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementCurrentSources;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutionException;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
+import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
+import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
+import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
+import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
@@ -34,7 +34,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
 
     private final LhAnnouncementLinkResolver linkResolver;
 
-    private final LhAnnouncementSupplySourceRepository lhSupplyRepository;
+    private final LhAnnouncementSupplySourceReader lhSupplyRepository;
 
     public ResolvedAnnouncement resolve(MyHomeAnnouncementMappingData data) {
         List<MyHomeSupplyRowMappingData> currentRows = currentRows(data.supplyRows());
@@ -49,7 +49,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
         List<LhAnnouncementSupplySource> lhSupplies = lhSupplyRepository
                 .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
                         request.panId(),
-                        LhAnnouncementCollectionCheckpoint.requestHashOf(request.requestDescription())
+                        LhAnnouncementQuery.requestHashOf(request.requestDescription())
                 );
         if (lhSupplies.isEmpty()) {
             return new ResolvedAnnouncement(data, request, lhSupplies, historicalKeys);
@@ -85,8 +85,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
             return linkResolver.resolveFirstLinked(
                     sourceRows.stream().map(MyHomeSupplyRowMappingData::source).toList()
             ).request();
-        }
-        catch (LhAnnouncementLinkResolutionException exception) {
+        } catch (LhAnnouncementLinkResolutionException exception) {
             MyHomeAnnouncementMappingFailureReason reason = switch (exception.reason()) {
                 case REQUEST_UNSUPPORTED -> MyHomeAnnouncementMappingFailureReason.LH_COLLECTION_REQUEST_UNSUPPORTED;
                 case LINK_NOT_FOUND -> MyHomeAnnouncementMappingFailureReason.LH_COLLECTION_LINK_NOT_FOUND;
@@ -193,8 +192,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
         }
         try {
             return new BigDecimal(normalized).setScale(AREA_SCALE, RoundingMode.HALF_UP);
-        }
-        catch (NumberFormatException exception) {
+        } catch (NumberFormatException exception) {
             return null;
         }
     }
@@ -210,8 +208,7 @@ public class MyHomeAnnouncementSupplyRowResolver {
                 return null;
             }
             return value;
-        }
-        catch (NumberFormatException exception) {
+        } catch (NumberFormatException exception) {
             return null;
         }
     }
