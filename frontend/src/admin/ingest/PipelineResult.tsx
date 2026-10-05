@@ -2,6 +2,7 @@ import { Link } from 'react-router'
 import type { DataPipelineExecution, DataPipelineType } from './api'
 import { DataPipelineProgress, PipelineReport } from './DataPipelineProgress'
 import { pipelineLabels, pipelineStatusLabels } from './pipelineLabels'
+import { StoredDataTable } from '../shared/StoredDataTable'
 
 export type PipelineViewState = {
   execution: DataPipelineExecution
@@ -13,6 +14,7 @@ export function PipelineResult({ type, state, collectionExecution, stopping, onS
   stopping: boolean, onStop: () => void, recoveryDisabled?: boolean, onRefine?: () => void,
 }) {
   const label = pipelineLabels[type]
+  const domain = type.startsWith('COMPLEX_') ? 'complex' : 'announcement'
   const { execution } = state
   const failureMessage = state.requestError ?? execution.failure?.message
   const serverResponse = state.requestError === null
@@ -93,9 +95,7 @@ export function PipelineResult({ type, state, collectionExecution, stopping, onS
               <strong>{step.stepName} 건너뜀</strong>
               <p>{step.reason}</p>
               {step.serverResponse !== null && step.serverResponse !== undefined ? (
-                <details><summary>원본 응답</summary><pre aria-label={`${step.stepName} 건너뜀 응답`}>
-                  {JSON.stringify(step.serverResponse, null, 2)}
-                </pre></details>
+                <details><summary>원본 응답</summary><StoredDataTable data={step.serverResponse} label={`${step.stepName} 건너뜀 응답`} /></details>
               ) : null}
             </li>
           ))}
@@ -108,9 +108,7 @@ export function PipelineResult({ type, state, collectionExecution, stopping, onS
               <strong>{step.stepName} 원천 행 확인</strong>
               <PipelineReport report={step.report} />
               {step.report !== null && step.report !== undefined ? (
-                <details><summary>원본 보고서</summary><pre className="data-pipeline-warning-report" aria-label={`${step.stepName} 누락 보고서`}>
-                  {JSON.stringify(step.report, null, 2)}
-                </pre></details>
+                <details><summary>원본 보고서</summary><StoredDataTable data={step.report} label={`${step.stepName} 누락 보고서`} /></details>
               ) : null}
             </li>
           ))}
@@ -121,7 +119,7 @@ export function PipelineResult({ type, state, collectionExecution, stopping, onS
           <strong>{failureMessage}</strong>
           {serverResponse !== null && serverResponse !== undefined ? (
             <div><PipelineReport report={serverResponse} />
-              <details><summary>서버 응답 상세</summary><pre aria-label="서버 응답">{JSON.stringify(serverResponse, null, 2)}</pre></details>
+              <details><summary>서버 응답 상세</summary><StoredDataTable data={serverResponse} label="서버 응답" /></details>
             </div>
           ) : null}
         </div>
@@ -135,12 +133,12 @@ export function PipelineResult({ type, state, collectionExecution, stopping, onS
       {failureMessage ? <p role="alert" className="data-pipeline-error">{failureMessage}</p> : null}
       {type.endsWith('_SYNC') ? (
         <div>
-          <Link className="pipeline-inspect" to={`/admin/failures?category=collection&executionId=${execution.executionId ?? ''}`}>{label} 수집 실패 요청 보기</Link>{' · '}
-          <Link className="pipeline-inspect" to={`/admin/failures?category=${type === 'COMPLEX_SYNC' ? 'complex' : 'announcement'}&executionId=${execution.executionId ?? ''}`}>{label} 정제 실패 행 보기</Link>{' · '}
-          <Link className="pipeline-inspect" to={`/admin/failures?category=${type === 'COMPLEX_SYNC' ? 'household' : 'enrichment'}&executionId=${execution.executionId ?? ''}`}>{label} 보강 실패 행 보기</Link>
+          <Link className="pipeline-inspect" to={`/admin/failures?domain=${domain}&category=collection&executionId=${execution.executionId ?? ''}`}>{label} 수집 실패 요청 보기</Link>{' · '}
+          <Link className="pipeline-inspect" to={`/admin/failures?domain=${domain}&category=${type === 'COMPLEX_SYNC' ? 'complex' : 'announcement'}&executionId=${execution.executionId ?? ''}`}>{label} 정제 실패 행 보기</Link>{' · '}
+          <Link className="pipeline-inspect" to={`/admin/failures?domain=${domain}&category=${type === 'COMPLEX_SYNC' ? 'household' : 'enrichment'}&executionId=${execution.executionId ?? ''}`}>{label} 보강 실패 행 보기</Link>
         </div>
       ) : (
-        <Link className="pipeline-inspect" to={`/admin/failures?category=${type === 'COMPLEX_REFINEMENT' ? 'complex' : type === 'ANNOUNCEMENT_REFINEMENT' ? 'announcement' : 'collection'}&executionId=${execution.executionId ?? ''}`}>{label} 실패 행·요청 보기</Link>
+        <Link className="pipeline-inspect" to={`/admin/failures?domain=${domain}&category=${type === 'COMPLEX_REFINEMENT' ? 'complex' : type === 'ANNOUNCEMENT_REFINEMENT' ? 'announcement' : 'collection'}&executionId=${execution.executionId ?? ''}`}>{label} 실패 행·요청 보기</Link>
       )}
     </article>
   )

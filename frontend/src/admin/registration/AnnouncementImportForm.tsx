@@ -7,6 +7,8 @@ import {
 } from './api'
 import { registrationFailure } from './formValues'
 import { RegistrationError } from './RegistrationFields'
+import { StoredDataTable } from '../shared/StoredDataTable'
+import { SourceUrl } from '../shared/SourceUrl'
 
 export function AnnouncementImportForm({
   onSubmittingChange,
@@ -326,8 +328,8 @@ function ImportReviewDetails({ document, rawJson }: { document: unknown; rawJson
         </section>
       ))}
       <details>
-        <summary>등록할 원본 JSON 전체 보기</summary>
-        <pre>{rawJson}</pre>
+        <summary>등록할 원천 데이터 전체 보기</summary>
+        <StoredDataTable data={readImportPreview(rawJson)} label="등록할 원천 데이터" />
       </details>
     </div>
   )
@@ -335,25 +337,36 @@ function ImportReviewDetails({ document, rawJson }: { document: unknown; rawJson
 
 function ReviewFields({ fields }: { fields: Array<[string, unknown]> }) {
   return (
-    <dl>
+    <table className="admin-table">
+      <thead><tr><th scope="col">항목</th><th scope="col">값</th></tr></thead>
+      <tbody>
       {fields.map(([label, value]) => (
-        <div key={label}>
-          <dt>{label}</dt>
-          <dd>{reviewValue(value)}</dd>
-        </div>
+        <tr key={label}>
+          <th scope="row">{label}</th>
+          <td>{label.endsWith('URL') ? <SourceUrl url={value} /> : reviewValue(value)}</td>
+        </tr>
       ))}
-    </dl>
+      </tbody>
+    </table>
   )
 }
 
 function reviewValue(value: unknown): string {
   if (typeof value === 'number' && !Number.isSafeInteger(value)) {
-    return '원본 JSON에서 정확한 숫자를 확인해 주세요.'
+    return '아래 원천 데이터 표에서 정확한 숫자를 확인해 주세요.'
   }
   if (typeof value === 'string' || typeof value === 'number') {
     return String(value)
   }
   return '미기재'
+}
+
+function readImportPreview(rawJson: string | null): unknown {
+  if (rawJson === null) return null
+  // 숫자 토큰을 문자열로 읽어 JavaScript 정수 범위를 넘는 원문 금액도 정확히 표시한다.
+  const displayJson = rawJson.replace(/"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g,
+    token => token.startsWith('"') ? token : `"${token}"`)
+  return JSON.parse(displayJson) as unknown
 }
 
 function recordOf(value: unknown): Record<string, unknown> {

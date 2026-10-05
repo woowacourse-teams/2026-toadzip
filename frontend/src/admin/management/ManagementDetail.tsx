@@ -10,6 +10,7 @@ import { ManagementSummaryTable } from './ManagementSummaryTable'
 import { ManagementStatus } from './ManagementStatus'
 import { ChangeHistory } from './ChangeHistory'
 import { SupplyEditor } from './SupplyEditor'
+import { SourceUrl } from '../shared/SourceUrl'
 
 export function ManagementDetail({resource}: {resource:ManagementResource}) {
   const {id = ''} = useParams()
@@ -62,8 +63,8 @@ export function ManagementDetail({resource}: {resource:ManagementResource}) {
       {!editing ? <nav className="admin-section-tabs" aria-label="상세 섹션">{[['info','기본정보'],['relations',resource === 'complexes' ? '주택형·연결 공고' : '공급정보·단지 연결'],['history','출처·수정 이력']].map(([key,label]) =>
         <button data-admin-navigation key={key} type="button" aria-pressed={section === key} onClick={() => setSection(key)}>{label}</button>)}</nav> : null}
       {section === 'info' && !editing ? <>{sections.map(group => <section className="admin-detail-section" key={group.title}><h2>{group.title}</h2>
-        <dl className={`admin-data-grid${group.fields.some(field => field.name === 'address.roadAddress') ? ' admin-location-grid' : ''}`}>{group.fields.map(field => <div key={field.name}><dt>{field.label}</dt><dd>{field.type === 'url' && typeof valueAt(value.data,field.name) === 'string' && /^https?:\/\//.test(String(valueAt(value.data,field.name)))
-          ? <a href={String(valueAt(value.data,field.name))} target="_blank" rel="noreferrer">원문 열기 ↗</a> : display(valueAt(value.data,field.name))}</dd></div>)}</dl></section>)}</> : null}
+        <dl className={`admin-data-grid${group.fields.some(field => field.name === 'address.roadAddress') ? ' admin-location-grid' : ''}`}>{group.fields.map(field => <div key={field.name}><dt>{field.label}</dt><dd>{field.type === 'url'
+          ? <SourceUrl url={valueAt(value.data,field.name)} /> : display(valueAt(value.data,field.name))}</dd></div>)}</dl></section>)}</> : null}
       {section === 'info' && !editing && resource === 'announcements' ? <ScheduleEditor key={String(value.data.version)} value={value} id={id} onSaved={saved} /> : null}
       {editing ? <form key={String(value.data.version)} onChange={() => setDirty(true)} onSubmit={event => {
         event.preventDefault();setBusy(true);setError('');setErrors({})
@@ -80,7 +81,7 @@ export function ManagementDetail({resource}: {resource:ManagementResource}) {
         <header className="admin-inline"><h2>연결된 공고</h2>{!value.summary.deleted ? <Link to={`/admin/announcements/new?mode=direct&complexId=${id}`}>이 단지에 공고 등록</Link> : null}</header>
         <ManagementSummaryTable items={value.announcements} resource="announcements" /></> : <><h2>공급정보·단지 연결</h2>{value.supplyRows.length === 0 ? <p>등록된 공급정보가 없습니다.</p> : null}
           {value.supplyRows.map(row => <SupplyEditor key={`${row.id}-${value.data.version}`} row={row} announcementId={id} version={Number(value.data.version)} deleted={value.summary.deleted} onSaved={saved} />)}</> : null}
-      {section === 'history' ? <><h2>출처</h2><p className="ingest-meta">{value.sourceIdentifier}</p><p>관리자 최종 변경: {value.summary.updatedAt ? new Date(value.summary.updatedAt).toLocaleString('ko-KR') : '변경 이력 없음'}</p>
+      {section === 'history' ? <><h2>출처</h2><dl className="admin-data-grid"><div><dt>공식 원문 URL</dt><dd><SourceUrl url={value.data.originalUrl} /></dd></div><div><dt>원천 식별자</dt><dd>{value.sourceIdentifier || '기록 없음'}</dd></div></dl><p>관리자 최종 변경: {value.summary.updatedAt ? new Date(value.summary.updatedAt).toLocaleString('ko-KR') : '변경 이력 없음'}</p>
         <ChangeHistory resource={resource} id={id} version={Number(value.data.version)} /></> : null}
     </> : null}
   </section>

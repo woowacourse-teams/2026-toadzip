@@ -59,6 +59,7 @@ import com.toadzip.backend.ingest.collection.service.LhAnnouncementCandidateColl
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionProgressManager;
 import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
+import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
@@ -73,6 +74,8 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.IntStream;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
@@ -82,6 +85,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -1861,6 +1865,84 @@ class LhAnnouncementEnrichmentServiceTest {
                 assertThat(announcement.getCorrectionCancellationReason()).isEqualTo("변경된 정정 사유"));
         assertThat(enrichmentFailureRepository.findAll()).singleElement().satisfies(failure ->
                 assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.RESOLVED));
+    }
+
+    @Test
+    void 원자_매핑의_실제_보강_성공은_해당_공고의_실패만_현재_실행으로_해결한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        var targetFailure = enrichmentFailureRepository.save(staleEnrichmentFailure(source.getPblancId(), "target"));
+        var otherFailure = enrichmentFailureRepository.save(staleEnrichmentFailure("other-announcement", "other"));
+        ReflectionTestUtils.setField(source, "pblancNm", "변경된 모집공고");
+        myHomeSourceRepository.save(source);
+        UUID executionId = UUID.randomUUID();
+
+        try (var ignored = MDC.putCloseable("executionId", executionId.toString())) {
+            assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        }
+
+        assertThat(enrichmentFailureRepository.findById(targetFailure.getId())).get().satisfies(failure -> {
+            assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.RESOLVED);
+            assertThat(failure.getLastResolvedAt()).isNotNull();
+            assertThat(failure.getLastResolvedExecutionId()).isEqualTo(executionId);
+        });
+        assertThat(enrichmentFailureRepository.findById(otherFailure.getId())).get().satisfies(failure ->
+                assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.PENDING));
+    }
+
+    @Test
+    void 원자_매핑이_보강을_실행하지_않은_공고는_기존_실패를_유지한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        var failure = enrichmentFailureRepository.save(staleEnrichmentFailure(source.getPblancId(), "target"));
+
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+
+        assertThat(enrichmentFailureRepository.findById(failure.getId())).get().satisfies(stored -> {
+            assertThat(stored.getStatus()).isEqualTo(IngestFailureStatus.PENDING);
+            assertThat(stored.getLastResolvedAt()).isNull();
+        });
+    }
+
+    @Test
+    void 원자_매핑의_보강_실패는_제품_변경과_실패_해결을_함께_롤백한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        var failure = enrichmentFailureRepository.save(staleEnrichmentFailure(source.getPblancId(), "target"));
+        String originalName = announcementRepository.findAll().getFirst().getName();
+        ReflectionTestUtils.setField(source, "pblancNm", "롤백해야 하는 모집공고");
+        myHomeSourceRepository.save(source);
+        sourceStore.replaceDetails(PAN_ID, requestDescriptionFor(PAN_ID), List.of(
+                detail(0, "SCHEDULE", "잘못된 일정", null, null, null, null, null, null, null)
+        ));
+
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isOne();
+
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement ->
+                assertThat(announcement.getName()).isEqualTo(originalName));
+        assertThat(enrichmentFailureRepository.findById(failure.getId())).get().satisfies(stored -> {
+            assertThat(stored.getStatus()).isEqualTo(IngestFailureStatus.PENDING);
+            assertThat(stored.getLastResolvedAt()).isNull();
+            assertThat(stored.getOccurrenceCount()).isOne();
+        });
+    }
+
+    private LhAnnouncementEnrichmentFailure staleEnrichmentFailure(String identifier, String key) {
+        return LhAnnouncementEnrichmentFailure.create(key, identifier, PAN_ID,
+                LhAnnouncementEnrichmentFailureReason.LH_DETAIL_SOURCE_NOT_FOUND, "이전 실행의 상세 누락",
+                Instant.parse("2026-08-27T00:00:00Z"));
     }
 
     @Test

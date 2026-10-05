@@ -1,0 +1,10 @@
+.pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--ds-space-4); margin-top: var(--ds-space-4); font-size: var(--ds-text-caption); color: var(--ds-color-label); font-variant-numeric: tabular-nums; }
+.buttons { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-1); }
+.pagination .buttons button { padding: var(--ds-space-2); min-width: 36px; min-height: 40px; background: var(--ds-color-surface); font-size: var(--ds-text-caption); }
+.pagination .buttons button[aria-current="page"] { background: var(--ds-color-action); color: var(--ds-color-surface); border-color: var(--ds-color-action); opacity: 1; }
+.count { white-space: nowrap; }
+.jump { display: flex; align-items: center; gap: var(--ds-space-2); }
+.pagination .jumpLabel { display: flex; flex-direction: row; align-items: center; gap: var(--ds-space-2); font-size: inherit; }
+.pagination .jump input { width: 80px; min-width: 0; min-height: 40px; padding: var(--ds-space-2); text-align: right; font-variant-numeric: tabular-nums; }
+.pagination .jump button { min-height: 40px; padding: var(--ds-space-2) var(--ds-space-3); font-size: inherit; }
+@media (max-width: 700px) { .pagination { gap: var(--ds-space-3); } .buttons { width: 100%; } .pagination .edge { display: none; } }

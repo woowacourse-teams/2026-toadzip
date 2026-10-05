@@ -20,6 +20,8 @@ public interface LhAnnouncementEnrichmentFailureRepository
 
     List<LhAnnouncementEnrichmentFailure> findAllBySourceKeyIn(Collection<String> sourceKeys);
 
+    List<LhAnnouncementEnrichmentFailure> findAllBySourceAnnouncementIdentifier(String sourceAnnouncementIdentifier);
+
     List<LhAnnouncementEnrichmentFailure> findAllByStatusOrderBySourceKeyAscIdAsc(
             IngestFailureStatus status,
             Pageable pageable

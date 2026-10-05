@@ -10,6 +10,30 @@ export type ManagementSummary = {
   modified: boolean
   reviewRequired: boolean
   updatedAt: string | null
+  complex?: ManagementComplexSummary | null
+  announcement?: ManagementAnnouncementSummary | null
+}
+
+export type ManagementComplexSummary = {
+  sourceIdentifier: string
+  completionDate: string | null
+  totalHouseholdCount: number
+  totalParkingCount: number
+  heatingType: string | null
+  buildingType: string | null
+  corridorType: string | null
+  hasElevator: boolean | null
+  moveOutCountLastYear: number | null
+}
+
+export type ManagementAnnouncementSummary = {
+  sourceIdentifier: string
+  originalUrl: string
+  recruitmentType: string
+  postedDate: string
+  applicationStartDate: string
+  applicationEndDate: string
+  winnerAnnouncementDate: string
 }
 
 export type JsonValue = string | number | boolean | null | { [key: string]: JsonValue } | JsonValue[]
@@ -159,6 +183,31 @@ function isManagementSummary(value: unknown): value is ManagementSummary {
     && typeof value.subtitle === 'string' && typeof value.provider === 'string' && typeof value.rental === 'string'
     && typeof value.deleted === 'boolean' && typeof value.modified === 'boolean' && typeof value.reviewRequired === 'boolean'
     && (value.updatedAt === null || typeof value.updatedAt === 'string')
+    && (value.complex === undefined || value.complex === null || isManagementComplexSummary(value.complex))
+    && (value.announcement === undefined || value.announcement === null || isManagementAnnouncementSummary(value.announcement))
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string'
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+}
+
+function isManagementComplexSummary(value: unknown): value is ManagementComplexSummary {
+  return isRecord(value) && typeof value.sourceIdentifier === 'string' && isNullableString(value.completionDate)
+    && isCount(value.totalHouseholdCount) && isCount(value.totalParkingCount)
+    && isNullableString(value.heatingType) && isNullableString(value.buildingType) && isNullableString(value.corridorType)
+    && (value.hasElevator === null || typeof value.hasElevator === 'boolean')
+    && (value.moveOutCountLastYear === null || isCount(value.moveOutCountLastYear))
+}
+
+function isManagementAnnouncementSummary(value: unknown): value is ManagementAnnouncementSummary {
+  return isRecord(value) && typeof value.sourceIdentifier === 'string' && typeof value.originalUrl === 'string'
+    && typeof value.recruitmentType === 'string' && typeof value.postedDate === 'string'
+    && typeof value.applicationStartDate === 'string' && typeof value.applicationEndDate === 'string'
+    && typeof value.winnerAnnouncementDate === 'string'
 }
 
 function isJsonValue(value: unknown): value is JsonValue {

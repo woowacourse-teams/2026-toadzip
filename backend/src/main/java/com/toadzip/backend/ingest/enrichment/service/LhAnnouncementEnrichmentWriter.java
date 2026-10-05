@@ -20,12 +20,14 @@ import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
+import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAttachmentData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhScheduleData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementSupplyMatcher.LhSupplyMatchResult;
+import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -52,6 +54,8 @@ public class LhAnnouncementEnrichmentWriter {
     private final LhAnnouncementSupplyMatcher supplyMatcher;
     private final LhAnnouncementDetailSourceRepository detailSourceRepository;
     private final LhAnnouncementEnrichmentMapper mapper;
+
+    private final LhAnnouncementEnrichmentFailureStore failureStore;
     private final LhSourceStore sourceStore;
 
     @Transactional
@@ -89,6 +93,10 @@ public class LhAnnouncementEnrichmentWriter {
             LhSupplyMatchingFailureData failure = result.failures().getFirst();
             throw new LhAnnouncementEnrichmentRejectedException(failure.reason(), failure.detail());
         }
+        failureStore.reconcileForAnnouncement(
+                announcement.getSourceAnnouncementIdentifier(), List.of(),
+                IngestExecutionContext.currentExecutionId().orElse(null)
+        );
     }
 
     @Transactional

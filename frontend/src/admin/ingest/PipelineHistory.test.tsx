@@ -43,7 +43,7 @@ describe('데이터 실행 이력', () => {
     const detail = screen.getByRole('region', { name: '선택한 실행 상세' })
     expect(within(detail).getByRole('status')).toHaveTextContent('단지 수집·정제 작업을 완료했습니다.')
     expect(within(detail).getByRole('link', { name: '단지 수집·정제 수집 실패 요청 보기' }))
-      .toHaveAttribute('href', '/admin/failures?category=collection&executionId=run-1')
+      .toHaveAttribute('href', '/admin/failures?domain=complex&category=collection&executionId=run-1')
     fireEvent.click(within(detail).getByRole('button', { name: '닫기' }))
     expect(screen.queryByRole('region', { name: '선택한 실행 상세' })).not.toBeInTheDocument()
   })

@@ -1,0 +1,37 @@
+.page { min-width: 0; }
+:global(.admin-content):has(> .page) { max-width: none; }
+.tabs { display: flex; overflow-x: auto; gap: var(--ds-space-1); margin-bottom: var(--ds-space-4); border-bottom: 1px solid var(--ds-color-divider); }
+.page .tabs button { flex-shrink: 0; border: 0; border-radius: 0; border-bottom: 2px solid transparent; background: transparent; padding: var(--ds-space-3) var(--ds-space-4); color: var(--ds-color-label); }
+.page .tabs button[aria-selected="true"] { color: var(--ds-color-action); border-bottom-color: var(--ds-color-action); font-weight: var(--ds-weight-strong); }
+.page .tabs button:hover { background: var(--ds-color-action-soft); }
+.sourceInfo { margin-bottom: var(--ds-space-5); font-size: var(--ds-text-caption); color: var(--ds-color-label); }
+.sourceInfo p { display: flex; flex-wrap: wrap; gap: var(--ds-space-2) var(--ds-space-4); margin: var(--ds-space-2) 0; }
+.sourceInfo a { color: var(--ds-color-action); overflow-wrap: anywhere; text-underline-offset: 3px; }
+.summary { display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--ds-space-2) var(--ds-space-4); margin-bottom: var(--ds-space-3); }
+.summary p { margin: 0; font-size: var(--ds-text-caption); color: var(--ds-color-label); }
+.results { position: relative; }
+.loading { position: absolute; top: 0; right: 0; z-index: 4; margin: 0; padding: var(--ds-space-2) var(--ds-space-3); background: var(--ds-color-surface); color: var(--ds-color-label); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); font-size: var(--ds-text-caption); }
+.scroll { height: 65vh; overflow: auto; scrollbar-color: var(--ds-color-border-base) var(--ds-color-surface-subtle); border-radius: var(--ds-radius-control); }
+.table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; table-layout: fixed; text-align: left; font-size: var(--ds-text-caption); font-variant-numeric: tabular-nums; color: var(--ds-color-text); }
+.table th, .table td { box-sizing: border-box; width: 172px; min-width: 172px; max-width: 172px; padding: var(--ds-space-3); border-right: 1px solid var(--ds-color-divider); border-bottom: 1px solid var(--ds-color-divider); line-height: var(--ds-line-height-body); overflow-wrap: anywhere; white-space: pre-wrap; vertical-align: top; }
+.table thead th { position: sticky; top: 0; z-index: 2; color: var(--ds-color-label); background: var(--ds-color-surface-subtle); font-weight: var(--ds-weight-strong); }
+.table thead th span { display: block; margin-top: var(--ds-space-1); font-weight: 400; font-size: 12px; }
+.table th:first-child { position: sticky; left: 0; z-index: 1; width: 220px; min-width: 220px; max-width: 220px; border-right-color: var(--ds-color-border-base); }
+.table thead th:first-child { z-index: 3; }
+.table tbody th { background: var(--ds-color-surface); font-size: inherit; font-weight: var(--ds-weight-strong); }
+.table tbody td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.table :is(th, td):is([data-field="suply_ty_nm"], [data-field="sttus_nm"], [data-field="suply_instt_nm"], [data-field="style_nm"], [data-field="suply_prvuse_ar"], [data-field="begin_de"], [data-field="end_de"]) { width: 120px; min-width: 120px; max-width: 120px; }
+.table :is(th, td):is([data-field="bass_rent_gtn"], [data-field="bass_mt_rntchrg"], [data-field="bass_cnvrs_gtn_lmt"], [data-field="rent_gtn"], [data-field="mt_rntchrg"]) { width: 144px; min-width: 144px; max-width: 144px; }
+.table tbody td:is([data-field="bass_rent_gtn"], [data-field="bass_mt_rntchrg"], [data-field="bass_cnvrs_gtn_lmt"], [data-field="rent_gtn"], [data-field="mt_rntchrg"], [data-field="suply_prvuse_ar"]) { text-align: right; }
+.table tbody tr:hover > * { background: var(--ds-color-action-soft); }
+.table .time { width: 210px; min-width: 210px; max-width: 210px; }
+.table .url { width: 300px; min-width: 300px; max-width: 300px; }
+.table a { color: var(--ds-color-action); text-underline-offset: 3px; }
+.page :is(button, a, input, .scroll):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
+@media (max-width: 700px) {
+  .sourceInfo p { display: block; }
+  .sourceInfo p > * { display: block; margin-block: var(--ds-space-2); }
+  .page .tabs button { padding-inline: var(--ds-space-3); }
+  .table th, .table td { width: 155px; min-width: 155px; max-width: 155px; }
+  .table th:first-child { width: 160px; min-width: 160px; max-width: 160px; }
+}
