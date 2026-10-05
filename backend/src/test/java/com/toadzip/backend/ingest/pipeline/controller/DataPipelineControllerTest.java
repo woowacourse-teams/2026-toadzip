@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.pipeline.controller;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -21,6 +22,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.http.MediaType;
 
 @WebMvcTest(DataPipelineController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -37,6 +39,53 @@ class DataPipelineControllerTest {
 
     @MockitoBean
     private DataPipelineExecutionService executionService;
+
+    @ParameterizedTest
+    @CsvSource({
+            "complex-collection, COMPLEX_COLLECTION", "announcement-collection, ANNOUNCEMENT_COLLECTION",
+            "complex-sync, COMPLEX_SYNC", "announcement-sync, ANNOUNCEMENT_SYNC"
+    })
+    void 수집_실행은_입력키를_양끝_공백_제거해_전달하고_응답에_노출하지_않는다(
+            String pathValue, DataPipelineType type
+    ) throws Exception {
+        mockMvc.perform(post("/api/admin/ingest/pipelines/{type}", pathValue)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"serviceKey\":\" transient-test-key \"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.serviceKey").doesNotExist());
+        verify(executionService).start(type, "transient-test-key");
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"{}", "{\"serviceKey\":null}",
+            "{\"serviceKey\":\" \"}", "{\"serviceKey\":\"\"}"})
+    void 입력_본문에_키가_없거나_비어_있으면_값을_노출하지_않고_거부한다(String body) throws Exception {
+        mockMvc.perform(post("/api/admin/ingest/pipelines/complex-collection")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        verifyNoInteractions(executionService);
+    }
+
+    @Test
+    void 최대_길이를_넘은_서비스키는_거부한다() throws Exception {
+        String key = "x".repeat(4097);
+        var result = mockMvc.perform(post("/api/admin/ingest/pipelines/complex-collection")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"serviceKey\":\"" + key + "\"}"))
+                .andExpect(status().isBadRequest()).andReturn();
+        org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentAsString()).doesNotContain(key);
+        verifyNoInteractions(executionService);
+    }
+
+    @Test
+    void 정제_실행은_서비스키_입력을_거부한다() throws Exception {
+        when(executionService.start(DataPipelineType.COMPLEX_REFINEMENT, "test-key"))
+                .thenThrow(new com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException(
+                        "수집 작업에만 서비스키를 입력할 수 있습니다."));
+        mockMvc.perform(post("/api/admin/ingest/pipelines/complex-refinement")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"serviceKey\":\"test-key\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INGEST_REQUEST"));
+    }
 
     @ParameterizedTest
     @CsvSource({

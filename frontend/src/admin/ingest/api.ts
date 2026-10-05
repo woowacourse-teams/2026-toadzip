@@ -188,14 +188,19 @@ export class DataPipelineApiError extends Error {
 
 export async function startDataPipeline(
   type: DataPipelineType,
+  serviceKey?: string,
 ): Promise<DataPipelineExecution> {
+  const executionKey = serviceKey?.trim()
+  if (executionKey === '') throw new Error('공공데이터포털 API 키를 입력해 주세요.')
   const csrfToken = await requestCsrfToken()
   const response = await fetch(`${apiBaseUrl}${pipelinePath(type)}`, {
     method: 'POST',
     credentials: 'include',
     headers: {
       [csrfToken.headerName]: csrfToken.token,
+      ...(executionKey === undefined ? {} : { 'Content-Type': 'application/json' }),
     },
+    ...(executionKey === undefined ? {} : { body: JSON.stringify({ serviceKey: executionKey }) }),
   })
   return readExecutionResponse(response)
 }

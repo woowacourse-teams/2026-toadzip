@@ -12,6 +12,9 @@ import {
 
 import { PipelineResult, type PipelineViewState } from './PipelineResult'
 import { LhAnnouncementQualityPanel } from './LhAnnouncementQualityPanel'
+import styles from './CollectionStartForm.module.css'
+
+type CollectionType = 'COMPLEX_COLLECTION' | 'ANNOUNCEMENT_COLLECTION' | 'COMPLEX_SYNC' | 'ANNOUNCEMENT_SYNC'
 
 const pollIntervalMilliseconds = 1_000
 const pipelineTypes: readonly DataPipelineType[] = [
@@ -53,6 +56,7 @@ const pipelineGroups = [
 export function DataPipelineControl() {
   const [pipelineStates, setPipelineStates] = useState(initialPipelineStates)
   const [stopping, setStopping] = useState<Partial<Record<DataPipelineType, boolean>>>({})
+  const [pendingCollection, setPendingCollection] = useState<CollectionType | null>(null)
   const pollTimers = useRef<Partial<Record<DataPipelineType, number>>>({})
   const stateGenerations = useRef<Record<DataPipelineType, number>>({
     COMPLEX_COLLECTION: 0,
@@ -81,10 +85,19 @@ export function DataPipelineControl() {
     }
   }, [])
 
+  useEffect(() => {
+    if (isAnyPipelineRunning) setPendingCollection(null)
+  }, [isAnyPipelineRunning])
+
   function handleRun(type: DataPipelineType) {
     if (isAnyPipelineRunning) {
       return
     }
+    if (type === 'COMPLEX_COLLECTION' || type === 'ANNOUNCEMENT_COLLECTION' || type === 'COMPLEX_SYNC' || type === 'ANNOUNCEMENT_SYNC') {
+      setPendingCollection(type)
+      return
+    }
+    setPendingCollection(null)
     void execute(type)
   }
 
@@ -107,7 +120,7 @@ export function DataPipelineControl() {
     }
   }
 
-  async function execute(type: DataPipelineType) {
+  async function execute(type: DataPipelineType, serviceKey?: string) {
     clearPoll(type)
     const generation = nextGeneration(type)
     updateState(type, {
@@ -116,7 +129,7 @@ export function DataPipelineControl() {
       errorResponse: null,
     })
     try {
-      const execution = await startDataPipeline(type)
+      const execution = await (serviceKey === undefined ? startDataPipeline(type) : startDataPipeline(type, serviceKey))
       if (mounted.current && isLatestGeneration(type, generation)) {
         applyExecution(type, execution)
       }
@@ -268,6 +281,15 @@ export function DataPipelineControl() {
             {group.id === 'complex-pipelines' ? (
               <p className="ingest-meta">새 단지 주소의 좌표가 없으면 단지 수집 → <Link to="/admin/locations">위치정보 ZIP 업로드</Link> → 단지 정제를 실행해 주세요.</p>
             ) : null}
+            {pendingCollection !== null && group.types.some(type => type === pendingCollection) && !isAnyPipelineRunning ? (
+              <CollectionStartForm key={pendingCollection} type={pendingCollection}
+                onCancel={() => setPendingCollection(null)}
+                onStart={serviceKey => {
+                  if (isAnyPipelineRunning) return
+                  setPendingCollection(null)
+                  void execute(pendingCollection, serviceKey)
+                }} />
+            ) : null}
             <div className="data-pipeline-results">
               {group.types.map((type) => (
                 <PipelineResult key={type} type={type} state={pipelineStates[type]}
@@ -293,6 +315,41 @@ export function DataPipelineControl() {
 function latestCollectionExecution(combined: DataPipelineExecution, collection: DataPipelineExecution): DataPipelineExecution {
   return (Date.parse(combined.startedAt ?? '') || 0) > (Date.parse(collection.startedAt ?? '') || 0)
     ? combined : collection
+}
+
+function CollectionStartForm({ type, onStart, onCancel }: {
+  type: CollectionType; onStart: (serviceKey: string) => void; onCancel: () => void
+}) {
+  const [serviceKey, setServiceKey] = useState('')
+  const [error, setError] = useState('')
+  const input = useRef<HTMLInputElement>(null)
+  const label = pipelineLabels[type]
+  const inputId = `${type}-service-key`
+  useEffect(() => { input.current?.focus() }, [])
+  return <form className={styles.form} aria-label={`${label} API 키 입력`} onSubmit={event => {
+    event.preventDefault()
+    const executionKey = serviceKey.trim()
+    if (!executionKey) {
+      setError('공공데이터포털 API 키를 입력해 주세요.')
+      input.current?.focus()
+      return
+    }
+    setServiceKey('')
+    onStart(executionKey)
+  }}>
+    <h4>{label}에 사용할 API 키</h4>
+    <p id={`${inputId}-help`}>공공데이터포털 일반 인증키를 입력해 주세요. Decoding·Encoding 키 모두 사용할 수 있으며 이번 실행에만 사용합니다.</p>
+    <a href="https://www.data.go.kr/" target="_blank" rel="noreferrer">공공데이터포털에서 API 키 발급</a>
+    <label htmlFor={inputId}>공공데이터포털 API 키</label>
+    <input ref={input} id={inputId} type="password" autoComplete="off" spellCheck={false}
+      aria-describedby={`${inputId}-help${error ? ` ${inputId}-error` : ''}`} aria-invalid={error ? true : undefined}
+      value={serviceKey} onChange={event => { setServiceKey(event.currentTarget.value); setError('') }} />
+    {error ? <p id={`${inputId}-error`} className={styles.error} role="alert">{error}</p> : null}
+    <div className={styles.actions}>
+      <button className="admin-primary" type="submit">{label} 시작</button>
+      <button type="button" onClick={onCancel}>취소</button>
+    </div>
+  </form>
 }
 
 function initialPipelineStates(): Record<DataPipelineType, PipelineViewState> {

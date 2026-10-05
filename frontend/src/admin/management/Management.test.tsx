@@ -32,6 +32,26 @@ it('수정 충돌이면 입력값을 유지하고 새로 조회할 수 있다',a
   expect(screen.getByLabelText('이름')).toHaveValue('수정한 단지')
   expect(mocks.requestManagementApi).toHaveBeenCalledWith('/api/admin/housing-complexes/7','PUT',expect.objectContaining({version:2,name:'수정한 단지'}))
 })
+
+it('공고 기본정보와 출처에 전체 공식 URL과 원천 식별자를 표시한다',async () => {
+  const url = 'https://example.com/notices/7?category=housing'
+  mocks.getManagementDetail.mockResolvedValue({ ...fixture(), data: { ...fixture().data, originalUrl: url } })
+  render(<MemoryRouter initialEntries={['/admin/announcements/7']}><Routes><Route path="/admin/announcements/:id" element={<ManagementDetail resource="announcements" />} /></Routes></MemoryRouter>)
+  expect(await screen.findByRole('link', { name: url })).toHaveAttribute('href', url)
+  fireEvent.click(screen.getByRole('button', { name: '출처·수정 이력' }))
+  expect(screen.getByRole('link', { name: url })).toHaveAttribute('href', url)
+  expect(screen.getByText('원천 식별자')).toBeVisible()
+  expect(screen.getByText('TEST-7')).toBeVisible()
+})
+
+it('단지 출처 URL이 저장되지 않았으면 원천 식별자와 기록 없음을 구분한다',async () => {
+  render(<MemoryRouter initialEntries={['/admin/complexes/7']}><Routes><Route path="/admin/complexes/:id" element={<ManagementDetail resource="complexes" />} /></Routes></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: '출처·수정 이력' }))
+  expect(screen.getByText('공식 원문 URL')).toBeVisible()
+  expect(screen.getByText('기록 없음')).toBeVisible()
+  expect(screen.getByText('원천 식별자')).toBeVisible()
+  expect(screen.getByText('TEST-7')).toBeVisible()
+})
 it('삭제는 영향 확인 후 요청하고 복구 동선을 제공한다',async () => {
   mocks.requestManagementApi.mockResolvedValue(null)
   render(<MemoryRouter initialEntries={['/admin/complexes/7']}><Routes><Route path="/admin/complexes/:id" element={<ManagementDetail resource="complexes" />} /></Routes></MemoryRouter>)
@@ -96,7 +116,7 @@ it('검색 결과가 없으면 0건과 0페이지로 표시한다',async () => {
 it.each(['complexes','announcements'] as const)('%s 목록에서 검색 조건을 유지하며 원하는 페이지로 이동한다',async resource => {
   mocks.getManagementPage.mockResolvedValue({items:[summary],page:0,hasNext:true,totalElements:3504,totalPages:176})
   render(<MemoryRouter initialEntries={[`/admin/${resource}?region=11&keyword=두꺼비`]}><ManagementList resource={resource} /></MemoryRouter>)
-  fireEvent.click(await screen.findByRole('button',{name:'페이지 이동'}))
+  await screen.findByText('1 / 176 페이지')
   fireEvent.change(screen.getByLabelText('페이지 바로가기'),{target:{value:'100'}})
   fireEvent.submit(screen.getByRole('button',{name:'이동'}).closest('form')!)
   await waitFor(() => expect(mocks.getManagementPage.mock.lastCall?.[1].get('page')).toBe('99'))
@@ -108,7 +128,7 @@ it.each(['complexes','announcements'] as const)('%s 목록에서 검색 조건�
 it('범위를 벗어난 페이지와 소수 입력은 요청하지 않는다',async () => {
   mocks.getManagementPage.mockResolvedValue({items:[summary],page:0,hasNext:true,totalElements:41,totalPages:3})
   render(<MemoryRouter><ManagementList resource="complexes" /></MemoryRouter>)
-  fireEvent.click(await screen.findByRole('button',{name:'페이지 이동'}))
+  await screen.findByText('1 / 3 페이지')
   const input = screen.getByLabelText('페이지 바로가기')
   const count = mocks.getManagementPage.mock.calls.length
   for (const value of ['0','4','1.5','']) {
@@ -116,22 +136,19 @@ it('범위를 벗어난 페이지와 소수 입력은 요청하지 않는다',as
     fireEvent.submit(screen.getByRole('button',{name:'이동'}).closest('form')!)
   }
   expect(mocks.getManagementPage).toHaveBeenCalledTimes(count)
-  fireEvent.click(screen.getByRole('button',{name:'페이지 이동 닫기'}))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button',{name:'3페이지'}))
   await waitFor(() => expect(mocks.getManagementPage.mock.lastCall?.[1].get('page')).toBe('2'))
 })
 
-it('현재 페이지가 속한 15개 번호를 표시하고 팝업을 닫으면 이동하지 않는다',async () => {
+it('현재 페이지 주변 5개 번호와 바로가기 입력을 표시하며 입력 전에는 이동하지 않는다',async () => {
   mocks.getManagementPage.mockResolvedValue({items:[summary],page:142,hasNext:true,totalElements:3504,totalPages:176})
   render(<MemoryRouter><ManagementList resource="complexes" /></MemoryRouter>)
-  expect(await screen.findByRole('button',{name:'136페이지'})).toBeVisible()
-  expect(screen.getByRole('button',{name:'150페이지'})).toBeVisible()
-  expect(screen.queryByRole('button',{name:'151페이지'})).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button',{name:'페이지 이동'}))
-  expect(screen.getByRole('dialog',{name:'페이지 이동'})).toBeVisible()
+  expect(await screen.findByRole('button',{name:'141페이지'})).toBeVisible()
+  expect(screen.getByRole('button',{name:'145페이지'})).toBeVisible()
+  expect(screen.queryByRole('button',{name:'140페이지'})).not.toBeInTheDocument()
+  expect(screen.queryByRole('button',{name:'146페이지'})).not.toBeInTheDocument()
   expect(screen.getByLabelText('페이지 바로가기')).toHaveValue(143)
-  fireEvent.click(screen.getByRole('button',{name:'페이지 이동 닫기'}))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(mocks.getManagementPage).toHaveBeenCalledOnce()
 })

@@ -221,8 +221,12 @@ describe('공고 JSON 가져오기', () => {
     expect(review).toHaveTextContent('36A')
     expect(review).toHaveTextContent('인터넷 접수')
     expect(review).toHaveTextContent('공고문.pdf')
-    expect(review).toHaveTextContent('원본 JSON에서 정확한 숫자를 확인해 주세요.')
-    expect(review.querySelector('pre')).toHaveTextContent('9007199254740993')
+    expect(review).toHaveTextContent('아래 원천 데이터 표에서 정확한 숫자를 확인해 주세요.')
+    fireEvent.click(screen.getByText('등록할 원천 데이터 전체 보기'))
+    const original = screen.getByRole('table', { name: '등록할 원천 데이터' })
+    expect(original).toHaveTextContent('supplyRows[0].targets[0].rentalDeposit')
+    expect(original).toHaveTextContent('9007199254740993')
+    expect(review.querySelector('pre')).toBeNull()
   })
 
   it('단지를 직접 선택하고 선택을 해제하면 등록 가능 상태가 바뀐다', async () => {

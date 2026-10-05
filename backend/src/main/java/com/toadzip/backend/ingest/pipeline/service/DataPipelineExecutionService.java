@@ -4,6 +4,7 @@ import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFo
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
+import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
@@ -69,6 +70,21 @@ public class DataPipelineExecutionService {
     }
 
     public DataPipelineExecutionResponse start(DataPipelineType type) {
+        return startExecution(type, null);
+    }
+
+    public DataPipelineExecutionResponse start(DataPipelineType type, String serviceKey) {
+        if (type != DataPipelineType.COMPLEX_COLLECTION && type != DataPipelineType.ANNOUNCEMENT_COLLECTION
+                && type != DataPipelineType.COMPLEX_SYNC && type != DataPipelineType.ANNOUNCEMENT_SYNC) {
+            throw new InvalidIngestRequestException("수집 작업에만 서비스키를 입력할 수 있습니다.");
+        }
+        if (serviceKey == null || serviceKey.isBlank() || serviceKey.length() > 4096) {
+            throw new InvalidIngestRequestException("서비스키는 1자 이상 4096자 이하로 입력해 주세요.");
+        }
+        return startExecution(type, serviceKey.strip());
+    }
+
+    private DataPipelineExecutionResponse startExecution(DataPipelineType type, String serviceKey) {
         UUID executionId = UUID.randomUUID();
         DataPipelineExecutionLock.Lease lease = executionLock.tryAcquire(executionId)
                 .orElseThrow(() -> new IngestAlreadyRunningException(ALREADY_RUNNING_MESSAGE));
@@ -98,7 +114,7 @@ public class DataPipelineExecutionService {
         }
         try {
             String traceId = MDC.get("traceId");
-            executor.execute(() -> execute(executionId, type, lease, heartbeatTask, traceId));
+            executor.execute(() -> execute(executionId, type, lease, heartbeatTask, traceId, serviceKey));
         }
         catch (RuntimeException exception) {
             heartbeatTask.cancel(false);
@@ -143,14 +159,15 @@ public class DataPipelineExecutionService {
             DataPipelineType type,
             DataPipelineExecutionLock.Lease lease,
             ScheduledFuture<?> heartbeatTask,
-            String traceId
+            String traceId,
+            String serviceKey
     ) {
         String previousTraceId = MDC.get("traceId");
         String previousExecutionId = MDC.get("executionId");
         setExecutionContext("traceId", traceId);
         MDC.put("executionId", executionId.toString());
         var monitor = new DataPipelineExecutionMonitor(executionId, executionStateService, clock);
-        try (lease; var ignored = IngestExecutionScope.open(lease, monitor)) {
+        try (lease; var ignored = IngestExecutionScope.open(lease, monitor, serviceKey)) {
             lease.verifyHeld();
             runAndRecordOutcome(executionId, type);
         }

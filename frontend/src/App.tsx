@@ -1,4 +1,5 @@
 import { FailureReviewPage } from './admin/ingest/FailureReviewPage'
+import { SourceDataPage } from './admin/ingest/SourceDataPage'
 import { Link, Navigate, Route, Routes } from 'react-router'
 import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
 import { HousingComplexRegistrationPage } from './admin/registration/HousingComplexRegistrationPage'
@@ -16,6 +17,8 @@ import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { BrandLink } from './BrandLink'
 import { NotificationInterestProvider, NotificationInterestSessionControl } from './public-housing/interest/NotificationInterest'
 import { GuestCancellationPage } from './public-housing/interest/GuestCancellationPage'
+import { UserListPage } from './admin/users/UserListPage'
+import { UserDetailPage } from './admin/users/UserDetailPage'
 
 function Home() {
   return (
@@ -59,7 +62,10 @@ function AdminRoutes() {
             <Route path="announcements" element={<ManagementList resource="announcements" />} />
             <Route path="announcements/new" element={<AnnouncementRegistrationPage />} />
             <Route path="announcements/:id" element={<ManagementDetail resource="announcements" />} />
+            <Route path="users" element={<UserListPage />} />
+            <Route path="users/:id" element={<UserDetailPage />} />
             <Route path="failures" element={<FailureReviewPage />} />
+            <Route path="sources" element={<SourceDataPage />} />
             <Route path="locations" element={<LocationDataPage />} />
             <Route path="notification-cancellations" element={<GuestCancellationAdminPage />} />
           </Route>

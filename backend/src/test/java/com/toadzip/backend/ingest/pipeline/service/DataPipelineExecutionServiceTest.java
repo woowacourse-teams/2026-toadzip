@@ -20,6 +20,7 @@ import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
+import com.toadzip.backend.ingest.collection.repository.external.IngestServiceKeyContext;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -31,6 +32,8 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -86,6 +89,56 @@ class DataPipelineExecutionServiceTest {
                 clock,
                 executionMapper()
         );
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DataPipelineType.class, names = {
+            "COMPLEX_COLLECTION", "ANNOUNCEMENT_COLLECTION", "COMPLEX_SYNC", "ANNOUNCEMENT_SYNC"
+    })
+    void 입력키는_비동기_작업에서만_사용하고_상태와_스레드에_남기지_않는다(DataPipelineType type) {
+        configureStoredExecution();
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        AtomicReference<Runnable> queued = new AtomicReference<>();
+        service = serviceWith(queued::set);
+        doAnswer(invocation -> {
+            assertThat(IngestServiceKeyContext.current()).contains("runtime-test-key");
+            return null;
+        }).when(runner).run(any(), any());
+
+        var accepted = service.start(type, " runtime-test-key ");
+        assertThat(IngestServiceKeyContext.current()).isEmpty();
+        queued.get().run();
+
+        assertThat(IngestServiceKeyContext.current()).isEmpty();
+        assertThat(accepted.toString()).doesNotContain("runtime-test-key", "serviceKey");
+        assertThat(service.findLatest(type).toString())
+                .doesNotContain("runtime-test-key", "serviceKey");
+        assertThat(new com.toadzip.backend.ingest.pipeline.dto.DataPipelineStartRequest("runtime-test-key").toString())
+                .doesNotContain("runtime-test-key");
+    }
+
+    @Test
+    void 정제_실행에_입력키를_사용하려고_하면_저장_전에_거부한다() {
+        assertThatThrownBy(() -> service.start(DataPipelineType.COMPLEX_REFINEMENT, "runtime-test-key"))
+                .isInstanceOf(com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException.class)
+                .hasMessageNotContaining("runtime-test-key");
+        verify(executionLock, never()).tryAcquire(any(UUID.class));
+    }
+
+    @Test
+    void 비동기_수집이_실패해도_실행키를_스레드에서_제거한다() {
+        configureStoredExecution();
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        doAnswer(invocation -> {
+            assertThat(IngestServiceKeyContext.current()).contains("runtime-test-key");
+            throw new IllegalStateException("수집 실패");
+        }).when(runner).run(any(), any());
+        service.start(DataPipelineType.COMPLEX_COLLECTION, "runtime-test-key");
+
+        assertThat(IngestServiceKeyContext.current()).isEmpty();
+        assertThat(service.findLatest(DataPipelineType.COMPLEX_COLLECTION).status())
+                .isEqualTo(DataPipelineExecutionStatus.FAILED);
+        verify(lease).close();
     }
 
     @Test

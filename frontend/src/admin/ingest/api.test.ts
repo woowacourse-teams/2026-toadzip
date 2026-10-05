@@ -84,6 +84,30 @@ describe('관리자 데이터 수집·정제 API', () => {
     )
   })
 
+  it.each([
+    ['COMPLEX_COLLECTION', 'complex-collection'], ['ANNOUNCEMENT_COLLECTION', 'announcement-collection'],
+    ['COMPLEX_SYNC', 'complex-sync'], ['ANNOUNCEMENT_SYNC', 'announcement-sync'],
+  ] as const)('%s 실행 키를 URL 대신 JSON 본문으로 전송한다', async (type, path) => {
+    const fetchMock = prepareFetch(execution(type, 'RUNNING'))
+    const { startDataPipeline } = await import('./api.ts')
+    await startDataPipeline(type, '  fixture-execution-key  ')
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `http://localhost:8080/api/admin/ingest/pipelines/${path}`,
+      {
+        method: 'POST', credentials: 'include',
+        headers: { 'X-CUSTOM-CSRF': 'csrf-token', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serviceKey: 'fixture-execution-key' }),
+      },
+    )
+  })
+
+  it('공백뿐인 키는 요청 전에 거절한다', async () => {
+    const fetchMock = prepareFetch(execution('COMPLEX_COLLECTION', 'RUNNING'))
+    const { startDataPipeline } = await import('./api.ts')
+    await expect(startDataPipeline('COMPLEX_COLLECTION', '   ')).rejects.toThrow('공공데이터포털 API 키를 입력해 주세요.')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('행별 누락을 담은 완료·주의 응답을 읽는다', async () => {
     const report = {
       ...execution('COMPLEX_REFINEMENT', 'COMPLETED_WARNINGS'),
@@ -93,10 +117,14 @@ describe('관리자 데이터 수집·정제 API', () => {
         report: { failedSourceRowCount: 3 },
       }],
     }
-    prepareFetch(report)
+    const fetchMock = prepareFetch(report)
     const { startDataPipeline } = await import('./api.ts')
 
     await expect(startDataPipeline('COMPLEX_REFINEMENT')).resolves.toMatchObject(report)
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:8080/api/admin/ingest/pipelines/complex-refinement',
+      { method: 'POST', credentials: 'include', headers: { 'X-CUSTOM-CSRF': 'csrf-token' } },
+    )
   })
 
   it('동적 CSRF 헤더와 세션 쿠키를 포함해 위치정보 ZIP을 업로드한다', async () => {
