@@ -24,8 +24,8 @@
 | [tests/](tests/README.md) | 저장소 규칙 검사 도구와 DB 백업 자동화의 테스트를 관리합니다. |
 | [tmp/](tmp/README.md) | 로고 비교 시안, 이전 자산과 생성 스크립트 등 로컬 작업 자료를 보관합니다. |
 | [.github/](.github/README.md) | GitHub Actions 워크플로와 이슈·PR 템플릿을 관리합니다. |
-| [.githooks/](.githooks/README.md) | 커밋 전 저장소 규칙과 커밋 메시지를 검사하는 Git 훅을 관리합니다. |
-| [.codex/](.codex/README.md) | 코드 탐색·설계 검토·리뷰를 맡는 에이전트 역할 설정을 관리합니다. |
+| [.githooks/](.githooks/) | 커밋 전 저장소 규칙과 커밋 메시지를 검사하는 Git 훅을 관리합니다. |
+| [.codex/](.codex/) | 코드 탐색·설계 검토·리뷰를 맡는 에이전트 역할 설정을 관리합니다. |
 
 ### 루트의 주요 파일
 
