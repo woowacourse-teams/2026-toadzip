@@ -127,11 +127,11 @@ class LocalProfileSchemaPersistenceTest {
                                 "announcement_views", "viewed_on")),
                         () -> assertEquals(1, countColumn(connection,
                                 "admin_announcement_imports", "original_json")),
-                        () -> assertEquals(0, countColumn(connection,
+                        () -> assertEquals(1, countColumn(connection,
                                 "lh_announcement_detail_source", "request_hash")),
-                        () -> assertEquals(0, countColumn(connection,
+                        () -> assertEquals(1, countColumn(connection,
                                 "lh_announcement_supply_source", "request_hash")),
-                        () -> assertEquals(0, countColumn(connection,
+                        () -> assertEquals(1, countColumn(connection,
                                 "lh_announcement_catalog_source", "present_in_latest_catalog"))
                 );
             }
@@ -419,9 +419,9 @@ class LocalProfileSchemaPersistenceTest {
                 assertEquals(1, countColumn(connection, "myhome_complex_merges", "before_state"));
                 assertEquals(1, countColumn(connection, "housing_complex_aliases", "housing_complex_id"));
                 assertEquals(1, countColumn(connection, "supply_rows", "lh_total_supply_household_count_enriched"));
-                assertEquals(0, countColumn(connection, "lh_announcement_detail_source", "request_hash"));
+                assertEquals(1, countColumn(connection, "lh_announcement_detail_source", "request_hash"));
                 assertEquals(1, countColumn(connection, "lh_announcement_detail_rows", "winner_announcement_date"));
-                assertEquals(0, countColumn(connection, "lh_announcement_supply_source", "request_hash"));
+                assertEquals(1, countColumn(connection, "lh_announcement_supply_source", "request_hash"));
                 assertEquals("UNIQUE (source_id, source_order)",
                         constraintDefinition(connection, "lh_announcement_detail_rows_source_id_source_order_key"));
                 assertEquals("UNIQUE (source_id, source_order)",
