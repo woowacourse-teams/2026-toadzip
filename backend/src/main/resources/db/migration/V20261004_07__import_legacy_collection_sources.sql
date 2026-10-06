@@ -1,5 +1,5 @@
 -- Import preserves known actual collection times. The migration time describes only the import operation.
--- Invalid identity and unknown LH conditions remain in the original tables for read-only fallback.
+-- Invalid identity and unknown LH conditions remain in the original tables for investigation.
 CREATE TABLE source_legacy_import_report (
     source VARCHAR(40) PRIMARY KEY,
     legacy_row_count BIGINT NOT NULL,
@@ -20,23 +20,30 @@ SELECT setval(pg_get_serial_sequence('lh_announcement_supply_rows', 'id'), GREAT
 
 SELECT setval(pg_get_serial_sequence('lh_announcement_detail_rows', 'id'), GREATEST(COALESCE((SELECT MAX(id) FROM lh_announcement_detail_rows), 0), COALESCE((SELECT MAX(id) FROM lh_announcement_detail_source), 0), 1), true);
 
+CREATE TEMP TABLE legacy_complex_conflicting_ids ON COMMIT DROP AS
+SELECT hsmp_sn FROM (
+    SELECT DISTINCT hsmp_sn, brtc_code, signgu_code
+    FROM myhome_complex_source WHERE hsmp_sn IS NOT NULL
+) locations GROUP BY hsmp_sn HAVING COUNT(*) > 1;
+ANALYZE legacy_complex_conflicting_ids;
+
+CREATE TEMP TABLE legacy_complex_blocked_regions ON COMMIT DROP AS
+SELECT DISTINCT old.brtc_code, old.signgu_code
+FROM myhome_complex_source old
+LEFT JOIN legacy_complex_conflicting_ids conflict ON conflict.hsmp_sn = old.hsmp_sn
+LEFT JOIN myhome_complex_source_bundles existing ON existing.hsmp_sn = old.hsmp_sn
+WHERE old.hsmp_sn IS NULL OR old.hsmp_sn <= 0
+    OR conflict.hsmp_sn IS NOT NULL OR existing.id IS NOT NULL;
+ANALYZE legacy_complex_blocked_regions;
+
 CREATE TEMP TABLE legacy_complex_rows ON COMMIT DROP AS
 SELECT old.* FROM myhome_complex_source old
 WHERE old.hsmp_sn > 0 AND old.brtc_code ~ '^[0-9]{2}$' AND old.signgu_code ~ '^[0-9]{3}$'
-    AND NOT EXISTS (SELECT 1 FROM myhome_complex_source other WHERE other.hsmp_sn = old.hsmp_sn
-        AND (other.brtc_code IS DISTINCT FROM old.brtc_code OR other.signgu_code IS DISTINCT FROM old.signgu_code))
-    AND NOT EXISTS (SELECT 1 FROM myhome_complex_source invalid
-        WHERE invalid.brtc_code IS NOT DISTINCT FROM old.brtc_code
-            AND invalid.signgu_code IS NOT DISTINCT FROM old.signgu_code
-            AND (invalid.hsmp_sn IS NULL OR invalid.hsmp_sn <= 0
-                OR EXISTS (SELECT 1 FROM myhome_complex_source_bundles existing
-                    WHERE existing.hsmp_sn = invalid.hsmp_sn) OR EXISTS (
-                SELECT 1 FROM myhome_complex_source conflict WHERE conflict.hsmp_sn = invalid.hsmp_sn
-                    AND (conflict.brtc_code IS DISTINCT FROM invalid.brtc_code
-                        OR conflict.signgu_code IS DISTINCT FROM invalid.signgu_code))))
+    AND NOT EXISTS (SELECT 1 FROM legacy_complex_blocked_regions blocked
+        WHERE blocked.brtc_code = old.brtc_code AND blocked.signgu_code = old.signgu_code)
     AND NOT EXISTS (SELECT 1 FROM myhome_complex_source_regions region
-        WHERE region.province_code = old.brtc_code AND region.district_code = old.signgu_code)
-    AND NOT EXISTS (SELECT 1 FROM myhome_complex_source_bundles bundle WHERE bundle.hsmp_sn = old.hsmp_sn);
+        WHERE region.province_code = old.brtc_code AND region.district_code = old.signgu_code);
+ANALYZE legacy_complex_rows;
 CREATE TEMP TABLE legacy_complex_regions ON COMMIT DROP AS
 SELECT brtc_code, signgu_code, gen_random_uuid() record_id, COUNT(*) row_count,
     CASE WHEN COUNT(collected_at) = COUNT(*) AND MIN(collected_at) = MAX(collected_at)
@@ -52,10 +59,12 @@ SELECT record_id, 'LEGACY_TABLE', 'myhome_complex_source' FROM legacy_complex_re
 INSERT INTO myhome_complex_source_regions(version, province_code, district_code, collected_at,
     last_collection_record_id)
 SELECT 0, brtc_code, signgu_code, collected_at, record_id FROM legacy_complex_regions;
+ANALYZE myhome_complex_source_regions;
 INSERT INTO myhome_complex_source_bundles(version, hsmp_sn, region_id)
 SELECT 0, old.hsmp_sn, region.id FROM legacy_complex_rows old
 JOIN myhome_complex_source_regions region ON region.province_code = old.brtc_code
     AND region.district_code = old.signgu_code GROUP BY old.hsmp_sn, region.id;
+ANALYZE myhome_complex_source_bundles;
 
 INSERT INTO myhome_complex_source_rows(source_id, source_order, collected_at, hsmp_sn, instt_nm, brtc_code, brtc_nm, signgu_code, signgu_nm, hsmp_nm, rn_adres, pnu, compet_de, hshld_co, suply_ty_nm, style_nm, suply_prvuse_ar, suply_cmnuse_ar, house_ty_nm, heat_mthd_detail_nm, buld_stle_nm, elvtr_instl_at_nm, parkng_co, bass_rent_gtn, bass_mt_rntchrg, bass_cnvrs_gtn_lmt)
 SELECT bundle.id, ROW_NUMBER() OVER (PARTITION BY bundle.id ORDER BY old.id) - 1,
@@ -63,15 +72,21 @@ SELECT bundle.id, ROW_NUMBER() OVER (PARTITION BY bundle.id ORDER BY old.id) - 1
 FROM legacy_complex_rows old JOIN myhome_complex_source_bundles bundle ON bundle.hsmp_sn = old.hsmp_sn
 ORDER BY old.id;
 
+CREATE TEMP TABLE legacy_announcement_invalid_ids ON COMMIT DROP AS
+SELECT DISTINCT BTRIM(pblanc_id) pblanc_id
+FROM myhome_announcement_source
+WHERE house_sn IS NULL OR house_sn < 0;
+ANALYZE legacy_announcement_invalid_ids;
+
 CREATE TEMP TABLE legacy_announcement_rows ON COMMIT DROP AS
 SELECT old.* FROM myhome_announcement_source old
 WHERE NULLIF(BTRIM(old.pblanc_id), '') IS NOT NULL AND LENGTH(BTRIM(old.pblanc_id)) <= 100
     AND old.house_sn >= 0
-    AND NOT EXISTS (SELECT 1 FROM myhome_announcement_source invalid
-        WHERE BTRIM(invalid.pblanc_id) = BTRIM(old.pblanc_id)
-            AND (invalid.house_sn IS NULL OR invalid.house_sn < 0))
+    AND NOT EXISTS (SELECT 1 FROM legacy_announcement_invalid_ids invalid
+        WHERE invalid.pblanc_id = BTRIM(old.pblanc_id))
     AND NOT EXISTS (SELECT 1 FROM myhome_announcement_source_bundles bundle
         WHERE bundle.pblanc_id = BTRIM(old.pblanc_id));
+ANALYZE legacy_announcement_rows;
 CREATE TEMP TABLE legacy_announcement_bundles ON COMMIT DROP AS
 SELECT BTRIM(pblanc_id) pblanc_id, gen_random_uuid() record_id, COUNT(*) row_count
 FROM legacy_announcement_rows GROUP BY BTRIM(pblanc_id);
@@ -84,6 +99,7 @@ SELECT record_id, 'LEGACY_TABLE', 'myhome_announcement_source' FROM legacy_annou
 
 INSERT INTO myhome_announcement_source_bundles(version, pblanc_id, last_collection_record_id)
 SELECT 0, pblanc_id, record_id FROM legacy_announcement_bundles;
+ANALYZE myhome_announcement_source_bundles;
 
 INSERT INTO myhome_announcement_source_rows(source_id, collection_record_id, request_supply_type_code,
     collected_at, source_order, active, consecutive_miss_count, last_seen_run_id, pblanc_id, house_sn, sttus_nm, pblanc_nm, suply_instt_nm, house_ty_nm, suply_ty_nm, before_pblanc_id, rcrit_pblanc_de, przwner_presnatn_de, begin_de, end_de, refrnc, url, pc_url, mobile_url, hsmp_nm, brtc_nm, signgu_nm, full_adres, rn_code_nm, refrn_legaldong_nm, pnu, heat_mthd_nm, tot_hshld_co, sum_suply_co, rent_gtn, enty, surlus, mt_rntchrg)
@@ -153,6 +169,12 @@ FROM legacy_query_descriptions descriptions
 WHERE request_description ~ '^PAN_ID=[^&]+&CCR_CNNT_SYS_DS_CD=[^&]+&UPP_AIS_TP_CD=[^&]+&SPL_INF_TP_CD=[^&]+(&AIS_TP_CD=[^&]+)?(&COLLECTION_VERSION=[0-9]+)?$'
     AND split_part(split_part(request_description, '&', 1), '=', 2) = pan_id
     AND encode(sha256(convert_to(request_description, 'UTF8')), 'hex') = request_hash;
+ANALYZE legacy_query_candidates;
+CREATE TEMP TABLE legacy_query_conflicting_keys ON COMMIT DROP AS
+SELECT source, query_hash FROM legacy_query_candidates
+GROUP BY source, query_hash HAVING COUNT(DISTINCT request_hash) > 1;
+ANALYZE legacy_query_conflicting_keys;
+
 CREATE TEMP TABLE legacy_query_imports ON COMMIT DROP AS
 SELECT candidate.*, gen_random_uuid() record_id, payload.row_count, payload.collected_at
 FROM legacy_query_candidates candidate JOIN (
@@ -164,10 +186,11 @@ FROM legacy_query_candidates candidate JOIN (
             THEN MAX(collected_at) END FROM lh_announcement_detail_source GROUP BY pan_id, request_hash
 ) payload ON payload.source = candidate.source AND payload.pan_id = candidate.pan_id
     AND payload.request_hash = candidate.request_hash
-WHERE NOT EXISTS (SELECT 1 FROM legacy_query_candidates other WHERE other.source = candidate.source
-    AND other.query_hash = candidate.query_hash AND other.request_hash <> candidate.request_hash)
+WHERE NOT EXISTS (SELECT 1 FROM legacy_query_conflicting_keys conflict
+    WHERE conflict.source = candidate.source AND conflict.query_hash = candidate.query_hash)
     AND NOT EXISTS (SELECT 1 FROM lh_announcement_query_sources current WHERE current.source = candidate.source
         AND current.query_hash = candidate.query_hash);
+ANALYZE legacy_query_imports;
 INSERT INTO source_collection_records(id, version, source, started_at, finished_at, status, stored_row_count)
 SELECT record_id, 0, source, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'IMPORTED', row_count FROM legacy_query_imports;
 INSERT INTO source_collection_record_parameters(record_id, parameter_name, parameter_value)
@@ -177,6 +200,7 @@ INSERT INTO lh_announcement_query_sources(version, source, pan_id, query_hash, r
     request_description, collected_at, verified_empty, last_collection_record_id)
 SELECT 0, source, pan_id, query_hash, request_hash, request_description, collected_at, FALSE, record_id
 FROM legacy_query_imports;
+ANALYZE lh_announcement_query_sources;
 INSERT INTO lh_announcement_query_parameters(source_id, parameter_name, parameter_value)
 SELECT current.id, split_part(parameter, '=', 1), split_part(parameter, '=', 2)
 FROM legacy_query_imports imported JOIN lh_announcement_query_sources current

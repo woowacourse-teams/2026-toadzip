@@ -3,6 +3,8 @@ package com.toadzip.backend.ingest.collection.history.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
+import com.toadzip.backend.ingest.source.dto.IngestSourceCategory;
+import com.toadzip.backend.ingest.source.repository.IngestSourceRows;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
@@ -21,10 +23,10 @@ class LegacySourceImportMigrationTest {
             try (Statement sql = connection.createStatement()) {
                 sql.execute("""
                         INSERT INTO myhome_complex_source(source_key, hsmp_sn, brtc_code, signgu_code, rn_adres)
-                        VALUES ('complex1', 1, '11', '680', '주소');
+                        VALUES ('1:1-1:-1:-1:-1:-1:', 1, '11', '680', '주소');
                         INSERT INTO myhome_announcement_source(source_key, pblanc_id, house_sn,
                             active, consecutive_miss_count, last_seen_run_id)
-                        VALUES ('announcement1', 'ANN1', 1, false, 2, 'old-run');
+                        VALUES ('4:ANN11:1', 'ANN1', 1, false, 2, 'old-run');
                         INSERT INTO lh_catalog_source(source_order, complex_label) VALUES (0, '단지');
                         INSERT INTO lh_announcement_catalog_source(source_key, pan_id, connection_system_division_code,
                             upper_announcement_type_code, announcement_type_code, supply_info_type_code,
@@ -59,6 +61,17 @@ class LegacySourceImportMigrationTest {
             assertThat(number(connection, "SELECT COUNT(*) FROM lh_announcement_query_parameters "
                     + "WHERE parameter_name = 'AIS_TP_CD' AND parameter_value = '13'")).isEqualTo(2);
             assertThat(number(connection, "SELECT COUNT(*) FROM myhome_complex_source")).isOne();
+            assertThat(number(connection, """
+                    SELECT COUNT(*) FROM myhome_complex_source legacy
+                    JOIN (%s) current ON current.source_key = legacy.source_key
+                    """.formatted(IngestSourceRows.query(IngestSourceCategory.MYHOME_COMPLEX)))).isOne();
+            assertThat(number(connection, """
+                    SELECT COUNT(*) FROM myhome_announcement_source legacy
+                    JOIN (%s) current ON current.source_key = legacy.source_key
+                    """.formatted(IngestSourceRows.query(IngestSourceCategory.MYHOME_ANNOUNCEMENT)))).isOne();
+            assertThat(number(connection, "SELECT COUNT(*) FROM lh_announcement_query_sources "
+                    + "WHERE request_hash = '" + hash + "' AND request_description = '" + description + "'"))
+                    .isEqualTo(2);
         });
     }
 
@@ -118,6 +131,71 @@ class LegacySourceImportMigrationTest {
             assertThat(number(connection, "SELECT COUNT(*) FROM lh_announcement_query_sources")).isZero();
             assertThat(number(connection, "SELECT preserved_legacy_row_count FROM source_legacy_import_report "
                     + "WHERE source = 'LH_ANNOUNCEMENT_SUPPLY'")).isEqualTo(2);
+        });
+    }
+
+    @Test
+    void preservesNullRegionConflictsAndRepeatedValidRows() throws Exception {
+        withLegacyDatabase(connection -> {
+            try (Statement sql = connection.createStatement()) {
+                sql.execute("""
+                        INSERT INTO myhome_complex_source(source_key, hsmp_sn, brtc_code, signgu_code)
+                        VALUES ('conflict', 1, '11', '680'), ('unknown-region', 1, NULL, '680'),
+                            ('blocked-sibling', 2, '11', '680'), ('valid1', 3, '26', '440'),
+                            ('valid2', 3, '26', '440'), ('invalid-id', NULL, '41', '111'),
+                            ('invalid-sibling', 4, '41', '111'), ('existing-bundle', 10, '42', '222'),
+                            ('existing-bundle-sibling', 11, '42', '222');
+                        INSERT INTO source_collection_records
+                            (id, version, source, started_at, finished_at, status, stored_row_count)
+                        VALUES ('00000000-0000-0000-0000-000000000001', 0, 'MYHOME_COMPLEX',
+                            now(), now(), 'SUCCESS', 0);
+                        INSERT INTO myhome_complex_source_regions
+                            (id, version, province_code, district_code, collected_at, last_collection_record_id)
+                        VALUES (101, 0, '31', '001', now(), '00000000-0000-0000-0000-000000000001');
+                        INSERT INTO myhome_complex_source_bundles(version, hsmp_sn, region_id)
+                        VALUES (0, 10, 101);
+                        INSERT INTO myhome_announcement_source(source_key, pblanc_id, house_sn)
+                        VALUES ('invalid-announcement', ' ANN1 ', NULL), ('blocked-announcement', 'ANN1', 1),
+                            ('valid-announcement', 'ANN2', 0);
+                        """);
+            }
+            migrate(connection);
+            assertThat(number(connection, "SELECT COUNT(*) FROM myhome_complex_source_rows")).isEqualTo(2);
+            assertThat(number(connection, "SELECT COUNT(*) FROM myhome_complex_source_rows "
+                    + "WHERE hsmp_sn = 3 AND source_order IN (0, 1)")).isEqualTo(2);
+            assertThat(number(connection, "SELECT COUNT(*) FROM myhome_complex_source_regions")).isEqualTo(2);
+            assertThat(number(connection, "SELECT COUNT(*) FROM myhome_announcement_source_rows "
+                    + "WHERE pblanc_id = 'ANN2' AND house_sn = 0")).isOne();
+            assertThat(number(connection, "SELECT COUNT(*) FROM myhome_announcement_source_rows")).isOne();
+            assertThat(number(connection, "SELECT COUNT(*) FROM myhome_complex_source")).isEqualTo(9);
+            assertThat(number(connection, "SELECT COUNT(*) FROM myhome_announcement_source")).isEqualTo(3);
+        });
+    }
+
+    @Test
+    void imports130000ComplexRowsWithBoundedStatementTime() throws Exception {
+        withLegacyDatabase(connection -> {
+            try (Statement sql = connection.createStatement()) {
+                sql.execute("""
+                        INSERT INTO myhome_complex_source(source_key, hsmp_sn, brtc_code, signgu_code, collected_at)
+                        SELECT 'bulk-' || serial, serial, '11', '680', '2026-10-01T00:00:00Z'::timestamptz
+                        FROM generate_series(1, 130000) serial;
+                        ANALYZE myhome_complex_source;
+                        """);
+            }
+            long startedAt = System.nanoTime();
+            Flyway.configure().dataSource(connection.getMetaData().getURL(), "toadzip_test", "toadzip_test")
+                    .locations("classpath:db/migration").target("20261004.07")
+                    .initSql("SET statement_timeout = '30s'").load().migrate();
+            System.out.println("130000-row legacy import took "
+                    + (System.nanoTime() - startedAt) / 1_000_000 + " ms");
+            assertThat(number(connection, "SELECT COUNT(*) FROM myhome_complex_source_rows")).isEqualTo(130000);
+            assertThat(number(connection, "SELECT COUNT(*) FROM myhome_complex_source_bundles")).isEqualTo(130000);
+            assertThat(number(connection, "SELECT COUNT(*) FROM myhome_complex_source_rows "
+                    + "WHERE collected_at = '2026-10-01T00:00:00Z'::timestamptz")).isEqualTo(130000);
+            assertThat(number(connection, "SELECT imported_row_count FROM source_legacy_import_report "
+                    + "WHERE source = 'MYHOME_COMPLEX'")).isEqualTo(130000);
+            assertThat(number(connection, "SELECT COUNT(*) FROM myhome_complex_source")).isEqualTo(130000);
         });
     }
 

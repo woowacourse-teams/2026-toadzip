@@ -25,7 +25,7 @@
 `consecutive_miss_count`, `active`와
 `myhome_announcement_lifecycle_runs(execution_id, completed_at)`다.
 
-구 원천 폐기와 ID 보존, 낮은 버전 누락 보충은
+기존 원천 이관·보존과 낮은 버전 누락 보충은
 [수집 저장 구조 전환 절차](ingest-branch-db-upgrade.md)를 따른다.
-구 원천 테이블을 삭제한 뒤에는 이전 앱만 재배포할 수 없다.
+구형 원천은 보관하지만 새 앱은 새 저장 구조만 읽고 갱신하므로 이전 앱 재배포만으로 복구하지 않는다.
 복구는 쓰기를 차단한 상태에서 새 버전의 수정 배포 또는 백업 DB 복원과 해당 앱의 재기동으로 진행한다.

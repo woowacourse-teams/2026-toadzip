@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 class DiscardCollectedSourcesMigrationTest {
 
     @Test
-    void 수집_원천만_폐기하고_제품과_관리자_확인과_감사_이력을_보존한다() throws Exception {
+    void 수집_원천과_제품과_관리자_확인과_감사_이력을_보존한다() throws Exception {
         String name = "source_discard_" + UUID.randomUUID().toString().replace("-", "");
         try (Connection admin = connect("postgres"); Statement sql = admin.createStatement()) {
             sql.execute("CREATE DATABASE " + name);
@@ -135,7 +135,12 @@ class DiscardCollectedSourcesMigrationTest {
                             "lh_announcement_supply_source", "lh_announcement_collection_checkpoints",
                             "source_legacy_import_report", "myhome_announcement_collection_runs")) {
                         assertThat(number(connection, "SELECT COUNT(*) FROM information_schema.tables "
-                                + "WHERE table_schema = 'public' AND table_name = '" + table + "'")).isZero();
+                                + "WHERE table_schema = 'public' AND table_name = '" + table + "'")).isOne();
+                        long expected = 1;
+                        if (table.equals("source_legacy_import_report")) {
+                            expected = 6;
+                        }
+                        assertThat(number(connection, "SELECT COUNT(*) FROM " + table)).isEqualTo(expected);
                     }
                     for (String table : List.of("myhome_announcement_source_rows", "myhome_complex_source_rows",
                             "lh_lease_catalog_source_rows", "lh_announcement_supply_rows", "lh_announcement_detail_rows",
@@ -144,7 +149,12 @@ class DiscardCollectedSourcesMigrationTest {
                             "lh_lease_catalog_source_bundles", "lh_announcement_catalog_entries",
                             "lh_announcement_query_sources", "lh_announcement_collection_links",
                             "myhome_announcement_lifecycle_runs")) {
-                        assertThat(number(connection, "SELECT COUNT(*) FROM " + table)).isZero();
+                        long expected = 1;
+                        if (List.of("lh_announcement_query_parameters", "lh_announcement_query_sources")
+                                .contains(table)) {
+                            expected = 2;
+                        }
+                        assertThat(number(connection, "SELECT COUNT(*) FROM " + table)).isEqualTo(expected);
                     }
                     assertThat(number(connection, "SELECT last_value FROM myhome_complex_source_rows_id_seq"))
                             .isEqualTo(previousSequence);
@@ -158,12 +168,12 @@ class DiscardCollectedSourcesMigrationTest {
                             + "AND monthly_rent = 100000 AND lh_amount_preserved_reason = 'ADMIN_CONFIRMED'")).isOne();
                     assertThat(number(connection, "SELECT COUNT(*) FROM verified_lh_supply_replacements")).isEqualTo(3);
                     assertThat(number(connection, "SELECT COUNT(*) FROM verified_lh_supply_replacements "
-                            + "WHERE id = 301 AND revoked_at IS NOT NULL AND consumed_at IS NULL")).isOne();
+                            + "WHERE id = 301 AND revoked_at IS NULL AND consumed_at IS NULL")).isOne();
                     assertThat(number(connection, "SELECT COUNT(*) FROM verified_lh_supply_replacements "
                             + "WHERE id = 302 AND consumed_at IS NOT NULL AND revoked_at IS NULL")).isOne();
                     assertThat(number(connection, "SELECT COUNT(*) FROM external_data_collection_failures "
-                            + "WHERE status = 'SKIPPED' AND resolved_at IS NOT NULL AND reason = '원래 사유' "
-                            + "AND first_execution_id = '00000000-0000-0000-0000-000000000001'")).isEqualTo(2);
+                            + "WHERE status = 'PENDING' AND resolved_at IS NULL AND reason = '원래 사유' "
+                            + "AND first_execution_id = '00000000-0000-0000-0000-000000000001'")).isEqualTo(3);
                     assertThat(number(connection, "SELECT COUNT(*) FROM external_data_collection_failures "
                             + "WHERE status = 'PENDING' AND error_type = 'ExternalDataRequestException'")).isOne();
                     assertThat(number(connection, "SELECT COUNT(*) FROM external_data_collection_failures "
