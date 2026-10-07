@@ -12,8 +12,10 @@ import { SourceUrl } from '../shared/SourceUrl'
 
 export function AnnouncementImportForm({
   onSubmittingChange,
+  onCreated,
 }: {
   onSubmittingChange: (isSubmitting: boolean) => void
+  onCreated?: (id: number) => void
 }) {
   const [jsonText, setJsonText] = useState('')
   const [validatedJsonText, setValidatedJsonText] = useState<string | null>(null)
@@ -142,6 +144,7 @@ export function AnnouncementImportForm({
       setValidatedDocument(null)
       setValidation(null)
       setSelections({})
+      onCreated?.(created.announcementId)
     } catch (requestError) {
       setError(registrationFailure(requestError, '공고 JSON 등록 요청을 처리하지 못했습니다.').message)
     } finally {

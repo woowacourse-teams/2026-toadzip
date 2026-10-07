@@ -1,0 +1,24 @@
+.workspace { min-width: 0; color: var(--ds-color-text); }
+:global(.admin-content):has(> .workspace) { max-width: none; }
+.heading { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-4); margin-bottom: var(--ds-space-6); }
+.heading h1 { font-size: 26px; }
+.body { display: grid; gap: var(--ds-space-6); align-items: start; }
+.withEditor { grid-template-columns: minmax(0, 1fr) minmax(440px, 0.9fr); }
+.editor { min-width: 0; background: var(--ds-color-surface); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); padding: var(--ds-space-5); }
+.editor:focus { outline: none; }
+.editor:focus-visible { outline: 2px solid var(--ds-color-action); }
+.editorHeading { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--ds-space-5); padding-bottom: var(--ds-space-4); border-bottom: 1px solid var(--ds-color-divider); }
+.editorHeading a { padding: var(--ds-space-2); font-size: var(--ds-text-caption); }
+.editor :global(.registration-card) { padding: 0; border: 0; border-radius: 0; box-shadow: none; }
+.editor :global(.registration-grid), .editor :global(.admin-data-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-space-4); }
+.editor :global(.registration-grid) > :first-child { grid-column: 1 / -1; }
+.editor :global(.management-heading) { margin: 0 0 var(--ds-space-4); gap: var(--ds-space-3); }
+.editor :global(.management-heading) h2 { margin: 0; font-size: 20px; overflow-wrap: anywhere; }
+.editor :global(.management-heading) p { font-size: var(--ds-text-caption); }
+.editor :global(.management-page) fieldset, .editor :global(.registration-form) fieldset { padding: var(--ds-space-4) 0; margin: 0 0 var(--ds-space-4); border: 0; border-bottom: 1px solid var(--ds-color-divider); border-radius: 0; }
+.editor :global(.admin-detail-section), .editor :global(.admin-supply) { padding: var(--ds-space-4); box-shadow: none; }
+.editor :global(.admin-section-tabs) { gap: var(--ds-space-2); }
+.editor :global(.admin-section-tabs) button { padding: var(--ds-space-2); font-size: var(--ds-text-caption); }
+.editor :global(.admin-save-bar) { bottom: 0; border-radius: 0; border-width: 1px 0 0; padding: var(--ds-space-3) 0; box-shadow: none; }
+@media (max-width: 1250px) { .withEditor { grid-template-columns: minmax(0, 1fr); } .withEditor .editor { grid-row: 1; } }
+@media (max-width: 600px) { .editor { padding: var(--ds-space-4); } .editor :global(.registration-grid), .editor :global(.admin-data-grid) { grid-template-columns: minmax(0, 1fr); } }

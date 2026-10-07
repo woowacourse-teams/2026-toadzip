@@ -6,7 +6,7 @@ import { AnnouncementImportForm } from './AnnouncementImportForm'
 import { AnnouncementRegistrationForm } from './AnnouncementRegistrationForm'
 import type { HousingComplexCreateResponse } from './api'
 
-export function AnnouncementRegistrationPage() {
+export function AnnouncementRegistrationPage({ embedded = false, onCreated }: { embedded?: boolean; onCreated?: (id: number) => void }) {
   const [params, setParams] = useSearchParams()
   const direct = params.get('mode') === 'direct'
   const complexId = params.get('complexId') ?? ''
@@ -17,21 +17,20 @@ export function AnnouncementRegistrationPage() {
   }
 
   return <section className="admin-registration-page">
-    <header className="admin-registration-heading"><Link to="/admin/announcements">← 공고 목록</Link><h1>공고 등록</h1>
-      <p>JSON을 검증해 가져오거나, 등록된 단지를 선택해 공고를 직접 입력합니다.</p></header>
+    {!embedded ? <header className="admin-registration-heading"><Link to="/admin/announcements">← 공고 목록</Link><h1>공고 등록</h1></header> : null}
     <div className="admin-mode-switch" aria-label="공고 입력 방식">
       <button type="button" aria-pressed={!direct} disabled={submitting} onClick={() => selectMode('json')}>JSON 가져오기</button>
       <button type="button" aria-pressed={direct} disabled={submitting} onClick={() => selectMode('direct')}>직접 입력</button>
     </div>
     {direct ? <DirectAnnouncement key={complexId} complexId={complexId} submitting={submitting}
-      onSubmittingChange={setSubmitting} onSelect={(id) => setParams({ mode: 'direct', complexId: id })} />
-      : <AnnouncementImportForm onSubmittingChange={setSubmitting} />}
+      onCreated={onCreated} onSubmittingChange={setSubmitting} onSelect={(id) => setParams(current => { current.set('mode', 'direct'); current.set('complexId', id); return current })} />
+      : <AnnouncementImportForm onCreated={onCreated} onSubmittingChange={setSubmitting} />}
   </section>
 }
 
-function DirectAnnouncement({ complexId, submitting, onSubmittingChange, onSelect }: {
+function DirectAnnouncement({ complexId, submitting, onSubmittingChange, onSelect, onCreated }: {
   complexId: string, submitting: boolean,
-  onSubmittingChange: (value: boolean) => void, onSelect: (id: string) => void,
+  onSubmittingChange: (value: boolean) => void, onSelect: (id: string) => void, onCreated?: (id: number) => void,
 }) {
   const [housingComplex, setHousingComplex] = useState<HousingComplexCreateResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -72,6 +71,6 @@ function DirectAnnouncement({ complexId, submitting, onSubmittingChange, onSelec
       {error ? <div><p className="form-error" role="alert">{error}</p>
         <button type="button" onClick={() => setAttempt((value) => value + 1)}>다시 시도</button></div> : null}
     </section>
-    <AnnouncementRegistrationForm housingComplex={housingComplex} onSubmittingChange={onSubmittingChange} />
+    <AnnouncementRegistrationForm housingComplex={housingComplex} onCreated={onCreated} onSubmittingChange={onSubmittingChange} />
   </>
 }

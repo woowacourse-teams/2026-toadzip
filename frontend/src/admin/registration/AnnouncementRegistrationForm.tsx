@@ -26,9 +26,11 @@ const supplyCategories = toRegistrationOptions(['NEW_SUPPLY', 'RESUPPLY'])
 export function AnnouncementRegistrationForm({
   housingComplex,
   onSubmittingChange,
+  onCreated,
 }: {
   housingComplex: HousingComplexCreateResponse | null
   onSubmittingChange: (isSubmitting: boolean) => void
+  onCreated?: (id: number) => void
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [createdId, setCreatedId] = useState<number | null>(null)
@@ -56,6 +58,7 @@ export function AnnouncementRegistrationForm({
       setCreatedId(created.announcementId)
       form.reset()
       setSuccess(`${created.name} 공고를 저장했습니다.`)
+      onCreated?.(created.announcementId)
     } catch (requestError) {
       const failure = registrationFailure(requestError, '공고 저장 요청을 처리하지 못했습니다.')
       setError(failure.message)
