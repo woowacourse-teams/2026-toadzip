@@ -66,6 +66,15 @@ it('잘못된 페이지 주소는 API를 호출하지 않는다', () => {
   expect(listFeedback).not.toHaveBeenCalled()
 })
 
+it('목록 범위를 벗어난 큰 페이지 주소는 마지막 유효 페이지로 이동한다', async () => {
+  vi.mocked(listFeedback).mockResolvedValueOnce({
+    items: [], page: 2147483647, hasNext: false, totalElements: 1, totalPages: 1,
+  }).mockResolvedValueOnce(page())
+  setup('/admin/feedback?page=2147483647')
+  expect(await screen.findByRole('heading', { name: '의견 #7' })).toBeVisible()
+  expect(listFeedback).toHaveBeenLastCalledWith(new URLSearchParams({ page: '0', size: '20' }), expect.any(AbortSignal))
+})
+
 it('이전 검색의 늦은 응답이 새 결과를 덮어쓰지 않는다', async () => {
   let finishOld: (value: FeedbackPage) => void = () => undefined
   vi.mocked(listFeedback).mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve }))

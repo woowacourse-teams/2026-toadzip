@@ -85,6 +85,21 @@ class AdminFeedbackControllerIntegrationTest {
     }
 
     @Test
+    void 매우_큰_페이지도_검색된_건수를_유지하며_빈_목록을_반환한다() throws Exception {
+        feedback("검색 개선 요청", "2026-10-07T10:00:00Z");
+        feedback("기타 의견", "2026-10-07T10:00:00Z");
+
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
+                        .param("page", "2147483647").param("size", "100").param("keyword", "검색"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items").isEmpty())
+                .andExpect(jsonPath("$.data.page").value(2147483647))
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.totalPages").value(1))
+                .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @Test
     void 비로그인_사용자는_의견을_조회하지_못한다() throws Exception {
         mockMvc.perform(get(ENDPOINT)).andExpect(status().isUnauthorized());
     }

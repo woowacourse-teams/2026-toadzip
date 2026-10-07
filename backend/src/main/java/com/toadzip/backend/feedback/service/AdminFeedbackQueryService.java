@@ -6,7 +6,6 @@ import com.toadzip.backend.feedback.dto.FeedbackSummary;
 import com.toadzip.backend.feedback.repository.FeedbackRepository;
 import java.util.List;
 import java.util.Locale;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,10 +24,20 @@ public class AdminFeedbackQueryService {
     }
 
     public AdminPage<FeedbackSummary> search(String keyword, int page, int size) {
+        String searchPattern = pattern(keyword);
+        long total = repository.countMatching(searchPattern);
+        int totalPages = Math.toIntExact((total + size - 1) / size);
+        List<FeedbackSummary> items = items(searchPattern, page, size, total);
+        return new AdminPage<>(items, page, (long) page + 1 < totalPages, total, totalPages);
+    }
+
+    private List<FeedbackSummary> items(String searchPattern, int page, int size, long total) {
+        if ((long) page * size >= total) {
+            return List.of();
+        }
         Sort sort = Sort.by(Sort.Direction.DESC, "createdAt", "id");
-        Page<Feedback> result = repository.search(pattern(keyword), PageRequest.of(page, size, sort));
-        List<FeedbackSummary> items = result.stream().map(FeedbackSummary::from).toList();
-        return new AdminPage<>(items, page, result.hasNext(), result.getTotalElements(), result.getTotalPages());
+        List<Feedback> result = repository.search(searchPattern, PageRequest.of(page, size, sort));
+        return result.stream().map(FeedbackSummary::from).toList();
     }
 
     private String pattern(String keyword) {
