@@ -5,10 +5,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export async function submitFeedback(content: string): Promise<void> {
+  try {
+    await sendFeedback(content)
+  } catch (cause) {
+    if (cause instanceof TypeError) throw new Error('서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+    throw cause
+  }
+}
+
+async function sendFeedback(content: string): Promise<void> {
   const base = getApiBaseUrl()
   const csrfResponse = await fetch(`${base}/api/auth/csrf`, { credentials: 'include' })
   if (!csrfResponse.ok) throw new Error('의견 전송을 준비하지 못했습니다. 다시 시도해 주세요.')
-  const csrf: unknown = await csrfResponse.json()
+  const csrf: unknown = await csrfResponse.json().catch(() => null)
   if (!isRecord(csrf) || typeof csrf.headerName !== 'string' || typeof csrf.token !== 'string') {
     throw new Error('의견 전송을 준비하지 못했습니다. 다시 시도해 주세요.')
   }

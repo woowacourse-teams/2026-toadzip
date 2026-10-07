@@ -233,6 +233,9 @@ a {
   .service-header-actions .service-session-retry { max-width: 100px; }
   .service-header-actions .service-user-control { gap: var(--ds-space-1); }
 }
+@media (min-width: 768px) and (max-width: 1023px) {
+  .service-header-actions .service-login-status { display: none; }
+}
 .service-user-control {
   display: flex;
   min-width: 0;

@@ -42,3 +42,8 @@ it('잘못된 성공 응답은 접수 확인 실패로 안내한다', async () =
     .mockResolvedValueOnce(json({ data: { id: null } }, 201)))
   await expect(submitFeedback('개선 의견')).rejects.toThrow('접수 결과를 확인하지 못했습니다')
 })
+
+it('네트워크 연결 실패를 한국어로 안내한다', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+  await expect(submitFeedback('개선 의견')).rejects.toThrow('서버에 연결하지 못했습니다')
+})
