@@ -21,20 +21,22 @@ describe('integratedSearchRepository', () => {
     expect(result.regions[0]?.title).toBe('서울 강남구 역삼동')
     expect(new URL(fetcher.mock.calls[1][0]).pathname).toBe('/api/v1/locations/search')
   })
-  it('장소는 공고와 단지 API 대신 독립적인 위치 페이지를 조회한다', async () => {
+  it('장소는 네이버 위치 검색 첫 페이지를 조회하고 더보기를 종료한다', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: {
       items: [{ type: 'PLACE', id: '123', title: '서울역', subtitle: '지하철역 · 서울 중구', latitude: 37.5, longitude: 127 }],
-      page: 1, size: 5, hasNext: true, totalCount: 12,
+      page: 0, size: 5, hasNext: false, totalCount: 1,
     } })))
     const signal = new AbortController().signal
 
-    const result = await createIntegratedSearchRepository(fetcher).search('서울역', false, 1, signal, 'PLACE')
+    const result = await createIntegratedSearchRepository(fetcher).search('서울역', false, 0, signal, 'PLACE')
 
     expect(result.places?.[0].title).toBe('서울역')
     expect(result.places?.[0].regionCode).toBeNull()
     expect(result.regions).toEqual([])
     expect(fetcher).toHaveBeenCalledTimes(1)
-    expect(new URL(fetcher.mock.calls[0][0]).searchParams.get('page')).toBe('1')
+    expect(new URL(fetcher.mock.calls[0][0]).searchParams.get('page')).toBe('0')
+    expect(result.hasNext).toBe(false)
+    expect(result.totalCount).toBe(1)
     expect(fetcher.mock.calls[0][1].signal).toBe(signal)
   })
 

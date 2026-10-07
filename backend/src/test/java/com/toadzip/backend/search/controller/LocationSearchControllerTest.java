@@ -39,17 +39,17 @@ class LocationSearchControllerTest {
         when(service.search(any())).thenReturn(new LocationSearchResponse(List.of(
                 new LocationSearchItemResponse(LocationSearchType.PLACE, "123", "서울역", "서울 중구",
                         new BigDecimal("37.5"), new BigDecimal("127.03"))
-        ), 1, 5, true, 12L));
+        ), 0, 5, false, 1L));
 
         mockMvc.perform(get("/api/v1/locations/search").param("query", "서울역")
-                        .param("type", "PLACE").param("page", "1").param("size", "5"))
+                        .param("type", "PLACE").param("page", "0").param("size", "5"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].type").value("PLACE"))
                 .andExpect(jsonPath("$.data.items[0].latitude").value(37.5))
-                .andExpect(jsonPath("$.data.page").value(1))
-                .andExpect(jsonPath("$.data.hasNext").value(true))
-                .andExpect(jsonPath("$.data.totalCount").value(12));
-        verify(service).search(argThat(request -> request.type() == LocationSearchType.PLACE && request.page() == 1));
+                .andExpect(jsonPath("$.data.page").value(0))
+                .andExpect(jsonPath("$.data.hasNext").value(false))
+                .andExpect(jsonPath("$.data.totalCount").value(1));
+        verify(service).search(argThat(request -> request.type() == LocationSearchType.PLACE && request.page() == 0));
     }
 
     @Test

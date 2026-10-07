@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { describe, expect, it, vi } from 'vitest'
 import { IntegratedSearch } from './IntegratedSearch.tsx'
 import { NotificationInterestProvider } from '../interest/NotificationInterest'
+import { createIntegratedSearchRepository } from './integratedSearchRepository'
 import type {
   IntegratedSearchRepository,
   IntegratedSearchResponse,
@@ -13,6 +14,39 @@ vi.mock('../regions/regionBoundaryCatalog.ts', () => ({
 }))
 
 describe('IntegratedSearch', () => {
+  it('네이버 위치 응답을 해석해 최대 5개 장소를 표시하고 더보기 없이 지도 선택으로 전달한다', async () => {
+    const onSelect = vi.fn()
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async (input) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/api/v1/locations/search' && url.searchParams.get('type') === 'PLACE') {
+        return new Response(JSON.stringify({ data: {
+          items: Array.from({ length: 5 }, (_, index) => ({
+            type: 'PLACE', id: `naver-place:${index}`, title: `서울역 ${index + 1}`,
+            subtitle: '지하철역 · 서울 중구', latitude: 37.5547, longitude: 126.9707,
+          })), page: 0, size: 5, hasNext: false, totalCount: 5,
+        } }))
+      }
+      return new Response(JSON.stringify({ data: {
+        ...response([], [], []), query: '서울역',
+        totalCount: url.searchParams.get('type') === 'REGION' ? 1 : 0,
+        regions: url.searchParams.get('type') === 'REGION' ? [item('REGION', '11', '서울특별시')] : [],
+      } }))
+    })
+    render(<IntegratedSearch repository={createIntegratedSearchRepository(fetcher)} onSelect={onSelect} />)
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울역' } })
+
+    const places = screen.getByRole('region', { name: '장소' })
+    expect(await within(places).findByRole('button', { name: /서울역 5/ })).toBeEnabled()
+    expect(within(places).getAllByRole('listitem')).toHaveLength(5)
+    expect(within(places).queryByRole('button', { name: /더보기/ })).not.toBeInTheDocument()
+    fireEvent.click(within(places).getByRole('button', { name: /서울역 1/ }))
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'PLACE', latitude: 37.5547, longitude: 126.9707, regionCode: null,
+    }))
+    expect(screen.getByRole('searchbox')).toHaveValue('')
+    expect(screen.getByRole('searchbox')).toHaveFocus()
+  })
+
   it('장소의 이름과 주소를 표시하고 선택한 장소를 전달한다', async () => {
     const place = { ...item('PLACE', '123', '서울역'), subtitle: '지하철역 · 서울 중구' }
     const onSelect = vi.fn()
