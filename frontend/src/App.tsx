@@ -19,6 +19,7 @@ import { NotificationInterestProvider, NotificationInterestSessionControl } from
 import { GuestCancellationPage } from './public-housing/interest/GuestCancellationPage'
 import { UserListPage } from './admin/users/UserListPage'
 import { UserDetailPage } from './admin/users/UserDetailPage'
+import { FeedbackPage } from './feedback/FeedbackPage'
 
 function Home() {
   return (
@@ -26,7 +27,10 @@ function Home() {
       <div className="app-shell">
         <header className="service-header" aria-label="서비스 헤더">
           <BrandLink />
-          <NotificationInterestSessionControl />
+          <div className="service-header-actions">
+            <Link className="service-feedback-link" to="/feedback">의견 보내기</Link>
+            <NotificationInterestSessionControl />
+          </div>
         </header>
         <main className="map-main">
           <DefaultPublicHousingExplorer />
@@ -81,6 +85,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<UserLoginPage />} />
+      <Route path="/feedback" element={<FeedbackPage />} />
       <Route path="/notifications/cancel" element={<GuestCancellationPage />} />
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />

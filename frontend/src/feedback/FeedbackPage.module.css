@@ -1,0 +1,16 @@
+.page { min-height: 100dvh; background: var(--ds-color-surface-subtle); color: var(--ds-color-text); }
+.header { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-4); padding: var(--ds-space-4) var(--ds-space-6); border-bottom: 1px solid var(--ds-color-divider); background: var(--ds-color-surface); }
+.page a { color: var(--ds-color-action); font-size: var(--ds-text-body); }
+.main { width: min(100%, 640px); margin: 0 auto; padding: 40px var(--ds-space-6); }
+.main h1 { margin: 0 0 var(--ds-space-3); font-size: 26px; }
+.introduction { margin-bottom: var(--ds-space-6); line-height: var(--ds-line-height-body); }
+.form { display: grid; gap: var(--ds-space-3); padding: var(--ds-space-6); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); }
+.form label { font-weight: var(--ds-weight-strong); }
+.hint { margin: 0; color: var(--ds-color-label); font-size: var(--ds-text-caption); line-height: var(--ds-line-height-body); }
+.form textarea { width: 100%; min-height: 220px; padding: var(--ds-space-3); border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-text); font: inherit; line-height: var(--ds-line-height-body); resize: vertical; }
+.count { text-align: right; color: var(--ds-color-label); font-size: var(--ds-text-caption); }
+.error { margin: 0; color: var(--ds-color-deadline); line-height: var(--ds-line-height-body); }
+.confirmation { padding: var(--ds-space-6); border-radius: var(--ds-radius-control); background: var(--ds-color-action-soft); line-height: var(--ds-line-height-body); }
+.confirmation h2 { margin-top: 0; font-size: var(--ds-text-title); }
+.page :focus-visible { outline: 3px solid var(--ds-color-action); outline-offset: 3px; }
+@media (max-width: 480px) { .main { padding: var(--ds-space-6) var(--ds-space-4); } .form { padding: var(--ds-space-4); } .header { padding: var(--ds-space-3) var(--ds-space-4); } }
