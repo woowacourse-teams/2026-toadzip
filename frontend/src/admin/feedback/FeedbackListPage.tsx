@@ -61,29 +61,35 @@ export function FeedbackListPage() {
       if (next.toString() === search) setAttempt(value => value + 1)
       else setParams(next)
     }}>
-      <label>의견 내용 검색<input name="keyword" maxLength={200} defaultValue={keyword} placeholder="검색할 내용을 입력하세요" /></label>
-      <Button type="submit">검색</Button>
-      <button type="button" onClick={() => {
+      <label className={styles.searchField}>의견 내용 검색<span className={styles.inputWrap}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></svg>
+        <input name="keyword" maxLength={200} defaultValue={keyword} placeholder="검색할 내용을 입력하세요" />
+      </span></label>
+      <div className={styles.actions}><Button className="admin-primary" type="submit">검색</Button>
+      <button className={styles.resetButton} type="button" onClick={() => {
         if (!search) setAttempt(value => value + 1)
         else setParams({})
-      }}>초기화</button>
+      }}>초기화</button></div>
     </form>
     {error && <div className={styles.error} role="alert"><p>{error}</p>{valid &&
       <button type="button" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button>}</div>}
-    <div aria-busy={pending}>
-      {pending && <p role="status">의견 목록을 불러오는 중…</p>}
+    <div className={styles.results} aria-busy={pending}>
+      {pending && <p className={styles.loading} role="status">의견 목록을 불러오는 중…</p>}
       {data && <>
-        <p className={styles.meta}>접수 최신순 · 총 {data.totalElements.toLocaleString('ko-KR')}건 · 한국 시각</p>
+        <div className={styles.resultsHeading}>
+          <p className={styles.meta}>총 <strong>{data.totalElements.toLocaleString('ko-KR')}</strong>건</p>
+          <span className={styles.sortLabel}>접수 최신순 · 한국 시각</span>
+        </div>
         {data.items.length > 0 ? <ol className={styles.list} aria-label="사용자 의견 목록">
           {data.items.map(entry => <li key={entry.id}><article className={styles.card}>
-            <header><h2>의견 #{entry.id}</h2><time dateTime={entry.createdAt}>{receivedAt.format(new Date(entry.createdAt))}</time></header>
+            <header className={styles.cardHeading}><h2>의견 #{entry.id}</h2><time dateTime={entry.createdAt}>{receivedAt.format(new Date(entry.createdAt))}</time></header>
             <p className={styles.preview}>{entry.content.slice(0, 120)}{entry.content.length > 120 ? '…' : ''}</p>
-            <details><summary>전체 내용 보기</summary><div role="region" aria-label={`의견 ${entry.id} 전체 내용`}>
+            <details><summary>전체 내용 보기<svg className={styles.chevron} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m5 7.5 5 5 5-5" /></svg></summary><div role="region" aria-label={`의견 ${entry.id} 전체 내용`}>
               <p className={styles.content}>{entry.content}</p>
             </div></details>
           </article></li>)}
         </ol> : <p className={styles.empty}>{keyword.trim() ? '검색 결과가 없습니다.' : '접수된 의견이 없습니다.'}</p>}
-        <ListPagination page={data.page} totalPages={data.totalPages} onMove={move} disabled={pending} label="사용자 의견 목록 페이지" />
+        <div className={styles.pagination}><ListPagination page={data.page} totalPages={data.totalPages} onMove={move} disabled={pending} label="사용자 의견 목록 페이지" /></div>
       </>}
     </div>
   </section>
