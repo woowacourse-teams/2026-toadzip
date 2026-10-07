@@ -53,7 +53,7 @@ describe('App', () => {
     expect(homeLink.querySelector('.brand-name')).not.toBeInTheDocument()
     expect(homeLink.querySelector('img')).toHaveAttribute('src', '/logo-bok-search.svg')
     expect(
-      screen.getByRole('searchbox', { name: '지역, 단지, 공고 검색' }),
+      screen.getByRole('searchbox', { name: '지역, 장소, 단지, 공고 검색' }),
     ).toBeVisible()
     expect(
       screen.getByRole('region', { name: '공공임대주택 지도' }),
@@ -70,8 +70,8 @@ describe('App', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole('searchbox', { name: '지역, 단지, 공고 검색' }))
-      .toHaveAttribute('placeholder', '지역, 단지, 공고 검색')
+    expect(screen.getByRole('searchbox', { name: '지역, 장소, 단지, 공고 검색' }))
+      .toHaveAttribute('placeholder', '지역, 장소, 단지, 공고 검색')
     expect(screen.getByRole('tab', { name: '단지 목록' })).toBeVisible()
     expect(screen.getByRole('tab', { name: '공고 목록' })).toBeVisible()
     expect(screen.queryByText('지도 기반 탐색')).not.toBeInTheDocument()

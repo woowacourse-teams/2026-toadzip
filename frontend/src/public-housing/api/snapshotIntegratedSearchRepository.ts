@@ -74,6 +74,7 @@ export function createSnapshotIntegratedSearchRepository(
         announcements: items.filter((item) => item.type === 'ANNOUNCEMENT'),
         complexes: items.filter((item) => item.type === 'COMPLEX'),
         regions: items.filter((item) => item.type === 'REGION'),
+        places: [],
         failures: [],
       }
     },

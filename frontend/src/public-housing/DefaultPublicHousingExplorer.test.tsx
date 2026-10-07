@@ -100,7 +100,7 @@ describe('LocalPublicHousingExplorer', () => {
     renderLocalExplorer(vi.fn().mockResolvedValue(SNAPSHOT))
     await screen.findByRole('complementary', { name: '공공임대주택 검색 결과' })
 
-    fireEvent.change(screen.getByRole('searchbox', { name: '지역, 단지, 공고 검색' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: '지역, 장소, 단지, 공고 검색' }), {
       target: { value: '서울가람' },
     })
     const result = await screen.findByRole('button', { name: /서울가람 행복주택/ })

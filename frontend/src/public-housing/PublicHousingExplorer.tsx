@@ -992,8 +992,20 @@ export function PublicHousingExplorer({
       trackEvent('select_search_result', { result_type: 'complex', complex_id: item.id })
     } else if (item.type === 'ANNOUNCEMENT') {
       trackEvent('select_search_result', { result_type: 'announcement', announcement_id: item.id })
-    } else {
+    } else if (item.type === 'REGION') {
       trackEvent('select_search_result', { result_type: 'region' })
+    } else if (item.type === 'PLACE') {
+      trackEvent('select_search_result', { result_type: 'place' })
+    }
+    if (item.type === 'PLACE' || (item.type === 'REGION' && item.regionCode === null)) {
+      if (item.latitude !== null && item.longitude !== null) {
+        boundarySelectionRef.current = null
+        setSelectedSearchRegion(null)
+        changeBoundarySelection(null)
+        setMapCameraTarget({ latitude: item.latitude, longitude: item.longitude, zoom: 14 })
+        setCameraRequestId((current) => current + 1)
+      }
+      return
     }
     if (item.type === 'REGION') {
       const code = item.regionCode ?? item.id
