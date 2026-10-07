@@ -145,6 +145,8 @@ describe('Google Analytics transport', () => {
   })
 
   it('removes extra fields and sends only permitted event parameters', async () => {
+    const initializedAt = new Date('2026-10-07T03:24:38.999Z')
+    vi.setSystemTime(initializedAt)
     const { trackEvent } = await activeAnalytics()
     const detail = { complex_id: '17', entry_point: 'map' as const, email: 'private@example.test' }
     trackEvent('view_complex', detail)
@@ -159,7 +161,9 @@ describe('Google Analytics transport', () => {
     expect(events()[2][2]).toEqual(expect.objectContaining({ result_type: 'complex', complex_id: '17' }))
     expect(events()[2][2]).not.toHaveProperty('announcement_id')
     expect(events()[4][2]).not.toHaveProperty('complex_id')
-    expect(JSON.stringify(commands())).not.toMatch(/private|email|999/)
+    expect(commands()).toContainEqual(['js', initializedAt])
+    const payloadCommands = commands().filter(([command]) => command !== 'js')
+    expect(JSON.stringify(payloadCommands)).not.toMatch(/private|email|999/)
     expect(events().some((event) => event[1] === 'page_view')).toBe(false)
   })
 
