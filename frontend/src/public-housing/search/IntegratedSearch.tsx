@@ -89,7 +89,11 @@ export function IntegratedSearch({
             {searchTypes.map((type) => (
               <SearchGroup
                 key={type}
-                onSelect={onSelect}
+                onSelect={(item) => {
+                  setQuery('')
+                  inputRef.current?.focus({ preventScroll: true })
+                  onSelect(item)
+                }}
                 query={normalizedQuery}
                 repository={repository}
                 type={type}
