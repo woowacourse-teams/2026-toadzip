@@ -1,5 +1,5 @@
 .workspace { min-width: 0; color: var(--ds-color-text); }
-:global(.admin-content):has(> .workspace) { max-width: none; }
+:global(.admin-content):has(> .workspace) { max-width: none; box-sizing: border-box; }
 .heading { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-4); margin-bottom: var(--ds-space-6); }
 .heading h1 { font-size: 26px; }
 .body { display: grid; gap: var(--ds-space-6); align-items: start; }
@@ -12,6 +12,7 @@
 .editor :global(.registration-card) { padding: 0; border: 0; border-radius: 0; box-shadow: none; }
 .editor :global(.registration-grid), .editor :global(.admin-data-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-space-4); }
 .editor :global(.registration-grid) > :first-child { grid-column: 1 / -1; }
+.editor :global(.registration-field) label { display: block; }
 .editor :global(.management-heading) { margin: 0 0 var(--ds-space-4); gap: var(--ds-space-3); }
 .editor :global(.management-heading) h2 { margin: 0; font-size: 20px; overflow-wrap: anywhere; }
 .editor :global(.management-heading) p { font-size: var(--ds-text-caption); }

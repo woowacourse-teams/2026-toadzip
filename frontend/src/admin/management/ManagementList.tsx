@@ -14,6 +14,7 @@ export function ManagementList({ resource, embedded = false, refresh = 0 }: { re
   const [failure, setFailure] = useState<{ query: string; message: string } | null>(null)
   const [attempt, setAttempt] = useState(0)
   const search = (embedded ? managementListParams(params, resource) : params).toString()
+  const activeParams = new URLSearchParams(search)
   const filterParams = new URLSearchParams(search)
   filterParams.delete('page')
   filterParams.sort()
@@ -33,24 +34,31 @@ export function ManagementList({ resource, embedded = false, refresh = 0 }: { re
     })
     return () => controller.abort()
   }, [resource, search, query, filters])
-  function move(next: number) { setParams(current => { current.set('page', String(next)); current.delete('returnTo'); return current }) }
+  function updateFilters(next: URLSearchParams) {
+    if (embedded && params.has('mode')) for (const key of ['mode', 'complexId']) {
+      if (params.has(key)) next.set(key, params.get(key) ?? '')
+    }
+    setParams(next)
+  }
+  function move(next: number) { const current = new URLSearchParams(search); current.set('page', String(next)); updateFilters(current) }
   return <section className={`management-page ${styles.page}`}>
     {!embedded ? <header className="management-heading"><h1>{title} 관리</h1>
       <Link className="admin-primary" to={`/admin/${resource}/new`}>{title} 추가</Link></header> : null}
     <form key={search} data-admin-navigation className={styles.filters} onSubmit={event => {
       event.preventDefault(); const values = new FormData(event.currentTarget); const next = new URLSearchParams()
       for (const [key, value] of values) if (String(value).trim()) next.set(key, String(value).trim())
-      if (embedded) for (const key of ['mode', 'complexId']) { if (params.has('mode') && params.has(key)) next.set(key, params.get(key) ?? '') }
-      setParams(next)
+      updateFilters(next)
     }}>
-      <label className={styles.search}>{title === '단지' ? '단지명·주소' : '공고명'}<input name="keyword" defaultValue={params.get('keyword') ?? ''} maxLength={200} placeholder={`${title} 검색`} /></label>
-      <label>지역<select name="region" defaultValue={params.get('region') ?? ''}><option value="">전체 지역</option>{provinces.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      <label>기관<select name="provider" defaultValue={params.get('provider') ?? ''}><option value="">전체 기관</option>{['LH','SH','GH','ETC'].map(value => <option key={value}>{value}</option>)}</select></label>
-      <label>공급 유형<select name="rental" defaultValue={params.get('rental') ?? ''}><option value="">전체 유형</option>{rentals.map(value => <option key={value} value={value}>{labels[value]}</option>)}</select></label>
-      <label>보관 상태<select name="deleted" defaultValue={params.get('deleted') ?? 'false'}><option value="false">등록 데이터</option><option value="true">휴지통</option></select></label>
-      <label className={styles.review}><input name="review" type="checkbox" value="true" defaultChecked={params.get('review') === 'true'} />원천 변경 확인 필요</label>
-      {params.get('complexId') ? <input type="hidden" name="complexId" value={params.get('complexId') ?? ''} /> : null}
+      <label className={styles.search}>{title === '단지' ? '단지명·주소' : '공고명'}<input name="keyword" defaultValue={activeParams.get('keyword') ?? ''} maxLength={200} placeholder={`${title} 검색`} /></label>
+      <label>지역<select name="region" defaultValue={activeParams.get('region') ?? ''}><option value="">전체 지역</option>{provinces.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label>기관<select name="provider" defaultValue={activeParams.get('provider') ?? ''}><option value="">전체 기관</option>{['LH','SH','GH','ETC'].map(value => <option key={value}>{value}</option>)}</select></label>
       <div className={styles.actions}><button className="admin-primary" type="submit">검색</button><button data-admin-navigation type="button" onClick={() => setParams(embedded && params.has('mode') ? { mode: params.get('mode') ?? 'direct', ...(params.has('complexId') ? { complexId: params.get('complexId') ?? '' } : {}) } : {})}>초기화</button></div>
+      <details className={styles.moreFilters} open={activeParams.get('deleted') === 'true' || activeParams.has('rental') || activeParams.has('review') || undefined}><summary>추가 필터{activeParams.get('deleted') === 'true' ? ' · 휴지통' : ''}</summary><div>
+        <label>공급 유형<select name="rental" defaultValue={activeParams.get('rental') ?? ''}><option value="">전체 유형</option>{rentals.map(value => <option key={value} value={value}>{labels[value]}</option>)}</select></label>
+        <label>보관 상태<select name="deleted" defaultValue={activeParams.get('deleted') ?? 'false'}><option value="false">등록 데이터</option><option value="true">휴지통</option></select></label>
+        <label className={styles.review}><input name="review" type="checkbox" value="true" defaultChecked={activeParams.get('review') === 'true'} />원천 변경 확인 필요</label>
+      </div></details>
+      {managementListParams(params, resource).get('complexId') ? <input type="hidden" name="complexId" value={managementListParams(params, resource).get('complexId') ?? ''} /> : null}
     </form>
     {error ? <div role="alert" className="registration-error"><p>{error}</p><button onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></div> : null}
     <div className={styles.results} aria-busy={pending}>

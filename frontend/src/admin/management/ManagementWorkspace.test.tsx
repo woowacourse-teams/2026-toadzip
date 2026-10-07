@@ -93,3 +93,16 @@ it('삭제 확인과 복구 후 목록을 갱신한다', async () => {
   await screen.findByLabelText('이름')
   expect(api.requestManagementApi).toHaveBeenLastCalledWith('/api/admin/housing-complexes/7/restore?version=3', 'POST')
 })
+
+it('기존 returnTo 상세 URL의 검색 조건과 페이지를 화면에서도 복원한다', async () => {
+  const returnTo = encodeURIComponent('/admin/complexes?keyword=두꺼비&provider=LH&page=1')
+  api.getManagementPage.mockResolvedValue({ items: [summary], page: 1, totalPages: 3, totalElements: 41, hasNext: true })
+  renderPage(`/admin/complexes/7?returnTo=${returnTo}`)
+  await screen.findByLabelText('이름')
+  expect(screen.getByLabelText('단지명·주소')).toHaveValue('두꺼비')
+  expect(screen.getByLabelText('기관')).toHaveValue('LH')
+  fireEvent.click(screen.getByRole('button', { name: '다음' }))
+  await waitFor(() => expect(api.getManagementPage.mock.lastCall?.[1].get('page')).toBe('2'))
+  expect(api.getManagementPage.mock.lastCall?.[1].get('keyword')).toBe('두꺼비')
+  expect(api.getManagementPage.mock.lastCall?.[1].get('provider')).toBe('LH')
+})

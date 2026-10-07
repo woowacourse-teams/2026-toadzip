@@ -46,6 +46,8 @@ URL은 공유 가능한 필터·상세 선택을 소유하고, history state는 
 - `public-housing/api/httpErrorBody.ts`는 두 공개 repository의 오류 body 해석·AbortError 재전파만 공유한다. 오류 class와 기본 메시지는 각 repository에 둔다.
 - `admin/management/api.ts`는 HTTP 요청, `managementContract.ts`는 관리 모델과 응답 검증을 담당한다.
 - `ManagementSummaryTable`과 `ManagementStatus`는 목록·상세·선택 화면에서 실제 공유하는 표시다.
+- `ManagementWorkspace`는 단지·공고 표와 등록·편집 영역을 한 페이지에 배치한다. 선택 항목은 경로, 검색·페이지는 쿼리가 소유하며 저장·삭제·복구 후 목록을 다시 조회한다. 기존 상세 URL과 `returnTo` 검색 조건도 지원한다.
+- 공고 직접 입력 중 새 단지를 등록해 연결할 수 있다. 선택 단지의 기관·유형·PNU·단지명을 가져오고 공고명 등 작성 중인 입력은 보존한다. 단지 등록의 19자리 PNU는 법정동·시도·시군구 코드를 채우며 주소·좌표는 추정하지 않는다.
 - `admin/ingest/PipelineResult.tsx`는 실행 제어와 실행 이력이 공유한다. 폴링·실행·중지는 `DataPipelineControl`에 남는다.
 - `admin/registration/registrationOptions.ts`는 두 등록 폼의 옵션을 공유한다. 관리 검색의 더 넓은 허용 값과 합치지 않는다.
 - 등록 페이지 테스트는 검증 대상과 함께 `admin/registration/RegistrationPages.test.tsx`에 둔다.

@@ -118,4 +118,3 @@ it('새 요약 데이터는 검증하고 이전 응답의 누락 필드는 호�
   }
   expect(() => parseManagementDetail(detail({ ...legacy, announcement: { ...announcement.announcement, applicationStartDate: null } }))).toThrow('상세 응답이 올바르지 않습니다.')
 })
-

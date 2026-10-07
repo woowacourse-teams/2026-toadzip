@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router'
 import { AnnouncementImportForm } from './AnnouncementImportForm'
 import { AnnouncementRegistrationForm } from './AnnouncementRegistrationForm'
 import type { HousingComplexCreateResponse } from './api'
+import { HousingComplexRegistrationForm } from './HousingComplexRegistrationForm'
 
 export function AnnouncementRegistrationPage({ embedded = false, onCreated }: { embedded?: boolean; onCreated?: (id: number) => void }) {
   const [params, setParams] = useSearchParams()
@@ -19,10 +20,10 @@ export function AnnouncementRegistrationPage({ embedded = false, onCreated }: { 
   return <section className="admin-registration-page">
     {!embedded ? <header className="admin-registration-heading"><Link to="/admin/announcements">← 공고 목록</Link><h1>공고 등록</h1></header> : null}
     <div className="admin-mode-switch" aria-label="공고 입력 방식">
-      <button type="button" aria-pressed={!direct} disabled={submitting} onClick={() => selectMode('json')}>JSON 가져오기</button>
-      <button type="button" aria-pressed={direct} disabled={submitting} onClick={() => selectMode('direct')}>직접 입력</button>
+      <button data-admin-navigation type="button" aria-pressed={!direct} disabled={submitting} onClick={() => selectMode('json')}>JSON 가져오기</button>
+      <button data-admin-navigation type="button" aria-pressed={direct} disabled={submitting} onClick={() => selectMode('direct')}>직접 입력</button>
     </div>
-    {direct ? <DirectAnnouncement key={complexId} complexId={complexId} submitting={submitting}
+    {direct ? <DirectAnnouncement complexId={complexId} submitting={submitting}
       onCreated={onCreated} onSubmittingChange={setSubmitting} onSelect={(id) => setParams(current => { current.set('mode', 'direct'); current.set('complexId', id); return current })} />
       : <AnnouncementImportForm onCreated={onCreated} onSubmittingChange={setSubmitting} />}
   </section>
@@ -36,8 +37,10 @@ function DirectAnnouncement({ complexId, submitting, onSubmittingChange, onSelec
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(Boolean(complexId))
   const [attempt, setAttempt] = useState(0)
+  const [addingComplex, setAddingComplex] = useState(false)
   useEffect(() => {
-    if (!complexId) return
+    setHousingComplex(null)
+    if (!complexId) { setLoading(false); return }
     const controller = new AbortController()
     async function load() {
       setLoading(true)
@@ -48,9 +51,13 @@ function DirectAnnouncement({ complexId, submitting, onSubmittingChange, onSelec
         }
         const found = await getManagementDetail('complexes', complexId, controller.signal)
         if (found.summary.deleted) throw new Error('삭제된 단지는 연결할 수 없습니다.')
+        const address = found.data?.address
         if (!controller.signal.aborted) setHousingComplex({
           housingComplexId: Number(complexId), name: found.summary.name,
           roadAddress: found.summary.subtitle,
+          agencyCode: found.summary.provider,
+          rentalType: found.summary.rental,
+          pnu: address && typeof address === 'object' && !Array.isArray(address) && typeof address.pnu === 'string' ? address.pnu : undefined,
         })
       } catch (cause) {
         if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '단지를 불러오지 못했습니다.')
@@ -66,11 +73,12 @@ function DirectAnnouncement({ complexId, submitting, onSubmittingChange, onSelec
     <section className="registration-card" aria-labelledby="complex-selection-title">
       <h2 id="complex-selection-title">공고를 연결할 단지</h2>
       <ComplexPicker disabled={submitting} onSelect={item => onSelect(String(item.id))} />
-      <Link to="/admin/complexes/new">새 단지 등록</Link>
+      <button data-admin-navigation type="button" disabled={submitting} onClick={() => setAddingComplex(current => !current)}>{addingComplex ? '단지 등록 취소' : '새 단지 등록'}</button>
       {loading ? <p role="status">선택 단지를 불러오는 중…</p> : null}
       {error ? <div><p className="form-error" role="alert">{error}</p>
         <button type="button" onClick={() => setAttempt((value) => value + 1)}>다시 시도</button></div> : null}
     </section>
-    <AnnouncementRegistrationForm housingComplex={housingComplex} onCreated={onCreated} onSubmittingChange={onSubmittingChange} />
+    {addingComplex ? <HousingComplexRegistrationForm onSubmittingChange={onSubmittingChange} onCreated={item => { setAddingComplex(false); onSelect(String(item.housingComplexId)) }} /> : null}
+    <AnnouncementRegistrationForm disabled={submitting} housingComplex={housingComplex} onCreated={onCreated} onSubmittingChange={onSubmittingChange} />
   </>
 }
