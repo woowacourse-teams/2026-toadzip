@@ -13,3 +13,12 @@
 - Flyway 적용 후 Hibernate validate와 애플리케이션 시작이 진행된다.
 - 기존 테이블·데이터는 변경하지 않는다. 이전 애플리케이션으로 되돌려도 새 테이블을 보존한다.
 - 운영 DB에 수동 SQL을 실행하거나 접수된 의견을 삭제하는 작업은 이번 구현 범위에 포함하지 않는다.
+
+## 관리자 조회
+
+- `GET /api/admin/feedback?keyword=검색&page=0&size=20`은 ADMIN 세션만 접근할 수 있다.
+- 검색어는 최대 200자, page는 0 이상, size는 1~100이며 기본값은 20이다.
+- 본문을 대소문자 구분 없이 검색한다. `%`, `_`, `!`는 와일드카드가 아닌 입력 문자로 취급한다.
+- `createdAt DESC, id DESC`로 정렬한다. `createdAt`은 UTC ISO 8601 시각이며 관리자 화면은 한국 시각으로 표시한다.
+- 응답은 `data` 안에 `items`, `page`, `hasNext`, `totalElements`, `totalPages`를 포함한다.
+- 각 항목은 `id`, 전체 `content`, `createdAt`을 포함한다. 범위 밖 페이지도 전체 검색 건수를 보존한다.
