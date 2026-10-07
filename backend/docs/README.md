@@ -19,7 +19,7 @@
 | 구조 변경 | [architecture.md](architecture.md), [layer-boundaries.md](layer-boundaries.md) | 계층 책임과 허용 의존성 |
 | Java·Spring | [CODE_CONVENTION.md](../CODE_CONVENTION.md) | 코드 스타일과 객체 규칙 |
 | Git 작업 | [CONTRIBUTING.md](../../CONTRIBUTING.md) | 이슈, 브랜치, 커밋, PR |
-| HTTP API | [api-conventions.md](api-conventions.md) | 요청, 응답, 호환성 |
+| HTTP API | [api-conventions.md](api-conventions.md), [location-search.md](location-search.md) | 요청·응답, 지역·장소 검색과 서버 키 |
 | 예외 처리 | [exception-handling.md](exception-handling.md) | 예외 소유권, Advice, 오류 계약 |
 | DB 변경 | [persistence.md](persistence.md), [ingest-branch-db-upgrade.md](ingest-branch-db-upgrade.md) | 모델·트랜잭션, 기존 ingest 작업 DB 통합 업그레이드 |
 | Flyway 최초 적용 | [flyway-adoption.md](flyway-adoption.md) | 기존 DB baseline과 새 DB 생성 경로 |
