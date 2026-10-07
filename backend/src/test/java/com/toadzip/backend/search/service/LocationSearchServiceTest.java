@@ -9,14 +9,14 @@ import static org.mockito.Mockito.when;
 import com.toadzip.backend.search.domain.LocationSearchType;
 import com.toadzip.backend.search.dto.request.LocationSearchRequest;
 import com.toadzip.backend.search.exception.InvalidSearchRequestException;
-import com.toadzip.backend.search.repository.KakaoLocationSearchRepository;
+import com.toadzip.backend.search.repository.NaverLocationSearchRepository;
 import com.toadzip.backend.search.repository.LocationSearchPage;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class LocationSearchServiceTest {
 
-    private final KakaoLocationSearchRepository repository = mock(KakaoLocationSearchRepository.class);
+    private final NaverLocationSearchRepository repository = mock(NaverLocationSearchRepository.class);
     private final LocationSearchService service = new LocationSearchService(repository);
 
     @Test

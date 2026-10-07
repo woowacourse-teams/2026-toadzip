@@ -5,7 +5,7 @@ import com.toadzip.backend.search.dto.request.LocationSearchRequest;
 import com.toadzip.backend.search.dto.response.LocationSearchItemResponse;
 import com.toadzip.backend.search.dto.response.LocationSearchResponse;
 import com.toadzip.backend.search.exception.InvalidSearchRequestException;
-import com.toadzip.backend.search.repository.KakaoLocationSearchRepository;
+import com.toadzip.backend.search.repository.NaverLocationSearchRepository;
 import com.toadzip.backend.search.repository.LocationSearchItem;
 import com.toadzip.backend.search.repository.LocationSearchPage;
 import java.util.Objects;
@@ -14,9 +14,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class LocationSearchService {
 
-    private final KakaoLocationSearchRepository repository;
+    private final NaverLocationSearchRepository repository;
 
-    public LocationSearchService(KakaoLocationSearchRepository repository) {
+    public LocationSearchService(NaverLocationSearchRepository repository) {
         this.repository = repository;
     }
 
