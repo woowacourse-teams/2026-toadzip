@@ -642,7 +642,7 @@ describe('PublicHousingExplorer', () => {
     expect(mapRepository.findMap).toHaveBeenLastCalledWith(expect.objectContaining({
       bounds: boundaryMetadata[0].bounds, filters: { regionCode: '11' }, zoom: 14,
     }), expect.any(AbortSignal))
-    expect(screen.getByRole('heading', { name: '검색결과' })).toBeVisible()
+    expect(screen.queryByRole('heading', { name: '검색결과' })).not.toBeInTheDocument()
   })
 
   it('검색 지역으로 이동한 뒤 사용자가 적용한 지역 필터만 요청에 추가한다', async () => {
@@ -693,7 +693,7 @@ describe('PublicHousingExplorer', () => {
     }), expect.any(AbortSignal))
   })
 
-  it('검색결과를 닫아도 이동한 지도와 조회 결과를 유지하고 다음 이동은 자동 갱신한다', async () => {
+  it('검색 지역 선택으로 검색결과가 닫혀도 지도와 조회 결과를 유지하고 다음 이동은 자동 갱신한다', async () => {
     const repository = createRepository()
     const mapRepository = createMapRepository(individualMapResult())
     const region = searchItem('REGION', '41110', '경기도 수원시', 37.27532584, 127.01641895)
@@ -706,6 +706,7 @@ describe('PublicHousingExplorer', () => {
     await waitFor(() => expect(repository.findComplexPage).toHaveBeenCalledTimes(2))
     const cameraRequest = screen.getByTestId('map-camera-request').textContent
 
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '수원' } })
     fireEvent.click(screen.getByRole('button', { name: '검색결과 닫기' }))
 
     expect(screen.getByRole('searchbox')).toHaveValue('')
@@ -1416,6 +1417,9 @@ describe('PublicHousingExplorer', () => {
     expect(await screen.findByRole('button', {
       name: '검색된 행복주택 지도 마커 선택',
     })).toHaveAttribute('data-selected', 'true')
+    expect(screen.getByRole('searchbox')).toHaveValue('')
+    expect(screen.queryByRole('heading', { name: '검색결과' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('complementary', { name: '검색된 행복주택 단지 상세 정보' })).toBeVisible()
   })
 
   it('검색한 공고를 선택하면 연결 단지 좌표로 이동한다', async () => {
@@ -1427,6 +1431,8 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(await screen.findByRole('button', { name: /서울 행복주택 공고/ }))
 
     expect(await screen.findByText('카메라 37.5,126.9')).toBeVisible()
+    expect(screen.getByRole('searchbox')).toHaveValue('')
+    expect(screen.queryByRole('heading', { name: '검색결과' })).not.toBeInTheDocument()
   })
 
   it('경계가 있는 좌표 없는 지역은 bbox로 이동하고 기존 주택 지역 필터를 보존한다', async () => {
@@ -1451,6 +1457,7 @@ describe('PublicHousingExplorer', () => {
     expect(screen.getByRole('link', { name: '저작권' })).toHaveAttribute('href', '/map-data-credits.html')
     expect(screen.getByTestId('map-camera-request').textContent).toBe(request)
     expect(screen.getByText('카메라 37.475,126.9')).toBeVisible()
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '장안' } })
     fireEvent.click(screen.getByRole('button', { name: '검색결과 닫기' }))
     expect(within(screen.getByRole('region', { name: '검색 지역 표시' })).getByText('경기도 수원시 장안구')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '경계 지우기' }))
@@ -1470,7 +1477,8 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(await screen.findByRole('button', { name: /^경기도 수원시/ }))
     expectCurrentSearch({ boundaryRegionCode: '41110' })
     expect(screen.getByTestId('map-camera-request')).toHaveTextContent('2')
-    fireEvent.click(screen.getByRole('button', { name: /^경기도 수원시/ }))
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '수원' } })
+    fireEvent.click(await screen.findByRole('button', { name: /^경기도 수원시/ }))
     expect(screen.getByTestId('map-camera-request')).toHaveTextContent('3')
     fireEvent.click(screen.getByRole('button', { name: '전체 보기' }))
     expect(screen.getByTestId('map-camera-request')).toHaveTextContent('4')
