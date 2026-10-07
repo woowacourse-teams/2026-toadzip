@@ -1,0 +1,19 @@
+.page { min-width: 0; color: var(--ds-color-text); font-family: var(--ds-font-family-ui); }
+.heading h1 { margin: 0; font-size: 24px; }
+.heading p, .meta { color: var(--ds-color-label); font-size: var(--ds-text-body); line-height: var(--ds-line-height-body); }
+.filters { display: flex; align-items: end; gap: var(--ds-space-3); padding-block: var(--ds-space-4); border-block: 1px solid var(--ds-color-divider); }
+.filters label { display: grid; flex: 1; min-width: 0; gap: var(--ds-space-2); font-size: var(--ds-text-body); }
+.filters input { width: 100%; min-width: 0; height: var(--ds-control-height-md); padding: var(--ds-space-3); border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-text); font: inherit; }
+.filters > button:last-child, .error button { min-height: var(--ds-control-height-md); padding-inline: var(--ds-space-4); border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-text); font: inherit; cursor: pointer; }
+.list { display: grid; gap: var(--ds-space-3); margin: 0; padding: 0; list-style: none; }
+.card { padding: var(--ds-space-5); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); overflow-wrap: anywhere; }
+.card header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--ds-space-2); }
+.card h2 { margin: 0; font-size: var(--ds-text-section); }
+.card time { color: var(--ds-color-label); font-size: var(--ds-text-caption); }
+.preview, .content { line-height: var(--ds-line-height-body); }
+.card summary { width: fit-content; padding-block: var(--ds-space-3); color: var(--ds-color-action); cursor: pointer; font-size: var(--ds-text-body); }
+.content { white-space: pre-wrap; padding: var(--ds-space-4); background: var(--ds-color-surface-subtle); border-radius: var(--ds-radius-control); }
+.empty { padding-block: var(--ds-space-6); color: var(--ds-color-label); }
+.error { color: var(--ds-color-deadline); }
+.page :focus-visible { outline: 3px solid var(--ds-color-action); outline-offset: 3px; }
+@media (max-width: 600px) { .filters { flex-wrap: wrap; } .filters label { flex-basis: 100%; } .card { padding: var(--ds-space-4); } }

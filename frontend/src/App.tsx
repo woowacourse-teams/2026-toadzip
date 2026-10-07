@@ -20,6 +20,7 @@ import { GuestCancellationPage } from './public-housing/interest/GuestCancellati
 import { UserListPage } from './admin/users/UserListPage'
 import { UserDetailPage } from './admin/users/UserDetailPage'
 import { FeedbackPage } from './feedback/FeedbackPage'
+import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
 
 function Home() {
   return (
@@ -68,6 +69,7 @@ function AdminRoutes() {
             <Route path="announcements/:id" element={<ManagementDetail resource="announcements" />} />
             <Route path="users" element={<UserListPage />} />
             <Route path="users/:id" element={<UserDetailPage />} />
+            <Route path="feedback" element={<FeedbackListPage />} />
             <Route path="failures" element={<FailureReviewPage />} />
             <Route path="sources" element={<SourceDataPage />} />
             <Route path="locations" element={<LocationDataPage />} />
