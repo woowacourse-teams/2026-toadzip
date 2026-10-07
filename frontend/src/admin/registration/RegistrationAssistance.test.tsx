@@ -67,6 +67,17 @@ it('작성 중 입력 방식 전환을 취소하면 공고 내용을 유지한�
   expect(screen.queryByLabelText('공고 JSON')).not.toBeInTheDocument()
 })
 
+it('현재 입력 방식과 새 단지 등록 열기는 공고 입력을 버리지 않고 확인도 띄우지 않는다', () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  render(<MemoryRouter initialEntries={['/admin/announcements/new?mode=direct']}><AnnouncementRegistrationPage /></MemoryRouter>)
+  fireEvent.change(screen.getByLabelText('공고명'), { target: { value: '작성 중인 공고' } })
+  fireEvent.click(screen.getByRole('button', { name: '직접 입력' }))
+  fireEvent.click(screen.getByRole('button', { name: '새 단지 등록' }))
+  expect(confirm).not.toHaveBeenCalled()
+  expect(screen.getByRole('region', { name: '단지 등록' })).toBeVisible()
+  expect(screen.getByLabelText('공고명')).toHaveValue('작성 중인 공고')
+})
+
 it('기본 등록 옵션 밖의 선택 단지 유형도 자동 입력으로 보존한다', async () => {
   api.getManagementDetail.mockResolvedValue({ summary: { ...summary, rental: 'PUBLIC_RENTAL_5Y' }, data: { address: { pnu: '1114010100100010000' } } })
   render(<MemoryRouter initialEntries={['/admin/announcements/new?mode=direct&complexId=42']}><AnnouncementRegistrationPage /></MemoryRouter>)

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { HousingComplexRegistrationPage } from '../registration/HousingComplexRegistrationPage'
 import { AnnouncementRegistrationPage } from '../registration/AnnouncementRegistrationPage'
@@ -15,6 +15,8 @@ export function ManagementWorkspace({ resource }: { resource: ManagementResource
   const [revision, setRevision] = useState(0)
   const editorRef = useRef<HTMLElement>(null)
   const listParams = managementListParams(params, resource)
+  const editorSession = useMemo(() => ({ resource, id }), [resource, id])
+  const currentEditor = useRef<{ session: typeof editorSession; listParams: URLSearchParams } | null>(null)
   const back = managementUrl(resource, listParams)
   const title = resource === 'complexes' ? '단지' : '공고'
 
@@ -22,9 +24,18 @@ export function ManagementWorkspace({ resource }: { resource: ManagementResource
     if (id) editorRef.current?.focus()
   }, [id, resource])
 
+  useEffect(() => {
+    currentEditor.current = { session: editorSession, listParams: managementListParams(params, resource) }
+    return () => { currentEditor.current = null }
+  }, [editorSession, params, resource])
+
   function created(createdId: number) {
+    const current = currentEditor.current
+    if (!current || current.session.resource !== resource) return
     setRevision(value => value + 1)
-    navigate(managementUrl(resource, listParams, String(createdId)), { replace: true })
+    if (current.session === editorSession) {
+      navigate(managementUrl(resource, current.listParams, String(createdId)), { replace: true })
+    }
   }
 
   return <section className={styles.workspace}>

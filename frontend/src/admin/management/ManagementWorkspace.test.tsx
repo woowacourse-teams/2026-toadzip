@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { ManagementWorkspace } from './ManagementWorkspace'
@@ -7,6 +7,8 @@ import type { ManagementDetailData } from './managementContract'
 
 const api = vi.hoisted(() => ({ getManagementPage: vi.fn(), getManagementDetail: vi.fn(), requestManagementApi: vi.fn() }))
 vi.mock('./api', async original => ({ ...(await original<typeof import('./api')>()), ...api }))
+const registrationApi = vi.hoisted(() => ({ createHousingComplex: vi.fn() }))
+vi.mock('../registration/api', async original => ({ ...(await original<typeof import('../registration/api')>()), ...registrationApi }))
 const summary = { id: 7, name: '두꺼비 단지', subtitle: '서울 중구 세종대로 1', provider: 'LH', rental: 'HAPPY_HOUSING', deleted: false, modified: false, reviewRequired: false, updatedAt: null }
 function detail(): ManagementDetailData {
   return { summary, sourceIdentifier: 'TEST-7', data: { version: 2, name: summary.name, agencyCode: 'LH', rentalType: 'HAPPY_HOUSING', address: { roadAddress: summary.subtitle, pnu: '1114010100100010000', legalDongCode: '1114010100', provinceCode: '11', cityCountyDistrictCode: '11140', latitude: 37.5, longitude: 127 }, totalHouseholdCount: 10, totalParkingCount: 5 }, housingTypes: [], announcements: [], supplyRows: [], scheduleReviewed: false, schedules: [] }
@@ -63,6 +65,36 @@ it('미저장 수정의 닫기와 검색을 취소하면 입력과 목록 조건
   fireEvent.submit(screen.getByRole('button', { name: '검색' }).closest('form')!)
   expect(confirm).toHaveBeenCalledTimes(2)
   expect(api.getManagementPage).toHaveBeenCalledOnce()
+  confirm.mockRestore()
+})
+
+it('현재 기본정보 탭을 다시 눌러도 미저장 입력 보호가 유지된다', async () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  renderPage('/admin/complexes/7')
+  fireEvent.change(await screen.findByLabelText('이름'), { target: { value: '저장 전' } })
+  fireEvent.click(screen.getByRole('button', { name: '기본정보' }))
+  expect(confirm).not.toHaveBeenCalled()
+  confirm.mockReturnValue(false)
+  fireEvent.click(screen.getByRole('link', { name: '편집 닫기' }))
+  expect(confirm).toHaveBeenCalledOnce()
+  expect(screen.getByLabelText('이름')).toHaveValue('저장 전')
+  confirm.mockRestore()
+})
+
+it('저장 중 편집을 닫은 뒤 도착한 등록 응답은 편집 화면을 다시 열지 않는다', async () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  let finish!: (value: { housingComplexId: number; name: string; roadAddress: string }) => void
+  registrationApi.createHousingComplex.mockReturnValue(new Promise(resolve => { finish = resolve }))
+  renderPage('/admin/complexes/new')
+  await screen.findByRole('table')
+  fireEvent.change(screen.getByLabelText('단지명'), { target: { value: '새 단지' } })
+  fireEvent.submit(screen.getByRole('button', { name: '단지 저장' }).closest('form')!)
+  fireEvent.click(screen.getByRole('link', { name: '편집 닫기' }))
+  expect(screen.queryByRole('region', { name: '단지 추가' })).not.toBeInTheDocument()
+  await act(() => finish({ housingComplexId: 8, name: '새 단지', roadAddress: summary.subtitle }))
+  expect(screen.queryByRole('region', { name: '단지 상세·수정' })).not.toBeInTheDocument()
+  expect(api.getManagementDetail).not.toHaveBeenCalled()
+  await waitFor(() => expect(api.getManagementPage).toHaveBeenCalledTimes(2))
   confirm.mockRestore()
 })
 
