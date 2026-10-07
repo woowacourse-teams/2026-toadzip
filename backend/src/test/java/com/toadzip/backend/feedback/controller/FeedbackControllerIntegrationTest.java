@@ -47,7 +47,7 @@ class FeedbackControllerIntegrationTest {
 
     @ParameterizedTest
     @NullAndEmptySource
-    @ValueSource(strings = {" ", "\n\t", "\u2003"})
+    @ValueSource(strings = {" ", "\n\t", "\u2003", "\u00a0", "\u202f", "\ufeff"})
     void 내용이_없으면_저장하지_않는다(String content) throws Exception {
         mockMvc.perform(post(ENDPOINT).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body(content)))
                 .andExpect(status().isBadRequest())
@@ -59,6 +59,16 @@ class FeedbackControllerIntegrationTest {
         mockMvc.perform(post(ENDPOINT).with(csrf()).contentType(MediaType.APPLICATION_JSON)
                         .content(body("가".repeat(2000))))
                 .andExpect(status().isCreated());
+    }
+
+    @Test
+    void 유니코드_양끝_공백을_제거하고_본문의_줄바꿈은_보존한다() throws Exception {
+        mockMvc.perform(post(ENDPOINT).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(body("\u00a0\ufeff검색 개선\n지역 선택\u202f")))
+                .andExpect(status().isCreated());
+
+        assertThat(jdbc.sql("SELECT content FROM feedback").query(String.class).single())
+                .isEqualTo("검색 개선\n지역 선택");
     }
 
     @Test

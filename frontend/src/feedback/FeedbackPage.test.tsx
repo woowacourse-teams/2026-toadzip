@@ -24,9 +24,9 @@ it('주관식 내용만 입력하고 전송 성공을 안내한다', async () =>
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
 })
 
-it('빈 내용과 공백만 입력한 의견을 전송하지 않는다', () => {
+it.each([' \n\t ', '\u00a0', '\u202f', '\ufeff'])('공백만 입력한 의견을 전송하지 않는다: %j', content => {
   const input = setup()
-  fireEvent.change(input, { target: { value: ' \n\t ' } })
+  fireEvent.change(input, { target: { value: content } })
   fireEvent.click(screen.getByRole('button', { name: '의견 보내기' }))
   expect(screen.getByRole('alert')).toHaveTextContent('1자 이상 2,000자 이하')
   expect(input).toHaveFocus()
