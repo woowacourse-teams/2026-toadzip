@@ -19,6 +19,8 @@ import { NotificationInterestProvider, NotificationInterestSessionControl } from
 import { GuestCancellationPage } from './public-housing/interest/GuestCancellationPage'
 import { UserListPage } from './admin/users/UserListPage'
 import { UserDetailPage } from './admin/users/UserDetailPage'
+import { FeedbackPage } from './feedback/FeedbackPage'
+import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
 
 function Home() {
   return (
@@ -26,7 +28,10 @@ function Home() {
       <div className="app-shell">
         <header className="service-header" aria-label="서비스 헤더">
           <BrandLink />
-          <NotificationInterestSessionControl />
+          <div className="service-header-actions">
+            <Link className="service-feedback-link" to="/feedback">의견 보내기</Link>
+            <NotificationInterestSessionControl />
+          </div>
         </header>
         <main className="map-main">
           <DefaultPublicHousingExplorer />
@@ -64,6 +69,7 @@ function AdminRoutes() {
             <Route path="announcements/:id" element={<ManagementDetail resource="announcements" />} />
             <Route path="users" element={<UserListPage />} />
             <Route path="users/:id" element={<UserDetailPage />} />
+            <Route path="feedback" element={<FeedbackListPage />} />
             <Route path="failures" element={<FailureReviewPage />} />
             <Route path="sources" element={<SourceDataPage />} />
             <Route path="locations" element={<LocationDataPage />} />
@@ -81,6 +87,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<UserLoginPage />} />
+      <Route path="/feedback" element={<FeedbackPage />} />
       <Route path="/notifications/cancel" element={<GuestCancellationPage />} />
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />

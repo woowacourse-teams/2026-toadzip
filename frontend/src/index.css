@@ -207,6 +207,35 @@ a {
 }
 
 .service-login-link:hover { background: #edf4ff; }
+.service-header-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--ds-space-2);
+  margin-left: auto;
+}
+.service-feedback-link {
+  display: inline-flex;
+  min-height: var(--ds-control-height-md);
+  align-items: center;
+  padding: 0 var(--ds-space-2);
+  border-radius: var(--ds-radius-control);
+  color: var(--ds-color-action);
+  font-size: var(--ds-text-caption);
+  font-weight: var(--ds-weight-strong);
+  white-space: nowrap;
+  text-decoration: none;
+}
+.service-feedback-link:hover { background: var(--ds-color-action-soft); }
+.service-feedback-link:focus-visible { outline: 3px solid var(--ds-color-action); outline-offset: 2px; }
+@media (max-width: 420px) {
+  .service-header-actions .service-login-status { display: none; }
+  .service-header-actions .service-session-retry { max-width: 100px; }
+  .service-header-actions .service-user-control { gap: var(--ds-space-1); }
+}
+@media (min-width: 768px) and (max-width: 1023px) {
+  .service-header-actions .service-login-status { display: none; }
+}
 .service-user-control {
   display: flex;
   min-width: 0;
