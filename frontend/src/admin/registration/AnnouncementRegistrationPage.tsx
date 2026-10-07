@@ -1,6 +1,6 @@
 import { ComplexPicker } from '../management/ComplexPicker'
 import { getManagementDetail } from '../management/api'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { AnnouncementImportForm } from './AnnouncementImportForm'
 import { AnnouncementRegistrationForm } from './AnnouncementRegistrationForm'
@@ -38,6 +38,17 @@ function DirectAnnouncement({ complexId, submitting, onSubmittingChange, onSelec
   const [loading, setLoading] = useState(Boolean(complexId))
   const [attempt, setAttempt] = useState(0)
   const [addingComplex, setAddingComplex] = useState(false)
+  const active = useRef(false)
+  useEffect(() => {
+    active.current = true
+    return () => {
+      active.current = false
+      onSubmittingChange(false)
+    }
+  }, [onSubmittingChange])
+  function changeSubmitting(value: boolean) {
+    if (active.current) onSubmittingChange(value)
+  }
   useEffect(() => {
     setHousingComplex(null)
     if (!complexId) { setLoading(false); return }
@@ -78,7 +89,11 @@ function DirectAnnouncement({ complexId, submitting, onSubmittingChange, onSelec
       {error ? <div><p className="form-error" role="alert">{error}</p>
         <button type="button" onClick={() => setAttempt((value) => value + 1)}>다시 시도</button></div> : null}
     </section>
-    {addingComplex ? <HousingComplexRegistrationForm onSubmittingChange={onSubmittingChange} onCreated={item => { setAddingComplex(false); onSelect(String(item.housingComplexId)) }} /> : null}
-    <AnnouncementRegistrationForm disabled={submitting} housingComplex={housingComplex} onCreated={onCreated} onSubmittingChange={onSubmittingChange} />
+    {addingComplex ? <HousingComplexRegistrationForm onSubmittingChange={changeSubmitting} onCreated={item => {
+      if (!active.current) return
+      setAddingComplex(false)
+      onSelect(String(item.housingComplexId))
+    }} /> : null}
+    <AnnouncementRegistrationForm disabled={submitting} housingComplex={housingComplex} onCreated={onCreated} onSubmittingChange={changeSubmitting} />
   </>
 }

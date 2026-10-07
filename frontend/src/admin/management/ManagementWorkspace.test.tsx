@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ManagementWorkspace } from './ManagementWorkspace'
 import { ManagementError } from './api'
 import type { ManagementDetailData } from './managementContract'
+import type { HousingComplexCreateResponse } from '../registration/api'
 
 const api = vi.hoisted(() => ({ getManagementPage: vi.fn(), getManagementDetail: vi.fn(), requestManagementApi: vi.fn() }))
 vi.mock('./api', async original => ({ ...(await original<typeof import('./api')>()), ...api }))
@@ -20,6 +21,61 @@ beforeEach(() => {
   vi.clearAllMocks()
   api.getManagementPage.mockResolvedValue({ items: [summary], page: 0, totalPages: 1, totalElements: 1, hasNext: false })
   api.getManagementDetail.mockResolvedValue(detail())
+})
+afterEach(() => vi.restoreAllMocks())
+
+function startInlineComplexRegistration() {
+  let finish!: (value: HousingComplexCreateResponse) => void
+  registrationApi.createHousingComplex.mockReturnValue(new Promise<HousingComplexCreateResponse>(resolve => { finish = resolve }))
+  renderPage('/admin/announcements/new?mode=direct')
+  fireEvent.click(screen.getByRole('button', { name: '새 단지 등록' }))
+  const form = screen.getByRole('region', { name: '단지 등록' })
+  fireEvent.change(within(form).getByLabelText('단지명'), { target: { value: '새 단지' } })
+  fireEvent.submit(within(form).getByRole('button', { name: '단지 저장' }).closest('form')!)
+  return () => act(async () => { finish({ housingComplexId: 8, name: '새 단지', roadAddress: summary.subtitle }) })
+}
+
+it('공고 편집을 닫은 뒤 도착한 단지 등록 응답은 편집창을 다시 열지 않는다', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  const finish = startInlineComplexRegistration()
+  fireEvent.click(screen.getByRole('link', { name: '편집 닫기' }))
+  expect(screen.queryByRole('region', { name: '공고 추가' })).not.toBeInTheDocument()
+  await finish()
+  expect(screen.queryByRole('region', { name: '공고 추가' })).not.toBeInTheDocument()
+  expect(api.getManagementDetail).not.toHaveBeenCalled()
+})
+
+it('새 JSON 작업으로 이동하면 입력 방식 잠금을 풀고 늦은 단지 등록 응답에도 입력을 유지한다', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  const finish = startInlineComplexRegistration()
+  fireEvent.click(screen.getByRole('link', { name: '공고 추가' }))
+  fireEvent.change(screen.getByLabelText('공고 JSON'), { target: { value: '{"name":"새 작업"}' } })
+  expect(screen.getByRole('button', { name: '직접 입력' })).toBeEnabled()
+  await finish()
+  expect(screen.queryByLabelText('공고 JSON')).toHaveValue('{"name":"새 작업"}')
+  expect(api.getManagementDetail).not.toHaveBeenCalled()
+})
+
+it('이전 단지 등록의 완료는 다시 연 편집창에서 진행 중인 새 등록을 풀지 않는다', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  const finishPrevious = startInlineComplexRegistration()
+  fireEvent.click(screen.getByRole('link', { name: '편집 닫기' }))
+  fireEvent.click(screen.getByRole('link', { name: '공고 추가' }))
+  fireEvent.click(screen.getByRole('button', { name: '직접 입력' }))
+  let finishCurrent!: (value: HousingComplexCreateResponse) => void
+  registrationApi.createHousingComplex.mockReturnValue(new Promise<HousingComplexCreateResponse>(resolve => { finishCurrent = resolve }))
+  fireEvent.click(screen.getByRole('button', { name: '새 단지 등록' }))
+  const form = screen.getByRole('region', { name: '단지 등록' })
+  fireEvent.change(within(form).getByLabelText('단지명'), { target: { value: '현재 작업 단지' } })
+  fireEvent.submit(within(form).getByRole('button', { name: '단지 저장' }).closest('form')!)
+  await finishPrevious()
+  expect(screen.getByRole('region', { name: '단지 등록' })).toBeVisible()
+  expect(screen.getByRole('button', { name: 'JSON 가져오기' })).toBeDisabled()
+  expect(within(screen.getByRole('region', { name: '공고 추가' })).getByLabelText('공고명')).toBeDisabled()
+  await act(async () => { finishCurrent({ housingComplexId: 9, name: '현재 작업 단지', roadAddress: summary.subtitle }) })
+  expect(await screen.findByText(/선택 단지:/)).toBeVisible()
+  expect(api.getManagementDetail).toHaveBeenCalledExactlyOnceWith('complexes', '9', expect.any(AbortSignal))
+  expect(screen.getByRole('button', { name: 'JSON 가져오기' })).toBeEnabled()
 })
 
 it('행을 열어도 목록과 검색을 유지하며 바로 수정하고 닫는다', async () => {
