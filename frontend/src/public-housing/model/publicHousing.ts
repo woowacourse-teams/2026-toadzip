@@ -41,6 +41,7 @@ export interface RawComplexPage {
 }
 
 export interface RawMapComplex {
+  readonly applicationStatus?: string | null
   readonly complexId: number
   readonly name: string | null
   readonly latitude: number
@@ -92,6 +93,7 @@ export interface ComplexPage {
 }
 
 export interface MapComplex {
+  readonly applicationStatus?: string | null
   readonly complexId: string
   readonly name: string | null
   readonly latitude: number

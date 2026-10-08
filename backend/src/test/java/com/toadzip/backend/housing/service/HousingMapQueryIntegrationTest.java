@@ -137,7 +137,7 @@ class HousingMapQueryIntegrationTest {
         return new HousingMapIndividualNodeResponse(
                 "INDIVIDUAL", complexId, name, decimal("37.450000"), decimal("127.140000"),
                 "HAPPY_HOUSING", new AgencyResponse("LH", "한국토지주택공사"),
-                null, null, null, null, null, null
+                null, null, null, null, null, null, null
         );
     }
 
