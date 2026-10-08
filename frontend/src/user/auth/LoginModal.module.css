@@ -70,7 +70,7 @@
 .kakao:hover { background: #f4dc00; }
 .google { background: var(--ds-color-surface); color: var(--ds-color-text); }
 .google:hover { background: var(--ds-color-surface-subtle); }
-.googleMark { color: #4285f4; font-size: 21px; font-weight: 800; }
+.googleMark { object-fit: contain; }
 .provider:focus-visible { outline: 3px solid var(--ds-color-action); outline-offset: 3px; }
 .alert:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 

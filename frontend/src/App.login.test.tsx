@@ -59,7 +59,7 @@ it.each(['/login?login=failed', '/?login=failed'])(
     render(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>)
     const dialog = await screen.findByRole('dialog', { name: '로그인' })
     expect(within(dialog).getByRole('alert')).toHaveTextContent('로그인을 완료하지 못했습니다.')
-    expect(within(dialog).getByRole('link', { name: 'Google로 계속하기' })).toBeVisible()
+    expect(within(dialog).getByRole('link', { name: 'Google로 로그인' })).toBeVisible()
     expect(screen.getByRole('link', { name: '공공주택 복덕방 홈' })).toBeVisible()
   },
 )
