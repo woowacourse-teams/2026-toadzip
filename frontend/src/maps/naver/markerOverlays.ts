@@ -1,3 +1,4 @@
+import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
 import { COMPLEX_MARKER_ANCHOR_X, createComplexMarkerButton, markerWidth } from './complexMarkerButton.ts'
 import { renderedMarkerContentKey, renderedMarkerId, type RenderedMarker } from './markerData.ts'
 import type {
@@ -37,6 +38,7 @@ export function updateAggregateMarkerAvailability(
 }
 
 interface CreateMarkerOptions {
+  readonly previewScopeId?: () => string
   readonly enterDelay?: number
   readonly mapInstance: naver.maps.Map
   readonly maps: typeof naver.maps
@@ -50,6 +52,7 @@ interface CreateMarkerOptions {
 
 export function createMarker({
   enterDelay,
+  previewScopeId,
   mapInstance,
   maps,
   marker,
@@ -92,7 +95,7 @@ export function createMarker({
         : button.classList.contains('is-selected') ? 30
           : button.classList.contains('is-highlighted') ? 20 : 10)
       onMarkerHighlight?.(complexId)
-    }, controller.signal)
+    }, controller.signal, previewScopeId)
     : () => false
   return {
     button,
@@ -187,11 +190,30 @@ function bindMarkerHighlight(
   complexId: string,
   onHighlight: (complexId: string | null) => void,
   signal: AbortSignal,
+  previewScopeId: (() => string) | undefined,
 ) {
   let focused = false
   let pointerInside = false
+  let directFocus = false
+  let keyboardAt = -Infinity
+  let previewTimer: number | null = null
+  const fallbackScope = createAnalyticsId()
+  document.addEventListener('keydown', event => { if (event.key === 'Tab') keyboardAt = performance.now() }, { capture: true, signal })
+  const clearPreview = () => { if (previewTimer !== null) window.clearTimeout(previewTimer); previewTimer = null }
+  signal.addEventListener('abort', clearPreview, { once: true })
+  function updatePreview() {
+    if (!pointerInside && !directFocus) { clearPreview(); return }
+    if (previewTimer !== null) return
+    previewTimer = window.setTimeout(() => {
+      previewTimer = null
+      if (signal.aborted || !button.isConnected || button.closest('[inert], [hidden], [aria-hidden="true"]') || document.visibilityState !== 'visible') return
+      if ([...document.querySelectorAll('dialog[open], [role="dialog"][aria-modal="true"]')].some(dialog => !dialog.contains(button) && (dialog.getAttribute('aria-modal') !== 'false' || !dialog.classList.contains('housing-detail-layer')))) return
+      captureProductEvent('map_marker_previewed', { complex_id: complexId, method: pointerInside ? 'pointer' : 'keyboard' }, { dedupeKey: `marker-preview:${previewScopeId?.() ?? fallbackScope}:${complexId}` })
+    }, 500)
+  }
   const updateHighlight = () => {
     onHighlight(focused || pointerInside ? complexId : null)
+    updatePreview()
   }
   button.addEventListener('mouseenter', () => {
     pointerInside = true
@@ -203,10 +225,12 @@ function bindMarkerHighlight(
   }, { signal })
   button.addEventListener('focus', () => {
     focused = true
+    directFocus = performance.now() - keyboardAt < 100
     updateHighlight()
   }, { signal })
   button.addEventListener('blur', () => {
     focused = false
+    directFocus = false
     updateHighlight()
   }, { signal })
   return () => focused || pointerInside

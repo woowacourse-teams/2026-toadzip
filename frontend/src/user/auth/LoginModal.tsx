@@ -1,49 +1,65 @@
-import { useEffect, useId, useRef, type RefObject } from 'react'
+import { captureProductEvent, createAnalyticsId, setReplaySensitive } from '../../analytics/productAnalytics'
+import { useLayoutEffect, useId, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { IconButton } from '../../design-system/components/IconButton'
 import { socialLoginUrl } from './api'
 import styles from './LoginModal.module.css'
 
 interface Props {
+  readonly entryPoint?: 'button' | 'failed_return' | 'required_redirect'
   readonly loginFailed: boolean
   readonly sessionError: boolean
   readonly onClose: () => void
   readonly returnFocusRef: RefObject<HTMLButtonElement | null>
 }
 
-export function LoginModal({ loginFailed, sessionError, onClose, returnFocusRef }: Props) {
+export function LoginModal({ loginFailed, sessionError, onClose, returnFocusRef, entryPoint = 'button' }: Props) {
+  const [modalId] = useState(createAnalyticsId)
+  const initialEntryPoint = useRef(entryPoint)
+  const closing = useRef(false)
   const dialogRef = useRef<HTMLDialogElement>(null)
   const alertRef = useRef<HTMLDivElement>(null)
   const providerRef = useRef<HTMLAnchorElement>(null)
   const titleId = useId()
   const descriptionId = useId()
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const trigger = document.activeElement
     const returnTarget = returnFocusRef.current
     const dialog = dialogRef.current
+    setReplaySensitive('login_modal', true)
     dialog?.showModal()
+    captureProductEvent('login_modal_opened', { entry_point: initialEntryPoint.current, login_modal_id: modalId },
+      { dedupeKey: `login-modal:${modalId}` })
     const initialFocus = alertRef.current ?? providerRef.current
     initialFocus?.focus({ preventScroll: true })
     return () => {
       dialog?.close()
+      setReplaySensitive('login_modal', false)
       const target = returnTarget ?? trigger
       if (target instanceof HTMLElement && target.isConnected) target.focus({ preventScroll: true })
     }
-  }, [returnFocusRef])
+  }, [returnFocusRef, modalId])
+
+  function close(reason: 'button' | 'escape' | 'backdrop') {
+    if (closing.current) return
+    closing.current = true
+    captureProductEvent('login_modal_closed', { login_modal_id: modalId, reason })
+    onClose()
+  }
 
   return createPortal(
-    <dialog ref={dialogRef} className={styles.dialog} aria-labelledby={titleId}
+    <dialog ref={dialogRef} className={`${styles.dialog} ph-no-capture`} aria-labelledby={titleId}
       aria-describedby={descriptionId}
-      onCancel={(event) => { event.preventDefault(); onClose() }}
+      onCancel={(event) => { event.preventDefault(); close('escape') }}
       onKeyDown={(event) => event.stopPropagation()}
       onClick={(event) => {
         if (event.target !== event.currentTarget) return
         const rect = event.currentTarget.getBoundingClientRect()
-        if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose()
+        if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) close('backdrop')
       }}>
       <div className={styles.content}>
-        <IconButton className={styles.close} label="로그인 닫기" onClick={onClose}>
+        <IconButton className={styles.close} label="로그인 닫기" onClick={() => close('button')}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
             <path d="m5 5 14 14M19 5 5 19" />
           </svg>
@@ -63,13 +79,13 @@ export function LoginModal({ loginFailed, sessionError, onClose, returnFocusRef 
           </div>
         )}
         <div className={styles.actions}>
-          <a ref={providerRef} className={`${styles.provider} ${styles.kakao}`} href={socialLoginUrl('kakao')}>
+          <a ref={providerRef} className={`${styles.provider} ${styles.kakao}`} href={socialLoginUrl('kakao')} onClick={() => captureProductEvent('login_provider_clicked', { provider: 'kakao', login_modal_id: modalId })}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M12 3C6.48 3 2 6.36 2 10.5c0 2.63 1.82 4.94 4.57 6.28l-1.16 4.13 4.73-2.98c.6.05 1.23.07 1.86.07 5.52 0 10-3.36 10-7.5S17.52 3 12 3Z" />
             </svg>
             카카오톡으로 로그인
           </a>
-          <a className={`${styles.provider} ${styles.google}`} href={socialLoginUrl('google')}>
+          <a className={`${styles.provider} ${styles.google}`} href={socialLoginUrl('google')} onClick={() => captureProductEvent('login_provider_clicked', { provider: 'google', login_modal_id: modalId })}>
             <img className={styles.googleMark} src="/auth/google-g.png" width="20" height="20" alt="" />
             Google로 로그인
           </a>

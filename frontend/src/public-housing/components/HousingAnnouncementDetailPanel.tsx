@@ -1,3 +1,5 @@
+import { captureProductEvent } from '../../analytics/productAnalytics'
+import { detailVisitId, useDetailScrollAnalytics } from './detailAnalytics'
 import { toHttpUrl } from '../presentation/httpUrl.ts'
 import {
   type KeyboardEvent,
@@ -140,6 +142,7 @@ export function HousingAnnouncementDetailPanel({
   onOpenComplex,
   backButton,
 }: HousingAnnouncementDetailPanelProps) {
+  const scrollAnalytics = useDetailScrollAnalytics('ANNOUNCEMENT', detail.announcementId)
   const sectionId = useId()
   const { scrollRef, sectionRefs, activeSection, trackSection, scrollToSection } =
     useAnnouncementSections(detail.announcementId)
@@ -230,7 +233,8 @@ export function HousingAnnouncementDetailPanel({
 
       <div
         ref={scrollRef}
-        onScroll={trackSection}
+        {...scrollAnalytics}
+        onScroll={(event) => { scrollAnalytics.onScroll(event); trackSection() }}
         className={styles.scroll}
         role="region"
         aria-label={`${title} 상세 내용`}
@@ -902,7 +906,10 @@ function DocumentActions({ detail, onOpenAttachments }: {
     <footer className={styles.documents}>
       <nav aria-label="공고문 바로가기">
         <button type="button" disabled={!hasFiles} onClick={onOpenAttachments}>공고문 보기</button>
-        {sourceUrl && <ExternalLink href={sourceUrl}>공고 원문</ExternalLink>}
+        {sourceUrl && <a href={sourceUrl} target="_blank" rel="noreferrer" onClick={(event) => {
+          captureProductEvent('announcement_source_clicked', { announcement_id: detail.announcementId,
+            detail_visit_id: detailVisitId(event.currentTarget) })
+        }}>공고 원문</a>}
         {!sourceUrl && <DisabledLink>공고 원문</DisabledLink>}
       </nav>
     </footer>

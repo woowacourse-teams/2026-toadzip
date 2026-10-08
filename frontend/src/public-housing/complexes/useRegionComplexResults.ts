@@ -1,3 +1,5 @@
+import { captureProductEvent } from '../../analytics/productAnalytics'
+import { listRequestProperties } from '../analytics/useListMeasurement'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ComplexSearchFilters, PublicHousingRepository } from '../api/publicHousingRepository'
 import { searchFiltersSignature } from '../filters/searchFilterLocation'
@@ -40,6 +42,9 @@ export function useRegionComplexResults(
     const controller = new AbortController()
     requestRef.current = controller
     failedCursorRef.current = cursor
+    const measurement = cursor === null ? null : listRequestProperties('region_complex')
+    const previousIds = new Set(stateRef.current.items.map(item => item.complexId))
+    if (measurement) captureProductEvent('list_more_requested', measurement)
     setResult((current) => ({ key, state: {
       ...(cursor === null ? EMPTY : current.state),
       errorMessage: null, status: cursor === null ? 'loading' : 'loading-more',
@@ -48,6 +53,7 @@ export function useRegionComplexResults(
       ...optionsRef.current, regionCode,
     }).then((page) => {
       if (controller.signal.aborted) return
+      if (measurement) captureProductEvent('list_more_succeeded', { ...measurement, appended_count: new Set(page.items.filter(item => !previousIds.has(item.complexId)).map(item => item.complexId)).size })
       setResult((current) => {
         const previous = cursor === null ? [] : current.state.items
         const ids = new Set(previous.map((item) => item.complexId))
@@ -65,6 +71,7 @@ export function useRegionComplexResults(
     }).catch((error: unknown) => {
       if (controller.signal.aborted) return
       requestRef.current = null
+      if (measurement) captureProductEvent('list_more_failed', measurement)
       setResult((current) => ({ key, state: {
         ...current.state, status: 'error',
         errorMessage: error instanceof Error ? error.message : '잠시 후 다시 시도해 주세요.',

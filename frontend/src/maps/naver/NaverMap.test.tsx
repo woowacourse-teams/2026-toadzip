@@ -1309,7 +1309,8 @@ describe('NaverMap', () => {
 
     expect(fakeSdk.markerSetMap).toHaveBeenCalledOnce()
     expect(fakeSdk.markerSetMap).toHaveBeenCalledWith(null)
-    expect(fakeSdk.removeListener).toHaveBeenCalledTimes(3)
+    expect(fakeSdk.removeListener).toHaveBeenCalledTimes(4)
+    expect(fakeSdk.removeListener).toHaveBeenCalledWith(expect.objectContaining({ eventName: 'dragend' }))
     expect(fakeSdk.removeListener).toHaveBeenCalledWith(
       expect.objectContaining({ eventName: 'init' }),
     )
@@ -2505,7 +2506,8 @@ describe('NaverMap', () => {
       '지도 인증에 실패했습니다.',
     )
     expect(fakeSdk.destroyMap).toHaveBeenCalledOnce()
-    expect(fakeSdk.removeListener).toHaveBeenCalledTimes(3)
+    expect(fakeSdk.removeListener).toHaveBeenCalledTimes(4)
+    expect(fakeSdk.removeListener).toHaveBeenCalledWith(expect.objectContaining({ eventName: 'dragend' }))
     expect(fakeSdk.removeListener).toHaveBeenCalledWith(
       expect.objectContaining({ eventName: 'init' }),
     )
@@ -2580,7 +2582,8 @@ describe('NaverMap', () => {
       '지도를 표시하지 못했습니다.',
     )
     expect(fakeSdk.destroyMap).toHaveBeenCalledOnce()
-    expect(fakeSdk.removeListener).toHaveBeenCalledTimes(3)
+    expect(fakeSdk.removeListener).toHaveBeenCalledTimes(4)
+    expect(fakeSdk.removeListener).toHaveBeenCalledWith(expect.objectContaining({ eventName: 'dragend' }))
     expect(fakeSdk.removeListener).toHaveBeenCalledWith(
       expect.objectContaining({ eventName: 'init' }),
     )

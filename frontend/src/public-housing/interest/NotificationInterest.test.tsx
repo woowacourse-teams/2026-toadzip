@@ -1,9 +1,13 @@
+import { captureProductEvent, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NotificationInterestButton, NotificationInterestProvider } from './NotificationInterest'
-import type { NotificationInterestRepository } from './notificationInterestRepository'
+import type { NotificationInterestEvent, NotificationInterestRepository, NotificationInterestResult, NotificationOutcome } from './notificationInterestRepository'
+
+vi.mock('../../analytics/productAnalytics', () => ({ captureProductEvent: vi.fn(), setProductAuthState: vi.fn(), setReplaySensitive: vi.fn() }))
 
 beforeEach(() => {
+  vi.clearAllMocks()
   localStorage.clear()
   sessionStorage.clear()
 })
@@ -23,6 +27,136 @@ function example(repository: NotificationInterestRepository, loadUser = vi.fn().
 }
 
 describe('이메일 알림 신청', () => {
+  it.each(['ACTIVATED', 'ALREADY_ACTIVE', undefined] as const)(
+    '비즈니스 결과 %s를 기준으로만 사전신청 완료를 수집한다', async (outcome) => {
+      const record = vi.fn<NotificationInterestRepository['record']>().mockImplementation(async (event) => outcome
+        ? { eventId: event.eventId, targetType: event.targetType, targetId: event.targetId,
+          outcome, occurredAt: '2026-10-08T00:00:00Z' } : undefined)
+      render(example({ record, loadStatus: vi.fn().mockResolvedValue({ guest: true, emailConfirmed: true, targets: [] }) }))
+      fireEvent.click(await screen.findByRole('button', { name: '서울 단지 알림 받기' }))
+      await screen.findByText('서울 단지 알림 신청을 받았어요.')
+      const completions = vi.mocked(captureProductEvent).mock.calls.filter(([name]) => name === 'notification_preregistration_completed')
+      expect(completions).toHaveLength(outcome === 'ACTIVATED' ? 1 : 0)
+      if (outcome === 'ACTIVATED') {
+        expect(completions[0]?.[1]).toMatchObject({ target_type: 'COMPLEX', target_id: '1', completion_source: 'CLICKED' })
+        expect(completions[0]?.[2]?.dedupeKey).toBe(`notification-completed:${record.mock.calls[0]?.[0].eventId}`)
+      }
+    },
+  )
+
+  it('다른 탭에서 이메일이 삭제된 NOT_ACTIVATED 응답은 성공 대신 이메일 폼으로 돌아간다', async () => {
+    const record = vi.fn<NotificationInterestRepository['record']>().mockImplementation(async (event) =>
+      resultFor(event, event.eventType === 'CONFIRMED' ? 'ACTIVATED' : 'NOT_ACTIVATED'))
+    render(example({ record, loadStatus: vi.fn().mockResolvedValue({ guest: true, emailConfirmed: true, targets: [] }) }))
+    fireEvent.click(await screen.findByRole('button', { name: '서울 단지 알림 받기' }))
+    const email = await screen.findByRole('textbox', { name: '알림 받을 이메일' })
+    expect(screen.queryByText('서울 단지 알림 신청을 받았어요.')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
+    expect(localStorage.getItem('toadzip.notification-interest.email-confirmed')).toBe('0')
+    expect(completions()).toHaveLength(0)
+    fireEvent.change(email, { target: { value: 'guest@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: '알림 신청' }))
+    await screen.findByText('서울 단지 알림 신청을 받았어요.')
+    expect(completions()).toHaveLength(1)
+    expect(record.mock.calls[0]?.[0].eventId).not.toBe(record.mock.calls[1]?.[0].eventId)
+  })
+
+  it('UNKNOWN은 신청 성공을 만들지 않고 서버 상태를 다시 확인한다', async () => {
+    const record = vi.fn<NotificationInterestRepository['record']>().mockImplementation(async (event) => resultFor(event, 'UNKNOWN'))
+    const loadStatus = vi.fn().mockResolvedValue({ guest: true, emailConfirmed: true, targets: [] })
+    render(example({ record, loadStatus }))
+    fireEvent.click(await screen.findByRole('button', { name: '서울 단지 알림 받기' }))
+    await screen.findByText('처리 결과를 확인하지 못했어요. 현재 신청 상태를 다시 확인해 주세요.')
+    await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(2))
+    expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByText('서울 단지 알림 신청을 받았어요.')).not.toBeInTheDocument()
+    expect(completions()).toHaveLength(0)
+  })
+
+  it.each(['ACTIVATED', 'CANCELLED'] as const)('UI가 해제되어도 서버의 %s 결과는 원래 대상과 회원 상태로 수집한다', async (outcome) => {
+    const response = deferred<NotificationInterestResult>()
+    const record = vi.fn<NotificationInterestRepository['record']>().mockReturnValue(response.promise)
+    const repository = { record, loadStatus: vi.fn().mockResolvedValue({ emailConfirmed: true,
+      targets: outcome === 'CANCELLED' ? [{ targetType: 'COMPLEX', targetId: '1' }] : [] }) }
+    const view = render(example(repository))
+    const name = outcome === 'CANCELLED' ? '서울 단지 알림 취소' : '서울 단지 알림 받기'
+    fireEvent.click(await screen.findByRole('button', { name }))
+    const event = record.mock.calls[0]?.[0]
+    if (!event) throw new Error('The request should have started')
+    view.unmount()
+    await act(async () => response.resolve(resultFor(event, outcome)))
+    const nameToCapture = outcome === 'CANCELLED' ? 'notification_cancel_completed' : 'notification_preregistration_completed'
+    expect(captureProductEvent).toHaveBeenCalledWith(nameToCapture,
+      expect.objectContaining({ target_type: 'COMPLEX', target_id: '1', server_event_id: event.eventId }),
+      expect.objectContaining({ authState: 'member', pageName: 'explorer' }))
+    expect(screen.queryByText('서울 단지 알림 신청을 받았어요.')).not.toBeInTheDocument()
+  })
+
+  it('회원 요청 뒤 세션이 비회원으로 초기화되어도 늦은 성공은 회원 요청으로 남기고 새 UI를 덮지 않는다', async () => {
+    const response = deferred<NotificationInterestResult>()
+    const record = vi.fn<NotificationInterestRepository['record']>().mockReturnValue(response.promise)
+    const view = render(example({ record, loadStatus: vi.fn().mockResolvedValue({ emailConfirmed: true, targets: [] }) }))
+    fireEvent.click(await screen.findByRole('button', { name: '서울 단지 알림 받기' }))
+    const event = record.mock.calls[0]?.[0]
+    if (!event) throw new Error('The request should have started')
+    const guestRepository = { record: vi.fn().mockResolvedValue(undefined),
+      loadStatus: vi.fn().mockResolvedValue({ guest: true, emailConfirmed: false, targets: [] }) }
+    view.rerender(example(guestRepository))
+    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+    expect(setProductAuthState).toHaveBeenLastCalledWith('guest')
+    await act(async () => response.resolve(resultFor(event, 'ACTIVATED')))
+    expect(completions()).toHaveLength(1)
+    expect(completions()[0]?.[2]).toMatchObject({ authState: 'member', pageName: 'explorer' })
+    expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByText('서울 단지 알림 신청을 받았어요.')).not.toBeInTheDocument()
+  })
+
+  it('응답 유실 재시도는 같은 명령 ID를 유지하며 취소 후 새 신청은 새로운 ID를 사용한다', async () => {
+    let first = true
+    const record = vi.fn<NotificationInterestRepository['record']>().mockImplementation(async (event) => {
+      if (first) { first = false; throw new Error('response lost') }
+      return resultFor(event, event.eventType === 'CANCELLED' ? 'CANCELLED' : 'ACTIVATED')
+    })
+    render(example({ record, loadStatus: vi.fn().mockResolvedValue({ emailConfirmed: true,
+      targets: [{ targetType: 'REGION', targetId: '11' }] }) }))
+    fireEvent.click(await screen.findByRole('button', { name: '서울 단지 알림 받기' }))
+    fireEvent.click(await screen.findByRole('button', { name: '다시 시도' }))
+    await screen.findByText('서울 단지 알림 신청을 받았어요.')
+    expect(record.mock.calls[0]?.[0]).toEqual(record.mock.calls[1]?.[0])
+    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 취소' }))
+    await screen.findByText('서울 단지 알림 신청을 취소했어요.')
+    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
+    await screen.findByText('서울 단지 알림 신청을 받았어요.')
+    expect(record.mock.calls[1]?.[0].eventId).not.toBe(record.mock.calls[2]?.[0].eventId)
+    expect(record.mock.calls[2]?.[0].eventId).not.toBe(record.mock.calls[3]?.[0].eventId)
+    expect(completions()).toHaveLength(2)
+  })
+
+  it('창으로 돌아온 뒤 확인된 알림 상태로 분석의 회원 상태도 갱신한다', async () => {
+    const loadStatus = vi.fn().mockResolvedValueOnce({ emailConfirmed: true, targets: [] })
+      .mockResolvedValueOnce({ guest: true, emailConfirmed: false, targets: [] })
+    render(example({ record: vi.fn().mockResolvedValue(undefined), loadStatus }))
+    await waitFor(() => expect(setProductAuthState).toHaveBeenLastCalledWith('member'))
+    fireEvent.focus(window)
+    await waitFor(() => expect(setProductAuthState).toHaveBeenLastCalledWith('guest'))
+  })
+
+  it('이메일 폼을 열기 전에 리플레이를 중단하고 분석 속성에 이메일을 넣지 않는다', async () => {
+    const record = vi.fn<NotificationInterestRepository['record']>().mockImplementation(async (event) => ({
+      eventId: event.eventId, targetType: event.targetType, targetId: event.targetId,
+      outcome: event.eventType === 'CONFIRMED' ? 'ACTIVATED' : 'NOT_ACTIVATED', occurredAt: '2026-10-08T00:00:00Z',
+    }))
+    render(example({ record }))
+    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
+    const email = await screen.findByRole('textbox', { name: '알림 받을 이메일' })
+    expect(setReplaySensitive).toHaveBeenCalledWith('notification_form', true)
+    fireEvent.change(email, { target: { value: 'analytics-secret@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: '알림 신청' }))
+    await screen.findByText('서울 단지 알림 신청을 받았어요.')
+    expect(JSON.stringify(vi.mocked(captureProductEvent).mock.calls)).not.toContain('analytics-secret')
+    expect(setReplaySensitive).toHaveBeenLastCalledWith('notification_form', false)
+  })
+
   it('상세 내부에서 실패한 알림 요청도 native modal로 재시도와 닫기를 제공한다', async () => {
     const record = vi.fn<NotificationInterestRepository['record']>().mockRejectedValue(new Error('network'))
     render(<NotificationInterestProvider repository={{ record }}>
@@ -449,4 +583,11 @@ function deferred<T>() {
   let reject!: (reason?: unknown) => void
   const promise = new Promise<T>((complete, fail) => { resolve = complete; reject = fail })
   return { promise, resolve, reject }
+}
+
+function resultFor(event: NotificationInterestEvent, outcome: NotificationOutcome): NotificationInterestResult {
+  return { eventId: event.eventId, targetType: event.targetType, targetId: event.targetId, outcome, occurredAt: '2026-10-08T00:00:00Z' }
+}
+function completions() {
+  return vi.mocked(captureProductEvent).mock.calls.filter(([name]) => name === 'notification_preregistration_completed')
 }

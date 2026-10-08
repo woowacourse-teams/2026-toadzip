@@ -1,7 +1,11 @@
+import { captureProductEvent, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
-import { afterEach, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { UserSessionControl } from './UserSessionControl'
+
+vi.mock('../../analytics/productAnalytics', () => ({ captureProductEvent: vi.fn(), createAnalyticsId: () => 'modal-id', setProductAuthState: vi.fn(), setReplaySensitive: vi.fn() }))
+beforeEach(() => vi.clearAllMocks())
 
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 
@@ -127,4 +131,17 @@ it('지도 사이드바의 로그인 계정은 마이페이지에서 기존 로�
   fireEvent.click(account)
   expect(account.closest('details')).toHaveAttribute('open')
   expect(screen.getByRole('button', { name: '로그아웃' })).toBeVisible()
+})
+
+it('로그인 조회는 브라우저 ID를 바꾸지 않고 상태와 명시적 모달 행동만 수집한다', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 401, ok: false }))
+  render(<MemoryRouter><UserSessionControl /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: '로그인' }))
+  expect(setProductAuthState).toHaveBeenCalledWith('guest')
+  expect(setReplaySensitive).toHaveBeenCalledWith('login_modal', true)
+  expect(captureProductEvent).toHaveBeenCalledWith('login_modal_opened',
+    { entry_point: 'button', login_modal_id: 'modal-id' }, { dedupeKey: 'login-modal:modal-id' })
+  fireEvent.click(screen.getByRole('button', { name: '로그인 닫기' }))
+  expect(captureProductEvent).toHaveBeenCalledWith('login_modal_closed', { login_modal_id: 'modal-id', reason: 'button' })
+  expect(setReplaySensitive).toHaveBeenLastCalledWith('login_modal', false)
 })

@@ -1,3 +1,4 @@
+import { captureProductEvent, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import { getCurrentUser, logoutUser } from './api'
@@ -19,6 +20,10 @@ export function UserSessionControl({ onLogout, presentation = 'default' }: { rea
   const remainingParams = new URLSearchParams(searchParams)
   remainingParams.delete('login')
   const remainingSearch = remainingParams.toString()
+
+  useEffect(() => {
+    setProductAuthState(session === 'signed-in' ? 'member' : session === 'guest' ? 'guest' : 'unknown')
+  }, [session])
 
   useEffect(() => {
     if (session !== 'signed-in' || !loginRequested) return
@@ -44,13 +49,17 @@ export function UserSessionControl({ onLogout, presentation = 'default' }: { rea
   }
 
   async function handleLogout() {
+    if (isLoggingOut) return
+    captureProductEvent('logout_requested')
     setIsLoggingOut(true)
     setLogoutError(false)
     try {
       await logoutUser()
+      captureProductEvent('logout_succeeded')
       setSession('guest')
       onLogout?.()
     } catch {
+      captureProductEvent('logout_failed', { failure_reason: 'request_failed' })
       setLogoutError(true)
     } finally {
       setIsLoggingOut(false)
@@ -78,7 +87,7 @@ export function UserSessionControl({ onLogout, presentation = 'default' }: { rea
       )}
       {session === 'guest' && (
         <button ref={loginButtonRef} className="service-login-link" type="button"
-          aria-haspopup="dialog" onClick={() => setIsLoginOpen(true)}>로그인</button>
+          aria-haspopup="dialog" onClick={() => { setReplaySensitive('login_modal', true); setIsLoginOpen(true) }}>로그인</button>
       )}
       {session === 'error' && (
         <button ref={loginButtonRef} className="service-session-retry" type="button" aria-label="로그인 상태 다시 확인" onClick={() => void retrySessionCheck()}>
@@ -86,14 +95,16 @@ export function UserSessionControl({ onLogout, presentation = 'default' }: { rea
         </button>
       )}
       {session === 'signed-in' && (
-        presentation === 'rail' ? <details className="service-account-menu">
+        presentation === 'rail' ? <details className="service-account-menu" onToggle={(event) => {
+          if (event.currentTarget.open) captureProductEvent('account_menu_opened')
+        }}>
           <summary className="service-login-link">마이페이지</summary>
           <div className="service-account-menu__panel" aria-label="계정 관리">{accountActions}</div>
         </details> : accountActions
       )}
       {logoutError && <span className="service-user-error" role="alert">로그아웃 실패</span>}
       {(isLoginOpen || loginRequested) && (session === 'guest' || session === 'error') && (
-        <LoginModal loginFailed={loginResult === 'failed'} sessionError={session === 'error'}
+        <LoginModal entryPoint={isLoginOpen ? 'button' : loginResult === 'failed' ? 'failed_return' : 'required_redirect'} loginFailed={loginResult === 'failed'} sessionError={session === 'error'}
           onClose={closeLogin} returnFocusRef={loginButtonRef} />
       )}
     </div>

@@ -1,3 +1,5 @@
+import { captureProductEvent } from '../../analytics/productAnalytics'
+import { detailVisitId, useDetailScrollAnalytics } from './detailAnalytics'
 import { toHttpUrl } from '../presentation/httpUrl.ts'
 import {
   type KeyboardEvent,
@@ -96,6 +98,7 @@ export function HousingComplexDetailPanel({
   streetView,
   onEscape,
 }: HousingComplexDetailPanelProps) {
+  const scrollAnalytics = useDetailScrollAnalytics('COMPLEX', detail.complexId)
   const initialHousingTypeId = detail.housingTypes[0]?.housingTypeId ?? null
   const [selection, setSelection] = useState<HousingTypeSelection>({
     complexId: detail.complexId,
@@ -132,6 +135,10 @@ export function HousingComplexDetailPanel({
   }, [detail.complexId, activeHousingTypeId])
 
   function selectHousingType(housingTypeId: string) {
+    if (housingTypeId !== activeHousingTypeId) captureProductEvent('housing_type_selected', {
+      complex_id: detail.complexId, housing_type_id: housingTypeId,
+      detail_visit_id: detailVisitId(headingRef.current),
+    })
     setSelection({ complexId: detail.complexId, housingTypeId })
     revealHousingType(housingTypeId)
   }
@@ -177,6 +184,7 @@ export function HousingComplexDetailPanel({
 
       <div
         className={styles.scroll}
+        {...scrollAnalytics}
         role="region"
         aria-label={`${detail.name} 단지 상세 내용`}
         tabIndex={0}

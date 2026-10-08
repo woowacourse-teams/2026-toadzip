@@ -1,3 +1,5 @@
+import { captureProductEvent, createAnalyticsId } from '../analytics/productAnalytics'
+import { isForegroundElement } from '../public-housing/analytics/useProductDetailAnalytics'
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { getStreetViewConfiguration } from './api'
 import { createStreetViewAttempt, type StreetViewAttempt } from './events'
@@ -23,6 +25,7 @@ export function useStreetView({ target, mobile, supported }: {
   readonly mobile: boolean
   readonly supported: boolean
 }) {
+  const measurement = useRef<{ id: string; complexId: string; attemptId?: string; viewed: boolean; viewState: string } | null>(null)
   const complexId = target?.complexId ?? null
   const name = target?.name ?? ''
   const [availability, setAvailability] = useState<StreetViewAvailability>({ kind: 'loading' })
@@ -42,7 +45,12 @@ export function useStreetView({ target, mobile, supported }: {
   const active = current && visible && state !== null
   const available = current && visible && availability.kind === 'loaded' && availability.configuration.enabled
 
-  const close = useCallback((reason: StreetViewCancelReason | null = 'USER_CLOSED', restoreFocus = true) => {
+  const close = useCallback((reason: StreetViewCancelReason | null = 'USER_CLOSED', restoreFocus = true, interaction?: 'escape' | 'map_button' | 'mobile_transition' | 'page_exit') => {
+    const measured = measurement.current
+    if (measured) {
+      captureProductEvent('street_view_closed', { complex_id: measured.complexId, street_view_open_id: measured.id, ...(measured.attemptId ? { attempt_id: measured.attemptId } : {}), was_viewed: measured.viewed, view_state: measured.viewState, reason: interaction ?? (reason === 'TARGET_CHANGED' ? 'target_changed' : restoreFocus ? 'user_closed' : 'navigation') })
+      measurement.current = null
+    }
     const closedTarget = identity.current.complexId
     openingRequest.current?.abort()
     if (reason !== null) lifetime.attempt?.cancel(reason)
@@ -59,7 +67,7 @@ export function useStreetView({ target, mobile, supported }: {
   useLayoutEffect(() => {
     if (current) return
     const restoreDetailFocus = mobile && panelFocusedRef.current
-    close(identity.current.complexId !== complexId ? 'TARGET_CHANGED' : null, false)
+    close(identity.current.complexId !== complexId ? 'TARGET_CHANGED' : null, false, mobile ? 'mobile_transition' : undefined)
     availabilityRequest.current?.abort()
     identity.current = { complexId, mobile, supported }
     setAvailability({ kind: 'loading' })
@@ -79,7 +87,7 @@ export function useStreetView({ target, mobile, supported }: {
   useEffect(() => {
     const generation = ++lifetime.generation
     const leavePage = () => {
-      close(null, false)
+      close(null, false, 'page_exit')
       availabilityRequest.current?.abort()
     }
     window.addEventListener('pagehide', leavePage)
@@ -109,6 +117,10 @@ export function useStreetView({ target, mobile, supported }: {
 
   async function open() {
     if (!visible || !current || complexId === null || (!active && !available)) return
+    if (active) captureProductEvent('street_view_retry_clicked', { complex_id: complexId, street_view_open_id: measurement.current?.id ?? 'unavailable' })
+    measurement.current = { id: createAnalyticsId(), complexId, viewed: false, viewState: 'checking' }
+    const measured = measurement.current
+    captureProductEvent('street_view_open_requested', { complex_id: complexId, street_view_open_id: measured.id, entry_point: 'complex_detail' })
     openingRequest.current?.abort()
     availabilityRequest.current?.abort()
     const controller = new AbortController()
@@ -120,22 +132,46 @@ export function useStreetView({ target, mobile, supported }: {
       if (controller.signal.aborted) return
       setAvailability({ kind: 'loaded', configuration })
       if (!configuration.enabled) {
+        measured.viewState = 'blocked'
+        captureProductEvent('street_view_blocked', { complex_id: complexId, street_view_open_id: measured.id, reason: configuration.disabledReason })
         setState({ kind: 'blocked', message: disabledDescription(configuration.disabledReason) })
         return
       }
       const nextAttempt = createStreetViewAttempt(configuration)
       lifetime.attempt = nextAttempt
+      measured.attemptId = nextAttempt.id
+      measured.viewState = 'loading'
       nextAttempt.start()
       setState({ kind: 'viewing', ready: false, aligned: false, photodate: null, markerStatus: null,
         session: { configuration, attempt: nextAttempt, startedAt: performance.now(), sdkStartedAt: null,
           markerLabel: `${name} · 출입구` } })
     } catch {
       if (!controller.signal.aborted) {
+        measured.viewState = 'failed'
+        captureProductEvent('street_view_failed', { complex_id: complexId, street_view_open_id: measured.id, reason: 'CONFIGURATION_REQUEST_FAILED' })
         setAvailability({ kind: 'error' })
         setState({ kind: 'error', message: LOAD_ERROR, refreshPage: false })
       }
     }
   }
+
+  useEffect(() => {
+    if (!active || state?.kind !== 'viewing' || !state.ready) return
+    const measured = measurement.current
+    if (!measured) return
+    measured.viewState = 'ready'
+    const measure = () => {
+      const panel = panelRef.current
+      if (measured.viewed || measurement.current !== measured || !panel || !isForegroundElement(panel)) return
+      measured.viewed = captureProductEvent('street_view_viewed', { complex_id: measured.complexId, street_view_open_id: measured.id, attempt_id: state.session.attempt.id, aligned: state.aligned }, { dedupeKey: `street-view:${measured.id}` })
+    }
+    const observer = new MutationObserver(measure)
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['open', 'hidden', 'inert', 'aria-hidden', 'style', 'class'] })
+    document.addEventListener('visibilitychange', measure)
+    window.addEventListener('resize', measure)
+    measure()
+    return () => { observer.disconnect(); document.removeEventListener('visibilitychange', measure); window.removeEventListener('resize', measure) }
+  }, [active, state])
 
   return {
     active, state: active ? state : null, available, availability, visible,
@@ -143,8 +179,16 @@ export function useStreetView({ target, mobile, supported }: {
     open, close, refresh: () => setRefreshCount(value => value + 1),
     onReady: (aligned: boolean) => setState(value => value?.kind === 'viewing' ? { ...value, ready: true, aligned } : value),
     onLocation: (photodate: string | null) => setState(value => value?.kind === 'viewing' ? { ...value, photodate } : value),
-    onMarkerStatus: (markerStatus: StreetViewMarkerStatus) => setState(value => value?.kind === 'viewing' ? { ...value, markerStatus } : value),
-    onFailure: (reason: StreetViewFailureReason) => setState({ kind: 'error', message: LOAD_ERROR, refreshPage: reason === 'DOCUMENT_TIMEOUT' }),
+    onMarkerStatus: (markerStatus: StreetViewMarkerStatus) => {
+      const measured = measurement.current
+      if (measured) captureProductEvent('street_view_marker_status', { complex_id: measured.complexId, street_view_open_id: measured.id, attempt_id: measured.attemptId, marker_status: markerStatus }, { dedupeKey: `street-marker:${measured.id}:${markerStatus}` })
+      setState(value => value?.kind === 'viewing' ? { ...value, markerStatus } : value)
+    },
+    onFailure: (reason: StreetViewFailureReason) => {
+      const measured = measurement.current
+      if (measured) { measured.viewState = 'failed'; captureProductEvent('street_view_failed', { complex_id: measured.complexId, street_view_open_id: measured.id, attempt_id: measured.attemptId, reason }, { dedupeKey: `street-failure:${measured.id}` }) }
+      setState({ kind: 'error', message: LOAD_ERROR, refreshPage: reason === 'DOCUMENT_TIMEOUT' })
+    },
   }
 }
 

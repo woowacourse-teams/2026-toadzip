@@ -2,16 +2,20 @@ package com.toadzip.backend.interest.service;
 
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.interest.domain.NotificationEventType;
 import com.toadzip.backend.interest.domain.NotificationInterestEvent;
+import com.toadzip.backend.interest.domain.NotificationInterestOutcome;
 import com.toadzip.backend.interest.domain.NotificationTargetType;
 import com.toadzip.backend.interest.dto.NotificationInterestRequest;
+import com.toadzip.backend.interest.dto.NotificationInterestResponse;
 import com.toadzip.backend.interest.dto.NotificationSubscriptionResponse;
 import com.toadzip.backend.interest.exception.InvalidNotificationInterestException;
-import com.toadzip.backend.interest.repository.NotificationInterestRepository;
 import com.toadzip.backend.interest.repository.NotificationGuestSubscriptionRepository;
+import com.toadzip.backend.interest.repository.NotificationInterestRepository;
 import com.toadzip.backend.interest.repository.NotificationSubscriptionRepository;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -30,59 +34,73 @@ public class NotificationInterestService {
     private final Clock clock;
 
     @Transactional
-    public void record(NotificationInterestRequest request, Long userId) {
-        NotificationInterestEvent event = NotificationInterestEvent.create(
+    public NotificationInterestResponse record(NotificationInterestRequest request, Long userId) {
+        NotificationInterestEvent event = NotificationInterestEvent.forRequest(
                 request.eventId(), request.sessionId(), request.eventType(), request.source(),
-                request.targetType(), request.targetId(), request.email(), clock.instant());
+                request.targetType(), request.targetId(), request.email(), clock.instant(), userId, request.clientId());
+        if (!repository.record(event)) {
+            NotificationInterestEvent recorded = repository.findForUpdate(event.getEventId());
+            recorded.verifySameRequest(event);
+            return response(recorded);
+        }
         if (!targetExists(request.targetType(), request.targetId())) {
             throw new InvalidNotificationInterestException();
         }
-        if (!repository.record(event)) {
-            return;
-        }
-        if (userId == null) {
-            updateGuest(request, event.getCreatedAt());
-            return;
-        }
-        switch (request.eventType()) {
-            case CONFIRMED -> {
-                if (request.email() != null) {
-                    subscriptionRepository.confirm(userId, request.targetType(), request.targetId(),
-                            request.email(), event.getCreatedAt());
-                }
-            }
-            case CLICKED -> {
-                if (subscriptionRepository.hasEmail(userId)) {
-                    subscriptionRepository.activate(userId, request.targetType(), request.targetId(),
-                            event.getCreatedAt());
-                }
-            }
-            case CANCELLED -> subscriptionRepository.cancel(userId, request.targetType(), request.targetId(),
-                    event.getCreatedAt());
-            case EXPOSED, DECLINED -> { }
-        }
+        event.complete(updateSubscription(request, userId, event.getCreatedAt()));
+        repository.complete(event);
+        return response(event);
     }
 
-    private void updateGuest(NotificationInterestRequest request, java.time.Instant now) {
+    private NotificationInterestResponse response(NotificationInterestEvent event) {
+        return new NotificationInterestResponse(event.getEventId(), event.getTargetType(), event.getTargetId(),
+                event.getOutcome(), event.getCreatedAt());
+    }
+
+    private NotificationInterestOutcome updateSubscription(
+            NotificationInterestRequest request, Long userId, Instant now) {
+        if (userId == null) {
+            return updateGuest(request, now);
+        }
+        if (request.eventType() == NotificationEventType.CONFIRMED
+                && request.email() != null) {
+            return subscriptionRepository.confirm(
+                    userId, request.targetType(), request.targetId(), request.email(), now);
+        }
+        if (request.eventType() == NotificationEventType.CLICKED
+                && subscriptionRepository.hasEmail(userId)) {
+            return subscriptionRepository.activate(userId, request.targetType(), request.targetId(), now);
+        }
+        return switch (request.eventType()) {
+            case CANCELLED -> subscriptionRepository.cancel(userId, request.targetType(), request.targetId(), now);
+            case EXPOSED, DECLINED -> NotificationInterestOutcome.OBSERVED;
+            case CLICKED, CONFIRMED -> NotificationInterestOutcome.NOT_ACTIVATED;
+        };
+    }
+
+    private NotificationInterestOutcome updateGuest(NotificationInterestRequest request, Instant now) {
         UUID clientId = request.clientId();
         if (clientId == null) {
-            return;
+            return switch (request.eventType()) {
+                case CANCELLED -> NotificationInterestOutcome.UNCHANGED;
+                case EXPOSED, DECLINED -> NotificationInterestOutcome.OBSERVED;
+                case CLICKED, CONFIRMED -> NotificationInterestOutcome.NOT_ACTIVATED;
+            };
         }
-        switch (request.eventType()) {
-            case CONFIRMED -> {
-                if (request.email() != null) {
-                    guestSubscriptionRepository.confirm(clientId, request.targetType(), request.targetId(),
-                            request.email(), now);
-                }
-            }
-            case CLICKED -> {
-                if (guestSubscriptionRepository.hasEmail(clientId)) {
-                    guestSubscriptionRepository.activate(clientId, request.targetType(), request.targetId(), now);
-                }
-            }
-            case CANCELLED -> guestSubscriptionRepository.cancel(clientId, request.targetType(), request.targetId(), now);
-            case EXPOSED, DECLINED -> { }
+        if (request.eventType() == NotificationEventType.CONFIRMED
+                && request.email() != null) {
+            return guestSubscriptionRepository.confirm(clientId, request.targetType(), request.targetId(),
+                    request.email(), now);
         }
+        if (request.eventType() == NotificationEventType.CLICKED
+                && guestSubscriptionRepository.hasEmail(clientId)) {
+            return guestSubscriptionRepository.activate(clientId, request.targetType(), request.targetId(), now);
+        }
+        return switch (request.eventType()) {
+            case CANCELLED -> guestSubscriptionRepository.cancel(
+                    clientId, request.targetType(), request.targetId(), now);
+            case EXPOSED, DECLINED -> NotificationInterestOutcome.OBSERVED;
+            case CLICKED, CONFIRMED -> NotificationInterestOutcome.NOT_ACTIVATED;
+        };
     }
 
     @Transactional(readOnly = true)
