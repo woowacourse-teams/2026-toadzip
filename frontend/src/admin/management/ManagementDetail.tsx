@@ -6,15 +6,16 @@ import { getManagementDetail, requestManagementApi, managementResourcePath, Mana
 import { parseManagementDetail, type ManagementDetailData, type ManagementResource } from './managementContract'
 import { announcementSections, complexSections, display, formValues, valueAt } from './fields'
 import { EditFields } from './EditFields'
-import { ManagementSummaryTable } from './ManagementSummaryTable'
+import { ComplexRelationsEditor } from './ComplexRelationsEditor'
 import { ManagementStatus } from './ManagementStatus'
 import { ChangeHistory } from './ChangeHistory'
 import { SupplyEditor } from './SupplyEditor'
 import { SourceUrl } from '../shared/SourceUrl'
 import { AddressPicker } from '../registration/AddressPicker'
 
-export function ManagementDetail({resource, embedded = false, onChanged}: {resource:ManagementResource; embedded?: boolean; onChanged?: () => void}) {
-  const {id = ''} = useParams()
+export function ManagementDetail({resource, embedded = false, detailId, onChanged, onBusyChange}: {resource:ManagementResource; embedded?: boolean; detailId?: string; onChanged?: () => void; onBusyChange?: (busy: boolean) => void}) {
+  const {id: routeId = ''} = useParams()
+  const id = detailId ?? routeId
   const [params] = useSearchParams()
   const candidate = params.get('returnTo') ?? ''
   const back = candidate === `/admin/${resource}` || candidate.startsWith(`/admin/${resource}?`) ? candidate : `/admin/${resource}`
@@ -30,6 +31,7 @@ export function ManagementDetail({resource, embedded = false, onChanged}: {resou
   const [section, setSection] = useState('info')
   const formRef = useRef<HTMLFormElement>(null)
   const sections = resource === 'complexes' ? complexSections : announcementSections
+  useEffect(() => { onBusyChange?.(busy) }, [busy, onBusyChange])
   useEffect(() => {
     const controller = new AbortController();setValue(null);setError('');setEditing(false);setDirty(false);setConfirmation(false)
     if (!/^[1-9][0-9]*$/.test(id)) { setError('올바른 관리 페이지 주소가 아닙니다.');return }
@@ -56,7 +58,7 @@ export function ManagementDetail({resource, embedded = false, onChanged}: {resou
     {notice ? <p className="registration-success" role="status">{notice}</p> : null}
     {value ? <><header className="management-heading"><div>{embedded ? <h2>{value.summary.name}</h2> : <h1>{value.summary.name}</h1>}<div className="management-summary-meta"><p>{value.summary.subtitle}</p><ManagementStatus summary={value.summary} /></div></div>
       {!editing || embedded ? <div className="admin-inline">{!value.summary.deleted && !editing ? <button className="admin-primary" onClick={() => {setEditing(true);setSection('info');setError('');setNotice('')}}>수정</button> : null}
-        <button disabled={busy || dirty} className={value.summary.deleted ? '' : 'admin-danger'} onClick={() => setConfirmation(true)}>{value.summary.deleted ? '복구' : '삭제'}</button></div> : null}</header>
+        <button data-admin-navigation disabled={busy || dirty} className={value.summary.deleted ? '' : 'admin-danger'} onClick={() => setConfirmation(true)}>{value.summary.deleted ? '복구' : '삭제'}</button></div> : null}</header>
       {value.summary.reviewRequired ? <p className="admin-warning">수집 원천과 관리자 수정값이 다릅니다. 공식 원문을 확인한 뒤 필요한 내용을 수정해 주세요. 저장한 관리자 값은 자동 정제로 덮어쓰지 않습니다.</p> : null}
       {confirmation ? <section className="admin-confirm" role="alertdialog" aria-label={value.summary.deleted ? '복구 확인' : '삭제 확인'}>
         <h2>{value.summary.deleted ? '복구할까요?' : '휴지통으로 이동할까요?'}</h2><p><strong>{value.summary.name}</strong></p>
@@ -69,7 +71,7 @@ export function ManagementDetail({resource, embedded = false, onChanged}: {resou
       {section === 'info' && !editing ? <>{sections.map(group => <section className="admin-detail-section" key={group.title}><h2>{group.title}</h2>
         <dl className={`admin-data-grid${group.fields.some(field => field.name === 'address.roadAddress') ? ' admin-location-grid' : ''}`}>{group.fields.map(field => <div key={field.name}><dt>{field.label}</dt><dd>{field.type === 'url'
           ? <SourceUrl url={valueAt(value.data,field.name)} /> : display(valueAt(value.data,field.name))}</dd></div>)}</dl></section>)}</> : null}
-      {!embedded && section === 'info' && !editing && resource === 'announcements' ? <ScheduleEditor key={String(value.data.version)} value={value} id={id} onSaved={saved} /> : null}
+      {!embedded && section === 'info' && !editing && resource === 'announcements' ? <ScheduleEditor key={String(value.data.version)} value={value} id={id} onSaved={saved} onBusyChange={setBusy} /> : null}
       {editing && section === 'info' ? <form ref={formRef} key={String(value.data.version)} onChange={() => setDirty(true)} onSubmit={event => {
         event.preventDefault();setBusy(true);setError('');setErrors({})
         const body = formValues(event.currentTarget,sections.flatMap(group => group.fields),value.data)
@@ -88,12 +90,9 @@ export function ManagementDetail({resource, embedded = false, onChanged}: {resou
           }} /> : null}
           <EditFields fields={group.fields} data={value.data} errors={errors} scheduleReviewed={value.scheduleReviewed} /></fieldset>)}
         <div className="admin-save-bar"><button className="admin-primary" disabled={busy}>{busy ? '저장 중…' : '변경사항 저장'}</button><button type="button" disabled={busy} onClick={() => {if(!dirty || window.confirm('변경사항을 버릴까요?')) {if (embedded) setAttempt(current => current + 1); else setEditing(false);setDirty(false);setError('')}}}>{embedded ? '변경 취소' : '취소'}</button></div></form> : null}
-      {embedded && section === 'schedules' && resource === 'announcements' ? <ScheduleEditor key={String(value.data.version)} value={value} id={id} onSaved={saved} /> : null}
-      {section === 'relations' ? resource === 'complexes' ? <><h2>주택형</h2>{value.housingTypes.length ? <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>이름</th><th>전용면적</th><th>세대수</th></tr></thead>
-        <tbody>{value.housingTypes.map(type => <tr key={type.id}><td>{type.name}</td><td>{type.exclusiveArea}㎡</td><td>{type.householdCount ?? '미확인'}</td></tr>)}</tbody></table></div> : <p>등록된 주택형이 없습니다.</p>}
-        <header className="admin-inline"><h2>연결된 공고</h2>{!value.summary.deleted ? <Link to={`/admin/announcements/new?mode=direct&complexId=${id}`}>이 단지에 공고 등록</Link> : null}</header>
-        <ManagementSummaryTable items={value.announcements} resource="announcements" /></> : <><h2>공급정보·단지 연결</h2>{value.supplyRows.length === 0 ? <p>등록된 공급정보가 없습니다.</p> : null}
-          {value.supplyRows.map(row => <SupplyEditor key={`${row.id}-${value.data.version}`} row={row} announcementId={id} version={Number(value.data.version)} deleted={value.summary.deleted} onSaved={saved} />)}</> : null}
+      {embedded && section === 'schedules' && resource === 'announcements' ? <ScheduleEditor key={String(value.data.version)} value={value} id={id} onSaved={saved} onBusyChange={setBusy} /> : null}
+      {section === 'relations' ? resource === 'complexes' ? <ComplexRelationsEditor value={value} id={id} onSaved={saved} onBusyChange={setBusy} /> : <><h2>공급정보·단지 연결</h2>{value.supplyRows.length === 0 ? <p>등록된 공급정보가 없습니다.</p> : null}
+          {value.supplyRows.map(row => <SupplyEditor key={`${row.id}-${value.data.version}`} row={row} announcementId={id} version={Number(value.data.version)} deleted={value.summary.deleted} onSaved={saved} onBusyChange={setBusy} />)}</> : null}
       {section === 'history' ? <><h2>출처</h2><dl className="admin-data-grid"><div><dt>공식 원문 URL</dt><dd><SourceUrl url={value.data.originalUrl} /></dd></div><div><dt>원천 식별자</dt><dd>{value.sourceIdentifier || '기록 없음'}</dd></div></dl><p>관리자 최종 변경: {value.summary.updatedAt ? new Date(value.summary.updatedAt).toLocaleString('ko-KR') : '변경 이력 없음'}</p>
         <ChangeHistory resource={resource} id={id} version={Number(value.data.version)} /></> : null}
       </div>

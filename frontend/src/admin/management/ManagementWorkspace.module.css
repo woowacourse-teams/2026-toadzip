@@ -151,3 +151,12 @@
   .editor :global(.management-heading) h2 { font-size: 17px; }
 }
 @media (prefers-reduced-motion: reduce) { .workspace :is(input, select, textarea) { transition: none; } }
+.editor :global(.admin-relations-section) { margin-bottom: 28px; min-width: 0; }
+.editor :global(.admin-relations-section) > h2 { margin-bottom: 14px; }
+.editor :global(.admin-relation-edit) { margin-top: 16px; padding: 20px; background: var(--ds-color-surface-subtle); border: 1px solid var(--ds-color-divider); border-radius: 10px; }
+.editor :global(.admin-linked-announcement) { margin-top: 20px; padding: 16px; border: 1px solid var(--ds-color-divider); border-radius: 10px; background: var(--ds-color-surface-subtle); }
+.editor :global(.admin-linked-announcement) > header { justify-content: space-between; }
+.editor :global(.admin-linked-announcement) :global(.management-heading) { padding-inline: 0; }
+.editor :global(.admin-linked-announcement) :global(.admin-section-tabs) { padding-inline: 0; background: transparent; }
+.editor :global(.admin-linked-announcement) :global(.management-detail-content) { overflow: visible; padding: 20px 0 0; scrollbar-gutter: auto; }
+.editor :global(.admin-linked-announcement) :global(.admin-save-bar) { margin-inline: -16px; padding-inline: 16px; }

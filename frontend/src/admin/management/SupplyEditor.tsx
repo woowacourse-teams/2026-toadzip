@@ -7,8 +7,8 @@ import { getManagementDetail, requestManagementApi, managementResourcePath, Mana
 import { parseManagementDetail, type ManagementDetailData, type ManagementSupplyRow, type ManagementHousingType } from './managementContract'
 import { display, formValues, supplyFields } from './fields'
 
-export function SupplyEditor({ row, announcementId, version, deleted, onSaved }: {
-  row: ManagementSupplyRow; announcementId: string; version: number; deleted: boolean; onSaved: (value: ManagementDetailData) => void
+export function SupplyEditor({ row, announcementId, version, deleted, onSaved, onBusyChange }: {
+  row: ManagementSupplyRow; announcementId: string; version: number; deleted: boolean; onSaved: (value: ManagementDetailData) => void; onBusyChange?: (busy: boolean) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [complexId, setComplexId] = useState(row.housingComplexId)
@@ -19,6 +19,7 @@ export function SupplyEditor({ row, announcementId, version, deleted, onSaved }:
   const [error, setError] = useState('')
   const [errors, setErrors] = useState<Record<string,string>>({})
   const complexRequest = useRef<AbortController | null>(null)
+  useEffect(() => { onBusyChange?.(busy) }, [busy, onBusyChange])
   useEffect(() => () => complexRequest.current?.abort(), [])
   async function loadComplex(id: number, name?: string) {
     complexRequest.current?.abort()
