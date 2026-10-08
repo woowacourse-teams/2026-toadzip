@@ -98,6 +98,8 @@ import {
   presentMapComplexMarker,
 } from './presentation/mapMarkerPresentation.ts'
 import { enrichRecentComplexes, readRecentComplexes, rememberComplex } from './navigation/recentComplexes.ts'
+import { FirstVisitWelcome } from './onboarding/FirstVisitWelcome.tsx'
+import type { StarterPlace } from './onboarding/starterPlaces.ts'
 import { IntegratedSearch } from './search/IntegratedSearch.tsx'
 import type {
   IntegratedSearchRepository,
@@ -1015,6 +1017,19 @@ export function PublicHousingExplorer({
   }, [cancelComplexListRequest, cancelServerMapRequest, complexFilters,
     finishClusterTransition, requestServerMapWithListIntent])
 
+  const handleStarterPlaceSelect = useCallback((place: StarterPlace) => {
+    pendingDetailCameraRef.current = null
+    boundarySelectionRef.current = null
+    setSelectedSearchRegion(null)
+    setActiveResultTab('complexes')
+    setMapCameraTarget({ ...place.center, zoom: place.zoom })
+    setCameraRequestId((current) => current + 1)
+    const query = setRegionBoundaryCode(clearDetailQuery(new URLSearchParams(location.search)), null)
+    navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(query) }, {
+      state: clearDetailHistoryState(location.state),
+    })
+  }, [location, navigate])
+
   const handleIntegratedSearchSelect = useCallback((item: SearchResultItem) => {
     if (item.type === 'COMPLEX') {
       trackEvent('select_search_result', { result_type: 'complex', complex_id: item.id })
@@ -1180,6 +1195,9 @@ export function PublicHousingExplorer({
     <div className={!hasDetail
       ? 'housing-explorer'
       : 'housing-explorer has-detail'}>
+      {!['required', 'failed'].includes(new URLSearchParams(location.search).get('login') ?? '') && (
+        <FirstVisitWelcome onPlaceSelect={handleStarterPlaceSelect} onRegionSelect={handleIntegratedSearchSelect} repository={searchRepository} />
+      )}
       <aside className="housing-results" aria-label="공공임대주택 검색 결과">
         <IntegratedSearch
           onActiveChange={setIntegratedSearchActive}

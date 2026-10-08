@@ -39,7 +39,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.LockSupport;
 import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 import org.junit.jupiter.api.BeforeEach;
@@ -754,6 +753,7 @@ class MyHomeComplexCollectionServiceTest {
         CountDownLatch slowWorkerStarted = new CountDownLatch(1);
         CountDownLatch slowWorkerInterrupted = new CountDownLatch(1);
         CountDownLatch allowSlowWorkerToFinish = new CountDownLatch(1);
+        CountDownLatch slowWorkerInterruptedTwice = new CountDownLatch(2);
         AtomicReference<Thread> serviceThread = new AtomicReference<>();
         when(regionCatalog.findAll()).thenReturn(List.of(failedRegion, slowRegion));
         when(concurrentCollector.collect(eq(failedRegion), eq(request), any(AtomicBoolean.class)))
@@ -764,7 +764,7 @@ class MyHomeComplexCollectionServiceTest {
         when(concurrentCollector.collect(eq(slowRegion), eq(request), any(AtomicBoolean.class)))
                 .thenAnswer(invocation -> {
                     slowWorkerStarted.countDown();
-                    awaitIgnoringInterrupt(allowSlowWorkerToFinish, slowWorkerInterrupted);
+                    awaitIgnoringInterrupt(allowSlowWorkerToFinish, slowWorkerInterrupted, slowWorkerInterruptedTwice);
                     return MyHomeComplexCollectionReport.empty();
                 });
         ExecutorService caller = Executors.newSingleThreadExecutor();
@@ -778,7 +778,9 @@ class MyHomeComplexCollectionServiceTest {
             assertThat(slowWorkerInterrupted.await(2, TimeUnit.SECONDS)).isTrue();
             assertThat(collection.isDone()).isFalse();
             serviceThread.get().interrupt();
-            assertThat(awaitInterruptConsumed(serviceThread.get())).isTrue();
+            // 인터럽트 플래그 해제만으로는 종료 대기에서 예외를 처리했는지 알 수 없다.
+            assertThat(slowWorkerInterruptedTwice.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(collection.isDone()).isFalse();
             allowSlowWorkerToFinish.countDown();
 
             assertThatThrownBy(() -> collection.get(2, TimeUnit.SECONDS))
@@ -803,7 +805,7 @@ class MyHomeComplexCollectionServiceTest {
         return new MyHomeComplexCollectionRequest("11", "110", 2, 10);
     }
 
-    private void awaitIgnoringInterrupt(CountDownLatch release, CountDownLatch interrupted) {
+    private void awaitIgnoringInterrupt(CountDownLatch release, CountDownLatch... interruptions) {
         boolean restoreInterrupt = false;
         while (true) {
             try {
@@ -811,21 +813,15 @@ class MyHomeComplexCollectionServiceTest {
                 break;
             }
             catch (InterruptedException exception) {
-                interrupted.countDown();
+                for (CountDownLatch interruption : interruptions) {
+                    interruption.countDown();
+                }
                 restoreInterrupt = true;
             }
         }
         if (restoreInterrupt) {
             Thread.currentThread().interrupt();
         }
-    }
-
-    private boolean awaitInterruptConsumed(Thread thread) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-        while (thread.isInterrupted() && System.nanoTime() < deadline) {
-            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
-        }
-        return !thread.isInterrupted();
     }
 
     private JsonNode responseWithoutTotalCount(String items) {
