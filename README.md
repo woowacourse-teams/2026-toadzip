@@ -22,7 +22,8 @@
 | [docs/](docs/README.md) | 환경별 실행 방법, 서비스 정책, API 안내와 운영용 SQL·예시 데이터를 관리합니다. |
 | [scripts/](scripts/README.md) | 저장소 규칙 검사, HTTPS·DB 점검과 운영 보조 스크립트를 관리합니다. |
 | [tests/](tests/README.md) | 저장소 규칙 검사 도구와 DB 백업 자동화의 테스트를 관리합니다. |
-| [tmp/](tmp/README.md) | 로고 비교 시안, 이전 자산과 생성 스크립트 등 로컬 작업 자료를 보관합니다. |
+| `.local/` | 개인 메모·계획·실험·검증 자료를 보관하는 Git 제외 폴더입니다. 사용 기준은 [기여 규칙](CONTRIBUTING.md#로컬-작업-자료)을 따릅니다. |
+| [tmp/](tmp/README.md) | 기존 로고 비교 시안과 이전 자산의 보관 위치를 안내합니다. 새 개인 작업 자료는 `.local/`에 둡니다. |
 | [.github/](.github/README.md) | GitHub Actions 워크플로와 이슈·PR 템플릿을 관리합니다. |
 | [.githooks/](.githooks/) | 커밋 전 저장소 규칙과 커밋 메시지를 검사하는 Git 훅을 관리합니다. |
 | [.codex/](.codex/) | 코드 탐색·설계 검토·리뷰를 맡는 에이전트 역할 설정을 관리합니다. |
