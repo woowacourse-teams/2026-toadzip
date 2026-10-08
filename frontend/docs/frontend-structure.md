@@ -17,6 +17,7 @@
 | `navigation/detailLocation.ts`, `detailHistory.ts` | 상세 URL와 history state의 검증·변환 |
 | `components/HousingDetailStatePanel.tsx` | 단지·공고 상세의 로딩·미발견·오류 표시와 포커스·닫기 |
 | `presentation/` | API 모델에서 카드·상세 표시 모델로 변환, 라벨·HTTP(S) 링크 정책 |
+| `src/street-view/` | PC 단지 거리뷰의 실행 정보·모달·시도 결과와 별도 iframe SDK 수명주기 |
 
 목록 요청 성공 후의 스크롤·강조 초기화와 지도 정책은 Explorer에 둔다.
 URL은 공유 가능한 필터·상세 선택을 소유하고, history state는 상세 간 이동의 복귀 대상과 포커스 정보를 가진다.
@@ -38,6 +39,11 @@ URL은 공유 가능한 필터·상세 선택을 소유하고, history state는 
 
 지도 객체를 새 전역 상태로 옮기지 않는다. 추가한 SDK 이벤트와 DOM 핸들러는 해당 소유자에서 해제한다.
 마커 표시 필드를 추가하면 내용 비교 키와 갱신 행동 테스트도 함께 확인한다.
+
+거리뷰는 기존 GL 로더와 분리한다. `StreetViewEntry`가 이용 가능 여부와 모달을,
+`StreetViewFrame`이 자식 문서 메시지와 초기화 기한을 소유한다. 별도 `street-view.html`의
+`runtime.ts`는 파노라마 SDK만 실행한다. API·이벤트 수집과 SDK 실행 경계, 제공 정책은
+[단지 주변 거리뷰](street-view.md)를 따른다.
 
 ## 관리자와 API
 
