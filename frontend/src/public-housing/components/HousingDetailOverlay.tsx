@@ -1,12 +1,11 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react'
-import { useMobileViewport } from './useMobileViewport'
 
-export function HousingDetailOverlay({ label, onClose, children }: {
+export function HousingDetailOverlay({ label, mobile, onClose, children }: {
   readonly label: string
+  readonly mobile: boolean
   readonly onClose: () => void
   readonly children: ReactNode
 }) {
-  const mobile = useMobileViewport()
   const dialog = useRef<HTMLDialogElement>(null)
 
   useLayoutEffect(() => {
@@ -21,6 +20,9 @@ export function HousingDetailOverlay({ label, onClose, children }: {
     if (foreground instanceof HTMLDialogElement && foreground !== element) {
       if (mobile) { foreground.close(); foreground.showModal() }
       if (focused instanceof HTMLElement) focused.focus({ preventScroll: true })
+    } else if (focused instanceof HTMLElement && element.contains(focused)) {
+      // showModal runs the browser's autofocus steps; keep the detail control being read.
+      focused.focus({ preventScroll: true })
     }
   }, [mobile])
 

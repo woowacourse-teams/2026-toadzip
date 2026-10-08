@@ -611,6 +611,28 @@ a {
   min-height: 0;
 }
 
+.housing-map-base {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.housing-map-filter[hidden], .housing-map-feedback[hidden] { display: none; }
+
+/* Keep focus navigation inside the viewer from scrolling the fixed app shell. */
+.app-shell:has(.has-street-view) { overflow: clip; }
+
+.housing-street-view-layer {
+  position: absolute;
+  z-index: 340;
+  inset: 0 0 0 calc(var(--explorer-search-width) + var(--explorer-gutter) + var(--explorer-panel-gap));
+  min-width: 0;
+  min-height: 0;
+}
+
+
 .housing-map-filter {
   position: absolute;
   z-index: 200;
