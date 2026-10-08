@@ -5,6 +5,7 @@ export interface Selection { readonly target: NotificationTarget; readonly sourc
 export const InterestContext = createContext<{
   readonly blocked: boolean
   readonly clearingAll: boolean
+  readonly batchError: string
   readonly clearAll: (trigger: HTMLButtonElement) => void
   readonly mode: 'loading' | 'guest' | 'member' | 'error'
   readonly requested: ReadonlyMap<string, boolean>

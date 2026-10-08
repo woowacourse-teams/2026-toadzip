@@ -134,7 +134,7 @@ it('회원만 계정 아이콘 위의 알림 보관함과 알림 관리에 접�
   render(<MemoryRouter><UserSessionControl presentation="rail" /></MemoryRouter>)
   expect(await screen.findByRole('button', { name: '알림 보관함' })).toHaveAttribute('aria-haspopup', 'dialog')
   fireEvent.click(screen.getByText('마이페이지'))
-  expect(screen.getByRole('link', { name: '알림 관리' })).toHaveAttribute('href', '/mypage/notifications')
+  expect(screen.getByRole('button', { name: '알림 관리' })).toHaveAttribute('aria-haspopup', 'dialog')
 })
 
 it('비회원 사이드바에는 알림 보관함을 표시하지 않는다', async () => {
@@ -142,5 +142,5 @@ it('비회원 사이드바에는 알림 보관함을 표시하지 않는다', as
   render(<MemoryRouter><UserSessionControl presentation="rail" /></MemoryRouter>)
   await screen.findByRole('button', { name: '로그인' })
   expect(screen.queryByRole('button', { name: '알림 보관함' })).not.toBeInTheDocument()
-  expect(screen.queryByRole('link', { name: '알림 관리' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '알림 관리' })).not.toBeInTheDocument()
 })

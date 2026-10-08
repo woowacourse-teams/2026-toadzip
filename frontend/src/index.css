@@ -2645,7 +2645,7 @@ button {
 .service-notification-inbox svg { width: 20px; height: 20px; }
 .service-notification-inbox:hover { background: var(--ds-color-action-soft); }
 .service-notification-inbox:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
-.service-notification-management { display: block; padding: 10px 0; color: var(--ds-color-action); white-space: nowrap; }
+.service-notification-management { display: block; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; padding: 10px 0; color: var(--ds-color-action); white-space: nowrap; }
 @media (max-width: 767px) {
   .app-shell:has(.service-notification-inbox) .housing-navigation { width: 50%; }
   .service-rail-account:has(.service-notification-inbox) { left: 50%; width: 50%; }

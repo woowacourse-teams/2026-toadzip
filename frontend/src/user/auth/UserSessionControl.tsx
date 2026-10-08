@@ -13,7 +13,7 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [logoutError, setLogoutError] = useState(false)
   const [isLoginOpen, setIsLoginOpen] = useState(false)
-  const [memberView, setMemberView] = useState<'inbox' | 'account' | null>(null)
+  const [memberView, setMemberView] = useState<'inbox' | 'settings' | 'account' | null>(null)
   const memberTrigger = useRef<HTMLButtonElement>(null)
   const mobile = useMobileViewport()
   const [searchParams] = useSearchParams()
@@ -85,7 +85,10 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
   }
 
   const accountActions = <>
-    <Link className="service-notification-management" to="/mypage/notifications">알림 관리</Link>
+    <button className="service-notification-management" type="button" aria-haspopup="dialog" onClick={(event) => {
+      if (memberView !== 'account') memberTrigger.current = event.currentTarget
+      setMemberView('settings')
+    }}>알림 관리</button>
     <Link className="service-account-feedback" to="/feedback">제보/의견 보내기</Link>
     <span className="service-login-status"><span aria-hidden="true" />로그인됨</span>
     <button className="service-logout-button" type="button" disabled={isLoggingOut}
@@ -121,7 +124,7 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
           <div className="service-account-menu__panel" aria-label="계정 관리">{accountActions}</div>
         </details> : accountActions
       )}
-      {session === 'signed-in' && (memberView || inboxRequested) && <MemberMenuModal view={memberView ?? 'inbox'} onClose={closeMember} returnFocusRef={memberTrigger}>
+      {session === 'signed-in' && (memberView || inboxRequested) && <MemberMenuModal key={memberView === 'account' ? 'account' : 'notifications'} view={memberView ?? 'inbox'} onClose={closeMember} returnFocusRef={memberTrigger}>
         {accountActions}
         {logoutError && <p role="alert">로그아웃하지 못했어요. 다시 시도해 주세요.</p>}
       </MemberMenuModal>}

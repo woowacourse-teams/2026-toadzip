@@ -224,7 +224,7 @@ export function NotificationInterestProvider({ children, repository = notificati
   }, [eventFor, repository])
 
   const context = useMemo(() => ({ blocked: mode === 'loading' || mode === 'error' || busy || dialog !== null || failed !== null,
-    mode, requested, targets, request, expose, resetSession, refreshStatus, clearAll, clearingAll }), [clearAll, clearingAll, busy, dialog, expose, failed, mode, request, requested, targets, resetSession, refreshStatus])
+    mode, requested, targets, request, expose, resetSession, refreshStatus, clearAll, clearingAll, batchError }), [clearAll, clearingAll, batchError, busy, dialog, expose, failed, mode, request, requested, targets, resetSession, refreshStatus])
   function dismiss() { restoreFocus.current = true; setDialog(null); setFailed(null) }
 
   return <InterestContext.Provider value={context}>
@@ -253,7 +253,6 @@ export function NotificationInterestProvider({ children, repository = notificati
       </div>
     </InterestDialog>}
     {!dialog && !failed && message && <div className={styles.feedback}><p role="status">{message}</p></div>}
-    {batchError && <div className={styles.feedback} role="alert"><p>{batchError}</p></div>}
     {mode === 'error' && <div className={styles.feedback} role="alert">
       <p>알림 상태를 불러오지 못했어요.</p><button type="button" onClick={refreshStatus}>다시 시도</button>
     </div>}

@@ -1,11 +1,11 @@
-import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { Link } from 'react-router'
-import { notificationPreparationDescription, notificationPreparationNotice, notificationPreparationTitle } from '../../public-housing/interest/NotificationInterestContext'
+import { notificationPreparationTitle } from '../../public-housing/interest/NotificationInterestContext'
+import { NotificationSettings } from '../../public-housing/interest/NotificationSettings'
 import styles from './MemberMenuModal.module.css'
 
 export function MemberMenuModal({ view, onClose, returnFocusRef, children }: {
-  readonly view: 'inbox' | 'account'
+  readonly view: 'inbox' | 'settings' | 'account'
   readonly onClose: () => void
   readonly returnFocusRef: RefObject<HTMLElement | null>
   readonly children?: ReactNode
@@ -13,7 +13,11 @@ export function MemberMenuModal({ view, onClose, returnFocusRef, children }: {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
   const titleId = useId()
-  const title = view === 'inbox' ? '알림 보관함' : '마이페이지'
+  const title = view === 'account' ? '마이페이지' : '알림 보관함'
+  const [activeTab, setActiveTab] = useState<'received' | 'settings'>(view === 'settings' ? 'settings' : 'received')
+  const receivedRef = useRef<HTMLButtonElement>(null)
+  const settingsRef = useRef<HTMLButtonElement>(null)
+  const tabId = useId()
   useEffect(() => {
     const previous = returnFocusRef.current ?? document.activeElement
     const dialog = dialogRef.current
@@ -39,22 +43,34 @@ export function MemberMenuModal({ view, onClose, returnFocusRef, children }: {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6" /></svg>
       </button>
     </header>
-    {view === 'inbox' ? <>
-      <section className={styles.preparation}>
-        <div className={styles.illustration} aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
-          </svg>
-        </div>
-        <span className={styles.badge}>준비 중</span>
-        <h3>{notificationPreparationTitle}</h3>
-        <p>{notificationPreparationDescription}</p>
-        <p className={styles.notice}>{notificationPreparationNotice}</p>
-      </section>
+    {view !== 'account' ? <>
+      <div className={styles.tabs} role="tablist" aria-label="알림 구분"
+        onKeyDown={(event) => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+          event.preventDefault()
+          const next = event.key === 'Home' ? 'received' : event.key === 'End' ? 'settings' : activeTab === 'received' ? 'settings' : 'received'
+          setActiveTab(next)
+          ;(next === 'received' ? receivedRef : settingsRef).current?.focus()
+        }}>
+        <button ref={receivedRef} id={`${tabId}-received`} type="button" role="tab" aria-selected={activeTab === 'received'}
+          aria-controls={`${tabId}-panel-received`} tabIndex={activeTab === 'received' ? 0 : -1} onClick={() => setActiveTab('received')}>받은 알림</button>
+        <button ref={settingsRef} id={`${tabId}-settings`} type="button" role="tab" aria-selected={activeTab === 'settings'}
+          aria-controls={`${tabId}-panel-settings`} tabIndex={activeTab === 'settings' ? 0 : -1} onClick={() => setActiveTab('settings')}>알림 설정</button>
+      </div>
+      <div className={styles.panel} id={`${tabId}-panel-received`} role="tabpanel" aria-labelledby={`${tabId}-received`} hidden={activeTab !== 'received'} tabIndex={0}>
+        {activeTab === 'received' && <section className={styles.preparation}>
+          <div className={styles.illustration} aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+            </svg>
+          </div>
+          <h3>{notificationPreparationTitle}</h3>
+        </section>}
+      </div>
+      <div className={styles.panel} id={`${tabId}-panel-settings`} role="tabpanel" aria-labelledby={`${tabId}-settings`} hidden={activeTab !== 'settings'} tabIndex={0}>
+        {activeTab === 'settings' && <NotificationSettings />}
+      </div>
       <div className={styles.footer}>
-        <Link className={styles.management} aria-label="알림 관리" to="/mypage/notifications" onClick={onClose}>
-          <span><strong>알림 관리</strong><small>저장한 관심 지역·단지·공고 확인하기</small></span><span aria-hidden="true">→</span>
-        </Link>
         <button className={styles.confirm} type="button" onClick={onClose}>확인</button>
       </div>
     </> : <div className={styles.account}>{children}</div>}

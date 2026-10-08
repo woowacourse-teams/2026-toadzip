@@ -10,19 +10,17 @@
 .close { display: grid; place-items: center; width: 44px; height: 44px; padding: 10px; border: 0; border-radius: 50%; background: transparent; color: var(--ds-color-label); cursor: pointer; }
 .close svg { width: 22px; height: 22px; }
 .close:hover { background: var(--ds-color-surface-subtle); }
-.preparation { padding: 16px 32px 28px; text-align: center; word-break: keep-all; }
-.illustration { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 20px; color: var(--ds-color-muted); }
+.tabs { display: flex; gap: 4px; margin: 4px 28px 0; padding: 4px; background: var(--ds-color-surface-subtle); border-radius: 12px; }
+.tabs button { flex: 1; min-height: 44px; border: 0; border-radius: 9px; background: transparent; color: var(--ds-color-muted); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.tabs button[aria-selected='true'] { background: var(--ds-color-brand); color: var(--ds-color-on-brand); }
+.panel { min-height: min(260px, 35dvh); max-height: min(420px, 50dvh); overflow-y: auto; padding: 20px 28px; }
+.preparation { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: min(260px, 35dvh); text-align: center; word-break: keep-all; }
+.illustration { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 16px; color: var(--ds-color-brand); }
 .illustration svg { width: 36px; height: 36px; }
-.badge { display: inline-block; padding: 4px 10px; border-radius: 20px; background: var(--ds-color-surface-subtle); color: var(--ds-color-muted); font-size: 12px; font-weight: 600; }
-.preparation h3 { margin: 14px 0 12px; font-size: 22px; letter-spacing: -.6px; line-height: 1.4; }
-.preparation p { margin: 0; color: var(--ds-color-label); font-size: 14px; line-height: 1.7; }
-.preparation .notice { margin-top: 12px; color: var(--ds-color-muted); font-size: 13px; }
-.footer { display: grid; gap: 18px; padding: 0 28px 28px; }
-.management { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border: 1px solid var(--ds-color-divider); border-radius: 14px; color: var(--ds-color-label); text-decoration: none; }
-.management strong { display: block; font-size: 14px; }
-.management small { display: block; margin-top: 4px; color: var(--ds-color-muted); font-size: 12px; }
-.management:hover { background: var(--ds-color-surface-subtle); }
-.confirm { min-height: 48px; border: 0; border-radius: 12px; background: var(--ds-color-action); color: var(--ds-color-surface); font: inherit; font-weight: 700; cursor: pointer; }
+.preparation h3 { margin: 0; color: var(--ds-color-label); font-size: 16px; font-weight: 500; line-height: 1.6; }
+.footer { display: grid; padding: 0 28px 28px; }
+.confirm { min-height: 48px; border: 0; border-radius: 12px; background: var(--ds-color-brand); color: var(--ds-color-on-brand); font: inherit; font-weight: 700; cursor: pointer; }
+.confirm:hover { background: var(--ds-color-brand-hover); }
 .dialog :is(button,a):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
 .account { display: flex; flex-direction: column; gap: 0; padding: 4px 28px 28px; }
 .account a, .account button { display: block; width: 100%; box-sizing: border-box; min-height: 52px; padding: 16px 0; border: 0; border-bottom: 1px solid var(--ds-color-divider); background: transparent; text-align: left; text-decoration: none; color: var(--ds-color-text); font: inherit; cursor: pointer; }
@@ -30,6 +28,7 @@
 @media (max-width: 767px) {
   .dialog { width: 100%; max-width: none; max-height: calc(100dvh - 24px); margin: auto 0 0; border-radius: 24px 24px 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); }
   .header { padding: 16px 16px 8px 24px; }
-  .preparation { padding: 12px 28px 24px; }
+  .tabs { margin-inline: 24px; }
+  .panel { padding-inline: 24px; }
   .footer { padding: 0 24px 24px; }
 }
