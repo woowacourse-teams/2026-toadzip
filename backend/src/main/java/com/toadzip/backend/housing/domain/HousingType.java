@@ -60,6 +60,9 @@ public class HousingType {
     @Column(nullable = true)
     private BigDecimal maintenanceFee;
 
+    @Column(nullable = false)
+    private boolean adminModified;
+
     private HousingType(
             HousingComplex housingComplex,
             String name,
@@ -147,6 +150,9 @@ public class HousingType {
         validateNotBlank(name, "주택형명");
         validateRequiredAmount(exclusiveArea, "전용면적");
         validateNonNegativeIfPresent(supplyArea, "공급면적");
+        if (adminModified) {
+            return false;
+        }
         if (this.sourceHousingTypeIdentifier.equals(sourceHousingTypeIdentifier)
                 && this.name.equals(name)
                 && this.exclusiveArea.compareTo(exclusiveArea) == 0
@@ -162,11 +168,26 @@ public class HousingType {
 
     public boolean enrichHouseholdCountFromLh(int totalHouseholdCount) {
         validateNonNegative(totalHouseholdCount, "LH 주택형 세대수");
+        if (adminModified) {
+            return false;
+        }
         if (java.util.Objects.equals(this.totalHouseholdCount, totalHouseholdCount)) {
             return false;
         }
         this.totalHouseholdCount = totalHouseholdCount;
         return true;
+    }
+
+    public void reviseByAdmin(String name, BigDecimal exclusiveArea, Integer householdCount) {
+        validateNotBlank(name, "주택형명");
+        validateRequiredAmount(exclusiveArea, "전용면적");
+        if (householdCount != null) {
+            validateNonNegative(householdCount, "전체 세대수");
+        }
+        this.name = name;
+        this.exclusiveArea = exclusiveArea;
+        this.totalHouseholdCount = householdCount;
+        this.adminModified = true;
     }
 
     public boolean isDuplex() {

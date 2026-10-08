@@ -267,6 +267,7 @@ public class MyHomeComplexMappingWriter {
     ) {
         List<HousingType> stale = List.copyOf(remainingStoredByIdentifier.values());
         List<HousingType> deletable = stale.stream()
+                .filter(type -> !type.isAdminModified())
                 .filter(type -> !supplyRowRepository.existsByHousingType(type))
                 .filter(type -> !preserveSupplementalValues || !type.hasSupplementalInformation())
                 .toList();

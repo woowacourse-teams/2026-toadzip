@@ -338,6 +338,28 @@ class MyHomeComplexMappingServiceTest {
     }
 
     @Test
+    void 관리자_수정_주택형은_공고가_없어도_원천_삭제에_따라_삭제하지_않는다() {
+        sourceRepository.saveAll(List.of(source("46A", "46.8000", "20.2000"),
+                source("59A", "59.9500", "24.1000")));
+        service.mapAll();
+        HousingType type = housingTypeRepository.findAll().stream()
+                .filter(item -> item.getName().equals("46A")).findFirst().orElseThrow();
+        type.reviseByAdmin("관리자 확인 주택형", new BigDecimal("47.1234"), null);
+        housingTypeRepository.saveAndFlush(type);
+        sourceRepository.deleteAll();
+        sourceRepository.save(source("59A", "59.9500", "24.1000"));
+
+        var report = service.mapAll();
+
+        assertThat(report.deletedHousingTypeCount()).isZero();
+        assertThat(housingTypeRepository.findById(type.getId())).hasValueSatisfying(persisted -> {
+            assertThat(persisted.getName()).isEqualTo("관리자 확인 주택형");
+            assertThat(persisted.getExclusiveArea()).isEqualByComparingTo("47.1234");
+            assertThat(persisted.isAdminModified()).isTrue();
+        });
+    }
+
+    @Test
     void 필수값_변환에_실패한_단지는_건너뛰고_원천과_실패_사유를_기록한다() {
         sourceRepository.saveAll(List.of(
                 source("46A", "46.8000", "20.2000"),
