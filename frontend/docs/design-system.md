@@ -153,6 +153,7 @@ import { IconButton } from '../design-system/components/IconButton'
 1천만원 미만은 만, 1억원 미만은 천, 그 이상은 억으로 표시하고 정책에 따라 버림 처리한다.
 금액 누락은 `-`, 실제 0원은 `0원`으로 표시하며 원본 금액과 범위 판단은 보존한다.
 단지·공고 상세의 금액은 `formatHousingMoneyWon`으로 쉼표를 포함한 원 단위 전체 금액을 표시한다.
+단지 상세의 미제공 정보는 항목명을 유지하고 값을 빈칸으로 표시한다. 실제 0과 false는 보존한다.
 필터의 기존 금액 표기는 유지한다.
 
 금액은 [housingMoney](../src/public-housing/presentation/housingMoney.ts), 누락 표시는
