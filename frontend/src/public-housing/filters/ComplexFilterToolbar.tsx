@@ -405,6 +405,16 @@ export function ComplexFilterToolbar({
     triggerRefs.current[topic]?.focus()
   }
 
+  function resetAllFilters() {
+    setOpenTopic(null)
+    setMobileSheetOpen(false)
+    setMobileInitialTopic(null)
+    setMobileDraftFilters({})
+    setErrorMessage(null)
+    quickAppliedSignatureRef.current = null
+    onApply({})
+  }
+
   function resetOpenFilter() {
     if (openTopic === null) {
       return
@@ -422,6 +432,21 @@ export function ComplexFilterToolbar({
     ? resolvedRegionSummary.label
     : null
   const mobileResultAction = `${desktopTopicLabel(mobileInitialTopic) ?? '필터'} 적용`
+
+  const resetAllButton = (
+    <button
+      className={styles.resetAll}
+      type="button"
+      aria-label="단지·지도 필터 전체 해제"
+      disabled={filtersSignature === searchFiltersSignature({})}
+      onClick={resetAllFilters}
+    >
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+        <path d="M16.4 8a6.5 6.5 0 1 0-.3 4.8M16.5 3.5V8H12" />
+      </svg>
+      전체 해제
+    </button>
+  )
 
   return (
     <section ref={rootRef} className={styles.root}>
@@ -489,9 +514,9 @@ export function ComplexFilterToolbar({
                   </Fragment>
                 )
               })}
+              {resetAllButton}
             </div>
           </div>
-
         </div>
 
         {openTopic !== null && openLabel !== null && headingId !== undefined && (
@@ -589,6 +614,7 @@ export function ComplexFilterToolbar({
             </button>
           )
         })}
+        {resetAllButton}
       </div>
 
       {mobileSheetOpen && (
@@ -622,10 +648,12 @@ export function ComplexFilterToolbar({
                   aria-label={`${desktopTopicLabel(mobileInitialTopic)} 필터 초기화`}
                   onClick={resetMobileSheet}
                 >
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
-                    <path d="M16.4 8a6.5 6.5 0 1 0-.3 4.8M16.5 3.5V8H12" />
-                  </svg>
-                  초기화
+                  <span className={styles.mobileResetContent}>
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                      <path d="M16.4 8a6.5 6.5 0 1 0-.3 4.8M16.5 3.5V8H12" />
+                    </svg>
+                    초기화
+                  </span>
                 </button>
                 <h2 id="mobile-complex-filter-heading">{desktopTopicLabel(mobileInitialTopic)} 필터</h2>
                 <IconButton size="lg"
