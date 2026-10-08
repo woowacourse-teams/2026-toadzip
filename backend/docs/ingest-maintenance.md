@@ -18,6 +18,31 @@ Spring은 생성자 주입으로 객체를 연결한다. `Runner.run()`에서 �
 | 단지 정제 | [MyHomeComplexMappingService](../src/main/java/com/toadzip/backend/ingest/mapping/service/MyHomeComplexMappingService.java) → LH 세대수 보강 |
 | 공고 수집 | [MyHomeAnnouncementCollectionService](../src/main/java/com/toadzip/backend/ingest/collection/myhome/announcement/service/MyHomeAnnouncementCollectionService.java) → LH 목록 → 공급 → 상세 수집 |
 | 공고 정제 | [MyHomeAnnouncementMappingService](../src/main/java/com/toadzip/backend/ingest/mapping/service/MyHomeAnnouncementMappingService.java) → LH 공고 보강 |
+| 공고 단건 등록 v2 | [AnnouncementRegistrationService](../src/main/java/com/toadzip/backend/ingest/pipeline/service/AnnouncementRegistrationService.java) → 대상 원천 수집 → LH 공급·상세 강제 조회 → 단건 저장 |
+
+## 공고 단건 등록 v2
+
+관리자 화면 `/admin/ingest-v2`의 공고 탭에서 마이홈 공고 상세 URL을 입력한다. API 키는 서버의
+`DATA_GO_KR_SERVICE_KEY`를 사용한다. 기존 수집·정제 화면과 전체 실행은 유지한다.
+
+- `POST /api/admin/ingest/pipelines/announcement-registration/url`: `{"url":"https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21026"}`를 받아
+  `202 Accepted`와 실행 ID를 반환한다.
+- 서버에서 `http/https`, 정확한 `www.myhome.go.kr` 호스트·상세 경로와 단일 숫자 `pblancId`를 검증한다.
+  URL을 방문하거나 HTML을 수집하지 않는다. 임의 포트·사용자 정보·프래그먼트는 허용하지 않는다.
+- 기존 ID 등록 API `POST /api/admin/ingest/pipelines/announcement-registration`도 호환성을 위해 유지한다.
+- `GET /api/admin/ingest/pipelines/executions/{executionId}`: 해당 실행의 상태와 실패 사유를 조회한다.
+- 기존 비동기 실행과 전역 잠금을 재사용하며 실행 유형은 `ANNOUNCEMENT_REGISTRATION`이다.
+  대상 ID를 실행 기록에 남겨 새로고침 후에도 진행 상태를 확인한다.
+- 마이홈 목록의 7개 공급유형·모든 페이지를 탐색하되 해당 공고만 저장한다.
+  전체 수집 완료 처리나 다른 공고의 원천 비활성화는 하지 않는다.
+- LH 외 기관은 LH 수집을 생략한다. LH 공급·상세 수집 실패나 호출 제한이면 최종 등록을 하지 않는다.
+- 해당 실행에서 수집한 공급행만 정제한다. 기존 공고와 미등록 이전 공고는 수정·자동 등록하지 않는다.
+- 공고·공급행·LH 보강은 한 트랜잭션으로 저장한다. 매칭·보강 실패 시 롤백하며 원천은 재시도용으로 남긴다.
+  정제 실패 이력은 대상 공고에 대해서만 갱신한다.
+
+실행 기록의 대상 ID와 유형 제약을 추가하는 `V20261007_02` 마이그레이션이 필요하다.
+기존 실행 기록은 보존한다. 단건 등록 실행 중에는 구 버전으로 되돌리지 않으며,
+롤백 시 새 실행 유형을 읽을 수 있는 버전을 사용한다.
 
 수집은 응답·식별·조회 조건·실제 수집 시각을 원천에 보관하고, 요청의 실행 시각·결과는 `collection/history`에 분리한다. 정제·보강은 원천을 읽어 단지·주택형·공고에 반영한다.
 원천 조회·매핑·보강은 현행 `collection` 저장 구조만 사용한다. 이전 원천 테이블의 읽기 우회와 체크포인트, JPA 매핑은 제거했다. 정제에서 쓰는 평면 행 모델은 현행 원천의 조회 결과를 담는다.
@@ -84,6 +109,29 @@ SourceMapper → SupplyRowResolver → MappingWriter → EnrichmentWriter.writeA
 | 동기 작업의 충돌 범위 | [IngestOperationLock](../src/main/java/com/toadzip/backend/ingest/pipeline/repository/IngestOperationLock.java)의 `Operation`과 호출 서비스 |
 | 실패의 해결·재발 | [IngestFailure](../src/main/java/com/toadzip/backend/ingest/failure/domain/IngestFailure.java)의 상태 전이, [IngestFailureReconciler](../src/main/java/com/toadzip/backend/ingest/failure/domain/IngestFailureReconciler.java)의 일괄 조정 |
 | 위치 파일 적재 | [LocationSummaryImportService](../src/main/java/com/toadzip/backend/ingest/location/service/LocationSummaryImportService.java) → Parser·Store |
+
+## 수집·정제 v2의 데이터 보완
+
+`/admin/ingest-v2`는 공고·단지별 실행 영역과 실행 이력만 표시한다.
+원천·등록 목록, 상태 집계, 보완 입력과 LH 품질 패널은 화면에서 제외하며 아래 API와 보완 데이터는 유지한다.
+현재 작업 하나와 이력 상세에서 실제 실행 순서의 단계 상태를 확인한다.
+LH 외 기관의 단건 등록은 LH 공급·상세 단계를 '해당 없음'으로 기록한다.
+완료 직후 결과는 유지하지만 새로고침 때는 실행 중인 작업만 복원한다.
+실행 시작·종료 시각만 표시하며 기록되지 않은 개별 단계 시각은 추정하지 않는다.
+
+| API | 용도 |
+|---|---|
+| `GET /api/admin/ingest/workspace/{domain}` | `complex` 또는 `announcement`의 상태별 목록·집계 |
+| `GET /api/admin/ingest/workspace/{domain}/{identifier}` | 원천·보완 값·충돌 검사용 토큰·최근 보완 이력 |
+| `PUT /api/admin/ingest/workspace/{domain}/{identifier}` | 토큰과 원천 행별 변경 항목으로 해당 대상만 정제·저장 |
+| `GET /api/admin/ingest/pipelines/history?domain={domain}` | 대상별 실행 이력 |
+
+원천 식별자와 원본 응답은 변경하지 않는다. 보완 입력과 이력은 별도 테이블에 먼저 보존하고,
+최종 데이터·공급행·보강은 한 트랜잭션에서 저장한다. 실패 시 최종 저장을 롤백하고 보완값은 재시도에 사용한다.
+공고가 참조할 단지·주택형이 없으면 단지 수집·정제를 먼저 실행한다. LH 원천이 없으면 재수집한다.
+관리자 수정값이 있거나 통합한 단지는 기존 데이터 관리 화면으로 연결하여 보호한다.
+좌표는 직접 보완하거나 기존 도로명주소 좌표 자료를 사용한다. 보완 저장은 외부 API를 호출하지 않는다.
+기존 실행 잠금과 관리자 인증·CSRF 검증을 적용하며, 조회 후 데이터가 달라지면 다시 조회해야 한다.
 
 ## 클래스 분리 기준
 

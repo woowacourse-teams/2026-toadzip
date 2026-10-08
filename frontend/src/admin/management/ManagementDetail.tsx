@@ -12,8 +12,9 @@ import { ChangeHistory } from './ChangeHistory'
 import { SupplyEditor } from './SupplyEditor'
 import { SourceUrl } from '../shared/SourceUrl'
 
-export function ManagementDetail({resource}: {resource:ManagementResource}) {
-  const {id = ''} = useParams()
+export function ManagementDetail({resource, identifier}: {resource:ManagementResource; identifier?: string}) {
+  const {id: routeId = ''} = useParams()
+  const id = identifier ?? routeId
   const [params] = useSearchParams()
   const candidate = params.get('returnTo') ?? ''
   const back = candidate === `/admin/${resource}` || candidate.startsWith(`/admin/${resource}?`) ? candidate : `/admin/${resource}`

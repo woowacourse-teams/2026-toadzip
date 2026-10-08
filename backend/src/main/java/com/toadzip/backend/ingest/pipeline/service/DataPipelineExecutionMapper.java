@@ -49,7 +49,8 @@ public class DataPipelineExecutionMapper {
                 execution.getExternalRequestCount(),
                 execution.getLastRequestDescription(),
                 execution.getLastProgressAt(),
-                workProgress(execution)
+                workProgress(execution),
+                execution.getTargetAnnouncementIdentifier()
         );
     }
 

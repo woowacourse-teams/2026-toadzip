@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutionException;
@@ -78,11 +79,18 @@ public class LhAnnouncementExternalCollectionService {
     }
 
     public ExternalDataCollectionReport refresh(ExternalDataSource targetSource, String pblancId) {
+        return refresh(targetSource, pblancId, null);
+    }
+
+    public ExternalDataCollectionReport refresh(
+            ExternalDataSource targetSource, String pblancId, UUID sourceExecutionId
+    ) {
         validateTargetSource(targetSource);
         validatePblancId(pblancId);
         log.info("{} 강제 갱신을 시작합니다: pblancId={}", targetSource.operation(), pblancId);
         ExternalDataCollectionReport report = executionLock
-                .tryRun(LH_ANNOUNCEMENT_COLLECTION, () -> refreshAnnouncement(targetSource, pblancId.strip()))
+                .tryRun(LH_ANNOUNCEMENT_COLLECTION,
+                        () -> refreshAnnouncement(targetSource, pblancId.strip(), sourceExecutionId))
                 .orElseThrow(() -> alreadyRunning(targetSource));
         log.info(
                 "{} 강제 갱신을 완료했습니다: pblancId={}, storedRowCount={}, failedRequestCount={}, "
@@ -132,10 +140,13 @@ public class LhAnnouncementExternalCollectionService {
 
     private ExternalDataCollectionReport refreshAnnouncement(
             ExternalDataSource targetSource,
-            String pblancId
+            String pblancId,
+            UUID sourceExecutionId
     ) {
         List<MyHomeAnnouncementSource> sources = readSources(targetSource, true,
-                () -> myHomeAnnouncementRepository.findAllByPblancIdOrderByIdAsc(pblancId));
+                () -> myHomeAnnouncementRepository.findAllByPblancIdOrderByIdAsc(pblancId).stream()
+                        .filter(source -> sourceExecutionId == null
+                                || sourceExecutionId.toString().equals(source.getLastSeenRunId())).toList());
         if (sources.isEmpty()) {
             throw new InvalidIngestRequestException("마이홈 공고 원천을 찾을 수 없습니다: pblancId=" + pblancId);
         }

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { getPipelineHistory, type DataPipelineExecution } from './api'
 import { PipelineResult } from './PipelineResult'
+import { PipelineExecutionSteps } from './PipelineExecutionSteps'
 import { pipelineLabels as labels, pipelineStatusLabels } from './pipelineLabels'
-export function PipelineHistory() {
+export function PipelineHistory({ domain, compact = false }: { domain?: 'complex' | 'announcement'; compact?: boolean } = {}) {
   const [page, setPage] = useState(0)
   const [items, setItems] = useState<DataPipelineExecution[]>([])
   const [selected, setSelected] = useState<DataPipelineExecution | null>(null)
@@ -15,14 +16,15 @@ export function PipelineHistory() {
     setBusy(true)
     setError('')
     setSelected(null)
-    void getPipelineHistory(page)
+    const history = domain ? getPipelineHistory(page, domain) : getPipelineHistory(page)
+    void history
       .then((value) => { if (active) setItems(value) })
       .catch((cause) => {
         if (active) setError(cause instanceof Error ? cause.message : '이력을 불러오지 못했습니다.')
       })
       .finally(() => { if (active) setBusy(false) })
     return () => { active = false }
-  }, [page, attempt])
+  }, [page, attempt, domain])
 
   return (
     <section className="admin-detail-section pipeline-history" aria-labelledby="pipeline-history-title">
@@ -72,8 +74,9 @@ export function PipelineHistory() {
         <section className="pipeline-history-detail" aria-label="선택한 실행 상세">
           <header><h3>선택한 실행 상세</h3><button type="button" onClick={() => setSelected(null)}>닫기</button></header>
           <p>선택 시점의 실행 기록입니다. 실행 중인 작업의 최신 상태와 중지는 상단에서 확인해 주세요.</p>
-          <PipelineResult type={selected.type} state={{ execution: selected, requestError: null, errorResponse: null }}
-            stopping={true} onStop={() => {}} />
+          {compact ? <PipelineExecutionSteps key={selected.executionId} execution={selected} />
+            : <PipelineResult type={selected.type} state={{ execution: selected, requestError: null, errorResponse: null }}
+              stopping={true} onStop={() => {}} />}
         </section>
       ) : null}
     </section>

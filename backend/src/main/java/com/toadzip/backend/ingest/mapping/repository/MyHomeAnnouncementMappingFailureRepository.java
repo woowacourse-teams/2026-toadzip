@@ -20,6 +20,8 @@ public interface MyHomeAnnouncementMappingFailureRepository
 
     List<MyHomeAnnouncementMappingFailure> findAllBySourceKeyIn(Collection<String> sourceKeys);
 
+    List<MyHomeAnnouncementMappingFailure> findAllBySourceAnnouncementIdentifier(String identifier);
+
     List<MyHomeAnnouncementMappingFailure> findAllByStatusOrderBySourceKeyAscIdAsc(
             IngestFailureStatus status,
             Pageable pageable

@@ -354,7 +354,8 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 mock(LhAnnouncementEnrichmentService.class),
                 new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
                 executionStateService,
-                new SimpleMeterRegistry()
+                new SimpleMeterRegistry(),
+                mock(AnnouncementRegistrationService.class)
         );
     }
 
@@ -384,7 +385,8 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 enrichmentService,
                 new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
                 executionStateService,
-                new SimpleMeterRegistry()
+                new SimpleMeterRegistry(),
+                mock(AnnouncementRegistrationService.class)
         );
     }
     private LhAnnouncementCatalogCollectionService successfulCatalogService() {

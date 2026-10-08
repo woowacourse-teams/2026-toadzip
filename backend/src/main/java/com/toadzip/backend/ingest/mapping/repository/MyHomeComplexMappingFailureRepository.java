@@ -18,6 +18,9 @@ public interface MyHomeComplexMappingFailureRepository
 
     List<MyHomeComplexMappingFailure> findAllBySourceKeyIn(Collection<String> sourceKeys);
 
+    List<MyHomeComplexMappingFailure> findAllBySourceComplexIdentifierAndStatus(
+            String identifier, IngestFailureStatus status);
+
     List<MyHomeComplexMappingFailure> findAllByStatusOrderBySourceKeyAscIdAsc(
             IngestFailureStatus status,
             Pageable pageable

@@ -1,4 +1,5 @@
 import { FailureReviewPage } from './admin/ingest/FailureReviewPage'
+import { AnnouncementRegistrationV2Page } from './admin/ingest/AnnouncementRegistrationV2Page'
 import { SourceDataPage } from './admin/ingest/SourceDataPage'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router'
 import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
@@ -60,6 +61,7 @@ function AdminRoutes() {
           <Route element={<AdminLayout />}>
             <Route index element={<Navigate to="complexes" replace />} />
             <Route path="ingest" element={<AdminHome />} />
+            <Route path="ingest-v2" element={<AnnouncementRegistrationV2Page />} />
             <Route path="complexes" element={<ManagementList resource="complexes" />} />
             <Route path="complexes/new" element={<HousingComplexRegistrationPage />} />
             <Route path="complexes/:id" element={<ManagementDetail resource="complexes" />} />
