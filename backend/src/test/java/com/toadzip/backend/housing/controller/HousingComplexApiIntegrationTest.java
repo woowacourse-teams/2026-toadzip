@@ -177,6 +177,44 @@ class HousingComplexApiIntegrationTest {
     }
 
     @Test
+    void 지역_목록은_지도_좌표_없이_해당_지역_전체를_커서로_조회한다() throws Exception {
+        List<Long> ids = new ArrayList<>();
+        String cursor = null;
+        for (int page = 0; page < 10; page++) {
+            MockHttpServletRequestBuilder request = get("/api/v1/complexes")
+                    .param("regionCode", "11140")
+                    .param("agencyCodes", "LH")
+                    .param("size", "2");
+            if (cursor != null) {
+                request.param("cursor", cursor);
+            }
+            String body = mockMvc.perform(request)
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            ids.addAll(readComplexIds(body));
+            cursor = JsonPath.read(body, "$.data.nextCursor");
+            if (!JsonPath.<Boolean>read(body, "$.data.hasNext")) {
+                break;
+            }
+        }
+        assertEquals(Set.of(boundaryComplex.getId(), insideComplex.getId(),
+                sameDateComplex.getId(), outsideComplex.getId()), new HashSet<>(ids));
+        assertEquals(ids.size(), new HashSet<>(ids).size());
+        assertNull(cursor);
+    }
+
+    @Test
+    void 지역만_보낸_지도와_일부_좌표만_보낸_목록은_거절한다() throws Exception {
+        mockMvc.perform(get("/api/v1/complexes/map").param("regionCode", "11140"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/complexes").param("regionCode", "11140")
+                        .param("southWestLat", "37.4"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/complexes"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void 같은_전체_검색조건의_목록과_지도는_같은_단지_ID_집합을_반환한다() throws Exception {
         List<Long> listIds = fetchEveryFilteredListPage();
         List<Long> mapIds = fetchFilteredMapIds();

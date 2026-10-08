@@ -3,6 +3,7 @@
   min-width: 0;
   padding-block: 12px 18px;
   padding-inline: var(--list-inset, 28px);
+  padding-left: var(--list-start-inset, var(--list-inset, 28px));
   background: var(--ds-color-surface);
   color: var(--list-text, var(--ds-color-text));
   font-family: var(--ds-font-family-ui);

@@ -18,7 +18,7 @@ const GYEONGGI_REGIONS: readonly PublicHousingRegion[] = [{
 
 describe.each([
   { kind: 'announcement', open: '공고 필터 열기', apply: '공고 필터 적용', close: '공고 필터 닫기' },
-  { kind: 'complex', open: '상세 필터 열기', apply: '상세 필터 적용', close: '상세 필터 패널 닫기' },
+  { kind: 'complex', open: '지역 필터 열기', apply: '지역 필터 적용', close: '지역 필터 패널 닫기' },
 ] as const)('$kind 지역 필터', ({ kind, open, apply, close }) => {
   it.each(['success', 'error'] as const)('지역을 바꾸면 이전 요청을 취소하고 늦은 %s 응답을 무시한다', async (outcome) => {
     const first = deferred<readonly PublicHousingRegion[]>()
@@ -144,7 +144,7 @@ it('공고 초기화는 적용된 지역과 선택 조건도 지우고 다시 �
   expect(screen.getByLabelText('시·도')).toHaveValue('')
 })
 
-it.each(['announcement', 'complex'] as const)('%s 전체 폼은 선택 배열을 화면 순서로 제출하고 화면에 없는 조건은 추가하지 않는다', async (kind) => {
+it.each(['announcement', 'complex'] as const)('%s 폼은 표시된 조건만 반영하고 다른 조건을 보존한다', async (kind) => {
   const filters: ComplexSearchFilters = {
     regionCode: '41110',
     rentalTypes: ['NATIONAL_RENTAL', 'HAPPY_HOUSING'],
@@ -159,18 +159,16 @@ it.each(['announcement', 'complex'] as const)('%s 전체 폼은 선택 배열을
     ? <AnnouncementFilterPanel filters={filters} onApply={onApply} regionRepository={regionRepository} />
     : <ComplexFilterToolbar filters={filters} onApply={onApply} regionRepository={regionRepository} />)
   fireEvent.click(screen.getByRole('button', { name: kind === 'announcement'
-    ? '공고 필터 열기' : '전체 단지 필터 열기, 6개 적용' }))
+    ? '공고 필터 열기' : '모바일 지역 필터 열기' }))
   await screen.findByRole('option', { name: '수원시' })
   expect(onApply).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: kind === 'announcement' ? '공고 필터 적용' : '단지 보기' }))
-  expect(onApply).toHaveBeenCalledExactlyOnceWith({
+  fireEvent.click(screen.getByRole('button', { name: kind === 'announcement' ? '공고 필터 적용' : '지역 적용' }))
+  expect(onApply).toHaveBeenCalledExactlyOnceWith(kind === 'complex' ? filters : {
     regionCode: '41110',
     rentalTypes: ['HAPPY_HOUSING', 'NATIONAL_RENTAL'],
-    applicationStatuses: kind === 'announcement'
-      ? ['BEFORE_APPLICATION', 'APPLYING'] : ['BEFORE_APPLICATION', 'APPLYING', 'CLOSED'],
+    applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'],
     agencyCodes: ['LH', 'SH', 'GH'],
     recruitmentTypes: ['NEW', 'WAITLIST'],
-    ...(kind === 'complex' ? { maxDeposit: 0 } : {}),
   })
 })
 

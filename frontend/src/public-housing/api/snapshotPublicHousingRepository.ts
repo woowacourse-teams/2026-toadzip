@@ -155,7 +155,9 @@ function complexPageResponse(
   url: URL,
 ): Response {
   const bounds = boundsFrom(url)
-  if (bounds === null) {
+  const hasAnyBounds = ['southWestLat', 'southWestLng', 'northEastLat', 'northEastLng']
+    .some((key) => url.searchParams.has(key))
+  if (bounds === null && (hasAnyBounds || !/^(?:\d{2}|\d{5})$/.test(url.searchParams.get('regionCode') ?? ''))) {
     return invalidBoundsResponse()
   }
   const cursor = cursorOffset(
@@ -168,11 +170,11 @@ function complexPageResponse(
 
   const visibleIds = new Set(
     snapshot.mapComplexItems
-      .filter((item) => isInsideBounds(item, bounds))
+      .filter((item) => bounds === null || isInsideBounds(item, bounds))
       .map((item) => item.complexId),
   )
   const items = snapshot.complexListItems.filter((item) => (
-    visibleIds.has(item.complexId)
+    (bounds === null || visibleIds.has(item.complexId))
     && complexMatchesFilters(snapshot, item, url)
   ))
   return successResponse(page(

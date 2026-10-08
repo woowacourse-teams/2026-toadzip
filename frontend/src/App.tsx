@@ -25,16 +25,9 @@ function Home() {
   return (
     <NotificationInterestProvider>
       <div className="app-shell">
-        <header className="service-header" aria-label="서비스 헤더">
-          <BrandLink />
-          <div className="service-header-actions">
-            <Link className="service-feedback-link" to="/feedback">의견 보내기</Link>
-            <NotificationInterestSessionControl />
-          </div>
-        </header>
-        <main className="map-main">
-          <DefaultPublicHousingExplorer />
-        </main>
+        <div className="service-rail-brand"><BrandLink /></div>
+        <div className="service-rail-account"><Link className="service-feedback-link" to="/feedback">의견 보내기</Link><NotificationInterestSessionControl presentation="rail" /></div>
+        <main className="map-main"><DefaultPublicHousingExplorer /></main>
       </div>
     </NotificationInterestProvider>
   )

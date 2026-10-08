@@ -49,6 +49,9 @@ final class ComplexSummarySqlBuilder {
             + ApplicationScheduleSql.displayPeriodJoin("representative", "housing_complex.id") + """
             LEFT JOIN area_range ON area_range.housing_complex_id = housing_complex.id
             WHERE housing_complex.admin_deleted = false
+            """;
+
+    private static final String BOUNDS_PREDICATE = """
               AND housing_complex.latitude BETWEEN :southWestLat AND :northEastLat
               AND housing_complex.longitude BETWEEN :southWestLng AND :northEastLng
             """;
@@ -89,7 +92,11 @@ final class ComplexSummarySqlBuilder {
         Map<String, Object> parameters = new HashMap<>(boundsParameters(condition.bounds()));
         parameters.putAll(predicate.parameters());
         parameters.put("today", condition.filters().today());
-        return new FilteredSummaryQuery(BASE_SUMMARY_QUERY + predicate.sql(), parameters);
+        String boundsPredicate = "";
+        if (condition.bounds() != null) {
+            boundsPredicate = BOUNDS_PREDICATE;
+        }
+        return new FilteredSummaryQuery(BASE_SUMMARY_QUERY + boundsPredicate + predicate.sql(), parameters);
     }
 
     private ComplexSummarySqlQuery pageQuery(
@@ -145,6 +152,9 @@ final class ComplexSummarySqlBuilder {
     }
 
     private Map<String, Object> boundsParameters(MapBounds bounds) {
+        if (bounds == null) {
+            return Map.of();
+        }
         return Map.of(
                 "southWestLat", bounds.southWestLat(),
                 "southWestLng", bounds.southWestLng(),

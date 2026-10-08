@@ -8,6 +8,8 @@ function props() {
     status: 'ready' as const,
     supported: true,
     canRecenter: true,
+    listExpanded: false,
+    onOpenList: vi.fn(),
     onRecenter: vi.fn(),
     onClear: vi.fn(),
     onRetry: vi.fn(),
@@ -18,9 +20,9 @@ describe('RegionBoundaryControl', () => {
   it('보이는 문구와 접근 가능한 이름이 일치하며 두 조작은 독립적으로 동작한다', () => {
     const callbacks = props()
     render(<RegionBoundaryControl {...callbacks} />)
-    const recenter = screen.getByRole('button', { name: '전체 보기' })
+    const recenter = screen.getByRole('button', { name: '해당 지역으로 이동' })
     const clear = screen.getByRole('button', { name: '경계 지우기' })
-    expect(recenter).toHaveTextContent('전체 보기')
+    expect(recenter).toHaveTextContent('해당 지역으로 이동')
     expect(clear).toHaveTextContent('경계 지우기')
     recenter.focus()
     expect(recenter).toHaveFocus()
@@ -39,7 +41,7 @@ describe('RegionBoundaryControl', () => {
     expect(screen.queryByTitle('지도 표시에 맞게 단순화한 경계입니다.')).not.toBeInTheDocument()
   })
 
-  it('실패 안내의 재시도는 전체 보기와 별도로 동작한다', () => {
+  it('실패 안내의 재시도는 지역 이동과 별도로 동작한다', () => {
     const callbacks = props()
     render(<RegionBoundaryControl {...callbacks} status="error" />)
     const alert = screen.getByRole('alert')
@@ -55,7 +57,7 @@ describe('RegionBoundaryControl', () => {
     expect(screen.getByRole('status')).toHaveTextContent('지역 경계를 불러오는 중입니다.')
     rerender(<RegionBoundaryControl {...callbacks} supported={false} canRecenter={false} status="idle" />)
     expect(screen.getByRole('status')).toHaveTextContent('이 지역은 경계 정보를 제공하지 않습니다.')
-    expect(screen.getByRole('button', { name: '전체 보기' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '해당 지역으로 이동' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '경계 지우기' })).toBeEnabled()
   })
 })

@@ -96,6 +96,7 @@ export function IntegratedSearch({
                 key={type}
                 onSelect={(item) => {
                   setQuery('')
+                  onActiveChange?.(false)
                   inputRef.current?.focus({ preventScroll: true })
                   onSelect(item)
                 }}
@@ -183,7 +184,6 @@ export function SearchGroup({
             <li key={`${item.type}-${item.id}`} className={item.type === 'REGION' && item.regionCode ? styles.regionRow : undefined}>
               <button
                 type="button"
-                disabled={unavailable}
                 data-search-suggestion
                 className={styles.result}
                 onClick={() => onSelect(item)}

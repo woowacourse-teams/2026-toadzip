@@ -269,7 +269,7 @@ function createFakeSdk(): FakeSdk {
       Marker: markerConstructor,
       Point: pointConstructor,
       OverlayView: FakeOverlayView,
-      Position: { BOTTOM_LEFT: 10, RIGHT_BOTTOM: 9 },
+      Position: { BOTTOM_LEFT: 10, BOTTOM_RIGHT: 11, RIGHT_BOTTOM: 9 },
       Size: sizeConstructor,
     } as unknown as typeof naver.maps,
     panToMap,
@@ -457,16 +457,16 @@ describe('NaverMap', () => {
         gl: true,
         keyboardShortcuts: true,
         logoControlOptions: {
-          position: fakeSdk.maps.Position.BOTTOM_LEFT,
+          position: fakeSdk.maps.Position.BOTTOM_RIGHT,
+        },
+        mapDataControlOptions: {
+          position: fakeSdk.maps.Position.BOTTOM_RIGHT,
         },
         scaleControlOptions: {
-          position: fakeSdk.maps.Position.BOTTOM_LEFT,
+          position: fakeSdk.maps.Position.BOTTOM_RIGHT,
         },
         zoom: 14,
-        zoomControl: true,
-        zoomControlOptions: {
-          position: fakeSdk.maps.Position.RIGHT_BOTTOM,
-        },
+        zoomControl: false,
       }),
     )
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
@@ -483,6 +483,23 @@ describe('NaverMap', () => {
 
     expect(disconnect).toHaveBeenCalledOnce()
     expect(fakeSdk.destroyMap).toHaveBeenCalledOnce()
+  })
+
+  it('확대·축소 버튼으로 현재 지도 배율을 한 단계씩 변경한다', async () => {
+    const fakeSdk = createFakeSdk()
+    vi.mocked(loadNaverMapsSdk).mockResolvedValue(fakeSdk.maps)
+    render(<NaverMap representation="INDIVIDUAL" markers={[]} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: '지도 확대' }))
+    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(15)
+    fireEvent.click(screen.getByRole('button', { name: '지도 축소' }))
+    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(14)
+    fakeSdk.getMaxZoomMap.mockReturnValue(14)
+    fireEvent.click(screen.getByRole('button', { name: '지도 확대' }))
+    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(14)
+    fakeSdk.getMinZoomMap.mockReturnValue(14)
+    fireEvent.click(screen.getByRole('button', { name: '지도 축소' }))
+    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(14)
   })
 
   it('init 전에 unmount하면 초기화 리스너를 제거하고 bounds를 적용하지 않는다', async () => {
@@ -731,12 +748,12 @@ describe('NaverMap', () => {
       markers={[{ ...markerPresentation, id: '101', name: '경계 안 단지', latitude: 37.6, longitude: 127 }]} />)
 
     await waitFor(() => expect(fakeSdk.overlayConstructor).toHaveBeenCalledTimes(1))
-    const path = document.querySelector('svg path')
+    const path = document.querySelector('svg path[fill-rule="evenodd"]')
     expect(path?.getAttribute('d')?.match(/M/g)).toHaveLength(3)
     expect(path?.getAttribute('d')).not.toContain('NaN')
     expect(path?.getAttribute('fill-rule')).toBe('evenodd')
     expect(path?.getAttribute('fill')).toBe('#D34F3E')
-    expect(document.querySelector('svg')?.style.pointerEvents).toBe('none')
+    expect(path?.closest('svg')?.style.pointerEvents).toBe('none')
     fireEvent.click(createdMarkerButton(fakeSdk, 0))
     expect(onMarkerSelect).toHaveBeenCalledWith('101')
     expect(fakeSdk.fitBoundsMap).not.toHaveBeenCalled()

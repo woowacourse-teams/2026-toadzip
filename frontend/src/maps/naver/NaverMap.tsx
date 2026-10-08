@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import styles from './NaverMap.module.css'
 import {
   cameraCoordinatesChanged,
   cameraZoomChanged,
@@ -321,16 +322,16 @@ export default function NaverMap({
             gl: true,
             keyboardShortcuts: true,
             logoControlOptions: {
-              position: maps.Position.BOTTOM_LEFT,
+              position: maps.Position.BOTTOM_RIGHT,
+            },
+            mapDataControlOptions: {
+              position: maps.Position.BOTTOM_RIGHT,
             },
             scaleControlOptions: {
-              position: maps.Position.BOTTOM_LEFT,
+              position: maps.Position.BOTTOM_RIGHT,
             },
             zoom: initialCamera.zoom,
-            zoomControl: true,
-            zoomControlOptions: {
-              position: maps.Position.RIGHT_BOTTOM,
-            },
+            zoomControl: false,
           })
           mapInstance = createdMap
           mapInstanceRef.current = createdMap
@@ -669,6 +670,18 @@ export default function NaverMap({
   const isLoading = status.kind === 'loading'
   const isReady = status.kind === 'ready'
 
+  const changeZoom = (delta: number) => {
+    const map = mapInstanceRef.current
+    if (!map) return
+    if (transitioningRef.current && !transitionInterruptedRef.current) {
+      transitionInterruptedRef.current = true
+      onTransitionInterruptRef.current?.()
+      stopMapSafely(map)
+    }
+    const zoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), map.getZoom() + delta))
+    map.setZoom(zoom)
+  }
+
   return (
     <section
       className="map-region"
@@ -688,6 +701,20 @@ export default function NaverMap({
         aria-hidden={!isReady}
       />
       {isLoading && <MapLoading />}
+      {isReady && (
+        <div className={styles.zoomControls} role="group" aria-label="지도 확대·축소">
+          <button type="button" aria-label="지도 확대" title="지도 확대" onClick={() => changeZoom(1)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+              <path d="M5 12h14M12 5v14" />
+            </svg>
+          </button>
+          <button type="button" aria-label="지도 축소" title="지도 축소" onClick={() => changeZoom(-1)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+              <path d="M5 12h14" />
+            </svg>
+          </button>
+        </div>
+      )}
       {status.kind === 'unavailable' && (
         <MapUnavailable reason={status.reason} onRetry={retry} />
       )}

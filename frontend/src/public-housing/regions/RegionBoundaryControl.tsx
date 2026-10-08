@@ -5,23 +5,27 @@ interface Props {
   readonly status: 'idle' | 'loading' | 'ready' | 'error'
   readonly supported: boolean
   readonly canRecenter: boolean
+  readonly listExpanded: boolean
+  readonly onOpenList: () => void
   readonly onRecenter: () => void
   readonly onClear: () => void
   readonly onRetry: () => void
 }
 
-export function RegionBoundaryControl({ name, status, supported, canRecenter, onRecenter, onClear, onRetry }: Props) {
+export function RegionBoundaryControl({ name, status, supported, canRecenter, listExpanded, onOpenList, onRecenter, onClear, onRetry }: Props) {
   return (
     <section className={styles.control} aria-label="검색 지역 표시">
       <div className={styles.row}>
-        <strong className={styles.name} title={name}>{name}</strong>
+        <button className={styles.name} title={name} type="button" id="region-complex-list-trigger"
+          aria-label={`${name} 단지 목록 보기`} aria-controls="complex-results-panel"
+          aria-expanded={listExpanded} onClick={onOpenList}>{name}</button>
         <button
           className={styles.recenter}
           type="button"
           onClick={onRecenter}
           disabled={!canRecenter}
         >
-          전체 보기
+          해당 지역으로 이동
         </button>
         <button
           className={styles.clear}
