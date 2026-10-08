@@ -58,7 +58,8 @@ class HousingJpaMappingTest {
                         "totalHouseholdCount",
                         "floorPlanUrl",
                         "duplex",
-                        "maintenanceFee"
+                        "maintenanceFee",
+                        "adminModified"
                 )
         );
         assertEmbeddableAttributes(
