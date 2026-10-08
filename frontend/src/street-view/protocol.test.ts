@@ -24,9 +24,9 @@ describe('street-view message protocol', () => {
   })
 
   it('rejects mismatched versions, malformed IDs, coordinates and values', () => {
-    const message = createStreetViewInitMessage(attemptId, initialization)
+    const message = createStreetViewInitMessage(attemptId, initialization, '단지명 · 출입구')
     expect(parseStreetViewParentMessage(message)).toEqual(message)
-    expect(parseStreetViewParentMessage({ ...message, version: 2 })).toBeNull()
+    expect(parseStreetViewParentMessage({ ...message, version: 1 })).toBeNull()
     expect(parseStreetViewParentMessage({ ...message, channel: 'other-feature' })).toBeNull()
     expect(parseStreetViewParentMessage({ ...message, attemptId: 'unsafe-id' })).toBeNull()
     expect(parseStreetViewParentMessage({ ...message, initialization: { ...initialization, fov: Infinity } })).toBeNull()
@@ -43,5 +43,24 @@ describe('street-view message protocol', () => {
     expect(parseStreetViewChildMessage({ ...envelope, attemptId, type: 'LOCATION', photodate: null, rawError: 'private' })).toEqual({ ...envelope, attemptId, type: 'LOCATION', photodate: null })
     expect(parseStreetViewChildMessage({ ...envelope, attemptId, type: 'LOCATION', photodate: 'x'.repeat(101) })).toBeNull()
     expect(parseStreetViewChildMessage({ ...envelope, attemptId, type: 'READY', aligned: 'true' })).toBeNull()
+  })
+
+  it('validates nonblank marker labels by Unicode code points while keeping text literal', () => {
+    const message = createStreetViewInitMessage(attemptId, initialization, '<b>단지</b> · 출입구')
+    expect(parseStreetViewParentMessage(message)?.markerLabel).toBe('<b>단지</b> · 출입구')
+    expect(parseStreetViewParentMessage({ ...message, markerLabel: '😀'.repeat(255) + ' · 출입구' })).not.toBeNull()
+    expect(parseStreetViewParentMessage({ ...message, markerLabel: '😀'.repeat(256) + ' · 출입구' })).toBeNull()
+    expect(parseStreetViewParentMessage({ ...message, markerLabel: '  \n\t' })).toBeNull()
+    expect(parseStreetViewParentMessage({ ...message, markerLabel: undefined })).toBeNull()
+    expect(parseStreetViewParentMessage({ ...message, markerLabel: 123 })).toBeNull()
+  })
+
+  it('accepts only version 2 marker statuses bound to an attempt', () => {
+    const message = { ...envelope, attemptId, type: 'MARKER_STATUS', status: 'ATTACHED' }
+    expect(parseStreetViewChildMessage(message)).toEqual(message)
+    expect(parseStreetViewChildMessage({ ...message, status: 'UNAVAILABLE' })).toEqual({ ...message, status: 'UNAVAILABLE' })
+    expect(parseStreetViewChildMessage({ ...message, status: 'VISIBLE' })).toBeNull()
+    expect(parseStreetViewChildMessage({ ...message, attemptId: undefined })).toBeNull()
+    expect(parseStreetViewChildMessage({ ...message, version: 1 })).toBeNull()
   })
 })

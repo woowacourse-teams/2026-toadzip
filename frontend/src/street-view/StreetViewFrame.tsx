@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { createStreetViewInitMessage, parseStreetViewChildMessage } from './protocol'
+import { createStreetViewInitMessage, parseStreetViewChildMessage, type StreetViewMarkerStatus } from './protocol'
 import type { createStreetViewAttempt } from './events'
 import type { EnabledStreetViewConfiguration, StreetViewFailureReason } from './types'
 
@@ -7,6 +7,7 @@ export interface StreetViewSession {
   readonly configuration: EnabledStreetViewConfiguration
   readonly attempt: ReturnType<typeof createStreetViewAttempt>
   readonly startedAt: number
+  readonly markerLabel: string
   sdkStartedAt: number | null
 }
 
@@ -15,14 +16,15 @@ interface Props {
   readonly ready: boolean
   readonly onReady: (aligned: boolean) => void
   readonly onLocation: (photodate: string | null) => void
-  readonly onFailure: () => void
+  readonly onMarkerStatus: (status: StreetViewMarkerStatus) => void
+  readonly onFailure: (reason: StreetViewFailureReason) => void
   readonly onClose: () => void
 }
 
-export function StreetViewFrame({ session, ready, onReady, onLocation, onFailure, onClose }: Props) {
+export function StreetViewFrame({ session, ready, onReady, onLocation, onMarkerStatus, onFailure, onClose }: Props) {
   const frame = useRef<HTMLIFrameElement>(null)
-  const callbacks = useRef({ onReady, onLocation, onFailure, onClose })
-  callbacks.current = { onReady, onLocation, onFailure, onClose }
+  const callbacks = useRef({ onReady, onLocation, onMarkerStatus, onFailure, onClose })
+  callbacks.current = { onReady, onLocation, onMarkerStatus, onFailure, onClose }
 
   useEffect(() => {
     const element = frame.current
@@ -40,7 +42,7 @@ export function StreetViewFrame({ session, ready, onReady, onLocation, onFailure
       if (disposed) return
       clearDeadlines()
       session.attempt.fail(reason)
-      callbacks.current.onFailure()
+      callbacks.current.onFailure(reason)
     }
 
     function scheduleSdkDeadline() {
@@ -56,7 +58,7 @@ export function StreetViewFrame({ session, ready, onReady, onLocation, onFailure
       if (!message) return
       if (message.type === 'BOOT_READY') {
         element?.contentWindow?.postMessage(
-          createStreetViewInitMessage(session.attempt.id, session.configuration.initialization),
+          createStreetViewInitMessage(session.attempt.id, session.configuration.initialization, session.markerLabel),
           window.location.origin,
         )
         return
@@ -78,6 +80,9 @@ export function StreetViewFrame({ session, ready, onReady, onLocation, onFailure
           break
         case 'LOCATION':
           callbacks.current.onLocation(message.photodate)
+          break
+        case 'MARKER_STATUS':
+          callbacks.current.onMarkerStatus(message.status)
           break
         case 'FAILED':
           fail(message.reasonCode)

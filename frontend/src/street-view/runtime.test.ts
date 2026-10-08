@@ -5,7 +5,7 @@ import { startStreetViewRuntime } from './runtime'
 const attemptId = '7dce1fe0-6728-47f6-b9d8-806920929a3a'
 const initialization = {
   searchPosition: { latitude: 37.561443, longitude: 126.962715 },
-  lookAtPosition: { latitude: 37.561443, longitude: 126.962715 },
+  lookAtPosition: { latitude: 37.5616, longitude: 126.963 },
   tilt: 0,
   fov: 90,
 }
@@ -37,6 +37,9 @@ function setup(clientId = 'test-browser-client') {
   const constructor = vi.fn()
   const removeListener = vi.fn()
   const disconnect = vi.fn()
+  const observe = vi.fn()
+  const createMarker = vi.fn()
+  const setMarkerMap = vi.fn()
   let notifyResize: () => void = () => undefined
   const sdk = {
     LatLng: class {
@@ -54,6 +57,10 @@ function setup(clientId = 'test-browser-client') {
       setPov = setPov
       setSize = setSize
     },
+    Marker: class {
+      constructor(options: unknown) { createMarker(options) }
+      setMap = setMarkerMap
+    },
     Event: {
       addListener: (_target: unknown, name: string, callback: (value?: unknown) => void) => {
         listeners.set(name, callback)
@@ -65,15 +72,15 @@ function setup(clientId = 'test-browser-client') {
   vi.stubGlobal('naver', { maps: sdk })
   vi.stubGlobal('ResizeObserver', class {
     constructor(callback: () => void) { notifyResize = callback }
-    observe = vi.fn()
+    observe = observe
     disconnect = disconnect
   })
   dispose = startStreetViewRuntime(container, clientId, parentWindow)
-  const initialize = (origin = window.location.origin, source: MessageEventSource = parentWindow) => {
+  const initialize = (origin = window.location.origin, source: MessageEventSource = parentWindow, markerLabel = '어바니엘위드더스타일충정로 · 출입구') => {
     window.dispatchEvent(new MessageEvent('message', {
       origin,
       source,
-      data: createStreetViewInitMessage(attemptId, initialization),
+      data: createStreetViewInitMessage(attemptId, initialization, markerLabel),
     }))
   }
   const sdkReady = () => {
@@ -83,7 +90,7 @@ function setup(clientId = 'test-browser-client') {
   }
   const emit = (name: string, value?: unknown) => listeners.get(name)?.(value)
   const messages = () => postMessage.mock.calls.map(([message]) => message as StreetViewChildMessage)
-  return { parentWindow, initialize, sdkReady, emit, messages, container, setPov, setSize, fromCoordToPov, getLocation, constructor, removeListener, disconnect, notifyResize: () => notifyResize() }
+  return { parentWindow, initialize, sdkReady, emit, messages, container, setPov, setSize, fromCoordToPov, getLocation, constructor, removeListener, disconnect, observe, sdk, createMarker, setMarkerMap, notifyResize: () => notifyResize() }
 }
 
 describe('isolated panorama runtime', () => {
@@ -124,12 +131,23 @@ describe('isolated panorama runtime', () => {
     }))
     runtime.emit(first, 'OK')
     expect(runtime.setPov).not.toHaveBeenCalled()
+    expect(runtime.createMarker).not.toHaveBeenCalled()
     expect(runtime.container.inert).toBe(true)
     runtime.emit(second, 'OK')
     expect(runtime.setPov).toHaveBeenCalledExactlyOnceWith({ pan: 137, tilt: 0, fov: 90 })
     expect(runtime.fromCoordToPov).toHaveBeenCalledWith(expect.objectContaining(initialization.lookAtPosition))
     expect(runtime.messages()).toContainEqual(expect.objectContaining({ type: 'READY', aligned: true }))
     expect(runtime.container.inert).toBe(false)
+    expect(runtime.constructor).toHaveBeenCalledWith(runtime.container, expect.objectContaining({
+      position: expect.objectContaining(initialization.searchPosition),
+    }))
+    expect(runtime.createMarker).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      position: expect.objectContaining(initialization.lookAtPosition), clickable: false, draggable: false,
+    }))
+    expect(runtime.setMarkerMap).toHaveBeenCalledExactlyOnceWith(expect.any(runtime.sdk.Panorama))
+    expect(runtime.messages().filter((message) => message.type === 'MARKER_STATUS')).toEqual([
+      expect.objectContaining({ type: 'MARKER_STATUS', status: 'ATTACHED', attemptId }),
+    ])
 
     runtime.getLocation.mockReturnValue({ photodate: '2026-01' })
     runtime.emit('pano_changed')
@@ -137,6 +155,10 @@ describe('isolated panorama runtime', () => {
     expect(runtime.setPov).toHaveBeenCalledTimes(1)
     expect(runtime.messages().filter((message) => message.type === 'READY')).toHaveLength(1)
     expect(runtime.messages()).toContainEqual(expect.objectContaining({ type: 'LOCATION', photodate: '2026-01' }))
+    runtime.emit('init')
+    expect(runtime.createMarker).toHaveBeenCalledTimes(1)
+    expect(runtime.setMarkerMap).toHaveBeenCalledTimes(1)
+    expect(runtime.messages().filter((message) => message.type === 'MARKER_STATUS')).toHaveLength(1)
   })
 
   it('waits up to one second for projection and never realigns after falling back', () => {
@@ -146,6 +168,7 @@ describe('isolated panorama runtime', () => {
     runtime.sdkReady()
     runtime.emit('init')
     runtime.emit('pano_status', 'OK')
+    expect(runtime.messages()).toContainEqual(expect.objectContaining({ type: 'MARKER_STATUS', status: 'ATTACHED' }))
     vi.advanceTimersByTime(999)
     expect(runtime.messages().some((message) => message.type === 'READY')).toBe(false)
     vi.advanceTimersByTime(1)
@@ -168,6 +191,67 @@ describe('isolated panorama runtime', () => {
     vi.advanceTimersByTime(100)
     expect(runtime.messages()).toContainEqual(expect.objectContaining({ type: 'READY', aligned: true }))
     expect(runtime.messages()).toContainEqual(expect.objectContaining({ type: 'LOCATION', photodate: null }))
+  })
+
+  it.each(['missing', 'constructor', 'setMap', 'invalid-instance'] as const)('keeps imagery ready when the marker fails: %s', (failure) => {
+    const runtime = setup()
+    if (failure === 'missing') Reflect.deleteProperty(runtime.sdk, 'Marker')
+    if (failure === 'constructor') runtime.createMarker.mockImplementation(() => { throw new Error('Marker construction failed') })
+    if (failure === 'setMap') runtime.setMarkerMap.mockImplementation(() => { throw new Error('Marker attachment failed') })
+    if (failure === 'invalid-instance') Reflect.set(runtime.sdk, 'Marker', class {})
+    runtime.initialize()
+    runtime.sdkReady()
+    runtime.emit('init')
+    runtime.emit('pano_status', 'OK')
+    runtime.emit('pano_changed')
+    runtime.emit('pano_status', 'OK')
+    expect(runtime.messages().filter((message) => message.type === 'MARKER_STATUS')).toEqual([
+      expect.objectContaining({ type: 'MARKER_STATUS', status: 'UNAVAILABLE' }),
+    ])
+    expect(runtime.messages()).toContainEqual(expect.objectContaining({ type: 'READY', aligned: true }))
+    expect(runtime.messages().some((message) => message.type === 'FAILED')).toBe(false)
+    expect(runtime.container.inert).toBe(false)
+  })
+
+  it('renders HTML-like and long names as inert text with an accessible full label and pin-tip anchor', () => {
+    const runtime = setup()
+    const label = '<img src=x onerror=alert(1)>' + '😀'.repeat(225) + ' · 출입구'
+    runtime.initialize(window.location.origin, runtime.parentWindow, label)
+    runtime.sdkReady()
+    runtime.emit('pano_status', 'OK')
+    runtime.emit('init')
+    const options = runtime.createMarker.mock.calls[0][0] as naver.maps.MarkerOptions
+    const icon = options.icon as naver.maps.HtmlIcon
+    const content = icon.content as HTMLElement
+    expect(content.getAttribute('role')).toBe('img')
+    expect(content.getAttribute('aria-label')).toBe(label)
+    expect(content.textContent).toBe(label)
+    expect(content.querySelector('img, [onerror], button, a, [tabindex]')).toBeNull()
+    expect(content.querySelector('svg')).toHaveAttribute('focusable', 'false')
+    expect(icon.size).toEqual({ width: 220, height: 88 })
+    expect(icon.anchor).toEqual({ x: 110, y: 88 })
+  })
+
+  it('detaches the marker only once and finishes resource cleanup even when detachment throws', () => {
+    const runtime = setup()
+    runtime.fromCoordToPov.mockReturnValue({ pan: Infinity })
+    runtime.initialize()
+    runtime.sdkReady()
+    runtime.emit('init')
+    runtime.emit('pano_status', 'OK')
+    runtime.setMarkerMap.mockImplementationOnce(() => { throw new Error('Detached document') })
+    const count = runtime.messages().length
+    expect(() => dispose()).not.toThrow()
+    dispose()
+    expect(runtime.setMarkerMap).toHaveBeenLastCalledWith(null)
+    expect(runtime.setMarkerMap).toHaveBeenCalledTimes(2)
+    expect(runtime.removeListener).toHaveBeenCalledTimes(3)
+    expect(runtime.disconnect).toHaveBeenCalledOnce()
+    expect(document.head.querySelector('script')).toBeNull()
+    expect(vi.getTimerCount()).toBe(0)
+    runtime.emit('pano_status', 'OK')
+    runtime.emit('init')
+    expect(runtime.messages()).toHaveLength(count)
   })
 
   it('reports a panorama error without claiming that no imagery exists or reporting readiness later', () => {
@@ -205,9 +289,38 @@ describe('isolated panorama runtime', () => {
     expect(runtime.messages()).toContainEqual(expect.objectContaining({ type: 'FAILED', reasonCode: 'SDK_UNAVAILABLE' }))
   })
 
+  it('follows the iframe viewport after the SDK pins its panorama container to pixel dimensions', () => {
+    const runtime = setup()
+    const viewport = vi.spyOn(document.documentElement, 'getBoundingClientRect')
+      .mockReturnValue(new DOMRect(0, 0, 640, 480))
+    vi.spyOn(runtime.container, 'getBoundingClientRect').mockImplementation(() => new DOMRect(
+      0, 0, Number.parseFloat(runtime.container.style.width) || 640,
+      Number.parseFloat(runtime.container.style.height) || 480,
+    ))
+    runtime.setSize.mockImplementation(({ width, height }: { width: number; height: number }) => {
+      // Real NAVER setSize writes pixels to the same element passed to Panorama.
+      runtime.container.style.width = `${width}px`
+      runtime.container.style.height = `${height}px`
+    })
+    runtime.initialize()
+    runtime.sdkReady()
+    expect(runtime.container.style.width).toBe('640px')
+    expect(runtime.observe).toHaveBeenCalledExactlyOnceWith(document.documentElement)
+
+    viewport.mockReturnValue(new DOMRect(0, 0, 1100, 600))
+    runtime.notifyResize()
+    expect(runtime.setSize).toHaveBeenLastCalledWith({ width: 1100, height: 600 })
+    expect(runtime.container.style.width).toBe('1100px')
+    viewport.mockReturnValue(new DOMRect(0, 0, 338, 520))
+    runtime.notifyResize()
+    expect(runtime.setSize).toHaveBeenLastCalledWith({ width: 338, height: 520 })
+    expect(runtime.container.style.width).toBe('338px')
+    expect(runtime.container.style.height).toBe('520px')
+  })
+
   it('resizes only for changed positive dimensions and ignores notifications after cleanup', () => {
     const runtime = setup()
-    const bounds = vi.spyOn(runtime.container, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 640, 480))
+    const bounds = vi.spyOn(document.documentElement, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 640, 480))
     runtime.initialize()
     runtime.sdkReady()
     runtime.notifyResize()

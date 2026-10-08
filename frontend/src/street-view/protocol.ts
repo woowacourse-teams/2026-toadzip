@@ -1,7 +1,9 @@
 import { isStreetViewInitialization, type StreetViewInitialization } from './types'
 
 export const STREET_VIEW_CHANNEL = 'toadzip-street-view'
-export const STREET_VIEW_VERSION = 1
+export const STREET_VIEW_VERSION = 2
+
+export type StreetViewMarkerStatus = 'ATTACHED' | 'UNAVAILABLE'
 
 type Envelope = {
   channel: typeof STREET_VIEW_CHANNEL
@@ -17,6 +19,7 @@ export type StreetViewRuntimePayload =
   | { type: 'READY'; aligned: boolean }
   | ({ type: 'FAILED' } & StreetViewRuntimeFailure)
   | { type: 'LOCATION'; photodate: string | null }
+  | { type: 'MARKER_STATUS'; status: StreetViewMarkerStatus }
   | { type: 'CLOSE_REQUEST' }
 
 export type StreetViewChildMessage = Envelope & (
@@ -28,22 +31,24 @@ export type StreetViewParentMessage = Envelope & {
   type: 'INIT'
   attemptId: string
   initialization: StreetViewInitialization
+  markerLabel: string
 }
 
 export function createStreetViewInitMessage(
   attemptId: string,
   initialization: StreetViewInitialization,
+  markerLabel: string,
 ): StreetViewParentMessage {
-  return { channel: STREET_VIEW_CHANNEL, version: STREET_VIEW_VERSION, type: 'INIT', attemptId, initialization }
+  return { channel: STREET_VIEW_CHANNEL, version: STREET_VIEW_VERSION, type: 'INIT', attemptId, initialization, markerLabel }
 }
 
 export function parseStreetViewParentMessage(value: unknown): StreetViewParentMessage | null {
   if (!isEnvelope(value) || value.type !== 'INIT' || !isAttemptId(value.attemptId) ||
-    !isStreetViewInitialization(value.initialization)) {
+    !isStreetViewInitialization(value.initialization) || !isMarkerLabel(value.markerLabel)) {
     return null
   }
 
-  return createStreetViewInitMessage(value.attemptId, value.initialization)
+  return createStreetViewInitMessage(value.attemptId, value.initialization, value.markerLabel)
 }
 
 export function parseStreetViewChildMessage(value: unknown): StreetViewChildMessage | null {
@@ -65,6 +70,11 @@ export function parseStreetViewChildMessage(value: unknown): StreetViewChildMess
     case 'LOCATION':
       if (value.photodate === null || (typeof value.photodate === 'string' && value.photodate.length <= 100)) {
         return { ...attempt, type: 'LOCATION', photodate: value.photodate }
+      }
+      break
+    case 'MARKER_STATUS':
+      if (value.status === 'ATTACHED' || value.status === 'UNAVAILABLE') {
+        return { ...attempt, type: 'MARKER_STATUS', status: value.status }
       }
       break
     case 'CLOSE_REQUEST':
@@ -89,4 +99,8 @@ function isEnvelope(value: unknown): value is Record<string, unknown> {
 
 function isAttemptId(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+}
+
+function isMarkerLabel(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && Array.from(value).length <= 261
 }

@@ -12,8 +12,10 @@ const ORIENTATION_WAIT_MS = 1_000
 const RETRY_ORIENTATION_MS = 100
 
 type Panorama = Pick<naver.maps.Panorama, 'getLocation' | 'getProjection' | 'setPov' | 'setSize'>
+type PanoramaMarker = { setMap: (panorama: Panorama | null) => void }
 type PanoramaSdk = {
   Panorama: new (element: HTMLElement, options: naver.maps.PanoramaOptions) => Panorama
+  Marker?: new (options: naver.maps.MarkerOptions) => unknown
   LatLng: typeof naver.maps.LatLng
   Event: Pick<typeof naver.maps.Event, 'addListener' | 'removeListener'>
 }
@@ -26,11 +28,14 @@ export function startStreetViewRuntime(
 ): () => void {
   if (parentWindow === window) return () => undefined
 
+  const viewport = container.ownerDocument.documentElement
   let disposed = false
   let initializationMessage: StreetViewParentMessage | null = null
   let script: HTMLScriptElement | null = null
   let maps: PanoramaSdk | null = null
   let panorama: Panorama | null = null
+  let entranceMarker: PanoramaMarker | null = null
+  let markerAttempted = false
   let initialized = false
   let querySucceeded = false
   let ready = false
@@ -85,6 +90,39 @@ export function startStreetViewRuntime(
     send({ type: 'READY', aligned })
   }
 
+  const detachEntranceMarker = () => {
+    const marker = entranceMarker
+    entranceMarker = null
+    try {
+      marker?.setMap(null)
+    } catch {
+      // A marker failure must not prevent the rest of the iframe from being released.
+    }
+  }
+
+  const attachEntranceMarker = () => {
+    if (disposed || failed || markerAttempted || !initialized || !querySucceeded || !panorama || !maps || !initializationMessage) return
+    markerAttempted = true
+    try {
+      const { lookAtPosition } = initializationMessage.initialization
+      entranceMarker = createPanoramaMarker(maps, {
+        position: new maps.LatLng(lookAtPosition.latitude, lookAtPosition.longitude),
+        icon: {
+          content: createMarkerContent(initializationMessage.markerLabel),
+          size: { width: 220, height: 88 },
+          anchor: { x: 110, y: 88 },
+        },
+        clickable: false,
+        draggable: false,
+      })
+      entranceMarker.setMap(panorama)
+      send({ type: 'MARKER_STATUS', status: 'ATTACHED' })
+    } catch {
+      detachEntranceMarker()
+      send({ type: 'MARKER_STATUS', status: 'UNAVAILABLE' })
+    }
+  }
+
   const alignInitialView = () => {
     if (disposed || failed || ready || !initialized || !querySucceeded || !panorama || !maps || !initializationMessage) return
     if (orientationDeadline === null) orientationDeadline = performance.now() + ORIENTATION_WAIT_MS
@@ -110,7 +148,9 @@ export function startStreetViewRuntime(
 
   const resize = () => {
     if (!panorama || disposed || failed) return
-    const { width, height } = container.getBoundingClientRect()
+    // Panorama.setSize writes pixels to its own container, so measure the independent
+    // iframe viewport rather than feeding those previous dimensions back into the SDK.
+    const { width, height } = viewport.getBoundingClientRect()
     if (width <= 0 || height <= 0 || (width === renderedWidth && height === renderedHeight)) return
     panorama.setSize({ width, height })
     renderedWidth = width
@@ -137,6 +177,7 @@ export function startStreetViewRuntime(
       if (!hasPanoramaMethods(panorama)) throw new Error('Unavailable panorama methods')
       sdkListeners.push(maps.Event.addListener(panorama, 'init', () => {
         initialized = true
+        attachEntranceMarker()
         alignInitialView()
       }))
       sdkListeners.push(maps.Event.addListener(panorama, 'pano_status', (status: unknown) => {
@@ -147,6 +188,7 @@ export function startStreetViewRuntime(
         if (status === 'OK') {
           querySucceeded = true
           reportLocation()
+          attachEntranceMarker()
           alignInitialView()
         }
       }))
@@ -155,7 +197,7 @@ export function startStreetViewRuntime(
         alignInitialView()
       }))
       resizeObserver = new ResizeObserver(resize)
-      resizeObserver.observe(container)
+      resizeObserver.observe(viewport)
       resize()
       send({ type: 'PHASE', phase: 'PANORAMA' })
     } catch {
@@ -208,6 +250,7 @@ export function startStreetViewRuntime(
     window.removeEventListener('pagehide', dispose)
     window.removeEventListener('keydown', onKeyDown, true)
     window.clearTimeout(orientationTimer)
+    detachEntranceMarker()
     resizeObserver?.disconnect()
     sdkListeners.forEach((listener) => maps?.Event.removeListener(listener))
     script?.removeEventListener('error', onScriptError)
@@ -238,8 +281,44 @@ function readPanoramaSdk(): PanoramaSdk | null {
   const maps = candidate.maps
   if (typeof maps.Panorama !== 'function' || typeof maps.LatLng !== 'function' || !isRecord(maps.Event) ||
     typeof maps.Event.addListener !== 'function' || typeof maps.Event.removeListener !== 'function') return null
-  // This is the only SDK cast: constructors are checked here and instance methods after construction.
+  // Required constructors are checked here and instance methods after construction.
   return maps as PanoramaSdk
+}
+
+function createPanoramaMarker(maps: PanoramaSdk, options: naver.maps.MarkerOptions): PanoramaMarker {
+  if (typeof maps.Marker !== 'function') throw new Error('Unavailable marker constructor')
+  const marker: unknown = new maps.Marker(options)
+  if (!isRecord(marker) || typeof marker.setMap !== 'function') throw new Error('Unavailable marker methods')
+  const setMap = marker.setMap
+  // The official Panorama example accepts Marker.setMap(panorama), while @types/navermaps
+  // only declares Map. Keep that compatibility adjustment at this checked SDK boundary.
+  return { setMap: (panorama) => { setMap.call(marker, panorama) } }
+}
+
+function createMarkerContent(label: string): HTMLElement {
+  const content = document.createElement('div')
+  content.className = 'street-view-entrance-marker'
+  content.setAttribute('role', 'img')
+  content.setAttribute('aria-label', label)
+  const name = document.createElement('span')
+  name.className = 'street-view-entrance-label'
+  name.textContent = label
+  name.setAttribute('aria-hidden', 'true')
+  const pin = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  pin.setAttribute('viewBox', '0 0 24 24')
+  pin.setAttribute('aria-hidden', 'true')
+  pin.setAttribute('focusable', 'false')
+  const outline = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  outline.setAttribute('d', 'M12 24C10 21 3 14.5 3 9a9 9 0 1 1 18 0c0 5.5-7 12-9 15Z')
+  outline.setAttribute('fill', 'currentColor')
+  const center = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+  center.setAttribute('cx', '12')
+  center.setAttribute('cy', '9')
+  center.setAttribute('r', '3.5')
+  center.setAttribute('fill', 'var(--ds-color-surface)')
+  pin.append(outline, center)
+  content.append(name, pin)
+  return content
 }
 
 function hasPanoramaMethods(value: unknown): value is Panorama {

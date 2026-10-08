@@ -20,6 +20,7 @@ import { AnnouncementStatusBadge } from './AnnouncementStatusBadge'
 import styles from './HousingComplexDetailPanel.module.css'
 import { NotificationInterestButton } from '../interest/NotificationInterest'
 import { StreetViewEntry } from '../../street-view/StreetViewEntry'
+import type { StreetViewController } from '../../street-view/useStreetView'
 
 export interface HousingComplexDetailSupplyCondition {
   readonly target: string | null
@@ -79,7 +80,8 @@ export interface HousingComplexDetailPanelProps {
   readonly onClose: () => void
   readonly backButton?: ReactNode
   readonly onOpenAnnouncement?: (announcementId: string) => void
-  readonly streetViewSupported?: boolean
+  readonly streetView?: StreetViewController
+  readonly onEscape?: () => void
 }
 
 interface HousingTypeSelection {
@@ -92,7 +94,8 @@ export function HousingComplexDetailPanel({
   onClose,
   onOpenAnnouncement,
   backButton,
-  streetViewSupported = true,
+  streetView,
+  onEscape,
 }: HousingComplexDetailPanelProps) {
   const initialHousingTypeId = detail.housingTypes[0]?.housingTypeId ?? null
   const [selection, setSelection] = useState<HousingTypeSelection>({
@@ -152,11 +155,13 @@ export function HousingComplexDetailPanel({
   }
 
   function handlePanelKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.key !== 'Escape') {
+    if (event.key !== 'Escape' || event.defaultPrevented) {
       return
     }
     event.stopPropagation()
-    onClose()
+    event.preventDefault()
+    const closeCurrentView = onEscape ?? onClose
+    closeCurrentView()
   }
 
   return (
@@ -196,7 +201,7 @@ export function HousingComplexDetailPanel({
           </div>
           <div className={styles.addressRow}>
             <p className={styles.address}>{displayAddress(detail)}</p>
-            {streetViewSupported && <StreetViewEntry complexId={detail.complexId} name={detail.name} address={displayAddress(detail)} />}
+            {streetView && <StreetViewEntry controller={streetView} name={detail.name} />}
           </div>
           <div className={styles.notificationCallout}>
             <div className={styles.notificationCopy}>

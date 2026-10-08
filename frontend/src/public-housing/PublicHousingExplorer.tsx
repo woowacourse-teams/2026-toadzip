@@ -20,7 +20,10 @@ import {
   useRef,
   useState,
 } from 'react'
-import { useLocation, useNavigate } from 'react-router'
+import { useLocation, useNavigate, useNavigationType } from 'react-router'
+import { useStreetView, type StreetViewController } from '../street-view/useStreetView'
+import { StreetViewPanel } from '../street-view/StreetViewPanel'
+import { useMobileViewport } from './components/useMobileViewport'
 import { type DetailEntryPoint, trackEvent } from '../analytics/googleAnalytics.ts'
 import { trackAppliedFilters, useHousingAnalytics } from '../analytics/useHousingAnalytics.ts'
 import NaverMap, {
@@ -179,6 +182,8 @@ export function PublicHousingExplorer({
 }: PublicHousingExplorerProps) {
   const location = useLocation()
   const navigate = useNavigate()
+  const navigationType = useNavigationType()
+  const mobile = useMobileViewport()
   const [mapCameraTarget, setMapCameraTarget] = useState<NaverMapCameraTarget>(
     () => {
       const initialMapLocation = parseMapLocation(
@@ -304,6 +309,27 @@ export function PublicHousingExplorer({
     () => parseDetailLocation(new URLSearchParams(detailLocationSearch)),
     [detailLocationSearch],
   )
+  const streetView = useStreetView({
+    target: detailLocation.kind === 'complex' && complexDetail.status === 'ready'
+      && detailLocation.complexId === complexDetail.complexId && complexDetail.detail
+      ? { complexId: complexDetail.detail.complexId, name: complexDetail.detail.name ?? MISSING_DATA_LABEL }
+      : null,
+    mobile,
+    supported: streetViewSupported,
+  })
+  const closeStreetView = streetView.close
+  const previousLocationKey = useRef(location.key)
+  useLayoutEffect(() => {
+    if (previousLocationKey.current === location.key) return
+    previousLocationKey.current = location.key
+    // Browser navigation leaves this temporary view; map URL synchronization does not.
+    if (navigationType === 'POP') closeStreetView('USER_CLOSED', false)
+  }, [location.key, navigationType, closeStreetView])
+
+  const handleSearchActiveChange = useCallback((active: boolean) => {
+    if (active) closeStreetView('USER_CLOSED', false)
+    setIntegratedSearchActive(active)
+  }, [closeStreetView])
   const prepareDetailVisit = useHousingAnalytics({
     detailLocation,
     readyComplexId: complexDetail.status === 'ready'
@@ -394,9 +420,10 @@ export function PublicHousingExplorer({
   }, [boundaryRegionCode, selectedBoundarySearchItem, searchRepository, focusBoundary])
 
   const changeBoundarySelection = useCallback((code: string | null) => {
+    closeStreetView('USER_CLOSED', false)
     const query = setRegionBoundaryCode(new URLSearchParams(location.search), code)
     navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(query) }, { state: location.state })
-  }, [location.hash, location.pathname, location.search, location.state, navigate])
+  }, [location.hash, location.pathname, location.search, location.state, navigate, closeStreetView])
 
   const complexFilters = useMemo(
     () => parseComplexSearchFilters(new URLSearchParams(location.search)),
@@ -697,6 +724,7 @@ export function PublicHousingExplorer({
   }, [announcementDetail, complexDetail, detailLocation])
 
   const openDetail = useCallback((kind: ResultTab, id: string, entryPoint: DetailEntryPoint) => {
+    closeStreetView('TARGET_CHANGED', false)
     if (window.matchMedia?.('(max-width: 1023px)').matches) {
       mobileDetailListModeRef.current ??= listPanelMode
       setListPanelMode('collapsed')
@@ -752,6 +780,7 @@ export function PublicHousingExplorer({
     navigate,
     prepareDetailVisit,
     listPanelMode,
+    closeStreetView,
   ])
 
 
@@ -817,6 +846,7 @@ export function PublicHousingExplorer({
   }, [openDetail])
 
   const closeDetail = useCallback(() => {
+    closeStreetView('USER_CLOSED', false)
     pendingDetailCameraRef.current = null
     setSelectedComplexId(null)
     setSelectedSearchComplex(null)
@@ -837,9 +867,11 @@ export function PublicHousingExplorer({
     location.search,
     location.state,
     navigate,
+    closeStreetView,
   ])
 
   const selectResultTab = useCallback((tab: ResultList) => {
+    closeStreetView('USER_CLOSED', false)
     mobileDetailListModeRef.current = null
     setListPanelMode('open')
     if (integratedSearchActive) {
@@ -849,13 +881,14 @@ export function PublicHousingExplorer({
     setIntegratedSearchActive(false)
     if (tab === 'announcements') setAnnouncementListRequested(true)
     setActiveResultTab(tab)
-  }, [integratedSearchActive])
+  }, [integratedSearchActive, closeStreetView])
 
   const returnToDetail = useCallback(() => {
     const previous = detailReturnFocusStack.at(-1)
     if (!previous) {
       return
     }
+    closeStreetView('TARGET_CHANGED', false)
     pendingDetailCameraRef.current = null
     const query = new URLSearchParams(location.search)
     const nextSearch = previous.kind === 'complex'
@@ -866,7 +899,7 @@ export function PublicHousingExplorer({
       replace: true,
       state: popDetailHistoryState(location.state),
     })
-  }, [detailReturnFocusStack, location, navigate, prepareDetailVisit])
+  }, [detailReturnFocusStack, location, navigate, prepareDetailVisit, closeStreetView])
 
   useLayoutEffect(() => {
     const pending = pendingDetailCameraRef.current
@@ -998,6 +1031,7 @@ export function PublicHousingExplorer({
   }, [cancelServerMapRequest, complexFilters, finishClusterTransition, requestServerMap])
 
   const handleStarterPlaceSelect = useCallback((place: StarterPlace) => {
+    closeStreetView('USER_CLOSED', false)
     setListPanelMode('auto')
     pendingDetailCameraRef.current = null
     boundarySelectionRef.current = null
@@ -1009,7 +1043,7 @@ export function PublicHousingExplorer({
     navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(query) }, {
       state: clearDetailHistoryState(location.state),
     })
-  }, [location, navigate])
+  }, [location, navigate, closeStreetView])
 
   const handleIntegratedSearchSelect = useCallback((item: SearchResultItem) => {
     if (item.type === 'COMPLEX') {
@@ -1020,6 +1054,7 @@ export function PublicHousingExplorer({
       trackEvent('select_search_result', { result_type: 'region' })
     }
     if (item.type === 'REGION') {
+      closeStreetView('USER_CLOSED', false)
       setListPanelMode('auto')
       setActiveResultTab('complexes')
       const code = item.regionCode ?? item.id
@@ -1050,7 +1085,7 @@ export function PublicHousingExplorer({
     }
     setSelectedSearchComplex(item)
     openComplexDetail(item.id, 'search')
-  }, [boundaryRegionCode, location, navigate, openAnnouncementDetail, openComplexDetail])
+  }, [boundaryRegionCode, location, navigate, openAnnouncementDetail, openComplexDetail, closeStreetView])
 
   useEffect(() => {
     return () => {
@@ -1157,9 +1192,9 @@ export function PublicHousingExplorer({
     </div>
   )
 
-  const showListPage = !integratedSearchActive && listPanelMode !== 'collapsed'
+  const showListPage = !streetView.active && !integratedSearchActive && listPanelMode !== 'collapsed'
     && (activeResultTab === 'recent' || (activeResultTab === 'announcements' ? announcementListRequested : boundaryRegionCode !== null))
-  const showResultPage = integratedSearchActive || showListPage
+  const showResultPage = !streetView.active && (integratedSearchActive || showListPage)
 
   function collapseResults() {
     mobileDetailListModeRef.current = null
@@ -1168,7 +1203,15 @@ export function PublicHousingExplorer({
   }
 
   return (
-    <div className={`housing-explorer${hasDetail ? ' has-detail' : ''}${showResultPage ? ' has-results-page' : ''}${integratedSearchActive ? ' is-searching' : ''}`}>
+    <div className={`housing-explorer${hasDetail ? ' has-detail' : ''}${showResultPage ? ' has-results-page' : ''}${integratedSearchActive ? ' is-searching' : ''}${streetView.active ? ' has-street-view' : ''}`}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape' || event.defaultPrevented || !streetView.active) return
+        const dialog = event.target instanceof HTMLElement ? event.target.closest('dialog') : null
+        if (dialog && !dialog.classList.contains('housing-detail-layer')) return
+        event.preventDefault()
+        event.stopPropagation()
+        closeStreetView()
+      }}>
       {!['required', 'failed'].includes(new URLSearchParams(location.search).get('login') ?? '') && (
         <FirstVisitWelcome onPlaceSelect={handleStarterPlaceSelect} onRegionSelect={handleIntegratedSearchSelect} repository={searchRepository} />
       )}
@@ -1203,7 +1246,7 @@ export function PublicHousingExplorer({
         <div className="housing-search-overlay" ref={searchOverlayRef}>
           <IntegratedSearch
             key={searchRevision}
-            onActiveChange={setIntegratedSearchActive}
+            onActiveChange={handleSearchActiveChange}
             onSelect={handleIntegratedSearchSelect}
             repository={searchRepository}
             selectionControl={boundaryRegionCode !== null && (
@@ -1381,7 +1424,7 @@ export function PublicHousingExplorer({
       </div>
 
       <main ref={mapWorkspaceRef} className="housing-map-workspace">
-        <div className="housing-map-filter">
+        <div className="housing-map-filter" hidden={streetView.active} inert={streetView.active}>
           <ComplexFilterToolbar
             filters={complexFilters}
             onApply={applyComplexFilters}
@@ -1389,14 +1432,17 @@ export function PublicHousingExplorer({
             resultCountLabel={complexFilterResultCountLabel}
           />
         </div>
-        <NaverMap {...naverMapProps} regionBoundary={boundaryState.boundary} />
-        <div className="housing-map-feedback"><HousingMapRequestFeedback errorMessage={serverMapState.errorMessage}
-          onRetry={retryServerMap} status={serverMapState.status} /></div>
-        {boundaryState.boundary !== null && (
-          <a className="housing-map-credits" href="/map-data-credits.html" target="_blank" rel="noreferrer">저작권</a>
-        )}
+        <div className="housing-map-base" inert={streetView.active} aria-hidden={streetView.active || undefined}>
+          <NaverMap {...naverMapProps} regionBoundary={boundaryState.boundary} />
+          <div className="housing-map-feedback" hidden={streetView.active}><HousingMapRequestFeedback errorMessage={serverMapState.errorMessage}
+            onRetry={retryServerMap} status={serverMapState.status} /></div>
+          {boundaryState.boundary !== null && !streetView.active && (
+            <a className="housing-map-credits" href="/map-data-credits.html" target="_blank" rel="noreferrer">저작권</a>
+          )}
+        </div>
         <ComplexDetailLayer
-          streetViewSupported={streetViewSupported}
+          mobile={mobile}
+          streetView={streetViewSupported && !mobile ? streetView : undefined}
           state={complexDetail}
           onClose={closeDetail}
           backTarget={detailReturnFocusStack.at(-1)}
@@ -1405,6 +1451,7 @@ export function PublicHousingExplorer({
           onRetry={() => setDetailRetryRevision((current) => current + 1)}
         />
         <AnnouncementDetailLayer
+          mobile={mobile}
           state={announcementDetail}
           onClose={closeDetail}
           backTarget={detailReturnFocusStack.at(-1)}
@@ -1412,6 +1459,9 @@ export function PublicHousingExplorer({
           onOpenComplex={(id) => openComplexDetail(id, 'detail')}
           onRetry={() => setDetailRetryRevision((current) => current + 1)}
         />
+        {streetView.active && <div className="housing-street-view-layer">
+          <StreetViewPanel controller={streetView} />
+        </div>}
       </main>
     </div>
   )
@@ -1434,9 +1484,10 @@ function DetailBackButton({ backTarget, onBack }: DetailBackProps) {
   )
 }
 
-function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backTarget, onBack, streetViewSupported }: {
+function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backTarget, onBack, streetView, mobile }: {
   state: ComplexDetailState
-  streetViewSupported: boolean
+  mobile: boolean
+  streetView?: StreetViewController
   onClose: () => void
   onOpenAnnouncement: (announcementId: string) => void
   onRetry: () => void
@@ -1445,10 +1496,11 @@ function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backT
     return null
   }
   return (
-    <HousingDetailOverlay label="단지 상세" onClose={onClose}>
+    <HousingDetailOverlay label="단지 상세" mobile={mobile} onClose={onClose}>
       {state.status === 'ready' && state.detail
         ? <HousingComplexDetailPanel
-            streetViewSupported={streetViewSupported}
+            streetView={streetView}
+            onEscape={streetView?.active ? () => streetView.close() : undefined}
             backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
             detail={toHousingComplexDetailData(state.detail)}
             onClose={onClose} onOpenAnnouncement={onOpenAnnouncement} />
@@ -1459,8 +1511,9 @@ function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backT
   )
 }
 
-function AnnouncementDetailLayer({ state, onClose, onOpenComplex, onRetry, backTarget, onBack }: {
+function AnnouncementDetailLayer({ state, onClose, onOpenComplex, onRetry, backTarget, onBack, mobile }: {
   state: AnnouncementDetailState
+  mobile: boolean
   onClose: () => void
   onOpenComplex: (complexId: string) => void
   onRetry: () => void
@@ -1469,7 +1522,7 @@ function AnnouncementDetailLayer({ state, onClose, onOpenComplex, onRetry, backT
     return null
   }
   return (
-    <HousingDetailOverlay label="공고 상세" onClose={onClose}>
+    <HousingDetailOverlay label="공고 상세" mobile={mobile} onClose={onClose}>
       {state.status === 'ready' && state.detail
         ? <HousingAnnouncementDetailPanel
             backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}

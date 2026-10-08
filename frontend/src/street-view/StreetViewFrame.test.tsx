@@ -21,8 +21,8 @@ function setup(strict = false) {
   const report = vi.fn<(event: StreetViewEvent) => void>()
   const attempt = createStreetViewAttempt(configuration, report)
   attempt.start()
-  const session: StreetViewSession = { configuration, attempt, startedAt: performance.now(), sdkStartedAt: null }
-  const callbacks = { onReady: vi.fn(), onLocation: vi.fn(), onFailure: vi.fn(), onClose: vi.fn() }
+  const session: StreetViewSession = { configuration, attempt, startedAt: performance.now(), sdkStartedAt: null, markerLabel: '단지명 · 출입구' }
+  const callbacks = { onReady: vi.fn(), onLocation: vi.fn(), onMarkerStatus: vi.fn(), onFailure: vi.fn(), onClose: vi.fn() }
   const element = <StreetViewFrame session={session} ready={false} {...callbacks} />
   const view = render(strict ? <StrictMode>{element}</StrictMode> : element)
   const frame = screen.getByTitle<HTMLIFrameElement>('네이버 단지 주변 거리뷰')
@@ -49,12 +49,12 @@ describe('StreetViewFrame', () => {
     send({ type: 'BOOT_READY' })
     expect(post).toHaveBeenCalledExactlyOnceWith({
       channel: STREET_VIEW_CHANNEL, version: STREET_VIEW_VERSION, type: 'INIT',
-      attemptId: session.attempt.id, initialization: configuration.initialization,
+      attemptId: session.attempt.id, initialization: configuration.initialization, markerLabel: session.markerLabel,
     }, window.location.origin)
   })
 
   it('다른 출처·iframe·버전·시도 ID의 메시지를 무시한다', () => {
-    const { send, onReady, onLocation, onClose, onFailure, report } = setup()
+    const { send, onReady, onLocation, onMarkerStatus, onClose, onFailure, report } = setup()
     send({ type: 'READY', aligned: true }, { origin: 'https://other.example.com' })
     send({ type: 'READY', aligned: true }, { source: window })
     send({ type: 'READY', aligned: true, version: 999 })
@@ -62,11 +62,41 @@ describe('StreetViewFrame', () => {
     send({ type: 'LOCATION', photodate: '2025-05', attemptId: crypto.randomUUID() })
     send({ type: 'CLOSE_REQUEST', attemptId: crypto.randomUUID() })
     send({ type: 'FAILED', phase: 'SDK', reasonCode: 'UNKNOWN' })
+    send({ type: 'MARKER_STATUS', status: 'ATTACHED' }, { origin: 'https://other.example.com' })
+    send({ type: 'MARKER_STATUS', status: 'ATTACHED' }, { source: window })
+    send({ type: 'MARKER_STATUS', status: 'ATTACHED', version: 1 })
+    send({ type: 'MARKER_STATUS', status: 'ATTACHED', attemptId: crypto.randomUUID() })
+    send({ type: 'MARKER_STATUS', status: 'VISIBLE' })
     expect(onReady).not.toHaveBeenCalled()
     expect(onLocation).not.toHaveBeenCalled()
+    expect(onMarkerStatus).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
     expect(onFailure).not.toHaveBeenCalled()
     expect(report).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['before', 'after'] as const)('handles marker status %s READY without reporting a second terminal result', (order) => {
+    const { send, onReady, onMarkerStatus, onFailure, report } = setup()
+    if (order === 'before') send({ type: 'MARKER_STATUS', status: 'UNAVAILABLE' })
+    send({ type: 'READY', aligned: false })
+    if (order === 'after') send({ type: 'MARKER_STATUS', status: 'UNAVAILABLE' })
+    expect(onReady).toHaveBeenCalledExactlyOnceWith(false)
+    expect(onMarkerStatus).toHaveBeenCalledExactlyOnceWith('UNAVAILABLE')
+    expect(onFailure).not.toHaveBeenCalled()
+    expect(report.mock.calls.map(([event]) => event.type)).toEqual(['STARTED', 'READY'])
+  })
+
+  it('does not initialize a mixed-version child and exposes the document failure reason for refresh guidance', async () => {
+    const { frame, send, onFailure, onMarkerStatus } = setup()
+    const child = frame.contentWindow
+    if (!child) throw new Error('거리뷰 iframe 문서가 없습니다.')
+    const post = vi.spyOn(child, 'postMessage')
+    send({ type: 'BOOT_READY', version: 1 })
+    send({ type: 'MARKER_STATUS', status: 'ATTACHED', version: 1 })
+    expect(post).not.toHaveBeenCalled()
+    expect(onMarkerStatus).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
+    expect(onFailure).toHaveBeenCalledExactlyOnceWith('DOCUMENT_TIMEOUT')
   })
 
   it('문서 준비가 안 되면 30초에 실패하고 숨겨진 프레임을 성공으로 취급하지 않는다', async () => {
@@ -74,7 +104,7 @@ describe('StreetViewFrame', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(29_999) })
     expect(onFailure).not.toHaveBeenCalled()
     await act(async () => { await vi.advanceTimersByTimeAsync(1) })
-    expect(onFailure).toHaveBeenCalledOnce()
+    expect(onFailure).toHaveBeenCalledExactlyOnceWith('DOCUMENT_TIMEOUT')
     expect(onReady).not.toHaveBeenCalled()
     expect(report.mock.calls[1][0]).toMatchObject({ type: 'FAILED', phase: 'DOCUMENT', reasonCode: 'DOCUMENT_TIMEOUT', durationMs: 30_000 })
   })
@@ -113,7 +143,7 @@ describe('StreetViewFrame', () => {
     expect(onReady).toHaveBeenCalledExactlyOnceWith(true)
     expect(report.mock.calls.map(([event]) => event.type)).toEqual(['STARTED', 'READY'])
     rerender(<StrictMode><StreetViewFrame session={session} ready onReady={onReady} onFailure={onFailure}
-      onClose={() => {}} onLocation={() => {}} /></StrictMode>)
+      onClose={() => {}} onLocation={() => {}} onMarkerStatus={() => {}} /></StrictMode>)
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
     expect(onFailure).not.toHaveBeenCalled()
     expect(report).toHaveBeenCalledTimes(2)
@@ -124,27 +154,29 @@ describe('StreetViewFrame', () => {
     const report = vi.fn<(event: StreetViewEvent) => void>()
     const attempt = createStreetViewAttempt(configuration, report)
     attempt.start()
-    const session: StreetViewSession = { configuration, attempt, startedAt: performance.now(), sdkStartedAt: null }
+    const session: StreetViewSession = { configuration, attempt, startedAt: performance.now(), sdkStartedAt: null, markerLabel: '단지명 · 출입구' }
     await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
     const onFailure = vi.fn()
     render(<StreetViewFrame session={session} ready={false} onReady={() => {}} onLocation={() => {}}
-      onClose={() => {}} onFailure={onFailure} />)
+      onClose={() => {}} onFailure={onFailure} onMarkerStatus={() => {}} />)
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
     expect(onFailure).toHaveBeenCalledOnce()
     expect(report.mock.calls[1][0].durationMs).toBe(30_000)
   })
 
   it('종료한 프레임은 늦은 메시지나 타이머를 처리하지 않는다', async () => {
-    const { unmount, send, report, onReady, onFailure, onClose } = setup()
+    const { unmount, send, report, onReady, onFailure, onMarkerStatus, onClose } = setup()
     send({ type: 'PHASE', phase: 'SDK' })
     unmount()
     send({ type: 'READY', aligned: true })
     send({ type: 'FAILED', phase: 'SDK', reasonCode: 'SDK_AUTH_FAILED' })
     send({ type: 'CLOSE_REQUEST' })
+    send({ type: 'MARKER_STATUS', status: 'ATTACHED' })
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
     expect(onReady).not.toHaveBeenCalled()
     expect(onFailure).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
+    expect(onMarkerStatus).not.toHaveBeenCalled()
     expect(report).toHaveBeenCalledTimes(1)
   })
 })
