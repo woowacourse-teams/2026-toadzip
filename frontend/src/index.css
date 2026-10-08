@@ -167,8 +167,8 @@ a {
 }
 
 .brand-logo {
-  width: 88px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   flex: none;
   object-fit: contain;
 }
@@ -2307,10 +2307,10 @@ button {
 }
 .app-shell .map-main { grid-column: 2; }
 .service-rail-brand {
-  position: absolute; z-index: 410; top: 22px; left: 0;
+  position: absolute; z-index: 410; top: 14px; left: 0;
   display: flex; width: var(--explorer-rail-width); justify-content: center;
 }
-.service-rail-brand .brand-logo { display: block; width: 44px; height: 28px; object-fit: contain; }
+.service-rail-brand .brand-logo { display: block; width: 44px; height: 44px; object-fit: contain; }
 .service-rail-brand .brand-name, .service-rail-brand .brand-tagline { display: none; }
 .service-rail-account {
   position: absolute; z-index: 410; bottom: 22px; left: 6px;
@@ -2405,7 +2405,7 @@ button {
   .app-shell { --explorer-rail-width: 52px; --explorer-top: 12px; --explorer-gutter: 10px; }
   .app-shell .housing-explorer { --explorer-panel-top: calc(var(--explorer-search-bottom, 60px) + 64px); }
   .service-rail-brand { top: 18px; }
-  .service-rail-brand .brand-logo { width: 38px; height: 24px; }
+  .service-rail-brand .brand-logo { width: 38px; height: 38px; }
   .housing-navigation { top: 62px; }
   .housing-navigation .housing-results__tabs button { min-height: 52px; font-size: 10px; }
   .housing-search-overlay { left: 10px; width: calc(100% - 20px); }

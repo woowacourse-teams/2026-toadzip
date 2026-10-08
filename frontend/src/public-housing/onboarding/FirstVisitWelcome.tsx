@@ -1,6 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import logo from '../../assets/brand/bok-logo.png'
 import { Button } from '../../design-system/components/Button.tsx'
 import { SearchGroup } from '../search/IntegratedSearch.tsx'
 import { integratedSearchRepository, type IntegratedSearchRepository, type SearchResultItem } from '../search/integratedSearchRepository.ts'
@@ -114,7 +113,7 @@ function WelcomeDialog({
         ) : (
           <div className={styles.intro}>
             <div className={styles.brand}>
-              <img src={logo} alt="BOK 공공주택 복덕방 로고" width="204" height="94" />
+              <img src="/logo-bok-search.svg" alt="공공주택 복덕방 로고" width="164" height="164" />
             </div>
             <div>
               <h2 id={titleId}>살고 싶은 동네의<br />공공임대주택을 찾아보세요.</h2>
