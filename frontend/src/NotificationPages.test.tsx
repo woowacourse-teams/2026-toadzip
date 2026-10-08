@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, expect, it, vi } from 'vitest'
 import App from './App'
@@ -41,7 +41,7 @@ it('보관함은 아직 전달 기능이 준비 중임을 알린다', async () =
   render(<MemoryRouter initialEntries={['/notifications']}><App /></MemoryRouter>)
   expect(await screen.findByRole('heading', { name: '알림 보관함' })).toBeVisible()
   expect(await screen.findByText('알림 기능을 준비하고 있어요')).toBeVisible()
-  expect(screen.getByRole('link', { name: '알림 관리' })).toHaveAttribute('href', '/mypage/notifications')
+  expect(within(screen.getByRole('dialog')).getByRole('link', { name: '알림 관리' })).toHaveAttribute('href', '/mypage/notifications')
 })
 
 it('비회원이 관리 주소로 직접 접속해도 설정을 노출하지 않는다', async () => {
@@ -117,4 +117,30 @@ it('전체 해제 중에는 중복 클릭과 개별 해제를 막는다', async 
   release()
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('알림 설정을 모두 해제했어요.'))
   expect(writes).toBe(3)
+})
+
+
+it('지도에서 보관함을 모달로 열고 닫으면 원래 버튼으로 포커스가 돌아온다', async () => {
+  session()
+  render(<MemoryRouter><App /></MemoryRouter>)
+  const trigger = await screen.findByRole('button', { name: '알림 보관함' })
+  trigger.focus()
+  fireEvent.click(trigger)
+  const dialog = await screen.findByRole('dialog', { name: '알림 보관함' })
+  expect(dialog).toHaveTextContent('알림 기능을 준비하고 있어요')
+  expect(screen.getByText('지도')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '알림 보관함 닫기' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(trigger).toHaveFocus()
+})
+
+it('모바일 마이 메뉴 안에서 알림 관리와 의견 보내기 및 로그아웃을 제공한다', async () => {
+  session()
+  vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })))
+  render(<MemoryRouter><App /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: '마이' }))
+  expect(screen.getByRole('dialog', { name: '마이페이지' })).toBeVisible()
+  expect(within(screen.getByRole('dialog')).getByRole('link', { name: '알림 관리' })).toHaveAttribute('href', '/mypage/notifications')
+  expect(screen.getByRole('link', { name: '제보/의견 보내기' })).toHaveAttribute('href', '/feedback')
+  expect(screen.getByRole('button', { name: '로그아웃' })).toBeVisible()
 })

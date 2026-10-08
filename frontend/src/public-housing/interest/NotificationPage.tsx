@@ -1,5 +1,6 @@
 import { Link } from 'react-router'
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
+import { MemberMenuModal } from '../../user/auth/MemberMenuModal'
 import { BrandLink } from '../../BrandLink'
 import { NotificationInterestProvider } from './NotificationInterest'
 import { notificationPreparationDescription, notificationPreparationNotice, notificationPreparationTitle, useNotificationInterests } from './NotificationInterestContext'
@@ -16,6 +17,8 @@ export function NotificationPage({ management = false }: { readonly management?:
 
 function NotificationPageContent({ management }: { readonly management: boolean }) {
   const context = useNotificationInterests()
+  const [inboxOpen, setInboxOpen] = useState(false)
+  const inboxTrigger = useRef<HTMLButtonElement>(null)
   const heading = useRef<HTMLHeadingElement>(null)
   const title = management ? '알림 관리' : '알림 보관함'
   return <div className={styles.page}>
@@ -23,8 +26,7 @@ function NotificationPageContent({ management }: { readonly management: boolean 
     <main className={styles.content}>
       <p className={styles.eyebrow}>{management ? '마이페이지' : '나의 알림'}</p>
       <div className={styles.titleRow}><h1 ref={heading} tabIndex={-1}>{title}</h1>
-        {context?.mode === 'member' && <Link to={management ? '/notifications' : '/mypage/notifications'}>
-          {management ? '알림 보관함' : '알림 관리'}</Link>}
+        {context?.mode === 'member' && <button ref={inboxTrigger} className={styles.inboxButton} type="button" aria-haspopup="dialog" onClick={() => setInboxOpen(true)}>알림 보관함</button>}
       </div>
       {context?.mode === 'loading' && <p role="status">알림 설정을 불러오는 중…</p>}
       {context?.mode === 'guest' && <section className={styles.notice}>
@@ -61,5 +63,6 @@ function NotificationPageContent({ management }: { readonly management: boolean 
         </>}
       </>}
     </main>
+    {inboxOpen && context?.mode === 'member' && <MemberMenuModal view="inbox" onClose={() => setInboxOpen(false)} returnFocusRef={inboxTrigger} />}
   </div>
 }

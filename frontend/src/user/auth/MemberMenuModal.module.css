@@ -1,0 +1,35 @@
+.dialog {
+  box-sizing: border-box; width: min(440px, calc(100% - 40px)); max-height: calc(100dvh - 40px);
+  margin: auto; padding: 0; overflow: auto; border: 1px solid var(--ds-color-divider); border-radius: 24px;
+  background: var(--ds-color-surface); color: var(--ds-color-text); box-shadow: 0 24px 80px rgb(18 38 27 / 20%);
+  font-family: var(--ds-font-family-ui);
+}
+.dialog::backdrop { background: rgb(17 32 25 / 42%); }
+.header { display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 12px 28px; }
+.header h2 { margin: 0; font-size: 18px; font-weight: 700; }
+.close { display: grid; place-items: center; width: 44px; height: 44px; padding: 10px; border: 0; border-radius: 50%; background: transparent; color: var(--ds-color-label); cursor: pointer; }
+.close svg { width: 22px; height: 22px; }
+.close:hover { background: var(--ds-color-surface-subtle); }
+.preparation { padding: 16px 32px 28px; text-align: center; word-break: keep-all; }
+.illustration { display: grid; place-items: center; width: 80px; height: 80px; margin: 0 auto 20px; border-radius: 28px; background: var(--ds-color-action-soft); color: var(--ds-color-action); }
+.illustration svg { width: 48px; height: 48px; }
+.badge { display: inline-block; padding: 4px 10px; border-radius: 20px; background: var(--ds-color-surface-subtle); color: var(--ds-color-muted); font-size: 12px; font-weight: 600; }
+.preparation h3 { margin: 14px 0 12px; font-size: 22px; letter-spacing: -.6px; line-height: 1.4; }
+.preparation p { margin: 0; color: var(--ds-color-label); font-size: 14px; line-height: 1.7; }
+.preparation .notice { margin-top: 12px; color: var(--ds-color-muted); font-size: 13px; }
+.footer { display: grid; gap: 18px; padding: 0 28px 28px; }
+.management { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border: 1px solid var(--ds-color-divider); border-radius: 14px; color: var(--ds-color-label); text-decoration: none; }
+.management strong { display: block; font-size: 14px; }
+.management small { display: block; margin-top: 4px; color: var(--ds-color-muted); font-size: 12px; }
+.management:hover { background: var(--ds-color-surface-subtle); }
+.confirm { min-height: 48px; border: 0; border-radius: 12px; background: var(--ds-color-action); color: var(--ds-color-surface); font: inherit; font-weight: 700; cursor: pointer; }
+.dialog :is(button,a):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
+.account { display: flex; flex-direction: column; gap: 0; padding: 4px 28px 28px; }
+.account a, .account button { display: block; width: 100%; box-sizing: border-box; min-height: 52px; padding: 16px 0; border: 0; border-bottom: 1px solid var(--ds-color-divider); background: transparent; text-align: left; text-decoration: none; color: var(--ds-color-text); font: inherit; cursor: pointer; }
+.account > span { padding-top: 16px; }
+@media (max-width: 767px) {
+  .dialog { width: 100%; max-width: none; max-height: calc(100dvh - 24px); margin: auto 0 0; border-radius: 24px 24px 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); }
+  .header { padding: 16px 16px 8px 24px; }
+  .preparation { padding: 12px 28px 24px; }
+  .footer { padding: 0 24px 24px; }
+}

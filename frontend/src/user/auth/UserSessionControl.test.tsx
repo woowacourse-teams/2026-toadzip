@@ -132,7 +132,7 @@ it('지도 사이드바의 로그인 계정은 마이페이지에서 기존 로�
 it('회원만 계정 아이콘 위의 알림 보관함과 알림 관리에 접근한다', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 1 }) }))
   render(<MemoryRouter><UserSessionControl presentation="rail" /></MemoryRouter>)
-  expect(await screen.findByRole('link', { name: '알림 보관함' })).toHaveAttribute('href', '/notifications')
+  expect(await screen.findByRole('button', { name: '알림 보관함' })).toHaveAttribute('aria-haspopup', 'dialog')
   fireEvent.click(screen.getByText('마이페이지'))
   expect(screen.getByRole('link', { name: '알림 관리' })).toHaveAttribute('href', '/mypage/notifications')
 })
@@ -141,6 +141,6 @@ it('비회원 사이드바에는 알림 보관함을 표시하지 않는다', as
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 401, ok: false }))
   render(<MemoryRouter><UserSessionControl presentation="rail" /></MemoryRouter>)
   await screen.findByRole('button', { name: '로그인' })
-  expect(screen.queryByRole('link', { name: '알림 보관함' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '알림 보관함' })).not.toBeInTheDocument()
   expect(screen.queryByRole('link', { name: '알림 관리' })).not.toBeInTheDocument()
 })

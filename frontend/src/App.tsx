@@ -88,7 +88,7 @@ export default function App() {
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<LegacyLoginRedirect />} />
       <Route path="/feedback" element={<FeedbackPage />} />
-      <Route path="/notifications" element={<NotificationPage />} />
+      <Route path="/notifications" element={<Navigate to="/?inbox=open" replace />} />
       <Route path="/mypage/notifications" element={<NotificationPage management />} />
       <Route path="/notifications/cancel" element={<GuestCancellationPage />} />
       <Route path="/admin/*" element={<AdminRoutes />} />

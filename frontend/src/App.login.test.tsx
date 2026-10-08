@@ -68,3 +68,11 @@ it.each(['/login?login=failed', '/?login=failed'])(
     expect(screen.getByRole('link', { name: '공공주택 복덕방 홈' })).toBeVisible()
   },
 )
+
+it('보관함과 로그인 진입 정보가 함께 있어도 로그인 모달을 닫을 수 있다', async () => {
+  render(<MemoryRouter initialEntries={['/login?inbox=open&region=seoul#map']}><App /><LocationDisplay /></MemoryRouter>)
+  await screen.findByRole('dialog', { name: '로그인' })
+  fireEvent.click(screen.getByRole('button', { name: '로그인 닫기' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/?region=seoul#map')
+})

@@ -106,19 +106,19 @@ function deferred<T>() {
 
 it('다른 탭에서 로그아웃하면 포커스 복귀 시 회원 전용 메뉴를 숨긴다', async () => {
   renderHome()
-  expect(await screen.findByRole('link', { name: '알림 보관함' })).toBeVisible()
+  expect(await screen.findByRole('button', { name: '알림 보관함' })).toBeVisible()
   fireEvent.focus(window)
-  await waitFor(() => expect(screen.queryByRole('link', { name: '알림 보관함' })).not.toBeInTheDocument())
+  await waitFor(() => expect(screen.queryByRole('button', { name: '알림 보관함' })).not.toBeInTheDocument())
   expect(screen.getByRole('button', { name: '로그인' })).toBeVisible()
 })
 
 it('비회원 확인 후 재조회가 실패해도 예전 회원 메뉴를 다시 표시하지 않는다', async () => {
   renderHome()
-  await screen.findByRole('link', { name: '알림 보관함' })
+  await screen.findByRole('button', { name: '알림 보관함' })
   fireEvent.focus(window)
   await screen.findByRole('button', { name: '로그인' })
   interest.loadStatus.mockRejectedValueOnce(new Error('network'))
   fireEvent.focus(window)
   await screen.findByRole('alert')
-  expect(screen.queryByRole('link', { name: '알림 보관함' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '알림 보관함' })).not.toBeInTheDocument()
 })
