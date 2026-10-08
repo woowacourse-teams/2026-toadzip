@@ -152,6 +152,7 @@ export interface PublicHousingExplorerProps {
   regionRepository?: PublicHousingRegionRepository
   repository?: PublicHousingRepository
   searchRepository?: IntegratedSearchRepository
+  streetViewSupported?: boolean
 }
 
 const INITIAL_COMPLEX_DETAIL: ComplexDetailState = {
@@ -174,6 +175,7 @@ export function PublicHousingExplorer({
   regionRepository = publicHousingRegionRepository,
   repository = defaultPublicHousingRepository,
   searchRepository,
+  streetViewSupported = true,
 }: PublicHousingExplorerProps) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -1394,6 +1396,7 @@ export function PublicHousingExplorer({
           <a className="housing-map-credits" href="/map-data-credits.html" target="_blank" rel="noreferrer">저작권</a>
         )}
         <ComplexDetailLayer
+          streetViewSupported={streetViewSupported}
           state={complexDetail}
           onClose={closeDetail}
           backTarget={detailReturnFocusStack.at(-1)}
@@ -1431,8 +1434,9 @@ function DetailBackButton({ backTarget, onBack }: DetailBackProps) {
   )
 }
 
-function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backTarget, onBack }: {
+function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backTarget, onBack, streetViewSupported }: {
   state: ComplexDetailState
+  streetViewSupported: boolean
   onClose: () => void
   onOpenAnnouncement: (announcementId: string) => void
   onRetry: () => void
@@ -1444,6 +1448,7 @@ function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backT
     <HousingDetailOverlay label="단지 상세" onClose={onClose}>
       {state.status === 'ready' && state.detail
         ? <HousingComplexDetailPanel
+            streetViewSupported={streetViewSupported}
             backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
             detail={toHousingComplexDetailData(state.detail)}
             onClose={onClose} onOpenAnnouncement={onOpenAnnouncement} />

@@ -108,6 +108,7 @@ describe('LocalPublicHousingExplorer', () => {
 
     expect(await screen.findByRole('heading', { name: '서울가람 행복주택' })).toBeVisible()
     expect(fetchSpy).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /주변 거리뷰 보기/ })).not.toBeInTheDocument()
   })
 
   it('파일 오류를 안내하고 사용자가 다시 불러올 수 있다', async () => {

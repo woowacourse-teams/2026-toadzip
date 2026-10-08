@@ -21,6 +21,14 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     plugins: [react(), ...(localMockEnabled ? [localPublicHousingMockPlugin()] : [])],
+    build: {
+      rolldownOptions: {
+        input: {
+          main: fileURLToPath(new URL('./index.html', import.meta.url)),
+          streetView: fileURLToPath(new URL('./street-view.html', import.meta.url)),
+        },
+      },
+    },
     test: {
       environment: 'jsdom',
       setupFiles: './src/test/setup.ts',

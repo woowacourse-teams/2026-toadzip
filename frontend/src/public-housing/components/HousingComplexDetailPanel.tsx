@@ -19,6 +19,7 @@ import { MISSING_DATA_LABEL } from '../presentation/missingData'
 import { AnnouncementStatusBadge } from './AnnouncementStatusBadge'
 import styles from './HousingComplexDetailPanel.module.css'
 import { NotificationInterestButton } from '../interest/NotificationInterest'
+import { StreetViewEntry } from '../../street-view/StreetViewEntry'
 
 export interface HousingComplexDetailSupplyCondition {
   readonly target: string | null
@@ -78,6 +79,7 @@ export interface HousingComplexDetailPanelProps {
   readonly onClose: () => void
   readonly backButton?: ReactNode
   readonly onOpenAnnouncement?: (announcementId: string) => void
+  readonly streetViewSupported?: boolean
 }
 
 interface HousingTypeSelection {
@@ -90,6 +92,7 @@ export function HousingComplexDetailPanel({
   onClose,
   onOpenAnnouncement,
   backButton,
+  streetViewSupported = true,
 }: HousingComplexDetailPanelProps) {
   const initialHousingTypeId = detail.housingTypes[0]?.housingTypeId ?? null
   const [selection, setSelection] = useState<HousingTypeSelection>({
@@ -191,7 +194,10 @@ export function HousingComplexDetailPanel({
               <span>{detail.rentalTypeLabel}</span>
             </p>
           </div>
-          <p className={styles.address}>{displayAddress(detail)}</p>
+          <div className={styles.addressRow}>
+            <p className={styles.address}>{displayAddress(detail)}</p>
+            {streetViewSupported && <StreetViewEntry complexId={detail.complexId} name={detail.name} address={displayAddress(detail)} />}
+          </div>
           <div className={styles.notificationCallout}>
             <div className={styles.notificationCopy}>
               <strong>단지 알림</strong>

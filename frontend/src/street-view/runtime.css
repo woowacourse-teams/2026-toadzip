@@ -1,0 +1,19 @@
+html,
+body,
+#street-view {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: #f6f8f7;
+  color: #525a55;
+  font-family: system-ui, sans-serif;
+}
+
+.street-view-entry-notice {
+  padding: 24px;
+  text-align: center;
+}
