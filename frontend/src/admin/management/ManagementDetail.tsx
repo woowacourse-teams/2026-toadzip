@@ -68,7 +68,7 @@ export function ManagementDetail({resource}: {resource:ManagementResource}) {
         <button data-admin-navigation={section !== key || undefined} disabled={busy || verificationBusy} key={key} type="button" aria-pressed={section === key} onClick={() => setSection(key)}>{label}</button>)}</nav> : null}
       {section === 'verification' && !editing && resource === 'complexes' ? <ComplexVerificationPanel key={id}
         id={id} version={Number(value.data.version)} deleted={value.summary.deleted} announcements={value.announcements}
-        onBusyChange={setVerificationBusy} onEdit={() => { setEditing(true); setSection('info'); setNotice('') }}
+        onBusyChange={setVerificationBusy}
         onReviewed={() => { setNotice('검토 기록을 저장했습니다.'); setAttempt(current => current + 1) }} /> : null}
       {section === 'info' && !editing ? <>{sections.map(group => <section className="admin-detail-section" key={group.title}><h2>{group.title}</h2>
         <dl className={`admin-data-grid${group.fields.some(field => field.name === 'address.roadAddress') ? ' admin-location-grid' : ''}`}>{group.fields.map(field => <div key={field.name}><dt>{field.label}</dt><dd>{field.type === 'url'

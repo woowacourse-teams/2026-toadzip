@@ -28,8 +28,9 @@ function review(): ComplexReview {
     reviewedAt: '2026-10-08T00:00:00Z' }
 }
 function show(deleted = false) {
-  return render(<MemoryRouter><ComplexVerificationPanel id="7" version={2} deleted={deleted} announcements={[]}
-    onEdit={onEdit} onReviewed={onReviewed} onBusyChange={onBusyChange} /></MemoryRouter>)
+  return render(<MemoryRouter>{!deleted ? <button data-admin-navigation onClick={onEdit}>수정</button> : null}
+    <ComplexVerificationPanel id="7" version={2} deleted={deleted} announcements={[]}
+      onReviewed={onReviewed} onBusyChange={onBusyChange} /></MemoryRouter>)
 }
 beforeEach(() => {
   vi.clearAllMocks()
@@ -41,8 +42,14 @@ it('일치와 차이를 구분하고 실제 확인과 지도 대조 경로를 �
   expect(await screen.findByText('300세대')).toBeVisible()
   expect(screen.getByText('150세대')).toBeVisible()
   expect(screen.getByText('값 다름')).toBeVisible()
-  expect(screen.getAllByText('원천 일치')).toHaveLength(4)
-  expect(screen.getByText(/원천 일치는 실제 정보 확인 완료를 뜻하지 않습니다/)).toBeVisible()
+  expect(screen.queryByText('원천 일치')).not.toBeInTheDocument()
+  expect(screen.getByText(/원천과의 일치 여부는 참고용입니다/)).toBeVisible()
+  expect(screen.queryByRole('button', { name: '단지명·주소 복사' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '등록 정보 수정' })).not.toBeInTheDocument()
+  expect(screen.getByText(/현재 주소 식별정보/)).not.toBeVisible()
+  expect(screen.getByLabelText('근거 URL')).not.toBeVisible()
+  fireEvent.click(screen.getByText('참고 자료'))
+  expect(screen.getByText(/현재 주소 식별정보/)).toBeVisible()
   const coordinate = new URL(screen.getByRole('link', { name: '저장 좌표 보기 ↗' }).getAttribute('href')!)
   expect(coordinate.searchParams.get('query')).toBe('37.5665,126.978')
   expect(screen.getByRole('button', { name: '검토 저장' })).toBeDisabled()
@@ -55,6 +62,8 @@ it('직접 선택한 범위와 근거만 저장하고 이력을 표시한다', a
   fireEvent.click(await screen.findByRole('checkbox', { name: '단지명 확인' }))
   fireEvent.click(screen.getByRole('checkbox', { name: '세대수 확인' }))
   fireEvent.change(screen.getByLabelText('확인 근거·메모'), { target: { value: '공식 안내 2쪽' } })
+  fireEvent.click(screen.getByText('근거 링크 첨부'))
+  expect(screen.getByLabelText('근거 URL')).toBeVisible()
   fireEvent.change(screen.getByLabelText(/근거 URL/), { target: { value: 'https://example.com/complex' } })
   fireEvent.click(screen.getByRole('button', { name: '검토 저장' }))
   await waitFor(() => expect(onReviewed).toHaveBeenCalledOnce())
@@ -132,13 +141,23 @@ it('저장하지 않은 기록의 이동 취소를 보존한다', async () => {
   show()
   fireEvent.click(await screen.findByRole('checkbox', { name: '단지명 확인' }))
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
-  fireEvent.click(screen.getByRole('button', { name: '등록 정보 수정' }))
+  fireEvent.click(screen.getByRole('button', { name: '수정' }))
   expect(onEdit).not.toHaveBeenCalled()
   expect(screen.getByRole('checkbox', { name: '단지명 확인' })).toBeChecked()
   confirm.mockReturnValue(true)
-  fireEvent.click(screen.getByRole('button', { name: '등록 정보 수정' }))
+  fireEvent.click(screen.getByRole('button', { name: '수정' }))
   expect(onEdit).toHaveBeenCalledOnce()
   confirm.mockRestore()
+})
+
+it('주소 글자가 같아도 식별정보가 다르면 표시하고 상세 근거는 접어서 제공한다', async () => {
+  const value = fixture()
+  mocks.get.mockResolvedValue({ ...value, sources: [{ ...value.sources[0], pnu: '다른 주소 식별정보' }] })
+  show()
+  expect(await screen.findByText('주소 식별정보 다름 · 참고 자료 확인')).toBeVisible()
+  expect(screen.getByText('PNU 다른 주소 식별정보')).not.toBeVisible()
+  fireEvent.click(screen.getByText('참고 자료'))
+  expect(screen.getByText('PNU 다른 주소 식별정보')).toBeVisible()
 })
 it('조회가 완료되기 전에 다른 단지로 이동하면 이전 응답을 표시하지 않는다', async () => {
   let resolve!: (value: ComplexVerification) => void
