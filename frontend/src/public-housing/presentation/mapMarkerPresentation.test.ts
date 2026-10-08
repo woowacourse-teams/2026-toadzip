@@ -6,8 +6,33 @@ import {
 } from './mapMarkerPresentation.ts'
 
 describe('map marker presentation', () => {
+  it.each([
+    [36.12, 44.87, '36.12 ~ 44.87㎡'],
+    [36, 36, '36㎡'],
+    [null, 44.87, '44.87㎡'],
+    [36.12, null, '36.12㎡'],
+    [null, null, '공고문 확인'],
+    [-1, Number.NaN, '공고문 확인'],
+    [0, 0, '0㎡'],
+  ])('전용면적 %s, %s를 %s로 표시한다', (exclusiveAreaMin, exclusiveAreaMax, exclusiveAreaLabel) => {
+    expect(presentMapComplexMarker(mapComplex({ exclusiveAreaMin, exclusiveAreaMax })))
+      .toMatchObject({ exclusiveAreaLabel })
+  })
+
+  it('상세 주택형 면적 범위를 구하되 현재 공고 목록으로 지도 대표 상태를 추정하지 않는다', () => {
+    const detail = {
+      agency: null, rentalType: null, depositMin: null, monthlyRentMin: null,
+      housingTypes: [{ exclusiveArea: 44.87 }, { exclusiveArea: null }, { exclusiveArea: 36.12 }],
+      currentAnnouncements: [{ applicationStatus: 'BEFORE_APPLICATION' }, { applicationStatus: 'APPLYING' }],
+    }
+    expect(presentComplexDetailMarker(detail))
+      .toMatchObject({ exclusiveAreaLabel: '36.12 ~ 44.87㎡', applicationStatus: null })
+  })
+
   it('지도 단지의 최소 보증금과 월세 및 짧은 이름과 원문을 표시한다', () => {
     expect(presentMapComplexMarker(mapComplex())).toEqual({
+      applicationStatus: null,
+      exclusiveAreaLabel: '36.12 ~ 44.87㎡',
       agencyLabel: 'LH',
       agencyName: '한국토지주택공사',
       rentalTypeLabel: '행복',
@@ -31,6 +56,8 @@ describe('map marker presentation', () => {
       depositMin: null,
       monthlyRentMin: null,
     }))).toEqual({
+      applicationStatus: null,
+      exclusiveAreaLabel: '36.12 ~ 44.87㎡',
       agencyLabel: '공고문 확인',
       agencyName: '공고문 확인',
       rentalTypeLabel: '공고문 확인',
@@ -124,6 +151,8 @@ describe('map marker presentation', () => {
       depositMin: 10_000_000,
       monthlyRentMin: 180_000,
     })).toEqual({
+      applicationStatus: null,
+      exclusiveAreaLabel: '공고문 확인',
       agencyLabel: 'SH',
       agencyName: '서울주택도시공사',
       rentalTypeLabel: '국민',

@@ -1,8 +1,4 @@
-import {
-  complexListRequestKey,
-  type ComplexResultsState,
-  useComplexResults,
-} from './complexes/useComplexResults.ts'
+import { findCatalogRegion } from './model/publicHousingRegion'
 import { rentalTypeLabel } from './presentation/rentalTypeLabel.ts'
 import {
   clearDetailHistoryState,
@@ -17,7 +13,6 @@ import { HousingDetailStatePanel, type DetailStatus } from './components/Housing
 import { toHousingComplexCardData } from './presentation/complexPresentation.ts'
 import { MISSING_DATA_LABEL } from './presentation/missingData.ts'
 import {
-  type KeyboardEvent,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -56,6 +51,8 @@ import {
   HousingComplexCard,
 } from './components/HousingComplexCard.tsx'
 import { HousingComplexDetailPanel } from './components/HousingComplexDetailPanel.tsx'
+import { HousingResultsPanel } from './components/HousingResultsPanel.tsx'
+import { HousingDetailOverlay } from './components/HousingDetailOverlay.tsx'
 import { ComplexFilterToolbar } from './filters/ComplexFilterToolbar.tsx'
 import { AnnouncementFilterPanel } from './filters/AnnouncementFilterPanel.tsx'
 import {
@@ -68,15 +65,12 @@ import {
 import {
   createBoundsSignature,
   evaluateServerMapRequest,
-  evaluateViewportRequest,
-  type ViewportBlockReason,
   type ViewportSnapshot,
 } from './map/viewportPolicy.ts'
 import { useHousingMapResults } from './map/useHousingMapResults.ts'
 import type {
   AnnouncementDetail,
   ComplexDetail,
-  MapBounds,
   MapComplex,
 } from './model/publicHousing.ts'
 import type { HousingMapResult } from './model/housingMap.ts'
@@ -99,9 +93,13 @@ import {
 } from './presentation/mapMarkerPresentation.ts'
 import { enrichRecentComplexes, readRecentComplexes, rememberComplex } from './navigation/recentComplexes.ts'
 import { IntegratedSearch } from './search/IntegratedSearch.tsx'
-import type {
-  IntegratedSearchRepository,
-  SearchResultItem,
+import { useRegionComplexResults, type ComplexResultsState } from './complexes/useRegionComplexResults'
+import { FirstVisitWelcome } from './onboarding/FirstVisitWelcome.tsx'
+import type { StarterPlace } from './onboarding/starterPlaces.ts'
+import {
+  integratedSearchRepository,
+  type IntegratedSearchRepository,
+  type SearchResultItem,
 } from './search/integratedSearchRepository.ts'
 import { parseRegionBoundaryCode, setRegionBoundaryCode } from './navigation/regionBoundaryLocation.ts'
 import { findRegionBoundaryMetadata, findRegionBoundaryName, regionBoundaryRepository } from './regions/regionBoundaryCatalog.ts'
@@ -110,6 +108,9 @@ import { useRegionBoundary } from './regions/useRegionBoundary.ts'
 import { RegionBoundaryControl } from './regions/RegionBoundaryControl.tsx'
 
 const EMPTY_MAP_ITEMS: readonly MapComplex[] = []
+// Match the BASIC_REGION → INDIVIDUAL expansion in the map policy.
+const REGION_FOCUS_ZOOM = 12.6
+const COMPLEX_FOCUS_ZOOM = 12.7
 const DEFAULT_MAP_LOCATION = {
   center: {
     latitude: 37.5666103,
@@ -119,6 +120,7 @@ const DEFAULT_MAP_LOCATION = {
 }
 
 type ResultTab = 'complexes' | 'announcements'
+type ResultList = ResultTab | 'recent'
 
 interface ComplexDetailState {
   readonly complexId: string | null
@@ -141,7 +143,7 @@ interface PendingListFocus {
   readonly complexOpener: HTMLElement | null
   readonly detailKind: ResultTab
   readonly openerWasMarker: boolean
-  readonly resultTab: ResultTab
+  readonly resultTab: ResultList
 }
 
 export interface PublicHousingExplorerProps {
@@ -195,11 +197,11 @@ export function PublicHousingExplorer({
     },
   )
   const [viewport, setViewport] = useState<ViewportSnapshot | null>(null)
-  const [viewportRefreshPending, setViewportRefreshPending] = useState(false)
   const viewportRef = useRef<ViewportSnapshot | null>(null)
   const viewportRevisionRef = useRef(0)
   const viewportTimerRef = useRef<number | null>(null)
   const mapWorkspaceRef = useRef<HTMLElement>(null)
+  const searchOverlayRef = useRef<HTMLDivElement>(null)
   const initialDetail = parseDetailLocation(new URLSearchParams(location.search))
   const pendingDetailCameraRef = useRef<{ id: string; revision: number } | null>(
     initialDetail.kind === 'complex'
@@ -207,15 +209,50 @@ export function PublicHousingExplorer({
       : null,
   )
   const [recentComplexes, setRecentComplexes] = useState(readRecentComplexes)
-  const [recentExpanded, setRecentExpanded] = useState(false)
   const [clusterTransitioning, setClusterTransitioning] = useState(false)
   const [cameraRequestId, setCameraRequestId] = useState(0)
   const [detailCameraRevision, setDetailCameraRevision] = useState(0)
   const [selectedSearchComplex, setSelectedSearchComplex] =
     useState<SearchResultItem | null>(null)
   const [integratedSearchActive, setIntegratedSearchActive] = useState(false)
+  const [searchRevision, setSearchRevision] = useState(0)
+  const pendingListTriggerFocusRef = useRef<ResultList | null>(null)
+  useLayoutEffect(() => {
+    if (pendingListTriggerFocusRef.current === null) return
+    focusListTrigger(pendingListTriggerFocusRef.current)
+    pendingListTriggerFocusRef.current = null
+  }, [searchRevision])
+  useLayoutEffect(() => {
+    const overlay = searchOverlayRef.current
+    const explorer = overlay?.closest<HTMLElement>('.housing-explorer')
+    if (!overlay || !explorer) return
+    const measureSearch = () => {
+      const anchor = overlay.querySelector('[aria-label="검색 지역 표시"]')
+        ?? overlay.querySelector('.integrated-search__input')
+      const rect = anchor?.getBoundingClientRect()
+      if (rect && rect.height > 0) {
+        explorer.style.setProperty('--explorer-search-bottom', `${rect.bottom - explorer.getBoundingClientRect().top}px`)
+      }
+    }
+    measureSearch()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measureSearch)
+    observer?.observe(overlay)
+    window.addEventListener('resize', measureSearch)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', measureSearch)
+    }
+  }, [])
   const [activeResultTab, setActiveResultTab] =
-    useState<ResultTab>('complexes')
+    useState<ResultList>('complexes')
+  const [announcementListRequested, setAnnouncementListRequested] = useState(false)
+  const [listPanelMode, setListPanelMode] = useState<'auto' | 'open' | 'collapsed'>(() => (
+    (initialDetail.kind === 'complex' || initialDetail.kind === 'announcement')
+      && window.matchMedia?.('(max-width: 1023px)').matches ? 'collapsed' : 'auto'
+  ))
+  const mobileDetailListModeRef = useRef<typeof listPanelMode | null>(
+    listPanelMode === 'collapsed' ? 'auto' : null,
+  )
   const {
     cancel: cancelServerMapRequest,
     request: requestServerMap,
@@ -224,11 +261,7 @@ export function PublicHousingExplorer({
   } = useHousingMapResults(mapRepository)
   const clusterTransitionRef = useRef(false)
   const transitionWaitingForIdleRef = useRef(false)
-  const previousServerRepresentationRef =
-    useRef<'AGGREGATE' | 'INDIVIDUAL' | null>(null)
-  const handledServerMapResultRef = useRef<object | null>(null)
-  const refreshListAfterMapRef = useRef<string | null>(null)
-  const activeResultTabRef = useRef<ResultTab>(activeResultTab)
+  const activeResultTabRef = useRef<ResultList>(activeResultTab)
   activeResultTabRef.current = activeResultTab
   const locationSearchRef = useRef(location.search)
   locationSearchRef.current = location.search
@@ -285,8 +318,9 @@ export function PublicHousingExplorer({
   const boundaryRegionCode = parseRegionBoundaryCode(new URLSearchParams(location.search))
   const boundaryMetadata = boundaryRegionCode ? findRegionBoundaryMetadata(boundaryRegionCode) : null
   const [selectedSearchRegion, setSelectedSearchRegion] = useState<SearchResultItem | null>(null)
-  const boundarySelectionRef = useRef<SearchResultItem | null>(null)
+  const boundarySelectionRef = useRef<Pick<SearchResultItem, 'id' | 'regionCode' | 'latitude' | 'longitude'> | null>(null)
   const handledBoundaryCodeRef = useRef<string | null>(null)
+  const pendingBoundaryCameraRef = useRef<{ code: string; zoom: number } | null>(null)
   const boundaryState = useRegionBoundary(boundaryMetadata?.regionCode ?? null, boundaryRepository)
   const selectedBoundarySearchItem = selectedSearchRegion
     && (selectedSearchRegion.regionCode ?? selectedSearchRegion.id) === boundaryRegionCode
@@ -295,24 +329,32 @@ export function PublicHousingExplorer({
   const focusBoundary = useCallback((code: string) => {
     const metadata = findRegionBoundaryMetadata(code)
     const item = boundarySelectionRef.current
+    const zoom = pendingBoundaryCameraRef.current?.zoom ?? REGION_FOCUS_ZOOM
+    pendingBoundaryCameraRef.current = null
     pendingDetailCameraRef.current = null
-    if (metadata) {
-      const { bounds } = metadata
+    const selectedPoint = item && (item.regionCode ?? item.id) === code
+      && item.latitude !== null && item.longitude !== null ? item : null
+    const bounds = metadata?.bounds
+    const latitude = selectedPoint?.latitude ?? metadata?.representativePoint?.latitude ?? (bounds ? (bounds.southWestLat + bounds.northEastLat) / 2 : null)
+    const longitude = selectedPoint?.longitude ?? metadata?.representativePoint?.longitude ?? (bounds ? (bounds.southWestLng + bounds.northEastLng) / 2 : null)
+    if (latitude !== null && longitude !== null) {
+      const padding = boundaryScreenPadding(mapWorkspaceRef.current)
+      // A region's area must not push the camera back below the individual-marker threshold.
       setMapCameraTarget({
-        latitude: (bounds.southWestLat + bounds.northEastLat) / 2,
-        longitude: (bounds.southWestLng + bounds.northEastLng) / 2,
-        bounds,
-        boundsPadding: boundaryScreenPadding(mapWorkspaceRef.current),
+        latitude,
+        longitude,
+        zoom: code.length === 2 ? 11 : code.length === 10 ? 14 : Math.max(REGION_FOCUS_ZOOM, zoom),
+        screenOffset: { x: (padding.left - padding.right) / 2, y: (padding.top - padding.bottom) / 2 },
       })
-      setCameraRequestId((current) => current + 1)
-    } else if (item && (item.regionCode ?? item.id) === code
-      && item.latitude !== null && item.longitude !== null) {
-      setMapCameraTarget({ latitude: item.latitude, longitude: item.longitude })
       setCameraRequestId((current) => current + 1)
     }
   }, [])
 
   useLayoutEffect(() => {
+    // Read padding after search/list visibility commits, including reselecting the same region.
+    if (pendingBoundaryCameraRef.current && pendingBoundaryCameraRef.current.code !== boundaryRegionCode) {
+      return
+    }
     if (handledBoundaryCodeRef.current === boundaryRegionCode) {
       return
     }
@@ -320,7 +362,34 @@ export function PublicHousingExplorer({
     if (boundaryRegionCode !== null) {
       focusBoundary(boundaryRegionCode)
     }
-  }, [boundaryRegionCode, focusBoundary])
+  })
+
+  useEffect(() => {
+    if (boundaryRegionCode?.length !== 10 || selectedBoundarySearchItem) return
+    const region = findCatalogRegion(boundaryRegionCode)
+    if (!region) return
+    const controller = new AbortController()
+    const repository = searchRepository ?? integratedSearchRepository
+    const restoreRegion = async () => {
+      let page = 0
+      while (!controller.signal.aborted) {
+        const response = await repository.search(region.displayName, false, page, controller.signal, 'REGION')
+        if (controller.signal.aborted) return
+        const item = response.regions.find((candidate) => candidate.regionCode === boundaryRegionCode)
+        if (item) {
+          boundarySelectionRef.current = item
+          setSelectedSearchRegion(item)
+          focusBoundary(boundaryRegionCode)
+          return
+        }
+        if (!response.hasNext) return
+        page += 1
+      }
+    }
+    void restoreRegion()
+      .catch(() => { /* The selected region and its list remain usable without a camera point. */ })
+    return () => controller.abort()
+  }, [boundaryRegionCode, selectedBoundarySearchItem, searchRepository, focusBoundary])
 
   const changeBoundarySelection = useCallback((code: string | null) => {
     const query = setRegionBoundaryCode(new URLSearchParams(location.search), code)
@@ -339,6 +408,15 @@ export function PublicHousingExplorer({
     () => searchFiltersSignature(complexFilters),
     [complexFilters],
   )
+  const regionResults = useRegionComplexResults(repository, boundaryRegionCode, complexFilters)
+  const complexResults = regionResults.state
+  const loadMore = regionResults.loadMore
+  const retryComplexResults = regionResults.retry
+  useLayoutEffect(() => {
+    if (complexResultsScrollRef.current) complexResultsScrollRef.current.scrollTop = 0
+    setCardHighlightedComplexId(null)
+    setMarkerHighlightedComplexId(null)
+  }, [regionResults.key])
   const announcementFiltersKey = useMemo(
     () => searchFiltersSignature(announcementFilters),
     [announcementFilters],
@@ -351,32 +429,11 @@ export function PublicHousingExplorer({
   }, [announcementFiltersKey])
   const announcementResults = useAnnouncementResults(
     repository,
-    activeResultTab === 'announcements',
+    announcementListRequested && activeResultTab === 'announcements',
     announcementFilters,
     announcementFiltersKey,
   )
   const updateAnnouncementViewCount = announcementResults.updateViewCount
-
-  const resetComplexListPresentation = useCallback(() => {
-    setCardHighlightedComplexId(null)
-    setMarkerHighlightedComplexId(null)
-    if (complexResultsScrollRef.current) {
-      complexResultsScrollRef.current.scrollTop = 0
-    }
-  }, [])
-  const {
-    cancel: cancelComplexListRequest,
-    hasAppliedViewport,
-    loadMore,
-    request: applyViewport,
-    retry: retryComplexResults,
-    state: complexResults,
-  } = useComplexResults(repository, {
-    filters: complexFilters,
-    appliedMap: serverMapState.applied,
-    paginationPaused: viewportRefreshPending || serverMapState.status === 'loading',
-    onViewportApplied: resetComplexListPresentation,
-  })
 
   useEffect(() => {
     setRecentComplexes((current) => enrichRecentComplexes(current, complexResults.items.map((item) => ({
@@ -410,6 +467,11 @@ export function PublicHousingExplorer({
 
   useEffect(() => {
     if (detailLocation.kind === 'none') {
+      const previousListMode = mobileDetailListModeRef.current
+      if (previousListMode !== null) {
+        setListPanelMode((mode) => mode === 'collapsed' ? previousListMode : mode)
+        mobileDetailListModeRef.current = null
+      }
       const previousKind = previousDetailKindRef.current
       previousDetailKindRef.current = null
       setComplexDetail(INITIAL_COMPLEX_DETAIL)
@@ -434,7 +496,7 @@ export function PublicHousingExplorer({
             complexOpener,
             detailKind: previousKind,
             openerWasMarker,
-            resultTab: nextResultTab,
+        resultTab: nextResultTab,
           }
       clearDetailOpenerRefs({
         announcementDetailOpenerIdRef,
@@ -580,6 +642,7 @@ export function PublicHousingExplorer({
     }
     const timeout = window.setTimeout(() => {
       restoreDetailListFocus({
+        resultTab: pending.resultTab,
         announcementCards: announcementCardRefsRef.current,
         announcementId: pending.announcementId,
         announcementOpener: pending.announcementOpener,
@@ -632,6 +695,10 @@ export function PublicHousingExplorer({
   }, [announcementDetail, complexDetail, detailLocation])
 
   const openDetail = useCallback((kind: ResultTab, id: string, entryPoint: DetailEntryPoint) => {
+    if (window.matchMedia?.('(max-width: 1023px)').matches) {
+      mobileDetailListModeRef.current ??= listPanelMode
+      setListPanelMode('collapsed')
+    }
     const currentSearch = new URLSearchParams(location.search)
     const activeElement = document.activeElement
     const opener = activeElement instanceof HTMLElement
@@ -682,7 +749,9 @@ export function PublicHousingExplorer({
     location.state,
     navigate,
     prepareDetailVisit,
+    listPanelMode,
   ])
+
 
   const applyComplexFilters = useCallback((filters: ComplexSearchFilters) => {
     const currentSearch = new URLSearchParams(location.search)
@@ -768,6 +837,18 @@ export function PublicHousingExplorer({
     navigate,
   ])
 
+  const selectResultTab = useCallback((tab: ResultList) => {
+    mobileDetailListModeRef.current = null
+    setListPanelMode('open')
+    if (integratedSearchActive) {
+      pendingListTriggerFocusRef.current = tab
+      setSearchRevision((revision) => revision + 1)
+    }
+    setIntegratedSearchActive(false)
+    if (tab === 'announcements') setAnnouncementListRequested(true)
+    setActiveResultTab(tab)
+  }, [integratedSearchActive])
+
   const returnToDetail = useCallback(() => {
     const previous = detailReturnFocusStack.at(-1)
     if (!previous) {
@@ -796,7 +877,7 @@ export function PublicHousingExplorer({
     }
     const searchItem = selectedSearchComplex?.id === pending.id ? selectedSearchComplex : null
     const target = searchItem?.latitude != null && searchItem.longitude !== null
-      ? { latitude: searchItem.latitude, longitude: searchItem.longitude, zoom: 16 }
+      ? { latitude: searchItem.latitude, longitude: searchItem.longitude }
       : toDetailMapTarget(complexDetail.detail)
     if (!target) {
       return
@@ -804,109 +885,24 @@ export function PublicHousingExplorer({
     pendingDetailCameraRef.current = null
     setMapCameraTarget({
       ...target,
+      zoom: Math.max(COMPLEX_FOCUS_ZOOM, viewportRef.current?.zoom ?? COMPLEX_FOCUS_ZOOM),
       screenOffset: detailScreenOffset(mapWorkspaceRef.current),
     })
     setCameraRequestId((current) => current + 1)
   }, [complexDetail, detailCameraRevision, selectedSearchComplex])
 
-  const previousComplexFiltersKeyRef = useRef(complexFiltersKey)
-
-  const requestServerMapWithListIntent = useCallback((
-    nextViewport: ViewportSnapshot,
-    filters: ComplexSearchFilters,
-    refreshList: boolean,
-  ) => {
-    if (refreshList) {
-      refreshListAfterMapRef.current = complexListRequestKey(
-        nextViewport.bounds,
-        filters,
-      )
-    }
-    const outcome = requestServerMap(nextViewport, filters)
-    if (!refreshList || outcome === 'started' || outcome === 'pending') {
-      return outcome
-    }
-    refreshListAfterMapRef.current = null
-    if (outcome === 'applied'
-      && serverMapState.applied?.result.representation === 'AGGREGATE') {
-      cancelComplexListRequest()
-      return outcome
-    }
-    applyViewport(nextViewport, false, filters)
-    return outcome
-  }, [applyViewport, cancelComplexListRequest, requestServerMap, serverMapState.applied])
-
+  const previousMapFiltersKeyRef = useRef(complexFiltersKey)
   useEffect(() => {
-    if (previousComplexFiltersKeyRef.current === complexFiltersKey) {
-      return
-    }
-    previousComplexFiltersKeyRef.current = complexFiltersKey
+    if (previousMapFiltersKeyRef.current === complexFiltersKey) return
+    previousMapFiltersKeyRef.current = complexFiltersKey
     if (viewportTimerRef.current !== null) {
       window.clearTimeout(viewportTimerRef.current)
       viewportTimerRef.current = null
     }
-    setViewportRefreshPending(false)
-    cancelComplexListRequest()
-    if (viewport === null) {
-      return
+    if (viewport !== null && !(clusterTransitionRef.current && transitionWaitingForIdleRef.current)) {
+      requestServerMap(viewport, complexFilters)
     }
-    refreshListAfterMapRef.current = complexListRequestKey(
-      viewport.bounds,
-      complexFilters,
-    )
-    if (clusterTransitionRef.current
-      && transitionWaitingForIdleRef.current) {
-      return
-    }
-    requestServerMapWithListIntent(viewport, complexFilters, true)
-  }, [
-    complexFiltersKey,
-    applyViewport,
-    cancelComplexListRequest,
-    complexFilters,
-    requestServerMapWithListIntent,
-    viewport,
-  ])
-
-  useEffect(() => {
-    if (serverMapState.applied === null) {
-      return
-    }
-    if (handledServerMapResultRef.current === serverMapState.applied) {
-      return
-    }
-    handledServerMapResultRef.current = serverMapState.applied
-    const representation = serverMapState.applied.result.representation
-    const previousRepresentation = previousServerRepresentationRef.current
-    previousServerRepresentationRef.current = representation
-    const query = serverMapState.applied.query
-    const appliedListRefreshKey = complexListRequestKey(
-      query.bounds,
-      query.filters ?? {},
-    )
-    const listRefreshRequested = refreshListAfterMapRef.current
-      === appliedListRefreshKey
-    if (representation === 'AGGREGATE') {
-      if (listRefreshRequested) {
-        refreshListAfterMapRef.current = null
-      }
-      cancelComplexListRequest()
-      return
-    }
-    if (listRefreshRequested) {
-      refreshListAfterMapRef.current = null
-    }
-    if (!listRefreshRequested
-      && previousRepresentation !== 'AGGREGATE'
-      && hasAppliedViewport()) {
-      return
-    }
-    applyViewport(
-      viewportForMapQuery(query.bounds, query.zoom),
-      false,
-      query.filters ?? {},
-    )
-  }, [applyViewport, cancelComplexListRequest, hasAppliedViewport, serverMapState.applied])
+  }, [complexFiltersKey, complexFilters, viewport, requestServerMap])
 
   const finishClusterTransition = useCallback(() => {
     clusterTransitionRef.current = false
@@ -935,13 +931,29 @@ export function PublicHousingExplorer({
     transitionWaitingForIdleRef.current = true
     setClusterTransitioning(true)
     cancelServerMapRequest()
+    const code = /^BASIC_REGION:(\d{5})$/.exec(marker.groupKey)?.[1]
+    if (code && findRegionBoundaryMetadata(code)) {
+      pendingBoundaryCameraRef.current = { code, zoom: marker.expansionZoom }
+      handledBoundaryCodeRef.current = null
+      boundarySelectionRef.current = { id: code, regionCode: code, latitude: marker.latitude, longitude: marker.longitude }
+      setSelectedSearchRegion(null)
+      setListPanelMode('auto')
+      setActiveResultTab('complexes')
+      const query = setRegionBoundaryCode(clearDetailQuery(new URLSearchParams(location.search)), code)
+      navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(query) }, {
+        replace: code === boundaryRegionCode,
+        state: clearDetailHistoryState(location.state),
+      })
+      return
+    }
+    pendingDetailCameraRef.current = null
     setMapCameraTarget({
       latitude: marker.latitude,
       longitude: marker.longitude,
       zoom: marker.expansionZoom,
     })
     setCameraRequestId((current) => current + 1)
-  }, [cancelServerMapRequest])
+  }, [boundaryRegionCode, cancelServerMapRequest, location, navigate])
 
   const interruptClusterTransition = useCallback(() => {
     if (!clusterTransitionRef.current) {
@@ -971,21 +983,31 @@ export function PublicHousingExplorer({
       window.clearTimeout(viewportTimerRef.current)
     }
     cancelServerMapRequest()
-    cancelComplexListRequest()
-    setViewportRefreshPending(true)
     viewportTimerRef.current = window.setTimeout(() => {
       viewportTimerRef.current = null
-      setViewportRefreshPending(false)
       if (clusterTransitionRef.current) {
         transitionWaitingForIdleRef.current = false
       }
-      const outcome = requestServerMapWithListIntent(nextViewport, complexFilters, true)
+      const outcome = requestServerMap(nextViewport, complexFilters)
       if (clusterTransitionRef.current && (outcome === 'applied' || outcome === 'ignored')) {
         finishClusterTransition()
       }
     }, 100)
-  }, [cancelComplexListRequest, cancelServerMapRequest, complexFilters,
-    finishClusterTransition, requestServerMapWithListIntent])
+  }, [cancelServerMapRequest, complexFilters, finishClusterTransition, requestServerMap])
+
+  const handleStarterPlaceSelect = useCallback((place: StarterPlace) => {
+    setListPanelMode('auto')
+    pendingDetailCameraRef.current = null
+    boundarySelectionRef.current = null
+    setSelectedSearchRegion(null)
+    setActiveResultTab('complexes')
+    setMapCameraTarget({ ...place.center, zoom: place.zoom })
+    setCameraRequestId((current) => current + 1)
+    const query = setRegionBoundaryCode(clearDetailQuery(new URLSearchParams(location.search)), null)
+    navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(query) }, {
+      state: clearDetailHistoryState(location.state),
+    })
+  }, [location, navigate])
 
   const handleIntegratedSearchSelect = useCallback((item: SearchResultItem) => {
     if (item.type === 'COMPLEX') {
@@ -996,17 +1018,24 @@ export function PublicHousingExplorer({
       trackEvent('select_search_result', { result_type: 'region' })
     }
     if (item.type === 'REGION') {
+      setListPanelMode('auto')
+      setActiveResultTab('complexes')
       const code = item.regionCode ?? item.id
-      if (!findRegionBoundaryMetadata(code) && (item.latitude === null || item.longitude === null)) {
-        return
-      }
+      pendingDetailCameraRef.current = null
+      setSelectedComplexId(null)
+      setSelectedSearchComplex(null)
+      setCardHighlightedComplexId(null)
+      setMarkerHighlightedComplexId(null)
       boundarySelectionRef.current = item
       setSelectedSearchRegion(item)
       if (code === boundaryRegionCode) {
-        focusBoundary(code)
-      } else {
-        changeBoundarySelection(code)
+        handledBoundaryCodeRef.current = null
       }
+      const query = setRegionBoundaryCode(clearDetailQuery(new URLSearchParams(location.search)), code)
+      navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(query) }, {
+        replace: code === boundaryRegionCode,
+        state: clearDetailHistoryState(location.state),
+      })
       return
     }
     if (item.type === 'ANNOUNCEMENT') {
@@ -1019,7 +1048,7 @@ export function PublicHousingExplorer({
     }
     setSelectedSearchComplex(item)
     openComplexDetail(item.id, 'search')
-  }, [boundaryRegionCode, changeBoundarySelection, focusBoundary, openAnnouncementDetail, openComplexDetail])
+  }, [boundaryRegionCode, location, navigate, openAnnouncementDetail, openComplexDetail])
 
   useEffect(() => {
     return () => {
@@ -1033,8 +1062,6 @@ export function PublicHousingExplorer({
   const aggregateMapResult = serverMapResult?.representation === 'AGGREGATE'
     ? serverMapResult
     : null
-  const aggregateMapEmpty = aggregateMapResult !== null
-    && aggregateMapResult.nodes.length === 0
   const mapItems = serverMapResult?.representation === 'INDIVIDUAL'
     ? serverMapResult.nodes
     : EMPTY_MAP_ITEMS
@@ -1043,9 +1070,6 @@ export function PublicHousingExplorer({
     ? evaluateServerMapRequest(viewport)
     : null
   const requestBlocked = viewportDecision !== null && !viewportDecision.allowed
-  const listViewportDecision = viewport
-    ? evaluateViewportRequest(viewport)
-    : null
   const highlightedComplexIds = useMemo(() => new Set([
     cardHighlightedComplexId,
     markerHighlightedComplexId,
@@ -1076,10 +1100,8 @@ export function PublicHousingExplorer({
     activeResultTab,
     complexResults,
     announcementResults.state,
-    requestBlocked,
-    aggregateMapActive,
-    aggregateMapEmpty,
-    serverMapState.status === 'loading',
+    recentComplexes.length,
+
   )
   const complexFilterResultCountLabel = mapFilterResultCountLabel({
     aggregateMapActive,
@@ -1129,219 +1151,232 @@ export function PublicHousingExplorer({
   const listHeader = (
     <div className="housing-results__list-header">
       {resultSummary}
-      {recentComplexes.length > 0 && (
-        <button type="button" className="housing-recent__toggle"
-          aria-label={`최근 본 단지 ${recentComplexes.length}곳`}
-          aria-expanded={recentExpanded} aria-controls="recent-complexes"
-          onClick={() => {
-            if (!recentExpanded && complexResultsScrollRef.current) {
-              complexResultsScrollRef.current.scrollTop = 0
-            }
-            setRecentExpanded((current) => !current)
-          }}>
-          <span>최근 본 단지 <span className="housing-recent__count">{recentComplexes.length}곳</span></span>
-          <svg aria-hidden="true" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="m3 4.5 3 3 3-3" />
-          </svg>
-        </button>
-      )}
+
     </div>
   )
 
+  const showListPage = !integratedSearchActive && listPanelMode !== 'collapsed'
+    && (activeResultTab === 'recent' || (activeResultTab === 'announcements' ? announcementListRequested : boundaryRegionCode !== null))
+  const showResultPage = integratedSearchActive || showListPage
+
+  function collapseResults() {
+    mobileDetailListModeRef.current = null
+    setListPanelMode('collapsed')
+    focusListTrigger(activeResultTab)
+  }
+
   return (
-    <div className={!hasDetail
-      ? 'housing-explorer'
-      : 'housing-explorer has-detail'}>
-      <aside className="housing-results" aria-label="공공임대주택 검색 결과">
-        <IntegratedSearch
-          onActiveChange={setIntegratedSearchActive}
-          onSelect={handleIntegratedSearchSelect}
-          repository={searchRepository}
-          selectionControl={boundaryRegionCode !== null && (
-            <RegionBoundaryControl
-              name={findRegionBoundaryName(boundaryRegionCode) ?? selectedBoundarySearchItem?.title ?? `지역 ${boundaryRegionCode}`}
-              status={boundaryState.status}
-              supported={boundaryMetadata !== null}
-              canRecenter={boundaryMetadata !== null || (selectedBoundarySearchItem?.latitude != null && selectedBoundarySearchItem?.longitude != null)}
-              onRecenter={() => focusBoundary(boundaryRegionCode)}
-              onClear={() => changeBoundarySelection(null)}
-              onRetry={boundaryState.retry}
-            />
-          )}
-        />
-
-        <div className="housing-results__browse" hidden={integratedSearchActive}>
-          <ResultTabs activeTab={activeResultTab} onSelect={setActiveResultTab} />
-
-          <ViewportAction
-            announcementsActive={activeResultTab === 'announcements'}
-            decision={listViewportDecision}
+    <div className={`housing-explorer${hasDetail ? ' has-detail' : ''}${showResultPage ? ' has-results-page' : ''}${integratedSearchActive ? ' is-searching' : ''}`}>
+      {!['required', 'failed'].includes(new URLSearchParams(location.search).get('login') ?? '') && (
+        <FirstVisitWelcome onPlaceSelect={handleStarterPlaceSelect} onRegionSelect={handleIntegratedSearchSelect} repository={searchRepository} />
+      )}
+      <nav className="housing-navigation" aria-label="주요 메뉴">
+        <div className="housing-results__tabs">
+          <button id="announcement-list-trigger" type="button"
+            aria-controls="announcement-results-panel"
+            aria-expanded={showListPage && activeResultTab === 'announcements'}
+            className={showListPage && activeResultTab === 'announcements' ? 'is-active' : undefined}
+            onClick={() => {
+              if (showListPage && activeResultTab === 'announcements') collapseResults()
+              else selectResultTab('announcements')
+            }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M5 2h10l4 4v16H5ZM14 2v6h5M8 12h8M8 16h8" /></svg>
+            <span aria-hidden="true">공고</span><span className="visually-hidden">공고 목록</span>
+          </button>
+          <button id="recent-list-trigger" type="button" aria-label="최근 본 단지" aria-controls="recent-results-panel"
+            aria-expanded={showListPage && activeResultTab === 'recent'}
+            className={showListPage && activeResultTab === 'recent' ? 'is-active' : undefined}
+            onClick={() => {
+              if (showListPage && activeResultTab === 'recent') collapseResults()
+              else selectResultTab('recent')
+            }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" /><path d="M12 6v6l4 2" />
+            </svg>
+            <span className="housing-navigation__multiline-label">최근 본<br />단지</span>
+          </button>
+        </div>
+      </nav>
+      <div className="housing-browse-panel">
+        <div className="housing-search-overlay" ref={searchOverlayRef}>
+          <IntegratedSearch
+            key={searchRevision}
+            onActiveChange={setIntegratedSearchActive}
+            onSelect={handleIntegratedSearchSelect}
+            repository={searchRepository}
+            selectionControl={boundaryRegionCode !== null && (
+              <RegionBoundaryControl
+                listExpanded={showListPage && activeResultTab === 'complexes'}
+                onOpenList={() => selectResultTab('complexes')}
+                name={findRegionBoundaryName(boundaryRegionCode) ?? selectedBoundarySearchItem?.title ?? `지역 ${boundaryRegionCode}`}
+                status={boundaryState.status}
+                supported={boundaryMetadata !== null}
+                canRecenter={boundaryMetadata !== null || (selectedBoundarySearchItem?.latitude != null && selectedBoundarySearchItem?.longitude != null)}
+                onRecenter={() => focusBoundary(boundaryRegionCode)}
+                onClear={() => changeBoundarySelection(null)}
+                onRetry={boundaryState.retry}
+              />
+            )}
           />
+        </div>
+        <HousingResultsPanel visible={showListPage} onCollapse={collapseResults}
+          title={activeResultTab === 'recent' ? '최근 본 단지' : activeResultTab === 'complexes' ? '단지 목록' : '공고 목록'}>
+          <div className="housing-results__browse">
 
-          {!requestBlocked && !aggregateMapActive && complexResults.status !== 'error' && (
-            <ComplexRequestFeedback state={complexResults} onRetry={retryComplexResults} />
-          )}
-
-          <div
-            className="housing-results__panel"
-            id="complex-results-panel"
-            role="tabpanel"
-            aria-labelledby="complex-results-tab"
-            hidden={activeResultTab !== 'complexes'}
-          >
-            {activeResultTab === 'complexes' && listHeader}
             <div
-              ref={complexResultsScrollRef}
-              className="housing-results__scroll"
-              aria-busy={complexResults.status === 'loading'}
+              className="housing-results__panel"
+              id="complex-results-panel"
+              role="region"
+              aria-label="단지 목록"
+              hidden={activeResultTab !== 'complexes'}
             >
-              {recentComplexes.length > 0 && (
-                <section className="housing-recent" aria-label="최근 본 단지" hidden={!recentExpanded}>
-                  <ul id="recent-complexes">
-                    {recentComplexes.map((recent) => {
-                      const listed = complexResults.items.find((item) => item.complexId === recent.complexId)
-                      const agencyCode = (recent.agencyCode ?? listed?.agency?.code)?.trim().toUpperCase() || null
-                      const agency = agencyCode ?? recent.agencyName ?? listed?.agency?.name ?? MISSING_DATA_LABEL
-                      const rental = rentalTypeLabel(recent.rentalType ?? listed?.rentalType ?? null) ?? MISSING_DATA_LABEL
-                      return (
-                        <li key={recent.complexId}>
-                          <button type="button" aria-current={selectedComplexId === recent.complexId ? 'true' : undefined}
-                            onClick={() => openComplexDetail(recent.complexId, 'recent')}>
-                            <strong className="housing-recent__name">{recent.name}</strong>
-                            <span className="housing-recent__meta" aria-label={`공급기관 ${agency}, 임대유형 ${rental}`}>
-                              <strong data-agency={agencyCode}>{agency}</strong>
-                              {!(agency === MISSING_DATA_LABEL && rental === MISSING_DATA_LABEL) && <>
-                                <i aria-hidden="true">·</i>
-                                <span>{rental}</span>
-                              </>}
-                            </span>
-                            {recent.address && <span className="housing-recent__address">{recent.address}</span>}
-                          </button>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </section>
+              {activeResultTab === 'complexes' && boundaryRegionCode !== null && <>
+                <p className="housing-results__region-notice">
+                  <strong>{findRegionBoundaryName(boundaryRegionCode ?? '') ?? selectedBoundarySearchItem?.title ?? '검색한 지역'}</strong>
+                  내 단지만 표시합니다. 지도에는 현재 화면에 보이는 단지도 함께 표시됩니다.
+                </p>
+                {listHeader}
+              </>}
+              <div
+                ref={complexResultsScrollRef}
+                className="housing-results__scroll"
+                aria-busy={complexResults.status === 'loading'}
+              >
+                {boundaryRegionCode === null && (
+                  <div className="housing-results__empty-region">
+                    <strong>어느 지역의 단지를 찾으세요?</strong>
+                    <p>지역을 검색하면 해당 지역의 단지를 볼 수 있어요.</p>
+                    <button type="button" onClick={() => searchOverlayRef.current?.querySelector<HTMLInputElement>('input[type="search"]')?.focus()}>지역 검색하기</button>
+                  </div>
+                )}
+                {boundaryRegionCode !== null && <ComplexRequestFeedback state={complexResults} onRetry={retryComplexResults} />}
+                {boundaryRegionCode !== null && <ComplexResultContent
+                  state={complexResults}
+                  selectedComplexId={selectedComplexId}
+                  highlightedComplexIds={highlightedComplexIds}
+                  onSelect={openComplexDetail}
+                  onOpenAnnouncement={openAnnouncementDetail}
+                  onHover={setCardHighlightedComplexId}
+                  onCardRef={(complexId, node) => {
+                    setComplexCardRef(complexCardRefsRef.current, complexId, node)
+                  }}
+                />}
+              </div>
+
+              {complexResults.hasNext
+                && (complexResults.status === 'ready'
+                  || complexResults.status === 'loading-more') && (
+                <button
+                  className="housing-results__more"
+                  type="button"
+                  onClick={() => loadMore()}
+                  disabled={complexResults.status === 'loading-more'}
+                >
+                  <span>{complexResults.status === 'loading-more'
+                    ? '불러오는 중'
+                    : '단지 더 보기'}</span>
+                  <span className="housing-results__progress"
+                    aria-label={`현재 표시 ${complexResults.items.length}곳, 전체 ${complexResults.totalCount ?? '집계 중'}${complexResults.totalCount === null ? '' : '곳'}`}>
+                    ({complexResults.items.length.toLocaleString('ko-KR')} | {complexResults.totalCount?.toLocaleString('ko-KR') ?? '—'})
+                  </span>
+                  <svg aria-hidden="true" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="m3 4.5 3 3 3-3" />
+                  </svg>
+                </button>
               )}
-              {activeResultTab === 'complexes' && (
-                <HousingMapRequestFeedback
-                  errorMessage={serverMapState.errorMessage}
-                  onRetry={retryServerMap}
-                  status={serverMapState.status}
-                />
-              )}
-              {!requestBlocked && !aggregateMapActive && complexResults.status === 'error' && (
-                <ComplexRequestFeedback state={complexResults} onRetry={retryComplexResults} />
-              )}
-              {aggregateMapActive && (
-                <div className="housing-results__state" role="status">
-                  <strong>{aggregateMapEmpty
-                    ? '현재 지도 영역에 표시할 지역 마커가 없습니다.'
-                    : '지역 마커를 선택해 지도를 확대해 주세요.'}</strong>
-                </div>
-              )}
-              {!requestBlocked && !aggregateMapActive && <ComplexResultContent
-                state={complexResults}
-                selectedComplexId={selectedComplexId}
-                highlightedComplexIds={highlightedComplexIds}
-                onSelect={openComplexDetail}
-                onOpenAnnouncement={openAnnouncementDetail}
-                onHover={setCardHighlightedComplexId}
-                onCardRef={(complexId, node) => {
-                  setComplexCardRef(complexCardRefsRef.current, complexId, node)
-                }}
-              />}
             </div>
 
-            {!requestBlocked
-              && !aggregateMapActive
-              && complexResults.hasNext
-              && (complexResults.status === 'ready'
-                || complexResults.status === 'loading-more') && (
-              <button
-                className="housing-results__more"
-                type="button"
-                onClick={() => loadMore()}
-                disabled={complexResults.status === 'loading-more'
-                  || viewportRefreshPending
-                  || serverMapState.status === 'loading'}
-              >
-                <span>{complexResults.status === 'loading-more'
-                  ? '불러오는 중'
-                  : '단지 더 보기'}</span>
-                <span className="housing-results__progress"
-                  aria-label={`현재 표시 ${complexResults.items.length}곳, 전체 ${complexResults.totalCount ?? '집계 중'}${complexResults.totalCount === null ? '' : '곳'}`}>
-                  ({complexResults.items.length.toLocaleString('ko-KR')} | {complexResults.totalCount?.toLocaleString('ko-KR') ?? '—'})
-                </span>
-                <svg aria-hidden="true" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="m3 4.5 3 3 3-3" />
-                </svg>
-              </button>
-            )}
-          </div>
-
-          <div
-            className="housing-results__panel"
-            id="announcement-results-panel"
-            role="tabpanel"
-            aria-labelledby="announcement-results-tab"
-            hidden={activeResultTab !== 'announcements'}
-          >
-            <div className="housing-results__body">
-              <AnnouncementFilterPanel
-                filters={announcementFilters}
-                onApply={applyAnnouncementFilters}
-                regionRepository={regionRepository}
-                resultSummary={activeResultTab === 'announcements' ? resultSummary : null}
-              />
-              <div
-                ref={announcementResultsScrollRef}
-                className="housing-results__scroll"
-                aria-busy={announcementResults.state.status === 'loading'
-                  || announcementResults.state.status === 'loading-more'}
-              >
-                {!requestBlocked && !aggregateMapActive
-                  && activeResultTab === 'announcements'
-                  && complexResults.status === 'error' && (
-                  <ComplexRequestFeedback state={complexResults} onRetry={retryComplexResults} />
+            <div className="housing-results__panel" id="recent-results-panel" role="region"
+              aria-label="최근 본 단지" hidden={activeResultTab !== 'recent'}>
+              <div className="housing-results__scroll">
+                {recentComplexes.length > 0 && (
+                  <section className="housing-recent">
+                    <ul id="recent-complexes">
+                      {recentComplexes.map((recent) => {
+                        const listed = complexResults.items.find((item) => item.complexId === recent.complexId)
+                        const agencyCode = (recent.agencyCode ?? listed?.agency?.code)?.trim().toUpperCase() || null
+                        const agency = agencyCode ?? recent.agencyName ?? listed?.agency?.name ?? MISSING_DATA_LABEL
+                        const rental = rentalTypeLabel(recent.rentalType ?? listed?.rentalType ?? null) ?? MISSING_DATA_LABEL
+                        return (
+                          <li key={recent.complexId}>
+                            <button type="button" aria-current={selectedComplexId === recent.complexId ? 'true' : undefined}
+                              onClick={() => openComplexDetail(recent.complexId, 'recent')}>
+                              <strong className="housing-recent__name">{recent.name}</strong>
+                              <span className="housing-recent__meta" aria-label={`공급기관 ${agency}, 임대유형 ${rental}`}>
+                                <strong data-agency={agencyCode}>{agency}</strong>
+                                {!(agency === MISSING_DATA_LABEL && rental === MISSING_DATA_LABEL) && <>
+                                  <i aria-hidden="true">·</i>
+                                  <span>{rental}</span>
+                                </>}
+                              </span>
+                              {recent.address && <span className="housing-recent__address">{recent.address}</span>}
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </section>
                 )}
-                {activeResultTab === 'announcements' && (
-                  <HousingMapRequestFeedback
-                    errorMessage={serverMapState.errorMessage}
-                    onRetry={retryServerMap}
-                    status={serverMapState.status}
-                  />
+                {recentComplexes.length === 0 && (
+                  <div className="housing-results__empty-region">
+                    <strong>최근 본 단지가 없어요.</strong>
+                    <p>단지 상세를 확인하면 최근 본 순서로 최대 20개까지 표시돼요.</p>
+                  </div>
                 )}
-                <AnnouncementResultContent
-                  state={announcementResults.state}
-                  selectedAnnouncementId={selectedAnnouncementId}
-                  onSelect={openAnnouncementDetail}
-                  onCardRef={(announcementId, node) => {
-                    setAnnouncementCardRef(
-                      announcementCardRefsRef.current,
-                      announcementId,
-                      node,
-                    )
-                  }}
-                  onRetry={announcementResults.retry}
-                />
               </div>
             </div>
-            {announcementResults.state.hasNext && (
-              <button
-                className="housing-results__more"
-                type="button"
-                onClick={announcementResults.loadMore}
-                disabled={announcementResults.state.status === 'loading-more'}
-              >
-                {announcementResults.state.status === 'loading-more'
-                  ? '불러오는 중'
-                  : '공고 더 보기'}
-              </button>
-            )}
+
+            <div
+              className="housing-results__panel"
+              id="announcement-results-panel"
+              role="region"
+              aria-label="공고 목록"
+              hidden={activeResultTab !== 'announcements'}
+            >
+              <div className="housing-results__body">
+                <AnnouncementFilterPanel
+                  filters={announcementFilters}
+                  onApply={applyAnnouncementFilters}
+                  regionRepository={regionRepository}
+                  resultSummary={activeResultTab === 'announcements' ? resultSummary : null}
+                />
+                <div
+                  ref={announcementResultsScrollRef}
+                  className="housing-results__scroll"
+                  aria-busy={announcementResults.state.status === 'loading'
+                    || announcementResults.state.status === 'loading-more'}
+                >
+                  <AnnouncementResultContent
+                    state={announcementResults.state}
+                    selectedAnnouncementId={selectedAnnouncementId}
+                    onSelect={openAnnouncementDetail}
+                    onCardRef={(announcementId, node) => {
+                      setAnnouncementCardRef(
+                        announcementCardRefsRef.current,
+                        announcementId,
+                        node,
+                      )
+                    }}
+                    onRetry={announcementResults.retry}
+                  />
+                </div>
+              </div>
+              {announcementResults.state.hasNext && (
+                <button
+                  className="housing-results__more"
+                  type="button"
+                  onClick={announcementResults.loadMore}
+                  disabled={announcementResults.state.status === 'loading-more'}
+                >
+                  {announcementResults.state.status === 'loading-more'
+                    ? '불러오는 중'
+                    : '공고 더 보기'}
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-      </aside>
+        </HousingResultsPanel>
+      </div>
 
       <main ref={mapWorkspaceRef} className="housing-map-workspace">
         <div className="housing-map-filter">
@@ -1353,6 +1388,8 @@ export function PublicHousingExplorer({
           />
         </div>
         <NaverMap {...naverMapProps} regionBoundary={boundaryState.boundary} />
+        <div className="housing-map-feedback"><HousingMapRequestFeedback errorMessage={serverMapState.errorMessage}
+          onRetry={retryServerMap} status={serverMapState.status} /></div>
         {boundaryState.boundary !== null && (
           <a className="housing-map-credits" href="/map-data-credits.html" target="_blank" rel="noreferrer">저작권</a>
         )}
@@ -1404,7 +1441,7 @@ function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backT
     return null
   }
   return (
-    <div className="housing-detail-layer">
+    <HousingDetailOverlay label="단지 상세" onClose={onClose}>
       {state.status === 'ready' && state.detail
         ? <HousingComplexDetailPanel
             backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
@@ -1413,7 +1450,7 @@ function ComplexDetailLayer({ state, onClose, onOpenAnnouncement, onRetry, backT
         : <HousingDetailStatePanel kind="complex" id={state.complexId} backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
             status={state.status} errorMessage={state.errorMessage}
             onClose={onClose} onRetry={onRetry} />}
-    </div>
+    </HousingDetailOverlay>
   )
 }
 
@@ -1427,7 +1464,7 @@ function AnnouncementDetailLayer({ state, onClose, onOpenComplex, onRetry, backT
     return null
   }
   return (
-    <div className="housing-detail-layer">
+    <HousingDetailOverlay label="공고 상세" onClose={onClose}>
       {state.status === 'ready' && state.detail
         ? <HousingAnnouncementDetailPanel
             backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
@@ -1435,67 +1472,7 @@ function AnnouncementDetailLayer({ state, onClose, onOpenComplex, onRetry, backT
             onClose={onClose} onOpenComplex={onOpenComplex} />
         : <HousingDetailStatePanel kind="announcement" id={state.announcementId} backButton={<DetailBackButton backTarget={backTarget} onBack={onBack} />}
             status={state.status} errorMessage={state.errorMessage} onClose={onClose} onRetry={onRetry} />}
-    </div>
-  )
-}
-
-function ResultTabs({
-  activeTab,
-  onSelect,
-}: {
-  activeTab: ResultTab
-  onSelect: (tab: ResultTab) => void
-}) {
-  const complexTabRef = useRef<HTMLButtonElement>(null)
-  const announcementTabRef = useRef<HTMLButtonElement>(null)
-
-  function selectFromKeyboard(
-    event: KeyboardEvent<HTMLButtonElement>,
-    currentTab: ResultTab,
-  ) {
-    const targetTab = keyboardResultTab(event.key, currentTab)
-    if (targetTab === null) {
-      return
-    }
-    event.preventDefault()
-    onSelect(targetTab)
-    const target = targetTab === 'complexes'
-      ? complexTabRef.current
-      : announcementTabRef.current
-    target?.focus({ preventScroll: true })
-  }
-
-  return (
-    <div className="housing-results__tabs" role="tablist" aria-label="결과 종류">
-      <button
-        ref={complexTabRef}
-        id="complex-results-tab"
-        type="button"
-        role="tab"
-        aria-controls="complex-results-panel"
-        aria-selected={activeTab === 'complexes'}
-        className={activeTab === 'complexes' ? 'is-active' : undefined}
-        tabIndex={activeTab === 'complexes' ? 0 : -1}
-        onClick={() => onSelect('complexes')}
-        onKeyDown={(event) => selectFromKeyboard(event, 'complexes')}
-      >
-        단지 목록
-      </button>
-      <button
-        ref={announcementTabRef}
-        id="announcement-results-tab"
-        type="button"
-        role="tab"
-        aria-controls="announcement-results-panel"
-        aria-selected={activeTab === 'announcements'}
-        className={activeTab === 'announcements' ? 'is-active' : undefined}
-        tabIndex={activeTab === 'announcements' ? 0 : -1}
-        onClick={() => onSelect('announcements')}
-        onKeyDown={(event) => selectFromKeyboard(event, 'announcements')}
-      >
-        공고 목록
-      </button>
-    </div>
+    </HousingDetailOverlay>
   )
 }
 
@@ -1572,28 +1549,15 @@ function AnnouncementResultContent({
   )
 }
 
-function keyboardResultTab(key: string, currentTab: ResultTab) {
-  if (key === 'Home') {
-    return 'complexes' as const
-  }
-  if (key === 'End') {
-    return 'announcements' as const
-  }
-  if (key !== 'ArrowLeft' && key !== 'ArrowRight') {
-    return null
-  }
-  return currentTab === 'complexes' ? 'announcements' : 'complexes'
-}
-
 function resultCountLabel(
-  activeTab: ResultTab,
+  activeTab: ResultList,
   complexes: ComplexResultsState,
   announcements: AnnouncementResultsState,
-  requestBlocked: boolean,
-  aggregateMapActive: boolean,
-  aggregateMapEmpty: boolean,
-  mapRefreshing: boolean,
+  recentCount: number,
 ) {
+  if (activeTab === 'recent') {
+    return { accessibleLabel: `최근 본 단지 ${recentCount}곳`, visibleLabel: `${recentCount}곳` }
+  }
   if (
     activeTab === 'announcements'
     && (announcements.status === 'idle' || announcements.status === 'loading')
@@ -1621,24 +1585,6 @@ function resultCountLabel(
       visibleLabel: `${count}${suffix}`,
     }
   }
-  if (aggregateMapActive) {
-    if (aggregateMapEmpty) {
-      return {
-        accessibleLabel: '현재 지도 영역에 표시할 지역 마커 없음',
-        visibleLabel: '0곳',
-      }
-    }
-    return {
-      accessibleLabel: '지역 마커를 선택해 지도 확대',
-      visibleLabel: '지역 선택',
-    }
-  }
-  if (requestBlocked) {
-    return {
-      accessibleLabel: '단지 조회를 위한 지도 확대 필요',
-      visibleLabel: '확대 필요',
-    }
-  }
   if (complexes.status === 'idle' || (
     complexes.status === 'loading' && complexes.items.length === 0
   )) {
@@ -1653,8 +1599,8 @@ function resultCountLabel(
       visibleLabel: '불러오기 실패',
     }
   }
-  const count = complexes.totalCount === null ? '집계 중' : `${complexes.totalCount.toLocaleString('ko-KR')}곳`
-  if (complexes.status === 'loading' || mapRefreshing) {
+  const count = `${complexes.items.length.toLocaleString('ko-KR')}곳${complexes.hasNext ? ' 이상' : ''}`
+  if (complexes.status === 'loading') {
     return {
       accessibleLabel: `단지 목록 갱신 중, 이전 결과 ${count}`,
       visibleLabel: `${count} · 갱신 중`,
@@ -1681,24 +1627,6 @@ function mapFilterResultCountLabel({
   return serverMapResult?.representation === 'INDIVIDUAL'
     ? `${serverMapResult.nodes.length}곳`
     : undefined
-}
-
-function ViewportAction({
-  announcementsActive,
-  decision,
-}: {
-  announcementsActive: boolean
-  decision: ReturnType<typeof evaluateViewportRequest> | null
-}) {
-  if (decision && !decision.allowed) {
-    return (
-      <div className="housing-viewport-action housing-viewport-action--blocked" role="status">
-        <span>{viewportGuidance(decision.reason, announcementsActive)}</span>
-      </div>
-    )
-  }
-
-  return null
 }
 
 function HousingMapRequestFeedback({
@@ -1753,7 +1681,7 @@ function ComplexRequestFeedback({
 
 function complexRequestStatusMessage(state: ComplexResultsState) {
   if (state.status === 'idle') {
-    return '지도와 단지 목록을 준비하고 있습니다.'
+    return '지역 단지 목록을 준비하고 있습니다.'
   }
   if (state.status === 'loading') {
     return state.items.length === 0
@@ -1763,7 +1691,7 @@ function complexRequestStatusMessage(state: ComplexResultsState) {
   if (state.status === 'loading-more') {
     return '단지 목록을 추가로 불러오고 있습니다.'
   }
-  const total = state.totalCount === null ? '전체 수 집계 중' : `전체 ${state.totalCount.toLocaleString('ko-KR')}곳`
+  const total = state.hasNext ? '더 보기 가능' : `전체 ${state.items.length.toLocaleString('ko-KR')}곳`
   return `단지 목록 갱신 완료, ${total}, 현재 ${state.items.length.toLocaleString('ko-KR')}곳 표시`
 }
 
@@ -1784,20 +1712,11 @@ function ComplexResultContent({
   onHover: (complexId: string | null) => void
   onCardRef: (complexId: string, node: HTMLElement | null) => void
 }) {
-  if (state.status === 'idle') {
-    return (
-      <div className="housing-results__state">
-        <strong>지도를 준비하고 있습니다.</strong>
-        <span>지도가 열리면 현재 영역의 단지를 확인할 수 있습니다.</span>
-      </div>
-    )
-  }
-
-  if (state.status === 'loading' && state.items.length === 0) {
+  if (state.status === 'idle' || (state.status === 'loading' && state.items.length === 0)) {
     return (
       <div className="housing-results__state">
         <strong>단지를 불러오고 있습니다.</strong>
-        <span>현재 지도 영역을 확인하고 있습니다.</span>
+        <span>검색한 지역의 단지를 확인하고 있습니다.</span>
       </div>
     )
   }
@@ -1810,7 +1729,7 @@ function ComplexResultContent({
     return (
       <div className="housing-results__state">
         <strong>이 지역에서 확인되는 단지가 없습니다.</strong>
-        <span>지도를 다른 지역으로 옮기거나 조금 더 넓게 확인해 주세요.</span>
+        <span>다른 지역을 검색하거나 검색 조건을 변경해 주세요.</span>
       </div>
     )
   }
@@ -1950,13 +1869,18 @@ function boundaryScreenPadding(workspace: HTMLElement | null) {
   if (!map || map.width <= 0 || map.height <= 0) {
     return padding
   }
-  const panels = workspace?.querySelectorAll('.housing-detail-layer, .housing-map-filter [role="toolbar"], .housing-map-filter [data-topic], .housing-map-filter [role="dialog"]') ?? []
+  // Measure the anchored page shell, not the list's in-flight slide transform.
+  const panels = workspace?.closest('.housing-explorer')?.querySelectorAll('.housing-browse-panel:has(.housing-results[aria-hidden="false"]), .housing-search-overlay, .housing-detail-layer, .housing-map-filter [role="toolbar"], .housing-map-filter [data-topic], .housing-map-filter [role="dialog"]') ?? []
   for (const panel of panels) {
     const style = window.getComputedStyle(panel)
     if (style.visibility === 'hidden' || style.display === 'none') {
       continue
     }
     const rect = panel.getBoundingClientRect()
+    // A full-screen mobile list is temporary; fit for the map revealed when it is folded.
+    if (panel.classList.contains('housing-browse-panel') && rect.width >= map.width * 0.8) {
+      continue
+    }
     if (rect.width <= 0 || rect.height <= 0 || rect.right <= map.left || rect.left >= map.right
       || rect.bottom <= map.top || rect.top >= map.bottom) {
       continue
@@ -2084,6 +2008,7 @@ function clearDetailOpenerRefs(refs: {
 }
 
 function restoreDetailListFocus({
+  resultTab,
   announcementCards,
   announcementId,
   announcementOpener,
@@ -2093,6 +2018,7 @@ function restoreDetailListFocus({
   kind,
   openerWasMarker,
 }: {
+  resultTab: ResultList
   announcementCards: ReadonlyMap<string, HTMLElement>
   announcementId: string | null
   announcementOpener: HTMLElement | null
@@ -2112,6 +2038,7 @@ function restoreDetailListFocus({
       announcementCards,
       announcementId,
       announcementOpener,
+      resultTab,
     )
     return
   }
@@ -2120,6 +2047,7 @@ function restoreDetailListFocus({
     complexId,
     opener: complexOpener,
     openerWasMarker,
+    resultTab,
   })
 }
 
@@ -2127,6 +2055,7 @@ function restoreAnnouncementFocus(
   cards: ReadonlyMap<string, HTMLElement>,
   announcementId: string | null,
   opener: HTMLElement | null,
+  resultTab: ResultList,
 ) {
   if (isAvailableFocusTarget(opener)) {
     opener.focus({ preventScroll: true })
@@ -2141,15 +2070,17 @@ function restoreAnnouncementFocus(
     button.focus({ preventScroll: true })
     return
   }
-  focusActiveResultTab()
+  focusListTrigger(resultTab)
 }
 
 function restoreComplexFocus({
+  resultTab,
   cards,
   complexId,
   opener,
   openerWasMarker,
 }: {
+  resultTab: ResultList
   cards: ReadonlyMap<string, HTMLElement>
   complexId: string | null
   opener: HTMLElement | null
@@ -2160,7 +2091,7 @@ function restoreComplexFocus({
     return
   }
   if (complexId === null) {
-    focusActiveResultTab()
+    focusListTrigger(resultTab)
     return
   }
   if (openerWasMarker) {
@@ -2173,7 +2104,7 @@ function restoreComplexFocus({
   if (focusComplexCard(cards.get(complexId))) {
     return
   }
-  focusActiveResultTab()
+  focusListTrigger(resultTab)
 }
 
 function findComplexMarker(complexId: string) {
@@ -2193,51 +2124,17 @@ function focusComplexCard(card: HTMLElement | undefined) {
   return true
 }
 
-function focusActiveResultTab() {
-  document.querySelector<HTMLButtonElement>(
-    '[role="tab"][aria-selected="true"]',
-  )?.focus({ preventScroll: true })
+function focusListTrigger(kind: ResultList) {
+  const trigger = document.getElementById(kind === 'recent' ? 'recent-list-trigger' : kind === 'complexes' ? 'region-complex-list-trigger' : 'announcement-list-trigger')
+  const target = isAvailableFocusTarget(trigger) ? trigger
+    : document.querySelector<HTMLInputElement>('.housing-search-overlay input[type="search"]')
+  target?.focus({ preventScroll: true })
 }
 
 function isAvailableFocusTarget(
   element: HTMLElement | null | undefined,
 ): element is HTMLElement {
-  return Boolean(element?.isConnected && !element.closest('[hidden]'))
-}
-
-function viewportForBounds(bounds: MapBounds): ViewportSnapshot {
-  return {
-    bounds,
-    center: {
-      latitude: (bounds.southWestLat + bounds.northEastLat) / 2,
-      longitude: (bounds.southWestLng + bounds.northEastLng) / 2,
-    },
-    zoom: 14,
-  }
-}
-
-function viewportForMapQuery(
-  bounds: MapBounds,
-  zoom: number,
-): ViewportSnapshot {
-  return { ...viewportForBounds(bounds), zoom }
-}
-
-function viewportGuidance(
-  reason: ViewportBlockReason,
-  announcementsActive: boolean,
-) {
-  const subject = announcementsActive ? '지도 마커를' : '단지를'
-  if (reason === 'zoom-too-low') {
-    return `${subject} 불러오려면 지도를 조금 더 확대해 주세요.`
-  }
-  if (
-    reason === 'latitude-span-too-large' ||
-    reason === 'longitude-span-too-large'
-  ) {
-    return '요청 범위가 넓습니다. 지도를 조금 더 확대해 주세요.'
-  }
-  return '현재 지도 범위를 확인하지 못했습니다. 지도를 다시 움직여 주세요.'
+  return Boolean(element?.isConnected && !element.closest('[hidden], [inert], [aria-hidden="true"]'))
 }
 
 function isAbortError(error: unknown) {

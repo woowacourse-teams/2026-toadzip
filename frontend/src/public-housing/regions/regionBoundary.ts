@@ -11,6 +11,7 @@ export interface RegionBoundary {
 export interface RegionBoundaryMetadata {
   readonly regionCode: string
   readonly name: string
+  readonly representativePoint?: { readonly latitude: number; readonly longitude: number }
   readonly bounds: MapBounds
   readonly path: string
 }

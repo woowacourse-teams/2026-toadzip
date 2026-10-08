@@ -1,4 +1,4 @@
-import { createContext, type KeyboardEvent, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, type KeyboardEvent, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { notificationInterestRepository, type NotificationEventSource, type NotificationEventType, type NotificationInterestEvent, type NotificationInterestRepository, type NotificationTarget } from './notificationInterestRepository'
 import { getCurrentUser } from '../../user/auth/api'
 import { UserSessionControl } from '../../user/auth/UserSessionControl'
@@ -29,9 +29,9 @@ const InterestContext = createContext<{
   readonly expose: (selection: Selection) => void
 } | null>(null)
 
-export function NotificationInterestSessionControl() {
+export function NotificationInterestSessionControl({ presentation }: { readonly presentation?: 'default' | 'rail' }) {
   const context = useContext(InterestContext)
-  return <UserSessionControl onLogout={context?.resetSession} />
+  return <UserSessionControl onLogout={context?.resetSession} presentation={presentation} />
 }
 
 function requestedKey(target: Pick<NotificationTarget, 'type' | 'id'>) {
@@ -133,11 +133,11 @@ export function NotificationInterestProvider({ children, repository = notificati
   }, [refreshStatus, resetSession])
 
   useEffect(() => {
-    if (!prompt && !busy && restoreFocus.current) {
+    if (!prompt && !busy && !failed && restoreFocus.current) {
       restoreFocus.current = false
       trigger.current?.focus({ preventScroll: true })
     }
-  }, [busy, prompt])
+  }, [busy, failed, prompt])
 
   useEffect(() => {
     if (!prompt) return
@@ -244,12 +244,10 @@ export function NotificationInterestProvider({ children, repository = notificati
 
   const context = useMemo(() => ({ blocked: mode === 'loading' || mode === 'error' || busy || prompt !== null || failed !== null, mode, serverStatus, requested, request, expose, resetSession }), [busy, expose, failed, mode, prompt, request, requested, resetSession, serverStatus])
   function clearFailure() {
+    restoreFocus.current = true
     setFailed(null)
     if (prompt) {
-      restoreFocus.current = true
       setPrompt(null)
-    } else {
-      trigger.current?.focus({ preventScroll: true })
     }
   }
   const error = failed && (
@@ -301,9 +299,8 @@ export function NotificationInterestProvider({ children, repository = notificati
           </form>
         </InterestDialog>
       )}
-      {!prompt && (error || message) && (
-        <div className={styles.feedback}>{error || <p role="status">{message}</p>}</div>
-      )}
+      {!prompt && error && <InterestDialog label="알림 요청 오류" onDismiss={clearFailure}>{error}</InterestDialog>}
+      {!prompt && !error && message && <div className={styles.feedback}><p role="status">{message}</p></div>}
       {mode === 'error' && <div className={styles.feedback} role="alert">
         <p>알림 상태를 불러오지 못했어요.</p>
         <button type="button" onClick={refreshStatus}>다시 시도</button>
@@ -312,11 +309,16 @@ export function NotificationInterestProvider({ children, repository = notificati
   )
 }
 
-function InterestDialog({ children, onDismiss }: { readonly children: ReactNode; readonly onDismiss: () => void }) {
-  const panel = useRef<HTMLDivElement>(null)
-  useEffect(() => { panel.current?.querySelector<HTMLInputElement>('input')?.focus() }, [])
+function InterestDialog({ children, onDismiss, label }: { readonly children: ReactNode; readonly onDismiss: () => void; readonly label?: string }) {
+  const panel = useRef<HTMLDialogElement>(null)
+  useLayoutEffect(() => {
+    const element = panel.current
+    element?.showModal()
+    element?.querySelector<HTMLElement>('input:not(:disabled), button:not(:disabled)')?.focus()
+    return () => element?.close()
+  }, [])
 
-  function keyDown(event: KeyboardEvent<HTMLDivElement>) {
+  function keyDown(event: KeyboardEvent<HTMLDialogElement>) {
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onDismiss() }
     if (event.key !== 'Tab') return
     const controls = Array.from(panel.current?.querySelectorAll<HTMLElement>('input:not(:disabled), button:not(:disabled), a[href]') ?? [])
@@ -328,11 +330,10 @@ function InterestDialog({ children, onDismiss }: { readonly children: ReactNode;
   }
 
   return (
-    <div className={styles.backdrop}>
-      <div ref={panel} className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="notification-interest-title" onKeyDown={keyDown}>
+      <dialog ref={panel} className={styles.dialog} aria-modal="true" aria-label={label} aria-labelledby={label ? undefined : 'notification-interest-title'} onKeyDown={keyDown}
+        onCancel={(event) => { event.preventDefault(); event.stopPropagation(); onDismiss() }}>
         {children}
-      </div>
-    </div>
+      </dialog>
   )
 }
 

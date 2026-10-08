@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useId, useState } from 'react'
 import { DetailCloseButton } from '../components/DetailPrimitives.tsx'
 import {
   integratedSearchRepository,
@@ -10,6 +10,7 @@ import {
 import styles from './IntegratedSearch.module.css'
 import { findRegionBoundaryMetadata } from '../regions/regionBoundaryCatalog.ts'
 import { NotificationInterestButton } from '../interest/NotificationInterest'
+import { useSearchSuggestionsKeyboard } from './useSearchSuggestionsKeyboard.ts'
 
 interface GroupState {
   readonly items: readonly SearchResultItem[]
@@ -35,7 +36,8 @@ export function IntegratedSearch({
   selectionControl,
 }: IntegratedSearchProps) {
   const [query, setQuery] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
+  const { inputRef, suggestionsRef, onKeyDown } = useSearchSuggestionsKeyboard(() => setQuery(''))
+  const suggestionsId = useId()
   const normalizedQuery = normalizeQuery(query)
   const active = normalizedQuery.replaceAll(' ', '').length >= 2
   const inputLabel = '지역, 단지, 공고 검색'
@@ -45,7 +47,7 @@ export function IntegratedSearch({
   }, [active, onActiveChange])
 
   return (
-    <section className={`integrated-search${active ? ' is-active' : ''}`} aria-label="통합 검색">
+    <section className={`integrated-search${active ? ' is-active' : ''}`} aria-label="통합 검색" onKeyDown={onKeyDown}>
       <div className={selectionControl ? `${styles.top} ${styles.withSelection}` : styles.top}>
         <label className="integrated-search__input">
           <span className="visually-hidden">{inputLabel}</span>
@@ -64,6 +66,9 @@ export function IntegratedSearch({
           <input
             ref={inputRef}
             type="search"
+            autoComplete="off"
+            aria-autocomplete="list"
+            aria-controls={active ? suggestionsId : undefined}
             value={query}
             placeholder={inputLabel}
             onChange={(event) => setQuery(event.target.value)}
@@ -84,13 +89,14 @@ export function IntegratedSearch({
         )}
       </div>
       {active && (
-        <div className="integrated-search__body">
+        <div className="integrated-search__body" ref={suggestionsRef} id={suggestionsId}>
           <div className="integrated-search__results" key={normalizedQuery}>
             {searchTypes.map((type) => (
               <SearchGroup
                 key={type}
                 onSelect={(item) => {
                   setQuery('')
+                  onActiveChange?.(false)
                   inputRef.current?.focus({ preventScroll: true })
                   onSelect(item)
                 }}
@@ -106,7 +112,7 @@ export function IntegratedSearch({
   )
 }
 
-function SearchGroup({
+export function SearchGroup({
   onSelect,
   query,
   repository,
@@ -178,7 +184,7 @@ function SearchGroup({
             <li key={`${item.type}-${item.id}`} className={item.type === 'REGION' && item.regionCode ? styles.regionRow : undefined}>
               <button
                 type="button"
-                disabled={unavailable}
+                data-search-suggestion
                 className={styles.result}
                 onClick={() => onSelect(item)}
               >

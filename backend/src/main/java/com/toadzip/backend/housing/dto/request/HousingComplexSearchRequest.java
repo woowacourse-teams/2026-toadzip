@@ -25,10 +25,10 @@ public record HousingComplexSearchRequest(
         Integer builtYearFrom,
         Integer builtYearTo,
         Boolean hasElevator,
-        @Parameter(required = true) BigDecimal southWestLat,
-        @Parameter(required = true) BigDecimal southWestLng,
-        @Parameter(required = true) BigDecimal northEastLat,
-        @Parameter(required = true) BigDecimal northEastLng,
+        @Parameter(required = true, description = "지도 조회 필수. 목록 조회는 regionCode 지정 시 네 좌표 모두 생략 가능") BigDecimal southWestLat,
+        @Parameter(required = true, description = "지도 조회 필수. 목록 조회는 regionCode 지정 시 네 좌표 모두 생략 가능") BigDecimal southWestLng,
+        @Parameter(required = true, description = "지도 조회 필수. 목록 조회는 regionCode 지정 시 네 좌표 모두 생략 가능") BigDecimal northEastLat,
+        @Parameter(required = true, description = "지도 조회 필수. 목록 조회는 regionCode 지정 시 네 좌표 모두 생략 가능") BigDecimal northEastLng,
         Boolean hasActiveAnnouncement
 ) {
     public HousingComplexSearchRequest(

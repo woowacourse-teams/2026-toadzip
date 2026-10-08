@@ -34,6 +34,20 @@ import org.junit.jupiter.api.Test;
 
 class IntegratedSearchServiceTest {
 
+    @Test
+    void 지역_검색은_이름순이나_일치도순이_아닌_공식_지역순서로_페이지를_나눈다() {
+        when(regionRepository.findByKeyword(any())).thenReturn(List.of(
+                region("11680", "서울특별시 강남구"),
+                region("11110", "서울특별시 종로구"),
+                region("1111010100", "서울특별시 종로구 청운동")
+        ));
+        var first = service.search(typedRequest("서울", SearchType.REGION, 0, 2));
+        var second = service.search(typedRequest("서울", SearchType.REGION, 1, 2));
+        assertEquals(List.of("11110", "1111010100"), first.regions().stream()
+                .map(item -> item.regionCode()).toList());
+        assertEquals(List.of("11680"), second.regions().stream().map(item -> item.regionCode()).toList());
+    }
+
     private InternalSearchRepository internalRepository;
     private RegionSearchRepository regionRepository;
     private RegionCoordinateRepository coordinateRepository;

@@ -30,6 +30,23 @@ const INDIVIDUAL_NODE = {
 }
 
 describe('지도 v2 응답 계약', () => {
+  it.each(['BEFORE_APPLICATION', 'APPLYING', 'CLOSED', null])('단지 공고 상태 %s을 보존한다', applicationStatus => {
+    const result = decodeHousingMapEnvelope(envelope({
+      resolvedStage: 4,
+      representation: 'INDIVIDUAL',
+      nodes: [{ ...INDIVIDUAL_NODE, applicationStatus }],
+    }))
+    expect(result.nodes[0]).toMatchObject({ applicationStatus })
+  })
+
+  it('문자열이 아닌 공고 상태는 거부한다', () => {
+    expectContractError(envelope({
+      resolvedStage: 4,
+      representation: 'INDIVIDUAL',
+      nodes: [{ ...INDIVIDUAL_NODE, applicationStatus: 42 }],
+    }), '$.data.nodes[0].applicationStatus')
+  })
+
   it('0곳을 포함한 지역 노드를 aggregate 결과로 디코딩한다', () => {
     const result = decodeHousingMapEnvelope(envelope({
       resolvedStage: 3,

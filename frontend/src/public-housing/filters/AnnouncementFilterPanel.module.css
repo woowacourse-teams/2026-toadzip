@@ -17,6 +17,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 8px var(--list-inset, 20px);
+  padding-left: var(--list-start-inset, var(--list-inset, 20px));
   font-size: var(--ds-text-body);
   font-weight: 500;
   line-height: 1.5;
@@ -108,6 +109,7 @@
   align-items: center;
   grid-template-columns: 76px minmax(0, 1fr) 76px;
   padding: 8px var(--list-inset, 20px);
+  padding-left: var(--list-start-inset, var(--list-inset, 20px));
   border-bottom: 1px solid var(--ds-color-divider);
 }
 
@@ -155,6 +157,7 @@
 .fields {
   min-height: 0;
   padding: 20px var(--list-inset, 20px);
+  padding-left: var(--list-start-inset, var(--list-inset, 20px));
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -301,6 +304,7 @@
   display: flex;
   flex: 0 0 auto;
   padding: 12px var(--list-inset, 20px);
+  padding-left: var(--list-start-inset, var(--list-inset, 20px));
   border-top: 1px solid var(--ds-color-divider);
   background: var(--ds-color-surface);
 }
@@ -364,4 +368,8 @@
     outline: 2px solid Highlight;
     outline-offset: -3px;
   }
+}
+
+.regionFields > label:nth-of-type(3) {
+  grid-column: 1 / -1;
 }

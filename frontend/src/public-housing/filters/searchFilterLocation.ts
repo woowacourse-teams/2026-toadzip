@@ -264,7 +264,7 @@ function plainDecimal(value: number) {
 }
 
 function validRegionCode(value: string | null) {
-  return value !== null && /^(?:\d{2}|\d{5})$/.test(value) ? value : null
+  return value !== null && /^(?:\d{2}|\d{5}|\d{8}00)$/.test(value) ? value : null
 }
 
 function nonNegativeInteger(value: string | null) {

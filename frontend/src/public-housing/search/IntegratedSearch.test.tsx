@@ -38,6 +38,24 @@ describe('IntegratedSearch', () => {
     expect(bell.querySelector('svg')).toHaveAttribute('data-state', 'requested')
   })
 
+  it('입력 중 제안된 결과를 방향키와 Enter로 선택하며 한글 조합 중에는 선택하지 않는다', async () => {
+    const onSelect = vi.fn()
+    const region = item('REGION', '11', '서울특별시 전체')
+    render(<IntegratedSearch onSelect={onSelect} repository={repositoryWith(response([], [], [region]))} />)
+    const input = screen.getByRole('searchbox')
+    fireEvent.change(input, { target: { value: '서울' } })
+    const suggestion = await screen.findByRole('button', { name: /서울특별시 전체/ })
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+    expect(onSelect).not.toHaveBeenCalled()
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(suggestion).toHaveFocus()
+    fireEvent.keyDown(suggestion, { key: 'ArrowUp' })
+    expect(input).toHaveFocus()
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(region)
+    expect(input).toHaveValue('')
+  })
+
   it('검색창만 표시하다 공백을 제외한 두 글자부터 검색하고 지우면 목록을 닫는다', async () => {
     vi.useFakeTimers()
     try {
@@ -169,14 +187,16 @@ describe('IntegratedSearch', () => {
       type === 'COMPLEX' ? [selected] : [],
       type === 'REGION' ? [selected] : [],
     ))
-    const onSelect = vi.fn()
     const onActiveChange = vi.fn()
+    let activeAtSelection: unknown
+    const onSelect = vi.fn(() => { activeAtSelection = onActiveChange.mock.lastCall?.[0] })
     render(<IntegratedSearch repository={repository} onSelect={onSelect} onActiveChange={onActiveChange} />)
     const input = screen.getByRole('searchbox')
     fireEvent.change(input, { target: { value: '서울' } })
     fireEvent.click(await screen.findByRole('button', { name: /서울 선택 결과.*서울특별시/ }))
 
     expect(onSelect).toHaveBeenCalledExactlyOnceWith(selected)
+    expect(activeAtSelection).toBe(false)
     expect(input).toHaveValue('')
     expect(input).toHaveFocus()
     expect(screen.queryByRole('heading', { name: '검색결과' })).not.toBeInTheDocument()
@@ -190,7 +210,7 @@ describe('IntegratedSearch', () => {
     expect(repository.search).toHaveBeenCalledTimes(6)
   })
 
-  it('좌표와 경계가 없는 지역은 선택해도 검색을 닫거나 이동시키지 않는다', async () => {
+  it('지역 선택은 검색결과를 닫고 좌표 없는 지역도 선택할 수 있다', async () => {
     const region = item('REGION', '41110', '수원시')
     const unavailable = { ...item('REGION', '99999', '미지원 지역'), latitude: null }
     const onSelect = vi.fn()
@@ -199,15 +219,17 @@ describe('IntegratedSearch', () => {
       onSelect={onSelect}
     />)
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '수원' } })
-    await screen.findByRole('button', { name: /^수원시\s*서울/ })
-    expect(screen.getByRole('searchbox')).toHaveValue('수원')
-    const unavailableButton = screen.getByRole('button', { name: /미지원 지역/ })
-    expect(unavailableButton).toBeDisabled()
+    fireEvent.click(await screen.findByRole('button', { name: /^수원시\s*서울/ }))
+
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(region)
+    expect(screen.getByRole('searchbox')).toHaveValue('')
+    expect(screen.queryByRole('heading', { name: '검색결과' })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '수원' } })
+    const unavailableButton = await screen.findByRole('button', { name: /미지원 지역/ })
+    expect(unavailableButton).toBeEnabled()
     expect(within(unavailableButton).getByText('위치 정보 준비 중')).toBeVisible()
     fireEvent.click(unavailableButton)
-    expect(onSelect).not.toHaveBeenCalled()
-    expect(screen.getByRole('heading', { name: '검색결과' })).toBeVisible()
-    expect(screen.getByRole('searchbox')).toHaveValue('수원')
+    expect(onSelect).toHaveBeenLastCalledWith(unavailable)
   })
 
   it('경계가 있는 지역은 대표 좌표 없이 선택할 수 있다', async () => {

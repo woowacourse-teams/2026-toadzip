@@ -71,7 +71,7 @@ export interface ComplexSearchFilters extends SharedSearchFilters {
 export type AnnouncementSearchFilters = SharedSearchFilters
 export interface PublicHousingRepository {
   findComplexPage(
-    bounds: MapBounds,
+    bounds: MapBounds | null,
     cursor: string | null,
     size: number,
     signal: AbortSignal,
@@ -116,7 +116,11 @@ export function createHttpPublicHousingRepository(
   return {
     async findComplexPage(bounds, cursor, size, signal, filters = {}) {
       validatePageSize(size)
-      const search = createComplexSearchParams(bounds, filters)
+      if (bounds === null && !/^(?:\d{2}|\d{5}|\d{8}00)$/.test(filters.regionCode ?? '')) {
+        throw new RangeError('지도 범위 또는 검색 지역이 필요합니다.')
+      }
+      const search = bounds === null ? new URLSearchParams() : createComplexSearchParams(bounds, filters)
+      if (bounds === null) appendComplexFilters(search, filters)
       if (cursor !== null) {
         search.set('cursor', cursor)
       }
