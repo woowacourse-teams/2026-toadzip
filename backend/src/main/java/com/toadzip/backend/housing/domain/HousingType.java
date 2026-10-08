@@ -61,6 +61,7 @@ public class HousingType {
     private BigDecimal maintenanceFee;
 
     @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
     private boolean adminModified;
 
     private HousingType(
