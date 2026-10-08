@@ -32,7 +32,7 @@ it('기존 로그인 주소에 접근하면 메인 화면에서 로그인 모달
 it('이전 로그인 콜백 주소로 인증이 완료되면 모달 없이 메인 화면으로 이동한다', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 7 }) }))
   render(<MemoryRouter initialEntries={['/login']}><App /><LocationDisplay /></MemoryRouter>)
-  expect(await screen.findByText('로그인됨')).toBeVisible()
+  expect(await screen.findByText('마이페이지')).toBeVisible()
   expect(screen.getByRole('link', { name: '공공주택 복덕방 홈' })).toBeVisible()
   await waitFor(() => expect(screen.getByLabelText('현재 주소').textContent).toBe('/'))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -41,8 +41,17 @@ it('이전 로그인 콜백 주소로 인증이 완료되면 모달 없이 메�
 it('메인 화면으로 인증이 완료되면 로그인 상태만 표시한다', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 7 }) }))
   render(<MemoryRouter><App /></MemoryRouter>)
-  expect(await screen.findByText('로그인됨')).toBeVisible()
+  expect(await screen.findByText('마이페이지')).toBeVisible()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+it('첫 방문의 실패 복귀는 로그인 모달만 먼저 표시하고 닫은 뒤 환영 안내를 표시한다', async () => {
+  localStorage.clear()
+  render(<MemoryRouter initialEntries={['/?login=failed']}><App /></MemoryRouter>)
+  expect(await screen.findByRole('dialog', { name: '로그인' })).toBeVisible()
+  expect(screen.queryByRole('dialog', { name: /살고 싶은 동네의/ })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '로그인 닫기' }))
+  expect(screen.getByRole('dialog', { name: /살고 싶은 동네의/ })).toBeVisible()
 })
 
 it.each(['/login?login=failed', '/?login=failed'])(

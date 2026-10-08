@@ -666,6 +666,20 @@ describe('공공주택 HTTP repository', () => {
     expect(page.raw.items[0]).toEqual(LIST_ITEM)
   })
 
+  it('검색 지역 목록은 지도 좌표 없이 지역과 커서로 조회한다', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      data: { items: [LIST_ITEM], nextCursor: null, hasNext: false },
+    }))
+    const repository = createRepository(fetchMock, 'https://api.example.test')
+    const page = await repository.findComplexPage(null, 'region-page', 20,
+      new AbortController().signal, { regionCode: '11680', agencyCodes: ['LH'] })
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]))
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      regionCode: '11680', agencyCodes: 'LH', cursor: 'region-page', size: '20',
+    })
+    expect(page.items[0].complexId).toBe('17')
+  })
+
   it('단지 목록 필터를 query로 직렬화한다', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(

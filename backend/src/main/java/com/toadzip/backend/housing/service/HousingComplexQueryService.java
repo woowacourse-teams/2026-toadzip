@@ -78,7 +78,7 @@ public class HousingComplexQueryService {
             String cursor,
             int size
     ) {
-        MapBounds bounds = requestNormalizer.normalizeBounds(request);
+        MapBounds bounds = requestNormalizer.normalizeListBounds(request);
         requireValidSize(size);
         ComplexSort normalizedSort = normalizedSort(sort);
         HousingComplexFilterCondition filters = requestNormalizer.normalizeFilters(request);

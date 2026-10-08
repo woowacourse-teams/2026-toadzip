@@ -620,7 +620,7 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(dialog).queryByText(/3D 평면도/)).not.toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: '평면도 닫기' })).toHaveFocus()
 
-    fireEvent.keyDown(dialog, { key: 'Escape' })
+    expect(fireEvent.keyDown(dialog, { key: 'Escape' })).toBe(false)
     expect(screen.queryByRole('dialog', { name: '44B 평면도' })).not.toBeInTheDocument()
     await waitFor(() => expect(openFloorPlan).toHaveFocus())
   })

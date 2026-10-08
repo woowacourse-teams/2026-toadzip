@@ -42,6 +42,17 @@ final class HousingComplexSearchRequestNormalizer {
         );
     }
 
+    MapBounds normalizeListBounds(HousingComplexSearchRequest request) {
+        requireRequest(request);
+        if (request.southWestLat() == null && request.southWestLng() == null
+                && request.northEastLat() == null && request.northEastLng() == null
+                && request.regionCode() != null) {
+            regionSelection(request.regionCode());
+            return null;
+        }
+        return normalizeBounds(request);
+    }
+
     HousingComplexFilterCondition normalizeFilters(HousingComplexSearchRequest request) {
         requireRequest(request);
         String keyword = normalizedKeyword(request.keyword());

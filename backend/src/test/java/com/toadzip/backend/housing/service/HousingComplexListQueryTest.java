@@ -104,6 +104,34 @@ class HousingComplexListQueryTest {
     }
 
     @Test
+    void 지역만_지정하면_지도_좌표_없이_지역_전체_목록을_조회한다() {
+        when(repository.findPage(any(), any(), any(), eq(21))).thenReturn(List.of());
+        HousingComplexSearchRequest request = request(
+                null, "11", null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null
+        );
+
+        HousingComplexListResponse response = service.getComplexes(request, null, null, 20);
+
+        ArgumentCaptor<HousingComplexSearchCondition> captor =
+                ArgumentCaptor.forClass(HousingComplexSearchCondition.class);
+        verify(repository).findPage(captor.capture(), eq(ComplexSort.LATEST_ANNOUNCEMENT), isNull(), eq(21));
+        assertNull(captor.getValue().bounds());
+        assertEquals(Set.of("11110", "11140"), captor.getValue().filters().cityCountyDistrictCodes());
+        assertTrue(response.items().isEmpty());
+    }
+
+    @Test
+    void 지역_목록도_일부_좌표만_보내면_거부한다() {
+        HousingComplexSearchRequest request = request(
+                null, "11", null, null, null, null, null, null, null, null,
+                null, null, null, null, null, BigDecimal.ONE, null, null, null
+        );
+        assertThrows(InvalidMapBoundsException.class, () -> service.getComplexes(request, null, null, 20));
+        verifyNoInteractions(repository);
+    }
+
+    @Test
     void 요청을_정규화해_서울_오늘을_포함한_검색조건으로_size보다_하나_더_조회한다() {
         when(repository.findPage(
                 any(HousingComplexSearchCondition.class),

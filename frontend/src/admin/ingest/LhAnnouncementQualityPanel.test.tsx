@@ -112,7 +112,8 @@ it('동일한 요청의 승인 지문이 바뀌면 다시 선택하고 근거를
     ...next, heldRequests: next.heldRequests.map((item) => ({ ...item, proposedFingerprint: 'b'.repeat(64) })),
   })
   fireEvent.click(screen.getByRole('button', { name: '다시 조회' }))
-  await waitFor(() => expect(screen.queryByRole('button', { name: '승인하고 공급 다시 조회' })).not.toBeInTheDocument())
+  expect(await screen.findByRole('status')).toHaveTextContent('선택한 보류 요청이 변경되었습니다.')
+  expect(screen.queryByRole('button', { name: '승인하고 공급 다시 조회' })).not.toBeInTheDocument()
 
   fireEvent.click(screen.getByRole('button', { name: '확인한 정정 반영' }))
   expect(screen.getByLabelText('마이홈 공고 ID')).toHaveValue('')
@@ -136,7 +137,8 @@ it('겹친 품질 조회의 늦은 응답으로 철회된 확인을 되살리지
   view.rerender(<MemoryRouter><LhAnnouncementQualityPanel collectionExecution={{
     ...collectionExecution(), status: 'COMPLETED_WARNINGS',
   }} /></MemoryRouter>)
-  await waitFor(() => expect(screen.queryByRole('button', { name: '승인하고 공급 다시 조회' })).not.toBeInTheDocument())
+  expect(await screen.findByRole('status')).toHaveTextContent('선택한 보류 요청이 변경되었습니다.')
+  expect(screen.queryByRole('button', { name: '승인하고 공급 다시 조회' })).not.toBeInTheDocument()
   await act(async () => { resolveLate(quality()) })
   expect(screen.queryByRole('button', { name: '승인하고 공급 다시 조회' })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '확인한 정정 반영' }))
