@@ -23,17 +23,13 @@
 .bell:hover:not(:disabled) { color: var(--ds-color-action); }
 .button:disabled, .bell:disabled { opacity: 0.6; cursor: wait; }
 .button:focus-visible, .bell:focus-visible, .dialog button:focus-visible, .input:focus-visible { outline: 2px solid #277259; outline-offset: 2px; }
-.backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 4000;
-  display: grid;
-  place-items: center;
-  padding: 16px;
+.dialog::backdrop {
   background: rgb(19 42 33 / 46%);
 }
 .dialog {
-  width: min(420px, 100%);
+  width: min(420px, calc(100% - 32px));
+  margin: auto;
+  color: var(--text);
   max-height: calc(100dvh - 32px);
   overflow: auto;
   border: 1px solid #dce8df;

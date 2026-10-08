@@ -1,0 +1,80 @@
+import { useEffect, useId, useRef, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
+import { IconButton } from '../../design-system/components/IconButton'
+import { socialLoginUrl } from './api'
+import styles from './LoginModal.module.css'
+
+interface Props {
+  readonly loginFailed: boolean
+  readonly sessionError: boolean
+  readonly onClose: () => void
+  readonly returnFocusRef: RefObject<HTMLButtonElement | null>
+}
+
+export function LoginModal({ loginFailed, sessionError, onClose, returnFocusRef }: Props) {
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const alertRef = useRef<HTMLDivElement>(null)
+  const providerRef = useRef<HTMLAnchorElement>(null)
+  const titleId = useId()
+  const descriptionId = useId()
+
+  useEffect(() => {
+    const trigger = document.activeElement
+    const returnTarget = returnFocusRef.current
+    const dialog = dialogRef.current
+    dialog?.showModal()
+    const initialFocus = alertRef.current ?? providerRef.current
+    initialFocus?.focus({ preventScroll: true })
+    return () => {
+      dialog?.close()
+      const target = returnTarget ?? trigger
+      if (target instanceof HTMLElement && target.isConnected) target.focus({ preventScroll: true })
+    }
+  }, [returnFocusRef])
+
+  return createPortal(
+    <dialog ref={dialogRef} className={styles.dialog} aria-labelledby={titleId}
+      aria-describedby={descriptionId}
+      onCancel={(event) => { event.preventDefault(); onClose() }}
+      onKeyDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        if (event.target !== event.currentTarget) return
+        const rect = event.currentTarget.getBoundingClientRect()
+        if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose()
+      }}>
+      <div className={styles.content}>
+        <IconButton className={styles.close} label="로그인 닫기" onClick={onClose}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+            <path d="m5 5 14 14M19 5 5 19" />
+          </svg>
+        </IconButton>
+        <header className={styles.header}>
+          <span className={styles.brand}>공공주택 복덕방</span>
+          <h2 id={titleId}>로그인</h2>
+          <p id={descriptionId}>사용 중인 계정으로 간편하게 시작하세요.</p>
+        </header>
+        {(loginFailed || sessionError) && (
+          <div ref={alertRef} className={styles.alert} role="alert" tabIndex={-1}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" /><path d="M12 7v6m0 3v1" />
+            </svg>
+            <strong>{loginFailed ? '로그인을 완료하지 못했습니다.' : '로그인 상태를 확인하지 못했습니다.'}</strong>
+            <p>아래 버튼을 눌러 다시 시도해 주세요.</p>
+          </div>
+        )}
+        <div className={styles.actions}>
+          <a ref={providerRef} className={`${styles.provider} ${styles.kakao}`} href={socialLoginUrl('kakao')}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 3C6.48 3 2 6.36 2 10.5c0 2.63 1.82 4.94 4.57 6.28l-1.16 4.13 4.73-2.98c.6.05 1.23.07 1.86.07 5.52 0 10-3.36 10-7.5S17.52 3 12 3Z" />
+            </svg>
+            카카오로 계속하기
+          </a>
+          <a className={`${styles.provider} ${styles.google}`} href={socialLoginUrl('google')}>
+            <span className={styles.googleMark} aria-hidden="true">G</span>
+            Google로 계속하기
+          </a>
+        </div>
+      </div>
+    </dialog>, document.body,
+  )
+}

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NotificationInterestButton, NotificationInterestProvider } from './NotificationInterest'
 import type { NotificationInterestRepository } from './notificationInterestRepository'
@@ -23,6 +23,35 @@ function example(repository: NotificationInterestRepository, loadUser = vi.fn().
 }
 
 describe('이메일 알림 신청', () => {
+  it('상세 내부에서 실패한 알림 요청도 native modal로 재시도와 닫기를 제공한다', async () => {
+    const record = vi.fn<NotificationInterestRepository['record']>().mockRejectedValue(new Error('network'))
+    render(<NotificationInterestProvider repository={{ record }}>
+      <dialog open aria-label="단지 상세">
+        <NotificationInterestButton target={{ type: 'COMPLEX', id: '1', name: '서울 단지' }} source="COMPLEX_DETAIL" />
+      </dialog>
+    </NotificationInterestProvider>)
+    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
+    const errorDialog = await screen.findByRole('dialog', { name: '알림 요청 오류' })
+    expect(errorDialog).toBeInstanceOf(HTMLDialogElement)
+    expect(errorDialog).toHaveAttribute('open')
+    expect(within(errorDialog).getByRole('alert')).toHaveTextContent('알림 신청을 완료하지 못했어요.')
+    fireEvent.click(within(errorDialog).getByRole('button', { name: '닫기' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveFocus()
+  })
+
+  it('상세 모달 위에서도 조작할 수 있도록 native modal로 열고 취소한다', async () => {
+    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
+    render(example({ record }))
+    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toBeInstanceOf(HTMLDialogElement)
+    expect(dialog).toHaveAttribute('open')
+    fireEvent(dialog, new Event('cancel', { cancelable: true }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveFocus()
+  })
+
   it.each(['resolve', 'reject'] as const)('저장소 교체 전 요청이 %s되어도 새 신청 화면을 막거나 덮지 않는다', async (settlement) => {
     const previousWrite = deferred<void>()
     const previousRepository = {
