@@ -1,6 +1,6 @@
 /// <reference types="node" />
 
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -117,19 +117,20 @@ function factValue(container: HTMLElement, term: string) {
 }
 
 describe('HousingComplexDetailPanel', () => {
-  it('단지 알림 클릭은 단지 ID와 함께 최초 신청 의사를 묻는다', async () => {
+  it('회원 단지 알림 클릭은 단지 ID를 저장하고 준비 중임을 안내한다', async () => {
     localStorage.clear()
     const record = vi.fn().mockResolvedValue(undefined)
     render(
-      <NotificationInterestProvider repository={{ record }}>
+      <NotificationInterestProvider repository={{ record, loadStatus: async () => ({ emailConfirmed: false, targets: [] }) }}>
         <HousingComplexDetailPanel detail={BASE_DETAIL} onClose={vi.fn()} />
       </NotificationInterestProvider>,
     )
     expect(screen.getByText('단지 알림')).toBeVisible()
+    await waitFor(() => expect(screen.getByRole('button', { name: '서울가람 행복주택 알림 받기' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: '서울가람 행복주택 알림 받기' }))
-    expect(await screen.findByRole('dialog', { name: '이메일 알림 신청' })).toBeVisible()
+    expect(await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })).toBeVisible()
     expect(record).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'CLICKED', source: 'COMPLEX_DETAIL', targetType: 'COMPLEX', targetId: '17',
+      eventType: 'CONFIRMED', source: 'COMPLEX_DETAIL', targetType: 'COMPLEX', targetId: '17',
     }))
   })
 
@@ -285,7 +286,7 @@ describe('HousingComplexDetailPanel', () => {
     focus.mockRestore()
   })
 
-  it('null은 공고문 확인 또는 미표시하고 0과 false는 실제 값으로 표시한다', () => {
+  it('null은 빈칸으로 표시하고 0과 false는 실제 값으로 표시한다', () => {
     const { panel } = renderPanel(
       detailWith({
         completionDate: null,
@@ -314,15 +315,15 @@ describe('HousingComplexDetailPanel', () => {
     )
     const facts = section(panel, '단지 기본 정보')
 
-    expect(factValue(facts, '준공일자').getByText('공고문 확인')).toBeInTheDocument()
+    expect(factValue(facts, '준공일자').getByRole('definition')).toBeEmptyDOMElement()
     expect(factValue(facts, '엘리베이터').getByText('없음')).toBeInTheDocument()
     expect(factValue(facts, '1년 퇴거 세대수').getByText('0세대')).toBeInTheDocument()
     expect(factValue(facts, '총세대수').getByText('0세대')).toBeInTheDocument()
     expect(factValue(facts, '총주차대수(세대당)').getByText('0대')).toBeInTheDocument()
 
     const housingType = section(panel, '주택형 정보')
-    expect(factValue(housingType, '전용 면적').getByText('공고문 확인')).toBeInTheDocument()
-    expect(factValue(housingType, '공급 면적').getByText('공고문 확인')).toBeInTheDocument()
+    expect(factValue(housingType, '전용 면적').getByRole('definition')).toBeEmptyDOMElement()
+    expect(factValue(housingType, '공급 면적').getByRole('definition')).toBeEmptyDOMElement()
     expect(factValue(housingType, '복층여부').getByText('해당 없음')).toBeInTheDocument()
     expect(factValue(housingType, '관리비').getByText('0원')).toBeInTheDocument()
     expect(within(housingType).getAllByText('0원')).toHaveLength(3)
@@ -342,11 +343,11 @@ describe('HousingComplexDetailPanel', () => {
       .toHaveAttribute('headers', within(table).getByRole('rowheader', { name: '임대보증금' }).id)
     expect(within(table).getByRole('cell', { name: '200,000원' }))
       .toHaveAttribute('headers', within(table).getByRole('rowheader', { name: '월 임대료' }).id)
-    expect(within(table).getByRole('row', { name: '전환 가능 보증금 공고문 확인' }))
+    expect(within(table).getByRole('row', { name: '전환 가능 보증금' }))
       .toBeInTheDocument()
     expect(within(table).getByRole('cell', { name: '50,000,000원' }))
       .toHaveAttribute('data-emphasis', 'true')
-    expect(within(table).getByRole('cell', { name: '공고문 확인' }))
+    expect(within(table).getByRole('cell', { name: '' }))
       .not.toHaveAttribute('data-emphasis')
   })
 
@@ -399,7 +400,7 @@ describe('HousingComplexDetailPanel', () => {
     expect(firstTab).toHaveAttribute('tabindex', '-1')
     expect(secondTab).toHaveAttribute('aria-controls', secondPanel.id)
     expect(secondPanel).toHaveAttribute('aria-labelledby', secondTab.id)
-    expect(within(secondPanel).getByText('공고문 확인')).toBeInTheDocument()
+    expect(within(secondPanel).queryByText('공고문 확인')).not.toBeInTheDocument()
     expect(within(information).queryByRole('tabpanel', { name: '36A' })).not.toBeInTheDocument()
     expect(within(table).queryByRole('button')).not.toBeInTheDocument()
     expect(table.querySelector('[data-selected]')).toBeNull()
@@ -493,7 +494,7 @@ describe('HousingComplexDetailPanel', () => {
     expect(within(table).getByRole('rowheader', { name: '36A' })).toHaveAttribute('rowspan', '2')
     expect(within(table).queryByRole('button')).not.toBeInTheDocument()
     const missingRow = within(table).getByRole('rowheader', { name: '44B' }).closest('tr')!
-    expect(within(missingRow).getAllByText('공고문 확인')).toHaveLength(3)
+    expect(within(missingRow).getAllByRole('cell', { name: '' })).toHaveLength(2)
     fireEvent.click(within(panel).getByRole('tab', { name: '44B' }))
     expect(within(panel).getByRole('tabpanel', { name: '44B' })).toBeInTheDocument()
   })
@@ -547,18 +548,14 @@ describe('HousingComplexDetailPanel', () => {
   })
 
   it.each([null, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
-    '누락되거나 유효하지 않은 마감일 %s는 상단의 공고문 확인으로 표시한다',
+    '누락되거나 유효하지 않은 마감일 %s는 마감 안내를 표시하지 않는다',
     (dDay) => {
       const { panel } = renderPanel(detailWith({
         currentAnnouncements: [{ ...BASE_DETAIL.currentAnnouncements[0], dDay }],
       }))
       const card = within(section(panel, '현재 모집 공고')).getByRole('article')
-      const title = within(card).getByRole('heading', { name: '행복주택 입주자 모집 공고' })
-      const deadline = within(card).getByText('공고문 확인')
-
-      expect(title.closest('header')?.firstElementChild).toContainElement(deadline)
-      expect(deadline.closest('p')).toHaveTextContent('마감까지 공고문 확인')
-      expect(deadline.closest('p')).toHaveAttribute('data-tone', 'neutral')
+      expect(within(card).queryByText('공고문 확인')).not.toBeInTheDocument()
+      expect(within(card).queryByText('마감까지')).not.toBeInTheDocument()
       expect(within(card).queryByText(/^D-/)).not.toBeInTheDocument()
     },
   )

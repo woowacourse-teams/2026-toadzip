@@ -21,14 +21,32 @@ export interface NotificationInterestEvent {
 }
 
 export interface NotificationInterestRepository {
-  record(event: NotificationInterestEvent): Promise<void>
+  record(event: NotificationInterestEvent, signal?: AbortSignal): Promise<void>
   loadStatus?(clientId: string): Promise<NotificationSubscriptionStatus | null>
 }
 
 export interface NotificationSubscriptionStatus {
   readonly guest?: boolean
   readonly emailConfirmed: boolean
-  readonly targets: ReadonlyArray<{ readonly targetType: NotificationTargetType; readonly targetId: string }>
+  readonly targets: ReadonlyArray<{ readonly targetType: NotificationTargetType; readonly targetId: string; readonly targetName?: string | null }>
+}
+
+function parseStatus(value: unknown): NotificationSubscriptionStatus {
+  if (typeof value !== 'object' || value === null || !('emailConfirmed' in value)
+    || typeof value.emailConfirmed !== 'boolean' || !('targets' in value) || !Array.isArray(value.targets)) {
+    throw new Error('알림 상태 응답이 올바르지 않습니다.')
+  }
+  const targets = value.targets.map((item: unknown): NotificationSubscriptionStatus['targets'][number] => {
+    if (typeof item !== 'object' || item === null || !('targetType' in item)
+      || (item.targetType !== 'COMPLEX' && item.targetType !== 'ANNOUNCEMENT' && item.targetType !== 'REGION')
+      || !('targetId' in item) || typeof item.targetId !== 'string' || !/^[0-9]{1,19}$/.test(item.targetId)
+      || ('targetName' in item && item.targetName !== null && typeof item.targetName !== 'string')) {
+      throw new Error('알림 대상 응답이 올바르지 않습니다.')
+    }
+    return { targetType: item.targetType, targetId: item.targetId,
+      ...('targetName' in item ? { targetName: item.targetName as string | null } : {}) }
+  })
+  return { emailConfirmed: value.emailConfirmed, targets }
 }
 
 export function createNotificationInterestRepository(
@@ -51,27 +69,26 @@ export function createNotificationInterestRepository(
   }
 
   return {
-    async loadStatus(clientId) {
+    async loadStatus() {
       const response = await fetcher(`${baseUrl}/api/v1/notification-subscriptions/me`, { credentials: 'include' })
       if (response.status === 401 || response.status === 403) {
-        const guestResponse = await fetcher(`${baseUrl}/api/v1/notification-subscriptions/guest`, {
-          credentials: 'include', headers: { 'X-Notification-Client-Id': clientId },
-        })
-        if (!guestResponse.ok) throw new Error('알림 상태를 불러오지 못했습니다.')
-        return { ...await guestResponse.json() as NotificationSubscriptionStatus, guest: true }
+        return { guest: true, emailConfirmed: false, targets: [] }
       }
       if (!response.ok) throw new Error('알림 상태를 불러오지 못했습니다.')
-      return await response.json() as NotificationSubscriptionStatus
+      return parseStatus(await response.json())
     },
-    async record(event) {
+    async record(event, signal) {
+      signal?.throwIfAborted()
       // Concurrent first exposures must share the same CSRF cookie initialization.
       csrfRequest ??= loadCsrf().finally(() => { csrfRequest = null })
       const csrf = await csrfRequest
-      const response = await fetcher(`${baseUrl}/api/v1/notification-interest-events`, {
+      signal?.throwIfAborted()
+      const response = await fetcher(`${baseUrl}/api/v1/${event.eventType === 'CONFIRMED' || event.eventType === 'CANCELLED' ? 'notification-subscriptions/me' : 'notification-interest-events'}`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', [csrf.headerName]: csrf.token },
         body: JSON.stringify(event),
+        ...(signal ? { signal } : {}),
       })
       if (!response.ok) throw new Error('관심을 기록하지 못했습니다.')
     },

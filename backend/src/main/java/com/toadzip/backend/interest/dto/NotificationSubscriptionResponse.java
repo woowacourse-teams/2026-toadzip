@@ -7,6 +7,9 @@ public record NotificationSubscriptionResponse(
         boolean emailConfirmed,
         List<Target> targets
 ) {
-    public record Target(NotificationTargetType targetType, String targetId) {
+    public record Target(NotificationTargetType targetType, String targetId, String targetName) {
+        public Target(NotificationTargetType targetType, String targetId) {
+            this(targetType, targetId, null);
+        }
     }
 }

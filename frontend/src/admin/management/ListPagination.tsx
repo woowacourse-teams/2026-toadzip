@@ -1,12 +1,12 @@
 import styles from './ListPagination.module.css'
 
-type Props = { page: number; totalPages: number; onMove: (page: number) => void; disabled?: boolean; label?: string }
+type Props = { page: number; totalPages: number; onMove: (page: number) => void; disabled?: boolean; label?: string; guardNavigation?: boolean }
 
-export function ListPagination({ page, totalPages, onMove, disabled = false, label = '목록 페이지' }: Props) {
+export function ListPagination({ page, totalPages, onMove, disabled = false, label = '목록 페이지', guardNavigation = false }: Props) {
   const empty = totalPages === 0
   const start = Math.max(0, Math.min(page - 2, totalPages - 5))
   const pages = Array.from({ length: Math.min(5, totalPages) }, (_, index) => start + index)
-  return <nav className={styles.pagination} aria-label={label}>
+  return <nav data-admin-navigation={guardNavigation || undefined} className={styles.pagination} aria-label={label}>
     <div className={styles.buttons}>
       <button className={styles.edge} type="button" disabled={disabled || empty || page === 0} onClick={() => onMove(0)} aria-label="처음">처음</button>
       <button type="button" disabled={disabled || empty || page === 0} onClick={() => onMove(page - 1)} aria-label="이전">이전</button>
