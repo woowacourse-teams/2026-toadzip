@@ -1014,6 +1014,7 @@ export function PublicHousingExplorer({
     }
     if (item.type === 'SUBWAY_STATION' || (item.type === 'REGION' && item.regionCode === null)) {
       if (item.latitude !== null && item.longitude !== null) {
+        pendingDetailCameraRef.current = null
         boundarySelectionRef.current = null
         setSelectedSearchRegion(null)
         changeBoundarySelection(null)

@@ -175,6 +175,30 @@ it.each(['SUBWAY_STATION', 'REGION'] as const)('외부 %s 위치 선택은 경�
   expect(trackEvent).toHaveBeenCalledWith('select_search_result', { result_type: type === 'SUBWAY_STATION' ? 'subway_station' : 'region' })
 })
 
+it.each(['SUBWAY_STATION', 'REGION'] as const)('외부 %s 선택 후 늦게 끝난 단지 상세는 지도 위치를 되돌리지 않는다', async (type) => {
+  const repository = createRepository()
+  const pending = createDeferred<ComplexDetail>()
+  repository.findComplexDetail.mockReturnValueOnce(pending.promise)
+  const selected = { ...searchItem(type, 'local-1', '서울 강남구 역삼동', 37.5, 127.03), regionCode: null }
+  renderExplorer(repository, '/', searchRepository(
+    type === 'SUBWAY_STATION' ? [selected] : [], type === 'REGION' ? [selected] : [],
+  ))
+  fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+  fireEvent.click(await screen.findByRole('button', { name: '서울가람 행복주택 단지 상세 보기' }))
+  await waitFor(() => expect(repository.findComplexDetail).toHaveBeenCalledOnce())
+
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: '역삼동' } })
+  fireEvent.click(await screen.findByRole('button', { name: /^서울 강남구 역삼동/ }))
+  expect(screen.getByText('카메라 37.5,127.03')).toBeVisible()
+  const cameraRequest = screen.getByTestId('map-camera-request').textContent
+
+  await act(async () => pending.resolve(complexDetail()))
+
+  expect(screen.getByText('카메라 37.5,127.03')).toBeVisible()
+  expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('14')
+  expect(screen.getByTestId('map-camera-request').textContent).toBe(cameraRequest)
+})
+
 afterEach(() => {
   vi.restoreAllMocks()
   vi.useRealTimers()
