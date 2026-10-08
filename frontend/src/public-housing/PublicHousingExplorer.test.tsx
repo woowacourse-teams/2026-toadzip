@@ -982,6 +982,7 @@ describe('PublicHousingExplorer', () => {
       '준공년도 필터 열기',
       '공급기관 필터 열기',
       '모집유형 필터 열기',
+      '단지·지도 필터 전체 해제',
     ])
     expect(screen.queryByRole('complementary', { name: '공공임대주택 검색 결과' })).not.toBeInTheDocument()
 
