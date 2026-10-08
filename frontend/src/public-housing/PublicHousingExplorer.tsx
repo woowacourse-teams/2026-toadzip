@@ -1,3 +1,4 @@
+import { findCatalogRegion } from './model/publicHousingRegion'
 import { rentalTypeLabel } from './presentation/rentalTypeLabel.ts'
 import {
   clearDetailHistoryState,
@@ -95,9 +96,10 @@ import { IntegratedSearch } from './search/IntegratedSearch.tsx'
 import { useRegionComplexResults, type ComplexResultsState } from './complexes/useRegionComplexResults'
 import { FirstVisitWelcome } from './onboarding/FirstVisitWelcome.tsx'
 import type { StarterPlace } from './onboarding/starterPlaces.ts'
-import type {
-  IntegratedSearchRepository,
-  SearchResultItem,
+import {
+  integratedSearchRepository,
+  type IntegratedSearchRepository,
+  type SearchResultItem,
 } from './search/integratedSearchRepository.ts'
 import { parseRegionBoundaryCode, setRegionBoundaryCode } from './navigation/regionBoundaryLocation.ts'
 import { findRegionBoundaryMetadata, findRegionBoundaryName, regionBoundaryRepository } from './regions/regionBoundaryCatalog.ts'
@@ -341,7 +343,7 @@ export function PublicHousingExplorer({
       setMapCameraTarget({
         latitude,
         longitude,
-        zoom: code.length === 2 ? 11 : Math.max(REGION_FOCUS_ZOOM, zoom),
+        zoom: code.length === 2 ? 11 : code.length === 10 ? 14 : Math.max(REGION_FOCUS_ZOOM, zoom),
         screenOffset: { x: (padding.left - padding.right) / 2, y: (padding.top - padding.bottom) / 2 },
       })
       setCameraRequestId((current) => current + 1)
@@ -361,6 +363,33 @@ export function PublicHousingExplorer({
       focusBoundary(boundaryRegionCode)
     }
   })
+
+  useEffect(() => {
+    if (boundaryRegionCode?.length !== 10 || selectedBoundarySearchItem) return
+    const region = findCatalogRegion(boundaryRegionCode)
+    if (!region) return
+    const controller = new AbortController()
+    const repository = searchRepository ?? integratedSearchRepository
+    const restoreRegion = async () => {
+      let page = 0
+      while (!controller.signal.aborted) {
+        const response = await repository.search(region.displayName, false, page, controller.signal, 'REGION')
+        if (controller.signal.aborted) return
+        const item = response.regions.find((candidate) => candidate.regionCode === boundaryRegionCode)
+        if (item) {
+          boundarySelectionRef.current = item
+          setSelectedSearchRegion(item)
+          focusBoundary(boundaryRegionCode)
+          return
+        }
+        if (!response.hasNext) return
+        page += 1
+      }
+    }
+    void restoreRegion()
+      .catch(() => { /* The selected region and its list remain usable without a camera point. */ })
+    return () => controller.abort()
+  }, [boundaryRegionCode, selectedBoundarySearchItem, searchRepository, focusBoundary])
 
   const changeBoundarySelection = useCallback((code: string | null) => {
     const query = setRegionBoundaryCode(new URLSearchParams(location.search), code)

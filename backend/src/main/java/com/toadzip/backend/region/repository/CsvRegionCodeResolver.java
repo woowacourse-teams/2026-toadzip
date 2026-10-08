@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -38,15 +39,26 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver, RegionSe
     private final Map<String, Set<String>> provinceCodeEquivalences;
     private final Map<String, Set<String>> equivalentRegionCodes;
     private final Set<String> registeredProvinceCodes;
+    private final Map<String, RegionSearchResult> neighborhoods;
+    private final Map<String, Set<String>> neighborhoodEquivalences;
 
     @Autowired
     CsvRegionCodeResolver(
             @Value("classpath:region/regions.csv") Resource regionResource,
             @Value("classpath:region/region-code-aliases.csv") Resource aliasResource
     ) {
+        this(regionResource, aliasResource, new ClassPathResource("region/neighborhoods.csv"));
+    }
+
+    CsvRegionCodeResolver(Resource regionResource, Resource aliasResource, Resource neighborhoodResource) {
         canonicalRegions = loadCanonicalRegions(regionResource);
         regionCodeAliases = loadRegionCodeAliases(aliasResource, canonicalRegions);
-        searchResults = createSearchResults(canonicalRegions);
+        neighborhoods = NeighborhoodRegionCatalog.load(neighborhoodResource, canonicalRegions);
+        neighborhoodEquivalences = NeighborhoodRegionCatalog.equivalentCodes(neighborhoods);
+        List<RegionSearchResult> allRegions = new ArrayList<>(createSearchResults(canonicalRegions));
+        allRegions.addAll(neighborhoods.values());
+        allRegions.sort(Comparator.comparing(region -> RegionDisplayOrder.key(region.regionCode())));
+        searchResults = List.copyOf(allRegions);
         provinceCodeEquivalences = createProvinceCodeEquivalences(canonicalRegions, regionCodeAliases);
         equivalentRegionCodes = buildEquivalentRegionCodes(canonicalRegions, regionCodeAliases);
         registeredProvinceCodes = canonicalProvinceCodes(canonicalRegions);
@@ -113,6 +125,9 @@ public final class CsvRegionCodeResolver implements RegionCodeResolver, RegionSe
 
     @Override
     public Optional<Set<String>> filterCodes(String regionCode) {
+        if (regionCode != null && neighborhoodEquivalences.containsKey(regionCode)) {
+            return Optional.of(neighborhoodEquivalences.get(regionCode));
+        }
         if (regionCode != null && regionCode.length() == 2) {
             return provinceFilterCodes(regionCode);
         }

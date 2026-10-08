@@ -157,7 +157,7 @@ function complexPageResponse(
   const bounds = boundsFrom(url)
   const hasAnyBounds = ['southWestLat', 'southWestLng', 'northEastLat', 'northEastLng']
     .some((key) => url.searchParams.has(key))
-  if (bounds === null && (hasAnyBounds || !/^(?:\d{2}|\d{5})$/.test(url.searchParams.get('regionCode') ?? ''))) {
+  if (bounds === null && (hasAnyBounds || !/^(?:\d{2}|\d{5}|\d{8}00)$/.test(url.searchParams.get('regionCode') ?? ''))) {
     return invalidBoundsResponse()
   }
   const cursor = cursorOffset(
@@ -433,9 +433,11 @@ function matchesRegion(
   const matchesRegionCode = matchingCodes.some((matchingCode) =>
     itemRegionCodes.some((itemRegionCode) => matchingCode.length === 2
       ? itemRegionCode.startsWith(matchingCode)
-      : itemRegionCode === matchingCode),
+      : matchingCode.length === 10
+        ? itemRegionCode.length === 10 && itemRegionCode.startsWith(matchingCode.slice(0, 8))
+        : itemRegionCode.startsWith(matchingCode)),
   )
-  if (matchesRegionCode || regionCode.length === 5) {
+  if (matchesRegionCode || regionCode.length >= 5) {
     return matchesRegionCode
   }
   const provinceName = provinceNameForRegionCode(regionCode)
@@ -619,7 +621,7 @@ function optionalRegionCodeArrayRecord(
 }
 
 function isRegionCode(value: unknown): value is string {
-  return typeof value === 'string' && /^\d{5}$/.test(value)
+  return typeof value === 'string' && /^(?:\d{5}|\d{10})$/.test(value)
 }
 
 function requestSignal(

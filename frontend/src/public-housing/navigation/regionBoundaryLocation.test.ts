@@ -5,6 +5,7 @@ describe('region boundary location', () => {
   it('restores city and unsupported province selections independently of housing filters', () => {
     expect(parseRegionBoundaryCode(new URLSearchParams('boundaryRegionCode=41110&complexRegionCode=11'))).toBe('41110')
     expect(parseRegionBoundaryCode(new URLSearchParams('boundaryRegionCode=11'))).toBe('11')
+    expect(parseRegionBoundaryCode(new URLSearchParams('boundaryRegionCode=1111010100'))).toBe('1111010100')
   })
   it.each(['', 'boundaryRegionCode=', 'boundaryRegionCode=4111', 'boundaryRegionCode=abcde', 'boundaryRegionCode=41110&boundaryRegionCode=41111'])('ignores absent, malformed or duplicate selection %s', (query) => {
     expect(parseRegionBoundaryCode(new URLSearchParams(query))).toBeNull()

@@ -67,7 +67,7 @@ final class HousingComplexSearchRequestNormalizer {
     private HousingComplexFilterCondition toFilterCondition(HousingComplexSearchRequest request, String keyword,
             FilterCollections collections, RegionSelection region) {
         return new HousingComplexFilterCondition(
-                keyword, region.provinceCode(), region.districtCodes(),
+                keyword, region.provinceCode(), region.regionCodes(),
                 collections.rentalTypes(), collections.applicationStatuses(),
                 collections.agencyCodes(), collections.recruitmentTypes(),
                 decimal(request.minDeposit()), decimal(request.maxDeposit()),
@@ -160,16 +160,17 @@ final class HousingComplexSearchRequestNormalizer {
         if (regionCode.isBlank()) {
             throw new InvalidRegionCodeException();
         }
-        if (regionCode.matches("[0-9]{2}") || regionCode.matches("[0-9]{5}")) {
+        if (regionCode.matches("[0-9]{2}") || regionCode.matches("[0-9]{5}")
+                || regionCode.matches("[0-9]{8}00")) {
             return filterSelection(regionCode);
         }
         throw new InvalidRegionCodeException();
     }
 
     private RegionSelection filterSelection(String regionCode) {
-        Set<String> districtCodes = regionCodeResolver.filterCodes(regionCode)
+        Set<String> regionCodes = regionCodeResolver.filterCodes(regionCode)
                 .orElseThrow(InvalidRegionCodeException::new);
-        return new RegionSelection(null, districtCodes);
+        return new RegionSelection(null, regionCodes);
     }
 
     private BigDecimal decimal(Long value) {
@@ -197,10 +198,10 @@ final class HousingComplexSearchRequestNormalizer {
     ) {
     }
 
-    private record RegionSelection(String provinceCode, Set<String> districtCodes) {
+    private record RegionSelection(String provinceCode, Set<String> regionCodes) {
 
         private RegionSelection {
-            districtCodes = Set.copyOf(districtCodes);
+            regionCodes = Set.copyOf(regionCodes);
         }
     }
 }

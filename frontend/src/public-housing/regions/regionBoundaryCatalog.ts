@@ -1,3 +1,4 @@
+import { findCatalogRegion } from '../model/publicHousingRegion'
 import type { RegionBoundaryMetadata } from './regionBoundary.ts'
 import index from './regionBoundaryIndex.json'
 import points from './regionRepresentativePoints.json'
@@ -18,6 +19,7 @@ export function findRegionBoundaryMetadata(regionCode: string): RegionBoundaryMe
 export function findRegionBoundaryName(regionCode: string): string | null {
   return metadataByCode.get(regionCode)?.name
     ?? index.unavailable.find((region) => region.regionCode === regionCode)?.name
+    ?? findCatalogRegion(regionCode)?.displayName
     ?? null
 }
 

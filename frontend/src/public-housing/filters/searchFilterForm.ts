@@ -21,7 +21,8 @@ export function announcementFiltersFromForm(data: FormData): AnnouncementSearchF
 export function topicDraftFromForm(topic: FilterTopic, data: FormData) {
   switch (topic) {
     case 'region': {
-      const regionCode = textValue(data, 'districtCode')
+      const regionCode = textValue(data, 'neighborhoodCode')
+        || textValue(data, 'districtCode')
         || textValue(data, 'provinceCode')
       return regionCode === '' ? {} : { regionCode }
     }

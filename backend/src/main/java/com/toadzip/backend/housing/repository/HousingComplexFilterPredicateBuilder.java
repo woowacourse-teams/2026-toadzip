@@ -156,13 +156,24 @@ final class HousingComplexFilterPredicateBuilder {
             Map<String, Object> parameters
     ) {
         addFilter(condition.provinceCode(), PROVINCE_FILTER, "provinceCode", sql, parameters);
-        addCollectionFilter(condition.cityCountyDistrictCodes(), DISTRICT_FILTER, "districtCodes", sql, parameters);
+        addRegionFilter(condition.regionCodes(), sql, parameters);
         addStoredValueFilter(condition.rentalTypes(), RENTAL_TYPE_FILTER, "rentalTypeValues", sql, parameters);
         addStoredValueFilter(condition.agencyCodes(), AGENCY_CODE_FILTER, "agencyCodeValues", sql, parameters);
         addFilter(condition.builtYearFrom(), BUILT_YEAR_FROM_FILTER, "builtYearFrom", sql, parameters);
         addFilter(condition.builtYearTo(), BUILT_YEAR_TO_FILTER, "builtYearTo", sql, parameters);
         addFilter(condition.hasElevator(), ELEVATOR_FILTER, "hasElevator", sql, parameters);
         addActiveAnnouncementFilter(condition, sql, parameters);
+    }
+
+    private void addRegionFilter(Set<String> codes, StringBuilder sql, Map<String, Object> parameters) {
+        if (codes.stream().anyMatch(code -> code.length() == 10)) {
+            Set<String> prefixes = codes.stream().map(code -> code.substring(0, 8)).collect(Collectors.toSet());
+            addCollectionFilter(prefixes,
+                    " AND SUBSTRING(housing_complex.legal_dong_code, 1, 8) IN (:neighborhoodPrefixes)",
+                    "neighborhoodPrefixes", sql, parameters);
+            return;
+        }
+        addCollectionFilter(codes, DISTRICT_FILTER, "districtCodes", sql, parameters);
     }
 
     private void addActiveAnnouncementFilter(

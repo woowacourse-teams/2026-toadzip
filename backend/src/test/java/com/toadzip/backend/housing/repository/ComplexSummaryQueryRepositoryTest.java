@@ -1900,7 +1900,7 @@ class ComplexSummaryQueryRepositoryTest {
     private HousingComplexSearchCondition directFilters(
             String keyword,
             String provinceCode,
-            Set<String> cityCountyDistrictCodes,
+            Set<String> regionCodes,
             Set<RentalType> rentalTypes,
             Set<AgencyCode> agencyCodes,
             Integer builtYearFrom,
@@ -1912,7 +1912,7 @@ class ComplexSummaryQueryRepositoryTest {
                 new HousingComplexFilterCondition(
                         keyword,
                         provinceCode,
-                        cityCountyDistrictCodes,
+                        regionCodes,
                         rentalTypes,
                         Set.of(),
                         agencyCodes,

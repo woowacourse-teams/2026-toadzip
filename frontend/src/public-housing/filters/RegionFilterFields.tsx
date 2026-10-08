@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PublicHousingRegionRepository } from '../api/publicHousingRegionRepository.ts'
 import {
   districtRegionOptionsForProvince,
+  neighborhoodRegionOptionsForDistrict,
+  neighborhoodLabel,
+  findCatalogRegion,
   PUBLIC_HOUSING_PROVINCE_OPTIONS,
   provinceNameForRegionCode,
   type PublicHousingRegion,
@@ -24,8 +27,8 @@ export function RegionFilterFields({
   initialRegionCode, messageId, loadingMessage, repository, styles,
 }: RegionFilterFieldsProps) {
   const {
-    provinceCode, districtCode, districtOptions, loadStatus, provinceSelectRef,
-    selectProvince, selectDistrict,
+    provinceCode, districtCode, districtOptions, neighborhoodCode, neighborhoodOptions, loadStatus, provinceSelectRef,
+    selectProvince, selectDistrict, selectNeighborhood,
   } = useRegionSelection(initialRegionCode, repository)
 
   return (
@@ -67,6 +70,20 @@ export function RegionFilterFields({
         </select>
       </label>
 
+      <label className={styles.field}>
+        <span>읍·면·동</span>
+        <select name="neighborhoodCode" value={neighborhoodCode}
+          disabled={districtCode === '' || (loadStatus !== 'idle' && neighborhoodCode === '')}
+          onChange={(event) => selectNeighborhood(event.currentTarget.value)}>
+          <option value="">{districtCode === '' ? '시·군·구를 먼저 선택' : '전체'}</option>
+          {neighborhoodOptions.map((region) => (
+            <option key={region.regionCode} value={region.regionCode}>
+              {neighborhoodLabel(region, districtCode)}
+            </option>
+          ))}
+        </select>
+      </label>
+
       {loadStatus === 'loading' && (
         <small className={styles.regionMessage} role="status">
           {loadingMessage}
@@ -90,7 +107,9 @@ function useRegionSelection(
   repository: PublicHousingRegionRepository,
 ) {
   const initialProvinceCode = provinceCodeFrom(initialRegionCode)
-  const initialDistrictCode = initialRegionCode.length === 5 ? initialRegionCode : ''
+  const initialDistrictCode = initialRegionCode.length >= 5 ? initialRegionCode.slice(0, 5) : ''
+  const initialNeighborhoodCode = initialRegionCode.length === 10 ? initialRegionCode : ''
+  const [neighborhoodCode, setNeighborhoodCode] = useState(initialNeighborhoodCode)
   const [provinceCode, setProvinceCode] = useState(initialProvinceCode)
   const [districtCode, setDistrictCode] = useState(initialDistrictCode)
   const [regions, setRegions] = useState<readonly PublicHousingRegion[]>([])
@@ -107,16 +126,24 @@ function useRegionSelection(
     return [selectedRegion, ...options]
   }, [districtCode, provinceCode, provinceName, regions])
 
+  const neighborhoodOptions = useMemo(() => {
+    const options = neighborhoodRegionOptionsForDistrict(regions, districtCode)
+    if (!neighborhoodCode || options.some((region) => region.regionCode === neighborhoodCode)) return options
+    const selected = findCatalogRegion(neighborhoodCode) ?? selectedRegionFallback(neighborhoodCode, provinceName)
+    return [selected, ...options]
+  }, [regions, districtCode, neighborhoodCode, provinceName])
+
   useEffect(() => {
     const form = provinceSelectRef.current?.form
     if (form === null || form === undefined) return
     const reset = () => {
       setProvinceCode(initialProvinceCode)
       setDistrictCode(initialDistrictCode)
+      setNeighborhoodCode(initialNeighborhoodCode)
     }
     form.addEventListener('reset', reset)
     return () => form.removeEventListener('reset', reset)
-  }, [initialDistrictCode, initialProvinceCode])
+  }, [initialDistrictCode, initialProvinceCode, initialNeighborhoodCode])
 
   useEffect(() => {
     if (provinceName === null) {
@@ -147,11 +174,13 @@ function useRegionSelection(
   function selectProvince(code: string) {
     setProvinceCode(code)
     setDistrictCode('')
+    setNeighborhoodCode('')
   }
 
   return {
-    provinceCode, districtCode, districtOptions, loadStatus, provinceSelectRef,
-    selectProvince, selectDistrict: setDistrictCode,
+    provinceCode, districtCode, districtOptions, neighborhoodCode, neighborhoodOptions, loadStatus, provinceSelectRef,
+    selectProvince, selectDistrict: (code: string) => { setDistrictCode(code); setNeighborhoodCode('') },
+    selectNeighborhood: setNeighborhoodCode,
   }
 }
 
