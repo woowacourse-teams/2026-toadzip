@@ -24,7 +24,8 @@ it('단지 필드를 각 열로 표시하고 0·미설치·미확인을 구분�
   render(<MemoryRouter><ManagementSummaryTable items={[complex]} resource="complexes" returnTo="/admin/complexes?provider=LH" /></MemoryRouter>)
   expect(screen.getByRole('columnheader', { name: '전체 세대수 (totalHouseholdCount)' })).toBeVisible()
   expect(screen.getByRole('columnheader', { name: '관리자 최종 변경 (updatedAt)' })).toBeVisible()
-  const row = screen.getByRole('rowheader', { name: '두꺼비 단지' }).closest('tr')!
+  const row = screen.getByRole('rowheader', { name: '두꺼비 단지 미검토' }).closest('tr')!
+  expect(within(row).getByText('미검토')).toBeVisible()
   expect(within(row).getAllByRole('cell', { name: '0' })).toHaveLength(2)
   expect(within(row).getByRole('cell', { name: '미설치' })).toBeVisible()
   expect(within(row).getAllByRole('cell', { name: '미확인' })).toHaveLength(3)
@@ -108,10 +109,29 @@ it('단지에서 공고로 전환할 때 단지 행을 공고 표에 표시하�
   const view = render(<MemoryRouter><ManagementList resource="complexes" /></MemoryRouter>)
   await screen.findByRole('table')
   view.rerender(<MemoryRouter><ManagementList resource="announcements" /></MemoryRouter>)
+  expect(screen.queryByLabelText('검토 상태')).not.toBeInTheDocument()
   expect(screen.queryByRole('table')).not.toBeInTheDocument()
   expect(screen.queryByRole('link', { name: '두꺼비 단지' })).not.toBeInTheDocument()
   await act(() => next.resolve(page(announcement)))
   expect(screen.getByRole('table', { name: '정제 공고 목록' })).toBeVisible()
+})
+
+it('검토 상태로 검색하고 페이지 이동과 상세 복귀 링크에 조건을 유지한다', async () => {
+  const reviewed = { ...complex, complex: { ...complex.complex!, verificationStatus: 'VERIFIED' as const, reviewedFieldCount: 2 } }
+  mocks.getManagementPage.mockResolvedValue(page(reviewed))
+  render(<MemoryRouter initialEntries={['/admin/complexes?page=2']}><ManagementList resource="complexes" /></MemoryRouter>)
+  await screen.findByRole('table')
+  fireEvent.change(screen.getByLabelText('검토 상태'), { target: { value: 'VERIFIED' } })
+  fireEvent.submit(screen.getByRole('button', { name: '검색' }).closest('form')!)
+  await screen.findByRole('table')
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('verification')).toBe('VERIFIED')
+  expect(mocks.getManagementPage.mock.lastCall?.[1].has('page')).toBe(false)
+  expect(screen.getByRole('link', { name: '두꺼비 단지' }).closest('th')).toHaveTextContent('확인 완료 · 2/6항목')
+  expect(screen.getByRole('link', { name: '두꺼비 단지' })).toHaveAttribute('href', expect.stringContaining('verification%3DVERIFIED'))
+  fireEvent.click(screen.getByRole('button', { name: '다음' }))
+  await act(async () => {})
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('verification')).toBe('VERIFIED')
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('page')).toBe('1')
 })
 
 it('페이지 조회 실패 후 재시도하는 동안 기존 표를 유지한다', async () => {

@@ -6,6 +6,8 @@ import type { ManagementPage, ManagementResource } from './managementContract'
 import { ManagementSummaryTable } from './ManagementSummaryTable'
 import { labels, provinces, rentals } from './fields'
 import styles from './ManagementList.module.css'
+import { verificationStatuses } from './complexVerificationContract'
+import { verificationStatusLabels } from './complexVerificationPresentation'
 
 export function ManagementList({ resource }: { resource: ManagementResource }) {
   const [params, setParams] = useSearchParams()
@@ -46,6 +48,8 @@ export function ManagementList({ resource }: { resource: ManagementResource }) {
       <label>기관<select name="provider" defaultValue={params.get('provider') ?? ''}><option value="">전체 기관</option>{['LH','SH','GH','ETC'].map(value => <option key={value}>{value}</option>)}</select></label>
       <label>공급 유형<select name="rental" defaultValue={params.get('rental') ?? ''}><option value="">전체 유형</option>{rentals.map(value => <option key={value} value={value}>{labels[value]}</option>)}</select></label>
       <label>보관 상태<select name="deleted" defaultValue={params.get('deleted') ?? 'false'}><option value="false">등록 데이터</option><option value="true">휴지통</option></select></label>
+      {resource === 'complexes' ? <label>검토 상태<select name="verification" defaultValue={params.get('verification') ?? ''}><option value="">전체 상태</option>
+        {verificationStatuses.map(status => <option key={status} value={status}>{verificationStatusLabels[status]}</option>)}</select></label> : null}
       <label className={styles.review}><input name="review" type="checkbox" value="true" defaultChecked={params.get('review') === 'true'} />원천 변경 확인 필요</label>
       {params.get('complexId') ? <input type="hidden" name="complexId" value={params.get('complexId') ?? ''} /> : null}
       <div className={styles.actions}><button className="admin-primary" type="submit">검색</button><button type="button" onClick={() => setParams({})}>초기화</button></div>
