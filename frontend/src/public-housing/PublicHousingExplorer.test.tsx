@@ -10,6 +10,9 @@ import { useRef, useState } from 'react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { trackEvent } from '../analytics/googleAnalytics.ts'
+import * as streetViewApi from '../street-view/api'
+import { STREET_VIEW_CHANNEL, STREET_VIEW_VERSION } from '../street-view/protocol'
+import type { EnabledStreetViewConfiguration, StreetViewEvent } from '../street-view/types'
 import type { RegionBoundary } from './regions/regionBoundary.ts'
 import type { RegionBoundaryRepository } from './regions/regionBoundaryRepository.ts'
 import type { NaverMapProps } from '../maps/naver/NaverMap.tsx'
@@ -3681,3 +3684,258 @@ function createDeferred<T>() {
   })
   return { promise, resolve: resolvePromise, reject: rejectPromise }
 }
+
+describe('PublicHousingExplorer 지도 영역 거리뷰', () => {
+  const initialization = {
+    searchPosition: { latitude: 37.5, longitude: 126.9 },
+    lookAtPosition: { latitude: 37.5001, longitude: 126.9001 }, tilt: 0, fov: 90,
+  }
+  let events: StreetViewEvent[] = []
+
+  beforeEach(() => {
+    events = []
+    vi.spyOn(streetViewApi, 'getStreetViewConfiguration').mockImplementation(async complexId => ({
+      complexId, provider: 'NAVER', enabled: true, disabledReason: null, policyRevision: 3, initialization,
+    }))
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, request) => {
+      const url = String(input)
+      if (url.endsWith('/api/auth/csrf')) return Response.json({ token: 'test-csrf', headerName: 'X-CSRF-TOKEN' })
+      if (url.endsWith('/api/v1/street-view/events') && request?.method === 'POST' && typeof request.body === 'string') {
+        events.push(JSON.parse(request.body) as StreetViewEvent)
+        return new Response(null, { status: 204 })
+      }
+      throw new Error(`Unexpected integration request: ${url}`)
+    })
+  })
+
+  async function openStreetView(name = '서울가람 행복주택') {
+    const button = await screen.findByRole('button', { name: `${name} 주변 거리뷰 보기` })
+    await waitFor(() => expect(button).toHaveAttribute('aria-disabled', 'false'))
+    const previousStarts = events.filter(event => event.type === 'STARTED').length
+    fireEvent.click(button)
+    const frame = await screen.findByTitle<HTMLIFrameElement>('네이버 단지 주변 거리뷰')
+    await waitFor(() => expect(events.filter(event => event.type === 'STARTED')).toHaveLength(previousStarts + 1))
+    const attemptId = events.filter(event => event.type === 'STARTED').at(-1)?.attemptId
+    if (!attemptId) throw new Error('Missing street-view attempt')
+    const source = frame.contentWindow
+    const send = (payload: Record<string, unknown>) => {
+      fireEvent(window, new MessageEvent('message', {
+        origin: window.location.origin, source,
+        data: { channel: STREET_VIEW_CHANNEL, version: STREET_VIEW_VERSION, attemptId, ...payload },
+      }))
+    }
+    return { button, frame, attemptId, send }
+  }
+
+  async function expectCancellation(attemptId: string, reasonCode: 'USER_CLOSED' | 'TARGET_CHANGED') {
+    await waitFor(() => expect(events.filter(event => event.attemptId === attemptId)).toEqual([
+      expect.objectContaining({ type: 'STARTED' }),
+      expect.objectContaining({ type: 'CANCELLED', reasonCode }),
+    ]))
+  }
+
+  it('열기와 지도 복귀가 지도·상세·목록 DOM, 카메라와 스크롤, URL·이력 키를 보존한다', async () => {
+    const repository = createRepository()
+    renderSearchedExplorer(repository, '/?complexId=17', searchRepository([], []))
+    const detail = await screen.findByRole('region', { name: '서울가람 행복주택 단지 상세 내용' })
+    const list = await screen.findByRole('region', { name: '단지 목록' })
+    await within(list).findByRole('article', { name: '서울가람 행복주택' })
+    const scroll = list.querySelector<HTMLElement>('.housing-results__scroll')
+    if (!scroll) throw new Error('Missing list scroll area')
+    const map = screen.getByRole('region', { name: '공공임대주택 지도' })
+    const camera = map.querySelector('output')?.textContent
+    const cameraRequest = screen.getByTestId('map-camera-request').textContent
+    const zoom = screen.getByTestId('map-camera-zoom').textContent
+    const query = screen.getByTestId('location-search').textContent
+    const key = screen.getByTestId('location-key').textContent
+    detail.scrollTop = 190
+    scroll.scrollTop = 280
+
+    const view = await openStreetView()
+    expect(screen.getByRole('region', { name: '단지 주변 거리뷰' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '지도 보기' })).toHaveFocus()
+    expect(view.button).toHaveAttribute('aria-pressed', 'true')
+    expect(map.closest('.housing-map-base')).toHaveAttribute('inert')
+    expect(map.closest('.housing-map-base')).toHaveAttribute('aria-hidden', 'true')
+    expect(list.isConnected).toBe(true)
+    expect(list.closest('.housing-results')).toHaveAttribute('inert')
+    expect(screen.getByRole('region', { name: '서울가람 행복주택 단지 상세 내용' })).toBe(detail)
+    view.send({ type: 'PHASE', phase: 'PANORAMA' })
+    view.send({ type: 'READY', aligned: true })
+    view.send({ type: 'LOCATION', photodate: '2026-09-08' })
+    view.send({ type: 'MARKER_STATUS', status: 'ATTACHED' })
+    fireEvent.click(screen.getByRole('button', { name: '지도 보기' }))
+
+    expect(screen.queryByRole('region', { name: '단지 주변 거리뷰' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '공공임대주택 지도' })).toBe(map)
+    expect(screen.getByRole('region', { name: '단지 목록' })).toBe(list)
+    expect(screen.getByRole('region', { name: '서울가람 행복주택 단지 상세 내용' })).toBe(detail)
+    expect(map.querySelector('output')?.textContent).toBe(camera)
+    expect(screen.getByTestId('map-camera-request').textContent).toBe(cameraRequest)
+    expect(screen.getByTestId('map-camera-zoom').textContent).toBe(zoom)
+    expect(detail.scrollTop).toBe(190)
+    expect(scroll.scrollTop).toBe(280)
+    expect(screen.getByTestId('location-search').textContent).toBe(query)
+    expect(screen.getByTestId('location-key').textContent).toBe(key)
+    await waitFor(() => expect(view.button).toHaveFocus())
+    expect(repository.findComplexDetail).toHaveBeenCalledOnce()
+    expect(repository.findComplexPage).toHaveBeenCalledOnce()
+    await waitFor(() => expect(events.map(event => event.type)).toEqual(['STARTED', 'READY']))
+  })
+
+  it('거리뷰에서 선택한 다른 목록을 유지하고 옛 목록·탭으로 되돌리지 않는다', async () => {
+    renderSearchedExplorer(createRepository(), '/?complexId=17')
+    await screen.findByRole('region', { name: '단지 목록' })
+    const view = await openStreetView()
+    const announcements = screen.getByRole('button', { name: '공고 목록' })
+    announcements.focus()
+    fireEvent.click(announcements)
+    expect(screen.queryByTitle('네이버 단지 주변 거리뷰')).not.toBeInTheDocument()
+    const list = await screen.findByRole('region', { name: '공고 목록' })
+    expect(announcements).toHaveAttribute('aria-expanded', 'true')
+    expect(announcements).toHaveFocus()
+    expect(screen.queryByRole('region', { name: '단지 목록' })).not.toBeInTheDocument()
+    await expectCancellation(view.attemptId, 'USER_CLOSED')
+    const reopened = await openStreetView()
+    fireEvent.click(reopened.button)
+    expect(screen.getByRole('region', { name: '공고 목록' })).toBe(list)
+    expect(announcements).toHaveAttribute('aria-expanded', 'true')
+    await expectCancellation(reopened.attemptId, 'USER_CLOSED')
+  })
+
+  it('배경 지도의 idle과 지도 응답은 거리뷰를 닫거나 새 시도를 만들지 않는다', async () => {
+    const repository = createRepository()
+    renderExplorer(repository, '/?complexId=17')
+    await screen.findByRole('region', { name: '서울가람 행복주택 단지 상세 내용' })
+    const idle = screen.getByRole('button', { name: '현재 카메라 idle' })
+    const initialKey = screen.getByTestId('location-key').textContent
+    const view = await openStreetView()
+    // This callback represents an SDK idle notification, not interaction with the inert map.
+    fireEvent.click(idle)
+    await waitFor(() => expect(repository.findMap).toHaveBeenCalledOnce())
+    expect(screen.getByTestId('location-key').textContent).toBe(initialKey)
+    expectCurrentSearch({ complexId: '17' })
+    expect(screen.getByTitle('네이버 단지 주변 거리뷰')).toBe(view.frame)
+    expect(view.button).toHaveAttribute('aria-pressed', 'true')
+    expect(events.map(event => event.type)).toEqual(['STARTED'])
+    fireEvent.click(view.button)
+    await expectCancellation(view.attemptId, 'USER_CLOSED')
+  })
+
+  it('검색창 포커스·한 글자는 유지하고 실제 두 글자 검색 활성화에서 한 번 취소한다', async () => {
+    renderExplorer(createRepository(), '/?complexId=17', searchRepository([], []))
+    const view = await openStreetView()
+    const search = screen.getByRole('searchbox')
+    search.focus()
+    expect(view.frame).toBeInTheDocument()
+    fireEvent.change(search, { target: { value: '서' } })
+    expect(view.frame).toBeInTheDocument()
+    fireEvent.change(search, { target: { value: '서울' } })
+    expect(view.frame).not.toBeInTheDocument()
+    expect(search).toHaveFocus()
+    expect(screen.getByRole('button', { name: '단지 상세 닫기' })).toBeInTheDocument()
+    await expectCancellation(view.attemptId, 'USER_CLOSED')
+    view.send({ type: 'READY', aligned: true })
+    view.send({ type: 'MARKER_STATUS', status: 'UNAVAILABLE' })
+    expect(screen.queryByRole('region', { name: '단지 주변 거리뷰' })).not.toBeInTheDocument()
+    expect(events.filter(event => event.attemptId === view.attemptId)).toHaveLength(2)
+  })
+
+  it('상세 Escape와 iframe Escape는 거리뷰만 닫고 상세 X는 둘 다 닫는다', async () => {
+    renderExplorer(createRepository(), '/?complexId=17')
+    const detail = await screen.findByRole('complementary', { name: '서울가람 행복주택 단지 상세 정보' })
+    const first = await openStreetView()
+    fireEvent.keyDown(within(detail).getByRole('button', { name: '단지 상세 닫기' }), { key: 'Escape' })
+    expect(first.frame).not.toBeInTheDocument()
+    expect(detail).toBeInTheDocument()
+    await expectCancellation(first.attemptId, 'USER_CLOSED')
+    await waitFor(() => expect(first.button).toHaveFocus())
+
+    const second = await openStreetView()
+    second.send({ type: 'CLOSE_REQUEST' })
+    expect(second.frame).not.toBeInTheDocument()
+    expect(detail).toBeInTheDocument()
+    await expectCancellation(second.attemptId, 'USER_CLOSED')
+
+    const third = await openStreetView()
+    fireEvent.click(within(detail).getByRole('button', { name: '단지 상세 닫기' }))
+    expect(third.frame).not.toBeInTheDocument()
+    expect(detail).not.toBeInTheDocument()
+    expectCurrentSearch({})
+    await expectCancellation(third.attemptId, 'USER_CLOSED')
+  })
+
+  it('직접 단지 경로 변경은 이전 시도를 취소하며 늦은 iframe 결과가 새 단지를 바꾸지 않는다', async () => {
+    const repository = createRepository()
+    repository.findComplexDetail.mockImplementation(async (complexId: string) => ({
+      ...complexDetail(), complexId, name: complexId === '18' ? '새 단지' : '서울가람 행복주택',
+    }))
+    renderExplorer(repository, '/?complexId=17')
+    const previous = await openStreetView()
+    fireEvent.click(screen.getByRole('button', { name: '단지 18 직접 열기' }))
+    await screen.findByRole('region', { name: '새 단지 단지 상세 내용' })
+    expect(previous.frame).not.toBeInTheDocument()
+    expect(previous.button).not.toHaveFocus()
+    await expectCancellation(previous.attemptId, 'TARGET_CHANGED')
+    const current = await openStreetView('새 단지')
+    previous.send({ type: 'READY', aligned: true })
+    previous.send({ type: 'LOCATION', photodate: '이전 촬영일' })
+    previous.send({ type: 'MARKER_STATUS', status: 'UNAVAILABLE' })
+    previous.send({ type: 'FAILED', phase: 'SDK', reasonCode: 'SDK_LOAD_FAILED' })
+    expect(current.frame).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getByText('거리뷰를 불러오는 중이에요.')).toBeVisible()
+    expect(screen.queryByText(/이전 촬영일|출입구 위치 표시를 불러오지/)).not.toBeInTheDocument()
+    current.send({ type: 'PHASE', phase: 'PANORAMA' })
+    current.send({ type: 'READY', aligned: true })
+    expect(current.frame).toHaveAttribute('aria-hidden', 'false')
+    fireEvent.click(current.button)
+    await waitFor(() => expect(events.filter(event => event.attemptId === current.attemptId).map(event => event.type)).toEqual(['STARTED', 'READY']))
+    expect(events.filter(event => event.attemptId === previous.attemptId)).toHaveLength(2)
+  })
+
+  it('지역 초기화와 동일 단지 history 왕복에서 종료하며 거리뷰는 자동 복원하지 않는다', async () => {
+    renderSearchedExplorer(createRepository(), '/?complexId=17')
+    const detail = await screen.findByRole('region', { name: '서울가람 행복주택 단지 상세 내용' })
+    const first = await openStreetView()
+    fireEvent.click(screen.getByRole('button', { name: '경계 지우기' }))
+    expect(first.frame).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '서울가람 행복주택 단지 상세 내용' })).toBe(detail)
+    expectCurrentSearch({ complexId: '17' })
+    await expectCancellation(first.attemptId, 'USER_CLOSED')
+
+    const second = await openStreetView()
+    fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' }))
+    expect(second.frame).not.toBeInTheDocument()
+    expectCurrentSearch({ boundaryRegionCode: '11', complexId: '17' })
+    expect(screen.getByRole('region', { name: '서울가람 행복주택 단지 상세 내용' })).toBe(detail)
+    await expectCancellation(second.attemptId, 'USER_CLOSED')
+    second.send({ type: 'READY', aligned: true })
+    fireEvent.click(screen.getByRole('button', { name: '브라우저 앞으로' }))
+    expectCurrentSearch({ complexId: '17' })
+    expect(screen.queryByRole('region', { name: '단지 주변 거리뷰' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '서울가람 행복주택 주변 거리뷰 보기' })).toHaveAttribute('aria-pressed', 'false')
+    expect(events.filter(event => event.attemptId === second.attemptId)).toHaveLength(2)
+  })
+
+  it('실행 정보 재조회 중 대상을 바꾸면 늦은 API 응답으로 이전 iframe을 시작하지 않는다', async () => {
+    const repository = createRepository()
+    repository.findComplexDetail.mockImplementation(async (complexId: string) => ({
+      ...complexDetail(), complexId, name: complexId === '18' ? '새 단지' : '서울가람 행복주택',
+    }))
+    renderExplorer(repository, '/?complexId=17')
+    const button = await screen.findByRole('button', { name: '서울가람 행복주택 주변 거리뷰 보기' })
+    await waitFor(() => expect(button).toHaveAttribute('aria-disabled', 'false'))
+    const pending = createDeferred<EnabledStreetViewConfiguration>()
+    vi.mocked(streetViewApi.getStreetViewConfiguration).mockImplementationOnce(() => pending.promise)
+    fireEvent.click(button)
+    expect(screen.getByText('거리뷰를 불러오는 중이에요.')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '단지 18 직접 열기' }))
+    await screen.findByRole('region', { name: '새 단지 단지 상세 내용' })
+    await act(async () => { pending.resolve({ complexId: 17, provider: 'NAVER', enabled: true,
+      disabledReason: null, policyRevision: 3, initialization }) })
+    expect(screen.queryByTitle('네이버 단지 주변 거리뷰')).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: '단지 주변 거리뷰' })).not.toBeInTheDocument()
+    expect(events).toEqual([])
+    expectCurrentSearch({ complexId: '18' })
+  })
+})
