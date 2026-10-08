@@ -272,7 +272,7 @@ public class AnnouncementSearchRepository {
             Join<AnnouncementApplicationSchedule, HousingComplex> complex = schedule.join(
                     "housingComplex", jakarta.persistence.criteria.JoinType.LEFT);
             predicates.add(builder.or(builder.isNull(schedule.get("housingComplex")),
-                    complex.get("address").get("cityCountyDistrictCode").in(condition.regionCodes())));
+                    regionPredicate(builder, complex, condition.regionCodes())));
         }
         scheduleQuery.select(schedule.get("id")).where(predicates.toArray(Predicate[]::new));
         return builder.exists(scheduleQuery);
@@ -296,9 +296,18 @@ public class AnnouncementSearchRepository {
                 .where(
                         criteriaBuilder.equal(supplyRow.get("announcement"), announcement),
                         criteriaBuilder.isNotNull(supplyRow.get("housingComplex")),
-                        housingComplex.get("address").get("cityCountyDistrictCode").in(condition.regionCodes())
+                        regionPredicate(criteriaBuilder, housingComplex, condition.regionCodes())
                 );
         predicates.add(criteriaBuilder.exists(supplyRowQuery));
+    }
+
+    private Predicate regionPredicate(HibernateCriteriaBuilder builder, Path<HousingComplex> complex,
+            Set<String> codes) {
+        if (codes.stream().anyMatch(code -> code.length() == 10)) {
+            var prefixes = codes.stream().map(code -> code.substring(0, 8)).toList();
+            return builder.substring(complex.get("address").get("legalDongCode"), 1, 8).in(prefixes);
+        }
+        return complex.get("address").get("cityCountyDistrictCode").in(codes);
     }
 
     private boolean hasValues(Collection<?> values) {

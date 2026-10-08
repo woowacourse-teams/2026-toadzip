@@ -5,6 +5,7 @@ import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.region.repository.RegionCoordinateRepository;
 import com.toadzip.backend.region.repository.RegionSearchRepository;
 import com.toadzip.backend.region.repository.RegionSearchResult;
+import com.toadzip.backend.region.repository.RegionDisplayOrder;
 import com.toadzip.backend.search.domain.SearchMatch;
 import com.toadzip.backend.search.domain.SearchType;
 import com.toadzip.backend.search.dto.request.IntegratedSearchRequest;
@@ -84,7 +85,7 @@ public class IntegratedSearchService {
                 input.match().normalizedQuery(),
                 itemsOfType(page, SearchType.ANNOUNCEMENT),
                 itemsOfType(page, SearchType.COMPLEX),
-                itemsOfType(page, SearchType.REGION),
+                regionItems(page, failures),
                 failures,
                 input.page(),
                 responseSize(input),
@@ -123,7 +124,7 @@ public class IntegratedSearchService {
                 .filter(item -> input.match().matches(item.title(), item.subtitle(), item.address()))
                 .map(item -> new RankedItem(
                         item,
-                        input.match().rank(item.title(), item.subtitle(), item.address())
+                        rank(item, input.match())
                 ))
                 .sorted(resultOrder())
                 .map(item -> response(item.source()))
@@ -225,7 +226,10 @@ public class IntegratedSearchService {
     }
 
     private SearchSourceItem regionSource(RegionSearchResult region) {
-        var coordinate = regionCoordinateRepository.findByRegionCode(region.regionCode());
+        java.util.Optional<com.toadzip.backend.housing.domain.MapCoordinate> coordinate = java.util.Optional.empty();
+        if (region.regionCode().length() != 10) {
+            coordinate = regionCoordinateRepository.findByRegionCode(region.regionCode());
+        }
         return new SearchSourceItem(
                 SearchType.REGION,
                 region.regionCode(),
@@ -266,9 +270,24 @@ public class IntegratedSearchService {
         );
     }
 
+    private int rank(SearchSourceItem item, SearchMatch match) {
+        if (item.type() == SearchType.REGION) {
+            return 0;
+        }
+        return match.rank(item.title(), item.subtitle(), item.address());
+    }
+
+    private String regionOrder(RankedItem item) {
+        if (item.source().type() == SearchType.REGION) {
+            return RegionDisplayOrder.key(item.source().regionCode());
+        }
+        return "";
+    }
+
     private Comparator<RankedItem> resultOrder() {
         return Comparator.comparingInt(RankedItem::rank)
                 .thenComparingInt(item -> item.source().type().ordinal())
+                .thenComparing(this::regionOrder)
                 .thenComparing(item -> item.source().title())
                 .thenComparing(item -> item.source().id());
     }
@@ -298,6 +317,29 @@ public class IntegratedSearchService {
 
     private List<SearchResultItemResponse> itemsOfType(Page page, SearchType type) {
         return page.items().stream().filter(item -> item.type() == type).toList();
+    }
+
+    private List<SearchResultItemResponse> regionItems(Page page, List<SearchFailureResponse> failures) {
+        return itemsOfType(page, SearchType.REGION).stream().map(item -> locateNeighborhood(item, failures)).toList();
+    }
+
+    private SearchResultItemResponse locateNeighborhood(SearchResultItemResponse item,
+            List<SearchFailureResponse> failures) {
+        if (item.regionCode() == null || item.regionCode().length() != 10) {
+            return item;
+        }
+        try {
+            return regionCoordinateRepository.findByRegionCode(item.regionCode()).map(point ->
+                    new SearchResultItemResponse(item.type(), item.id(), item.title(), item.subtitle(),
+                            point.latitude(), point.longitude(), item.publishedAt(), item.applicationStatus(),
+                            item.regionCode())).orElse(item);
+        } catch (RuntimeException exception) {
+            log.error("읍면동 검색 좌표 조회에 실패했습니다: {}", item.regionCode(), exception);
+            if (failures.stream().noneMatch(value -> value.type() == SearchType.REGION)) {
+                failures.add(new SearchFailureResponse(SearchType.REGION, "지역 위치 정보를 불러오지 못했습니다."));
+            }
+            return item;
+        }
     }
 
     private SearchInput input(IntegratedSearchRequest request) {

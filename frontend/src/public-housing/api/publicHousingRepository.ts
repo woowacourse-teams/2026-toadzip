@@ -116,7 +116,7 @@ export function createHttpPublicHousingRepository(
   return {
     async findComplexPage(bounds, cursor, size, signal, filters = {}) {
       validatePageSize(size)
-      if (bounds === null && !/^(?:\d{2}|\d{5})$/.test(filters.regionCode ?? '')) {
+      if (bounds === null && !/^(?:\d{2}|\d{5}|\d{8}00)$/.test(filters.regionCode ?? '')) {
         throw new RangeError('지도 범위 또는 검색 지역이 필요합니다.')
       }
       const search = bounds === null ? new URLSearchParams() : createComplexSearchParams(bounds, filters)

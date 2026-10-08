@@ -1594,6 +1594,35 @@ describe('PublicHousingExplorer', () => {
     expect(JSON.parse(screen.getByTestId('map-camera-offset').textContent ?? '{}').x).toBe(0)
   })
 
+  it('읍면동 URL을 복원하면 해당 동의 단지 목록과 지도 위치를 복원한다', async () => {
+    const region = searchItem('REGION', '1111010100', '서울특별시 종로구 청운동', 37.586, 126.97)
+    const repository = createRepository()
+    renderExplorer(repository, '/?boundaryRegionCode=1111010100', searchRepository([], [region]))
+    await waitFor(() => expect(repository.findComplexPage).toHaveBeenCalledWith(
+      null, null, 20, expect.any(AbortSignal), { regionCode: '1111010100' },
+    ))
+    await waitFor(() => expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('14'))
+    expect(await screen.findByRole('button', { name: '서울특별시 종로구 청운동 단지 목록 보기' })).toBeInTheDocument()
+    expect(Number(screen.getByTestId('map-camera-request').textContent)).toBeGreaterThan(0)
+  })
+
+  it('읍면동 URL 복원은 첫 검색 페이지 밖의 정확한 동까지 찾는다', async () => {
+    const region = searchItem('REGION', '1156011700', '서울특별시 영등포구 당산동', 37.53, 126.9)
+    const search = vi.fn().mockImplementation(async (_query, _preview, page) => ({
+      announcements: [], complexes: [], failures: [], hasNext: page === 0,
+      page, query: '서울특별시 영등포구 당산동', size: 5, totalCount: 7,
+      regions: page === 0
+        ? [searchItem('REGION', '1156011100', '서울특별시 영등포구 당산동1가', 37.52, 126.91)]
+        : [region],
+    }))
+    renderExplorer(createRepository(), '/?boundaryRegionCode=1156011700', { search })
+    expect(await screen.findByRole('button', { name: '서울특별시 영등포구 당산동 단지 목록 보기' })).toBeInTheDocument()
+    await waitFor(() => expect(search).toHaveBeenCalledWith(
+      '서울특별시 영등포구 당산동', false, 1, expect.any(AbortSignal), 'REGION',
+    ))
+    expect(Number(screen.getByTestId('map-camera-request').textContent)).toBeGreaterThan(0)
+  })
+
   it('모바일 전체 화면 목록은 지도 중심을 옆으로 밀지 않고 검색창 여백만 반영한다', async () => {
     const original = HTMLElement.prototype.getBoundingClientRect
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {

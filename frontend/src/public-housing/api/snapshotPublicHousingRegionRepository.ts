@@ -1,5 +1,6 @@
+import catalog from '../regions/regionCatalog.json'
 import type { PublicHousingRegion } from '../model/publicHousingRegion.ts'
-import { provinceNameForRegionCode } from '../model/publicHousingRegion.ts'
+import { compareRegionCodes, findCatalogRegion, provinceNameForRegionCode } from '../model/publicHousingRegion.ts'
 import type { PublicHousingRegionRepository } from './publicHousingRegionRepository.ts'
 import type { PublicHousingSnapshotV1 } from './snapshotPublicHousingRepository.ts'
 
@@ -90,8 +91,13 @@ function collectSnapshotRegions(
     }
   }
 
+  for (const { sortKey: _sortKey, ...region } of catalog.items) {
+    if (region.regionCode.length === 10 && regionsByCode.has(region.regionCode.slice(0, 5))) {
+      regionsByCode.set(region.regionCode, region)
+    }
+  }
   return [...regionsByCode.values()].sort((left, right) =>
-    left.regionCode.localeCompare(right.regionCode),
+    compareRegionCodes(left.regionCode, right.regionCode),
   )
 }
 
@@ -100,6 +106,20 @@ function addNamedRegion(
   regionCode: string,
   regionName: string | null | undefined,
 ) {
+  if (regionCode.length === 10) {
+    for (const code of [regionCode.slice(0, 5), `${regionCode.slice(0, 8)}00`]) {
+      const region = findCatalogRegion(code)
+      if (region) {
+        regionsByCode.set(code, {
+          regionCode: code,
+          provinceName: region.provinceName,
+          districtName: region.districtName,
+          displayName: region.displayName,
+        })
+      }
+    }
+    return
+  }
   if (regionsByCode.has(regionCode) || regionName === null
     || regionName === undefined) {
     return

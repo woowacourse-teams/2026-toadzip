@@ -117,7 +117,7 @@ class HousingComplexListQueryTest {
                 ArgumentCaptor.forClass(HousingComplexSearchCondition.class);
         verify(repository).findPage(captor.capture(), eq(ComplexSort.LATEST_ANNOUNCEMENT), isNull(), eq(21));
         assertNull(captor.getValue().bounds());
-        assertEquals(Set.of("11110", "11140"), captor.getValue().filters().cityCountyDistrictCodes());
+        assertEquals(Set.of("11110", "11140"), captor.getValue().filters().regionCodes());
         assertTrue(response.items().isEmpty());
     }
 
@@ -156,7 +156,7 @@ class HousingComplexListQueryTest {
                 () -> assertEquals(BOUNDS, condition.bounds()),
                 () -> assertEquals("행복 단지", filters.keyword()),
                 () -> assertNull(filters.provinceCode()),
-                () -> assertEquals(Set.of("11110", "11140"), filters.cityCountyDistrictCodes()),
+                () -> assertEquals(Set.of("11110", "11140"), filters.regionCodes()),
                 () -> assertEquals(Set.of(RentalType.HAPPY_HOUSING, RentalType.NATIONAL_RENTAL),
                         filters.rentalTypes()),
                 () -> assertEquals(Set.of(ApplicationStatus.APPLYING, ApplicationStatus.CLOSED),
@@ -198,7 +198,7 @@ class HousingComplexListQueryTest {
                 () -> assertNull(conditionCaptor.getValue().filters().provinceCode()),
                 () -> assertEquals(
                         Set.of("12110", "12210", "29110", "46110"),
-                        conditionCaptor.getValue().filters().cityCountyDistrictCodes()
+                        conditionCaptor.getValue().filters().regionCodes()
                 )
         );
     }
@@ -220,7 +220,7 @@ class HousingComplexListQueryTest {
         assertAll(
                 () -> assertNull(conditionCaptor.getValue().filters().provinceCode()),
                 () -> assertEquals(Set.of("12210", "29110"),
-                        conditionCaptor.getValue().filters().cityCountyDistrictCodes())
+                        conditionCaptor.getValue().filters().regionCodes())
         );
     }
 
@@ -241,7 +241,7 @@ class HousingComplexListQueryTest {
         assertAll(
                 () -> assertNull(conditionCaptor.getValue().filters().provinceCode()),
                 () -> assertEquals(Set.of("41110", "41111", "41113"),
-                        conditionCaptor.getValue().filters().cityCountyDistrictCodes())
+                        conditionCaptor.getValue().filters().regionCodes())
         );
     }
 

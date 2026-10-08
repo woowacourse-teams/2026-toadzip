@@ -204,6 +204,37 @@ class HousingComplexApiIntegrationTest {
     }
 
     @Test
+    void 읍면동_목록은_같은_구의_다른_동을_제외한다() throws Exception {
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE housing_complexes SET legal_dong_code = '1114010200' WHERE id = :id")
+                .setParameter("id", outsideComplex.getId()).executeUpdate();
+        var result = mockMvc.perform(get("/api/v1/complexes").param("regionCode", "1114010100"))
+                .andExpect(status().isOk()).andReturn();
+        assertEquals(Set.of(boundaryComplex.getId(), insideComplex.getId(), sameDateComplex.getId()),
+                new HashSet<>(readComplexIds(result.getResponse().getContentAsString())));
+    }
+
+    @Test
+    void 읍면동_검색은_공개_단지들의_위치로_지도_이동_좌표를_제공한다() throws Exception {
+        mockMvc.perform(get("/api/v1/search").param("query", "서울특별시 중구 무교동").param("type", "REGION"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.regions[0].regionCode").value("1114010100"))
+                .andExpect(jsonPath("$.data.regions[0].latitude").isNumber())
+                .andExpect(jsonPath("$.data.regions[0].longitude").isNumber());
+    }
+
+    @Test
+    void 읍_지역_목록은_소속_리의_단지를_포함한다() throws Exception {
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE housing_complexes SET legal_dong_code = '4182025021', "
+                + "province_code = '41', city_county_district_code = '41820' WHERE id = :id")
+                .setParameter("id", insideComplex.getId()).executeUpdate();
+        var result = mockMvc.perform(get("/api/v1/complexes").param("regionCode", "4182025000"))
+                .andExpect(status().isOk()).andReturn();
+        assertEquals(List.of(insideComplex.getId()), readComplexIds(result.getResponse().getContentAsString()));
+    }
+
+    @Test
     void 지역만_보낸_지도와_일부_좌표만_보낸_목록은_거절한다() throws Exception {
         mockMvc.perform(get("/api/v1/complexes/map").param("regionCode", "11140"))
                 .andExpect(status().isBadRequest());

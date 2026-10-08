@@ -12,7 +12,7 @@ import com.toadzip.backend.housing.domain.RentalType;
 public record HousingComplexFilterCondition(
         String keyword,
         String provinceCode,
-        Set<String> cityCountyDistrictCodes,
+        Set<String> regionCodes,
         Set<RentalType> rentalTypes,
         Set<ApplicationStatus> applicationStatuses,
         Set<AgencyCode> agencyCodes,
@@ -30,7 +30,7 @@ public record HousingComplexFilterCondition(
         LocalDate today
 ) {
     public HousingComplexFilterCondition {
-        cityCountyDistrictCodes = Set.copyOf(cityCountyDistrictCodes);
+        regionCodes = Set.copyOf(regionCodes);
         rentalTypes = Set.copyOf(rentalTypes);
         applicationStatuses = Set.copyOf(applicationStatuses);
         agencyCodes = Set.copyOf(agencyCodes);
