@@ -2,7 +2,7 @@
 :global(.admin-content):has(> .page) { max-width: none; }
 .filters {
   display: grid;
-  grid-template-columns: minmax(180px, 2fr) repeat(2, minmax(110px, 1fr)) auto auto;
+  grid-template-columns: minmax(180px, 2fr) repeat(2, minmax(110px, 1fr)) auto;
   align-items: end;
   gap: 12px;
   padding: 16px 20px;
@@ -17,19 +17,20 @@
 .review input { flex: none; accent-color: var(--ds-color-action); }
 .actions { display: flex; justify-content: flex-end; gap: 8px; }
 .actions button { font-size: 13px; }
-.moreFilters { font-size: 12px; }
-.moreFilters summary { cursor: pointer; color: var(--ds-color-muted); padding: 12px 0; width: fit-content; white-space: nowrap; }
-.moreFilters[open] { display: contents; }
-.moreFilters[open] summary { grid-column: 5; }
+.moreFilters { grid-column: 1 / -1; margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--ds-color-divider); font-size: 13px; }
+.moreFilters summary { display: flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; color: var(--ds-color-label); font-weight: 600; list-style: none; }
+.moreFilters summary::-webkit-details-marker { display: none; }
+.filterChevron { margin-left: auto; }
+.moreFilters[open] .filterChevron { transform: rotate(180deg); }
+.moreFilters[open] summary { color: var(--ds-color-action); }
 .moreFilters summary:hover { color: var(--ds-color-action); }
-.moreFilters > div { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px 0 4px; border-top: 1px solid var(--ds-color-divider); margin-top: 0; }
+.moreFilters > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px 0 4px; }
 .moreFilters .review { grid-column: 1 / -1; }
 @container (max-width: 860px) {
   .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .search { grid-column: 1 / -1; }
   .actions { grid-column: 1 / -1; }
   .moreFilters, .moreFilters[open] summary { grid-column: 1 / -1; }
-  .moreFilters summary { padding: 2px 0; }
 }
 @container (max-width: 560px) {
   .filters { padding: 14px; }

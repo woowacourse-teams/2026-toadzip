@@ -28,6 +28,7 @@ export function ManagementWorkspace({ resource }: { resource: ManagementResource
       returnFocusRef.current = id === 'new' ? addRef.current
         : /^\d+$/.test(id) ? workspaceRef.current?.querySelector<HTMLAnchorElement>(`a[data-management-id="${id}"]`) ?? null : null
       editorRef.current?.focus()
+      editorRef.current?.scrollIntoView?.({ block: 'start' })
       return
     }
     if (returnFocusRef.current?.isConnected) returnFocusRef.current.focus()
