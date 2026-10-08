@@ -56,7 +56,7 @@ describe('홈의 사용자 세션과 알림 상태', () => {
     fireEvent.change(screen.getByRole('textbox', { name: '현재 검색어' }), { target: { value: '마포' } })
     fireEvent.focus(window)
     fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
-    await screen.findByRole('link', { name: '로그인' })
+    await screen.findByRole('button', { name: '로그인' })
     expect(interest.loadStatus).toHaveBeenCalledTimes(3)
     expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeDisabled()
     await act(async () => guestRead.resolve(guestStatus))
@@ -74,7 +74,7 @@ describe('홈의 사용자 세션과 알림 상태', () => {
     await screen.findByText('로그아웃 실패')
     expect(screen.getByRole('button', { name: '서울 단지 알림 취소' })).toBeEnabled()
     expect(interest.loadStatus).toHaveBeenCalledOnce()
-    expect(screen.queryByRole('link', { name: '로그인' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '로그인' })).not.toBeInTheDocument()
   })
 
   it('로그아웃 전에 보낸 신청이 늦게 성공해도 비로그인 신청이나 입력창으로 복구하지 않는다', async () => {
@@ -85,7 +85,7 @@ describe('홈의 사용자 세션과 알림 상태', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
     fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
-    await screen.findByRole('link', { name: '로그인' })
+    await screen.findByRole('button', { name: '로그인' })
     await waitFor(() => expect(interest.loadStatus).toHaveBeenCalledTimes(2))
     await act(async () => pending.resolve())
     expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled()

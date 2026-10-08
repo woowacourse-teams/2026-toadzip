@@ -24,6 +24,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -33,6 +34,8 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+// csrf() in other cached MockMvc contexts replaces the filter's real cookie repository.
+@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 class AdminAuthenticationIntegrationTest {
 
     @Autowired
