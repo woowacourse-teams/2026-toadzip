@@ -336,21 +336,21 @@ describe('HousingComplexDetailPanel', () => {
     expect(within(table).getAllByRole('rowheader')).toHaveLength(3)
     expect(within(table).getByRole('rowheader', { name: '임대보증금' }))
       .toHaveAttribute('scope', 'row')
-    expect(within(table).getByRole('row', { name: '임대보증금 5,000만원 월 임대료 20만원' }))
+    expect(within(table).getByRole('row', { name: '임대보증금 50,000,000원 월 임대료 200,000원' }))
       .toBeInTheDocument()
-    expect(within(table).getByRole('cell', { name: '5,000만원' }))
+    expect(within(table).getByRole('cell', { name: '50,000,000원' }))
       .toHaveAttribute('headers', within(table).getByRole('rowheader', { name: '임대보증금' }).id)
-    expect(within(table).getByRole('cell', { name: '20만원' }))
+    expect(within(table).getByRole('cell', { name: '200,000원' }))
       .toHaveAttribute('headers', within(table).getByRole('rowheader', { name: '월 임대료' }).id)
     expect(within(table).getByRole('row', { name: '전환 가능 보증금 공고문 확인' }))
       .toBeInTheDocument()
-    expect(within(table).getByRole('cell', { name: '5,000만원' }))
+    expect(within(table).getByRole('cell', { name: '50,000,000원' }))
       .toHaveAttribute('data-emphasis', 'true')
     expect(within(table).getByRole('cell', { name: '공고문 확인' }))
       .not.toHaveAttribute('data-emphasis')
   })
 
-  it('원 단위 금액을 공통 만원·억 표기로 표시하고 소수 금액을 보존한다', () => {
+  it('금액을 원 단위 전체 금액으로 표시한다', () => {
     const { panel } = renderPanel(detailWith({
       housingTypes: [{
         ...BASE_DETAIL.housingTypes[0],
@@ -365,10 +365,10 @@ describe('HousingComplexDetailPanel', () => {
     }))
     const table = within(panel).getByRole('table', { name: '36A 청년 현재 공급 조건' })
 
-    expect(within(table).getByRole('cell', { name: '1.8억' })).toBeInTheDocument()
-    expect(within(table).getByRole('cell', { name: '20.55만원' })).toBeInTheDocument()
-    expect(within(table).getByRole('cell', { name: '1,800만원' })).toBeInTheDocument()
-    expect(factValue(panel, '관리비').getByText('12.3456만원')).toBeInTheDocument()
+    expect(within(table).getByRole('cell', { name: '180,000,000원' })).toBeInTheDocument()
+    expect(within(table).getByRole('cell', { name: '205,500원' })).toBeInTheDocument()
+    expect(within(table).getByRole('cell', { name: '18,000,000원' })).toBeInTheDocument()
+    expect(factValue(panel, '관리비').getByText('123,456원')).toBeInTheDocument()
   })
 
   it('비교표는 읽기 전용으로 두고 주택형 정보의 독립 탭으로 상세를 바꾼다', () => {
@@ -485,11 +485,11 @@ describe('HousingComplexDetailPanel', () => {
     const table = within(panel).getByRole('table', { name: '주택형별 임대조건 비교' })
     expect(within(table).getAllByRole('columnheader')).toHaveLength(4)
     const youngRow = within(table).getByText('청년').closest('tr')!
-    expect(within(youngRow).getByText('5,000만원')).toBeInTheDocument()
-    expect(within(youngRow).getByText('20만원')).toBeInTheDocument()
+    expect(within(youngRow).getByText('50,000,000원')).toBeInTheDocument()
+    expect(within(youngRow).getByText('200,000원')).toBeInTheDocument()
     const studentRow = within(table).getByText('대학생').closest('tr')!
-    expect(within(studentRow).getByText('4,000만원')).toBeInTheDocument()
-    expect(within(studentRow).getByText('22만원')).toBeInTheDocument()
+    expect(within(studentRow).getByText('40,000,000원')).toBeInTheDocument()
+    expect(within(studentRow).getByText('220,000원')).toBeInTheDocument()
     expect(within(table).getByRole('rowheader', { name: '36A' })).toHaveAttribute('rowspan', '2')
     expect(within(table).queryByRole('button')).not.toBeInTheDocument()
     const missingRow = within(table).getByRole('rowheader', { name: '44B' }).closest('tr')!

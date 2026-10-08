@@ -14,7 +14,7 @@ import {
   DetailSection,
   DetailTable,
 } from './DetailPrimitives'
-import { formatHousingMoney } from '../presentation/housingMoney'
+import { formatHousingMoneyWon } from '../presentation/housingMoney'
 import { MISSING_DATA_LABEL } from '../presentation/missingData'
 import { AnnouncementStatusBadge } from './AnnouncementStatusBadge'
 import styles from './HousingComplexDetailPanel.module.css'
@@ -247,10 +247,10 @@ export function HousingComplexDetailPanel({
                               <span className={styles.conditionTarget}>{condition?.target ?? MISSING_DATA_LABEL}</span>
                             </td>
                             <td data-numeric data-emphasis={Number.isFinite(condition?.deposit) || undefined}>
-                              {formatHousingMoney(condition?.deposit ?? null)}
+                              {formatHousingMoneyWon(condition?.deposit ?? null)}
                             </td>
                             <td data-numeric data-emphasis={Number.isFinite(condition?.monthlyRent) || undefined}>
-                              {formatHousingMoney(condition?.monthlyRent ?? null)}
+                              {formatHousingMoneyWon(condition?.monthlyRent ?? null)}
                             </td>
                           </tr>
                         ))}
@@ -510,7 +510,7 @@ function HousingTypePanel({
         <DetailFact term="복층여부" value={duplexLabel(housingType.isDuplex)} />
         <DetailFact
           term="관리비"
-          value={formatHousingMoney(housingType.maintenanceFee)}
+          value={formatHousingMoneyWon(housingType.maintenanceFee)}
           emphasis={Number.isFinite(housingType.maintenanceFee)}
         />
       </DetailFacts>
@@ -553,11 +553,11 @@ function SupplyConditionTable({
         <tr>
           <th id={`${id}-deposit`} scope="row">임대보증금</th>
           <td headers={`${id}-deposit`} data-numeric data-emphasis={Number.isFinite(condition.deposit) || undefined}>
-            {formatHousingMoney(condition.deposit)}
+            {formatHousingMoneyWon(condition.deposit)}
           </td>
           <th id={`${id}-rent`} scope="row">월 임대료</th>
           <td headers={`${id}-rent`} data-numeric data-emphasis={Number.isFinite(condition.monthlyRent) || undefined}>
-            {formatHousingMoney(condition.monthlyRent)}
+            {formatHousingMoneyWon(condition.monthlyRent)}
           </td>
         </tr>
         <tr>
@@ -568,7 +568,7 @@ function SupplyConditionTable({
             data-numeric
             data-emphasis={Number.isFinite(condition.convertibleDeposit) || undefined}
           >
-            {formatHousingMoney(condition.convertibleDeposit)}
+            {formatHousingMoneyWon(condition.convertibleDeposit)}
           </td>
         </tr>
       </tbody>
