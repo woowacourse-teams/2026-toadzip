@@ -59,6 +59,7 @@ class HousingJpaMappingTest {
                         "floorPlanUrl",
                         "duplex",
                         "maintenanceFee",
+                        "adminModified",
                         "basicRentalCondition"
                 )
         );

@@ -81,11 +81,7 @@ export function RegistrationError({
     <div className="registration-message registration-error" role="alert">
       <p>{message}</p>
       {Object.keys(fieldErrors).length > 0 ? (
-        <ul>
-          {Object.entries(fieldErrors).map(([field, reason]) => (
-            <li key={field}>{field}: {reason}</li>
-          ))}
-        </ul>
+        <p>표시된 입력 항목을 확인해 주세요.</p>
       ) : null}
     </div>
   )

@@ -37,7 +37,7 @@ import { groupAnnouncementSchedules } from '../presentation/announcementSchedule
 import { ScheduleGroupCard } from './ScheduleGroupCard'
 import { SchedulePeriod } from './SchedulePeriod'
 import scheduleStyles from './ScheduleGroups.module.css'
-import { formatHousingMoney } from '../presentation/housingMoney'
+import { formatHousingMoneyWon } from '../presentation/housingMoney'
 import styles from './HousingAnnouncementDetailPanel.module.css'
 import { NotificationInterestButton } from '../interest/NotificationInterest'
 
@@ -240,10 +240,12 @@ export function HousingAnnouncementDetailPanel({
           role="region" aria-label="요약 영역" tabIndex={-1}
           ref={(node) => { sectionRefs.current.summary = node }}>
           <NoticeIntro detail={detail} groups={groups} />
-          <NotificationInterestButton
-            target={{ type: 'ANNOUNCEMENT', id: detail.announcementId, name: title }}
-            source="ANNOUNCEMENT_DETAIL"
-          />
+          <div className={styles.notificationAction}>
+            <NotificationInterestButton
+              target={{ type: 'ANNOUNCEMENT', id: detail.announcementId, name: title }}
+              source="ANNOUNCEMENT_DETAIL"
+            />
+          </div>
           <CoreInformation detail={detail} />
           <ReasonNotice detail={detail} />
         </div>
@@ -869,11 +871,11 @@ function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget
               <tr>
                 <th id={`${idPrefix}-${index}-deposit`} scope="row">보증금</th>
                 <td headers={`${idPrefix}-${index}-deposit`} data-emphasis={Number.isFinite(target.deposit) || undefined} data-numeric="true">
-                  {formatHousingMoney(target.deposit)}
+                  {formatHousingMoneyWon(target.deposit)}
                 </td>
                 <th id={`${idPrefix}-${index}-rent`} scope="row">월 임대료</th>
                 <td headers={`${idPrefix}-${index}-rent`} data-emphasis={Number.isFinite(target.monthlyRent) || undefined} data-numeric="true">
-                  {formatHousingMoney(target.monthlyRent)}
+                  {formatHousingMoneyWon(target.monthlyRent)}
                 </td>
               </tr>
               {hasText(target.applicationCondition) && (
@@ -1104,7 +1106,7 @@ function moneyRange(
   const values = rows.flatMap((row) => row.targets)
     .map((target) => target[key])
     .filter((value): value is number => value !== null)
-  return numericRange(values, formatHousingMoney)
+  return numericRange(values, formatHousingMoneyWon)
 }
 
 function numericRange(

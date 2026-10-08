@@ -16,10 +16,10 @@ it('로그인 버튼은 현재 화면에서 카카오와 구글 로그인 모달
   login.focus()
   fireEvent.click(login)
   const dialog = screen.getByRole('dialog', { name: '로그인' })
-  expect(within(dialog).getByRole('link', { name: '카카오로 계속하기' })).toHaveAttribute(
+  expect(within(dialog).getByRole('link', { name: '카카오톡으로 로그인' })).toHaveAttribute(
     'href', 'https://api.example.com/api/auth/oauth2/authorization/kakao',
   )
-  expect(within(dialog).getByRole('link', { name: 'Google로 계속하기' })).toHaveAttribute(
+  expect(within(dialog).getByRole('link', { name: 'Google로 로그인' })).toHaveAttribute(
     'href', 'https://api.example.com/api/auth/oauth2/authorization/google',
   )
   fireEvent.click(within(dialog).getByRole('button', { name: '로그인 닫기' }))
@@ -116,7 +116,7 @@ it('실패 복귀 후 세션 조회에 실패해도 로그인 제공자로 재�
   render(<MemoryRouter initialEntries={['/?login=failed']}><UserSessionControl /></MemoryRouter>)
   const dialog = await screen.findByRole('dialog', { name: '로그인' })
   expect(within(dialog).getByRole('alert')).toHaveTextContent('다시 시도해 주세요.')
-  expect(within(dialog).getByRole('link', { name: '카카오로 계속하기' })).toBeVisible()
+  expect(within(dialog).getByRole('link', { name: '카카오톡으로 로그인' })).toBeVisible()
 })
 
 it('지도 사이드바의 로그인 계정은 마이페이지에서 기존 로그아웃을 제공한다', async () => {

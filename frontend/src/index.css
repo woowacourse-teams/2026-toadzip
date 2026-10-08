@@ -611,6 +611,28 @@ a {
   min-height: 0;
 }
 
+.housing-map-base {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.housing-map-filter[hidden], .housing-map-feedback[hidden] { display: none; }
+
+/* Keep focus navigation inside the viewer from scrolling the fixed app shell. */
+.app-shell:has(.has-street-view) { overflow: clip; }
+
+.housing-street-view-layer {
+  position: absolute;
+  z-index: 340;
+  inset: 0 0 0 calc(var(--explorer-search-width) + var(--explorer-gutter) + var(--explorer-panel-gap));
+  min-width: 0;
+  min-height: 0;
+}
+
+
 .housing-map-filter {
   position: absolute;
   z-index: 200;
@@ -2303,7 +2325,7 @@ button {
 .service-rail-account .service-login-link {
   display: flex; min-width: 0; width: 100%; height: auto; min-height: 52px; font-size: 10px;
   padding: 10px 4px; border: 0; border-radius: 10px;
-  background: transparent; color: var(--ds-color-label); flex-direction: column; gap: 6px;
+  background: transparent; color: var(--ds-color-label); flex-direction: column; align-items: center; gap: 6px;
 }
 .service-rail-account .service-login-link::before {
   content: ""; width: 20px; height: 20px; background: currentcolor;

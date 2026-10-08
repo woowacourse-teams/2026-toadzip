@@ -2,11 +2,8 @@ import { FailureReviewPage } from './admin/ingest/FailureReviewPage'
 import { SourceDataPage } from './admin/ingest/SourceDataPage'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router'
 import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
-import { HousingComplexRegistrationPage } from './admin/registration/HousingComplexRegistrationPage'
-import { AnnouncementRegistrationPage } from './admin/registration/AnnouncementRegistrationPage'
 import { LocationDataPage } from './admin/ingest/LocationDataPage'
-import { ManagementList } from './admin/management/ManagementList'
-import { ManagementDetail } from './admin/management/ManagementDetail'
+import { ManagementWorkspace } from './admin/management/ManagementWorkspace'
 import { AdminHome } from './admin/auth/AdminHome'
 import { AdminLayout } from './admin/auth/AdminLayout'
 import { GuestCancellationAdminPage } from './admin/GuestCancellationAdminPage'
@@ -61,12 +58,8 @@ function AdminRoutes() {
           <Route element={<AdminLayout />}>
             <Route index element={<Navigate to="complexes" replace />} />
             <Route path="ingest" element={<AdminHome />} />
-            <Route path="complexes" element={<ManagementList resource="complexes" />} />
-            <Route path="complexes/new" element={<HousingComplexRegistrationPage />} />
-            <Route path="complexes/:id" element={<ManagementDetail resource="complexes" />} />
-            <Route path="announcements" element={<ManagementList resource="announcements" />} />
-            <Route path="announcements/new" element={<AnnouncementRegistrationPage />} />
-            <Route path="announcements/:id" element={<ManagementDetail resource="announcements" />} />
+            <Route path="complexes/:id?" element={<ManagementWorkspace resource="complexes" />} />
+            <Route path="announcements/:id?" element={<ManagementWorkspace resource="announcements" />} />
             <Route path="users" element={<UserListPage />} />
             <Route path="users/:id" element={<UserDetailPage />} />
             <Route path="feedback" element={<FeedbackListPage />} />

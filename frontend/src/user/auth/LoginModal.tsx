@@ -67,11 +67,11 @@ export function LoginModal({ loginFailed, sessionError, onClose, returnFocusRef 
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M12 3C6.48 3 2 6.36 2 10.5c0 2.63 1.82 4.94 4.57 6.28l-1.16 4.13 4.73-2.98c.6.05 1.23.07 1.86.07 5.52 0 10-3.36 10-7.5S17.52 3 12 3Z" />
             </svg>
-            카카오로 계속하기
+            카카오톡으로 로그인
           </a>
           <a className={`${styles.provider} ${styles.google}`} href={socialLoginUrl('google')}>
-            <span className={styles.googleMark} aria-hidden="true">G</span>
-            Google로 계속하기
+            <img className={styles.googleMark} src="/auth/google-g.png" width="20" height="20" alt="" />
+            Google로 로그인
           </a>
         </div>
       </div>
