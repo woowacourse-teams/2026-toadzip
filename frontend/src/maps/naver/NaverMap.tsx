@@ -204,6 +204,7 @@ export default function NaverMap({
   const cameraSouthWestLng = cameraTarget?.bounds?.southWestLng
   const cameraNorthEastLat = cameraTarget?.bounds?.northEastLat
   const cameraNorthEastLng = cameraTarget?.bounds?.northEastLng
+  const cameraBoundsMaxZoom = cameraTarget?.boundsMaxZoom
   const cameraPaddingTop = cameraTarget?.boundsPadding?.top
   const cameraPaddingRight = cameraTarget?.boundsPadding?.right
   const cameraPaddingBottom = cameraTarget?.boundsPadding?.bottom
@@ -576,16 +577,23 @@ export default function NaverMap({
         new maps.LatLng(cameraSouthWestLat, cameraSouthWestLng),
         new maps.LatLng(cameraNorthEastLat, cameraNorthEastLng),
       ]
+      const fitOptions: naver.maps.FitBoundsOptions = {}
       if (cameraPaddingTop !== undefined && cameraPaddingRight !== undefined
         && cameraPaddingBottom !== undefined && cameraPaddingLeft !== undefined) {
-        mapInstance.fitBounds(bounds, {
+        Object.assign(fitOptions, {
           top: cameraPaddingTop,
           right: cameraPaddingRight,
           bottom: cameraPaddingBottom,
           left: cameraPaddingLeft,
         })
+      }
+      if (cameraBoundsMaxZoom !== undefined && Number.isFinite(cameraBoundsMaxZoom)
+        && cameraBoundsMaxZoom >= 0) {
+        fitOptions.maxZoom = cameraBoundsMaxZoom
+      }
+      if (Object.keys(fitOptions).length > 0) {
+        mapInstance.fitBounds(bounds, fitOptions)
       } else {
-        // Omit the optional margins argument unless the caller provided all four sides.
         mapInstance.fitBounds(bounds)
       }
       return
@@ -649,6 +657,7 @@ export default function NaverMap({
     }
   }, [cameraLatitude, cameraLongitude, cameraOffsetX, cameraOffsetY, cameraRequestId, cameraZoom,
     cameraSouthWestLat, cameraSouthWestLng, cameraNorthEastLat, cameraNorthEastLng,
+    cameraBoundsMaxZoom,
     cameraPaddingTop, cameraPaddingRight, cameraPaddingBottom, cameraPaddingLeft,
     initializedAttempt, attempt, status.kind])
 

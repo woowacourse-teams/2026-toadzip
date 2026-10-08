@@ -60,6 +60,7 @@ const { boundaryMetadata, defaultBoundaryRepository } = vi.hoisted(() => ({
   boundaryMetadata: [
     { regionCode: '41110', name: '경기도 수원시', bounds: { southWestLat: 37.2, southWestLng: 126.9, northEastLat: 37.4, northEastLng: 127.1 }, path: '/test/41110.geojson' },
     { regionCode: '41111', name: '경기도 수원시 장안구', bounds: { southWestLat: 37.3, southWestLng: 126.95, northEastLat: 37.4, northEastLng: 127.05 }, path: '/test/41111.geojson' },
+    { regionCode: '47940', name: '경상북도 울릉군', bounds: { southWestLat: 37.2, southWestLng: 130.7, northEastLat: 37.6, northEastLng: 132 }, representativePoint: { latitude: 37.50275955, longitude: 130.86686789 }, path: '/test/47940.geojson' },
   ],
   defaultBoundaryRepository: { find: async (regionCode: string) => ({ regionCode, version: 'test', polygons: [] }) },
 }))
@@ -162,6 +163,61 @@ afterEach(() => {
 })
 
 describe('PublicHousingExplorer', () => {
+  it.each(['/', '/?boundaryRegionCode=41111', '/?boundaryRegionCode=41110'])('집계 표식은 %s에서 선택한 지역 경계와 개별 단지 확대 수준으로 한 번 이동한다', async (entry) => {
+    const result: HousingMapAggregateResult = {
+      ...aggregateMapResult(),
+      resolvedStage: 3,
+      nodes: [{ ...aggregateMapResult().nodes[0]!, groupKey: 'BASIC_REGION:41110',
+        groupLabel: '수원시', latitude: 37.28, longitude: 127.01, nextStage: 4, expansionZoom: 12.6 }],
+    }
+    renderExplorer(createRepository(), entry, undefined, undefined,
+      createMapRepository(result))
+    fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
+    const request = Number(screen.getByTestId('map-camera-request').textContent)
+    fireEvent.click(await screen.findByRole('button', { name: '수원시 0곳 지역 마커 선택' }))
+
+    await waitFor(() => expect(screen.getByTestId('map-boundary')).toHaveTextContent('41110'))
+    expectCurrentSearch({ boundaryRegionCode: '41110' })
+    expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('12.6')
+    expect(screen.getByText('카메라 37.28,127.01')).toBeVisible()
+    expect(Number(screen.getByTestId('map-camera-request').textContent)).toBe(request + 1)
+  })
+
+  it('지역 검색은 지역 면적과 관계없이 대표좌표에서 개별 마커가 보이는 배율로 이동한다', async () => {
+    const region = searchItem('REGION', '41110', '경기도 수원시', 37.275, 127.016)
+    renderExplorer(createRepository(), '/', searchRepository([], [region]))
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '수원' } })
+    fireEvent.click(await within(await screen.findByRole('region', { name: '지역' })).findByRole('button', { name: /경기도 수원시/ }))
+    expect(screen.getByText('카메라 37.275,127.016')).toBeVisible()
+    expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('12.6')
+    await waitFor(() => expect(screen.getByTestId('map-boundary')).toHaveTextContent('41110'))
+  })
+
+  it('도서 지역 직접 진입은 바다의 경계 중심 대신 저장된 대표좌표로 이동한다', async () => {
+    renderExplorer(createRepository(), '/?boundaryRegionCode=47940')
+    await waitFor(() => expect(screen.getByTestId('map-boundary')).toHaveTextContent('47940'))
+    expect(screen.getByText('카메라 37.50275955,130.86686789')).toBeVisible()
+    expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('12.6')
+  })
+
+  it.each(['41110', '41111'])('면적이 다른 지역 %s도 개별 단지 전환 직후 배율을 유지한다', async (regionCode) => {
+    renderExplorer(createRepository(), `/?boundaryRegionCode=${regionCode}`)
+    await waitFor(() => expect(screen.getByTestId('map-boundary')).toHaveTextContent(regionCode))
+    expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('12.6')
+  })
+
+  it('검색 지역 밖의 집계 표식은 해당 지역의 대표 좌표로 이동한다', async () => {
+    renderExplorer(createRepository(), '/?boundaryRegionCode=41110', undefined, undefined,
+      createMapRepository(aggregateMapResult()))
+    fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
+    fireEvent.click(await screen.findByRole('button', { name: '서울 0곳 지역 마커 선택' }))
+
+    expect(screen.getByText('카메라 37.5665,126.978')).toBeVisible()
+    expect(screen.getByTestId('map-camera-max-zoom')).toBeEmptyDOMElement()
+    expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('7')
+  })
+
+
   it('저배율 영역을 v2로 조회하고 0곳 지역 마커를 표시한다', async () => {
     const repository = createRepository()
     const mapRepository = createMapRepository(aggregateMapResult())
@@ -621,7 +677,7 @@ describe('PublicHousingExplorer', () => {
     expect(repository.findComplexPage).not.toHaveBeenCalled()
   })
 
-  it('통합 검색 지역은 bbox로 이동하고 사용자의 지역 필터로 최종 지도 영역만 조회한다', async () => {
+  it('통합 검색 지역은 대표좌표와 고정 배율로 이동하고 사용자의 지역 필터로 최종 지도 영역만 조회한다', async () => {
     const repository = createRepository()
     const mapRepository = createMapRepository(individualMapResult())
     const region = searchItem('REGION', '41110', '경기도 수원시', 37.27532584, 127.01641895)
@@ -632,15 +688,15 @@ describe('PublicHousingExplorer', () => {
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '수원' } })
     fireEvent.click(await screen.findByRole('button', { name: /경기도 수원시/ }))
 
-    expect(screen.getByText('카메라 37.3,127')).toBeVisible()
-    expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('14')
+    expect(screen.getByText('카메라 37.27532584,127.01641895')).toBeVisible()
+    expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('12.6')
     expect(mapRepository.findMap).toHaveBeenCalledOnce()
     expectCurrentSearch({ complexRegionCode: '11', boundaryRegionCode: '41110' })
     fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
 
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(2))
     expect(mapRepository.findMap).toHaveBeenLastCalledWith(expect.objectContaining({
-      bounds: boundaryMetadata[0].bounds, filters: { regionCode: '11' }, zoom: 14,
+      bounds: boundsAt(37.27532584, 127.01641895), filters: { regionCode: '11' }, zoom: 12.6,
     }), expect.any(AbortSignal))
     expect(screen.queryByRole('heading', { name: '검색결과' })).not.toBeInTheDocument()
   })
@@ -657,7 +713,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(2))
     expect(mapRepository.findMap).toHaveBeenLastCalledWith(expect.objectContaining({
-      bounds: boundaryMetadata[0].bounds, zoom: 14,
+      bounds: boundsAt(37.27532584, 127.01641895), zoom: 12.6,
     }), expect.any(AbortSignal))
 
     expect(mapRepository.findMap.mock.calls[1]?.[0]).not.toHaveProperty('filters')
@@ -666,7 +722,7 @@ describe('PublicHousingExplorer', () => {
 
     await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(3))
     expect(mapRepository.findMap).toHaveBeenLastCalledWith(expect.objectContaining({
-      bounds: boundaryMetadata[0].bounds, zoom: 14, filters: { regionCode: '11' },
+      bounds: boundsAt(37.27532584, 127.01641895), zoom: 12.6, filters: { regionCode: '11' },
     }), expect.any(AbortSignal))
   })
 
@@ -703,18 +759,18 @@ describe('PublicHousingExplorer', () => {
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '수원' } })
     fireEvent.click(await screen.findByRole('button', { name: /경기도 수원시/ }))
     fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
-    await waitFor(() => expect(repository.findComplexPage).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(mapRepository.findMap).toHaveBeenCalledTimes(2))
     const cameraRequest = screen.getByTestId('map-camera-request').textContent
 
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '수원' } })
     fireEvent.click(screen.getByRole('button', { name: '검색결과 닫기' }))
 
     expect(screen.getByRole('searchbox')).toHaveValue('')
-    expect(screen.getByText('카메라 37.3,127')).toBeVisible()
+    expect(screen.getByText('카메라 37.27532584,127.01641895')).toBeVisible()
     expect(screen.getByTestId('map-camera-request')).toHaveTextContent(cameraRequest ?? '')
-    expect(repository.findComplexPage).toHaveBeenCalledTimes(2)
+    expect(repository.findComplexPage).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
-    await waitFor(() => expect(repository.findComplexPage).toHaveBeenCalledTimes(3))
+    await waitFor(() => expect(repository.findComplexPage).toHaveBeenCalledTimes(2))
     expect(repository.findComplexPage).toHaveBeenLastCalledWith(NEXT_BOUNDS, null, 20, expect.any(AbortSignal))
   })
 
@@ -1435,7 +1491,7 @@ describe('PublicHousingExplorer', () => {
     expect(screen.queryByRole('heading', { name: '검색결과' })).not.toBeInTheDocument()
   })
 
-  it('경계가 있는 좌표 없는 지역은 bbox로 이동하고 기존 주택 지역 필터를 보존한다', async () => {
+  it('경계가 있는 좌표 없는 지역은 대표좌표와 고정 배율로 이동하고 기존 주택 지역 필터를 보존한다', async () => {
     const pending = createDeferred<RegionBoundary>()
     const boundaryRepository = { find: vi.fn().mockReturnValue(pending.promise) }
     const region = searchItem('REGION', '41111', '경기도 수원시 장안구', null, null)
@@ -1444,7 +1500,7 @@ describe('PublicHousingExplorer', () => {
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '장안' } })
     fireEvent.click(await screen.findByRole('button', { name: /경기도 수원시 장안구/ }))
     expectCurrentSearch({ complexRegionCode: '11', boundaryRegionCode: '41111' })
-    expect(screen.getByTestId('map-camera-bounds')).toHaveTextContent(JSON.stringify(boundaryMetadata[1].bounds))
+    expect(screen.getByTestId('map-camera-bounds')).toHaveTextContent(JSON.stringify(boundsAt((37.3 + 37.4) / 2, 127)))
     expect(within(screen.getByRole('region', { name: '검색 지역 표시' })).getByText('경기도 수원시 장안구')).toBeVisible()
     expect(screen.getByRole('region', { name: '통합 검색' })).toContainElement(screen.getByRole('region', { name: '검색 지역 표시' }))
     expect(screen.queryByRole('link', { name: '저작권' })).not.toBeInTheDocument()
@@ -1527,7 +1583,7 @@ describe('PublicHousingExplorer', () => {
     expect(query.get('complexRentalTypes')).toBe('HAPPY_HOUSING')
   })
 
-  it('지도에 실제로 겹친 도구막대 크기를 fit 여백에 반영한다', async () => {
+  it('지도에 실제로 겹친 도구막대 크기를 카메라 화면 오프셋에 반영한다', async () => {
     const original = HTMLElement.prototype.getBoundingClientRect
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       if (this.classList.contains('map-surface')) {
@@ -1540,7 +1596,7 @@ describe('PublicHousingExplorer', () => {
     })
     renderExplorer(createRepository(), '/?boundaryRegionCode=41110')
     await waitFor(() => expect(screen.getByTestId('map-boundary')).toHaveTextContent('41110'))
-    expect(JSON.parse(screen.getByTestId('map-camera-padding').textContent ?? '{}')).toEqual({ top: 78, right: 24, bottom: 24, left: 24 })
+    expect(JSON.parse(screen.getByTestId('map-camera-offset').textContent ?? '{}')).toEqual({ x: 0, y: 27 })
   })
 
   it('미지원 시도 선택은 이전 경계를 지우고 실제 대표 좌표로 이동한다', async () => {
@@ -1554,7 +1610,7 @@ describe('PublicHousingExplorer', () => {
     expect(screen.getByText('카메라 37.2,127.1')).toBeVisible()
   })
 
-  it('지역 검색은 bbox로 이동하고 필터를 추가하지 않으며 지도 idle 뒤 조회한다', async () => {
+  it('지역 검색은 대표좌표와 고정 배율로 이동하고 필터를 추가하지 않으며 지도 idle 뒤 조회한다', async () => {
     const repository = createRepository()
     const region = searchItem('REGION', '41110', '경기도 수원시', 37.27532584, 127.01641895)
     renderExplorer(repository, '/', searchRepository([], [region]))
@@ -1564,13 +1620,13 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(await screen.findByRole('button', { name: /경기도 수원시/ }))
 
     expect(repository.findMap).toHaveBeenCalledOnce()
-    expect(screen.getByText('카메라 37.3,127')).toBeVisible()
-    expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('14')
+    expect(screen.getByText('카메라 37.27532584,127.01641895')).toBeVisible()
+    expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('12.6')
     expectCurrentSearch({ boundaryRegionCode: '41110' })
     fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
     await waitFor(() => expect(repository.findMap).toHaveBeenCalledTimes(2))
     expect(repository.findMap).toHaveBeenLastCalledWith(
-      expect.objectContaining({ bounds: boundaryMetadata[0].bounds, zoom: 14 }),
+      expect.objectContaining({ bounds: boundsAt(37.27532584, 127.01641895), zoom: 12.6 }),
       expect.any(AbortSignal),
     )
   })
@@ -3323,9 +3379,11 @@ function FakeNaverMap({
     >
       <output>카메라 {currentCamera.latitude},{currentCamera.longitude}</output>
       <output data-testid="map-boundary">{regionBoundary?.regionCode ?? 'none'}</output>
+      <output data-testid="map-camera-offset">{JSON.stringify(cameraTarget?.screenOffset)}</output>
       <output data-testid="map-camera-padding">{JSON.stringify(cameraTarget?.boundsPadding)}</output>
       <output data-testid="map-camera-bounds">{JSON.stringify(currentBoundsRef.current)}</output>
       <output data-testid="map-camera-zoom">{currentCamera.zoom}</output>
+      <output data-testid="map-camera-max-zoom">{cameraTarget?.boundsMaxZoom}</output>
       <output data-testid="map-camera-request">{cameraRequestId}</output>
       <button
         type="button"

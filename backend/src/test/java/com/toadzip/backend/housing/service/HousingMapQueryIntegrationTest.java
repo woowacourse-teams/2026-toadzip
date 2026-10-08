@@ -91,6 +91,25 @@ class HousingMapQueryIntegrationTest {
         assertEquals(0L, countOf(nodes, "BASIC_REGION:41290"));
     }
 
+    @Test
+    void 마포구_검색_후_경계가_유지되는_확대에서_양끝_단지를_모두_표시한다() {
+        HousingComplex west = persistComplex("상암 단지", "11440", "37.578", "126.884");
+        HousingComplex east = persistComplex("공덕 단지", "11440", "37.544", "126.955");
+        entityManager.flush();
+        HousingComplexSearchRequest request = request(null, "37.50", "126.70", "37.65", "127.00");
+
+        HousingMapResponse overview = clusteringService.getMap(request, decimal("11.70"), 4);
+        HousingMapResponse expanded = clusteringService.getMap(request, decimal("12.60"), overview.resolvedStage());
+        HousingMapResponse zoomedOut = clusteringService.getMap(request, decimal("12.30"), expanded.resolvedStage());
+
+        assertEquals(3, overview.resolvedStage());
+        assertEquals(2L, countOf(aggregateNodes(overview), "BASIC_REGION:11440"));
+        assertEquals(HousingMapRepresentation.INDIVIDUAL, expanded.representation());
+        assertEquals(List.of(west.getId(), east.getId()), individualNodes(expanded).stream()
+                .map(HousingMapIndividualNodeResponse::complexId).toList());
+        assertEquals(expanded.nodes(), zoomedOut.nodes());
+    }
+
     private HousingComplex persistComplex(
             String name,
             String regionCode,

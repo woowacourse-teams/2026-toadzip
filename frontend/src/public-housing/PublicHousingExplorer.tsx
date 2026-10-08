@@ -110,6 +110,9 @@ import { useRegionBoundary } from './regions/useRegionBoundary.ts'
 import { RegionBoundaryControl } from './regions/RegionBoundaryControl.tsx'
 
 const EMPTY_MAP_ITEMS: readonly MapComplex[] = []
+// Match the BASIC_REGION → INDIVIDUAL expansion in the map policy.
+const REGION_FOCUS_ZOOM = 12.6
+const COMPLEX_FOCUS_ZOOM = 12.7
 const DEFAULT_MAP_LOCATION = {
   center: {
     latitude: 37.5666103,
@@ -285,8 +288,9 @@ export function PublicHousingExplorer({
   const boundaryRegionCode = parseRegionBoundaryCode(new URLSearchParams(location.search))
   const boundaryMetadata = boundaryRegionCode ? findRegionBoundaryMetadata(boundaryRegionCode) : null
   const [selectedSearchRegion, setSelectedSearchRegion] = useState<SearchResultItem | null>(null)
-  const boundarySelectionRef = useRef<SearchResultItem | null>(null)
+  const boundarySelectionRef = useRef<Pick<SearchResultItem, 'id' | 'regionCode' | 'latitude' | 'longitude'> | null>(null)
   const handledBoundaryCodeRef = useRef<string | null>(null)
+  const pendingBoundaryCameraRef = useRef<{ code: string; zoom: number } | null>(null)
   const boundaryState = useRegionBoundary(boundaryMetadata?.regionCode ?? null, boundaryRepository)
   const selectedBoundarySearchItem = selectedSearchRegion
     && (selectedSearchRegion.regionCode ?? selectedSearchRegion.id) === boundaryRegionCode
@@ -295,24 +299,32 @@ export function PublicHousingExplorer({
   const focusBoundary = useCallback((code: string) => {
     const metadata = findRegionBoundaryMetadata(code)
     const item = boundarySelectionRef.current
+    const zoom = pendingBoundaryCameraRef.current?.zoom ?? REGION_FOCUS_ZOOM
+    pendingBoundaryCameraRef.current = null
     pendingDetailCameraRef.current = null
-    if (metadata) {
-      const { bounds } = metadata
+    const selectedPoint = item && (item.regionCode ?? item.id) === code
+      && item.latitude !== null && item.longitude !== null ? item : null
+    const bounds = metadata?.bounds
+    const latitude = selectedPoint?.latitude ?? metadata?.representativePoint?.latitude ?? (bounds ? (bounds.southWestLat + bounds.northEastLat) / 2 : null)
+    const longitude = selectedPoint?.longitude ?? metadata?.representativePoint?.longitude ?? (bounds ? (bounds.southWestLng + bounds.northEastLng) / 2 : null)
+    if (latitude !== null && longitude !== null) {
+      const padding = boundaryScreenPadding(mapWorkspaceRef.current)
+      // A region's area must not push the camera back below the individual-marker threshold.
       setMapCameraTarget({
-        latitude: (bounds.southWestLat + bounds.northEastLat) / 2,
-        longitude: (bounds.southWestLng + bounds.northEastLng) / 2,
-        bounds,
-        boundsPadding: boundaryScreenPadding(mapWorkspaceRef.current),
+        latitude,
+        longitude,
+        zoom: code.length === 2 ? 11 : Math.max(REGION_FOCUS_ZOOM, zoom),
+        screenOffset: { x: (padding.left - padding.right) / 2, y: (padding.top - padding.bottom) / 2 },
       })
-      setCameraRequestId((current) => current + 1)
-    } else if (item && (item.regionCode ?? item.id) === code
-      && item.latitude !== null && item.longitude !== null) {
-      setMapCameraTarget({ latitude: item.latitude, longitude: item.longitude })
       setCameraRequestId((current) => current + 1)
     }
   }, [])
 
   useLayoutEffect(() => {
+    // Read padding after search/list visibility commits, including reselecting the same region.
+    if (pendingBoundaryCameraRef.current && pendingBoundaryCameraRef.current.code !== boundaryRegionCode) {
+      return
+    }
     if (handledBoundaryCodeRef.current === boundaryRegionCode) {
       return
     }
@@ -320,7 +332,7 @@ export function PublicHousingExplorer({
     if (boundaryRegionCode !== null) {
       focusBoundary(boundaryRegionCode)
     }
-  }, [boundaryRegionCode, focusBoundary])
+  })
 
   const changeBoundarySelection = useCallback((code: string | null) => {
     const query = setRegionBoundaryCode(new URLSearchParams(location.search), code)
@@ -796,7 +808,7 @@ export function PublicHousingExplorer({
     }
     const searchItem = selectedSearchComplex?.id === pending.id ? selectedSearchComplex : null
     const target = searchItem?.latitude != null && searchItem.longitude !== null
-      ? { latitude: searchItem.latitude, longitude: searchItem.longitude, zoom: 16 }
+      ? { latitude: searchItem.latitude, longitude: searchItem.longitude }
       : toDetailMapTarget(complexDetail.detail)
     if (!target) {
       return
@@ -804,6 +816,7 @@ export function PublicHousingExplorer({
     pendingDetailCameraRef.current = null
     setMapCameraTarget({
       ...target,
+      zoom: Math.max(COMPLEX_FOCUS_ZOOM, viewportRef.current?.zoom ?? COMPLEX_FOCUS_ZOOM),
       screenOffset: detailScreenOffset(mapWorkspaceRef.current),
     })
     setCameraRequestId((current) => current + 1)
@@ -935,13 +948,28 @@ export function PublicHousingExplorer({
     transitionWaitingForIdleRef.current = true
     setClusterTransitioning(true)
     cancelServerMapRequest()
+    const code = /^BASIC_REGION:(\d{5})$/.exec(marker.groupKey)?.[1]
+    if (code && findRegionBoundaryMetadata(code)) {
+      pendingBoundaryCameraRef.current = { code, zoom: marker.expansionZoom }
+      handledBoundaryCodeRef.current = null
+      boundarySelectionRef.current = { id: code, regionCode: code, latitude: marker.latitude, longitude: marker.longitude }
+      setSelectedSearchRegion(null)
+      setActiveResultTab('complexes')
+      const query = setRegionBoundaryCode(clearDetailQuery(new URLSearchParams(location.search)), code)
+      navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(query) }, {
+        replace: code === boundaryRegionCode,
+        state: clearDetailHistoryState(location.state),
+      })
+      return
+    }
+    pendingDetailCameraRef.current = null
     setMapCameraTarget({
       latitude: marker.latitude,
       longitude: marker.longitude,
       zoom: marker.expansionZoom,
     })
     setCameraRequestId((current) => current + 1)
-  }, [cancelServerMapRequest])
+  }, [boundaryRegionCode, cancelServerMapRequest, location, navigate])
 
   const interruptClusterTransition = useCallback(() => {
     if (!clusterTransitionRef.current) {
