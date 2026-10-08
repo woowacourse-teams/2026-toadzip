@@ -73,7 +73,7 @@ class HousingMapResponseFactoryTest {
         assertEquals("AGGREGATE", node.type());
         assertEquals(1L, node.uniqueComplexCount());
         assertEquals(4, node.nextStage());
-        assertEquals(decimal("14.00"), node.expansionZoom());
+        assertEquals(decimal("12.60"), node.expansionZoom());
     }
 
     @Test

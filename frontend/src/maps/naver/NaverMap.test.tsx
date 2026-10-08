@@ -611,6 +611,21 @@ describe('NaverMap', () => {
     expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
   })
 
+  it('지역 전체를 맞추면서 검색 최대 줌을 제한한다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    render(<NaverMap representation="INDIVIDUAL" markers={[]} cameraRequestId={1}
+      cameraTarget={{ ...regionCameraTarget, boundsMaxZoom: 12.2 }} />)
+    await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
+    act(() => fakeSdk.emitInit())
+
+    expect(fakeSdk.fitBoundsMap).toHaveBeenCalledWith([
+      { latitude: 37.5, longitude: 126.8 },
+      { latitude: 37.7, longitude: 127.2 },
+    ], { top: 60, right: 24, bottom: 32, left: 400, maxZoom: 12.2 })
+    expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
+  })
+
   it('지역 bounds의 패딩을 생략하면 undefined 필드로 SDK 기본 여백을 덮어쓰지 않는다', async () => {
     const fakeSdk = createFakeSdk()
     loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)

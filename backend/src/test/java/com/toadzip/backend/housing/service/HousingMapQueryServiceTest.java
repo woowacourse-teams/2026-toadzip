@@ -63,7 +63,7 @@ class HousingMapQueryServiceTest {
 
         assertEquals(2, response.resolvedStage());
         assertEquals("AGGREGATE", response.representation().name());
-        assertEquals("2026-09-02-v1", response.policyVersion());
+        assertEquals("2026-10-07-v2", response.policyVersion());
         assertEquals("2026-07-01", response.regionDatasetVersion());
         assertEquals(List.of(node), response.nodes());
     }
