@@ -117,6 +117,23 @@ function factValue(container: HTMLElement, term: string) {
 }
 
 describe('HousingComplexDetailPanel', () => {
+  it('두 면적 전환 버튼으로 모달 전체를 양방향 전환하고 주택형 변경에도 단위를 유지한다', () => {
+    const { panel } = renderPanel()
+    expect(within(panel).getAllByRole('button', { name: '평 전환' })).toHaveLength(2)
+    fireEvent.click(within(section(panel, '주택형별 임대조건')).getByRole('button', { name: '평 전환' }))
+    expect(within(panel).getAllByRole('button', { name: '㎡ 전환' })).toHaveLength(2)
+    expect(within(panel).getAllByText('10.93평')).toHaveLength(2)
+    expect(factValue(section(panel, '주택형 정보'), '공급 면적').getByRole('definition')).toBeEmptyDOMElement()
+    fireEvent.click(within(panel).getByRole('tab', { name: '44B' }))
+    expect(within(panel).getAllByText('13.57평')).toHaveLength(2)
+    expect(within(panel).getByText('18.19평')).toBeVisible()
+    fireEvent.click(within(section(panel, '주택형 정보')).getByRole('button', { name: '㎡ 전환' }))
+    expect(within(panel).getAllByRole('button', { name: '평 전환' })).toHaveLength(2)
+    expect(within(panel).getAllByText('44.87㎡')).toHaveLength(2)
+    expect(within(panel).getByText('60.12㎡')).toBeVisible()
+    expect(within(panel).getByText('50,000,000원')).toBeVisible()
+  })
+
   it('회원 단지 알림 클릭은 단지 ID를 저장하고 준비 중임을 안내한다', async () => {
     localStorage.clear()
     const record = vi.fn().mockResolvedValue(undefined)

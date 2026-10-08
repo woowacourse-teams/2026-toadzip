@@ -156,6 +156,12 @@ import { IconButton } from '../design-system/components/IconButton'
 단지 상세의 미제공 정보는 항목명을 유지하고 값을 빈칸으로 표시한다. 실제 0과 false는 보존한다.
 필터의 기존 금액 표기는 유지한다.
 
+상세 면적은 기본 ㎡이며 `AreaUnitToggle`로 평과 양방향 전환한다. 단지 상세의 임대조건 표와
+선택 주택형 상세, 공고 상세의 단지 비교와 주택형 비교에 각각 버튼을 둔다. 같은 모달의 버튼과
+면적은 함께 전환하며 주택형·단지 탭을 바꿔도 단위를 유지한다. `housingArea`는 원본 ㎡에서
+평을 계산하고 소수점 둘째 자리까지 표시하므로 왕복 전환에 반올림 오차가 누적되지 않는다.
+`DetailSection`의 `actions`는 제목 우측에 배치하며 보조 설명은 그 아래에 둔다.
+
 금액은 [housingMoney](../src/public-housing/presentation/housingMoney.ts), 누락 표시는
 [missingData](../src/public-housing/presentation/missingData.ts), 상세 데이터 변환은
 [complexDetailPresentation](../src/public-housing/presentation/complexDetailPresentation.ts)와
