@@ -32,11 +32,17 @@ public class ComplexDetailQueryRepository {
                    housing_complex.recent_one_year_move_out_count AS move_out_count_last_year,
                    housing_complex.total_household_count,
                    housing_complex.parking_space_count AS total_parking_count,
-                   housing_complex.deposit_min,
-                   housing_complex.deposit_max,
-                   housing_complex.monthly_rent_min,
-                   housing_complex.monthly_rent_max
+                   price_range.deposit_min,
+                   price_range.deposit_max,
+                   price_range.monthly_rent_min,
+                   price_range.monthly_rent_max
             FROM housing_complexes housing_complex
+            LEFT JOIN LATERAL (
+                SELECT MIN(basic_deposit) AS deposit_min, MAX(basic_deposit) AS deposit_max,
+                       MIN(basic_monthly_rent) AS monthly_rent_min, MAX(basic_monthly_rent) AS monthly_rent_max
+                FROM housing_types
+                WHERE housing_complex_id = housing_complex.id
+            ) price_range ON true
             WHERE housing_complex.id = COALESCE(
                 (SELECT alias.housing_complex_id FROM housing_complex_aliases alias WHERE alias.id = :complexId),
                 :complexId) AND housing_complex.admin_deleted = false
@@ -49,7 +55,12 @@ public class ComplexDetailQueryRepository {
                    housing_type.supply_area,
                    housing_type.floor_plan_url AS floor_plan_image_url,
                    housing_type.duplex AS is_duplex,
-                   housing_type.maintenance_fee
+                   housing_type.maintenance_fee,
+                   housing_type.total_household_count,
+                   housing_type.basic_deposit,
+                   housing_type.basic_monthly_rent,
+                   housing_type.rental_condition_collected_at,
+                   housing_type.source_housing_type_identifier
             FROM housing_types housing_type
             WHERE housing_type.housing_complex_id = :complexId
             ORDER BY housing_type.id
@@ -230,8 +241,21 @@ public class ComplexDetailQueryRepository {
                 resultSet.getBigDecimal("supply_area"),
                 resultSet.getString("floor_plan_image_url"),
                 resultSet.getObject("is_duplex", Boolean.class),
-                resultSet.getBigDecimal("maintenance_fee")
+                resultSet.getBigDecimal("maintenance_fee"),
+                resultSet.getObject("total_household_count", Integer.class),
+                resultSet.getObject("basic_deposit", Long.class),
+                resultSet.getObject("basic_monthly_rent", Long.class),
+                readInstant(resultSet, "rental_condition_collected_at"),
+                resultSet.getString("source_housing_type_identifier")
         );
+    }
+
+    private java.time.Instant readInstant(ResultSet resultSet, String column) throws SQLException {
+        var timestamp = resultSet.getTimestamp(column);
+        if (timestamp == null) {
+            return null;
+        }
+        return timestamp.toInstant();
     }
 
     private CurrentSupplyConditionRow mapSupplyCondition(ResultSet resultSet, int rowNumber)
