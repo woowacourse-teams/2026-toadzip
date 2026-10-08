@@ -149,6 +149,12 @@ import { IconButton } from '../design-system/components/IconButton'
 각 기능의 행동 테스트는 같은 디렉터리의 `*.test.tsx`다. 기본 컴포넌트가 API 요청·모집 상태 판단·
 금액 계산·URL 상태·지도 SDK를 소유하지 않도록 한다. 위 서비스 패턴은 기능 폴더에 유지한다.
 
+단지 목록의 보증금·월 임대료는 마커와 같은 `mapMarkerAmount`의 COMPACT 표기를 사용한다.
+1천만원 미만은 만, 1억원 미만은 천, 그 이상은 억으로 표시하고 정책에 따라 버림 처리한다.
+금액 누락은 `-`, 실제 0원은 `0원`으로 표시하며 원본 금액과 범위 판단은 보존한다.
+단지·공고 상세의 금액은 `formatHousingMoneyWon`으로 쉼표를 포함한 원 단위 전체 금액을 표시한다.
+필터의 기존 금액 표기는 유지한다.
+
 금액은 [housingMoney](../src/public-housing/presentation/housingMoney.ts), 누락 표시는
 [missingData](../src/public-housing/presentation/missingData.ts), 상세 데이터 변환은
 [complexDetailPresentation](../src/public-housing/presentation/complexDetailPresentation.ts)와
