@@ -8,7 +8,7 @@ import { labels, provinces, rentals } from './fields'
 import styles from './ManagementList.module.css'
 import { managementListParams } from './managementNavigation'
 
-export function ManagementList({ resource, embedded = false, refresh = 0 }: { resource: ManagementResource; embedded?: boolean; refresh?: number }) {
+export function ManagementList({ resource, embedded = false, compact = false, refresh = 0 }: { resource: ManagementResource; embedded?: boolean; compact?: boolean; refresh?: number }) {
   const [params, setParams] = useSearchParams()
   const [loaded, setLoaded] = useState<{ query: string; filters: string; page: ManagementPage } | null>(null)
   const [failure, setFailure] = useState<{ query: string; message: string } | null>(null)
@@ -63,7 +63,7 @@ export function ManagementList({ resource, embedded = false, refresh = 0 }: { re
     {error ? <div role="alert" className="registration-error"><p>{error}</p><button onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></div> : null}
     <div className={styles.results} aria-busy={pending}>
       {pending ? <p role="status" className={page ? styles.loading : undefined}>목록을 불러오는 중…</p> : null}
-      {page ? <><p className="ingest-meta">등록일 최신순 · 총 {page.totalElements.toLocaleString('ko-KR')}건</p><ManagementSummaryTable items={page.items} resource={resource} returnTo={returnTo} inlineSearch={embedded ? search : undefined} fixedHeight />
+      {page ? <><p className={`ingest-meta ${styles.resultCount}`}>등록일 최신순 · 총 {page.totalElements.toLocaleString('ko-KR')}건</p><ManagementSummaryTable items={page.items} resource={resource} returnTo={returnTo} inlineSearch={embedded ? search : undefined} compact={compact} fixedHeight />
         <ListPagination page={page.page} totalPages={page.totalPages} onMove={move} disabled={pending} guardNavigation={embedded} /></> : null}
     </div>
   </section>

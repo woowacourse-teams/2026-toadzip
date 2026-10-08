@@ -5,7 +5,7 @@ import { ManagementStatus } from './ManagementStatus'
 import styles from './ManagementList.module.css'
 
 type Column = { key: string; label: string; width: number; read: (summary: ManagementSummary) => string | number | boolean | null | undefined; kind?: 'number' | 'status' }
-export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight = false, inlineSearch }: { items: ManagementSummary[]; resource: ManagementResource; returnTo?: string; fixedHeight?: boolean; inlineSearch?: string }) {
+export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight = false, compact = false, inlineSearch }: { items: ManagementSummary[]; resource: ManagementResource; returnTo?: string; fixedHeight?: boolean; compact?: boolean; inlineSearch?: string }) {
   const selected = useMatch(`/admin/${resource}/:id`)?.params.id
   if (!items.length) return <div className={`admin-empty ${fixedHeight ? styles.fixedHeight : ''}`}><h2>표시할 {resource === 'complexes' ? '단지' : '공고'}가 없습니다.</h2><p>검색 조건을 바꾸거나 새 데이터를 등록해 주세요.</p></div>
   const columns: Column[] = [
@@ -16,12 +16,14 @@ export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight 
     { key: 'deleted·modified·reviewRequired', label: '관리 상태', width: 204, read: () => null, kind: 'status' },
   ]
   const title = resource === 'complexes' ? '단지' : '공고'
-  return <div className={`${styles.scroll} ${fixedHeight ? styles.fixedHeight : ''}`} role="region" tabIndex={0} aria-label={`정제 ${title} 목록 가로 스크롤`}>
+  return <div className={`${styles.scroll} ${fixedHeight ? styles.fixedHeight : ''} ${compact ? styles.compact : ''}`} role="region" tabIndex={0} aria-label={`정제 ${title} 목록 가로 스크롤`}>
     <table className={styles.table} aria-label={`정제 ${title} 목록`}>
       <colgroup><col className={styles.nameColumn} />{columns.map(column => <col key={column.key} style={{ width: column.width }} />)}</colgroup>
       <thead><tr><th scope="col">{title}명</th>{columns.map(column => <th key={column.key} scope="col">{column.label}</th>)}</tr></thead>
       <tbody>{items.map(item => <tr key={item.id} data-selected={selected === String(item.id) || undefined}>
-        <th scope="row"><Link aria-current={selected === String(item.id) ? 'page' : undefined} title={item.name} to={`/admin/${resource}/${item.id}${inlineSearch !== undefined ? inlineSearch ? `?${inlineSearch}` : '' : returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`}>{item.name}</Link></th>
+        <th scope="row"><Link data-management-id={item.id} aria-current={selected === String(item.id) ? 'page' : undefined} title={item.name} to={`/admin/${resource}/${item.id}${inlineSearch !== undefined ? inlineSearch ? `?${inlineSearch}` : '' : returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`}>{item.name}</Link>
+          {compact ? <><span className={styles.rowSubtitle}>{item.subtitle}</span><div className={styles.rowMeta}><span>{labels[item.provider] ?? item.provider}</span><span>{labels[item.rental] ?? item.rental}</span><ManagementStatus summary={item} /></div></> : null}
+        </th>
         {columns.map(column => <td key={column.key} data-field={column.key} className={column.kind === 'number' ? styles.number : undefined}>
           {column.kind === 'status' ? <ManagementStatus summary={item} /> : <TextValue value={column.read(item)} />}
         </td>)}

@@ -54,7 +54,7 @@ export function ManagementDetail({resource, embedded = false, onChanged}: {resou
     {error ? <div className="registration-error" role="alert"><p>{error}</p><button type="button" disabled={busy} onClick={() => {if(!dirty || window.confirm('입력한 내용을 버리고 새로 조회할까요?')) setAttempt(v => v+1)}}>새로 조회</button></div> : null}
     {!value && !error ? <p role="status">상세 정보를 불러오는 중…</p> : null}
     {notice ? <p className="registration-success" role="status">{notice}</p> : null}
-    {value ? <><header className="management-heading"><div>{embedded ? <h2>{value.summary.name}</h2> : <h1>{value.summary.name}</h1>}<p>{value.summary.subtitle}</p><ManagementStatus summary={value.summary} /></div>
+    {value ? <><header className="management-heading"><div>{embedded ? <h2>{value.summary.name}</h2> : <h1>{value.summary.name}</h1>}<div className="management-summary-meta"><p>{value.summary.subtitle}</p><ManagementStatus summary={value.summary} /></div></div>
       {!editing || embedded ? <div className="admin-inline">{!value.summary.deleted && !editing ? <button className="admin-primary" onClick={() => {setEditing(true);setSection('info');setError('');setNotice('')}}>수정</button> : null}
         <button disabled={busy || dirty} className={value.summary.deleted ? '' : 'admin-danger'} onClick={() => setConfirmation(true)}>{value.summary.deleted ? '복구' : '삭제'}</button></div> : null}</header>
       {value.summary.reviewRequired ? <p className="admin-warning">수집 원천과 관리자 수정값이 다릅니다. 공식 원문을 확인한 뒤 필요한 내용을 수정해 주세요. 저장한 관리자 값은 자동 정제로 덮어쓰지 않습니다.</p> : null}

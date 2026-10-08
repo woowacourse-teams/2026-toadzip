@@ -91,6 +91,7 @@ it('행을 열어도 목록과 검색을 유지하며 바로 수정하고 닫는
   fireEvent.click(screen.getByRole('link', { name: '편집 닫기' }))
   expect(screen.queryByLabelText('이름')).not.toBeInTheDocument()
   expect(screen.getByRole('table')).toBe(table)
+  expect(screen.getByRole('link', { name: summary.name })).toHaveFocus()
 })
 
 it('저장하면 수정된 행을 다시 조회하고 실패하면 입력을 보존한다', async () => {

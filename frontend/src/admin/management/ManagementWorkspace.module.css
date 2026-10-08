@@ -1,25 +1,156 @@
-.workspace { min-width: 0; color: var(--ds-color-text); }
-:global(.admin-content):has(> .workspace) { max-width: none; box-sizing: border-box; }
-.heading { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-4); margin-bottom: var(--ds-space-6); }
-.heading h1 { font-size: 26px; }
-.body { display: grid; gap: var(--ds-space-6); align-items: start; }
-.withEditor { grid-template-columns: minmax(0, 1fr) minmax(440px, 0.9fr); }
-.editor { min-width: 0; background: var(--ds-color-surface); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); padding: var(--ds-space-5); }
+.workspace {
+  min-width: 0;
+  container-type: inline-size;
+  color: var(--ds-color-text);
+  font-family: var(--ds-font-family-base);
+  font-size: var(--ds-text-body);
+  line-height: var(--ds-line-height-body);
+}
+:global(.admin-content):has(> .workspace) { max-width: 1920px; box-sizing: border-box; padding: 28px 32px 36px; }
+.heading { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-4); margin-bottom: var(--ds-space-5); }
+.heading h1 { font-size: 26px; letter-spacing: -.04em; line-height: 1.4; }
+.body { display: grid; gap: var(--ds-space-4); align-items: start; min-width: 0; }
+.body > :global(.management-page) > form { margin-bottom: 0; }
+.withEditor { grid-template-columns: minmax(300px, .65fr) minmax(560px, 1.35fr); }
+.withEditor > :global(.management-page) { display: contents; container-type: normal; }
+.withEditor > :global(.management-page) > form { grid-column: 1 / -1; }
+.withEditor > :global(.management-page) > :global(.registration-error) { grid-column: 1 / -1; }
+.withEditor > :global(.management-page) > [aria-busy] {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  height: clamp(320px, calc(100dvh - 292px), 900px);
+  min-height: 0;
+}
+.withEditor > :global(.management-page) > [aria-busy] > [role="region"] { flex: 1; min-height: 0; max-height: none; }
+.withEditor :global(.ingest-meta) { margin-top: 0; }
+.withEditor :global([aria-label="목록 페이지"]) { gap: 10px; padding: 12px 0 0; margin-top: 0; }
+.withEditor :global([aria-label="목록 페이지"]) > div:first-child { width: 100%; justify-content: center; }
+.withEditor :global([aria-label="목록 페이지"]) > span { margin: 0 auto; }
+.withEditor :global([aria-label="페이지 바로 이동"]) { display: none; }
+.withEditor :global([aria-label="목록 페이지"]) button { min-width: 30px; min-height: 32px; padding: 5px 7px; font-size: 11px; }
+.editor {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: clamp(320px, calc(100dvh - 292px), 900px);
+  background: var(--ds-color-surface);
+  border: 1px solid var(--ds-color-border-base);
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgb(25 45 35 / 5%);
+  overflow: hidden;
+}
 .editor:focus { outline: none; }
-.editor:focus-visible { outline: 2px solid var(--ds-color-action); }
-.editorHeading { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--ds-space-5); padding-bottom: var(--ds-space-4); border-bottom: 1px solid var(--ds-color-divider); }
-.editorHeading a { padding: var(--ds-space-2); font-size: var(--ds-text-caption); }
+.withEditor:has(> :global(.management-page) > form > details[open]) > .editor,
+.withEditor:has(> :global(.management-page) > form > details[open]) > :global(.management-page) > [aria-busy] { height: clamp(300px, calc(100dvh - 452px), 800px); }
+.withEditor:has(> :global(.management-page) > :global(.registration-error)) > .editor,
+.withEditor:has(> :global(.management-page) > :global(.registration-error)) > :global(.management-page) > [aria-busy] { grid-row: 3; }
+.withEditor > :global(.management-page) > :global(.registration-error) { grid-row: 2; }
+.editor:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
+.editorHeading {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--ds-space-3);
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--ds-color-divider);
+  background: var(--ds-color-surface-subtle);
+}
+.editorHeading strong { font-size: 15px; letter-spacing: -.02em; }
+.editorHeading a { display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: var(--ds-radius-icon-control); font-size: var(--ds-text-caption); color: var(--ds-color-label); text-decoration: none; }
+.editorHeading a:hover { background: var(--ds-color-divider); color: var(--ds-color-text); }
+.editorBody { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 24px 0; scrollbar-gutter: stable; }
+.editorBody > :global(.management-page) { min-height: 100%; }
+.editorBody h2 { font-size: 16px; }
+
+/* Controls are scoped to the complex and announcement workspaces. */
+.workspace :is(button, input, select, textarea) { font-size: var(--ds-text-body); }
+.workspace :is(button, a):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
+.workspace :global(.admin-primary) { min-height: 42px; border-radius: var(--ds-radius-control); background: var(--ds-color-action); border-color: var(--ds-color-action); color: var(--ds-color-surface); box-shadow: 0 2px 3px rgb(0 60 30 / 8%); }
+.workspace :global(.admin-primary):hover:not(:disabled) { background: color-mix(in srgb, var(--ds-color-action) 85%, black); }
+.workspace button:not(:global(.admin-primary)) { border-color: var(--ds-color-border-base); border-radius: var(--ds-radius-control); color: var(--ds-color-label); }
+.workspace button:not(:global(.admin-primary)):hover:not(:disabled) { background: var(--ds-color-surface-subtle); color: var(--ds-color-text); }
+.workspace :is(input:not([type="checkbox"]), select, textarea) { box-sizing: border-box; min-height: 42px; border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); padding: 9px 12px; color: var(--ds-color-text); background: var(--ds-color-surface); font-weight: 400; transition: border-color .15s; }
+.workspace :is(input, select, textarea):hover:not(:disabled):not(:read-only) { border-color: var(--ds-color-muted); }
+.workspace :is(input, select, textarea):focus { outline: 2px solid var(--ds-color-action); outline-offset: 1px; border-color: var(--ds-color-action); }
+.workspace input:read-only { background: var(--ds-color-surface-subtle); color: var(--ds-color-label); }
+.workspace :is(input, select)[aria-invalid="true"] { border-color: var(--ds-color-deadline); }
+.workspace :global(.admin-status) { padding: 3px 7px; font-size: 11px; font-weight: 500; border-radius: 5px; }
+
 .editor :global(.registration-card) { padding: 0; border: 0; border-radius: 0; box-shadow: none; }
-.editor :global(.registration-grid), .editor :global(.admin-data-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-space-4); }
-.editor :global(.registration-grid) > :first-child { grid-column: 1 / -1; }
-.editor :global(.registration-field) label { display: block; }
-.editor :global(.management-heading) { margin: 0 0 var(--ds-space-4); gap: var(--ds-space-3); }
-.editor :global(.management-heading) h2 { margin: 0; font-size: 20px; overflow-wrap: anywhere; }
-.editor :global(.management-heading) p { font-size: var(--ds-text-caption); }
-.editor :global(.management-page) fieldset, .editor :global(.registration-form) fieldset { padding: var(--ds-space-4) 0; margin: 0 0 var(--ds-space-4); border: 0; border-bottom: 1px solid var(--ds-color-divider); border-radius: 0; }
-.editor :global(.admin-detail-section), .editor :global(.admin-supply) { padding: var(--ds-space-4); box-shadow: none; }
-.editor :global(.admin-section-tabs) { gap: var(--ds-space-2); }
-.editor :global(.admin-section-tabs) button { padding: var(--ds-space-2); font-size: var(--ds-text-caption); }
-.editor :global(.admin-save-bar) { bottom: 0; border-radius: 0; border-width: 1px 0 0; padding: var(--ds-space-3) 0; box-shadow: none; }
-@media (max-width: 1250px) { .withEditor { grid-template-columns: minmax(0, 1fr); } .withEditor .editor { grid-row: 1; } }
-@media (max-width: 600px) { .editor { padding: var(--ds-space-4); } .editor :global(.registration-grid), .editor :global(.admin-data-grid) { grid-template-columns: minmax(0, 1fr); } }
+.editor :global(.registration-card) > h2 { font-size: 18px; margin-bottom: 20px; }
+.editor :global(.management-heading) { margin: 0 0 20px; gap: 16px; align-items: flex-start; }
+.editor :global(.management-heading) > div:first-child { min-width: 0; }
+.editor :global(.management-heading) h2 { margin: 0; font-size: 19px; line-height: 1.5; letter-spacing: -.03em; overflow-wrap: anywhere; }
+.editor :global(.management-heading) p { margin: 6px 0 8px; color: var(--ds-color-muted); font-size: var(--ds-text-caption); }
+.editor :global(.management-summary-meta) { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; }
+.editor :global(.management-summary-meta) p { margin: 0; }
+.editor :global(.management-heading) :global(.admin-danger) { flex: none; padding: 5px 10px; min-height: 32px; color: #a33232; background: transparent; border-color: transparent; font-size: 12px; }
+.editor :global(.management-heading) :global(.admin-danger):hover { background: #fff1f1; color: #a33232; }
+.editor :global(.admin-section-tabs) {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 20px;
+  margin: 0 -24px 24px;
+  padding: 0 24px;
+  background: var(--ds-color-surface);
+  border-bottom: 1px solid var(--ds-color-divider);
+  overflow-x: auto;
+}
+.editor :global(.admin-section-tabs) button { flex: none; min-height: 48px; padding: 12px 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--ds-color-label); font-size: 13px; white-space: nowrap; }
+.editor :global(.admin-section-tabs) button[aria-pressed="true"] { color: var(--ds-color-action); border-bottom-color: var(--ds-color-action); background: transparent; }
+.editor :global(.registration-form) { gap: 20px; }
+.editor :global(.management-page) fieldset, .editor :global(.registration-form) fieldset { min-width: 0; margin: 0 0 24px; padding: 18px; border: 1px solid var(--ds-color-divider); border-radius: 10px; background: var(--ds-color-surface-subtle); }
+.editor fieldset legend { padding: 0 6px; font-size: 14px; font-weight: 700; color: var(--ds-color-text); }
+.editor :global(.registration-grid), .editor :global(.admin-data-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.editor :global(.registration-field):has([name="name"], [name="address.roadAddress"], [name="originalUrl"], [name="overviewImageUrl"], [name="receptionPlace.address"], input[type="url"]) { grid-column: 1 / -1; }
+.editor :global(.registration-field) label { display: block; font-size: 13px; font-weight: 600; color: var(--ds-color-label); }
+.editor :global(.registration-field) :global(.admin-required) { color: var(--ds-color-action); font-size: 10px; }
+.editor :global(.admin-detail-section), .editor :global(.admin-supply) { margin: 0 0 20px; padding: 20px; border-color: var(--ds-color-divider); border-radius: 10px; box-shadow: none; }
+.editor :global(.admin-detail-section) h2, .editor :global(.admin-supply) h3 { font-size: 15px; line-height: 1.5; }
+.editor :global(.admin-data-grid) { margin-top: 16px; gap: 18px; }
+.editor :global(.admin-data-grid) dt { font-size: 12px; color: var(--ds-color-muted); }
+.editor :global(.admin-data-grid) dd { font-size: 14px; font-weight: 500; color: var(--ds-color-text); }
+.editor :global(.admin-table) { font-size: 13px; }
+.editor :global(.admin-table) :is(th, td) { padding: 12px; }
+.editor :global(.admin-save-bar) { position: sticky; bottom: 0; z-index: 4; justify-content: flex-end; gap: 8px; margin: 0 -24px; padding: 14px 24px; border: 0; border-top: 1px solid var(--ds-color-divider); border-radius: 0; box-shadow: 0 -6px 16px rgb(30 40 35 / 4%); background: var(--ds-color-surface); }
+.editor :global(.registration-submit) { position: sticky; bottom: 12px; z-index: 4; width: 100%; background: var(--ds-color-action); border-color: var(--ds-color-action); border-radius: var(--ds-radius-control); min-height: 44px; }
+.editor :global(.admin-warning) { margin: 0 0 20px; padding: 12px 14px; font-size: 12px; border-color: #ebdba9; background: #fffbef; }
+.editor :global(.admin-mode-switch) { padding: 4px; border-radius: 10px; background: var(--ds-color-surface-subtle); }
+.editor :global(.admin-mode-switch) button { flex: 1; border: 0; background: transparent; }
+.editor :global(.admin-mode-switch) button[aria-pressed="true"] { background: var(--ds-color-surface); color: var(--ds-color-action); box-shadow: 0 1px 5px rgb(30 40 35 / 10%); }
+
+@media (max-width: 1180px) {
+  .withEditor { grid-template-columns: minmax(0, 1fr); }
+  .editor { grid-column: 1; grid-row: 1; height: clamp(360px, calc(100dvh - 200px), 760px); }
+  .withEditor:has(> :global(.management-page) > form > details[open]) > .editor { height: clamp(360px, calc(100dvh - 200px), 760px); }
+  .withEditor:has(> :global(.management-page) > form > details[open]) > :global(.management-page) > [aria-busy] { height: auto; }
+  .withEditor > :global(.management-page) > form { grid-row: 2; }
+  .withEditor > :global(.management-page) > [aria-busy] { grid-row: 3; height: auto; }
+  .withEditor > :global(.management-page) > [aria-busy] > [role="region"] { max-height: 55vh; }
+  .withEditor:has(> :global(.management-page) > :global(.registration-error)) > .editor { grid-row: 1; }
+  .withEditor > :global(.management-page) > :global(.registration-error) { grid-row: 3; }
+  .withEditor:has(> :global(.management-page) > :global(.registration-error)) > :global(.management-page) > [aria-busy] { grid-row: 4; }
+}
+@media (max-width: 700px) {
+  :global(.admin-content):has(> .workspace) { padding: 20px 14px; }
+  .heading h1 { font-size: 22px; }
+  .heading :global(.admin-primary) { padding: 8px 12px; }
+  .editor { border-radius: 12px; min-height: 360px; height: calc(100dvh - 320px); }
+  .withEditor:has(> :global(.management-page) > form > details[open]) > .editor { height: calc(100dvh - 320px); }
+  .editorHeading { padding: 12px 16px; }
+  .editorBody { padding: 20px 16px 0; }
+  .editor :global(.registration-grid), .editor :global(.admin-data-grid) { grid-template-columns: minmax(0, 1fr); }
+  .editor :global(.admin-section-tabs) { gap: 16px; margin-inline: -16px; padding-inline: 16px; }
+  .editor :global(.admin-save-bar) { margin-inline: -16px; padding-inline: 16px; }
+  .editor :global(.management-heading) { flex-direction: row; }
+  .editor :global(.management-heading) h2 { font-size: 17px; }
+}
+@media (prefers-reduced-motion: reduce) { .workspace :is(input, select, textarea) { transition: none; } }
