@@ -66,6 +66,25 @@ describe('알림 수요 저장 경계', () => {
     expect(fetcher).toHaveBeenCalledOnce()
   })
 
+  it('성공 응답의 결과와 요청 식별자를 검증한다', async () => {
+    const result = { eventId: event.eventId, targetType: event.targetType, targetId: event.targetId,
+      outcome: 'ACTIVATED', occurredAt: '2026-10-08T00:00:00Z' }
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ token: 'test-token', headerName: 'X-CSRF-TOKEN' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify(result)))
+    expect(await createNotificationInterestRepository(fetcher).record(event)).toEqual(result)
+  })
+
+  it.each([{ eventId: 'another-event' }, { targetId: 'other' }, { outcome: 'SAVED' }, { occurredAt: 'invalid' }])(
+    '요청과 맞지 않거나 알 수 없는 처리 결과를 성공으로 추측하지 않는다: %j', async (invalid) => {
+      const fetcher = vi.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ token: 'test-token', headerName: 'X-CSRF-TOKEN' })))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ eventId: event.eventId, targetType: event.targetType,
+          targetId: event.targetId, outcome: 'ACTIVATED', occurredAt: '2026-10-08T00:00:00Z', ...invalid })))
+      await expect(createNotificationInterestRepository(fetcher).record(event)).rejects.toThrow('알림 처리 결과')
+    },
+  )
+
   it('DB 저장 실패를 성공으로 처리하지 않는다', async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ token: 'test-token', headerName: 'X-CSRF-TOKEN' })))
@@ -88,4 +107,20 @@ it.each([
 ])('잘못된 설정 응답을 화면에 전달하지 않는다: %j', async (body) => {
   const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(body)))
   await expect(createNotificationInterestRepository(fetcher).loadStatus?.('client')).rejects.toThrow()
+})
+
+it.each([
+  { eventType: 'CONFIRMED' as const, outcome: 'ACTIVATED' },
+  { eventType: 'CANCELLED' as const, outcome: 'CANCELLED' },
+])('회원 $eventType 요청도 서버 결과를 검증하고 중단 신호를 전달한다', async ({ eventType, outcome }) => {
+  const request = { ...event, eventType }
+  const result = { eventId: request.eventId, targetType: request.targetType, targetId: request.targetId,
+    outcome, occurredAt: '2026-10-08T00:00:00Z' }
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce(Response.json({ token: 'csrf', headerName: 'X-XSRF-TOKEN' }))
+    .mockResolvedValueOnce(Response.json(result))
+  const controller = new AbortController()
+  expect(await createNotificationInterestRepository(fetcher).record(request, controller.signal)).toEqual(result)
+  expect(fetcher.mock.calls[1]?.[0]).toMatch(/\/notification-subscriptions\/me$/)
+  expect(fetcher.mock.calls[1]?.[1]).toMatchObject({ body: JSON.stringify(request), signal: controller.signal })
 })

@@ -45,12 +45,12 @@ export function StreetViewPanel({ controller }: { readonly controller: StreetVie
       if (event.key !== 'Escape' || event.defaultPrevented) return
       event.preventDefault()
       event.stopPropagation()
-      controller.close()
+      controller.close('USER_CLOSED', true, 'escape')
     }}>
     <header className={styles.header}>
       <h2 id={titleId}>단지 주변 거리뷰</h2>
       <button ref={returnButton} type="button" className={styles.secondaryButton}
-        onClick={() => controller.close()}>
+        onClick={() => controller.close('USER_CLOSED', true, 'map_button')}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true" focusable="false">
           <path d="m14 5-7 7 7 7M7 12h14" />
         </svg>
@@ -60,7 +60,7 @@ export function StreetViewPanel({ controller }: { readonly controller: StreetVie
     <div className={styles.viewer}>
       {state.kind === 'viewing' && <StreetViewFrame session={state.session} ready={state.ready}
         onReady={controller.onReady} onLocation={controller.onLocation} onFailure={controller.onFailure}
-        onMarkerStatus={controller.onMarkerStatus} onClose={() => controller.close()} />}
+        onMarkerStatus={controller.onMarkerStatus} onClose={() => controller.close('USER_CLOSED', true, 'escape')} />}
       {(state.kind === 'checking' || (state.kind === 'viewing' && !state.ready))
         && <div className={styles.status} role="status">거리뷰를 불러오는 중이에요.</div>}
       {(state.kind === 'blocked' || state.kind === 'error') && <div className={styles.status}>

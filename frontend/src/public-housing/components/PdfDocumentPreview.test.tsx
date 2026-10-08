@@ -60,6 +60,27 @@ function eventBus() {
 }
 
 describe('PDF 연속 열람과 검색', () => {
+  it('pagesinit은 성공이 아니며 오류 없는 실제 페이지 렌더만 노출 검증으로 전달한다', async () => {
+    const telemetry = { requested: vi.fn(), rendered: vi.fn(), failed: vi.fn(), action: vi.fn() }
+    render(<PdfDocumentPreview url="blob:notice" name="공고문.pdf" telemetry={telemetry} />)
+    await ready()
+    expect(telemetry.rendered).not.toHaveBeenCalled()
+    const page = screen.getByRole('region', { name: '공고문.pdf 문서' })
+    act(() => eventBus().dispatch('pagerendered', { source: { div: page }, error: new Error('render') }))
+    expect(telemetry.rendered).not.toHaveBeenCalled()
+    expect(telemetry.failed).toHaveBeenCalledWith('render_failed')
+  })
+
+  it('정상 페이지의 DOM만 성공 노출 검증으로 보내며 URL이나 문서명은 보내지 않는다', async () => {
+    const telemetry = { requested: vi.fn(), rendered: vi.fn(), failed: vi.fn(), action: vi.fn() }
+    render(<PdfDocumentPreview url="blob:notice" name="공고문.pdf" telemetry={telemetry} />)
+    await ready()
+    const page = screen.getByRole('region', { name: '공고문.pdf 문서' })
+    act(() => eventBus().dispatch('pagerendered', { source: { div: page } }))
+    expect(telemetry.rendered).toHaveBeenCalledExactlyOnceWith(page)
+    expect(telemetry.failed).not.toHaveBeenCalled()
+  })
+
   it('전체 문서를 세로 뷰어에 연결하고 스크롤한 페이지를 표시한다', async () => {
     const { unmount } = render(<PdfDocumentPreview url="blob:notice" name="공고문.pdf" />)
     await ready()

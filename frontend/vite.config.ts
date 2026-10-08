@@ -11,6 +11,12 @@ const LOCAL_PUBLIC_HOUSING_MOCK_FILE = fileURLToPath(
 const LOCAL_PUBLIC_HOUSING_MOCK_ROOT = '/__toadzip-local-public-housing'
 const LOCAL_PUBLIC_HOUSING_SNAPSHOT_PATH =
   `${LOCAL_PUBLIC_HOUSING_MOCK_ROOT}/snapshot`
+const POSTHOG_ENVIRONMENT_KEYS = [
+  'VITE_POSTHOG_KEY',
+  'VITE_POSTHOG_HOST',
+  'VITE_ANALYTICS_ENV',
+  'VITE_POSTHOG_LOCAL_ENABLED',
+]
 
 export default defineConfig(({ command, mode }) => {
   const environment = loadEnv(mode, '.', 'VITE_PUBLIC_HOUSING_LOCAL_MOCK')
@@ -20,6 +26,7 @@ export default defineConfig(({ command, mode }) => {
     environment.VITE_PUBLIC_HOUSING_LOCAL_MOCK === 'true'
 
   return {
+    define: posthogEnvironmentDefines(mode),
     plugins: [react(), ...(localMockEnabled ? [localPublicHousingMockPlugin()] : [])],
     build: {
       rolldownOptions: {
@@ -35,6 +42,27 @@ export default defineConfig(({ command, mode }) => {
     },
   }
 })
+
+function posthogEnvironmentDefines(mode: string) {
+  // loadEnv also updates these process variables, even with a narrow prefix.
+  // Keep the existing frontend environment behavior when reading the root file.
+  const preservedKeys = ['VITE_USER_NODE_ENV', 'BROWSER', 'BROWSER_ARGS']
+  const previousValues = preservedKeys.map((key) => [key, process.env[key]] as const)
+  try {
+    const rootDirectory = fileURLToPath(new URL('../', import.meta.url))
+    const environment = loadEnv(mode, rootDirectory, POSTHOG_ENVIRONMENT_KEYS)
+    // loadEnv matches prefixes, so pick exact names instead of spreading its result.
+    return Object.fromEntries(POSTHOG_ENVIRONMENT_KEYS.map((key) => [
+      `import.meta.env.${key}`,
+      JSON.stringify(environment[key] ?? ''),
+    ]))
+  } finally {
+    for (const [key, value] of previousValues) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+}
 
 function localPublicHousingMockPlugin(): Plugin {
   return {

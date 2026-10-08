@@ -44,6 +44,20 @@ export function DualRangeFilter({
 }: DualRangeFilterProps) {
   validateDomain(minimum, maximum, step, majorStep)
   const fieldsetRef = useRef<HTMLFieldSetElement>(null)
+  const analyticsInteractingRef = useRef(false)
+  const analyticsChangedRef = useRef(false)
+  function emitRangeChange(method: 'slider' | 'preset', presetId?: string) {
+    fieldsetRef.current?.dispatchEvent(new CustomEvent('toadzip:filter-range-changed', { bubbles: true, detail: { field: minimumName, method, presetId } }))
+  }
+  function finishAnalyticsInteraction() {
+    analyticsInteractingRef.current = false
+    if (analyticsChangedRef.current) emitRangeChange('slider')
+    analyticsChangedRef.current = false
+  }
+  function sliderChanged() {
+    if (analyticsInteractingRef.current) analyticsChangedRef.current = true
+    else emitRangeChange('slider')
+  }
   const interactingRef = useRef(false)
   const pendingRangeRef = useRef<readonly [number | null, number | null] | null>(null)
   const [normalizedInitialMinimum, normalizedInitialMaximum] = normalizeRange(
@@ -152,7 +166,12 @@ export function DualRangeFilter({
   } : {}
 
   return (
-    <fieldset ref={fieldsetRef} className={styles.filter} style={rangeStyle}>
+    <fieldset ref={fieldsetRef} className={styles.filter} style={rangeStyle}
+      onPointerDownCapture={(event) => { if (event.target instanceof HTMLInputElement && event.target.type === 'range') analyticsInteractingRef.current = true }}
+      onPointerUpCapture={finishAnalyticsInteraction} onPointerCancelCapture={finishAnalyticsInteraction}
+      onLostPointerCaptureCapture={finishAnalyticsInteraction} onBlurCapture={finishAnalyticsInteraction}
+      onKeyDownCapture={(event) => { if (event.target instanceof HTMLInputElement && event.target.type === 'range' && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) analyticsInteractingRef.current = true }}
+      onKeyUpCapture={finishAnalyticsInteraction}>
       <legend className={styles.legend}>{legend}</legend>
       <div className={styles.header}>
         <span className={styles.label} aria-hidden="true">
@@ -174,7 +193,7 @@ export function DualRangeFilter({
           role="group"
           aria-label={`${legend} 빠른 선택`}
         >
-          {presets.map((preset) => {
+          {presets.map((preset, index) => {
             const [presetMinimum, presetMaximum] = normalizeRange(
               preset.minimum,
               preset.maximum,
@@ -194,6 +213,7 @@ export function DualRangeFilter({
                 type="button"
                 aria-pressed={selected}
                 onClick={() => {
+                  if (!selected) emitRangeChange('preset', `preset_${index + 1}`)
                   changeRange(presetMinimum, presetMaximum, true, true)
                 }}
               >
@@ -229,6 +249,7 @@ export function DualRangeFilter({
               maximum,
               step,
             )
+            if (nextValue !== selectedMinimum) sliderChanged()
             changeRange(Math.min(nextValue, selectedMaximum), selectedMaximum, true, false)
           }}
         />
@@ -251,6 +272,7 @@ export function DualRangeFilter({
               maximum,
               step,
             )
+            if (nextValue !== selectedMaximum) sliderChanged()
             changeRange(selectedMinimum, Math.max(nextValue, selectedMinimum), false, true)
           }}
         />

@@ -1,3 +1,4 @@
+import type { DocumentPreviewTelemetry } from './documentAnalytics'
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { AnnotationMode, getDocument, GlobalWorkerOptions, version, type PDFDocumentProxy, type PDFDocumentLoadingTask } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { EventBus, PDFViewer, PDFLinkService } from 'pdfjs-dist/legacy/web/pdf_viewer.mjs'
@@ -17,7 +18,7 @@ export interface PdfSearchResult {
 }
 const emptyResult: PdfSearchResult = { current: 0, total: 0, pending: false, notFound: false }
 
-export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement | null>, viewerRef: RefObject<HTMLDivElement | null>) {
+export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement | null>, viewerRef: RefObject<HTMLDivElement | null>, telemetry?: DocumentPreviewTelemetry) {
   const [page, setPage] = useState(1)
   const [pages, setPages] = useState(0)
   const [ready, setReady] = useState(false)
@@ -37,7 +38,7 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
     let viewer: PDFViewer | undefined
     let task: PDFDocumentLoadingTask | undefined
     let resize: ResizeObserver | undefined
-    const fail = () => { if (!lifecycle.signal.aborted) setError(true) }
+    const fail = () => { if (!lifecycle.signal.aborted) { setError(true); telemetry?.failed('render_failed') } }
 
     async function open() {
       // The legacy build above initializes pdfjsLib, which the web viewer reads
@@ -66,7 +67,11 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
       events.on('updateviewarea', ({ location: position }: { location: PdfLocation }) => {
         if (!lifecycle.signal.aborted) setLocation({ pageNumber: position.pageNumber, top: position.top })
       })
-      events.on('pagerendered', ({ error: renderError }: { error?: unknown }) => { if (renderError) fail() })
+      events.on('pagerendered', ({ error: renderError, source }: { error?: unknown; source?: { div?: unknown } }) => {
+        if (lifecycle.signal.aborted) return
+        if (renderError) fail()
+        else if (source?.div instanceof HTMLElement) telemetry?.rendered(source.div)
+      })
       events.on('updatefindmatchescount', ({ matchesCount }: { matchesCount: { current: number; total: number } }) => {
         if (!lifecycle.signal.aborted && queryRef.current) setResult((previous) => ({ ...previous, ...matchesCount }))
       })
@@ -110,7 +115,7 @@ export function usePdfViewer(url: string, containerRef: RefObject<HTMLDivElement
       void viewer?.l10n?.destroy().catch(() => {})
       void task?.destroy().catch(() => {})
     }
-  }, [url, containerRef, viewerRef])
+  }, [url, containerRef, viewerRef, telemetry])
 
   const search = useCallback((query: string, again = false, previous = false) => {
     queryRef.current = query

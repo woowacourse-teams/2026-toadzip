@@ -1,3 +1,4 @@
+import { useFilterMeasurement } from '../analytics/useFilterMeasurement'
 import { createPortal } from 'react-dom'
 import { Button } from '../../design-system/components/Button'
 import { IconButton } from '../../design-system/components/IconButton'
@@ -81,6 +82,8 @@ export function ComplexFilterToolbar({
   const scrollerRef = useRef<HTMLDivElement>(null)
   const mobileFormRef = useRef<HTMLFormElement>(null)
   const mobileSheetRef = useRef<HTMLElement>(null)
+  const measurement = useFilterMeasurement('complex', mobileSheetOpen ? mobileInitialTopic : openTopic,
+    mobileSheetOpen ? 'mobile' : 'desktop', mobileSheetOpen ? mobileSheetRef : rootRef, filters)
   const mobileSheetBodyRef = useRef<HTMLDivElement>(null)
   const mobileCloseRef = useRef<HTMLButtonElement>(null)
   const mobileResetRef = useRef<HTMLButtonElement>(null)
@@ -111,6 +114,7 @@ export function ComplexFilterToolbar({
         event.target instanceof Node
         && !rootRef.current?.contains(event.target)
       ) {
+        measurement.reason('outside')
         setOpenTopic(null)
         setErrorMessage(null)
       }
@@ -121,6 +125,7 @@ export function ComplexFilterToolbar({
       }
       event.preventDefault()
       const trigger = triggerRefs.current[openTopic]
+      measurement.reason('escape')
       setOpenTopic(null)
       setErrorMessage(null)
       trigger?.focus()
@@ -132,7 +137,7 @@ export function ComplexFilterToolbar({
       document.removeEventListener('pointerdown', closeFromOutside, true)
       document.removeEventListener('keydown', closeFromEscape)
     }
-  }, [openTopic])
+  }, [openTopic, measurement])
 
   useEffect(() => {
     if (!mobileSheetOpen) {
@@ -144,6 +149,7 @@ export function ComplexFilterToolbar({
     const previousHtmlOverflow = html.style.overflow
     const previousBodyOverflow = body.style.overflow
     const close = () => {
+      measurement.reason('escape')
       setMobileSheetOpen(false)
       setMobileInitialTopic(null)
       setErrorMessage(null)
@@ -153,6 +159,7 @@ export function ComplexFilterToolbar({
       if (window.innerWidth <= 767) {
         return
       }
+      measurement.reason('breakpoint')
       const desktopTopic = desktopTopicFor(mobileInitialTopic)
       setMobileSheetOpen(false)
       setMobileInitialTopic(null)
@@ -208,7 +215,7 @@ export function ComplexFilterToolbar({
       html.style.overflow = previousHtmlOverflow
       body.style.overflow = previousBodyOverflow
     }
-  }, [mobileInitialTopic, mobileSheetOpen])
+  }, [mobileInitialTopic, mobileSheetOpen, measurement])
 
   useLayoutEffect(() => {
     if (!mobileSheetOpen || !mobileResetFocusPendingRef.current) {
@@ -349,7 +356,8 @@ export function ComplexFilterToolbar({
     setMobileSheetOpen(true)
   }
 
-  function closeMobileSheet() {
+  function closeMobileSheet(reason: 'close_button' | 'outside' | 'apply' = 'close_button') {
+    measurement.reason(reason)
     const opener = mobileTriggerRef.current
     setMobileSheetOpen(false)
     setMobileInitialTopic(null)
@@ -367,16 +375,19 @@ export function ComplexFilterToolbar({
       setErrorMessage(rangeError)
       return
     }
+    measurement.apply(next, 'submit')
+    measurement.reason('apply')
     onApply(next)
-    closeMobileSheet()
+    closeMobileSheet('apply')
   }
 
   function resetMobileSheet() {
+    measurement.reset('all', 'applied')
     setErrorMessage(null)
     mobileResetFocusPendingRef.current = true
     setMobileDraftFilters({})
     setMobileFormRevision((current) => current + 1)
-    applyImmediately({})
+    applyImmediately({}, 'reset')
   }
 
   function applyQuickFilter(rangeValues: Readonly<Record<string, number | null>> = {}) {
@@ -414,7 +425,8 @@ export function ComplexFilterToolbar({
     applyImmediately(replaceTopic(filters, topic, draft))
   }
 
-  function applyImmediately(next: ComplexSearchFilters) {
+  function applyImmediately(next: ComplexSearchFilters, mode: 'immediate' | 'reset' = 'immediate') {
+    measurement.apply(next, mode)
     const nextSignature = searchFiltersSignature(next)
     if (nextSignature === filtersSignature) return
     quickAppliedSignatureRef.current = nextSignature
@@ -423,11 +435,12 @@ export function ComplexFilterToolbar({
   }
 
   function resetAllFilters() {
+    measurement.reset('all', 'applied')
     setErrorMessage(null)
     setAllInitialFilters({})
     desktopResetFocusPendingRef.current = true
     setAllFormRevision((current) => current + 1)
-    applyImmediately({})
+    applyImmediately({}, 'reset')
   }
 
   const openLabel = desktopTopicLabel(openTopic)
@@ -489,6 +502,7 @@ export function ComplexFilterToolbar({
                       data-active={topic === 'all' ? appliedFilterCount > 0 : summary !== null}
                       onFocus={() => setRovingTopic(topic)}
                       onClick={() => {
+                        measurement.reason('toggle')
                         setErrorMessage(null)
                         if (topic === 'all') {
                           setAllInitialFilters(filters)
@@ -566,6 +580,7 @@ export function ComplexFilterToolbar({
                   type="button"
                   label={`${openLabel} 필터 패널 닫기`}
                   onClick={() => {
+                    measurement.reason('close_button')
                     setOpenTopic(null)
                     setErrorMessage(null)
                     triggerRefs.current[openTopic]?.focus()
@@ -628,7 +643,7 @@ export function ComplexFilterToolbar({
           className={styles.mobileBackdrop}
           onPointerDown={(event) => {
             if (event.target === event.currentTarget) {
-              closeMobileSheet()
+              closeMobileSheet('outside')
             }
           }}
         >
@@ -669,7 +684,7 @@ export function ComplexFilterToolbar({
                   className={styles.mobileClose}
                   type="button"
                   label="단지 필터 닫기"
-                  onClick={closeMobileSheet}
+                  onClick={() => closeMobileSheet()}
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" focusable="false">
                     <path d="m5 5 14 14M19 5 5 19" />

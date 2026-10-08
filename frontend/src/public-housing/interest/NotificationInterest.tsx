@@ -1,5 +1,6 @@
+import { captureProductEvent, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
 import { type KeyboardEvent, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { notificationInterestRepository, type NotificationEventSource, type NotificationEventType, type NotificationInterestEvent, type NotificationInterestRepository, type NotificationTarget } from './notificationInterestRepository'
+import { notificationInterestRepository, type NotificationEventSource, type NotificationEventType, type NotificationInterestEvent, type NotificationInterestRepository, type NotificationInterestResult, type NotificationTarget } from './notificationInterestRepository'
 import { getCurrentUser } from '../../user/auth/api'
 import { UserSessionControl } from '../../user/auth/UserSessionControl'
 import { LoginModal } from '../../user/auth/LoginModal'
@@ -8,7 +9,43 @@ import styles from './NotificationInterest.module.css'
 
 import { InterestContext, notificationPreparationTitle, notificationPreparationDescription, notificationPreparationNotice, type Selection } from './NotificationInterestContext'
 
-interface Action extends Selection { readonly event: NotificationInterestEvent }
+interface Action extends Selection {
+  readonly event: NotificationInterestEvent
+  readonly authState: 'member'
+  readonly pageName: 'explorer' | 'notification_settings'
+}
+
+function captureCompletion(action: Action, result: NotificationInterestResult | void) {
+  const properties = { target_type: action.target.type, target_id: action.target.id,
+    source: action.source, notification_action_id: action.event.eventId }
+  // A committed result remains real after a session change or UI teardown.
+  // Keep its initiating member context while guarding all late UI updates below.
+  if (result?.outcome === 'ACTIVATED' && action.event.eventType === 'CONFIRMED') {
+    captureProductEvent('notification_preregistration_completed', {
+      ...properties, completion_source: action.event.eventType, server_event_id: result.eventId,
+      occurred_at: result.occurredAt,
+    }, { dedupeKey: `notification-completed:${result.eventId}`, authState: action.authState, pageName: action.pageName })
+  }
+  if (result?.outcome === 'CANCELLED' && action.event.eventType === 'CANCELLED') {
+    captureProductEvent('notification_cancel_completed', { ...properties, server_event_id: result.eventId },
+      { dedupeKey: `notification-cancelled:${result.eventId}`, authState: action.authState, pageName: action.pageName })
+  }
+}
+
+function captureFailure(action: Action) {
+  captureProductEvent(action.event.eventType === 'CANCELLED' ? 'notification_cancel_failed' : 'notification_preregistration_failed',
+    { target_type: action.target.type, target_id: action.target.id, source: action.source,
+      notification_action_id: action.event.eventId, failure_reason: 'request_failed' },
+    { authState: action.authState, pageName: action.pageName })
+}
+
+function isApplied(action: Action, result: NotificationInterestResult | void) {
+  // Older deployments acknowledge the request without a business outcome.
+  if (!result) return true
+  return action.event.eventType === 'CANCELLED'
+    ? result.outcome === 'CANCELLED' || result.outcome === 'UNCHANGED'
+    : result.outcome === 'ACTIVATED' || result.outcome === 'ALREADY_ACTIVE'
+}
 
 export function NotificationInterestSessionControl({ presentation }: { readonly presentation?: 'default' | 'rail' }) {
   const context = useContext(InterestContext)
@@ -57,7 +94,7 @@ export function NotificationInterestProvider({ children, repository = notificati
   const exposed = useRef(new Set<string>())
   const requested = useMemo(() => new Map(targets.map((target) => [requestedKey(target), true])), [targets])
 
-  const refreshStatus = useCallback(() => {
+  const reconcileStatus = useCallback((preserveBatchRetries = false) => {
     if (inFlight.current) return
     const version = ++requestVersion.current
     const statusRequest = repository.loadStatus
@@ -65,11 +102,21 @@ export function NotificationInterestProvider({ children, repository = notificati
       : loadUser().then((user) => ({ guest: !user, emailConfirmed: false, targets: [] }))
     void statusRequest.then((status) => {
       if (version !== requestVersion.current) return
-      // A fresh server snapshot reconciles ambiguous writes and any session change.
-      batchRetries.current.clear()
-      setBatchError('')
       const member = status && !status.guest
+      // Automatic reconciliation preserves only unanswered writes for targets
+      // still active on the server. A completed UNKNOWN command needs a new ID.
+      if (preserveBatchRetries && member) {
+        const active = new Set(status.targets.map((target) => `${target.targetType}:${target.targetId}`))
+        for (const key of batchRetries.current.keys()) {
+          if (!active.has(key)) batchRetries.current.delete(key)
+        }
+      } else {
+        batchRetries.current.clear()
+      }
+      setBatchError(batchRetries.current.size > 0
+        ? `${batchRetries.current.size}개 설정을 해제하지 못했어요. 전체 해제를 눌러 다시 시도해 주세요.` : '')
       setMode(member ? 'member' : 'guest')
+      setProductAuthState(member ? 'member' : 'guest')
       setTargets(member ? status.targets.map((target) => ({
         type: target.targetType, id: target.targetId,
         name: (target.targetType === 'REGION' ? findRegionBoundaryName(target.targetId) : target.targetName)
@@ -77,9 +124,10 @@ export function NotificationInterestProvider({ children, repository = notificati
       })) : [])
       if (!member) { setDialog(null); setFailed(null); setMessage('') }
     }).catch(() => {
-      if (version === requestVersion.current) { setMode('error'); setTargets([]) }
+      if (version === requestVersion.current) { setMode('error'); setTargets([]); setProductAuthState('unknown') }
     })
   }, [client, loadUser, repository])
+  const refreshStatus = useCallback(() => reconcileStatus(), [reconcileStatus])
 
   const resetSession = useCallback(() => {
     requestVersion.current++
@@ -91,6 +139,7 @@ export function NotificationInterestProvider({ children, repository = notificati
     batchRetries.current.clear()
     setClearingAll(false); setBatchError('')
     setBusy(false); setFailed(null); setDialog(null); setMessage(''); setTargets([]); setMode('loading')
+    setProductAuthState('unknown')
     refreshStatus()
   }, [refreshStatus])
 
@@ -105,7 +154,7 @@ export function NotificationInterestProvider({ children, repository = notificati
       inFlight.current = false
       batchRetries.current.clear()
       setBusy(false); setClearingAll(false); setBatchError('')
-      setTargets([]); setMode('loading')
+      setTargets([]); setMode('loading'); setProductAuthState('unknown')
       setMessage('전체 해제가 중단되었어요. 남은 알림 설정을 확인해 주세요.')
     }
     const visibilityChanged = () => {
@@ -148,9 +197,17 @@ export function NotificationInterestProvider({ children, repository = notificati
     const version = ++requestVersion.current
     inFlight.current = true
     setBusy(true); setFailed(null); setMessage(''); setBatchError('')
+    let refreshAfterResponse = false
     try {
-      await repository.record(action.event)
+      const result = await repository.record(action.event)
+      captureCompletion(action, result)
       if (version !== requestVersion.current) return
+      if (!isApplied(action, result)) {
+        refreshAfterResponse = true
+        restoreFocus.current = true
+        setMessage('처리 결과를 확인하지 못했어요. 현재 알림 설정을 다시 확인해 주세요.')
+        return
+      }
       batchRetries.current.delete(requestedKey(action.target))
       const cancelled = action.event.eventType === 'CANCELLED'
       setTargets((current) => {
@@ -165,17 +222,28 @@ export function NotificationInterestProvider({ children, repository = notificati
         setMessage(`${action.target.name} 알림 설정을 저장했어요.`)
       }
     } catch {
+      captureFailure(action)
       if (version === requestVersion.current) setFailed(action)
     } finally {
-      if (version === requestVersion.current) { inFlight.current = false; setBusy(false) }
+      if (version === requestVersion.current) {
+        inFlight.current = false; setBusy(false)
+        if (refreshAfterResponse) refreshStatus()
+      }
     }
-  }, [repository])
+  }, [refreshStatus, repository])
 
   const request = useCallback((selection: Selection, button: HTMLButtonElement) => {
     if (inFlight.current || dialog || failed || mode === 'loading' || mode === 'error') return
     trigger.current = button
+    const isRequested = requested.has(requestedKey(selection.target))
+    captureProductEvent('notification_cta_clicked', { target_type: selection.target.type, target_id: selection.target.id,
+      source: selection.source, action: isRequested ? 'cancel' : 'subscribe' })
     if (mode === 'guest') { setDialog('guest'); return }
-    void send({ ...selection, event: eventFor(selection, requested.has(requestedKey(selection.target)) ? 'CANCELLED' : 'CONFIRMED') })
+    if (isRequested) captureProductEvent('notification_cancel_requested', {
+      target_type: selection.target.type, target_id: selection.target.id, source: selection.source,
+    })
+    void send({ ...selection, event: eventFor(selection, isRequested ? 'CANCELLED' : 'CONFIRMED'), authState: mode,
+      pageName: window.location.pathname === '/mypage/notifications' ? 'notification_settings' : 'explorer' })
   }, [dialog, eventFor, failed, mode, requested, send])
 
   const clearAll = useCallback(async (button: HTMLButtonElement) => {
@@ -187,19 +255,30 @@ export function NotificationInterestProvider({ children, repository = notificati
     const controller = new AbortController()
     batchController.current = controller
     setBusy(true); setClearingAll(true); setBatchError(''); setMessage('')
+    const pageName = window.location.pathname === '/mypage/notifications' ? 'notification_settings' : 'explorer'
     let failures = 0
+    let refreshAfterResponse = false
     for (const target of targets) {
       if (version !== requestVersion.current) return
       const key = requestedKey(target)
       const event = batchRetries.current.get(key) ?? eventFor({ target, source: 'SETTING' }, 'CANCELLED')
       batchRetries.current.set(key, event)
+      const action: Action = { target, source: 'SETTING', event, authState: mode, pageName }
+      captureProductEvent('notification_cancel_requested', { target_type: target.type, target_id: target.id, source: 'SETTING' })
       try {
-        await repository.record(event, controller.signal)
+        const result = await repository.record(event, controller.signal)
+        captureCompletion(action, result)
         if (version !== requestVersion.current) return
+        if (!isApplied(action, result)) {
+          batchRetries.current.delete(key)
+          refreshAfterResponse = true
+          continue
+        }
         batchRetries.current.delete(key)
         setTargets((current) => current.filter((item) => requestedKey(item) !== key))
       } catch {
         if (version !== requestVersion.current) return
+        captureFailure(action)
         failures++
       }
     }
@@ -207,21 +286,27 @@ export function NotificationInterestProvider({ children, repository = notificati
     batchInFlight.current = false
     batchController.current = null
     setBusy(false); setClearingAll(false)
-    if (failures > 0) {
+    if (refreshAfterResponse) {
+      setMode('loading')
+      setMessage('처리 결과를 확인하지 못했어요. 현재 알림 설정을 다시 확인해 주세요.')
+      reconcileStatus(true)
+    } else if (failures > 0) {
       setBatchError(`${failures}개 설정을 해제하지 못했어요. 전체 해제를 눌러 다시 시도해 주세요.`)
     } else {
       setMessage('알림 설정을 모두 해제했어요.')
     }
-  }, [dialog, eventFor, failed, mode, repository, targets])
+  }, [dialog, eventFor, failed, mode, reconcileStatus, repository, targets])
 
   const expose = useCallback((selection: Selection) => {
     const key = `toadzip.notification-interest.exposed:${selection.source}:${selection.target.type}:${selection.target.id}`
     if (exposed.current.has(key) || readStorage('sessionStorage', key) === '1') return
     exposed.current.add(key)
+    captureProductEvent('notification_cta_viewed', { target_type: selection.target.type, target_id: selection.target.id, source: selection.source },
+      { dedupeKey: `${session}:${key}` })
     void repository.record(eventFor(selection, 'EXPOSED')).then(() => {
       writeStorage('sessionStorage', key, '1')
     }).catch(() => { exposed.current.delete(key) })
-  }, [eventFor, repository])
+  }, [eventFor, repository, session])
 
   const context = useMemo(() => ({ blocked: mode === 'loading' || mode === 'error' || busy || dialog !== null || failed !== null,
     mode, requested, targets, request, expose, resetSession, refreshStatus, clearAll, clearingAll, batchError }), [clearAll, clearingAll, batchError, busy, dialog, expose, failed, mode, request, requested, targets, resetSession, refreshStatus])
@@ -263,9 +348,10 @@ function InterestDialog({ children, onDismiss, label }: { readonly children: Rea
   const panel = useRef<HTMLDialogElement>(null)
   useLayoutEffect(() => {
     const element = panel.current
+    setReplaySensitive('notification_form', true)
     element?.showModal()
     element?.querySelector<HTMLElement>('input:not(:disabled), button:not(:disabled)')?.focus()
-    return () => element?.close()
+    return () => { element?.close(); setReplaySensitive('notification_form', false) }
   }, [])
 
   function keyDown(event: KeyboardEvent<HTMLDialogElement>) {
@@ -280,7 +366,7 @@ function InterestDialog({ children, onDismiss, label }: { readonly children: Rea
   }
 
   return (
-      <dialog ref={panel} className={styles.dialog} aria-modal="true" aria-label={label} aria-labelledby={label ? undefined : 'notification-interest-title'} onKeyDown={keyDown}
+      <dialog ref={panel} className={`${styles.dialog} ph-no-capture`} aria-modal="true" aria-label={label} aria-labelledby={label ? undefined : 'notification-interest-title'} onKeyDown={keyDown}
         onCancel={(event) => { event.preventDefault(); event.stopPropagation(); onDismiss() }}>
         {children}
       </dialog>
@@ -301,14 +387,24 @@ export function NotificationInterestButton({ target, source, iconOnly = false }:
   useEffect(() => {
     const element = button.current
     if (!element || !expose || typeof IntersectionObserver === 'undefined') return
+    let intersecting = false
+    let done = false
+    const check = () => {
+      if (done || !intersecting || document.visibilityState !== 'visible' || element.closest('[inert], [hidden]')) return
+      const modals = Array.from(document.querySelectorAll<HTMLDialogElement>('dialog[open]'))
+      if (modals.some((modal) => !modal.contains(element))) return
+      done = true
+      expose({ target: { type, id, name }, source })
+    }
     const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        expose({ target: { type, id, name }, source })
-        observer.disconnect()
-      }
+      intersecting = entries.some((entry) => entry.isIntersecting)
+      check()
     })
+    const mutations = new MutationObserver(check)
+    mutations.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open', 'hidden', 'inert'], childList: true })
+    document.addEventListener('visibilitychange', check)
     observer.observe(element)
-    return () => observer.disconnect()
+    return () => { observer.disconnect(); mutations.disconnect(); document.removeEventListener('visibilitychange', check) }
   }, [expose, id, name, source, type])
 
   if (!context) return null

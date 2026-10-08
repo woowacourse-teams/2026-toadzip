@@ -18,6 +18,7 @@ import { UserListPage } from './admin/users/UserListPage'
 import { UserDetailPage } from './admin/users/UserDetailPage'
 import { FeedbackPage } from './feedback/FeedbackPage'
 import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
+import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
 
 function Home() {
   return (
@@ -77,6 +78,8 @@ function AdminRoutes() {
 
 export default function App() {
   return (
+    <>
+    <ProductAnalyticsBoundary />
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<LegacyLoginRedirect />} />
@@ -87,5 +90,6 @@ export default function App() {
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </>
   )
 }

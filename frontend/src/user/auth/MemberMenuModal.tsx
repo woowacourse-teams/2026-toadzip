@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { setReplaySensitive } from '../../analytics/productAnalytics'
+import { useLayoutEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { notificationPreparationTitle } from '../../public-housing/interest/NotificationInterestContext'
 import { NotificationSettings } from '../../public-housing/interest/NotificationSettings'
@@ -18,18 +19,20 @@ export function MemberMenuModal({ view, onClose, returnFocusRef, children }: {
   const receivedRef = useRef<HTMLButtonElement>(null)
   const settingsRef = useRef<HTMLButtonElement>(null)
   const tabId = useId()
-  useEffect(() => {
+  useLayoutEffect(() => {
     const previous = returnFocusRef.current ?? document.activeElement
     const dialog = dialogRef.current
+    setReplaySensitive('member_menu', true)
     dialog?.showModal()
     closeRef.current?.focus({ preventScroll: true })
     return () => {
       dialog?.close()
+      setReplaySensitive('member_menu', false)
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus({ preventScroll: true })
     }
   }, [returnFocusRef])
 
-  return createPortal(<dialog ref={dialogRef} className={styles.dialog} aria-labelledby={titleId}
+  return createPortal(<dialog ref={dialogRef} className={`${styles.dialog} ph-no-capture`} aria-labelledby={titleId} aria-modal="true"
     onCancel={(event) => { event.preventDefault(); onClose() }}
     onKeyDown={(event) => event.stopPropagation()}
     onClick={(event) => {
