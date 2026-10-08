@@ -17,7 +17,11 @@ final class ComplexSummarySqlBuilder {
             , area_range AS (
                 SELECT housing_complex_id,
                        MIN(exclusive_area) AS exclusive_area_min,
-                       MAX(exclusive_area) AS exclusive_area_max
+                       MAX(exclusive_area) AS exclusive_area_max,
+                       MIN(basic_deposit) AS deposit_min,
+                       MAX(basic_deposit) AS deposit_max,
+                       MIN(basic_monthly_rent) AS monthly_rent_min,
+                       MAX(basic_monthly_rent) AS monthly_rent_max
                 FROM housing_types
                 GROUP BY housing_complex_id
             )
@@ -32,10 +36,10 @@ final class ComplexSummarySqlBuilder {
                    housing_complex.longitude,
                    area_range.exclusive_area_min,
                    area_range.exclusive_area_max,
-                   housing_complex.deposit_min,
-                   housing_complex.deposit_max,
-                   housing_complex.monthly_rent_min,
-                   housing_complex.monthly_rent_max,
+                   area_range.deposit_min,
+                   area_range.deposit_max,
+                   area_range.monthly_rent_min,
+                   area_range.monthly_rent_max,
                    representative.announcement_id,
                    representative.publication_type,
                    representative.posted_date,
@@ -172,8 +176,8 @@ final class ComplexSummarySqlBuilder {
     private static Map<ComplexSort, SortSpec> sortSpecs() {
         Map<ComplexSort, SortSpec> specifications = Map.of(
                 ComplexSort.LATEST_ANNOUNCEMENT, new SortSpec("representative.posted_date", Direction.DESC),
-                ComplexSort.DEPOSIT_ASC, new SortSpec("housing_complex.deposit_min", Direction.ASC),
-                ComplexSort.MONTHLY_RENT_ASC, new SortSpec("housing_complex.monthly_rent_min", Direction.ASC),
+                ComplexSort.DEPOSIT_ASC, new SortSpec("area_range.deposit_min", Direction.ASC),
+                ComplexSort.MONTHLY_RENT_ASC, new SortSpec("area_range.monthly_rent_min", Direction.ASC),
                 ComplexSort.AREA_DESC, new SortSpec("area_range.exclusive_area_max", Direction.DESC),
                 ComplexSort.COMPLETION_DATE_DESC, new SortSpec("housing_complex.completion_date", Direction.DESC)
         );

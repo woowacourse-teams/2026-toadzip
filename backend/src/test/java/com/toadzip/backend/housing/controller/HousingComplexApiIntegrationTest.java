@@ -26,7 +26,7 @@ import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.ComplexSort;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
-import com.toadzip.backend.housing.domain.RentalPriceRange;
+import com.toadzip.backend.housing.domain.MyHomeRentalCondition;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -168,12 +168,72 @@ class HousingComplexApiIntegrationTest {
         );
 
         persistCorrectionChain(sameDateType);
-        insideComplex.updateRentalPriceRange(new RentalPriceRange(10000000L, 30000000L, 100000L, 300000L));
+        firstInsideType.updateBasicRentalCondition(new MyHomeRentalCondition(
+                10_000_000L, 100_000L, Instant.parse("2026-10-07T00:00:00Z")));
+        secondInsideType.updateBasicRentalCondition(new MyHomeRentalCondition(
+                30_000_000L, 300_000L, Instant.parse("2026-10-07T00:00:00Z")));
         persistCancellationChain(boundaryType);
         persistEndedLeaf();
         persistUnmatchedCurrentRow();
         persistSearchFixture();
         entityManager.flush();
+    }
+
+    @Test
+    void 모집공고가_없어도_주택형_기본_금액과_수집시각을_반환한다() throws Exception {
+        HousingType type = HousingType.createFromMyHome(
+                outsideComplex, "8:3147381019:11110101001000100004:행복주택3:59A5:59.97-1:",
+                "59A", new BigDecimal("59.97"), null);
+        type.updateBasicRentalCondition(new MyHomeRentalCondition(
+                31_650_000L, 0L, Instant.parse("2026-10-05T10:40:16Z")));
+        entityManager.persist(type);
+        entityManager.flush();
+
+        mockMvc.perform(get("/api/v1/complexes/{id}", outsideComplex.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.housingTypes[0].basicRentalCondition.deposit").value(31_650_000))
+                .andExpect(jsonPath("$.data.housingTypes[0].basicRentalCondition.monthlyRent").value(0))
+                .andExpect(jsonPath("$.data.housingTypes[0].basicRentalCondition.source").value("MYHOME"))
+                .andExpect(jsonPath("$.data.housingTypes[0].basicRentalCondition.sourceUrl").value(
+                        "https://www.myhome.go.kr/hws/portal/sch/selectRentalHouseInfoDetail.do"
+                                + "?hsmpSn=31473810&suplyTy=09&rthousSe=C"))
+                .andExpect(jsonPath("$.data.housingTypes[0].basicRentalCondition.collectedAt")
+                        .value("2026-10-05T10:40:16Z"))
+                .andExpect(jsonPath("$.data.housingTypes[0].totalHouseholdCount").value(nullValue()))
+                .andExpect(jsonPath("$.data.housingTypes[0].currentSupplyConditions").isEmpty());
+    }
+
+    @Test
+    void 같은_단지의_주택형도_원래_마이홈_단지별_출처로_연결한다() throws Exception {
+        for (String complexNumber : List.of("31473810", "31473811")) {
+            HousingType type = HousingType.createFromMyHome(outsideComplex,
+                    "8:" + complexNumber + "-1:4:국민임대3:59A5:59.97-1:",
+                    "59A", new BigDecimal("59.97"), null);
+            type.updateBasicRentalCondition(new MyHomeRentalCondition(
+                    10_000_000L, 100_000L, Instant.parse("2026-10-05T10:40:16Z")));
+            entityManager.persist(type);
+        }
+        entityManager.flush();
+
+        mockMvc.perform(get("/api/v1/complexes/{id}", outsideComplex.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.housingTypes[0].basicRentalCondition.sourceUrl").value(
+                        "https://www.myhome.go.kr/hws/portal/sch/selectRentalHouseInfoDetail.do"
+                                + "?hsmpSn=31473810&suplyTy=02&rthousSe=C"))
+                .andExpect(jsonPath("$.data.housingTypes[1].basicRentalCondition.sourceUrl").value(
+                        "https://www.myhome.go.kr/hws/portal/sch/selectRentalHouseInfoDetail.do"
+                                + "?hsmpSn=31473811&suplyTy=02&rthousSe=C"));
+    }
+
+    @Test
+    void 단지_전체_세대수와_LH_주택형_세대수를_분리해_반환한다() throws Exception {
+        firstInsideType.enrichHouseholdCountFromLh(37);
+        entityManager.flush();
+
+        mockMvc.perform(get("/api/v1/complexes/{id}", insideComplex.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalHouseholdCount").value(insideComplex.getTotalHouseholdCount()))
+                .andExpect(jsonPath("$.data.housingTypes[0].totalHouseholdCount").value(37));
     }
 
     @Test
@@ -699,9 +759,8 @@ class HousingComplexApiIntegrationTest {
         );
         SupplyRow supplyRow = persistSupplyRow(announcement, complex, housingType, suffix + "-row", 1);
         persistSupplyTarget(supplyRow, suffix + "-target", deposit, monthlyRent, null, 1);
-        complex.updateRentalPriceRange(new RentalPriceRange(
-                Long.valueOf(deposit), Long.valueOf(deposit),
-                Long.valueOf(monthlyRent), Long.valueOf(monthlyRent)));
+        housingType.updateBasicRentalCondition(new MyHomeRentalCondition(
+                Long.valueOf(deposit), Long.valueOf(monthlyRent), Instant.parse("2026-10-07T00:00:00Z")));
     }
 
     private List<Long> fetchEveryFilteredListPage() throws Exception {

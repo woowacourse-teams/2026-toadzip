@@ -89,6 +89,7 @@ public class MyHomeComplexMergeStore {
     }
 
     public boolean sameState(String left, String right) {
+        left = withCompatibleHousingTypeSnapshot(left, right);
         if (!hasRentalPriceSnapshot(right)) {
             return jdbc.sql("""
                     SELECT jsonb_set(CAST(:left AS jsonb), '{complexes}', COALESCE((
@@ -100,6 +101,22 @@ public class MyHomeComplexMergeStore {
         }
         return jdbc.sql("SELECT CAST(:left AS jsonb) = CAST(:right AS jsonb)")
                 .param("left", left).param("right", right).query(Boolean.class).single();
+    }
+
+    private String withCompatibleHousingTypeSnapshot(String current, String expected) {
+        boolean hasPrices = jdbc.sql("""
+                SELECT COALESCE(jsonb_exists(CAST(:state AS jsonb)->'housing_types'->0, 'basic_deposit'), false)
+                """).param("state", expected).query(Boolean.class).single();
+        if (hasPrices) {
+            return current;
+        }
+        return jdbc.sql("""
+                SELECT jsonb_set(CAST(:state AS jsonb), '{housing_types}', COALESCE((
+                    SELECT jsonb_agg(housing_type - 'basic_deposit' - 'basic_monthly_rent'
+                        - 'rental_condition_collected_at' ORDER BY (housing_type->>'id')::bigint)
+                    FROM jsonb_array_elements(CAST(:state AS jsonb)->'housing_types') housing_type
+                ), '[]'::jsonb))::text
+                """).param("state", current).query(String.class).single();
     }
 
     public boolean hasRentalPriceSnapshot(String state) {

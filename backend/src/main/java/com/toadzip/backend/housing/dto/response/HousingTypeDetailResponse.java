@@ -12,6 +12,8 @@ public record HousingTypeDetailResponse(
         String floorPlan3dImageUrl,
         Boolean isDuplex,
         Long maintenanceFee,
+        Integer totalHouseholdCount,
+        BasicRentalConditionResponse basicRentalCondition,
         List<CurrentSupplyConditionResponse> currentSupplyConditions
 ) {
 
