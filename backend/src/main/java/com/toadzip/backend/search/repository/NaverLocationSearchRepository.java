@@ -28,6 +28,7 @@ public class NaverLocationSearchRepository {
     private static final Set<String> DETAIL_ELEMENTS = Set.of(
             "ROAD_NAME", "BUILDING_NUMBER", "BUILDING_NAME", "LAND_NUMBER"
     );
+    private static final Set<String> SUBWAY_CATEGORIES = Set.of("지하철,전철", "지하철역", "전철역");
     private final RestClient searchClient;
     private final RestClient mapsClient;
     private final String searchClientId;
@@ -61,7 +62,7 @@ public class NaverLocationSearchRepository {
             if (type == LocationSearchType.REGION) {
                 return searchRegions(query, page, size);
             }
-            return searchPlaces(query, page, size);
+            return searchSubwayStations(query, page, size);
         } catch (RuntimeException exception) {
             // Upstream exceptions can contain the query or response body. Log only the failure class.
             log.warn("네이버 위치 검색 요청 실패: {}", exception.getClass().getSimpleName());
@@ -69,7 +70,7 @@ public class NaverLocationSearchRepository {
         }
     }
 
-    private LocationSearchPage searchPlaces(String query, int page, int size) {
+    private LocationSearchPage searchSubwayStations(String query, int page, int size) {
         requireCredentials(searchClientId, searchClientSecret);
         // Naver Local Search supports start=1 only; subsequent requests would repeat the first page.
         if (page > 0) {
@@ -82,10 +83,16 @@ public class NaverLocationSearchRepository {
                 .header("X-Naver-Client-Secret", searchClientSecret)
                 .accept(MediaType.APPLICATION_JSON).retrieve().body(JsonNode.class);
         JsonNode items = array(root, "items");
-        long total = nonnegativeCount(root, "total");
+        nonnegativeCount(root, "total");
         List<LocationSearchItem> results = StreamSupport.stream(items.spliterator(), false)
-                .map(this::place).distinct().limit(Math.min(size, 5)).toList();
-        return new LocationSearchPage(results, false, Math.min(total, 5));
+                .filter(this::isSubwayStation).map(this::subwayStation).distinct().limit(Math.min(size, 5)).toList();
+        return new LocationSearchPage(results, false, (long) results.size());
+    }
+
+    private boolean isSubwayStation(JsonNode node) {
+        String category = HtmlUtils.htmlUnescape(text(node, "category"));
+        String leaf = category.substring(category.lastIndexOf('>') + 1).strip();
+        return SUBWAY_CATEGORIES.contains(leaf);
     }
 
     private LocationSearchPage searchRegions(String query, int page, int size) {
@@ -106,10 +113,10 @@ public class NaverLocationSearchRepository {
         return new LocationSearchPage(results, hasNext, null);
     }
 
-    private LocationSearchItem place(JsonNode node) {
+    private LocationSearchItem subwayStation(JsonNode node) {
         String title = HtmlUtils.htmlUnescape(text(node, "title").replaceAll("<[^>]*>", ""));
         if (title.isBlank()) {
-            throw new IllegalArgumentException("Empty place title");
+            throw new IllegalArgumentException("Empty subway station title");
         }
         String address = text(node, "address");
         String roadAddress = node.path("roadAddress").asString("");
@@ -117,8 +124,9 @@ public class NaverLocationSearchRepository {
             address = roadAddress;
         }
         MapCoordinate coordinate = new MapCoordinate(scaledCoordinate(node, "mapy"), scaledCoordinate(node, "mapx"));
-        String id = "naver-place:" + title + ":" + address + ":" + coordinate.latitude() + ":" + coordinate.longitude();
-        return new LocationSearchItem(LocationSearchType.PLACE, id, title,
+        String id = "naver-subway:" + title + ":" + address + ":"
+                + coordinate.latitude() + ":" + coordinate.longitude();
+        return new LocationSearchItem(LocationSearchType.SUBWAY_STATION, id, title,
                 HtmlUtils.htmlUnescape(text(node, "category")) + " · " + address, coordinate);
     }
 

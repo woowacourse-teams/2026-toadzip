@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from '../../api/apiBaseUrl'
-export type SearchType = 'ANNOUNCEMENT' | 'COMPLEX' | 'REGION' | 'PLACE'
+export type SearchType = 'ANNOUNCEMENT' | 'COMPLEX' | 'REGION' | 'SUBWAY_STATION'
 
 export interface SearchResultItem {
   readonly applicationStatus: string | null
@@ -19,7 +19,7 @@ export interface SearchFailure {
 }
 
 export interface IntegratedSearchResponse {
-  readonly places?: readonly SearchResultItem[]
+  readonly subwayStations?: readonly SearchResultItem[]
   readonly announcements: readonly SearchResultItem[]
   readonly complexes: readonly SearchResultItem[]
   readonly failures: readonly SearchFailure[]
@@ -46,7 +46,7 @@ export function createIntegratedSearchRepository(
 ): IntegratedSearchRepository {
   return {
     async search(query, preview, page, signal, type) {
-      if (type === 'PLACE') {
+      if (type === 'SUBWAY_STATION') {
         return searchLocations(fetcher, query, page, signal, type)
       }
       const params = new URLSearchParams({
@@ -82,7 +82,7 @@ async function searchLocations(
   query: string,
   page: number,
   signal: AbortSignal,
-  type: 'REGION' | 'PLACE',
+  type: 'REGION' | 'SUBWAY_STATION',
 ): Promise<IntegratedSearchResponse> {
   const params = new URLSearchParams({ query, page: String(page), size: '5', type })
   const response = await fetcher(`${getApiBaseUrl()}/api/v1/locations/search?${params}`, {
@@ -109,7 +109,7 @@ async function searchLocations(
   })
   return {
     query, announcements: [], complexes: [], failures: [],
-    regions: type === 'REGION' ? items : [], places: type === 'PLACE' ? items : [],
+    regions: type === 'REGION' ? items : [], subwayStations: type === 'SUBWAY_STATION' ? items : [],
     page: number(data.page, '$.data.page'), size: number(data.size, '$.data.size'),
     hasNext: boolean(data.hasNext, '$.data.hasNext'),
     totalCount: data.totalCount == null ? null : number(data.totalCount, '$.data.totalCount'),
@@ -161,7 +161,7 @@ function decodeFailure(value: unknown, index: number): SearchFailure {
 }
 
 function isSearchType(value: string): value is SearchType {
-  return ['ANNOUNCEMENT', 'COMPLEX', 'REGION', 'PLACE'].includes(value)
+  return ['ANNOUNCEMENT', 'COMPLEX', 'REGION', 'SUBWAY_STATION'].includes(value)
 }
 
 function record(value: unknown, path: string): Record<string, unknown> {

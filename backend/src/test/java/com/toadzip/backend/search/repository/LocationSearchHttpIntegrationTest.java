@@ -39,16 +39,16 @@ class LocationSearchHttpIntegrationTest {
                 .andExpect(header("X-Naver-Client-Secret", "test-secret"))
                 .andRespond(withSuccess("""
                         {"total":1,"items":[{
-                          "title":"<b>서울</b>시청","category":"공공&gt;시청",
+                          "title":"<b>시청역</b> 1호선","category":"교통,운수&gt;지하철,전철",
                           "address":"서울특별시 중구 태평로1가 31","roadAddress":"서울특별시 중구 세종대로 110",
                           "mapx":"1269873882","mapy":"375666103"
                         }]}
                         """, MediaType.APPLICATION_JSON));
 
-        mockMvc.perform(get("/api/v1/locations/search").param("query", "서울시청").param("type", "PLACE"))
+        mockMvc.perform(get("/api/v1/locations/search").param("query", "시청역").param("type", "SUBWAY_STATION"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items[0].title").value("서울시청"))
-                .andExpect(jsonPath("$.data.items[0].subtitle").value("공공>시청 · 서울특별시 중구 세종대로 110"))
+                .andExpect(jsonPath("$.data.items[0].title").value("시청역 1호선"))
+                .andExpect(jsonPath("$.data.items[0].subtitle").value("교통,운수>지하철,전철 · 서울특별시 중구 세종대로 110"))
                 .andExpect(jsonPath("$.data.items[0].latitude").value(37.5666103))
                 .andExpect(jsonPath("$.data.items[0].longitude").value(126.9873882))
                 .andExpect(jsonPath("$.data.page").value(0))
@@ -58,9 +58,9 @@ class LocationSearchHttpIntegrationTest {
     }
 
     @Test
-    void 장소_다음_페이지는_외부_요청_없이_빈_마지막_페이지다() throws Exception {
+    void 지하철역_다음_페이지는_외부_요청_없이_빈_마지막_페이지다() throws Exception {
         mockMvc.perform(get("/api/v1/locations/search").param("query", "서울시청")
-                        .param("type", "PLACE").param("page", "1"))
+                        .param("type", "SUBWAY_STATION").param("page", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items").isEmpty())
                 .andExpect(jsonPath("$.data.hasNext").value(false));

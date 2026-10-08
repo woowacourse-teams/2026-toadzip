@@ -21,17 +21,17 @@ describe('integratedSearchRepository', () => {
     expect(result.regions[0]?.title).toBe('서울 강남구 역삼동')
     expect(new URL(fetcher.mock.calls[1][0]).pathname).toBe('/api/v1/locations/search')
   })
-  it('장소는 네이버 위치 검색 첫 페이지를 조회하고 더보기를 종료한다', async () => {
+  it('지하철역은 네이버 위치 검색 첫 페이지를 조회하고 더보기를 종료한다', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: {
-      items: [{ type: 'PLACE', id: '123', title: '서울역', subtitle: '지하철역 · 서울 중구', latitude: 37.5, longitude: 127 }],
+      items: [{ type: 'SUBWAY_STATION', id: '123', title: '서울역', subtitle: '지하철역 · 서울 중구', latitude: 37.5, longitude: 127 }],
       page: 0, size: 5, hasNext: false, totalCount: 1,
     } })))
     const signal = new AbortController().signal
 
-    const result = await createIntegratedSearchRepository(fetcher).search('서울역', false, 0, signal, 'PLACE')
+    const result = await createIntegratedSearchRepository(fetcher).search('서울역', false, 0, signal, 'SUBWAY_STATION')
 
-    expect(result.places?.[0].title).toBe('서울역')
-    expect(result.places?.[0].regionCode).toBeNull()
+    expect(result.subwayStations?.[0].title).toBe('서울역')
+    expect(result.subwayStations?.[0].regionCode).toBeNull()
     expect(result.regions).toEqual([])
     expect(fetcher).toHaveBeenCalledTimes(1)
     expect(new URL(fetcher.mock.calls[0][0]).searchParams.get('page')).toBe('0')
@@ -55,18 +55,21 @@ describe('integratedSearchRepository', () => {
     const fetcher = vi.fn().mockResolvedValue(new Response('{}', { status: 503 }))
 
     await expect(createIntegratedSearchRepository(fetcher).search(
-      '서울역', false, 0, new AbortController().signal, 'PLACE',
+      '서울역', false, 0, new AbortController().signal, 'SUBWAY_STATION',
     )).rejects.toThrow('위치 검색을 사용할 수 없습니다.')
   })
 
   it('유형이 섞이거나 좌표가 손상된 외부 결과는 거부한다', async () => {
-    for (const invalid of [{ type: 'REGION', latitude: 37.5 }, { type: 'PLACE', latitude: 91 }]) {
+    for (const invalid of [
+      { type: 'REGION', latitude: 37.5 }, { type: 'PLACE', latitude: 37.5 },
+      { type: 'SUBWAY_STATION', latitude: 91 },
+    ]) {
       const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: {
-        items: [{ ...invalid, id: '1', title: '장소', subtitle: '주소', longitude: 127 }],
+        items: [{ ...invalid, id: '1', title: '지하철역', subtitle: '주소', longitude: 127 }],
         page: 0, size: 5, hasNext: false, totalCount: 1,
       } })))
       await expect(createIntegratedSearchRepository(fetcher).search(
-        '서울역', false, 0, new AbortController().signal, 'PLACE',
+        '서울역', false, 0, new AbortController().signal, 'SUBWAY_STATION',
       )).rejects.toThrow()
     }
   })

@@ -94,21 +94,21 @@ npm run dev
 검색 조건은 snapshot 데이터에 적용한다. 서버의 지역 집계·단계 전환 정책은
 재현하지 않으므로 해당 동작은 실제 지도 API를 연결해 확인한다. 통합 검색은
 snapshot의 지역명·단지명·공고명에서 일치하는 결과와 유형별 페이지를 제공하며,
-백엔드 검색 순위나 전체 데이터 검색을 재현하지 않는다. 외부 읍·면·동과 장소 검색은
+백엔드 검색 순위나 전체 데이터 검색을 재현하지 않는다. 외부 읍·면·동과 지하철역 검색은
 snapshot에 포함되지 않는다.
 
-## 지역·장소 검색
+## 지역·지하철역 검색
 
-통합 검색은 지역·장소·공고·단지 그룹을 각각 조회한다. 내부 지역 결과가 없으면
-읍·면·동 위치 검색을 사용하며, 지하철역·주요 기관·랜드마크는 장소 그룹에 표시한다.
-주소와 종류를 보고 결과를 선택하면 해당 좌표로 지도를 이동한다. 외부 지역·장소는
+통합 검색은 지역·지하철역·공고·단지 그룹을 각각 조회한다. 내부 지역 결과가 없으면
+읍·면·동 위치 검색을 사용하며, 지하철역은 지하철역 그룹에 표시한다.
+주소와 종류를 보고 결과를 선택하면 해당 좌표로 지도를 이동한다. 외부 지역·지하철역은
 내부 지역 경계를 해제하며 공고·단지 상세를 열거나 지역 필터를 추가하지 않는다.
-지역·공고·단지 그룹은 더보기를 제공하며, 네이버 장소 검색은 최대 5개를 표시한다.
+지역·공고·단지 그룹은 더보기를 제공하며, 네이버 지하철역 검색은 최대 5개를 표시한다.
 검색 실패 시 그룹별로 재시도할 수 있다.
 
 실제 위치 검색은 서버의 네이버 Search API와 Maps Geocoding 인증 정보가 필요하다.
 프론트엔드에는 비공개 키를 넣지 않는다. 설정과 API 계약은
-[지역·장소 검색](../backend/docs/location-search.md)을 따른다.
+[지역·지하철역 검색](../backend/docs/location-search.md)을 따른다.
 
 ## 환경별 지도 설정
 
@@ -172,8 +172,8 @@ VITE_GA_DEBUG_MODE=true
   늘리지 않는다. 닫았다 다시 열거나 다른 상세를 거쳐 돌아오면 새 열람이다.
 - `entry_point`는 `map`, `list`, `search`, `recent`, `detail`, `direct`,
   `history` 중 하나다. 뒤로·앞으로 이동은 모두 `history`다.
-- `result_type`은 `complex`, `announcement`, `region`, `place`, `filter_target`은
-  `complex`, `announcement` 중 하나다. 지역·장소 검색에는 이름, 주소, 좌표나 단지·공고 ID를 넣지 않는다.
+- `result_type`은 `complex`, `announcement`, `region`, `subway_station`, `filter_target`은
+  `complex`, `announcement` 중 하나다. 지역·지하철역 검색에는 이름, 주소, 좌표나 단지·공고 ID를 넣지 않는다.
 - `filter_types`는 적용 중인 필터 종류를 `region,rental,status,agency,recruitment,deposit,rent,area,built_year`
   순서로 쉼표 연결한 값이며, 없으면 `none`이다. `filter_count`는 선택값의 개수가
   아니라 적용한 종류의 개수다. 초기 URL 복원·뒤로가기는 필터 적용 이벤트가 아니다.

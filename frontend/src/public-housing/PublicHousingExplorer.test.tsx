@@ -155,11 +155,11 @@ beforeEach(() => {
   vi.mocked(trackEvent).mockClear()
 })
 
-it.each(['PLACE', 'REGION'] as const)('외부 %s 위치 선택은 경계를 해제하고 지도만 이동한다', async (type) => {
+it.each(['SUBWAY_STATION', 'REGION'] as const)('외부 %s 위치 선택은 경계를 해제하고 지도만 이동한다', async (type) => {
   const repository = createRepository()
   const selected = { ...searchItem(type, 'local-1', '서울 강남구 역삼동', 37.5, 127.03), regionCode: null }
   renderExplorer(repository, '/?boundaryRegionCode=41110', searchRepository(
-    type === 'PLACE' ? [selected] : [], type === 'REGION' ? [selected] : [],
+    type === 'SUBWAY_STATION' ? [selected] : [], type === 'REGION' ? [selected] : [],
   ))
   await waitFor(() => expect(screen.getByTestId('map-boundary')).toHaveTextContent('41110'))
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: '역삼동' } })
@@ -171,7 +171,7 @@ it.each(['PLACE', 'REGION'] as const)('외부 %s 위치 선택은 경계를 해�
   expect(new URLSearchParams(screen.getByTestId('location-search').textContent ?? '').has('boundaryRegionCode')).toBe(false)
   expect(repository.findComplexDetail).not.toHaveBeenCalled()
   expect(repository.findAnnouncementDetail).not.toHaveBeenCalled()
-  expect(trackEvent).toHaveBeenCalledWith('select_search_result', { result_type: type === 'PLACE' ? 'place' : 'region' })
+  expect(trackEvent).toHaveBeenCalledWith('select_search_result', { result_type: type === 'SUBWAY_STATION' ? 'subway_station' : 'region' })
 })
 
 afterEach(() => {
@@ -3231,7 +3231,7 @@ function searchRepository(
   regions: readonly SearchResultItem[],
 ): IntegratedSearchRepository {
   const response: IntegratedSearchResponse = {
-    places: results.filter(({ type }) => type === 'PLACE'),
+    subwayStations: results.filter(({ type }) => type === 'SUBWAY_STATION'),
     announcements: results.filter(({ type }) => type === 'ANNOUNCEMENT'),
     complexes: results.filter(({ type }) => type === 'COMPLEX'),
     failures: [],

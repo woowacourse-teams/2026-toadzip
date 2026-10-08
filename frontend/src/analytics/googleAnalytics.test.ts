@@ -167,15 +167,15 @@ describe('Google Analytics transport', () => {
     expect(events().some((event) => event[1] === 'page_view')).toBe(false)
   })
 
-  it('장소 선택은 이름 주소 좌표와 식별자를 전송하지 않는다', async () => {
+  it('지하철역 선택은 이름 주소 좌표와 식별자를 전송하지 않는다', async () => {
     const { trackEvent } = await activeAnalytics()
     trackEvent('select_search_result', {
-      result_type: 'place', complex_id: '999', title: 'private place', latitude: 37.5,
+      result_type: 'subway_station', complex_id: '999', title: 'private place', latitude: 37.5,
     } as Parameters<typeof trackEvent<'select_search_result'>>[1])
     script().dispatchEvent(new Event('load'))
 
     expect(events()).toHaveLength(1)
-    expect(events()[0][2]).toEqual(expect.objectContaining({ result_type: 'place' }))
+    expect(events()[0][2]).toEqual(expect.objectContaining({ result_type: 'subway_station' }))
     expect(JSON.stringify(events())).not.toMatch(/private|latitude|999/)
   })
 

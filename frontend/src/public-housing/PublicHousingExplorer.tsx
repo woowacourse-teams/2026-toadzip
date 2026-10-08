@@ -994,10 +994,10 @@ export function PublicHousingExplorer({
       trackEvent('select_search_result', { result_type: 'announcement', announcement_id: item.id })
     } else if (item.type === 'REGION') {
       trackEvent('select_search_result', { result_type: 'region' })
-    } else if (item.type === 'PLACE') {
-      trackEvent('select_search_result', { result_type: 'place' })
+    } else if (item.type === 'SUBWAY_STATION') {
+      trackEvent('select_search_result', { result_type: 'subway_station' })
     }
-    if (item.type === 'PLACE' || (item.type === 'REGION' && item.regionCode === null)) {
+    if (item.type === 'SUBWAY_STATION' || (item.type === 'REGION' && item.regionCode === null)) {
       if (item.latitude !== null && item.longitude !== null) {
         boundarySelectionRef.current = null
         setSelectedSearchRegion(null)

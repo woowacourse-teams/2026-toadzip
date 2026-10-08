@@ -38,18 +38,63 @@ class NaverLocationSearchRepositoryTest {
     }
 
     @Test
-    void 장소_검색은_네이버_검색_계약과_WGS84_좌표를_사용한다() {
+    void 지하철역_검색에서_기관_랜드마크_상점과_일반_철도역을_제외한다() {
+        searchServer.expect(request -> { }).andRespond(withSuccess("""
+                {"total":5,"items":[
+                  {"title":"서울역 1호선","category":"교통,운수&gt;지하철,전철","address":"서울 중구",
+                   "mapx":"1269707000","mapy":"375547000"},
+                  {"title":"서울시청","category":"공공&gt;시청","address":"서울 중구",
+                   "mapx":"1269707000","mapy":"375547000"},
+                  {"title":"남산타워","category":"관광&gt;전망대","address":"서울 중구",
+                   "mapx":"1269707000","mapy":"375547000"},
+                  {"title":"서울역 카페","category":"음식점&gt;카페","address":"서울 중구",
+                   "mapx":"1269707000","mapy":"375547000"},
+                  {"title":"서울역 경부선","category":"교통&gt;기차역","address":"서울 중구",
+                   "mapx":"1269707000","mapy":"375547000"}
+                ]}
+                """, MediaType.APPLICATION_JSON));
+
+        LocationSearchPage result = repository.search("서울역", LocationSearchType.SUBWAY_STATION, 0, 5);
+
+        assertThat(result.items()).extracting(LocationSearchItem::title).containsExactly("서울역 1호선");
+        assertThat(result.totalCount()).isEqualTo(1L);
+        assertThat(result.hasNext()).isFalse();
+    }
+
+    @Test
+    void 지하철역이_아닌_결과만_있으면_빈_결과와_건수_영을_반환한다() {
+        searchServer.expect(request -> { }).andRespond(withSuccess(
+                subwayStations("1270300000").replace("지하철역", "병원"), MediaType.APPLICATION_JSON));
+
+        LocationSearchPage result = repository.search("병원", LocationSearchType.SUBWAY_STATION, 0, 5);
+
+        assertThat(result.items()).isEmpty();
+        assertThat(result.totalCount()).isZero();
+        assertThat(result.hasNext()).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"지하철,전철", "지하철역", "전철역"})
+    void 지하철과_전철의_분류만_허용한다(String category) {
+        searchServer.expect(request -> { }).andRespond(withSuccess(
+                subwayStations("1270300000").replace("지하철역", category), MediaType.APPLICATION_JSON));
+
+        assertThat(repository.search("서울역", LocationSearchType.SUBWAY_STATION, 0, 5).items()).hasSize(1);
+    }
+
+    @Test
+    void 지하철역_검색은_네이버_검색_계약과_WGS84_좌표를_사용한다() {
         searchServer.expect(request -> {
             assertThat(request.getURI().getHost()).isEqualTo("openapi.naver.com");
             assertThat(request.getURI().getPath()).isEqualTo("/v1/search/local.json");
             assertThat(request.getURI().getRawQuery()).contains("start=1", "display=5", "%2B", "%26");
         }).andExpect(header("X-Naver-Client-Id", "search-id"))
                 .andExpect(header("X-Naver-Client-Secret", "search-secret"))
-                .andRespond(withSuccess(places("\"1270300000\""), MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess(subwayStations("\"1270300000\""), MediaType.APPLICATION_JSON));
 
-        LocationSearchPage result = repository.search("서울역 + &", LocationSearchType.PLACE, 0, 5);
+        LocationSearchPage result = repository.search("서울역 + &", LocationSearchType.SUBWAY_STATION, 0, 5);
 
-        assertThat(result.items().getFirst().title()).isEqualTo("서울역 & 기관");
+        assertThat(result.items().getFirst().title()).isEqualTo("서울역 & 환승");
         assertThat(result.items().getFirst().subtitle()).isEqualTo("교통>지하철역 · 서울 중구 세종대로 1");
         assertThat(result.items().getFirst().coordinate().latitude()).isEqualByComparingTo("37.5");
         assertThat(result.items().getFirst().coordinate().longitude()).isEqualByComparingTo("127.03");
@@ -62,24 +107,24 @@ class NaverLocationSearchRepositoryTest {
     @Test
     void 정수형_좌표도_해석하며_도로명_주소가_없으면_지번_주소를_사용한다() {
         searchServer.expect(request -> { }).andRespond(withSuccess(
-                places("1270300000").replace("서울 중구 세종대로 1", ""), MediaType.APPLICATION_JSON));
+                subwayStations("1270300000").replace("서울 중구 세종대로 1", ""), MediaType.APPLICATION_JSON));
 
-        LocationSearchPage result = repository.search("서울역", LocationSearchType.PLACE, 0, 5);
+        LocationSearchPage result = repository.search("서울역", LocationSearchType.SUBWAY_STATION, 0, 5);
 
         assertThat(result.items().getFirst().coordinate().longitude()).isEqualByComparingTo("127.03");
         assertThat(result.items().getFirst().subtitle()).endsWith("서울 중구 봉래동");
     }
 
     @Test
-    void 장소는_최대_5개만_요청하고_다음_페이지에서_동일한_검색을_반복하지_않는다() {
+    void 지하철역는_최대_5개만_요청하고_다음_페이지에서_동일한_검색을_반복하지_않는다() {
         searchServer.expect(request -> assertThat(request.getURI().getRawQuery()).contains("display=5"))
-                .andRespond(withSuccess(places("1270300000").replace("\"total\":1", "\"total\":25"),
+                .andRespond(withSuccess(subwayStations("1270300000").replace("\"total\":1", "\"total\":25"),
                         MediaType.APPLICATION_JSON));
 
-        LocationSearchPage first = repository.search("서울역", LocationSearchType.PLACE, 0, 15);
-        LocationSearchPage next = repository.search("서울역", LocationSearchType.PLACE, 1, 15);
+        LocationSearchPage first = repository.search("서울역", LocationSearchType.SUBWAY_STATION, 0, 15);
+        LocationSearchPage next = repository.search("서울역", LocationSearchType.SUBWAY_STATION, 1, 15);
 
-        assertThat(first.totalCount()).isEqualTo(5L);
+        assertThat(first.totalCount()).isEqualTo(1L);
         assertThat(first.hasNext()).isFalse();
         assertThat(next.items()).isEmpty();
         assertThat(next.hasNext()).isFalse();
@@ -87,13 +132,13 @@ class NaverLocationSearchRepositoryTest {
     }
 
     @Test
-    void 강조_위치가_달라도_같은_장소의_식별자는_유지된다() {
-        searchServer.expect(request -> { }).andRespond(withSuccess(places("1270300000"), MediaType.APPLICATION_JSON));
+    void 강조_위치가_달라도_같은_지하철역의_식별자는_유지된다() {
+        searchServer.expect(request -> { }).andRespond(withSuccess(subwayStations("1270300000"), MediaType.APPLICATION_JSON));
         searchServer.expect(request -> { }).andRespond(withSuccess(
-                places("1270300000").replace("<b>서울역</b>", "서울<b>역</b>"), MediaType.APPLICATION_JSON));
+                subwayStations("1270300000").replace("<b>서울역</b>", "서울<b>역</b>"), MediaType.APPLICATION_JSON));
 
-        String firstId = repository.search("서울역", LocationSearchType.PLACE, 0, 5).items().getFirst().id();
-        String secondId = repository.search("역 기관", LocationSearchType.PLACE, 0, 5).items().getFirst().id();
+        String firstId = repository.search("서울역", LocationSearchType.SUBWAY_STATION, 0, 5).items().getFirst().id();
+        String secondId = repository.search("역 환승", LocationSearchType.SUBWAY_STATION, 0, 5).items().getFirst().id();
 
         assertThat(secondId).isEqualTo(firstId);
     }
@@ -143,7 +188,7 @@ class NaverLocationSearchRepositoryTest {
         searchServer.expect(request -> { }).andRespond(withSuccess(
                 "{\"total\":0,\"start\":1,\"display\":0,\"items\":[]}", MediaType.APPLICATION_JSON));
 
-        LocationSearchPage result = repository.search("없는장소", LocationSearchType.PLACE, 0, 5);
+        LocationSearchPage result = repository.search("없는지하철역", LocationSearchType.SUBWAY_STATION, 0, 5);
 
         assertThat(result.items()).isEmpty();
         assertThat(result.totalCount()).isZero();
@@ -157,7 +202,7 @@ class NaverLocationSearchRepositoryTest {
             keys[missing] = " ";
             NaverLocationSearchRepository unconfigured = new NaverLocationSearchRepository(searchClient, mapsClient,
                     keys[0], keys[1], keys[2], keys[3]);
-            LocationSearchType type = LocationSearchType.PLACE;
+            LocationSearchType type = LocationSearchType.SUBWAY_STATION;
             if (missing >= 2) {
                 type = LocationSearchType.REGION;
             }
@@ -170,12 +215,12 @@ class NaverLocationSearchRepositoryTest {
     }
 
     @Test
-    void 검색_API_키만_설정한_경우에도_장소_검색을_사용할_수_있다() {
-        searchServer.expect(request -> { }).andRespond(withSuccess(places("1270300000"), MediaType.APPLICATION_JSON));
+    void 검색_API_키만_설정한_경우에도_지하철역_검색을_사용할_수_있다() {
+        searchServer.expect(request -> { }).andRespond(withSuccess(subwayStations("1270300000"), MediaType.APPLICATION_JSON));
         NaverLocationSearchRepository placesOnly = new NaverLocationSearchRepository(searchClient, mapsClient,
                 "search-id", "search-secret", "", "");
 
-        assertThat(placesOnly.search("서울역", LocationSearchType.PLACE, 0, 5).items()).hasSize(1);
+        assertThat(placesOnly.search("서울역", LocationSearchType.SUBWAY_STATION, 0, 5).items()).hasSize(1);
     }
 
     @Test
@@ -183,7 +228,7 @@ class NaverLocationSearchRepositoryTest {
         searchServer.expect(request -> { }).andRespond(withStatus(HttpStatus.UNAUTHORIZED)
                 .body("sensitive upstream body"));
 
-        assertThatThrownBy(() -> repository.search("서울역", LocationSearchType.PLACE, 0, 5))
+        assertThatThrownBy(() -> repository.search("서울역", LocationSearchType.SUBWAY_STATION, 0, 5))
                 .isInstanceOf(LocationSearchUnavailableException.class).hasMessageNotContaining("sensitive");
     }
 
@@ -199,9 +244,9 @@ class NaverLocationSearchRepositoryTest {
     @ParameterizedTest
     @ValueSource(strings = {"1810000000", "\"not-a-coordinate\"", "127.03"})
     void 잘못된_좌표는_지도에서_사용하지_않고_외부_오류로_처리한다(String longitude) {
-        searchServer.expect(request -> { }).andRespond(withSuccess(places(longitude), MediaType.APPLICATION_JSON));
+        searchServer.expect(request -> { }).andRespond(withSuccess(subwayStations(longitude), MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> repository.search("서울역", LocationSearchType.PLACE, 0, 5))
+        assertThatThrownBy(() -> repository.search("서울역", LocationSearchType.SUBWAY_STATION, 0, 5))
                 .isInstanceOf(LocationSearchUnavailableException.class);
     }
 
@@ -209,14 +254,14 @@ class NaverLocationSearchRepositoryTest {
     void 잘못된_응답_구조를_빈_성공으로_처리하지_않는다() {
         searchServer.expect(request -> { }).andRespond(withSuccess("{\"items\":[]}", MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> repository.search("서울역", LocationSearchType.PLACE, 0, 5))
+        assertThatThrownBy(() -> repository.search("서울역", LocationSearchType.SUBWAY_STATION, 0, 5))
                 .isInstanceOf(LocationSearchUnavailableException.class);
     }
 
-    private String places(String longitude) {
+    private String subwayStations(String longitude) {
         return """
                 {"total":1,"start":1,"display":1,"items":[{
-                  "title":"<b>서울역</b> &amp; 기관","category":"교통&gt;지하철역",
+                  "title":"<b>서울역</b> &amp; 환승","category":"교통&gt;지하철역",
                   "address":"서울 중구 봉래동","roadAddress":"서울 중구 세종대로 1",
                   "mapx":%s,"mapy":"375000000"
                 }]}

@@ -19,7 +19,7 @@ interface GroupState {
   readonly error: string | null
 }
 
-const searchTypes: readonly SearchType[] = ['REGION', 'PLACE', 'ANNOUNCEMENT', 'COMPLEX']
+const searchTypes: readonly SearchType[] = ['REGION', 'SUBWAY_STATION', 'ANNOUNCEMENT', 'COMPLEX']
 
 export interface IntegratedSearchProps {
   readonly onActiveChange?: (active: boolean) => void
@@ -38,7 +38,7 @@ export function IntegratedSearch({
   const inputRef = useRef<HTMLInputElement>(null)
   const normalizedQuery = normalizeQuery(query)
   const active = normalizedQuery.replaceAll(' ', '').length >= 2
-  const inputLabel = '지역, 장소, 단지, 공고 검색'
+  const inputLabel = '지역, 지하철역, 단지, 공고 검색'
 
   useEffect(() => {
     onActiveChange?.(active)
@@ -172,7 +172,7 @@ function SearchGroup({
       <ul>
         {state.items.map((item) => {
           const missingCoordinates = item.latitude === null || item.longitude === null
-          const unavailable = missingCoordinates && (item.type === 'PLACE'
+          const unavailable = missingCoordinates && (item.type === 'SUBWAY_STATION'
             || (item.type === 'REGION' && !findRegionBoundaryMetadata(item.regionCode ?? item.id)))
           return (
             <li key={`${item.type}-${item.id}`} className={item.type === 'REGION' && item.regionCode ? styles.regionRow : undefined}>
@@ -244,7 +244,7 @@ function responseItems(response: IntegratedSearchResponse, type: SearchType) {
     ANNOUNCEMENT: response.announcements,
     COMPLEX: response.complexes,
     REGION: response.regions,
-    PLACE: response.places ?? [],
+    SUBWAY_STATION: response.subwayStations ?? [],
   }[type]
 }
 
@@ -258,7 +258,7 @@ function normalizeQuery(value: string) {
 }
 
 function typeLabel(type: SearchType) {
-  return { ANNOUNCEMENT: '공고', COMPLEX: '단지', REGION: '지역', PLACE: '장소' }[type]
+  return { ANNOUNCEMENT: '공고', COMPLEX: '단지', REGION: '지역', SUBWAY_STATION: '지하철역' }[type]
 }
 
 function statusLabel(status: string) {

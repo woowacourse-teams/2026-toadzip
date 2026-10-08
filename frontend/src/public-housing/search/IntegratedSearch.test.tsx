@@ -14,14 +14,14 @@ vi.mock('../regions/regionBoundaryCatalog.ts', () => ({
 }))
 
 describe('IntegratedSearch', () => {
-  it('네이버 위치 응답을 해석해 최대 5개 장소를 표시하고 더보기 없이 지도 선택으로 전달한다', async () => {
+  it('네이버 위치 응답을 해석해 최대 5개 지하철역을 표시하고 더보기 없이 지도 선택으로 전달한다', async () => {
     const onSelect = vi.fn()
     const fetcher = vi.fn<typeof fetch>().mockImplementation(async (input) => {
       const url = new URL(String(input))
-      if (url.pathname === '/api/v1/locations/search' && url.searchParams.get('type') === 'PLACE') {
+      if (url.pathname === '/api/v1/locations/search' && url.searchParams.get('type') === 'SUBWAY_STATION') {
         return new Response(JSON.stringify({ data: {
           items: Array.from({ length: 5 }, (_, index) => ({
-            type: 'PLACE', id: `naver-place:${index}`, title: `서울역 ${index + 1}`,
+            type: 'SUBWAY_STATION', id: `naver-subway:${index}`, title: `서울역 ${index + 1}`,
             subtitle: '지하철역 · 서울 중구', latitude: 37.5547, longitude: 126.9707,
           })), page: 0, size: 5, hasNext: false, totalCount: 5,
         } }))
@@ -35,26 +35,26 @@ describe('IntegratedSearch', () => {
     render(<IntegratedSearch repository={createIntegratedSearchRepository(fetcher)} onSelect={onSelect} />)
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울역' } })
 
-    const places = screen.getByRole('region', { name: '장소' })
-    expect(await within(places).findByRole('button', { name: /서울역 5/ })).toBeEnabled()
-    expect(within(places).getAllByRole('listitem')).toHaveLength(5)
-    expect(within(places).queryByRole('button', { name: /더보기/ })).not.toBeInTheDocument()
-    fireEvent.click(within(places).getByRole('button', { name: /서울역 1/ }))
+    const subwayStations = screen.getByRole('region', { name: '지하철역' })
+    expect(await within(subwayStations).findByRole('button', { name: /서울역 5/ })).toBeEnabled()
+    expect(within(subwayStations).getAllByRole('listitem')).toHaveLength(5)
+    expect(within(subwayStations).queryByRole('button', { name: /더보기/ })).not.toBeInTheDocument()
+    fireEvent.click(within(subwayStations).getByRole('button', { name: /서울역 1/ }))
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'PLACE', latitude: 37.5547, longitude: 126.9707, regionCode: null,
+      type: 'SUBWAY_STATION', latitude: 37.5547, longitude: 126.9707, regionCode: null,
     }))
     expect(screen.getByRole('searchbox')).toHaveValue('')
     expect(screen.getByRole('searchbox')).toHaveFocus()
   })
 
-  it('장소의 이름과 주소를 표시하고 선택한 장소를 전달한다', async () => {
-    const place = { ...item('PLACE', '123', '서울역'), subtitle: '지하철역 · 서울 중구' }
+  it('지하철역의 이름과 주소를 표시하고 선택한 지하철역을 전달한다', async () => {
+    const station = { ...item('SUBWAY_STATION', '123', '서울역'), subtitle: '지하철역 · 서울 중구' }
     const onSelect = vi.fn()
-    render(<IntegratedSearch repository={repositoryWith({ ...response([], [], []), places: [place] })} onSelect={onSelect} />)
+    render(<IntegratedSearch repository={repositoryWith({ ...response([], [], []), subwayStations: [station] })} onSelect={onSelect} />)
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울역' } })
     fireEvent.click(await screen.findByRole('button', { name: /서울역.*지하철역.*서울 중구/ }))
 
-    expect(onSelect).toHaveBeenCalledWith(place)
+    expect(onSelect).toHaveBeenCalledWith(station)
     expect(screen.getByRole('searchbox')).toHaveValue('')
     expect(screen.getByRole('searchbox')).toHaveFocus()
   })
@@ -100,10 +100,10 @@ describe('IntegratedSearch', () => {
     try {
       const repository = repositoryWith(response([], [], []))
       render(<IntegratedSearch repository={repository} onSelect={vi.fn()} />)
-      const input = screen.getByRole('searchbox', { name: '지역, 장소, 단지, 공고 검색' })
+      const input = screen.getByRole('searchbox', { name: '지역, 지하철역, 단지, 공고 검색' })
       const searchRegion = screen.getByRole('region', { name: '통합 검색' })
 
-      expect(input).toHaveAttribute('placeholder', '지역, 장소, 단지, 공고 검색')
+      expect(input).toHaveAttribute('placeholder', '지역, 지하철역, 단지, 공고 검색')
       expect(searchRegion.querySelector('.integrated-search__body')).toBeNull()
       expect(screen.queryByText('두 글자 이상 입력해 주세요.')).not.toBeInTheDocument()
       fireEvent.change(input, { target: { value: ' 서  ' } })
@@ -187,10 +187,10 @@ describe('IntegratedSearch', () => {
     await screen.findByText('서울 행복주택 공고')
 
     expect(screen.getAllByRole('heading').map((heading) => heading.textContent)).toEqual([
-      '검색결과', '지역', '장소', '공고', '단지',
+      '검색결과', '지역', '지하철역', '공고', '단지',
     ])
     expect(screen.getByRole('button', { name: '검색결과 닫기' })).toBeVisible()
-    for (const type of ['REGION', 'PLACE', 'ANNOUNCEMENT', 'COMPLEX']) {
+    for (const type of ['REGION', 'SUBWAY_STATION', 'ANNOUNCEMENT', 'COMPLEX']) {
       expect(repository.search).toHaveBeenCalledWith('서울', false, 0, expect.any(AbortSignal), type)
     }
     expect(screen.queryByRole('button', { name: '전체 결과 보기' })).not.toBeInTheDocument()
