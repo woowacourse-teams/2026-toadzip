@@ -433,10 +433,17 @@ export function ComplexFilterToolbar({
     && resolvedRegionSummary.regionCode === filters.regionCode
     ? resolvedRegionSummary.label
     : null
+  const appliedFilterCount = TOPICS.filter(([topic]) => topicSummary(filters, topic, resolvedRegionName) !== null).length
+  const filterCountDescriptionId = appliedFilterCount > 0 ? 'complex-applied-filter-count' : undefined
   const mobileResultAction = `${desktopTopicLabel(mobileInitialTopic) ?? '필터'} 적용`
 
   return (
     <section ref={rootRef} className={styles.root}>
+      {appliedFilterCount > 0 && (
+        <span id={filterCountDescriptionId} className={styles.visuallyHidden}>
+          적용 중인 필터 {appliedFilterCount}개
+        </span>
+      )}
       <div className={styles.desktopFilters}>
         <div
           className={styles.toolbar}
@@ -470,11 +477,11 @@ export function ComplexFilterToolbar({
                       tabIndex={rovingTopic === topic ? 0 : -1}
                       aria-controls={`complex-${topic}-filter-popover`}
                       aria-describedby={
-                        summary === null ? undefined : summaryId
+                        topic === 'all' ? filterCountDescriptionId : summary === null ? undefined : summaryId
                       }
                       aria-expanded={expanded}
                       aria-label={`${label} 필터 ${expanded ? '닫기' : '열기'}`}
-                      data-active={topic === 'all' ? filtersSignature !== searchFiltersSignature({}) : summary !== null}
+                      data-active={topic === 'all' ? appliedFilterCount > 0 : summary !== null}
                       onFocus={() => setRovingTopic(topic)}
                       onClick={() => {
                         setErrorMessage(null)
@@ -491,6 +498,9 @@ export function ComplexFilterToolbar({
                       <span className={styles.triggerText} aria-hidden="true">
                         {summary ?? label}
                       </span>
+                      {topic === 'all' && appliedFilterCount > 0 && (
+                        <span className={styles.filterCount} aria-hidden="true">{appliedFilterCount}</span>
+                      )}
                       <span
                         className={`${styles.chevron}${
                           expanded ? ` ${styles.chevronExpanded}` : ''
@@ -602,11 +612,15 @@ export function ComplexFilterToolbar({
               aria-controls="mobile-complex-filter-sheet"
               aria-expanded={mobileSheetOpen && mobileInitialTopic === topic}
               aria-label={`모바일 ${label} 필터 열기`}
-              data-active={topic === 'all' ? filtersSignature !== searchFiltersSignature({}) : summary !== null}
+              aria-describedby={topic === 'all' ? filterCountDescriptionId : undefined}
+              data-active={topic === 'all' ? appliedFilterCount > 0 : summary !== null}
               onClick={(event) => openMobileSheet(topic, event.currentTarget)}
             >
               {topic === 'all' && <AllFiltersIcon />}
               <span>{summary ?? label}</span>
+              {topic === 'all' && appliedFilterCount > 0 && (
+                <span className={styles.filterCount} aria-hidden="true">{appliedFilterCount}</span>
+              )}
             </button>
           )
         })}

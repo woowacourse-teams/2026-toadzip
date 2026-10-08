@@ -42,6 +42,52 @@ const BASE_FILTERS: ComplexSearchFilters = {
 }
 
 describe('ComplexFilterToolbar', () => {
+  it.each(['desktop', 'mobile'])('%s 전체 배지는 선택 항목 수가 아닌 적용 중인 필터 종류 수를 표시한다', (mode) => {
+    const { rerender } = renderToolbar({ filters: BASE_FILTERS })
+    const name = mode === 'desktop' ? '전체 필터 열기' : '모바일 전체 필터 열기'
+    const trigger = screen.getByRole('button', { name })
+    expect(within(trigger).getByText('8')).toBeVisible()
+    expect(trigger).toHaveAccessibleDescription('적용 중인 필터 8개')
+    rerender(<ComplexFilterToolbar filters={{
+      rentalTypes: ['HAPPY_HOUSING', 'NATIONAL_RENTAL'],
+      minDeposit: 100_000_000, maxDeposit: 200_000_000, minMonthlyRent: 0,
+    }} onApply={vi.fn()} />)
+    expect(within(trigger).getByText('2')).toBeVisible()
+    expect(trigger).toHaveAccessibleDescription('적용 중인 필터 2개')
+    rerender(<ComplexFilterToolbar filters={{ rentalTypes: [], regionCode: '' }} onApply={vi.fn()} />)
+    expect(trigger).toHaveTextContent(/^전체$/)
+    expect(trigger).not.toHaveAttribute('aria-describedby')
+    expect(trigger).toHaveAttribute('data-active', 'false')
+  })
+
+  it.each(['desktop', 'mobile'])('%s 전체 배지는 초안 대신 적용한 조건을 세고 초기화 적용 시 사라진다', (mode) => {
+    render(<StatefulToolbar initialFilters={{ rentalTypes: ['NATIONAL_RENTAL'] }} />)
+    const toolbar = screen.getByRole('toolbar', { name: mode === 'desktop' ? '단지 검색 필터' : '모바일 단지 검색 필터' })
+    const trigger = within(toolbar).getAllByRole('button')[0]
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'SH' }))
+    expect(within(trigger).getByText('1')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: mode === 'desktop' ? '전체 필터 적용' : '전체 적용' }))
+    expect(within(trigger).getByText('2')).toBeVisible()
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('button', { name: '전체 필터 초기화' }))
+    expect(within(trigger).getByText('2')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: mode === 'desktop' ? '전체 필터 적용' : '전체 적용' }))
+    expect(trigger).toHaveTextContent(/^전체$/)
+    expect(trigger).not.toHaveAttribute('aria-describedby')
+  })
+
+  it('개별 필터를 바로 적용하거나 해제하면 전체 배지에도 반영한다', () => {
+    render(<StatefulToolbar initialFilters={{ maxDeposit: 0 }} />)
+    const trigger = screen.getByRole('button', { name: '전체 필터 열기' })
+    expect(within(trigger).getByText('1')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '행복주택' }))
+    expect(within(trigger).getByText('2')).toBeVisible()
+    fireEvent.click(screen.getByRole('checkbox', { name: '행복주택' }))
+    expect(within(trigger).getByText('1')).toBeVisible()
+  })
+
   it.each(['desktop', 'mobile'])('%s 전체 패널에서 모든 조건을 초기화하고 적용한다', (mode) => {
     render(<StatefulToolbar initialFilters={BASE_FILTERS} />)
     fireEvent.click(screen.getByRole('button', { name: mode === 'desktop' ? '전체 필터 열기' : '모바일 전체 필터 열기' }))
