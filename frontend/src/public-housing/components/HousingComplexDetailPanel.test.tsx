@@ -1,6 +1,6 @@
 /// <reference types="node" />
 
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -117,19 +117,20 @@ function factValue(container: HTMLElement, term: string) {
 }
 
 describe('HousingComplexDetailPanel', () => {
-  it('단지 알림 클릭은 단지 ID와 함께 최초 신청 의사를 묻는다', async () => {
+  it('회원 단지 알림 클릭은 단지 ID를 저장하고 준비 중임을 안내한다', async () => {
     localStorage.clear()
     const record = vi.fn().mockResolvedValue(undefined)
     render(
-      <NotificationInterestProvider repository={{ record }}>
+      <NotificationInterestProvider repository={{ record, loadStatus: async () => ({ emailConfirmed: false, targets: [] }) }}>
         <HousingComplexDetailPanel detail={BASE_DETAIL} onClose={vi.fn()} />
       </NotificationInterestProvider>,
     )
     expect(screen.getByText('단지 알림')).toBeVisible()
+    await waitFor(() => expect(screen.getByRole('button', { name: '서울가람 행복주택 알림 받기' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: '서울가람 행복주택 알림 받기' }))
-    expect(await screen.findByRole('dialog', { name: '이메일 알림 신청' })).toBeVisible()
+    expect(await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })).toBeVisible()
     expect(record).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'CLICKED', source: 'COMPLEX_DETAIL', targetType: 'COMPLEX', targetId: '17',
+      eventType: 'CONFIRMED', source: 'COMPLEX_DETAIL', targetType: 'COMPLEX', targetId: '17',
     }))
   })
 

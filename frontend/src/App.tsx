@@ -15,6 +15,7 @@ import { RequireAdmin } from './admin/auth/RequireAdmin'
 import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHousingExplorer.tsx'
 import { BrandLink } from './BrandLink'
 import { NotificationInterestProvider, NotificationInterestSessionControl } from './public-housing/interest/NotificationInterest'
+import { NotificationPage } from './public-housing/interest/NotificationPage'
 import { GuestCancellationPage } from './public-housing/interest/GuestCancellationPage'
 import { UserListPage } from './admin/users/UserListPage'
 import { UserDetailPage } from './admin/users/UserDetailPage'
@@ -87,6 +88,8 @@ export default function App() {
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<LegacyLoginRedirect />} />
       <Route path="/feedback" element={<FeedbackPage />} />
+      <Route path="/notifications" element={<NotificationPage />} />
+      <Route path="/mypage/notifications" element={<NotificationPage management />} />
       <Route path="/notifications/cancel" element={<GuestCancellationPage />} />
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />

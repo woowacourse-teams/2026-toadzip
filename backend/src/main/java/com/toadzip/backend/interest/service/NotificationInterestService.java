@@ -34,7 +34,8 @@ public class NotificationInterestService {
         NotificationInterestEvent event = NotificationInterestEvent.create(
                 request.eventId(), request.sessionId(), request.eventType(), request.source(),
                 request.targetType(), request.targetId(), request.email(), clock.instant());
-        if (!targetExists(request.targetType(), request.targetId())) {
+        if (request.eventType() != com.toadzip.backend.interest.domain.NotificationEventType.CANCELLED
+                && !targetExists(request.targetType(), request.targetId())) {
             throw new InvalidNotificationInterestException();
         }
         if (!repository.record(event)) {
@@ -46,6 +47,11 @@ public class NotificationInterestService {
         }
         switch (request.eventType()) {
             case CONFIRMED -> {
+                if (request.email() == null) {
+                    subscriptionRepository.activate(userId, request.targetType(), request.targetId(),
+                            event.getCreatedAt());
+                    return;
+                }
                 if (request.email() != null) {
                     subscriptionRepository.confirm(userId, request.targetType(), request.targetId(),
                             request.email(), event.getCreatedAt());

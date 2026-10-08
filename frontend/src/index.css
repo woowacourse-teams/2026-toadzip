@@ -2635,3 +2635,24 @@ button {
 @media (max-width: 767px) and (prefers-reduced-motion: reduce) {
   .app-shell .housing-browse-panel .housing-results { transition: none; }
 }
+
+/* Member notifications share the account rail and fit beside it on mobile. */
+.service-notification-inbox {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 100%; min-height: 52px; gap: 6px; padding: 8px 0; box-sizing: border-box;
+  border-radius: 10px; color: var(--ds-color-label); font-size: 10px; text-decoration: none; white-space: nowrap;
+}
+.service-notification-inbox svg { width: 20px; height: 20px; }
+.service-notification-inbox:hover { background: var(--ds-color-action-soft); }
+.service-notification-inbox:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
+.service-notification-management { display: block; padding: 10px 0; color: var(--ds-color-action); white-space: nowrap; }
+@media (max-width: 767px) {
+  .app-shell:has(.service-feedback-link):has(.service-notification-inbox) .housing-navigation { width: 40%; }
+  .service-rail-account:has(.service-feedback-link):has(.service-notification-inbox) { left: 40%; width: 60%; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+  .service-rail-account .service-user-control:has(.service-notification-inbox) { flex-direction: row; gap: 0; }
+  .service-notification-inbox, .service-rail-account .service-account-menu { flex: 1; min-width: 0; }
+  .service-notification-inbox { font-size: 9px; gap: 4px; }
+}
+.service-account-menu__panel { flex-wrap: wrap; }
+.service-account-menu__panel .service-notification-management { flex: 0 0 100%; border-bottom: 1px solid var(--ds-color-divider); padding: 0 0 12px; }
+.service-account-menu__panel .service-login-status, .service-account-menu__panel .service-logout-button { white-space: nowrap; }

@@ -62,11 +62,19 @@ public class NotificationSubscriptionRepository {
 
     public NotificationSubscriptionResponse findForUser(long userId) {
         List<NotificationSubscriptionResponse.Target> targets = jdbcTemplate.query("""
-                SELECT target_type, target_id FROM notification_subscriptions
-                WHERE user_id = ? AND active = true AND expires_at > CURRENT_TIMESTAMP
-                ORDER BY target_type, target_id
+                SELECT subscriptions.target_type, subscriptions.target_id,
+                       COALESCE(complex.name, announcement.name) AS target_name
+                FROM notification_subscriptions subscriptions
+                LEFT JOIN housing_complexes complex
+                    ON subscriptions.target_type = 'COMPLEX' AND subscriptions.target_id = complex.id::text
+                LEFT JOIN announcements announcement
+                    ON subscriptions.target_type = 'ANNOUNCEMENT' AND subscriptions.target_id = announcement.id::text
+                WHERE subscriptions.user_id = ? AND subscriptions.active = true
+                    AND subscriptions.expires_at > CURRENT_TIMESTAMP
+                ORDER BY subscriptions.target_type, subscriptions.target_id
                 """, (row, number) -> new NotificationSubscriptionResponse.Target(
-                NotificationTargetType.valueOf(row.getString("target_type")), row.getString("target_id")), userId);
+                NotificationTargetType.valueOf(row.getString("target_type")), row.getString("target_id"),
+                row.getString("target_name")), userId);
         return new NotificationSubscriptionResponse(hasEmail(userId), targets);
     }
 }

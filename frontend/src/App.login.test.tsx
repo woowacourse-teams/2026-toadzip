@@ -3,6 +3,11 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import App from './App'
 
+vi.mock('./public-housing/interest/notificationInterestRepository', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./public-housing/interest/notificationInterestRepository')>()
+  return { ...original, notificationInterestRepository: original.createNotificationInterestRepository((...args) => globalThis.fetch(...args)) }
+})
+
 function LocationDisplay() {
   const location = useLocation()
   return <output aria-label="현재 주소">{location.pathname}{location.search}{location.hash}</output>
@@ -30,7 +35,7 @@ it('기존 로그인 주소에 접근하면 메인 화면에서 로그인 모달
 })
 
 it('이전 로그인 콜백 주소로 인증이 완료되면 모달 없이 메인 화면으로 이동한다', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 7 }) }))
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.endsWith('/notification-subscriptions/me') ? { emailConfirmed: false, targets: [] } : { id: 7 } })))
   render(<MemoryRouter initialEntries={['/login']}><App /><LocationDisplay /></MemoryRouter>)
   expect(await screen.findByText('마이페이지')).toBeVisible()
   expect(screen.getByRole('link', { name: '공공주택 복덕방 홈' })).toBeVisible()
@@ -39,7 +44,7 @@ it('이전 로그인 콜백 주소로 인증이 완료되면 모달 없이 메�
 })
 
 it('메인 화면으로 인증이 완료되면 로그인 상태만 표시한다', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 7 }) }))
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.endsWith('/notification-subscriptions/me') ? { emailConfirmed: false, targets: [] } : { id: 7 } })))
   render(<MemoryRouter><App /></MemoryRouter>)
   expect(await screen.findByText('마이페이지')).toBeVisible()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

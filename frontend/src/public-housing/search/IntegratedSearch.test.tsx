@@ -18,7 +18,7 @@ describe('IntegratedSearch', () => {
     const record = vi.fn().mockResolvedValue(undefined)
     const onSelect = vi.fn()
     render(
-      <NotificationInterestProvider repository={{ record }}>
+      <NotificationInterestProvider repository={{ record, loadStatus: async () => ({ emailConfirmed: false, targets: [] }) }}>
         <IntegratedSearch repository={repositoryWith(response([], [], [item('REGION', '11', '서울특별시')]))} onSelect={onSelect} />
       </NotificationInterestProvider>,
     )
@@ -26,14 +26,13 @@ describe('IntegratedSearch', () => {
     const bell = await screen.findByRole('button', { name: '서울특별시 알림 받기' })
     expect(bell.querySelector('svg')).toHaveAttribute('data-state', 'idle')
     fireEvent.click(bell)
-    expect(await screen.findByRole('dialog')).toHaveTextContent('이 지역에 대한 알림을 받으시겠습니까?')
+    expect(await screen.findByRole('dialog')).toHaveTextContent('알림 기능을 준비하고 있어요')
     expect(screen.getByRole('heading', { name: '검색결과' })).toBeVisible()
     expect(onSelect).not.toHaveBeenCalled()
     expect(record).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'CLICKED', source: 'REGION_SEARCH', targetType: 'REGION', targetId: '11',
+      eventType: 'CONFIRMED', source: 'REGION_SEARCH', targetType: 'REGION', targetId: '11',
     }))
-    fireEvent.change(screen.getByRole('textbox', { name: '알림 받을 이메일' }), { target: { value: 'guest@example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: '알림 신청' }))
+    fireEvent.click(screen.getByRole('button', { name: '확인' }))
     await waitFor(() => expect(bell).toHaveAccessibleName('서울특별시 알림 취소'))
     expect(bell.querySelector('svg')).toHaveAttribute('data-state', 'requested')
   })

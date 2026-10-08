@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate, useSearchParams } from 'react-router'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { getCurrentUser, logoutUser } from './api'
 import { LoginModal } from './LoginModal'
 
 type SessionState = 'loading' | 'guest' | 'signed-in' | 'error'
 
-export function UserSessionControl({ onLogout, presentation = 'default' }: { readonly onLogout?: () => void; readonly presentation?: 'default' | 'rail' }) {
-  const [session, setSession] = useState<SessionState>('loading')
+export function UserSessionControl({ onLogout, presentation = 'default', sessionOverride, onSessionRetry }: { readonly onLogout?: () => void; readonly presentation?: 'default' | 'rail'; readonly sessionOverride?: SessionState; readonly onSessionRetry?: () => void }) {
+  const [localSession, setSession] = useState<SessionState>('loading')
+  const session = sessionOverride ?? localSession
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [logoutError, setLogoutError] = useState(false)
   const [isLoginOpen, setIsLoginOpen] = useState(false)
@@ -35,6 +36,7 @@ export function UserSessionControl({ onLogout, presentation = 'default' }: { rea
   }, [])
 
   async function retrySessionCheck() {
+    if (onSessionRetry) { onSessionRetry(); return }
     setSession('loading')
     try {
       setSession(await getCurrentUser() ? 'signed-in' : 'guest')
@@ -64,6 +66,7 @@ export function UserSessionControl({ onLogout, presentation = 'default' }: { rea
   }
 
   const accountActions = <>
+    <Link className="service-notification-management" to="/mypage/notifications">알림 관리</Link>
     <span className="service-login-status"><span aria-hidden="true" />로그인됨</span>
     <button className="service-logout-button" type="button" disabled={isLoggingOut}
       onClick={() => void handleLogout()}>
@@ -85,6 +88,11 @@ export function UserSessionControl({ onLogout, presentation = 'default' }: { rea
           {presentation === 'rail' ? '로그인 재확인' : '로그인 상태 다시 확인'}
         </button>
       )}
+      {session === 'signed-in' && presentation === 'rail' && <Link className="service-notification-inbox" to="/notifications">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 4h16v16H4zM4 13h5l1 3h4l1-3h5" />
+        </svg><span>알림 보관함</span>
+      </Link>}
       {session === 'signed-in' && (
         presentation === 'rail' ? <details className="service-account-menu">
           <summary className="service-login-link">마이페이지</summary>

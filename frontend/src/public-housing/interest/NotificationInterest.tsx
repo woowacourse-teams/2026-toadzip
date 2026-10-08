@@ -1,64 +1,34 @@
-import { createContext, type KeyboardEvent, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type KeyboardEvent, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { notificationInterestRepository, type NotificationEventSource, type NotificationEventType, type NotificationInterestEvent, type NotificationInterestRepository, type NotificationTarget } from './notificationInterestRepository'
 import { getCurrentUser } from '../../user/auth/api'
 import { UserSessionControl } from '../../user/auth/UserSessionControl'
+import { LoginModal } from '../../user/auth/LoginModal'
+import { findRegionBoundaryName } from '../regions/regionBoundaryCatalog'
 import styles from './NotificationInterest.module.css'
 
-const sessionKey = 'toadzip.notification-interest.session'
-const clientKey = 'toadzip.notification-interest.client'
-const emailPromptKey = 'toadzip.notification-interest.email-confirmed'
-const requestedKeyPrefix = 'toadzip.notification-interest.requested'
+import { InterestContext, notificationPreparationTitle, notificationPreparationDescription, notificationPreparationNotice, type Selection } from './NotificationInterestContext'
 
-interface Selection {
-  readonly target: NotificationTarget
-  readonly source: NotificationEventSource
-}
-
-interface Action extends Selection {
-  readonly event: NotificationInterestEvent
-  readonly next: 'prompt' | 'complete' | 'finish' | 'cancel'
-}
-
-const InterestContext = createContext<{
-  readonly blocked: boolean
-  readonly mode: 'loading' | 'guest' | 'member' | 'error'
-  readonly serverStatus: boolean
-  readonly requested: ReadonlyMap<string, boolean>
-  readonly resetSession: () => void
-  readonly request: (selection: Selection, trigger: HTMLButtonElement) => void
-  readonly expose: (selection: Selection) => void
-} | null>(null)
+interface Action extends Selection { readonly event: NotificationInterestEvent }
 
 export function NotificationInterestSessionControl({ presentation }: { readonly presentation?: 'default' | 'rail' }) {
   const context = useContext(InterestContext)
-  return <UserSessionControl onLogout={context?.resetSession} presentation={presentation} />
+  return <UserSessionControl onLogout={context?.resetSession} presentation={presentation}
+    sessionOverride={context?.mode === 'member' ? 'signed-in' : context?.mode}
+    onSessionRetry={context?.refreshStatus} />
 }
 
-function requestedKey(target: Pick<NotificationTarget, 'type' | 'id'>) {
-  return `${requestedKeyPrefix}:${target.type}:${target.id}`
-}
-
+function requestedKey(target: Pick<NotificationTarget, 'type' | 'id'>) { return `${target.type}:${target.id}` }
 function readStorage(kind: 'localStorage' | 'sessionStorage', key: string) {
   try { return window[kind].getItem(key) } catch { return null }
 }
-
 function writeStorage(kind: 'localStorage' | 'sessionStorage', key: string, value: string) {
-  try { window[kind].setItem(key, value) } catch { /* The mounted provider keeps a memory fallback. */ }
+  try { window[kind].setItem(key, value) } catch { /* Memory state remains available. */ }
 }
-
-function sessionId() {
-  const stored = readStorage('sessionStorage', sessionKey)
+function identifier(kind: 'localStorage' | 'sessionStorage', key: string) {
+  const stored = readStorage(kind, key)
   if (stored && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(stored)) return stored
   const id = crypto.randomUUID()
-  writeStorage('sessionStorage', sessionKey, id)
-  return id
-}
-
-function clientId() {
-  const stored = readStorage('localStorage', clientKey)
-  if (stored && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(stored)) return stored
-  const id = crypto.randomUUID()
-  writeStorage('localStorage', clientKey, id)
+  writeStorage(kind, key, id)
   return id
 }
 
@@ -67,91 +37,100 @@ export function NotificationInterestProvider({ children, repository = notificati
   readonly repository?: NotificationInterestRepository
   readonly loadUser?: typeof getCurrentUser
 }) {
-  const [session] = useState(sessionId)
-  const [client] = useState(clientId)
-  const [prompt, setPrompt] = useState<Selection | null>(null)
+  const [session] = useState(() => identifier('sessionStorage', 'toadzip.notification-interest.session'))
+  const [client] = useState(() => identifier('localStorage', 'toadzip.notification-interest.client'))
+  const [dialog, setDialog] = useState<'guest' | 'prepared' | 'login' | null>(null)
   const [busy, setBusy] = useState(false)
+  const [clearingAll, setClearingAll] = useState(false)
+  const [batchError, setBatchError] = useState('')
+  const batchRetries = useRef(new Map<string, NotificationInterestEvent>())
   const [failed, setFailed] = useState<Action | null>(null)
   const [message, setMessage] = useState('')
-  const [email, setEmail] = useState('')
-  const [loadingUser, setLoadingUser] = useState(false)
-  const [requested, setRequested] = useState<ReadonlyMap<string, boolean>>(() => new Map())
+  const [targets, setTargets] = useState<readonly NotificationTarget[]>([])
   const [mode, setMode] = useState<'loading' | 'guest' | 'member' | 'error'>('loading')
-  const [serverStatus, setServerStatus] = useState(false)
   const inFlight = useRef(false)
+  const batchInFlight = useRef(false)
+  const batchController = useRef<AbortController | null>(null)
   const requestVersion = useRef(0)
-  const completed = useRef(false)
   const trigger = useRef<HTMLButtonElement | null>(null)
   const restoreFocus = useRef(false)
   const exposed = useRef(new Set<string>())
+  const requested = useMemo(() => new Map(targets.map((target) => [requestedKey(target), true])), [targets])
 
   const refreshStatus = useCallback(() => {
-    if (!repository.loadStatus || inFlight.current) {
-      if (!repository.loadStatus) setMode('guest')
-      return
-    }
-    const request = ++requestVersion.current
-    void repository.loadStatus(client).then((status) => {
-      if (request !== requestVersion.current) return
-      if (!status) {
-        completed.current = false
-        setRequested(new Map())
-        setServerStatus(false)
-        setMode('guest')
-        return
-      }
-      completed.current = status.emailConfirmed
-      setRequested(new Map(status.targets.map((target) => [requestedKey({ type: target.targetType, id: target.targetId }), true])))
-      setServerStatus(true)
-      setMode(status.guest ? 'guest' : 'member')
+    if (inFlight.current) return
+    const version = ++requestVersion.current
+    const statusRequest = repository.loadStatus
+      ? repository.loadStatus(client)
+      : loadUser().then((user) => ({ guest: !user, emailConfirmed: false, targets: [] }))
+    void statusRequest.then((status) => {
+      if (version !== requestVersion.current) return
+      // A fresh server snapshot reconciles ambiguous writes and any session change.
+      batchRetries.current.clear()
+      setBatchError('')
+      const member = status && !status.guest
+      setMode(member ? 'member' : 'guest')
+      setTargets(member ? status.targets.map((target) => ({
+        type: target.targetType, id: target.targetId,
+        name: (target.targetType === 'REGION' ? findRegionBoundaryName(target.targetId) : target.targetName)
+          ?? `${{ REGION: '지역', COMPLEX: '단지', ANNOUNCEMENT: '공고' }[target.targetType]} ${target.targetId}`,
+      })) : [])
+      if (!member) { setDialog(null); setFailed(null); setMessage('') }
     }).catch(() => {
-      if (request === requestVersion.current) setMode((current) => current === 'loading' ? 'error' : current)
+      if (version === requestVersion.current) { setMode('error'); setTargets([]) }
     })
-  }, [client, repository])
+  }, [client, loadUser, repository])
 
   const resetSession = useCallback(() => {
     requestVersion.current++
     inFlight.current = false
-    completed.current = false
+    batchInFlight.current = false
+    batchController.current?.abort()
+    batchController.current = null
     restoreFocus.current = false
-    setBusy(false)
-    setFailed(null)
-    setPrompt(null)
-    setEmail('')
-    setMessage('')
-    setRequested(new Map())
-    setServerStatus(false)
-    setMode('loading')
+    batchRetries.current.clear()
+    setClearingAll(false); setBatchError('')
+    setBusy(false); setFailed(null); setDialog(null); setMessage(''); setTargets([]); setMode('loading')
     refreshStatus()
   }, [refreshStatus])
 
   useEffect(() => {
-    const requestCounter = requestVersion
+    const version = requestVersion
+    const interruptBatch = () => {
+      if (!batchInFlight.current) return
+      version.current++
+      batchInFlight.current = false
+      batchController.current?.abort()
+      batchController.current = null
+      inFlight.current = false
+      batchRetries.current.clear()
+      setBusy(false); setClearingAll(false); setBatchError('')
+      setTargets([]); setMode('loading')
+      setMessage('전체 해제가 중단되었어요. 남은 알림 설정을 확인해 주세요.')
+    }
+    const visibilityChanged = () => {
+      if (document.hidden) interruptBatch()
+      else refreshStatus()
+    }
     resetSession()
     window.addEventListener('focus', refreshStatus)
-    return () => { requestCounter.current++; window.removeEventListener('focus', refreshStatus) }
+    window.addEventListener('blur', interruptBatch)
+    document.addEventListener('visibilitychange', visibilityChanged)
+    return () => {
+      version.current++
+      batchController.current?.abort()
+      window.removeEventListener('focus', refreshStatus)
+      window.removeEventListener('blur', interruptBatch)
+      document.removeEventListener('visibilitychange', visibilityChanged)
+    }
   }, [refreshStatus, resetSession])
 
   useEffect(() => {
-    if (!prompt && !busy && !failed && restoreFocus.current) {
+    if (!dialog && !busy && !failed && restoreFocus.current) {
       restoreFocus.current = false
       trigger.current?.focus({ preventScroll: true })
     }
-  }, [busy, failed, prompt])
-
-  useEffect(() => {
-    if (!prompt) return
-    let active = true
-    setLoadingUser(true)
-    void loadUser().then((user) => {
-      if (active && user?.email) setEmail((current) => current || user.email || '')
-    }).catch(() => {
-      // Email can still be entered when the session lookup is unavailable.
-    }).finally(() => {
-      if (active) setLoadingUser(false)
-    })
-    return () => { active = false }
-  }, [loadUser, prompt])
+  }, [busy, failed, dialog])
 
   useEffect(() => {
     if (!message) return
@@ -166,69 +145,74 @@ export function NotificationInterestProvider({ children, repository = notificati
 
   const send = useCallback(async (action: Action) => {
     if (inFlight.current) return
-    const request = ++requestVersion.current
+    const version = ++requestVersion.current
     inFlight.current = true
-    setBusy(true)
-    setFailed(null)
-    setMessage('')
+    setBusy(true); setFailed(null); setMessage(''); setBatchError('')
     try {
       await repository.record(action.event)
-      if (request !== requestVersion.current) return
-      if (action.next === 'prompt') {
-        setEmail('')
-        setPrompt({ target: action.target, source: action.source })
-      } else if (action.next === 'complete') {
-        if (action.event.eventType === 'CONFIRMED') {
-          completed.current = true
-          if (mode === 'guest') writeStorage('localStorage', emailPromptKey, '1')
-          const key = requestedKey(action.target)
-          if (mode === 'guest') writeStorage('localStorage', key, '1')
-          setRequested((current) => new Map(current).set(key, true))
-        }
+      if (version !== requestVersion.current) return
+      batchRetries.current.delete(requestedKey(action.target))
+      const cancelled = action.event.eventType === 'CANCELLED'
+      setTargets((current) => {
+        const remaining = current.filter((target) => requestedKey(target) !== requestedKey(action.target))
+        return cancelled ? remaining : [...remaining, action.target]
+      })
+      if (cancelled) {
         restoreFocus.current = true
-        setPrompt(null)
-        setMessage(action.event.eventType === 'DECLINED'
-          ? '알림 신청을 하지 않았어요. 언제든 다시 신청할 수 있어요.'
-          : `${action.target.name} 알림 신청을 받았어요.`)
-      } else if (action.next === 'finish') {
-        const key = requestedKey(action.target)
-        if (mode === 'guest') writeStorage('localStorage', key, '1')
-        setRequested((current) => new Map(current).set(key, true))
-        restoreFocus.current = true
-        setMessage(`${action.target.name} 알림 신청을 받았어요.`)
+        setMessage(`${action.target.name} 알림 설정을 해제했어요.`)
       } else {
-        const key = requestedKey(action.target)
-        if (mode === 'guest') writeStorage('localStorage', key, '0')
-        if (![...requested].some(([targetKey, active]) => targetKey !== key && active)) {
-          completed.current = false
-          if (mode === 'guest') writeStorage('localStorage', emailPromptKey, '0')
-        }
-        setRequested((current) => new Map(current).set(key, false))
-        restoreFocus.current = true
-        setMessage(`${action.target.name} 알림 신청을 취소했어요.`)
+        setDialog('prepared')
+        setMessage(`${action.target.name} 알림 설정을 저장했어요.`)
       }
     } catch {
-      if (request === requestVersion.current) setFailed(action)
+      if (version === requestVersion.current) setFailed(action)
     } finally {
-      if (request === requestVersion.current) {
-        inFlight.current = false
-        setBusy(false)
-      }
+      if (version === requestVersion.current) { inFlight.current = false; setBusy(false) }
     }
-  }, [mode, repository, requested])
+  }, [repository])
 
   const request = useCallback((selection: Selection, button: HTMLButtonElement) => {
-    if (inFlight.current || prompt || failed) return
+    if (inFlight.current || dialog || failed || mode === 'loading' || mode === 'error') return
     trigger.current = button
-    const key = requestedKey(selection.target)
-    const isRequested = requested.get(key) ?? (!serverStatus && mode === 'guest' && readStorage('localStorage', key) === '1')
-    if (isRequested) {
-      void send({ ...selection, event: eventFor(selection, 'CANCELLED'), next: 'cancel' })
-      return
+    if (mode === 'guest') { setDialog('guest'); return }
+    void send({ ...selection, event: eventFor(selection, requested.has(requestedKey(selection.target)) ? 'CANCELLED' : 'CONFIRMED') })
+  }, [dialog, eventFor, failed, mode, requested, send])
+
+  const clearAll = useCallback(async (button: HTMLButtonElement) => {
+    if (mode !== 'member' || inFlight.current || dialog || failed || targets.length === 0) return
+    const version = ++requestVersion.current
+    trigger.current = button
+    inFlight.current = true
+    batchInFlight.current = true
+    const controller = new AbortController()
+    batchController.current = controller
+    setBusy(true); setClearingAll(true); setBatchError(''); setMessage('')
+    let failures = 0
+    for (const target of targets) {
+      if (version !== requestVersion.current) return
+      const key = requestedKey(target)
+      const event = batchRetries.current.get(key) ?? eventFor({ target, source: 'SETTING' }, 'CANCELLED')
+      batchRetries.current.set(key, event)
+      try {
+        await repository.record(event, controller.signal)
+        if (version !== requestVersion.current) return
+        batchRetries.current.delete(key)
+        setTargets((current) => current.filter((item) => requestedKey(item) !== key))
+      } catch {
+        if (version !== requestVersion.current) return
+        failures++
+      }
     }
-    const alreadyAsked = completed.current || (!serverStatus && mode === 'guest' && readStorage('localStorage', emailPromptKey) === '1')
-    void send({ ...selection, event: eventFor(selection, 'CLICKED'), next: alreadyAsked ? 'finish' : 'prompt' })
-  }, [eventFor, failed, mode, prompt, requested, send, serverStatus])
+    inFlight.current = false
+    batchInFlight.current = false
+    batchController.current = null
+    setBusy(false); setClearingAll(false)
+    if (failures > 0) {
+      setBatchError(`${failures}개 설정을 해제하지 못했어요. 전체 해제를 눌러 다시 시도해 주세요.`)
+    } else {
+      setMessage('알림 설정을 모두 해제했어요.')
+    }
+  }, [dialog, eventFor, failed, mode, repository, targets])
 
   const expose = useCallback((selection: Selection) => {
     const key = `toadzip.notification-interest.exposed:${selection.source}:${selection.target.type}:${selection.target.id}`
@@ -236,77 +220,44 @@ export function NotificationInterestProvider({ children, repository = notificati
     exposed.current.add(key)
     void repository.record(eventFor(selection, 'EXPOSED')).then(() => {
       writeStorage('sessionStorage', key, '1')
-    }).catch(() => {
-      exposed.current.delete(key)
-      console.warn('알림 버튼 노출 정보를 기록하지 못했습니다.')
-    })
+    }).catch(() => { exposed.current.delete(key) })
   }, [eventFor, repository])
 
-  const context = useMemo(() => ({ blocked: mode === 'loading' || mode === 'error' || busy || prompt !== null || failed !== null, mode, serverStatus, requested, request, expose, resetSession }), [busy, expose, failed, mode, prompt, request, requested, resetSession, serverStatus])
-  function clearFailure() {
-    restoreFocus.current = true
-    setFailed(null)
-    if (prompt) {
-      setPrompt(null)
-    }
-  }
-  const error = failed && (
-    <div role="alert" className={styles.error}>
-      <p>{failed.event.eventType === 'CANCELLED'
-        ? '알림 취소를 완료하지 못했어요. 다시 시도해 주세요.'
-        : '알림 신청을 완료하지 못했어요. 다시 시도해 주세요.'}</p>
-      <button type="button" disabled={busy} onClick={() => { void send(failed) }}>다시 시도</button>
-      <button type="button" disabled={busy} onClick={clearFailure}>닫기</button>
-    </div>
-  )
+  const context = useMemo(() => ({ blocked: mode === 'loading' || mode === 'error' || busy || dialog !== null || failed !== null,
+    mode, requested, targets, request, expose, resetSession, refreshStatus, clearAll, clearingAll }), [clearAll, clearingAll, busy, dialog, expose, failed, mode, request, requested, targets, resetSession, refreshStatus])
+  function dismiss() { restoreFocus.current = true; setDialog(null); setFailed(null) }
 
-  function answer(eventType: 'CONFIRMED' | 'DECLINED') {
-    if (!prompt || failed || busy) return
-    const address = email.trim()
-    if (eventType === 'CONFIRMED' && !address) return
-    const event = { ...eventFor(prompt, eventType), ...(eventType === 'CONFIRMED' ? { email: address } : {}) }
-    void send({ ...prompt, event, next: 'complete' })
-  }
-
-  const previousClickNeedsApplication = prompt && serverStatus && !completed.current
-    && readStorage('localStorage', requestedKey(prompt.target)) === '1'
-
-  return (
-    <InterestContext.Provider value={context}>
-      {children}
-      {prompt && (
-        <InterestDialog onDismiss={() => { if (failed) clearFailure(); else answer('DECLINED') }}>
-          <form onSubmit={(event) => { event.preventDefault(); answer('CONFIRMED') }}>
-            <span className={styles.eyebrow}>공공주택 복덕방</span>
-            <h2 id="notification-interest-title">이메일 알림 신청</h2>
-            <p className={styles.description}>{`이 ${{ REGION: '지역', COMPLEX: '단지', ANNOUNCEMENT: '공고' }[prompt.target.type]}에 대한 알림을 받으시겠습니까?`}</p>
-            <p className={styles.target}>{prompt.target.name}</p>
-            {previousClickNeedsApplication && <p className={styles.hint}>이전에 누른 알림은 현재 신청 목록에 포함되지 않았어요. 이메일을 입력해 다시 신청해 주세요.</p>}
-            <label className={styles.label} htmlFor="notification-email">알림 받을 이메일</label>
-            <input id="notification-email" className={styles.input} type="email" autoComplete="email"
-              placeholder="name@example.com" required maxLength={254} pattern={'[^\\s@]+@[^\\s@]+\\.[^\\s@]+'} value={email}
-              onChange={(event) => setEmail(event.target.value)} disabled={busy || failed !== null} />
-            {loadingUser && <p className={styles.hint} role="status">로그인 이메일을 확인하는 중…</p>}
-            <div className={styles.actions}>
-              <button className={styles.submit} type="submit" disabled={busy || failed !== null}>알림 신청</button>
-              <button className={styles.cancel} type="button" disabled={busy}
-                onClick={() => { if (failed) clearFailure(); else answer('DECLINED') }}>취소</button>
-            </div>
-            <p className={styles.hint}>신청은 12개월 동안 유지되며, 마지막 알림을 취소하면 알림용 이메일도 삭제됩니다.</p>
-            <a className={styles.helpLink} href="/notifications/cancel">브라우저 데이터를 지워 신청을 취소할 수 없나요?</a>
-            {busy && <p role="status">알림 신청을 처리하는 중…</p>}
-            {error}
-          </form>
-        </InterestDialog>
-      )}
-      {!prompt && error && <InterestDialog label="알림 요청 오류" onDismiss={clearFailure}>{error}</InterestDialog>}
-      {!prompt && !error && message && <div className={styles.feedback}><p role="status">{message}</p></div>}
-      {mode === 'error' && <div className={styles.feedback} role="alert">
-        <p>알림 상태를 불러오지 못했어요.</p>
-        <button type="button" onClick={refreshStatus}>다시 시도</button>
-      </div>}
-    </InterestContext.Provider>
-  )
+  return <InterestContext.Provider value={context}>
+    {children}
+    {dialog === 'guest' && <InterestDialog onDismiss={dismiss} label="로그인이 필요해요">
+      <h2>로그인이 필요해요</h2><p className={styles.description}>로그인한 사용자만 이용할 수 있어요.</p>
+      <div className={styles.actions}>
+        <button className={styles.submit} type="button" onClick={() => setDialog('login')}>로그인</button>
+        <button className={styles.cancel} type="button" onClick={dismiss}>닫기</button>
+      </div>
+    </InterestDialog>}
+    {dialog === 'login' && <LoginModal loginFailed={false} sessionError={false} onClose={dismiss} returnFocusRef={trigger} />}
+    {dialog === 'prepared' && <InterestDialog onDismiss={dismiss}>
+      <h2 id="notification-interest-title">{notificationPreparationTitle}</h2>
+      <p className={styles.description}>{notificationPreparationDescription}</p>
+      <p className={styles.description}>{notificationPreparationNotice}</p>
+      <p className={styles.hint} role="status">{message}</p>
+      <div className={styles.actions}><button className={styles.submit} type="button" onClick={dismiss}>확인</button></div>
+    </InterestDialog>}
+    {failed && <InterestDialog label="알림 요청 오류" onDismiss={dismiss}>
+      <div className={styles.error} role="alert"><p>{failed.event.eventType === 'CANCELLED'
+        ? '알림 해제를 완료하지 못했어요. 다시 시도해 주세요.' : '알림 설정을 저장하지 못했어요. 다시 시도해 주세요.'}</p></div>
+      <div className={styles.actions}>
+        <button className={styles.submit} type="button" onClick={() => void send(failed)}>다시 시도</button>
+        <button className={styles.cancel} type="button" onClick={dismiss}>닫기</button>
+      </div>
+    </InterestDialog>}
+    {!dialog && !failed && message && <div className={styles.feedback}><p role="status">{message}</p></div>}
+    {batchError && <div className={styles.feedback} role="alert"><p>{batchError}</p></div>}
+    {mode === 'error' && <div className={styles.feedback} role="alert">
+      <p>알림 상태를 불러오지 못했어요.</p><button type="button" onClick={refreshStatus}>다시 시도</button>
+    </div>}
+  </InterestContext.Provider>
 }
 
 function InterestDialog({ children, onDismiss, label }: { readonly children: ReactNode; readonly onDismiss: () => void; readonly label?: string }) {
@@ -347,7 +298,7 @@ export function NotificationInterestButton({ target, source, iconOnly = false }:
   const expose = context?.expose
   const { type, id, name } = target
   const key = requestedKey(target)
-  const isRequested = context?.requested.get(key) ?? (!context?.serverStatus && context?.mode === 'guest' && readStorage('localStorage', key) === '1')
+  const isRequested = context?.requested.get(key) ?? false
   useEffect(() => {
     const element = button.current
     if (!element || !expose || typeof IntersectionObserver === 'undefined') return
