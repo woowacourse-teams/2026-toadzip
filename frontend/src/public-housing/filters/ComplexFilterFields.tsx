@@ -54,16 +54,18 @@ export function DetailFilterFields({
   )
 }
 
-export function AllFilterFields({ filters, regionRepository }: {
+export function AllFilterFields({ filters, regionRepository, onRangeChange }: {
   readonly filters: ComplexSearchFilters
   readonly regionRepository: PublicHousingRegionRepository
+  readonly onRangeChange: (topic: FilterTopic, values: Readonly<Record<string, number | null>>) => void
 }) {
   return (
     <div className={styles.detailFields}>
       {TOPICS.map(([topic, label]) => (
         <section className={styles.detailTopic} key={topic}>
           {(topic === 'region' || topic === 'price') && <h3>{label}</h3>}
-          <ComplexFilterFields filters={filters} regionRepository={regionRepository} topic={topic} />
+          <ComplexFilterFields filters={filters} regionRepository={regionRepository} topic={topic}
+            onRangeChange={(values) => onRangeChange(topic, values)} />
         </section>
       ))}
     </div>

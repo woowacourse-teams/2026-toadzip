@@ -1013,21 +1013,17 @@ describe('PublicHousingExplorer', () => {
     expect(within(panel).queryByRole('checkbox', { name: '행복주택' })).not.toBeInTheDocument()
   })
 
-  it('전체 필터의 일괄 적용과 초기화를 URL 및 지도 조회에 반영한다', async () => {
+  it('전체 필터의 즉시 선택과 초기화를 URL 및 지도 조회에 반영한다', async () => {
     const repository = createRepository()
     renderSearchedExplorer(repository, '/?complexRentalTypes=NATIONAL_RENTAL&complexAgencyCodes=LH&announcementRentalTypes=HAPPY_HOUSING')
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     await waitFor(() => expect(repository.findMap).toHaveBeenCalled())
     fireEvent.click(screen.getByRole('button', { name: '전체 필터 열기' }))
     fireEvent.click(screen.getByRole('checkbox', { name: '행복주택' }))
-    fireEvent.click(screen.getByRole('button', { name: '전체 필터 적용' }))
     await waitFor(() => expect(repository.findMap).toHaveBeenLastCalledWith(
       expect.objectContaining({ filters: { rentalTypes: ['HAPPY_HOUSING', 'NATIONAL_RENTAL'], agencyCodes: ['LH'] } }), expect.any(AbortSignal),
     ))
-    fireEvent.click(screen.getByRole('button', { name: '전체 필터 열기' }))
     fireEvent.click(screen.getByRole('button', { name: '전체 필터 초기화' }))
-    expect(currentSearch().complexAgencyCodes).toBe('LH')
-    fireEvent.click(screen.getByRole('button', { name: '전체 필터 적용' }))
     await waitFor(() => expect(repository.findMap.mock.lastCall?.[0]).not.toHaveProperty('filters'))
     expect(currentSearch().complexRentalTypes).toBeUndefined()
     expect(currentSearch().complexAgencyCodes).toBeUndefined()
@@ -1088,7 +1084,6 @@ describe('PublicHousingExplorer', () => {
     for (const [topic, option] of [['공급기관', 'LH'], ['모집유형', '신규 모집']]) {
       fireEvent.click(screen.getByRole('button', { name: `${topic} 필터 열기` }))
       fireEvent.click(screen.getByRole('checkbox', { name: option }))
-      fireEvent.click(screen.getByRole('button', { name: `${topic} 필터 적용` }))
     }
     const filters = {
       regionCode: '41', rentalTypes: ['NATIONAL_RENTAL'], applicationStatuses: ['APPLYING'],
@@ -1112,7 +1107,7 @@ describe('PublicHousingExplorer', () => {
     expect(currentSearch().complexAgencyCodes).toBe('LH')
   })
 
-  it('공유 URL의 시군구와 복수 조건을 폼에서 다시 적용해도 보존한다', async () => {
+  it('공유 URL의 시군구와 복수 조건을 개별 필터에서 열어도 보존한다', async () => {
     const repository = createRepository()
     renderSearchedExplorer(
       repository,
@@ -1135,7 +1130,6 @@ describe('PublicHousingExplorer', () => {
       expect(within(detailFilter).getByLabelText('시·군·구'))
         .toHaveValue('41135')
     })
-    fireEvent.click(within(detailFilter).getByRole('button', { name: '지역 필터 적용' }))
     fireEvent.click(screen.getByRole('button', { name: '공급기관 필터 열기' }))
     expect(screen.getByRole('checkbox', { name: 'LH' })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: 'GH' })).toBeChecked()
@@ -3079,7 +3073,7 @@ describe('PublicHousingExplorer GA4 행동 연결', () => {
     ])
   })
 
-  it('즉시 적용되는 데스크톱 필터와 적용 버튼이 있는 모바일 필터를 실제 적용 시점에 기록한다', async () => {
+  it('개별 필터와 모바일 전체 필터의 즉시 변경을 기록한다', async () => {
     renderExplorer(createRepository())
     await waitFor(() => expect(trackEvent).toHaveBeenCalledWith('page_view', {}))
     fireEvent.click(screen.getByRole('button', { name: '임대유형 필터 열기' }))
@@ -3091,8 +3085,6 @@ describe('PublicHousingExplorer GA4 행동 연결', () => {
     fireEvent.click(screen.getByRole('button', { name: '모바일 전체 필터 열기' }))
     const sheet = screen.getByRole('dialog', { name: '전체 필터' })
     fireEvent.click(within(sheet).getByRole('button', { name: '전체 필터 초기화' }))
-    expect(analyticsCalls('apply_filter')).toHaveLength(1)
-    fireEvent.click(within(sheet).getByRole('button', { name: '전체 적용' }))
     expect(analyticsCalls('apply_filter')).toEqual([
       ['apply_filter', { filter_target: 'complex', filter_types: 'rental', filter_count: 1 }],
       ['apply_filter', { filter_target: 'complex', filter_types: 'none', filter_count: 0 }],
@@ -3126,9 +3118,7 @@ function applyProvinceFilter(provinceCode: string) {
   fireEvent.change(within(detailFilter).getByLabelText('시·도'), {
     target: { value: provinceCode },
   })
-  fireEvent.click(within(detailFilter).getByRole('button', {
-    name: '지역 필터 적용',
-  }))
+  fireEvent.keyDown(document, { key: 'Escape' })
 }
 
 function renderExplorer(

@@ -162,7 +162,7 @@
   display: flex;
   width: var(--popover-width);
   max-height: calc(100% - var(--popover-top));
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--ds-color-divider);
   border-radius: 12px;
   background: var(--ds-color-surface);
@@ -174,7 +174,7 @@
   width: 100%;
   min-height: 0;
   max-height: 520px;
-  overflow: hidden;
+  overflow: clip;
   grid-template-areas:
     'heading'
     'fields'
@@ -550,7 +550,7 @@
 .mobileSheet {
   width: 100%;
   max-height: min(86dvh, 720px);
-  overflow: hidden;
+  overflow: clip;
   border-radius: 20px 20px 0 0;
   background: var(--ds-color-surface);
   box-shadow: 0 -12px 36px rgb(18 37 47 / 24%);
@@ -559,7 +559,7 @@
 .mobileForm {
   display: grid;
   max-height: min(86dvh, 720px);
-  overflow: hidden;
+  overflow: clip;
   grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
