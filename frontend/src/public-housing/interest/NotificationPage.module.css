@@ -1,0 +1,16 @@
+.page { min-height: 100dvh; background: var(--ds-color-surface); color: var(--ds-color-text); }
+.header { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 20px 28px; border-bottom: 1px solid var(--ds-color-divider); }
+.page a { color: var(--ds-color-action); text-underline-offset: 4px; }
+.content { width: min(720px, 100%); padding: 48px 24px 64px; margin: auto; box-sizing: border-box; }
+.eyebrow { color: var(--ds-color-muted); font-size: var(--ds-text-caption); margin: 0 0 8px; }
+.titleRow { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
+.titleRow h1 { margin: 0; font-size: 28px; }
+.titleRow h1:focus { outline: none; }
+.notice { padding: 24px; border-radius: 16px; background: var(--ds-color-surface-subtle); line-height: 1.7; }
+.notice h2 { margin: 0 0 12px; font-size: 20px; }
+.notice p { margin: 4px 0; color: var(--ds-color-label); word-break: keep-all; }
+@media (max-width: 600px) { .header { padding: 16px; } .content { padding: 32px 20px; } .titleRow h1 { font-size: 24px; } .notice { padding: 20px; } }
+
+
+.inboxButton { min-height: 44px; border: 0; background: transparent; color: var(--ds-color-action); font: inherit; cursor: pointer; }
+.inboxButton:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }

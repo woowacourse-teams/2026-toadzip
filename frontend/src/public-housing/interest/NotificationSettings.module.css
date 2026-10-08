@@ -1,0 +1,16 @@
+.settings { color: var(--ds-color-text); }
+.actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.actions h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.actions h3:focus { outline: none; }
+.actions h3 span { margin-left: 4px; color: var(--ds-color-action); }
+.settings button { flex-shrink: 0; min-height: 44px; padding: 8px 12px; background: transparent; border: 0; border-radius: 8px; color: var(--ds-color-label); font: inherit; font-size: 13px; cursor: pointer; }
+.settings button:hover:not(:disabled) { background: var(--ds-color-action-soft); }
+.settings button:disabled { opacity: .45; cursor: default; }
+.settings button:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
+.group { margin-top: 20px; }
+.group h4 { margin: 0; padding-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--ds-color-muted); border-bottom: 1px solid var(--ds-color-divider); }
+.group ul { list-style: none; padding: 0; margin: 0; }
+.group li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; border-bottom: 1px solid var(--ds-color-divider); }
+.group li > span { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.empty { margin: 0; padding: 60px 0; text-align: center; color: var(--ds-color-muted); font-size: 14px; }
+.error { padding: 12px; background: var(--ds-color-surface-subtle); color: var(--ds-color-text); font-size: 13px; line-height: 1.6; }

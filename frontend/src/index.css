@@ -2571,12 +2571,12 @@ button {
     bottom: env(safe-area-inset-bottom); height: 64px;
   }
   .service-rail-brand { display: none; }
-  .service-rail-account { left: calc(200% / 3); width: calc(100% / 3); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; padding-inline: 4px; }
+  .service-rail-account { left: calc(200% / 3); width: calc(100% / 3); display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; padding-inline: 0; }
   .service-rail-account .service-login-link { min-height: 56px; padding: 4px; gap: 4px; align-items: center; justify-content: center; text-align: center; }
   .service-account-menu__panel { left: auto; right: 4px; bottom: calc(100% + 8px); }
   .housing-navigation { left: 0; width: calc(200% / 3); justify-content: center; }
   .housing-navigation .housing-results__tabs { flex-direction: row; gap: 0; }
-  .housing-navigation .housing-results__tabs button { width: 50%; min-height: 56px; padding: 4px; gap: 4px; margin-inline: 4px; }
+  .housing-navigation .housing-results__tabs button { width: 50%; min-height: 56px; padding: 4px; gap: 4px; margin-inline: 0; }
   .housing-navigation__multiline-label { line-height: 1.2; }
   .app-shell .housing-browse-panel {
     z-index: 450;
@@ -2657,3 +2657,29 @@ button {
 @media (max-width: 767px) and (prefers-reduced-motion: reduce) {
   .app-shell .housing-browse-panel .housing-results { transition: none; }
 }
+
+/* Member notifications share the account rail and fit beside it on mobile. */
+.service-notification-inbox {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 100%; min-height: 52px; gap: 6px; padding: 8px 0; box-sizing: border-box;
+  border: 0; background: transparent; cursor: pointer; font-family: inherit; border-radius: 10px; color: var(--ds-color-label); font-size: 10px; text-decoration: none; white-space: nowrap;
+}
+.service-notification-inbox svg { width: 20px; height: 20px; }
+.service-notification-inbox:hover { background: var(--ds-color-action-soft); }
+.service-notification-inbox:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
+.service-notification-management { display: block; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; padding: 10px 0; color: var(--ds-color-action); white-space: nowrap; }
+@media (max-width: 767px) {
+  .app-shell:has(.service-notification-inbox) .housing-navigation { width: 50%; }
+  .service-rail-account:has(.service-notification-inbox) { left: 50%; width: 50%; }
+  .service-rail-account > .service-feedback-link { display: none; }
+  .service-rail-account .service-user-control:has(.service-notification-inbox) { flex-direction: row; gap: 0; }
+  .service-rail-account .service-user-control[data-session="signed-in"] > :is(.service-notification-inbox, .service-login-link) { box-sizing: border-box; flex: 0 0 50%; width: 50%; min-width: 0; height: 56px; }
+  .service-notification-inbox { font-size: 11px; gap: 4px; }
+  .housing-navigation .housing-results__tabs { width: 100%; }
+  .housing-navigation .housing-results__tabs button, .service-rail-account .service-login-link { font-size: 11px; }
+}
+.service-account-menu__panel { flex-wrap: wrap; }
+.service-account-menu__panel .service-notification-management { flex: 0 0 100%; border-bottom: 1px solid var(--ds-color-divider); padding: 0 0 12px; }
+.service-account-menu__panel .service-login-status, .service-account-menu__panel .service-logout-button { white-space: nowrap; }
+
+.service-account-menu__panel .service-account-feedback { flex: 0 0 100%; padding: 0 0 12px; color: var(--ds-color-action); text-decoration: none; border-bottom: 1px solid var(--ds-color-divider); }

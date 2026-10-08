@@ -18,19 +18,19 @@ import {
 import { NotificationInterestProvider } from '../interest/NotificationInterest'
 
 describe('HousingAnnouncementDetailPanel', () => {
-  it('이메일 신청을 마친 뒤 공고 알림 클릭을 기록한다', async () => {
-    localStorage.setItem('toadzip.notification-interest.email-confirmed', '1')
+  it('회원은 이메일 없이 공고 알림을 저장한다', async () => {
     const record = vi.fn().mockResolvedValue(undefined)
     render(
-      <NotificationInterestProvider repository={{ record }}>
+      <NotificationInterestProvider repository={{ record, loadStatus: async () => ({ emailConfirmed: false, targets: [] }) }}>
         <HousingAnnouncementDetailPanel detail={detail()} onClose={vi.fn()} />
       </NotificationInterestProvider>,
     )
+    await waitFor(() => expect(screen.getByRole('button', { name: '성남 행복주택 예비입주자 모집 알림 받기' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: '성남 행복주택 예비입주자 모집 알림 받기' }))
     await waitFor(() => expect(record).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'CLICKED', source: 'ANNOUNCEMENT_DETAIL', targetType: 'ANNOUNCEMENT', targetId: '201',
+      eventType: 'CONFIRMED', source: 'ANNOUNCEMENT_DETAIL', targetType: 'ANNOUNCEMENT', targetId: '201',
     })))
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: '알림 기능을 준비하고 있어요' })).toBeVisible()
     localStorage.clear()
   })
 
