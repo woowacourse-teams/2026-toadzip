@@ -11,8 +11,8 @@
 .close svg { width: 22px; height: 22px; }
 .close:hover { background: var(--ds-color-surface-subtle); }
 .preparation { padding: 16px 32px 28px; text-align: center; word-break: keep-all; }
-.illustration { display: grid; place-items: center; width: 80px; height: 80px; margin: 0 auto 20px; border-radius: 28px; background: var(--ds-color-action-soft); color: var(--ds-color-action); }
-.illustration svg { width: 48px; height: 48px; }
+.illustration { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 20px; color: var(--ds-color-muted); }
+.illustration svg { width: 36px; height: 36px; }
 .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; background: var(--ds-color-surface-subtle); color: var(--ds-color-muted); font-size: 12px; font-weight: 600; }
 .preparation h3 { margin: 14px 0 12px; font-size: 22px; letter-spacing: -.6px; line-height: 1.4; }
 .preparation p { margin: 0; color: var(--ds-color-label); font-size: 14px; line-height: 1.7; }

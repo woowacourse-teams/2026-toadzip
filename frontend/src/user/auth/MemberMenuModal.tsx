@@ -42,9 +42,8 @@ export function MemberMenuModal({ view, onClose, returnFocusRef, children }: {
     {view === 'inbox' ? <>
       <section className={styles.preparation}>
         <div className={styles.illustration} aria-hidden="true">
-          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 19a9 9 0 0 1 18 0c0 10 4 12 4 12H11s4-2 4-12ZM20 36a4 4 0 0 0 8 0M23 7h2" />
-            <path d="m36 11 3-3M38 18h4M9 11 6 8" />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
           </svg>
         </div>
         <span className={styles.badge}>준비 중</span>
