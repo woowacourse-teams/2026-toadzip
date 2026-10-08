@@ -14,6 +14,7 @@ public record HousingComplexMapItemResponse(
         Long depositMin,
         Long depositMax,
         Long monthlyRentMin,
-        Long monthlyRentMax
+        Long monthlyRentMax,
+        String applicationStatus
 ) {
 }

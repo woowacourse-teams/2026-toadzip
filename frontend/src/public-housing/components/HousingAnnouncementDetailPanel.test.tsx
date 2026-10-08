@@ -457,8 +457,8 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(firstComplex).getByText('1,046세대')).toBeVisible()
     expect(within(firstComplex).getByText('12세대')).toBeVisible()
     expect(within(firstComplex).getByText('36.2㎡')).toBeVisible()
-    expect(within(firstComplex).getByText('3,200만원')).toBeVisible()
-    expect(within(firstComplex).getByText('12.8만원')).toBeVisible()
+    expect(within(firstComplex).getByText('32,000,000원')).toBeVisible()
+    expect(within(firstComplex).getByText('128,000원')).toBeVisible()
 
     const firstHousingType = within(panel).getByRole('article', { name: '새솔마을 36A 주택형' })
     expect(within(firstHousingType).queryByText(/평면도/)).not.toBeInTheDocument()
@@ -620,7 +620,7 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(dialog).queryByText(/3D 평면도/)).not.toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: '평면도 닫기' })).toHaveFocus()
 
-    fireEvent.keyDown(dialog, { key: 'Escape' })
+    expect(fireEvent.keyDown(dialog, { key: 'Escape' })).toBe(false)
     expect(screen.queryByRole('dialog', { name: '44B 평면도' })).not.toBeInTheDocument()
     await waitFor(() => expect(openFloorPlan).toHaveFocus())
   })
@@ -757,15 +757,15 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(conditions).getByRole('cell', { name: '무주택 세대구성원' }))
       .toHaveAttribute('colspan', '3')
     expect(within(conditions).getByRole('rowheader', { name: '모집 예비자 수' })).toBeVisible()
-    expect(within(conditions).getByRole('cell', { name: '3,200만원' }))
+    expect(within(conditions).getByRole('cell', { name: '32,000,000원' }))
       .toHaveAttribute('data-emphasis', 'true')
-    expect(within(conditions).getByRole('cell', { name: '3,200만원' }))
+    expect(within(conditions).getByRole('cell', { name: '32,000,000원' }))
       .toHaveAttribute('headers', within(conditions).getByRole('rowheader', { name: '보증금' }).id)
-    expect(within(conditions).getByRole('cell', { name: '12.8만원' }))
+    expect(within(conditions).getByRole('cell', { name: '128,000원' }))
       .toHaveAttribute('data-numeric', 'true')
   })
 
-  it('만원·억 금액과 긴 범위를 표시하고 월 임대료의 월 접두사를 반복하지 않는다', () => {
+  it('원 단위 전체 금액과 긴 범위를 표시하고 월 임대료의 월 접두사를 반복하지 않는다', () => {
     const baseRow = supplyRow()
     const baseTarget = baseRow.targets[0]!
     render(
@@ -781,15 +781,15 @@ describe('HousingAnnouncementDetailPanel', () => {
     )
 
     const complex = screen.getByRole('article', { name: '새솔마을 단지 비교' })
-    const range = within(complex).getByText('1,800만원 – 1.8억')
+    const range = within(complex).getByText('18,000,000원 – 180,000,000원')
     expect(range.closest('[data-wide]')).toHaveAttribute('data-wide', 'true')
     const young = screen.getByRole('table', { name: '청년 공급 조건' })
-    expect(within(young).getByRole('cell', { name: '1,800만원' })).toBeVisible()
-    expect(within(young).getByRole('cell', { name: '18만원' })).toBeVisible()
+    expect(within(young).getByRole('cell', { name: '18,000,000원' })).toBeVisible()
+    expect(within(young).getByRole('cell', { name: '180,000원' })).toBeVisible()
     const newlywed = screen.getByRole('table', { name: '신혼부부 공급 조건' })
-    expect(within(newlywed).getByRole('cell', { name: '1.8억' })).toBeVisible()
+    expect(within(newlywed).getByRole('cell', { name: '180,000,000원' })).toBeVisible()
     expect(within(newlywed).getByRole('cell', { name: '0원' })).toBeVisible()
-    expect(screen.queryByText('월 18만원')).not.toBeInTheDocument()
+    expect(screen.queryByText('월 180,000원')).not.toBeInTheDocument()
   })
 
   it('상단 공고 정보는 항목명 접두어 없이 기존 값과 접근성 설명을 유지한다', () => {

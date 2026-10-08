@@ -19,7 +19,7 @@
 | 구조 변경 | [architecture.md](architecture.md), [layer-boundaries.md](layer-boundaries.md) | 계층 책임과 허용 의존성 |
 | Java·Spring | [CODE_CONVENTION.md](../CODE_CONVENTION.md) | 코드 스타일과 객체 규칙 |
 | Git 작업 | [CONTRIBUTING.md](../../CONTRIBUTING.md) | 이슈, 브랜치, 커밋, PR |
-| HTTP API | [api-conventions.md](api-conventions.md) | 요청, 응답, 호환성 |
+| HTTP API·지역 | [api-conventions.md](api-conventions.md), [street-view.md](street-view.md), [region-search.md](region-search.md) | 요청·응답, 거리뷰 계약, 공식 지역 정렬 |
 | 예외 처리 | [exception-handling.md](exception-handling.md) | 예외 소유권, Advice, 오류 계약 |
 | DB 변경 | [persistence.md](persistence.md), [ingest-branch-db-upgrade.md](ingest-branch-db-upgrade.md) | 모델·트랜잭션, 기존 ingest 작업 DB 통합 업그레이드 |
 | Flyway 최초 적용 | [flyway-adoption.md](flyway-adoption.md) | 기존 DB baseline과 새 DB 생성 경로 |
@@ -59,12 +59,3 @@
 - 이유는 짧은 문단, 매핑은 표, 순서는 번호, 완료 조건은 체크리스트로 쓴다.
 - 동일 규칙을 복제하지 않고 원본 문서에 링크한다.
 - 반복 실패에서 나온 규칙은 가능하면 Gradle, 테스트, CI로 승격한다.
-
-## 자동 검사
-
-```bash
-sh tests/harness/validate-harness-test.sh
-sh tests/harness/validate-commit-message-test.sh
-sh tests/harness/validate-pr-test.sh
-sh scripts/validate-harness.sh
-```

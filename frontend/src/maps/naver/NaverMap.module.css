@@ -1,0 +1,42 @@
+.zoomControls {
+  position: absolute;
+  z-index: 2;
+  right: var(--ds-space-4);
+  bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+}
+
+.zoomControls button {
+  display: grid;
+  place-items: center;
+  width: var(--ds-icon-control-lg);
+  height: var(--ds-icon-control-lg);
+  padding: 0;
+  border: 1px solid var(--ds-color-border-base);
+  border-radius: var(--ds-radius-icon-control);
+  background: var(--ds-color-surface);
+  color: var(--ds-color-text);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 8%);
+  cursor: pointer;
+}
+
+.zoomControls svg {
+  width: var(--ds-icon-size);
+  height: var(--ds-icon-size);
+}
+
+.zoomControls button:hover {
+  background: var(--ds-color-action-soft);
+  color: var(--ds-color-action);
+}
+
+.zoomControls button:active {
+  background: var(--ds-color-action-selected);
+}
+
+.zoomControls button:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+}

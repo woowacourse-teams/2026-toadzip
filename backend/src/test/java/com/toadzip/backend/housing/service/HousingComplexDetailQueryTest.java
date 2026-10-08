@@ -188,7 +188,8 @@ class HousingComplexDetailQueryTest {
                 null,
                 null,
                 null,
-                null
+                null,
+                        null, null, null, null, null
         )));
 
         HousingComplexDetailResponse response = getExistingComplex();
@@ -332,7 +333,8 @@ class HousingComplexDetailQueryTest {
                         null,
                         "https://example.com/36a.png",
                         false,
-                        null
+                        null,
+                        null, null, null, null, null
                 ),
                 new HousingTypeDetailRow(
                         102L,
@@ -341,7 +343,8 @@ class HousingComplexDetailQueryTest {
                         new BigDecimal("51.10"),
                         "https://example.com/44b.png",
                         true,
-                        new BigDecimal("123456.00")
+                        new BigDecimal("123456.00"),
+                        null, null, null, null, null
                 )
         ));
         when(detailRepository.findCurrentSupplyConditions(COMPLEX_ID, TODAY)).thenReturn(List.of(

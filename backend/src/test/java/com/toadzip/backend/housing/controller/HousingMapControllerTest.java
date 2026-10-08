@@ -108,7 +108,8 @@ class HousingMapControllerTest {
                         "depositMin",
                         "depositMax",
                         "monthlyRentMin",
-                        "monthlyRentMax"
+                        "monthlyRentMax",
+                        "applicationStatus"
                 )))
                 .andExpect(jsonPath("$.data.nodes[0].type").value("INDIVIDUAL"))
                 .andExpect(jsonPath("$.data.nodes[0].complexId").value(17))
@@ -117,6 +118,7 @@ class HousingMapControllerTest {
                 .andExpect(jsonPath("$.data.nodes[0].longitude").value(126.900000))
                 .andExpect(jsonPath("$.data.nodes[0].rentalType").value("HAPPY_HOUSING"))
                 .andExpect(jsonPath("$.data.nodes[0].agency.code").value("LH"))
+                .andExpect(jsonPath("$.data.nodes[0].applicationStatus").value("APPLYING"))
                 .andExpect(jsonPath("$.data.nodes[0].agency.name").value("한국토지주택공사"))
                 .andExpect(jsonPath("$.data.nodes[0].exclusiveAreaMin").value(36.12))
                 .andExpect(jsonPath("$.data.nodes[0].exclusiveAreaMax").value(44.87))
@@ -344,7 +346,7 @@ class HousingMapControllerTest {
         HousingMapIndividualNodeResponse node = new HousingMapIndividualNodeResponse(
                 "INDIVIDUAL", 17L, "행복 단지", decimal("37.500000"), decimal("126.900000"),
                 "HAPPY_HOUSING", new AgencyResponse("LH", "한국토지주택공사"),
-                decimal("36.12"), decimal("44.87"), 50000000L, 70000000L, 200000L, 300000L
+                decimal("36.12"), decimal("44.87"), 50000000L, 70000000L, 200000L, 300000L, "APPLYING"
         );
         return new HousingMapResponse(
                 4, HousingMapRepresentation.INDIVIDUAL,

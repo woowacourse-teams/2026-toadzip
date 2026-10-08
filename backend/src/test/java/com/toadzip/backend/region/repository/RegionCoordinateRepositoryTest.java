@@ -29,7 +29,7 @@ class RegionCoordinateRepositoryTest {
         );
         repository = new RegionCoordinateRepository(new CsvMapClusteringRegionPointPolicyRepository(
                 classpath("map-clustering/representative-points.csv"), regionRepository
-        ));
+        ), org.mockito.Mockito.mock(NeighborhoodCoordinateRepository.class));
     }
 
     @Test

@@ -48,11 +48,11 @@
 .trigger {
   display: inline-flex;
   width: auto;
-  height: 40px;
+  height: calc(var(--ds-space-5) * 2);
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;
-  padding: 0 16px;
+  padding: 0 var(--ds-space-4);
   border: 1px solid #e1e3e7;
   border-radius: 999px;
   background: var(--ds-color-surface);
@@ -337,11 +337,18 @@
   width: 100%;
   min-width: 0;
   min-height: 40px;
-  padding: 8px 10px;
+  padding: 8px 36px 8px 12px;
+  appearance: none;
+  -webkit-appearance: none;
   border: 1px solid #dfe2e6;
   border-radius: 6px;
-  background: var(--ds-color-surface);
+  background-color: var(--ds-color-surface);
+  background-image: url("./filter-select-chevron.svg");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px 12px;
   color: var(--ds-color-text);
+  text-overflow: ellipsis;
 }
 
 .regionFields small {
@@ -366,6 +373,12 @@
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: end;
   gap: 8px;
+}
+
+.yearRange > span {
+  display: grid;
+  min-height: 40px;
+  align-items: center;
 }
 
 .yearRange legend {
@@ -402,7 +415,7 @@
 
 .reset {
   display: inline-flex;
-  min-height: 36px;
+  min-height: 28px;
   align-items: center;
   justify-content: center;
   justify-self: start;
@@ -417,8 +430,8 @@
 
 .reset svg,
 .mobileReset svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   flex: 0 0 auto;
 }
 
@@ -562,15 +575,24 @@
 .mobileReset {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   justify-self: start;
-  gap: 4px;
-  padding: 0 8px;
-  border: 1px solid #dadce0;
-  background: var(--ds-color-surface);
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: #555b65;
   font-size: var(--ds-text-caption);
   font-weight: 500;
+}
+
+.mobileResetContent {
+  display: inline-flex;
+  height: 28px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  background: var(--ds-color-surface);
 }
 
 .mobileClose {
@@ -638,6 +660,10 @@
     font-size: var(--ds-text-body);
   }
 
+  .yearRange > span {
+    min-height: 44px;
+  }
+
   .field select,
   .yearRange select {
     min-height: 44px;
@@ -653,5 +679,59 @@
 
   .yearRange > span {
     display: none;
+  }
+}
+
+.regionFields > label:nth-of-type(3) {
+  grid-column: 1 / -1;
+}
+
+.resetAll {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--ds-color-border-base);
+  border-radius: 6px;
+  background: var(--ds-color-surface);
+  color: var(--ds-color-text);
+  font-size: var(--ds-text-caption);
+  white-space: nowrap;
+}
+
+.resetAll svg {
+  width: 14px;
+  height: 14px;
+}
+
+.resetAll:enabled:hover {
+  background: var(--ds-color-control-hover);
+}
+
+.resetAll:focus-visible {
+  outline: 3px solid var(--ds-color-action);
+  outline-offset: 1px;
+}
+
+.resetAll:disabled {
+  color: var(--ds-color-muted);
+  cursor: default;
+}
+
+.mobileToolbar .resetAll {
+  min-height: 44px;
+}
+
+@media (forced-colors: active) {
+  .field select,
+  .yearRange select {
+    appearance: auto;
+    -webkit-appearance: auto;
+    padding-right: 12px;
+    background-image: none;
   }
 }

@@ -16,13 +16,13 @@ import {
 } from '../api/publicHousingRegionRepository.ts'
 import type { ComplexSearchFilters } from '../api/publicHousingRepository.ts'
 import { provinceNameForRegionCode } from '../model/publicHousingRegion.ts'
-import { ComplexFilterFields, DetailFilterFields } from './ComplexFilterFields.tsx'
+import { ComplexFilterFields } from './ComplexFilterFields.tsx'
 import {
-  topicDraftFromForm, topicsDraftFromForm, replaceTopic, replaceTopics, topicRangeError,
+  topicDraftFromForm, replaceTopic, topicRangeError,
 } from './searchFilterForm.ts'
 import {
   type DesktopFilterTopic, type FilterTopic,
-  TOPICS, DESKTOP_PRIMARY_TOPICS, DESKTOP_TOPICS, DETAIL_FILTER_TOPICS,
+  DESKTOP_PRIMARY_TOPICS, DESKTOP_TOPICS,
   MOBILE_PRIMARY_TOPICS, MOBILE_SHEET_TOPICS, POPOVER_WIDTHS,
   desktopTopicFor, desktopTopicLabel,
 } from './complexFilterTopics.ts'
@@ -41,18 +41,16 @@ export function ComplexFilterToolbar({
   filters,
   onApply,
   regionRepository = publicHousingRegionRepository,
-  resultCountLabel,
 }: ComplexFilterToolbarProps) {
   const filtersSignature = searchFiltersSignature(filters)
   const [openTopic, setOpenTopic] = useState<DesktopFilterTopic | null>(null)
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
   const [mobileDraftFilters, setMobileDraftFilters] = useState(filters)
-  const [mobileDraftDirty, setMobileDraftDirty] = useState(false)
   const [mobileFormRevision, setMobileFormRevision] = useState(0)
   const [mobileInitialTopic, setMobileInitialTopic] =
     useState<FilterTopic | null>(null)
   const [rovingTopic, setRovingTopic] =
-    useState<DesktopFilterTopic>('rentalType')
+    useState<DesktopFilterTopic>('region')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [popoverPlacement, setPopoverPlacement] = useState<{
     readonly anchorX: number
@@ -88,7 +86,7 @@ export function ComplexFilterToolbar({
   useEffect(() => {
     if (previousFiltersSignatureRef.current === filtersSignature) return
     previousFiltersSignatureRef.current = filtersSignature
-    if (quickAppliedSignatureRef.current !== filtersSignature && openTopic !== 'detail') {
+    if (quickAppliedSignatureRef.current !== filtersSignature && !explicitlyApplied(openTopic)) {
       setOpenTopic(null)
       setErrorMessage(null)
     }
@@ -242,9 +240,7 @@ export function ComplexFilterToolbar({
       const triggerRect = trigger.getBoundingClientRect()
       const triggerCenter = triggerRect.left - rootRect.left
         + (triggerRect.width / 2)
-      const requestedWidth = openTopic === 'detail'
-        ? 420
-        : POPOVER_WIDTHS[openTopic]
+      const requestedWidth = POPOVER_WIDTHS[openTopic]
       const availableWidth = rootRect.width > 0
         ? rootRect.width
         : requestedWidth
@@ -334,7 +330,6 @@ export function ComplexFilterToolbar({
     setOpenTopic(null)
     setErrorMessage(null)
     setMobileDraftFilters(filters)
-    setMobileDraftDirty(false)
     setMobileFormRevision((current) => current + 1)
     setMobileInitialTopic(topic)
     setMobileSheetOpen(true)
@@ -351,8 +346,9 @@ export function ComplexFilterToolbar({
   function submitMobileSheet(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
-    const next = topicsDraftFromForm(MOBILE_SHEET_TOPICS, data)
-    const rangeError = topicRangeError('builtYear', next)
+    if (mobileInitialTopic === null) return
+    const next = replaceTopic(filters, mobileInitialTopic, topicDraftFromForm(mobileInitialTopic, data))
+    const rangeError = topicRangeError(mobileInitialTopic, next)
     if (rangeError !== null) {
       setErrorMessage(rangeError)
       return
@@ -364,8 +360,7 @@ export function ComplexFilterToolbar({
   function resetMobileSheet() {
     setErrorMessage(null)
     mobileResetFocusPendingRef.current = true
-    setMobileDraftFilters({})
-    setMobileDraftDirty(filtersSignature !== '')
+    if (mobileInitialTopic !== null) setMobileDraftFilters(replaceTopic(filters, mobileInitialTopic, {}))
     setMobileFormRevision((current) => current + 1)
   }
 
@@ -375,14 +370,6 @@ export function ComplexFilterToolbar({
       return
     }
     const data = new FormData(event.currentTarget)
-    if (openTopic === 'detail') {
-      const draft = topicsDraftFromForm(DETAIL_FILTER_TOPICS, data)
-      applyAndClose(
-        openTopic,
-        replaceTopics(filters, DETAIL_FILTER_TOPICS, draft),
-      )
-      return
-    }
     const draft = topicDraftFromForm(openTopic, data)
     const rangeError = topicRangeError(openTopic, draft)
     if (rangeError !== null) {
@@ -393,7 +380,7 @@ export function ComplexFilterToolbar({
   }
 
   function applyQuickFilter(rangeValues: Readonly<Record<string, number | null>> = {}) {
-    if (openTopic === null || openTopic === 'detail' || desktopFormRef.current === null) return
+    if (openTopic === null || explicitlyApplied(openTopic) || desktopFormRef.current === null) return
     const data = new FormData(desktopFormRef.current)
     // Range inputs report both endpoints before their hidden inputs re-render.
     Object.entries(rangeValues).forEach(([key, value]) => data.set(key, value === null ? '' : String(value)))
@@ -418,13 +405,21 @@ export function ComplexFilterToolbar({
     triggerRefs.current[topic]?.focus()
   }
 
+  function resetAllFilters() {
+    setOpenTopic(null)
+    setMobileSheetOpen(false)
+    setMobileInitialTopic(null)
+    setMobileDraftFilters({})
+    setErrorMessage(null)
+    quickAppliedSignatureRef.current = null
+    onApply({})
+  }
+
   function resetOpenFilter() {
     if (openTopic === null) {
       return
     }
-    const next = openTopic === 'detail'
-      ? replaceTopics(filters, DETAIL_FILTER_TOPICS, {})
-      : replaceTopic(filters, openTopic, {})
+    const next = replaceTopic(filters, openTopic, {})
     applyAndClose(openTopic, next)
   }
 
@@ -436,23 +431,22 @@ export function ComplexFilterToolbar({
     && resolvedRegionSummary.regionCode === filters.regionCode
     ? resolvedRegionSummary.label
     : null
-  const detailAppliedCount = DETAIL_FILTER_TOPICS.reduce(
-    (count, [topic]) => count + (
-      topicSummary(filters, topic, resolvedRegionName) === null ? 0 : 1
-    ),
-    0,
+  const mobileResultAction = `${desktopTopicLabel(mobileInitialTopic) ?? '필터'} 적용`
+
+  const resetAllButton = (
+    <button
+      className={styles.resetAll}
+      type="button"
+      aria-label="단지·지도 필터 전체 해제"
+      disabled={filtersSignature === searchFiltersSignature({})}
+      onClick={resetAllFilters}
+    >
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+        <path d="M16.4 8a6.5 6.5 0 1 0-.3 4.8M16.5 3.5V8H12" />
+      </svg>
+      전체 해제
+    </button>
   )
-  const appliedTopicCount = TOPICS.reduce(
-    (count, [topic]) => count + (
-      topicSummary(filters, topic, resolvedRegionName) === null ? 0 : 1
-    ),
-    0,
-  )
-  const mobileResultAction = !mobileDraftDirty
-    && resultCountLabel !== undefined
-    && /^\d+곳(?: 이상)?$/.test(resultCountLabel)
-    ? `단지 ${resultCountLabel} 보기`
-    : '단지 보기'
 
   return (
     <section ref={rootRef} className={styles.root}>
@@ -520,51 +514,9 @@ export function ComplexFilterToolbar({
                   </Fragment>
                 )
               })}
+              {resetAllButton}
             </div>
           </div>
-
-          <button
-            ref={(node) => {
-              if (node === null) {
-                delete triggerRefs.current.detail
-              } else {
-                triggerRefs.current.detail = node
-              }
-            }}
-            className={`${styles.trigger} ${styles.detailTrigger}`}
-            type="button"
-            title="상세 필터"
-            tabIndex={rovingTopic === 'detail' ? 0 : -1}
-            aria-controls="complex-detail-filter-popover"
-            aria-describedby={detailAppliedCount === 0
-              ? undefined
-              : 'complex-detail-filter-summary'}
-            aria-expanded={openTopic === 'detail'}
-            aria-label={`상세 필터 ${
-              openTopic === 'detail' ? '닫기' : '열기'
-            }`}
-            data-active={detailAppliedCount === 0 ? 'false' : 'true'}
-            onFocus={() => setRovingTopic('detail')}
-            onClick={() => {
-              setErrorMessage(null)
-              setOpenTopic((current) => current === 'detail' ? null : 'detail')
-            }}
-          >
-            <DetailFilterIcon />
-            {detailAppliedCount > 0 && (
-              <span className={styles.detailBadge} aria-hidden="true">
-                {detailAppliedCount}
-              </span>
-            )}
-          </button>
-          {detailAppliedCount > 0 && (
-            <span
-              className={styles.visuallyHidden}
-              id="complex-detail-filter-summary"
-            >
-              상세 필터 {detailAppliedCount}개 적용
-            </span>
-          )}
         </div>
 
         {openTopic !== null && openLabel !== null && headingId !== undefined && (
@@ -581,7 +533,7 @@ export function ComplexFilterToolbar({
             } as CSSProperties}
           >
             <form
-              key={openTopic === 'detail' ? `${openTopic}-${filtersSignature}` : openTopic}
+              key={explicitlyApplied(openTopic) ? `${openTopic}-${filtersSignature}` : openTopic}
               ref={desktopFormRef}
               className={styles.form}
               onSubmit={submit}
@@ -621,24 +573,13 @@ export function ComplexFilterToolbar({
                 </IconButton>
               </header>
               <div className={styles.fields}>
-                {openTopic === 'detail' ? (
-                  <DetailFilterFields
-                    filters={filters}
-                    regionRepository={regionRepository}
-                  />
-                ) : (
-                  <ComplexFilterFields
-                    filters={filters}
-                    regionRepository={regionRepository}
-                    topic={openTopic}
-                    onRangeChange={applyQuickFilter}
-                  />
-                )}
+                <ComplexFilterFields filters={filters} regionRepository={regionRepository}
+                  topic={openTopic} onRangeChange={applyQuickFilter} />
               </div>
               {errorMessage !== null && (
                 <p className={styles.error} role="alert">{errorMessage}</p>
               )}
-              {openTopic === 'detail' && <div className={styles.actions}>
+              {explicitlyApplied(openTopic) && <div className={styles.actions}>
                 <Button
                   className={styles.apply}
                   type="submit"
@@ -664,10 +605,8 @@ export function ComplexFilterToolbar({
               type="button"
               title={summary ?? label}
               aria-controls="mobile-complex-filter-sheet"
-              aria-expanded={mobileSheetOpen}
-              aria-label={summary === null
-                ? `${label} 조건으로 전체 단지 필터 열기`
-                : `${label} ${summary}, 전체 단지 필터 열기`}
+              aria-expanded={mobileSheetOpen && mobileInitialTopic === topic}
+              aria-label={`모바일 ${label} 필터 열기`}
               data-active={summary === null ? 'false' : 'true'}
               onClick={(event) => openMobileSheet(topic, event.currentTarget)}
             >
@@ -675,19 +614,7 @@ export function ComplexFilterToolbar({
             </button>
           )
         })}
-        <button
-          className={styles.mobileAllTrigger}
-          type="button"
-          aria-controls="mobile-complex-filter-sheet"
-          aria-expanded={mobileSheetOpen}
-          aria-label={appliedTopicCount > 0
-            ? `전체 단지 필터 열기, ${appliedTopicCount}개 적용`
-            : '전체 단지 필터 열기'}
-          data-active={appliedTopicCount > 0 ? 'true' : 'false'}
-          onClick={(event) => openMobileSheet(null, event.currentTarget)}
-        >
-          필터{appliedTopicCount > 0 ? ` ${appliedTopicCount}` : ''}
-        </button>
+        {resetAllButton}
       </div>
 
       {mobileSheetOpen && (
@@ -718,15 +645,17 @@ export function ComplexFilterToolbar({
                   ref={mobileResetRef}
                   className={styles.mobileReset}
                   type="button"
-                  aria-label="전체 필터 초기화"
+                  aria-label={`${desktopTopicLabel(mobileInitialTopic)} 필터 초기화`}
                   onClick={resetMobileSheet}
                 >
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
-                    <path d="M16.4 8a6.5 6.5 0 1 0-.3 4.8M16.5 3.5V8H12" />
-                  </svg>
-                  초기화
+                  <span className={styles.mobileResetContent}>
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                      <path d="M16.4 8a6.5 6.5 0 1 0-.3 4.8M16.5 3.5V8H12" />
+                    </svg>
+                    초기화
+                  </span>
                 </button>
-                <h2 id="mobile-complex-filter-heading">단지 필터</h2>
+                <h2 id="mobile-complex-filter-heading">{desktopTopicLabel(mobileInitialTopic)} 필터</h2>
                 <IconButton size="lg"
                   ref={mobileCloseRef}
                   className={styles.mobileClose}
@@ -743,17 +672,8 @@ export function ComplexFilterToolbar({
               <div
                 ref={mobileSheetBodyRef}
                 className={styles.mobileSheetBody}
-                onClickCapture={(event) => {
-                  if (
-                    event.target instanceof Element
-                    && event.target.closest('button') !== null
-                  ) {
-                    setMobileDraftDirty(true)
-                  }
-                }}
-                onChange={() => setMobileDraftDirty(true)}
               >
-                {MOBILE_SHEET_TOPICS.map(([topic, label]) => (
+                {MOBILE_SHEET_TOPICS.filter(([topic]) => topic === mobileInitialTopic).map(([topic, label]) => (
                   <section
                     key={topic}
                     className={styles.mobileTopic}
@@ -791,21 +711,8 @@ export function ComplexFilterToolbar({
   )
 }
 
-function DetailFilterIcon() {
-  return (
-    <svg
-      className={styles.detailIcon}
-      viewBox="0 0 20 20"
-      fill="none"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path d="M3 5.5h5M12 5.5h5" />
-      <circle cx="10" cy="5.5" r="2" />
-      <path d="M3 14.5h2M9 14.5h8" />
-      <circle cx="7" cy="14.5" r="2" />
-    </svg>
-  )
+function explicitlyApplied(topic: FilterTopic | null) {
+  return topic === 'region' || topic === 'agency' || topic === 'recruitmentType'
 }
 
 function focusableElements(container: HTMLElement) {

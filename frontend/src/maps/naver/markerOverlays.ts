@@ -1,4 +1,4 @@
-import { createComplexMarkerButton, markerSummary, markerWidth } from './complexMarkerButton.ts'
+import { COMPLEX_MARKER_ANCHOR_X, createComplexMarkerButton, markerWidth } from './complexMarkerButton.ts'
 import { renderedMarkerContentKey, renderedMarkerId, type RenderedMarker } from './markerData.ts'
 import type {
   NaverMapAggregateMarker,
@@ -62,11 +62,11 @@ export function createMarker({
   const button = isAggregate
     ? aggregateMarkerButton(marker.marker)
     : createComplexMarkerButton(marker.marker)
-  const width = isAggregate ? 104 : markerWidth(marker.marker)
-  const height = isAggregate ? 68 : 66
+  const width = isAggregate ? 92 : markerWidth(marker.marker)
+  const height = isAggregate ? 52 : 58
   const title = isAggregate
     ? aggregateMarkerTitle(marker.marker)
-    : markerSummary(marker.marker)
+    : undefined
   bindMarkerActivation(button, () => {
     if (marker.kind === 'aggregate') {
       onAggregateMarkerSelect(marker.marker)
@@ -74,15 +74,11 @@ export function createMarker({
       onMarkerSelect?.(marker.marker.id)
     }
   }, controller.signal)
-  const isInteracting = marker.kind === 'complex'
-    ? bindMarkerHighlight(button, marker.marker.id,
-      (complexId) => onMarkerHighlight?.(complexId), controller.signal)
-    : () => false
   const overlay = new maps.Marker({
     clickable: true,
     cursor: 'pointer',
     icon: {
-      anchor: new maps.Point(width / 2, height),
+      anchor: new maps.Point(isAggregate ? width / 2 : COMPLEX_MARKER_ANCHOR_X, isAggregate ? height / 2 : height),
       content: createMarkerContent(button, controller.signal, enterDelay),
       size: new maps.Size(width, height),
     },
@@ -90,6 +86,14 @@ export function createMarker({
     position: new maps.LatLng(marker.marker.latitude, marker.marker.longitude),
     title,
   })
+  const isInteracting = marker.kind === 'complex'
+    ? bindMarkerHighlight(button, marker.marker.id, (complexId) => {
+      overlay.setZIndex(complexId !== null ? 40
+        : button.classList.contains('is-selected') ? 30
+          : button.classList.contains('is-highlighted') ? 20 : 10)
+      onMarkerHighlight?.(complexId)
+    }, controller.signal)
+    : () => false
   return {
     button,
     dispose: () => controller.abort(),
@@ -245,7 +249,7 @@ export function applyMarkerPresentation(
     if (presentation?.highlighted !== highlighted) {
       button.classList.toggle('is-highlighted', highlighted)
     }
-    if (presentation?.zIndex !== zIndex) {
+    if (presentation?.zIndex !== zIndex && !created.isInteracting()) {
       overlay.setZIndex(zIndex)
     }
     created.presentation = { selected, highlighted, zIndex }

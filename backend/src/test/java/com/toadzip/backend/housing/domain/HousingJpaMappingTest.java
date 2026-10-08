@@ -59,7 +59,8 @@ class HousingJpaMappingTest {
                         "floorPlanUrl",
                         "duplex",
                         "maintenanceFee",
-                        "adminModified"
+                        "adminModified",
+                        "basicRentalCondition"
                 )
         );
         assertEmbeddableAttributes(
@@ -77,6 +78,10 @@ class HousingJpaMappingTest {
         assertEmbeddableAttributes(
                 "RentalPriceRange",
                 Set.of("depositMin", "depositMax", "monthlyRentMin", "monthlyRentMax")
+        );
+        assertEmbeddableAttributes(
+                "MyHomeRentalCondition",
+                Set.of("deposit", "monthlyRent", "collectedAt")
         );
     }
 

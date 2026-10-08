@@ -211,10 +211,10 @@ describe('AnnouncementFilterPanel', () => {
     expect(screen.getByLabelText('시·도')).toHaveValue('41')
     await waitFor(() => {
       expect(screen.getByLabelText('시·군·구')).toHaveValue('41135')
+      expect(screen.getByRole('option', {
+        name: '성남시 분당구',
+      })).toBeInTheDocument()
     })
-    expect(screen.getByRole('option', {
-      name: '성남시 분당구',
-    })).toBeInTheDocument()
   })
 
   it('시군구 로딩 실패를 즉시 알리고 관련 select와 연결한다', async () => {

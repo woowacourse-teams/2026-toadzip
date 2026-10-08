@@ -16,7 +16,8 @@ public record HousingMapIndividualNodeResponse(
         Long depositMin,
         Long depositMax,
         Long monthlyRentMin,
-        Long monthlyRentMax
+        Long monthlyRentMax,
+        String applicationStatus
 ) implements HousingMapNodeResponse {
 
     private static final String TYPE = "INDIVIDUAL";
@@ -35,7 +36,8 @@ public record HousingMapIndividualNodeResponse(
                 item.depositMin(),
                 item.depositMax(),
                 item.monthlyRentMin(),
-                item.monthlyRentMax()
+                item.monthlyRentMax(),
+                item.applicationStatus()
         );
     }
 

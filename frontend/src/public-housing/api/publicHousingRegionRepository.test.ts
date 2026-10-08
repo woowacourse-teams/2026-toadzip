@@ -182,7 +182,7 @@ describe('public housing region HTTP repository', () => {
 })
 
 describe('district region options for a province', () => {
-  it('removes aggregate and other-province rows without changing response order', () => {
+  it('removes aggregate and other-province rows and uses official region order', () => {
     const regions = [
       region('41', '경기도', null),
       region('41130', '경기도', '성남시'),
@@ -192,7 +192,7 @@ describe('district region options for a province', () => {
 
     expect(districtRegionOptionsForProvince(regions, '41').map(
       ({ regionCode }) => regionCode,
-    )).toEqual(['41130', '41110'])
+    )).toEqual(['41110', '41130'])
   })
 
   it('keeps all 25 Seoul autonomous districts in response order', () => {
@@ -235,7 +235,7 @@ describe('district region options for a province', () => {
 
     expect(districtRegionOptionsForProvince(regions, '41').map(
       ({ regionCode }) => regionCode,
-    )).toEqual(['41110', '41112', '41281', '41371', '41372', '41461'])
+    )).toEqual(['41110', '41281', '41461', '41112', '41371', '41372'])
   })
 })
 
