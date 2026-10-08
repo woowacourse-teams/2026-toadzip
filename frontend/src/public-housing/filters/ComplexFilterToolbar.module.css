@@ -506,6 +506,7 @@
 }
 
 .mobileTrigger {
+  gap: 6px;
   max-width: 104px;
 }
 
@@ -536,6 +537,7 @@
   position: fixed;
   z-index: 1200;
   inset: 0;
+  font-family: var(--ds-font-family-ui);
   align-items: flex-end;
   background: rgb(20 27 34 / 48%);
 }
@@ -697,46 +699,6 @@
   grid-column: 1 / -1;
 }
 
-.resetAll {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-self: center;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  min-height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--ds-color-border-base);
-  border-radius: 6px;
-  background: var(--ds-color-surface);
-  color: var(--ds-color-text);
-  font-size: var(--ds-text-caption);
-  white-space: nowrap;
-}
-
-.resetAll svg {
-  width: 14px;
-  height: 14px;
-}
-
-.resetAll:enabled:hover {
-  background: var(--ds-color-control-hover);
-}
-
-.resetAll:focus-visible {
-  outline: 3px solid var(--ds-color-action);
-  outline-offset: 1px;
-}
-
-.resetAll:disabled {
-  color: var(--ds-color-muted);
-  cursor: default;
-}
-
-.mobileToolbar .resetAll {
-  min-height: 44px;
-}
-
 @media (forced-colors: active) {
   .field select,
   .yearRange select {
@@ -745,4 +707,14 @@
     padding-right: 12px;
     background-image: none;
   }
+}
+
+.popoverHeader[data-all='false'],
+.mobileSheetHeader[data-all='false'] {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.popoverHeader[data-all='false'] h2,
+.mobileSheetHeader[data-all='false'] h2 {
+  text-align: left;
 }
