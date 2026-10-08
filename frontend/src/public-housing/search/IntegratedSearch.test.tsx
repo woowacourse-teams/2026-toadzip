@@ -95,6 +95,24 @@ describe('IntegratedSearch', () => {
     expect(bell.querySelector('svg')).toHaveAttribute('data-state', 'requested')
   })
 
+  it('입력 중 제안된 결과를 방향키와 Enter로 선택하며 한글 조합 중에는 선택하지 않는다', async () => {
+    const onSelect = vi.fn()
+    const region = item('REGION', '11', '서울특별시 전체')
+    render(<IntegratedSearch onSelect={onSelect} repository={repositoryWith(response([], [], [region]))} />)
+    const input = screen.getByRole('searchbox')
+    fireEvent.change(input, { target: { value: '서울' } })
+    const suggestion = await screen.findByRole('button', { name: /서울특별시 전체/ })
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+    expect(onSelect).not.toHaveBeenCalled()
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect(suggestion).toHaveFocus()
+    fireEvent.keyDown(suggestion, { key: 'ArrowUp' })
+    expect(input).toHaveFocus()
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(region)
+    expect(input).toHaveValue('')
+  })
+
   it('검색창만 표시하다 공백을 제외한 두 글자부터 검색하고 지우면 목록을 닫는다', async () => {
     vi.useFakeTimers()
     try {

@@ -100,7 +100,7 @@ class AdminAuthenticationIntegrationTest {
         mockMvc.perform(loginRequest("correct-password"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"))
-                .andExpect(jsonPath("$.message").value("관리자 권한이 필요합니다."))
+                .andExpect(jsonPath("$.message").value("요청 보안 토큰이 유효하지 않습니다."))
                 .andExpect(jsonPath("$.traceId").isNotEmpty());
     }
 

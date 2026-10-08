@@ -306,6 +306,7 @@ function toComplexCurrentAnnouncement(
 
 export function toMapComplex(raw: RawMapComplex): MapComplex {
   return {
+    ...(raw.applicationStatus !== undefined ? { applicationStatus: raw.applicationStatus } : {}),
     complexId: canonicalId(raw.complexId),
     name: raw.name,
     latitude: raw.latitude,

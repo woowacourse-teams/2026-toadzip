@@ -108,7 +108,7 @@ class HousingMapResponseFactoryTest {
         return new HousingComplexMapItemResponse(
                 complexId, name, decimal("37.4"), decimal("127.1"), "HAPPY_HOUSING",
                 new AgencyResponse("LH", "한국토지주택공사"), null, null,
-                null, null, null, null
+                null, null, null, null, null
         );
     }
 
