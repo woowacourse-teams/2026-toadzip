@@ -3,7 +3,7 @@ import type { ComplexSearchFilters } from '../api/publicHousingRepository.ts'
 import { formatHousingMoney } from '../presentation/housingMoney.ts'
 import { DualRangeFilter, type DualRangeFilterPreset } from './DualRangeFilter.tsx'
 import { AGENCY_OPTIONS, APPLICATION_STATUS_OPTIONS, RECRUITMENT_TYPE_OPTIONS, RENTAL_TYPE_OPTIONS } from './searchFilterOptions.ts'
-import { DETAIL_FILTER_TOPICS, type FilterTopic } from './complexFilterTopics.ts'
+import { DETAIL_FILTER_TOPICS, TOPICS, type FilterTopic } from './complexFilterTopics.ts'
 import { formatArea, formatAreaTick, formatDepositTick, formatMonthlyRentTick } from './complexFilterPresentation.ts'
 import { RegionFilterFields } from './RegionFilterFields.tsx'
 import styles from './ComplexFilterToolbar.module.css'
@@ -48,6 +48,24 @@ export function DetailFilterFields({
             regionRepository={regionRepository}
             topic={topic}
           />
+        </section>
+      ))}
+    </div>
+  )
+}
+
+export function AllFilterFields({ filters, regionRepository, onRangeChange }: {
+  readonly filters: ComplexSearchFilters
+  readonly regionRepository: PublicHousingRegionRepository
+  readonly onRangeChange: (topic: FilterTopic, values: Readonly<Record<string, number | null>>) => void
+}) {
+  return (
+    <div className={styles.detailFields}>
+      {TOPICS.map(([topic, label]) => (
+        <section className={styles.detailTopic} key={topic}>
+          {(topic === 'region' || topic === 'price') && <h3>{label}</h3>}
+          <ComplexFilterFields filters={filters} regionRepository={regionRepository} topic={topic}
+            onRangeChange={(values) => onRangeChange(topic, values)} />
         </section>
       ))}
     </div>
