@@ -1,6 +1,6 @@
 import { FailureReviewPage } from './admin/ingest/FailureReviewPage'
 import { SourceDataPage } from './admin/ingest/SourceDataPage'
-import { Link, Navigate, Route, Routes } from 'react-router'
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router'
 import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
 import { HousingComplexRegistrationPage } from './admin/registration/HousingComplexRegistrationPage'
 import { AnnouncementRegistrationPage } from './admin/registration/AnnouncementRegistrationPage'
@@ -13,7 +13,6 @@ import { GuestCancellationAdminPage } from './admin/GuestCancellationAdminPage'
 import { LoginPage } from './admin/auth/LoginPage'
 import { RequireAdmin } from './admin/auth/RequireAdmin'
 import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHousingExplorer.tsx'
-import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { BrandLink } from './BrandLink'
 import { NotificationInterestProvider, NotificationInterestSessionControl } from './public-housing/interest/NotificationInterest'
 import { GuestCancellationPage } from './public-housing/interest/GuestCancellationPage'
@@ -52,6 +51,13 @@ function NotFound() {
   )
 }
 
+function LegacyLoginRedirect() {
+  const { search, hash } = useLocation()
+  const params = new URLSearchParams(search)
+  params.set('login', params.get('login') === 'failed' ? 'failed' : 'required')
+  return <Navigate to={{ pathname: '/', search: `?${params}`, hash }} replace />
+}
+
 function AdminRoutes() {
   return (
     <AdminAuthProvider>
@@ -86,7 +92,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
-      <Route path="/login" element={<UserLoginPage />} />
+      <Route path="/login" element={<LegacyLoginRedirect />} />
       <Route path="/feedback" element={<FeedbackPage />} />
       <Route path="/notifications/cancel" element={<GuestCancellationPage />} />
       <Route path="/admin/*" element={<AdminRoutes />} />

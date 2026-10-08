@@ -5,7 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -55,6 +57,28 @@ class NotificationInterestIntegrationTest {
 
     @Autowired(required = false)
     private ScheduledAnnotationBeanPostProcessor schedulingProcessor;
+
+    @Test
+    void 허용된_프론트엔드의_비회원_알림_조회_사전_요청을_허용한다() throws Exception {
+        mockMvc.perform(options("/api/v1/notification-subscriptions/guest")
+                        .header("Origin", "http://localhost:5173")
+                        .header("Access-Control-Request-Method", "GET")
+                        .header("Access-Control-Request-Headers", "X-Notification-Client-Id"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
+                .andExpect(header().string("Access-Control-Allow-Headers", "X-Notification-Client-Id"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+    }
+
+    @Test
+    void 다른_출처의_비회원_알림_조회_사전_요청을_거부한다() throws Exception {
+        mockMvc.perform(options("/api/v1/notification-subscriptions/guest")
+                        .header("Origin", "https://untrusted.example")
+                        .header("Access-Control-Request-Method", "GET")
+                        .header("Access-Control-Request-Headers", "X-Notification-Client-Id"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
+    }
 
     @Test
     void 예약_작업은_알림_보관_기간_정리만_등록한다() {
