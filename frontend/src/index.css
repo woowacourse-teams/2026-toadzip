@@ -1092,29 +1092,66 @@ a {
 
 .housing-map-marker {
   --marker-border: #333333;
+  --marker-background: #333333;
+  --marker-text: #ffffff;
+  --marker-expanded-width: max(150px, var(--marker-width, 92px));
+  --marker-motion-duration: 150ms;
+  --marker-motion-easing: cubic-bezier(0.2, 0.7, 0.3, 1);
   position: relative;
-  display: flex;
+  display: block;
   flex: none;
-  flex-direction: column;
-  width: var(--marker-width, 112px);
-  height: 60px;
+  width: var(--marker-width, 92px);
+  height: 54px;
   padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Noto Sans KR", sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.housing-map-marker__card {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
+  width: var(--marker-expanded-width);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #1c2b3d;
+  white-space: nowrap;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+/* The viewport reveals fixed-size content; glyphs never translate, scale, or fade. */
+.housing-map-marker__content {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  clip-path: inset(calc(100% - 52px) calc(100% - var(--marker-width, 92px) + 2px) 0 0 round 5px);
+  pointer-events: auto;
+}
+
+.housing-map-marker__surface {
+  position: absolute;
+  bottom: -1px;
+  left: -1px;
+  z-index: -1;
+  box-sizing: border-box;
+  width: var(--marker-width, 92px);
+  height: 54px;
   border: 1px solid var(--marker-border);
   border-radius: 6px;
   background: #ffffff;
-  color: #1c2b3d;
   box-shadow: 0 2px 3px #0000000a;
-  font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Noto Sans KR", sans-serif;
-  text-align: left;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  pointer-events: none;
 }
 
-.housing-map-marker::after {
+.housing-map-marker__card::after {
   position: absolute;
   bottom: -4px;
-  left: calc(50% - 3.5px);
+  left: calc(var(--marker-anchor-x, 16px) - 4.5px);
   box-sizing: border-box;
   width: 7px;
   height: 7px;
@@ -1128,76 +1165,98 @@ a {
 }
 
 .housing-map-marker__top {
+  display: flex;
+  grid-area: 1 / 1;
+  flex-direction: column;
+  padding: 4px 5px;
+  border-radius: 5px 5px 0 0;
+  color: var(--marker-text);
+  visibility: hidden;
+  background: var(--marker-background);
+}
+
+.housing-map-marker__compact {
+  position: absolute;
+  bottom: 36px;
+  left: 0;
+  box-sizing: border-box;
+  display: block;
+  width: calc(var(--marker-width, 92px) - 2px);
+  padding-inline: 5px;
+  border-radius: 5px 5px 0 0;
+  background: var(--marker-background);
+  visibility: visible;
+}
+
+.housing-map-marker__metadata {
+  position: relative;
+  box-sizing: border-box;
   display: grid;
   flex: none;
-  grid-template-columns: 36px 36px;
-  height: 18px;
+  grid-template-columns: minmax(0, max-content) minmax(0, max-content);
+  height: 16px;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 1px 6px;
-  border-bottom: 1px solid #e2e8f0;
-  border-radius: 5px 5px 0 0;
-  background: #333333;
-  color: #ffffff;
-  transition: background-color 150ms ease;
+  gap: 6px;
 }
 
 .housing-map-marker__name {
   display: block;
-  width: 36px;
+  min-width: 0;
   overflow: hidden;
   font-size: 12px;
   font-weight: 550;
-  line-height: 15px;
+  line-height: 16px;
   text-align: center;
   text-overflow: ellipsis;
 }
 
-.housing-map-marker__top[data-missing-summary] {
+.housing-map-marker__metadata[data-missing-summary] {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.housing-map-marker__top[data-missing-position] {
+.housing-map-marker__metadata[data-missing-position] {
   gap: 3px;
   padding-inline: 4px;
 }
 
-.housing-map-marker__top[data-missing-position="first"] {
+.housing-map-marker__metadata[data-missing-position="first"] {
   grid-template-columns: auto minmax(0, 1fr);
 }
 
-.housing-map-marker__top[data-missing-position="last"] {
+.housing-map-marker__metadata[data-missing-position="last"] {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.housing-map-marker__top[data-missing-summary] .housing-map-marker__name,
-.housing-map-marker__top[data-missing-position] .housing-map-marker__name {
+.housing-map-marker__metadata[data-missing-summary] .housing-map-marker__name,
+.housing-map-marker__metadata[data-missing-position] .housing-map-marker__name {
   width: auto;
 }
 
 .housing-map-marker__body {
   box-sizing: border-box;
   display: grid;
+  grid-area: 2 / 1;
   flex: none;
   width: 100%;
-  gap: 2px;
-  padding: 2px 6px;
+  gap: 0;
+  padding: 2px 5px;
 }
 
 .housing-map-marker__row {
   display: grid;
+  width: calc(var(--marker-width, 92px) - 12px);
   grid-template-columns: 11px minmax(0, 1fr);
   align-items: baseline;
   column-gap: 4px;
-  line-height: 17px;
+  line-height: 16px;
 }
 
 .housing-map-marker__label {
   color: #566577;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 550;
-  line-height: 15px;
+  line-height: 16px;
 }
 
 .housing-map-marker__amount {
@@ -1205,7 +1264,8 @@ a {
   grid-template-columns: minmax(max-content, 1fr) max-content 8px;
   align-items: baseline;
   column-gap: 1px;
-  font-size: 14px;
+  font-size: 12px;
+  line-height: 16px;
   font-weight: 750;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.25px;
@@ -1232,71 +1292,153 @@ a {
   text-align: right;
 }
 
-.housing-map-marker:hover,
-.housing-map-marker.is-highlighted {
-  --marker-border: var(--ds-color-action);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--ds-color-action) 20%, transparent),
-    0 4px 12px rgb(18 37 47 / 20%);
+.housing-map-marker[data-application-status="BEFORE_APPLICATION"] {
+  --marker-border: var(--ds-color-status-upcoming);
+  --marker-background: var(--ds-color-status-upcoming);
 }
 
-.housing-map-marker:hover .housing-map-marker__top,
-.housing-map-marker.is-highlighted .housing-map-marker__top {
-  border-bottom-color: var(--ds-color-action);
-  background: var(--ds-color-action-soft);
-  color: var(--ds-color-action);
+.housing-map-marker[data-application-status="APPLYING"] {
+  --marker-border: var(--ds-color-status-applying);
+  --marker-background: var(--ds-color-status-applying);
 }
 
 .housing-map-marker.is-selected {
   --marker-border: var(--ds-color-action);
+  --marker-background: var(--ds-color-brand);
+  --marker-text: var(--ds-color-on-brand);
 }
 
-.housing-map-marker.is-selected .housing-map-marker__top {
-  border-bottom-color: var(--ds-color-action);
-  background: var(--ds-color-brand);
-  color: var(--ds-color-on-brand);
+.housing-map-marker__title-reveal,
+.housing-map-marker__details {
+  display: block;
+  visibility: hidden;
+}
+
+.housing-map-marker__title,
+.housing-map-marker__detail-content {
+  min-height: 0;
+  width: calc(var(--marker-expanded-width) - 12px);
+  overflow: hidden;
+}
+
+.housing-map-marker__title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 15px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.housing-map-marker__area {
+  display: block;
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.housing-map-marker__summary-row {
+  display: flex;
+  min-height: 16px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.housing-map-marker__summary {
+  min-width: 0;
+  color: #566577;
+  font-size: 12px;
+  line-height: 17px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.housing-map-marker__agency[data-agency='LH'] { color: var(--ds-color-agency-lh); }
+.housing-map-marker__agency[data-agency='SH'] { color: var(--ds-color-agency-sh); }
+.housing-map-marker__agency[data-agency='GH'] { color: var(--ds-color-agency-gh); }
+
+.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__content {
+  clip-path: inset(0 0 0 0 round 5px);
+  transition: clip-path var(--marker-motion-duration) var(--marker-motion-easing);
+}
+
+.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__surface {
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  box-shadow: 0 4px 12px rgb(18 37 47 / 18%);
+  transition:
+    width var(--marker-motion-duration) var(--marker-motion-easing),
+    height var(--marker-motion-duration) var(--marker-motion-easing),
+    box-shadow var(--marker-motion-duration) var(--marker-motion-easing);
+}
+
+.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__top {
+  visibility: visible;
+}
+
+.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__compact {
+  visibility: hidden;
+}
+
+.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__title-reveal,
+.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__details {
+  visibility: visible;
+}
+
+.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__row {
+  width: 100%;
+}
+
+.housing-map-marker__details {
+  margin-bottom: 3px;
+}
+
+.housing-map-marker__status {
+  flex: none;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--ds-color-status-upcoming-surface);
+  color: var(--ds-color-status-upcoming);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+}
+
+.housing-map-marker[data-application-status="APPLYING"] .housing-map-marker__status {
+  background: var(--ds-color-status-applying-surface);
+  color: var(--ds-color-status-applying);
 }
 
 .housing-map-marker:focus-visible {
-  outline: 4px solid var(--ds-color-action);
+  outline: none;
+}
+
+.housing-map-marker:focus-visible .housing-map-marker__card {
+  outline: 3px solid var(--ds-color-action);
   outline-offset: 3px;
 }
 
 .housing-map-aggregate {
   position: relative;
   display: grid;
-  width: 104px;
-  min-height: 60px;
+  width: 92px;
+  min-height: 52px;
   padding: 0;
   overflow: visible;
   border: 2px solid rgb(255 255 255 / 96%);
-  border-radius: 12px;
+  border-radius: 6px;
   background: #172b4d;
-  box-shadow: 0 7px 16px rgb(18 37 47 / 28%);
+  box-shadow: 0 3px 8px rgb(18 37 47 / 20%);
   color: #ffffff;
   line-height: 1;
   place-items: center;
-  transform: translateY(-4px);
   transition: box-shadow 130ms ease, transform 130ms ease;
 }
 
-.housing-map-aggregate::after {
-  position: absolute;
-  bottom: -7px;
-  left: 50%;
-  width: 12px;
-  height: 12px;
-  transform: translateX(-50%) rotate(45deg);
-  border-right: 2px solid rgb(255 255 255 / 96%);
-  border-bottom: 2px solid rgb(255 255 255 / 96%);
-  border-radius: 0 0 3px;
-  background: #172b4d;
-  content: "";
-}
-
 .housing-map-aggregate:hover {
-  box-shadow: 0 10px 20px rgb(18 37 47 / 34%);
-  transform: translateY(-7px);
+  box-shadow: 0 5px 12px rgb(18 37 47 / 26%);
 }
 
 .housing-map-aggregate__label,
@@ -1306,16 +1448,16 @@ a {
 }
 
 .housing-map-aggregate__label {
-  max-width: 92px;
+  max-width: 80px;
   overflow: hidden;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .housing-map-aggregate__count {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 900;
 }
 
@@ -1580,12 +1722,17 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .housing-map-marker {
+    --marker-motion-duration: 0s;
+  }
+
   .housing-marker-enter {
     animation: none;
   }
 
-  .housing-map-marker,
-  .housing-map-marker__top {
+  .housing-map-marker__content,
+  .housing-map-marker__surface,
+  .housing-map-aggregate {
     transition: none;
   }
 
