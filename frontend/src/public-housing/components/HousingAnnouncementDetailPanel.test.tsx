@@ -18,6 +18,39 @@ import {
 import { NotificationInterestProvider } from '../interest/NotificationInterest'
 
 describe('HousingAnnouncementDetailPanel', () => {
+  it('두 섹션의 면적 버튼을 동기화하고 단지 탭 변경과 왕복 전환에 원본 면적을 보존한다', () => {
+    const firstRow = supplyRow()
+    render(<HousingAnnouncementDetailPanel detail={detail({ supplyRows: [
+      firstRow,
+      supplyRow({ supplyRowId: 'larger', housingType: { ...firstRow.housingType!, housingTypeId: 'larger', exclusiveArea: 44.1 } }),
+      detail().supplyRows[1],
+    ] })} onClose={vi.fn()} />)
+    expect(screen.getAllByRole('button', { name: '평 전환' })).toHaveLength(2)
+    fireEvent.click(screen.getAllByRole('button', { name: '평 전환' })[0])
+    expect(screen.getAllByRole('button', { name: '㎡ 전환' })).toHaveLength(2)
+    const complex = screen.getByRole('article', { name: '새솔마을 단지 비교' })
+    expect(within(complex).getByText('10.95평 – 13.34평')).toBeVisible()
+    expect(screen.getByRole('cell', { name: '10.95평' })).toBeVisible()
+    fireEvent.click(screen.getByRole('tab', { name: /봇들마을/ }))
+    expect(screen.getByRole('cell', { name: '13.34평' })).toBeVisible()
+    fireEvent.click(screen.getAllByRole('button', { name: '㎡ 전환' })[1])
+    expect(screen.getAllByRole('button', { name: '평 전환' })).toHaveLength(2)
+    expect(within(complex).getByText('36.2㎡ – 44.1㎡')).toBeVisible()
+    expect(screen.getByRole('cell', { name: '44.1㎡' })).toBeVisible()
+  })
+
+  it('평 전환 시 누락된 면적을 0평으로 만들지 않고 실제 0은 보존한다', () => {
+    const row = supplyRow()
+    render(<HousingAnnouncementDetailPanel detail={detail({ supplyRows: [
+      supplyRow({ housingType: null, sourceHousingTypeName: '미확인형' }),
+      supplyRow({ supplyRowId: 'zero', housingType: { ...row.housingType!, exclusiveArea: 0 } }),
+    ] })} onClose={vi.fn()} />)
+    fireEvent.click(screen.getAllByRole('button', { name: '평 전환' })[0])
+    expect(screen.getByRole('cell', { name: '0평' })).toBeVisible()
+    const missing = screen.getByRole('article', { name: '새솔마을 미확인형 주택형' })
+    expect(within(missing).getByRole('cell', { name: '공고문 확인' })).toBeVisible()
+  })
+
   it('회원은 이메일 없이 공고 알림을 저장한다', async () => {
     const record = vi.fn().mockResolvedValue(undefined)
     render(

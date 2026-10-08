@@ -87,7 +87,7 @@ describe('첫 방문 안내', () => {
   it('첫 방문 즉시 현재 로고와 두 시작 동작을 표시하고 X는 표시하지 않는다', () => {
     render(<StrictMode><FirstVisitWelcome onPlaceSelect={vi.fn()} onRegionSelect={vi.fn()} /></StrictMode>)
     const dialog = screen.getByRole('dialog', { name: /살고 싶은 동네의/ })
-    expect(within(dialog).getByRole('img', { name: 'BOK 공공주택 복덕방 로고' })).toBeVisible()
+    expect(within(dialog).getByRole('img', { name: '공공주택 복덕방 로고' })).toBeVisible()
     expect(within(dialog).getAllByRole('button').map(button => button.textContent))
       .toEqual(['살고 싶은 지역 검색하기', '바로 지도 둘러보기'])
     fireEvent.click(dialog)

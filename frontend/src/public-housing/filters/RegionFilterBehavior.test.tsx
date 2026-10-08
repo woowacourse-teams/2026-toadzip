@@ -24,6 +24,7 @@ describe.each([
     const first = deferred<readonly PublicHousingRegion[]>()
     const second = deferred<readonly PublicHousingRegion[]>()
     const search = vi.fn<PublicHousingRegionRepository['search']>()
+      .mockResolvedValue([])
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise)
     const onApply = vi.fn()
@@ -45,8 +46,8 @@ describe.each([
     expect(screen.getByRole('option', { name: '수원시' })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: '강남구' })).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('시·군·구'), { target: { value: '41110' } })
-    expect(onApply).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: apply }))
+    if (kind === 'announcement') expect(onApply).not.toHaveBeenCalled()
+    if (kind === 'announcement') fireEvent.click(screen.getByRole('button', { name: apply }))
     expect(onApply).toHaveBeenLastCalledWith({ regionCode: '41110' })
   })
 
@@ -66,7 +67,7 @@ describe.each([
     fireEvent.change(screen.getByLabelText('시·도'), { target: { value: '' } })
     expect(screen.getByLabelText('시·군·구')).toBeDisabled()
     expect(within(screen.getByLabelText('시·군·구')).getAllByRole('option')).toHaveLength(1)
-    fireEvent.click(screen.getByRole('button', { name: apply }))
+    if (kind === 'announcement') fireEvent.click(screen.getByRole('button', { name: apply }))
     expect(onApply).toHaveBeenLastCalledWith({})
   })
 
@@ -81,21 +82,20 @@ describe.each([
     expect(district).toHaveValue('41135')
     expect(district).toHaveAttribute('aria-describedby', alert.id)
     expect(screen.getByRole('option', { name: '선택 지역 (41135)' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: apply }))
-    expect(onApply).toHaveBeenLastCalledWith({ regionCode: '41135' })
-    if (kind === 'complex') fireEvent.click(screen.getByRole('button', { name: open }))
+    if (kind === 'announcement') fireEvent.click(screen.getByRole('button', { name: apply }))
+    if (kind === 'announcement') expect(onApply).toHaveBeenLastCalledWith({ regionCode: '41135' })
+    else expect(onApply).not.toHaveBeenCalled()
     fireEvent.change(screen.getByLabelText('시·군·구'), { target: { value: '' } })
-    fireEvent.click(screen.getByRole('button', { name: apply }))
+    if (kind === 'announcement') fireEvent.click(screen.getByRole('button', { name: apply }))
     expect(onApply).toHaveBeenLastCalledWith({ regionCode: '41' })
-    // A reopened complex popover starts another failed load.
     await act(async () => {})
   })
 
   it('닫으면 요청을 취소하고 다시 열었을 때 이전 결과를 재사용하지 않는다', async () => {
     const pending = deferred<readonly PublicHousingRegion[]>()
     const search = vi.fn<PublicHousingRegionRepository['search']>()
+      .mockImplementation(async (name) => name === '경기도' ? GYEONGGI_REGIONS : [])
       .mockReturnValueOnce(pending.promise)
-      .mockResolvedValueOnce(GYEONGGI_REGIONS)
     const onApply = vi.fn()
     renderPanel({ onApply, regionRepository: { search } })
     fireEvent.click(screen.getByRole('button', { name: open }))
@@ -108,7 +108,8 @@ describe.each([
     await act(async () => pending.resolve(SEOUL_REGIONS))
     expect(screen.queryByRole('option', { name: '강남구' })).not.toBeInTheDocument()
     expect(screen.getByLabelText('시·도')).toHaveValue('41')
-    expect(onApply).not.toHaveBeenCalled()
+    if (kind === 'announcement') expect(onApply).not.toHaveBeenCalled()
+    else expect(onApply).toHaveBeenLastCalledWith({ regionCode: '41' })
   })
 
   function renderPanel({ filters = {}, onApply, regionRepository }: {
@@ -118,7 +119,7 @@ describe.each([
   }) {
     return render(kind === 'announcement'
       ? <AnnouncementFilterPanel filters={filters} onApply={onApply} regionRepository={regionRepository} />
-      : <ComplexFilterToolbar filters={filters} onApply={onApply} regionRepository={regionRepository} />)
+      : <AppliedComplexFilters initialFilters={filters} onApply={onApply} regionRepository={regionRepository} />)
   }
 })
 
@@ -157,13 +158,14 @@ it.each(['announcement', 'complex'] as const)('%s 폼은 표시된 조건만 반
   const onApply = vi.fn()
   render(kind === 'announcement'
     ? <AnnouncementFilterPanel filters={filters} onApply={onApply} regionRepository={regionRepository} />
-    : <ComplexFilterToolbar filters={filters} onApply={onApply} regionRepository={regionRepository} />)
+    : <AppliedComplexFilters initialFilters={filters} onApply={onApply} regionRepository={regionRepository} />)
   fireEvent.click(screen.getByRole('button', { name: kind === 'announcement'
     ? '공고 필터 열기' : '모바일 지역 필터 열기' }))
   await screen.findByRole('option', { name: '수원시' })
   expect(onApply).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: kind === 'announcement' ? '공고 필터 적용' : '지역 적용' }))
-  expect(onApply).toHaveBeenCalledExactlyOnceWith(kind === 'complex' ? filters : {
+  if (kind === 'announcement') fireEvent.click(screen.getByRole('button', { name: '공고 필터 적용' }))
+  else fireEvent.change(screen.getByLabelText('시·군·구'), { target: { value: '' } })
+  expect(onApply).toHaveBeenCalledExactlyOnceWith(kind === 'complex' ? { ...filters, regionCode: '41' } : {
     regionCode: '41110',
     rentalTypes: ['HAPPY_HOUSING', 'NATIONAL_RENTAL'],
     applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'],
@@ -171,6 +173,16 @@ it.each(['announcement', 'complex'] as const)('%s 폼은 표시된 조건만 반
     recruitmentTypes: ['NEW', 'WAITLIST'],
   })
 })
+
+function AppliedComplexFilters({ initialFilters, onApply, regionRepository }: {
+  initialFilters: ComplexSearchFilters
+  onApply: (filters: ComplexSearchFilters) => void
+  regionRepository: PublicHousingRegionRepository
+}) {
+  const [filters, setFilters] = useState(initialFilters)
+  return <ComplexFilterToolbar filters={filters} regionRepository={regionRepository}
+    onApply={(next) => { setFilters(next); onApply(next) }} />
+}
 
 function deferred<Value>() {
   let resolve!: (value: Value) => void

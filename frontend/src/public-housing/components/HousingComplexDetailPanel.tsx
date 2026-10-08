@@ -17,6 +17,8 @@ import {
   DetailTable,
 } from './DetailPrimitives'
 import { formatHousingMoneyWon } from '../presentation/housingMoney'
+import { formatHousingArea as formatArea, type AreaUnit } from '../presentation/housingArea'
+import { AreaUnitToggle } from './AreaUnitToggle'
 import { AnnouncementStatusBadge } from './AnnouncementStatusBadge'
 import styles from './HousingComplexDetailPanel.module.css'
 import { NotificationInterestButton } from '../interest/NotificationInterest'
@@ -99,6 +101,8 @@ export function HousingComplexDetailPanel({
   onEscape,
 }: HousingComplexDetailPanelProps) {
   const scrollAnalytics = useDetailScrollAnalytics('COMPLEX', detail.complexId)
+  const [areaUnit, setAreaUnit] = useState<AreaUnit>('sqm')
+  const toggleAreaUnit = () => setAreaUnit((unit) => unit === 'sqm' ? 'pyeong' : 'sqm')
   const initialHousingTypeId = detail.housingTypes[0]?.housingTypeId ?? null
   const [selection, setSelection] = useState<HousingTypeSelection>({
     complexId: detail.complexId,
@@ -231,7 +235,8 @@ export function HousingComplexDetailPanel({
 
         {selectedHousingType && (
           <>
-            <DetailSection title="주택형별 임대조건">
+            <DetailSection title="주택형별 임대조건"
+              actions={<AreaUnitToggle unit={areaUnit} onToggle={toggleAreaUnit} />}>
               <div className={styles.comparison}>
                 <DetailTable caption="주택형별 임대조건 비교" minWidth={520}>
                   <colgroup>
@@ -261,7 +266,7 @@ export function HousingComplexDetailPanel({
                               </th>
                             )}
                             <td>
-                              {formatArea(housingType.exclusiveArea)}
+                              {formatArea(housingType.exclusiveArea, areaUnit, '')}
                               <span className={styles.conditionTarget}>{condition?.target ?? ''}</span>
                             </td>
                             <td data-numeric data-emphasis={Number.isFinite(condition?.deposit) || undefined}>
@@ -321,7 +326,7 @@ export function HousingComplexDetailPanel({
                     tabIndex={0}
                     hidden={!selected}
                   >
-                    {selected && <HousingTypePanel housingType={housingType} />}
+                    {selected && <HousingTypePanel housingType={housingType} areaUnit={areaUnit} onToggleAreaUnit={toggleAreaUnit} />}
                   </div>
                 )
               })}
@@ -501,8 +506,12 @@ function BasicInformation({ detail }: { detail: HousingComplexDetailData }) {
 
 function HousingTypePanel({
   housingType,
+  areaUnit,
+  onToggleAreaUnit,
 }: {
   housingType: HousingComplexDetailHousingType
+  areaUnit: AreaUnit
+  onToggleAreaUnit: () => void
 }) {
   const floorPlanImages = floorPlanUrls(housingType)
   const name = housingTypeName(housingType)
@@ -520,11 +529,14 @@ function HousingTypePanel({
         </div>
       )}
 
-      <h4>선택 주택형 상세</h4>
+      <div className={styles.housingTypeDetailHeading}>
+        <h4>선택 주택형 상세</h4>
+        <AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} />
+      </div>
       <DetailFacts columns={2}>
         <DetailFact term="주택형" value={name} />
-        <DetailFact term="전용 면적" value={formatArea(housingType.exclusiveArea)} />
-        <DetailFact term="공급 면적" value={formatArea(housingType.supplyArea)} />
+        <DetailFact term="전용 면적" value={formatArea(housingType.exclusiveArea, areaUnit, '')} />
+        <DetailFact term="공급 면적" value={formatArea(housingType.supplyArea, areaUnit, '')} />
         <DetailFact term="복층여부" value={duplexLabel(housingType.isDuplex)} />
         <DetailFact
           term="관리비"
@@ -697,13 +709,6 @@ function parkingSummary(parkingCount: number | null, householdCount: number | nu
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   })}대)`
-}
-
-function formatArea(value: number | null) {
-  if (value === null || !Number.isFinite(value)) {
-    return ''
-  }
-  return `${formatNumber(value)}㎡`
 }
 
 function formatNumber(value: number) {

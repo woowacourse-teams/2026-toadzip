@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, type RefObject } from 'react'
 import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
 import type { ComplexSearchFilters } from '../api/publicHousingRepository'
-import { announcementFiltersFromForm, replaceTopic, topicDraftFromForm } from '../filters/searchFilterForm'
-import type { FilterTopic } from '../filters/complexFilterTopics'
+import { announcementFiltersFromForm, replaceTopic, topicDraftFromForm, topicsDraftFromForm } from '../filters/searchFilterForm'
+import { TOPICS as FILTER_TOPICS, type FilterTopic } from '../filters/complexFilterTopics'
 
 const FIELDS: Readonly<Record<string, string>> = {
   provinceCode: 'region', districtCode: 'region', neighborhoodCode: 'region', regionCode: 'region',
@@ -27,6 +27,7 @@ export function useFilterMeasurement(target: 'complex' | 'announcement', topic: 
     if (!form) return
     const data = new FormData(form)
     if (target === 'announcement') current.draft = announcementFiltersFromForm(data)
+    else if (current.topic === 'all') current.draft = topicsDraftFromForm(FILTER_TOPICS, data)
     else if (TOPICS.has(current.topic)) current.draft = replaceTopic(current.applied, current.topic as FilterTopic, topicDraftFromForm(current.topic as FilterTopic, data))
   }, [target])
   const currentForm = useCallback(() => root.current?.querySelector<HTMLFormElement>('form') ?? null, [root])

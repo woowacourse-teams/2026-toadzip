@@ -149,7 +149,7 @@ location.reload()
 
 `map_zoomed.source`는 `button`, `other_user`, `programmatic`, `unknown`으로 구별한다. SDK idle을 무조건 사용자 조작으로 해석하지 않는다. 마커 강조의 프로그램 포커스 복원과 목록 hover는 직접 마커 관심으로 세지 않는다.
 
-필터 `method`는 `select`, `choice`, `slider`, `preset`이다. 현재 숫자 직접 입력 기능은 없다. 모바일 주제 초기화는 draft를 바꾸며 적용 전까지 실제 필터 변경이 아니다. 전체 초기화는 즉시 적용한다. 단지 필터 전체 해제는 공고 필터나 행정구역 경계를 함께 지우는 동작이 아니다.
+필터 `method`는 `select`, `choice`, `slider`, `preset`이다. 현재 숫자 직접 입력 기능은 없다. 단지 전체 필터 패널은 조건 변경을 즉시 적용하고, 모바일 개별 필터는 적용 버튼을 눌렀을 때 반영한다. 데스크톱·모바일의 전체 필터 초기화는 모든 단지 필터를 즉시 비우고 열린 패널을 유지하며 `reset_scope=all`, `state_target=applied`, `apply_mode=reset`으로 기록한다. 공고 필터나 지도에서 선택한 행정구역 경계는 함께 지우지 않는다.
 
 ### 상세·문서
 
