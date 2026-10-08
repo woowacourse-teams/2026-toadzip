@@ -1,3 +1,5 @@
+import { isVerificationStatus, type VerificationStatus } from './complexVerificationContract'
+
 export type ManagementResource = 'complexes' | 'announcements'
 
 export type ManagementSummary = {
@@ -24,6 +26,8 @@ export type ManagementComplexSummary = {
   corridorType: string | null
   hasElevator: boolean | null
   moveOutCountLastYear: number | null
+  verificationStatus?: VerificationStatus
+  reviewedFieldCount?: number
 }
 
 export type ManagementAnnouncementSummary = {
@@ -201,6 +205,8 @@ function isManagementComplexSummary(value: unknown): value is ManagementComplexS
     && isNullableString(value.heatingType) && isNullableString(value.buildingType) && isNullableString(value.corridorType)
     && (value.hasElevator === null || typeof value.hasElevator === 'boolean')
     && (value.moveOutCountLastYear === null || isCount(value.moveOutCountLastYear))
+    && (value.verificationStatus === undefined || isVerificationStatus(value.verificationStatus))
+    && (value.reviewedFieldCount === undefined || isCount(value.reviewedFieldCount) && value.reviewedFieldCount <= 6)
 }
 
 function isManagementAnnouncementSummary(value: unknown): value is ManagementAnnouncementSummary {
