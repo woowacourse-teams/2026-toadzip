@@ -193,6 +193,40 @@ class NotificationInterestIntegrationTest {
     }
 
     @Test
+    void 회원은_이메일_없이_설정을_저장하고_해제한다() throws Exception {
+        long userId = 90000003L;
+        jdbcTemplate.update("INSERT INTO users (id, login_identifier, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                userId, "notification-inbox-test");
+        String endpoint = "/api/v1/notification-subscriptions/me";
+        String confirmed = request(UUID.randomUUID(), "CONFIRMED", "SETTING", "REGION", "11");
+        mockMvc.perform(post(endpoint).with(user(Long.toString(userId)).roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(confirmed))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outcome").value("ACTIVATED"));
+        mockMvc.perform(get(endpoint).with(user(Long.toString(userId)).roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.emailConfirmed").value(false))
+                .andExpect(jsonPath("$.targets[0].targetId").value("11"));
+        mockMvc.perform(get(endpoint).with(user("90000004").roles("USER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.targets").isEmpty());
+        mockMvc.perform(post(endpoint).with(user(Long.toString(userId)).roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request(UUID.randomUUID(), "CANCELLED", "SETTING", "REGION", "11")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outcome").value("CANCELLED"));
+        mockMvc.perform(get(endpoint).with(user(Long.toString(userId)).roles("USER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.targets").isEmpty());
+    }
+
+    @Test
+    void 비회원은_회원_설정을_저장할_수_없다() throws Exception {
+        mockMvc.perform(post("/api/v1/notification-subscriptions/me").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request(UUID.randomUUID(), "CONFIRMED", "SETTING", "REGION", "11")))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void 로그인_신청은_다른_요청에서도_조회되고_취소가_반영된다() throws Exception {
         long userId = 90000001L;
         jdbcTemplate.update("INSERT INTO users (id, login_identifier, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",

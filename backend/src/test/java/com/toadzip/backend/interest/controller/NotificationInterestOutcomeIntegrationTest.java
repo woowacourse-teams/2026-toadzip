@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -29,6 +30,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -111,6 +114,59 @@ class NotificationInterestOutcomeIntegrationTest {
                 "SELECT expires_at FROM notification_subscriptions WHERE user_id = ?", Timestamp.class, userId)
                 .toInstant();
         assertEquals(renewed.occurredAt().atZone(ZoneOffset.UTC).plusMonths(12).toInstant(), expiry);
+    }
+
+    @Test
+    void 회원_설정_API는_이메일_없이_실제_변경_결과와_멱등_응답을_반환한다() throws Exception {
+        long userId = createUser();
+        NotificationInterestRequest confirmed = request(UUID.randomUUID(), NotificationEventType.CONFIRMED,
+                "11", null, null);
+
+        NotificationInterestResponse original = submitMember(userId, confirmed);
+
+        assertEquals(NotificationInterestOutcome.ACTIVATED, original.outcome());
+        assertEquals(confirmed.eventId(), original.eventId());
+        assertEquals(NotificationTargetType.REGION, original.targetType());
+        assertEquals("11", original.targetId());
+        assertEquals(1, service.findForUser(userId).targets().size());
+        assertEquals(0, jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM notification_email_preferences WHERE user_id = ?", Integer.class, userId));
+        assertEquals(original, submitMember(userId, confirmed));
+        assertEquals(NotificationInterestOutcome.ALREADY_ACTIVE, submitMember(userId,
+                request(UUID.randomUUID(), NotificationEventType.CONFIRMED, "11", null, null)).outcome());
+        assertEquals(NotificationInterestOutcome.CANCELLED, submitMember(userId,
+                request(UUID.randomUUID(), NotificationEventType.CANCELLED, "11", null, null)).outcome());
+        assertEquals(original, submitMember(userId, confirmed));
+        assertTrue(service.findForUser(userId).targets().isEmpty());
+        assertEquals(1, eventCount(confirmed.eventId()));
+        assertEquals(NotificationInterestOutcome.UNCHANGED, submitMember(userId,
+                request(UUID.randomUUID(), NotificationEventType.CANCELLED, "11", null, null)).outcome());
+    }
+
+    @Test
+    void 삭제된_단지의_회원_설정은_해제할_수_있지만_새로_신청할_수_없다() throws Exception {
+        long userId = createUser();
+        long complexId = createComplex();
+        String targetId = Long.toString(complexId);
+        NotificationInterestRequest confirmed = new NotificationInterestRequest(UUID.randomUUID(), SESSION_ID,
+                NotificationEventType.CONFIRMED, NotificationEventSource.SETTING,
+                NotificationTargetType.COMPLEX, targetId, null, null);
+        assertEquals(NotificationInterestOutcome.ACTIVATED, submitMember(userId, confirmed).outcome());
+        jdbcTemplate.update("DELETE FROM housing_complexes WHERE id = ?", complexId);
+
+        NotificationInterestRequest cancelled = new NotificationInterestRequest(UUID.randomUUID(), SESSION_ID,
+                NotificationEventType.CANCELLED, NotificationEventSource.SETTING,
+                NotificationTargetType.COMPLEX, targetId, null, null);
+
+        assertEquals(NotificationInterestOutcome.CANCELLED, submitMember(userId, cancelled).outcome());
+        assertTrue(service.findForUser(userId).targets().isEmpty());
+        NotificationInterestRequest newRequest = new NotificationInterestRequest(UUID.randomUUID(), SESSION_ID,
+                NotificationEventType.CONFIRMED, NotificationEventSource.SETTING,
+                NotificationTargetType.COMPLEX, targetId, null, null);
+        mockMvc.perform(post("/api/v1/notification-subscriptions/me")
+                        .with(user(Long.toString(userId)).roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(newRequest)))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -346,10 +402,45 @@ class NotificationInterestOutcomeIntegrationTest {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 이메일없는_회원_설정의_동시_활성화도_한_요청만_새_신청이다(boolean previouslyCancelled) throws Exception {
+        long userId = createUser();
+        try {
+            if (previouslyCancelled) {
+                transaction().executeWithoutResult(status -> subscriptions.activateForMember(
+                        userId, NotificationTargetType.REGION, "11", Instant.now()));
+                jdbcTemplate.update("UPDATE notification_subscriptions SET active = false WHERE user_id = ?", userId);
+            }
+
+            List<NotificationInterestOutcome> outcomes = race(() -> transaction().execute(status ->
+                    subscriptions.activateForMember(userId, NotificationTargetType.REGION, "11", Instant.now())));
+
+            assertEquals(1, outcomes.stream().filter(NotificationInterestOutcome.ACTIVATED::equals).count());
+            assertEquals(1, outcomes.stream().filter(NotificationInterestOutcome.ALREADY_ACTIVE::equals).count());
+            assertEquals(0, jdbcTemplate.queryForObject(
+                    "SELECT count(*) FROM notification_email_preferences WHERE user_id = ?", Integer.class, userId));
+        } finally {
+            jdbcTemplate.update("DELETE FROM notification_subscriptions WHERE user_id = ?", userId);
+            jdbcTemplate.update("DELETE FROM users WHERE id = ?", userId);
+        }
+    }
+
     private NotificationInterestRequest request(UUID eventId, NotificationEventType type, String targetId,
             String email, UUID clientId) {
         return new NotificationInterestRequest(eventId, SESSION_ID, type, NotificationEventSource.REGION_SEARCH,
                 NotificationTargetType.REGION, targetId, email, clientId);
+    }
+
+    private NotificationInterestResponse submitMember(long userId, NotificationInterestRequest request)
+            throws Exception {
+        String content = mockMvc.perform(post("/api/v1/notification-subscriptions/me")
+                        .with(user(Long.toString(userId)).roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readValue(content, NotificationInterestResponse.class);
     }
 
     private long createUser() {

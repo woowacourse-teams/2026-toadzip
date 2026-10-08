@@ -43,7 +43,8 @@ public class NotificationInterestService {
             recorded.verifySameRequest(event);
             return response(recorded);
         }
-        if (!targetExists(request.targetType(), request.targetId())) {
+        if (request.eventType() != NotificationEventType.CANCELLED
+                && !targetExists(request.targetType(), request.targetId())) {
             throw new InvalidNotificationInterestException();
         }
         event.complete(updateSubscription(request, userId, event.getCreatedAt()));
@@ -61,8 +62,11 @@ public class NotificationInterestService {
         if (userId == null) {
             return updateGuest(request, now);
         }
-        if (request.eventType() == NotificationEventType.CONFIRMED
-                && request.email() != null) {
+        if (request.eventType() == NotificationEventType.CONFIRMED) {
+            if (request.email() == null) {
+                return subscriptionRepository.activateForMember(
+                        userId, request.targetType(), request.targetId(), now);
+            }
             return subscriptionRepository.confirm(
                     userId, request.targetType(), request.targetId(), request.email(), now);
         }

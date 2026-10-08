@@ -64,6 +64,27 @@ describe('PostHog privacy and identity boundary', () => {
     expect(sdk.init).not.toHaveBeenCalled()
   })
 
+  it('collects only safe explicit events on notification settings and never records its replay', async () => {
+    window.history.replaceState({}, '', '/mypage/notifications?email=private@example.test#secret')
+    const analytics = await initialized()
+    analytics.setProductAuthState('member')
+    expect(analytics.captureProductEvent('notification_cancel_requested', {
+      target_type: 'COMPLEX', target_id: '17', source: 'SETTING', email: 'private@example.test',
+    })).toBe(true)
+    expect(sdk.capture).toHaveBeenCalledWith('notification_cancel_requested',
+      expect.objectContaining({ page_name: 'notification_settings', auth_state: 'member', source: 'SETTING' }), expect.anything())
+    const output = analytics.sanitizeCapture(captured({
+      page_name: 'notification_settings', target_type: 'COMPLEX', target_id: '17',
+      source: 'SETTING', email: 'private@example.test',
+    }, 'notification_cancel_requested'))
+    expect(output?.properties).toMatchObject({
+      page_name: 'notification_settings', $pathname: '/mypage/notifications', $current_url: `${location.origin}/`,
+    })
+    expect(JSON.stringify(output)).not.toMatch(/private|secret/)
+    expect(sdk.startSessionRecording).not.toHaveBeenCalled()
+    expect(analytics.sanitizeCapture(captured({ $snapshot_data: [] }, '$snapshot'))).toBeNull()
+  })
+
   it('uses one SDK instance, stable browser identity and occurrence-time authentication', async () => {
     const analytics = await import('./productAnalytics')
     analytics.setProductAuthState('guest')

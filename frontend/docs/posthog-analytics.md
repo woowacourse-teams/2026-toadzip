@@ -1,6 +1,6 @@
 # PostHog 제품 분석
 
-이 문서는 현재 구현된 사용자 행동의 수집 계약과 세 가지 제품 지표의 계산 기준을 정의한다. 이번 도입의 기준 소스는 `origin/develop@0ad9137`이며 기존 GA4 수집은 유지한다. 다른 행동은 후속 가설 검증에 사용할 수 있도록 수집하되 개별 보고서는 만들지 않는다.
+이 문서는 현재 구현된 사용자 행동의 수집 계약과 세 가지 제품 지표의 계산 기준을 정의한다. 회원 알림 설정·보관함 흐름을 기준으로 수집하며 기존 GA4 수집은 유지한다. 다른 행동은 후속 가설 검증에 사용할 수 있도록 수집하되 개별 보고서는 만들지 않는다.
 
 ## 세 가지 지표
 
@@ -61,7 +61,7 @@ PostHog 변수 4개는 로컬·서버 모두 저장소 루트 `.env`에서 관�
 
 이름과 누락 동작의 원본은 [루트 환경 변수 예시](../../.env.example), SDK 경계는 [productAnalytics.ts](../src/analytics/productAnalytics.ts)다. `MODE=test`에서는 다른 설정에 관계없이 SDK 초기화와 제품 이벤트 수집을 차단한다. 설정이 없거나 잘못되어도 SDK 수집을 시작하지 않는다. 로컬은 `dev` 프로젝트와 명시적인 opt-in이 모두 필요하다. 운영 도메인의 `dev` 설정, 개발 도메인의 `prod` 설정도 거부한다. 프로젝트 token과 environment는 실제 목적지를 함께 검증한다.
 
-PostHog가 생성한 브라우저 식별자를 `localStorage+cookie`로 유지한다. 로그인·로그아웃에서 `identify`, `alias`, `reset`을 호출하지 않으며 서버 사용자 ID, 이메일이나 알림용 client ID를 PostHog 식별자로 보내지 않는다. `auth_state`는 행동 요청 시점에 확인된 `member`, `guest`, `unknown`이다. 비동기 알림 완료·실패에는 응답 도착 후의 로그인 상태나 현재 경로가 아닌 원래 요청의 상태와 `page_name=explorer`를 유지한다. 창으로 돌아왔을 때 알림 상태를 다시 확인하면 분석의 회원 상태도 갱신한다. 조회 중 또는 오류를 비회원으로 추정하지 않는다. 확정된 회원↔비회원 변화에서만 `auth_state_changed`를 발생시키고 최초 상태 확인은 변화 이벤트로 세지 않는다.
+PostHog가 생성한 브라우저 식별자를 `localStorage+cookie`로 유지한다. 로그인·로그아웃에서 `identify`, `alias`, `reset`을 호출하지 않으며 서버 사용자 ID, 이메일이나 알림용 client ID를 PostHog 식별자로 보내지 않는다. `auth_state`는 행동 요청 시점에 확인된 `member`, `guest`, `unknown`이다. 비동기 알림 완료·실패에는 응답 도착 후의 로그인 상태나 현재 경로가 아닌 원래 요청의 상태와 페이지를 유지한다. 지도 및 보관함 모달은 `page_name=explorer`, 별도 알림 관리 경로(`/mypage/notifications`)는 `page_name=notification_settings`다. 창으로 돌아왔을 때 알림 상태를 다시 확인하면 분석의 회원 상태도 갱신한다. 조회 중 또는 오류를 비회원으로 추정하지 않는다. 확정된 회원↔비회원 변화에서만 `auth_state_changed`를 발생시키고 최초 상태 확인은 변화 이벤트로 세지 않는다.
 
 ### 팀원 제외
 
@@ -88,8 +88,8 @@ location.reload()
 - 이메일, 전화번호, 계정 ID, 검색어 원문, 자유 입력, 피드백 내용, 인증 코드, 파일명, 문서 내용, 원시 오류 문자열과 원시 URL을 이벤트에 넣지 않는다.
 - 검색어는 길이 구간만 보낸다. 지도는 공개 대상 ID·단계·조작 종류만 보내며 좌표는 보내지 않는다.
 - URL의 쿼리·해시와 자동 person 속성을 제거한다. IP를 분석 속성으로 저장하지 않고 GeoIP를 끈다. 수집 서버로 전송하기 위한 네트워크 접속 자체의 IP 노출까지 제거한다는 의미는 아니다.
-- 리플레이는 공개 탐색 화면에서만 허용한다. 피드백·비로그인 취소·관리자·잘못된 경로는 녹화하지 않는다.
-- 로그인 및 알림 이메일 모달을 표시하기 전에 녹화를 중단하고 닫힌 뒤 허용 조건을 다시 확인한다.
+- 리플레이는 공개 탐색 화면에서만 허용한다. 피드백·비로그인 취소·별도 알림 관리·관리자·잘못된 경로는 녹화하지 않는다.
+- 로그인·알림 안내·회원 보관함 및 계정 모달을 표시할 때 녹화를 중단하고 닫힌 뒤 허용 조건을 다시 확인한다.
 - 입력값과 텍스트를 마스킹하고 `.ph-no-capture` 영역을 차단한다. 문서 모달, iframe, object, embed, canvas, 이미지, 파일 입력 등을 녹화에서 제외한다. 동적 속성·링크·리소스 URL도 제거한다.
 - 리플레이용 CSS 속성(`_cssText`)은 리소스 URL·import·문자열 content 등을 제거한 뒤 레이아웃에 필요한 규칙만 보존한다. 차단 영역의 크기와 배치 정보도 제한된 형식만 허용한다. 일반 텍스트는 전부 마스킹되며 글꼴·일부 장식이 생략될 수 있어 원본 화면과 동일한 재현을 보장하지 않는다. `style` 태그의 내용은 SDK가 정적 CSS로 별도 보존하므로 사용자 생성 stylesheet는 이 보호 정책의 지원 범위에 포함하지 않는다. 현재 앱에는 사용자 생성 stylesheet가 없다.
 - 거리뷰 iframe에 별도 PostHog를 넣지 않는다. 지도·문서 이미지의 실제 내용은 리플레이에서 재현되지 않을 수 있다. 이벤트가 해당 행동을 보완한다.
@@ -106,7 +106,7 @@ location.reload()
 
 | 이벤트명 | 발생 조건 | 추가 속성 |
 | --- | --- | --- |
-| `page_view` | 허용된 공개 경로에 실제 진입. 쿼리·해시 변경이나 로그인 리다이렉트 중간 경로를 별도 페이지로 세지 않음 | 공통 속성 |
+| `page_view` | 탐색·피드백·비로그인 취소·알림 관리의 허용 경로에 실제 진입. 쿼리·해시 변경이나 로그인 리다이렉트 중간 경로를 별도 페이지로 세지 않음 | 공통 속성 |
 | `welcome_shown` | 안내 모달이 실제 열림. 만료 후 다시 노출될 수 있어 신규 사용자 판정으로 쓰지 않음 | `exposure_id` |
 | `welcome_search_started` | 안내에서 검색 화면으로 이동하는 버튼 클릭 | `exposure_id` |
 | `welcome_completed` | 지역 검색 결과 선택, 시작 장소 선택, 바로 지도 보기 또는 Escape로 안내 완료 | `exposure_id`, `method` |
@@ -180,9 +180,6 @@ location.reload()
 | --- | --- | --- |
 | `notification_cta_viewed` | 가리지 않은 알림 버튼이 활성 탭에 노출. 대상·위치·세션 단위로 중복 제거 | `target_type`, `target_id`, `source` |
 | `notification_cta_clicked` | 알림 받기 또는 취소 버튼 클릭 | 위 대상 속성, `action` |
-| `notification_form_viewed` | 이메일 신청 폼이 실제 모달로 표시. 오류 전용 모달 제외 | 위 대상 속성, `notification_action_id` |
-| `notification_form_submitted` | 유효한 폼 제출 시도 | 위 대상 속성 |
-| `notification_form_dismissed` | 신청 폼에서 취소·닫기 | 위 대상 속성, 가능한 `reason` |
 | `notification_preregistration_completed` | 서버 처리 결과가 `ACTIVATED` | 위 대상 속성, `notification_action_id`, `server_event_id`, `completion_source`, `occurred_at` |
 | `notification_preregistration_failed` | 신청 관련 요청 또는 결과 검증 실패 | 위 대상 속성, `notification_action_id`, `failure_reason` |
 | `notification_cancel_requested` | 현재 신청의 취소 요청 | 위 대상 속성 |
@@ -191,7 +188,7 @@ location.reload()
 | `login_modal_opened` | 로그인 모달 실제 열림 | `login_modal_id`, `entry_point` |
 | `login_modal_closed` | 로그인 모달을 닫기·Escape·바깥 클릭으로 닫음 | `login_modal_id`, `reason` |
 | `login_provider_clicked` | 카카오 또는 Google 로그인 시작 링크 클릭. 로그인 성공이 아님 | `login_modal_id`, `provider` |
-| `account_menu_opened` | 계정 메뉴를 실제 펼침 | 공통 속성 |
+| `account_menu_opened` | 데스크톱 계정 메뉴 또는 모바일 마이 모달을 실제 펼침 | 공통 속성 |
 | `auth_state_changed` | 최초 확인을 제외한 확정 회원↔비회원 상태 변경 | `previous_auth_state`, `next_auth_state` |
 | `logout_requested` | 로그아웃 버튼 클릭 | 공통 속성 |
 | `logout_succeeded` | 로그아웃 API 성공 | 공통 속성 |
@@ -207,7 +204,7 @@ location.reload()
 | `guest_bulk_cancellation_completed` | 검증·일괄 취소 트랜잭션 API가 `204` 반환 | 위 취소 요청 속성 |
 | `guest_cancellation_verification_failed` | 코드 검증·취소 실패 | 위 취소 요청 속성, `failure_reason` |
 
-알림의 `target_type`은 `COMPLEX`, `ANNOUNCEMENT`, `REGION`이며 지금 대시보드의 핵심가치지표는 `COMPLEX`만 선택한다. 이미 알림 이메일이 있는 사용자는 `CLICKED`에서 실제 활성화될 수 있고, 처음 입력하는 사용자는 `CONFIRMED`에서 활성화된다. 버튼이나 폼 종류로 완료를 추측하지 않는다. 비로그인 취소 코드 발송은 별도 운영 절차이며 수신 대기 화면이 발송 성공의 증거는 아니다.
+알림의 `target_type`은 `COMPLEX`, `ANNOUNCEMENT`, `REGION`이며 지금 대시보드의 핵심가치지표는 `COMPLEX`만 선택한다. 현재 신청은 회원만 가능하며 버튼을 누르면 `CONFIRMED`를 보내고 서버가 `ACTIVATED`를 반환한 경우에만 완료를 수집한다. 비회원은 로그인 안내를 표시하며 신청 요청을 보내지 않는다. 이메일 입력 폼이 없어 `notification_form_viewed`, `notification_form_submitted`, `notification_form_dismissed`는 현재 발행하지 않는다. 알림 관리의 개별 해제·전체 해제는 대상별로 `source=SETTING`인 취소 요청과 서버 결과를 수집한다. 전체 해제에서 실제 요청하지 않은 대상과 `UNCHANGED` 응답은 취소 완료로 세지 않는다. 비로그인 취소 코드 발송은 별도 운영 절차이며 수신 대기 화면이 발송 성공의 증거는 아니다.
 
 ### 거리뷰
 
@@ -250,13 +247,13 @@ location.reload()
 
 처리 결과, 원래 발생 시각과 신청 변경은 같은 트랜잭션에 저장한다. 동일한 eventId로 같은 주체·대상·명령을 재전송하면 최초 결과와 시각을 반환하며 business 동작을 반복하지 않는다. 같은 ID를 다른 요청에 재사용하면 `409`다. 동시 신규 요청에서도 첫 활성화만 `ACTIVATED`가 된다. 기존 알림 이벤트 원장의 90일 보관 정책 범위 안에서 멱등성이 유지되며, 삭제된 오래된 eventId를 장기 재사용하는 계약은 아니다.
 
-프론트엔드는 응답의 eventId·대상·결과·시각을 검증하고 서버 eventId로 완료 중복을 제거한다. 응답을 기다리는 동안 기존 UI가 닫히거나 세션이 초기화되어도 공개 경로와 수집 허용 조건이 유지되면 확정된 완료는 기록하며, 이전 응답으로 새 화면을 덮지는 않는다. `NOT_ACTIVATED`는 완료 화면 대신 이메일 신청 폼으로 돌아가고 `UNKNOWN`은 미확인 안내 후 현재 서버 상태를 재조회한다. 동일 요청의 재시도에는 원래 eventId를 유지하고, 취소 후 새 신청 같은 별도 행동에는 새 ID를 사용한다. 주체가 바뀌어 `409`가 발생해도 새 ID로 자동 재시도하지 않는다. 이전 백엔드의 `204`는 처리 결과를 알 수 없는 호환 응답이므로 완료를 추정하지 않는다. **백엔드를 먼저 배포한 뒤 프론트엔드를 배포**한다. 과거 로그를 `ACTIVATED`로 추정해 소급 전송하지 않는다.
+프론트엔드는 응답의 eventId·대상·결과·시각을 검증하고 서버 eventId로 완료 중복을 제거한다. 응답을 기다리는 동안 기존 UI가 닫히거나 세션이 초기화되어도 허용 경로와 수집 조건이 유지되면 확정된 완료는 기록하며, 이전 응답으로 새 화면을 덮지는 않는다. `NOT_ACTIVATED`·`UNKNOWN` 등 확인되지 않은 결과는 완료로 표시하지 않고 현재 서버 상태를 재조회한다. 동일 요청의 재시도에는 원래 eventId를 유지하고, 취소 후 새 신청 같은 별도 행동에는 새 ID를 사용한다. 주체가 바뀌어 `409`가 발생해도 새 ID로 자동 재시도하지 않는다. 이전 백엔드의 `204`는 처리 결과를 알 수 없는 호환 응답이므로 완료를 추정하지 않는다. **백엔드를 먼저 배포한 뒤 프론트엔드를 배포**한다. 과거 로그를 `ACTIVATED`로 추정해 소급 전송하지 않는다.
 
 상세·페이지·모달·문서는 각 방문·요청 ID로 StrictMode 재실행과 재렌더를 중복 제거한다. 버튼 시도와 서버 성공은 별개다. 탐색·뷰어에서는 현재 요청과 무관해진 오래된 응답과 취소된 요청을 수집하지 않는다. 알림 신청·취소의 서버 확정 결과는 위 계약에 따라 원래 요청의 회원 상태와 페이지를 유지해 기록한다. 브라우저 중복 방지는 제한된 세션 저장소를 사용하며 서버 원장을 대신하지 않는다.
 
 ## 검증과 해석의 한계
 
-이번 도입 변경의 최종 점검 결과는 다음과 같다. 자동 검사, 실제 브라우저 수신과 운영 배포는 서로 다른 검증 단계다.
+아래는 회원 알림 설정·보관함 통합 전 도입 버전의 검증 기록이다. 기존 비회원 이메일 신청 QA는 현재 회원 전용 흐름의 검증 결과를 대신하지 않는다. 자동 검사, 실제 브라우저 수신과 운영 배포는 서로 다른 검증 단계다.
 
 | 구분 | 확인 결과와 남은 범위 |
 | --- | --- |

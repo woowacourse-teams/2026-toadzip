@@ -7,7 +7,7 @@ const EXCLUSION_KEY = 'toadzip.analytics.disabled'
 const DEDUPLICATION_KEY = 'toadzip.posthog.sent-actions.v1'
 const MAX_PENDING = 100
 const MAX_DEDUPLICATION_KEYS = 1000
-const PUBLIC_PATHS = new Set(['/', '/feedback', '/notifications/cancel'])
+const PUBLIC_PATHS = new Set(['/', '/feedback', '/notifications/cancel', '/mypage/notifications'])
 type AuthState = 'member' | 'guest' | 'unknown'
 type PendingEvent = { name: string; properties: SafeProperties; timestamp: Date }
 let instance: PostHog | undefined
@@ -54,6 +54,7 @@ function collectionAllowed(): boolean {
 function safePageName(): string {
   if (window.location.pathname === '/feedback') return 'feedback'
   if (window.location.pathname === '/notifications/cancel') return 'guest_cancellation'
+  if (window.location.pathname === '/mypage/notifications') return 'notification_settings'
   return 'explorer'
 }
 
@@ -97,7 +98,7 @@ export function sanitizeCapture(event: CaptureResult | null): CaptureResult | nu
   properties.$ip = null
   properties.environment = configuration()?.environment
   properties.schema_version = 1
-  properties.page_name = ['explorer', 'feedback', 'guest_cancellation'].includes(event.properties.page_name)
+  properties.page_name = ['explorer', 'feedback', 'guest_cancellation', 'notification_settings'].includes(event.properties.page_name)
     ? event.properties.page_name : safePageName()
   properties.auth_state = ['member', 'guest', 'unknown'].includes(event.properties.auth_state)
     ? event.properties.auth_state : authState
@@ -199,7 +200,7 @@ function remember(key: string): void {
   if (seen.size > MAX_DEDUPLICATION_KEYS) seen.delete(seen.values().next().value ?? '')
 }
 
-export function captureProductEvent(name: string, properties: ProductProperties = {}, options: { dedupeKey?: string; authState?: AuthState; pageName?: 'explorer' | 'feedback' | 'guest_cancellation' } = {}): boolean {
+export function captureProductEvent(name: string, properties: ProductProperties = {}, options: { dedupeKey?: string; authState?: AuthState; pageName?: 'explorer' | 'feedback' | 'guest_cancellation' | 'notification_settings' } = {}): boolean {
   try {
     if (!isProductEvent(name) || !configuration() || !collectionAllowed()) return false
     if (options.dedupeKey && hasBeenSent(options.dedupeKey)) return false
