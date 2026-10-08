@@ -28,10 +28,12 @@ vi.mock('./admin/ingest/api', async (importOriginal) => ({
 }))
 
 beforeEach(() => {
+  localStorage.clear()
   vi.stubEnv('VITE_NAVER_MAPS_CLIENT_ID', '')
 })
 
 afterEach(() => {
+  localStorage.clear()
   vi.unstubAllEnvs()
 })
 
@@ -47,6 +49,9 @@ describe('App', () => {
       </MemoryRouter>,
     )
 
+    expect(screen.getByRole('dialog', { name: /살고 싶은 동네의/ })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '바로 지도 둘러보기' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getByRole('banner', { name: '서비스 헤더' })).toBeVisible()
     const homeLink = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
     expect(homeLink).toBeVisible()
