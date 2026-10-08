@@ -33,7 +33,8 @@ describe('이메일 알림 신청', () => {
         ? { eventId: event.eventId, targetType: event.targetType, targetId: event.targetId,
           outcome, occurredAt: '2026-10-08T00:00:00Z' } : undefined)
       render(example({ record, loadStatus: vi.fn().mockResolvedValue({ guest: true, emailConfirmed: true, targets: [] }) }))
-      fireEvent.click(await screen.findByRole('button', { name: '서울 단지 알림 받기' }))
+      await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+      fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
       await screen.findByText('서울 단지 알림 신청을 받았어요.')
       const completions = vi.mocked(captureProductEvent).mock.calls.filter(([name]) => name === 'notification_preregistration_completed')
       expect(completions).toHaveLength(outcome === 'ACTIVATED' ? 1 : 0)
@@ -48,7 +49,8 @@ describe('이메일 알림 신청', () => {
     const record = vi.fn<NotificationInterestRepository['record']>().mockImplementation(async (event) =>
       resultFor(event, event.eventType === 'CONFIRMED' ? 'ACTIVATED' : 'NOT_ACTIVATED'))
     render(example({ record, loadStatus: vi.fn().mockResolvedValue({ guest: true, emailConfirmed: true, targets: [] }) }))
-    fireEvent.click(await screen.findByRole('button', { name: '서울 단지 알림 받기' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
     const email = await screen.findByRole('textbox', { name: '알림 받을 이메일' })
     expect(screen.queryByText('서울 단지 알림 신청을 받았어요.')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
@@ -65,7 +67,8 @@ describe('이메일 알림 신청', () => {
     const record = vi.fn<NotificationInterestRepository['record']>().mockImplementation(async (event) => resultFor(event, 'UNKNOWN'))
     const loadStatus = vi.fn().mockResolvedValue({ guest: true, emailConfirmed: true, targets: [] })
     render(example({ record, loadStatus }))
-    fireEvent.click(await screen.findByRole('button', { name: '서울 단지 알림 받기' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
     await screen.findByText('처리 결과를 확인하지 못했어요. 현재 신청 상태를 다시 확인해 주세요.')
     await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(2))
     expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
@@ -80,7 +83,8 @@ describe('이메일 알림 신청', () => {
       targets: outcome === 'CANCELLED' ? [{ targetType: 'COMPLEX', targetId: '1' }] : [] }) }
     const view = render(example(repository))
     const name = outcome === 'CANCELLED' ? '서울 단지 알림 취소' : '서울 단지 알림 받기'
-    fireEvent.click(await screen.findByRole('button', { name }))
+    await waitFor(() => expect(screen.getByRole('button', { name })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name }))
     const event = record.mock.calls[0]?.[0]
     if (!event) throw new Error('The request should have started')
     view.unmount()
@@ -96,7 +100,8 @@ describe('이메일 알림 신청', () => {
     const response = deferred<NotificationInterestResult>()
     const record = vi.fn<NotificationInterestRepository['record']>().mockReturnValue(response.promise)
     const view = render(example({ record, loadStatus: vi.fn().mockResolvedValue({ emailConfirmed: true, targets: [] }) }))
-    fireEvent.click(await screen.findByRole('button', { name: '서울 단지 알림 받기' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
     const event = record.mock.calls[0]?.[0]
     if (!event) throw new Error('The request should have started')
     const guestRepository = { record: vi.fn().mockResolvedValue(undefined),
@@ -119,7 +124,8 @@ describe('이메일 알림 신청', () => {
     })
     render(example({ record, loadStatus: vi.fn().mockResolvedValue({ emailConfirmed: true,
       targets: [{ targetType: 'REGION', targetId: '11' }] }) }))
-    fireEvent.click(await screen.findByRole('button', { name: '서울 단지 알림 받기' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
     fireEvent.click(await screen.findByRole('button', { name: '다시 시도' }))
     await screen.findByText('서울 단지 알림 신청을 받았어요.')
     expect(record.mock.calls[0]?.[0]).toEqual(record.mock.calls[1]?.[0])
