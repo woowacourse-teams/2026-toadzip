@@ -42,6 +42,26 @@ const BASE_FILTERS: ComplexSearchFilters = {
 }
 
 describe('ComplexFilterToolbar', () => {
+  it.each(['단지 검색 필터', '모바일 단지 검색 필터'])('%s에서 전체 해제로 지역과 모든 조건을 즉시 지운다', (name) => {
+    render(<StatefulToolbar initialFilters={BASE_FILTERS} />)
+    const toolbar = screen.getByRole('toolbar', { name })
+    const reset = within(toolbar).getByRole('button', { name: '단지·지도 필터 전체 해제' })
+    expect(reset).toBeEnabled()
+    fireEvent.click(reset)
+    expect(appliedFilters()).toEqual({})
+    expect(reset).toBeDisabled()
+    expect(within(toolbar).getAllByRole('button').filter((button) => button.dataset.active === 'true')).toHaveLength(0)
+  })
+
+  it('전체 해제 시 편집 중인 지역 패널도 닫고 이전 조건을 다시 적용하지 않는다', () => {
+    render(<StatefulToolbar initialFilters={BASE_FILTERS} />)
+    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
+    fireEvent.click(within(screen.getByRole('toolbar', { name: '단지 검색 필터' }))
+      .getByRole('button', { name: '단지·지도 필터 전체 해제' }))
+    expect(screen.queryByRole('region', { name: '지역 필터' })).not.toBeInTheDocument()
+    expect(appliedFilters()).toEqual({})
+  })
+
   it('다른 조건을 선택해도 0과 한쪽만 있는 금액·면적 조건을 보존한다', () => {
     const initialFilters = {
       maxDeposit: 0,
@@ -80,6 +100,7 @@ describe('ComplexFilterToolbar', () => {
     expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
       '지역 필터 열기', '임대유형 필터 열기', '모집상태 필터 열기', '가격 필터 열기',
       '전용면적 필터 열기', '준공년도 필터 열기', '공급기관 필터 열기', '모집유형 필터 열기',
+      '단지·지도 필터 전체 해제',
     ])
     fireEvent.click(within(toolbar).getByRole('button', { name: '공급기관 필터 열기' }))
     expect(screen.getByRole('region', { name: '공급기관 필터' })).toBeVisible()
@@ -687,7 +708,7 @@ describe('ComplexFilterToolbar', () => {
     const onApply = vi.fn()
     renderToolbar({ filters: BASE_FILTERS, onApply })
     const toolbar = screen.getByRole('toolbar', { name: '모바일 단지 검색 필터' })
-    expect(within(toolbar).getAllByRole('button')).toHaveLength(8)
+    expect(within(toolbar).getAllByRole('button')).toHaveLength(9)
     fireEvent.click(within(toolbar).getByRole('button', { name: '모바일 가격 필터 열기' }))
     const sheet = screen.getByRole('dialog', { name: '가격 필터' })
     expect(within(sheet).getByRole('button', { name: '단지 필터 닫기' })).toHaveFocus()
