@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.collection.repository.external;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.toadzip.backend.ingest.collection.lh.supply.repository.LhSupplyResponseParser;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -10,7 +11,7 @@ import tools.jackson.databind.json.JsonMapper;
 class LhAnnouncementSupplyResponseParserTest {
 
     private final JsonMapper objectMapper = JsonMapper.builder().build();
-    private final LhAnnouncementSupplyResponseParser parser = new LhAnnouncementSupplyResponseParser();
+    private final LhSupplyResponseParser parser = new LhSupplyResponseParser();
 
     @Test
     @DisplayName("LH 공고 공급 응답을 원천 데이터로 파싱한다")
@@ -19,13 +20,11 @@ class LhAnnouncementSupplyResponseParserTest {
                 [{"dsList01":[{"SBD_LGO_NM":"가 단지","HTY_NNA":"46형"}]}]
                 """);
 
-        var sources = parser.parse("PAN-1", "062", root);
+        var sources = parser.parse("062", root);
 
         assertThat(sources).singleElement().satisfies(source -> {
-            assertThat(source.getSourceOrder()).isZero();
-            assertThat(source.getPanId()).isEqualTo("PAN-1");
-            assertThat(source.getComplexLabel()).isEqualTo("가 단지");
-            assertThat(source.getTypeName()).isEqualTo("46형");
+            assertThat(source.complexLabel()).isEqualTo("가 단지");
+            assertThat(source.typeName()).isEqualTo("46형");
         });
     }
 
@@ -39,17 +38,17 @@ class LhAnnouncementSupplyResponseParserTest {
                  "SIL_HSH_CNT":"20","LS_GMY":"10000000","MM_RFE":"200000"}]}]
                 """);
 
-        var sources = parser.parse("PAN-1", "060", root);
+        var sources = parser.parse("060", root);
 
         assertThat(sources).singleElement().satisfies(source -> {
-            assertThat(source.getComplexLabel()).isEqualTo("가 단지");
-            assertThat(source.getTypeName()).isEqualTo("46형");
-            assertThat(source.getExclusiveArea()).isEqualTo("46.8");
-            assertThat(source.getSupplyArea()).isEqualTo("67.0");
-            assertThat(source.getTotalUnitCount()).isEqualTo("100");
-            assertThat(source.getSuppliedUnitCount()).isEqualTo("20");
-            assertThat(source.getDepositText()).isEqualTo("10000000");
-            assertThat(source.getMonthlyRentText()).isEqualTo("200000");
+            assertThat(source.complexLabel()).isEqualTo("가 단지");
+            assertThat(source.typeName()).isEqualTo("46형");
+            assertThat(source.exclusiveArea()).isEqualTo("46.8");
+            assertThat(source.supplyArea()).isEqualTo("67.0");
+            assertThat(source.totalUnitCount()).isEqualTo("100");
+            assertThat(source.suppliedUnitCount()).isEqualTo("20");
+            assertThat(source.depositText()).isEqualTo("10000000");
+            assertThat(source.monthlyRentText()).isEqualTo("200000");
         });
     }
 
@@ -60,7 +59,7 @@ class LhAnnouncementSupplyResponseParserTest {
                 [{"dsSch":[{"SPL_INF_TP_CD":"060"}]},{"dsList01":[{"SBD_LGO_NM":"가 단지","HTY_NNA":"46형"}]}]
                 """);
 
-        assertThatThrownBy(() -> parser.parse("PAN-1", "060", root))
+        assertThatThrownBy(() -> parser.parse("060", root))
                 .isInstanceOf(ExternalDataRequestException.class);
     }
 
@@ -71,7 +70,7 @@ class LhAnnouncementSupplyResponseParserTest {
                 [{"dsList02":[{"SBD_LGO_NM":"잘못된 필드","HTY_NNA":"46형"}]}]
                 """);
 
-        assertThatThrownBy(() -> parser.parse("PAN-1", "060", root))
+        assertThatThrownBy(() -> parser.parse("060", root))
                 .isInstanceOf(ExternalDataRequestException.class);
     }
 
@@ -82,7 +81,7 @@ class LhAnnouncementSupplyResponseParserTest {
                 [{"dsList01":[{"SBD_LGO_NM":"가 단지","HTY_NM":"잘못된 주택형 필드"}]}]
                 """);
 
-        assertThatThrownBy(() -> parser.parse("PAN-1", "062", root))
+        assertThatThrownBy(() -> parser.parse("062", root))
                 .isInstanceOf(ExternalDataRequestException.class);
     }
 
@@ -91,7 +90,7 @@ class LhAnnouncementSupplyResponseParserTest {
     void rejectsMissingSupplyDataset() {
         var root = objectMapper.readTree("[{\"resHeader\":[{\"SS_CODE\":\"Y\"}]}]");
 
-        assertThatThrownBy(() -> parser.parse("PAN-1", "062", root))
+        assertThatThrownBy(() -> parser.parse("062", root))
                 .isInstanceOf(ExternalDataRequestException.class)
                 .hasMessage("LH 공고 공급 응답에 예상 dataset이 없습니다.");
     }
@@ -101,7 +100,7 @@ class LhAnnouncementSupplyResponseParserTest {
     void parsesEmptySupplyDataset() {
         var root = objectMapper.readTree("[{\"dsList01\":[]}]");
 
-        assertThat(parser.parse("PAN-1", "062", root)).isEmpty();
+        assertThat(parser.parse("062", root)).isEmpty();
     }
 
     @Test
@@ -110,9 +109,9 @@ class LhAnnouncementSupplyResponseParserTest {
         var nullDataset = objectMapper.readTree("[{\"dsList01\":null}]");
         var scalarDataset = objectMapper.readTree("[{\"dsList01\":1}]");
 
-        assertThatThrownBy(() -> parser.parse("PAN-1", "062", nullDataset))
+        assertThatThrownBy(() -> parser.parse("062", nullDataset))
                 .isInstanceOf(ExternalDataRequestException.class);
-        assertThatThrownBy(() -> parser.parse("PAN-1", "062", scalarDataset))
+        assertThatThrownBy(() -> parser.parse("062", scalarDataset))
                 .isInstanceOf(ExternalDataRequestException.class);
     }
 }

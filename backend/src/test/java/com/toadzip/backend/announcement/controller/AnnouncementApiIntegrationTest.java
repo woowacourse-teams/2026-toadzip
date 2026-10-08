@@ -293,6 +293,26 @@ class AnnouncementApiIntegrationTest {
     }
 
     @Test
+    void 읍면동_공고는_연결된_단지의_법정동으로_필터링한다() throws Exception {
+        HousingComplex first = persist(createHousingComplex("dong-first", "11140"));
+        HousingComplex second = persist(createHousingComplex("dong-second", "11140"));
+        Announcement included = persist(createAnnouncement("dong-included", null, null,
+                AnnouncementPublicationType.ORIGINAL, LocalDate.of(2026, 8, 1), null, null));
+        Announcement excluded = persist(createAnnouncement("dong-excluded", null, null,
+                AnnouncementPublicationType.ORIGINAL, LocalDate.of(2026, 8, 1), null, null));
+        persistSearchSupplyRows(first, included);
+        persistSearchSupplyRows(second, excluded);
+        entityManager.flush();
+        entityManager.createNativeQuery("UPDATE housing_complexes SET legal_dong_code = '1114010200' WHERE id = :id")
+                .setParameter("id", second.getId()).executeUpdate();
+        entityManager.clear();
+        mockMvc.perform(get("/api/v1/announcements").param("regionCode", "1114010100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].announcementId").value(included.getId()));
+    }
+
+    @Test
     void 시도_전체_지역코드는_소속_시군구의_공고를_조회한다() throws Exception {
         HousingComplex seoulComplex = persist(createHousingComplex("api-province-seoul", "11140"));
         Announcement announcement = persist(createSearchAnnouncement(

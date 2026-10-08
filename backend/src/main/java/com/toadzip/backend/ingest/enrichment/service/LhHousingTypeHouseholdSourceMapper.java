@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
-import com.toadzip.backend.ingest.collection.domain.LhCatalogSource;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;

@@ -9,8 +9,8 @@ public record LhAnnouncementQualityResponse(
         Connection connection,
         Coverage amounts,
         Schedule schedules,
-        Freshness supplyCollection,
-        Freshness detailCollection,
+        CollectionCoverage supplyCollection,
+        CollectionCoverage detailCollection,
         long unlinkedLhLeaseCatalogCount,
         List<UnlinkedLhCandidate> unlinkedLhCandidates,
         long preservedSourceRequestCount,
@@ -30,7 +30,7 @@ public record LhAnnouncementQualityResponse(
     public record Schedule(long total, long reviewed, long withApplicationSchedule) {
     }
 
-    public record Freshness(long totalRequests, long freshRequests, Instant latestCollectedAt) {
+    public record CollectionCoverage(long totalRequests, long collectedRequests, Instant latestCollectedAt) {
     }
 
     public record HeldRequest(String requestDescription, String reason, Instant lastOccurredAt,

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import styles from './NaverMap.module.css'
 import {
   cameraCoordinatesChanged,
   cameraZoomChanged,
@@ -204,6 +205,7 @@ export default function NaverMap({
   const cameraSouthWestLng = cameraTarget?.bounds?.southWestLng
   const cameraNorthEastLat = cameraTarget?.bounds?.northEastLat
   const cameraNorthEastLng = cameraTarget?.bounds?.northEastLng
+  const cameraBoundsMaxZoom = cameraTarget?.boundsMaxZoom
   const cameraPaddingTop = cameraTarget?.boundsPadding?.top
   const cameraPaddingRight = cameraTarget?.boundsPadding?.right
   const cameraPaddingBottom = cameraTarget?.boundsPadding?.bottom
@@ -320,16 +322,16 @@ export default function NaverMap({
             gl: true,
             keyboardShortcuts: true,
             logoControlOptions: {
-              position: maps.Position.BOTTOM_LEFT,
+              position: maps.Position.BOTTOM_RIGHT,
+            },
+            mapDataControlOptions: {
+              position: maps.Position.BOTTOM_RIGHT,
             },
             scaleControlOptions: {
-              position: maps.Position.BOTTOM_LEFT,
+              position: maps.Position.BOTTOM_RIGHT,
             },
             zoom: initialCamera.zoom,
-            zoomControl: true,
-            zoomControlOptions: {
-              position: maps.Position.RIGHT_BOTTOM,
-            },
+            zoomControl: false,
           })
           mapInstance = createdMap
           mapInstanceRef.current = createdMap
@@ -576,16 +578,23 @@ export default function NaverMap({
         new maps.LatLng(cameraSouthWestLat, cameraSouthWestLng),
         new maps.LatLng(cameraNorthEastLat, cameraNorthEastLng),
       ]
+      const fitOptions: naver.maps.FitBoundsOptions = {}
       if (cameraPaddingTop !== undefined && cameraPaddingRight !== undefined
         && cameraPaddingBottom !== undefined && cameraPaddingLeft !== undefined) {
-        mapInstance.fitBounds(bounds, {
+        Object.assign(fitOptions, {
           top: cameraPaddingTop,
           right: cameraPaddingRight,
           bottom: cameraPaddingBottom,
           left: cameraPaddingLeft,
         })
+      }
+      if (cameraBoundsMaxZoom !== undefined && Number.isFinite(cameraBoundsMaxZoom)
+        && cameraBoundsMaxZoom >= 0) {
+        fitOptions.maxZoom = cameraBoundsMaxZoom
+      }
+      if (Object.keys(fitOptions).length > 0) {
+        mapInstance.fitBounds(bounds, fitOptions)
       } else {
-        // Omit the optional margins argument unless the caller provided all four sides.
         mapInstance.fitBounds(bounds)
       }
       return
@@ -649,6 +658,7 @@ export default function NaverMap({
     }
   }, [cameraLatitude, cameraLongitude, cameraOffsetX, cameraOffsetY, cameraRequestId, cameraZoom,
     cameraSouthWestLat, cameraSouthWestLng, cameraNorthEastLat, cameraNorthEastLng,
+    cameraBoundsMaxZoom,
     cameraPaddingTop, cameraPaddingRight, cameraPaddingBottom, cameraPaddingLeft,
     initializedAttempt, attempt, status.kind])
 
@@ -659,6 +669,18 @@ export default function NaverMap({
 
   const isLoading = status.kind === 'loading'
   const isReady = status.kind === 'ready'
+
+  const changeZoom = (delta: number) => {
+    const map = mapInstanceRef.current
+    if (!map) return
+    if (transitioningRef.current && !transitionInterruptedRef.current) {
+      transitionInterruptedRef.current = true
+      onTransitionInterruptRef.current?.()
+      stopMapSafely(map)
+    }
+    const zoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), map.getZoom() + delta))
+    map.setZoom(zoom)
+  }
 
   return (
     <section
@@ -679,6 +701,20 @@ export default function NaverMap({
         aria-hidden={!isReady}
       />
       {isLoading && <MapLoading />}
+      {isReady && (
+        <div className={styles.zoomControls} role="group" aria-label="지도 확대·축소">
+          <button type="button" aria-label="지도 확대" title="지도 확대" onClick={() => changeZoom(1)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+              <path d="M5 12h14M12 5v14" />
+            </svg>
+          </button>
+          <button type="button" aria-label="지도 축소" title="지도 축소" onClick={() => changeZoom(-1)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+              <path d="M5 12h14" />
+            </svg>
+          </button>
+        </div>
+      )}
       {status.kind === 'unavailable' && (
         <MapUnavailable reason={status.reason} onRetry={retry} />
       )}

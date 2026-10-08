@@ -7,19 +7,17 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.domain.LhProviderPolicy;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementCurrentSources;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
-import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
-import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolutionException;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver.LinkedSource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
+import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
+import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver.LinkedSource;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentFailureResponse;
@@ -31,6 +29,7 @@ import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMap
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter.LhAnnouncementEnrichmentWriteResult;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter.LhSupplyMatchingFailureData;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.exception.exception.LhAnnouncementLinkResolutionException;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper;
@@ -54,11 +53,10 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class LhAnnouncementEnrichmentService {
 
-    private final MyHomeAnnouncementSourceRepository myHomeSourceRepository;
+    private final MyHomeAnnouncementSourceReader myHomeSourceRepository;
     private final AnnouncementRepository announcementRepository;
-    private final LhAnnouncementDetailSourceRepository detailSourceRepository;
-    private final LhAnnouncementSupplySourceRepository supplySourceRepository;
-    private final LhSourceStore sourceStore;
+    private final LhAnnouncementDetailSourceReader detailSourceRepository;
+    private final LhAnnouncementSupplySourceReader supplySourceRepository;
     private final LhAnnouncementEnrichmentFailureRepository failureRepository;
     private final LhAnnouncementEnrichmentFailureStore failureStore;
     private final MyHomeAnnouncementMappingFailureRepository mappingFailureRepository;
@@ -144,8 +142,7 @@ public class LhAnnouncementEnrichmentService {
         LinkedSource linked;
         try {
             linked = linkResolver.resolveFirstLinked(lhSources);
-        }
-        catch (LhAnnouncementLinkResolutionException exception) {
+        } catch (LhAnnouncementLinkResolutionException exception) {
             return reject(source, null, linkFailureReason(exception), exception.getMessage(), failures, occurredAt);
         }
         return enrichLinkedAnnouncement(
@@ -172,7 +169,7 @@ public class LhAnnouncementEnrichmentService {
     ) {
         MyHomeAnnouncementSource source = linked.source();
         String panId = linked.request().panId();
-        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(linked.request().requestDescription());
+        String requestHash = LhAnnouncementQuery.requestHashOf(linked.request().requestDescription());
         List<LhAnnouncementDetailSource> details = detailSourceRepository
                 .findAllByPanIdAndRequestHashOrderBySourceOrderAsc(panId, requestHash);
         if (details.isEmpty()) {
@@ -189,14 +186,13 @@ public class LhAnnouncementEnrichmentService {
             }
             LhAnnouncementEnrichmentWriteResult result = writer.write(
                     announcement, data, Set.of(), sourceKeysExcludedFromLhEnrichment(sources, currentLhSources),
-                    supplies.isEmpty() && sourceStore.hasVerifiedEmptySupplies(
+                    supplies.isEmpty() && supplySourceRepository.hasVerifiedEmptySupplies(
                             panId, linked.request().requestDescription()
                     )
             );
             addSupplyFailures(source, panId, result.failures(), failures, occurredAt);
             return result.report();
-        }
-        catch (LhAnnouncementEnrichmentRejectedException exception) {
+        } catch (LhAnnouncementEnrichmentRejectedException exception) {
             return reject(source, panId, exception.reason(), exception.getMessage(), failures, occurredAt);
         }
     }

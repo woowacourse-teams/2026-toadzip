@@ -5,40 +5,39 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.toadzip.backend.housing.domain.HousingComplex;
-import com.toadzip.backend.housing.domain.HousingType;
-import com.toadzip.backend.housing.domain.RentalPriceRange;
-import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
 import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.announcement.domain.SupplyRow;
-import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementApplicationScheduleRepository;
+import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
-import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
-import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
-import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
-import com.toadzip.backend.user.domain.User;
-import com.toadzip.backend.user.repository.UserRepository;
+import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
-import com.toadzip.backend.ingest.collection.domain.LhCatalogSource;
-import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
-import com.toadzip.backend.ingest.collection.repository.LhCatalogSourceRepository;
-import com.toadzip.backend.ingest.collection.repository.MyHomeComplexSourceRepository;
+import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
+import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.projection.LhCatalogSourceSnapshot;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot;
+import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
+import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.service.RoadAddressGeocodingService;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
+import com.toadzip.backend.user.domain.User;
+import com.toadzip.backend.user.repository.UserRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -76,8 +75,9 @@ class MyHomeComplexMergeIntegrationTest {
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper json;
     @Autowired private JdbcClient jdbc;
-    @Autowired private MyHomeComplexSourceRepository sources;
-    @Autowired private LhCatalogSourceRepository lhSources;
+    @Autowired private com.toadzip.backend.housing.repository.ComplexDetailQueryRepository detailQueries;
+    @Autowired private MyHomeComplexSourceFixtures sources;
+    @Autowired private LhLeaseCatalogSourceFixtures lhSources;
     @Autowired private HousingComplexRepository complexes;
     @Autowired private MyHomeComplexMappingService mapping;
     @Autowired private HousingTypeRepository housingTypes;
@@ -92,10 +92,15 @@ class MyHomeComplexMergeIntegrationTest {
     private List<Long> ids;
     private long lhId;
 
+    private List<Long> detailPriceRange(long complexId) {
+        var row = detailQueries.findComplex(complexId).orElseThrow();
+        return java.util.Arrays.asList(row.depositMin(), row.depositMax(), row.monthlyRentMin(), row.monthlyRentMax());
+    }
+
     @BeforeEach
     void setUp() {
         jdbc.sql("""
-                TRUNCATE housing_complexes, myhome_complex_source, lh_catalog_source,
+                TRUNCATE housing_complexes, myhome_complex_source_regions, lh_lease_catalog_source_bundles,
                     myhome_complex_mapping_failures,
                     announcements, users CASCADE
                 """).update();
@@ -139,7 +144,7 @@ class MyHomeComplexMergeIntegrationTest {
     @Test
     void 통합한_단지는_모든_원천의_보증금과_월임대료_범위를_표시한다() throws Exception {
         jdbc.sql("""
-                UPDATE myhome_complex_source
+                UPDATE myhome_complex_source_rows
                 SET bass_rent_gtn = CASE hsmp_sn WHEN 31713153 THEN 30000000 ELSE 10000000 END,
                     bass_mt_rntchrg = CASE hsmp_sn WHEN 31713153 THEN 100000 ELSE 200000 END
                 """).update();
@@ -149,14 +154,13 @@ class MyHomeComplexMergeIntegrationTest {
         mapping.mapAll();
 
         assertThat(complexes.findAll()).singleElement().satisfies(complex ->
-                assertThat(complex.getRentalPriceRange()).isEqualTo(
-                        new RentalPriceRange(10_000_000L, 30_000_000L, 100_000L, 200_000L)));
+                assertThat(detailPriceRange(complex.getId())).containsExactly(10_000_000L, 30_000_000L, 100_000L, 200_000L));
     }
 
     @Test
     void 확인된_통합_단지는_좌표가_없어도_금액을_갱신한다() throws Exception {
         merge();
-        jdbc.sql("UPDATE myhome_complex_source SET bass_rent_gtn = 5000000 WHERE hsmp_sn = 31713153")
+        jdbc.sql("UPDATE myhome_complex_source_rows SET bass_rent_gtn = 5000000 WHERE hsmp_sn = 31713153")
                 .update();
         when(geocoding.geocode(anyString())).thenThrow(new RoadAddressGeocodingException(
                 RoadAddressGeocodingFailureReason.ADDRESS_NOT_FOUND, "선별 적재된 좌표가 없습니다."
@@ -166,8 +170,7 @@ class MyHomeComplexMergeIntegrationTest {
 
         assertThat(report.failedSourceRowCount()).isZero();
         assertThat(complexes.findAll()).singleElement().satisfies(complex ->
-                assertThat(complex.getRentalPriceRange())
-                        .isEqualTo(new RentalPriceRange(5_000_000L, 5_000_000L, null, null)));
+                assertThat(detailPriceRange(complex.getId())).containsExactly(5_000_000L, 5_000_000L, null, null));
     }
 
     @Test
@@ -212,8 +215,41 @@ class MyHomeComplexMergeIntegrationTest {
     }
 
     @Test
+    void 주택형_금액_추가_전_통합_이력도_금액을_보존하며_복구한다() throws Exception {
+        jdbc.sql("UPDATE myhome_complex_source_rows SET bass_rent_gtn = 10000000, bass_mt_rntchrg = 200000")
+                .update();
+        mapping.mapAll();
+        JsonNode merged = merge();
+        jdbc.sql("""
+                UPDATE myhome_complex_merges
+                SET before_state = jsonb_set(before_state, '{housing_types}', (
+                    SELECT jsonb_agg(t - 'basic_deposit' - 'basic_monthly_rent' - 'rental_condition_collected_at')
+                    FROM jsonb_array_elements(before_state->'housing_types') t)),
+                    after_state = jsonb_set(after_state, '{housing_types}', (
+                    SELECT jsonb_agg(t - 'basic_deposit' - 'basic_monthly_rent' - 'rental_condition_collected_at')
+                    FROM jsonb_array_elements(after_state->'housing_types') t))
+                """).update();
+
+        postJson(ENDPOINT + "/" + merged.get("operationId").asText() + "/revert", Map.of());
+
+        assertThat(complexes.count()).isEqualTo(3);
+        assertThat(housingTypes.findAll()).allSatisfy(type -> {
+            assertThat(type.getBasicRentalCondition().deposit()).isEqualTo(10_000_000L);
+            assertThat(type.getBasicRentalCondition().monthlyRent()).isEqualTo(200_000L);
+        });
+    }
+
+    @Test
+    void 통합_후_주택형_금액이_바뀌면_복구를_보류한다() throws Exception {
+        JsonNode merged = merge();
+        jdbc.sql("UPDATE housing_types SET basic_deposit = 12300000").update();
+
+        expectConflict(ENDPOINT + "/" + merged.get("operationId").asText() + "/revert", Map.of());
+    }
+
+    @Test
     void 금액_컬럼_추가_전_통합_이력도_복구할_수_있다() throws Exception {
-        jdbc.sql("UPDATE myhome_complex_source SET bass_rent_gtn = 10000000, bass_mt_rntchrg = 200000")
+        jdbc.sql("UPDATE myhome_complex_source_rows SET bass_rent_gtn = 10000000, bass_mt_rntchrg = 200000")
                 .update();
         mapping.mapAll();
         JsonNode merged = merge();
@@ -233,9 +269,8 @@ class MyHomeComplexMergeIntegrationTest {
 
         assertThat(complexes.count()).isEqualTo(3);
         assertThat(complexes.findAll()).allSatisfy(complex ->
-                assertThat(complex.getRentalPriceRange()).isEqualTo(
-                        new RentalPriceRange(
-                                10_000_000L, 10_000_000L, 200_000L, 200_000L)));
+                assertThat(detailPriceRange(complex.getId())).containsExactly(
+                                10_000_000L, 10_000_000L, 200_000L, 200_000L));
     }
 
     @Test
@@ -268,14 +303,14 @@ class MyHomeComplexMergeIntegrationTest {
     @Test
     void 미리보기_후_원천이_변하면_통합하지_않는다() throws Exception {
         Map<String, Object> request = mergeRequest();
-        jdbc.sql("UPDATE myhome_complex_source SET bass_mt_rntchrg = 12345").update();
+        jdbc.sql("UPDATE myhome_complex_source_rows SET bass_mt_rntchrg = 12345").update();
         expectConflict(ENDPOINT, request);
         assertThat(complexes.count()).isEqualTo(3);
     }
 
     @Test
     void LH_11과_원천별_범위가_일치하지_않으면_합산하지_않는다() throws Exception {
-        jdbc.sql("UPDATE lh_catalog_source SET complex_total_unit_count = '12'").update();
+        jdbc.sql("UPDATE lh_lease_catalog_source_rows SET complex_total_unit_count = '12'").update();
         expectConflict(ENDPOINT + "/preview", Map.of("complexIds", ids, "lhSourceId", lhId));
         assertThat(complexes.count()).isEqualTo(3);
     }
@@ -353,7 +388,7 @@ class MyHomeComplexMergeIntegrationTest {
     @Test
     void 원천의_세대수가_바뀌면_11을_다시_덮어쓰지_않고_재확인으로_남긴다() throws Exception {
         merge();
-        jdbc.sql("UPDATE myhome_complex_source SET hshld_co = 7 WHERE hsmp_sn = 31713155").update();
+        jdbc.sql("UPDATE myhome_complex_source_rows SET hshld_co = 7 WHERE hsmp_sn = 31713155").update();
         assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(4);
         assertThat(complexes.findAll().getFirst().getTotalHouseholdCount()).isEqualTo(11);
     }
@@ -427,7 +462,7 @@ class MyHomeComplexMergeIntegrationTest {
 
     @Test
     void 지오코딩으로_정규화된_주소도_같은_단지로_검증한다() throws Exception {
-        jdbc.sql("UPDATE myhome_complex_source SET rn_adres = ?")
+        jdbc.sql("UPDATE myhome_complex_source_rows SET rn_adres = ?")
                 .param(ADDRESS + " (삼산동)").update();
         merge();
         assertThat(mapping.mapAll().failedSourceRowCount()).isZero();
@@ -436,7 +471,7 @@ class MyHomeComplexMergeIntegrationTest {
     @Test
     void 통합_후_원천_공통값이_바뀌면_성공으로_숨기지_않고_재확인으로_남긴다() throws Exception {
         merge();
-        jdbc.sql("UPDATE myhome_complex_source SET parkng_co = 10").update();
+        jdbc.sql("UPDATE myhome_complex_source_rows SET parkng_co = 10").update();
         List<String> before = productState();
         assertThat(mapping.mapAll().failedSourceRowCount()).isEqualTo(4);
         assertThat(productState()).isEqualTo(before);
@@ -483,7 +518,7 @@ class MyHomeComplexMergeIntegrationTest {
     @Test
     void 실제_재수집으로_수집시각이_바뀌어도_연결과_통합_당시_근거를_보존한다() throws Exception {
         JsonNode merged = merge();
-        jdbc.sql("UPDATE myhome_complex_source SET collected_at = TIMESTAMPTZ '2026-09-27 00:00:00Z'").update();
+        jdbc.sql("UPDATE myhome_complex_source_rows SET collected_at = TIMESTAMPTZ '2026-09-27 00:00:00Z'").update();
         assertThat(mapping.mapAll().failedSourceRowCount()).isZero();
         JsonNode history = json.readTree(mvc.perform(get(ENDPOINT + "/" + merged.get("operationId").asText())
                         .with(user("admin").roles("ADMIN"))).andExpect(status().isOk())

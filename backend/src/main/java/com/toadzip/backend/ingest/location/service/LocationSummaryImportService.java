@@ -2,7 +2,7 @@ package com.toadzip.backend.ingest.location.service;
 
 import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.MYHOME_COMPLEX_MAPPING;
 
-import com.toadzip.backend.ingest.collection.repository.MyHomeComplexSourceRepository;
+import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.location.domain.LocationSummaryRecord;
@@ -50,7 +50,7 @@ public class LocationSummaryImportService {
 
     private final LocationSummaryStore locationStore;
 
-    private final MyHomeComplexSourceRepository sourceRepository;
+    private final MyHomeComplexSourceReader sourceRepository;
 
     private final IngestOperationLock executionLock;
 
@@ -59,7 +59,7 @@ public class LocationSummaryImportService {
     public LocationSummaryImportService(
             LocationSummaryFileParser parser,
             LocationSummaryStore locationStore,
-            MyHomeComplexSourceRepository sourceRepository,
+            MyHomeComplexSourceReader sourceRepository,
             IngestOperationLock executionLock,
             TransactionTemplate transactionTemplate
     ) {

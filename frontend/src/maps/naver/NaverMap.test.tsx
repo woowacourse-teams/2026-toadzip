@@ -269,7 +269,7 @@ function createFakeSdk(): FakeSdk {
       Marker: markerConstructor,
       Point: pointConstructor,
       OverlayView: FakeOverlayView,
-      Position: { BOTTOM_LEFT: 10, RIGHT_BOTTOM: 9 },
+      Position: { BOTTOM_LEFT: 10, BOTTOM_RIGHT: 11, RIGHT_BOTTOM: 9 },
       Size: sizeConstructor,
     } as unknown as typeof naver.maps,
     panToMap,
@@ -457,16 +457,16 @@ describe('NaverMap', () => {
         gl: true,
         keyboardShortcuts: true,
         logoControlOptions: {
-          position: fakeSdk.maps.Position.BOTTOM_LEFT,
+          position: fakeSdk.maps.Position.BOTTOM_RIGHT,
+        },
+        mapDataControlOptions: {
+          position: fakeSdk.maps.Position.BOTTOM_RIGHT,
         },
         scaleControlOptions: {
-          position: fakeSdk.maps.Position.BOTTOM_LEFT,
+          position: fakeSdk.maps.Position.BOTTOM_RIGHT,
         },
         zoom: 14,
-        zoomControl: true,
-        zoomControlOptions: {
-          position: fakeSdk.maps.Position.RIGHT_BOTTOM,
-        },
+        zoomControl: false,
       }),
     )
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
@@ -483,6 +483,23 @@ describe('NaverMap', () => {
 
     expect(disconnect).toHaveBeenCalledOnce()
     expect(fakeSdk.destroyMap).toHaveBeenCalledOnce()
+  })
+
+  it('확대·축소 버튼으로 현재 지도 배율을 한 단계씩 변경한다', async () => {
+    const fakeSdk = createFakeSdk()
+    vi.mocked(loadNaverMapsSdk).mockResolvedValue(fakeSdk.maps)
+    render(<NaverMap representation="INDIVIDUAL" markers={[]} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: '지도 확대' }))
+    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(15)
+    fireEvent.click(screen.getByRole('button', { name: '지도 축소' }))
+    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(14)
+    fakeSdk.getMaxZoomMap.mockReturnValue(14)
+    fireEvent.click(screen.getByRole('button', { name: '지도 확대' }))
+    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(14)
+    fakeSdk.getMinZoomMap.mockReturnValue(14)
+    fireEvent.click(screen.getByRole('button', { name: '지도 축소' }))
+    expect(fakeSdk.setZoomMap).toHaveBeenLastCalledWith(14)
   })
 
   it('init 전에 unmount하면 초기화 리스너를 제거하고 bounds를 적용하지 않는다', async () => {
@@ -611,6 +628,21 @@ describe('NaverMap', () => {
     expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
   })
 
+  it('지역 전체를 맞추면서 검색 최대 줌을 제한한다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    render(<NaverMap representation="INDIVIDUAL" markers={[]} cameraRequestId={1}
+      cameraTarget={{ ...regionCameraTarget, boundsMaxZoom: 12.2 }} />)
+    await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
+    act(() => fakeSdk.emitInit())
+
+    expect(fakeSdk.fitBoundsMap).toHaveBeenCalledWith([
+      { latitude: 37.5, longitude: 126.8 },
+      { latitude: 37.7, longitude: 127.2 },
+    ], { top: 60, right: 24, bottom: 32, left: 400, maxZoom: 12.2 })
+    expect(fakeSdk.setZoomMap).not.toHaveBeenCalled()
+  })
+
   it('지역 bounds의 패딩을 생략하면 undefined 필드로 SDK 기본 여백을 덮어쓰지 않는다', async () => {
     const fakeSdk = createFakeSdk()
     loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
@@ -716,12 +748,12 @@ describe('NaverMap', () => {
       markers={[{ ...markerPresentation, id: '101', name: '경계 안 단지', latitude: 37.6, longitude: 127 }]} />)
 
     await waitFor(() => expect(fakeSdk.overlayConstructor).toHaveBeenCalledTimes(1))
-    const path = document.querySelector('svg path')
+    const path = document.querySelector('svg path[fill-rule="evenodd"]')
     expect(path?.getAttribute('d')?.match(/M/g)).toHaveLength(3)
     expect(path?.getAttribute('d')).not.toContain('NaN')
     expect(path?.getAttribute('fill-rule')).toBe('evenodd')
     expect(path?.getAttribute('fill')).toBe('#D34F3E')
-    expect(document.querySelector('svg')?.style.pointerEvents).toBe('none')
+    expect(path?.closest('svg')?.style.pointerEvents).toBe('none')
     fireEvent.click(createdMarkerButton(fakeSdk, 0))
     expect(onMarkerSelect).toHaveBeenCalledWith('101')
     expect(fakeSdk.fitBoundsMap).not.toHaveBeenCalled()
@@ -1324,7 +1356,7 @@ describe('NaverMap', () => {
 
     expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
     expect(markerButton).toHaveClass('is-highlighted')
-    expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(20)
+    expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(40)
     act(() => fakeSdk.emitIdle())
     expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
     expect(markerButton).toHaveFocus()
@@ -1521,6 +1553,58 @@ describe('NaverMap', () => {
       await waitFor(() => expect(createdMarkerButton(fakeSdk, 1)).toHaveFocus())
     },
   )
+
+  it('같은 단지의 공고 상태만 바뀌어도 마커 상태와 접근성 안내를 갱신한다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const renderMap = (applicationStatus: 'BEFORE_APPLICATION' | 'APPLYING' | null) => {
+      const marker = {
+        ...markerPresentation,
+        id: 'status-marker',
+        latitude: 37.5,
+        longitude: 127,
+        name: '상태 확인 단지',
+        applicationStatus,
+        selected: true,
+      }
+      return <NaverMap representation="INDIVIDUAL" markers={[marker]} />
+    }
+    const { rerender } = render(renderMap('BEFORE_APPLICATION'))
+    const upcoming = await screen.findByRole('button', { name: /상태 확인 단지.*단지 상세 보기/ })
+    expect(upcoming).toHaveAttribute('data-application-status', 'BEFORE_APPLICATION')
+    expect(upcoming).toHaveAccessibleName(/공고중/)
+    expect(upcoming).toHaveAttribute('aria-pressed', 'true')
+
+    rerender(renderMap('APPLYING'))
+    const applying = screen.getByRole('button', { name: /상태 확인 단지.*접수중/ })
+    expect(applying).toHaveAttribute('data-application-status', 'APPLYING')
+    expect(applying).toHaveClass('is-selected')
+
+    rerender(renderMap(null))
+    const neutral = screen.getByRole('button', { name: /상태 확인 단지.*단지 상세 보기/ })
+    expect(neutral).not.toHaveAttribute('data-application-status')
+    expect(neutral).not.toHaveAccessibleName(/공고중|접수중/)
+    expect(neutral).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('면적만 변경되어도 확장 정보를 갱신하고 hover와 focus 중에는 최상단을 유지한다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const marker = { ...markerPresentation, id: 'area', latitude: 37.5, longitude: 127,
+      name: '면적 확인 단지', exclusiveAreaLabel: '36㎡' }
+    const { rerender } = render(<NaverMap representation="INDIVIDUAL" markers={[marker]} />)
+    const button = await screen.findByRole('button', { name: /면적 확인 단지/ })
+    expect(button).toHaveTextContent('전용 36㎡')
+    fireEvent.mouseEnter(button)
+    expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(40)
+    button.focus()
+    fireEvent.mouseLeave(button)
+    expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(40)
+    button.blur()
+    expect(fakeSdk.markerSetZIndex).toHaveBeenLastCalledWith(10)
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[{ ...marker, exclusiveAreaLabel: '36 ~ 44㎡' }]} />)
+    expect(screen.getByRole('button', { name: /전용면적 36 ~ 44㎡/ })).toHaveTextContent('전용 36 ~ 44㎡')
+  })
 
   it('선택 이후 idle과 동일 데이터에서는 마커를 유지하고 실제 데이터 변경은 반영한다', async () => {
     const fakeSdk = createFakeSdk()
@@ -1773,11 +1857,9 @@ describe('NaverMap', () => {
     expect(markerButton).toHaveTextContent('월23만~')
     expect(markerButton).not.toHaveTextContent('㎡')
     expect(markerButton).toHaveAccessibleName(
-      '서울 공공임대 1단지, 한국토지주택공사 · 국민임대, 보증금 최소 10,000,000원, 월 임대료 최소 234,000원, 단지 상세 보기',
+      '서울 공공임대 1단지, 한국토지주택공사 · 국민임대, 전용면적 공고문 확인, 보증금 최소 10,000,000원, 월 임대료 최소 234,000원, 단지 상세 보기',
     )
-    expect(markerButton).toHaveAttribute('title',
-      '서울 공공임대 1단지, 한국토지주택공사 · 국민임대, 보증금 최소 10,000,000원, 월 임대료 최소 234,000원',
-    )
+    expect(markerButton).not.toHaveAttribute('title')
     expect(markerButton).toHaveAttribute('aria-pressed', 'true')
     expect(markerButton).toHaveClass('is-highlighted', 'is-selected')
     await waitFor(() =>
@@ -1789,11 +1871,11 @@ describe('NaverMap', () => {
       '보1천~월23만~',
     )
     expect(fakeSdk.markerConstructor.mock.calls[0]?.[0]).toMatchObject({
-      icon: { anchor: { x: 56, y: 66 }, size: { width: 112, height: 66 } },
+      icon: { anchor: { x: 16, y: 58 }, size: { width: 92, height: 58 } },
     })
   })
 
-  it('금액만 바뀌어도 폭과 anchor를 함께 갱신하고 중심좌표를 유지한다', async () => {
+  it('금액에 따라 폭이 바뀌어도 왼쪽 꼬리의 anchor와 지도 좌표를 유지한다', async () => {
     const fakeSdk = createFakeSdk()
     const marker: NaverMapMarker = {
       ...markerPresentation,
@@ -1824,7 +1906,7 @@ describe('NaverMap', () => {
     expect(button).toHaveClass('is-selected')
     expect(width).toBeGreaterThan(originalWidth)
     expect(fakeSdk.markerConstructor.mock.calls[1]?.[0]).toMatchObject({
-      icon: { anchor: { x: width / 2, y: 66 }, size: { width, height: 66 } },
+      icon: { anchor: { x: 16, y: 58 }, size: { width, height: 58 } },
       position: { latitude: marker.latitude, longitude: marker.longitude },
     })
 
@@ -1835,7 +1917,7 @@ describe('NaverMap', () => {
     expect(restoredButton.style.getPropertyValue('--marker-width')).toBe(`${originalWidth}px`)
     expect(restoredButton).toHaveClass('is-selected')
     expect(fakeSdk.markerConstructor.mock.calls[2]?.[0]).toMatchObject({
-      icon: { anchor: { x: originalWidth / 2, y: 66 }, size: { width: originalWidth, height: 66 } },
+      icon: { anchor: { x: 16, y: 58 }, size: { width: originalWidth, height: 58 } },
       position: { latitude: marker.latitude, longitude: marker.longitude },
     })
   })
@@ -1879,7 +1961,7 @@ describe('NaverMap', () => {
     expect(nextButton).toHaveTextContent('보1억~')
     expect(nextButton).toHaveTextContent('월24만~')
     expect(nextButton).toHaveAccessibleName(
-      '테스트 단지, 한국토지주택공사 · 통합공공임대, 보증금 최소 100,000,000원, 월 임대료 최소 240,000원, 단지 상세 보기',
+      '테스트 단지, 한국토지주택공사 · 통합공공임대, 전용면적 공고문 확인, 보증금 최소 100,000,000원, 월 임대료 최소 240,000원, 단지 상세 보기',
     )
   })
 
@@ -1900,7 +1982,7 @@ describe('NaverMap', () => {
       change: { monthlyRent: { ...markerPresentation.monthlyRent, exactLabel: '234,100원' } },
       expected: '월 임대료 최소 234,100원',
     },
-  ])('보이는 축약값이 같아도 $description 변경을 접근성 이름과 툴팁에 반영한다', async ({ change, expected }) => {
+  ])('보이는 축약값이 같아도 $description 변경을 접근성 이름에 반영한다', async ({ change, expected }) => {
     const fakeSdk = createFakeSdk()
     const marker = {
       ...markerPresentation,
@@ -1924,7 +2006,7 @@ describe('NaverMap', () => {
     const nextButton = createdMarkerButton(fakeSdk, 1)
     expect(nextButton.textContent).toBe(previousButton.textContent)
     expect(nextButton).toHaveAccessibleName(expect.stringContaining(expected))
-    expect(nextButton.title).toContain(expected)
+    expect(nextButton).not.toHaveAttribute('title')
   })
 
   it.each<{
@@ -2030,7 +2112,7 @@ describe('NaverMap', () => {
     expect(missingButton).toHaveTextContent('보-월-')
     expect(missingButton).not.toHaveTextContent('~')
     expect(missingButton).toHaveAccessibleName(
-      '금액 확인 단지, 한국토지주택공사 · 국민임대, 보증금 공고문 확인, 월 임대료 공고문 확인, 단지 상세 보기',
+      '금액 확인 단지, 한국토지주택공사 · 국민임대, 전용면적 공고문 확인, 보증금 공고문 확인, 월 임대료 공고문 확인, 단지 상세 보기',
     )
 
     rerender(<NaverMap representation="INDIVIDUAL" markers={[{
@@ -2042,7 +2124,7 @@ describe('NaverMap', () => {
     expect(zeroButton).toHaveTextContent('보0원~월-')
     expect(zeroButton.querySelectorAll('.housing-map-marker__from')).toHaveLength(1)
     expect(zeroButton).toHaveAccessibleName(
-      '금액 확인 단지, 한국토지주택공사 · 국민임대, 보증금 최소 0원, 월 임대료 공고문 확인, 단지 상세 보기',
+      '금액 확인 단지, 한국토지주택공사 · 국민임대, 전용면적 공고문 확인, 보증금 최소 0원, 월 임대료 공고문 확인, 단지 상세 보기',
     )
   })
 
@@ -2063,7 +2145,7 @@ describe('NaverMap', () => {
     const { rerender } = render(<NaverMap representation="INDIVIDUAL" markers={[marker]} />)
     await waitFor(() => expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce())
     const button = createdMarkerButton(fakeSdk, 0)
-    const top = button.querySelector('.housing-map-marker__top')
+    const top = button.querySelector('.housing-map-marker__metadata')
 
     expect(top).toHaveTextContent(/^공고문 확인$/)
     expect(top).toHaveAttribute('data-missing-summary', 'true')
@@ -2074,7 +2156,7 @@ describe('NaverMap', () => {
       agencyLabel: 'LH',
       agencyName: '한국토지주택공사',
     }]} />)
-    const mixedTop = createdMarkerButton(fakeSdk, 1).querySelector('.housing-map-marker__top')
+    const mixedTop = createdMarkerButton(fakeSdk, 1).querySelector('.housing-map-marker__metadata')
     expect(mixedTop).toHaveTextContent('LH공고문 확인')
     expect(mixedTop).toHaveAttribute('data-missing-position', 'last')
   })

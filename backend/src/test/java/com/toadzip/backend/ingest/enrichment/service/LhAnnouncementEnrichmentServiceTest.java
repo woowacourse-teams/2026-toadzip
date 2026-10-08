@@ -30,41 +30,46 @@ import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.ingest.collection.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.repository.ExternalDataCollectionFailureRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionCheckpointRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionLinkRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementSupplySourceRepository;
-import com.toadzip.backend.ingest.collection.repository.LhSourceStore;
-import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
-import com.toadzip.backend.ingest.collection.repository.VerifiedLhSupplyReplacementStore;
-import com.toadzip.backend.ingest.collection.domain.LhSupplySnapshot;
+import com.toadzip.backend.ingest.collection.fixture.LhAnnouncementDetailFixtures;
+import com.toadzip.backend.ingest.collection.fixture.repository.CollectedSourceRows;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementDetailSourceFixtures;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementSupplySourceFixtures;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhStorageFixtures;
+import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
+import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
+import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionLinkRepository;
+import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionProgressStore;
+import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCandidateCollector;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionProgressManager;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementLinkResolver;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhSupplySnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.projection.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
+import com.toadzip.backend.ingest.collection.lh.supply.repository.VerifiedLhSupplyReplacementStore;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
-import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementSupplyResponseParser;
-import com.toadzip.backend.ingest.collection.service.ExternalDataFailureRecorder;
+import com.toadzip.backend.ingest.collection.service.CollectionServiceTestFixture;
 import com.toadzip.backend.ingest.collection.service.ExternalDataRetryExecutor;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementCandidateCollector;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionProgressManager;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementLinkResolver;
+import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
+import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.failure.domain.IngestFailureStatus;
+import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
+import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
+import com.toadzip.backend.ingest.quality.service.LhAnnouncementQualityService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
@@ -73,6 +78,7 @@ import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.IntStream;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
@@ -82,12 +88,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -96,11 +103,14 @@ import tools.jackson.databind.node.ArrayNode;
 @ActiveProfiles("test")
 class LhAnnouncementEnrichmentServiceTest {
 
+    @Autowired
+    private CollectedSourceRows fixtures;
+
     private static final String PNU = "1111010100100010000";
     private static final String PAN_ID = "100";
 
     @Autowired
-    private LhSourceStore sourceStore;
+    private LhStorageFixtures sourceStore;
 
     @Autowired
     private VerifiedLhSupplyReplacementStore verifiedReplacementStore;
@@ -109,7 +119,7 @@ class LhAnnouncementEnrichmentServiceTest {
     private JdbcClient jdbc;
 
     @Autowired
-    private com.toadzip.backend.ingest.quality.service.LhAnnouncementQualityService qualityService;
+    private LhAnnouncementQualityService qualityService;
 
     @Autowired
     private ExternalDataFailureRecorder failureRecorder;
@@ -127,7 +137,7 @@ class LhAnnouncementEnrichmentServiceTest {
     private LhAnnouncementCollectionLinkRepository linkRepository;
 
     @Autowired
-    private LhAnnouncementCollectionCheckpointRepository checkpointRepository;
+    private LhAnnouncementQuerySourceRepository querySources;
 
     @Autowired
     private LhAnnouncementCollectionCandidateResolver candidateResolver;
@@ -139,16 +149,22 @@ class LhAnnouncementEnrichmentServiceTest {
     private LhAnnouncementEnrichmentService enrichmentService;
 
     @Autowired
-    private MyHomeAnnouncementSourceRepository myHomeSourceRepository;
+    private MyHomeAnnouncementSourceFixtures myHomeSourceRepository;
 
     @Autowired
     private MyHomeAnnouncementMappingFailureRepository mappingFailureRepository;
 
-    @MockitoSpyBean
-    private LhAnnouncementDetailSourceRepository detailSourceRepository;
+    @Autowired
+    private LhAnnouncementDetailSourceFixtures detailSourceRepository;
 
     @MockitoSpyBean
-    private LhAnnouncementSupplySourceRepository supplySourceRepository;
+    private LhAnnouncementDetailSourceReader detailReader;
+
+    @Autowired
+    private LhAnnouncementSupplySourceFixtures supplySourceRepository;
+
+    @MockitoSpyBean
+    private LhAnnouncementSupplySourceReader supplyReader;
 
     @MockitoSpyBean
     private LhAnnouncementLinkResolver linkResolver;
@@ -191,7 +207,7 @@ class LhAnnouncementEnrichmentServiceTest {
         mapMyHomeSource();
         saveLhSources("10000000", "200000");
         detailSourceRepository.deleteAll();
-        saveDetails(new LhAnnouncementDetailResponseParser().parse(PAN_ID, JsonMapper.builder().build().readTree("""
+        saveDetails(LhAnnouncementDetailFixtures.sources(PAN_ID, JsonMapper.builder().build().readTree("""
                 [{"dsSplScdl":[{"SBD_LGO_NM":"동삼2", "ACP_DTTM":"2026.08.24 10:00 ~ 2026.08.31 18:00"}]}]
                 """)));
         Announcement announcement = announcementRepository.findAll().getFirst();
@@ -230,6 +246,7 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     private void cleanUp() {
+        fixtures.clear();
         jdbc.sql("DELETE FROM verified_lh_supply_replacements").update();
         supplyTargetRepository.deleteAll();
         supplyRowRepository.deleteAll();
@@ -244,7 +261,6 @@ class LhAnnouncementEnrichmentServiceTest {
         mappingFailureRepository.deleteAll();
         myHomeSourceRepository.deleteAll();
         linkRepository.deleteAll();
-        checkpointRepository.deleteAll();
         externalFailureRepository.deleteAll();
     }
 
@@ -319,7 +335,8 @@ class LhAnnouncementEnrichmentServiceTest {
             statistics.setStatisticsEnabled(true);
             statistics.clear();
             assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
-            assertThat(statistics.getPrepareStatementCount()).isLessThanOrEqualTo(14);
+            // The read bridge adds five bounded canonical-source lookups while preserving legacy fixtures.
+            assertThat(statistics.getPrepareStatementCount()).isLessThanOrEqualTo(19);
         }
         finally {
             statistics.setStatisticsEnabled(previouslyEnabled);
@@ -368,6 +385,110 @@ class LhAnnouncementEnrichmentServiceTest {
         var changed = enrichmentService.enrichAll();
 
         assertThat(changed.updatedSupplyTargetCount()).isOne();
+        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
+            assertThat(target.getRentalDeposit()).isEqualByComparingTo("12000000");
+            assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000");
+        });
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false,true", "true,true", "false,false", "true,false"})
+    void 관리자_보호_공고의_다른_PAN_보강은_부모와_자식을_보존한다(boolean deleted, boolean enriched) {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        mappingService.mapAll();
+        if (enriched) {
+            assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
+        }
+        Announcement announcement = announcementRepository.findAll().getFirst();
+        String previousPanId = announcement.getLhPanId();
+        if (deleted) {
+            announcement.moveToTrash();
+        }
+        if (!deleted) {
+            announcement.reviseByAdmin(announcement);
+        }
+        announcementRepository.save(announcement);
+        List<Long> scheduleIds = scheduleRepository.findAll().stream().map(AnnouncementSchedule::getId).toList();
+        List<Long> attachmentIds = attachmentRepository.findAll().stream().map(AnnouncementAttachment::getId).toList();
+        List<Long> targetIds = supplyTargetRepository.findAll().stream().map(SupplyTarget::getId).toList();
+        switchLhSource(source, "46A");
+
+        var report = enrichmentService.enrichAll();
+
+        assertThat(report.failedSourceCount()).isOne();
+        assertThat(announcementRepository.findAll()).singleElement()
+                .extracting(Announcement::getLhPanId).isEqualTo(previousPanId);
+        assertThat(scheduleRepository.findAll()).extracting(AnnouncementSchedule::getId)
+                .containsExactlyInAnyOrderElementsOf(scheduleIds);
+        assertThat(attachmentRepository.findAll()).extracting(AnnouncementAttachment::getId)
+                .containsExactlyInAnyOrderElementsOf(attachmentIds);
+        assertThat(supplyTargetRepository.findAll()).extracting(SupplyTarget::getId)
+                .containsExactlyInAnyOrderElementsOf(targetIds);
+        assertThat(supplyTargetRepository.findAll()).allSatisfy(target -> {
+            assertThat(target.getRentalDeposit()).isEqualByComparingTo("10000000");
+            assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000");
+        });
+        assertThat(enrichmentFailureRepository.findAll()).anySatisfy(failure ->
+                        assertThat(failure.getReason())
+                                .isEqualTo(LhAnnouncementEnrichmentFailureReason.LH_COLLECTION_LINK_MISMATCH));
+    }
+
+    @Test
+    void 관리자_수정_공고의_PAN_변경은_매핑한_공급행_변경도_롤백한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        Announcement announcement = announcementRepository.findAll().getFirst();
+        announcement.reviseByAdmin(announcement);
+        announcementRepository.save(announcement);
+        SupplyRow previous = supplyRowRepository.findAll().getFirst();
+        Long rowId = previous.getId();
+        String previousLhIdentifier = previous.getLhSourceSupplyRowIdentifier();
+        switchLhSource(source, "46A");
+
+        var report = mappingService.mapAll();
+
+        assertThat(report.failedSourceRowCount()).isOne();
+        assertThat(announcementRepository.findAll()).singleElement()
+                .extracting(Announcement::getLhPanId).isEqualTo(PAN_ID);
+        assertThat(supplyRowRepository.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getId()).isEqualTo(rowId);
+            assertThat(row.getLhSourceSupplyRowIdentifier()).isEqualTo(previousLhIdentifier);
+        });
+        assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target ->
+                assertThat(target.getMonthlyRent()).isEqualByComparingTo("200000"));
+    }
+
+    @Test
+    void 관리자_수정_공고도_같은_PAN의_최신_금액은_보강한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        Announcement announcement = announcementRepository.findAll().getFirst();
+        ReflectionTestUtils.setField(announcement, "name", "관리자 확인 공고");
+        announcement.reviseByAdmin(announcement);
+        announcementRepository.save(announcement);
+        detailSourceRepository.deleteAll();
+        supplySourceRepository.deleteAll();
+        saveLhSources("12,000,000", "250,000");
+
+        var report = enrichmentService.enrichAll();
+
+        assertThat(report.failedSourceCount()).isZero();
+        assertThat(report.updatedSupplyTargetCount()).isOne();
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(stored -> {
+            assertThat(stored.getName()).isEqualTo("관리자 확인 공고");
+            assertThat(stored.getLhPanId()).isEqualTo(PAN_ID);
+        });
         assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
             assertThat(target.getRentalDeposit()).isEqualByComparingTo("12000000");
             assertThat(target.getMonthlyRent()).isEqualByComparingTo("250000");
@@ -556,7 +677,6 @@ class LhAnnouncementEnrichmentServiceTest {
         saveLhSources("10,000,000", "200,000");
         supplySourceRepository.deleteAll();
         linkRepository.deleteAll();
-        checkpointRepository.deleteAll();
         var candidate = (LhAnnouncementCollectionCandidateResolver.Candidate) candidateResolver.resolve(source);
         LhAnnouncementExternalRepository external = mock(LhAnnouncementExternalRepository.class);
         when(external.fetchSupply(any())).thenReturn(response("[{\"dsList01\":[],\"dsList02\":[]}]"));
@@ -605,7 +725,7 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
         assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
         var previousSources = supplySourceRepository.findAll();
-        var previousCheckpoints = checkpointRepository.findAll();
+        var previousQuerySources = querySourceState();
         var previousLinks = linkRepository.findAll();
         Long rowId = supplyRowRepository.findAll().getFirst().getId();
         Long targetId = supplyTargetRepository.findAll().getFirst().getId();
@@ -620,8 +740,8 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(failed.externalApiCallCount()).isOne();
         assertThat(supplySourceRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
                 .containsExactlyElementsOf(previousSources);
-        assertThat(checkpointRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
-                .containsExactlyInAnyOrderElementsOf(previousCheckpoints);
+        assertThat(querySourceState())
+                .containsExactlyInAnyOrderElementsOf(previousQuerySources);
         assertThat(linkRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
                 .containsExactlyInAnyOrderElementsOf(previousLinks);
         assertThat(externalFailureRepository.findAll()).singleElement().satisfies(failure -> {
@@ -680,14 +800,13 @@ class LhAnnouncementEnrichmentServiceTest {
         Long rowId = supplyRowRepository.findAll().getFirst().getId();
         Long targetId = supplyTargetRepository.findAll().getFirst().getId();
         String previousRequest = candidate.requestDescription().replace("COLLECTION_VERSION=6", "COLLECTION_VERSION=5");
-        String previousHash = LhAnnouncementCollectionCheckpoint.requestHashOf(previousRequest);
+        String previousHash = LhAnnouncementQuery.requestHashOf(previousRequest);
         var previousSources = supplySourceRepository.findAll();
         previousSources.forEach(supply -> supply.assignRequestHash(previousHash));
-        supplySourceRepository.saveAll(previousSources);
-        var previousDetails = detailSourceRepository.findAll();
-        previousDetails.forEach(detail -> detail.assignRequestHash(previousHash));
-        detailSourceRepository.saveAll(previousDetails);
-        checkpointRepository.deleteAll();
+        jdbc.sql("UPDATE lh_announcement_query_sources SET request_hash = :hash, request_description = :request")
+                .param("hash", previousHash).param("request", previousRequest).update();
+        jdbc.sql("UPDATE lh_announcement_query_parameters SET parameter_value = '5' "
+                + "WHERE parameter_name = 'COLLECTION_VERSION'").update();
         linkRepository.deleteAll();
         for (ExternalDataSource target : List.of(
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY)) {
@@ -746,7 +865,7 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
         assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
         var previousSources = supplySourceRepository.findAll();
-        var previousCheckpoints = checkpointRepository.findAll();
+        var previousQuerySources = querySourceState();
         var previousLinks = linkRepository.findAll();
         var rowIds = supplyRowRepository.findAll().stream().map(SupplyRow::getId).toList();
         var targetIds = supplyTargetRepository.findAll().stream().map(SupplyTarget::getId).toList();
@@ -763,8 +882,8 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(failed.storedRowCount()).isZero();
         assertThat(supplySourceRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
                 .containsExactlyInAnyOrderElementsOf(previousSources);
-        assertThat(checkpointRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
-                .containsExactlyInAnyOrderElementsOf(previousCheckpoints);
+        assertThat(querySourceState())
+                .containsExactlyInAnyOrderElementsOf(previousQuerySources);
         assertThat(linkRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
                 .containsExactlyInAnyOrderElementsOf(previousLinks);
         assertThat(externalFailureRepository.findAll()).singleElement().satisfies(failure -> {
@@ -809,7 +928,7 @@ class LhAnnouncementEnrichmentServiceTest {
         sourceStore.replaceSupplies(PAN_ID, candidate.requestDescription(), supplies);
         completeLinks(source);
         var previousSources = supplySourceRepository.findAll();
-        var previousCheckpoints = checkpointRepository.findAll();
+        var previousQuerySources = querySourceState();
         var previousLinks = linkRepository.findAll();
         LhAnnouncementExternalRepository external = mock(LhAnnouncementExternalRepository.class);
         when(external.fetchSupply(any())).thenReturn(repeatedSupplyResponse(
@@ -823,8 +942,8 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(result.storedRowCount()).isZero();
         assertThat(supplySourceRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
                 .containsExactlyInAnyOrderElementsOf(previousSources);
-        assertThat(checkpointRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
-                .containsExactlyInAnyOrderElementsOf(previousCheckpoints);
+        assertThat(querySourceState())
+                .containsExactlyInAnyOrderElementsOf(previousQuerySources);
         assertThat(linkRepository.findAll()).usingRecursiveFieldByFieldElementComparator()
                 .containsExactlyInAnyOrderElementsOf(previousLinks);
     }
@@ -912,7 +1031,7 @@ class LhAnnouncementEnrichmentServiceTest {
         mapMyHomeSource();
         saveLhSources("10,000,000", "200,000");
         detailSourceRepository.deleteAll();
-        saveDetails(new LhAnnouncementDetailResponseParser().parse(PAN_ID,
+        saveDetails(LhAnnouncementDetailFixtures.sources(PAN_ID,
                 JsonMapper.builder().build().readTree("""
                         [{"dsSbd":[{"LCC_NT_NM":"동삼2","MVIN_XPC_YM":"202612"}]}]
                         """)));
@@ -921,7 +1040,7 @@ class LhAnnouncementEnrichmentServiceTest {
                 .extracting(SupplyRow::getExpectedMoveInMonth).isEqualTo(YearMonth.of(2026, 12));
 
         detailSourceRepository.deleteAll();
-        saveDetails(new LhAnnouncementDetailResponseParser().parse(PAN_ID,
+        saveDetails(LhAnnouncementDetailFixtures.sources(PAN_ID,
                 JsonMapper.builder().build().readTree("""
                         [{"dsSbd":[{"LCC_NT_NM":"청운3","MVIN_XPC_YM":"202703"}]}]
                         """)));
@@ -1435,7 +1554,7 @@ class LhAnnouncementEnrichmentServiceTest {
         );
         assertThat(detailSourceRepository.count()).isEqualTo(4);
         assertThat(supplySourceRepository.count()).isOne();
-        assertThat(checkpointRepository.count()).isEqualTo(2);
+        assertThat(querySources.count()).isEqualTo(2);
         assertThat(linkRepository.count()).isEqualTo(2);
     }
 
@@ -1448,7 +1567,7 @@ class LhAnnouncementEnrichmentServiceTest {
         mappingService.mapAll();
         enrichmentService.enrichAll();
         linkRepository.deleteAll();
-        assertThat(checkpointRepository.count()).isEqualTo(2);
+        assertThat(querySources.count()).isEqualTo(2);
 
         assertThat(mappingService.mapAll().failedSourceRowCount()).isOne();
         assertThat(enrichmentService.enrichAll().failedSourceCount()).isOne();
@@ -1502,7 +1621,7 @@ class LhAnnouncementEnrichmentServiceTest {
         String approvedRequest = request;
         if (previousVersion) {
             approvedRequest = new LhAnnouncementRequest(PAN_ID, "03", "06", "07", "062")
-                    .previousRequestDescription();
+                    .requestDescription().replace("COLLECTION_VERSION=6", "COLLECTION_VERSION=5");
             supplySourceRepository.deleteAll();
             sourceStore.replaceSupplies(PAN_ID, approvedRequest, List.of(new LhAnnouncementSupplySource(0, PAN_ID,
                     new LhAnnouncementSupplySourceSnapshot(
@@ -1510,7 +1629,7 @@ class LhAnnouncementEnrichmentServiceTest {
             progressStore.complete(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY,
                     source.getPblancId(), approvedRequest, PAN_ID);
         }
-        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(approvedRequest);
+        String requestHash = LhAnnouncementQuery.requestHashOf(approvedRequest);
         long approvalId = verifiedReplacementStore.approve(requestHash,
                 LhSupplySnapshot.fingerprint(List.of()), "https://apply.lh.or.kr/notice",
                 "공급 철회 확인", "operator");
@@ -1553,7 +1672,7 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(supplyTargetRepository.count()).isOne();
         String request = requestDescriptionFor("200");
         long approvalId = verifiedReplacementStore.approve(
-                LhAnnouncementCollectionCheckpoint.requestHashOf(request),
+                LhAnnouncementQuery.requestHashOf(request),
                 LhSupplySnapshot.fingerprint(List.of()), "https://apply.lh.or.kr/notice",
                 "새 공고 공급 철회 확인", "operator");
 
@@ -1600,7 +1719,7 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
         assertThat(supplyTargetRepository.count()).isEqualTo(2);
         long approvalId = verifiedReplacementStore.approve(
-                LhAnnouncementCollectionCheckpoint.requestHashOf(request),
+                LhAnnouncementQuery.requestHashOf(request),
                 LhSupplySnapshot.fingerprint(List.of()), "https://apply.lh.or.kr/notice",
                 "현재 원천 공급 철회 확인", "operator");
 
@@ -1700,7 +1819,7 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(mappingService.mapAll().createdAnnouncementCount()).isEqualTo(2);
         assertThat(enrichmentService.enrichAll().failedSourceCount()).isZero();
 
-        assertThat(checkpointRepository.count()).isEqualTo(2);
+        assertThat(querySources.count()).isEqualTo(2);
         assertThat(linkRepository.count()).isEqualTo(4);
         assertThat(announcementRepository.findAll()).hasSize(2).allSatisfy(announcement ->
                 assertThat(announcement.getLhPanId()).isEqualTo(PAN_ID));
@@ -1864,6 +1983,84 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     @Test
+    void 원자_매핑의_실제_보강_성공은_해당_공고의_실패만_현재_실행으로_해결한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        var targetFailure = enrichmentFailureRepository.save(staleEnrichmentFailure(source.getPblancId(), "target"));
+        var otherFailure = enrichmentFailureRepository.save(staleEnrichmentFailure("other-announcement", "other"));
+        ReflectionTestUtils.setField(source, "pblancNm", "변경된 모집공고");
+        myHomeSourceRepository.save(source);
+        UUID executionId = UUID.randomUUID();
+
+        try (var ignored = MDC.putCloseable("executionId", executionId.toString())) {
+            assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+        }
+
+        assertThat(enrichmentFailureRepository.findById(targetFailure.getId())).get().satisfies(failure -> {
+            assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.RESOLVED);
+            assertThat(failure.getLastResolvedAt()).isNotNull();
+            assertThat(failure.getLastResolvedExecutionId()).isEqualTo(executionId);
+        });
+        assertThat(enrichmentFailureRepository.findById(otherFailure.getId())).get().satisfies(failure ->
+                assertThat(failure.getStatus()).isEqualTo(IngestFailureStatus.PENDING));
+    }
+
+    @Test
+    void 원자_매핑이_보강을_실행하지_않은_공고는_기존_실패를_유지한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        var failure = enrichmentFailureRepository.save(staleEnrichmentFailure(source.getPblancId(), "target"));
+
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
+
+        assertThat(enrichmentFailureRepository.findById(failure.getId())).get().satisfies(stored -> {
+            assertThat(stored.getStatus()).isEqualTo(IngestFailureStatus.PENDING);
+            assertThat(stored.getLastResolvedAt()).isNull();
+        });
+    }
+
+    @Test
+    void 원자_매핑의_보강_실패는_제품_변경과_실패_해결을_함께_롤백한다() {
+        saveComplex();
+        MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
+        saveLhSources("10,000,000", "200,000");
+        completeLinks(source);
+        mappingService.mapAll();
+        enrichmentService.enrichAll();
+        var failure = enrichmentFailureRepository.save(staleEnrichmentFailure(source.getPblancId(), "target"));
+        String originalName = announcementRepository.findAll().getFirst().getName();
+        ReflectionTestUtils.setField(source, "pblancNm", "롤백해야 하는 모집공고");
+        myHomeSourceRepository.save(source);
+        sourceStore.replaceDetails(PAN_ID, requestDescriptionFor(PAN_ID), List.of(
+                detail(0, "SCHEDULE", "잘못된 일정", null, null, null, null, null, null, null)
+        ));
+
+        assertThat(mappingService.mapAll().failedSourceRowCount()).isOne();
+
+        assertThat(announcementRepository.findAll()).singleElement().satisfies(announcement ->
+                assertThat(announcement.getName()).isEqualTo(originalName));
+        assertThat(enrichmentFailureRepository.findById(failure.getId())).get().satisfies(stored -> {
+            assertThat(stored.getStatus()).isEqualTo(IngestFailureStatus.PENDING);
+            assertThat(stored.getLastResolvedAt()).isNull();
+            assertThat(stored.getOccurrenceCount()).isOne();
+        });
+    }
+
+    private LhAnnouncementEnrichmentFailure staleEnrichmentFailure(String identifier, String key) {
+        return LhAnnouncementEnrichmentFailure.create(key, identifier, PAN_ID,
+                LhAnnouncementEnrichmentFailureReason.LH_DETAIL_SOURCE_NOT_FOUND, "이전 실행의 상세 누락",
+                Instant.parse("2026-08-27T00:00:00Z"));
+    }
+
+    @Test
     void 같은_panId의_다른_조회조건_원천은_매핑과_보강에_섞이지_않는다() {
         saveComplex();
         MyHomeAnnouncementSource source = myHomeSourceRepository.save(myHomeSource());
@@ -1921,7 +2118,7 @@ class LhAnnouncementEnrichmentServiceTest {
         assertThat(supplyTargetRepository.count()).isEqualTo(2);
         String oldRequest = new LhAnnouncementRequest(PAN_ID, "03", "06", "07", "062")
                 .requestDescription();
-        String requestHash = LhAnnouncementCollectionCheckpoint.requestHashOf(oldRequest);
+        String requestHash = LhAnnouncementQuery.requestHashOf(oldRequest);
         assertThat(detailSourceRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(PAN_ID, requestHash))
                 .hasSize(5);
         assertThat(supplySourceRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(PAN_ID, requestHash))
@@ -1945,7 +2142,7 @@ class LhAnnouncementEnrichmentServiceTest {
                 .containsEntry("LH_SUPPLY_MATCHING_FAILED", 1L);
         // 주택형 이름 정정은 자동 교체 대상이 아니므로 확인 후 정정된 원천을 준비한다.
         supplySourceRepository.deleteAll(supplySourceRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
-                "200", LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescriptionFor("200"))));
+                "200", LhAnnouncementQuery.requestHashOf(requestDescriptionFor("200"))));
         sourceStore.replaceSupplies("200", requestDescriptionFor("200"), List.of(new LhAnnouncementSupplySource(
                 0, "200",
                 new LhAnnouncementSupplySourceSnapshot(
@@ -2009,14 +2206,14 @@ class LhAnnouncementEnrichmentServiceTest {
         saveLhSources("10,000,000", "200,000");
         completeLinks(source);
         detailSourceRepository.deleteAll();
-        clearInvocations(detailSourceRepository);
+        clearInvocations(detailReader);
 
         var report = mappingService.mapAll();
 
         assertThat(report.failedSourceRowCount()).isZero();
         assertThat(report.createdAnnouncementCount()).isOne();
         assertThat(report.createdSupplyRowCount()).isOne();
-        verify(detailSourceRepository, never()).findAllByPanIdAndRequestHashOrderBySourceOrderAsc(any(), any());
+        verify(detailReader, never()).findAllByPanIdAndRequestHashOrderBySourceOrderAsc(any(), any());
         assertThat(announcementRepository.findAll()).singleElement()
                 .satisfies(announcement -> assertThat(announcement.getLhPanId()).isNull());
         assertThat(supplyTargetRepository.count()).isZero();
@@ -2032,14 +2229,14 @@ class LhAnnouncementEnrichmentServiceTest {
         enrichmentService.enrichAll();
         SupplyTarget previousTarget = supplyTargetRepository.findAll().getFirst();
         detailSourceRepository.deleteAll();
-        clearInvocations(detailSourceRepository);
+        clearInvocations(detailReader);
 
         var report = mappingService.mapAll();
 
         assertThat(report.failedSourceRowCount()).isZero();
         assertThat(report.unchangedAnnouncementCount()).isOne();
         assertThat(report.unchangedSupplyRowCount()).isOne();
-        verify(detailSourceRepository, never()).findAllByPanIdAndRequestHashOrderBySourceOrderAsc(any(), any());
+        verify(detailReader, never()).findAllByPanIdAndRequestHashOrderBySourceOrderAsc(any(), any());
         assertThat(supplyTargetRepository.findAll()).singleElement().satisfies(target -> {
             assertThat(target.getId()).isEqualTo(previousTarget.getId());
             assertThat(target.getRentalDeposit()).isEqualByComparingTo("10000000");
@@ -2151,12 +2348,12 @@ class LhAnnouncementEnrichmentServiceTest {
         mappingService.mapAll();
         enrichmentService.enrichAll();
         switchLhSource(source, "59B", "12,000,000", "250,000");
-        clearInvocations(linkResolver, supplySourceRepository, supplyRowRepository);
+        clearInvocations(linkResolver, supplyReader, supplyRowRepository);
 
         assertThat(mappingService.mapAll().failedSourceRowCount()).isZero();
         verify(linkResolver, times(1)).resolveFirstLinked(any());
-        verify(supplySourceRepository, times(1)).findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
-                "200", LhAnnouncementCollectionCheckpoint.requestHashOf(requestDescriptionFor("200"))
+        verify(supplyReader, times(1)).findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
+                "200", LhAnnouncementQuery.requestHashOf(requestDescriptionFor("200"))
         );
         verify(supplyRowRepository, times(2)).findAllByAnnouncement(any());
 
@@ -2225,11 +2422,10 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     private LhAnnouncementCandidateCollector collector(LhAnnouncementExternalRepository external) {
-        return new LhAnnouncementCandidateCollector(
-                external, new LhAnnouncementDetailResponseParser(), new LhAnnouncementSupplyResponseParser(),
-                new ExternalDataRetryExecutor(new SimpleMeterRegistry()),
-                sourceStore, failureRecorder, progressManager, new SimpleMeterRegistry()
-        );
+        var fixture = new CollectionServiceTestFixture();
+        var meters = new SimpleMeterRegistry();
+        return new LhAnnouncementCandidateCollector(fixture.query(external, sourceStore), fixture.records,
+                new ExternalDataRetryExecutor(meters), java.time.Clock.systemUTC(), meters, failureRecorder, progressManager);
     }
 
     private JsonNode response(String json) {
@@ -2299,7 +2495,7 @@ class LhAnnouncementEnrichmentServiceTest {
         mapMyHomeSource();
         saveLhSources("10000000", "200000");
         detailSourceRepository.deleteAll();
-        saveDetails(new LhAnnouncementDetailResponseParser().parse(PAN_ID, JsonMapper.builder().build().readTree("""
+        saveDetails(LhAnnouncementDetailFixtures.sources(PAN_ID, JsonMapper.builder().build().readTree("""
                 [{"dsSplScdl":[{"ACP_DTTM":"~", "SBSC_ACP_ST_DT":"2026.08.24",
                 "SBSC_ACP_CLSG_DT":"2026.08.31", "PPR_SBM_OPE_ANC_DT":"2026.08.26",
                 "PZWR_ANC_DT":"2026.11.06"}]}]
@@ -2400,6 +2596,12 @@ class LhAnnouncementEnrichmentServiceTest {
                 )));
     }
 
+    private java.util.List<java.util.List<Object>> querySourceState() {
+        return querySources.findAll().stream().map(source -> java.util.Arrays.<Object>asList(
+                source.getId(), source.getRequestHash(), source.getCollectedAt(),
+                source.getLastCollectionRecord().getId())).toList();
+    }
+
     private String requestDescriptionFor(String panId) {
         return myHomeSourceRepository.findAll().stream()
                 .map(candidateResolver::resolve)
@@ -2411,8 +2613,9 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     private LhAnnouncementDetailSource saveDetail(LhAnnouncementDetailSource source) {
-        source.assignRequestHash(LhAnnouncementCollectionCheckpoint.requestHashOf(
-                requestDescriptionFor(source.getPanId())));
+        String description = requestDescriptionFor(source.getPanId());
+        fixtures.querySource("LH_ANNOUNCEMENT_DETAIL", description, source.getCollectedAt());
+        source.assignRequestHash(LhAnnouncementQuery.requestHashOf(description));
         return detailSourceRepository.save(source);
     }
 
@@ -2421,8 +2624,9 @@ class LhAnnouncementEnrichmentServiceTest {
     }
 
     private LhAnnouncementSupplySource saveSupply(LhAnnouncementSupplySource source) {
-        source.assignRequestHash(LhAnnouncementCollectionCheckpoint.requestHashOf(
-                requestDescriptionFor(source.getPanId())));
+        String description = requestDescriptionFor(source.getPanId());
+        fixtures.querySource("LH_ANNOUNCEMENT_SUPPLY", description, source.getCollectedAt());
+        source.assignRequestHash(LhAnnouncementQuery.requestHashOf(description));
         return supplySourceRepository.save(source);
     }
 

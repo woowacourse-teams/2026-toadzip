@@ -1,23 +1,16 @@
 package com.toadzip.backend.ingest.collection.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore.BatchProgress;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionProgressStore;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.List;
-import java.util.Map;
+import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionProgressStore;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionProgressManager;
+import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,8 +20,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class LhAnnouncementCollectionProgressManagerTest {
 
-    private static final Instant NOW = Instant.parse("2026-09-19T00:00:00Z");
-    private static final Duration REFRESH_TTL = Duration.ofHours(6);
 
     @Mock
     private LhAnnouncementCollectionProgressStore progressStore;
@@ -42,41 +33,8 @@ class LhAnnouncementCollectionProgressManagerTest {
     void setUp() {
         progressManager = new LhAnnouncementCollectionProgressManager(
                 progressStore,
-                failureRecorder,
-                Clock.fixed(NOW, ZoneOffset.UTC)
+                failureRecorder
         );
-    }
-
-    @Test
-    void 후보의_요청과_공고별_연결로_배치_진행_상태를_조회한다() {
-        Candidate candidate = candidate();
-        BatchProgress expected = BatchProgress.empty();
-        when(progressStore.findBatch(
-                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
-                List.of(candidate.requestDescription()),
-                List.of(candidate.sourceAnnouncementKey()),
-                NOW.minus(REFRESH_TTL),
-                Map.of()
-        )).thenReturn(expected);
-
-        BatchProgress result = progressManager.findBatch(
-                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
-                List.of(candidate),
-                REFRESH_TTL
-        );
-
-        assertThat(result).isSameAs(expected);
-    }
-
-    @Test
-    void 재수집_만료_시간은_0보다_커야_한다() {
-        assertThatThrownBy(() -> progressManager.findBatch(
-                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
-                List.of(candidate()),
-                Duration.ZERO
-        ))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("LH 공고 재수집 만료 시간은 0보다 커야 합니다.");
     }
 
     @Test
@@ -91,14 +49,6 @@ class LhAnnouncementCollectionProgressManagerTest {
         );
         verify(failureRecorder).resolve(
                 ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
-                candidate.request().previousPageRequestDescription()
-        );
-        verify(failureRecorder).resolveStartingWith(
-                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
-                candidate.request().previousPageRequestDescription() + "&PG_SZ="
-        );
-        verify(failureRecorder).resolve(
-                ExternalDataSource.LH_ANNOUNCEMENT_DETAIL,
                 candidate.sourceDescription()
         );
         verify(progressStore).complete(
@@ -110,7 +60,7 @@ class LhAnnouncementCollectionProgressManagerTest {
     }
 
     @Test
-    void 신선한_요청을_공고에_연결할_때는_체크포인트를_갱신하지_않는다() {
+    void 수집된_공유_요청을_공고에_연결할_때는_체크포인트를_갱신하지_않는다() {
         Candidate candidate = candidate();
 
         progressManager.link(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, candidate);

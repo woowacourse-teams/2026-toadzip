@@ -1,6 +1,6 @@
 package com.toadzip.backend.ingest.collection.service;
 
-final class ExternalDataCallCounter {
+public final class ExternalDataCallCounter {
 
     private int count;
 
@@ -12,7 +12,7 @@ final class ExternalDataCallCounter {
         count--;
     }
 
-    int count() {
+    public int count() {
         return count;
     }
 }

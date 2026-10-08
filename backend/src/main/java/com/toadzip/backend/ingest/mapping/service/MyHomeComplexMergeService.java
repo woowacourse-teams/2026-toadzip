@@ -3,12 +3,11 @@ package com.toadzip.backend.ingest.mapping.service;
 import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.MYHOME_COMPLEX_MAPPING;
 
 import com.toadzip.backend.housing.domain.HousingComplex;
-import com.toadzip.backend.housing.domain.RentalPriceRange;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
-import com.toadzip.backend.ingest.collection.domain.LhCatalogSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
-import com.toadzip.backend.ingest.collection.repository.LhCatalogSourceRepository;
-import com.toadzip.backend.ingest.collection.repository.MyHomeComplexSourceRepository;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.repository.LhLeaseCatalogSourceReader;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdMatcher;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink;
@@ -48,8 +47,8 @@ public class MyHomeComplexMergeService {
     private final HousingComplexRepository complexes;
     private final MyHomeComplexLinkRepository links;
     private final MyHomeComplexMergeRepository merges;
-    private final MyHomeComplexSourceRepository sources;
-    private final LhCatalogSourceRepository lhSources;
+    private final MyHomeComplexSourceReader sources;
+    private final LhLeaseCatalogSourceReader lhSources;
     private final MyHomeComplexSourceMapper mapper;
     private final LhHousingTypeHouseholdMatcher matcher;
     private final MyHomeComplexMergeStore store;
@@ -59,8 +58,8 @@ public class MyHomeComplexMergeService {
 
     public MyHomeComplexMergeService(
             HousingComplexRepository complexes, MyHomeComplexLinkRepository links,
-            MyHomeComplexMergeRepository merges, MyHomeComplexSourceRepository sources,
-            LhCatalogSourceRepository lhSources, MyHomeComplexSourceMapper mapper,
+            MyHomeComplexMergeRepository merges, MyHomeComplexSourceReader sources,
+            LhLeaseCatalogSourceReader lhSources, MyHomeComplexSourceMapper mapper,
             LhHousingTypeHouseholdMatcher matcher, MyHomeComplexMergeStore store,
             IngestOperationLock executionLock, PlatformTransactionManager transactionManager, Clock clock
     ) {
@@ -155,7 +154,6 @@ public class MyHomeComplexMergeService {
         );
         merges.saveAndFlush(merge);
         HousingComplex representative = prepared.complexes().getFirst();
-        representative.updateRentalPriceRange(prepared.rentalPriceRange());
         representative.adoptVerifiedMerge(
                 preview.adoptedHouseholdCount(),
                 MyHomeComplexMerge.singleManualValue(prepared.complexes(), HousingComplex::getImageUrl),
@@ -184,21 +182,8 @@ public class MyHomeComplexMergeService {
         require(store.sameState(store.state(merge.getComplexIds()), merge.getAfterState()),
                 "통합 이후 제품 데이터 또는 참조가 변경되었습니다. 후속 수정을 보존하기 위해 복구를 보류합니다.");
         store.restore(merge.getBeforeState(), id);
-        if (!store.hasRentalPriceSnapshot(merge.getBeforeState())) {
-            refreshRestoredRentalPrices(merge.getComplexIds());
-        }
         merge.revert(actor, clock.instant());
         return response(merges.save(merge));
-    }
-
-    private void refreshRestoredRentalPrices(List<Long> ids) {
-        for (long id : ids) {
-            HousingComplex complex = complexes.findByIdForUpdate(id)
-                    .orElseThrow(() -> conflict("복구한 단지를 찾을 수 없습니다."));
-            List<MyHomeComplexSource> rows = links.findAllByHousingComplexId(id).stream()
-                    .flatMap(link -> sourceRows(link).stream()).toList();
-            complex.updateRentalPriceRange(mapper.rentalPriceRange(rows));
-        }
     }
 
     private PreparedMerge prepare(ComplexMergePreviewRequest request, boolean lock) {
@@ -212,7 +197,6 @@ public class MyHomeComplexMergeService {
         List<MyHomeComplexLink> sourceLinks = new ArrayList<>();
         List<ComplexMergePreviewResponse.Source> observations = new ArrayList<>();
         List<Long> sourceRowIds = new ArrayList<>();
-        List<MyHomeComplexSource> priceRows = new ArrayList<>();
         for (long id : ids) {
             HousingComplex complex = product(id, lock);
             List<MyHomeComplexLink> connected = links.findAllByHousingComplexId(id);
@@ -222,7 +206,6 @@ public class MyHomeComplexMergeService {
             List<MyHomeComplexSource> rows = sourceRows(link);
             observations.add(observation(complex, link, rows));
             sourceRowIds.addAll(rows.stream().map(MyHomeComplexSource::getId).toList());
-            priceRows.addAll(rows);
             sourceLinks.add(link);
             products.add(complex);
         }
@@ -247,7 +230,7 @@ public class MyHomeComplexMergeService {
         return new PreparedMerge(new ComplexMergePreviewResponse(
                 ids.getFirst(), ids, Math.toIntExact(sum), hash, observations, selected.getId(),
                 selected.getCollectedAt(), selected.getAreaName(), selected.getComplexLabel()),
-                products, sourceLinks, before, evidence, mapper.rentalPriceRange(priceRows));
+                products, sourceLinks, before, evidence);
     }
 
     private HousingComplex product(long id, boolean lock) {
@@ -337,7 +320,7 @@ public class MyHomeComplexMergeService {
 
     private record PreparedMerge(
             ComplexMergePreviewResponse response, List<HousingComplex> complexes, List<MyHomeComplexLink> links,
-            String before, String evidence, RentalPriceRange rentalPriceRange
+            String before, String evidence
     ) {
     }
 }

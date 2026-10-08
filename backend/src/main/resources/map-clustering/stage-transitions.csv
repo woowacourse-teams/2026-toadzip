@@ -1,6 +1,7 @@
 policyVersion,regionDatasetVersion,fromStage,toStage,boundaryZoom,hysteresis,expansionZoom
 # source=https://github.com/woowacourse-teams/2026-toadzip/issues/95
-# status=provisional-until-desktop-map-validation
-2026-09-02-v1,2026-07-01,1,2,7.50,0.20,8.50
-2026-09-02-v1,2026-07-01,2,3,10.00,0.20,11.00
-2026-09-02-v1,2026-07-01,3,4,13.00,0.20,14.00
+# calibration=https://github.com/woowacourse-teams/2026-toadzip/issues/318
+# BASIC_REGION: enter 12.50, exit 12.30; expand just beyond the individual-marker boundary
+2026-10-07-v2,2026-07-01,1,2,7.50,0.20,8.50
+2026-10-07-v2,2026-07-01,2,3,10.00,0.20,11.00
+2026-10-07-v2,2026-07-01,3,4,12.40,0.10,12.60

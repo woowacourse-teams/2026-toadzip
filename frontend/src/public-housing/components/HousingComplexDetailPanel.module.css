@@ -231,6 +231,7 @@
   border-radius: 8px;
   background: var(--ds-color-action-soft);
   grid-template-columns: minmax(0, 1fr);
+  container-type: inline-size;
 }
 
 .announcementHeading {

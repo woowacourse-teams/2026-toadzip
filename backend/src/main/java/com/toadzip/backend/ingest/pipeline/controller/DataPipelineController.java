@@ -2,7 +2,9 @@ package com.toadzip.backend.ingest.pipeline.controller;
 
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
+import com.toadzip.backend.ingest.pipeline.dto.DataPipelineStartRequest;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.util.List;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -20,15 +23,20 @@ import org.springframework.web.bind.annotation.RestController;
 public class DataPipelineController {
 
     private final DataPipelineExecutionService executionService;
+
     public DataPipelineController(DataPipelineExecutionService executionService) {
         this.executionService = executionService;
     }
 
     @PostMapping("/{type}")
-    public ResponseEntity<DataPipelineExecutionResponse> start(@PathVariable String type) {
-        DataPipelineExecutionResponse response = executionService.start(
-                DataPipelineType.fromPathValue(type)
-        );
+    public ResponseEntity<DataPipelineExecutionResponse> start(
+            @PathVariable String type, @Valid @RequestBody(required = false) DataPipelineStartRequest request
+    ) {
+        DataPipelineType pipelineType = DataPipelineType.fromPathValue(type);
+        if (request == null) {
+            return ResponseEntity.accepted().body(executionService.start(pipelineType));
+        }
+        DataPipelineExecutionResponse response = executionService.start(pipelineType, request.serviceKey().strip());
         return ResponseEntity.accepted().body(response);
     }
 

@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
+import com.toadzip.backend.ingest.collection.repository.external.IngestServiceKeyContext;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock.Lease;
 import java.util.Optional;
 import java.util.concurrent.Callable;
@@ -12,10 +13,13 @@ public final class IngestExecutionScope implements AutoCloseable {
 
     private final Lease previous;
     private final DataPipelineExecutionMonitor previousMonitor;
+    private final String previousServiceKey;
 
-    private IngestExecutionScope(Lease lease, DataPipelineExecutionMonitor monitor) {
+    private IngestExecutionScope(Lease lease, DataPipelineExecutionMonitor monitor, String serviceKey) {
         previous = CURRENT.get();
         previousMonitor = MONITOR.get();
+        previousServiceKey = IngestServiceKeyContext.current().orElse(null);
+        IngestServiceKeyContext.set(serviceKey);
         setMonitor(monitor);
         if (lease == null) {
             CURRENT.remove();
@@ -25,11 +29,15 @@ public final class IngestExecutionScope implements AutoCloseable {
     }
 
     public static IngestExecutionScope open(Lease lease) {
-        return new IngestExecutionScope(lease, MONITOR.get());
+        return new IngestExecutionScope(lease, MONITOR.get(), IngestServiceKeyContext.current().orElse(null));
     }
 
     public static IngestExecutionScope open(Lease lease, DataPipelineExecutionMonitor monitor) {
-        return new IngestExecutionScope(lease, monitor);
+        return new IngestExecutionScope(lease, monitor, IngestServiceKeyContext.current().orElse(null));
+    }
+
+    public static IngestExecutionScope open(Lease lease, DataPipelineExecutionMonitor monitor, String serviceKey) {
+        return new IngestExecutionScope(lease, monitor, serviceKey);
     }
 
     public static void checkStopRequested() {
@@ -79,8 +87,9 @@ public final class IngestExecutionScope implements AutoCloseable {
     public static <T> Callable<T> propagate(Callable<T> task) {
         Lease captured = CURRENT.get();
         DataPipelineExecutionMonitor capturedMonitor = MONITOR.get();
+        String capturedServiceKey = IngestServiceKeyContext.current().orElse(null);
         return () -> {
-            try (var ignored = open(captured, capturedMonitor)) {
+            try (var ignored = open(captured, capturedMonitor, capturedServiceKey)) {
                 verifyHeld();
                 checkStopRequested();
                 return task.call();
@@ -98,6 +107,7 @@ public final class IngestExecutionScope implements AutoCloseable {
 
     @Override
     public void close() {
+        IngestServiceKeyContext.set(previousServiceKey);
         setMonitor(previousMonitor);
         if (previous == null) {
             CURRENT.remove();

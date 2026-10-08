@@ -1,0 +1,71 @@
+.form {
+  display: grid;
+  gap: var(--ds-space-2);
+  width: min(100%, 620px);
+  padding-block: var(--ds-space-3);
+  color: var(--ds-color-text);
+}
+
+.form h4,
+.form p {
+  margin: 0;
+}
+
+.form h4 {
+  font-size: var(--ds-text-section);
+}
+
+.form p {
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-body);
+  line-height: var(--ds-line-height-body);
+}
+
+.form a {
+  color: var(--ds-color-action);
+  text-underline-offset: 3px;
+}
+
+.form label {
+  margin-top: var(--ds-space-2);
+  font-weight: var(--ds-weight-strong);
+}
+
+.form input {
+  width: 100%;
+  min-height: var(--ds-control-height-md);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  box-sizing: border-box;
+  border: 1px solid var(--ds-color-border-base);
+  border-radius: var(--ds-radius-control);
+  background: var(--ds-color-surface);
+  color: var(--ds-color-text);
+  caret-color: var(--ds-color-action);
+  font: inherit;
+}
+
+.form input[aria-invalid="true"] {
+  border-color: var(--ds-color-deadline);
+}
+
+.form input:focus-visible,
+.form a:focus-visible,
+.form button:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+}
+
+.form p.error {
+  color: var(--ds-color-deadline);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+  margin-top: var(--ds-space-2);
+}
+
+.actions button {
+  min-height: var(--ds-control-height-md);
+}

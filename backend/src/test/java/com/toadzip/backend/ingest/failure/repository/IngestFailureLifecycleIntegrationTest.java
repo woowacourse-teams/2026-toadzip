@@ -7,15 +7,15 @@ import static com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappin
 import static com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason.GEOCODING_ERROR;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
-import com.toadzip.backend.ingest.collection.domain.ExternalDataCollectionFailure;
-import com.toadzip.backend.ingest.collection.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.repository.ExternalDataCollectionFailureRepository;
-import com.toadzip.backend.ingest.collection.repository.ExternalDataFailureStore;
+import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureRepository;
+import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
+import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
+import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
+import com.toadzip.backend.ingest.failure.repository.ExternalDataFailureStore;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailure;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;

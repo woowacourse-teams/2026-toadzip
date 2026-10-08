@@ -4,20 +4,20 @@ import java.util.ArrayList;
 import java.util.List;
 import tools.jackson.databind.JsonNode;
 
-final class ExternalResponseRows {
+public final class ExternalResponseRows {
 
     private ExternalResponseRows() {
     }
 
-    static List<JsonNode> at(JsonNode root, String pointer) {
+    public static List<JsonNode> at(JsonNode root, String pointer) {
         return rowsOf(root.at(pointer));
     }
 
-    static List<JsonNode> find(JsonNode root, String key) {
+    public static List<JsonNode> find(JsonNode root, String key) {
         return rowsOf(findByKey(root, key));
     }
 
-    static boolean contains(JsonNode root, String key) {
+    public static boolean contains(JsonNode root, String key) {
         return !findByKey(root, key).isMissingNode();
     }
 

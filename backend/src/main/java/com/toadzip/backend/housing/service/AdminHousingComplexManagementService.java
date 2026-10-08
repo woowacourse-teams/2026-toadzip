@@ -65,7 +65,11 @@ public class AdminHousingComplexManagementService {
                         announcement.getPostedDate().toString(), announcement.getProvider().name(),
                         announcement.getSupplyType().name(), announcement.isAdminDeleted(),
                         announcement.isAdminModified(), announcement.isSourceReviewRequired(),
-                        announcement.getAdminUpdatedAt())).toList();
+                        announcement.getAdminUpdatedAt(), null, new AdminDataSummary.AnnouncementSummary(
+                                announcement.getSourceAnnouncementIdentifier(), announcement.getOriginalUrl(),
+                                announcement.getRecruitmentType().name(), announcement.getPostedDate(),
+                                announcement.getApplicationStartDate(), announcement.getApplicationEndDate(),
+                                announcement.getWinnerAnnouncementDate()))).toList();
         return new AdminHousingComplexDetail(summary(complex), complex.getSourceComplexIdentifier(),
                 data(complex), housingTypes, announcements);
     }
@@ -134,7 +138,11 @@ public class AdminHousingComplexManagementService {
         return new AdminDataSummary(complex.getId(), complex.getName(), complex.getAddress().getRoadAddress(),
                 AgencyCode.fromStoredValue(complex.getProvider()).name(),
                 RentalType.fromStoredValue(complex.getSupplyType()).name(), complex.isAdminDeleted(),
-                complex.isAdminModified(), complex.isSourceReviewRequired(), complex.getAdminUpdatedAt());
+                complex.isAdminModified(), complex.isSourceReviewRequired(), complex.getAdminUpdatedAt(),
+                new AdminDataSummary.ComplexSummary(complex.getSourceComplexIdentifier(), complex.getCompletionDate(),
+                        complex.getTotalHouseholdCount(), complex.getParkingSpaceCount(), complex.getHeatingType(),
+                        complex.getHousingType(), complex.getCorridorType(), complex.getElevatorInstalled(),
+                        complex.getRecentOneYearMoveOutCount()), null);
     }
 
     private AdminHousingComplexUpdateRequest data(HousingComplex complex) {

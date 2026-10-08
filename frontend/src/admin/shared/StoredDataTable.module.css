@@ -1,0 +1,72 @@
+.scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  margin-block: var(--ds-space-3);
+}
+
+.scroll:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+}
+
+.table {
+  width: 100%;
+  min-width: 320px;
+  border-collapse: collapse;
+  font-family: var(--ds-font-family-ui);
+  font-size: var(--ds-text-body);
+  line-height: var(--ds-line-height-body);
+  color: var(--ds-color-text);
+  background: var(--ds-color-surface);
+}
+
+.table caption {
+  text-align: left;
+  padding-bottom: var(--ds-space-2);
+  font-weight: var(--ds-weight-strong);
+  color: var(--ds-color-label);
+}
+
+.table th,
+.table td {
+  text-align: left;
+  vertical-align: top;
+  padding: var(--ds-space-3);
+  border-bottom: 1px solid var(--ds-color-table-line);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.table thead th {
+  background: var(--ds-color-table-heading);
+  color: var(--ds-color-label);
+}
+
+.table tbody th {
+  width: 40%;
+  font-weight: normal;
+  color: var(--ds-color-label);
+  background: var(--ds-color-surface-subtle);
+}
+
+.table tbody th,
+.table tbody td {
+  white-space: pre-wrap;
+}
+
+.fieldLabel {
+  display: block;
+  color: var(--ds-color-text);
+  font-weight: var(--ds-weight-strong);
+}
+
+.sourceUrl {
+  overflow-wrap: anywhere;
+  color: var(--ds-color-action);
+}
+
+.sourceUrl:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+}

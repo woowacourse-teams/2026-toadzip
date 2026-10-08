@@ -87,7 +87,7 @@ describe('LocalPublicHousingExplorer', () => {
       .not.toBeInTheDocument()
 
     await act(async () => resolveSnapshot(SNAPSHOT))
-    expect(await screen.findByRole('complementary', { name: '공공임대주택 검색 결과' }))
+    expect(await screen.findByRole('searchbox', { name: '지역, 단지, 공고 검색' }))
       .toBeVisible()
     expect(screen.queryByText('로컬 mock')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '지도 범위 알림' }))
@@ -98,7 +98,7 @@ describe('LocalPublicHousingExplorer', () => {
   it('snapshot의 통합 검색 결과를 선택해 외부 요청 없이 단지 상세를 연다', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
     renderLocalExplorer(vi.fn().mockResolvedValue(SNAPSHOT))
-    await screen.findByRole('complementary', { name: '공공임대주택 검색 결과' })
+    await screen.findByRole('searchbox', { name: '지역, 단지, 공고 검색' })
 
     fireEvent.change(screen.getByRole('searchbox', { name: '지역, 단지, 공고 검색' }), {
       target: { value: '서울가람' },
@@ -121,7 +121,7 @@ describe('LocalPublicHousingExplorer', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
 
-    expect(await screen.findByRole('complementary', { name: '공공임대주택 검색 결과' }))
+    expect(await screen.findByRole('searchbox', { name: '지역, 단지, 공고 검색' }))
       .toBeVisible()
     expect(loadSnapshot).toHaveBeenCalledTimes(2)
   })
@@ -147,9 +147,9 @@ describe('LocalPublicHousingExplorer', () => {
     const loadSnapshot = vi.fn().mockResolvedValue(SNAPSHOT)
     renderLocalExplorer(loadSnapshot)
 
-    await screen.findByRole('complementary', { name: '공공임대주택 검색 결과' })
-    fireEvent.click(screen.getByRole('button', { name: '상세 필터 열기' }))
-    const detailFilter = screen.getByRole('region', { name: '상세 필터' })
+    await screen.findByRole('searchbox', { name: '지역, 단지, 공고 검색' })
+    fireEvent.click(screen.getByRole('button', { name: '지역 필터 열기' }))
+    const detailFilter = screen.getByRole('region', { name: '지역 필터' })
     fireEvent.change(within(detailFilter).getByLabelText('시·도'), {
       target: { value: '11' },
     })

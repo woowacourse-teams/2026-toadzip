@@ -94,8 +94,7 @@ public class AnnouncementQueryService {
                 supplyRows,
                 applicationScheduleRepository.findAllByAnnouncementIdIn(announcementIds(announcements)).stream()
                         .filter(schedule -> condition.regionCodes().isEmpty() || schedule.getHousingComplex() == null
-                                || condition.regionCodes().contains(schedule.getHousingComplex().getAddress()
-                                        .getCityCountyDistrictCode()))
+                                || matchesRegion(condition.regionCodes(), schedule.getHousingComplex().getAddress()))
                         .toList(),
                 today
         );
@@ -180,6 +179,17 @@ public class AnnouncementQueryService {
         if (applicationStatuses != null && applicationStatuses.contains(ApplicationStatus.CANCELLED)) {
             throw new InvalidAnnouncementRequestException();
         }
+    }
+
+    private boolean matchesRegion(Set<String> codes, com.toadzip.backend.housing.domain.Address address) {
+        return codes.stream().anyMatch(code -> matchesRegionCode(code, address));
+    }
+
+    private boolean matchesRegionCode(String code, com.toadzip.backend.housing.domain.Address address) {
+        if (code.length() == 10) {
+            return address.getLegalDongCode().startsWith(code.substring(0, 8));
+        }
+        return code.equals(address.getCityCountyDistrictCode());
     }
 
     private Set<String> regionCodes(String regionCode) {

@@ -6,8 +6,8 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
-import com.toadzip.backend.ingest.collection.repository.MyHomeComplexSourceRepository;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
@@ -36,7 +36,7 @@ public class MyHomeComplexMappingWriter {
 
     private final SupplyRowRepository supplyRowRepository;
     private final MyHomeComplexLinkRepository linkRepository;
-    private final MyHomeComplexSourceRepository sourceRepository;
+    private final MyHomeComplexSourceReader sourceRepository;
     private final MyHomeComplexSourceMapper sourceMapper;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -94,11 +94,9 @@ public class MyHomeComplexMappingWriter {
                     data.elevatorInstalled(),
                     data.parkingSpaceCount()
             );
-            created.updateRentalPriceRange(data.rentalPriceRange());
             return new ComplexWriteResult(complexRepository.save(created), 1, 0);
         }
         complex = complexRepository.findByIdForUpdate(complex.getId()).orElseThrow();
-        boolean priceUpdated = complex.updateRentalPriceRange(data.rentalPriceRange());
         boolean detailsUpdated = complex.updateFromMyHome(
                 data.name(),
                 data.supplyType(),
@@ -112,7 +110,7 @@ public class MyHomeComplexMappingWriter {
                 data.elevatorInstalled(),
                 data.parkingSpaceCount()
         );
-        if (priceUpdated || detailsUpdated) {
+        if (detailsUpdated) {
             return new ComplexWriteResult(complex, 0, 1);
         }
         return new ComplexWriteResult(complex, 0, 0);
@@ -126,7 +124,6 @@ public class MyHomeComplexMappingWriter {
         Map<String, List<MyHomeComplexSource>> grouped = sourceRepository.findAllByHsmpSnIn(identifiers).stream()
                 .collect(Collectors.groupingBy(sourceMapper::sourceComplexIdentifier));
         List<MyHomeHousingTypeMappingData> housingTypes = new ArrayList<>();
-        List<MyHomeComplexSource> allSources = new ArrayList<>();
         for (MyHomeComplexLink member : links) {
             List<MyHomeComplexSource> sources = grouped.get(member.getSourceComplexIdentifier());
             if (sources == null || sources.isEmpty()) {
@@ -138,15 +135,10 @@ public class MyHomeComplexMappingWriter {
                 throw mergedSourceConflict("통합 근거의 단지 공통값 또는 원천 세대수가 변경되어 재확인이 필요합니다.");
             }
             housingTypes.addAll(data.housingTypes());
-            allSources.addAll(sources);
-        }
-        int priceUpdated = 0;
-        if (complex.updateRentalPriceRange(sourceMapper.rentalPriceRange(allSources))) {
-            priceUpdated = 1;
         }
         HousingTypeWriteResult result = synchronizeHousingTypes(complex, housingTypes, true);
         return new MyHomeComplexMappingReport(
-                0, priceUpdated, 1 - priceUpdated,
+                0, 0, 1,
                 result.created(), result.updated(), result.unchanged(), result.deleted(), 0);
     }
 
@@ -215,12 +207,14 @@ public class MyHomeComplexMappingWriter {
                 unmatchedIncoming.add(data);
                 continue;
             }
-            if (housingType.updateFromMyHome(
+            boolean typeUpdated = housingType.updateFromMyHome(
                     data.sourceHousingTypeIdentifier(),
                     data.name(),
                     data.exclusiveArea(),
                     data.supplyArea()
-            )) {
+            );
+            boolean priceUpdated = housingType.updateBasicRentalCondition(data.basicRentalCondition());
+            if (typeUpdated || priceUpdated) {
                 updated++;
                 continue;
             }
@@ -239,13 +233,15 @@ public class MyHomeComplexMappingWriter {
         for (MyHomeHousingTypeMappingData data : unmatchedIncoming) {
             HousingType corrected = findUniqueStoredTypeByName(remainingStoredByIdentifier, data);
             if (corrected == null) {
-                housingTypeRepository.save(HousingType.createFromMyHome(
+                HousingType createdType = HousingType.createFromMyHome(
                         complex,
                         data.sourceHousingTypeIdentifier(),
                         data.name(),
                         data.exclusiveArea(),
                         data.supplyArea()
-                ));
+                );
+                createdType.updateBasicRentalCondition(data.basicRentalCondition());
+                housingTypeRepository.save(createdType);
                 created++;
                 continue;
             }
@@ -256,6 +252,7 @@ public class MyHomeComplexMappingWriter {
                     data.exclusiveArea(),
                     data.supplyArea()
             );
+            corrected.updateBasicRentalCondition(data.basicRentalCondition());
             updated++;
         }
         return new HousingTypeWriteResult(created, updated, 0, 0);

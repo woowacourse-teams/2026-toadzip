@@ -184,7 +184,11 @@ public class AdminAnnouncementManagementService {
         return new AdminDataSummary(announcement.getId(), announcement.getName(),
                 announcement.getPostedDate().toString(), announcement.getProvider().name(),
                 announcement.getSupplyType().name(), announcement.isAdminDeleted(), announcement.isAdminModified(),
-                announcement.isSourceReviewRequired(), announcement.getAdminUpdatedAt());
+                announcement.isSourceReviewRequired(), announcement.getAdminUpdatedAt(), null,
+                new AdminDataSummary.AnnouncementSummary(announcement.getSourceAnnouncementIdentifier(),
+                        announcement.getOriginalUrl(), announcement.getRecruitmentType().name(),
+                        announcement.getPostedDate(), announcement.getApplicationStartDate(),
+                        announcement.getApplicationEndDate(), announcement.getWinnerAnnouncementDate()));
     }
 
     private AdminAnnouncementUpdateRequest data(Announcement announcement) {

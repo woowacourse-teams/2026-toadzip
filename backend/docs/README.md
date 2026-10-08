@@ -19,7 +19,7 @@
 | 구조 변경 | [architecture.md](architecture.md), [layer-boundaries.md](layer-boundaries.md) | 계층 책임과 허용 의존성 |
 | Java·Spring | [CODE_CONVENTION.md](../CODE_CONVENTION.md) | 코드 스타일과 객체 규칙 |
 | Git 작업 | [CONTRIBUTING.md](../../CONTRIBUTING.md) | 이슈, 브랜치, 커밋, PR |
-| HTTP API | [api-conventions.md](api-conventions.md) | 요청, 응답, 호환성 |
+| HTTP API·지역 | [api-conventions.md](api-conventions.md), [street-view.md](street-view.md), [region-search.md](region-search.md) | 요청·응답, 거리뷰 계약, 공식 지역 정렬 |
 | 예외 처리 | [exception-handling.md](exception-handling.md) | 예외 소유권, Advice, 오류 계약 |
 | DB 변경 | [persistence.md](persistence.md), [ingest-branch-db-upgrade.md](ingest-branch-db-upgrade.md) | 모델·트랜잭션, 기존 ingest 작업 DB 통합 업그레이드 |
 | Flyway 최초 적용 | [flyway-adoption.md](flyway-adoption.md) | 기존 DB baseline과 새 DB 생성 경로 |
@@ -30,12 +30,12 @@
 | 마이홈 단지 통합 | [myhome-complex-linking.md](myhome-complex-linking.md) | 원천 연결, 확인된 통합, 재정제와 복구 |
 | 수집·정제 코드 리뷰 | [ingest-review-2026-09-26.md](ingest-review-2026-09-26.md) | 9월 28일 재검토: 해결 상태, 원천 선택 결함, 책임·성능·죽은 코드와 개선 순서 |
 | 공고 수집 성능 | [announcement-collection-performance.md](announcement-collection-performance.md) | 페이지 크기, LH 동시성, 실측과 메트릭 |
-| LH 공고 연결·복구 | [lh-announcement-link-resolution.md](lh-announcement-link-resolution.md) | 매핑·보강의 성공 연결 기준과 fallback 종료 |
+| LH 공고 연결·복구 | [lh-announcement-link-resolution.md](lh-announcement-link-resolution.md) | 매핑·보강의 성공 연결 기준과 원천 초기화 |
 | LH 수집 정확성·운영 | [lh-announcement-correctness-audit.md](lh-announcement-correctness-audit.md), [lh-announcement-quality-operations.md](lh-announcement-quality-operations.md) | 검증 한계, 품질 지표와 확인된 공급 감소 승인 |
 | 공고 원천 수명주기 | [announcement-source-lifecycle.md](announcement-source-lifecycle.md) | 미조회 정책과 스키마 배포 |
 | 테스트 | [testing.md](testing.md) | 테스트 범위와 대역 기준 |
 | 보안 변경 | [security.md](security.md) | 인증, 인가, 개인정보, 비밀 |
-| 사용자 로그인 | [user-social-login.md](user-social-login.md) | OAuth 설정, API, 스키마 배포 |
+| 사용자 로그인·의견 | [user-social-login.md](user-social-login.md), [user-feedback.md](user-feedback.md) | OAuth 설정, 의견 접수·관리자 검색, 스키마 배포 |
 | 운영 변경 | [observability.md](observability.md) | 로그, 메트릭, 트레이스 |
 | 단지 도로명주소 좌표 적재 | [road-address-reference-data.md](road-address-reference-data.md) | 위치정보요약DB 전체분에서 단지 주소 일치분만 선별 적재하는 흐름 |
 | 작업 위임 | [agent-collaboration.md](agent-collaboration.md) | 역할과 읽기 범위 |

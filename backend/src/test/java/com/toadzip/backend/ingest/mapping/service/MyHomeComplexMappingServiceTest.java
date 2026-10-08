@@ -15,15 +15,14 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
-import com.toadzip.backend.housing.domain.RentalPriceRange;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSourceSnapshot;
-import com.toadzip.backend.ingest.collection.repository.MyHomeComplexSourceRepository;
+import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSourceSnapshot;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
-import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
+import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
 import com.toadzip.backend.ingest.location.service.RoadAddressGeocodingService;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexMappingFailureRepository;
@@ -51,7 +50,7 @@ class MyHomeComplexMappingServiceTest {
     private MyHomeComplexMappingService service;
 
     @Autowired
-    private MyHomeComplexSourceRepository sourceRepository;
+    private MyHomeComplexSourceFixtures sourceRepository;
 
     @Autowired
     private MyHomeComplexMappingFailureRepository failureRepository;
@@ -188,10 +187,19 @@ class MyHomeComplexMappingServiceTest {
 
         service.mapAll();
 
+        assertThat(housingTypeRepository.findAll()).anySatisfy(type -> {
+            assertThat(type.getName()).isEqualTo("46A");
+            assertThat(type.getBasicRentalCondition().deposit()).isEqualTo(10_000_000L);
+            assertThat(type.getBasicRentalCondition().monthlyRent()).isEqualTo(200_000L);
+            assertThat(type.getBasicRentalCondition().collectedAt()).isEqualTo(COLLECTED_AT);
+        }).anySatisfy(type -> {
+            assertThat(type.getName()).isEqualTo("59A");
+            assertThat(type.getBasicRentalCondition().deposit()).isEqualTo(20_000_000L);
+            assertThat(type.getBasicRentalCondition().monthlyRent()).isEqualTo(100_000L);
+        });
+
         assertThat(complexRepository.findAll()).singleElement().satisfies(complex ->
-                assertThat(complex.getRentalPriceRange()).isEqualTo(
-                        new RentalPriceRange(
-                                10_000_000L, 20_000_000L, 100_000L, 200_000L)));
+                assertThat(complex.getRentalPriceRange()).isNull());
 
         first.replaceWith(withPrices(firstData, null, null));
         second.replaceWith(withPrices(secondData, 30_000_000L, 300_000L));
@@ -199,11 +207,43 @@ class MyHomeComplexMappingServiceTest {
 
         var report = service.mapAll();
 
-        assertThat(report.updatedComplexCount()).isOne();
+        assertThat(report.updatedComplexCount()).isZero();
+        assertThat(report.updatedHousingTypeCount()).isEqualTo(2);
+        assertThat(housingTypeRepository.findAll()).anySatisfy(type -> {
+            assertThat(type.getName()).isEqualTo("46A");
+            assertThat(type.getBasicRentalCondition().deposit()).isNull();
+            assertThat(type.getBasicRentalCondition().monthlyRent()).isNull();
+        }).anySatisfy(type -> {
+            assertThat(type.getName()).isEqualTo("59A");
+            assertThat(type.getBasicRentalCondition().deposit()).isEqualTo(30_000_000L);
+            assertThat(type.getBasicRentalCondition().monthlyRent()).isEqualTo(300_000L);
+        });
         assertThat(complexRepository.findAll()).singleElement().satisfies(complex ->
-                assertThat(complex.getRentalPriceRange()).isEqualTo(
-                        new RentalPriceRange(
-                                30_000_000L, 30_000_000L, 300_000L, 300_000L)));
+                assertThat(complex.getRentalPriceRange()).isNull());
+    }
+
+    @Test
+    void 수집시각이_없는_과거_원천은_기본금액을_제공하지_않고_다른_단지도_정제한다() {
+        sourceRepository.saveAll(List.of(
+                MyHomeComplexSource.from(withPrices(
+                        data(123L, "46A", "46.8000", "20.2000", "서울주택도시공사", "20200101"),
+                        10_000_000L, 200_000L)),
+                source(withPrices(
+                        data(124L, "59A", "59.9500", "24.1000", "서울주택도시공사", "20200101"),
+                        20_000_000L, 0L))
+        ));
+
+        var report = service.mapAll();
+
+        assertThat(report.createdHousingTypeCount()).isEqualTo(2);
+        assertThat(housingTypeRepository.findAll()).anySatisfy(type -> {
+            assertThat(type.getName()).isEqualTo("46A");
+            assertThat(type.getBasicRentalCondition()).isNull();
+        }).anySatisfy(type -> {
+            assertThat(type.getName()).isEqualTo("59A");
+            assertThat(type.getBasicRentalCondition().deposit()).isEqualTo(20_000_000L);
+            assertThat(type.getBasicRentalCondition().monthlyRent()).isZero();
+        });
     }
 
     @Test

@@ -1,5 +1,6 @@
 import { FailureReviewPage } from './admin/ingest/FailureReviewPage'
-import { Link, Navigate, Route, Routes } from 'react-router'
+import { SourceDataPage } from './admin/ingest/SourceDataPage'
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router'
 import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
 import { HousingComplexRegistrationPage } from './admin/registration/HousingComplexRegistrationPage'
 import { AnnouncementRegistrationPage } from './admin/registration/AnnouncementRegistrationPage'
@@ -12,22 +13,21 @@ import { GuestCancellationAdminPage } from './admin/GuestCancellationAdminPage'
 import { LoginPage } from './admin/auth/LoginPage'
 import { RequireAdmin } from './admin/auth/RequireAdmin'
 import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHousingExplorer.tsx'
-import { LoginPage as UserLoginPage } from './user/auth/LoginPage'
 import { BrandLink } from './BrandLink'
 import { NotificationInterestProvider, NotificationInterestSessionControl } from './public-housing/interest/NotificationInterest'
 import { GuestCancellationPage } from './public-housing/interest/GuestCancellationPage'
+import { UserListPage } from './admin/users/UserListPage'
+import { UserDetailPage } from './admin/users/UserDetailPage'
+import { FeedbackPage } from './feedback/FeedbackPage'
+import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
 
 function Home() {
   return (
     <NotificationInterestProvider>
       <div className="app-shell">
-        <header className="service-header" aria-label="서비스 헤더">
-          <BrandLink />
-          <NotificationInterestSessionControl />
-        </header>
-        <main className="map-main">
-          <DefaultPublicHousingExplorer />
-        </main>
+        <div className="service-rail-brand"><BrandLink /></div>
+        <div className="service-rail-account"><Link className="service-feedback-link" to="/feedback">의견 보내기</Link><NotificationInterestSessionControl presentation="rail" /></div>
+        <main className="map-main"><DefaultPublicHousingExplorer /></main>
       </div>
     </NotificationInterestProvider>
   )
@@ -42,6 +42,13 @@ function NotFound() {
       <Link to="/">지도로 돌아가기</Link>
     </main>
   )
+}
+
+function LegacyLoginRedirect() {
+  const { search, hash } = useLocation()
+  const params = new URLSearchParams(search)
+  params.set('login', params.get('login') === 'failed' ? 'failed' : 'required')
+  return <Navigate to={{ pathname: '/', search: `?${params}`, hash }} replace />
 }
 
 function AdminRoutes() {
@@ -59,7 +66,11 @@ function AdminRoutes() {
             <Route path="announcements" element={<ManagementList resource="announcements" />} />
             <Route path="announcements/new" element={<AnnouncementRegistrationPage />} />
             <Route path="announcements/:id" element={<ManagementDetail resource="announcements" />} />
+            <Route path="users" element={<UserListPage />} />
+            <Route path="users/:id" element={<UserDetailPage />} />
+            <Route path="feedback" element={<FeedbackListPage />} />
             <Route path="failures" element={<FailureReviewPage />} />
+            <Route path="sources" element={<SourceDataPage />} />
             <Route path="locations" element={<LocationDataPage />} />
             <Route path="notification-cancellations" element={<GuestCancellationAdminPage />} />
           </Route>
@@ -74,7 +85,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
-      <Route path="/login" element={<UserLoginPage />} />
+      <Route path="/login" element={<LegacyLoginRedirect />} />
+      <Route path="/feedback" element={<FeedbackPage />} />
       <Route path="/notifications/cancel" element={<GuestCancellationPage />} />
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />

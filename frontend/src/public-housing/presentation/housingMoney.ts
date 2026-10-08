@@ -30,3 +30,9 @@ export function formatHousingMoney(value: number | null): string {
   const amount = housingMoneyParts(value)
   return amount === null ? MISSING_DATA_LABEL : `${amount.digits}${amount.unit}`
 }
+
+/** 상세 화면에서는 축약하거나 버리지 않고 원 단위 금액을 표시한다. */
+export function formatHousingMoneyWon(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value) || value < 0) return MISSING_DATA_LABEL
+  return `${value.toLocaleString('ko-KR', { maximumFractionDigits: 20 })}원`
+}

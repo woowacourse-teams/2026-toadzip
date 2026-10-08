@@ -104,7 +104,7 @@ class HousingComplexMapQueryTest {
                 () -> assertEquals(BOUNDS, condition.bounds()),
                 () -> assertEquals("행복 단지", filters.keyword()),
                 () -> assertNull(filters.provinceCode()),
-                () -> assertEquals(Set.of("12210", "29110"), filters.cityCountyDistrictCodes()),
+                () -> assertEquals(Set.of("12210", "29110"), filters.regionCodes()),
                 () -> assertEquals(Set.of(RentalType.HAPPY_HOUSING, RentalType.NATIONAL_RENTAL),
                         filters.rentalTypes()),
                 () -> assertEquals(Set.of(ApplicationStatus.APPLYING, ApplicationStatus.CLOSED),
@@ -140,7 +140,7 @@ class HousingComplexMapQueryTest {
                 () -> assertNull(condition.filters().provinceCode()),
                 () -> assertEquals(
                         Set.of("12110", "12210", "29110", "46110"),
-                        condition.filters().cityCountyDistrictCodes()
+                        condition.filters().regionCodes()
                 )
         );
     }
@@ -169,7 +169,7 @@ class HousingComplexMapQueryTest {
                 () -> assertNull(condition.filters().provinceCode()),
                 () -> assertEquals(
                         Set.of("41110", "41111", "41113"),
-                        condition.filters().cityCountyDistrictCodes()
+                        condition.filters().regionCodes()
                 )
         );
     }

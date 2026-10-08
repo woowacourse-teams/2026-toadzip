@@ -970,6 +970,9 @@ export function decodeMapComplex(
   const item = recordAt(value, path)
 
   return {
+    ...(Object.hasOwn(item, 'applicationStatus') ? {
+      applicationStatus: nullableStringAt(item.applicationStatus, `${path}.applicationStatus`),
+    } : {}),
     complexId: positiveSafeIntegerAt(
       recordField(item, 'complexId', path),
       `${path}.complexId`,

@@ -47,11 +47,18 @@ export function AdminLayout() {
         </div>
         <div className="admin-nav-group"><span>수집 운영</span>
           <NavLink to="/admin/ingest">수집·정제</NavLink>
+          <NavLink to="/admin/sources">원천 데이터</NavLink>
           <NavLink to="/admin/failures">실패·검토 항목</NavLink>
           <NavLink to="/admin/locations">주소 데이터</NavLink>
         </div>
         <div className="admin-nav-group"><span>알림 운영</span>
           <NavLink to="/admin/notification-cancellations">알림 취소 요청</NavLink>
+        </div>
+        <div className="admin-nav-group"><span>회원 운영</span>
+          <NavLink to="/admin/users">회원 관리</NavLink>
+        </div>
+        <div className="admin-nav-group"><span>고객 의견</span>
+          <NavLink to="/admin/feedback">사용자 의견</NavLink>
         </div>
       </nav>
       <main className="admin-content" id="admin-main">

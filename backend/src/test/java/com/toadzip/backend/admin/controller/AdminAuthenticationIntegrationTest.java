@@ -24,6 +24,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -33,6 +34,8 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest(properties = "spring.main.web-application-type=servlet")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+// csrf() in other cached MockMvc contexts replaces the filter's real cookie repository.
+@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 class AdminAuthenticationIntegrationTest {
 
     @Autowired
@@ -100,7 +103,7 @@ class AdminAuthenticationIntegrationTest {
         mockMvc.perform(loginRequest("correct-password"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"))
-                .andExpect(jsonPath("$.message").value("관리자 권한이 필요합니다."))
+                .andExpect(jsonPath("$.message").value("요청 보안 토큰이 유효하지 않습니다."))
                 .andExpect(jsonPath("$.traceId").isNotEmpty());
     }
 

@@ -26,6 +26,27 @@ describe('local public housing snapshot repository', () => {
     vi.restoreAllMocks()
   })
 
+  it('지역 목록은 지도 표식이 없는 단지도 포함하고 지역과 커서를 적용한다', async () => {
+    const snapshot = snapshotWithSecondScenario()
+    const { repository, mapRepository } = createSnapshotPublicHousingRepositories({
+      ...snapshot,
+      complexRegionCodes: { 17: '11140', 18: '11140' },
+      complexListItems: snapshot.complexListItems.map((item) => ({ ...item, regionName: '서울특별시 중구' })),
+      mapComplexItems: [snapshot.mapComplexItems[0]],
+    })
+    const signal = new AbortController().signal
+    const first = await repository.findComplexPage(null, null, 1, signal, { regionCode: '11' })
+    expect(first.hasNext).toBe(true)
+    const second = await repository.findComplexPage(null, first.nextCursor, 1, signal, { regionCode: '11' })
+    expect(second.hasNext).toBe(false)
+    expect(new Set([...first.items, ...second.items].map(({ complexId }) => complexId))).toEqual(new Set(['17', '18']))
+    const excluded = await repository.findComplexPage(null, null, 20, signal, { regionCode: '41' })
+    expect(excluded.items).toEqual([])
+    const map = await mapRepository.findMap({ bounds: BOUNDS, zoom: 14 }, signal)
+    expect(map.nodes).toHaveLength(1)
+    await expect(repository.findComplexPage(null, null, 20, signal)).rejects.toThrow()
+  })
+
   it('serves all five repository methods through the production contract', async () => {
     const { repository, mapRepository } = createSnapshotPublicHousingRepositories(
       MINIMAL_PUBLIC_HOUSING_SNAPSHOT,

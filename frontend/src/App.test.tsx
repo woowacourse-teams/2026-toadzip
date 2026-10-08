@@ -28,10 +28,12 @@ vi.mock('./admin/ingest/api', async (importOriginal) => ({
 }))
 
 beforeEach(() => {
+  localStorage.clear()
   vi.stubEnv('VITE_NAVER_MAPS_CLIENT_ID', '')
 })
 
 afterEach(() => {
+  localStorage.clear()
   vi.unstubAllEnvs()
 })
 
@@ -40,14 +42,18 @@ describe('App', () => {
     vi.unstubAllGlobals()
   })
 
-  it('기본 화면을 표시한다', () => {
+  it('지도 설정이 없어도 첫 방문 안내를 표시하고 바로 지도 탐색을 시작한다', () => {
     render(
       <MemoryRouter>
         <App />
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole('banner', { name: '서비스 헤더' })).toBeVisible()
+    expect(screen.getByRole('dialog', { name: /살고 싶은 동네의/ })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '바로 지도 둘러보기' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByRole('banner', { name: '서비스 헤더' })).not.toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: '주요 메뉴' })).toBeVisible()
     const homeLink = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
     expect(homeLink).toBeVisible()
     expect(homeLink.querySelector('.brand-name')).not.toBeInTheDocument()
@@ -63,7 +69,7 @@ describe('App', () => {
     )
   })
 
-  it('목록 위에는 검색창과 탭을 두고 소개 제목과 기본 입력 안내는 표시하지 않는다', () => {
+  it('검색창과 공고 메뉴를 두고 소개 제목과 기본 입력 안내는 표시하지 않는다', () => {
     render(
       <MemoryRouter>
         <App />
@@ -72,8 +78,8 @@ describe('App', () => {
 
     expect(screen.getByRole('searchbox', { name: '지역, 단지, 공고 검색' }))
       .toHaveAttribute('placeholder', '지역, 단지, 공고 검색')
-    expect(screen.getByRole('tab', { name: '단지 목록' })).toBeVisible()
-    expect(screen.getByRole('tab', { name: '공고 목록' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: '단지 목록' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '공고 목록' })).toBeVisible()
     expect(screen.queryByText('지도 기반 탐색')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '공공임대주택' }))
       .not.toBeInTheDocument()

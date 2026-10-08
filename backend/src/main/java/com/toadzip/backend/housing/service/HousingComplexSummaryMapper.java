@@ -46,7 +46,8 @@ public class HousingComplexSummaryMapper {
                 toLongExact(row.depositMin()),
                 toLongExact(row.depositMax()),
                 toLongExact(row.monthlyRentMin()),
-                toLongExact(row.monthlyRentMax())
+                toLongExact(row.monthlyRentMax()),
+                row.applicationStatus()
         );
     }
 

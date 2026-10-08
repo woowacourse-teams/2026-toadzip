@@ -8,16 +8,20 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSourceSnapshot;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.repository.ExternalDataCollectionFailureRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionCheckpointRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionLinkRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementDetailSourceRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRepository;
-import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementDetailSourceFixtures;
+import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeAnnouncementSourceFixtures;
+import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
+import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
+import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionLinkRepository;
+import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQueryApiRepository;
+import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementQuerySourceRepository;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSourceSnapshot;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -27,6 +31,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import tools.jackson.databind.JsonNode;
@@ -40,13 +45,20 @@ class LhAnnouncementConcurrentCollectionIntegrationTest {
     private LhAnnouncementExternalCollectionService service;
 
     @Autowired
-    private MyHomeAnnouncementSourceRepository sources;
+    private MyHomeAnnouncementSourceFixtures sources;
 
     @Autowired
-    private LhAnnouncementDetailSourceRepository details;
+    private LhAnnouncementDetailSourceFixtures details;
 
     @Autowired
-    private LhAnnouncementCollectionCheckpointRepository checkpoints;
+    private LhAnnouncementQuerySourceRepository querySources;
+
+    @Autowired
+    private LhAnnouncementDetailSourceReader detailReader;
+
+    @Autowired
+    private JdbcClient jdbc;
+
 
     @Autowired
     private LhAnnouncementCollectionLinkRepository links;
@@ -58,24 +70,32 @@ class LhAnnouncementConcurrentCollectionIntegrationTest {
     private MeterRegistry meterRegistry;
 
     @MockitoBean
-    private LhAnnouncementExternalRepository externalRepository;
+    private LhAnnouncementQueryApiRepository externalRepository;
 
     @BeforeEach
     @AfterEach
     void cleanUp() {
+        jdbc.sql("DELETE FROM lh_announcement_supply_rows").update();
+        jdbc.sql("DELETE FROM lh_announcement_detail_rows").update();
+        jdbc.sql("DELETE FROM lh_announcement_query_parameters").update();
+        jdbc.sql("DELETE FROM lh_announcement_query_sources").update();
+        jdbc.sql("DELETE FROM source_collection_record_parameters WHERE record_id IN "
+                + "(SELECT id FROM source_collection_records WHERE source IN "
+                + "('LH_ANNOUNCEMENT_SUPPLY', 'LH_ANNOUNCEMENT_DETAIL'))").update();
+        jdbc.sql("DELETE FROM source_collection_records WHERE source IN "
+                + "('LH_ANNOUNCEMENT_SUPPLY', 'LH_ANNOUNCEMENT_DETAIL')").update();
         links.deleteAllInBatch();
-        checkpoints.deleteAllInBatch();
         details.deleteAllInBatch();
         failures.deleteAllInBatch();
         sources.deleteAllInBatch();
     }
 
     @Test
-    void 병렬_수집은_독립_트랜잭션으로_성공_연결을_저장하고_실패_요청만_재실행한다() {
+    void 병렬_수집은_독립_트랜잭션으로_성공_연결을_저장하고_다음_실행에서_모든_대상을_재조회한다() {
         sources.saveAll(List.of(source("a", "100"), source("b", "200"), source("c", "100")));
         CountDownLatch started = new CountDownLatch(2);
-        when(externalRepository.fetchDetail(any())).thenAnswer(invocation -> {
-            LhAnnouncementRequest request = invocation.getArgument(0);
+        when(externalRepository.detail(any())).thenAnswer(invocation -> {
+            LhAnnouncementQuery request = invocation.getArgument(0);
             started.countDown();
             assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
             if (request.panId().equals("200")) {
@@ -89,41 +109,35 @@ class LhAnnouncementConcurrentCollectionIntegrationTest {
         assertThat(first.storedRowCount()).isOne();
         assertThat(first.failedRequestCount()).isOne();
         assertThat(first.externalApiCallCount()).isEqualTo(2);
-        assertThat(details.findAll()).extracting(detail -> detail.getPanId()).containsExactly("100");
-        assertThat(checkpoints.count()).isOne();
+        assertThat(currentDetails()).extracting(detail -> detail.getPanId()).containsExactly("100");
+        assertThat(querySources.count()).isOne();
         assertThat(links.findAll()).extracting(link -> link.getSourceAnnouncementKey())
                 .containsExactlyInAnyOrder("a", "c");
         assertThat(failures.count()).isOne();
 
         clearInvocations(externalRepository);
-        doReturn(response()).when(externalRepository).fetchDetail(any());
+        doReturn(response()).when(externalRepository).detail(any());
         var retry = service.collect(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL);
 
-        assertThat(retry.externalApiCallCount()).isOne();
+        assertThat(retry.externalApiCallCount()).isEqualTo(2);
         assertThat(retry.failedRequestCount()).isZero();
-        assertThat(details.findAll()).extracting(detail -> detail.getPanId())
+        assertThat(currentDetails()).extracting(detail -> detail.getPanId())
                 .containsExactlyInAnyOrder("100", "200");
-        assertThat(checkpoints.count()).isEqualTo(2);
+        assertThat(querySources.count()).isEqualTo(2);
         assertThat(links.count()).isEqualTo(3);
         assertThat(meterRegistry.get("ingest.announcement.store")
-                .tag("source", "LH_ANNOUNCEMENT_DETAIL").timer().count()).isEqualTo(2);
+                .tag("source", "LH_ANNOUNCEMENT_DETAIL").timer().count()).isEqualTo(3);
         assertThat(meterRegistry.get("ingest.external.request")
-                .tags("source", "LH_ANNOUNCEMENT_DETAIL", "result", "completed").timer().count()).isEqualTo(2);
+                .tags("source", "LH_ANNOUNCEMENT_DETAIL", "result", "completed").timer().count()).isEqualTo(3);
         assertThat(meterRegistry.get("ingest.external.request")
                 .tags("source", "LH_ANNOUNCEMENT_DETAIL", "result", "failed").timer().count()).isOne();
         assertThat(meterRegistry.get("ingest.announcement.source.rows")
                 .tags("source", "LH_ANNOUNCEMENT_DETAIL", "mode", "scheduled", "result", "read")
                 .counter().count()).isEqualTo(6);
-        assertThat(meterRegistry.get("ingest.announcement.candidates")
-                .tags("source", "LH_ANNOUNCEMENT_DETAIL", "mode", "scheduled", "result", "ttl_fresh")
-                .counter().count()).isEqualTo(2);
         assertThat(meterRegistry.get("ingest.announcement.requests")
                 .tags("source", "LH_ANNOUNCEMENT_DETAIL", "mode", "scheduled", "result", "refresh")
-                .counter().count()).isEqualTo(3);
-        assertThat(meterRegistry.get("ingest.announcement.requests")
-                .tags("source", "LH_ANNOUNCEMENT_DETAIL", "mode", "scheduled", "result", "ttl_fresh")
-                .counter().count()).isOne();
-        verify(externalRepository).fetchDetail(any());
+                .counter().count()).isEqualTo(4);
+        verify(externalRepository, org.mockito.Mockito.times(2)).detail(any());
     }
 
     @Test
@@ -133,6 +147,13 @@ class LhAnnouncementConcurrentCollectionIntegrationTest {
         assertThat(meterRegistry.get("hikaricp.connections.pending").gauges()).isNotEmpty();
         assertThat(meterRegistry.get("hikaricp.connections.acquire").timers())
                 .anySatisfy(timer -> assertThat(timer.count()).isPositive());
+    }
+
+    private List<LhAnnouncementDetailSource> currentDetails() {
+        return querySources.findAll().stream()
+                .filter(source -> source.getSource() == CollectionSource.LH_ANNOUNCEMENT_DETAIL)
+                .flatMap(source -> detailReader.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(
+                        source.getPanId(), source.getRequestHash()).stream()).toList();
     }
 
     private MyHomeAnnouncementSource source(String id, String panId) {

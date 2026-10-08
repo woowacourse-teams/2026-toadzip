@@ -11,7 +11,7 @@ import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepositor
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
 import com.toadzip.backend.housing.domain.AgencyCode;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter;
@@ -61,6 +61,11 @@ public class MyHomeAnnouncementMappingWriter {
     ) {
         MyHomeAnnouncementMappingData data = resolved.data();
         AnnouncementWriteResult announcementResult = writeAnnouncement(data, previousAnnouncement);
+        if (announcementResult.announcement().getProvider() != data.provider()) {
+            int preservedRowCount = supplyRowRepository.findAllByAnnouncement(announcementResult.announcement()).size();
+            var preserved = new SupplyRowsWriteResult(0, 0, preservedRowCount, 0, List.of(), Set.of());
+            return new MyHomeAnnouncementWriteResult(reportOf(announcementResult, preserved), List.of());
+        }
         if (announcementResult.releasedLhOwnership()) {
             deleteLhEnrichment(announcementResult.announcement());
         }
@@ -158,7 +163,7 @@ public class MyHomeAnnouncementMappingWriter {
         if (updated) {
             return new AnnouncementWriteResult(stored, 0, 1, releasesLhOwnership);
         }
-        return new AnnouncementWriteResult(stored, 0, 0, releasesLhOwnership);
+        return new AnnouncementWriteResult(stored, 0, 0, false);
     }
 
     private void deleteLhEnrichment(Announcement announcement) {
@@ -438,7 +443,6 @@ public class MyHomeAnnouncementMappingWriter {
             Set<Long> changedHousingTypeRowIds
     ) {
     }
-
 
     record MyHomeAnnouncementWriteResult(
             MyHomeAnnouncementMappingReport report,

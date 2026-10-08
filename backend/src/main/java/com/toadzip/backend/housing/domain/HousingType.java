@@ -5,6 +5,7 @@ import static lombok.AccessLevel.PROTECTED;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -13,6 +14,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
+import java.util.Objects;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -59,6 +61,9 @@ public class HousingType {
 
     @Column(nullable = true)
     private BigDecimal maintenanceFee;
+
+    @Embedded
+    private MyHomeRentalCondition basicRentalCondition;
 
     private HousingType(
             HousingComplex housingComplex,
@@ -166,6 +171,14 @@ public class HousingType {
             return false;
         }
         this.totalHouseholdCount = totalHouseholdCount;
+        return true;
+    }
+
+    public boolean updateBasicRentalCondition(MyHomeRentalCondition condition) {
+        if (Objects.equals(basicRentalCondition, condition)) {
+            return false;
+        }
+        basicRentalCondition = condition;
         return true;
     }
 

@@ -5,16 +5,18 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.ingest.collection.domain.ExternalDataCollectionFailure;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementRequest;
-import com.toadzip.backend.ingest.collection.dto.VerifiedLhSupplyReplacementRequest;
-import com.toadzip.backend.ingest.collection.repository.ExternalDataCollectionFailureRepository;
-import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
-import com.toadzip.backend.ingest.collection.repository.VerifiedLhSupplyReplacementStore;
+import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
+import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
+import com.toadzip.backend.ingest.collection.lh.supply.dto.VerifiedLhSupplyReplacementRequest;
+import com.toadzip.backend.ingest.collection.lh.supply.repository.VerifiedLhSupplyReplacementStore;
+import com.toadzip.backend.ingest.collection.lh.supply.service.VerifiedLhSupplyReplacementService;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
+import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -31,7 +33,7 @@ class VerifiedLhSupplyReplacementServiceTest {
     private final ExternalDataCollectionFailureRepository failureRepository =
             mock(ExternalDataCollectionFailureRepository.class);
     private final VerifiedLhSupplyReplacementStore replacementStore = mock(VerifiedLhSupplyReplacementStore.class);
-    private final MyHomeAnnouncementSourceRepository myHomeRepository = mock(MyHomeAnnouncementSourceRepository.class);
+    private final MyHomeAnnouncementSourceReader myHomeRepository = mock(MyHomeAnnouncementSourceReader.class);
     private final LhAnnouncementCollectionCandidateResolver resolver = mock(LhAnnouncementCollectionCandidateResolver.class);
     private final VerifiedLhSupplyReplacementService service = new VerifiedLhSupplyReplacementService(
             failureRepository, replacementStore, myHomeRepository, resolver
@@ -58,7 +60,7 @@ class VerifiedLhSupplyReplacementServiceTest {
 
         service.approve("pblanc-1", request(FINGERPRINT, "https://apply.lh.or.kr/notice"), "operator");
 
-        verify(replacementStore).approve(LhAnnouncementCollectionCheckpoint.requestHashOf(description),
+        verify(replacementStore).approve(LhAnnouncementQuery.requestHashOf(description),
                 FINGERPRINT, "https://apply.lh.or.kr/notice", "주택형 철회 확인", "operator");
     }
 
