@@ -152,6 +152,7 @@ const TEST_REGIONS = [
 
 beforeEach(() => {
   localStorage.clear()
+  localStorage.setItem('toadzip:welcome-completed', JSON.stringify({ expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 }))
   vi.mocked(trackEvent).mockClear()
 })
 
@@ -162,6 +163,30 @@ afterEach(() => {
 })
 
 describe('PublicHousingExplorer', () => {
+  it('첫 방문 예시 판교는 기존 지역 경계를 해제하고 판교역 주변으로 이동한다', () => {
+    localStorage.clear()
+    renderExplorer(createRepository(), '/?boundaryRegionCode=41111')
+    fireEvent.click(screen.getByRole('button', { name: '살고 싶은 지역 검색하기' }))
+    fireEvent.click(screen.getByRole('button', { name: /성남 판교/ }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByTestId('location-search')).not.toHaveTextContent('boundaryRegionCode')
+    expect(screen.getByText('카메라 37.39473,127.11119')).toBeVisible()
+    expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('14')
+  })
+
+  it('첫 방문 안내의 지역 선택이 기존 경계 이동과 URL에 연결된다', async () => {
+    localStorage.clear()
+    const region = searchItem('REGION', '41111', '경기도 수원시 장안구', null, null)
+    renderExplorer(createRepository(), '/?complexRegionCode=11', searchRepository([], [region]))
+    fireEvent.click(screen.getByRole('button', { name: '살고 싶은 지역 검색하기' }))
+    fireEvent.change(screen.getByRole('searchbox', { name: '살고 싶은 지역' }), { target: { value: '장안' } })
+    fireEvent.click(await screen.findByRole('button', { name: /경기도 수원시 장안구/ }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expectCurrentSearch({ complexRegionCode: '11', boundaryRegionCode: '41111' })
+    expect(screen.getByText(`카메라 ${(37.3 + 37.4) / 2},127`)).toBeVisible()
+  })
+
+
   it('저배율 영역을 v2로 조회하고 0곳 지역 마커를 표시한다', async () => {
     const repository = createRepository()
     const mapRepository = createMapRepository(aggregateMapResult())
