@@ -202,12 +202,16 @@ describe('ComplexFilterToolbar', () => {
     expect(screen.getByRole('button', { name: '공급기관 필터 열기' })).toHaveAttribute('aria-expanded', 'false')
   })
 
-  it('모든 필터를 동일한 가로 스크롤 영역에서 제공한다', () => {
+  it('필터 조건은 스크롤하고 전체 초기화는 스크롤 영역 밖에 둔다', () => {
     renderToolbar()
     const toolbar = screen.getByRole('toolbar', { name: '단지 검색 필터' })
     const region = within(toolbar).getByRole('button', { name: '지역 필터 열기' })
     const scroller = region.parentElement?.parentElement
-    within(toolbar).getAllByRole('button').forEach((button) => expect(scroller).toContainElement(button))
+    within(toolbar).getAllByRole('button', { name: /필터 열기$/ }).forEach((button) => expect(scroller).toContainElement(button))
+    expect(scroller).not.toContainElement(within(toolbar).getByRole('button', { name: '단지·지도 필터 전체 해제' }))
+    const mobile = screen.getByRole('toolbar', { name: '모바일 단지 검색 필터' })
+    const mobileScroller = within(mobile).getByRole('button', { name: '모바일 지역 필터 열기' }).parentElement
+    expect(mobileScroller).not.toContainElement(within(mobile).getByRole('button', { name: '단지·지도 필터 전체 해제' }))
   })
 
   it('기본 필터를 닫고 다시 열어도 즉시 적용된 선택을 유지한다', () => {

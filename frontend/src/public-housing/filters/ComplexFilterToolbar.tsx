@@ -514,9 +514,9 @@ export function ComplexFilterToolbar({
                   </Fragment>
                 )
               })}
-              {resetAllButton}
             </div>
           </div>
+          {resetAllButton}
         </div>
 
         {openTopic !== null && openLabel !== null && headingId !== undefined && (
@@ -596,6 +596,7 @@ export function ComplexFilterToolbar({
         role="toolbar"
         aria-label="모바일 단지 검색 필터"
       >
+        <div className={styles.mobileScroller}>
         {MOBILE_PRIMARY_TOPICS.map(([topic, label]) => {
           const summary = topicSummary(filters, topic, resolvedRegionName)
           return (
@@ -614,6 +615,7 @@ export function ComplexFilterToolbar({
             </button>
           )
         })}
+        </div>
         {resetAllButton}
       </div>
 
