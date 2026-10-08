@@ -5,8 +5,12 @@ import com.toadzip.backend.admin.dto.AdminDataSummary;
 import com.toadzip.backend.admin.dto.AdminPage;
 import com.toadzip.backend.admin.dto.AdminSearch;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexUpdateRequest;
+import com.toadzip.backend.housing.dto.request.ComplexReviewRequest;
 import com.toadzip.backend.housing.dto.response.AdminHousingComplexDetail;
+import com.toadzip.backend.housing.dto.response.ComplexVerificationResponse;
+import com.toadzip.backend.housing.domain.ComplexVerificationStatus;
 import com.toadzip.backend.housing.service.AdminHousingComplexManagementService;
+import com.toadzip.backend.housing.service.ComplexVerificationService;
 import com.toadzip.backend.global.response.ApiResponse;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
 import jakarta.validation.Valid;
@@ -30,14 +34,31 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminHousingComplexManagementController {
     private final AdminHousingComplexManagementService service;
     private final IngestExecutionOwnershipService ownership;
-    public AdminHousingComplexManagementController(AdminHousingComplexManagementService service, IngestExecutionOwnershipService ownership) {
+    private final ComplexVerificationService verification;
+    public AdminHousingComplexManagementController(AdminHousingComplexManagementService service,
+            IngestExecutionOwnershipService ownership, ComplexVerificationService verification) {
         this.service = service;
         this.ownership = ownership;
+        this.verification = verification;
     }
 
     @GetMapping
-    public ApiResponse<AdminPage<AdminDataSummary>> search(@Valid @ModelAttribute AdminSearch search) {
-        return new ApiResponse<>(service.search(search));
+    public ApiResponse<AdminPage<AdminDataSummary>> search(@Valid @ModelAttribute AdminSearch search,
+            @RequestParam(required = false) ComplexVerificationStatus verification) {
+        return new ApiResponse<>(service.search(search, verification));
+    }
+
+    @GetMapping("/{id}/verification")
+    public ApiResponse<ComplexVerificationResponse> verification(@PathVariable long id) {
+        return new ApiResponse<>(verification.detail(id));
+    }
+
+    @PostMapping("/{id}/verification/reviews")
+    public ApiResponse<ComplexVerificationResponse> review(@PathVariable long id,
+            @Valid @RequestBody ComplexReviewRequest request, Principal principal) {
+        try (var lease = ownership.acquire()) {
+            return new ApiResponse<>(verification.review(id, request, principal.getName()));
+        }
     }
 
     @GetMapping("/{id}")
