@@ -25,6 +25,7 @@ it('단지 표는 핵심 정보만 표시하고 세대수 0과 누락을 구분�
   expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['단지명', '도로명주소', '공급 기관', '공급 유형', '세대수', '관리 상태'])
   expect(screen.getByRole('cell', { name: '0' })).toBeVisible()
   expect(screen.getByRole('cell', { name: '미확인' })).toBeVisible()
+  expect(screen.getAllByText('미검토')).toHaveLength(2)
   expect(screen.getByRole('link', { name: '두꺼비 단지' })).toHaveAttribute('href', '/admin/complexes/7?returnTo=%2Fadmin%2Fcomplexes%3Fprovider%3DLH')
   expect(screen.queryByText('MYHOME-7')).not.toBeInTheDocument()
   expect(screen.getAllByText('등록됨')[0]).toHaveAttribute('title', expect.stringContaining('모집 상태를 뜻하지 않습니다'))
@@ -87,6 +88,7 @@ it('단지에서 공고로 전환할 때 단지 행을 공고 표에 표시하�
   const view = render(<MemoryRouter><ManagementList resource="complexes" /></MemoryRouter>)
   await screen.findByRole('table')
   view.rerender(<MemoryRouter><ManagementList resource="announcements" /></MemoryRouter>)
+  expect(screen.queryByLabelText('검토 상태')).not.toBeInTheDocument()
   expect(screen.queryByRole('table')).not.toBeInTheDocument()
   expect(screen.queryByRole('link', { name: '두꺼비 단지' })).not.toBeInTheDocument()
   await act(() => next.resolve(page(announcement)))
@@ -106,6 +108,26 @@ it('페이지 조회 실패 후 재시도하는 동안 기존 표를 유지한�
   await act(() => retry.resolve(page(complex, 1)))
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   expect(screen.getByText('2 / 3 페이지')).toBeVisible()
+})
+
+it('검토 필터로 검색하고 페이지 이동과 상세 복귀 링크에 조건을 유지한다', async () => {
+  const reviewed = { ...complex, complex: { ...complex.complex!, verificationStatus: 'VERIFIED' as const, reviewedFieldCount: 2 } }
+  mocks.getManagementPage.mockResolvedValue(page(reviewed))
+  render(<MemoryRouter initialEntries={['/admin/complexes?page=2']}><ManagementList resource="complexes" /></MemoryRouter>)
+  await screen.findByRole('table')
+  fireEvent.click(screen.getByText('추가 필터'))
+  expect(screen.getByLabelText('검토 상태')).toBeVisible()
+  fireEvent.change(screen.getByLabelText('검토 상태'), { target: { value: 'VERIFIED' } })
+  fireEvent.submit(screen.getByRole('button', { name: '검색' }).closest('form')!)
+  await screen.findByRole('table')
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('verification')).toBe('VERIFIED')
+  expect(mocks.getManagementPage.mock.lastCall?.[1].has('page')).toBe(false)
+  expect(screen.getByRole('link', { name: '두꺼비 단지' }).closest('th')).toHaveTextContent('확인 완료 · 2/6항목')
+  expect(screen.getByRole('link', { name: '두꺼비 단지' })).toHaveAttribute('href', expect.stringContaining('verification%3DVERIFIED'))
+  fireEvent.click(screen.getByRole('button', { name: '다음' }))
+  await act(async () => {})
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('verification')).toBe('VERIFIED')
+  expect(mocks.getManagementPage.mock.lastCall?.[1].get('page')).toBe('1')
 })
 
 it('새 요약 데이터는 검증하고 이전 응답의 누락 필드는 호환한다', () => {

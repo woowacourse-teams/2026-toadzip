@@ -119,7 +119,7 @@ public class AnnouncementSupplyMatchingService {
         String keyword = query.strip().toLowerCase(java.util.Locale.ROOT)
                 .replace("!", "!!").replace("%", "!%").replace("_", "!_");
         return complexes.searchAdmin("%" + keyword + "%", query.strip(), "", "", "", "", "",
-                false, false, PageRequest.of(0, 20)).stream()
+                false, false, "", PageRequest.of(0, 20)).stream()
                 .map(value -> new ComplexOption(value.getId(), value.getName(),
                         value.getAddress().getRoadAddress(), value.getSupplyType())).toList();
     }
