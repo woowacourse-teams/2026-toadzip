@@ -2,8 +2,9 @@
 
 ## API
 
-브라우저를 `GET /api/auth/oauth2/authorization/kakao` 또는
-`GET /api/auth/oauth2/authorization/google`로 이동시킨다. 공급자 인증 후
+공개 개인정보 안내 API에서 현재 `PRIVACY_POLICY` 버전을 확인하고 정책 링크를 보여준다.
+브라우저를 `GET /api/auth/oauth2/authorization/kakao?policyVersion={version}` 또는
+`GET /api/auth/oauth2/authorization/google?policyVersion={version}`로 이동시킨다. 공급자 인증 후
 `/api/auth/oauth2/callback/{provider}`로 돌아오며 성공 시 설정한 프론트엔드 URL,
 실패 시 실패 URL로 이동한다. 쿼리의 인가 코드나 공급자 토큰을 프론트엔드에 전달하지 않는다.
 
@@ -100,5 +101,30 @@ docker compose -f compose.yaml -f compose.local.yaml -f compose.monitoring.yaml 
 새 빈 DB에서는 baseline 스키마 `B20260922_01`을 사용한다. 이미 중복된 `login_identifier`가
 있다면 `V20260922_02`가 실패하므로 계정 소유권을 확인하고 처리한 뒤 재시도한다.
 새 로그인은 `google:{sub}` 또는 `kakao:{id}`로 저장하며 기존 사용자 ID와 연관 데이터는 유지한다.
-이메일은 로그인 시 공급자가 제공한 경우에만 저장하고, 알림 신청 창에서는 사용자가 수정할 수 있다.
+이메일은 로그인 시 공급자가 제공한 경우에만 저장하고 관리자의 회원 조회·검색에 사용한다.
+알림 신청에서는 이메일을 수집·수정하지 않으며 실제 이메일 알림을 발송하지 않는다.
 서로 다른 공급자 계정은 동일 이메일이어도 자동 연결하지 않는다.
+
+## 정책 버전과 계정 생명주기
+
+`SocialLoginPolicyFilter`는 현재 정책 버전이 없는 진입을 제공자에게 보내지 않고 로그인 화면으로
+돌려보낸다(`login=failed&reason=privacy-notice`). `SocialAuthorizationRequestResolver`와
+`SocialAuthorizationRequestRepository`는 버전과 서버 시작 시각을 세션의 state별 인가 요청에 묶는다.
+요청 수명은 10분이고 콜백에서 한 번만 소비한다. 여러 탭의 버전이 서로 덮어쓰이지 않는다.
+콜백은 보관된 정책 원문을 다시 확인한다. 현재 정책과 처리 scope가 같으면 시작 시 버전을 유지하고,
+다른 scope 또는 제공되지 않는 버전이면 회원 생성 전에 로그인 화면으로 복귀한다.
+`users.registration_policy_version`은 최초 회원 생성에 적용한 정책 버전이며 읽음·동의를 뜻하지 않는다.
+
+본인 확인을 마친 탈퇴는 `DELETE /api/admin/users/{userId}`로 실행한다. 관리자 권한과 CSRF가 필요하며
+성공 또는 이미 삭제된 회원은 204, 저장 실패는 5xx다. `UserDeletionService`가 알림·동의·사용자 자식
+행과 이메일을 포함한 회원 행을 한 트랜잭션으로 제거한다.
+
+로그인 생성과 탈퇴는 동일 소셜 식별자로부터 계산한 PostgreSQL advisory transaction lock을 얻은 뒤
+회원 행을 잠근다. `user_deletion_markers`에는 식별자 SHA-256 해시와 탈퇴·만료 시각만 10분 보관한다.
+탈퇴 이전에 시작한 OAuth 콜백의 재생성을 막고, 탈퇴 후 새 요청은 새 계정으로 허용한다.
+`DeletedUserSessionFilter`가 잔존 회원 세션을 매 요청에서 검증하며 삭제된 회원이면 세션을 무효화하고
+401을 반환한다. 동일 요청을 비회원 분석·설정 요청으로 재해석하지 않는다.
+
+표식은 `UserDeletionRetentionService`가 15분마다 최대 500행 청크로 삭제한다. 만료 시각부터 판정에서
+즉시 제외하며 늦어진 물리 삭제와 운영 경보는 [공통 개인정보 정책](../../docs/privacy-policy.md)을 따른다.
+DB 밖 메일·백업 파기는 이 API 성공만으로 완료되지 않는다.
