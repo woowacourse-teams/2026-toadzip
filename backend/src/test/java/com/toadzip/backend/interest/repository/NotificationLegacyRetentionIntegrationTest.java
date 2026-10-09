@@ -1,7 +1,9 @@
 package com.toadzip.backend.interest.repository;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
+import com.toadzip.backend.interest.service.NotificationSettingsService;
 import com.toadzip.backend.privacy.repository.PrivacyNotificationRetentionRepository;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -28,6 +30,7 @@ class NotificationLegacyRetentionIntegrationTest {
             "notification_interest_events");
 
     @Autowired private PrivacyNotificationRetentionRepository retention;
+    @Autowired private NotificationSettingsService settings;
     @Autowired private JdbcTemplate jdbcTemplate;
 
     @Test
@@ -50,6 +53,24 @@ class NotificationLegacyRetentionIntegrationTest {
         assertEquals(2, retention.backlog(NOW).count());
         assertEquals(2, retention.purgeChunk(NOW, 500));
         assertEquals(0, retention.backlog(NOW).count());
+        assertEquals(before, legacySnapshot());
+    }
+
+    @Test
+    void 기존알림의_조회는_고지증빙을_만들거나_기존자료를_보완하지_않는다() {
+        long member = seedLegacyRecords();
+        jdbcTemplate.update("UPDATE notification_subscriptions SET expires_at = ? WHERE user_id = ?",
+                Timestamp.from(Instant.now().plusSeconds(86400)), member);
+        Map<String, List<String>> before = legacySnapshot();
+
+        var response = settings.current(member);
+
+        assertEquals(0, response.settingsRevision());
+        assertEquals(1, response.targets().size());
+        assertNull(response.targets().getFirst().noticeVersion());
+        assertNull(response.targets().getFirst().requestedAt());
+        assertEquals(0, jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM privacy_notification_notices WHERE user_id = ?", Integer.class, member));
         assertEquals(before, legacySnapshot());
     }
 

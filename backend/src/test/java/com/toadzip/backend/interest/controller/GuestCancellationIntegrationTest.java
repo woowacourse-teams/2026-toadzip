@@ -165,7 +165,10 @@ class GuestCancellationIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"code\":\"" + oldCode + "\"}"))
                 .andExpect(status().isNoContent());
         mockMvc.perform(post(path + "/code/reissue").with(csrf())).andExpect(status().isUnauthorized());
-        mockMvc.perform(post(path + "/code/reissue").with(user("member").roles("USER")).with(csrf()))
+        long memberId = 90000236L;
+        jdbcTemplate.update("INSERT INTO users (id, login_identifier, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                memberId, "notification-reissue-member");
+        mockMvc.perform(post(path + "/code/reissue").with(user(Long.toString(memberId)).roles("USER")).with(csrf()))
                 .andExpect(status().isForbidden());
         mockMvc.perform(post(path + "/code/reissue").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isForbidden());

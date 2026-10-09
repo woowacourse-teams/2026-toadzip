@@ -235,11 +235,16 @@ class AnnouncementSupplyMatchingIntegrationTest {
 
     @Test
     void 조회와_정제는_관리자_인증_CSRF_필수값을_검증한다() throws Exception {
+        String memberId = jdbc.sql("""
+                        INSERT INTO users(login_identifier,created_at) VALUES (:identifier,CURRENT_TIMESTAMP)
+                        RETURNING id
+                        """).param("identifier", "google:matching-" + java.util.UUID.randomUUID())
+                .query(Long.class).single().toString();
         mvc.perform(get(PATH + "/" + TARGET)).andExpect(status().isUnauthorized());
-        mvc.perform(get(PATH + "/" + TARGET).with(user("member").roles("USER")))
+        mvc.perform(get(PATH + "/" + TARGET).with(user(memberId).roles("USER")))
                 .andExpect(status().isForbidden());
         mvc.perform(post(PATH + "/" + TARGET + "/refine").with(csrf())).andExpect(status().isUnauthorized());
-        mvc.perform(post(PATH + "/" + TARGET + "/refine").with(user("member").roles("USER")).with(csrf()))
+        mvc.perform(post(PATH + "/" + TARGET + "/refine").with(user(memberId).roles("USER")).with(csrf()))
                 .andExpect(status().isForbidden());
         mvc.perform(post(PATH + "/" + TARGET + "/refine").with(user("admin").roles("ADMIN"))
                 .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());

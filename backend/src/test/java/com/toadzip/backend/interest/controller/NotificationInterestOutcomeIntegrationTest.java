@@ -1,492 +1,422 @@
 package com.toadzip.backend.interest.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.interest.domain.NotificationEventSource;
 import com.toadzip.backend.interest.domain.NotificationEventType;
 import com.toadzip.backend.interest.domain.NotificationInterestOutcome;
 import com.toadzip.backend.interest.domain.NotificationTargetType;
-import com.toadzip.backend.interest.dto.NotificationInterestRequest;
-import com.toadzip.backend.interest.dto.NotificationInterestResponse;
-import com.toadzip.backend.interest.exception.InvalidNotificationInterestException;
+import com.toadzip.backend.interest.dto.NotificationSettingsRequest;
+import com.toadzip.backend.interest.dto.NotificationSettingsResponse;
 import com.toadzip.backend.interest.exception.NotificationInterestConflictException;
-import com.toadzip.backend.interest.repository.NotificationGuestSubscriptionRepository;
+import com.toadzip.backend.interest.exception.NotificationSettingsConflictException;
+import com.toadzip.backend.privacy.repository.PrivacyNotificationRetentionRepository;
+import com.toadzip.backend.interest.service.NotificationSettingsService;
 import com.toadzip.backend.interest.repository.NotificationSubscriptionRepository;
-import com.toadzip.backend.interest.service.NotificationInterestService;
+import com.toadzip.backend.privacy.domain.PrivacyRetentionPolicy;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.List;
+import java.time.ZoneId;
 import java.util.UUID;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
-import tools.jackson.databind.ObjectMapper;
 
-@SpringBootTest(properties = "spring.main.web-application-type=servlet")
-@AutoConfigureMockMvc
+@SpringBootTest
 @ActiveProfiles("test")
-@Transactional
+@Import(NotificationInterestOutcomeIntegrationTest.ClockConfiguration.class)
 class NotificationInterestOutcomeIntegrationTest {
 
-    private static final UUID SESSION_ID = UUID.fromString("00000000-0000-4000-8000-000000000002");
+    @Autowired private NotificationSettingsService service;
+    @Autowired private NotificationSubscriptionRepository subscriptions;
+    @Autowired private PrivacyNotificationRetentionRepository retention;
+    @Autowired private JdbcTemplate jdbc;
+    @Autowired private TransactionTemplate transactions;
+    @Autowired private NotificationClock clock;
+    private long userId;
 
-    @Autowired
-    private NotificationInterestService service;
+    @BeforeEach
+    void member() {
+        clock.set(Instant.parse("2026-10-09T09:00:00Z"));
+        userId = jdbc.queryForObject("""
+                INSERT INTO users(login_identifier, email, created_at) VALUES (?, 'retained@example.com', ?)
+                RETURNING id
+                """, Long.class, UUID.randomUUID().toString(), Timestamp.from(clock.instant()));
+    }
 
-    @Autowired
-    private NotificationSubscriptionRepository subscriptions;
-
-    @Autowired
-    private NotificationGuestSubscriptionRepository guestSubscriptions;
-
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
-
-    @Autowired
-    private MockMvc mockMvc;
-
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    @Autowired
-    private PlatformTransactionManager transactionManager;
-
-    @Test
-    void 단지_신청_결과에_식별자와_시각만_담고_개인정보를_제외한다() throws Exception {
-        long complexId = createComplex();
-        NotificationInterestRequest request = new NotificationInterestRequest(UUID.randomUUID(), SESSION_ID,
-                NotificationEventType.CONFIRMED, NotificationEventSource.COMPLEX_DETAIL,
-                NotificationTargetType.COMPLEX, Long.toString(complexId), "guest@example.com", UUID.randomUUID());
-
-        mockMvc.perform(post("/api/v1/notification-interest-events").with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.eventId").value(request.eventId().toString()))
-                .andExpect(jsonPath("$.targetType").value("COMPLEX"))
-                .andExpect(jsonPath("$.targetId").value(Long.toString(complexId)))
-                .andExpect(jsonPath("$.outcome").value("ACTIVATED"))
-                .andExpect(jsonPath("$.occurredAt").isNotEmpty())
-                .andExpect(jsonPath("$.email").doesNotExist())
-                .andExpect(jsonPath("$.clientId").doesNotExist())
-                .andExpect(jsonPath("$.requestFingerprint").doesNotExist());
+    @AfterEach
+    void cleanup() {
+        jdbc.update("DELETE FROM privacy_notification_receipts WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM privacy_notification_notices WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM privacy_notification_states WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM notification_subscriptions WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM notification_email_preferences WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM users WHERE id = ?", userId);
     }
 
     @Test
-    void 회원의_활성_신청은_완료를_반복하지_않고_보관기간만_갱신한다() {
-        long userId = createUser();
-        NotificationInterestRequest request = request(UUID.randomUUID(), NotificationEventType.CONFIRMED,
-                "11", "member@example.com", null);
-        assertEquals(NotificationInterestOutcome.ACTIVATED, service.record(request, userId).outcome());
-        jdbcTemplate.update("""
-                UPDATE notification_subscriptions SET expires_at = CURRENT_TIMESTAMP + INTERVAL '1 month'
-                WHERE user_id = ?
-                """, userId);
-
-        NotificationInterestResponse renewed = service.record(
-                request(UUID.randomUUID(), NotificationEventType.CLICKED, "11", null, null), userId);
-
-        assertEquals(NotificationInterestOutcome.ALREADY_ACTIVE, renewed.outcome());
-        Instant expiry = jdbcTemplate.queryForObject(
-                "SELECT expires_at FROM notification_subscriptions WHERE user_id = ?", Timestamp.class, userId)
-                .toInstant();
-        assertEquals(renewed.occurredAt().atZone(ZoneOffset.UTC).plusMonths(12).toInstant(), expiry);
+    void 이미_활성인_설정과_명령_재시도는_신청기간을_연장하지_않는다() {
+        NotificationSettingsRequest original = request(0, NotificationEventType.CONFIRMED, "11");
+        NotificationSettingsResponse first = service.change(userId, original);
+        clock.set(clock.instant().plusSeconds(3600));
+        NotificationSettingsResponse already = service.change(
+                userId, request(1, NotificationEventType.CONFIRMED, "11"));
+        assertEquals(NotificationInterestOutcome.ALREADY_ACTIVE, already.outcome());
+        assertEquals(first.currentTarget(), already.currentTarget());
+        NotificationSettingsResponse retried = service.change(userId, original);
+        assertEquals(first.outcome(), retried.outcome());
+        assertEquals(first.occurredAt(), retried.occurredAt());
+        assertEquals(2, retried.settingsRevision());
+        assertEquals(first.currentTarget(), retried.currentTarget());
     }
 
     @Test
-    void 회원_설정_API는_이메일_없이_실제_변경_결과와_멱등_응답을_반환한다() throws Exception {
-        long userId = createUser();
-        NotificationInterestRequest confirmed = request(UUID.randomUUID(), NotificationEventType.CONFIRMED,
-                "11", null, null);
-
-        NotificationInterestResponse original = submitMember(userId, confirmed);
-
-        assertEquals(NotificationInterestOutcome.ACTIVATED, original.outcome());
-        assertEquals(confirmed.eventId(), original.eventId());
-        assertEquals(NotificationTargetType.REGION, original.targetType());
-        assertEquals("11", original.targetId());
-        assertEquals(1, service.findForUser(userId).targets().size());
-        assertEquals(0, jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM notification_email_preferences WHERE user_id = ?", Integer.class, userId));
-        assertEquals(original, submitMember(userId, confirmed));
-        assertEquals(NotificationInterestOutcome.ALREADY_ACTIVE, submitMember(userId,
-                request(UUID.randomUUID(), NotificationEventType.CONFIRMED, "11", null, null)).outcome());
-        assertEquals(NotificationInterestOutcome.CANCELLED, submitMember(userId,
-                request(UUID.randomUUID(), NotificationEventType.CANCELLED, "11", null, null)).outcome());
-        assertEquals(original, submitMember(userId, confirmed));
-        assertTrue(service.findForUser(userId).targets().isEmpty());
-        assertEquals(1, eventCount(confirmed.eventId()));
-        assertEquals(NotificationInterestOutcome.UNCHANGED, submitMember(userId,
-                request(UUID.randomUUID(), NotificationEventType.CANCELLED, "11", null, null)).outcome());
+    void 취소후_이전_신청_재전송은_원래영수증과_현재취소를_함께_반환한다() {
+        NotificationSettingsRequest original = request(0, NotificationEventType.CONFIRMED, "11");
+        service.change(userId, original);
+        service.change(userId, request(1, NotificationEventType.CANCELLED, "11"));
+        NotificationSettingsResponse retried = service.change(userId, original);
+        assertEquals(NotificationInterestOutcome.ACTIVATED, retried.outcome());
+        assertEquals(2, retried.settingsRevision());
+        assertFalse(retried.currentTarget().active());
+        assertTrue(service.current(userId).targets().isEmpty());
     }
 
     @Test
-    void 삭제된_단지의_회원_설정은_해제할_수_있지만_새로_신청할_수_없다() throws Exception {
-        long userId = createUser();
-        long complexId = createComplex();
-        String targetId = Long.toString(complexId);
-        NotificationInterestRequest confirmed = new NotificationInterestRequest(UUID.randomUUID(), SESSION_ID,
-                NotificationEventType.CONFIRMED, NotificationEventSource.SETTING,
-                NotificationTargetType.COMPLEX, targetId, null, null);
-        assertEquals(NotificationInterestOutcome.ACTIVATED, submitMember(userId, confirmed).outcome());
-        jdbcTemplate.update("DELETE FROM housing_complexes WHERE id = ?", complexId);
-
-        NotificationInterestRequest cancelled = new NotificationInterestRequest(UUID.randomUUID(), SESSION_ID,
-                NotificationEventType.CANCELLED, NotificationEventSource.SETTING,
-                NotificationTargetType.COMPLEX, targetId, null, null);
-
-        assertEquals(NotificationInterestOutcome.CANCELLED, submitMember(userId, cancelled).outcome());
-        assertTrue(service.findForUser(userId).targets().isEmpty());
-        NotificationInterestRequest newRequest = new NotificationInterestRequest(UUID.randomUUID(), SESSION_ID,
-                NotificationEventType.CONFIRMED, NotificationEventSource.SETTING,
-                NotificationTargetType.COMPLEX, targetId, null, null);
-        mockMvc.perform(post("/api/v1/notification-subscriptions/me")
-                        .with(user(Long.toString(userId)).roles("USER")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(newRequest)))
-                .andExpect(status().isBadRequest());
+    void 같은_명령의_다른본문과_오래된revision은_별도로_거절한다() {
+        NotificationSettingsRequest original = request(0, NotificationEventType.CONFIRMED, "11");
+        service.change(userId, original);
+        NotificationSettingsRequest changed = new NotificationSettingsRequest(
+                original.eventId(), original.expectedUserId(),
+                original.expectedSettingsRevision(), NotificationEventType.CANCELLED, original.source(),
+                original.targetType(), original.targetId(), null);
+        assertThrows(NotificationInterestConflictException.class, () -> service.change(userId, changed));
+        assertThrows(NotificationSettingsConflictException.class,
+                () -> service.change(userId, request(0, NotificationEventType.CANCELLED, "11")));
+        assertEquals(1, service.current(userId).settingsRevision());
     }
 
     @Test
-    void 만료되거나_취소된_신청을_재활성화하면_새_완료로_구분한다() {
-        long userId = createUser();
-        service.record(request(UUID.randomUUID(), NotificationEventType.CONFIRMED,
-                "11", "member@example.com", null), userId);
-        jdbcTemplate.update("""
-                UPDATE notification_subscriptions SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 second'
-                WHERE user_id = ?
-                """, userId);
-        assertEquals(NotificationInterestOutcome.ACTIVATED, service.record(request(UUID.randomUUID(),
-                NotificationEventType.CONFIRMED, "11", "member@example.com", null), userId).outcome());
-        assertEquals(NotificationInterestOutcome.CANCELLED, service.record(request(UUID.randomUUID(),
-                NotificationEventType.CANCELLED, "11", null, null), userId).outcome());
-        assertEquals(NotificationInterestOutcome.ACTIVATED, service.record(request(UUID.randomUUID(),
-                NotificationEventType.CONFIRMED, "11", "member@example.com", null), userId).outcome());
+    void 만료_정각부터_조회에서_제외하고_재신청은_새기간을_갖는다() {
+        NotificationSettingsResponse first = service.change(userId, request(0, NotificationEventType.CONFIRMED, "11"));
+        Instant expiry = first.currentTarget().expiresAt();
+        clock.set(expiry.minusNanos(1000));
+        assertEquals(1, service.current(userId).targets().size());
+        clock.set(expiry);
+        assertTrue(service.current(userId).targets().isEmpty());
+        NotificationSettingsResponse renewed = service.change(
+                userId, request(1, NotificationEventType.CONFIRMED, "11"));
+        assertEquals(NotificationInterestOutcome.ACTIVATED, renewed.outcome());
+        assertEquals(expiry, renewed.currentTarget().requestedAt());
+        assertEquals(new PrivacyRetentionPolicy().notificationExpiresAt(expiry), renewed.currentTarget().expiresAt());
     }
 
     @Test
-    void 비회원의_반복_확인과_취소는_실제_상태변화와_구분한다() {
-        UUID clientId = UUID.randomUUID();
-        assertEquals(NotificationInterestOutcome.ACTIVATED, service.record(request(UUID.randomUUID(),
-                NotificationEventType.CONFIRMED, "11", "guest@example.com", clientId), null).outcome());
-        assertEquals(NotificationInterestOutcome.ALREADY_ACTIVE, service.record(request(UUID.randomUUID(),
-                NotificationEventType.CONFIRMED, "11", "guest@example.com", clientId), null).outcome());
-        assertEquals(NotificationInterestOutcome.CANCELLED, service.record(request(UUID.randomUUID(),
-                NotificationEventType.CANCELLED, "11", null, clientId), null).outcome());
-        assertEquals(NotificationInterestOutcome.UNCHANGED, service.record(request(UUID.randomUUID(),
-                NotificationEventType.CANCELLED, "11", null, clientId), null).outcome());
+    void 취소_재시도는_파기시각을_미루지_않는다() {
+        service.change(userId, request(0, NotificationEventType.CONFIRMED, "11"));
+        clock.set(clock.instant().plusSeconds(100));
+        service.change(userId, request(1, NotificationEventType.CANCELLED, "11"));
+        Instant due = purgeAfter();
+        clock.set(clock.instant().plusSeconds(100));
+        assertEquals(NotificationInterestOutcome.UNCHANGED,
+                service.change(userId, request(2, NotificationEventType.CANCELLED, "11")).outcome());
+        assertEquals(due, purgeAfter());
     }
 
     @Test
-    void 이메일_조회_후_마지막_신청이_취소되면_회원_클릭을_완료로_처리하지_않는다() {
-        long userId = createUser();
-        service.record(request(UUID.randomUUID(), NotificationEventType.CONFIRMED,
-                "11", "member@example.com", null), userId);
-        assertTrue(subscriptions.hasEmail(userId));
-        service.record(request(UUID.randomUUID(), NotificationEventType.CANCELLED, "11", null, null), userId);
-
-        assertEquals(NotificationInterestOutcome.NOT_ACTIVATED,
-                subscriptions.activate(userId, NotificationTargetType.REGION, "11", Instant.now()));
-        assertTrue(service.findForUser(userId).targets().isEmpty());
+    void 만료된_설정_취소는_만료시각기준의_파기예정을_유지한다() {
+        NotificationSettingsResponse first = service.change(userId, request(0, NotificationEventType.CONFIRMED, "11"));
+        Instant due = purgeAfter();
+        clock.set(first.currentTarget().expiresAt().plusSeconds(10));
+        assertEquals(NotificationInterestOutcome.UNCHANGED,
+                service.change(userId, request(1, NotificationEventType.CANCELLED, "11")).outcome());
+        assertEquals(due, purgeAfter());
     }
 
     @Test
-    void 이메일_조회_후_마지막_신청이_취소되면_비회원_클릭도_완료로_처리하지_않는다() {
-        UUID clientId = UUID.randomUUID();
-        service.record(request(UUID.randomUUID(), NotificationEventType.CONFIRMED,
-                "11", "guest@example.com", clientId), null);
-        assertTrue(guestSubscriptions.hasEmail(clientId));
-        service.record(request(UUID.randomUUID(), NotificationEventType.CANCELLED, "11", null, clientId), null);
-
-        assertEquals(NotificationInterestOutcome.NOT_ACTIVATED,
-                guestSubscriptions.activate(clientId, NotificationTargetType.REGION, "11", Instant.now()));
-        assertTrue(service.findForClient(clientId).targets().isEmpty());
+    void 삭제된_대상도_안내버전없이_SETTING에서_취소한다() {
+        Instant now = clock.instant();
+        jdbc.update("""
+                INSERT INTO notification_subscriptions(user_id,target_type,target_id,active,updated_at,expires_at)
+                VALUES (?, 'ANNOUNCEMENT','999999999',true,?,?)
+                """, userId, Timestamp.from(now), Timestamp.from(now.plusSeconds(100)));
+        NotificationSettingsRequest request = new NotificationSettingsRequest(UUID.randomUUID(), Long.toString(userId),
+                0L, NotificationEventType.CANCELLED, NotificationEventSource.SETTING,
+                NotificationTargetType.ANNOUNCEMENT, "999999999", null);
+        assertEquals(NotificationInterestOutcome.CANCELLED, service.change(userId, request).outcome());
     }
 
     @Test
-    void 응답_유실_재시도는_원래_결과와_시각을_그대로_반환한다() {
-        UUID clientId = UUID.randomUUID();
-        NotificationInterestRequest request = request(UUID.randomUUID(), NotificationEventType.CONFIRMED,
-                "11", "guest@example.com", clientId);
-        NotificationInterestResponse original = service.record(request, null);
-        service.record(request(UUID.randomUUID(), NotificationEventType.CANCELLED, "11", null, clientId), null);
-
-        assertEquals(original, service.record(request, null));
-        assertTrue(service.findForClient(clientId).targets().isEmpty());
-        assertEquals(1, eventCount(request.eventId()));
-    }
-
-    @Test
-    void 대상이_제거된_뒤에도_완료_요청의_재시도는_원래_결과를_반환한다() {
-        long complexId = createComplex();
-        NotificationInterestRequest request = new NotificationInterestRequest(UUID.randomUUID(), SESSION_ID,
-                NotificationEventType.CONFIRMED, NotificationEventSource.COMPLEX_DETAIL,
-                NotificationTargetType.COMPLEX, Long.toString(complexId), "guest@example.com", UUID.randomUUID());
-        NotificationInterestResponse original = service.record(request, null);
-        jdbcTemplate.update("DELETE FROM housing_complexes WHERE id = ?", complexId);
-
-        assertEquals(original, service.record(request, null));
-    }
-
-    @Test
-    void 같은_이벤트의_대상과_명령과_이메일과_주체_변경을_거부한다() {
-        UUID eventId = UUID.randomUUID();
-        UUID clientId = UUID.randomUUID();
-        NotificationInterestRequest original = request(eventId, NotificationEventType.CONFIRMED,
-                "11", "guest@example.com", clientId);
-        service.record(original, null);
-        List<NotificationInterestRequest> changed = List.of(
-                request(eventId, NotificationEventType.CONFIRMED, "11680", "guest@example.com", clientId),
-                request(eventId, NotificationEventType.CLICKED, "11", null, clientId),
-                request(eventId, NotificationEventType.CONFIRMED, "11", "changed@example.com", clientId),
-                request(eventId, NotificationEventType.CONFIRMED, "11", "guest@example.com", UUID.randomUUID()));
-
-        for (NotificationInterestRequest request : changed) {
-            assertThrows(NotificationInterestConflictException.class, () -> service.record(request, null));
-        }
-        assertThrows(NotificationInterestConflictException.class, () -> service.record(original, 90000099L));
-        assertEquals(1, eventCount(eventId));
-    }
-
-    @Test
-    void 충돌은_HTTP_409로_반환한다() throws Exception {
-        UUID eventId = UUID.randomUUID();
-        service.record(request(eventId, NotificationEventType.EXPOSED, "11", null, null), null);
-
-        mockMvc.perform(post("/api/v1/notification-interest-events").with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(
-                                request(eventId, NotificationEventType.CLICKED, "11", null, null))))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("NOTIFICATION_INTEREST_CONFLICT"));
-    }
-
-    @Test
-    void 과거_이벤트는_성공을_추정하거나_신청을_다시_실행하지_않는다() {
-        UUID eventId = UUID.randomUUID();
-        Instant occurredAt = Instant.parse("2026-09-30T00:00:00Z");
-        jdbcTemplate.update("""
-                INSERT INTO notification_interest_events
-                    (event_id, session_id, event_type, source, target_type, target_id, created_at)
-                VALUES (?, ?, 'CONFIRMED', 'REGION_SEARCH', 'REGION', '11', ?)
-                """, eventId, SESSION_ID, Timestamp.from(occurredAt));
-        UUID clientId = UUID.randomUUID();
-
-        NotificationInterestResponse response = service.record(request(eventId, NotificationEventType.CONFIRMED,
-                "11", "guest@example.com", clientId), null);
-
-        assertEquals(NotificationInterestOutcome.UNKNOWN, response.outcome());
-        assertEquals(occurredAt, response.occurredAt());
-        assertTrue(service.findForClient(clientId).targets().isEmpty());
-    }
-
-    @Test
-    void 노출과_거절과_이메일없는_확인은_신청완료가_아니다() {
-        assertEquals(NotificationInterestOutcome.OBSERVED, service.record(request(UUID.randomUUID(),
-                NotificationEventType.EXPOSED, "11", null, null), null).outcome());
-        assertEquals(NotificationInterestOutcome.OBSERVED, service.record(request(UUID.randomUUID(),
-                NotificationEventType.DECLINED, "11", null, null), null).outcome());
-        assertEquals(NotificationInterestOutcome.NOT_ACTIVATED, service.record(request(UUID.randomUUID(),
-                NotificationEventType.CONFIRMED, "11", null, UUID.randomUUID()), null).outcome());
-    }
-
-    @Test
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void 신청_저장이_실패하면_이벤트_예약도_함께_롤백된다() {
-        NotificationInterestRequest request = request(UUID.randomUUID(), NotificationEventType.CONFIRMED,
-                "99999", "member@example.com", null);
-
-        assertThrows(InvalidNotificationInterestException.class, () -> service.record(request, null));
-
-        assertEquals(0, eventCount(request.eventId()));
-    }
-
-    @Test
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void 결과_저장이_실패하면_이미_변경한_신청과_이벤트도_롤백된다() {
-        UUID clientId = UUID.randomUUID();
-        NotificationInterestRequest request = request(UUID.randomUUID(), NotificationEventType.CONFIRMED,
-                "11", "guest@example.com", clientId);
-        jdbcTemplate.execute("""
-                ALTER TABLE notification_interest_events ADD CONSTRAINT outcome_test_failure
-                CHECK (event_id <> '%s' OR outcome <> 'ACTIVATED')
-                """.formatted(request.eventId()));
+    void 상태와_영수증_뒤의revision저장이_실패하면_모두_롤백된다() {
+        jdbc.execute("ALTER TABLE privacy_notification_states ADD CONSTRAINT test_notification_revision_failure "
+                + "CHECK (user_id <> " + userId + " OR revision = 0)");
         try {
-            assertThrows(DataIntegrityViolationException.class, () -> service.record(request, null));
-            assertEquals(0, eventCount(request.eventId()));
-            assertTrue(service.findForClient(clientId).targets().isEmpty());
-            assertEquals(0, jdbcTemplate.queryForObject(
-                    "SELECT count(*) FROM notification_guest_email_preferences WHERE client_id = ?",
-                    Integer.class, clientId));
+            assertThrows(DataIntegrityViolationException.class,
+                    () -> service.change(userId, request(0, NotificationEventType.CONFIRMED, "11")));
+            assertEquals(0, eventCount());
+            assertTrue(service.current(userId).targets().isEmpty());
         } finally {
-            jdbcTemplate.execute("ALTER TABLE notification_interest_events DROP CONSTRAINT outcome_test_failure");
+            jdbc.execute("ALTER TABLE privacy_notification_states DROP CONSTRAINT test_notification_revision_failure");
         }
     }
 
     @Test
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void 동시에_재전송된_동일_이벤트는_같은_한번의_결과를_반환한다() throws Exception {
-        UUID clientId = UUID.randomUUID();
-        NotificationInterestRequest request = request(UUID.randomUUID(), NotificationEventType.CONFIRMED,
-                "11", "guest@example.com", clientId);
-        try {
-            List<NotificationInterestResponse> results = race(() -> service.record(request, null));
-            assertEquals(NotificationInterestOutcome.ACTIVATED, results.getFirst().outcome());
-            assertEquals(results.getFirst(), results.getLast());
-            assertEquals(1, eventCount(request.eventId()));
-        } finally {
-            cleanupGuest(clientId);
-            jdbcTemplate.update("DELETE FROM notification_interest_events WHERE event_id = ?", request.eventId());
-        }
-    }
-
-    @Test
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void 비회원의_동시_최초_활성화는_한_요청만_새_신청이다() throws Exception {
-        UUID clientId = UUID.randomUUID();
-        jdbcTemplate.update("""
-                INSERT INTO notification_guest_email_preferences (client_id, email, updated_at)
-                VALUES (?, 'guest@example.com', CURRENT_TIMESTAMP)
-                """, clientId);
-        try {
-            List<NotificationInterestOutcome> outcomes = race(() -> transaction().execute(status ->
-                    guestSubscriptions.activate(clientId, NotificationTargetType.REGION, "11", Instant.now())));
-            assertEquals(1, outcomes.stream().filter(NotificationInterestOutcome.ACTIVATED::equals).count());
-            assertEquals(1, outcomes.stream().filter(NotificationInterestOutcome.ALREADY_ACTIVE::equals).count());
-        } finally {
-            cleanupGuest(clientId);
-        }
-    }
-
-    @Test
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void 회원의_동시_재활성화도_한_요청만_새_신청이다() throws Exception {
-        long userId = createUser();
-        jdbcTemplate.update("""
-                INSERT INTO notification_email_preferences (user_id, email, updated_at)
-                VALUES (?, 'member@example.com', CURRENT_TIMESTAMP)
-                """, userId);
-        transaction().executeWithoutResult(status -> subscriptions.activate(
-                userId, NotificationTargetType.REGION, "11", Instant.now()));
-        jdbcTemplate.update("UPDATE notification_subscriptions SET active = false WHERE user_id = ?", userId);
-        try {
-            List<NotificationInterestOutcome> outcomes = race(() -> transaction().execute(status ->
-                    subscriptions.activate(userId, NotificationTargetType.REGION, "11", Instant.now())));
-            assertEquals(1, outcomes.stream().filter(NotificationInterestOutcome.ACTIVATED::equals).count());
-            assertEquals(1, outcomes.stream().filter(NotificationInterestOutcome.ALREADY_ACTIVE::equals).count());
-        } finally {
-            jdbcTemplate.update("DELETE FROM notification_subscriptions WHERE user_id = ?", userId);
-            jdbcTemplate.update("DELETE FROM notification_email_preferences WHERE user_id = ?", userId);
-            jdbcTemplate.update("DELETE FROM users WHERE id = ?", userId);
-        }
-    }
-
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void 이메일없는_회원_설정의_동시_활성화도_한_요청만_새_신청이다(boolean previouslyCancelled) throws Exception {
-        long userId = createUser();
-        try {
-            if (previouslyCancelled) {
-                transaction().executeWithoutResult(status -> subscriptions.activateForMember(
-                        userId, NotificationTargetType.REGION, "11", Instant.now()));
-                jdbcTemplate.update("UPDATE notification_subscriptions SET active = false WHERE user_id = ?", userId);
-            }
-
-            List<NotificationInterestOutcome> outcomes = race(() -> transaction().execute(status ->
-                    subscriptions.activateForMember(userId, NotificationTargetType.REGION, "11", Instant.now())));
-
-            assertEquals(1, outcomes.stream().filter(NotificationInterestOutcome.ACTIVATED::equals).count());
-            assertEquals(1, outcomes.stream().filter(NotificationInterestOutcome.ALREADY_ACTIVE::equals).count());
-            assertEquals(0, jdbcTemplate.queryForObject(
-                    "SELECT count(*) FROM notification_email_preferences WHERE user_id = ?", Integer.class, userId));
-        } finally {
-            jdbcTemplate.update("DELETE FROM notification_subscriptions WHERE user_id = ?", userId);
-            jdbcTemplate.update("DELETE FROM users WHERE id = ?", userId);
-        }
-    }
-
-    private NotificationInterestRequest request(UUID eventId, NotificationEventType type, String targetId,
-            String email, UUID clientId) {
-        return new NotificationInterestRequest(eventId, SESSION_ID, type, NotificationEventSource.REGION_SEARCH,
-                NotificationTargetType.REGION, targetId, email, clientId);
-    }
-
-    private NotificationInterestResponse submitMember(long userId, NotificationInterestRequest request)
-            throws Exception {
-        String content = mockMvc.perform(post("/api/v1/notification-subscriptions/me")
-                        .with(user(Long.toString(userId)).roles("USER")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString();
-        return objectMapper.readValue(content, NotificationInterestResponse.class);
-    }
-
-    private long createUser() {
-        return jdbcTemplate.queryForObject("""
-                INSERT INTO users (login_identifier, created_at) VALUES (?, CURRENT_TIMESTAMP) RETURNING id
-                """, Long.class, UUID.randomUUID().toString());
-    }
-
-    private long createComplex() {
-        return jdbcTemplate.queryForObject("""
-                INSERT INTO housing_complexes
-                    (name, source_complex_identifier, supply_type, total_household_count, provider, parking_space_count,
-                     road_address, pnu, legal_dong_code, province_code, city_county_district_code, latitude, longitude)
-                VALUES ('계측 테스트 단지', ?, '행복주택', 1, 'LH', 1,
-                    '테스트 주소', '1168010100100010000', '1168010100', '11', '11680', 37.5, 127.0) RETURNING id
-                """, Long.class, UUID.randomUUID().toString());
-    }
-
-    private int eventCount(UUID eventId) {
-        return jdbcTemplate.queryForObject("SELECT count(*) FROM notification_interest_events WHERE event_id = ?",
-                Integer.class, eventId);
-    }
-
-    private TransactionTemplate transaction() {
-        return new TransactionTemplate(transactionManager);
-    }
-
-    private void cleanupGuest(UUID clientId) {
-        jdbcTemplate.update("DELETE FROM notification_guest_subscriptions WHERE client_id = ?", clientId);
-        jdbcTemplate.update("DELETE FROM notification_guest_email_preferences WHERE client_id = ?", clientId);
-    }
-
-    private <T> List<T> race(Callable<T> operation) throws Exception {
+    void 동시_변경은_한명만_같은revision을_사용한다() throws Exception {
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
-        Callable<T> synchronizedOperation = () -> {
-            ready.countDown();
-            assertTrue(start.await(10, TimeUnit.SECONDS));
-            return operation.call();
-        };
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var first = executor.submit(synchronizedOperation);
-            var second = executor.submit(synchronizedOperation);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> raceChange(ready, start, "11"));
+            var second = executor.submit(() -> raceChange(ready, start, "26"));
             assertTrue(ready.await(10, TimeUnit.SECONDS));
             start.countDown();
-            return List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS));
+            assertEquals(1, first.get(10, TimeUnit.SECONDS) + second.get(10, TimeUnit.SECONDS));
         }
+        assertEquals(1, eventCount());
+        assertEquals(1, service.current(userId).settingsRevision());
+    }
+
+    @Test
+    void 파기정각에_신규고지와_영수증만_삭제하고_기존설정과_revision은_남긴다() {
+        NotificationSettingsRequest original = request(0, NotificationEventType.CONFIRMED, "11");
+        service.change(userId, original);
+        service.change(userId, request(1, NotificationEventType.CANCELLED, "11"));
+        Instant due = purgeAfter();
+        clock.set(due.minusNanos(1000));
+        transactions.executeWithoutResult(status -> retention.purgeChunk(clock.instant(), 500));
+        assertEquals(1, settingCount());
+        clock.set(due);
+        transactions.executeWithoutResult(status -> retention.purgeChunk(clock.instant(), 500));
+        assertEquals(0, settingCount());
+        assertEquals(0, eventCount());
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM notification_subscriptions WHERE user_id = ?",
+                Integer.class, userId));
+        assertEquals(2, service.current(userId).settingsRevision());
+        assertThrows(NotificationSettingsConflictException.class, () -> service.change(userId, original));
+        assertEquals("retained@example.com", jdbc.queryForObject("SELECT email FROM users WHERE id = ?",
+                String.class, userId));
+    }
+
+    @Test
+    void 재신청된_설정은_예전_파기기한으로_삭제하지_않는다() {
+        service.change(userId, request(0, NotificationEventType.CONFIRMED, "11"));
+        service.change(userId, request(1, NotificationEventType.CANCELLED, "11"));
+        Instant oldDue = purgeAfter();
+        clock.set(oldDue);
+        service.change(userId, request(2, NotificationEventType.CONFIRMED, "11"));
+        transactions.executeWithoutResult(status -> retention.purgeChunk(clock.instant(), 500));
+        assertEquals(1, settingCount());
+        assertEquals(1, service.current(userId).targets().size());
+    }
+
+    @Test
+    void 실패한_파기청크는_모두_롤백하고_다음실행에서_재시도한다() {
+        service.change(userId, request(0, NotificationEventType.CONFIRMED, "11"));
+        service.change(userId, request(1, NotificationEventType.CANCELLED, "11"));
+        clock.set(purgeAfter());
+        jdbc.execute("""
+                CREATE FUNCTION test_notification_purge_failure() RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN RAISE EXCEPTION 'simulated retention failure'; END $$
+                """);
+        jdbc.execute("""
+                CREATE TRIGGER test_notification_purge_failure BEFORE DELETE ON privacy_notification_notices
+                FOR EACH ROW EXECUTE FUNCTION test_notification_purge_failure()
+                """);
+        try {
+            assertThrows(RuntimeException.class, () -> transactions.executeWithoutResult(
+                    status -> retention.purgeChunk(clock.instant(), 500)));
+            assertEquals(2, eventCount());
+            assertEquals(1, settingCount());
+        } finally {
+            jdbc.execute("DROP TRIGGER test_notification_purge_failure ON privacy_notification_notices");
+            jdbc.execute("DROP FUNCTION test_notification_purge_failure()");
+        }
+        transactions.executeWithoutResult(status -> retention.purgeChunk(clock.instant(), 500));
+        assertEquals(0, eventCount());
+        assertEquals(0, settingCount());
+    }
+
+    @Test
+    void 두_파기실행이_겹쳐도_안전하게_삭제한다() throws Exception {
+        service.change(userId, request(0, NotificationEventType.CONFIRMED, "11"));
+        service.change(userId, request(1, NotificationEventType.CANCELLED, "11"));
+        clock.set(purgeAfter());
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> transactions.execute(
+                    status -> retention.purgeChunk(clock.instant(), 500)));
+            var second = executor.submit(() -> transactions.execute(
+                    status -> retention.purgeChunk(clock.instant(), 500)));
+            assertEquals(3, first.get(10, TimeUnit.SECONDS) + second.get(10, TimeUnit.SECONDS));
+        }
+        assertEquals(0, eventCount());
+        assertEquals(0, settingCount());
+    }
+
+    @Test
+    void 재신청이_회원잠금을_보유하면_파기는_건너뛰고_새설정을_보존한다() throws Exception {
+        service.change(userId, request(0, NotificationEventType.CONFIRMED, "11"));
+        service.change(userId, request(1, NotificationEventType.CANCELLED, "11"));
+        clock.set(purgeAfter());
+        CountDownLatch changed = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var renewal = executor.submit(() -> transactions.executeWithoutResult(status -> {
+                service.change(userId, request(2, NotificationEventType.CONFIRMED, "11"));
+                changed.countDown();
+                try {
+                    if (!release.await(10, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("release timeout");
+                    }
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(exception);
+                }
+            }));
+            try {
+                assertTrue(changed.await(10, TimeUnit.SECONDS));
+                int deleted = transactions.execute(status -> retention.purgeChunk(clock.instant(), 500));
+                assertEquals(0, deleted);
+            } finally {
+                release.countDown();
+            }
+            renewal.get(10, TimeUnit.SECONDS);
+        }
+        transactions.executeWithoutResult(status -> retention.purgeChunk(clock.instant(), 500));
+        assertEquals(1, service.current(userId).targets().size());
+        assertEquals(3, service.current(userId).settingsRevision());
+    }
+
+    @Test
+    void 업무이력을_90일후_삭제해도_활성설정의_신청안내는_남는다() {
+        NotificationSettingsRequest original = request(0, NotificationEventType.CONFIRMED, "11");
+        NotificationSettingsResponse first = service.change(userId, original);
+        clock.set(clock.instant().plus(PrivacyRetentionPolicy.NOTIFICATION_EVENT_RETENTION));
+        transactions.executeWithoutResult(status -> retention.purgeChunk(clock.instant(), 500));
+        assertEquals(0, eventCount());
+        assertEquals(1, service.current(userId).targets().size());
+        assertEquals(first.currentTarget().noticeVersion(),
+                service.current(userId).targets().getFirst().noticeVersion());
+        assertEquals(first.currentTarget().requestedAt(), service.current(userId).targets().getFirst().requestedAt());
+        assertThrows(NotificationSettingsConflictException.class, () -> service.change(userId, original));
+    }
+
+    @Test
+    void 한_청크는_500행까지만_삭제하고_남은대상을_다음청크에_처리한다() {
+        Instant created = clock.instant().minus(PrivacyRetentionPolicy.NOTIFICATION_EVENT_RETENTION);
+        jdbc.update("""
+                INSERT INTO privacy_notification_receipts(event_id,event_type,source,target_type,target_id,created_at,
+                    outcome,user_id,notice_version,settings_revision,request_fingerprint,purge_after)
+                SELECT ('90000000-0000-4000-8000-' || lpad(sequence::text,12,'0'))::uuid,
+                    'CONFIRMED','SETTING','REGION','11',?,'ACTIVATED',?,'notification-2026-10-10-v1',sequence,'test',?
+                FROM generate_series(1,501) AS sequence
+                """, Timestamp.from(created), userId, Timestamp.from(clock.instant()));
+        int first = transactions.execute(status -> retention.purgeChunk(clock.instant(), 500));
+        assertEquals(500, first);
+        assertEquals(1, eventCount());
+        int second = transactions.execute(status -> retention.purgeChunk(clock.instant(), 500));
+        assertEquals(1, second);
+        assertEquals(0, eventCount());
+    }
+
+    @Test
+    void 고지메타를_제거해도_기존알림의_활성상태와_만료시각은_유지된다() {
+        NotificationSettingsResponse first = service.change(userId, request(0, NotificationEventType.CONFIRMED, "11"));
+        jdbc.update("DELETE FROM privacy_notification_notices WHERE user_id = ?", userId);
+
+        var current = service.current(userId);
+
+        assertEquals(1, current.targets().size());
+        assertEquals(first.currentTarget().expiresAt(), current.targets().getFirst().expiresAt());
+        assertEquals(1, current.settingsRevision());
+        assertNull(current.targets().getFirst().noticeVersion());
+        assertNull(current.targets().getFirst().requestedAt());
+    }
+
+    @Test
+    void 기존업무의_재신청은_고지메타와_무관하게_실제만료시각을_갱신한다() {
+        NotificationSettingsResponse first = service.change(userId, request(0, NotificationEventType.CONFIRMED, "11"));
+        Instant originalPurgeAfter = purgeAfter();
+        clock.set(first.currentTarget().expiresAt().plusSeconds(1));
+        subscriptions.activateForMember(userId, NotificationTargetType.REGION, "11", clock.instant());
+        Instant businessExpiry = jdbc.queryForObject("""
+                SELECT expires_at FROM notification_subscriptions WHERE user_id = ?
+                """, Timestamp.class, userId).toInstant();
+
+        assertEquals(businessExpiry, service.current(userId).targets().getFirst().expiresAt());
+        assertEquals(originalPurgeAfter, purgeAfter());
+        clock.set(originalPurgeAfter);
+        transactions.executeWithoutResult(status -> retention.purgeChunk(clock.instant(), 500));
+
+        assertEquals(0, settingCount());
+        assertEquals(1, service.current(userId).targets().size());
+        assertEquals(businessExpiry, service.current(userId).targets().getFirst().expiresAt());
+    }
+
+    private int raceChange(CountDownLatch ready, CountDownLatch start, String target) throws Exception {
+        ready.countDown();
+        assertTrue(start.await(10, TimeUnit.SECONDS));
+        try {
+            service.change(userId, request(0, NotificationEventType.CONFIRMED, target));
+            return 1;
+        } catch (NotificationSettingsConflictException exception) {
+            return 0;
+        }
+    }
+
+    private NotificationSettingsRequest request(long revision, NotificationEventType type, String target) {
+        String notice = null;
+        if (type == NotificationEventType.CONFIRMED) {
+            notice = "notification-2026-10-10-v1";
+        }
+        return new NotificationSettingsRequest(UUID.randomUUID(), Long.toString(userId), revision, type,
+                NotificationEventSource.SETTING, NotificationTargetType.REGION, target, notice);
+    }
+
+    private Instant purgeAfter() {
+        return jdbc.queryForObject("SELECT purge_after FROM privacy_notification_notices WHERE user_id = ?",
+                Timestamp.class, userId).toInstant();
+    }
+
+    private int settingCount() {
+        return jdbc.queryForObject("SELECT count(*) FROM privacy_notification_notices WHERE user_id = ?",
+                Integer.class, userId);
+    }
+
+    private int eventCount() {
+        return jdbc.queryForObject("SELECT count(*) FROM privacy_notification_receipts WHERE user_id = ?",
+                Integer.class, userId);
+    }
+
+    @TestConfiguration
+    static class ClockConfiguration {
+        @Bean @Primary NotificationClock notificationClock() {
+            return new NotificationClock();
+        }
+    }
+
+    static class NotificationClock extends Clock {
+        private final AtomicReference<Instant> current = new AtomicReference<>(Instant.EPOCH);
+        void set(Instant value) { current.set(value); }
+        @Override public ZoneId getZone() { return ZoneId.of("UTC"); }
+        @Override public Clock withZone(ZoneId zone) { return Clock.fixed(instant(), zone); }
+        @Override public Instant instant() { return current.get(); }
     }
 }
