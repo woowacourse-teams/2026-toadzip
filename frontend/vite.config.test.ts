@@ -13,13 +13,14 @@ const posthogKeys = [
 ]
 
 beforeEach(async () => {
-  for (const key of [...posthogKeys, 'VITE_USER_NODE_ENV', 'BROWSER', 'BROWSER_ARGS']) {
+  const inheritedViteKeys = Object.keys(process.env).filter((key) => key.startsWith('VITE_'))
+  for (const key of [...new Set([...inheritedViteKeys, ...posthogKeys, 'BROWSER', 'BROWSER_ARGS'])]) {
     vi.stubEnv(key, undefined)
   }
   rootDirectory = await realpath(await mkdtemp(join(tmpdir(), 'posthog-vite-env-')))
   frontendDirectory = join(rootDirectory, 'frontend')
   await mkdir(frontendDirectory)
-  await symlink(resolve(process.cwd(), 'node_modules'), join(rootDirectory, 'node_modules'))
+  await symlink(resolve(process.cwd(), 'node_modules'), join(rootDirectory, 'node_modules'), 'junction')
   await copyFile(resolve(process.cwd(), 'vite.config.ts'), join(frontendDirectory, 'vite.config.ts'))
   await writeFile(join(frontendDirectory, 'package.json'), '{"type":"module"}')
   await writeFile(join(frontendDirectory, 'probe.ts'), 'console.log(import.meta.env)')
@@ -69,7 +70,7 @@ describe('PostHog root environment boundary', () => {
 
     server = await createServer(fixtureConfig('development'))
     const transformed = await server.transformRequest('/probe.ts')
-    expect(server.config.envDir).toBe(frontendDirectory)
+    expect(resolve(server.config.envDir)).toBe(frontendDirectory)
     expect(Object.keys(server.config.define)).toEqual(posthogKeys.map((key) => `import.meta.env.${key}`))
     for (const value of ['phc_rootpublicfixture', 'https://us.i.posthog.com', 'frontend-api-kept', 'frontend-ga-kept', 'frontend-map-kept']) {
       expect(transformed?.code).toContain(value)
