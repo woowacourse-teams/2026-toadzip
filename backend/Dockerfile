@@ -18,6 +18,10 @@ RUN ./gradlew bootJar --no-daemon && \
 
 FROM eclipse-temurin:25-jre
 
+RUN apt-get update && \
+    apt-get install --no-install-recommends -y curl && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY --from=builder --chown=10001:10001 /workspace/app.jar ./app.jar
