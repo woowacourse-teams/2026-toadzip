@@ -4,6 +4,17 @@
 기존 자료를 변경하거나 보유기간을 일괄 갱신하지 않는다. 회원 이메일의 수집·저장은 유지한다.
 SQL TEMP TABLE을 사용하지 않으며, SHARED DB는 이 기능의 마이그레이션 대상이 아니다.
 
+## 릴리스 단위와 자동화 확인
+
+개인정보 기반·서버 연동·프론트 연동·배포 설정은 리뷰를 위해 나누어도 **네 변경을 통합한 같은
+릴리스로 배포한다.** 서버 연동부터 회원 알림 API 계약이 달라지므로 중간 버전을 구형 프론트와
+함께 기동하지 않는다. 앞선 PR 병합 후 후속 PR의 base를 develop으로 바꾸고 실제 diff를 확인한다.
+
+현재 저장소의 backend/frontend CI workflow는 PR과 main/develop push의 검사만 수행한다.
+이것이 서버의 pull 주기 작업이나 저장소 밖 자동 배포가 없다는 보장은 아니다. 병합 전 운영자는
+외부 자동화 유무를 확인하고, 중간 병합이 배포를 유발하면 통합 릴리스 준비까지 해당 자동화를
+중지한다. 배포는 별도 승인을 받은 운영자가 아래 단계별 절차로 수행한다.
+
 ## 저장 경계와 시작 순서
 
 | 영역 | Flyway 경로·이력 | 역할 |
@@ -59,8 +70,70 @@ V1은 [모듈 분리 계약](privacy-isolation.md)의 7개 자료 테이블과 �
 5. 실제 DB에 대한 쓰기·교체 승인 후에만 아래 배포 절차를 실행한다. 코드 검사·격리 검증 완료가
    실제 로컬·개발·운영 DB 변경을 승인한다는 뜻은 아니다.
 
-실행용 호스트 스크립트와 Compose 기동 순서는 후속 배포 구성에서 제공한다. 그 전에는 이 변경만 개별 배포하지 않는다.
-현재 스키마 검사 원본은 `privacy/schema-preflight.sql`, 배포 전후 검사 SQL은 `scripts/check-privacy-schema.sql`이다.
-격리 DB 테스트가 기존 테이블·행 보존, 실패 시 무변경과 반복 기동을 확인한다.
+점검 스크립트는 호스트의 `psql`을 사용한다. 비밀번호는 저장소 밖 권한 0600의 `PGPASSFILE`
+또는 기존 인증으로 제공한다. 다음 연결 값은 운영자가 실제 환경에 맞게 지정할 예시다.
 
-현재 저장소의 GitHub Actions는 PR·main/develop push에서 검사만 수행한다. 저장소 webhook과 workflow에는 자동 배포 경로가 없으나, 서버 polling 등 외부 자동화는 배포 담당자가 별도로 확인해야 한다.
+```sh
+export PGHOST=primary-db.internal
+export PGPORT=5432
+export PGDATABASE=toadzip
+export PGUSER=toadzip
+export PGPASSFILE=/secure/path/to/primary.pgpass
+
+docker compose config --quiet
+sh scripts/check-privacy-schema.sh prod before
+docker compose build backend frontend
+```
+
+`before`는 앱 시작과 같은 읽기 전용 사전 검사를 실행한다. 기존 Flyway 이력이 없는 비어 있지
+않은 DB는 [Flyway 최초 적용](flyway-adoption.md)을 별도로 검토한다. 임의 baseline으로 우회하지 않는다.
+`after`는 독립 V1 성공 이력, 7개 테이블·필수 컬럼·파기 인덱스와 기존 테이블 FK 부재를 검사한다.
+SQL checksum 검증은 각각의 Flyway가 담당한다.
+
+## 승인된 교체 절차
+
+구버전 화면과 API의 동의·알림 계약을 혼합하지 않도록 프론트와 백엔드 writer를 함께 중지하고
+같은 릴리스로 교체한다. DB·볼륨·모니터링 서비스를 삭제하거나 초기화하지 않는다.
+
+```sh
+(
+  set -eu
+  docker compose stop frontend backend
+  sh scripts/check-privacy-schema.sh prod before
+  docker compose up -d --no-deps --wait --wait-timeout 300 backend
+  sh scripts/check-privacy-schema.sh prod after
+  docker compose up -d --no-deps --wait --wait-timeout 60 frontend
+)
+```
+
+스키마 검사나 backend health가 실패하면 프론트를 열지 않는다. `restart`만으로 새 이미지가
+반영되지 않으며 `--wait` 실패가 이미 성공한 마이그레이션을 취소한다는 뜻도 아니다. 원인을
+읽기 전용으로 확인하고 추가 기동·DDL·복구를 중단한다. 자동 rollback이나 이력 조작은 하지 않는다.
+
+## 기능 확인과 운영 경계
+
+- HTTPS에서 공개 안내·첫 선택·로그인·기존 알림 조회·취소를 검증한다. 회원 이메일은 유지한다.
+- 분석은 최신 안내 범위의 유효한 동의에만 수집한다. 미동의·거부·철회·만료 상태의 미전송과
+  동의 후 전송을 구분하여 확인한다. 동의 저장만으로 외부 SDK 전송 성공을 판정하지 않는다.
+- 개인정보 파기 배치의 대상은 위 신규 테이블뿐이다. 회원 부재 확인을 위한 기존 테이블 읽기와
+  기존 테이블 삭제는 다르다. 기간은 [운영 정책](../../docs/privacy-policy.md),
+  파기 동시성은 [동의 API](privacy-consent.md)와 [알림 설정](notification-settings.md)을 따른다.
+- 제공자 보유·삭제 설정, 국외이전, 백업·메일 파기, 담당자와 외부 경보는
+  [운영 정책](../../docs/privacy-policy.md)의 별도 확인 항목이다.
+
+## 구조 변경·기능 제거
+
+향후 개인정보 스키마 변경은 `db/privacy`의 새 버전만 추가한다. 적용된 SQL·이력은 수정하지 않는다.
+기존 테이블의 컬럼·인덱스·FK를 따라가며 제거할 필요가 없는 구조를 유지한다.
+
+기능 제거의 코드 범위·클라이언트 호환성과 자료 정리 순서는 [모듈 분리 계약](privacy-isolation.md)을 따른다.
+신구 코드가 혼합 실행되는 동안 신규 테이블을 제거하지 않는다. 배포에 자동 DROP·CASCADE나
+기존 테이블·이력의 수정을 포함하지 않는다.
+
+## 자동 검증
+
+`PrivacySchemaMigrationTest`는 격리 PostgreSQL에서 기존 모든 테이블의 컬럼·제약·인덱스·트리거와
+전체 행 값의 전후 일치, 새 독립 이력·테이블만 추가, 재시작 무변경, 빈 DB 시작, 폐기 설계 적용 DB의
+쓰기 없는 거절, 원본 SQL 해시, 신규 테이블 안에서만 FK·삭제 연쇄가 존재함을 검증한다.
+배포 gate와 `NotificationInterestMigrationTest`는 같은 신규 경계를 확인한다.
+이 검증은 별도 DB의 복구 실행이나 운영 배포 성공을 증명하지 않는다.
