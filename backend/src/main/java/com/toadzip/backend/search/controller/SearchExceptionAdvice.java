@@ -3,6 +3,7 @@ package com.toadzip.backend.search.controller;
 import com.toadzip.backend.global.exception.ErrorResponse;
 import com.toadzip.backend.global.exception.RequestTraceIdResolver;
 import com.toadzip.backend.search.exception.InvalidSearchRequestException;
+import com.toadzip.backend.search.exception.LocationSearchUnavailableException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -14,6 +15,16 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice
 public class SearchExceptionAdvice {
+
+    @ExceptionHandler(LocationSearchUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleLocationSearchUnavailable(
+            LocationSearchUnavailableException exception,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ErrorResponse("LOCATION_SEARCH_UNAVAILABLE", exception.getMessage(),
+                        RequestTraceIdResolver.resolve(request)));
+    }
 
     @ExceptionHandler(InvalidSearchRequestException.class)
     public ResponseEntity<ErrorResponse> handleInvalidSearchRequest(

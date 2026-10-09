@@ -10,6 +10,20 @@ const getHistory = vi.mocked(getPipelineHistory)
 beforeEach(() => getHistory.mockReset())
 
 describe('데이터 실행 이력', () => {
+  it('v2 이력 상세에도 같은 단계 표시를 쓰며 진행 중 이력에서 중지하지 않는다', async () => {
+    getHistory.mockResolvedValue([execution({ status: 'RUNNING', currentStepName: '마이홈 단지 수집' })])
+    render(<MemoryRouter><PipelineHistory domain="complex" compact /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /상세 보기/ }))
+    expect(screen.getByRole('list', { name: '실행 단계' }).children).toHaveLength(4)
+    expect(screen.getByRole('button', { name: '마이홈 단지 수집 진행' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: /실행 중지/ })).not.toBeInTheDocument()
+  })
+  it('v2는 도메인 조건을 서버로 보내 실행 이력을 분리한다', async () => {
+    getHistory.mockResolvedValue([])
+    render(<PipelineHistory domain="complex" />)
+    await screen.findByText('실행 이력이 없습니다.')
+    expect(getHistory).toHaveBeenCalledWith(0, 'complex')
+  })
   it('로딩 중에는 새로고침을 잠그고 빈 결과를 표시하지 않는다', async () => {
     const result = deferred<DataPipelineExecution[]>()
     getHistory.mockReturnValue(result.promise)

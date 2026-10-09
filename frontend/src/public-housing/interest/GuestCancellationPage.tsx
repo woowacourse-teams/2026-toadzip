@@ -1,9 +1,12 @@
-import { useState, type FormEvent } from 'react'
+import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
+import { useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { requestGuestCancellation, verifyGuestCancellation } from './guestCancellationApi'
 import styles from './GuestCancellationPage.module.css'
 
 export function GuestCancellationPage() {
+  const inFlight = useRef(false)
+  const [cancellationId] = useState(createAnalyticsId)
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
   const [requested, setRequested] = useState(false)
@@ -13,33 +16,47 @@ export function GuestCancellationPage() {
 
   async function request(event: FormEvent) {
     event.preventDefault()
+    if (inFlight.current) return
+    inFlight.current = true
+    const submissionId = createAnalyticsId()
     setBusy(true)
     setError('')
+    captureProductEvent('guest_cancellation_requested', { cancellation_id: cancellationId, submission_id: submissionId })
     try {
       await requestGuestCancellation(email.trim())
+      captureProductEvent('guest_cancellation_request_accepted', { cancellation_id: cancellationId, submission_id: submissionId })
       setRequested(true)
     } catch (cause) {
+      captureProductEvent('guest_cancellation_request_failed', { cancellation_id: cancellationId, submission_id: submissionId, failure_reason: 'request_failed' })
       setError(cause instanceof Error ? cause.message : '취소 요청을 접수하지 못했어요.')
     } finally {
+      inFlight.current = false
       setBusy(false)
     }
   }
 
   async function verify(event: FormEvent) {
     event.preventDefault()
+    if (inFlight.current) return
+    inFlight.current = true
+    const submissionId = createAnalyticsId()
     setBusy(true)
     setError('')
+    captureProductEvent('guest_cancellation_verification_submitted', { cancellation_id: cancellationId, submission_id: submissionId })
     try {
       await verifyGuestCancellation(email.trim(), code.trim())
+      captureProductEvent('guest_bulk_cancellation_completed', { cancellation_id: cancellationId, submission_id: submissionId })
       setFinished(true)
     } catch (cause) {
+      captureProductEvent('guest_cancellation_verification_failed', { cancellation_id: cancellationId, submission_id: submissionId, failure_reason: 'request_failed' })
       setError(cause instanceof Error ? cause.message : '취소를 완료하지 못했어요.')
     } finally {
+      inFlight.current = false
       setBusy(false)
     }
   }
 
-  return <main className={styles.page}>
+  return <main className={`${styles.page} ph-no-capture`}>
     <div className={styles.card}>
       <Link className={styles.back} to="/">← 지도로 돌아가기</Link>
       <span className={styles.eyebrow}>이메일 알림</span>

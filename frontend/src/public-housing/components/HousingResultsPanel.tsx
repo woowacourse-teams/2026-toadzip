@@ -1,3 +1,4 @@
+import { captureProductEvent } from '../../analytics/productAnalytics'
 import { useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
 import { useMobileViewport } from './useMobileViewport'
 
@@ -18,6 +19,12 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
   const [dragHeight, setDragHeight] = useState<number | null>(null)
   const drag = useRef<{ pointerId: number; y: number; height: number; peek: number; max: number; startTime: number } | null>(null)
   const collapsed = mobile && snap === 0
+
+  function changeSnap(next: number, method: 'drag' | 'keyboard' | 'button') {
+    if (next === snap) return
+    captureProductEvent('results_panel_snap_changed', { from_snap: ['peek', 'half', 'full'][snap], to_snap: ['peek', 'half', 'full'][next], method, list_view_id: panel.current?.dataset.listViewId ?? 'unavailable' })
+    setSnap(next)
+  }
 
   function startDrag(event: PointerEvent<HTMLDivElement>) {
     if (!event.isPrimary || event.button !== 0 || !panel.current) return
@@ -48,9 +55,9 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
     const nearest = points.reduce((index, point, candidate) => Math.abs(point - height) < Math.abs(points[index] - height) ? candidate : index, 0)
     const velocity = delta / Math.max(1, event.timeStamp - current.startTime)
     if (nearest === snap && Math.abs(delta) > 24 && Math.abs(velocity) > 0.45) {
-      setSnap((value) => Math.max(0, Math.min(2, value + Math.sign(delta))))
+      changeSnap(Math.max(0, Math.min(2, snap + Math.sign(delta))), 'drag')
     } else {
-      setSnap(nearest)
+      changeSnap(nearest, 'drag')
     }
   }
 
@@ -67,17 +74,17 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
         onKeyDown={(event) => {
           if (!['ArrowUp', 'ArrowDown', 'Home', 'End', 'Enter', ' '].includes(event.key)) return
           event.preventDefault()
-          if (event.key === 'Home') setSnap(0)
-          else if (event.key === 'End') setSnap(2)
-          else if (event.key === 'ArrowDown') setSnap((value) => Math.max(0, value - 1))
-          else if (event.key === 'ArrowUp') setSnap((value) => Math.min(2, value + 1))
-          else setSnap((value) => value === 2 ? 0 : value + 1)
+          if (event.key === 'Home') changeSnap(0, 'keyboard')
+          else if (event.key === 'End') changeSnap(2, 'keyboard')
+          else if (event.key === 'ArrowDown') changeSnap(Math.max(0, snap - 1), 'keyboard')
+          else if (event.key === 'ArrowUp') changeSnap(Math.min(2, snap + 1), 'keyboard')
+          else changeSnap(snap === 2 ? 0 : snap + 1, 'keyboard')
         }}><span aria-hidden="true" /></div>}
       <header className="housing-results__page-header">
         <h2>{title}</h2>
         <button type="button" className="housing-results__collapse" aria-label={collapsed ? '목록 펼치기' : '목록 접기'}
           aria-controls="housing-list-content" aria-expanded={visible && !collapsed}
-          onClick={() => mobile ? setSnap(collapsed ? 1 : 0) : onCollapse()}>
+          onClick={() => mobile ? changeSnap(collapsed ? 1 : 0, 'button') : onCollapse()}>
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
             <path d="m12 4-6 6 6 6" />
           </svg>

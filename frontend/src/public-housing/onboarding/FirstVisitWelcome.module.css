@@ -43,7 +43,7 @@
   justify-content: center;
 }
 
-.brand img { display: block; width: 136px; height: auto; object-fit: contain; }
+.brand img { display: block; width: 88px; height: 88px; object-fit: contain; }
 
 .intro h2 {
   margin: 0;
@@ -137,7 +137,7 @@
   .intro { gap: var(--ds-space-3); }
   .intro h2 { font-size: var(--ds-text-title); }
   .intro p { margin-top: var(--ds-space-2); }
-  .brand img { width: 104px; }
+  .brand img { width: 64px; height: 64px; }
   .places button { padding: var(--ds-space-2); min-height: 76px; }
   .places strong { flex-wrap: wrap; }
 }

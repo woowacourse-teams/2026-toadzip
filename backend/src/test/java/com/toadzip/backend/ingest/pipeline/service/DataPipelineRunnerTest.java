@@ -77,6 +77,9 @@ class DataPipelineRunnerTest {
     @Mock
     private DataPipelineExecutionStateService executionStateService;
 
+    @Mock
+    private AnnouncementRegistrationService registrationService;
+
     private final UUID executionId = UUID.randomUUID();
 
     private DataPipelineRunner runner;
@@ -101,8 +104,54 @@ class DataPipelineRunnerTest {
                 announcementEnrichmentService,
                 resultAdapter,
                 executionStateService,
-                meterRegistry
+                meterRegistry,
+                registrationService
         );
+    }
+
+    @Test
+    void 단건_등록은_대상_ID를_각_단계에_전달하고_전체_수집과_정제를_호출하지_않는다() {
+        when(registrationService.execute(any(), org.mockito.ArgumentMatchers.eq("21026")))
+                .thenReturn(new DataPipelineStepResult("{}", 0, 0, 0));
+
+        runner.run(DataPipelineType.ANNOUNCEMENT_REGISTRATION, executionId, "21026");
+
+        InOrder order = inOrder(registrationService);
+        for (DataPipelineStep step : DataPipelineType.ANNOUNCEMENT_REGISTRATION.steps()) {
+            order.verify(registrationService).execute(step, "21026");
+        }
+        org.mockito.Mockito.verifyNoInteractions(myHomeAnnouncementCollectionService,
+                myHomeAnnouncementMappingService, announcementEnrichmentService, collectionService);
+    }
+
+    @Test
+    void 해당_없는_LH_단계는_성공이_아닌_생략으로_기록하고_정제를_이어간다() {
+        when(registrationService.execute(any(), eq("21026")))
+                .thenReturn(new DataPipelineStepResult("{}", 0, 0, 0));
+        when(registrationService.execute(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES, "21026"))
+                .thenReturn(DataPipelineStepResult.notApplicable("해당 없음"));
+
+        runner.run(DataPipelineType.ANNOUNCEMENT_REGISTRATION, executionId, "21026");
+
+        verify(executionStateService).skipStep(executionId,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES, "해당 없음", "{}");
+        verify(executionStateService, never()).completeStep(executionId,
+                DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES, "{}");
+        verify(registrationService).execute(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS, "21026");
+    }
+
+    @Test
+    void 단건_수집_실패_후에는_정제나_LH_상세를_실행하지_않는다() {
+        when(registrationService.execute(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS, "21026"))
+                .thenThrow(new com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException(
+                        "외부 API 호출 제한"));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                runner.run(DataPipelineType.ANNOUNCEMENT_REGISTRATION, executionId, "21026"))
+                .hasMessageContaining("호출 제한");
+
+        verify(registrationService, never()).execute(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS, "21026");
+        verify(registrationService, never()).execute(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS, "21026");
     }
 
     @Test

@@ -20,6 +20,7 @@ import com.toadzip.backend.interest.repository.NotificationSubscriptionRepositor
 import com.toadzip.backend.region.repository.RegionCodeResolver;
 import java.time.Clock;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class NotificationInterestServiceTest {
@@ -31,6 +32,11 @@ class NotificationInterestServiceTest {
     private final NotificationInterestService service = new NotificationInterestService(
             repository, subscriptions, mock(NotificationGuestSubscriptionRepository.class),
             mock(RegionCodeResolver.class), complexes, announcements, Clock.systemUTC());
+
+    @BeforeEach
+    void 새_이벤트_기록을_준비한다() {
+        when(repository.record(any())).thenReturn(true);
+    }
 
     @Test
     void 존재하는_단지와_공고의_수요를_저장한다() {
@@ -49,7 +55,7 @@ class NotificationInterestServiceTest {
     void 숫자_범위를_넘는_대상은_저장하지_않는다() {
         assertThrows(InvalidNotificationInterestException.class, () -> service.record(
                 request(NotificationEventSource.COMPLEX_DETAIL, NotificationTargetType.COMPLEX, "9999999999999999999"), null));
-        verify(repository, never()).record(any());
+        verify(repository, never()).complete(any());
     }
 
     private NotificationInterestRequest request(

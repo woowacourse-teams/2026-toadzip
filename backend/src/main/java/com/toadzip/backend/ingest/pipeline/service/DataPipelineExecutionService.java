@@ -1,13 +1,15 @@
 package com.toadzip.backend.ingest.pipeline.service;
 
+import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.IngestOwnershipLostException;
-import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
+import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
+import com.toadzip.backend.ingest.pipeline.domain.MyHomeAnnouncementUrl;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
@@ -70,7 +72,29 @@ public class DataPipelineExecutionService {
     }
 
     public DataPipelineExecutionResponse start(DataPipelineType type) {
+        if (type == DataPipelineType.ANNOUNCEMENT_REGISTRATION) {
+            throw new InvalidIngestRequestException("단건 등록에는 마이홈 공고 ID가 필요합니다.");
+        }
         return startExecution(type, null);
+    }
+
+    public DataPipelineExecutionResponse startAnnouncementRegistration(String identifier) {
+        if (identifier == null || identifier.isBlank() || identifier.strip().length() > 100) {
+            throw new InvalidIngestRequestException("마이홈 공고 ID는 1자 이상 100자 이하로 입력해 주세요.");
+        }
+        return startExecution(DataPipelineType.ANNOUNCEMENT_REGISTRATION, null, identifier.strip());
+    }
+
+    public DataPipelineExecutionResponse startAnnouncementRegistrationUrl(String url) {
+        MyHomeAnnouncementUrl target;
+        try {
+            target = MyHomeAnnouncementUrl.parse(url);
+        }
+        catch (IllegalArgumentException exception) {
+            throw new InvalidIngestRequestException("잘못된 공고 URL입니다. "
+                    + "마이홈 공고 상세 URL과 단일 pblancId를 확인해 주세요.");
+        }
+        return startAnnouncementRegistration(target.announcementIdentifier());
     }
 
     public DataPipelineExecutionResponse start(DataPipelineType type, String serviceKey) {
@@ -85,6 +109,12 @@ public class DataPipelineExecutionService {
     }
 
     private DataPipelineExecutionResponse startExecution(DataPipelineType type, String serviceKey) {
+        return startExecution(type, serviceKey, null);
+    }
+
+    private DataPipelineExecutionResponse startExecution(
+            DataPipelineType type, String serviceKey, String targetIdentifier
+    ) {
         UUID executionId = UUID.randomUUID();
         DataPipelineExecutionLock.Lease lease = executionLock.tryAcquire(executionId)
                 .orElseThrow(() -> new IngestAlreadyRunningException(ALREADY_RUNNING_MESSAGE));
@@ -97,7 +127,7 @@ public class DataPipelineExecutionService {
                     INTERRUPTED_FAILURE_MESSAGE
             );
             recoverTerminalCollections(startedAt);
-            execution = executionStateService.create(executionId, type, startedAt);
+            execution = createExecution(executionId, type, targetIdentifier, startedAt);
         }
         catch (RuntimeException exception) {
             lease.close();
@@ -115,7 +145,8 @@ public class DataPipelineExecutionService {
         }
         try {
             String traceId = MDC.get("traceId");
-            executor.execute(() -> execute(executionId, type, lease, heartbeatTask, traceId, serviceKey));
+            executor.execute(() -> execute(executionId, type, lease, heartbeatTask, traceId,
+                    serviceKey, targetIdentifier));
         }
         catch (RuntimeException exception) {
             heartbeatTask.cancel(false);
@@ -126,6 +157,15 @@ public class DataPipelineExecutionService {
         return acceptedResponse;
     }
 
+    private DataPipelineExecution createExecution(
+            UUID executionId, DataPipelineType type, String targetIdentifier, Instant startedAt
+    ) {
+        if (targetIdentifier != null) {
+            return executionStateService.createRegistration(executionId, targetIdentifier, startedAt);
+        }
+        return executionStateService.create(executionId, type, startedAt);
+    }
+
     public List<DataPipelineExecutionResponse> history(int page, int size) {
         recoverInterruptedExecutions();
         var request = PageRequest.of(
@@ -134,6 +174,23 @@ public class DataPipelineExecutionService {
         return executionRepository.findAll(request).stream()
                 .map(executionMapper::response)
                 .toList();
+    }
+
+    public List<DataPipelineExecutionResponse> history(int page, int size, String domain) {
+        if (domain == null) {
+            return history(page, size);
+        }
+        List<DataPipelineType> types = switch (domain) {
+            case "complex" -> List.of(DataPipelineType.COMPLEX_COLLECTION, DataPipelineType.COMPLEX_REFINEMENT,
+                    DataPipelineType.COMPLEX_SYNC);
+            case "announcement" -> List.of(DataPipelineType.ANNOUNCEMENT_COLLECTION,
+                    DataPipelineType.ANNOUNCEMENT_REFINEMENT, DataPipelineType.ANNOUNCEMENT_SYNC,
+                    DataPipelineType.ANNOUNCEMENT_REGISTRATION);
+            default -> throw new InvalidIngestRequestException("단지 또는 공고를 선택해 주세요.");
+        };
+        recoverInterruptedExecutions();
+        return executionRepository.findByTypeIn(types, PageRequest.of(page, size, Sort.by("id").descending()))
+                .stream().map(executionMapper::response).toList();
     }
 
     public DataPipelineExecutionResponse findLatest(DataPipelineType type) {
@@ -162,7 +219,8 @@ public class DataPipelineExecutionService {
             DataPipelineExecutionLock.Lease lease,
             ScheduledFuture<?> heartbeatTask,
             String traceId,
-            String serviceKey
+            String serviceKey,
+            String targetIdentifier
     ) {
         String previousTraceId = MDC.get("traceId");
         String previousExecutionId = MDC.get("executionId");
@@ -171,7 +229,7 @@ public class DataPipelineExecutionService {
         var monitor = new DataPipelineExecutionMonitor(executionId, executionStateService, clock);
         try (lease; var ignored = IngestExecutionScope.open(lease, monitor, serviceKey)) {
             lease.verifyHeld();
-            runAndRecordOutcome(executionId, type);
+            runAndRecordOutcome(executionId, type, targetIdentifier);
         }
         catch (IngestOwnershipLostException exception) {
             recordFailure(executionId, type, findCurrentStep(executionId), exception.getMessage(), null);
@@ -191,6 +249,10 @@ public class DataPipelineExecutionService {
             recordFailure(executionId, type, failedStep, exception.getMessage(), null);
             log.warn("LH 공고 API 장애로 수집을 중단했습니다: type={}, step={}", type, failedStep);
         }
+        catch (AnnouncementRegistrationException exception) {
+            recordFailure(executionId, type, findCurrentStep(executionId), exception.getMessage(), null);
+            log.warn("단건 공고 등록 실패: executionId={}, reason={}", executionId, exception.getMessage());
+        }
         catch (RuntimeException exception) {
             DataPipelineStep failedStep = findCurrentStep(executionId);
             recordFailure(executionId, type, failedStep, INTERNAL_FAILURE_MESSAGE, null);
@@ -208,9 +270,14 @@ public class DataPipelineExecutionService {
         }
     }
 
-    private void runAndRecordOutcome(UUID executionId, DataPipelineType type) {
+    private void runAndRecordOutcome(UUID executionId, DataPipelineType type, String targetIdentifier) {
         try {
-            runner.run(type, executionId);
+            if (targetIdentifier == null) {
+                runner.run(type, executionId);
+            }
+            if (targetIdentifier != null) {
+                runner.run(type, executionId, targetIdentifier);
+            }
         }
         catch (DataPipelineStoppedException exception) {
             executionStateService.stop(executionId, Instant.now(clock));

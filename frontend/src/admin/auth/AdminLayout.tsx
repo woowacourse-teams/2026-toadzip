@@ -47,6 +47,7 @@ export function AdminLayout() {
         </div>
         <div className="admin-nav-group"><span>수집 운영</span>
           <NavLink to="/admin/ingest">수집·정제</NavLink>
+          <NavLink to="/admin/ingest-v2">수집·정제 v2</NavLink>
           <NavLink to="/admin/sources">원천 데이터</NavLink>
           <NavLink to="/admin/failures">실패·검토 항목</NavLink>
           <NavLink to="/admin/locations">주소 데이터</NavLink>

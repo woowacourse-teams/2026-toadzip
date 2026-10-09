@@ -1,6 +1,6 @@
+import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import logo from '../../assets/brand/bok-logo.png'
 import { Button } from '../../design-system/components/Button.tsx'
 import { SearchGroup } from '../search/IntegratedSearch.tsx'
 import { integratedSearchRepository, type IntegratedSearchRepository, type SearchResultItem } from '../search/integratedSearchRepository.ts'
@@ -49,6 +49,7 @@ function WelcomeDialog({
   onRegionSelect,
   repository = integratedSearchRepository,
 }: Props & { readonly onComplete: () => void }) {
+  const exposureId = useRef(createAnalyticsId()).current
   const dialogRef = useRef<HTMLDialogElement>(null)
   const primaryRef = useRef<HTMLButtonElement>(null)
   const [searching, setSearching] = useState(false)
@@ -64,18 +65,25 @@ function WelcomeDialog({
     const dialog = dialogRef.current
     dialog?.showModal()
     primaryRef.current?.focus({ preventScroll: true })
-    return () => dialog?.close()
-  }, [])
+    let cancelled = false
+    queueMicrotask(() => { if (!cancelled && dialog?.open) captureProductEvent('welcome_shown', { exposure_id: exposureId }, { dedupeKey: `welcome:${exposureId}` }) })
+    return () => { cancelled = true; dialog?.close() }
+  }, [exposureId])
 
   useEffect(() => {
     if (searching) inputRef.current?.focus({ preventScroll: true })
   }, [searching, inputRef])
 
+  function complete(method: 'region_search' | 'starter_place' | 'browse_map' | 'escape') {
+    captureProductEvent('welcome_completed', { exposure_id: exposureId, method })
+    onComplete()
+  }
+
   return createPortal(
     <dialog ref={dialogRef} className={styles.dialog}
       aria-labelledby={titleId}
       aria-describedby={searching ? undefined : descriptionId}
-      onCancel={(event) => { event.preventDefault(); onComplete() }}>
+      onCancel={(event) => { event.preventDefault(); complete('escape') }}>
       <div className={styles.content} onKeyDown={searching ? onKeyDown : undefined}>
         {searching ? (
           <>
@@ -94,15 +102,15 @@ function WelcomeDialog({
               <div className={`${styles.results} integrated-search__results`} ref={suggestionsRef} id={suggestionsId}>
                 <SearchGroup key={normalizedQuery} query={normalizedQuery}
                   repository={repository} type="REGION"
-                  onSelect={(region) => { onRegionSelect(region); onComplete() }} />
+                  onSelect={(region) => { onRegionSelect(region); complete('region_search') }} />
               </div>
             ) : (
               <section className={styles.examples} aria-label="예시 지역">
                 <p>이 동네부터 둘러보세요</p>
                 <div className={styles.places}>
-                  {starterPlaces.map((place) => (
+                  {starterPlaces.map((place, index) => (
                     <button type="button" key={place.name}
-                      onClick={() => { onPlaceSelect(place); onComplete() }}>
+                      onClick={() => { captureProductEvent('starter_place_selected', { starter_place_id: ['jamsil', 'gangnam', 'pangyo'][index], surface: 'welcome' }); onPlaceSelect(place); complete('starter_place') }}>
                       <strong>{place.name}<span aria-hidden="true">↗</span></strong>
                       <span>{place.detail}</span>
                     </button>
@@ -114,7 +122,7 @@ function WelcomeDialog({
         ) : (
           <div className={styles.intro}>
             <div className={styles.brand}>
-              <img src={logo} alt="BOK 공공주택 복덕방 로고" width="204" height="94" />
+              <img src="/logo-bok-search.svg" alt="공공주택 복덕방 로고" width="164" height="164" />
             </div>
             <div>
               <h2 id={titleId}>살고 싶은 동네의<br />공공임대주택을 찾아보세요.</h2>
@@ -124,11 +132,11 @@ function WelcomeDialog({
         )}
         <div className={styles.actions}>
           {!searching && (
-            <Button ref={primaryRef} onClick={() => setSearching(true)}>
+            <Button ref={primaryRef} onClick={() => { captureProductEvent('welcome_search_started', { exposure_id: exposureId }); setSearching(true) }}>
               살고 싶은 지역 검색하기
             </Button>
           )}
-          <button className={styles.explore} type="button" onClick={onComplete}>
+          <button className={styles.explore} type="button" onClick={() => complete('browse_map')}>
             바로 지도 둘러보기
           </button>
         </div>

@@ -35,7 +35,7 @@
   기존 `sourceReviewRequired`로 별도 표시한다.
 - 목록의 선택적 `verification=UNREVIEWED|VERIFIED|ON_HOLD|STALE` 필터와
   `complex.verificationStatus`, `complex.reviewedFieldCount`로 같은 상태를 제공한다.
-- Flyway `V20261008_03`은 검토 이력 테이블과 단지별 최신 기록 인덱스를 추가한다.
+- Flyway `V20261009_01`은 검토 이력 테이블과 단지별 최신 기록 인덱스를 추가한다.
   기존 단지 데이터는 변경하지 않는다.
 
 검증: `ComplexVerificationIntegrationTest`와 `AdminManagementIntegrationTest`.

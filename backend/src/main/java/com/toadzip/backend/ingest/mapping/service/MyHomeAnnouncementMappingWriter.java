@@ -15,13 +15,17 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projecti
 import com.toadzip.backend.ingest.domain.MyHomeAnnouncementSupplyRowGroups;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentWriter;
+import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
+import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeAnnouncementMappingReport;
+import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureStore;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeAnnouncementMappingRejectedException;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyMatcher.MyHomeSupplyMatchResult;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSupplyRowResolver.ResolvedAnnouncement;
+import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -53,12 +57,74 @@ public class MyHomeAnnouncementMappingWriter {
 
     private final LhAnnouncementEnrichmentWriter enrichmentWriter;
 
+    private final MyHomeAnnouncementMappingFailureStore failureStore;
+
+    /** 신규 공고·공급행·LH 보강을 하나의 트랜잭션으로 저장한다. */
+    @Transactional
+    public MyHomeAnnouncementWriteResult register(ResolvedAnnouncement resolved, Announcement previous) {
+        IngestExecutionScope.verifyHeld();
+        IngestExecutionScope.checkStopRequested();
+        String identifier = resolved.data().sourceAnnouncementIdentifier();
+        if (announcementRepository.findBySourceAnnouncementIdentifierForUpdate(identifier).isPresent()) {
+            throw new AnnouncementRegistrationException("이미 등록된 공고입니다: " + identifier);
+        }
+        return writeRegistration(resolved, previous, Map.of());
+    }
+
+    /** 요청에서 검증한 선택을 이번 정제에만 적용한다. 별도 매칭 규칙은 저장하지 않는다. */
+    @Transactional
+    public MyHomeAnnouncementWriteResult writeSelected(ResolvedAnnouncement resolved, Announcement previous,
+            Map<String, MyHomeSupplyMatchResult> selections) {
+        return writeRegistration(resolved, previous, selections);
+    }
+
+    /** 단건 등록은 LH 보강을 재검증하고 실패 시 전체 저장을 되돌린다. */
+    private MyHomeAnnouncementWriteResult writeRegistration(ResolvedAnnouncement resolved, Announcement previous,
+            Map<String, MyHomeSupplyMatchResult> selections) {
+        IngestExecutionScope.verifyHeld();
+        IngestExecutionScope.checkStopRequested();
+        String identifier = resolved.data().sourceAnnouncementIdentifier();
+        MyHomeAnnouncementWriteResult result = writeResolved(resolved, previous, selections);
+        if (!result.failures().isEmpty()) {
+            MyHomeSupplyMatchingFailureData failure = result.failures().getFirst();
+            throw new MyHomeAnnouncementMappingRejectedException(
+                    failure.reason(), "공급행 매칭 실패: " + failure.detail());
+        }
+        if (resolved.data().provider() == AgencyCode.LH) {
+            if (resolved.request() == null) {
+                throw new MyHomeAnnouncementMappingRejectedException(
+                        MyHomeAnnouncementMappingFailureReason.INVALID_VALUE, "연결된 LH 공고가 없습니다.");
+            }
+            Announcement announcement = announcementRepository.findBySourceAnnouncementIdentifier(identifier)
+                    .orElseThrow();
+            try {
+                enrichmentWriter.writeAfterMapping(announcement, resolved.request(), resolved.supplies(),
+                        Set.of(), resolved.sourceKeysExcludedFromLhEnrichment());
+            }
+            catch (LhAnnouncementEnrichmentRejectedException exception) {
+                throw new MyHomeAnnouncementMappingRejectedException(
+                        MyHomeAnnouncementMappingFailureReason.INVALID_VALUE, "LH 보강 실패: " + exception.getMessage());
+            }
+        }
+        failureStore.reconcileForAnnouncement(
+                identifier, List.of(), IngestExecutionContext.currentExecutionId().orElse(null));
+        IngestExecutionScope.verifyHeld();
+        IngestExecutionScope.checkStopRequested();
+        announcementRepository.flush();
+        return result;
+    }
+
     /** 주택형 변경과 LH 금액 보강을 함께 저장한다. 보강이 실패하면 공고 한 건을 모두 되돌린다. */
     @Transactional
     public MyHomeAnnouncementWriteResult write(
             ResolvedAnnouncement resolved,
             Announcement previousAnnouncement
     ) {
+        return writeResolved(resolved, previousAnnouncement, Map.of());
+    }
+
+    private MyHomeAnnouncementWriteResult writeResolved(ResolvedAnnouncement resolved,
+            Announcement previousAnnouncement, Map<String, MyHomeSupplyMatchResult> selections) {
         MyHomeAnnouncementMappingData data = resolved.data();
         AnnouncementWriteResult announcementResult = writeAnnouncement(data, previousAnnouncement);
         if (announcementResult.announcement().getProvider() != data.provider()) {
@@ -73,7 +139,8 @@ public class MyHomeAnnouncementMappingWriter {
                 announcementResult.announcement(),
                 data.supplyRows(),
                 resolved.preserveExistingLhResolvedRows(),
-                resolved.historicalSourceKeys()
+                resolved.historicalSourceKeys(),
+                selections
         );
         enrichChangedAnnouncement(resolved, announcementResult, supplyRowsResult);
         return new MyHomeAnnouncementWriteResult(
@@ -195,7 +262,8 @@ public class MyHomeAnnouncementMappingWriter {
             Announcement announcement,
             List<MyHomeSupplyRowMappingData> rows,
             boolean preserveExistingLhResolvedRows,
-            Set<String> historicalSourceKeys
+            Set<String> historicalSourceKeys,
+            Map<String, MyHomeSupplyMatchResult> selections
     ) {
         Map<String, SupplyRow> storedRows = supplyRowRepository.findAllByAnnouncement(announcement)
                 .stream()
@@ -224,6 +292,11 @@ public class MyHomeAnnouncementMappingWriter {
             boolean preserveLhRows = preserveExistingLhResolvedRows
                     || announcement.getProvider() == AgencyCode.LH && historical;
             if (preserveLhRows && hasLhResolvedRows(announcement, storedGroup)) {
+                if (selections.containsKey(data.sourceSupplyRowIdentifier())) {
+                    throw new MyHomeAnnouncementMappingRejectedException(
+                            MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
+                            "기존 LH 공급행을 보존해야 하는 원천입니다. 최신 공급 정보를 수집한 뒤 다시 정제해 주세요.");
+                }
                 PreservedGroupWriteResult result = updatePreservedGroup(
                         storedGroup, storedRows, data, historical, currentRowIdentifiers, displayOrder
                 );
@@ -233,7 +306,16 @@ public class MyHomeAnnouncementMappingWriter {
                 continue;
             }
             SupplyRow stored = storedRows.remove(data.sourceSupplyRowIdentifier());
-            MyHomeSupplyMatchResult match = supplyMatcher.match(data);
+            MyHomeSupplyMatchResult match = selections.get(data.sourceSupplyRowIdentifier());
+            if (match == null) {
+                match = supplyMatcher.match(data);
+            }
+            if (stored != null && stored.isAdminModified()
+                    && selections.containsKey(data.sourceSupplyRowIdentifier())) {
+                throw new MyHomeAnnouncementMappingRejectedException(
+                        MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
+                        "관리자가 수정한 공급행입니다. 기존 공고 관리 화면에서 연결을 수정해 주세요.");
+            }
             if (match.failure() != null) {
                 failures.add(match.failure());
             }

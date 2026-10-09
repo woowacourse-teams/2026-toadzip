@@ -1,3 +1,4 @@
+import { captureProductEvent, createAnalyticsId } from '../analytics/productAnalytics'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { BrandLink } from '../BrandLink'
@@ -12,6 +13,8 @@ export function FeedbackPage() {
   const [pending, setPending] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState('')
+  const [feedbackId] = useState(createAnalyticsId)
+  const started = useRef(false)
   const inFlight = useRef(false)
   const textarea = useRef<HTMLTextAreaElement>(null)
   const confirmation = useRef<HTMLHeadingElement>(null)
@@ -27,14 +30,18 @@ export function FeedbackPage() {
       textarea.current?.focus()
       return
     }
+    const submissionId = createAnalyticsId()
+    captureProductEvent('feedback_submitted', { feedback_id: feedbackId, submission_id: submissionId })
     inFlight.current = true
     setPending(true)
     setError('')
     try {
       await submitFeedback(content.trim())
+      captureProductEvent('feedback_succeeded', { feedback_id: feedbackId, submission_id: submissionId })
       setContent('')
       setSubmitted(true)
     } catch (cause) {
+      captureProductEvent('feedback_failed', { feedback_id: feedbackId, submission_id: submissionId, failure_reason: 'request_failed' })
       setError(cause instanceof Error ? cause.message : '의견을 보내지 못했습니다. 다시 시도해 주세요.')
     } finally {
       inFlight.current = false
@@ -42,7 +49,7 @@ export function FeedbackPage() {
     }
   }
 
-  return <div className={styles.page}>
+  return <div className={`${styles.page} ph-no-capture`}>
     <header className={styles.header}><div className={styles.headerInner}>
       <BrandLink /><Link className={styles.backLink} to="/">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>
@@ -69,7 +76,13 @@ export function FeedbackPage() {
           value={content} disabled={pending} aria-invalid={Boolean(error)}
           aria-describedby={`feedback-hint feedback-count${error ? ' feedback-error' : ''}`}
           placeholder="어떤 상황에서 불편했는지, 어떻게 개선되면 좋을지 알려 주세요."
-          onChange={event => { setContent(event.target.value); setError('') }} />
+          onChange={event => {
+            if (!started.current) {
+              started.current = true
+              captureProductEvent('feedback_started', { feedback_id: feedbackId })
+            }
+            setContent(event.target.value); setError('')
+          }} />
         <div className={styles.inputMeta}>
           <p className={styles.hint} id="feedback-hint">로그인 없이 보낼 수 있어요. 이름, 전화번호 등 개인정보는 적지 말아 주세요.</p>
           <span id="feedback-count" className={styles.count}><strong>{content.length.toLocaleString('ko-KR')}</strong> / 2,000자</span>

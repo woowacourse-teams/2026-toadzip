@@ -12,9 +12,11 @@ import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.ComplexVerificationStatus;
+import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexCreateRequest.AddressRequest;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexUpdateRequest;
+import com.toadzip.backend.housing.dto.request.AdminHousingTypeUpdateRequest;
 import com.toadzip.backend.housing.dto.response.AdminHousingComplexDetail;
 import com.toadzip.backend.housing.exception.AdminHousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.InvalidRegionCodeException;
@@ -129,6 +131,33 @@ public class AdminHousingComplexManagementService {
         if (restore) { action = "RESTORE"; }
         changes.save(new AdminDataChange("COMPLEX", id, action, actor, before,
                 json.writeValueAsString(summary(complex))));
+    }
+
+    @Transactional
+    public AdminHousingComplexDetail updateHousingType(
+            long id, long typeId, AdminHousingTypeUpdateRequest request, String actor) {
+        var complex = complexes.findByIdForUpdate(id).orElseThrow(AdminHousingComplexNotFoundException::new);
+        checkVersion(complex, request.version());
+        if (complex.isAdminDeleted()) {
+            throw new AdminDataConflictException("휴지통에서 복구한 뒤 주택형을 수정해 주세요.");
+        }
+        var type = types.findById(typeId)
+                .orElseThrow(() -> new AdminDataConflictException("주택형이 없습니다. 새로 조회해 주세요."));
+        if (type.getHousingComplex().getId() != id) {
+            throw new AdminDataConflictException("이 단지에 속한 주택형만 수정할 수 있습니다.");
+        }
+        String before = json.writeValueAsString(housingTypeData(type));
+        type.reviseByAdmin(request.name(), request.exclusiveArea(), request.householdCount());
+        complex.noteHousingTypeRevisionByAdmin();
+        complexes.flush();
+        changes.save(new AdminDataChange("COMPLEX", id, "UPDATE_HOUSING_TYPE", actor, before,
+                json.writeValueAsString(housingTypeData(type))));
+        return detail(id);
+    }
+
+    private AdminHousingComplexDetail.HousingTypeItem housingTypeData(HousingType type) {
+        return new AdminHousingComplexDetail.HousingTypeItem(type.getId(), type.getName(),
+                type.getExclusiveArea(), type.getTotalHouseholdCount());
     }
 
     public List<AdminChangeResponse> history(long id, int page) {

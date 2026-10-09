@@ -1,0 +1,20 @@
+.page { grid-template-columns: minmax(0, 1fr); }
+.page > section { min-width: 0; }
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+  margin-block: var(--ds-space-4);
+}
+.tabs button {
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border: 1px solid var(--ds-color-divider);
+  border-radius: var(--ds-radius-control);
+  background: var(--ds-color-surface);
+  color: var(--ds-color-text);
+}
+.tabs [aria-selected="true"] {
+  background: var(--ds-color-action-soft);
+  border-color: var(--ds-color-action);
+  color: var(--ds-color-action);
+}

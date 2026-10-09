@@ -54,6 +54,24 @@ class MyHomeAnnouncementSupplyMatcher {
         return matchHousingType(data, complexes.getFirst());
     }
 
+    MyHomeSupplyMatchResult matchSelected(MyHomeSupplyRowMappingData data, long complexId, Long housingTypeId) {
+        var complex = housingComplexRepository.findById(complexId).orElse(null);
+        if (complex == null || complex.isAdminDeleted() || !complex.getSupplyType().equals(data.complexSupplyType())) {
+            return MyHomeSupplyMatchResult.failure(data, MyHomeAnnouncementMappingFailureReason.COMPLEX_NOT_FOUND,
+                    "선택한 단지가 없거나 삭제되었거나 공급유형이 다릅니다.");
+        }
+        if (housingTypeId == null) {
+            return matchHousingType(data, complex);
+        }
+        var type = housingTypeRepository.findById(housingTypeId).orElse(null);
+        if (type == null || !type.getHousingComplex().getId().equals(complexId)) {
+            return MyHomeSupplyMatchResult.failure(data, complex,
+                    MyHomeAnnouncementMappingFailureReason.HOUSING_TYPE_NOT_FOUND,
+                    "선택한 주택형이 없거나 선택한 단지의 주택형이 아닙니다.");
+        }
+        return MyHomeSupplyMatchResult.matched(complex, type);
+    }
+
     private HousingComplex uniqueComplexByName(List<HousingComplex> complexes, String sourceName) {
         List<HousingComplex> matched = complexes.stream()
                 .filter(complex -> SupplyNameNormalizer.sameComplex(complex.getName(), sourceName))

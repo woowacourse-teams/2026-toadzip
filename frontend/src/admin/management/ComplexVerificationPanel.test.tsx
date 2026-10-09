@@ -28,7 +28,7 @@ function review(): ComplexReview {
     reviewedAt: '2026-10-08T00:00:00Z' }
 }
 function show(deleted = false) {
-  return render(<MemoryRouter>{!deleted ? <button data-admin-navigation onClick={onEdit}>수정</button> : null}
+  return render(<MemoryRouter>{!deleted ? <button type="button" data-admin-navigation onClick={onEdit}>수정</button> : null}
     <ComplexVerificationPanel id="7" version={2} deleted={deleted} announcements={[]}
       onReviewed={onReviewed} onBusyChange={onBusyChange} /></MemoryRouter>)
 }

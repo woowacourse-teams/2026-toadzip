@@ -51,6 +51,12 @@ public class DataPipelineExecutionStateService {
     }
 
     @Transactional
+    public DataPipelineExecution createRegistration(UUID executionId, String identifier, Instant startedAt) {
+        return executionRepository.saveAndFlush(
+                DataPipelineExecution.startRegistration(executionId, identifier, startedAt));
+    }
+
+    @Transactional
     public void startStep(UUID executionId, DataPipelineStep step) {
         DataPipelineExecution execution = find(executionId);
         execution.startStep(step);

@@ -1,6 +1,7 @@
 package com.toadzip.backend.announcement.dto.request;
 
 import com.toadzip.backend.announcement.domain.RecruitmentType;
+import com.toadzip.backend.announcement.domain.ReceptionMethod;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
 import jakarta.validation.Valid;
@@ -35,7 +36,15 @@ public record AdminAnnouncementUpdateRequest(
         @Size(max = 255, message = "255자 이하여야 합니다.")
         @Pattern(regexp = "^https?://[^\\s]+$", message = "HTTP(S) URL이어야 합니다.")
         String originalUrl,
-        @Valid AdminAnnouncementCreateRequest.ReceptionPlaceRequest receptionPlace
+        @Valid ReceptionPlaceUpdateRequest receptionPlace
 ) {
+
+    public record ReceptionPlaceUpdateRequest(
+            @NotBlank(message = "필수 값입니다.") @Size(max = 255) String name,
+            @NotNull(message = "필수 값입니다.") ReceptionMethod method,
+            @Size(max = 255) String address,
+            @Size(max = 255) String contact,
+            @Size(max = 255) @Pattern(regexp = "^https?://[^\\s]+$") String url
+    ) { }
 
 }
