@@ -34,7 +34,7 @@ class NotificationInterestMigrationTest {
                             """);
                 }
 
-                Flyway flyway = migration(database).load();
+                Flyway flyway = migration(database).target("20261008.04").load();
                 assertEquals(1, flyway.migrate().migrationsExecuted);
                 flyway.validate();
 

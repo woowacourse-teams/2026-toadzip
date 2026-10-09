@@ -38,4 +38,5 @@
 - Flyway `V20261009_01`은 검토 이력 테이블과 단지별 최신 기록 인덱스를 추가한다.
   기존 단지 데이터는 변경하지 않는다.
 
-검증: `ComplexVerificationIntegrationTest`와 `AdminManagementIntegrationTest`.
+검증: `ComplexVerificationIntegrationTest`, `ComplexVerificationMigrationTest`와
+`AdminManagementIntegrationTest`.
