@@ -7,6 +7,7 @@ import com.toadzip.backend.announcement.domain.Announcement;
 import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
+import com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
@@ -31,6 +32,7 @@ import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -61,6 +63,49 @@ public class MyHomeAnnouncementMappingService {
     public MyHomeAnnouncementMappingReport mapAll() {
         return executionLock.tryRun(MYHOME_ANNOUNCEMENT_MAPPING, this::mapAllUnlocked)
                 .orElseThrow(this::alreadyRunning);
+    }
+
+    public MyHomeAnnouncementMappingReport registerAnnouncement(String pblancId) {
+        return executionLock.tryRun(MYHOME_ANNOUNCEMENT_MAPPING, () -> registerUnlocked(pblancId))
+                .orElseThrow(this::alreadyRunning);
+    }
+
+    private MyHomeAnnouncementMappingReport registerUnlocked(String pblancId) {
+        if (announcementRepository.findBySourceAnnouncementIdentifier(pblancId).isPresent()) {
+            throw new AnnouncementRegistrationException("이미 등록된 공고입니다: " + pblancId);
+        }
+        var executionId = IngestExecutionContext.currentExecutionId().orElse(null);
+        List<MyHomeAnnouncementSource> sources = sourceRepository.findAllByPblancIdOrderByIdAsc(pblancId).stream()
+                .filter(source -> executionId == null || executionId.toString().equals(source.getLastSeenRunId()))
+                .toList();
+        if (sources.isEmpty()) {
+            throw new AnnouncementRegistrationException("공고 원천을 찾을 수 없습니다: " + pblancId);
+        }
+        try {
+            ResolvedAnnouncement resolved = supplyRowResolver.resolve(sourceMapper.map(sources));
+            String previousId = resolved.data().previousSourceAnnouncementIdentifier();
+            Announcement previous = null;
+            if (previousId != null) {
+                previous = announcementRepository.findBySourceAnnouncementIdentifier(previousId)
+                        .orElseThrow(() -> new MyHomeAnnouncementMappingRejectedException(
+                                MyHomeAnnouncementMappingFailureReason.PREVIOUS_ANNOUNCEMENT_NOT_FOUND,
+                                "이전 공고가 등록되어 있지 않습니다: " + previousId));
+            }
+            MyHomeAnnouncementWriteResult result = writer.register(resolved, previous);
+            return result.report();
+        }
+        catch (MyHomeAnnouncementMappingRejectedException exception) {
+            List<MyHomeAnnouncementMappingFailure> failures = new ArrayList<>();
+            reject(sources, exception.reason(), exception.getMessage(), failures, clock.instant());
+            failureStore.reconcileForAnnouncement(pblancId, failures, executionId);
+            throw new AnnouncementRegistrationException("정제 실패: " + exception.getMessage(), exception);
+        }
+        catch (DataIntegrityViolationException exception) {
+            if (announcementRepository.findBySourceAnnouncementIdentifier(pblancId).isPresent()) {
+                throw new AnnouncementRegistrationException("이미 등록된 공고입니다: " + pblancId, exception);
+            }
+            throw exception;
+        }
     }
 
     private MyHomeAnnouncementMappingReport mapAllUnlocked() {

@@ -8,6 +8,55 @@ afterEach(() => {
 })
 
 describe('관리자 데이터 수집·정제 API', () => {
+  it('URL 등록은 세션·CSRF와 URL만 전송하고 서버의 사유를 유지한다', async () => {
+    const fetchMock = prepareFetch(execution('ANNOUNCEMENT_REGISTRATION', 'RUNNING'))
+    const { startAnnouncementRegistrationUrl } = await import('./api.ts')
+    const url = 'https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21026'
+    await expect(startAnnouncementRegistrationUrl(` ${url} `)).resolves.toMatchObject({ status: 'RUNNING' })
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:8080/api/admin/ingest/pipelines/announcement-registration/url',
+      { method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CUSTOM-CSRF': 'csrf-token' },
+        body: JSON.stringify({ url }) },
+    )
+  })
+
+  it('빈 URL은 네트워크 요청을 하지 않는다', async () => {
+    const fetchMock = prepareFetch({})
+    const { startAnnouncementRegistrationUrl } = await import('./api.ts')
+    await expect(startAnnouncementRegistrationUrl(' ')).rejects.toThrow('공고 URL')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+  it('단건 등록은 공백을 제거한 공고 ID만 세션과 CSRF로 전달한다', async () => {
+    const fetchMock = prepareFetch(execution('ANNOUNCEMENT_REGISTRATION', 'RUNNING'))
+    const { startAnnouncementRegistration } = await import('./api.ts')
+    await expect(startAnnouncementRegistration(' 21026 ')).resolves.toMatchObject({ status: 'RUNNING' })
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:8080/api/admin/ingest/pipelines/announcement-registration',
+      {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CUSTOM-CSRF': 'csrf-token' },
+        body: JSON.stringify({ pblancId: '21026' }),
+      },
+    )
+  })
+
+  it('단건 등록은 빈 ID를 서버로 보내지 않는다', async () => {
+    const fetchMock = prepareFetch({})
+    const { startAnnouncementRegistration } = await import('./api.ts')
+    await expect(startAnnouncementRegistration(' ')).rejects.toThrow('공고 ID')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('실행 ID로 접수한 실행의 상태를 조회한다', async () => {
+    const fetchMock = prepareFetch(execution('ANNOUNCEMENT_REGISTRATION', 'RUNNING'))
+    fetchMock.mockReset().mockResolvedValue(jsonResponse(execution('ANNOUNCEMENT_REGISTRATION', 'RUNNING')))
+    const { getDataPipelineExecution } = await import('./api.ts')
+    await getDataPipelineExecution('run 1')
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:8080/api/admin/ingest/pipelines/executions/run%201', { credentials: 'include' },
+    )
+  })
   it.each(['supplies', 'details'] as const)('%s 강제 재조회는 공고 ID, 세션과 CSRF를 전달한다', async (source) => {
     const report = refreshReport()
     const fetchMock = prepareFetch(report)

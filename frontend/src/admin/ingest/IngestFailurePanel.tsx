@@ -6,6 +6,7 @@ import { getFailureReviews, type FailureDomain, type FailureReview, type Failure
 import { ListPagination } from '../management/ListPagination'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import styles from './IngestFailurePanel.module.css'
+import { AnnouncementSupplyMatchingForm } from './AnnouncementSupplyMatchingForm'
 
 type Props = {
   domain?: FailureDomain; initialCategory?: FailureCategory; executionId: string | null; refreshToken?: number
@@ -35,6 +36,8 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
   const pending = validQuery && !error && loaded?.query !== query
   const dialog = useRef<HTMLDialogElement>(null)
   const [selected, setSelected] = useState<FailureReview | null>(null)
+  const [matchingOpen, setMatchingOpen] = useState(false)
+  useEffect(() => { setMatchingOpen(false) }, [selected?.id])
 
   useEffect(() => {
     if (!validQuery) return
@@ -125,6 +128,13 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
           {selected.productLinkStatus === 'UNKNOWN' && typeof selected.raw.complexName === 'string' ? <p><Link to={`/admin/complexes?keyword=${encodeURIComponent(selected.raw.complexName)}`}>단지명으로 후보 검색</Link></p> : null}
           {runMessage ? <p role="status">{runMessage}</p> : null}{runError ? <p role="alert">{runError}</p> : null}
           <p className={styles.hint}>값을 수정한 뒤 재처리 결과를 확인하세요. 등록 데이터가 존재한다는 이유만으로 오류를 해결 처리하지 않습니다.</p></section>
+        {selected.category === 'announcement' && typeof selected.raw.sourceAnnouncementIdentifier === 'string'
+          && (/COMPLEX|HOUSING_TYPE/.test(selected.reason) || selected.detail.includes('수동 매칭')) && <section>
+            <button type="button" aria-expanded={matchingOpen} disabled={retryDisabled}
+              onClick={() => setMatchingOpen(value => !value)}>단지·주택형 매칭</button>
+            {matchingOpen && <AnnouncementSupplyMatchingForm identifier={selected.raw.sourceAnnouncementIdentifier}
+              disabled={retryDisabled} />}
+          </section>}
         <details className={styles.raw}><summary>실패 기록 원문·실행 정보</summary><StoredDataTable data={selected.raw} label="실패 기록 원문"/></details>
       </div> : null}
     </dialog>

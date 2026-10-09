@@ -92,6 +92,64 @@ class DataPipelineExecutionServiceTest {
     }
 
     @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"", " "})
+    void 단건_등록은_빈_ID로_잠금을_얻지_않는다(String identifier) {
+        assertThatThrownBy(() -> service.startAnnouncementRegistration(identifier))
+                .hasMessageContaining("공고 ID");
+        verify(executionLock, never()).tryAcquire(any());
+    }
+
+    @Test
+    void 잘못된_URL은_실행_잠금을_얻기_전에_거부한다() {
+        assertThatThrownBy(() -> service.startAnnouncementRegistrationUrl("https://apply.lh.or.kr"))
+                .hasMessageContaining("잘못된 공고 URL");
+        verify(executionLock, never()).tryAcquire(any());
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void 단건_등록의_실행_ID와_대상_ID를_보존하고_설정키로_비동기_실행한다(boolean fromUrl) {
+        when(executionLock.tryAcquire(any())).thenReturn(Optional.of(lease));
+        when(executionStateService.createRegistration(any(), any(), any())).thenAnswer(invocation ->
+                DataPipelineExecution.startRegistration(invocation.getArgument(0),
+                        invocation.getArgument(1), invocation.getArgument(2)));
+
+        com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse response;
+        if (fromUrl) {
+            response = service.startAnnouncementRegistrationUrl(
+                    "https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21026");
+        }
+        else {
+            response = service.startAnnouncementRegistration(" 21026 ");
+        }
+
+        assertThat(response.executionId()).isNotNull();
+        assertThat(response.targetAnnouncementIdentifier()).isEqualTo("21026");
+        assertThat(response.type()).isEqualTo(DataPipelineType.ANNOUNCEMENT_REGISTRATION);
+        verify(runner).run(DataPipelineType.ANNOUNCEMENT_REGISTRATION, response.executionId(), "21026");
+        verify(executionStateService).complete(response.executionId(), Instant.parse("2026-09-02T12:00:00Z"));
+        assertThat(IngestServiceKeyContext.current()).isEmpty();
+    }
+
+    @Test
+    void 단건_등록_실패는_관리자에게_구체적_사유로_전달한다() {
+        when(executionLock.tryAcquire(any())).thenReturn(Optional.of(lease));
+        when(executionStateService.createRegistration(any(), any(), any())).thenAnswer(invocation ->
+                DataPipelineExecution.startRegistration(invocation.getArgument(0),
+                        invocation.getArgument(1), invocation.getArgument(2)));
+        org.mockito.Mockito.doThrow(
+                new com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException("이미 등록된 공고"))
+                .when(runner).run(org.mockito.ArgumentMatchers.eq(DataPipelineType.ANNOUNCEMENT_REGISTRATION),
+                        any(), org.mockito.ArgumentMatchers.eq("21026"));
+
+        var response = service.startAnnouncementRegistration("21026");
+
+        verify(executionStateService).fail(response.executionId(), null, "이미 등록된 공고", null,
+                Instant.parse("2026-09-02T12:00:00Z"));
+        verify(executionStateService, never()).complete(any(), any());
+    }
+
+    @ParameterizedTest
     @EnumSource(value = DataPipelineType.class, names = {
             "COMPLEX_COLLECTION", "ANNOUNCEMENT_COLLECTION", "COMPLEX_SYNC", "ANNOUNCEMENT_SYNC"
     })

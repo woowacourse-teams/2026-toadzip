@@ -11,7 +11,8 @@ public enum DataPipelineType {
     ANNOUNCEMENT_COLLECTION("announcement-collection"),
     ANNOUNCEMENT_REFINEMENT("announcement-refinement"),
     COMPLEX_SYNC("complex-sync"),
-    ANNOUNCEMENT_SYNC("announcement-sync");
+    ANNOUNCEMENT_SYNC("announcement-sync"),
+    ANNOUNCEMENT_REGISTRATION("announcement-registration");
 
     private final String pathValue;
 
@@ -30,6 +31,12 @@ public enum DataPipelineType {
 
     public List<DataPipelineStep> steps() {
         return switch (this) {
+            case ANNOUNCEMENT_REGISTRATION -> List.of(
+                    DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
+                    DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
+                    DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS,
+                    DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS
+            );
             case COMPLEX_SYNC -> Stream.concat(
                     COMPLEX_COLLECTION.steps().stream(), COMPLEX_REFINEMENT.steps().stream()
             ).toList();
@@ -59,7 +66,8 @@ public enum DataPipelineType {
     }
 
     public boolean requiresSuccessfulCollection(DataPipelineStep step) {
-        return (this == COMPLEX_SYNC || this == ANNOUNCEMENT_SYNC) && !step.isCollection();
+        return (this == COMPLEX_SYNC || this == ANNOUNCEMENT_SYNC || this == ANNOUNCEMENT_REGISTRATION)
+                && !step.isCollection();
     }
 
     public int sequenceOf(DataPipelineStep step) {

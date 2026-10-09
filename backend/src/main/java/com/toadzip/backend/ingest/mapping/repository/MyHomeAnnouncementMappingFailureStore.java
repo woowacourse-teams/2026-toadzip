@@ -20,6 +20,20 @@ public class MyHomeAnnouncementMappingFailureStore {
     private final Clock clock;
 
     @Transactional
+    public void reconcileForAnnouncement(
+            String identifier, List<MyHomeAnnouncementMappingFailure> failures, UUID executionId
+    ) {
+        if (identifier == null || identifier.isBlank() || failures.stream()
+                .anyMatch(failure -> !identifier.equals(failure.getSourceAnnouncementIdentifier()))) {
+            throw new IllegalArgumentException("재검사한 공고에 속한 실패만 갱신할 수 있습니다.");
+        }
+        List<MyHomeAnnouncementMappingFailure> stored = repository
+                .findAllBySourceAnnouncementIdentifier(identifier);
+        IngestFailureReconciler.reconcile(stored, List.of(), failures, clock.instant(), executionId)
+                .forEach(repository::save);
+    }
+
+    @Transactional
     public void reconcileAfterRun(List<MyHomeAnnouncementMappingFailure> failures, UUID executionId) {
         Instant resolvedAt = clock.instant();
         List<MyHomeAnnouncementMappingFailure> stored = repository.findAllByStatus(PENDING);

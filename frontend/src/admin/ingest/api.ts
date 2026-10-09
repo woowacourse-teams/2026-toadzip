@@ -6,6 +6,7 @@ export type DataPipelineType =
   | 'ANNOUNCEMENT_REFINEMENT'
   | 'COMPLEX_SYNC'
   | 'ANNOUNCEMENT_SYNC'
+  | 'ANNOUNCEMENT_REGISTRATION'
 
 export type DataPipelineExecutionStatus =
   | 'IDLE'
@@ -62,6 +63,7 @@ export type DataPipelineExecution = {
   lastProgressAt?: string | null
   workProgress?: DataPipelineWorkProgress | null
   completedStepResults?: readonly DataPipelineWarningStep[]
+  targetAnnouncementIdentifier?: string | null
 }
 
 export type LhQualityCoverage = { total: number; fulfilled: number }
@@ -248,6 +250,39 @@ export async function getDataPipelineStatus(
   return readExecutionResponse(response)
 }
 
+export async function startAnnouncementRegistration(pblancId: string): Promise<DataPipelineExecution> {
+  const identifier = pblancId.trim()
+  if (!identifier) throw new Error('마이홈 공고 ID를 입력해 주세요.')
+  const csrfToken = await requestCsrfToken()
+  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/announcement-registration`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', [csrfToken.headerName]: csrfToken.token },
+    body: JSON.stringify({ pblancId: identifier }),
+  })
+  return readExecutionResponse(response)
+}
+
+export async function startAnnouncementRegistrationUrl(url: string): Promise<DataPipelineExecution> {
+  const target = url.trim()
+  if (!target) throw new Error('마이홈 공고 URL을 입력해 주세요.')
+  const csrfToken = await requestCsrfToken()
+  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/announcement-registration/url`, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', [csrfToken.headerName]: csrfToken.token },
+    body: JSON.stringify({ url: target }),
+  })
+  return readExecutionResponse(response)
+}
+
+export async function getDataPipelineExecution(executionId: string): Promise<DataPipelineExecution> {
+  const response = await fetch(
+    `${apiBaseUrl}/api/admin/ingest/pipelines/executions/${encodeURIComponent(executionId)}`,
+    { credentials: 'include' },
+  )
+  return readExecutionResponse(response)
+}
+
 export async function uploadLocationSummary(
   file: File,
 ): Promise<LocationSummaryImportReport> {
@@ -338,6 +373,8 @@ function isDataPipelineExecution(value: unknown): value is DataPipelineExecution
     return false
   }
   return (typeof value.executionId === 'string' || value.executionId === null)
+    && (value.targetAnnouncementIdentifier === undefined || value.targetAnnouncementIdentifier === null
+      || typeof value.targetAnnouncementIdentifier === 'string')
     && (typeof value.currentStepName === 'string' || value.currentStepName === null)
     && typeof value.currentStepIndex === 'number'
     && typeof value.totalStepCount === 'number'
@@ -403,6 +440,7 @@ function isDataPipelineType(value: unknown): value is DataPipelineType {
     || value === 'ANNOUNCEMENT_REFINEMENT'
     || value === 'COMPLEX_SYNC'
     || value === 'ANNOUNCEMENT_SYNC'
+    || value === 'ANNOUNCEMENT_REGISTRATION'
 }
 
 function isExecutionStatus(value: unknown): value is DataPipelineExecutionStatus {
@@ -427,6 +465,7 @@ function pipelinePath(type: DataPipelineType): string {
     ANNOUNCEMENT_REFINEMENT: 'announcement-refinement',
     COMPLEX_SYNC: 'complex-sync',
     ANNOUNCEMENT_SYNC: 'announcement-sync',
+    ANNOUNCEMENT_REGISTRATION: 'announcement-registration',
   }
   return `/api/admin/ingest/pipelines/${paths[type]}`
 }
@@ -506,8 +545,10 @@ function parseIngestFailure(value: unknown): IngestFailure {
   }
 }
 
-export async function getPipelineHistory(page: number): Promise<DataPipelineExecution[]> {
-  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/history?page=${page}&size=20`, {credentials:'include'})
+export async function getPipelineHistory(page: number, domain?: 'complex' | 'announcement'): Promise<DataPipelineExecution[]> {
+  const query = new URLSearchParams({ page: String(page), size: '20' })
+  if (domain) query.set('domain', domain)
+  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/history?${query}`, {credentials:'include'})
   const body = await readJson(response)
   if (!response.ok) throw apiError(response.status,body)
   if (!Array.isArray(body) || !body.every(isDataPipelineExecution)) throw new Error('실행 이력 응답 형식이 올바르지 않습니다.')

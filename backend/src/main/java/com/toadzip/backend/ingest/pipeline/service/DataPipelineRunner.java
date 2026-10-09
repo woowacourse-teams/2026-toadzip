@@ -25,7 +25,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * {@link DataPipelineType#steps()}에 정의된 순서로 수집·정제 서비스를 실행한다.
- * 데이터 처리 경로는 {@link #execute(DataPipelineStep)}에서 시작한다.
+ * 데이터 처리 경로는 {@link #execute(DataPipelineStep, String)}에서 시작한다.
  * 실행 잠금·중단·복구는 {@link DataPipelineExecutionService}가 담당한다.
  */
 @Slf4j
@@ -48,8 +48,17 @@ public class DataPipelineRunner {
     private final DataPipelineStepResultAdapter resultAdapter;
     private final DataPipelineExecutionStateService executionStateService;
     private final MeterRegistry meterRegistry;
+    private final AnnouncementRegistrationService registrationService;
 
     public void run(DataPipelineType type, UUID executionId) {
+        run(type, executionId, null);
+    }
+
+    public void run(DataPipelineType type, UUID executionId, String targetIdentifier) {
+        if (type == DataPipelineType.ANNOUNCEMENT_REGISTRATION
+                && (targetIdentifier == null || targetIdentifier.isBlank())) {
+            throw new IllegalArgumentException("단건 등록 대상 공고 ID가 없습니다.");
+        }
         DataPipelinePartialFailureException firstReportedPartialFailure = null;
         DataPipelineStep previousPartiallyFailedStep = null;
         boolean lhRateLimited = false;
@@ -61,7 +70,7 @@ public class DataPipelineRunner {
             }
             StepOutcome outcome = runStep(
                     executionId, step, previousPartiallyFailedStep,
-                    skipReason(type, step, collectionRateLimited, lhRateLimited)
+                    skipReason(type, step, collectionRateLimited, lhRateLimited), targetIdentifier
             );
             lhRateLimited |= outcome.rateLimited() && isLhAnnouncementCollection(step);
             collectionRateLimited |= outcome.rateLimited() && step.isCollection();
@@ -85,7 +94,8 @@ public class DataPipelineRunner {
             UUID executionId,
             DataPipelineStep step,
             DataPipelineStep previousPartiallyFailedStep,
-            String skipReason
+            String skipReason,
+            String targetIdentifier
     ) {
         Timer.Sample sample = Timer.start(meterRegistry);
         String outcome = "failed";
@@ -101,7 +111,12 @@ public class DataPipelineRunner {
                 }
                 return new StepOutcome(false, null);
             }
-            DataPipelineStepResult result = execute(step);
+            DataPipelineStepResult result = execute(step, targetIdentifier);
+            if (result.skipReason() != null) {
+                executionStateService.skipStep(executionId, step, result.skipReason(), result.serverResponse());
+                outcome = "skipped";
+                return new StepOutcome(false, null);
+            }
             if (result.failedOnlyByRateLimit()) {
                 executionStateService.skipStep(executionId, step, RATE_LIMIT_SKIP_REASON, result.serverResponse());
                 outcome = "rate_limited";
@@ -160,7 +175,10 @@ public class DataPipelineRunner {
                 || step == DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS;
     }
 
-    private DataPipelineStepResult execute(DataPipelineStep step) {
+    private DataPipelineStepResult execute(DataPipelineStep step, String targetIdentifier) {
+        if (targetIdentifier != null) {
+            return registrationService.execute(step, targetIdentifier);
+        }
         return switch (step) {
             case COLLECT_MYHOME_COMPLEXES -> resultAdapter.adapt(myHomeComplexCollectionService.collect(
                     MyHomeComplexCollectionRequest.allRegions(500, 1_000)
