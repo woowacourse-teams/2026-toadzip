@@ -1086,7 +1086,11 @@ export function PublicHousingExplorer({
         pendingDetailCameraRef.current = null
         boundarySelectionRef.current = null
         setSelectedSearchRegion(null)
-        changeBoundarySelection(null)
+        closeStreetView('USER_CLOSED', false)
+        const query = setRegionBoundaryCode(clearDetailQuery(new URLSearchParams(location.search)), null)
+        navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(query) }, {
+          state: clearDetailHistoryState(location.state),
+        })
         setMapCameraTarget({ latitude: item.latitude, longitude: item.longitude, zoom: 14 })
         setCameraRequestId((current) => current + 1)
       }
@@ -1125,7 +1129,7 @@ export function PublicHousingExplorer({
     }
     setSelectedSearchComplex(item)
     openComplexDetail(item.id, 'search')
-  }, [boundaryRegionCode, changeBoundarySelection, location, navigate, openAnnouncementDetail, openComplexDetail, closeStreetView, prepareListEntry])
+  }, [boundaryRegionCode, location, navigate, openAnnouncementDetail, openComplexDetail, closeStreetView, prepareListEntry])
 
   useEffect(() => {
     return () => {
