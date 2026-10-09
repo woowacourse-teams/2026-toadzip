@@ -89,7 +89,7 @@ it('설정은 적용 범위와 현재 선택을 표시하고 같은 화면에서
 it('소셜 로그인은 현재 정책 버전을 확인한 링크를 사용하고 별도 체크박스를 만들지 않는다', async () => {
   render(<MemoryRouter><LoginModal loginFailed={false} sessionError={false} onClose={() => {}} returnFocusRef={{ current: null }} /></MemoryRouter>)
   const login = await screen.findByRole('link', { name: 'Google로 로그인' })
-  expect(login).toHaveAttribute('href', expect.stringContaining(`policyVersion=${policy.version}`))
+  await waitFor(() => expect(login).toHaveAttribute('href', expect.stringContaining(`policyVersion=${policy.version}`)))
   expect(screen.getByRole('link', { name: '개인정보처리방침' })).toHaveAttribute('href', `/privacy/PRIVACY_POLICY/${policy.version}`)
   expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
 })

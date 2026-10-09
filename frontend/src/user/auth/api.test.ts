@@ -1,8 +1,15 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { consentStore } from '../../privacy/consentStore'
-import { logoutUser } from './api'
+import { logoutUser, socialLoginUrl } from './api'
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs() })
+
+it.each(['kakao', 'google'] as const)('%s 로그인 URL은 버전 없이도 만들고 전달받은 구버전을 바꾸지 않는다', provider => {
+  vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.com')
+  const base = `https://api.example.com/api/auth/oauth2/authorization/${provider}`
+  expect(socialLoginUrl(provider)).toBe(base)
+  expect(socialLoginUrl(provider, 'privacy-2026-10-09-v1')).toBe(`${base}?policyVersion=privacy-2026-10-09-v1`)
+})
 
 it.each(['success', 'csrf-http', 'csrf-body', 'logout-http', 'network'] as const)('로그아웃 %s 경로도 인증 전환 완료를 전파하고 다시 확인한다', async outcome => {
   const begin = vi.spyOn(consentStore, 'beginAuthTransition').mockReturnValue('00000000-0000-4000-8000-000000000001')
