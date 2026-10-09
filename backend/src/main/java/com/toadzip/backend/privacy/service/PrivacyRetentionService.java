@@ -91,6 +91,12 @@ public class PrivacyRetentionService {
             if (consent == null) {
                 continue;
             }
+            if (repository.isOrphan(candidate)) {
+                int count = repository.deleteOrphan(candidate, CHUNK_SIZE - changed);
+                changed += count;
+                removed += count;
+                continue;
+            }
             changed += repository.advanceScopePurge(consent.getId(), scope, deadlines,
                     scopePurgeAfter, CHUNK_SIZE - changed);
             int count = repository.deleteExpiredEvents(consent.getId(), now, CHUNK_SIZE - changed);

@@ -92,14 +92,14 @@ class PrivacyIntegrationTest {
 
     @Test
     void 첫_조회는_선택과_쿠키를_생성하지_않는다() throws Exception {
-        long before = count("analytics_consents");
+        long before = count("privacy_analytics_consents");
         mvc.perform(get("/api/v1/privacy/analytics-context")).andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(header().doesNotExist("Set-Cookie"))
                 .andExpect(jsonPath("$.subject.kind").value("GUEST"))
                 .andExpect(jsonPath("$.consent.effectiveStatus").value("UNSET"))
                 .andExpect(jsonPath("$.collectionAllowed").value(false));
-        assertEquals(before, count("analytics_consents"));
+        assertEquals(before, count("privacy_analytics_consents"));
     }
 
     @Test
@@ -125,7 +125,7 @@ class PrivacyIntegrationTest {
                 .andExpect(jsonPath("$.current.consent.revision").value(2))
                 .andExpect(jsonPath("$.current.collectionAllowed").value(false));
         assertEquals(2, jdbc.queryForObject("""
-                SELECT COUNT(*) FROM analytics_consent_events e JOIN analytics_consents c ON c.id = e.consent_id
+                SELECT COUNT(*) FROM privacy_analytics_consent_events e JOIN privacy_analytics_consents c ON c.id = e.consent_id
                 WHERE c.user_id = ?
                 """, Integer.class, MEMBER));
     }
@@ -181,7 +181,7 @@ class PrivacyIntegrationTest {
         mvc.perform(post("/api/v1/privacy/analytics/guest").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(choice))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("PRIVACY_CONTEXT_REQUIRED"));
-        assertFalse(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM analytics_consents WHERE guest_token_hash = ?)",
+        assertFalse(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM privacy_analytics_consents WHERE guest_token_hash = ?)",
                 Boolean.class, cookie.getValue()));
     }
 
@@ -204,7 +204,7 @@ class PrivacyIntegrationTest {
         clock.set(NOW.plusSeconds(270L * 86400));
         retention.purgeExpiredData();
         assertEquals(1, service.context(MEMBER, null).consent().revision());
-        assertEquals(0, count("analytics_consent_events"));
+        assertEquals(0, count("privacy_analytics_consent_events"));
         assertThrows(RuntimeException.class, () -> service.chooseMember(MEMBER, request(command, 0, "GRANT")));
     }
 
@@ -216,7 +216,7 @@ class PrivacyIntegrationTest {
         service.chooseMember(MEMBER, request(UUID.randomUUID(), 1, "WITHDRAW"));
         clock.set(withdrawal.plusSeconds(90L * 86400));
         retention.purgeExpiredData();
-        assertEquals(1, count("analytics_consent_events"));
+        assertEquals(1, count("privacy_analytics_consent_events"));
         assertEquals("WITHDRAWN", service.context(MEMBER, null).consent().decision());
     }
 
@@ -226,7 +226,7 @@ class PrivacyIntegrationTest {
         clock.set(NOW.plusSeconds(86400));
         retention.purgeExpiredData();
         assertEquals("UNSET", service.context(null, prepared.token()).consent().effectiveStatus());
-        assertEquals(0, count("analytics_consents"));
+        assertEquals(0, count("privacy_analytics_consents"));
     }
 
     @Test
@@ -239,7 +239,7 @@ class PrivacyIntegrationTest {
             start.countDown();
             assertEquals(1, first.get() + second.get());
             assertEquals(1, service.context(MEMBER, null).consent().revision());
-            assertEquals(1, count("analytics_consent_events"));
+            assertEquals(1, count("privacy_analytics_consent_events"));
         } finally {
             deleteMember();
         }
@@ -254,7 +254,7 @@ class PrivacyIntegrationTest {
             assertThrows(DataAccessResourceFailureException.class,
                     () -> service.chooseMember(MEMBER, request(UUID.randomUUID(), 0, "GRANT")));
             assertEquals("UNSET", service.context(MEMBER, null).consent().decision());
-            assertEquals(0, count("analytics_consent_events"));
+            assertEquals(0, count("privacy_analytics_consent_events"));
             reset(eventRepository);
             service.chooseMember(MEMBER, request(UUID.randomUUID(), 0, "GRANT"));
             assertEquals(1, service.context(MEMBER, null).consent().revision());
@@ -269,18 +269,18 @@ class PrivacyIntegrationTest {
     void 파기_실패는_청크를_롤백하고_다음_실행에서_정리한다() {
         try {
             service.chooseMember(MEMBER, request(UUID.randomUUID(), 0, "GRANT"));
-            jdbc.update("UPDATE analytics_consent_events SET scope_version = 'older-scope'");
-            Instant before = jdbc.queryForObject("SELECT purge_after FROM analytics_consent_events",
+            jdbc.update("UPDATE privacy_analytics_consent_events SET scope_version = 'older-scope'");
+            Instant before = jdbc.queryForObject("SELECT purge_after FROM privacy_analytics_consent_events",
                     Timestamp.class).toInstant();
             clock.set(NOW.plusSeconds(100L * 86400));
             doThrow(new DataAccessResourceFailureException("test failure")).when(retentionRepository)
                     .deleteExpiredEvents(any(), any(), anyInt());
             assertThrows(DataAccessResourceFailureException.class, retention::purgeExpiredData);
-            assertEquals(before, jdbc.queryForObject("SELECT purge_after FROM analytics_consent_events",
+            assertEquals(before, jdbc.queryForObject("SELECT purge_after FROM privacy_analytics_consent_events",
                     Timestamp.class).toInstant());
             reset(retentionRepository);
             retention.purgeExpiredData();
-            assertEquals(0, count("analytics_consent_events"));
+            assertEquals(0, count("privacy_analytics_consent_events"));
             assertEquals(1, service.context(MEMBER, null).consent().revision());
         } finally {
             reset(retentionRepository);
@@ -305,13 +305,13 @@ class PrivacyIntegrationTest {
             try {
                 chosen.await();
                 retention.purgeExpiredData();
-                assertEquals(1, count("analytics_consent_events"));
+                assertEquals(1, count("privacy_analytics_consent_events"));
             } finally {
                 release.countDown();
             }
             renewal.get();
             retention.purgeExpiredData();
-            assertEquals(1, count("analytics_consent_events"));
+            assertEquals(1, count("privacy_analytics_consent_events"));
             assertEquals(2, service.context(MEMBER, null).consent().revision());
             assertEquals("GRANTED", service.context(MEMBER, null).consent().effectiveStatus());
         } finally {
@@ -330,7 +330,7 @@ class PrivacyIntegrationTest {
             var second = executor.submit(retention::purgeExpiredData);
             first.get();
             second.get();
-            assertEquals(1, count("analytics_consent_events"));
+            assertEquals(1, count("privacy_analytics_consent_events"));
             assertEquals(2, service.context(MEMBER, null).consent().revision());
             assertEquals("WITHDRAWN", service.context(MEMBER, null).consent().decision());
         } finally {
@@ -348,7 +348,7 @@ class PrivacyIntegrationTest {
         CountDownLatch changing = new CountDownLatch(1);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var holder = executor.submit(() -> new TransactionTemplate(transactionManager).execute(status -> {
-                jdbc.queryForObject("SELECT id FROM analytics_consents WHERE id = ? FOR UPDATE", UUID.class, contextId);
+                jdbc.queryForObject("SELECT id FROM privacy_analytics_consents WHERE id = ? FOR UPDATE", UUID.class, contextId);
                 held.countDown();
                 await(release);
                 return null;
@@ -371,11 +371,11 @@ class PrivacyIntegrationTest {
             holder.get();
             ExecutionException failure = assertThrows(ExecutionException.class, choice::get);
             assertEquals("PRIVACY_CONTEXT_REQUIRED", ((PrivacyException) failure.getCause()).getCode());
-            assertEquals(0, count("analytics_consent_events"));
+            assertEquals(0, count("privacy_analytics_consent_events"));
         } finally {
             release.countDown();
             reset(consentRepository);
-            jdbc.update("DELETE FROM analytics_consents WHERE id = ?", contextId);
+            jdbc.update("DELETE FROM privacy_analytics_consents WHERE id = ?", contextId);
             deleteMember();
         }
     }
@@ -390,7 +390,7 @@ class PrivacyIntegrationTest {
         CountDownLatch preparing = new CountDownLatch(1);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var holder = executor.submit(() -> new TransactionTemplate(transactionManager).execute(status -> {
-                jdbc.queryForObject("SELECT id FROM analytics_consents WHERE id = ? FOR UPDATE", UUID.class, contextId);
+                jdbc.queryForObject("SELECT id FROM privacy_analytics_consents WHERE id = ? FOR UPDATE", UUID.class, contextId);
                 held.countDown();
                 await(release);
                 return null;
@@ -412,12 +412,12 @@ class PrivacyIntegrationTest {
             var renewed = preparation.get();
             assertFalse(contextId.toString().equals(renewed.context().subject().contextId()));
             assertEquals(clock.instant().plusSeconds(86400), renewed.context().consent().expiresAt());
-            jdbc.update("DELETE FROM analytics_consents WHERE id = ?",
+            jdbc.update("DELETE FROM privacy_analytics_consents WHERE id = ?",
                     UUID.fromString(renewed.context().subject().contextId()));
         } finally {
             release.countDown();
             reset(consentRepository);
-            jdbc.update("DELETE FROM analytics_consents WHERE id = ?", contextId);
+            jdbc.update("DELETE FROM privacy_analytics_consents WHERE id = ?", contextId);
             deleteMember();
         }
     }
@@ -466,9 +466,9 @@ class PrivacyIntegrationTest {
         CountDownLatch release = new CountDownLatch(1);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             service.chooseMember(MEMBER, request(UUID.randomUUID(), 0, "GRANT"));
-            jdbc.update("UPDATE analytics_consents SET scope_version = 'older-scope' WHERE user_id = ?", MEMBER);
-            jdbc.update("UPDATE analytics_consent_events SET scope_version = 'older-scope'");
-            Instant storedDeadline = jdbc.queryForObject("SELECT purge_after FROM analytics_consent_events",
+            jdbc.update("UPDATE privacy_analytics_consents SET scope_version = 'older-scope' WHERE user_id = ?", MEMBER);
+            jdbc.update("UPDATE privacy_analytics_consent_events SET scope_version = 'older-scope'");
+            Instant storedDeadline = jdbc.queryForObject("SELECT purge_after FROM privacy_analytics_consent_events",
                     Timestamp.class).toInstant();
             clock.set(NOW.plusSeconds(100L * 86400));
             var holder = executor.submit(() -> new TransactionTemplate(transactionManager).execute(status -> {
@@ -480,7 +480,7 @@ class PrivacyIntegrationTest {
             try {
                 await(held);
                 retention.purgeExpiredData();
-                assertEquals(storedDeadline, jdbc.queryForObject("SELECT purge_after FROM analytics_consent_events",
+                assertEquals(storedDeadline, jdbc.queryForObject("SELECT purge_after FROM privacy_analytics_consent_events",
                         Timestamp.class).toInstant());
                 assertEquals(1.0, meters.get("privacy.retention.overdue.count").tag("job", "consent").gauge().value());
                 Instant effectiveDeadline = notices.analyticsScopeEffectiveAt().plusSeconds(90L * 86400);
@@ -493,7 +493,7 @@ class PrivacyIntegrationTest {
             }
             holder.get();
             retention.purgeExpiredData();
-            assertEquals(0, count("analytics_consent_events"));
+            assertEquals(0, count("privacy_analytics_consent_events"));
             assertEquals(0.0, meters.get("privacy.retention.overdue.count").tag("job", "consent").gauge().value());
         } finally {
             release.countDown();
@@ -523,7 +523,34 @@ class PrivacyIntegrationTest {
         }
     }
 
+    @Test
+    void 동의_저장과_파기는_기존_회원_행을_변경하지_않는다() {
+        jdbc.update("UPDATE users SET email = 'member@example.test' WHERE id = ?", MEMBER);
+        String before = jdbc.queryForObject("SELECT row_to_json(u)::text FROM users u WHERE id = ?",
+                String.class, MEMBER);
+        service.chooseMember(MEMBER, request(UUID.randomUUID(), 0, "GRANT"));
+        service.chooseMember(MEMBER, request(UUID.randomUUID(), 1, "WITHDRAW"));
+        clock.set(NOW.plusSeconds(90L * 86400));
+        retention.purgeExpiredData();
+        assertEquals(before, jdbc.queryForObject("SELECT row_to_json(u)::text FROM users u WHERE id = ?",
+                String.class, MEMBER));
+        assertEquals("WITHDRAWN", service.context(MEMBER, null).consent().decision());
+        assertEquals(1, count("privacy_analytics_consent_events"));
+    }
+
+    @Test
+    void 회원이_사라진_동의만_파기하고_다른_회원은_보존한다() {
+        service.chooseMember(MEMBER, request(UUID.randomUUID(), 0, "DENY"));
+        jdbc.update("DELETE FROM users WHERE id = ?", MEMBER);
+        assertEquals(1, count("privacy_analytics_consents"));
+        assertEquals(1, count("privacy_analytics_consent_events"));
+        retention.purgeExpiredData();
+        assertEquals(0, count("privacy_analytics_consents"));
+        assertEquals(0, count("privacy_analytics_consent_events"));
+    }
+
     private void deleteMember() {
+        jdbc.update("DELETE FROM privacy_analytics_consents WHERE user_id = ?", MEMBER);
         jdbc.update("DELETE FROM users WHERE id = ?", MEMBER);
     }
 

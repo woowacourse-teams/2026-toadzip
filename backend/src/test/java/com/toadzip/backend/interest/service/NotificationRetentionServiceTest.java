@@ -9,7 +9,8 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.interest.repository.NotificationRetentionRepository;
+import com.toadzip.backend.privacy.repository.PrivacyNotificationRetentionRepository;
+import com.toadzip.backend.privacy.service.PrivacyNotificationRetentionService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Instant;
@@ -22,12 +23,12 @@ class NotificationRetentionServiceTest {
 
     @Test
     void 청크별_실행과_실패_재시도는_개인정보없는_운영지표를_남긴다() {
-        NotificationRetentionRepository repository = mock(NotificationRetentionRepository.class);
+        PrivacyNotificationRetentionRepository repository = mock(PrivacyNotificationRetentionRepository.class);
         PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
         when(manager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         Instant now = Instant.parse("2026-10-09T00:00:00Z");
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        NotificationRetentionService service = new NotificationRetentionService(repository,
+        PrivacyNotificationRetentionService service = new PrivacyNotificationRetentionService(repository,
                 Clock.fixed(now, ZoneOffset.UTC), manager, registry);
         when(repository.purgeChunk(any(), anyInt())).thenThrow(new IllegalStateException("simulated"));
 
@@ -37,7 +38,7 @@ class NotificationRetentionServiceTest {
         assertEquals(0, registry.get("privacy.retention.last.success.seconds").gauge().value());
 
         doReturn(500, 2, 0).when(repository).purgeChunk(any(), anyInt());
-        when(repository.backlog(now)).thenReturn(new NotificationRetentionRepository.Backlog(3, 1801));
+        when(repository.backlog(now)).thenReturn(new PrivacyNotificationRetentionRepository.Backlog(3, 1801));
         service.purgeExpiredData();
 
         assertEquals(502, registry.get("privacy.retention.deleted.total").counter().count());

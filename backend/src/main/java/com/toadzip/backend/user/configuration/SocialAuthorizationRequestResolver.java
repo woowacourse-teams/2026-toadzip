@@ -26,20 +26,21 @@ public class SocialAuthorizationRequestResolver implements OAuth2AuthorizationRe
 
     @Override
     public OAuth2AuthorizationRequest resolve(HttpServletRequest request) {
-        return stamp(delegate.resolve(request));
+        return stamp(delegate.resolve(request), request.getParameter("policyVersion"));
     }
 
     @Override
     public OAuth2AuthorizationRequest resolve(HttpServletRequest request, String registrationId) {
-        return stamp(delegate.resolve(request, registrationId));
+        return stamp(delegate.resolve(request, registrationId), request.getParameter("policyVersion"));
     }
 
-    private OAuth2AuthorizationRequest stamp(OAuth2AuthorizationRequest request) {
+    private OAuth2AuthorizationRequest stamp(OAuth2AuthorizationRequest request, String policyVersion) {
         if (request == null) {
             return null;
         }
-        SocialAuthorizationContext context = new SocialAuthorizationContext(
-                notices.currentVersion("PRIVACY_POLICY"), clock.instant());
+        String knownVersion = notices.findOptional("PRIVACY_POLICY", policyVersion)
+                .map(notice -> notice.version()).orElse(null);
+        SocialAuthorizationContext context = new SocialAuthorizationContext(knownVersion, clock.instant());
         return OAuth2AuthorizationRequest.from(request)
                 .attributes(attributes -> attributes.put(CONTEXT_ATTRIBUTE, context)).build();
     }

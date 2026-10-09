@@ -3,6 +3,7 @@ package com.toadzip.backend.user.controller;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -22,6 +23,14 @@ import com.toadzip.backend.user.service.SocialLoginSuccessHandler;
 import com.toadzip.backend.user.service.SocialUserService;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.UUID;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
+import com.toadzip.backend.privacy.service.AnalyticsConsentService;
+import com.toadzip.backend.privacy.dto.PrivacyChoiceRequest;
+import com.toadzip.backend.user.configuration.SocialAuthorizationRequestRepository;
+import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -70,6 +79,9 @@ class UserAuthenticationIntegrationTest {
 
     @Autowired
     private Clock clock;
+
+    @Autowired
+    private AnalyticsConsentService consents;
 
     @Test
     void 각_공급자_로그인은_고정된_콜백과_state로_시작한다() throws Exception {
@@ -217,14 +229,82 @@ class UserAuthenticationIntegrationTest {
         return new SocialAuthorizationContext(notices.currentVersion("PRIVACY_POLICY"), clock.instant());
     }
 
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"privacy-2026-10-09-v1", "unknown"})
+    void 정책_버전_누락과_구버전도_기존_로그인_URL로_인가를_시작한다(String version) throws Exception {
+        for (String provider : java.util.List.of("google", "kakao")) {
+            var request = get("/api/auth/oauth2/authorization/" + provider);
+            if (version != null) {
+                request.param("policyVersion", version);
+            }
+            mockMvc.perform(request)
+                    .andExpect(status().isFound())
+                    .andExpect(header().string("Location", org.hamcrest.Matchers.allOf(
+                            org.hamcrest.Matchers.containsString("state="),
+                            org.hamcrest.Matchers.containsString("callback/" + provider))));
+        }
+    }
+
     @Test
-    void 정책_버전이_없거나_오래되면_공급자로_이동하지_않는다() throws Exception {
-        mockMvc.perform(get("/api/auth/oauth2/authorization/google"))
+    void 분석을_거부한_기존_회원도_정책없이_로그인하고_세션을_회전한다() throws Exception {
+        String subject = UUID.randomUUID().toString();
+        Long id = socialUserService.findOrCreate("google", subject, "first@example.com", authorization());
+        consents.chooseMember(id, new PrivacyChoiceRequest(UUID.randomUUID().toString(), id.toString(), null,
+                0L, "DENY", null, null, "SETTINGS"));
+        var before = consents.context(id, null).consent();
+        var request = loginRequest("google");
+        String previousSessionId = request.getSession().getId();
+        request.setAttribute(SocialAuthorizationRequestResolver.CONTEXT_ATTRIBUTE,
+                new SocialAuthorizationContext(null, clock.instant()));
+        var response = new MockHttpServletResponse();
+
+        successHandler.onAuthenticationSuccess(request, response,
+                authentication("google", Map.of("sub", subject, "email", "updated@example.com"), "sub"));
+
+        assertEquals("http://localhost:5173/", response.getRedirectedUrl());
+        assertNotEquals(previousSessionId, request.getSession().getId());
+        var session = (MockHttpSession) request.getSession();
+        mockMvc.perform(get("/api/auth/me").session(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(id))
+                .andExpect(jsonPath("$.email").value("updated@example.com"));
+        mockMvc.perform(get("/api/v1/privacy/analytics-context").session(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.consent.decision").value("DENIED"))
+                .andExpect(jsonPath("$.collectionAllowed").value(false));
+        assertEquals(before, consents.context(id, null).consent());
+    }
+
+    @Test
+    void 만료된_OAuth_state는_정책_누락과_무관하게_콜백에서_거부된다() throws Exception {
+        var session = new MockHttpSession();
+        var request = new MockHttpServletRequest();
+        request.setSession(session);
+        var authorization = OAuth2AuthorizationRequest.authorizationCode()
+                .authorizationUri("https://provider.example/authorize").clientId("test-client")
+                .redirectUri("http://localhost/api/auth/oauth2/callback/google").state("expired-state")
+                .attributes(attributes -> attributes.put(SocialAuthorizationRequestResolver.CONTEXT_ATTRIBUTE,
+                        new SocialAuthorizationContext(null, clock.instant().minusSeconds(600)))).build();
+        new SocialAuthorizationRequestRepository(clock).saveAuthorizationRequest(
+                authorization, request, new MockHttpServletResponse());
+
+        mockMvc.perform(get("/api/auth/oauth2/callback/google").session(session)
+                        .param("code", "unused-code").param("state", "expired-state"))
                 .andExpect(status().isFound())
-                .andExpect(header().string("Location", "http://localhost:5173/?login=failed&reason=privacy-notice"));
-        mockMvc.perform(get("/api/auth/oauth2/authorization/google").param("policyVersion", "unknown"))
-                .andExpect(status().isFound())
-                .andExpect(header().string("Location", "http://localhost:5173/?login=failed&reason=privacy-notice"));
+                .andExpect(header().string("Location", "http://localhost:5173/?login=failed"));
+        assertNull(session.getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY));
+    }
+
+    @Test
+    void 없는_회원의_세션은_여전히_무효화된다() throws Exception {
+        var session = new MockHttpSession();
+        var context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
+                "9223372036854775807", null, AuthorityUtils.createAuthorityList("ROLE_USER")));
+        session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
+
+        mockMvc.perform(get("/api/auth/me").session(session))
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+        assertTrue(session.isInvalid());
     }
 
     @Test

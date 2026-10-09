@@ -2,6 +2,7 @@ package com.toadzip.backend.user.configuration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.toadzip.backend.user.domain.SocialAuthorizationContext;
 import java.time.Clock;
@@ -50,6 +51,31 @@ class SocialAuthorizationRequestRepositoryTest {
         assertNull(repository.removeAuthorizationRequest(request(session, "unknown"), response));
     }
 
+    @Test
+    void 정책_없는_요청도_같은_세션에서_한번만_소비할_수_있다() {
+        var session = new MockHttpSession();
+        var response = new MockHttpServletResponse();
+        repository.saveAuthorizationRequest(authorization("legacy", null, NOW), request(session, "legacy"), response);
+
+        assertNull(repository.removeAuthorizationRequest(request(new MockHttpSession(), "legacy"), response));
+        assertNotNull(repository.removeAuthorizationRequest(request(session, "legacy"), response));
+        assertNull(repository.removeAuthorizationRequest(request(session, "legacy"), response));
+    }
+
+    @Test
+    void 미래_발급_시각과_발급_시각_없는_요청은_유효한_정책이_있어도_거부한다() {
+        var session = new MockHttpSession();
+        var response = new MockHttpServletResponse();
+        repository.saveAuthorizationRequest(authorization("future", "v1", NOW.plusSeconds(1)),
+                request(session, "future"), response);
+        repository.saveAuthorizationRequest(authorization("no-time", "v1", null),
+                request(session, "no-time"), response);
+
+        assertNull(repository.removeAuthorizationRequest(request(session, "future"), response));
+        assertNull(repository.removeAuthorizationRequest(request(session, "no-time"), response));
+        assertNull(repository.removeAuthorizationRequest(request(session, null), response));
+    }
+
     private OAuth2AuthorizationRequest authorization(String state, String version, Instant issuedAt) {
         return OAuth2AuthorizationRequest.authorizationCode().authorizationUri("https://provider.example/authorize")
                 .clientId("test-client").redirectUri("http://localhost/callback").state(state)
@@ -60,7 +86,9 @@ class SocialAuthorizationRequestRepositoryTest {
     private MockHttpServletRequest request(MockHttpSession session, String state) {
         var request = new MockHttpServletRequest();
         request.setSession(session);
-        request.setParameter("state", state);
+        if (state != null) {
+            request.setParameter("state", state);
+        }
         return request;
     }
 }

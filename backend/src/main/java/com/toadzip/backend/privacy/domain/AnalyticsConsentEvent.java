@@ -19,10 +19,10 @@ import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 
 @Entity
-@Table(name = "analytics_consent_events", uniqueConstraints = {
+@Table(name = "privacy_analytics_consent_events", uniqueConstraints = {
         @UniqueConstraint(columnNames = {"consent_id", "command_id"}),
         @UniqueConstraint(columnNames = {"consent_id", "revision"})}, indexes = {
-        @Index(name = "analytics_consent_events_purge_idx", columnList = "purge_after")})
+        @Index(name = "privacy_analytics_consent_events_purge_idx", columnList = "purge_after")})
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AnalyticsConsentEvent {
 

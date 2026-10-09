@@ -1,4 +1,4 @@
-package com.toadzip.backend.user.domain;
+package com.toadzip.backend.privacy.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -9,17 +9,17 @@ import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "user_deletion_markers")
+@Table(name = "privacy_notification_states")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class UserDeletionMarker {
+public class PrivacyNotificationState {
 
     @Id
-    @Column(length = 64)
-    private String loginIdentifierHash;
+    @Column(nullable = false)
+    private Long userId;
 
     @Column(nullable = false)
-    private Instant deletedAt;
+    private long revision;
 
     @Column(nullable = false)
-    private Instant expiresAt;
+    private Instant updatedAt;
 }

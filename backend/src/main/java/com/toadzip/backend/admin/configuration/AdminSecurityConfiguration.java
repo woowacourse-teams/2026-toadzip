@@ -8,7 +8,6 @@ import com.toadzip.backend.privacy.repository.PrivacyNoticeCatalog;
 import com.toadzip.backend.user.configuration.DeletedUserSessionFilter;
 import com.toadzip.backend.user.configuration.SocialAuthorizationRequestRepository;
 import com.toadzip.backend.user.configuration.SocialAuthorizationRequestResolver;
-import com.toadzip.backend.user.configuration.SocialLoginPolicyFilter;
 import com.toadzip.backend.user.repository.UserRepository;
 import com.toadzip.backend.user.service.SocialLoginFailureHandler;
 import com.toadzip.backend.user.service.SocialLoginSuccessHandler;
@@ -30,7 +29,6 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
-import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
 import org.springframework.web.cors.CorsConfiguration;
@@ -58,8 +56,7 @@ public class AdminSecurityConfiguration {
             UserRepository users,
             SecurityErrorResponseWriter errors,
             PrivacyNoticeCatalog notices,
-            Clock clock,
-            @Value("${app.user.oauth.failure-url}") String failureUrl
+            Clock clock
     ) throws Exception {
         http
                 .cors(Customizer.withDefaults())
@@ -88,8 +85,6 @@ public class AdminSecurityConfiguration {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .addFilterBefore(new DeletedUserSessionFilter(users, errors), AuthorizationFilter.class);
         if (registrations.getIfAvailable() != null) {
-            http.addFilterBefore(new SocialLoginPolicyFilter(notices, failureUrl),
-                    OAuth2AuthorizationRequestRedirectFilter.class);
             http.oauth2Login(oauth -> oauth
                     .authorizationEndpoint(endpoint -> endpoint.baseUri("/api/auth/oauth2/authorization")
                             .authorizationRequestResolver(new SocialAuthorizationRequestResolver(

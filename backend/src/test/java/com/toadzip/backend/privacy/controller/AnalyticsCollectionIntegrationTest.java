@@ -91,8 +91,9 @@ class AnalyticsCollectionIntegrationTest {
     @AfterEach
     void cleanUp() {
         for (UUID eventId : eventIds) {
-            jdbc.update("DELETE FROM notification_interest_events WHERE event_id = ?", eventId);
+            jdbc.update("DELETE FROM privacy_notification_events WHERE event_id = ?", eventId);
         }
+        jdbc.update("DELETE FROM privacy_analytics_consents WHERE user_id = ?", MEMBER);
         jdbc.update("DELETE FROM users WHERE id = ?", MEMBER);
     }
 
@@ -275,7 +276,7 @@ class AnalyticsCollectionIntegrationTest {
 
     private void seedOldScope() {
         jdbc.update("""
-                INSERT INTO analytics_consents(id,user_id,decision,revision,notice_version,scope_version,
+                INSERT INTO privacy_analytics_consents(id,user_id,decision,revision,notice_version,scope_version,
                     decided_at,expires_at,created_at,updated_at)
                 VALUES (?,?,'GRANTED',1,'analytics-2026-10-09-v1','analytics-scope-1',?,?,?,?)
                 """, UUID.randomUUID(), MEMBER, Timestamp.from(NOW), Timestamp.from(NOW.plus(Duration.ofDays(180))),
@@ -295,7 +296,7 @@ class AnalyticsCollectionIntegrationTest {
     }
 
     private int stored(NotificationInterestRequest request) {
-        return jdbc.queryForObject("SELECT count(*) FROM notification_interest_events WHERE event_id = ?",
+        return jdbc.queryForObject("SELECT count(*) FROM privacy_notification_events WHERE event_id = ?",
                 Integer.class, request.eventId());
     }
 

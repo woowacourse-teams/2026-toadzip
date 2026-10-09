@@ -36,14 +36,8 @@ public class NotificationInterestEvent {
     @Column(nullable = false, unique = true)
     private UUID eventId;
 
+    @Column(nullable = false)
     private UUID sessionId;
-
-    private Long userId;
-
-    @Column(length = 100)
-    private String noticeVersion;
-
-    private Long settingsRevision;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

@@ -12,11 +12,8 @@ public class PrivacyRetentionPolicy {
     public static final Duration SUPERSEDED_CONSENT_HISTORY_RETENTION = Duration.ofDays(90);
     public static final Duration INACTIVE_NOTIFICATION_RETENTION = Duration.ofDays(90);
     public static final Duration NOTIFICATION_EVENT_RETENTION = Duration.ofDays(90);
-    public static final Duration LEGACY_GUEST_CANCELLATION_RETENTION = Duration.ofDays(30);
     public static final Duration PRIVACY_REQUEST_RECORD_RETENTION = Duration.ofDays(90);
     public static final Duration PERSONAL_DATA_BACKUP_RETENTION = Duration.ofDays(7);
-    public static final Duration OAUTH_AUTHORIZATION_REQUEST_LIFETIME = Duration.ofMinutes(10);
-    public static final Duration ACCOUNT_DELETION_MARKER_RETENTION = Duration.ofMinutes(10);
     public static final int NOTIFICATION_SUBSCRIPTION_VALIDITY_MONTHS = 12;
     public static final int ANONYMOUS_AGGREGATE_RETENTION_MONTHS = 12;
 

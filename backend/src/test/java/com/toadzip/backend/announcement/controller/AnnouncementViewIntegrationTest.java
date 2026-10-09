@@ -71,7 +71,7 @@ class AnnouncementViewIntegrationTest {
                 INSERT INTO users(login_identifier,created_at) VALUES (?,CURRENT_TIMESTAMP) RETURNING id
                 """, Long.class, "view-" + UUID.randomUUID());
         jdbc.update("""
-                INSERT INTO analytics_consents(id,user_id,decision,revision,notice_version,scope_version,
+                INSERT INTO privacy_analytics_consents(id,user_id,decision,revision,notice_version,scope_version,
                     decided_at,expires_at,created_at,updated_at)
                 VALUES (?,?,'GRANTED',1,?,?,?, ?,?,?)
                 """, UUID.randomUUID(), memberId, notices.currentVersion("ANALYTICS_NOTICE"),
@@ -82,7 +82,7 @@ class AnnouncementViewIntegrationTest {
 
     @AfterEach
     void cleanUp() {
-        jdbc.update("DELETE FROM analytics_consents WHERE user_id = ?", memberId);
+        jdbc.update("DELETE FROM privacy_analytics_consents WHERE user_id = ?", memberId);
         jdbc.update("DELETE FROM users WHERE id = ?", memberId);
         for (long id : announcementIds) {
             // The view table's foreign key cascades on deletion.
@@ -106,14 +106,14 @@ class AnnouncementViewIntegrationTest {
     @ValueSource(strings = {"MISSING", "UNSET", "DENIED", "WITHDRAWN", "EXPIRED", "OLD_SCOPE"})
     void 유효한_현재_범위_허용이_없으면_조회수를_저장하지_않는다(String state) throws Exception {
         switch (state) {
-            case "MISSING" -> jdbc.update("DELETE FROM analytics_consents WHERE user_id = ?", memberId);
-            case "EXPIRED" -> jdbc.update("UPDATE analytics_consents SET expires_at = ? WHERE user_id = ?",
+            case "MISSING" -> jdbc.update("DELETE FROM privacy_analytics_consents WHERE user_id = ?", memberId);
+            case "EXPIRED" -> jdbc.update("UPDATE privacy_analytics_consents SET expires_at = ? WHERE user_id = ?",
                     java.sql.Timestamp.from(clock.instant()), memberId);
             case "OLD_SCOPE" -> jdbc.update("""
-                    UPDATE analytics_consents SET notice_version = 'analytics-2026-10-09-v1',
+                    UPDATE privacy_analytics_consents SET notice_version = 'analytics-2026-10-09-v1',
                         scope_version = 'analytics-scope-1' WHERE user_id = ?
                     """, memberId);
-            default -> jdbc.update("UPDATE analytics_consents SET decision = ? WHERE user_id = ?", state, memberId);
+            default -> jdbc.update("UPDATE privacy_analytics_consents SET decision = ? WHERE user_id = ?", state, memberId);
         }
 
         record(announcementId, UUID.randomUUID().toString()).andExpect(status().isForbidden())

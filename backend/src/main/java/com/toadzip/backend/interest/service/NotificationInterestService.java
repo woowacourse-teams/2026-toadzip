@@ -6,7 +6,7 @@ import com.toadzip.backend.interest.domain.NotificationInterestOutcome;
 import com.toadzip.backend.interest.dto.NotificationInterestRequest;
 import com.toadzip.backend.interest.dto.NotificationInterestResponse;
 import com.toadzip.backend.interest.exception.InvalidNotificationInterestException;
-import com.toadzip.backend.interest.repository.NotificationInterestRepository;
+import com.toadzip.backend.privacy.repository.PrivacyNotificationEventRepository;
 import com.toadzip.backend.privacy.domain.AnalyticsCollectionPolicy;
 import com.toadzip.backend.privacy.domain.AnalyticsConsent;
 import com.toadzip.backend.privacy.repository.AnalyticsConsentRepository;
@@ -22,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class NotificationInterestService {
 
-    private final NotificationInterestRepository repository;
+    private final PrivacyNotificationEventRepository repository;
     private final AnalyticsConsentRepository consents;
     private final PrivacyNoticeCatalog notices;
     private final Clock clock;

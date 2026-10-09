@@ -11,7 +11,6 @@ import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.ColumnDefault;
 
 @Getter
 @Entity
@@ -32,13 +31,6 @@ public class User {
     @Column(length = 254)
     private String email;
 
-    @Column(length = 100)
-    private String registrationPolicyVersion;
-
-    @Column(nullable = false)
-    @ColumnDefault("0")
-    private long notificationSettingsRevision;
-
     private User(String loginIdentifier, LocalDateTime createdAt) {
         validateLoginIdentifier(loginIdentifier);
         validateCreatedAt(createdAt);
@@ -53,15 +45,6 @@ public class User {
     public void updateEmail(String email) {
         if (email != null && email.length() <= 254 && email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
             this.email = email;
-        }
-    }
-
-    public void recordRegistrationPolicy(String version) {
-        if (version == null || version.isBlank() || version.length() > 100) {
-            throw new IllegalArgumentException("회원 생성 시 적용한 정책 버전이 필요합니다.");
-        }
-        if (registrationPolicyVersion == null) {
-            registrationPolicyVersion = version;
         }
     }
 

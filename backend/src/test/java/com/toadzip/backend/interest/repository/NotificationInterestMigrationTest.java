@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.toadzip.backend.privacy.configuration.PrivacyMigrationConfiguration;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -65,34 +66,38 @@ class NotificationInterestMigrationTest {
     }
 
     @Test
-    void 회원_업무이력은_분석식별자없이_저장되고_탈퇴하면_함께_삭제된다() throws Exception {
+    void 회원_업무이력은_전용테이블에_기록하며_기존_회원과_알림이력을_변경하지_않는다() throws Exception {
         String database = "notification_privacy_" + UUID.randomUUID().toString().replace("-", "");
         try (Connection admin = connect("postgres"); Statement statement = admin.createStatement()) {
             statement.execute("CREATE DATABASE " + database);
             try {
-                Flyway flyway = migration(database).target("20261009.02").load();
-                flyway.migrate();
-                flyway.validate();
+                new PrivacyMigrationConfiguration().migrate(migration(database).load());
                 try (Connection connection = connect(database); Statement query = connection.createStatement()) {
                     query.executeUpdate("""
-                            INSERT INTO users(id,login_identifier,created_at) VALUES (1,'notification-test',now())
+                            INSERT INTO users(id,login_identifier,created_at,email)
+                            VALUES (1,'notification-test',now(),'fixture@example.invalid')
                             """);
                     query.executeUpdate("""
-                            INSERT INTO notification_interest_events(event_id,event_type,source,target_type,target_id,
-                                created_at,outcome,user_id,notice_version,settings_revision)
+                            INSERT INTO privacy_notification_receipts(event_id,event_type,source,target_type,target_id,
+                                created_at,outcome,user_id,notice_version,settings_revision,request_fingerprint,purge_after)
                             VALUES ('10000000-0000-4000-8000-000000000001','CONFIRMED','SETTING','REGION','11',now(),
-                                'ACTIVATED',1,'notification-2026-10-09-v1',1)
+                                'ACTIVATED',1,'notification-2026-10-09-v1',1,'fixture',now()+interval '90 days')
                             """);
-                    try (var result = query.executeQuery("SELECT session_id FROM notification_interest_events")) {
+                    query.executeUpdate("DELETE FROM privacy_notification_receipts");
+                    try (var result = query.executeQuery("SELECT email FROM users WHERE id=1")) {
                         assertTrue(result.next());
-                        assertNull(result.getObject(1));
+                        assertEquals("fixture@example.invalid", result.getString(1));
                     }
-                    assertThrows(SQLException.class, () -> query.executeUpdate(
-                            "UPDATE notification_interest_events SET event_type = 'CLICKED'"));
-                    query.executeUpdate("DELETE FROM users WHERE id = 1");
                     try (var result = query.executeQuery("SELECT count(*) FROM notification_interest_events")) {
                         assertTrue(result.next());
                         assertEquals(0, result.getInt(1));
+                    }
+                    try (var result = query.executeQuery("""
+                            SELECT is_nullable FROM information_schema.columns WHERE table_schema='public'
+                            AND table_name='notification_interest_events' AND column_name='session_id'
+                            """)) {
+                        assertTrue(result.next());
+                        assertEquals("NO", result.getString(1));
                     }
                 }
             } finally {

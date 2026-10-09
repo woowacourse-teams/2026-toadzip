@@ -2,6 +2,7 @@ package com.toadzip.backend.interest.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -13,8 +14,9 @@ import com.toadzip.backend.interest.dto.NotificationSettingsRequest;
 import com.toadzip.backend.interest.dto.NotificationSettingsResponse;
 import com.toadzip.backend.interest.exception.NotificationInterestConflictException;
 import com.toadzip.backend.interest.exception.NotificationSettingsConflictException;
-import com.toadzip.backend.interest.repository.NotificationRetentionRepository;
+import com.toadzip.backend.privacy.repository.PrivacyNotificationRetentionRepository;
 import com.toadzip.backend.interest.service.NotificationSettingsService;
+import com.toadzip.backend.interest.repository.NotificationSubscriptionRepository;
 import com.toadzip.backend.privacy.domain.PrivacyRetentionPolicy;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -45,7 +47,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 class NotificationInterestOutcomeIntegrationTest {
 
     @Autowired private NotificationSettingsService service;
-    @Autowired private NotificationRetentionRepository retention;
+    @Autowired private NotificationSubscriptionRepository subscriptions;
+    @Autowired private PrivacyNotificationRetentionRepository retention;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private TransactionTemplate transactions;
     @Autowired private NotificationClock clock;
@@ -62,7 +65,9 @@ class NotificationInterestOutcomeIntegrationTest {
 
     @AfterEach
     void cleanup() {
-        jdbc.update("DELETE FROM notification_interest_events WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM privacy_notification_receipts WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM privacy_notification_notices WHERE user_id = ?", userId);
+        jdbc.update("DELETE FROM privacy_notification_states WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM notification_subscriptions WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM notification_email_preferences WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM users WHERE id = ?", userId);
@@ -151,11 +156,9 @@ class NotificationInterestOutcomeIntegrationTest {
     void 삭제된_대상도_안내버전없이_SETTING에서_취소한다() {
         Instant now = clock.instant();
         jdbc.update("""
-                INSERT INTO notification_subscriptions(user_id,target_type,target_id,active,updated_at,expires_at,
-                    requested_at,notice_version,purge_after)
-                VALUES (?, 'ANNOUNCEMENT','999999999',true,?,?,?,'old',?)
-                """, userId, Timestamp.from(now), Timestamp.from(now.plusSeconds(100)), Timestamp.from(now),
-                Timestamp.from(now.plusSeconds(100000)));
+                INSERT INTO notification_subscriptions(user_id,target_type,target_id,active,updated_at,expires_at)
+                VALUES (?, 'ANNOUNCEMENT','999999999',true,?,?)
+                """, userId, Timestamp.from(now), Timestamp.from(now.plusSeconds(100)));
         NotificationSettingsRequest request = new NotificationSettingsRequest(UUID.randomUUID(), Long.toString(userId),
                 0L, NotificationEventType.CANCELLED, NotificationEventSource.SETTING,
                 NotificationTargetType.ANNOUNCEMENT, "999999999", null);
@@ -164,15 +167,15 @@ class NotificationInterestOutcomeIntegrationTest {
 
     @Test
     void 상태와_영수증_뒤의revision저장이_실패하면_모두_롤백된다() {
-        jdbc.execute("ALTER TABLE users ADD CONSTRAINT test_notification_revision_failure "
-                + "CHECK (id <> " + userId + " OR notification_settings_revision = 0)");
+        jdbc.execute("ALTER TABLE privacy_notification_states ADD CONSTRAINT test_notification_revision_failure "
+                + "CHECK (user_id <> " + userId + " OR revision = 0)");
         try {
             assertThrows(DataIntegrityViolationException.class,
                     () -> service.change(userId, request(0, NotificationEventType.CONFIRMED, "11")));
             assertEquals(0, eventCount());
             assertTrue(service.current(userId).targets().isEmpty());
         } finally {
-            jdbc.execute("ALTER TABLE users DROP CONSTRAINT test_notification_revision_failure");
+            jdbc.execute("ALTER TABLE privacy_notification_states DROP CONSTRAINT test_notification_revision_failure");
         }
     }
 
@@ -192,7 +195,7 @@ class NotificationInterestOutcomeIntegrationTest {
     }
 
     @Test
-    void 파기정각에_비활성설정과_과거영수증을_삭제하되_revision은_남긴다() {
+    void 파기정각에_신규고지와_영수증만_삭제하고_기존설정과_revision은_남긴다() {
         NotificationSettingsRequest original = request(0, NotificationEventType.CONFIRMED, "11");
         service.change(userId, original);
         service.change(userId, request(1, NotificationEventType.CANCELLED, "11"));
@@ -204,6 +207,8 @@ class NotificationInterestOutcomeIntegrationTest {
         transactions.executeWithoutResult(status -> retention.purgeChunk(clock.instant(), 500));
         assertEquals(0, settingCount());
         assertEquals(0, eventCount());
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM notification_subscriptions WHERE user_id = ?",
+                Integer.class, userId));
         assertEquals(2, service.current(userId).settingsRevision());
         assertThrows(NotificationSettingsConflictException.class, () -> service.change(userId, original));
         assertEquals("retained@example.com", jdbc.queryForObject("SELECT email FROM users WHERE id = ?",
@@ -232,7 +237,7 @@ class NotificationInterestOutcomeIntegrationTest {
                 BEGIN RAISE EXCEPTION 'simulated retention failure'; END $$
                 """);
         jdbc.execute("""
-                CREATE TRIGGER test_notification_purge_failure BEFORE DELETE ON notification_subscriptions
+                CREATE TRIGGER test_notification_purge_failure BEFORE DELETE ON privacy_notification_notices
                 FOR EACH ROW EXECUTE FUNCTION test_notification_purge_failure()
                 """);
         try {
@@ -241,7 +246,7 @@ class NotificationInterestOutcomeIntegrationTest {
             assertEquals(2, eventCount());
             assertEquals(1, settingCount());
         } finally {
-            jdbc.execute("DROP TRIGGER test_notification_purge_failure ON notification_subscriptions");
+            jdbc.execute("DROP TRIGGER test_notification_purge_failure ON privacy_notification_notices");
             jdbc.execute("DROP FUNCTION test_notification_purge_failure()");
         }
         transactions.executeWithoutResult(status -> retention.purgeChunk(clock.instant(), 500));
@@ -317,18 +322,52 @@ class NotificationInterestOutcomeIntegrationTest {
     void 한_청크는_500행까지만_삭제하고_남은대상을_다음청크에_처리한다() {
         Instant created = clock.instant().minus(PrivacyRetentionPolicy.NOTIFICATION_EVENT_RETENTION);
         jdbc.update("""
-                INSERT INTO notification_interest_events(event_id,event_type,source,target_type,target_id,created_at,
-                    outcome,user_id,notice_version,settings_revision)
+                INSERT INTO privacy_notification_receipts(event_id,event_type,source,target_type,target_id,created_at,
+                    outcome,user_id,notice_version,settings_revision,request_fingerprint,purge_after)
                 SELECT ('90000000-0000-4000-8000-' || lpad(sequence::text,12,'0'))::uuid,
-                    'CONFIRMED','SETTING','REGION','11',?,'ACTIVATED',?,'notification-2026-10-09-v1',sequence
+                    'CONFIRMED','SETTING','REGION','11',?,'ACTIVATED',?,'notification-2026-10-10-v1',sequence,'test',?
                 FROM generate_series(1,501) AS sequence
-                """, Timestamp.from(created), userId);
+                """, Timestamp.from(created), userId, Timestamp.from(clock.instant()));
         int first = transactions.execute(status -> retention.purgeChunk(clock.instant(), 500));
         assertEquals(500, first);
         assertEquals(1, eventCount());
         int second = transactions.execute(status -> retention.purgeChunk(clock.instant(), 500));
         assertEquals(1, second);
         assertEquals(0, eventCount());
+    }
+
+    @Test
+    void 고지메타를_제거해도_기존알림의_활성상태와_만료시각은_유지된다() {
+        NotificationSettingsResponse first = service.change(userId, request(0, NotificationEventType.CONFIRMED, "11"));
+        jdbc.update("DELETE FROM privacy_notification_notices WHERE user_id = ?", userId);
+
+        var current = service.current(userId);
+
+        assertEquals(1, current.targets().size());
+        assertEquals(first.currentTarget().expiresAt(), current.targets().getFirst().expiresAt());
+        assertEquals(1, current.settingsRevision());
+        assertNull(current.targets().getFirst().noticeVersion());
+        assertNull(current.targets().getFirst().requestedAt());
+    }
+
+    @Test
+    void 기존업무의_재신청은_고지메타와_무관하게_실제만료시각을_갱신한다() {
+        NotificationSettingsResponse first = service.change(userId, request(0, NotificationEventType.CONFIRMED, "11"));
+        Instant originalPurgeAfter = purgeAfter();
+        clock.set(first.currentTarget().expiresAt().plusSeconds(1));
+        subscriptions.activateForMember(userId, NotificationTargetType.REGION, "11", clock.instant());
+        Instant businessExpiry = jdbc.queryForObject("""
+                SELECT expires_at FROM notification_subscriptions WHERE user_id = ?
+                """, Timestamp.class, userId).toInstant();
+
+        assertEquals(businessExpiry, service.current(userId).targets().getFirst().expiresAt());
+        assertEquals(originalPurgeAfter, purgeAfter());
+        clock.set(originalPurgeAfter);
+        transactions.executeWithoutResult(status -> retention.purgeChunk(clock.instant(), 500));
+
+        assertEquals(0, settingCount());
+        assertEquals(1, service.current(userId).targets().size());
+        assertEquals(businessExpiry, service.current(userId).targets().getFirst().expiresAt());
     }
 
     private int raceChange(CountDownLatch ready, CountDownLatch start, String target) throws Exception {
@@ -345,24 +384,24 @@ class NotificationInterestOutcomeIntegrationTest {
     private NotificationSettingsRequest request(long revision, NotificationEventType type, String target) {
         String notice = null;
         if (type == NotificationEventType.CONFIRMED) {
-            notice = "notification-2026-10-09-v1";
+            notice = "notification-2026-10-10-v1";
         }
         return new NotificationSettingsRequest(UUID.randomUUID(), Long.toString(userId), revision, type,
                 NotificationEventSource.SETTING, NotificationTargetType.REGION, target, notice);
     }
 
     private Instant purgeAfter() {
-        return jdbc.queryForObject("SELECT purge_after FROM notification_subscriptions WHERE user_id = ?",
+        return jdbc.queryForObject("SELECT purge_after FROM privacy_notification_notices WHERE user_id = ?",
                 Timestamp.class, userId).toInstant();
     }
 
     private int settingCount() {
-        return jdbc.queryForObject("SELECT count(*) FROM notification_subscriptions WHERE user_id = ?",
+        return jdbc.queryForObject("SELECT count(*) FROM privacy_notification_notices WHERE user_id = ?",
                 Integer.class, userId);
     }
 
     private int eventCount() {
-        return jdbc.queryForObject("SELECT count(*) FROM notification_interest_events WHERE user_id = ?",
+        return jdbc.queryForObject("SELECT count(*) FROM privacy_notification_receipts WHERE user_id = ?",
                 Integer.class, userId);
     }
 

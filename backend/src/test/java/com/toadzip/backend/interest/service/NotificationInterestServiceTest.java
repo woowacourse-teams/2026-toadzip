@@ -14,7 +14,7 @@ import com.toadzip.backend.interest.domain.NotificationInterestOutcome;
 import com.toadzip.backend.interest.domain.NotificationTargetType;
 import com.toadzip.backend.interest.dto.NotificationInterestRequest;
 import com.toadzip.backend.interest.exception.InvalidNotificationInterestException;
-import com.toadzip.backend.interest.repository.NotificationInterestRepository;
+import com.toadzip.backend.privacy.repository.PrivacyNotificationEventRepository;
 import com.toadzip.backend.privacy.domain.AnalyticsCollectionPolicy;
 import com.toadzip.backend.privacy.domain.AnalyticsConsent;
 import com.toadzip.backend.privacy.domain.ConsentDecision;
@@ -31,7 +31,7 @@ import org.junit.jupiter.api.Test;
 class NotificationInterestServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-10-09T09:00:00Z");
-    private final NotificationInterestRepository repository = mock(NotificationInterestRepository.class);
+    private final PrivacyNotificationEventRepository repository = mock(PrivacyNotificationEventRepository.class);
     private final AnalyticsConsentRepository consents = mock(AnalyticsConsentRepository.class);
     private final PrivacyNoticeCatalog notices = mock(PrivacyNoticeCatalog.class);
 

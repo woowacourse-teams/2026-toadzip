@@ -1,6 +1,6 @@
-package com.toadzip.backend.interest.service;
+package com.toadzip.backend.privacy.service;
 
-import com.toadzip.backend.interest.repository.NotificationRetentionRepository;
+import com.toadzip.backend.privacy.repository.PrivacyNotificationRetentionRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -15,12 +15,12 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
-public class NotificationRetentionService {
+public class PrivacyNotificationRetentionService {
 
-    private static final Logger log = LoggerFactory.getLogger(NotificationRetentionService.class);
+    private static final Logger log = LoggerFactory.getLogger(PrivacyNotificationRetentionService.class);
     private static final int CHUNK_SIZE = 500;
     private static final long MAX_RUN_NANOS = 30_000_000_000L;
-    private final NotificationRetentionRepository repository;
+    private final PrivacyNotificationRetentionRepository repository;
     private final Clock clock;
     private final TransactionTemplate transactions;
     private final AtomicLong lastSuccess = new AtomicLong();
@@ -29,7 +29,7 @@ public class NotificationRetentionService {
     private final AtomicLong oldestOverdueSeconds = new AtomicLong();
     private final Counter deletedCount;
 
-    public NotificationRetentionService(NotificationRetentionRepository repository, Clock clock,
+    public PrivacyNotificationRetentionService(PrivacyNotificationRetentionRepository repository, Clock clock,
             PlatformTransactionManager transactionManager, MeterRegistry registry) {
         this.repository = repository;
         this.clock = clock;
@@ -57,7 +57,7 @@ public class NotificationRetentionService {
                 }
                 deletedCount.increment(deleted);
             } while (deleted > 0 && System.nanoTime() - started < MAX_RUN_NANOS);
-            NotificationRetentionRepository.Backlog backlog = repository.backlog(now);
+            PrivacyNotificationRetentionRepository.Backlog backlog = repository.backlog(now);
             overdueCount.set(backlog.count());
             oldestOverdueSeconds.set(backlog.oldestOverdueSeconds());
             lastSuccess.set(clock.instant().getEpochSecond());

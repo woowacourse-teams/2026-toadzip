@@ -1,24 +1,27 @@
-package com.toadzip.backend.user.service;
+package com.toadzip.backend.privacy.service;
 
-import com.toadzip.backend.user.repository.UserLifecycleRepository;
+import com.toadzip.backend.privacy.repository.UserRegistrationNoticeRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
-public class UserDeletionRetentionService {
+public class UserRegistrationRetentionService {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(UserDeletionRetentionService.class);
-    private final UserLifecycleRepository repository;
+    private static final Logger LOGGER = LoggerFactory.getLogger(UserRegistrationRetentionService.class);
+    private static final int CHUNK_SIZE = 500;
+    private final UserRegistrationNoticeRepository repository;
     private final TransactionTemplate transactions;
     private final Clock clock;
     private final AtomicLong lastSuccess = new AtomicLong();
@@ -27,14 +30,13 @@ public class UserDeletionRetentionService {
     private final AtomicLong oldestSeconds = new AtomicLong();
     private final Counter deleted;
 
-    public UserDeletionRetentionService(UserLifecycleRepository repository,
-            PlatformTransactionManager transactionManager,
-            Clock clock, MeterRegistry meters) {
+    public UserRegistrationRetentionService(UserRegistrationNoticeRepository repository,
+            PlatformTransactionManager transactionManager, Clock clock, MeterRegistry meters) {
         this.repository = repository;
         this.transactions = new TransactionTemplate(transactionManager);
         this.transactions.setTimeout(20);
         this.clock = clock;
-        var tags = io.micrometer.core.instrument.Tags.of("job", "user-deletion");
+        Tags tags = Tags.of("job", "registration-notice");
         meters.gauge("privacy.retention.last.success.seconds", tags, lastSuccess);
         meters.gauge("privacy.retention.consecutive.failures", tags, failures);
         meters.gauge("privacy.retention.overdue.count", tags, overdue);
@@ -49,22 +51,25 @@ public class UserDeletionRetentionService {
         try {
             int count;
             do {
-                Integer result = transactions.execute(status -> repository.purgeExpiredMarkers(now));
-                count = java.util.Objects.requireNonNull(result);
+                Integer result = transactions.execute(status -> purgeChunk(now));
+                count = Objects.requireNonNull(result);
                 deleted.increment(count);
-            } while (count == 500 && System.nanoTime() < deadline);
-            var remaining = repository.overdueMarkers(now);
+            } while (count == CHUNK_SIZE && System.nanoTime() < deadline);
+            var remaining = repository.overdue(now);
             overdue.set(remaining.count());
             oldestSeconds.set((long) remaining.oldestSeconds());
             lastSuccess.set(clock.instant().getEpochSecond());
             failures.set(0);
-            if (oldestSeconds.get() > 1800) {
-                LOGGER.warn("event=privacy.retention.overdue job=user-deletion");
-            }
         } catch (RuntimeException exception) {
             failures.incrementAndGet();
-            LOGGER.error("event=privacy.retention.failed job=user-deletion reason={}",
+            LOGGER.error("event=privacy.retention.failed job=registration-notice reason={}",
                     exception.getClass().getSimpleName());
+            throw exception;
         }
+    }
+
+    private int purgeChunk(Instant now) {
+        repository.markOrphans(now, CHUNK_SIZE);
+        return repository.purgeOrphans(now, CHUNK_SIZE);
     }
 }

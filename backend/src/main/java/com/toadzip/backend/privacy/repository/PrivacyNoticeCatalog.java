@@ -11,6 +11,7 @@ import java.util.Comparator;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.stream.Collectors;
 import org.springframework.core.io.ClassPathResource;
@@ -64,9 +65,13 @@ public class PrivacyNoticeCatalog {
     }
 
     public PrivacyNotice find(String key, String version) {
-        return documents.stream().filter(document -> document.key().equals(key) && document.version().equals(version))
-                .findFirst()
+        return findOptional(key, version)
                 .orElseThrow(() -> new PrivacyException("PRIVACY_NOTICE_NOT_FOUND", "안내문을 찾을 수 없습니다."));
+    }
+
+    public Optional<PrivacyNotice> findOptional(String key, String version) {
+        return documents.stream().filter(document -> document.key().equals(key) && document.version().equals(version))
+                .findFirst();
     }
 
     public String currentVersion(String key) {

@@ -21,7 +21,7 @@ public class ConsentEventRepository {
     public Optional<ConsentReceipt> find(UUID consentId, UUID commandId) {
         return jdbcTemplate.query("""
                 SELECT command_id, request_fingerprint, decision, revision, recorded_at
-                FROM analytics_consent_events WHERE consent_id = ? AND command_id = ?
+                FROM privacy_analytics_consent_events WHERE consent_id = ? AND command_id = ?
                 """, (row, number) -> new ConsentReceipt(row.getObject("command_id", UUID.class),
                 row.getString("request_fingerprint"), ConsentDecision.valueOf(row.getString("decision")),
                 row.getLong("revision"), row.getTimestamp("recorded_at").toInstant()), consentId, commandId)
@@ -30,7 +30,7 @@ public class ConsentEventRepository {
 
     public void supersede(UUID consentId, long revision, Instant now, Instant purgeAfter) {
         jdbcTemplate.update("""
-                UPDATE analytics_consent_events SET superseded_at = ?, purge_after = LEAST(purge_after, ?)
+                UPDATE privacy_analytics_consent_events SET superseded_at = ?, purge_after = LEAST(purge_after, ?)
                 WHERE consent_id = ? AND revision = ?
                 """, Timestamp.from(now), Timestamp.from(purgeAfter), consentId, revision);
     }
@@ -38,7 +38,7 @@ public class ConsentEventRepository {
     public void record(AnalyticsConsent previous, AnalyticsConsent current, ConsentCommand command,
             Instant purgeAfter) {
         jdbcTemplate.update("""
-                INSERT INTO analytics_consent_events
+                INSERT INTO privacy_analytics_consent_events
                     (id, consent_id, command_id, request_fingerprint, previous_decision, decision,
                     previous_revision, revision, previous_notice_version, previous_scope_version, notice_version,
                     scope_version, source, recorded_at, expires_at, purge_after)

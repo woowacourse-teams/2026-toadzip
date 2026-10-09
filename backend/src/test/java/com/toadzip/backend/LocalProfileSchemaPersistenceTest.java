@@ -56,6 +56,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.core.NestedExceptionUtils;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.StandardEnvironment;
@@ -327,7 +328,7 @@ class LocalProfileSchemaPersistenceTest {
     }
 
     @Test
-    void 기존_스키마를_자동_baseline_후_통합_마이그레이션으로_보정한다() throws Exception {
+    void 기존_스키마는_별도_Flyway_도입_후_개인정보_앱을_기동한다() throws Exception {
         String databaseName = "toadzip_reconciliation_" + UUID.randomUUID().toString().replace("-", "");
         String jdbcUrl = primaryTestDatabaseUrl(databaseName);
         createDatabase(databaseName);
@@ -346,11 +347,30 @@ class LocalProfileSchemaPersistenceTest {
                         """);
             }
 
-            try (ConfigurableApplicationContext ignored = new SpringApplicationBuilder(BackendApplication.class)
-                    .environment(createIsolatedEnvironment(jdbcUrl))
-                    .run()) {
-                // Startup records the baseline and applies pending migrations.
+            RuntimeException rejected = assertThrows(RuntimeException.class,
+                    () -> new SpringApplicationBuilder(BackendApplication.class)
+                            .environment(createIsolatedEnvironment(jdbcUrl)).run());
+            Throwable cause = NestedExceptionUtils.getMostSpecificCause(rejected);
+            assertTrue(cause instanceof SQLException);
+            assertEquals("P0001", ((SQLException) cause).getSQLState());
+            assertTrue(cause.getMessage().contains("Application Flyway history is missing"));
+            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
+                    Statement statement = connection.createStatement();
+                    ResultSet history = statement.executeQuery("""
+                            SELECT to_regclass('public.flyway_schema_history') IS NULL,
+                                   to_regclass('public.privacy_flyway_schema_history') IS NULL
+                            """)) {
+                assertTrue(history.next());
+                assertTrue(history.getBoolean(1));
+                assertTrue(history.getBoolean(2));
+                assertEquals(1, countAllRows(connection, "lh_announcement_detail_source"));
+                assertEquals(1, countAllRows(connection, "lh_announcement_supply_source"));
             }
+
+            // Existing-schema adoption is an explicit, separately reviewed operation, not privacy startup.
+            Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("classpath:db/migration")
+                    .baselineOnMigrate(true).baselineVersion("20260922.00").load().migrate();
 
             try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
                     Statement statement = connection.createStatement()) {

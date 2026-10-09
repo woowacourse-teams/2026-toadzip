@@ -14,7 +14,8 @@ import com.toadzip.backend.interest.dto.NotificationSettingsResponse.CurrentTarg
 import com.toadzip.backend.interest.exception.InvalidNotificationInterestException;
 import com.toadzip.backend.interest.exception.NotificationInterestConflictException;
 import com.toadzip.backend.interest.exception.NotificationSettingsConflictException;
-import com.toadzip.backend.interest.repository.NotificationSettingsRepository;
+import com.toadzip.backend.interest.repository.NotificationSubscriptionRepository;
+import com.toadzip.backend.privacy.repository.PrivacyNotificationRepository;
 import com.toadzip.backend.privacy.domain.PrivacyRetentionPolicy;
 import com.toadzip.backend.privacy.repository.PrivacyNoticeCatalog;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
@@ -30,7 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class NotificationSettingsService {
 
-    private final NotificationSettingsRepository repository;
+    private final PrivacyNotificationRepository repository;
+    private final NotificationSubscriptionRepository subscriptions;
     private final PrivacyNoticeCatalog notices;
     private final RegionCodeResolver regions;
     private final HousingComplexRepository complexes;
@@ -40,7 +42,7 @@ public class NotificationSettingsService {
 
     @Transactional
     public MemberNotificationSettingsResponse current(long userId) {
-        long revision = repository.lockUser(userId);
+        long revision = repository.lockUser(userId, clock.instant());
         return repository.currentSettings(userId, revision, clock.instant());
     }
 
@@ -52,7 +54,7 @@ public class NotificationSettingsService {
         NotificationSettingCommand command = new NotificationSettingCommand(request.eventId(), userId,
                 request.expectedSettingsRevision(), request.eventType(), request.source(), request.targetType(),
                 request.targetId(), request.noticeVersion());
-        long revision = repository.lockUser(userId);
+        long revision = repository.lockUser(userId, clock.instant());
         Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
         Optional<NotificationSettingReceipt> previous = repository.findReceipt(command.eventId());
         if (previous.isPresent()) {
@@ -66,10 +68,11 @@ public class NotificationSettingsService {
         NotificationInterestOutcome outcome = apply(command, now);
         long nextRevision = Math.incrementExact(revision);
         String noticeVersion = notices.currentVersion("NOTIFICATION_NOTICE");
-        if (!repository.insertReceipt(command, outcome, noticeVersion, now, nextRevision)) {
+        if (!repository.insertReceipt(command, outcome, noticeVersion, now, nextRevision,
+                now.plus(PrivacyRetentionPolicy.NOTIFICATION_EVENT_RETENTION))) {
             throw new NotificationInterestConflictException();
         }
-        repository.updateRevision(userId, revision, nextRevision);
+        repository.updateRevision(userId, revision, nextRevision, now);
         return response(new NotificationSettingReceipt(command.eventId(), userId, command.fingerprint(),
                 command.targetType(), command.targetId(), outcome, now, nextRevision), nextRevision, now);
     }
@@ -81,14 +84,17 @@ public class NotificationSettingsService {
             if (current.active()) {
                 return NotificationInterestOutcome.ALREADY_ACTIVE;
             }
-            Instant expiry = retentionPolicy.notificationExpiresAt(now);
-            repository.activate(command, now, expiry, retentionPolicy.notificationPurgeAfter(expiry));
+            subscriptions.activateForMember(command.userId(), command.targetType(), command.targetId(), now);
+            Instant expiry = repository.currentTarget(
+                    command.userId(), command.targetType(), command.targetId(), now).expiresAt();
+            repository.recordNotice(command, now, expiry, retentionPolicy.notificationPurgeAfter(expiry));
             return NotificationInterestOutcome.ACTIVATED;
         }
         if (!current.active()) {
             return NotificationInterestOutcome.UNCHANGED;
         }
-        repository.cancel(command, now, retentionPolicy.notificationPurgeAfter(now));
+        subscriptions.cancel(command.userId(), command.targetType(), command.targetId(), now);
+        repository.retireNotice(command, retentionPolicy.notificationPurgeAfter(now));
         return NotificationInterestOutcome.CANCELLED;
     }
 

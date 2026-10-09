@@ -48,14 +48,14 @@ public class AnalyticsConsentRepository {
         if (lock) {
             suffix = " FOR UPDATE";
         }
-        return jdbcTemplate.query("SELECT * FROM analytics_consents WHERE " + field + " = ?" + suffix,
+        return jdbcTemplate.query("SELECT * FROM privacy_analytics_consents WHERE " + field + " = ?" + suffix,
                 (row, number) -> map(row), value).stream().findFirst();
     }
 
     public AnalyticsConsent createMember(long userId, Instant now) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update("""
-                INSERT INTO analytics_consents (id, user_id, decision, revision, created_at, updated_at)
+                INSERT INTO privacy_analytics_consents (id, user_id, decision, revision, created_at, updated_at)
                 VALUES (?, ?, 'UNSET', 0, ?, ?)
                 """, id, userId, Timestamp.from(now), Timestamp.from(now));
         return findMember(userId, true).orElseThrow();
@@ -64,7 +64,7 @@ public class AnalyticsConsentRepository {
     public AnalyticsConsent createGuest(String token, Instant now, Instant expiresAt) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update("""
-                INSERT INTO analytics_consents
+                INSERT INTO privacy_analytics_consents
                     (id, guest_token_hash, decision, revision, created_at, updated_at, expires_at)
                 VALUES (?, ?, 'UNSET', 0, ?, ?, ?)
                 """, id, PrivacyHash.sha256(token), Timestamp.from(now), Timestamp.from(now),
@@ -74,7 +74,7 @@ public class AnalyticsConsentRepository {
 
     public void save(AnalyticsConsent consent) {
         jdbcTemplate.update("""
-                UPDATE analytics_consents SET decision = ?, notice_version = ?, scope_version = ?,
+                UPDATE privacy_analytics_consents SET decision = ?, notice_version = ?, scope_version = ?,
                     decided_at = ?, expires_at = ?, revision = ?, updated_at = ? WHERE id = ?
                 """, consent.getDecision().name(), consent.getNoticeVersion(), consent.getScopeVersion(),
                 timestamp(consent.getDecidedAt()), timestamp(consent.getExpiresAt()), consent.getRevision(),
