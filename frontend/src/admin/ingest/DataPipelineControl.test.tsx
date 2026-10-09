@@ -42,6 +42,57 @@ beforeEach(() => {
 })
 
 describe('DataPipelineControl', () => {
+  it('v2 간소화 화면은 지정한 단지 실행 버튼만 남기고 미실행 카드와 품질 패널을 숨긴다', async () => {
+    render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+    await act(async () => {})
+    expect(screen.getByRole('heading', { name: '단지 데이터' })).toBeVisible()
+    expect(screen.getByText('단지 원천과 주택형 정보를 갱신합니다.')).toBeVisible()
+    expect(screen.getAllByRole('button').map(button => button.textContent))
+      .toEqual(['단지 수집·정제', '단지 수집', '단지 정제'])
+    expect(screen.queryByText('아직 실행하지 않았습니다.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '데이터 수집·정제' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '위치정보 ZIP 업로드' })).not.toBeInTheDocument()
+    expect(apiMocks.getLhAnnouncementQuality).not.toHaveBeenCalled()
+  })
+
+  it('v2 새로고침은 완료 카드를 복원하지 않고 진행 중인 작업 하나만 복원한다', async () => {
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) =>
+      Promise.resolve(execution(type, type === 'ANNOUNCEMENT_SYNC' ? 'RUNNING' : 'COMPLETED')))
+    render(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
+    await screen.findByRole('article', { name: '현재 작업 단계' })
+    expect(screen.getAllByRole('article', { name: '현재 작업 단계' })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: '공고 수집·정제 실행 중지' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '공고 정제' })).toBeDisabled()
+    expect(apiMocks.getLhAnnouncementQuality).not.toHaveBeenCalled()
+  })
+
+  it('v2 실행 직후 완료 결과는 유지하되 다음 실행 결과와 겹치지 않는다', async () => {
+    apiMocks.startDataPipeline.mockImplementation((type: DataPipelineType) =>
+      Promise.resolve(execution(type, 'COMPLETED')))
+    render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: '단지 정제' }))
+    await screen.findByRole('article', { name: '현재 작업 단계' })
+    expect(screen.getByRole('article', { name: '현재 작업 단계' })).toHaveTextContent('단지 정제')
+    fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
+    fireEvent.change(screen.getByLabelText('공공데이터포털 API 키'), { target: { value: 'fixture-key' } })
+    fireEvent.click(screen.getByRole('button', { name: '단지 수집 시작' }))
+    await waitFor(() => expect(screen.getByRole('article', { name: '현재 작업 단계' })).toHaveTextContent('단지 수집'))
+    expect(screen.getAllByRole('article', { name: '현재 작업 단계' })).toHaveLength(1)
+  })
+
+  it('v2 탭 전환 중에도 다른 도메인의 잠금과 중지를 보존한다', async () => {
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) =>
+      Promise.resolve(execution(type, type === 'ANNOUNCEMENT_SYNC' ? 'RUNNING' : 'IDLE')))
+    const view = render(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
+    await screen.findByRole('article', { name: '현재 작업 단계' })
+    view.rerender(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+    expect(screen.queryByRole('article', { name: '현재 작업 단계' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '단지 정제' })).toBeDisabled()
+    expect(screen.getByRole('status')).toHaveTextContent('다른 탭')
+    view.rerender(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
+    expect(screen.getByRole('button', { name: '공고 수집·정제 실행 중지' })).toBeVisible()
+  })
   it('최초 상태 조회가 실패해도 재조회하여 기존 실행과 중지 버튼을 복원한다', async () => {
     vi.useFakeTimers()
     let attempts = 0

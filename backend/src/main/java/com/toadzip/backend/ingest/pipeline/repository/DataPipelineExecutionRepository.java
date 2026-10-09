@@ -17,6 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 public interface DataPipelineExecutionRepository
         extends JpaRepository<DataPipelineExecution, Long> {
 
+    org.springframework.data.domain.Page<DataPipelineExecution> findByTypeIn(
+            java.util.Collection<DataPipelineType> types, org.springframework.data.domain.Pageable pageable);
+
     Optional<DataPipelineExecution> findFirstByTypeOrderByIdDesc(
             DataPipelineType type
     );

@@ -13,7 +13,7 @@ export type AnalyticsEvents = {
   view_complex: { complex_id: string; entry_point: DetailEntryPoint }
   view_announcement: { announcement_id: string; entry_point: DetailEntryPoint }
   select_search_result: {
-    result_type: 'complex' | 'announcement' | 'region'
+    result_type: 'complex' | 'announcement' | 'region' | 'subway_station'
     complex_id?: string
     announcement_id?: string
   }
@@ -216,6 +216,7 @@ function eventParameters(name: keyof AnalyticsEvents, parameters: unknown): Para
     }
     case 'select_search_result':
       if (values.result_type === 'region') return { result_type: 'region' }
+      if (values.result_type === 'subway_station') return { result_type: 'subway_station' }
       if (values.result_type === 'complex' && isPublicId(values.complex_id)) {
         return { result_type: 'complex', complex_id: values.complex_id }
       }

@@ -16,7 +16,9 @@ BEGIN
         RAISE EXCEPTION 'Application Flyway history contains a failure; never repair automatically';
     END IF;
     IF EXISTS (SELECT 1 FROM public.flyway_schema_history
-               WHERE version IN ('20261009.01', '20261009.02', '20261009.03', '20261009.04')) THEN
+               WHERE script IN ('V20261009_01__analytics_consent.sql',
+                   'V20261009_02__notification_privacy.sql', 'V20261009_03__user_privacy_lifecycle.sql',
+                   'V20261009_04__backfill_notification_retention.sql')) THEN
         RAISE EXCEPTION 'Legacy privacy migrations were applied; stop for separately approved database recovery';
     END IF;
     FOR expected IN SELECT * FROM (VALUES ('analytics_consents'), ('analytics_consent_events'),

@@ -3,6 +3,7 @@ import type { ManagementResource, ManagementSummary } from './managementContract
 import { labels } from './fields'
 import { ManagementStatus } from './ManagementStatus'
 import styles from './ManagementList.module.css'
+import { ComplexVerificationBadge } from './ComplexVerificationBadge'
 
 type Column = { key: string; label: string; width: number; read: (summary: ManagementSummary) => string | number | boolean | null | undefined; kind?: 'number' | 'status' }
 export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight = false, compact = false, inlineSearch, onEdit, editDisabled = false }: { items: ManagementSummary[]; resource: ManagementResource; returnTo?: string; fixedHeight?: boolean; compact?: boolean; inlineSearch?: string; onEdit?: (item: ManagementSummary) => void; editDisabled?: boolean }) {
@@ -23,6 +24,7 @@ export function ManagementSummaryTable({ items, resource, returnTo, fixedHeight 
       <tbody>{items.map(item => <tr key={item.id} data-selected={selected === String(item.id) || undefined}>
         <th scope="row">{onEdit ? <button type="button" data-admin-navigation disabled={editDisabled} className={styles.inlineEdit} aria-label={`${item.name} 수정`} title={item.name} onClick={() => onEdit(item)}>{item.name}</button> : <Link data-management-id={item.id} aria-current={selected === String(item.id) ? 'page' : undefined} title={item.name} to={`/admin/${resource}/${item.id}${inlineSearch !== undefined ? inlineSearch ? `?${inlineSearch}` : '' : returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`}>{item.name}</Link>}
           {compact ? <><span className={styles.rowSubtitle}>{item.subtitle}</span><div className={styles.rowMeta}><span>{labels[item.provider] ?? item.provider}</span><span>{labels[item.rental] ?? item.rental}</span><ManagementStatus summary={item} /></div></> : null}
+          {resource === 'complexes' ? <div className={styles.verification}><ComplexVerificationBadge status={item.complex?.verificationStatus ?? 'UNREVIEWED'} count={item.complex?.reviewedFieldCount} /></div> : null}
         </th>
         {columns.map(column => <td key={column.key} data-field={column.key} className={column.kind === 'number' ? styles.number : undefined}>
           {column.kind === 'status' ? <ManagementStatus summary={item} /> : <TextValue value={column.read(item)} />}

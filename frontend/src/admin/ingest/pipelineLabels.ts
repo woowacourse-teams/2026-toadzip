@@ -7,6 +7,7 @@ export const pipelineLabels: Record<DataPipelineType, string> = {
   ANNOUNCEMENT_REFINEMENT: '공고 정제',
   COMPLEX_SYNC: '단지 수집·정제',
   ANNOUNCEMENT_SYNC: '공고 수집·정제',
+  ANNOUNCEMENT_REGISTRATION: '공고 단건 등록',
 }
 
 import type { DataPipelineExecution } from './api'

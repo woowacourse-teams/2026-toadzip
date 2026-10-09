@@ -51,6 +51,21 @@ function captured(properties: Record<string, unknown>, event = 'view_complex'): 
 
 describe('PostHog privacy and identity boundary', () => {
   it.each([
+    ['subway_station', 'naver-subway:테스트역:테스트 주소:37.123:127.456'],
+    ['region', 'naver-region:테스트 지역'],
+  ])('외부 위치 검색의 %s 식별자와 상세 위치를 제거한다', async (resultType, resultId) => {
+    const analytics = await initialized()
+    const output = analytics.sanitizeCapture(captured({
+      result_type: resultType, result_id: resultId, region_code: resultId,
+      title: '테스트역', address: '테스트 주소', latitude: 37.123, longitude: 127.456,
+    }, 'select_search_result'))
+    expect(output).not.toBeNull()
+    expect(output?.properties).not.toHaveProperty('result_id')
+    expect(output?.properties).not.toHaveProperty('region_code')
+    expect(JSON.stringify(output)).not.toMatch(/naver-|테스트|37\.123|127\.456|latitude|longitude/)
+  })
+
+  it.each([
     ['MODE', 'test'],
     ['VITE_POSTHOG_KEY', ''], ['VITE_POSTHOG_HOST', 'https://unexpected.example'],
     ['VITE_ANALYTICS_ENV', 'prod'], ['VITE_POSTHOG_LOCAL_ENABLED', 'false'],

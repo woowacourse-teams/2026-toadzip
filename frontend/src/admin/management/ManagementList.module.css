@@ -1,4 +1,5 @@
 .page { min-width: 0; container-type: inline-size; }
+.verification { margin-top: var(--ds-space-2); }
 :global(.admin-content):has(> .page) { max-width: none; }
 .filters {
   display: grid;
@@ -25,6 +26,7 @@
 .moreFilters[open] summary { color: var(--ds-color-action); }
 .moreFilters summary:hover { color: var(--ds-color-action); }
 .moreFilters > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px 0 4px; }
+.moreFilters:has(select[name="verification"]) > div { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .moreFilters .review { grid-column: 1 / -1; }
 @container (max-width: 860px) {
   .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -33,6 +35,7 @@
   .moreFilters, .moreFilters[open] summary { grid-column: 1 / -1; }
 }
 @container (max-width: 560px) {
+  .moreFilters:has(select[name="verification"]) > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .filters { padding: 14px; }
   .filters .review, .actions { grid-column: 1 / -1; }
 }

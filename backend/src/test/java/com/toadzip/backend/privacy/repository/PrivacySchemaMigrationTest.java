@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class PrivacySchemaMigrationTest {
 
@@ -36,6 +37,9 @@ class PrivacySchemaMigrationTest {
             database.applicationMigration().migrate();
             try (Connection connection = database.connect(); Statement statement = connection.createStatement()) {
                 seedLegacyData(statement);
+                seedReviewedComplex(statement);
+                assertEquals(List.of("V20261009_01__create_housing_complex_reviews.sql"), queryStrings(statement,
+                        "SELECT script FROM flyway_schema_history WHERE version='20261009.01' AND success"));
             }
             SchemaSnapshot before = snapshot(database, false);
             verifySchemaGate(database, database.name(), "before");
@@ -80,15 +84,17 @@ class PrivacySchemaMigrationTest {
     }
 
     @Test
-    void 이미_폐기된_SQL이_적용된_DB는_어느_마이그레이션도_시작하지_않고_차단한다() throws Exception {
+    void 이미_폐기된_SQL이_적용된_DB는_어느_마이그레이션도_시작하지_않고_차단한다(@TempDir Path migrations)
+            throws Exception {
+        copyLegacyMigrations(migrations);
         try (TestDatabase database = TestDatabase.create()) {
-            database.applicationMigration().migrate();
+            Flyway.configure().dataSource(database.applicationMigration().getConfiguration().getDataSource())
+                    .locations("filesystem:" + migrations).target("20261008.04").load().migrate();
             try (Connection connection = database.connect(); Statement statement = connection.createStatement()) {
                 seedLegacyData(statement);
             }
             Flyway.configure().dataSource(database.applicationMigration().getConfiguration().getDataSource())
-                    .locations("classpath:db/migration", "classpath:db/archive/privacy-legacy")
-                    .load().migrate();
+                    .locations("filesystem:" + migrations).load().migrate();
             SchemaSnapshot appliedLegacy = snapshot(database, true);
 
             assertThrows(IllegalStateException.class, () -> configuration.migrate(database.applicationMigration()));
@@ -184,6 +190,63 @@ class PrivacySchemaMigrationTest {
             assertFalse(Files.exists(Path.of("src/main/resources/db/migration").resolve(fields[1])));
         }
         assertEquals(4, Files.readAllLines(archive.resolve("SHA256SUMS")).size());
+    }
+
+    @Test
+    void 구형_개인정보_이력만_남아도_기존_DB를_변경하지_않고_차단한다() throws Exception {
+        Path archive = Path.of("src/main/resources/db/archive/privacy-legacy");
+        for (String line : Files.readAllLines(archive.resolve("SHA256SUMS"))) {
+            String script = line.split("  ", 2)[1];
+            try (TestDatabase database = TestDatabase.create()) {
+                database.applicationMigration().migrate();
+                try (Connection connection = database.connect();
+                        var insert = connection.prepareStatement("""
+                                INSERT INTO flyway_schema_history(installed_rank,version,description,type,script,
+                                    installed_by,execution_time,success)
+                                SELECT max(installed_rank)+1,'20261009.02','legacy privacy fixture','SQL',?,
+                                    current_user,0,true FROM flyway_schema_history
+                                """)) {
+                    insert.setString(1, script);
+                    insert.executeUpdate();
+                }
+                SchemaSnapshot before = snapshot(database, true);
+                IllegalStateException failure = assertThrows(IllegalStateException.class,
+                        () -> configuration.migrate(database.applicationMigration()));
+                assertTrue(failure.getCause().getMessage().contains("Legacy privacy migrations were applied"));
+                assertSchemaGateRejected(database, database.name(), "before");
+                assertEquals(before, snapshot(database, true));
+            }
+        }
+    }
+
+    private void copyLegacyMigrations(Path directory) throws Exception {
+        try (var paths = Files.list(Path.of("src/main/resources/db/migration"))) {
+            for (Path path : paths.filter(Files::isRegularFile).toList()) {
+                if (path.getFileName().toString().compareTo("V20261009") < 0) {
+                    Files.copy(path, directory.resolve(path.getFileName()));
+                }
+            }
+        }
+        try (var paths = Files.list(Path.of("src/main/resources/db/archive/privacy-legacy"))) {
+            for (Path path : paths.filter(path -> path.toString().endsWith(".sql")).toList()) {
+                Files.copy(path, directory.resolve(path.getFileName()));
+            }
+        }
+    }
+
+    private void seedReviewedComplex(Statement statement) throws SQLException {
+        statement.executeUpdate("""
+                INSERT INTO housing_complexes(id,name,source_complex_identifier,city_county_district_code,
+                    latitude,legal_dong_code,longitude,pnu,province_code,road_address,parking_space_count,
+                    provider,supply_type,total_household_count,version,admin_modified)
+                VALUES (1,'검토된 단지','manual:privacy-migration','11140',37.5,'1114010100',127,
+                    '1114010100100010000','11','기존 주소',30,'LH','HAPPY_HOUSING',100,7,true)
+                """);
+        statement.executeUpdate("""
+                INSERT INTO housing_complex_reviews(housing_complex_id,outcome,checked_values,evidence_note,
+                    actor,reviewed_at)
+                VALUES (1,'VERIFIED','{"NAME":"검토된 단지"}','기존 검토 근거','fixture',CURRENT_TIMESTAMP)
+                """);
     }
 
     private void assertRejectedWithoutMutation(TestDatabase database) throws Exception {

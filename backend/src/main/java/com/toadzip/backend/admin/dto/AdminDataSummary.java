@@ -8,7 +8,7 @@ public record AdminDataSummary(long id, String name, String subtitle, String pro
         ComplexSummary complex, AnnouncementSummary announcement) {
     public record ComplexSummary(String sourceIdentifier, LocalDate completionDate, int totalHouseholdCount,
             int totalParkingCount, String heatingType, String buildingType, String corridorType,
-            Boolean hasElevator, Integer moveOutCountLastYear) { }
+            Boolean hasElevator, Integer moveOutCountLastYear, String verificationStatus, int reviewedFieldCount) { }
 
     public record AnnouncementSummary(String sourceIdentifier, String originalUrl, String recruitmentType,
             LocalDate postedDate, LocalDate applicationStartDate, LocalDate applicationEndDate,

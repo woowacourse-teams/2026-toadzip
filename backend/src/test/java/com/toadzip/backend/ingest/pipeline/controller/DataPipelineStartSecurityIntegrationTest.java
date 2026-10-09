@@ -44,6 +44,65 @@ class DataPipelineStartSecurityIntegrationTest {
     @Autowired private MockMvc mockMvc;
     @MockitoBean private DataPipelineExecutionService service;
 
+    @ParameterizedTest
+    @CsvSource({"anonymous,true,401", "USER,true,403", "ADMIN,false,403", "ADMIN,true,202"})
+    void URL_등록도_관리자_인증과_CSRF를_요구한다(String role, boolean withCsrf, int expected) throws Exception {
+        String url = "https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21026";
+        var request = post("/api/admin/ingest/pipelines/announcement-registration/url")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"url\":\"" + url + "\"}");
+        if (!"anonymous".equals(role)) {
+            String principalName = "account";
+            if ("USER".equals(role)) {
+                principalName = privacyPermissionMemberId();
+            }
+            request.with(user(principalName).roles(role));
+        }
+        if (withCsrf) {
+            request.with(csrf());
+        }
+        mockMvc.perform(request).andExpect(status().is(expected));
+        if (expected == 202) {
+            verify(service).startAnnouncementRegistrationUrl(url);
+            return;
+        }
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void 비로그인_사용자는_단건_등록을_할_수_없다() throws Exception {
+        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"pblancId\":\"21026\"}"))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void 일반_사용자는_단건_등록을_할_수_없다() throws Exception {
+        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration")
+                        .with(user(privacyPermissionMemberId()).roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"pblancId\":\"21026\"}"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void 관리자_단건_등록도_CSRF가_필요하다() throws Exception {
+        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration")
+                        .with(user("admin").roles("ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"pblancId\":\"21026\"}"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void 관리자는_서버_설정키로_단건_등록을_접수한다() throws Exception {
+        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration")
+                        .with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"pblancId\":\"21026\"}"))
+                .andExpect(status().isAccepted());
+        verify(service).startAnnouncementRegistration("21026");
+    }
+
     @Test
     void 비로그인_사용자는_입력키로_수집을_시작할_수_없다() throws Exception {
         mockMvc.perform(post(ENDPOINT).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(BODY))

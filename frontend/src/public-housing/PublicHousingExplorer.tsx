@@ -1076,8 +1076,25 @@ export function PublicHousingExplorer({
       trackEvent('select_search_result', { result_type: 'complex', complex_id: item.id })
     } else if (item.type === 'ANNOUNCEMENT') {
       trackEvent('select_search_result', { result_type: 'announcement', announcement_id: item.id })
-    } else {
+    } else if (item.type === 'REGION') {
       trackEvent('select_search_result', { result_type: 'region' })
+    } else if (item.type === 'SUBWAY_STATION') {
+      trackEvent('select_search_result', { result_type: 'subway_station' })
+    }
+    if (item.type === 'SUBWAY_STATION' || (item.type === 'REGION' && item.regionCode === null)) {
+      if (item.latitude !== null && item.longitude !== null) {
+        pendingDetailCameraRef.current = null
+        boundarySelectionRef.current = null
+        setSelectedSearchRegion(null)
+        closeStreetView('USER_CLOSED', false)
+        const query = setRegionBoundaryCode(clearDetailQuery(new URLSearchParams(location.search)), null)
+        navigate({ pathname: location.pathname, hash: location.hash, search: toSearchString(query) }, {
+          state: clearDetailHistoryState(location.state),
+        })
+        setMapCameraTarget({ latitude: item.latitude, longitude: item.longitude, zoom: 14 })
+        setCameraRequestId((current) => current + 1)
+      }
+      return
     }
     if (item.type === 'REGION') {
       prepareListEntry('search')

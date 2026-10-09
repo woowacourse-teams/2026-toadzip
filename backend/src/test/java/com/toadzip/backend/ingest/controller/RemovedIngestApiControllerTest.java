@@ -43,8 +43,7 @@ class RemovedIngestApiControllerTest {
     @ValueSource(strings = {
             "/api/admin/ingest/myhome/complex-mappings/failures",
             "/api/admin/ingest/myhome/announcement-mappings/failures",
-            "/api/admin/ingest/lh/announcement-enrichments/failures",
-            "/api/admin/ingest/pipelines/executions/00000000-0000-0000-0000-000000000001"
+            "/api/admin/ingest/lh/announcement-enrichments/failures"
     })
     void 삭제한_조회_API는_제공하지_않는다(String path) throws Exception {
         mockMvc.perform(get(path)).andExpect(status().isNotFound());

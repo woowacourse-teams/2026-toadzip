@@ -26,7 +26,9 @@ V1은 [모듈 분리 계약](privacy-isolation.md)의 7개 자료 테이블과 �
 
 다음 중 하나라도 있으면 **기존 Flyway와 개인정보 Flyway 모두 실행하기 전에 시작을 중단한다.**
 
-- 기존 `flyway_schema_history`에 `20261009.01`~`.04` 기록이 있다.
+- 기존 `flyway_schema_history`에 archive의 구형 개인정보 SQL 4개 파일명 중 하나가 기록되어 있다.
+  버전 번호만으로 판별하지 않는다. `V20261009_01__create_housing_complex_reviews.sql`은 정상 기존 기능의
+  마이그레이션이며, 같은 `20261009.01`이라는 이유로 차단하지 않는다.
 - 이전 `analytics_consents`, `analytics_consent_events`, `user_deletion_markers` 테이블이 있다.
 - `users`, `notification_subscriptions`, `notification_interest_events`에 이전 개인정보 컬럼·인덱스가 있다.
 - `notification_interest_events.session_id`의 NOT NULL이 제거되었다.

@@ -3,6 +3,8 @@ package com.toadzip.backend.ingest.pipeline.controller;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineStartRequest;
+import com.toadzip.backend.ingest.pipeline.dto.AnnouncementRegistrationRequest;
+import com.toadzip.backend.ingest.pipeline.dto.AnnouncementRegistrationUrlRequest;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -40,11 +42,35 @@ public class DataPipelineController {
         return ResponseEntity.accepted().body(response);
     }
 
+    @PostMapping("/announcement-registration")
+    public ResponseEntity<DataPipelineExecutionResponse> register(
+            @Valid @RequestBody AnnouncementRegistrationRequest request
+    ) {
+        return ResponseEntity.accepted()
+                .body(executionService.startAnnouncementRegistration(request.pblancId().strip()));
+    }
+
+    @PostMapping("/announcement-registration/url")
+    public ResponseEntity<DataPipelineExecutionResponse> registerUrl(
+            @Valid @RequestBody AnnouncementRegistrationUrlRequest request
+    ) {
+        return ResponseEntity.accepted().body(executionService.startAnnouncementRegistrationUrl(request.url()));
+    }
+
+    @GetMapping("/executions/{executionId}")
+    public ResponseEntity<DataPipelineExecutionResponse> find(@PathVariable UUID executionId) {
+        return ResponseEntity.ok(executionService.find(executionId));
+    }
+
     @GetMapping("/history")
     public ResponseEntity<List<DataPipelineExecutionResponse>> history(
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @RequestParam(required = false) String domain
     ) {
+        if (domain != null) {
+            return ResponseEntity.ok(executionService.history(page, size, domain));
+        }
         return ResponseEntity.ok(executionService.history(page, size));
     }
 

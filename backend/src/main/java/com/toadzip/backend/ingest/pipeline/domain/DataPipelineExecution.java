@@ -66,6 +66,9 @@ public class DataPipelineExecution {
 
     private UUID upstreamExecutionId;
 
+    @Column(length = 100, updatable = false)
+    private String targetAnnouncementIdentifier;
+
     @Enumerated(EnumType.STRING)
     @Column(length = 60)
     private DataPipelineStep currentStep;
@@ -173,6 +176,15 @@ public class DataPipelineExecution {
                 null,
                 null
         );
+    }
+
+    public static DataPipelineExecution startRegistration(UUID executionId, String identifier, Instant startedAt) {
+        if (identifier == null || identifier.isBlank() || identifier.length() > 100) {
+            throw new IllegalArgumentException("공고 식별자는 1자 이상 100자 이하입니다.");
+        }
+        DataPipelineExecution execution = start(executionId, DataPipelineType.ANNOUNCEMENT_REGISTRATION, startedAt);
+        execution.targetAnnouncementIdentifier = identifier.strip();
+        return execution;
     }
 
     public static DataPipelineExecution start(

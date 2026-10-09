@@ -8,7 +8,7 @@
 .admin-navigation a {padding:12px; border-radius:6px;}
 .admin-content {width:100%; max-width:1280px; margin:0 auto; padding:32px 36px 64px; min-width:0;}
 .admin-content button,.admin-content input,.admin-content select,.admin-content textarea {font:inherit;}
-.admin-content button,.admin-primary {min-height:40px; padding:9px 15px; border:1px solid #b6c7c0; border-radius:6px; background:#fff; color:#294b42; cursor:pointer; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:6px;}
+.admin-content button:not([data-design-system]),.admin-primary {min-height:40px; padding:9px 15px; border:1px solid #b6c7c0; border-radius:6px; background:#fff; color:#294b42; cursor:pointer; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:6px;}
 .admin-content button:disabled {opacity:.5;cursor:not-allowed;}
 .admin-content .admin-primary {background:#17685b;color:white;border-color:#17685b;}
 .admin-content .admin-danger {color:#9b3030;border-color:#dba5a5;background:#fff9f8;}
