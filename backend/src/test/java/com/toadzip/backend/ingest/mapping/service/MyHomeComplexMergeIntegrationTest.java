@@ -67,6 +67,16 @@ import tools.jackson.databind.ObjectMapper;
 @ActiveProfiles("test")
 class MyHomeComplexMergeIntegrationTest {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.toadzip.backend.user.repository.UserRepository privacyPermissionUsers;
+
+    private String privacyPermissionMemberId() {
+        var member = com.toadzip.backend.user.domain.User.create(
+                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        return privacyPermissionUsers.saveAndFlush(member).getId().toString();
+    }
+
+
     private static final String ENDPOINT = "/api/admin/ingest/myhome/complex-merges";
     private static final String NAME = "삼산부영 재건축 소형주택(삼산신원아침도시(행복)";
     private static final String ADDRESS = "인천광역시 부평구 후정로 33";
@@ -552,7 +562,7 @@ class MyHomeComplexMergeIntegrationTest {
     @Test
     void 관리자가_아니면_근거_조회와_통합을_할_수_없다() throws Exception {
         mvc.perform(get(ENDPOINT + "/candidates")).andExpect(status().isUnauthorized());
-        mvc.perform(post(ENDPOINT + "/preview").with(user("member").roles("USER")).with(csrf())
+        mvc.perform(post(ENDPOINT + "/preview").with(user(privacyPermissionMemberId()).roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of("complexIds", ids, "lhSourceId", lhId))))
                 .andExpect(status().isForbidden());

@@ -13,6 +13,9 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import jakarta.persistence.EntityManager;
 import java.util.UUID;
+import com.toadzip.backend.user.domain.User;
+import com.toadzip.backend.user.repository.UserRepository;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -30,6 +33,8 @@ import tools.jackson.databind.ObjectMapper;
 @ActiveProfiles("test")
 @Transactional
 class AdminHousingComplexRegistrationIntegrationTest {
+
+    @Autowired private UserRepository users;
 
     private static final String ENDPOINT = "/api/admin/housing-complexes";
 
@@ -153,8 +158,10 @@ class AdminHousingComplexRegistrationIntegrationTest {
 
     @Test
     void 비관리자는_단지를_저장할_수_없다() throws Exception {
+        long memberId = users.saveAndFlush(User.create(
+                "authorization-test:" + java.util.UUID.randomUUID(), LocalDateTime.now())).getId();
         mockMvc.perform(post(ENDPOINT)
-                        .with(user("member").roles("USER"))
+                        .with(user(Long.toString(memberId)).roles("USER"))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validRequest()))

@@ -39,6 +39,13 @@ public class NotificationSubscription {
     @Column(nullable = false)
     private Instant expiresAt;
 
+    @Column(length = 100)
+    private String noticeVersion;
+
+    private Instant requestedAt;
+
+    private Instant purgeAfter;
+
     protected NotificationSubscription() {
     }
 }

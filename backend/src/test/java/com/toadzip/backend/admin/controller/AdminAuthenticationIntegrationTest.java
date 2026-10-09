@@ -39,6 +39,16 @@ import tools.jackson.databind.ObjectMapper;
 class AdminAuthenticationIntegrationTest {
 
     @Autowired
+    private com.toadzip.backend.user.repository.UserRepository memberRepository;
+
+    private String memberId() {
+        var member = com.toadzip.backend.user.domain.User.create(
+                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        return memberRepository.saveAndFlush(member).getId().toString();
+    }
+
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Autowired
@@ -76,7 +86,7 @@ class AdminAuthenticationIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON).content("{}"))
                     .andExpect(status().isUnauthorized());
             mockMvc.perform(put(path).cookie(csrfFixture.cookie())
-                            .header(csrfFixture.headerName(), csrfFixture.token()).with(user("member").roles("USER"))
+                            .header(csrfFixture.headerName(), csrfFixture.token()).with(user(memberId()).roles("USER"))
                             .contentType(MediaType.APPLICATION_JSON).content("{}"))
                     .andExpect(status().isForbidden());
             mockMvc.perform(put(path).with(user("admin").roles("ADMIN"))
@@ -109,7 +119,7 @@ class AdminAuthenticationIntegrationTest {
 
     @Test
     void 관리자_권한이_아닌_인증_주체는_403_오류_계약을_반환한다() throws Exception {
-        mockMvc.perform(get("/api/admin/auth/me").with(user("member").roles("USER")))
+        mockMvc.perform(get("/api/admin/auth/me").with(user(memberId()).roles("USER")))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"))
                 .andExpect(jsonPath("$.message").value("관리자 권한이 필요합니다."))

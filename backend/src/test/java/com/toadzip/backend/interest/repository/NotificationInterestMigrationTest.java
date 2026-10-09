@@ -34,7 +34,7 @@ class NotificationInterestMigrationTest {
                             """);
                 }
 
-                Flyway flyway = migration(database).load();
+                Flyway flyway = migration(database).target("20261008.04").load();
                 assertEquals(1, flyway.migrate().migrationsExecuted);
                 flyway.validate();
 
@@ -57,6 +57,43 @@ class NotificationInterestMigrationTest {
                     }
                     assertThrows(SQLException.class, () -> query.executeUpdate(
                             "UPDATE notification_interest_events SET outcome = 'UNSUPPORTED'"));
+                }
+            } finally {
+                statement.execute("DROP DATABASE " + database + " WITH (FORCE)");
+            }
+        }
+    }
+
+    @Test
+    void 회원_업무이력은_분석식별자없이_저장되고_탈퇴하면_함께_삭제된다() throws Exception {
+        String database = "notification_privacy_" + UUID.randomUUID().toString().replace("-", "");
+        try (Connection admin = connect("postgres"); Statement statement = admin.createStatement()) {
+            statement.execute("CREATE DATABASE " + database);
+            try {
+                Flyway flyway = migration(database).target("20261009.02").load();
+                flyway.migrate();
+                flyway.validate();
+                try (Connection connection = connect(database); Statement query = connection.createStatement()) {
+                    query.executeUpdate("""
+                            INSERT INTO users(id,login_identifier,created_at) VALUES (1,'notification-test',now())
+                            """);
+                    query.executeUpdate("""
+                            INSERT INTO notification_interest_events(event_id,event_type,source,target_type,target_id,
+                                created_at,outcome,user_id,notice_version,settings_revision)
+                            VALUES ('10000000-0000-4000-8000-000000000001','CONFIRMED','SETTING','REGION','11',now(),
+                                'ACTIVATED',1,'notification-2026-10-09-v1',1)
+                            """);
+                    try (var result = query.executeQuery("SELECT session_id FROM notification_interest_events")) {
+                        assertTrue(result.next());
+                        assertNull(result.getObject(1));
+                    }
+                    assertThrows(SQLException.class, () -> query.executeUpdate(
+                            "UPDATE notification_interest_events SET event_type = 'CLICKED'"));
+                    query.executeUpdate("DELETE FROM users WHERE id = 1");
+                    try (var result = query.executeQuery("SELECT count(*) FROM notification_interest_events")) {
+                        assertTrue(result.next());
+                        assertEquals(0, result.getInt(1));
+                    }
                 }
             } finally {
                 statement.execute("DROP DATABASE " + database + " WITH (FORCE)");

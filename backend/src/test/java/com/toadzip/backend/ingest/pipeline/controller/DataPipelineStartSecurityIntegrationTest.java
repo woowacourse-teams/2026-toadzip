@@ -28,6 +28,16 @@ import org.springframework.test.web.servlet.MockMvc;
 @ActiveProfiles("test")
 class DataPipelineStartSecurityIntegrationTest {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.toadzip.backend.user.repository.UserRepository privacyPermissionUsers;
+
+    private String privacyPermissionMemberId() {
+        var member = com.toadzip.backend.user.domain.User.create(
+                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        return privacyPermissionUsers.saveAndFlush(member).getId().toString();
+    }
+
+
     private static final String ENDPOINT = "/api/admin/ingest/pipelines/complex-collection";
     private static final String BODY = "{\"serviceKey\":\"runtime-test-key\"}";
 
@@ -43,7 +53,7 @@ class DataPipelineStartSecurityIntegrationTest {
 
     @Test
     void 일반_사용자는_입력키로_수집을_시작할_수_없다() throws Exception {
-        mockMvc.perform(post(ENDPOINT).with(user("user").roles("USER")).with(csrf())
+        mockMvc.perform(post(ENDPOINT).with(user(privacyPermissionMemberId()).roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isForbidden());
         verifyNoInteractions(service);

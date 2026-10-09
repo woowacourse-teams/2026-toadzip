@@ -13,6 +13,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.user.domain.User;
+import com.toadzip.backend.user.domain.SocialAuthorizationContext;
+import com.toadzip.backend.user.configuration.SocialAuthorizationRequestResolver;
+import com.toadzip.backend.privacy.repository.PrivacyNoticeCatalog;
+import java.time.Clock;
 import com.toadzip.backend.user.repository.UserRepository;
 import com.toadzip.backend.user.service.SocialLoginSuccessHandler;
 import com.toadzip.backend.user.service.SocialUserService;
@@ -61,9 +65,16 @@ class UserAuthenticationIntegrationTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private PrivacyNoticeCatalog notices;
+
+    @Autowired
+    private Clock clock;
+
     @Test
     void 각_공급자_로그인은_고정된_콜백과_state로_시작한다() throws Exception {
-        mockMvc.perform(get("/api/auth/oauth2/authorization/google"))
+        mockMvc.perform(get("/api/auth/oauth2/authorization/google")
+                        .param("policyVersion", notices.currentVersion("PRIVACY_POLICY")))
                 .andExpect(status().isFound())
                 .andExpect(header().string("Location", org.hamcrest.Matchers.allOf(
                         org.hamcrest.Matchers.containsString("accounts.google.com"),
@@ -71,7 +82,8 @@ class UserAuthenticationIntegrationTest {
                         org.hamcrest.Matchers.containsString("callback/google")
                 )));
 
-        mockMvc.perform(get("/api/auth/oauth2/authorization/kakao"))
+        mockMvc.perform(get("/api/auth/oauth2/authorization/kakao")
+                        .param("policyVersion", notices.currentVersion("PRIVACY_POLICY")))
                 .andExpect(status().isFound())
                 .andExpect(header().string("Location", org.hamcrest.Matchers.allOf(
                         org.hamcrest.Matchers.containsString("kauth.kakao.com"),
@@ -132,9 +144,10 @@ class UserAuthenticationIntegrationTest {
 
     @Test
     void 같은_공급자_계정은_기존_유저를_사용하고_공급자가_다르면_분리한다() {
-        Long first = socialUserService.findOrCreate("google", "google-sub-189");
-        Long repeated = socialUserService.findOrCreate("google", "google-sub-189", "member@example.com");
-        Long kakao = socialUserService.findOrCreate("kakao", "google-sub-189");
+        Long first = socialUserService.findOrCreate("google", "google-sub-189", null, authorization());
+        Long repeated = socialUserService.findOrCreate(
+                "google", "google-sub-189", "member@example.com", authorization());
+        Long kakao = socialUserService.findOrCreate("kakao", "google-sub-189", null, authorization());
 
         assertEquals(first, repeated);
         assertEquals("member@example.com", userRepository.findById(first).orElseThrow().getEmail());
@@ -196,7 +209,32 @@ class UserAuthenticationIntegrationTest {
     private MockHttpServletRequest loginRequest(String provider) {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/auth/oauth2/callback/" + provider);
         request.setSession(new MockHttpSession());
+        request.setAttribute(SocialAuthorizationRequestResolver.CONTEXT_ATTRIBUTE, authorization());
         return request;
+    }
+
+    private SocialAuthorizationContext authorization() {
+        return new SocialAuthorizationContext(notices.currentVersion("PRIVACY_POLICY"), clock.instant());
+    }
+
+    @Test
+    void 정책_버전이_없거나_오래되면_공급자로_이동하지_않는다() throws Exception {
+        mockMvc.perform(get("/api/auth/oauth2/authorization/google"))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", "http://localhost:5173/?login=failed&reason=privacy-notice"));
+        mockMvc.perform(get("/api/auth/oauth2/authorization/google").param("policyVersion", "unknown"))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", "http://localhost:5173/?login=failed&reason=privacy-notice"));
+    }
+
+    @Test
+    void 검증된_인가_요청이_없는_콜백은_계정을_만들지_않는다() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        successHandler.onAuthenticationSuccess(request, response,
+                authentication("google", Map.of("sub", "missing-policy-context"), "sub"));
+        assertEquals("http://localhost:5173/?login=failed", response.getRedirectedUrl());
+        assertEquals(false, userRepository.findByLoginIdentifier("google:missing-policy-context").isPresent());
     }
 
     private OAuth2AuthenticationToken authentication(

@@ -5,6 +5,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.toadzip.backend.user.domain.User;
+import com.toadzip.backend.user.repository.UserRepository;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -21,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 @ActiveProfiles("test")
 @Transactional
 class AdminFeedbackControllerIntegrationTest {
+
+    @Autowired private UserRepository users;
 
     private static final String ENDPOINT = "/api/admin/feedback";
 
@@ -106,7 +111,9 @@ class AdminFeedbackControllerIntegrationTest {
 
     @Test
     void 일반_회원은_의견을_조회하지_못한다() throws Exception {
-        mockMvc.perform(get(ENDPOINT).with(user("member").roles("USER"))).andExpect(status().isForbidden());
+        long memberId = users.saveAndFlush(User.create(
+                "authorization-test:" + java.util.UUID.randomUUID(), LocalDateTime.now())).getId();
+        mockMvc.perform(get(ENDPOINT).with(user(Long.toString(memberId)).roles("USER"))).andExpect(status().isForbidden());
     }
 
     @ParameterizedTest
