@@ -1,17 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CaptureResult, PostHogConfig } from 'posthog-js'
+import type { CaptureResult, PostHogConfig } from 'posthog-js/lib/src/types'
 
 const sdk = vi.hoisted(() => ({
   init: vi.fn(), capture: vi.fn(), startSessionRecording: vi.fn(), stopSessionRecording: vi.fn(),
-  opt_out_capturing: vi.fn(), identify: vi.fn(), alias: vi.fn(), reset: vi.fn(),
+  _send_request: vi.fn(), _send_retriable_request: vi.fn(),
+  _retryQueue: { retriableRequest: vi.fn(), _enqueue: vi.fn() }, shutdown: vi.fn(),
+  opt_in_capturing: vi.fn(), opt_out_capturing: vi.fn(), identify: vi.fn(), alias: vi.fn(), reset: vi.fn(),
 }))
-vi.mock('posthog-js', () => ({ default: sdk }))
+vi.mock('posthog-js/lib/src/posthog-core', () => ({ PostHog: function () { return sdk } }))
 let listeners: EventListenerOrEventListenerObject[] = []
 
 beforeEach(() => {
+  consentGate.allowed = true
+  consentGate.stops = []
   vi.resetModules()
   vi.clearAllMocks()
-  sdk.init.mockReturnValue(sdk)
+  sdk.init.mockImplementation((_key, options) => { options.loaded?.(sdk); return sdk })
   vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testpublictoken')
   vi.stubEnv('VITE_POSTHOG_HOST', 'https://us.i.posthog.com')
   vi.stubEnv('VITE_ANALYTICS_ENV', 'dev')
@@ -85,7 +89,7 @@ describe('PostHog privacy and identity boundary', () => {
     expect(analytics.sanitizeCapture(captured({ $snapshot_data: [] }, '$snapshot'))).toBeNull()
   })
 
-  it('uses one SDK instance, stable browser identity and occurrence-time authentication', async () => {
+  it('uses one SDK instance, memory persistence and occurrence-time authentication', async () => {
     const analytics = await import('./productAnalytics')
     analytics.setProductAuthState('guest')
     analytics.captureProductEvent('view_complex', { complex_id: '17' })
@@ -137,25 +141,25 @@ describe('PostHog privacy and identity boundary', () => {
     const analytics = await initialized()
     localStorage.setItem('toadzip.analytics.disabled', 'true')
     window.dispatchEvent(new StorageEvent('storage', { key: 'toadzip.analytics.disabled', newValue: 'true' }))
-    expect(sdk.stopSessionRecording).toHaveBeenCalled()
-    expect(sdk.opt_out_capturing).not.toHaveBeenCalled()
+    expect(sdk.opt_out_capturing).toHaveBeenCalled()
+    expect(sdk.shutdown).toHaveBeenCalled()
     expect(analytics.captureProductEvent('view_complex', { complex_id: '17' })).toBe(false)
     expect(analytics.sanitizeCapture(captured({ $snapshot_data: [] }, '$snapshot'))).toBeNull()
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked') })
     expect(analytics.captureProductEvent('page_view')).toBe(false)
   })
 
-  it('disables automatic collection and prevents sensitive replay while preserving safe snapshots', async () => {
+  it('disables profiles, persistent SDK storage and all session replay', async () => {
     const analytics = await initialized()
     const config = sdk.init.mock.calls[0]?.[1] as Partial<PostHogConfig>
-    expect(config).toMatchObject({ autocapture: false, capture_pageview: false, capture_pageleave: false, capture_exceptions: false, ip: false, person_profiles: 'always' })
+    expect(config).toMatchObject({ autocapture: false, capture_pageview: false, capture_pageleave: false, capture_exceptions: false, ip: false, person_profiles: 'never', persistence: 'memory', opt_out_capturing_by_default: true, opt_out_persistence_by_default: true })
     expect(config.session_recording).toMatchObject({ maskAllInputs: true, maskTextSelector: '*', recordBody: false, recordHeaders: false, recordCrossOriginIframes: false, captureJsonLd: false })
-    expect(analytics.sanitizeCapture(captured({ $snapshot_data: [] }, '$snapshot'))).not.toBeNull()
+    expect(analytics.sanitizeCapture(captured({ $snapshot_data: [] }, '$snapshot'))).toBeNull()
     analytics.setReplaySensitive('email', true)
     expect(sdk.stopSessionRecording).toHaveBeenCalled()
     expect(analytics.sanitizeCapture(captured({ $snapshot_data: [] }, '$snapshot'))).toBeNull()
     analytics.setReplaySensitive('email', false)
-    expect(sdk.startSessionRecording).toHaveBeenCalled()
+    expect(sdk.startSessionRecording).not.toHaveBeenCalled()
     expect(analytics.maskReplayAttribute('href', 'https://secret.example/?email=private')).toBe('')
     expect(analytics.maskReplayAttribute('aria-label', 'private@example.test')).toBe('')
     expect(analytics.maskReplayAttribute('style', 'background-image:url(secret)')).toBe('')
@@ -196,4 +200,64 @@ describe('PostHog privacy and identity boundary', () => {
     expect(mask?.(meta)).toEqual({ name: 'https://example.test/' })
     expect(mask?.({ name: 'https://example.test/api', method: 'POST', startTime: 0, duration: 1, entryType: 'resource' })).toBeNull()
   })
+})
+
+
+const consentGate = vi.hoisted(() => ({ allowed: true, stops: [] as Array<() => void> }))
+vi.mock('../privacy/consentStore', () => ({ analyticsCollectionAllowed: () => consentGate.allowed, consentStore: { onStop: (callback: () => void) => { consentGate.stops.push(callback); return () => {} } } }))
+
+it('does not initialize or retain pre-consent events and clears the SDK on withdrawal', async () => {
+  consentGate.allowed = false
+  const analytics = await import('./productAnalytics')
+  expect(analytics.captureProductEvent('view_complex', { complex_id: '17' })).toBe(false)
+  await vi.dynamicImportSettled()
+  expect(sdk.init).not.toHaveBeenCalled()
+  consentGate.allowed = true
+  analytics.captureProductEvent('page_view')
+  await vi.dynamicImportSettled()
+  expect(sdk.capture.mock.calls.some(([name]) => name === 'view_complex')).toBe(false)
+  consentGate.allowed = false
+  consentGate.stops.forEach(stop => stop())
+  expect(sdk.opt_out_capturing).toHaveBeenCalled()
+  expect(analytics.captureProductEvent('view_complex', { complex_id: '17' })).toBe(false)
+})
+
+
+it('opts the SDK in only after a valid choice, and starts fresh after withdrawal/regrant', async () => {
+  const analytics = await initialized()
+  expect(sdk.opt_in_capturing).toHaveBeenCalledWith({ captureEventName: false })
+  consentGate.allowed = false
+  consentGate.stops.forEach(stop => stop())
+  consentGate.allowed = true
+  expect(analytics.captureProductEvent('view_complex', { complex_id: '22' })).toBe(true)
+  await vi.dynamicImportSettled()
+  expect(sdk.init).toHaveBeenCalledTimes(2)
+  expect(sdk.opt_in_capturing).toHaveBeenCalledTimes(2)
+})
+
+
+it('drops a revoked import even if permission returns before that old import resolves', async () => {
+  const analytics = await import('./productAnalytics')
+  analytics.captureProductEvent('view_complex', { complex_id: '17' })
+  consentGate.allowed = false
+  consentGate.stops.forEach(stop => stop())
+  consentGate.allowed = true
+  expect(analytics.captureProductEvent('view_complex', { complex_id: '22' })).toBe(true)
+  await vi.dynamicImportSettled()
+  expect(sdk.init).toHaveBeenCalledOnce()
+  expect(sdk.capture.mock.calls.filter(([name]) => name === 'view_complex').map(([, properties]) => properties.complex_id)).toEqual(['22'])
+})
+
+it('retains local outcome deduplication without forwarding its member-linked ledger IDs', async () => {
+  const analytics = await initialized()
+  const ledgerId = '62c3958e-7d67-4cb6-a929-b574989af148'
+  const properties = { target_type: 'COMPLEX', target_id: '17', server_event_id: ledgerId, notification_action_id: ledgerId }
+  const options = { dedupeKey: `notification-completed:${ledgerId}` }
+  expect(analytics.captureProductEvent('notification_preregistration_completed', properties, options)).toBe(true)
+  expect(analytics.captureProductEvent('notification_preregistration_completed', properties, options)).toBe(false)
+  const outcome = sdk.capture.mock.calls.find(([name]) => name === 'notification_preregistration_completed')
+  expect(outcome?.[1]).toMatchObject({ target_type: 'COMPLEX', target_id: '17' })
+  expect(JSON.stringify(outcome)).not.toContain(ledgerId)
+  expect(outcome?.[1]).not.toHaveProperty('server_event_id')
+  expect(outcome?.[1]).not.toHaveProperty('notification_action_id')
 })

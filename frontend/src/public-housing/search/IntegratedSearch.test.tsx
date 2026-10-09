@@ -1,3 +1,5 @@
+import type { NotificationInterestRepository } from '../interest/notificationInterestRepository'
+import { MemoryRouter } from 'react-router'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { IntegratedSearch } from './IntegratedSearch.tsx'
@@ -15,17 +17,19 @@ vi.mock('../regions/regionBoundaryCatalog.ts', () => ({
 describe('IntegratedSearch', () => {
   it('지역 종 버튼은 지역 이동 없이 알림 의사만 묻는다', async () => {
     localStorage.clear()
-    const record = vi.fn().mockResolvedValue(undefined)
+    const record = vi.fn<NotificationInterestRepository['record']>().mockImplementation(async event => ({ ...event, outcome: 'ACTIVATED', occurredAt: '2026-10-09T00:00:00Z', settingsRevision: 1, currentTarget: { active: true, expiresAt: '2027-04-07T00:00:00Z', noticeVersion: 'notification-2026-10-09-v1', requestedAt: '2026-10-09T00:00:00Z' } }))
     const onSelect = vi.fn()
     render(
-      <NotificationInterestProvider repository={{ record, loadStatus: async () => ({ emailConfirmed: false, targets: [] }) }}>
+      <MemoryRouter><NotificationInterestProvider repository={{ record, loadStatus: async () => ({ userId: '1', settingsRevision: 0, targets: [] }) }}>
         <IntegratedSearch repository={repositoryWith(response([], [], [item('REGION', '11', '서울특별시')]))} onSelect={onSelect} />
-      </NotificationInterestProvider>,
+      </NotificationInterestProvider></MemoryRouter>,
     )
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })
     const bell = await screen.findByRole('button', { name: '서울특별시 알림 받기' })
     expect(bell.querySelector('svg')).toHaveAttribute('data-state', 'idle')
     fireEvent.click(bell)
+    expect(record).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByRole('button', { name: '신청하기' }))
     expect(await screen.findByRole('dialog')).toHaveTextContent('알림 기능을 준비하고 있어요')
     expect(screen.getByRole('heading', { name: '검색결과' })).toBeVisible()
     expect(onSelect).not.toHaveBeenCalled()
@@ -426,3 +430,8 @@ function deferred<T>() {
   })
   return { promise, resolve }
 }
+
+vi.mock('../../privacy/usePrivacy', () => {
+  const notices = [{ key: 'NOTIFICATION_NOTICE', version: 'notification-2026-10-09-v1' }]
+  return { usePrivacyNotices: () => ({ notices, error: false, retry: vi.fn() }) }
+})

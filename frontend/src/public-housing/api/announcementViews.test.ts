@@ -5,6 +5,8 @@ const VIEWER = 'abcdefab-cdef-4abc-8def-abcdefabcdef'
 const STORAGE_KEY = 'toadzip.announcement-viewer'
 
 beforeEach(() => {
+  consentGate.allowed = true
+  consentGate.stops = []
   localStorage.clear()
   // The browser boundary serializes same-origin tabs; exercise real storage and requests inside it.
   let queue: Promise<unknown> = Promise.resolve()
@@ -110,4 +112,16 @@ describe('recordAnnouncementView', () => {
       .mockRejectedValueOnce(new TypeError('offline'))
     expect(await recordAnnouncementView('', fetcher, '12', new AbortController().signal)).toBeNull()
   })
+})
+
+
+const consentGate = vi.hoisted(() => ({ allowed: true, stops: [] as Array<() => void> }))
+vi.mock('../../privacy/consentStore', () => ({ analyticsCollectionAllowed: () => consentGate.allowed, consentStore: { onStop: (callback: () => void) => { consentGate.stops.push(callback); return () => {} } } }))
+
+it('동의 없이는 viewer ID나 CSRF 요청을 만들지 않는다', async () => {
+  consentGate.allowed = false
+  const fetcher = requests()
+  expect(await recordAnnouncementView('', fetcher, '12', new AbortController().signal)).toBeNull()
+  expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+  expect(fetcher).not.toHaveBeenCalled()
 })

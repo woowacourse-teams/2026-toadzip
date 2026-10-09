@@ -12,15 +12,16 @@ afterEach(() => vi.unstubAllGlobals())
 
 function session(member = true) {
   let active = true
+  let settingsRevision = 0
   vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
     if (url.endsWith('/csrf')) return new Response(JSON.stringify({ token: 'csrf', headerName: 'X-XSRF-TOKEN' }))
     if (!member) return new Response(null, { status: 401 })
     if (url.endsWith('/api/auth/me')) return new Response(JSON.stringify({ id: 7 }))
-    if (options?.method === 'POST') { active = false; return new Response(null, { status: 204 }) }
-    return new Response(JSON.stringify({ emailConfirmed: false, targets: active ? [
-      { targetType: 'COMPLEX', targetId: '1', targetName: '서울 행복주택' },
-      { targetType: 'ANNOUNCEMENT', targetId: '2', targetName: '가을 모집 공고' },
-      { targetType: 'REGION', targetId: '11' },
+    if (options?.method === 'POST') { active = false; return settingResult(options, ++settingsRevision) }
+    return new Response(JSON.stringify({ userId: '7', settingsRevision, targets: active ? [
+      { ...targetNotice, targetType: 'COMPLEX', targetId: '1', targetName: '서울 행복주택' },
+      { ...targetNotice, targetType: 'ANNOUNCEMENT', targetId: '2', targetName: '가을 모집 공고' },
+      { ...targetNotice, targetType: 'REGION', targetId: '11' },
     ] : [] }))
   }))
 }
@@ -65,6 +66,7 @@ it('전체 해제는 단지·공고·지역 설정을 모두 비우고 빈 목�
 
 it('전체 해제 중 실패한 설정은 남기고 같은 이벤트로 재시도한다', async () => {
   let shouldFail = true
+  let settingsRevision = 0
   const writes: Array<{ eventId: string; targetId: string }> = []
   vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
     if (url.endsWith('/csrf')) return Response.json({ token: 'csrf', headerName: 'X-XSRF-TOKEN' })
@@ -72,12 +74,12 @@ it('전체 해제 중 실패한 설정은 남기고 같은 이벤트로 재시�
       const event = JSON.parse(String(options.body)) as { eventId: string; targetId: string }
       writes.push(event)
       if (event.targetId === '2' && shouldFail) return new Response(null, { status: 500 })
-      return new Response(null, { status: 204 })
+      return settingResult(options, ++settingsRevision)
     }
-    return Response.json({ emailConfirmed: false, targets: [
-      { targetType: 'COMPLEX', targetId: '1', targetName: '서울 행복주택' },
-      { targetType: 'ANNOUNCEMENT', targetId: '2', targetName: '가을 모집 공고' },
-      { targetType: 'REGION', targetId: '11' },
+    return Response.json({ userId: '7', settingsRevision: 0, targets: [
+      { ...targetNotice, targetType: 'COMPLEX', targetId: '1', targetName: '서울 행복주택' },
+      { ...targetNotice, targetType: 'ANNOUNCEMENT', targetId: '2', targetName: '가을 모집 공고' },
+      { ...targetNotice, targetType: 'REGION', targetId: '11' },
     ] })
   }))
   render(<MemoryRouter initialEntries={['/mypage/notifications']}><App /></MemoryRouter>)
@@ -85,7 +87,7 @@ it('전체 해제 중 실패한 설정은 남기고 같은 이벤트로 재시�
   fireEvent.click(screen.getByRole('button', { name: '전체 해제' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('1개 설정을 해제하지 못했어요.')
   expect(screen.queryByText('서울 행복주택')).not.toBeInTheDocument()
-  expect(screen.queryByText('서울특별시 전체')).not.toBeInTheDocument()
+  expect(screen.getByText('서울특별시 전체')).toBeVisible()
   expect(screen.getByText('가을 모집 공고')).toBeVisible()
   shouldFail = false
   fireEvent.click(screen.getByRole('button', { name: '전체 해제' }))
@@ -170,3 +172,15 @@ it('받은 알림과 등록한 설정을 탭으로 분리하고 모달 안에서
   expect(received).toHaveAttribute('aria-selected', 'true')
   expect(received).toHaveFocus()
 })
+
+vi.mock('./privacy/usePrivacy', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./privacy/usePrivacy')>()
+  const notices = [{ key: 'PRIVACY_POLICY', version: 'privacy-2026-10-09-v1' }, { key: 'NOTIFICATION_NOTICE', version: 'notification-2026-10-09-v1' }]
+  return { ...original, usePrivacyNotices: () => ({ notices, error: false, retry: vi.fn() }) }
+})
+
+const targetNotice = { noticeVersion: 'notification-2026-10-09-v1', requestedAt: '2026-10-09T00:00:00Z', expiresAt: '2027-10-09T00:00:00Z' }
+function settingResult(options: RequestInit, settingsRevision: number) {
+  const event = JSON.parse(String(options.body))
+  return Response.json({ eventId: event.eventId, targetId: event.targetId, targetType: event.targetType, outcome: 'CANCELLED', occurredAt: '2026-10-09T00:00:00Z', settingsRevision, currentTarget: { active: false, noticeVersion: null, requestedAt: null, expiresAt: null } })
+}
