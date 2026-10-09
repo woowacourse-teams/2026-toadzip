@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router'
 import { DataPipelineControl } from './DataPipelineControl'
 import { PipelineHistory } from './PipelineHistory'
 import workspaceStyles from './IngestWorkspace.module.css'
-import { getDataPipelineExecution, getDataPipelineStatus, startAnnouncementRegistrationUrl,
+import { getDataPipelineExecution, getDataPipelineStatus, startAnnouncementRegistration, startAnnouncementRegistrationUrl,
   stopDataPipeline, type DataPipelineExecution } from './api'
 import styles from './CollectionStartForm.module.css'
 
@@ -12,7 +12,8 @@ export function AnnouncementRegistrationV2Page() {
   const domain = params.get('domain') === 'complex' ? 'complex' : 'announcement'
   const [pipelineBusy, setPipelineBusy] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
-  const [url, setUrl] = useState('')
+  const [inputType, setInputType] = useState<'url' | 'id'>('url')
+  const [target, setTarget] = useState('')
   const [execution, setExecution] = useState<DataPipelineExecution | null>(null)
   const [initializing, setInitializing] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -63,13 +64,23 @@ export function AnnouncementRegistrationV2Page() {
   async function register(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (submittingRef.current || processing || initializing || pipelineBusy) return
-    if (!url.trim()) { setError('마이홈 공고 URL을 입력해 주세요.'); return }
+    if (!target.trim()) {
+      setError(inputType === 'url' ? '마이홈 공고 URL을 입력해 주세요.' : '마이홈 공고 ID를 입력해 주세요.')
+      return
+    }
+    await runRegistration(() => inputType === 'url'
+      ? startAnnouncementRegistrationUrl(target.trim())
+      : startAnnouncementRegistration(target.trim()))
+  }
+
+  async function runRegistration(start: () => Promise<DataPipelineExecution>) {
+    if (submittingRef.current || processing || initializing || pipelineBusy) return
     submittingRef.current = true
     setSubmitting(true)
     setExecution(null)
     setError(null)
     try {
-      const accepted = await startAnnouncementRegistrationUrl(url.trim())
+      const accepted = await start()
       if (alive.current) setExecution(accepted)
     } catch (cause) {
       if (alive.current) setError(errorMessage(cause))
@@ -101,7 +112,7 @@ export function AnnouncementRegistrationV2Page() {
     })
   }
   const disabled = initializing || processing || pipelineBusy
-  return <section className="admin-registration-page">
+  return <section className={`admin-registration-page ${workspaceStyles.page}`}>
     <header className="admin-registration-heading"><h1>수집·정제 v2</h1></header>
     <div role="tablist" aria-label="수집 대상" className={workspaceStyles.tabs}>
       {(['announcement', 'complex'] as const).map(value => <button key={value} type="button" role="tab"
@@ -124,10 +135,24 @@ export function AnnouncementRegistrationV2Page() {
             aria-controls="registration-form" onClick={() => setFormOpen(value => !value)}>공고 등록하기</button>,
           form: <>
             {formOpen && <form id="registration-form" onSubmit={event => { void register(event) }} className={styles.form} aria-label="공고 단건 등록">
-              <label htmlFor="registration-url">마이홈 공고 URL</label>
-              <input id="registration-url" value={url} disabled={disabled} maxLength={2048}
-                autoComplete="off" inputMode="url" onChange={event => setUrl(event.target.value)}
-                placeholder="https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=…" />
+              <label htmlFor="registration-input-type">입력 방식</label>
+              <select id="registration-input-type" value={inputType} disabled={disabled} onChange={event => {
+                setInputType(event.target.value === 'id' ? 'id' : 'url')
+                setTarget('')
+                setError(null)
+              }}>
+                <option value="url">마이홈 URL</option>
+                <option value="id">공고 ID (pblancId)</option>
+              </select>
+              <label htmlFor="registration-target">
+                {inputType === 'url' ? '마이홈 공고 URL' : '마이홈 공고 ID (pblancId)'}
+              </label>
+              <input id="registration-target" value={target} disabled={disabled}
+                maxLength={inputType === 'url' ? 2048 : 100} autoComplete="off"
+                inputMode={inputType === 'url' ? 'url' : 'numeric'} onChange={event => setTarget(event.target.value)}
+                placeholder={inputType === 'url'
+                  ? 'https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=…'
+                  : '예: 21026'} />
               <button type="submit" className="admin-primary" disabled={disabled}>
                 {processing ? '등록 처리 중…' : '등록 실행'}
               </button>

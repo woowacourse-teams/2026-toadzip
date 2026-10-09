@@ -68,16 +68,23 @@ public class MyHomeAnnouncementMappingWriter {
         if (announcementRepository.findBySourceAnnouncementIdentifierForUpdate(identifier).isPresent()) {
             throw new AnnouncementRegistrationException("이미 등록된 공고입니다: " + identifier);
         }
-        return writeCorrection(resolved, previous);
+        return writeRegistration(resolved, previous, Map.of());
     }
 
-    /** 단건 보완은 기존 공고도 LH 보강을 재검증하고 실패 시 전체 저장을 되돌린다. */
+    /** 요청에서 검증한 선택을 이번 정제에만 적용한다. 별도 매칭 규칙은 저장하지 않는다. */
     @Transactional
-    public MyHomeAnnouncementWriteResult writeCorrection(ResolvedAnnouncement resolved, Announcement previous) {
+    public MyHomeAnnouncementWriteResult writeSelected(ResolvedAnnouncement resolved, Announcement previous,
+            Map<String, MyHomeSupplyMatchResult> selections) {
+        return writeRegistration(resolved, previous, selections);
+    }
+
+    /** 단건 등록은 LH 보강을 재검증하고 실패 시 전체 저장을 되돌린다. */
+    private MyHomeAnnouncementWriteResult writeRegistration(ResolvedAnnouncement resolved, Announcement previous,
+            Map<String, MyHomeSupplyMatchResult> selections) {
         IngestExecutionScope.verifyHeld();
         IngestExecutionScope.checkStopRequested();
         String identifier = resolved.data().sourceAnnouncementIdentifier();
-        MyHomeAnnouncementWriteResult result = write(resolved, previous);
+        MyHomeAnnouncementWriteResult result = writeResolved(resolved, previous, selections);
         if (!result.failures().isEmpty()) {
             MyHomeSupplyMatchingFailureData failure = result.failures().getFirst();
             throw new MyHomeAnnouncementMappingRejectedException(
@@ -113,6 +120,11 @@ public class MyHomeAnnouncementMappingWriter {
             ResolvedAnnouncement resolved,
             Announcement previousAnnouncement
     ) {
+        return writeResolved(resolved, previousAnnouncement, Map.of());
+    }
+
+    private MyHomeAnnouncementWriteResult writeResolved(ResolvedAnnouncement resolved,
+            Announcement previousAnnouncement, Map<String, MyHomeSupplyMatchResult> selections) {
         MyHomeAnnouncementMappingData data = resolved.data();
         AnnouncementWriteResult announcementResult = writeAnnouncement(data, previousAnnouncement);
         if (announcementResult.announcement().getProvider() != data.provider()) {
@@ -127,7 +139,8 @@ public class MyHomeAnnouncementMappingWriter {
                 announcementResult.announcement(),
                 data.supplyRows(),
                 resolved.preserveExistingLhResolvedRows(),
-                resolved.historicalSourceKeys()
+                resolved.historicalSourceKeys(),
+                selections
         );
         enrichChangedAnnouncement(resolved, announcementResult, supplyRowsResult);
         return new MyHomeAnnouncementWriteResult(
@@ -249,7 +262,8 @@ public class MyHomeAnnouncementMappingWriter {
             Announcement announcement,
             List<MyHomeSupplyRowMappingData> rows,
             boolean preserveExistingLhResolvedRows,
-            Set<String> historicalSourceKeys
+            Set<String> historicalSourceKeys,
+            Map<String, MyHomeSupplyMatchResult> selections
     ) {
         Map<String, SupplyRow> storedRows = supplyRowRepository.findAllByAnnouncement(announcement)
                 .stream()
@@ -278,6 +292,11 @@ public class MyHomeAnnouncementMappingWriter {
             boolean preserveLhRows = preserveExistingLhResolvedRows
                     || announcement.getProvider() == AgencyCode.LH && historical;
             if (preserveLhRows && hasLhResolvedRows(announcement, storedGroup)) {
+                if (selections.containsKey(data.sourceSupplyRowIdentifier())) {
+                    throw new MyHomeAnnouncementMappingRejectedException(
+                            MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
+                            "기존 LH 공급행을 보존해야 하는 원천입니다. 최신 공급 정보를 수집한 뒤 다시 정제해 주세요.");
+                }
                 PreservedGroupWriteResult result = updatePreservedGroup(
                         storedGroup, storedRows, data, historical, currentRowIdentifiers, displayOrder
                 );
@@ -287,7 +306,16 @@ public class MyHomeAnnouncementMappingWriter {
                 continue;
             }
             SupplyRow stored = storedRows.remove(data.sourceSupplyRowIdentifier());
-            MyHomeSupplyMatchResult match = supplyMatcher.match(data);
+            MyHomeSupplyMatchResult match = selections.get(data.sourceSupplyRowIdentifier());
+            if (match == null) {
+                match = supplyMatcher.match(data);
+            }
+            if (stored != null && stored.isAdminModified()
+                    && selections.containsKey(data.sourceSupplyRowIdentifier())) {
+                throw new MyHomeAnnouncementMappingRejectedException(
+                        MyHomeAnnouncementMappingFailureReason.INVALID_VALUE,
+                        "관리자가 수정한 공급행입니다. 기존 공고 관리 화면에서 연결을 수정해 주세요.");
+            }
             if (match.failure() != null) {
                 failures.add(match.failure());
             }

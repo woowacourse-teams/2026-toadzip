@@ -44,11 +44,6 @@ public class MyHomeComplexMappingWriter {
         return writeWithinTransaction(data, address);
     }
 
-    @Transactional
-    public MyHomeComplexMappingReport writeCorrection(MyHomeComplexMappingData data, Address address) {
-        return writeWithinTransaction(data, address);
-    }
-
     private MyHomeComplexMappingReport writeWithinTransaction(MyHomeComplexMappingData data, Address address) {
         MyHomeComplexLink link = linkRepository.findById(data.sourceComplexIdentifier()).orElse(null);
         if (link != null && link.getMergeId() != null) {

@@ -50,7 +50,6 @@ class HousingJpaMappingTest {
                 "HousingType",
                 Set.of(
                         "id",
-                        "adminCorrection",
                         "housingComplex",
                         "sourceHousingTypeIdentifier",
                         "name",

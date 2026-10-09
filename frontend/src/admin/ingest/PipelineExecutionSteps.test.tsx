@@ -15,6 +15,11 @@ function show(value: DataPipelineExecution, onStop?: () => void) {
 }
 
 describe('v2 공통 단계 표시', () => {
+  it('단건 정제 매칭 실패에 수동 매칭 진입 버튼을 제공한다', () => {
+    show(execution({ status: 'FAILED', targetAnnouncementIdentifier: '21395',
+      failure: { stepName: '마이홈 공고 정제', message: '공급행 매칭 실패: 주택형을 확정할 수 없습니다.', serverResponse: null } }))
+    expect(screen.getByRole('button', { name: '단지·주택형 매칭' })).toBeVisible()
+  })
   it('단건은 실제 네 단계와 진행·대기를 표시하며 개별 시각을 추정하지 않는다', () => {
     show(execution())
     const steps = screen.getByRole('list', { name: '실행 단계' })

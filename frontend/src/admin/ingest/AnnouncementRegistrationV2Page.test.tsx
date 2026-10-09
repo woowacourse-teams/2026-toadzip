@@ -5,12 +5,14 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AnnouncementRegistrationV2Page } from './AnnouncementRegistrationV2Page'
-import { getDataPipelineExecution, getDataPipelineStatus, startAnnouncementRegistrationUrl } from './api'
+import { getDataPipelineExecution, getDataPipelineStatus, startAnnouncementRegistration,
+  startAnnouncementRegistrationUrl } from './api'
 import type { DataPipelineExecution } from './api'
 
 vi.mock('./api', () => ({
   getDataPipelineExecution: vi.fn(),
   getDataPipelineStatus: vi.fn(),
+  startAnnouncementRegistration: vi.fn(),
   startAnnouncementRegistrationUrl: vi.fn(),
 }))
 vi.mock('./DataPipelineControl', () => ({
@@ -22,7 +24,6 @@ vi.mock('./DataPipelineControl', () => ({
 }))
 const url = 'https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21026'
 vi.mock('./PipelineHistory', () => ({ PipelineHistory: () => <div>실행 이력</div> }))
-vi.mock('./IngestWorkspacePanel', () => ({ IngestWorkspacePanel: () => <div>보완 대상</div> }))
 
 function execution(status: DataPipelineExecution['status']): DataPipelineExecution {
   return {
@@ -80,6 +81,45 @@ describe('공고 단건 등록 v2', () => {
     expect(startAnnouncementRegistrationUrl).toHaveBeenCalledWith(url)
     expect(screen.getByRole('button', { name: '등록 처리 중…' })).toBeDisabled()
     expect(screen.getByLabelText('마이홈 공고 URL')).toBeDisabled()
+  })
+
+  it('ID 입력을 선택하면 공백을 제거한 pblancId만 전송하고 입력 방식 변경을 막는다', async () => {
+    vi.mocked(startAnnouncementRegistration).mockReturnValue(new Promise(() => {}))
+    await openForm()
+    fireEvent.change(screen.getByLabelText('입력 방식'), { target: { value: 'id' } })
+    fireEvent.change(screen.getByLabelText('마이홈 공고 ID (pblancId)'), { target: { value: ' 21026 ' } })
+    fireEvent.click(screen.getByRole('button', { name: '등록 실행' }))
+    expect(startAnnouncementRegistration).toHaveBeenCalledExactlyOnceWith('21026')
+    expect(startAnnouncementRegistrationUrl).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('입력 방식')).toBeDisabled()
+    expect(screen.getByLabelText('마이홈 공고 ID (pblancId)')).toBeDisabled()
+  })
+
+  it('빈 ID는 제출하지 않으며 입력 방식을 바꾸면 값과 오류를 초기화한다', async () => {
+    await openForm()
+    fireEvent.change(screen.getByLabelText('입력 방식'), { target: { value: 'id' } })
+    fireEvent.change(screen.getByLabelText('마이홈 공고 ID (pblancId)'), { target: { value: ' ' } })
+    fireEvent.click(screen.getByRole('button', { name: '등록 실행' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('공고 ID를 입력')
+    expect(startAnnouncementRegistration).not.toHaveBeenCalled()
+    expect(startAnnouncementRegistrationUrl).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('마이홈 공고 ID (pblancId)'), { target: { value: '21026' } })
+    fireEvent.change(screen.getByLabelText('입력 방식'), { target: { value: 'url' } })
+    expect(screen.getByLabelText('마이홈 공고 URL')).toHaveValue('')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('ID 등록도 실행 상태를 조회해 완료 결과와 공고 관리 링크를 표시한다', async () => {
+    vi.mocked(startAnnouncementRegistration).mockResolvedValue(execution('RUNNING'))
+    vi.mocked(getDataPipelineExecution).mockResolvedValue(execution('COMPLETED'))
+    await openForm()
+    vi.useFakeTimers()
+    fireEvent.change(screen.getByLabelText('입력 방식'), { target: { value: 'id' } })
+    fireEvent.change(screen.getByLabelText('마이홈 공고 ID (pblancId)'), { target: { value: '21026' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '등록 실행' })) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500) })
+    expect(getDataPipelineExecution).toHaveBeenCalledWith('registration-1')
+    expect(screen.getByRole('link', { name: '공고 관리로 이동' })).toHaveAttribute('href', '/admin/announcements')
   })
 
   it('실행 ID로 완료를 확인하면 공고 관리 링크를 표시한다', async () => {

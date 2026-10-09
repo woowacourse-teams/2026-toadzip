@@ -5,6 +5,7 @@ import { DataPipelineProgress, PipelineReport } from './DataPipelineProgress'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import { pipelineLabels, pipelineStatusLabels } from './pipelineLabels'
 import styles from './PipelineExecutionSteps.module.css'
+import { AnnouncementSupplyMatchingForm } from './AnnouncementSupplyMatchingForm'
 
 const definitions = {
   COLLECT_MYHOME_COMPLEXES: '마이홈 단지 수집',
@@ -53,6 +54,7 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false }: 
   execution: DataPipelineExecution; onStop?: () => void; stopping?: boolean
 }) {
   const [selected, setSelected] = useState<Step | null>(null)
+  const [matchingOpen, setMatchingOpen] = useState(false)
   const label = pipelineLabels[execution.type]
   const domain = execution.type.startsWith('COMPLEX_') ? 'complex' : 'announcement'
   const selectedName = selected ? definitions[selected] : null
@@ -88,6 +90,12 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false }: 
     </ol>
     {execution.status === 'RUNNING' && <DataPipelineProgress execution={execution} label={label} />}
     {execution.failure && <p role="alert" className="form-error">{execution.failure.message}</p>}
+    {execution.type === 'ANNOUNCEMENT_REGISTRATION' && execution.status === 'FAILED'
+      && execution.targetAnnouncementIdentifier && execution.failure?.stepName === definitions.MAP_MYHOME_ANNOUNCEMENTS
+      && <div>
+        <button type="button" aria-expanded={matchingOpen} onClick={() => setMatchingOpen(value => !value)}>단지·주택형 매칭</button>
+        {matchingOpen && <AnnouncementSupplyMatchingForm identifier={execution.targetAnnouncementIdentifier} />}
+      </div>}
     {execution.status === 'RUNNING' && onStop && <button type="button" disabled={stopping || execution.stopRequested || !execution.executionId}
       onClick={onStop}>{stopping || execution.stopRequested ? '중지 요청 중…' : `${label} 실행 중지`}</button>}
     {execution.stopRequested && execution.status === 'RUNNING' && <p role="status">현재 처리가 끝나면 중지합니다.</p>}

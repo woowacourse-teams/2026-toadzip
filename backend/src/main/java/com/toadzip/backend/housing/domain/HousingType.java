@@ -28,14 +28,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = PROTECTED)
 public class HousingType {
 
-    @Column(nullable = false)
-    @org.hibernate.annotations.ColumnDefault("false")
-    private boolean adminCorrection;
-
-    public void protectAdminCorrection() {
-        adminCorrection = true;
-    }
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -151,9 +143,6 @@ public class HousingType {
             BigDecimal exclusiveArea,
             BigDecimal supplyArea
     ) {
-        if (adminCorrection) {
-            return false;
-        }
         validateNotBlankStatic(sourceHousingTypeIdentifier, "원천 주택형 식별자");
         validateNotBlank(name, "주택형명");
         validateRequiredAmount(exclusiveArea, "전용면적");
@@ -185,7 +174,7 @@ public class HousingType {
     }
 
     public boolean hasSupplementalInformation() {
-        return adminCorrection || totalHouseholdCount != null || floorPlanUrl != null || duplex != null
+        return totalHouseholdCount != null || floorPlanUrl != null || duplex != null
                 || maintenanceFee != null;
     }
 
