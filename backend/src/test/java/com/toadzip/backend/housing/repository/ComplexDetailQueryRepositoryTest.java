@@ -85,7 +85,8 @@ class ComplexDetailQueryRepositoryTest {
                         null,
                         "https://example.com/36a.png",
                         false,
-                        null
+                        null,
+                        50, null, null, null, null
                 ),
                 new HousingTypeDetailRow(
                         second.getId(),
@@ -94,7 +95,8 @@ class ComplexDetailQueryRepositoryTest {
                         new BigDecimal("51.1000"),
                         "https://example.com/44b.png",
                         true,
-                        new BigDecimal("123456.00")
+                        new BigDecimal("123456.00"),
+                        50, null, null, null, null
                 )
         ), rows);
     }

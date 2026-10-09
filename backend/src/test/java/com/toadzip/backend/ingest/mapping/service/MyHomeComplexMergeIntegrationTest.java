@@ -21,7 +21,6 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
-import com.toadzip.backend.housing.domain.RentalPriceRange;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
@@ -76,6 +75,7 @@ class MyHomeComplexMergeIntegrationTest {
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper json;
     @Autowired private JdbcClient jdbc;
+    @Autowired private com.toadzip.backend.housing.repository.ComplexDetailQueryRepository detailQueries;
     @Autowired private MyHomeComplexSourceFixtures sources;
     @Autowired private LhLeaseCatalogSourceFixtures lhSources;
     @Autowired private HousingComplexRepository complexes;
@@ -91,6 +91,11 @@ class MyHomeComplexMergeIntegrationTest {
 
     private List<Long> ids;
     private long lhId;
+
+    private List<Long> detailPriceRange(long complexId) {
+        var row = detailQueries.findComplex(complexId).orElseThrow();
+        return java.util.Arrays.asList(row.depositMin(), row.depositMax(), row.monthlyRentMin(), row.monthlyRentMax());
+    }
 
     @BeforeEach
     void setUp() {
@@ -149,8 +154,7 @@ class MyHomeComplexMergeIntegrationTest {
         mapping.mapAll();
 
         assertThat(complexes.findAll()).singleElement().satisfies(complex ->
-                assertThat(complex.getRentalPriceRange()).isEqualTo(
-                        new RentalPriceRange(10_000_000L, 30_000_000L, 100_000L, 200_000L)));
+                assertThat(detailPriceRange(complex.getId())).containsExactly(10_000_000L, 30_000_000L, 100_000L, 200_000L));
     }
 
     @Test
@@ -166,8 +170,7 @@ class MyHomeComplexMergeIntegrationTest {
 
         assertThat(report.failedSourceRowCount()).isZero();
         assertThat(complexes.findAll()).singleElement().satisfies(complex ->
-                assertThat(complex.getRentalPriceRange())
-                        .isEqualTo(new RentalPriceRange(5_000_000L, 5_000_000L, null, null)));
+                assertThat(detailPriceRange(complex.getId())).containsExactly(5_000_000L, 5_000_000L, null, null));
     }
 
     @Test
@@ -212,6 +215,39 @@ class MyHomeComplexMergeIntegrationTest {
     }
 
     @Test
+    void 주택형_금액_추가_전_통합_이력도_금액을_보존하며_복구한다() throws Exception {
+        jdbc.sql("UPDATE myhome_complex_source_rows SET bass_rent_gtn = 10000000, bass_mt_rntchrg = 200000")
+                .update();
+        mapping.mapAll();
+        JsonNode merged = merge();
+        jdbc.sql("""
+                UPDATE myhome_complex_merges
+                SET before_state = jsonb_set(before_state, '{housing_types}', (
+                    SELECT jsonb_agg(t - 'basic_deposit' - 'basic_monthly_rent' - 'rental_condition_collected_at')
+                    FROM jsonb_array_elements(before_state->'housing_types') t)),
+                    after_state = jsonb_set(after_state, '{housing_types}', (
+                    SELECT jsonb_agg(t - 'basic_deposit' - 'basic_monthly_rent' - 'rental_condition_collected_at')
+                    FROM jsonb_array_elements(after_state->'housing_types') t))
+                """).update();
+
+        postJson(ENDPOINT + "/" + merged.get("operationId").asText() + "/revert", Map.of());
+
+        assertThat(complexes.count()).isEqualTo(3);
+        assertThat(housingTypes.findAll()).allSatisfy(type -> {
+            assertThat(type.getBasicRentalCondition().deposit()).isEqualTo(10_000_000L);
+            assertThat(type.getBasicRentalCondition().monthlyRent()).isEqualTo(200_000L);
+        });
+    }
+
+    @Test
+    void 통합_후_주택형_금액이_바뀌면_복구를_보류한다() throws Exception {
+        JsonNode merged = merge();
+        jdbc.sql("UPDATE housing_types SET basic_deposit = 12300000").update();
+
+        expectConflict(ENDPOINT + "/" + merged.get("operationId").asText() + "/revert", Map.of());
+    }
+
+    @Test
     void 금액_컬럼_추가_전_통합_이력도_복구할_수_있다() throws Exception {
         jdbc.sql("UPDATE myhome_complex_source_rows SET bass_rent_gtn = 10000000, bass_mt_rntchrg = 200000")
                 .update();
@@ -233,9 +269,8 @@ class MyHomeComplexMergeIntegrationTest {
 
         assertThat(complexes.count()).isEqualTo(3);
         assertThat(complexes.findAll()).allSatisfy(complex ->
-                assertThat(complex.getRentalPriceRange()).isEqualTo(
-                        new RentalPriceRange(
-                                10_000_000L, 10_000_000L, 200_000L, 200_000L)));
+                assertThat(detailPriceRange(complex.getId())).containsExactly(
+                                10_000_000L, 10_000_000L, 200_000L, 200_000L));
     }
 
     @Test

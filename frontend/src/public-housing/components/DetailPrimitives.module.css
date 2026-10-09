@@ -45,6 +45,27 @@
   flex: 0 0 auto;
 }
 
+.sectionHeading[data-has-actions='true'] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--ds-space-2);
+  row-gap: var(--ds-space-1);
+}
+
+.sectionHeading[data-has-actions='true'] > span {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  margin: 0;
+}
+
+.sectionActions {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  justify-content: flex-end;
+}
+
 .fact {
   display: grid;
   min-width: 0;

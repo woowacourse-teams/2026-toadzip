@@ -1,7 +1,11 @@
+import { captureProductEvent, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
-import { afterEach, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { UserSessionControl } from './UserSessionControl'
+
+vi.mock('../../analytics/productAnalytics', () => ({ captureProductEvent: vi.fn(), createAnalyticsId: () => 'modal-id', setProductAuthState: vi.fn(), setReplaySensitive: vi.fn() }))
+beforeEach(() => vi.clearAllMocks())
 
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 
@@ -16,10 +20,10 @@ it('로그인 버튼은 현재 화면에서 카카오와 구글 로그인 모달
   login.focus()
   fireEvent.click(login)
   const dialog = screen.getByRole('dialog', { name: '로그인' })
-  expect(within(dialog).getByRole('link', { name: '카카오로 계속하기' })).toHaveAttribute(
+  expect(within(dialog).getByRole('link', { name: '카카오톡으로 로그인' })).toHaveAttribute(
     'href', 'https://api.example.com/api/auth/oauth2/authorization/kakao',
   )
-  expect(within(dialog).getByRole('link', { name: 'Google로 계속하기' })).toHaveAttribute(
+  expect(within(dialog).getByRole('link', { name: 'Google로 로그인' })).toHaveAttribute(
     'href', 'https://api.example.com/api/auth/oauth2/authorization/google',
   )
   fireEvent.click(within(dialog).getByRole('button', { name: '로그인 닫기' }))
@@ -116,7 +120,7 @@ it('실패 복귀 후 세션 조회에 실패해도 로그인 제공자로 재�
   render(<MemoryRouter initialEntries={['/?login=failed']}><UserSessionControl /></MemoryRouter>)
   const dialog = await screen.findByRole('dialog', { name: '로그인' })
   expect(within(dialog).getByRole('alert')).toHaveTextContent('다시 시도해 주세요.')
-  expect(within(dialog).getByRole('link', { name: '카카오로 계속하기' })).toBeVisible()
+  expect(within(dialog).getByRole('link', { name: '카카오톡으로 로그인' })).toBeVisible()
 })
 
 it('지도 사이드바의 로그인 계정은 마이페이지에서 기존 로그아웃을 제공한다', async () => {
@@ -127,4 +131,65 @@ it('지도 사이드바의 로그인 계정은 마이페이지에서 기존 로�
   fireEvent.click(account)
   expect(account.closest('details')).toHaveAttribute('open')
   expect(screen.getByRole('button', { name: '로그아웃' })).toBeVisible()
+})
+
+it('로그인 조회는 브라우저 ID를 바꾸지 않고 상태와 명시적 모달 행동만 수집한다', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 401, ok: false }))
+  render(<MemoryRouter><UserSessionControl /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: '로그인' }))
+  expect(setProductAuthState).toHaveBeenCalledWith('guest')
+  expect(setReplaySensitive).toHaveBeenCalledWith('login_modal', true)
+  expect(captureProductEvent).toHaveBeenCalledWith('login_modal_opened',
+    { entry_point: 'button', login_modal_id: 'modal-id' }, { dedupeKey: 'login-modal:modal-id' })
+  fireEvent.click(screen.getByRole('button', { name: '로그인 닫기' }))
+  expect(captureProductEvent).toHaveBeenCalledWith('login_modal_closed', { login_modal_id: 'modal-id', reason: 'button' })
+  expect(setReplaySensitive).toHaveBeenLastCalledWith('login_modal', false)
+})
+
+it('회원만 계정 아이콘 위의 알림 보관함과 알림 관리에 접근한다', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 1 }) }))
+  render(<MemoryRouter><UserSessionControl presentation="rail" /></MemoryRouter>)
+  expect(await screen.findByRole('button', { name: '알림 보관함' })).toHaveAttribute('aria-haspopup', 'dialog')
+  fireEvent.click(screen.getByText('마이페이지'))
+  expect(screen.getByRole('button', { name: '알림 관리' })).toHaveAttribute('aria-haspopup', 'dialog')
+})
+
+it('비회원 사이드바에는 알림 보관함을 표시하지 않는다', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 401, ok: false }))
+  render(<MemoryRouter><UserSessionControl presentation="rail" /></MemoryRouter>)
+  await screen.findByRole('button', { name: '로그인' })
+  expect(screen.queryByRole('button', { name: '알림 보관함' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '알림 관리' })).not.toBeInTheDocument()
+})
+
+it('모바일 마이 모달은 계정 행동을 수집하고 열려 있는 동안 리플레이를 제외한다', async () => {
+  vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: 1 }) }))
+  render(<MemoryRouter><UserSessionControl presentation="rail" /></MemoryRouter>)
+  const account = await screen.findByRole('button', { name: '마이' })
+  fireEvent.click(account)
+
+  const dialog = screen.getByRole('dialog', { name: '마이페이지' })
+  expect(dialog).toHaveClass('ph-no-capture')
+  expect(captureProductEvent).toHaveBeenCalledWith('account_menu_opened')
+  expect(setReplaySensitive).toHaveBeenCalledWith('member_menu', true)
+  expect(within(dialog).getByRole('button', { name: '알림 관리' })).toBeVisible()
+  expect(within(dialog).getByRole('button', { name: '로그아웃' })).toBeVisible()
+
+  fireEvent.click(within(dialog).getByRole('button', { name: '마이페이지 닫기' }))
+  expect(setReplaySensitive).toHaveBeenLastCalledWith('member_menu', false)
+  expect(account).toHaveFocus()
+})
+
+it('비회원의 보관함 직접 진입은 로그인 모달과 리다이렉트 계측을 유지한다', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 401, ok: false }))
+  render(<MemoryRouter initialEntries={['/?inbox=open&region=seoul']}>
+    <UserSessionControl presentation="rail" /><LocationDisplay />
+  </MemoryRouter>)
+
+  const dialog = await screen.findByRole('dialog', { name: '로그인' })
+  expect(captureProductEvent).toHaveBeenCalledWith('login_modal_opened',
+    { entry_point: 'required_redirect', login_modal_id: 'modal-id' }, { dedupeKey: 'login-modal:modal-id' })
+  fireEvent.click(within(dialog).getByRole('button', { name: '로그인 닫기' }))
+  expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/?region=seoul')
 })

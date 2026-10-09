@@ -1,3 +1,5 @@
+import { captureProductEvent } from '../../analytics/productAnalytics'
+import { listRequestProperties } from '../analytics/useListMeasurement'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   AnnouncementSearchFilters,
@@ -145,6 +147,8 @@ export function useAnnouncementResults(
     const controller = new AbortController()
     const revision = requestRevisionRef.current
     paginationAbortRef.current = controller
+    const measurement = listRequestProperties('announcement')
+    captureProductEvent('list_more_requested', measurement)
     setState((current) => ({
       ...current,
       errorMessage: null,
@@ -163,9 +167,11 @@ export function useAnnouncementResults(
         if (paginationAbortRef.current === controller) {
           paginationAbortRef.current = null
         }
-        if (requestRevisionRef.current !== revision) {
+        if (controller.signal.aborted || requestRevisionRef.current !== revision) {
           return
         }
+        const previousIds = new Set(state.items.map(item => item.announcementId))
+        captureProductEvent('list_more_succeeded', { ...measurement, appended_count: page.items.filter(item => !previousIds.has(item.announcementId)).length })
         setState((current) => ({
           errorMessage: null,
           hasNext: page.hasNext,
@@ -178,9 +184,10 @@ export function useAnnouncementResults(
         if (paginationAbortRef.current === controller) {
           paginationAbortRef.current = null
         }
-        if (isAbortError(error) || requestRevisionRef.current !== revision) {
+        if (controller.signal.aborted || isAbortError(error) || requestRevisionRef.current !== revision) {
           return
         }
+        captureProductEvent('list_more_failed', measurement)
         setState((current) => ({
           ...current,
           errorMessage: requestErrorMessage(error),

@@ -27,6 +27,9 @@ export type HousingComplexCreateResponse = {
   housingComplexId: number
   name: string
   roadAddress: string
+  pnu?: string
+  rentalType?: string
+  agencyCode?: string
 }
 
 export type AnnouncementCreateRequest = {

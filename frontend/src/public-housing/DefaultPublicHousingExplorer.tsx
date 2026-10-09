@@ -85,6 +85,7 @@ export function LocalPublicHousingExplorer({
   if (state.status === 'ready') {
     return (
       <PublicHousingExplorer
+        streetViewSupported={false}
         mapRepository={state.mapRepository}
         regionRepository={state.regionRepository}
         searchRepository={state.searchRepository}

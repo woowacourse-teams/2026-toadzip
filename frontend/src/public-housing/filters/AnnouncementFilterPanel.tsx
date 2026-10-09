@@ -1,3 +1,5 @@
+import { useMobileViewport } from '../components/useMobileViewport'
+import { useFilterMeasurement } from '../analytics/useFilterMeasurement'
 import { Button } from '../../design-system/components/Button'
 import { IconButton } from '../../design-system/components/IconButton'
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
@@ -27,7 +29,10 @@ export function AnnouncementFilterPanel({
   regionRepository = publicHousingRegionRepository,
   resultSummary,
 }: AnnouncementFilterPanelProps) {
+  const mobile = useMobileViewport()
   const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLElement>(null)
+  const measurement = useFilterMeasurement('announcement', open ? 'all' : null, mobile ? 'mobile' : 'desktop', rootRef, filters)
   const formRef = useRef<HTMLFormElement>(null)
   const toggleRef = useRef<HTMLButtonElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
@@ -46,7 +51,8 @@ export function AnnouncementFilterPanel({
     }
   }, [open, filtersKey])
 
-  function close() {
+  function close(reason: 'close_button' | 'escape' | 'toggle' = 'close_button') {
+    measurement.reason(reason)
     restoreFocusRef.current = true
     setOpen(false)
   }
@@ -54,16 +60,19 @@ export function AnnouncementFilterPanel({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const nextFilters = announcementFiltersFromForm(new FormData(event.currentTarget))
+    measurement.apply(nextFilters, 'submit')
     onApply(nextFilters)
   }
 
   function reset() {
+    measurement.reset('all', 'applied')
+    measurement.apply({}, 'reset')
     formRef.current?.reset()
     onApply({})
   }
 
   return (
-    <section className={styles.panel} aria-label="공고 검색 필터">
+    <section ref={rootRef} className={styles.panel} aria-label="공고 검색 필터">
       <div className={styles.toolbar} role="group" aria-label="공고 목록 도구">
         {resultSummary && <div className={styles.resultSummary}>{resultSummary}</div>}
         <button
@@ -74,7 +83,7 @@ export function AnnouncementFilterPanel({
           aria-controls={panelId}
           aria-describedby={summaryId}
           aria-expanded={open}
-          onClick={() => open ? close() : setOpen(true)}
+          onClick={() => open ? close('toggle') : setOpen(true)}
         >
           <span>공고 필터</span>
           {appliedCount > 0 && <span className={styles.count} aria-hidden="true">{appliedCount}</span>}
@@ -97,7 +106,7 @@ export function AnnouncementFilterPanel({
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               event.preventDefault()
-              close()
+              close('escape')
             }
           }}
         >
@@ -109,7 +118,7 @@ export function AnnouncementFilterPanel({
               초기화
             </button>
             <h2>공고 필터</h2>
-            <IconButton ref={closeRef} className={styles.close} type="button" label="공고 필터 닫기" onClick={close}>
+            <IconButton ref={closeRef} className={styles.close} type="button" label="공고 필터 닫기" onClick={() => close()}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" focusable="false">
                 <path d="m5 5 14 14M19 5 5 19" />
               </svg>

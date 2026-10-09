@@ -9,6 +9,7 @@ export const labels: Record<string, string> = {
   ONLINE: '온라인', VISIT: '방문', MAIL: '우편', true: '설치', false: '미설치',
   CONFIRMED: '확정', CONDITIONAL: '조건부', UPDATE_SCHEDULE: '접수 일정 수정',
   UPDATE: '정보 수정', DELETE: '휴지통 이동', RESTORE: '복구', UPDATE_SUPPLY: '공급정보 수정',
+  UPDATE_HOUSING_TYPE: '주택형 수정',
 }
 export const rentals = ['HAPPY_HOUSING', 'NATIONAL_RENTAL', 'PERMANENT_RENTAL', 'PUBLIC_RENTAL_5Y', 'PUBLIC_RENTAL_10Y',
   'PUBLIC_RENTAL_50Y', 'INTEGRATED_PUBLIC_RENTAL', 'REDEVELOPMENT_RENTAL', 'LONG_TERM_JEONSE', 'ETC']

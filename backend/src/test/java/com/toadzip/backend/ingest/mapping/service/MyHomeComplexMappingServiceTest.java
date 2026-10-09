@@ -15,7 +15,6 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
-import com.toadzip.backend.housing.domain.RentalPriceRange;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures;
@@ -188,10 +187,19 @@ class MyHomeComplexMappingServiceTest {
 
         service.mapAll();
 
+        assertThat(housingTypeRepository.findAll()).anySatisfy(type -> {
+            assertThat(type.getName()).isEqualTo("46A");
+            assertThat(type.getBasicRentalCondition().deposit()).isEqualTo(10_000_000L);
+            assertThat(type.getBasicRentalCondition().monthlyRent()).isEqualTo(200_000L);
+            assertThat(type.getBasicRentalCondition().collectedAt()).isEqualTo(COLLECTED_AT);
+        }).anySatisfy(type -> {
+            assertThat(type.getName()).isEqualTo("59A");
+            assertThat(type.getBasicRentalCondition().deposit()).isEqualTo(20_000_000L);
+            assertThat(type.getBasicRentalCondition().monthlyRent()).isEqualTo(100_000L);
+        });
+
         assertThat(complexRepository.findAll()).singleElement().satisfies(complex ->
-                assertThat(complex.getRentalPriceRange()).isEqualTo(
-                        new RentalPriceRange(
-                                10_000_000L, 20_000_000L, 100_000L, 200_000L)));
+                assertThat(complex.getRentalPriceRange()).isNull());
 
         first.replaceWith(withPrices(firstData, null, null));
         second.replaceWith(withPrices(secondData, 30_000_000L, 300_000L));
@@ -199,11 +207,43 @@ class MyHomeComplexMappingServiceTest {
 
         var report = service.mapAll();
 
-        assertThat(report.updatedComplexCount()).isOne();
+        assertThat(report.updatedComplexCount()).isZero();
+        assertThat(report.updatedHousingTypeCount()).isEqualTo(2);
+        assertThat(housingTypeRepository.findAll()).anySatisfy(type -> {
+            assertThat(type.getName()).isEqualTo("46A");
+            assertThat(type.getBasicRentalCondition().deposit()).isNull();
+            assertThat(type.getBasicRentalCondition().monthlyRent()).isNull();
+        }).anySatisfy(type -> {
+            assertThat(type.getName()).isEqualTo("59A");
+            assertThat(type.getBasicRentalCondition().deposit()).isEqualTo(30_000_000L);
+            assertThat(type.getBasicRentalCondition().monthlyRent()).isEqualTo(300_000L);
+        });
         assertThat(complexRepository.findAll()).singleElement().satisfies(complex ->
-                assertThat(complex.getRentalPriceRange()).isEqualTo(
-                        new RentalPriceRange(
-                                30_000_000L, 30_000_000L, 300_000L, 300_000L)));
+                assertThat(complex.getRentalPriceRange()).isNull());
+    }
+
+    @Test
+    void 수집시각이_없는_과거_원천은_기본금액을_제공하지_않고_다른_단지도_정제한다() {
+        sourceRepository.saveAll(List.of(
+                MyHomeComplexSource.from(withPrices(
+                        data(123L, "46A", "46.8000", "20.2000", "서울주택도시공사", "20200101"),
+                        10_000_000L, 200_000L)),
+                source(withPrices(
+                        data(124L, "59A", "59.9500", "24.1000", "서울주택도시공사", "20200101"),
+                        20_000_000L, 0L))
+        ));
+
+        var report = service.mapAll();
+
+        assertThat(report.createdHousingTypeCount()).isEqualTo(2);
+        assertThat(housingTypeRepository.findAll()).anySatisfy(type -> {
+            assertThat(type.getName()).isEqualTo("46A");
+            assertThat(type.getBasicRentalCondition()).isNull();
+        }).anySatisfy(type -> {
+            assertThat(type.getName()).isEqualTo("59A");
+            assertThat(type.getBasicRentalCondition().deposit()).isEqualTo(20_000_000L);
+            assertThat(type.getBasicRentalCondition().monthlyRent()).isZero();
+        });
     }
 
     @Test
@@ -335,6 +375,28 @@ class MyHomeComplexMappingServiceTest {
         assertThat(report.deletedHousingTypeCount()).isZero();
         assertThat(housingTypeRepository.existsById(referencedType.getId())).isTrue();
         assertThat(supplyRowRepository.existsByHousingType(referencedType)).isTrue();
+    }
+
+    @Test
+    void 관리자_수정_주택형은_공고가_없어도_원천_삭제에_따라_삭제하지_않는다() {
+        sourceRepository.saveAll(List.of(source("46A", "46.8000", "20.2000"),
+                source("59A", "59.9500", "24.1000")));
+        service.mapAll();
+        HousingType type = housingTypeRepository.findAll().stream()
+                .filter(item -> item.getName().equals("46A")).findFirst().orElseThrow();
+        type.reviseByAdmin("관리자 확인 주택형", new BigDecimal("47.1234"), null);
+        housingTypeRepository.saveAndFlush(type);
+        sourceRepository.deleteAll();
+        sourceRepository.save(source("59A", "59.9500", "24.1000"));
+
+        var report = service.mapAll();
+
+        assertThat(report.deletedHousingTypeCount()).isZero();
+        assertThat(housingTypeRepository.findById(type.getId())).hasValueSatisfying(persisted -> {
+            assertThat(persisted.getName()).isEqualTo("관리자 확인 주택형");
+            assertThat(persisted.getExclusiveArea()).isEqualByComparingTo("47.1234");
+            assertThat(persisted.isAdminModified()).isTrue();
+        });
     }
 
     @Test

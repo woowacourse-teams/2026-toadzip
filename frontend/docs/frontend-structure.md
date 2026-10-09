@@ -17,6 +17,7 @@
 | `navigation/detailLocation.ts`, `detailHistory.ts` | 상세 URL와 history state의 검증·변환 |
 | `components/HousingDetailStatePanel.tsx` | 단지·공고 상세의 로딩·미발견·오류 표시와 포커스·닫기 |
 | `presentation/` | API 모델에서 카드·상세 표시 모델로 변환, 라벨·HTTP(S) 링크 정책 |
+| `src/street-view/` | PC 단지 거리뷰의 실행 정보·지도 영역·출입구 핀·시도 결과와 별도 iframe SDK 수명주기 |
 
 목록 요청 성공 후의 스크롤·강조 초기화와 지도 정책은 Explorer에 둔다.
 URL은 공유 가능한 필터·상세 선택을 소유하고, history state는 상세 간 이동의 복귀 대상과 포커스 정보를 가진다.
@@ -39,6 +40,13 @@ URL은 공유 가능한 필터·상세 선택을 소유하고, history state는 
 지도 객체를 새 전역 상태로 옮기지 않는다. 추가한 SDK 이벤트와 DOM 핸들러는 해당 소유자에서 해제한다.
 마커 표시 필드를 추가하면 내용 비교 키와 갱신 행동 테스트도 함께 확인한다.
 
+거리뷰는 기존 GL 로더와 분리한다. Explorer의 기능 전용 `useStreetView`가 실행 정보와 세션을,
+`StreetViewEntry`가 버튼·설명을, `StreetViewPanel`이 상세 옆 지도 영역을 표시한다. 지도와 상세는
+마운트를 유지하고 목록은 DOM·스크롤을 보존한 채 숨긴다. 검색·목록·상세 전환은 Explorer에서 연결한다.
+`StreetViewFrame`은 자식 문서 메시지와 초기화 기한을 소유한다. 별도 `street-view.html`의
+`runtime.ts`는 파노라마 SDK와 출입구 마커를 관리한다. API·이벤트 수집과 SDK 실행 경계,
+제공 정책은 [단지 주변 거리뷰](street-view.md)를 따른다.
+
 ## 관리자와 API
 
 - `src/api/apiBaseUrl.ts`는 기본 주소 정책만 공유한다. CSRF, 인증, 응답 검증과 오류는 각 API 모듈이 소유한다.
@@ -46,6 +54,8 @@ URL은 공유 가능한 필터·상세 선택을 소유하고, history state는 
 - `public-housing/api/httpErrorBody.ts`는 두 공개 repository의 오류 body 해석·AbortError 재전파만 공유한다. 오류 class와 기본 메시지는 각 repository에 둔다.
 - `admin/management/api.ts`는 HTTP 요청, `managementContract.ts`는 관리 모델과 응답 검증을 담당한다.
 - `ManagementSummaryTable`과 `ManagementStatus`는 목록·상세·선택 화면에서 실제 공유하는 표시다.
+- `ManagementWorkspace`는 단지·공고 표와 등록·편집 영역을 한 페이지에 배치한다. 선택 항목은 경로, 검색·페이지는 쿼리가 소유하며 저장·삭제·복구 후 목록을 다시 조회한다. 기존 상세 URL과 `returnTo` 검색 조건도 지원한다.
+- 공고 직접 입력 중 새 단지를 등록해 연결할 수 있다. 선택 단지의 기관·유형·PNU·단지명을 가져오고 공고명 등 작성 중인 입력은 보존한다. 단지 등록의 19자리 PNU는 법정동·시도·시군구 코드를 채우며 주소·좌표는 추정하지 않는다.
 - `admin/ingest/PipelineResult.tsx`는 실행 제어와 실행 이력이 공유한다. 폴링·실행·중지는 `DataPipelineControl`에 남는다.
 - `admin/registration/registrationOptions.ts`는 두 등록 폼의 옵션을 공유한다. 관리 검색의 더 넓은 허용 값과 합치지 않는다.
 - 등록 페이지 테스트는 검증 대상과 함께 `admin/registration/RegistrationPages.test.tsx`에 둔다.

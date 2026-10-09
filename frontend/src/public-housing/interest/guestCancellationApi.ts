@@ -22,13 +22,13 @@ async function post(path: string, body?: object, admin = false) {
 
 export async function requestGuestCancellation(email: string) {
   const response = await post('/api/v1/notification-guest-cancellations', { email })
-  if (!response.ok) throw new Error('취소 요청을 접수하지 못했어요. 다시 시도해 주세요.')
+  if (response.status !== 202) throw new Error('취소 요청을 접수하지 못했어요. 다시 시도해 주세요.')
 }
 
 export async function verifyGuestCancellation(email: string, code: string) {
   const response = await post('/api/v1/notification-guest-cancellations/verify', { email, code })
   if (response.status === 400) throw new Error('이메일과 확인 코드를 다시 확인해 주세요.')
-  if (!response.ok) throw new Error('취소를 완료하지 못했어요. 다시 시도해 주세요.')
+  if (response.status !== 204) throw new Error('취소를 완료하지 못했어요. 다시 시도해 주세요.')
 }
 
 export interface GuestCancellationRequest {

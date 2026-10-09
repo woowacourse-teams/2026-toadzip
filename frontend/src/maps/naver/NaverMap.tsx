@@ -1,3 +1,4 @@
+import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
 import { useEffect, useRef, useState } from 'react'
 import styles from './NaverMap.module.css'
 import {
@@ -160,6 +161,9 @@ export default function NaverMap({
   representation,
   transitioning = false,
 }: NaverMapProps) {
+  const interactionId = useRef(createAnalyticsId())
+  const zoomSource = useRef<'button' | 'other_user' | 'programmatic' | 'unknown'>('unknown')
+  const previousZoom = useRef<number | null>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<naver.maps.Map | null>(null)
   const mapsRef = useRef<typeof naver.maps | null>(null)
@@ -243,6 +247,7 @@ export default function NaverMap({
     let cancelled = false
     let mapInstance: naver.maps.Map | null = null
     let resizeObserver: ResizeObserver | null = null
+    let dragEndListener: naver.maps.MapEventListener | null = null
     let dragStartListener: naver.maps.MapEventListener | null = null
     let idleListener: naver.maps.MapEventListener | null = null
     let initListener: naver.maps.MapEventListener | null = null
@@ -267,6 +272,7 @@ export default function NaverMap({
     }
 
     const removeTransitionInterruptListeners = () => {
+      if (dragEndListener && mapsRef.current) { mapsRef.current.Event.removeListener(dragEndListener); dragEndListener = null }
       if (dragStartListener && mapsRef.current) {
         mapsRef.current.Event.removeListener(dragStartListener)
         dragStartListener = null
@@ -350,10 +356,17 @@ export default function NaverMap({
             }
           })
 
+          previousZoom.current = createdMap.getZoom()
+          let dragStart: { latitude: number; longitude: number } | null = null
           const emitViewport = () => {
             transitionInterruptedRef.current = false
             const viewport = readViewport(createdMap)
             if (viewport) {
+              const old = appliedCameraTargetRef.current
+              if (old && (old.latitude !== viewport.center.latitude || old.longitude !== viewport.center.longitude || old.zoom !== viewport.zoom)) interactionId.current = createAnalyticsId()
+              if (previousZoom.current !== null && previousZoom.current !== viewport.zoom) captureProductEvent('map_zoomed', { zoom_before: previousZoom.current, zoom_after: viewport.zoom, source: zoomSource.current })
+              previousZoom.current = viewport.zoom
+              zoomSource.current = 'unknown'
               appliedCameraTargetRef.current = {
                 latitude: viewport.center.latitude,
                 longitude: viewport.center.longitude,
@@ -382,10 +395,15 @@ export default function NaverMap({
           dragStartListener = maps.Event.addListener(
             createdMap,
             'dragstart',
-            interruptTransition,
+            () => { dragStart = readViewport(createdMap)?.center ?? null; interruptTransition() },
           )
+          dragEndListener = maps.Event.addListener(createdMap, 'dragend', () => {
+            const end = readViewport(createdMap)?.center
+            if (dragStart && end && (end.latitude !== dragStart.latitude || end.longitude !== dragStart.longitude)) captureProductEvent('map_panned', { source: 'drag' })
+            dragStart = null
+          })
           mapSurface = mapContainerRef.current
-          wheelListener = interruptTransition
+          wheelListener = () => { zoomSource.current = 'other_user'; interruptTransition() }
           mapSurface.addEventListener('wheel', wheelListener, { passive: true })
 
           if (typeof ResizeObserver === 'function') {
@@ -514,6 +532,7 @@ export default function NaverMap({
           }
           onAggregateMarkerSelectRef.current?.(aggregateMarker)
         },
+        previewScopeId: () => interactionId.current,
         onMarkerHighlight: (complexId) => {
           onMarkerHighlightRef.current?.(complexId)
         },
@@ -592,6 +611,7 @@ export default function NaverMap({
         && cameraBoundsMaxZoom >= 0) {
         fitOptions.maxZoom = cameraBoundsMaxZoom
       }
+      zoomSource.current = 'programmatic'
       if (Object.keys(fitOptions).length > 0) {
         mapInstance.fitBounds(bounds, fitOptions)
       } else {
@@ -629,6 +649,7 @@ export default function NaverMap({
       && (cameraZoom === undefined
         || !cameraZoomChanged(currentViewport.zoom, cameraZoom))
 
+    if (cameraRequested || coordinatesChanged || zoomChanged) zoomSource.current = 'programmatic'
     if (cameraRequested && cameraZoom !== undefined) {
       mapInstance.morph(
         nextCenter,
@@ -663,6 +684,7 @@ export default function NaverMap({
     initializedAttempt, attempt, status.kind])
 
   const retry = () => {
+    captureProductEvent('exploration_retry_clicked', { surface: 'map_sdk' })
     setStatus({ kind: 'loading' })
     setAttempt((currentAttempt) => currentAttempt + 1)
   }
@@ -678,7 +700,10 @@ export default function NaverMap({
       onTransitionInterruptRef.current?.()
       stopMapSafely(map)
     }
-    const zoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), map.getZoom() + delta))
+    const before = map.getZoom()
+    const zoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), before + delta))
+    captureProductEvent('map_zoom_button_clicked', { direction: delta > 0 ? 'in' : 'out', zoom_before: before, zoom_target: zoom })
+    zoomSource.current = 'button'
     map.setZoom(zoom)
   }
 

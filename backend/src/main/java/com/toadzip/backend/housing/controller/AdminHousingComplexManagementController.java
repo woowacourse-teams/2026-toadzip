@@ -5,6 +5,7 @@ import com.toadzip.backend.admin.dto.AdminDataSummary;
 import com.toadzip.backend.admin.dto.AdminPage;
 import com.toadzip.backend.admin.dto.AdminSearch;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexUpdateRequest;
+import com.toadzip.backend.housing.dto.request.AdminHousingTypeUpdateRequest;
 import com.toadzip.backend.housing.dto.response.AdminHousingComplexDetail;
 import com.toadzip.backend.housing.service.AdminHousingComplexManagementService;
 import com.toadzip.backend.global.response.ApiResponse;
@@ -59,6 +60,15 @@ public class AdminHousingComplexManagementController {
         try (var lease = ownership.acquire()) {
             service.trash(id, version, false, principal.getName());
             return ResponseEntity.noContent().build();
+        }
+    }
+
+    @PutMapping("/{id}/housing-types/{typeId}")
+    public ApiResponse<AdminHousingComplexDetail> updateHousingType(@PathVariable long id,
+            @PathVariable long typeId, @Valid @RequestBody AdminHousingTypeUpdateRequest request,
+            Principal principal) {
+        try (var lease = ownership.acquire()) {
+            return new ApiResponse<>(service.updateHousingType(id, typeId, request, principal.getName()));
         }
     }
 

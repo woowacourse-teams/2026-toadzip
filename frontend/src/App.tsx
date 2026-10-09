@@ -3,11 +3,8 @@ import { AnnouncementRegistrationV2Page } from './admin/ingest/AnnouncementRegis
 import { SourceDataPage } from './admin/ingest/SourceDataPage'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router'
 import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
-import { HousingComplexRegistrationPage } from './admin/registration/HousingComplexRegistrationPage'
-import { AnnouncementRegistrationPage } from './admin/registration/AnnouncementRegistrationPage'
 import { LocationDataPage } from './admin/ingest/LocationDataPage'
-import { ManagementList } from './admin/management/ManagementList'
-import { ManagementDetail } from './admin/management/ManagementDetail'
+import { ManagementWorkspace } from './admin/management/ManagementWorkspace'
 import { AdminHome } from './admin/auth/AdminHome'
 import { AdminLayout } from './admin/auth/AdminLayout'
 import { GuestCancellationAdminPage } from './admin/GuestCancellationAdminPage'
@@ -16,11 +13,13 @@ import { RequireAdmin } from './admin/auth/RequireAdmin'
 import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHousingExplorer.tsx'
 import { BrandLink } from './BrandLink'
 import { NotificationInterestProvider, NotificationInterestSessionControl } from './public-housing/interest/NotificationInterest'
+import { NotificationPage } from './public-housing/interest/NotificationPage'
 import { GuestCancellationPage } from './public-housing/interest/GuestCancellationPage'
 import { UserListPage } from './admin/users/UserListPage'
 import { UserDetailPage } from './admin/users/UserDetailPage'
 import { FeedbackPage } from './feedback/FeedbackPage'
 import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
+import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
 
 function Home() {
   return (
@@ -62,12 +61,8 @@ function AdminRoutes() {
             <Route index element={<Navigate to="complexes" replace />} />
             <Route path="ingest" element={<AdminHome />} />
             <Route path="ingest-v2" element={<AnnouncementRegistrationV2Page />} />
-            <Route path="complexes" element={<ManagementList resource="complexes" />} />
-            <Route path="complexes/new" element={<HousingComplexRegistrationPage />} />
-            <Route path="complexes/:id" element={<ManagementDetail resource="complexes" />} />
-            <Route path="announcements" element={<ManagementList resource="announcements" />} />
-            <Route path="announcements/new" element={<AnnouncementRegistrationPage />} />
-            <Route path="announcements/:id" element={<ManagementDetail resource="announcements" />} />
+            <Route path="complexes/:id?" element={<ManagementWorkspace resource="complexes" />} />
+            <Route path="announcements/:id?" element={<ManagementWorkspace resource="announcements" />} />
             <Route path="users" element={<UserListPage />} />
             <Route path="users/:id" element={<UserDetailPage />} />
             <Route path="feedback" element={<FeedbackListPage />} />
@@ -85,13 +80,18 @@ function AdminRoutes() {
 
 export default function App() {
   return (
+    <>
+    <ProductAnalyticsBoundary />
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<LegacyLoginRedirect />} />
       <Route path="/feedback" element={<FeedbackPage />} />
+      <Route path="/notifications" element={<Navigate to="/?inbox=open" replace />} />
+      <Route path="/mypage/notifications" element={<NotificationPage management />} />
       <Route path="/notifications/cancel" element={<GuestCancellationPage />} />
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </>
   )
 }

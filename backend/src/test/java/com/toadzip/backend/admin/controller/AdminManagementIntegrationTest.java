@@ -346,6 +346,98 @@ class AdminManagementIntegrationTest {
         return json.readTree(result.getResponse().getContentAsString()).get("data").get("housingComplexId").asLong();
     }
 
+    @Test
+    void 주택형_수정은_단지_버전을_갱신하고_이력을_남긴다() throws Exception {
+        long id = createComplex();
+        long typeId = createHousingType(id);
+        String path = "/api/admin/housing-complexes/" + id;
+        long version = getData(path).get("data").get("version").asLong();
+        String body = """
+                {"version": %d, "name": "59B", "exclusiveArea": 59.1234, "householdCount": 0}
+                """.formatted(version);
+        mvc.perform(put(path + "/housing-types/" + typeId).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.housingTypes[0].name").value("59B"))
+                .andExpect(jsonPath("$.data.housingTypes[0].exclusiveArea").value(59.1234))
+                .andExpect(jsonPath("$.data.housingTypes[0].householdCount").value(0));
+        assertThat(getData(path).get("data").get("version").asLong()).isGreaterThan(version);
+        mvc.perform(put(path + "/housing-types/" + typeId).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict());
+        mvc.perform(get(path + "/changes").with(user("admin").roles("ADMIN")))
+                .andExpect(jsonPath("$.data[0].action").value("UPDATE_HOUSING_TYPE"))
+                .andExpect(jsonPath("$.data[0].beforeValue").value(org.hamcrest.Matchers.containsString("46A")))
+                .andExpect(jsonPath("$.data[0].afterValue").value(org.hamcrest.Matchers.containsString("59B")));
+    }
+
+    @Test
+    void 주택형_수정은_소속단지와_권한과_입력값을_검증한다() throws Exception {
+        long id = createComplex();
+        long otherId = createComplex();
+        long typeId = createHousingType(id);
+        String path = "/api/admin/housing-complexes/" + id + "/housing-types/" + typeId;
+        long version = getData("/api/admin/housing-complexes/" + id).get("data").get("version").asLong();
+        String body = """
+                {"version": %d, "name": "59B", "exclusiveArea": 59.5, "householdCount": null}
+                """.formatted(version);
+        mvc.perform(put(path).with(user("user").roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mvc.perform(put(path).with(user("admin").roles("ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mvc.perform(put("/api/admin/housing-complexes/" + otherId + "/housing-types/" + typeId)
+                        .with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isConflict());
+        for (String invalid : java.util.List.of(body.replace("59.5", "-1"),
+                body.replace("59.5", "59.12345"), body.replace("59B", " "),
+                body.replace("null", "-1"))) {
+            mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON).content(invalid))
+                    .andExpect(status().isBadRequest());
+        }
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.housingTypes[0].householdCount").isEmpty());
+        long currentVersion = getData("/api/admin/housing-complexes/" + id).get("data").get("version").asLong();
+        mvc.perform(delete("/api/admin/housing-complexes/" + id).param("version", String.valueOf(currentVersion))
+                        .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isNoContent());
+        long deletedVersion = getData("/api/admin/housing-complexes/" + id).get("data").get("version").asLong();
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.replace("\"version\": " + version, "\"version\": " + deletedVersion)))
+                .andExpect(status().isConflict());
+    }
+
+    private long createHousingType(long complexId) {
+        var type = com.toadzip.backend.housing.domain.HousingType.createFromMyHome(
+                complexes.findById(complexId).orElseThrow(), "TYPE-" + complexId,
+                "46A", new java.math.BigDecimal("46.8"), null);
+        entityManager.persist(type);
+        entityManager.flush();
+        return type.getId();
+    }
+
+    @Test
+    void 연락처가_미확인인_기존_공고도_수정하고_null을_보존한다() throws Exception {
+        long id = createAnnouncement(createComplex());
+        entityManager.createNativeQuery("UPDATE announcements SET reception_contact = NULL WHERE id = :id")
+                .setParameter("id", id).executeUpdate();
+        entityManager.clear();
+        String path = "/api/admin/announcements/" + id;
+        var data = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+        data.put("name", "단지 탭에서 수정한 공고");
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(data.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.data.name").value("단지 탭에서 수정한 공고"))
+                .andExpect(jsonPath("$.data.data.receptionPlace.contact").isEmpty());
+        var updated = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+        ((tools.jackson.databind.node.ObjectNode) updated.get("receptionPlace")).put("name", " ");
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(updated.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
     private JsonNode getData(String path) throws Exception {
         var result = mvc.perform(get(path).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn();

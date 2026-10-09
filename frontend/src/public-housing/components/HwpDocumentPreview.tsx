@@ -1,3 +1,4 @@
+import type { DocumentPreviewTelemetry } from './documentAnalytics'
 import { useDocumentSearchShortcuts } from './useDocumentSearchShortcuts.ts'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useHwpDocument } from './useHwpDocument.ts'
@@ -6,14 +7,14 @@ import styles from './HwpDocumentPreview.module.css'
 import { useDocumentScrollActivity } from './useDocumentScrollActivity.ts'
 import scrollbarStyles from './DocumentScrollbar.module.css'
 
-export default function HwpDocumentPreview(props: { readonly url: string; readonly name: string }) {
+export default function HwpDocumentPreview(props: { readonly url: string; readonly name: string; readonly telemetry?: DocumentPreviewTelemetry; readonly onRetry?: () => void }) {
   return <HwpPreview key={props.url} {...props} />
 }
-function HwpPreview(props: { readonly url: string; readonly name: string }) {
+function HwpPreview(props: { readonly url: string; readonly name: string; readonly telemetry?: DocumentPreviewTelemetry; readonly onRetry?: () => void }) {
   const [attempt, setAttempt] = useState(0)
-  return <Document key={attempt} {...props} retry={() => setAttempt(attempt + 1)} />
+  return <Document key={attempt} {...props} retry={props.onRetry ?? (() => setAttempt(attempt + 1))} />
 }
-function Document({ url, name, retry }: { readonly url: string; readonly name: string; readonly retry: () => void }) {
+function Document({ url, name, retry, telemetry }: { readonly url: string; readonly name: string; readonly telemetry?: DocumentPreviewTelemetry; readonly onRetry?: () => void; readonly retry: () => void }) {
   const { pages, outline, images, failed, result, requestPages, search, fail, moveMatch } = useHwpDocument(url)
   const lastNavigation = useRef<typeof result | null>(null)
   const root = useRef<HTMLElement>(null)
@@ -100,15 +101,19 @@ function Document({ url, name, retry }: { readonly url: string; readonly name: s
     if (searchOpen) { input.current?.focus(); input.current?.select() }
   }, [searchOpen])
 
+  useEffect(() => { if (failed) telemetry?.failed('render_failed') }, [failed, telemetry])
+
   const openSearch = useCallback(() => {
+    telemetry?.action('search_open')
     setSearchOpen(true)
     input.current?.focus(); input.current?.select()
-  }, [])
+  }, [telemetry])
   const hideSearch = useCallback(() => {
+    telemetry?.action('search_close')
     clearTimeout(debounce.current)
     setSearchOpen(false); setQuery(''); setDebouncing(false); search('')
     viewport.current?.focus({ preventScroll: true })
-  }, [search])
+  }, [search, telemetry])
   useDocumentSearchShortcuts({ root: root, ready, searchOpen, openSearch, hideSearch })
 
   function changeQuery(value: string) {
@@ -117,11 +122,12 @@ function Document({ url, name, retry }: { readonly url: string; readonly name: s
     // Invalidate outstanding results immediately, before the debounce expires.
     search('')
     setDebouncing(!composing.current && !!value.trim())
-    if (!composing.current && value.trim()) debounce.current = setTimeout(() => { setDebouncing(false); search(value) }, 200)
+    if (!composing.current && value.trim()) debounce.current = setTimeout(() => { setDebouncing(false); telemetry?.action('search'); search(value) }, 200)
   }
   function navigateOutline(id: string) {
     const anchor = outlineAnchors.find((value) => value.id === id)
     if (!anchor || !viewport.current) return
+    telemetry?.action('outline')
     viewport.current.scrollTop = Math.max(0, anchor.top - 24)
     viewport.current.scrollLeft = 0
     updateViewport()
@@ -132,10 +138,11 @@ function Document({ url, name, retry }: { readonly url: string; readonly name: s
     <button type="button" onClick={retry}>다시 시도</button>
   </div>
 
-  return <section className={styles.document} ref={root} aria-label={`${name} 미리보기`}>
+  return <section className={`${styles.document} ph-no-capture`} ref={root} aria-label={`${name} 미리보기`}>
     <div className={styles.controls} aria-label="한글 문서 도구">
       <span>{ready ? `${page + 1} / ${pages.length} 페이지` : '한글 문서를 준비하는 중…'}</span>
       <label>크기 <select aria-label="한글 문서 크기" disabled={!ready} value={zoom} onChange={(event) => {
+        telemetry?.action('zoom')
         const old = layout[page]
         const fraction = old && viewport.current ? (viewport.current.scrollTop - old.top) / old.height : 0
         zoomAnchor.current = { page, fraction }
@@ -151,14 +158,14 @@ function Document({ url, name, retry }: { readonly url: string; readonly name: s
         onKeyDown={(event) => {
           if (event.key === 'Enter' && !event.nativeEvent.isComposing && !composing.current) {
             event.preventDefault()
-            if (!result.pending) moveMatch(event.shiftKey)
+            if (!result.pending) { telemetry?.action(event.shiftKey ? 'previous_result' : 'next_result'); moveMatch(event.shiftKey) }
           }
         }} />
       <span className={styles.result} role="status">{!query.trim() ? '' : (debouncing || result.pending) ? '검색 중…'
         : result.error ? '문서를 검색하지 못했습니다.' : result.matches.length ? `${result.current + 1} / ${result.matches.length}개` : '검색 결과 없음'}</span>
       <div className={styles.searchActions}>
-        <button type="button" aria-label="이전 검색 결과" disabled={result.pending || !result.matches.length} onClick={() => moveMatch(true)}>↑</button>
-        <button type="button" aria-label="다음 검색 결과" disabled={result.pending || !result.matches.length} onClick={() => moveMatch()}>↓</button>
+        <button type="button" aria-label="이전 검색 결과" disabled={result.pending || !result.matches.length} onClick={() => { telemetry?.action('previous_result'); moveMatch(true) }}>↑</button>
+        <button type="button" aria-label="다음 검색 결과" disabled={result.pending || !result.matches.length} onClick={() => { telemetry?.action('next_result'); moveMatch() }}>↓</button>
         <button type="button" aria-label="검색 닫기" onClick={hideSearch}>닫기</button>
       </div>
     </div>}
@@ -167,7 +174,7 @@ function Document({ url, name, retry }: { readonly url: string; readonly name: s
       <div className={styles.pages} style={{ height: last ? last.top + last.height + 12 : 0, minWidth: Math.max(0, ...layout.map((frame) => frame.width + 24)) }}>
         {layout.map((frame, number) => <div key={number} className={styles.page} role="region" aria-label={`${number + 1}페이지`}
           style={{ top: frame.top, width: frame.width, height: frame.height }} aria-busy={!images.has(number)}>
-          {images.has(number) ? <img src={images.get(number)?.url} alt={`${name} ${number + 1}페이지`} onError={fail} />
+          {images.has(number) ? <img src={images.get(number)?.url} alt={`${name} ${number + 1}페이지`} onError={fail} onLoad={(event) => telemetry?.rendered(event.currentTarget)} />
             : <span className={styles.placeholder}>{number + 1}페이지</span>}
           {searchOpen && result.matches.flatMap((match, index) => match.page === number ? match.rects.map((rect, part) => <span
             key={`${index}-${part}`} className={styles.highlight} aria-hidden="true" data-search-active={index === result.current}

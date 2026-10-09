@@ -47,10 +47,3 @@ Architecture: 확인한 경계와 구조 검사
 Not run: 실행하지 못한 검사와 이유
 Risks: 잔여 위험 또는 없음
 ```
-
-## 하네스 검사
-
-```bash
-sh tests/harness/validate-harness-test.sh
-sh scripts/validate-harness.sh
-```

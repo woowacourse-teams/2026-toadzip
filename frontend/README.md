@@ -85,6 +85,14 @@ npm run dev
 
 명령어가 출력하는 로컬 주소를 브라우저에서 열어 애플리케이션을 확인한다.
 
+## PostHog 환경 설정
+
+PostHog 변수 4개는 루트 [`.env.example`](../.env.example)을 참고해 저장소 루트
+`.env`에서 관리한다. Vite는 이 네 변수만 루트에서 읽으며 다른 프론트 변수는
+기존 `frontend/.env.local`을 사용한다. 자세한 연결·누락 동작은
+[PostHog 제품 분석](docs/posthog-analytics.md#환경-연결과-사용자-식별)을 따른다.
+환경값 변경 후에는 개발 서버를 다시 시작하거나 프론트엔드를 다시 빌드한다.
+
 ## 로컬 공공주택 mock
 
 로컬에서만 사용하는 `.codex/local-context/public-housing-mock.json`을 준비하고
