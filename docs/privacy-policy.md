@@ -1,7 +1,5 @@
 # 개인정보 처리 정책과 운영 책임
 
-서버 동의·로그인·알림 API 연동을 제공한다. SDK와 화면은 후속 프론트 연동에서 적용하며, 기존 프론트와 API 계약이 달라 이 단계만 개별 배포하지 않는다.
-
 ## 적용 범위
 
 공공주택 복덕방의 회원 로그인, 선택적 이용 분석, 관심 대상 알림 설정과 개인정보 권리행사에
@@ -17,7 +15,7 @@
 | 마이그레이션·배포 검사·실패와 복구 | [DB 배포](../backend/docs/privacy-deployment.md) |
 | OAuth·선택적 가입 고지 | [회원 로그인](../backend/docs/user-social-login.md) |
 | 회원 알림 명령·revision·업무 만료일 | [알림 설정](../backend/docs/notification-settings.md) |
-| 화면·브라우저 상태·SDK 제어 | 후속 프론트 개인정보 처리 계약 |
+| 화면·브라우저 상태·SDK 제어 | [프론트 개인정보 처리](../frontend/docs/privacy-consent.md) |
 
 ## 운영 주체와 연락 창구
 

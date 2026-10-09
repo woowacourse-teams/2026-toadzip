@@ -26,6 +26,7 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
   const loginRequested = loginResult === 'required' || loginResult === 'failed'
   const remainingParams = new URLSearchParams(searchParams)
   remainingParams.delete('login')
+  remainingParams.delete('reason')
   const remainingSearch = remainingParams.toString()
 
   useEffect(() => {
@@ -89,6 +90,7 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
     if (!loginRequested && !inboxRequested) return
     const params = new URLSearchParams(searchParams)
     params.delete('login')
+    params.delete('reason')
     params.delete('inbox')
     void navigate({ search: params.toString(), hash }, { replace: true })
   }

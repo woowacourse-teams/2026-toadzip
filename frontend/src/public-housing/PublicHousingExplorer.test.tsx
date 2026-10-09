@@ -10,6 +10,7 @@ import { useRef, useState } from 'react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { trackEvent } from '../analytics/googleAnalytics.ts'
+import { consentStore } from '../privacy/consentStore'
 import * as streetViewApi from '../street-view/api'
 import { STREET_VIEW_CHANNEL, STREET_VIEW_VERSION } from '../street-view/protocol'
 import type { EnabledStreetViewConfiguration, StreetViewEvent } from '../street-view/types'
@@ -3058,6 +3059,21 @@ describe('PublicHousingExplorer', () => {
 })
 
 describe('PublicHousingExplorer GA4 행동 연결', () => {
+  beforeEach(() => {
+    // These assertions describe events from an already-authorized visit.
+    // Consent-state and transport behavior are exercised in their own suites.
+    vi.spyOn(consentStore, 'allowed').mockReturnValue(true)
+  })
+
+  it('미동의 상태에서는 상세 조회가 끝나도 페이지·상세 분석을 시작하지 않는다', async () => {
+    vi.mocked(consentStore.allowed).mockReturnValue(false)
+    renderExplorer(createRepository(), '/?complexId=17')
+    expect(await screen.findByRole('region', { name: '서울가람 행복주택 단지 상세 내용' })).toBeVisible()
+    await act(async () => Promise.resolve())
+    expect(analyticsCalls('page_view')).toEqual([])
+    expect(analyticsCalls('view_complex')).toEqual([])
+  })
+
   it('직접 접속의 상세 로딩 완료를 한 번 기록하고 지도와 필터 변경에 중복하지 않는다', async () => {
     const repository = createRepository()
     const pending = createDeferred<ComplexDetail>()

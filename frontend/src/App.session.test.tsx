@@ -21,8 +21,8 @@ vi.mock('./public-housing/DefaultPublicHousingExplorer', async () => {
   }
 })
 
-const memberStatus = { emailConfirmed: true, targets: [{ targetType: 'COMPLEX', targetId: '1' }] } satisfies NotificationSubscriptionStatus
-const guestStatus = { guest: true, emailConfirmed: false, targets: [] } satisfies NotificationSubscriptionStatus
+const memberStatus = { userId: '7', settingsRevision: 0, targets: [{ targetType: 'COMPLEX', targetId: '1' }] } satisfies NotificationSubscriptionStatus
+const guestStatus = { guest: true, targets: [] } satisfies NotificationSubscriptionStatus
 
 function renderHome(logoutFails = false) {
   const fetcher = vi.fn(async (input: RequestInfo | URL) => {
@@ -82,11 +82,12 @@ describe('홈의 사용자 세션과 알림 상태', () => {
 
   it('로그아웃 전에 보낸 신청이 늦게 성공해도 비로그인 신청이나 입력창으로 복구하지 않는다', async () => {
     const pending = deferred<Awaited<ReturnType<NotificationInterestRepository['record']>>>()
-    interest.loadStatus.mockReset().mockResolvedValueOnce({ emailConfirmed: true, targets: [] }).mockResolvedValue(guestStatus)
+    interest.loadStatus.mockReset().mockResolvedValueOnce({ userId: '7', settingsRevision: 0, targets: [] }).mockResolvedValue(guestStatus)
     interest.record.mockReturnValueOnce(pending.promise)
     renderHome()
     await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
+    fireEvent.click(screen.getByRole('button', { name: '신청하기' }))
     fireEvent.click(await screen.findByText('마이페이지'))
     fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
     await screen.findByRole('button', { name: '로그인' })
@@ -121,4 +122,10 @@ it('비회원 확인 후 재조회가 실패해도 예전 회원 메뉴를 다�
   fireEvent.focus(window)
   await screen.findByRole('alert')
   expect(screen.queryByRole('button', { name: '알림 보관함' })).not.toBeInTheDocument()
+})
+
+vi.mock('./privacy/usePrivacy', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./privacy/usePrivacy')>()
+  const notices = [{ key: 'PRIVACY_POLICY', version: 'privacy-2026-10-09-v1' }, { key: 'NOTIFICATION_NOTICE', version: 'notification-2026-10-09-v1' }]
+  return { ...original, usePrivacyNotices: () => ({ notices, error: false, retry: vi.fn() }) }
 })

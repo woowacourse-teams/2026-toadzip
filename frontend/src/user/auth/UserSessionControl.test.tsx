@@ -21,10 +21,10 @@ it('로그인 버튼은 현재 화면에서 카카오와 구글 로그인 모달
   fireEvent.click(login)
   const dialog = screen.getByRole('dialog', { name: '로그인' })
   expect(within(dialog).getByRole('link', { name: '카카오톡으로 로그인' })).toHaveAttribute(
-    'href', 'https://api.example.com/api/auth/oauth2/authorization/kakao',
+    'href', 'https://api.example.com/api/auth/oauth2/authorization/kakao?policyVersion=privacy-2026-10-09-v1',
   )
   expect(within(dialog).getByRole('link', { name: 'Google로 로그인' })).toHaveAttribute(
-    'href', 'https://api.example.com/api/auth/oauth2/authorization/google',
+    'href', 'https://api.example.com/api/auth/oauth2/authorization/google?policyVersion=privacy-2026-10-09-v1',
   )
   fireEvent.click(within(dialog).getByRole('button', { name: '로그인 닫기' }))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -47,7 +47,7 @@ it('로그인 상태와 로그아웃 버튼을 표시하고 로그아웃한다',
   fireEvent.click(screen.getByRole('button', { name: '로그아웃' }))
 
   await waitFor(() => expect(screen.getByRole('button', { name: '로그인' })).toBeVisible())
-  expect(fetchMock).toHaveBeenLastCalledWith(
+  expect(fetchMock).toHaveBeenCalledWith(
     expect.stringContaining('/api/auth/logout'),
     expect.objectContaining({
       method: 'POST',
@@ -192,4 +192,10 @@ it('비회원의 보관함 직접 진입은 로그인 모달과 리다이렉트 
     { entry_point: 'required_redirect', login_modal_id: 'modal-id' }, { dedupeKey: 'login-modal:modal-id' })
   fireEvent.click(within(dialog).getByRole('button', { name: '로그인 닫기' }))
   expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/?region=seoul')
+})
+
+vi.mock('../../privacy/usePrivacy', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../privacy/usePrivacy')>()
+  const notices = [{ key: 'PRIVACY_POLICY', version: 'privacy-2026-10-09-v1' }, { key: 'NOTIFICATION_NOTICE', version: 'notification-2026-10-09-v1' }]
+  return { ...original, usePrivacyNotices: () => ({ notices, error: false, retry: vi.fn() }) }
 })

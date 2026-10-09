@@ -1,3 +1,5 @@
+import type { NotificationInterestRepository } from '../interest/notificationInterestRepository'
+import { MemoryRouter } from 'react-router'
 /// <reference types="node" />
 
 import '@testing-library/jest-dom/vitest'
@@ -52,14 +54,16 @@ describe('HousingAnnouncementDetailPanel', () => {
   })
 
   it('회원은 이메일 없이 공고 알림을 저장한다', async () => {
-    const record = vi.fn().mockResolvedValue(undefined)
+    const record = vi.fn<NotificationInterestRepository['record']>().mockImplementation(async event => ({ ...event, outcome: 'ACTIVATED', occurredAt: '2026-10-09T00:00:00Z', settingsRevision: 1, currentTarget: { active: true, expiresAt: '2027-04-07T00:00:00Z', noticeVersion: 'notification-2026-10-09-v1', requestedAt: '2026-10-09T00:00:00Z' } }))
     render(
-      <NotificationInterestProvider repository={{ record, loadStatus: async () => ({ emailConfirmed: false, targets: [] }) }}>
+      <MemoryRouter><NotificationInterestProvider repository={{ record, loadStatus: async () => ({ userId: '1', settingsRevision: 0, targets: [] }) }}>
         <HousingAnnouncementDetailPanel detail={detail()} onClose={vi.fn()} />
-      </NotificationInterestProvider>,
+      </NotificationInterestProvider></MemoryRouter>,
     )
     await waitFor(() => expect(screen.getByRole('button', { name: '성남 행복주택 예비입주자 모집 알림 받기' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: '성남 행복주택 예비입주자 모집 알림 받기' }))
+    expect(record).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByRole('button', { name: '신청하기' }))
     await waitFor(() => expect(record).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'CONFIRMED', source: 'ANNOUNCEMENT_DETAIL', targetType: 'ANNOUNCEMENT', targetId: '201',
     })))
@@ -1037,3 +1041,8 @@ function legacySchedule(
   return { scheduleId: 'application', type: 'APPLICATION', typeLabel: '접수', name: null,
     startAt: '2026-09-28T10:00:00', endAt: '2026-09-28T16:10:00', ...overrides }
 }
+
+vi.mock('../../privacy/usePrivacy', () => {
+  const notices = [{ key: 'NOTIFICATION_NOTICE', version: 'notification-2026-10-09-v1' }]
+  return { usePrivacyNotices: () => ({ notices, error: false, retry: vi.fn() }) }
+})

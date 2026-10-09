@@ -1,6 +1,9 @@
+import { Link } from 'react-router'
+import { analyticsCollectionAllowed, consentStore } from '../../privacy/consentStore'
+import { usePrivacyNotices } from '../../privacy/usePrivacy'
 import { captureProductEvent, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
 import { type KeyboardEvent, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { notificationInterestRepository, type NotificationEventSource, type NotificationEventType, type NotificationInterestEvent, type NotificationInterestRepository, type NotificationInterestResult, type NotificationTarget } from './notificationInterestRepository'
+import { notificationInterestRepository, NotificationRequestError, type NotificationEventSource, type NotificationEventType, type NotificationInterestEvent, type NotificationInterestRepository, type NotificationInterestResult, type NotificationTarget } from './notificationInterestRepository'
 import { getCurrentUser } from '../../user/auth/api'
 import { UserSessionControl } from '../../user/auth/UserSessionControl'
 import { LoginModal } from '../../user/auth/LoginModal'
@@ -18,8 +21,6 @@ interface Action extends Selection {
 function captureCompletion(action: Action, result: NotificationInterestResult | void) {
   const properties = { target_type: action.target.type, target_id: action.target.id,
     source: action.source, notification_action_id: action.event.eventId }
-  // A committed result remains real after a session change or UI teardown.
-  // Keep its initiating member context while guarding all late UI updates below.
   if (result?.outcome === 'ACTIVATED' && action.event.eventType === 'CONFIRMED') {
     captureProductEvent('notification_preregistration_completed', {
       ...properties, completion_source: action.event.eventType, server_event_id: result.eventId,
@@ -40,8 +41,7 @@ function captureFailure(action: Action) {
 }
 
 function isApplied(action: Action, result: NotificationInterestResult | void) {
-  // Older deployments acknowledge the request without a business outcome.
-  if (!result) return true
+  if (!result?.currentTarget || result.settingsRevision === undefined) return false
   return action.event.eventType === 'CANCELLED'
     ? result.outcome === 'CANCELLED' || result.outcome === 'UNCHANGED'
     : result.outcome === 'ACTIVATED' || result.outcome === 'ALREADY_ACTIVE'
@@ -61,22 +61,19 @@ function readStorage(kind: 'localStorage' | 'sessionStorage', key: string) {
 function writeStorage(kind: 'localStorage' | 'sessionStorage', key: string, value: string) {
   try { window[kind].setItem(key, value) } catch { /* Memory state remains available. */ }
 }
-function identifier(kind: 'localStorage' | 'sessionStorage', key: string) {
-  const stored = readStorage(kind, key)
-  if (stored && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(stored)) return stored
-  const id = crypto.randomUUID()
-  writeStorage(kind, key, id)
-  return id
-}
 
 export function NotificationInterestProvider({ children, repository = notificationInterestRepository, loadUser = getCurrentUser }: {
   readonly children: ReactNode
   readonly repository?: NotificationInterestRepository
   readonly loadUser?: typeof getCurrentUser
 }) {
-  const [session] = useState(() => identifier('sessionStorage', 'toadzip.notification-interest.session'))
-  const [client] = useState(() => identifier('localStorage', 'toadzip.notification-interest.client'))
-  const [dialog, setDialog] = useState<'guest' | 'prepared' | 'login' | null>(null)
+  const { notices } = usePrivacyNotices()
+  const noticeVersion = notices.find(notice => notice.key === 'NOTIFICATION_NOTICE')?.version
+  const memberId = useRef<string | undefined>(undefined)
+  const revision = useRef(0)
+  const [selection, setSelection] = useState<Selection | null>(null)
+  const session = useRef<string | null>(null)
+  const [dialog, setDialog] = useState<'guest' | 'confirm' | 'prepared' | 'login' | null>(null)
   const [busy, setBusy] = useState(false)
   const [clearingAll, setClearingAll] = useState(false)
   const [batchError, setBatchError] = useState('')
@@ -98,11 +95,18 @@ export function NotificationInterestProvider({ children, repository = notificati
     if (inFlight.current) return
     const version = ++requestVersion.current
     const statusRequest = repository.loadStatus
-      ? repository.loadStatus(client)
-      : loadUser().then((user) => ({ guest: !user, emailConfirmed: false, targets: [] }))
+      ? repository.loadStatus()
+      : loadUser().then((user) => ({ guest: !user, userId: user ? String(user.id) : undefined, settingsRevision: 0, targets: [] }))
     void statusRequest.then((status) => {
       if (version !== requestVersion.current) return
       const member = status && !status.guest
+      const nextMemberId = status?.userId
+      if (memberId.current !== nextMemberId) {
+        if (memberId.current !== undefined) { consentStore.transition(); void consentStore.refresh() }
+        setDialog(null); setFailed(null); setSelection(null)
+      }
+      memberId.current = nextMemberId
+      revision.current = status?.settingsRevision ?? 0
       // Automatic reconciliation preserves only unanswered writes for targets
       // still active on the server. A completed UNKNOWN command needs a new ID.
       if (preserveBatchRetries && member) {
@@ -126,10 +130,11 @@ export function NotificationInterestProvider({ children, repository = notificati
     }).catch(() => {
       if (version === requestVersion.current) { setMode('error'); setTargets([]); setProductAuthState('unknown') }
     })
-  }, [client, loadUser, repository])
+  }, [loadUser, repository])
   const refreshStatus = useCallback(() => reconcileStatus(), [reconcileStatus])
 
   const resetSession = useCallback(() => {
+    memberId.current = undefined
     requestVersion.current++
     inFlight.current = false
     batchInFlight.current = false
@@ -188,20 +193,26 @@ export function NotificationInterestProvider({ children, repository = notificati
   }, [message])
 
   const eventFor = useCallback((selection: Selection, eventType: NotificationEventType): NotificationInterestEvent => ({
-    eventId: crypto.randomUUID(), sessionId: session, clientId: client, eventType, source: selection.source,
+    eventId: crypto.randomUUID(), eventType, source: selection.source,
+    ...(eventType === 'CONFIRMED' || eventType === 'CANCELLED'
+      ? { expectedUserId: memberId.current, expectedSettingsRevision: revision.current, ...(eventType === 'CONFIRMED' ? { noticeVersion } : {}) }
+      : { sessionId: session.current ?? undefined }),
     targetType: selection.target.type, targetId: selection.target.id,
-  }), [client, session])
+  }), [noticeVersion])
 
   const send = useCallback(async (action: Action) => {
     if (inFlight.current) return
     const version = ++requestVersion.current
+    const privacyGeneration = consentStore.generation()
     inFlight.current = true
     setBusy(true); setFailed(null); setMessage(''); setBatchError('')
     let refreshAfterResponse = false
     try {
       const result = await repository.record(action.event)
-      captureCompletion(action, result)
       if (version !== requestVersion.current) return
+      if (privacyGeneration !== consentStore.generation() || action.event.expectedUserId !== memberId.current) { refreshAfterResponse = true; return }
+      captureCompletion(action, result)
+      if (result?.settingsRevision !== undefined) revision.current = result.settingsRevision
       if (!isApplied(action, result)) {
         refreshAfterResponse = true
         restoreFocus.current = true
@@ -209,21 +220,30 @@ export function NotificationInterestProvider({ children, repository = notificati
         return
       }
       batchRetries.current.delete(requestedKey(action.target))
-      const cancelled = action.event.eventType === 'CANCELLED'
+      const cancelled = result?.currentTarget ? !result.currentTarget.active : action.event.eventType === 'CANCELLED'
       setTargets((current) => {
         const remaining = current.filter((target) => requestedKey(target) !== requestedKey(action.target))
         return cancelled ? remaining : [...remaining, action.target]
       })
-      if (cancelled) {
+      if (cancelled !== (action.event.eventType === 'CANCELLED')) {
+        restoreFocus.current = true
+        setMessage('현재 서버의 알림 설정을 반영했어요.')
+      } else if (cancelled) {
         restoreFocus.current = true
         setMessage(`${action.target.name} 알림 설정을 해제했어요.`)
       } else {
         setDialog('prepared')
         setMessage(`${action.target.name} 알림 설정을 저장했어요.`)
       }
-    } catch {
+    } catch (error) {
+      if (version !== requestVersion.current) return
+      if (privacyGeneration !== consentStore.generation() || action.event.expectedUserId !== memberId.current) { refreshAfterResponse = true; return }
       captureFailure(action)
-      if (version === requestVersion.current) setFailed(action)
+      if (error instanceof NotificationRequestError && [401, 409].includes(error.status)) {
+        refreshAfterResponse = true
+        setDialog(null)
+        setMessage('설정이 변경됐어요. 현재 상태를 확인하고 다시 선택해 주세요.')
+      } else setFailed(action)
     } finally {
       if (version === requestVersion.current) {
         inFlight.current = false; setBusy(false)
@@ -239,6 +259,7 @@ export function NotificationInterestProvider({ children, repository = notificati
     captureProductEvent('notification_cta_clicked', { target_type: selection.target.type, target_id: selection.target.id,
       source: selection.source, action: isRequested ? 'cancel' : 'subscribe' })
     if (mode === 'guest') { setDialog('guest'); return }
+    if (!isRequested) { setSelection(selection); setDialog('confirm'); return }
     if (isRequested) captureProductEvent('notification_cancel_requested', {
       target_type: selection.target.type, target_id: selection.target.id, source: selection.source,
     })
@@ -249,6 +270,7 @@ export function NotificationInterestProvider({ children, repository = notificati
   const clearAll = useCallback(async (button: HTMLButtonElement) => {
     if (mode !== 'member' || inFlight.current || dialog || failed || targets.length === 0) return
     const version = ++requestVersion.current
+    const privacyGeneration = consentStore.generation()
     trigger.current = button
     inFlight.current = true
     batchInFlight.current = true
@@ -267,19 +289,26 @@ export function NotificationInterestProvider({ children, repository = notificati
       captureProductEvent('notification_cancel_requested', { target_type: target.type, target_id: target.id, source: 'SETTING' })
       try {
         const result = await repository.record(event, controller.signal)
-        captureCompletion(action, result)
         if (version !== requestVersion.current) return
+        if (privacyGeneration !== consentStore.generation() || action.event.expectedUserId !== memberId.current) { refreshAfterResponse = true; break }
+        captureCompletion(action, result)
+        if (result?.settingsRevision !== undefined) revision.current = result.settingsRevision
         if (!isApplied(action, result)) {
           batchRetries.current.delete(key)
           refreshAfterResponse = true
           continue
         }
         batchRetries.current.delete(key)
+        if (result?.currentTarget?.active) { refreshAfterResponse = true; continue }
         setTargets((current) => current.filter((item) => requestedKey(item) !== key))
-      } catch {
+      } catch (error) {
         if (version !== requestVersion.current) return
+        if (privacyGeneration !== consentStore.generation() || action.event.expectedUserId !== memberId.current) { refreshAfterResponse = true; break }
         captureFailure(action)
         failures++
+        if (error instanceof NotificationRequestError && [401, 409].includes(error.status)) { batchRetries.current.delete(key); refreshAfterResponse = true; break }
+        // An unknown write may have advanced the revision. Stop until its identical retry resolves.
+        break
       }
     }
     inFlight.current = false
@@ -298,19 +327,23 @@ export function NotificationInterestProvider({ children, repository = notificati
   }, [dialog, eventFor, failed, mode, reconcileStatus, repository, targets])
 
   const expose = useCallback((selection: Selection) => {
+    if (!analyticsCollectionAllowed()) return
+    session.current ??= crypto.randomUUID()
     const key = `toadzip.notification-interest.exposed:${selection.source}:${selection.target.type}:${selection.target.id}`
     if (exposed.current.has(key) || readStorage('sessionStorage', key) === '1') return
+    const privacyGeneration = consentStore.generation()
     exposed.current.add(key)
     captureProductEvent('notification_cta_viewed', { target_type: selection.target.type, target_id: selection.target.id, source: selection.source },
-      { dedupeKey: `${session}:${key}` })
-    void repository.record(eventFor(selection, 'EXPOSED')).then(() => {
+      { dedupeKey: `${session.current}:${key}` })
+    void repository.record(eventFor(selection, 'EXPOSED')).then((result) => {
+      if (!result || privacyGeneration !== consentStore.generation() || !analyticsCollectionAllowed()) return
       writeStorage('sessionStorage', key, '1')
     }).catch(() => { exposed.current.delete(key) })
-  }, [eventFor, repository, session])
+  }, [eventFor, repository])
 
   const context = useMemo(() => ({ blocked: mode === 'loading' || mode === 'error' || busy || dialog !== null || failed !== null,
     mode, requested, targets, request, expose, resetSession, refreshStatus, clearAll, clearingAll, batchError }), [clearAll, clearingAll, batchError, busy, dialog, expose, failed, mode, request, requested, targets, resetSession, refreshStatus])
-  function dismiss() { restoreFocus.current = true; setDialog(null); setFailed(null) }
+  function dismiss() { if (busy) return; restoreFocus.current = true; setDialog(null); setFailed(null); setSelection(null) }
 
   return <InterestContext.Provider value={context}>
     {children}
@@ -322,6 +355,19 @@ export function NotificationInterestProvider({ children, repository = notificati
       </div>
     </InterestDialog>}
     {dialog === 'login' && <LoginModal loginFailed={false} sessionError={false} onClose={dismiss} returnFocusRef={trigger} />}
+    {dialog === 'confirm' && selection && <InterestDialog onDismiss={dismiss} label={`${selection.target.type === 'REGION' ? '지역' : selection.target.type === 'ANNOUNCEMENT' ? '공고' : '단지'} 알림을 신청할까요?`}>
+      <h2>{selection.target.type === 'REGION' ? '지역' : selection.target.type === 'ANNOUNCEMENT' ? '공고' : '단지'} 알림을 신청할까요?</h2>
+      <p className={styles.description}>{selection.target.name}의 새 공고를 확인할 수 있도록 관심 대상으로 저장해요.</p>
+      <div className={styles.target}><strong>알림 기능은 현재 준비 중이에요.</strong><p className={styles.hint}>{notificationPreparationNotice}</p></div>
+      <div className={styles.actions}>
+        <button className={styles.cancel} type="button" disabled={busy} onClick={dismiss}>취소</button>
+        <button className={styles.submit} type="button" disabled={busy || !noticeVersion} onClick={() => { const action: Action = { ...selection, event: eventFor(selection, 'CONFIRMED'), authState: 'member', pageName: window.location.pathname === '/mypage/notifications' ? 'notification_settings' : 'explorer' }; setDialog(null); void send(action) }}>신청하기</button>
+      </div>
+      <p className={styles.hint}>알림 설정 저장에 이용자 ID와 선택한 대상을 사용해요.</p>
+      <p className={styles.hint}>이 설정은 회원 계정에 연결해 저장돼요.</p>
+      <Link className={styles.helpLink} to="/privacy">개인정보처리방침</Link>
+      {!noticeVersion && <p className={styles.hint} role="status">신청 안내를 확인하고 있어요.</p>}
+    </InterestDialog>}
     {dialog === 'prepared' && <InterestDialog onDismiss={dismiss}>
       <h2 id="notification-interest-title">{notificationPreparationTitle}</h2>
       <p className={styles.description}>{notificationPreparationDescription}</p>

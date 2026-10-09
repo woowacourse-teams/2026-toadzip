@@ -69,4 +69,4 @@
 운영 지표는 `privacy.retention.*{job="notification"}`로 제공한다.
 [공통 파기 감시·경보](../../docs/privacy-policy.md)를 적용하며 서버 복구 후에도 지연을 확인한다.
 
-화면 진입점과 신청·해제 UI는 후속 프론트 개인정보 계약을 따른다.
+화면 진입점과 신청·해제 UI는 [프론트 계약](../../frontend/docs/privacy-consent.md)을 따른다.
