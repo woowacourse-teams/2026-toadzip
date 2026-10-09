@@ -36,7 +36,7 @@
 | 테스트 | [testing.md](testing.md) | 테스트 범위와 대역 기준 |
 | 보안 변경 | [security.md](security.md) | 인증, 인가, 개인정보, 비밀 |
 | 사용자 로그인·의견·알림 | [user-social-login.md](user-social-login.md), [user-feedback.md](user-feedback.md), [notification-settings.md](notification-settings.md) | OAuth 설정, 의견 접수, 회원 알림 설정 |
-| 개인정보·동의·파기 | [privacy-consent.md](privacy-consent.md), [privacy-deployment.md](privacy-deployment.md), [공통 운영 정책](../../docs/privacy-policy.md) | 동의·고지·보유·파기 계약, DB 배포 순서와 점검 |
+| 개인정보·동의·파기 | [privacy-consent.md](privacy-consent.md), [privacy-isolation.md](privacy-isolation.md), [privacy-deployment.md](privacy-deployment.md), [공통 운영 정책](../../docs/privacy-policy.md) | 동의·고지·보유·파기 계약, DB 배포 순서와 점검 |
 | 운영 변경 | [observability.md](observability.md) | 로그, 메트릭, 트레이스 |
 | 단지 도로명주소 좌표 적재 | [road-address-reference-data.md](road-address-reference-data.md) | 위치정보요약DB 전체분에서 단지 주소 일치분만 선별 적재하는 흐름 |
 | 작업 위임 | [agent-collaboration.md](agent-collaboration.md) | 역할과 읽기 범위 |
