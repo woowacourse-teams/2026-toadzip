@@ -16,7 +16,9 @@ import com.toadzip.backend.interest.domain.NotificationEventType;
 import com.toadzip.backend.interest.domain.NotificationInterestEvent;
 import com.toadzip.backend.interest.domain.NotificationTargetType;
 import com.toadzip.backend.interest.repository.NotificationInterestRepository;
-import com.toadzip.backend.interest.service.NotificationRetentionService;
+import com.toadzip.backend.privacy.service.PrivacyNotificationRetentionService;
+import com.toadzip.backend.privacy.service.PrivacyRetentionService;
+import com.toadzip.backend.privacy.service.UserRegistrationRetentionService;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
@@ -53,7 +55,7 @@ class NotificationInterestIntegrationTest {
     private NotificationInterestRepository repository;
 
     @Autowired
-    private NotificationRetentionService retentionService;
+    private PrivacyNotificationRetentionService retentionService;
 
     @Autowired(required = false)
     private ScheduledAnnotationBeanPostProcessor schedulingProcessor;
@@ -94,17 +96,20 @@ class NotificationInterestIntegrationTest {
     }
 
     @Test
-    void 예약_작업은_알림_보관_기간_정리만_등록한다() {
+    void 예약_작업은_신규_개인정보_자료_파기만_등록한다() {
         assertNotNull(schedulingProcessor);
         var scheduledMethods = schedulingProcessor.getScheduledTasks().stream()
                 .map(task -> task.getTask().toString())
-                .toList();
+                .sorted().toList();
 
-        assertEquals(List.of(NotificationRetentionService.class.getName() + ".purgeExpiredData"), scheduledMethods);
+        assertEquals(List.of(
+                PrivacyNotificationRetentionService.class.getName() + ".purgeExpiredData",
+                PrivacyRetentionService.class.getName() + ".purgeExpiredData",
+                UserRegistrationRetentionService.class.getName() + ".purge").stream().sorted().toList(), scheduledMethods);
     }
 
     @Test
-    void 보관_기간이_지난_신청과_이벤트는_자동_정리된다() {
+    void 신규_개인정보_파기는_기존_신청과_이벤트를_보존한다() {
         UUID clientId = UUID.randomUUID();
         UUID eventId = UUID.randomUUID();
         jdbcTemplate.update("""
@@ -125,10 +130,10 @@ class NotificationInterestIntegrationTest {
 
         retentionService.purgeExpiredData();
 
-        assertEquals(0, jdbcTemplate.queryForObject(
+        assertEquals(1, jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM notification_guest_email_preferences WHERE client_id = ?",
                 Integer.class, clientId));
-        assertEquals(0, jdbcTemplate.queryForObject(
+        assertEquals(1, jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM notification_interest_events WHERE event_id = ?", Integer.class, eventId));
     }
 
