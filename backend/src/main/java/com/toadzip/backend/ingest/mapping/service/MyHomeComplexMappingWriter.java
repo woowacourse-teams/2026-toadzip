@@ -41,10 +41,6 @@ public class MyHomeComplexMappingWriter {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public MyHomeComplexMappingReport write(MyHomeComplexMappingData data, Address address) {
-        return writeWithinTransaction(data, address);
-    }
-
-    private MyHomeComplexMappingReport writeWithinTransaction(MyHomeComplexMappingData data, Address address) {
         MyHomeComplexLink link = linkRepository.findById(data.sourceComplexIdentifier()).orElse(null);
         if (link != null && link.getMergeId() != null) {
             throw mergedSourceConflict("확인된 원천 연결이 변경되어 재정제를 보류합니다.");

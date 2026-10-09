@@ -30,12 +30,6 @@ public class MyHomeComplexMappingFailureStore {
         }
     }
 
-    @Transactional
-    public void resolveForComplex(String identifier) {
-        repository.findAllBySourceComplexIdentifierAndStatus(identifier, PENDING)
-                .forEach(failure -> failure.resolve(clock.instant(), null));
-    }
-
     private void reconcile(
             List<MyHomeComplexMappingFailure> pending,
             List<MyHomeComplexMappingFailure> failures,

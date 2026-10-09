@@ -47,11 +47,11 @@ async function openForm() {
 }
 
 describe('공고 단건 등록 v2', () => {
-  it('완료된 실행은 새로고침 때 복원하지 않고 원천·보완 목록을 표시하지 않는다', async () => {
+  it('완료된 실행은 새로고침 때 복원하지 않고 URL 입력으로 시작한다', async () => {
     vi.mocked(getDataPipelineStatus).mockResolvedValue(execution('COMPLETED'))
     await openForm()
     expect(screen.queryByRole('article', { name: '현재 작업 단계' })).not.toBeInTheDocument()
-    expect(screen.queryByText('보완 대상')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('마이홈 공고 URL')).toBeVisible()
     expect(screen.queryByLabelText('마이홈 공고 ID')).not.toBeInTheDocument()
   })
 

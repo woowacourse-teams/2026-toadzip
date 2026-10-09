@@ -174,8 +174,7 @@ public class HousingType {
     }
 
     public boolean hasSupplementalInformation() {
-        return totalHouseholdCount != null || floorPlanUrl != null || duplex != null
-                || maintenanceFee != null;
+        return totalHouseholdCount != null || floorPlanUrl != null || duplex != null || maintenanceFee != null;
     }
 
     private static boolean sameAmount(BigDecimal left, BigDecimal right) {

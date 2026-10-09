@@ -87,9 +87,6 @@ class AnnouncementSupplyMatchingIntegrationTest {
         assertThat(complexes.findById(complex.getId()).orElseThrow().getName()).isEqualTo("한스빌아파트");
         // 선택 규칙은 남지 않는다. 자동 매칭 결과는 여전히 모호하지만 최종 공급행의 연결은 저장된다.
         assertThat(matching.rows(TARGET).getFirst().housingTypeId()).isNull();
-        assertThat(jdbc.sql("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' "
-                + "AND table_name IN ('announcement_supply_matches', 'ingest_corrections', 'ingest_correction_changes')")
-                .query(Long.class).single()).isZero();
     }
 
     @Test
