@@ -163,7 +163,7 @@ function nullableNonEmptyStringAt(
 
 function regionCodeAt(value: unknown, path: string): string {
   const regionCode = nonEmptyStringAt(value, path)
-  if (!/^(?:\d{2}|\d{5})$/.test(regionCode)) {
+  if (!/^(?:\d{2}|\d{5}|\d{8}00)$/.test(regionCode)) {
     throw new PublicHousingRegionContractError(path)
   }
   return regionCode

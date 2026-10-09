@@ -5,7 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -55,6 +57,41 @@ class NotificationInterestIntegrationTest {
 
     @Autowired(required = false)
     private ScheduledAnnotationBeanPostProcessor schedulingProcessor;
+
+    @Test
+    void 이메일_없는_클릭은_신청_완료와_구분된_결과를_반환한다() throws Exception {
+        UUID eventId = UUID.randomUUID();
+        mockMvc.perform(post(ENDPOINT).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(request(eventId, "CLICKED", "REGION_SEARCH", "REGION", "11")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.eventId").value(eventId.toString()))
+                .andExpect(jsonPath("$.targetType").value("REGION"))
+                .andExpect(jsonPath("$.targetId").value("11"))
+                .andExpect(jsonPath("$.outcome").value("NOT_ACTIVATED"))
+                .andExpect(jsonPath("$.occurredAt").isNotEmpty());
+    }
+
+    @Test
+    void 허용된_프론트엔드의_비회원_알림_조회_사전_요청을_허용한다() throws Exception {
+        mockMvc.perform(options("/api/v1/notification-subscriptions/guest")
+                        .header("Origin", "http://localhost:5173")
+                        .header("Access-Control-Request-Method", "GET")
+                        .header("Access-Control-Request-Headers", "X-Notification-Client-Id"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
+                .andExpect(header().string("Access-Control-Allow-Headers", "X-Notification-Client-Id"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+    }
+
+    @Test
+    void 다른_출처의_비회원_알림_조회_사전_요청을_거부한다() throws Exception {
+        mockMvc.perform(options("/api/v1/notification-subscriptions/guest")
+                        .header("Origin", "https://untrusted.example")
+                        .header("Access-Control-Request-Method", "GET")
+                        .header("Access-Control-Request-Headers", "X-Notification-Client-Id"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
+    }
 
     @Test
     void 예약_작업은_알림_보관_기간_정리만_등록한다() {
@@ -156,6 +193,40 @@ class NotificationInterestIntegrationTest {
     }
 
     @Test
+    void 회원은_이메일_없이_설정을_저장하고_해제한다() throws Exception {
+        long userId = 90000003L;
+        jdbcTemplate.update("INSERT INTO users (id, login_identifier, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                userId, "notification-inbox-test");
+        String endpoint = "/api/v1/notification-subscriptions/me";
+        String confirmed = request(UUID.randomUUID(), "CONFIRMED", "SETTING", "REGION", "11");
+        mockMvc.perform(post(endpoint).with(user(Long.toString(userId)).roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(confirmed))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outcome").value("ACTIVATED"));
+        mockMvc.perform(get(endpoint).with(user(Long.toString(userId)).roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.emailConfirmed").value(false))
+                .andExpect(jsonPath("$.targets[0].targetId").value("11"));
+        mockMvc.perform(get(endpoint).with(user("90000004").roles("USER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.targets").isEmpty());
+        mockMvc.perform(post(endpoint).with(user(Long.toString(userId)).roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request(UUID.randomUUID(), "CANCELLED", "SETTING", "REGION", "11")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outcome").value("CANCELLED"));
+        mockMvc.perform(get(endpoint).with(user(Long.toString(userId)).roles("USER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.targets").isEmpty());
+    }
+
+    @Test
+    void 비회원은_회원_설정을_저장할_수_없다() throws Exception {
+        mockMvc.perform(post("/api/v1/notification-subscriptions/me").with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request(UUID.randomUUID(), "CONFIRMED", "SETTING", "REGION", "11")))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void 로그인_신청은_다른_요청에서도_조회되고_취소가_반영된다() throws Exception {
         long userId = 90000001L;
         jdbcTemplate.update("INSERT INTO users (id, login_identifier, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
@@ -164,7 +235,7 @@ class NotificationInterestIntegrationTest {
                 .replace("\"targetId\": \"11\"", "\"targetId\": \"11\", \"email\": \"member@example.com\"");
         mockMvc.perform(post(ENDPOINT).with(user(Long.toString(userId)).roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(confirmed))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/notification-subscriptions/me").with(user(Long.toString(userId)).roles("USER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.emailConfirmed").value(true))
@@ -174,14 +245,14 @@ class NotificationInterestIntegrationTest {
         mockMvc.perform(post(ENDPOINT).with(user(Long.toString(userId)).roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(UUID.randomUUID(), "CLICKED", "REGION_SEARCH", "REGION", "11680")))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk());
         assertEquals(2, jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM notification_subscriptions WHERE user_id = ? AND active", Integer.class, userId));
 
         mockMvc.perform(post(ENDPOINT).with(user(Long.toString(userId)).roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(request(UUID.randomUUID(), "CANCELLED", "REGION_SEARCH", "REGION", "11")))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/notification-subscriptions/me").with(user(Long.toString(userId)).roles("USER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.targets[0].targetId").value("11680"));
@@ -306,7 +377,7 @@ class NotificationInterestIntegrationTest {
 
     private void submit(String request) throws Exception {
         mockMvc.perform(post(ENDPOINT).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(request))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk());
     }
 
     private void reject(String request) throws Exception {

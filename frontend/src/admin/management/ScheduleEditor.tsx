@@ -1,5 +1,5 @@
 import { useUnsavedChanges } from './useUnsavedChanges'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { getManagementDetail, requestManagementApi } from './api'
 import { type ManagementDetailData, type ManagementValues } from './managementContract'
 import { EditFields } from './EditFields'
@@ -8,11 +8,12 @@ const fields: Field[] = [{name:'supplyRank',label:'공급 순위'}, {name:'state
   {name:'condition',label:'접수 조건'}, {name:'startDate',label:'시작일',type:'date',required:true},{name:'endDate',label:'종료일',type:'date',required:true},
   {name:'startTime',label:'시작 시각',type:'time'},{name:'endTime',label:'종료 시각',type:'time'},
   {name:'sourceUrl',label:'근거 URL',type:'url',required:true},{name:'sourcePage',label:'공고문 페이지',type:'number',min:1,required:true}]
-export function ScheduleEditor({ value, id, onSaved }: {value:ManagementDetailData;id:string;onSaved:(value:ManagementDetailData)=>void}) {
+export function ScheduleEditor({ value, id, onSaved, onBusyChange }: {value:ManagementDetailData;id:string;onSaved:(value:ManagementDetailData)=>void;onBusyChange?:(busy:boolean)=>void}) {
   const [editing,setEditing] = useState(false)
   const [rows,setRows] = useState<ManagementValues[]>([])
   const [busy,setBusy] = useState(false)
   const [error,setError] = useState('')
+  useEffect(() => { onBusyChange?.(busy) }, [busy, onBusyChange])
   useUnsavedChanges(editing)
   function startEditing() {
     setRows(value.schedules.length ? value.schedules : [{

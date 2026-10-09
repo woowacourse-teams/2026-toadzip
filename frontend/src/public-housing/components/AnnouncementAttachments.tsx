@@ -1,3 +1,5 @@
+import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
+import { useDocumentPreviewTelemetry } from './documentAnalytics'
 import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Button } from '../../design-system/components/Button.tsx'
@@ -45,6 +47,8 @@ export function AttachmentList({ announcementId, attachments }: AttachmentsProps
 }
 
 export function AttachmentDialog({ announcementId, attachments, onClose }: AttachmentsProps & { readonly onClose: () => void }) {
+  const [dialogId] = useState(createAnalyticsId)
+  const [automaticSelection] = useState(() => attachments.length === 1 ? attachments[0]?.attachmentId : undefined)
   const [selectedId, setSelectedId] = useState(attachments.length === 1 ? attachments[0]?.attachmentId : undefined)
   const selected = attachments.find((attachment) => attachment.attachmentId === selectedId)
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -54,14 +58,18 @@ export function AttachmentDialog({ announcementId, attachments, onClose }: Attac
     const trigger = document.activeElement
     const dialog = dialogRef.current
     dialog?.showModal()
+    if (automaticSelection) captureProductEvent('document_attachment_selected', {
+      announcement_id: announcementId, attachment_id: automaticSelection,
+      selection_method: 'automatic', document_dialog_id: dialogId,
+    }, { dedupeKey: `attachment-selection:${dialogId}` })
     return () => {
       dialog?.close()
       if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus({ preventScroll: true })
     }
-  }, [])
+  }, [announcementId, automaticSelection, dialogId])
 
   return createPortal(
-    <dialog ref={dialogRef} className={styles.dialog} aria-labelledby={titleId}
+    <dialog ref={dialogRef} className={`${styles.dialog} ph-no-capture`} aria-labelledby={titleId}
       onCancel={(event) => { event.preventDefault(); onClose() }}
       onKeyDown={(event) => event.stopPropagation()}
       onClick={(event) => {
@@ -83,6 +91,7 @@ export function AttachmentDialog({ announcementId, attachments, onClose }: Attac
       /> : <ul className={styles.choices} aria-label="확인할 첨부파일">
         {attachments.map((attachment) => <li key={attachment.attachmentId}>
           <button type="button" disabled={!hasAttachmentUrl(attachment)} onClick={() => {
+            captureProductEvent('document_attachment_selected', { announcement_id: announcementId, attachment_id: attachment.attachmentId, selection_method: 'manual', document_dialog_id: dialogId })
             setSelectedId(attachment.attachmentId)
             dialogRef.current?.querySelector<HTMLButtonElement>('header button')?.focus()
           }}>
@@ -103,6 +112,7 @@ function SelectedAttachment({ announcementId, attachment, onBack }: {
   readonly attachment: HousingAnnouncementDetailAttachment
   readonly onBack?: () => void
 }) {
+  const [documentOpenId] = useState(createAnalyticsId)
   const [originalBlob, setOriginalBlob] = useState<Blob | null>(null)
   return <>
     <div className={styles.toolbar}>
@@ -110,27 +120,30 @@ function SelectedAttachment({ announcementId, attachment, onBack }: {
       <span>{attachment.fileTypeLabel}</span>
       <DownloadButton announcementId={announcementId} attachment={attachment} originalBlob={originalBlob} />
     </div>
-    <AttachmentPreview announcementId={announcementId} attachment={attachment} onLoad={setOriginalBlob} />
+    <AttachmentPreview announcementId={announcementId} attachment={attachment} onLoad={setOriginalBlob} documentOpenId={documentOpenId} />
   </>
 }
 
 type PreviewState = { readonly type: 'loading' } | { readonly type: 'ready'; readonly url: string }
   | { readonly type: 'error'; readonly message: string }
 
-function AttachmentPreview({ announcementId, attachment, onLoad }: {
+function AttachmentPreview({ announcementId, attachment, onLoad, documentOpenId }: {
+  readonly documentOpenId: string
   readonly onLoad: (blob: Blob) => void
   readonly announcementId: string
   readonly attachment: HousingAnnouncementDetailAttachment
 }) {
   const [state, setState] = useState<PreviewState>({ type: 'loading' })
   const [attempt, setAttempt] = useState(0)
+  const telemetry = useDocumentPreviewTelemetry(announcementId, attachment.attachmentId, documentOpenId, attempt)
   const extension = attachment.fileName?.trim().match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase()
   const hwp = extension === 'hwp' || extension === 'hwpx'
   const unsupported = extension !== undefined && extension !== 'pdf' && !hwp
   const available = hasAttachmentUrl(attachment)
 
   useEffect(() => {
-    if (unsupported || !available) return
+    telemetry.requested()
+    if (unsupported || !available) { telemetry.failed(unsupported ? 'unsupported' : 'unavailable'); return }
     const controller = new AbortController()
     let url: string | undefined
     // Warm code while the original downloads; native imports share in-flight work.
@@ -145,27 +158,36 @@ function AttachmentPreview({ announcementId, attachment, onLoad }: {
         url = URL.createObjectURL(blob)
         setState({ type: 'ready', url })
       }).catch((error: unknown) => {
-        if (!controller.signal.aborted) setState({ type: 'error', message: attachmentErrorMessage(error) })
+        if (!controller.signal.aborted) {
+          telemetry.failed('request_failed')
+          setState({ type: 'error', message: attachmentErrorMessage(error) })
+        }
       })
     return () => {
       controller.abort()
       if (url) URL.revokeObjectURL(url)
     }
-  }, [announcementId, attachment.attachmentId, available, attempt, unsupported, hwp, onLoad])
+  }, [announcementId, attachment.attachmentId, available, attempt, unsupported, hwp, onLoad, telemetry])
+
+  function retry() {
+    telemetry.action('retry')
+    setState({ type: 'loading' })
+    setAttempt((current) => current + 1)
+  }
 
   if (!hasAttachmentUrl(attachment)) return <p className={styles.message}>파일을 사용할 수 없습니다. 공고 원문에서 확인해 주세요.</p>
   if (unsupported) return <p className={styles.message}>이 파일은 미리보기를 지원하지 않습니다. 다운로드해서 확인해 주세요.</p>
   if (state.type === 'loading') return <p role="status" className={styles.message}>{hwp ? '한글 문서를 불러오는 중…' : 'PDF를 불러오는 중…'}</p>
   if (state.type === 'error') return <div className={styles.message}>
     <p role="alert">{state.message}</p>
-    <button type="button" onClick={() => { setState({ type: 'loading' }); setAttempt(attempt + 1) }}>다시 시도</button>
+    <button type="button" onClick={retry}>다시 시도</button>
   </div>
   return <div className={styles.preview}>
     {hwp ? <p className={styles.viewerHint}>원본과 글꼴·페이지 나눔이 다를 수 있습니다. 정확한 서식은 다운로드해서 확인해 주세요.</p> : <p className={styles.viewerHint}>미리보기가 표시되지 않으면 <a href={state.url} target="_blank" rel="noreferrer">PDF 새 창에서 보기</a>를 이용해 주세요.</p>}
-    <PdfPreviewBoundary key={state.url} label={hwp ? '한글' : 'PDF'}>
+    <PdfPreviewBoundary key={state.url} onFailure={() => telemetry.failed('viewer_failed')} label={hwp ? '한글' : 'PDF'}>
       <Suspense fallback={<p role="status" className={styles.message}>{hwp ? '한글 뷰어를 준비하는 중…' : 'PDF 뷰어를 준비하는 중…'}</p>}>
-        {hwp ? <HwpDocumentPreview url={state.url} name={attachment.fileName ?? '첨부파일'} />
-          : <PdfDocumentPreview url={state.url} name={attachment.fileName ?? '첨부파일'} />}
+        {hwp ? <HwpDocumentPreview telemetry={telemetry} onRetry={retry} url={state.url} name={attachment.fileName ?? '첨부파일'} />
+          : <PdfDocumentPreview telemetry={telemetry} url={state.url} name={attachment.fileName ?? '첨부파일'} />}
       </Suspense>
     </PdfPreviewBoundary>
   </div>
@@ -188,6 +210,9 @@ function DownloadButton({ announcementId, attachment, originalBlob }: {
 
   async function download() {
     if (requestRef.current) return
+    const downloadId = createAnalyticsId()
+    const properties = { announcement_id: announcementId, attachment_id: attachment.attachmentId, document_download_id: downloadId }
+    captureProductEvent('document_download_requested', properties)
     const controller = new AbortController()
     requestRef.current = controller
     setPending(true)
@@ -196,7 +221,9 @@ function DownloadButton({ announcementId, attachment, originalBlob }: {
       const blob = originalBlob ?? await loadAnnouncementAttachment(announcementId, attachment.attachmentId, true, controller.signal)
       if (controller.signal.aborted) return
       saveAttachmentBlob(blob, attachment.fileName ?? '첨부파일')
+      captureProductEvent('document_download_handed_off', properties)
     } catch (error: unknown) {
+      captureProductEvent('document_download_failed', { ...properties, failure_reason: 'request_failed' })
       if (mounted.current) setError(attachmentErrorMessage(error))
     } finally {
       requestRef.current = null

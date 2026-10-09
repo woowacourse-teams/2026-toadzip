@@ -10,14 +10,20 @@ import org.springframework.stereotype.Repository;
 public class RegionCoordinateRepository {
 
     private final MapClusteringRegionPointPolicyRepository pointPolicyRepository;
+    private final NeighborhoodCoordinateRepository neighborhoodCoordinateRepository;
 
-    public RegionCoordinateRepository(MapClusteringRegionPointPolicyRepository pointPolicyRepository) {
+    public RegionCoordinateRepository(MapClusteringRegionPointPolicyRepository pointPolicyRepository,
+            NeighborhoodCoordinateRepository neighborhoodCoordinateRepository) {
         this.pointPolicyRepository = pointPolicyRepository;
+        this.neighborhoodCoordinateRepository = neighborhoodCoordinateRepository;
     }
 
     public Optional<MapCoordinate> findByRegionCode(String regionCode) {
         if (regionCode == null) {
             return Optional.empty();
+        }
+        if (regionCode.matches("[0-9]{8}00") && !regionCode.endsWith("00000")) {
+            return neighborhoodCoordinateRepository.findByCode(regionCode);
         }
         if (regionCode.matches("\\d{2}")) {
             return pointPolicyRepository.current().coordinate(new MapClusteringGroupKey("METROPOLITAN:" + regionCode));

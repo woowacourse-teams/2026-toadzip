@@ -59,6 +59,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.UUID;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -1386,6 +1387,29 @@ class LhAnnouncementExternalCollectionServiceTest {
                 .isInstanceOf(IngestAlreadyRunningException.class);
 
         verify(externalRepository, never()).fetchDetail(any());
+    }
+
+    @Test
+    void 단건_등록의_LH_조회는_이번_실행에서_수집한_원천만_사용한다() {
+        UUID executionId = UUID.randomUUID();
+        MyHomeAnnouncementSource current = announcementSource("announcement-100");
+        ReflectionTestUtils.setField(current, "lastSeenRunId", executionId.toString());
+        MyHomeAnnouncementSource old = announcementSource("announcement-100");
+        ReflectionTestUtils.setField(old, "lastSeenRunId", UUID.randomUUID().toString());
+        ReflectionTestUtils.setField(old, "url", "https://example.com/?panId=old"
+                + "&ccrCnntSysDsCd=03&uppAisTpCd=06&aisTpCd=07");
+        when(myHomeAnnouncementRepository.findAllByPblancIdOrderByIdAsc("announcement-100"))
+                .thenReturn(List.of(current, old));
+        when(externalRepository.fetchDetail(any())).thenReturn(detailResponse());
+        when(sourceStore.replaceDetails(eq("100"), any(), any())).thenReturn(1);
+
+        var result = service.refresh(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, "announcement-100", executionId);
+
+        assertThat(result.failedRequestCount()).isZero();
+        assertThat(result.successfulRequestCount()).isOne();
+        ArgumentCaptor<LhAnnouncementRequest> request = ArgumentCaptor.forClass(LhAnnouncementRequest.class);
+        verify(externalRepository).fetchDetail(request.capture());
+        assertThat(request.getValue().panId()).isEqualTo("100");
     }
 
     @Test

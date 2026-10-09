@@ -55,26 +55,29 @@ describe('홈의 사용자 세션과 알림 상태', () => {
     await screen.findByRole('button', { name: '서울 단지 알림 취소' })
     fireEvent.change(screen.getByRole('textbox', { name: '현재 검색어' }), { target: { value: '마포' } })
     fireEvent.focus(window)
+    fireEvent.click(await screen.findByText('마이페이지'))
     fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
-    await screen.findByRole('link', { name: '로그인' })
+    await screen.findByText('로그인 확인 중…')
     expect(interest.loadStatus).toHaveBeenCalledTimes(3)
     expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeDisabled()
     await act(async () => guestRead.resolve(guestStatus))
     await act(async () => previousRead.resolve(memberStatus))
+    expect(screen.getByRole('button', { name: '로그인' })).toBeVisible()
     expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled()
     expect(screen.getByRole('textbox', { name: '현재 검색어' })).toHaveValue('마포')
     fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
-    expect(await screen.findByRole('dialog', { name: '이메일 알림 신청' })).toBeVisible()
+    expect(await screen.findByRole('dialog', { name: '로그인이 필요해요' })).toBeVisible()
   })
 
   it('로그아웃 실패는 기존 회원 신청을 지우거나 다시 읽지 않는다', async () => {
     renderHome(true)
     await screen.findByRole('button', { name: '서울 단지 알림 취소' })
+    fireEvent.click(await screen.findByText('마이페이지'))
     fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
     await screen.findByText('로그아웃 실패')
     expect(screen.getByRole('button', { name: '서울 단지 알림 취소' })).toBeEnabled()
     expect(interest.loadStatus).toHaveBeenCalledOnce()
-    expect(screen.queryByRole('link', { name: '로그인' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '로그인' })).not.toBeInTheDocument()
   })
 
   it('로그아웃 전에 보낸 신청이 늦게 성공해도 비로그인 신청이나 입력창으로 복구하지 않는다', async () => {
@@ -84,13 +87,14 @@ describe('홈의 사용자 세션과 알림 상태', () => {
     renderHome()
     await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
+    fireEvent.click(await screen.findByText('마이페이지'))
     fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
-    await screen.findByRole('link', { name: '로그인' })
+    await screen.findByRole('button', { name: '로그인' })
     await waitFor(() => expect(interest.loadStatus).toHaveBeenCalledTimes(2))
     await act(async () => pending.resolve())
     expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(screen.queryByText('서울 단지 알림 신청을 받았어요.')).not.toBeInTheDocument()
+    expect(screen.queryByText('서울 단지 알림 설정을 저장했어요.')).not.toBeInTheDocument()
   })
 })
 
@@ -99,3 +103,22 @@ function deferred<T>() {
   const promise = new Promise<T>((complete) => { resolve = complete })
   return { promise, resolve }
 }
+
+it('다른 탭에서 로그아웃하면 포커스 복귀 시 회원 전용 메뉴를 숨긴다', async () => {
+  renderHome()
+  expect(await screen.findByRole('button', { name: '알림 보관함' })).toBeVisible()
+  fireEvent.focus(window)
+  await waitFor(() => expect(screen.queryByRole('button', { name: '알림 보관함' })).not.toBeInTheDocument())
+  expect(screen.getByRole('button', { name: '로그인' })).toBeVisible()
+})
+
+it('비회원 확인 후 재조회가 실패해도 예전 회원 메뉴를 다시 표시하지 않는다', async () => {
+  renderHome()
+  await screen.findByRole('button', { name: '알림 보관함' })
+  fireEvent.focus(window)
+  await screen.findByRole('button', { name: '로그인' })
+  interest.loadStatus.mockRejectedValueOnce(new Error('network'))
+  fireEvent.focus(window)
+  await screen.findByRole('alert')
+  expect(screen.queryByRole('button', { name: '알림 보관함' })).not.toBeInTheDocument()
+})

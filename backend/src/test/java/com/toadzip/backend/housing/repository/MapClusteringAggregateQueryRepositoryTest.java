@@ -131,13 +131,13 @@ class MapClusteringAggregateQueryRepositoryTest {
     }
 
     private HousingComplexFilterCondition filters(
-            Set<String> cityCountyDistrictCodes,
+            Set<String> regionCodes,
             Set<RentalType> rentalTypes
     ) {
         return new HousingComplexFilterCondition(
                 null,
                 null,
-                cityCountyDistrictCodes,
+                regionCodes,
                 rentalTypes,
                 Set.of(),
                 Set.of(),

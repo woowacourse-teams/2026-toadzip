@@ -9,11 +9,14 @@ import { registrationFailure } from './formValues'
 import { RegistrationError } from './RegistrationFields'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import { SourceUrl } from '../shared/SourceUrl'
+import { useUnsavedChanges } from '../management/useUnsavedChanges'
 
 export function AnnouncementImportForm({
   onSubmittingChange,
+  onCreated,
 }: {
   onSubmittingChange: (isSubmitting: boolean) => void
+  onCreated?: (id: number) => void
 }) {
   const [jsonText, setJsonText] = useState('')
   const [validatedJsonText, setValidatedJsonText] = useState<string | null>(null)
@@ -28,6 +31,7 @@ export function AnnouncementImportForm({
   const [createdId, setCreatedId] = useState<number | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const inputVersion = useRef(0)
+  useUnsavedChanges(jsonText.trim().length > 0 || isReadingFile)
   const summary = useMemo(() => documentSummary(validatedDocument), [validatedDocument])
   const canSubmit = !isReadingFile && !isValidating && validation?.registerable === true
     && validation.supplyRows.every((row) => selections[row.supplyRowIndex] !== undefined)
@@ -142,6 +146,7 @@ export function AnnouncementImportForm({
       setValidatedDocument(null)
       setValidation(null)
       setSelections({})
+      onCreated?.(created.announcementId)
     } catch (requestError) {
       setError(registrationFailure(requestError, '공고 JSON 등록 요청을 처리하지 못했습니다.').message)
     } finally {

@@ -12,7 +12,7 @@ export function formatAmount(amountWon: number | null | undefined, mode: 'COMPAC
   }
 }
 
-/** 마커 표기만 버림 처리하며 원본 금액과 다른 화면의 표기는 바꾸지 않는다. */
+/** 마커·단지 목록 표기만 버림 처리하며 원본 금액은 바꾸지 않는다. */
 export function compactMarkerAmountParts(
   amountWon: number | null | undefined,
 ): MapMarkerAmountParts | null {

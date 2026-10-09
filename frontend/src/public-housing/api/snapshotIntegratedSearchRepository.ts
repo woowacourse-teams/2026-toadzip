@@ -48,6 +48,8 @@ export function createSnapshotIntegratedSearchRepository(
       const matches = (item: SearchResultItem) => [item.title, item.subtitle ?? '']
         .some((text) => text.toLocaleLowerCase('ko-KR').includes(normalizedQuery))
       const allItems: readonly SearchResultItem[] = [
+        ...announcements.filter(matches),
+        ...complexes.filter(matches),
         ...regions.map((region): SearchResultItem => ({
           type: 'REGION',
           id: region.regionCode,
@@ -59,8 +61,6 @@ export function createSnapshotIntegratedSearchRepository(
           applicationStatus: null,
           publishedAt: null,
         })),
-        ...announcements.filter(matches),
-        ...complexes.filter(matches),
       ].filter((item) => type === undefined || item.type === type)
       const size = type === undefined ? 20 : 5
       const offset = page * size

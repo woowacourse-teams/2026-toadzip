@@ -66,3 +66,28 @@
   --ds-status-badge-radius: 5px;
   --ds-status-badge-gap: 5px;
 }
+
+/* Public explorer scales with the CSS viewport while retaining rem-based reading limits. */
+.app-shell {
+  --explorer-ui-unit: clamp(1rem, calc(0.625rem + 0.416667vw), 1.142857rem);
+  --explorer-panel-width: clamp(21.25rem, calc(16.25rem + 8.333333vw), 28.25rem);
+  --explorer-gutter: calc(var(--explorer-ui-unit) * 1.25);
+  --explorer-panel-gap: calc(var(--explorer-ui-unit) * 0.5);
+  --ds-text-body: calc(var(--explorer-ui-unit) * 0.875);
+  --ds-text-caption: calc(var(--explorer-ui-unit) * 0.8125);
+  --ds-text-section: var(--explorer-ui-unit);
+  --ds-text-title: calc(var(--explorer-ui-unit) * 1.125);
+  --ds-text-money: calc(var(--explorer-ui-unit) * 1.0625);
+  --ds-text-control-lg: calc(var(--explorer-ui-unit) * 0.9375);
+  --ds-space-1: calc(var(--explorer-ui-unit) * 0.25);
+  --ds-space-2: calc(var(--explorer-ui-unit) * 0.5);
+  --ds-space-3: calc(var(--explorer-ui-unit) * 0.75);
+  --ds-space-4: var(--explorer-ui-unit);
+  --ds-space-5: calc(var(--explorer-ui-unit) * 1.25);
+  --ds-space-6: calc(var(--explorer-ui-unit) * 1.5);
+  --ds-space-7: calc(var(--explorer-ui-unit) * 1.75);
+  --ds-control-height-md: calc(var(--explorer-ui-unit) * 2.75);
+  --ds-control-height-lg: calc(var(--explorer-ui-unit) * 3.125);
+  --ds-status-badge-font-size: calc(var(--explorer-ui-unit) * 0.75);
+  --ds-status-badge-min-height: calc(var(--explorer-ui-unit) * 1.5);
+}

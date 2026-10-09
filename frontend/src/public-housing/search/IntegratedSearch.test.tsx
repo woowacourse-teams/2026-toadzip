@@ -75,7 +75,7 @@ describe('IntegratedSearch', () => {
     const record = vi.fn().mockResolvedValue(undefined)
     const onSelect = vi.fn()
     render(
-      <NotificationInterestProvider repository={{ record }}>
+      <NotificationInterestProvider repository={{ record, loadStatus: async () => ({ emailConfirmed: false, targets: [] }) }}>
         <IntegratedSearch repository={repositoryWith(response([], [], [item('REGION', '11', '서울특별시')]))} onSelect={onSelect} />
       </NotificationInterestProvider>,
     )
@@ -83,14 +83,13 @@ describe('IntegratedSearch', () => {
     const bell = await screen.findByRole('button', { name: '서울특별시 알림 받기' })
     expect(bell.querySelector('svg')).toHaveAttribute('data-state', 'idle')
     fireEvent.click(bell)
-    expect(await screen.findByRole('dialog')).toHaveTextContent('이 지역에 대한 알림을 받으시겠습니까?')
+    expect(await screen.findByRole('dialog')).toHaveTextContent('알림 기능을 준비하고 있어요')
     expect(screen.getByRole('heading', { name: '검색결과' })).toBeVisible()
     expect(onSelect).not.toHaveBeenCalled()
     expect(record).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'CLICKED', source: 'REGION_SEARCH', targetType: 'REGION', targetId: '11',
+      eventType: 'CONFIRMED', source: 'REGION_SEARCH', targetType: 'REGION', targetId: '11',
     }))
-    fireEvent.change(screen.getByRole('textbox', { name: '알림 받을 이메일' }), { target: { value: 'guest@example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: '알림 신청' }))
+    fireEvent.click(screen.getByRole('button', { name: '확인' }))
     await waitFor(() => expect(bell).toHaveAccessibleName('서울특별시 알림 취소'))
     expect(bell.querySelector('svg')).toHaveAttribute('data-state', 'requested')
   })
@@ -244,14 +243,16 @@ describe('IntegratedSearch', () => {
       type === 'COMPLEX' ? [selected] : [],
       type === 'REGION' ? [selected] : [],
     ))
-    const onSelect = vi.fn()
     const onActiveChange = vi.fn()
+    let activeAtSelection: unknown
+    const onSelect = vi.fn(() => { activeAtSelection = onActiveChange.mock.lastCall?.[0] })
     render(<IntegratedSearch repository={repository} onSelect={onSelect} onActiveChange={onActiveChange} />)
     const input = screen.getByRole('searchbox')
     fireEvent.change(input, { target: { value: '서울' } })
     fireEvent.click(await screen.findByRole('button', { name: /서울 선택 결과.*서울특별시/ }))
 
     expect(onSelect).toHaveBeenCalledExactlyOnceWith(selected)
+    expect(activeAtSelection).toBe(false)
     expect(input).toHaveValue('')
     expect(input).toHaveFocus()
     expect(screen.queryByRole('heading', { name: '검색결과' })).not.toBeInTheDocument()
@@ -265,7 +266,7 @@ describe('IntegratedSearch', () => {
     expect(repository.search).toHaveBeenCalledTimes(8)
   })
 
-  it('좌표와 경계가 없는 지역은 선택해도 검색을 닫거나 이동시키지 않는다', async () => {
+  it('지역 선택은 검색결과를 닫고 좌표 없는 지역도 선택할 수 있다', async () => {
     const region = item('REGION', '41110', '수원시')
     const unavailable = { ...item('REGION', '99999', '미지원 지역'), latitude: null }
     const onSelect = vi.fn()
@@ -274,15 +275,17 @@ describe('IntegratedSearch', () => {
       onSelect={onSelect}
     />)
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '수원' } })
-    await screen.findByRole('button', { name: /^수원시\s*서울/ })
-    expect(screen.getByRole('searchbox')).toHaveValue('수원')
-    const unavailableButton = screen.getByRole('button', { name: /미지원 지역/ })
-    expect(unavailableButton).toBeDisabled()
+    fireEvent.click(await screen.findByRole('button', { name: /^수원시\s*서울/ }))
+
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(region)
+    expect(screen.getByRole('searchbox')).toHaveValue('')
+    expect(screen.queryByRole('heading', { name: '검색결과' })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '수원' } })
+    const unavailableButton = await screen.findByRole('button', { name: /미지원 지역/ })
+    expect(unavailableButton).toBeEnabled()
     expect(within(unavailableButton).getByText('위치 정보 준비 중')).toBeVisible()
     fireEvent.click(unavailableButton)
-    expect(onSelect).not.toHaveBeenCalled()
-    expect(screen.getByRole('heading', { name: '검색결과' })).toBeVisible()
-    expect(screen.getByRole('searchbox')).toHaveValue('수원')
+    expect(onSelect).toHaveBeenLastCalledWith(unavailable)
   })
 
   it('경계가 있는 지역은 대표 좌표 없이 선택할 수 있다', async () => {

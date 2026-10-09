@@ -86,7 +86,7 @@ class UserAuthenticationIntegrationTest {
                         .param("code", "invalid-code")
                         .param("state", "unknown-state"))
                 .andExpect(status().isFound())
-                .andExpect(header().string("Location", "http://localhost:5173/login?login=failed"));
+                .andExpect(header().string("Location", "http://localhost:5173/?login=failed"));
     }
 
     @Test
@@ -102,7 +102,7 @@ class UserAuthenticationIntegrationTest {
                         .param("code", "invalid-code")
                         .param("state", "unknown-state"))
                 .andExpect(status().isFound())
-                .andExpect(header().string("Location", "http://localhost:5173/login?login=failed"));
+                .andExpect(header().string("Location", "http://localhost:5173/?login=failed"));
         mockMvc.perform(get("/api/admin/auth/me").session(session))
                 .andExpect(status().isOk());
     }
@@ -117,7 +117,7 @@ class UserAuthenticationIntegrationTest {
         MockHttpSession session = (MockHttpSession) request.getSession(false);
         Long id = userRepository.findByLoginIdentifier("kakao:1890123").orElseThrow().getId();
 
-        assertEquals("http://localhost:5173/login", response.getRedirectedUrl());
+        assertEquals("http://localhost:5173/", response.getRedirectedUrl());
         mockMvc.perform(get("/api/auth/me").session(session))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(id))
@@ -158,7 +158,7 @@ class UserAuthenticationIntegrationTest {
                 request, response, authentication("google", Map.of("sub", "google-sub-190",
                         "email", "google@example.com"), "sub"));
 
-        assertEquals("http://localhost:5173/login", response.getRedirectedUrl());
+        assertEquals("http://localhost:5173/", response.getRedirectedUrl());
         Long id = userRepository.findByLoginIdentifier("google:google-sub-190").orElseThrow().getId();
         mockMvc.perform(get("/api/auth/me").session((MockHttpSession) request.getSession(false)))
                 .andExpect(status().isOk())
@@ -180,7 +180,7 @@ class UserAuthenticationIntegrationTest {
         successHandler.onAuthenticationSuccess(
                 request, response, authentication("kakao", Map.of("sub", "not-an-id"), "sub"));
 
-        assertEquals("http://localhost:5173/login?login=failed", response.getRedirectedUrl());
+        assertEquals("http://localhost:5173/?login=failed", response.getRedirectedUrl());
         assertNull(request.getSession(false).getAttribute(
                 HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY));
     }

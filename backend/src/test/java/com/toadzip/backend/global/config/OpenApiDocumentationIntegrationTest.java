@@ -99,15 +99,15 @@ class OpenApiDocumentationIntegrationTest {
     }
 
     @Test
-    void 단지_OpenAPI는_지도_경계를_필수_query_parameter로_제공한다() throws Exception {
+    void 단지_OpenAPI는_지도_경계를_지도에만_필수_query_parameter로_제공한다() throws Exception {
         HttpResponse<String> response = TestHttpClient.get(port, "/v3/api-docs");
 
         assertEquals(200, response.statusCode());
         assertAll(
-                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes", "southWestLat"),
-                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes", "southWestLng"),
-                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes", "northEastLat"),
-                () -> assertRequiredQueryParameter(response.body(), "/api/v1/complexes", "northEastLng"),
+                () -> assertOptionalQueryParameter(response.body(), "/api/v1/complexes", "southWestLat"),
+                () -> assertOptionalQueryParameter(response.body(), "/api/v1/complexes", "southWestLng"),
+                () -> assertOptionalQueryParameter(response.body(), "/api/v1/complexes", "northEastLat"),
+                () -> assertOptionalQueryParameter(response.body(), "/api/v1/complexes", "northEastLng"),
                 () -> assertRequiredQueryParameter(response.body(), "/api/v2/complexes/map", "southWestLat"),
                 () -> assertRequiredQueryParameter(response.body(), "/api/v2/complexes/map", "southWestLng"),
                 () -> assertRequiredQueryParameter(response.body(), "/api/v2/complexes/map", "northEastLat"),

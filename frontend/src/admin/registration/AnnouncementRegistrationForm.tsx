@@ -1,5 +1,7 @@
 import { agencyOptions, rentalTypeOptions } from './registrationOptions'
 import { Link } from 'react-router'
+import { useUnsavedChanges } from '../management/useUnsavedChanges'
+import { labels } from '../management/fields'
 import { useState, type FormEvent } from 'react'
 import {
   createAnnouncement,
@@ -26,19 +28,28 @@ const supplyCategories = toRegistrationOptions(['NEW_SUPPLY', 'RESUPPLY'])
 export function AnnouncementRegistrationForm({
   housingComplex,
   onSubmittingChange,
+  onCreated,
+  disabled = false,
 }: {
   housingComplex: HousingComplexCreateResponse | null
   onSubmittingChange: (isSubmitting: boolean) => void
+  onCreated?: (id: number) => void
+  disabled?: boolean
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [createdId, setCreatedId] = useState<number | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Readonly<Record<string, string>>>({})
+  const [dirty, setDirty] = useState(false)
+  useUnsavedChanges(dirty)
+  const selectedRental = housingComplex?.rentalType
+  const rentalOptions = selectedRental && !rentalTypeOptions.some(option => option.value === selectedRental)
+    ? [{ value: selectedRental, label: labels[selectedRental] ?? selectedRental }, ...rentalTypeOptions] : rentalTypeOptions
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (housingComplex) {
+    if (housingComplex && !isSubmitting && !disabled) {
       void submit(event.currentTarget, housingComplex.housingComplexId)
     }
   }
@@ -54,8 +65,10 @@ export function AnnouncementRegistrationForm({
         announcementRequest(new FormData(form), housingComplexId),
       )
       setCreatedId(created.announcementId)
+      setDirty(false)
       form.reset()
       setSuccess(`${created.name} 공고를 저장했습니다.`)
+      onCreated?.(created.announcementId)
     } catch (requestError) {
       const failure = registrationFailure(requestError, '공고 저장 요청을 처리하지 못했습니다.')
       setError(failure.message)
@@ -74,19 +87,20 @@ export function AnnouncementRegistrationForm({
           선택 단지: <strong>{housingComplex.name}</strong> · {housingComplex.roadAddress}
         </p>
       ) : (
-        <p className="selected-complex-guide">위에서 등록된 단지를 확인하거나, 단지 입력 화면에서 새 단지를 등록해 주세요.</p>
+        <p className="selected-complex-guide">연결할 단지를 검색하거나 새로 등록해 주세요.</p>
       )}
-      <form className="registration-form" onSubmit={handleSubmit}>
-        <fieldset>
+      <form className="registration-form" onChange={() => setDirty(true)} onSubmit={handleSubmit}>
+        <fieldset disabled={isSubmitting || disabled}>
           <legend>공고 기본 정보</legend>
           <div className="registration-grid">
             <RegistrationTextField errors={fieldErrors} label="공고명" maxLength={255} name="name" required />
             <RegistrationSelectField
-              defaultValue="HAPPY_HOUSING"
+              key={`rental-${housingComplex?.housingComplexId}`}
+              defaultValue={housingComplex?.rentalType ?? 'HAPPY_HOUSING'}
               errors={fieldErrors}
               label="공급 유형"
               name="rentalType"
-              options={rentalTypeOptions}
+              options={rentalOptions}
               required
             />
             <RegistrationSelectField
@@ -98,7 +112,8 @@ export function AnnouncementRegistrationForm({
               required
             />
             <RegistrationSelectField
-              defaultValue="LH"
+              key={`agency-${housingComplex?.housingComplexId}`}
+              defaultValue={housingComplex?.agencyCode ?? 'LH'}
               errors={fieldErrors}
               label="공급 기관"
               name="agencyCode"
@@ -138,7 +153,7 @@ export function AnnouncementRegistrationForm({
           </div>
         </fieldset>
 
-        <fieldset>
+        <fieldset disabled={isSubmitting || disabled}>
           <legend>접수처</legend>
           <div className="registration-grid">
             <RegistrationTextField
@@ -179,14 +194,16 @@ export function AnnouncementRegistrationForm({
           </div>
         </fieldset>
 
-        <fieldset>
-          <legend>단일 공급행</legend>
+        <fieldset disabled={isSubmitting || disabled}>
+          <legend>공급 정보</legend>
           <div className="registration-grid">
             <RegistrationTextField
               errors={fieldErrors}
               label="원문 단지명"
               maxLength={255}
               name="supplyRow.sourceComplexName"
+              key={`name-${housingComplex?.housingComplexId}`}
+              defaultValue={housingComplex?.name ?? ''}
               required
             />
             <RegistrationTextField
@@ -201,6 +218,8 @@ export function AnnouncementRegistrationForm({
               label="공급 PNU"
               maxLength={255}
               name="supplyRow.supplyPnu"
+              key={`pnu-${housingComplex?.housingComplexId}`}
+              defaultValue={housingComplex?.pnu ?? ''}
               required
             />
             <RegistrationTextField
@@ -232,7 +251,7 @@ export function AnnouncementRegistrationForm({
         {error ? <RegistrationError fieldErrors={fieldErrors} message={error} /> : null}
         <button
           className="registration-submit"
-          disabled={isSubmitting || !housingComplex}
+          disabled={isSubmitting || disabled || !housingComplex}
           type="submit"
         >
           {isSubmitting ? '공고 저장 중…' : '공고 저장'}

@@ -1,3 +1,5 @@
+import { captureProductEvent } from '../../analytics/productAnalytics'
+import { detailVisitId, useDetailScrollAnalytics } from './detailAnalytics'
 import { toHttpUrl } from '../presentation/httpUrl.ts'
 import {
   type KeyboardEvent,
@@ -32,12 +34,14 @@ import {
   type HousingAnnouncementSupplyComplexGroup,
 } from '../presentation/announcementDetailPresentation.ts'
 import { MISSING_DATA_LABEL } from '../presentation/missingData'
+import { formatHousingArea as formatArea, type AreaUnit } from '../presentation/housingArea'
+import { AreaUnitToggle } from './AreaUnitToggle'
 import { formatPhoneNumber } from '../presentation/phoneNumber'
 import { groupAnnouncementSchedules } from '../presentation/announcementSchedulePresentation'
 import { ScheduleGroupCard } from './ScheduleGroupCard'
 import { SchedulePeriod } from './SchedulePeriod'
 import scheduleStyles from './ScheduleGroups.module.css'
-import { formatHousingMoney } from '../presentation/housingMoney'
+import { formatHousingMoneyWon } from '../presentation/housingMoney'
 import styles from './HousingAnnouncementDetailPanel.module.css'
 import { NotificationInterestButton } from '../interest/NotificationInterest'
 
@@ -140,6 +144,9 @@ export function HousingAnnouncementDetailPanel({
   onOpenComplex,
   backButton,
 }: HousingAnnouncementDetailPanelProps) {
+  const scrollAnalytics = useDetailScrollAnalytics('ANNOUNCEMENT', detail.announcementId)
+  const [areaUnit, setAreaUnit] = useState<AreaUnit>('sqm')
+  const toggleAreaUnit = () => setAreaUnit((unit) => unit === 'sqm' ? 'pyeong' : 'sqm')
   const sectionId = useId()
   const { scrollRef, sectionRefs, activeSection, trackSection, scrollToSection } =
     useAnnouncementSections(detail.announcementId)
@@ -230,7 +237,8 @@ export function HousingAnnouncementDetailPanel({
 
       <div
         ref={scrollRef}
-        onScroll={trackSection}
+        {...scrollAnalytics}
+        onScroll={(event) => { scrollAnalytics.onScroll(event); trackSection() }}
         className={styles.scroll}
         role="region"
         aria-label={`${title} 상세 내용`}
@@ -240,10 +248,12 @@ export function HousingAnnouncementDetailPanel({
           role="region" aria-label="요약 영역" tabIndex={-1}
           ref={(node) => { sectionRefs.current.summary = node }}>
           <NoticeIntro detail={detail} groups={groups} />
-          <NotificationInterestButton
-            target={{ type: 'ANNOUNCEMENT', id: detail.announcementId, name: title }}
-            source="ANNOUNCEMENT_DETAIL"
-          />
+          <div className={styles.notificationAction}>
+            <NotificationInterestButton
+              target={{ type: 'ANNOUNCEMENT', id: detail.announcementId, name: title }}
+              source="ANNOUNCEMENT_DETAIL"
+            />
+          </div>
           <CoreInformation detail={detail} />
           <ReasonNotice detail={detail} />
         </div>
@@ -257,6 +267,8 @@ export function HousingAnnouncementDetailPanel({
           role="region" aria-label="주택형 영역" tabIndex={-1}
           ref={(node) => { sectionRefs.current.housing = node }}>
           <ComplexComparison
+            areaUnit={areaUnit}
+            onToggleAreaUnit={toggleAreaUnit}
             groups={groups}
             rentalTypeLabel={detail.rentalTypeLabel}
             supplyComplexCount={detail.supplyComplexCount}
@@ -265,6 +277,8 @@ export function HousingAnnouncementDetailPanel({
           />
           {selectedGroup && (
             <HousingTypeComparison
+              areaUnit={areaUnit}
+              onToggleAreaUnit={toggleAreaUnit}
               groups={groups}
               selectedGroup={selectedGroup}
               tabRefs={tabRefs.current}
@@ -600,12 +614,16 @@ function ReceptionPlaces({
 }
 
 function ComplexComparison({
+  areaUnit,
+  onToggleAreaUnit,
   groups,
   rentalTypeLabel,
   supplyComplexCount,
   supplyHouseholdCount,
   onOpenComplex,
 }: {
+  areaUnit: AreaUnit
+  onToggleAreaUnit: () => void
   groups: readonly HousingAnnouncementSupplyComplexGroup[]
   rentalTypeLabel: string
   supplyComplexCount: number
@@ -615,12 +633,14 @@ function ComplexComparison({
   return (
     <DetailSection
       title="단지 비교"
+      actions={groups.length > 0 ? <AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} /> : undefined}
       aside={`${formatNullableCount(supplyComplexCount, '개 단지')} · ${supplyHouseholdSummary(supplyHouseholdCount)}`}
     >
       {groups.length === 0 && <EmptyState>단지 정보: {MISSING_DATA_LABEL}</EmptyState>}
       <div className={styles.complexList}>
         {groups.map((group) => (
           <ComplexCard
+            areaUnit={areaUnit}
             key={group.key}
             group={group}
             rentalTypeLabel={rentalTypeLabel}
@@ -633,10 +653,12 @@ function ComplexComparison({
 }
 
 function ComplexCard({
+  areaUnit,
   group,
   rentalTypeLabel,
   onOpenComplex,
 }: {
+  areaUnit: AreaUnit
   group: HousingAnnouncementSupplyComplexGroup
   rentalTypeLabel: string
   onOpenComplex?: (complexId: string) => void
@@ -686,7 +708,7 @@ function ComplexCard({
       </div>
       <div className={styles.complexRanges}>
         <DetailFacts>
-          <DetailFact term="전용면적" value={areaRange(group.rows)} wide />
+          <DetailFact term="전용면적" value={areaRange(group.rows, areaUnit)} wide />
           <DetailFact
             term="보증금"
             value={depositRange}
@@ -706,6 +728,8 @@ function ComplexCard({
 }
 
 function HousingTypeComparison({
+  areaUnit,
+  onToggleAreaUnit,
   groups,
   selectedGroup,
   tabRefs,
@@ -713,6 +737,8 @@ function HousingTypeComparison({
   onGroupKeyDown,
   onOpenFloorPlan,
 }: {
+  areaUnit: AreaUnit
+  onToggleAreaUnit: () => void
   groups: readonly HousingAnnouncementSupplyComplexGroup[]
   selectedGroup: HousingAnnouncementSupplyComplexGroup
   tabRefs: Map<string, HTMLButtonElement>
@@ -728,6 +754,7 @@ function HousingTypeComparison({
   return (
     <DetailSection
       title="주택형 비교"
+      actions={<AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} />}
     >
       <div className={styles.housingTypeGroup}>
         {groups.length > 0 && (
@@ -759,6 +786,7 @@ function HousingTypeComparison({
         >
           {selectedGroup.rows.map((row) => (
             <HousingTypeCard
+              areaUnit={areaUnit}
               key={row.supplyRowId}
               complexName={selectedGroup.name}
               row={row}
@@ -772,10 +800,12 @@ function HousingTypeComparison({
 }
 
 function HousingTypeCard({
+  areaUnit,
   complexName,
   row,
   onOpenFloorPlan,
 }: {
+  areaUnit: AreaUnit
   complexName: string
   row: HousingAnnouncementDetailSupplyRow
   onOpenFloorPlan: (selection: FloorPlanSelection) => void
@@ -820,7 +850,7 @@ function HousingTypeCard({
             <th id={`${idPrefix}-kind`} scope="row">공급 구분</th>
             <td headers={`${idPrefix}-kind`}>{row.supplyTypeLabel}</td>
             <th id={`${idPrefix}-area`} scope="row">전용면적</th>
-            <td headers={`${idPrefix}-area`}>{formatArea(row.housingType?.exclusiveArea ?? null)}</td>
+            <td headers={`${idPrefix}-area`}>{formatArea(row.housingType?.exclusiveArea ?? null, areaUnit)}</td>
           </tr>
           <tr>
             <th id={`${idPrefix}-count`} scope="row">공급 세대수</th>
@@ -869,11 +899,11 @@ function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget
               <tr>
                 <th id={`${idPrefix}-${index}-deposit`} scope="row">보증금</th>
                 <td headers={`${idPrefix}-${index}-deposit`} data-emphasis={Number.isFinite(target.deposit) || undefined} data-numeric="true">
-                  {formatHousingMoney(target.deposit)}
+                  {formatHousingMoneyWon(target.deposit)}
                 </td>
                 <th id={`${idPrefix}-${index}-rent`} scope="row">월 임대료</th>
                 <td headers={`${idPrefix}-${index}-rent`} data-emphasis={Number.isFinite(target.monthlyRent) || undefined} data-numeric="true">
-                  {formatHousingMoney(target.monthlyRent)}
+                  {formatHousingMoneyWon(target.monthlyRent)}
                 </td>
               </tr>
               {hasText(target.applicationCondition) && (
@@ -900,7 +930,10 @@ function DocumentActions({ detail, onOpenAttachments }: {
     <footer className={styles.documents}>
       <nav aria-label="공고문 바로가기">
         <button type="button" disabled={!hasFiles} onClick={onOpenAttachments}>공고문 보기</button>
-        {sourceUrl && <ExternalLink href={sourceUrl}>공고 원문</ExternalLink>}
+        {sourceUrl && <a href={sourceUrl} target="_blank" rel="noreferrer" onClick={(event) => {
+          captureProductEvent('announcement_source_clicked', { announcement_id: detail.announcementId,
+            detail_visit_id: detailVisitId(event.currentTarget) })
+        }}>공고 원문</a>}
         {!sourceUrl && <DisabledLink>공고 원문</DisabledLink>}
       </nav>
     </footer>
@@ -1083,18 +1116,11 @@ function supplyHouseholdSummary(value: number | null) {
   return value === null ? `공급 세대수: ${MISSING_DATA_LABEL}` : formatNullableCount(value, '세대')
 }
 
-function formatArea(value: number | null) {
-  if (value === null) {
-    return MISSING_DATA_LABEL
-  }
-  return `${value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}㎡`
-}
-
-function areaRange(rows: readonly HousingAnnouncementDetailSupplyRow[]) {
+function areaRange(rows: readonly HousingAnnouncementDetailSupplyRow[], unit: AreaUnit) {
   const values = rows
     .map((row) => row.housingType?.exclusiveArea ?? null)
-    .filter((value): value is number => value !== null)
-  return numericRange(values, (value) => formatArea(value))
+    .filter((value): value is number => value !== null && Number.isFinite(value))
+  return numericRange(values, (value) => formatArea(value, unit))
 }
 
 function moneyRange(
@@ -1104,7 +1130,7 @@ function moneyRange(
   const values = rows.flatMap((row) => row.targets)
     .map((target) => target[key])
     .filter((value): value is number => value !== null)
-  return numericRange(values, formatHousingMoney)
+  return numericRange(values, formatHousingMoneyWon)
 }
 
 function numericRange(
@@ -1155,6 +1181,7 @@ function handleDialogKeyDown(
   onClose: () => void,
 ) {
   if (event.key === 'Escape') {
+    event.preventDefault()
     event.stopPropagation()
     onClose()
     return

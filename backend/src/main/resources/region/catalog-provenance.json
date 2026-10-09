@@ -1,0 +1,27 @@
+{
+  "acquiredAt": "2026-10-08",
+  "source": "https://www.code.go.kr/stdcode/regCodeL.do?menuNo=101010100010",
+  "provinceOrderSource": "https://www.mois.go.kr/frt/sub/a04/localGovernment/screen.do",
+  "query": "disuseAt=0&chkHigh=0&chkOrder=0&chkLow=0",
+  "sha256": {
+    "11.zip": "55f812e3036b4ddba11a82bbdc8ca96f52330b534fdcdf75c34bd1a8427902a4",
+    "12.zip": "dd952c74162982b1424b36271ac873bbc97ed1eaf97e5eef7f380923f01e5546",
+    "26.zip": "d4150b2fdf576f9beb16a38903f489905dfeb9da0d6b7e6d22d590da42ef80c5",
+    "27.zip": "610b660a5cf358ff70492d6d2b3f48d3ccf3f1ef34b3714021bb10c8701c036a",
+    "28.zip": "e786e347afbb5d619e397ea9c79c1de22ecf7dbf70de9cfb0eb3b2bc20f64a63",
+    "30.zip": "a2209d45c5a78c3a881e7642e9f1b339ad841fa7b75ead8998e5317ef0fa88fb",
+    "31.zip": "8f0bfd8fb885f2a644b3917e9538d2cc769575dab73e655d28bb5e2bea6e1dd9",
+    "36.zip": "da00ccc061a216c449bb0bad5813b1ea584c0e7f5abf60cac16050e420faa836",
+    "41.zip": "4f685afe05f5b13aed83a25185caee36dcb19e10e9c3a525e554749c57e4840a",
+    "51.zip": "cf4fbfaa95e1392523dc307d12840f2a4b531b59406feed5bd44a7485eb37444",
+    "43.zip": "95e48a64cfed852239f627a2e0d51a7eae11c0b5d016eed053598e472eb38cac",
+    "44.zip": "7afd3e7484a461d85c210fb45c016ca614ef115dd06ffeaeef62f3e9ddd51e29",
+    "52.zip": "da5082bf50c0265e1dc9613e4b67de7ebd4d694b8b2a7165fdf8e1458f5bf996",
+    "47.zip": "ee94ad361046e59db64fbd5a96fbeedf520fb8910d81a4d71a1a3b44cf4b0a7b",
+    "48.zip": "0b16fad8cac9e6f81d94cdba7908a7445db1454b74a40a03c5ce2750f16e61f8",
+    "50.zip": "603a2df3e29864a59155b616c9c45ef53680d9914d4c7f8aa963a7d0358062b4",
+    "mois-local-government.html": "6477f5d224656b55507a8f0c8c21ee840089f665482a3474ae93156a3a83a381",
+    "29.zip": "673b7e85a1f6bc5230fee70b87d71957d758b48bb9bdc634f65ce540ca5593c4",
+    "46.zip": "a310e65e0936bfd469d705d7e8ab4df4afc0222bc771d8fe52bc066a578485bf"
+  }
+}

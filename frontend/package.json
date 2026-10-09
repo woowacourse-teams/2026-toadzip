@@ -20,6 +20,7 @@
   "dependencies": {
     "@rhwp/core": "0.8.6",
     "pdfjs-dist": "6.3.289",
+    "posthog-js": "1.438.2",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-router": "8.3.0"

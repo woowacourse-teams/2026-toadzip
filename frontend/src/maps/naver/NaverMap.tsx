@@ -1,4 +1,6 @@
+import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
 import { useEffect, useRef, useState } from 'react'
+import styles from './NaverMap.module.css'
 import {
   cameraCoordinatesChanged,
   cameraZoomChanged,
@@ -159,6 +161,9 @@ export default function NaverMap({
   representation,
   transitioning = false,
 }: NaverMapProps) {
+  const interactionId = useRef(createAnalyticsId())
+  const zoomSource = useRef<'button' | 'other_user' | 'programmatic' | 'unknown'>('unknown')
+  const previousZoom = useRef<number | null>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<naver.maps.Map | null>(null)
   const mapsRef = useRef<typeof naver.maps | null>(null)
@@ -204,6 +209,7 @@ export default function NaverMap({
   const cameraSouthWestLng = cameraTarget?.bounds?.southWestLng
   const cameraNorthEastLat = cameraTarget?.bounds?.northEastLat
   const cameraNorthEastLng = cameraTarget?.bounds?.northEastLng
+  const cameraBoundsMaxZoom = cameraTarget?.boundsMaxZoom
   const cameraPaddingTop = cameraTarget?.boundsPadding?.top
   const cameraPaddingRight = cameraTarget?.boundsPadding?.right
   const cameraPaddingBottom = cameraTarget?.boundsPadding?.bottom
@@ -241,6 +247,7 @@ export default function NaverMap({
     let cancelled = false
     let mapInstance: naver.maps.Map | null = null
     let resizeObserver: ResizeObserver | null = null
+    let dragEndListener: naver.maps.MapEventListener | null = null
     let dragStartListener: naver.maps.MapEventListener | null = null
     let idleListener: naver.maps.MapEventListener | null = null
     let initListener: naver.maps.MapEventListener | null = null
@@ -265,6 +272,7 @@ export default function NaverMap({
     }
 
     const removeTransitionInterruptListeners = () => {
+      if (dragEndListener && mapsRef.current) { mapsRef.current.Event.removeListener(dragEndListener); dragEndListener = null }
       if (dragStartListener && mapsRef.current) {
         mapsRef.current.Event.removeListener(dragStartListener)
         dragStartListener = null
@@ -320,16 +328,16 @@ export default function NaverMap({
             gl: true,
             keyboardShortcuts: true,
             logoControlOptions: {
-              position: maps.Position.BOTTOM_LEFT,
+              position: maps.Position.BOTTOM_RIGHT,
+            },
+            mapDataControlOptions: {
+              position: maps.Position.BOTTOM_RIGHT,
             },
             scaleControlOptions: {
-              position: maps.Position.BOTTOM_LEFT,
+              position: maps.Position.BOTTOM_RIGHT,
             },
             zoom: initialCamera.zoom,
-            zoomControl: true,
-            zoomControlOptions: {
-              position: maps.Position.RIGHT_BOTTOM,
-            },
+            zoomControl: false,
           })
           mapInstance = createdMap
           mapInstanceRef.current = createdMap
@@ -348,10 +356,17 @@ export default function NaverMap({
             }
           })
 
+          previousZoom.current = createdMap.getZoom()
+          let dragStart: { latitude: number; longitude: number } | null = null
           const emitViewport = () => {
             transitionInterruptedRef.current = false
             const viewport = readViewport(createdMap)
             if (viewport) {
+              const old = appliedCameraTargetRef.current
+              if (old && (old.latitude !== viewport.center.latitude || old.longitude !== viewport.center.longitude || old.zoom !== viewport.zoom)) interactionId.current = createAnalyticsId()
+              if (previousZoom.current !== null && previousZoom.current !== viewport.zoom) captureProductEvent('map_zoomed', { zoom_before: previousZoom.current, zoom_after: viewport.zoom, source: zoomSource.current })
+              previousZoom.current = viewport.zoom
+              zoomSource.current = 'unknown'
               appliedCameraTargetRef.current = {
                 latitude: viewport.center.latitude,
                 longitude: viewport.center.longitude,
@@ -380,10 +395,15 @@ export default function NaverMap({
           dragStartListener = maps.Event.addListener(
             createdMap,
             'dragstart',
-            interruptTransition,
+            () => { dragStart = readViewport(createdMap)?.center ?? null; interruptTransition() },
           )
+          dragEndListener = maps.Event.addListener(createdMap, 'dragend', () => {
+            const end = readViewport(createdMap)?.center
+            if (dragStart && end && (end.latitude !== dragStart.latitude || end.longitude !== dragStart.longitude)) captureProductEvent('map_panned', { source: 'drag' })
+            dragStart = null
+          })
           mapSurface = mapContainerRef.current
-          wheelListener = interruptTransition
+          wheelListener = () => { zoomSource.current = 'other_user'; interruptTransition() }
           mapSurface.addEventListener('wheel', wheelListener, { passive: true })
 
           if (typeof ResizeObserver === 'function') {
@@ -512,6 +532,7 @@ export default function NaverMap({
           }
           onAggregateMarkerSelectRef.current?.(aggregateMarker)
         },
+        previewScopeId: () => interactionId.current,
         onMarkerHighlight: (complexId) => {
           onMarkerHighlightRef.current?.(complexId)
         },
@@ -576,16 +597,24 @@ export default function NaverMap({
         new maps.LatLng(cameraSouthWestLat, cameraSouthWestLng),
         new maps.LatLng(cameraNorthEastLat, cameraNorthEastLng),
       ]
+      const fitOptions: naver.maps.FitBoundsOptions = {}
       if (cameraPaddingTop !== undefined && cameraPaddingRight !== undefined
         && cameraPaddingBottom !== undefined && cameraPaddingLeft !== undefined) {
-        mapInstance.fitBounds(bounds, {
+        Object.assign(fitOptions, {
           top: cameraPaddingTop,
           right: cameraPaddingRight,
           bottom: cameraPaddingBottom,
           left: cameraPaddingLeft,
         })
+      }
+      if (cameraBoundsMaxZoom !== undefined && Number.isFinite(cameraBoundsMaxZoom)
+        && cameraBoundsMaxZoom >= 0) {
+        fitOptions.maxZoom = cameraBoundsMaxZoom
+      }
+      zoomSource.current = 'programmatic'
+      if (Object.keys(fitOptions).length > 0) {
+        mapInstance.fitBounds(bounds, fitOptions)
       } else {
-        // Omit the optional margins argument unless the caller provided all four sides.
         mapInstance.fitBounds(bounds)
       }
       return
@@ -620,6 +649,7 @@ export default function NaverMap({
       && (cameraZoom === undefined
         || !cameraZoomChanged(currentViewport.zoom, cameraZoom))
 
+    if (cameraRequested || coordinatesChanged || zoomChanged) zoomSource.current = 'programmatic'
     if (cameraRequested && cameraZoom !== undefined) {
       mapInstance.morph(
         nextCenter,
@@ -649,16 +679,33 @@ export default function NaverMap({
     }
   }, [cameraLatitude, cameraLongitude, cameraOffsetX, cameraOffsetY, cameraRequestId, cameraZoom,
     cameraSouthWestLat, cameraSouthWestLng, cameraNorthEastLat, cameraNorthEastLng,
+    cameraBoundsMaxZoom,
     cameraPaddingTop, cameraPaddingRight, cameraPaddingBottom, cameraPaddingLeft,
     initializedAttempt, attempt, status.kind])
 
   const retry = () => {
+    captureProductEvent('exploration_retry_clicked', { surface: 'map_sdk' })
     setStatus({ kind: 'loading' })
     setAttempt((currentAttempt) => currentAttempt + 1)
   }
 
   const isLoading = status.kind === 'loading'
   const isReady = status.kind === 'ready'
+
+  const changeZoom = (delta: number) => {
+    const map = mapInstanceRef.current
+    if (!map) return
+    if (transitioningRef.current && !transitionInterruptedRef.current) {
+      transitionInterruptedRef.current = true
+      onTransitionInterruptRef.current?.()
+      stopMapSafely(map)
+    }
+    const before = map.getZoom()
+    const zoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), before + delta))
+    captureProductEvent('map_zoom_button_clicked', { direction: delta > 0 ? 'in' : 'out', zoom_before: before, zoom_target: zoom })
+    zoomSource.current = 'button'
+    map.setZoom(zoom)
+  }
 
   return (
     <section
@@ -679,6 +726,20 @@ export default function NaverMap({
         aria-hidden={!isReady}
       />
       {isLoading && <MapLoading />}
+      {isReady && (
+        <div className={styles.zoomControls} role="group" aria-label="지도 확대·축소">
+          <button type="button" aria-label="지도 확대" title="지도 확대" onClick={() => changeZoom(1)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+              <path d="M5 12h14M12 5v14" />
+            </svg>
+          </button>
+          <button type="button" aria-label="지도 축소" title="지도 축소" onClick={() => changeZoom(-1)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+              <path d="M5 12h14" />
+            </svg>
+          </button>
+        </div>
+      )}
       {status.kind === 'unavailable' && (
         <MapUnavailable reason={status.reason} onRetry={retry} />
       )}

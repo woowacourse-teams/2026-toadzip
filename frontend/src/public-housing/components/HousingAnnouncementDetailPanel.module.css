@@ -151,6 +151,28 @@
   padding: var(--ds-space-4) 0;
 }
 
+.notificationAction {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  padding-bottom: var(--ds-space-4);
+}
+
+.notificationAction > button {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--ds-control-height-md);
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-2) var(--ds-space-4);
+  border-radius: var(--ds-radius-control);
+  font-size: var(--ds-text-body);
+  font-weight: 500;
+  line-height: var(--ds-line-height-body);
+}
+
+.notificationAction > button svg {
+  flex-shrink: 0;
+}
+
 .intro p {
   display: flex;
   min-width: 0;

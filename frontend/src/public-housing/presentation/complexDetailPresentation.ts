@@ -1,5 +1,4 @@
 import { rentalTypeLabel } from './rentalTypeLabel.ts'
-import { MISSING_DATA_LABEL } from './missingData.ts'
 import type { HousingComplexDetailData } from '../components/HousingComplexDetailPanel.tsx'
 import type { ComplexDetail } from '../model/publicHousing.ts'
 
@@ -8,7 +7,7 @@ export function toHousingComplexDetailData(
 ): HousingComplexDetailData {
   return {
     agencyCode: detail.agency?.code ?? null,
-    agencyName: detail.agency?.name ?? MISSING_DATA_LABEL,
+    agencyName: detail.agency?.name ?? '',
     buildingTypeLabel: buildingTypeLabel(detail.buildingType),
     completionDate: detail.completionDate,
     complexId: detail.complexId,
@@ -22,11 +21,11 @@ export function toHousingComplexDetailData(
     housingTypes: detail.housingTypes,
     images: detail.images,
     moveOutCountLastYear: detail.moveOutCountLastYear,
-    name: detail.name ?? MISSING_DATA_LABEL,
+    name: detail.name ?? '',
     overviewImageUrl: detail.overviewImageUrl,
-    regionName: detail.address?.regionName ?? MISSING_DATA_LABEL,
-    rentalTypeLabel: rentalTypeLabel(detail.rentalType) ?? MISSING_DATA_LABEL,
-    roadAddress: detail.address?.roadAddress ?? MISSING_DATA_LABEL,
+    regionName: detail.address?.regionName ?? '',
+    rentalTypeLabel: rentalTypeLabel(detail.rentalType) ?? '',
+    roadAddress: detail.address?.roadAddress ?? '',
     totalHouseholdCount: detail.totalHouseholdCount,
     totalParkingCount: detail.totalParkingCount,
   }
@@ -37,7 +36,7 @@ function buildingTypeLabel(value: string | null) {
     APARTMENT: '아파트',
     ETC: '기타',
     OFFICETEL: '오피스텔',
-  }, MISSING_DATA_LABEL)
+  }, '')
 }
 
 function heatingTypeLabel(value: string | null) {
@@ -46,7 +45,7 @@ function heatingTypeLabel(value: string | null) {
     DISTRICT: '지역난방',
     ETC: '기타',
     INDIVIDUAL: '개별난방',
-  }, MISSING_DATA_LABEL)
+  }, '')
 }
 
 function corridorTypeLabel(value: string | null) {
@@ -54,15 +53,15 @@ function corridorTypeLabel(value: string | null) {
     CORRIDOR: '복도식',
     MIXED: '혼합식',
     STAIR: '계단식',
-    UNKNOWN: MISSING_DATA_LABEL,
-  }, MISSING_DATA_LABEL)
+    UNKNOWN: '',
+  }, '')
 }
 
 function publicationTypeLabel(value: string | null) {
   return codeLabel(value, {
     CORRECTION: '정정공고',
     ORIGINAL: '원공고',
-  }, MISSING_DATA_LABEL)
+  }, '')
 }
 
 function codeLabel(

@@ -1,5 +1,5 @@
 const BOUNDARY_REGION_KEY = 'boundaryRegionCode'
-const REGION_CODE = /^(?:\d{2}|\d{5})$/
+const REGION_CODE = /^(?:\d{2}|\d{5}|\d{8}00)$/
 
 export function parseRegionBoundaryCode(query: URLSearchParams): string | null {
   const values = query.getAll(BOUNDARY_REGION_KEY)

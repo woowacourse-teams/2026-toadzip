@@ -13,6 +13,9 @@ Desktop.ini
 .env.*
 !.env.example
 
+# Personal local workspace (never commit)
+/.local/
+
 # Local agent planning artifacts (never commit)
 /docs/superpowers/plans/
 /docs/superpowers/specs/

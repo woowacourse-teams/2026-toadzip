@@ -23,6 +23,33 @@ import org.springframework.core.io.Resource;
 
 class CsvRegionCodeResolverTest {
 
+    @Test
+    void 시도는_행정안전부_나열순서로_정렬하여_강원과_전북을_제주보다_앞에_둔다() {
+        CsvRegionCodeResolver resolver = resolver(
+                "50110,제주특별자치도,제주시,제주특별자치도 제주시",
+                "51110,강원특별자치도,춘천시,강원특별자치도 춘천시",
+                "43110,충청북도,청주시,충청북도 청주시",
+                "52110,전북특별자치도,전주시,전북특별자치도 전주시",
+                "47110,경상북도,포항시,경상북도 포항시"
+        );
+        assertEquals(List.of("51", "43", "52", "47", "50"), resolver.findByKeyword("").stream()
+                .map(RegionSearchResult::regionCode).filter(code -> code.length() == 2).toList());
+    }
+
+    @Test
+    void 공식_카탈로그에서_읍면동을_전체_지역명으로_검색한다() {
+        CsvRegionCodeResolver resolver = new CsvRegionCodeResolver(
+                new ClassPathResource("region/regions.csv"),
+                new ClassPathResource("region/region-code-aliases.csv"));
+        assertTrue(resolver.findByKeyword("청운동").stream().anyMatch(region ->
+                region.regionCode().equals("1111010100")
+                        && region.displayName().equals("서울특별시 종로구 청운동")));
+        assertTrue(resolver.filterCodes("1111010100").orElseThrow().contains("1111010100"));
+        assertTrue(resolver.filterCodes("1111010199").isEmpty());
+        assertEquals(Set.of("1221010100", "2911010100"), resolver.filterCodes("1221010100").orElseThrow());
+        assertEquals(resolver.filterCodes("1221010100"), resolver.filterCodes("2911010100"));
+    }
+
     private static final String HEADER = "regionCode,sido,sigungu,name";
     private static final String ALIAS_HEADER = "legacyRegionCode,currentRegionCode";
     private static final String SOURCE_METADATA =
@@ -555,7 +582,8 @@ class CsvRegionCodeResolverTest {
     private static CsvRegionCodeResolver resolverWithContentsAndAliases(String contents, String aliasContents) {
         Resource resource = new ByteArrayResource(contents.getBytes(StandardCharsets.UTF_8));
         Resource aliasResource = new ByteArrayResource(aliasContents.getBytes(StandardCharsets.UTF_8));
-        return new CsvRegionCodeResolver(resource, aliasResource);
+        return new CsvRegionCodeResolver(resource, aliasResource,
+                new ByteArrayResource((HEADER + "\n").getBytes(StandardCharsets.UTF_8)));
     }
 
     private static List<String> readLines(Resource resource) throws IOException {

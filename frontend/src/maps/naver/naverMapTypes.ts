@@ -28,6 +28,7 @@ export interface NaverMapCameraTarget {
   readonly latitude: number
   readonly longitude: number
   /** Fit the complete region instead of applying center, zoom, or screenOffset. */
+  readonly boundsMaxZoom?: number
   readonly bounds?: MapBounds
   readonly boundsPadding?: {
     readonly top: number

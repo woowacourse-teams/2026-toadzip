@@ -276,6 +276,13 @@ public class HousingComplex {
         recentOneYearMoveOutCount = moveOutCount;
     }
 
+    public void noteHousingTypeRevisionByAdmin() {
+        if (adminDeleted) {
+            throw new IllegalArgumentException("휴지통에서 복구한 뒤 수정해 주세요.");
+        }
+        adminUpdatedAt = java.time.Instant.now();
+    }
+
     public boolean updateRentalPriceRange(RentalPriceRange incoming) {
         if (java.util.Objects.equals(rentalPriceRange, incoming)) {
             return false;

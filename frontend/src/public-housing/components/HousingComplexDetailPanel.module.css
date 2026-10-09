@@ -144,13 +144,29 @@
   word-break: keep-all;
 }
 
+.addressRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--ds-space-2);
+  margin-top: var(--ds-space-2);
+}
+
 .address {
-  margin: var(--ds-space-2) 0 0;
+  margin: 0;
   color: var(--ds-color-label);
   font-size: var(--ds-text-caption);
   font-weight: 400;
   line-height: var(--ds-line-height-caption);
   overflow-wrap: anywhere;
+}
+
+@container housing-complex-detail (max-width: 330px) {
+  .addressRow { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 767px) {
+  .addressRow { grid-template-columns: minmax(0, 1fr); }
 }
 
 .notificationCallout {
@@ -231,6 +247,7 @@
   border-radius: 8px;
   background: var(--ds-color-action-soft);
   grid-template-columns: minmax(0, 1fr);
+  container-type: inline-size;
 }
 
 .announcementHeading {
@@ -395,7 +412,8 @@
   border-top-left-radius: 0;
 }
 
-.housingTypePanel > h4 {
+.housingTypePanel > h4,
+.housingTypeDetailHeading h4 {
   margin: var(--ds-space-4) 0 var(--ds-space-2);
   font-size: var(--ds-text-section);
   font-weight: 700;
@@ -404,6 +422,23 @@
 
 .housingTypePanel > h4:first-child {
   margin-top: 0;
+}
+
+.housingTypeDetailHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  margin: var(--ds-space-4) 0 var(--ds-space-2);
+}
+
+.housingTypeDetailHeading:first-child {
+  margin-top: 0;
+}
+
+.housingTypeDetailHeading h4 {
+  min-width: 0;
+  margin: 0;
 }
 
 .floorPlans {

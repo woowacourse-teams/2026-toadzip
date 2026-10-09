@@ -5,18 +5,20 @@ interface DetailSectionProps {
   readonly title: string
   readonly description?: string
   readonly aside?: string
+  readonly actions?: ReactNode
   readonly children: ReactNode
 }
 
-export function DetailSection({ title, description, aside, children }: DetailSectionProps) {
+export function DetailSection({ title, description, aside, actions, children }: DetailSectionProps) {
   return (
     <section className={styles.section}>
-      <header className={styles.sectionHeading}>
+      <header className={styles.sectionHeading} data-has-actions={actions ? true : undefined}>
         <div>
           <h3>{title}</h3>
           {description && <p>{description}</p>}
         </div>
         {aside && <span>{aside}</span>}
+        {actions && <div className={styles.sectionActions}>{actions}</div>}
       </header>
       {children}
     </section>

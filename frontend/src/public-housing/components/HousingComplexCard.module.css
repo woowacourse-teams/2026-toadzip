@@ -5,6 +5,7 @@
   min-width: 0;
   overflow: hidden;
   padding: 12px var(--list-inset, 28px) 18px;
+  padding-left: var(--list-start-inset, var(--list-inset, 28px));
   border: 0;
   border-radius: 0;
   background: var(--ds-color-surface);
