@@ -1,7 +1,6 @@
 package com.toadzip.backend.ingest.mapping.controller;
 
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingFailureResponse;
-import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingPreparationReport;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import jakarta.validation.constraints.Max;
@@ -27,25 +26,6 @@ public class MyHomeComplexMappingController {
     @PostMapping
     public ResponseEntity<MyHomeComplexMappingReport> mapAll() {
         return ResponseEntity.ok(mappingService.mapAll());
-    }
-
-    @PostMapping("/candidates")
-    public ResponseEntity<MyHomeComplexMappingPreparationReport> prepare() {
-        return ResponseEntity.ok(mappingService.prepare());
-    }
-
-    @PostMapping("/batches")
-    public ResponseEntity<MyHomeComplexMappingReport> mapNext(
-            @RequestParam(defaultValue = "100")
-            @Min(value = 1, message = "1 이상이어야 합니다.")
-            @Max(value = 1_000, message = "1000 이하여야 합니다.") int batchSize
-    ) {
-        return ResponseEntity.ok(mappingService.mapNext(batchSize));
-    }
-
-    @GetMapping("/failures")
-    public ResponseEntity<List<MyHomeComplexMappingFailureResponse>> findFailures() {
-        return ResponseEntity.ok(mappingService.findFailures());
     }
 
     @GetMapping("/failures/page")

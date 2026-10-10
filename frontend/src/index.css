@@ -61,7 +61,7 @@
   background: transparent;
   color: #202124;
   font: inherit;
-  font-size: 15px;
+  font-size: var(--ds-text-control-lg);
   letter-spacing: -0.025em;
 }
 
@@ -104,13 +104,6 @@
   padding: 0.6rem 0.75rem;
   color: #9f1239;
   font-size: 0.75rem;
-}
-
-.integrated-search__pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
 }
 
 * {
@@ -174,8 +167,8 @@ a {
 }
 
 .brand-logo {
-  width: 88px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   flex: none;
   object-fit: contain;
 }
@@ -186,10 +179,6 @@ a {
   font-weight: 750;
   letter-spacing: -0.025em;
   white-space: nowrap;
-}
-
-.service-header:has([aria-controls="notification-settings"]) .brand-tagline {
-  display: none;
 }
 
 .service-header:has([aria-controls="notification-settings"]) .brand-link {
@@ -210,6 +199,9 @@ a {
 
 .service-login-link {
   padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
   border-radius: 8px;
   color: var(--brand-dark);
   font-size: 14px;
@@ -218,6 +210,35 @@ a {
 }
 
 .service-login-link:hover { background: #edf4ff; }
+.service-header-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--ds-space-2);
+  margin-left: auto;
+}
+.service-feedback-link {
+  display: inline-flex;
+  min-height: var(--ds-control-height-md);
+  align-items: center;
+  padding: 0 var(--ds-space-2);
+  border-radius: var(--ds-radius-control);
+  color: var(--ds-color-action);
+  font-size: var(--ds-text-caption);
+  font-weight: var(--ds-weight-strong);
+  white-space: nowrap;
+  text-decoration: none;
+}
+.service-feedback-link:hover { background: var(--ds-color-action-soft); }
+.service-feedback-link:focus-visible { outline: 3px solid var(--ds-color-action); outline-offset: 2px; }
+@media (max-width: 420px) {
+  .service-header-actions .service-login-status { display: none; }
+  .service-header-actions .service-session-retry { max-width: 100px; }
+  .service-header-actions .service-user-control { gap: var(--ds-space-1); }
+}
+@media (min-width: 768px) and (max-width: 1023px) {
+  .service-header-actions .service-login-status { display: none; }
+}
 .service-user-control {
   display: flex;
   min-width: 0;
@@ -261,175 +282,9 @@ a {
 .service-logout-button:disabled { cursor: wait; opacity: .6; }
 .service-login-link:focus-visible,
 .service-logout-button:focus-visible,
-.service-session-retry:focus-visible,
-.user-login-page a:focus-visible,
-.user-login-page button:focus-visible {
+.service-session-retry:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
-}
-
-.user-login-page {
-  min-height: 100dvh;
-  background: #f5f7f5;
-  color: #182b28;
-}
-
-.user-login-header {
-  display: flex;
-  height: 68px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 clamp(20px, 5vw, 72px);
-  border-bottom: 1px solid #e7ece9;
-  background: #fff;
-}
-
-.user-login-back {
-  color: #435751;
-  font-size: 14px;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.user-login-back:hover { text-decoration: underline; }
-
-.user-login-main {
-  display: grid;
-  width: min(1080px, calc(100% - 48px));
-  min-height: min(650px, calc(100dvh - 132px));
-  grid-template-columns: 1.02fr 0.98fr;
-  margin: 32px auto;
-  overflow: hidden;
-  border: 1px solid #e2e9e4;
-  border-radius: 18px;
-  background: #fff;
-  box-shadow: 0 16px 48px rgb(20 52 38 / 5%);
-}
-
-.user-login-intro {
-  position: relative;
-  min-height: 600px;
-  overflow: hidden;
-  padding: clamp(40px, 5vw, 64px);
-  background: #164735;
-  color: #fff;
-}
-
-.user-login-intro h1 {
-  position: relative;
-  z-index: 1;
-  margin: 0;
-  font-size: clamp(33px, 3.2vw, 42px);
-  font-weight: 700;
-  letter-spacing: -.05em;
-  line-height: 1.24;
-}
-
-.user-login-product-preview {
-  position: absolute;
-  bottom: 0;
-  left: clamp(40px, 5vw, 64px);
-  display: block;
-  width: max(500px, 120%);
-  max-width: none;
-  height: auto;
-  transform: translateY(64px);
-  border-radius: 16px;
-  box-shadow: 0 18px 48px rgb(5 33 20 / 24%);
-}
-
-.user-login-panel {
-  display: grid;
-  min-height: 600px;
-  padding: clamp(36px, 5vw, 72px);
-  place-items: center;
-}
-
-.user-login-content { width: min(100%, 352px); }
-.user-login-content h2 {
-  margin: 0 0 10px;
-  font-size: 32px;
-  letter-spacing: -.04em;
-}
-.user-login-content > p {
-  margin: 0;
-  color: #65736e;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.user-login-actions {
-  display: grid;
-  gap: 12px;
-  margin-top: 32px;
-}
-
-.user-login-provider,
-.user-login-map-link {
-  display: grid;
-  min-height: 54px;
-  grid-template-columns: 24px 1fr 24px;
-  align-items: center;
-  gap: 10px;
-  padding: 0 16px;
-  border: 1px solid #d7dfda;
-  border-radius: 12px;
-  font-size: 15px;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.user-login-provider::after { content: ''; }
-.user-login-provider span { text-align: center; }
-.user-login-provider-icon { width: 20px; height: 20px; object-fit: contain; }
-.user-login-provider--kakao { border-color: #fee500; background: #fee500; color: rgb(0 0 0 / 85%); }
-.user-login-provider--google { border-color: #747775; background: #fff; color: #1f1f1f; }
-.user-login-provider:hover { box-shadow: 0 3px 12px rgb(28 58 46 / 13%); }
-.user-login-map-link {
-  display: flex;
-  margin-top: 28px;
-  background: #277259;
-  color: #fff;
-}
-.user-login-map-link:hover { background: #1e6049; }
-.user-login-logout {
-  display: block;
-  margin: 22px auto 0;
-  padding: 8px;
-  border: 0;
-  background: transparent;
-  color: #52635a;
-  cursor: pointer;
-  text-decoration: underline;
-}
-.user-login-logout:disabled { cursor: wait; opacity: .6; }
-.user-login-content .user-login-note { margin-top: 24px; font-size: 12px; text-align: center; }
-.user-login-content .user-login-alert {
-  margin-top: 16px;
-  padding: 12px;
-  border-radius: 8px;
-  background: #fff0ed;
-  color: #9c3322;
-}
-
-@media (max-width: 480px) {
-  .user-login-header { padding: 0 20px; }
-}
-
-@media (max-width: 760px) {
-  .user-login-main {
-    width: 100%;
-    min-height: calc(100dvh - 68px);
-    grid-template-columns: 1fr;
-    margin: 0;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-  }
-  .user-login-intro { min-height: 280px; padding: 34px 24px; }
-  .user-login-intro h1 { font-size: 29px; }
-  .user-login-product-preview { left: 24px; width: 450px; transform: translateY(110px); }
-  .user-login-panel { min-height: 420px; padding: 48px 24px; place-items: start center; }
 }
 
 .map-main {
@@ -507,6 +362,7 @@ a {
   align-items: center;
   gap: 4px;
   padding: 4px var(--list-inset);
+  padding-left: var(--list-start-inset, var(--list-inset));
   min-height: 45px;
   border-bottom: 1px solid var(--list-divider);
   color: var(--list-text);
@@ -610,7 +466,8 @@ a {
 
 .housing-results__browse,
 .housing-results__panel,
-.housing-results__body {
+.housing-results__body,
+.housing-results__content {
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -646,13 +503,14 @@ a {
 .housing-results__list > li + li::before {
   display: block;
   margin: 0 var(--list-inset);
+  margin-left: var(--list-start-inset, var(--list-inset));
   border-top: 1px solid var(--list-divider);
   content: "";
 }
 
 .housing-results__scroll > :not(.housing-results__list) {
   margin-right: var(--list-inset);
-  margin-left: var(--list-inset);
+  margin-left: var(--list-start-inset, var(--list-inset));
 }
 
 .housing-results__scroll > :first-child:not(.housing-results__list) {
@@ -753,6 +611,28 @@ a {
   min-height: 0;
 }
 
+.housing-map-base {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.housing-map-filter[hidden], .housing-map-feedback[hidden] { display: none; }
+
+/* Keep focus navigation inside the viewer from scrolling the fixed app shell. */
+.app-shell:has(.has-street-view) { overflow: clip; }
+
+.housing-street-view-layer {
+  position: absolute;
+  z-index: 340;
+  inset: 0 0 0 calc(var(--explorer-search-width) + var(--explorer-gutter) + var(--explorer-panel-gap));
+  min-width: 0;
+  min-height: 0;
+}
+
+
 .housing-map-filter {
   position: absolute;
   z-index: 200;
@@ -795,30 +675,10 @@ a {
   outline-offset: 2px;
 }
 
-.housing-map-notice {
-  position: absolute;
-  z-index: 4;
-  right: 16px;
-  bottom: 16px;
-  display: flex;
-  width: min(360px, calc(100% - 32px));
-  padding: 16px;
-  border: 1px solid #bd2c0f;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #8a240f;
-  flex-direction: column;
-}
-
-.housing-map-notice span {
-  margin-top: 4px;
-  color: #464c53;
-  line-height: 1.5;
-}
-
 .housing-detail-layer {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
+  height: auto;
   position: absolute;
   z-index: 300;
   top: 14px;
@@ -828,6 +688,10 @@ a {
   max-width: 440px;
   min-width: 0;
   min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
 }
 
 .housing-detail-back {
@@ -870,38 +734,13 @@ a {
 .housing-recent button {
   width: 100%;
   border: 0;
-  padding: 12px;
+  padding: var(--ds-space-3);
   background: transparent;
   color: inherit;
   font-family: inherit;
   line-height: 1.5;
   text-align: left;
   cursor: pointer;
-}
-
-.housing-recent__toggle {
-  display: inline-flex;
-  min-height: 36px;
-  margin-left: auto;
-  padding: 0;
-  border: 0;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  color: var(--ds-color-label);
-  font: inherit;
-  font-size: 13px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.housing-recent__toggle:hover { color: var(--ds-color-action); }
-.housing-recent__toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.housing-recent__count { color: var(--ds-color-action); }
-.housing-recent__toggle svg { width: 14px; height: 14px; }
-
-.housing-recent__toggle[aria-expanded="true"] svg {
-  transform: rotate(180deg);
 }
 
 .housing-recent ul {
@@ -922,7 +761,7 @@ a {
 .housing-recent li:first-child button { border-top: 0; }
 
 .housing-recent__name {
-  font-size: 15px;
+  font-size: var(--ds-text-control-lg);
   font-weight: 700;
   overflow-wrap: anywhere;
 }
@@ -930,7 +769,7 @@ a {
 .housing-recent__address {
   grid-column: 1 / -1;
   color: var(--list-muted, #777c84);
-  font-size: 13px;
+  font-size: var(--ds-text-caption);
   overflow-wrap: anywhere;
 }
 
@@ -1095,29 +934,66 @@ a {
 
 .housing-map-marker {
   --marker-border: #333333;
+  --marker-background: #333333;
+  --marker-text: #ffffff;
+  --marker-expanded-width: max(150px, var(--marker-width, 92px));
+  --marker-motion-duration: 150ms;
+  --marker-motion-easing: cubic-bezier(0.2, 0.7, 0.3, 1);
   position: relative;
-  display: flex;
+  display: block;
   flex: none;
-  flex-direction: column;
-  width: var(--marker-width, 112px);
-  height: 60px;
+  width: var(--marker-width, 92px);
+  height: 54px;
   padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Noto Sans KR", sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.housing-map-marker__card {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
+  width: var(--marker-expanded-width);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #1c2b3d;
+  white-space: nowrap;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+/* The viewport reveals fixed-size content; glyphs never translate, scale, or fade. */
+.housing-map-marker__content {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  clip-path: inset(calc(100% - 52px) calc(100% - var(--marker-width, 92px) + 2px) 0 0 round 5px);
+  pointer-events: auto;
+}
+
+.housing-map-marker__surface {
+  position: absolute;
+  bottom: -1px;
+  left: -1px;
+  z-index: -1;
+  box-sizing: border-box;
+  width: var(--marker-width, 92px);
+  height: 54px;
   border: 1px solid var(--marker-border);
   border-radius: 6px;
   background: #ffffff;
-  color: #1c2b3d;
   box-shadow: 0 2px 3px #0000000a;
-  font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Noto Sans KR", sans-serif;
-  text-align: left;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  pointer-events: none;
 }
 
-.housing-map-marker::after {
+.housing-map-marker__card::after {
   position: absolute;
   bottom: -4px;
-  left: calc(50% - 3.5px);
+  left: calc(var(--marker-anchor-x, 16px) - 4.5px);
   box-sizing: border-box;
   width: 7px;
   height: 7px;
@@ -1131,76 +1007,98 @@ a {
 }
 
 .housing-map-marker__top {
+  display: flex;
+  grid-area: 1 / 1;
+  flex-direction: column;
+  padding: 4px 5px;
+  border-radius: 5px 5px 0 0;
+  color: var(--marker-text);
+  visibility: hidden;
+  background: var(--marker-background);
+}
+
+.housing-map-marker__compact {
+  position: absolute;
+  bottom: 36px;
+  left: 0;
+  box-sizing: border-box;
+  display: block;
+  width: calc(var(--marker-width, 92px) - 2px);
+  padding-inline: 5px;
+  border-radius: 5px 5px 0 0;
+  background: var(--marker-background);
+  visibility: visible;
+}
+
+.housing-map-marker__metadata {
+  position: relative;
+  box-sizing: border-box;
   display: grid;
   flex: none;
-  grid-template-columns: 36px 36px;
-  height: 18px;
+  grid-template-columns: minmax(0, max-content) minmax(0, max-content);
+  height: 16px;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 1px 6px;
-  border-bottom: 1px solid #e2e8f0;
-  border-radius: 5px 5px 0 0;
-  background: #333333;
-  color: #ffffff;
-  transition: background-color 150ms ease;
+  gap: 6px;
 }
 
 .housing-map-marker__name {
   display: block;
-  width: 36px;
+  min-width: 0;
   overflow: hidden;
   font-size: 12px;
   font-weight: 550;
-  line-height: 15px;
+  line-height: 16px;
   text-align: center;
   text-overflow: ellipsis;
 }
 
-.housing-map-marker__top[data-missing-summary] {
+.housing-map-marker__metadata[data-missing-summary] {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.housing-map-marker__top[data-missing-position] {
+.housing-map-marker__metadata[data-missing-position] {
   gap: 3px;
   padding-inline: 4px;
 }
 
-.housing-map-marker__top[data-missing-position="first"] {
+.housing-map-marker__metadata[data-missing-position="first"] {
   grid-template-columns: auto minmax(0, 1fr);
 }
 
-.housing-map-marker__top[data-missing-position="last"] {
+.housing-map-marker__metadata[data-missing-position="last"] {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.housing-map-marker__top[data-missing-summary] .housing-map-marker__name,
-.housing-map-marker__top[data-missing-position] .housing-map-marker__name {
+.housing-map-marker__metadata[data-missing-summary] .housing-map-marker__name,
+.housing-map-marker__metadata[data-missing-position] .housing-map-marker__name {
   width: auto;
 }
 
 .housing-map-marker__body {
   box-sizing: border-box;
   display: grid;
+  grid-area: 2 / 1;
   flex: none;
   width: 100%;
-  gap: 2px;
-  padding: 2px 6px;
+  gap: 0;
+  padding: 2px 5px;
 }
 
 .housing-map-marker__row {
   display: grid;
+  width: calc(var(--marker-width, 92px) - 12px);
   grid-template-columns: 11px minmax(0, 1fr);
   align-items: baseline;
   column-gap: 4px;
-  line-height: 17px;
+  line-height: 16px;
 }
 
 .housing-map-marker__label {
   color: #566577;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 550;
-  line-height: 15px;
+  line-height: 16px;
 }
 
 .housing-map-marker__amount {
@@ -1208,7 +1106,8 @@ a {
   grid-template-columns: minmax(max-content, 1fr) max-content 8px;
   align-items: baseline;
   column-gap: 1px;
-  font-size: 14px;
+  font-size: 12px;
+  line-height: 16px;
   font-weight: 750;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.25px;
@@ -1235,71 +1134,153 @@ a {
   text-align: right;
 }
 
-.housing-map-marker:hover,
-.housing-map-marker.is-highlighted {
-  --marker-border: var(--ds-color-action);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--ds-color-action) 20%, transparent),
-    0 4px 12px rgb(18 37 47 / 20%);
+.housing-map-marker[data-application-status="BEFORE_APPLICATION"] {
+  --marker-border: var(--ds-color-status-upcoming);
+  --marker-background: var(--ds-color-status-upcoming);
 }
 
-.housing-map-marker:hover .housing-map-marker__top,
-.housing-map-marker.is-highlighted .housing-map-marker__top {
-  border-bottom-color: var(--ds-color-action);
-  background: var(--ds-color-action-soft);
-  color: var(--ds-color-action);
+.housing-map-marker[data-application-status="APPLYING"] {
+  --marker-border: var(--ds-color-status-applying);
+  --marker-background: var(--ds-color-status-applying);
 }
 
 .housing-map-marker.is-selected {
   --marker-border: var(--ds-color-action);
+  --marker-background: var(--ds-color-brand);
+  --marker-text: var(--ds-color-on-brand);
 }
 
-.housing-map-marker.is-selected .housing-map-marker__top {
-  border-bottom-color: var(--ds-color-action);
-  background: var(--ds-color-brand);
-  color: var(--ds-color-on-brand);
+.housing-map-marker__title-reveal,
+.housing-map-marker__details {
+  display: block;
+  visibility: hidden;
+}
+
+.housing-map-marker__title,
+.housing-map-marker__detail-content {
+  min-height: 0;
+  width: calc(var(--marker-expanded-width) - 12px);
+  overflow: hidden;
+}
+
+.housing-map-marker__title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 15px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.housing-map-marker__area {
+  display: block;
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.housing-map-marker__summary-row {
+  display: flex;
+  min-height: 16px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.housing-map-marker__summary {
+  min-width: 0;
+  color: #566577;
+  font-size: 12px;
+  line-height: 17px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.housing-map-marker__agency[data-agency='LH'] { color: var(--ds-color-agency-lh); }
+.housing-map-marker__agency[data-agency='SH'] { color: var(--ds-color-agency-sh); }
+.housing-map-marker__agency[data-agency='GH'] { color: var(--ds-color-agency-gh); }
+
+.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__content {
+  clip-path: inset(0 0 0 0 round 5px);
+  transition: clip-path var(--marker-motion-duration) var(--marker-motion-easing);
+}
+
+.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__surface {
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  box-shadow: 0 4px 12px rgb(18 37 47 / 18%);
+  transition:
+    width var(--marker-motion-duration) var(--marker-motion-easing),
+    height var(--marker-motion-duration) var(--marker-motion-easing),
+    box-shadow var(--marker-motion-duration) var(--marker-motion-easing);
+}
+
+.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__top {
+  visibility: visible;
+}
+
+.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__compact {
+  visibility: hidden;
+}
+
+.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__title-reveal,
+.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__details {
+  visibility: visible;
+}
+
+.housing-map-marker:is(:hover, :focus-visible, .is-highlighted) .housing-map-marker__row {
+  width: 100%;
+}
+
+.housing-map-marker__details {
+  margin-bottom: 3px;
+}
+
+.housing-map-marker__status {
+  flex: none;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--ds-color-status-upcoming-surface);
+  color: var(--ds-color-status-upcoming);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+}
+
+.housing-map-marker[data-application-status="APPLYING"] .housing-map-marker__status {
+  background: var(--ds-color-status-applying-surface);
+  color: var(--ds-color-status-applying);
 }
 
 .housing-map-marker:focus-visible {
-  outline: 4px solid var(--ds-color-action);
+  outline: none;
+}
+
+.housing-map-marker:focus-visible .housing-map-marker__card {
+  outline: 3px solid var(--ds-color-action);
   outline-offset: 3px;
 }
 
 .housing-map-aggregate {
   position: relative;
   display: grid;
-  width: 104px;
-  min-height: 60px;
+  width: 92px;
+  min-height: 52px;
   padding: 0;
   overflow: visible;
   border: 2px solid rgb(255 255 255 / 96%);
-  border-radius: 12px;
+  border-radius: 6px;
   background: #172b4d;
-  box-shadow: 0 7px 16px rgb(18 37 47 / 28%);
+  box-shadow: 0 3px 8px rgb(18 37 47 / 20%);
   color: #ffffff;
   line-height: 1;
   place-items: center;
-  transform: translateY(-4px);
   transition: box-shadow 130ms ease, transform 130ms ease;
 }
 
-.housing-map-aggregate::after {
-  position: absolute;
-  bottom: -7px;
-  left: 50%;
-  width: 12px;
-  height: 12px;
-  transform: translateX(-50%) rotate(45deg);
-  border-right: 2px solid rgb(255 255 255 / 96%);
-  border-bottom: 2px solid rgb(255 255 255 / 96%);
-  border-radius: 0 0 3px;
-  background: #172b4d;
-  content: "";
-}
-
 .housing-map-aggregate:hover {
-  box-shadow: 0 10px 20px rgb(18 37 47 / 34%);
-  transform: translateY(-7px);
+  box-shadow: 0 5px 12px rgb(18 37 47 / 26%);
 }
 
 .housing-map-aggregate__label,
@@ -1309,16 +1290,16 @@ a {
 }
 
 .housing-map-aggregate__label {
-  max-width: 92px;
+  max-width: 80px;
   overflow: hidden;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .housing-map-aggregate__count {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 900;
 }
 
@@ -1553,7 +1534,6 @@ a {
 
   .housing-explorer.has-detail .housing-results,
   .housing-explorer.has-detail .map-region,
-  .housing-explorer.has-detail .housing-map-notice,
   .housing-explorer.has-detail .housing-map-credits {
     visibility: hidden;
   }
@@ -1584,12 +1564,17 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .housing-map-marker {
+    --marker-motion-duration: 0s;
+  }
+
   .housing-marker-enter {
     animation: none;
   }
 
-  .housing-map-marker,
-  .housing-map-marker__top {
+  .housing-map-marker__content,
+  .housing-map-marker__surface,
+  .housing-map-aggregate {
     transition: none;
   }
 
@@ -1903,6 +1888,7 @@ button {
 
 .data-pipeline-actions {
   display: flex;
+  flex-wrap: wrap;
   flex: 0 0 auto;
   gap: 10px;
 }
@@ -1940,6 +1926,10 @@ button {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: #f8fafc;
+}
+
+.data-pipeline-result-combined {
+  grid-column: 1 / -1;
 }
 
 .data-pipeline-result h4 {
@@ -2292,11 +2282,6 @@ button {
 .admin-navigation a:focus-visible { outline: 3px solid #8abfb3; outline-offset: 2px; }
 .admin-mode-switch { display: flex; gap: 8px; }
 .admin-mode-switch button[aria-pressed="true"] { background: #17685b; color: #fff; border-color: #17685b; }
-.admin-next-action { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 20px; background: #eaf5f0; border: 1px solid #b4d8ca; border-radius: 10px; }
-.admin-next-action a, .admin-complex-select a { color: #17685b; font-weight: 600; }
-.admin-complex-select { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
-.admin-complex-select label { display: grid; gap: 8px; }
-.admin-complex-select input { min-height: 42px; border: 1px solid #b6c7c1; border-radius: 6px; padding: 8px 12px; }
 .pipeline-work-caption { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
 .pipeline-eta { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin: 12px 0; padding: 14px 16px; border-radius: 8px; background: #edf5f2; color: #245e50; }
 .pipeline-eta strong { font-size: 1.2rem; font-variant-numeric: tabular-nums; }
@@ -2307,3 +2292,394 @@ button {
   .admin-header-account { width: 100%; justify-content: space-between; }
   .admin-header button { white-space: nowrap; flex-shrink: 0; }
 }
+
+/* Map explorer: fixed navigation rail and floating controls. */
+.app-shell {
+  --explorer-rail-width: 60px;
+  --explorer-search-width: var(--explorer-panel-width);
+  --explorer-top: var(--explorer-gutter);
+  font-size: var(--ds-text-body);
+  grid-template-columns: var(--explorer-rail-width) minmax(0, 1fr);
+}
+.app-shell::before {
+  position: absolute; inset: 0 auto 0 0; width: var(--explorer-rail-width);
+  border-right: 1px solid var(--ds-color-divider); background: var(--ds-color-surface); content: "";
+}
+.app-shell .map-main { grid-column: 2; }
+.service-rail-brand {
+  position: absolute; z-index: 410; top: 14px; left: 0;
+  display: flex; width: var(--explorer-rail-width); justify-content: center;
+}
+.service-rail-brand .brand-logo { display: block; width: 44px; height: 44px; object-fit: contain; }
+.service-rail-brand .brand-name, .service-rail-brand .brand-tagline { display: none; }
+.service-rail-account {
+  position: absolute; z-index: 410; bottom: 22px; left: 6px;
+  width: calc(var(--explorer-rail-width) - 12px);
+}
+/* Preserve the feedback entry point inside the narrow navigation rail. */
+.service-rail-account .service-feedback-link {
+  width: 100%; padding: 8px 2px; justify-content: center; text-align: center;
+  white-space: normal; word-break: keep-all; font-size: 10px;
+}
+.service-rail-account .service-user-control { margin: 0; flex-direction: column; gap: 8px; }
+.service-rail-account .service-login-link {
+  display: flex; min-width: 0; width: 100%; height: auto; min-height: 52px; font-size: 10px;
+  padding: 10px 4px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--ds-color-label); flex-direction: column; align-items: center; gap: 6px;
+}
+.service-rail-account .service-login-link::before {
+  content: ""; width: 20px; height: 20px; background: currentcolor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke='black' stroke-width='1.6'%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3Cpath d='M4 22v-2a8 8 0 0 1 16 0v2'/%3E%3C/g%3E%3C/svg%3E") center / contain;
+}
+.service-rail-account .service-login-link:hover { background: var(--ds-color-action-soft); }
+.service-rail-account .service-user-loading { text-align: center; font-size: 11px; }
+.app-shell .housing-explorer { position: relative; display: block; width: 100%; height: 100%; }
+.app-shell .housing-map-workspace { width: 100%; height: 100%; }
+.housing-navigation {
+  position: fixed; z-index: 410; top: 70px; left: 6px;
+  width: calc(var(--explorer-rail-width, 60px) - 12px);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.housing-navigation .housing-results__tabs button {
+  display: flex; width: 100%; min-height: 56px; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px; padding: 8px 4px;
+  border: 1px solid transparent; border-radius: 12px;
+  background: transparent; color: var(--ds-color-label); text-decoration: none;
+  font-size: 11px; font-weight: 650;
+}
+.housing-navigation .housing-results__tabs svg { width: 20px; height: 20px; }
+.housing-navigation__multiline-label { white-space: nowrap; line-height: 1.4; }
+.housing-navigation .housing-results__tabs { display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; }
+.housing-navigation .housing-results__tabs button.is-active {
+  border-color: var(--ds-color-action); background: var(--ds-color-action-soft); color: var(--ds-color-action);
+}
+.housing-search-overlay {
+  position: absolute; z-index: 350; top: var(--explorer-top, 20px); left: 20px;
+  width: min(var(--explorer-search-width, 360px), calc(100% - 40px));
+  max-height: calc(100% - 40px); display: flex; flex-direction: column; pointer-events: none;
+}
+.housing-search-overlay .integrated-search { width: 100%; min-height: 0; padding: 0; background: transparent; pointer-events: auto; }
+.housing-search-overlay .integrated-search__input {
+  height: calc(var(--explorer-ui-unit) * 3.25); border: 1px solid var(--ds-color-brand); border-radius: 999px;
+  background: var(--ds-color-surface); box-shadow: 0 3px 14px rgb(20 35 25 / 12%);
+}
+.housing-search-overlay .integrated-search.is-active {
+  padding-bottom: 8px; border-radius: 26px 26px 14px 14px; background: var(--ds-color-surface);
+  box-shadow: 0 6px 24px rgb(20 35 25 / 16%);
+}
+.housing-search-overlay .integrated-search__body { max-height: calc(100dvh - 190px); border-radius: 0 0 14px 14px; }
+.housing-search-overlay .integrated-search.is-active > div:first-child > div { padding-inline: 16px; }
+
+.app-shell .housing-explorer { --explorer-panel-top: calc(var(--explorer-search-bottom, 72px) + var(--explorer-gutter)); }
+.app-shell .housing-results {
+  position: absolute; z-index: 250; top: var(--explorer-panel-top); bottom: 20px; left: 20px;
+  width: min(var(--explorer-search-width), calc(100% - 40px)); padding-top: 0;
+  border: 1px solid var(--ds-color-divider); border-radius: 14px; overflow: hidden;
+  box-shadow: 0 6px 24px rgb(20 35 25 / 16%);
+}
+.app-shell .housing-results[hidden] { display: none; }
+.housing-results__region-notice {
+  flex-shrink: 0; margin: 0; padding: 16px 20px 12px var(--list-start-inset, 20px);
+  border-bottom: 1px solid var(--ds-color-divider); color: var(--ds-color-muted);
+  font-size: var(--ds-text-caption); line-height: 1.55;
+}
+.housing-results__region-notice strong { color: var(--ds-color-text); margin-right: 4px; }
+.app-shell .housing-map-filter {
+  top: var(--explorer-top); right: var(--explorer-gutter); bottom: var(--explorer-gutter); left: calc(var(--explorer-search-width) + 2 * var(--explorer-gutter));
+}
+.app-shell .housing-map-filter:has([aria-expanded="true"]) { z-index: 500; }
+.app-shell .housing-explorer.has-detail .housing-map-filter { visibility: visible; pointer-events: none; }
+.app-shell .housing-detail-layer {
+  position: absolute; right: auto; margin: 0;
+  top: var(--explorer-panel-top); bottom: var(--explorer-gutter); left: var(--explorer-gutter);
+  width: min(var(--explorer-search-width), calc(100% - 2 * var(--explorer-gutter))); max-width: none;
+  transition: left 220ms ease-out;
+}
+.app-shell .has-results-page .housing-detail-layer {
+  left: calc(var(--explorer-search-width) + 2 * var(--explorer-gutter) + var(--explorer-panel-gap));
+  width: min(var(--explorer-search-width), calc(100% - var(--explorer-search-width) - 3 * var(--explorer-gutter) - var(--explorer-panel-gap)));
+}
+
+.housing-map-feedback { position: absolute; z-index: 190; right: 20px; bottom: 60px; max-width: min(360px, calc(100% - 40px)); }
+@media (max-width: 767px) {
+  .app-shell { --explorer-rail-width: 52px; --explorer-top: 12px; --explorer-gutter: 10px; }
+  .app-shell .housing-explorer { --explorer-panel-top: calc(var(--explorer-search-bottom, 60px) + 64px); }
+  .service-rail-brand { top: 18px; }
+  .service-rail-brand .brand-logo { width: 38px; height: 38px; }
+  .housing-navigation { top: 62px; }
+  .housing-navigation .housing-results__tabs button { min-height: 52px; font-size: 10px; }
+  .housing-search-overlay { left: 10px; width: calc(100% - 20px); }
+  .housing-search-overlay .integrated-search__input { height: 48px; padding-inline: 12px; }
+  .housing-search-overlay .integrated-search__input input { font-size: var(--ds-text-body); }
+  .app-shell .housing-map-filter { top: calc(var(--explorer-search-bottom, 60px) + 10px); left: 10px; right: 10px; }
+  .app-shell .housing-results, .app-shell .housing-detail-layer { left: 10px; bottom: 10px; width: calc(100% - 20px); }
+  .app-shell .housing-explorer.has-detail .map-region { display: block; visibility: visible; }
+  .app-shell .housing-explorer.has-detail .housing-map-credits { display: block; visibility: visible; }
+  .app-shell .housing-explorer:has(#announcement-results-panel:not([hidden]) #announcement-search-filter-panel) { display: block; }
+  .app-shell .housing-explorer:not(.has-detail):has(.housing-results__browse:not([hidden]) #announcement-results-panel:not([hidden]) #announcement-search-filter-panel) .housing-map-workspace { display: flex; visibility: visible; }
+}
+.service-rail-account .service-session-retry { width: 100%; padding: 10px 4px; font-size: 12px; word-break: keep-all; }
+.service-account-menu { width: 100%; }
+.service-account-menu summary { cursor: pointer; list-style: none; font-size: 12px; white-space: nowrap; }
+.service-account-menu summary::-webkit-details-marker { display: none; }
+.service-account-menu__panel {
+  position: absolute; bottom: 0; left: calc(100% + 12px); display: flex;
+  width: 210px; align-items: center; justify-content: space-between; gap: 12px; padding: 20px;
+  border: 1px solid var(--ds-color-divider); border-radius: 12px;
+  background: var(--ds-color-surface); box-shadow: 0 6px 24px rgb(20 35 25 / 16%);
+}
+.housing-search-overlay [aria-label="검색 지역 표시"] { margin-top: 8px; padding-inline: 12px; border-radius: 10px; box-shadow: 0 3px 14px rgb(20 35 25 / 10%); }
+@media (max-width: 767px) {
+  .service-rail-account .service-session-retry { font-size: 11px; }
+}
+
+
+@media (min-width: 768px) {
+  .housing-explorer { --list-start-inset: var(--ds-space-2); }
+}
+
+/* Keep search anchored while the page surface and its list slide in and out. */
+.app-shell .housing-browse-panel {
+  position: absolute; z-index: 350; inset: 0 auto 0 0;
+  display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  width: min(calc(var(--explorer-search-width) + 2 * var(--explorer-gutter)), 100%);
+  pointer-events: none; clip-path: inset(0);
+}
+.housing-browse-panel::before {
+  position: absolute; inset: 0; z-index: -1; content: "";
+  background: var(--ds-color-surface); border-right: 1px solid var(--ds-color-divider);
+  transform: translateX(-100%); visibility: hidden;
+  transition: transform 220ms ease-out, visibility 0s 220ms;
+}
+.has-results-page .housing-browse-panel::before {
+  transform: translateX(0); visibility: visible; transition-delay: 0s;
+}
+.app-shell .housing-browse-panel .housing-search-overlay {
+  position: relative; inset: auto; flex: 0 0 auto;
+  width: 100%; max-height: 100%; padding: var(--explorer-top) var(--explorer-gutter) 0 var(--list-start-inset, var(--explorer-gutter)); box-sizing: border-box;
+}
+.app-shell .has-results-page .housing-search-overlay .integrated-search__input { box-shadow: none; }
+.app-shell .has-results-page .housing-search-overlay [aria-label="검색 지역 표시"] {
+  margin-top: 0; padding-inline: 0; border-radius: 0; box-shadow: none;
+}
+.app-shell .housing-browse-panel .housing-results {
+  position: relative; inset: auto; z-index: auto; flex: 1 1 0;
+  display: flex; width: 100%; margin-top: 12px; border: 0; border-radius: 0; box-shadow: none;
+  pointer-events: auto; transform: translateX(0); visibility: visible;
+  transition: transform 220ms ease-out, visibility 0s;
+}
+.app-shell .housing-browse-panel .housing-results[aria-hidden="true"] {
+  transform: translateX(-100%); visibility: hidden; pointer-events: none;
+  transition-delay: 0s, 220ms;
+}
+.housing-results__page-header {
+  display: flex; flex-shrink: 0; align-items: center; justify-content: space-between;
+  min-height: 48px; padding: 0 14px 0 var(--list-start-inset, 20px);
+  border-bottom: 1px solid var(--ds-color-divider);
+}
+.housing-results__page-header h2 { margin: 0; font-size: var(--ds-text-section); font-weight: 700; }
+.housing-results__collapse {
+  display: grid; place-items: center; width: 32px; height: 32px;
+  padding: 0; border: 0; border-radius: 6px; background: transparent;
+  color: var(--ds-color-label); cursor: pointer;
+}
+.housing-results__collapse svg { width: 20px; height: 20px; }
+.housing-results__collapse:hover { color: var(--ds-color-action); background: var(--ds-color-action-soft); }
+.housing-results__collapse:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
+.housing-results__empty-region { padding: 32px 20px 32px var(--list-start-inset, 20px); }
+.housing-results__empty-region strong { font-size: var(--ds-text-section); }
+.housing-results__empty-region p { color: var(--ds-color-muted); font-size: var(--ds-text-body); line-height: 1.6; }
+.housing-results__empty-region button {
+  margin-top: 8px; padding: 10px 16px; border: 1px solid var(--ds-color-divider); border-radius: 8px;
+  color: var(--ds-color-action); background: var(--ds-color-surface); cursor: pointer;
+}
+/* Slide the page over a stable map viewport; resizing the GL canvas repaints and queries on every frame. */
+.app-shell .has-results-page .housing-map-filter {
+  top: var(--explorer-top); left: calc(var(--explorer-search-width) + 3 * var(--explorer-gutter)); right: var(--explorer-gutter);
+}
+@media (min-width: 768px) {
+  .app-shell .housing-explorer .housing-detail-layer {
+    z-index: 360;
+    top: var(--explorer-panel-top);
+    left: var(--list-start-inset);
+    width: min(
+      calc(var(--explorer-search-width) + var(--explorer-gutter) - var(--list-start-inset)),
+      calc(100% - var(--explorer-gutter) - var(--list-start-inset))
+    );
+    visibility: visible;
+  }
+}
+@media (min-width: 1024px) {
+  .app-shell .housing-explorer.has-results-page .housing-detail-layer {
+    top: var(--explorer-top);
+    left: calc(var(--explorer-search-width) + 2 * var(--explorer-gutter) + var(--explorer-panel-gap));
+    width: min(var(--explorer-search-width), calc(100% - var(--explorer-search-width) - 3 * var(--explorer-gutter) - var(--explorer-panel-gap)));
+  }
+  .app-shell .housing-explorer.has-results-page.has-detail .housing-map-filter {
+    left: calc(2 * var(--explorer-search-width) + 2 * var(--explorer-gutter) + 2 * var(--explorer-panel-gap));
+  }
+}
+.app-shell .has-results-page.is-searching .housing-search-overlay { flex: 1 1 0; padding-bottom: 0; }
+.app-shell .is-searching .housing-browse-panel .housing-results { display: none; }
+.app-shell .has-results-page .integrated-search.is-active {
+  flex: 1 1 0; min-height: 0; padding-bottom: 0; border-radius: 0; box-shadow: none;
+}
+.app-shell .has-results-page .integrated-search__body {
+  flex: 1 1 0; min-height: 0; max-height: none; margin-top: 12px; border-radius: 0;
+}
+.app-shell .has-results-page .integrated-search.is-active > div:first-child > div { padding-inline: 0; }
+.app-shell .has-results-page .integrated-search__results { border: 0; border-radius: 0; }
+@media (max-width: 767px) {
+  .app-shell .housing-browse-panel { width: 100%; }
+  .app-shell .housing-detail-layer { visibility: visible; transition: left 220ms ease-out, visibility 0s; }
+  .app-shell .has-results-page .housing-detail-layer {
+    left: calc(100% + 10px); width: calc(100% - 20px); visibility: hidden;
+    transition-delay: 0s, 220ms;
+  }
+  .app-shell .housing-browse-panel .housing-search-overlay { padding: 12px 10px 0; }
+  .app-shell .housing-browse-panel .housing-results { margin-top: 64px; }
+  .app-shell .has-results-page .housing-map-filter {
+    z-index: 400; top: calc(var(--explorer-search-bottom, 60px) + 10px); left: 10px; right: 10px;
+  }
+  .app-shell .has-results-page .housing-map-filter:has([aria-expanded="true"]) { z-index: 500; }
+  .app-shell .has-results-page.is-searching .housing-map-filter { visibility: hidden; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .housing-browse-panel::before,
+  .app-shell .housing-detail-layer,
+  .app-shell .has-results-page .housing-detail-layer,
+  .app-shell .housing-browse-panel .housing-results { transition: none; }
+}
+
+/* Mobile lists float over the stable map; details use the browser's modal layer. */
+@media (max-width: 767px) {
+  .app-shell {
+    --explorer-footer-height: calc(64px + env(safe-area-inset-bottom));
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) var(--explorer-footer-height);
+  }
+  .app-shell .map-main { grid-column: 1; grid-row: 1; }
+  .app-shell::before {
+    position: fixed; z-index: 600; inset: auto 0 0;
+    width: 100%; height: var(--explorer-footer-height);
+    border-right: 0; border-top: 1px solid var(--ds-color-divider);
+  }
+  .service-rail-brand,
+  .service-rail-account,
+  .housing-navigation {
+    position: fixed; z-index: 610; top: auto;
+    bottom: env(safe-area-inset-bottom); height: 64px;
+  }
+  .service-rail-brand { display: none; }
+  .service-rail-account { left: calc(200% / 3); width: calc(100% / 3); display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; padding-inline: 0; }
+  .service-rail-account .service-login-link { min-height: 56px; padding: 4px; gap: 4px; align-items: center; justify-content: center; text-align: center; }
+  .service-account-menu__panel { left: auto; right: 4px; bottom: calc(100% + 8px); }
+  .housing-navigation { left: 0; width: calc(200% / 3); justify-content: center; }
+  .housing-navigation .housing-results__tabs { flex-direction: row; gap: 0; }
+  .housing-navigation .housing-results__tabs button { width: 50%; min-height: 56px; padding: 4px; gap: 4px; margin-inline: 0; }
+  .housing-navigation__multiline-label { line-height: 1.2; }
+  .app-shell .housing-browse-panel {
+    z-index: 450;
+    clip-path: none;
+  }
+  .app-shell .housing-browse-panel::before { display: none; }
+  .app-shell .housing-browse-panel .housing-results {
+    --sheet-max-height: calc(100dvh - var(--explorer-footer-height) - max(80px, var(--explorer-search-bottom, 72px) + 12px));
+    position: fixed;
+    inset: auto 0 var(--explorer-footer-height);
+    width: 100%;
+    height: min(50dvh, var(--sheet-max-height));
+    max-height: var(--sheet-max-height);
+    margin: 0;
+    padding-bottom: 0;
+    border: 1px solid var(--ds-color-divider);
+    border-bottom: 0;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -4px 24px rgb(20 35 25 / 16%);
+    overflow: hidden;
+    transform: translateY(0);
+    transition: height 220ms ease-out, transform 220ms ease-out, visibility 0s;
+  }
+  .app-shell .housing-browse-panel .housing-results[data-snap="0"] {
+    height: 76px;
+  }
+  .app-shell .housing-browse-panel .housing-results[data-snap="2"] { height: var(--sheet-max-height); }
+  .app-shell .housing-browse-panel .housing-results[data-dragging="true"] {
+    height: var(--sheet-drag-height);
+    transition: none;
+  }
+  .app-shell .housing-browse-panel .housing-results[aria-hidden="true"] {
+    transform: translateY(100%);
+    transition-delay: 0s, 0s, 220ms;
+  }
+  .housing-results__sheet-handle {
+    display: grid;
+    flex: 0 0 28px;
+    place-items: center;
+    touch-action: none;
+    user-select: none;
+    cursor: ns-resize;
+  }
+  .housing-results__sheet-handle span { width: 40px; height: 4px; border-radius: 99px; background: #b9bec4; }
+  .housing-results__sheet-handle:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: -3px; }
+  .housing-results__content[aria-hidden="true"] { visibility: hidden; }
+  .housing-results__collapse { width: 44px; height: 44px; }
+  .housing-results__collapse svg { transform: rotate(-90deg); }
+  .housing-results[data-snap="0"] .housing-results__collapse svg { transform: rotate(90deg); }
+  .app-shell .has-results-page .housing-search-overlay .integrated-search__input {
+    box-shadow: 0 3px 14px rgb(20 35 25 / 12%);
+  }
+  .app-shell .has-results-page .housing-search-overlay [aria-label="검색 지역 표시"] {
+    margin-top: 8px; padding-inline: 10px; border-radius: 10px; box-shadow: 0 3px 14px rgb(20 35 25 / 10%);
+  }
+  .app-shell .has-results-page.is-searching .housing-search-overlay {
+    flex: 1 1 0;
+    max-height: calc(100dvh - var(--explorer-footer-height) - 24px);
+  }
+  .app-shell .has-results-page .integrated-search.is-active {
+    padding-bottom: 8px; border-radius: 24px 24px 14px 14px; box-shadow: 0 6px 24px rgb(20 35 25 / 16%);
+  }
+  .app-shell .housing-explorer .housing-detail-layer {
+    position: fixed;
+    inset: 50% auto auto 50%;
+    width: min(28rem, calc(100vw - 24px));
+    height: calc(100dvh - 32px);
+    max-height: calc(100dvh - 32px);
+    margin: 0;
+    visibility: visible;
+    transform: translate(-50%, -50%);
+    transition: none;
+    overflow: hidden;
+    border-radius: 16px;
+  }
+  .housing-detail-layer::backdrop { background: rgb(12 25 20 / 48%); }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .app-shell .housing-browse-panel .housing-results { transition: none; }
+}
+
+/* Member notifications share the account rail and fit beside it on mobile. */
+.service-notification-inbox {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 100%; min-height: 52px; gap: 6px; padding: 8px 0; box-sizing: border-box;
+  border: 0; background: transparent; cursor: pointer; font-family: inherit; border-radius: 10px; color: var(--ds-color-label); font-size: 10px; text-decoration: none; white-space: nowrap;
+}
+.service-notification-inbox svg { width: 20px; height: 20px; }
+.service-notification-inbox:hover { background: var(--ds-color-action-soft); }
+.service-notification-inbox:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
+.service-notification-management { display: block; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; padding: 10px 0; color: var(--ds-color-action); white-space: nowrap; }
+@media (max-width: 767px) {
+  .app-shell:has(.service-notification-inbox) .housing-navigation { width: 50%; }
+  .service-rail-account:has(.service-notification-inbox) { left: 50%; width: 50%; }
+  .service-rail-account > .service-feedback-link { display: none; }
+  .service-rail-account .service-user-control:has(.service-notification-inbox) { flex-direction: row; gap: 0; }
+  .service-rail-account .service-user-control[data-session="signed-in"] > :is(.service-notification-inbox, .service-login-link) { box-sizing: border-box; flex: 0 0 50%; width: 50%; min-width: 0; height: 56px; }
+  .service-notification-inbox { font-size: 11px; gap: 4px; }
+  .housing-navigation .housing-results__tabs { width: 100%; }
+  .housing-navigation .housing-results__tabs button, .service-rail-account .service-login-link { font-size: 11px; }
+}
+.service-account-menu__panel { flex-wrap: wrap; }
+.service-account-menu__panel .service-notification-management { flex: 0 0 100%; border-bottom: 1px solid var(--ds-color-divider); padding: 0 0 12px; }
+.service-account-menu__panel .service-login-status, .service-account-menu__panel .service-logout-button { white-space: nowrap; }
+
+.service-account-menu__panel .service-account-feedback { flex: 0 0 100%; padding: 0 0 12px; color: var(--ds-color-action); text-decoration: none; border-bottom: 1px solid var(--ds-color-divider); }

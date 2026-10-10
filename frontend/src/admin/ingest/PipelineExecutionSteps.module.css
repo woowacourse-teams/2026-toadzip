@@ -1,0 +1,19 @@
+.execution { min-width: 0; margin-top: var(--ds-space-4); }
+.heading { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-3); }
+.steps { display: flex; list-style: none; overflow-x: auto; padding: var(--ds-space-4) 0; margin: 0; }
+.steps li { flex: 1; min-width: 140px; position: relative; text-align: center; color: var(--ds-color-muted); }
+.steps li:not(:last-child)::after { content: ''; position: absolute; top: 22px; left: calc(50% + 22px);
+  width: calc(100% - 44px); height: 2px; background: var(--ds-color-border-base); }
+.execution .steps button { width: 100%; display: flex; flex-direction: column; align-items: center; gap: var(--ds-space-2);
+  padding: var(--ds-space-1); border: 0; background: transparent; color: inherit; }
+.execution .steps button:focus-visible, .execution .steps button[aria-pressed=true] { outline: 2px solid var(--ds-color-action); outline-offset: -2px; }
+.marker { display: grid; place-items: center; width: 36px; height: 36px; border: 2px solid currentColor;
+  border-radius: 50%; font-weight: var(--ds-weight-strong); background: var(--ds-color-surface); }
+.steps .running { color: var(--ds-color-status-applying); }
+.steps .success { color: var(--ds-color-action); }
+.steps .partial { color: var(--ds-color-status-upcoming); }
+.steps .failed { color: var(--ds-color-deadline); }
+.steps .skipped { color: var(--ds-color-status-neutral); }
+.steps .stopped { color: var(--ds-color-text); }
+.steps .waiting, .steps .unexecuted { color: var(--ds-color-muted); }
+.detail { padding: var(--ds-space-4); border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); }

@@ -1,7 +1,8 @@
 package com.toadzip.backend.ingest.mapping.service;
 
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
+import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingRejectedException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -25,14 +26,11 @@ class MyHomeComplexValueParser {
             Function<MyHomeComplexSource, String> extractor,
             String fieldName
     ) {
-        Set<String> values = textValues(sources, extractor);
-        if (values.isEmpty()) {
+        String value = optionalText(sources, extractor, fieldName);
+        if (value == null) {
             throw missing(fieldName);
         }
-        if (values.size() > 1) {
-            throw conflict(fieldName);
-        }
-        return values.iterator().next();
+        return value;
     }
 
     String optionalText(
@@ -130,7 +128,10 @@ class MyHomeComplexValueParser {
     }
 
     String districtCode(String provinceCode, String districtCode) {
-        String normalized = districtCode.length() == 3 ? provinceCode + districtCode : districtCode;
+        String normalized = districtCode;
+        if (districtCode.length() == 3) {
+            normalized = provinceCode + districtCode;
+        }
         if (normalized.length() != 5
                 || !normalized.startsWith(provinceCode)
                 || !normalized.chars().allMatch(Character::isDigit)) {

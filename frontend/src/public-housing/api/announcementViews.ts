@@ -1,3 +1,4 @@
+import { analyticsCollectionAllowed } from '../../privacy/consentStore'
 const VIEWER_KEY = 'toadzip.announcement-viewer'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -9,11 +10,12 @@ export async function recordAnnouncementView(
 ): Promise<number | null> {
   signal.throwIfAborted()
   try {
-    if (!navigator.locks) return null
+    if (!navigator.locks || !analyticsCollectionAllowed()) return null
     const boundedSignal = AbortSignal.any([signal, AbortSignal.timeout(3000)])
     // Serialize identity creation and CSRF cookie initialization across tabs.
     return await navigator.locks.request(VIEWER_KEY, { signal: boundedSignal }, async () => {
       boundedSignal.throwIfAborted()
+      if (!analyticsCollectionAllowed()) return null
       const viewerId = persistentViewerId()
       const csrfResponse = await fetcher(`${apiBaseUrl}/api/auth/csrf`, {
         credentials: 'include', cache: 'no-store', signal: boundedSignal,
@@ -22,6 +24,7 @@ export async function recordAnnouncementView(
       const csrf: unknown = await csrfResponse.json()
       if (!isRecord(csrf) || csrf.headerName !== 'X-XSRF-TOKEN' || typeof csrf.token !== 'string') return null
       boundedSignal.throwIfAborted()
+      if (!analyticsCollectionAllowed()) return null
       const response = await fetcher(`${apiBaseUrl}/api/v1/announcements/${announcementId}/views`, {
         method: 'POST',
         credentials: 'include',

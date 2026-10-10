@@ -1,24 +1,23 @@
-import { pipelineStatusLabels } from './pipelineLabels'
+import { pipelineLabels } from './pipelineLabels'
 import { Link } from 'react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   DataPipelineApiError,
   getDataPipelineStatus,
   startDataPipeline,
   stopDataPipeline,
   type DataPipelineExecution,
-  type DataPipelineType,
+  type DataPipelineType as SharedDataPipelineType,
 } from './api'
 
-import { DataPipelineProgress, PipelineReport } from './DataPipelineProgress'
+import { PipelineResult, type PipelineViewState } from './PipelineResult'
 import { LhAnnouncementQualityPanel } from './LhAnnouncementQualityPanel'
+import { PipelineExecutionSteps } from './PipelineExecutionSteps'
+import styles from './CollectionStartForm.module.css'
 
+type DataPipelineType = Exclude<SharedDataPipelineType, 'ANNOUNCEMENT_REGISTRATION'>
 
-type PipelineViewState = {
-  execution: DataPipelineExecution
-  requestError: string | null
-  errorResponse: unknown
-}
+type CollectionType = 'COMPLEX_COLLECTION' | 'ANNOUNCEMENT_COLLECTION' | 'COMPLEX_SYNC' | 'ANNOUNCEMENT_SYNC'
 
 const pollIntervalMilliseconds = 1_000
 const pipelineTypes: readonly DataPipelineType[] = [
@@ -26,31 +25,29 @@ const pipelineTypes: readonly DataPipelineType[] = [
   'COMPLEX_REFINEMENT',
   'ANNOUNCEMENT_COLLECTION',
   'ANNOUNCEMENT_REFINEMENT',
+  'COMPLEX_SYNC',
+  'ANNOUNCEMENT_SYNC',
 ]
-const pipelineLabels: Record<DataPipelineType, string> = {
-  COMPLEX_COLLECTION: '단지 수집',
-  COMPLEX_REFINEMENT: '단지 정제',
-  ANNOUNCEMENT_COLLECTION: '공고 수집',
-  ANNOUNCEMENT_REFINEMENT: '공고 정제',
-}
 const pipelineStepCounts: Record<DataPipelineType, number> = {
   COMPLEX_COLLECTION: 2,
   COMPLEX_REFINEMENT: 2,
   ANNOUNCEMENT_COLLECTION: 4,
   ANNOUNCEMENT_REFINEMENT: 2,
+  COMPLEX_SYNC: 4,
+  ANNOUNCEMENT_SYNC: 6,
 }
 const pipelineGroups = [
   {
     id: 'complex-pipelines',
     title: '단지 데이터',
     description: '단지 원천과 주택형 정보를 갱신합니다.',
-    types: ['COMPLEX_COLLECTION', 'COMPLEX_REFINEMENT'],
+    types: ['COMPLEX_SYNC', 'COMPLEX_COLLECTION', 'COMPLEX_REFINEMENT'],
   },
   {
     id: 'announcement-pipelines',
     title: '공고 데이터',
     description: '공고 원천과 상세·공급 정보를 갱신합니다.',
-    types: ['ANNOUNCEMENT_COLLECTION', 'ANNOUNCEMENT_REFINEMENT'],
+    types: ['ANNOUNCEMENT_SYNC', 'ANNOUNCEMENT_COLLECTION', 'ANNOUNCEMENT_REFINEMENT'],
   },
 ] as const satisfies readonly {
   id: string
@@ -59,39 +56,62 @@ const pipelineGroups = [
   types: readonly DataPipelineType[]
 }[]
 
-export function DataPipelineControl() {
+export function DataPipelineControl({ domain, externalBusy = false, onBusyChange, compact = false, registration, onExecutionStart }: {
+  domain?: 'complex' | 'announcement'; externalBusy?: boolean; onBusyChange?: (busy: boolean) => void
+  compact?: boolean; onExecutionStart?: () => void
+  registration?: { action: ReactNode; form: ReactNode; execution: DataPipelineExecution | null;
+    stopping: boolean; onStop: () => void }
+} = {}) {
+  const [selectedType, setSelectedType] = useState<DataPipelineType | null>(null)
   const [pipelineStates, setPipelineStates] = useState(initialPipelineStates)
   const [stopping, setStopping] = useState<Partial<Record<DataPipelineType, boolean>>>({})
+  const [pendingCollection, setPendingCollection] = useState<CollectionType | null>(null)
   const pollTimers = useRef<Partial<Record<DataPipelineType, number>>>({})
   const stateGenerations = useRef<Record<DataPipelineType, number>>({
     COMPLEX_COLLECTION: 0,
     COMPLEX_REFINEMENT: 0,
     ANNOUNCEMENT_COLLECTION: 0,
     ANNOUNCEMENT_REFINEMENT: 0,
+    COMPLEX_SYNC: 0,
+    ANNOUNCEMENT_SYNC: 0,
   })
   const mounted = useRef(true)
-  const orderedGroups = [...pipelineGroups].sort((left, right) =>
+  const orderedGroups = pipelineGroups.filter(group => !domain || group.id === `${domain}-pipelines`).sort((left, right) =>
     Number(right.types.some((type) => pipelineStates[type].execution.status === 'RUNNING'))
       - Number(left.types.some((type) => pipelineStates[type].execution.status === 'RUNNING'))
       || Math.max(...right.types.map((type) => Date.parse(pipelineStates[type].execution.startedAt ?? '') || 0))
         - Math.max(...left.types.map((type) => Date.parse(pipelineStates[type].execution.startedAt ?? '') || 0)),
   )
-  const isAnyPipelineRunning = Object.values(pipelineStates)
+  const internalRunning = Object.values(pipelineStates)
     .some((state) => state.execution.status === 'RUNNING')
+  const isAnyPipelineRunning = internalRunning || externalBusy
+
+  useEffect(() => { onBusyChange?.(internalRunning) }, [internalRunning, onBusyChange])
+  useEffect(() => { setPendingCollection(null) }, [domain])
+  useEffect(() => { if (externalBusy) setSelectedType(null) }, [externalBusy])
 
   useEffect(() => {
     mounted.current = true
-    pipelineTypes.forEach((type) => void refresh(type))
+    pipelineTypes.forEach((type) => void refresh(type, true))
     return () => {
       mounted.current = false
       pipelineTypes.forEach(clearPoll)
     }
   }, [])
 
+  useEffect(() => {
+    if (isAnyPipelineRunning) setPendingCollection(null)
+  }, [isAnyPipelineRunning])
+
   function handleRun(type: DataPipelineType) {
     if (isAnyPipelineRunning) {
       return
     }
+    if (type === 'COMPLEX_COLLECTION' || type === 'ANNOUNCEMENT_COLLECTION' || type === 'COMPLEX_SYNC' || type === 'ANNOUNCEMENT_SYNC') {
+      setPendingCollection(type)
+      return
+    }
+    setPendingCollection(null)
     void execute(type)
   }
 
@@ -114,7 +134,9 @@ export function DataPipelineControl() {
     }
   }
 
-  async function execute(type: DataPipelineType) {
+  async function execute(type: DataPipelineType, serviceKey?: string) {
+    onExecutionStart?.()
+    setSelectedType(type)
     clearPoll(type)
     const generation = nextGeneration(type)
     updateState(type, {
@@ -123,7 +145,7 @@ export function DataPipelineControl() {
       errorResponse: null,
     })
     try {
-      const execution = await startDataPipeline(type)
+      const execution = await (serviceKey === undefined ? startDataPipeline(type) : startDataPipeline(type, serviceKey))
       if (mounted.current && isLatestGeneration(type, generation)) {
         applyExecution(type, execution)
       }
@@ -180,6 +202,7 @@ export function DataPipelineControl() {
     })
     clearPoll(type)
     if (execution.status === 'RUNNING') {
+      setSelectedType(type)
       schedulePoll(type)
     }
   }
@@ -236,16 +259,17 @@ export function DataPipelineControl() {
   }
 
   return (
-    <section className="registration-card data-pipeline-card" aria-labelledby="data-pipeline-title">
-      <div className="data-pipeline-heading">
+    <section className="registration-card data-pipeline-card" aria-label={compact ? '데이터 실행' : '데이터 수집·정제'}>
+      {!compact && <div className="data-pipeline-heading">
         <div>
           <h2 id="data-pipeline-title">데이터 수집·정제</h2>
           <p>
-            수집을 완료한 뒤 정제를 실행해 주세요.
-            일부 행 실패는 사유를 남기고 뒤의 LH 단계까지 계속 실행합니다.
+            수집·정제를 선택하면 수집 후 정제까지 이어서 실행합니다.
+            수집 실패·호출 제한이 있으면 자동 정제를 멈추고 결과를 남깁니다.
+            수집 또는 정제만 따로 실행할 수도 있습니다.
           </p>
         </div>
-      </div>
+      </div>}
       <div className="data-pipeline-groups">
         {orderedGroups.map((group) => (
           <section
@@ -259,6 +283,7 @@ export function DataPipelineControl() {
                 <p>{group.description}</p>
               </div>
               <div className="data-pipeline-actions">
+                {group.id === 'announcement-pipelines' && registration?.action}
                 {group.types.map((type) => (
                   <button
                     disabled={isAnyPipelineRunning}
@@ -271,116 +296,93 @@ export function DataPipelineControl() {
                 ))}
               </div>
             </div>
-            <div className="data-pipeline-results">
-              {group.types.map((type) => (
+            {group.id === 'announcement-pipelines' && registration?.form}
+            {!compact && group.id === 'complex-pipelines' ? (
+              <p className="ingest-meta">새 단지 주소의 좌표가 없으면 단지 수집 → <Link to="/admin/locations">위치정보 ZIP 업로드</Link> → 단지 정제를 실행해 주세요.</p>
+            ) : null}
+            {pendingCollection !== null && group.types.some(type => type === pendingCollection) && !isAnyPipelineRunning ? (
+              <CollectionStartForm key={pendingCollection} type={pendingCollection}
+                onCancel={() => setPendingCollection(null)}
+                onStart={serviceKey => {
+                  if (isAnyPipelineRunning) return
+                  setPendingCollection(null)
+                  void execute(pendingCollection, serviceKey)
+                }} />
+            ) : null}
+            <div className={compact ? undefined : 'data-pipeline-results'}>
+              {compact ? <>
+                {group.id === 'announcement-pipelines' && registration?.execution
+                  ? <PipelineExecutionSteps key={registration.execution.executionId} execution={registration.execution}
+                    stopping={registration.stopping} onStop={registration.onStop} />
+                  : selectedType && group.types.some(type => type === selectedType)
+                    && pipelineStates[selectedType].execution.status !== 'IDLE'
+                    ? <PipelineExecutionSteps key={pipelineStates[selectedType].execution.executionId}
+                      execution={pipelineStates[selectedType].execution} stopping={stopping[selectedType]}
+                      onStop={() => void stop(selectedType)} /> : null}
+                {group.types.map(type => pipelineStates[type].requestError
+                  ? <p key={type} role="alert" className="form-error">{pipelineStates[type].requestError}</p> : null)}
+              </> : group.types.map((type) => (
                 <PipelineResult key={type} type={type} state={pipelineStates[type]}
+                  collectionExecution={latestCollectionExecution(
+                    pipelineStates[group.types[0]].execution, pipelineStates[group.types[1]].execution,
+                  )}
                   stopping={stopping[type] ?? false} onStop={() => void stop(type)}
+                  recoveryDisabled={isAnyPipelineRunning}
+                  onRefine={() => handleRun(group.types[2])}
                   />
               ))}
             </div>
           </section>
         ))}
       </div>
-      <LhAnnouncementQualityPanel collectionExecution={pipelineStates.ANNOUNCEMENT_COLLECTION.execution} />
+      {domain && ((!compact && externalBusy) || (domain === 'complex' && externalBusy) || pipelineGroups.filter(group => group.id !== `${domain}-pipelines`)
+        .some(group => group.types.some(type => pipelineStates[type].execution.status === 'RUNNING'))) ?
+        <p role="status">다른 탭에서 수집·정제 작업이 실행 중입니다. 완료 후 실행할 수 있습니다.</p> : null}
+      {!compact && domain !== 'complex' && <LhAnnouncementQualityPanel collectionExecution={latestCollectionExecution(
+        pipelineStates.ANNOUNCEMENT_SYNC.execution, pipelineStates.ANNOUNCEMENT_COLLECTION.execution,
+      )} />}
     </section>
   )
 }
 
-export function PipelineResult({ type, state, stopping, onStop }: {
-  type: DataPipelineType, state: PipelineViewState, stopping: boolean,
-  onStop: () => void,
-}) {
-  const label = pipelineLabels[type]
-  const { execution } = state
-  const failureMessage = state.requestError ?? execution.failure?.message
-  const serverResponse = state.requestError === null
-    ? execution.failure?.serverResponse
-    : state.errorResponse
+function latestCollectionExecution(combined: DataPipelineExecution, collection: DataPipelineExecution): DataPipelineExecution {
+  return (Date.parse(combined.startedAt ?? '') || 0) > (Date.parse(collection.startedAt ?? '') || 0)
+    ? combined : collection
+}
 
-  return (
-    <article className="data-pipeline-result">
-      <h4>{label} 상태 <span className={`pipeline-badge pipeline-${execution.status.toLowerCase()}`}>{pipelineStatusLabels[execution.status]}</span></h4>
-      {execution.status === 'RUNNING' ? <DataPipelineProgress execution={execution} label={label} /> : null}
-      {execution.startedAt ? <p className="ingest-meta">마지막 실행 {new Date(execution.startedAt).toLocaleString('ko-KR')}</p> : null}
-      {execution.status === 'IDLE' ? <p>아직 실행하지 않았습니다.</p> : null}
-      {execution.status === 'RUNNING' ? (
-        <div>
-          <p role="status">{execution.stopRequested ? '중지 요청됨 · 진행 중인 처리가 끝나기를 기다립니다.' : runningMessage(execution)}</p>
-          <button className="pipeline-stop" type="button" onClick={onStop}
-            disabled={stopping || execution.stopRequested || !execution.executionId}>
-            {stopping || execution.stopRequested ? '중지 요청 중…' : `${label} 실행 중지`}
-          </button>
-          <p className="ingest-meta">수집은 다음 외부 요청 전에, 정제는 현재 단계가 끝난 뒤 중지합니다. 이미 저장된 데이터는 유지됩니다.</p>
-        </div>
-      ) : null}
-      {execution.status === 'STOPPED' ? <p role="status">{label} 실행이 중지되었습니다. 이미 저장한 데이터와 완료 단계는 유지됩니다.</p> : null}
-      {execution.status === 'COMPLETED' ? (
-        <p className="data-pipeline-success" role="status">{label} 작업을 완료했습니다.</p>
-      ) : null}
-      {execution.status === 'COMPLETED_WARNINGS' ? (
-        <p className="data-pipeline-warning" role="status">
-          {label} 작업을 완료했습니다. 처리되지 않은 원천 행이 있어 확인이 필요합니다.
-        </p>
-      ) : null}
-      {execution.status === 'COMPLETED_WITH_SKIPS' ? (
-        <p role="status">{label} 작업을 일부 단계 건너뜀으로 완료했습니다.</p>
-      ) : null}
-      <details className="pipeline-details"><summary>단계별 결과·기술 상세</summary>
-      {execution.completedSteps.length > 0 ? (
-        <ol className="data-pipeline-steps">
-          {execution.completedSteps.map((step) => <li key={step}>{step} 완료</li>)}
-        </ol>
-      ) : null}
-      {execution.skippedSteps.length > 0 ? (
-        <ul className="data-pipeline-steps">
-          {execution.skippedSteps.map((step) => (
-            <li key={step.stepName}>
-              <strong>{step.stepName} 건너뜀</strong>
-              <p>{step.reason}</p>
-              {step.serverResponse !== null && step.serverResponse !== undefined ? (
-                <details><summary>원본 응답</summary><pre aria-label={`${step.stepName} 건너뜀 응답`}>
-                  {JSON.stringify(step.serverResponse, null, 2)}
-                </pre></details>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {execution.partiallyFailedSteps.length > 0 ? (
-        <ul className="data-pipeline-steps">
-          {execution.partiallyFailedSteps.map((step) => (
-            <li key={step.step}>
-              <strong>{step.stepName} 원천 행 확인</strong>
-              <PipelineReport report={step.report} />
-              {step.report !== null && step.report !== undefined ? (
-                <details><summary>원본 보고서</summary><pre className="data-pipeline-warning-report" aria-label={`${step.stepName} 누락 보고서`}>
-                  {JSON.stringify(step.report, null, 2)}
-                </pre></details>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {(execution.status === 'FAILED' || state.requestError !== null) && failureMessage ? (
-        <div className="data-pipeline-error">
-          <strong>{failureMessage}</strong>
-          {serverResponse !== null && serverResponse !== undefined ? (
-            <div><PipelineReport report={serverResponse} />
-              <details><summary>서버 응답 상세</summary><pre aria-label="서버 응답">{JSON.stringify(serverResponse, null, 2)}</pre></details>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-      {(execution.completedStepResults ?? []).filter((step) =>
-        !execution.partiallyFailedSteps.some((warning) => warning.step === step.step),
-      ).map((step) => <details className="pipeline-completed-report" key={step.step}>
-        <summary>{step.stepName} 처리 결과</summary><PipelineReport report={step.report} />
-      </details>)}
-      </details>
-      {failureMessage ? <p role="alert" className="data-pipeline-error">{failureMessage}</p> : null}
-      <Link className="pipeline-inspect" to={`/admin/failures?category=${type === 'COMPLEX_REFINEMENT' ? 'complex' : type === 'ANNOUNCEMENT_REFINEMENT' ? 'announcement' : 'collection'}&executionId=${execution.executionId ?? ''}`}>{label} 실패 행·요청 보기</Link>
-    </article>
-  )
+function CollectionStartForm({ type, onStart, onCancel }: {
+  type: CollectionType; onStart: (serviceKey: string) => void; onCancel: () => void
+}) {
+  const [serviceKey, setServiceKey] = useState('')
+  const [error, setError] = useState('')
+  const input = useRef<HTMLInputElement>(null)
+  const label = pipelineLabels[type]
+  const inputId = `${type}-service-key`
+  useEffect(() => { input.current?.focus() }, [])
+  return <form className={styles.form} aria-label={`${label} API 키 입력`} onSubmit={event => {
+    event.preventDefault()
+    const executionKey = serviceKey.trim()
+    if (!executionKey) {
+      setError('공공데이터포털 API 키를 입력해 주세요.')
+      input.current?.focus()
+      return
+    }
+    setServiceKey('')
+    onStart(executionKey)
+  }}>
+    <h4>{label}에 사용할 API 키</h4>
+    <p id={`${inputId}-help`}>공공데이터포털 일반 인증키를 입력해 주세요. Decoding·Encoding 키 모두 사용할 수 있으며 이번 실행에만 사용합니다.</p>
+    <a href="https://www.data.go.kr/" target="_blank" rel="noreferrer">공공데이터포털에서 API 키 발급</a>
+    <label htmlFor={inputId}>공공데이터포털 API 키</label>
+    <input ref={input} id={inputId} type="password" autoComplete="off" spellCheck={false}
+      aria-describedby={`${inputId}-help${error ? ` ${inputId}-error` : ''}`} aria-invalid={error ? true : undefined}
+      value={serviceKey} onChange={event => { setServiceKey(event.currentTarget.value); setError('') }} />
+    {error ? <p id={`${inputId}-error`} className={styles.error} role="alert">{error}</p> : null}
+    <div className={styles.actions}>
+      <button className="admin-primary" type="submit">{label} 시작</button>
+      <button type="button" onClick={onCancel}>취소</button>
+    </div>
+  </form>
 }
 
 function initialPipelineStates(): Record<DataPipelineType, PipelineViewState> {
@@ -389,6 +391,8 @@ function initialPipelineStates(): Record<DataPipelineType, PipelineViewState> {
     COMPLEX_REFINEMENT: viewState(idleExecution('COMPLEX_REFINEMENT')),
     ANNOUNCEMENT_COLLECTION: viewState(idleExecution('ANNOUNCEMENT_COLLECTION')),
     ANNOUNCEMENT_REFINEMENT: viewState(idleExecution('ANNOUNCEMENT_REFINEMENT')),
+    COMPLEX_SYNC: viewState(idleExecution('COMPLEX_SYNC')),
+    ANNOUNCEMENT_SYNC: viewState(idleExecution('ANNOUNCEMENT_SYNC')),
   }
 }
 
@@ -416,13 +420,6 @@ function optimisticRunningExecution(type: DataPipelineType): DataPipelineExecuti
     ...idleExecution(type),
     status: 'RUNNING',
   }
-}
-
-function runningMessage(execution: DataPipelineExecution): string {
-  if (execution.currentStepName === null) {
-    return '실행을 시작하고 있습니다.'
-  }
-  return `${execution.currentStepIndex}/${execution.totalStepCount} · ${execution.currentStepName} 실행 중`
 }
 
 function buttonLabel(type: DataPipelineType, status: DataPipelineExecution['status']): string {

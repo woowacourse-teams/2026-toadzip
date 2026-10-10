@@ -4,11 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
 
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementDetailSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementSupplySourceSnapshot;
-import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementDetailResponseParser;
 import com.toadzip.backend.announcement.domain.ScheduleType;
+import com.toadzip.backend.ingest.collection.fixture.LhAnnouncementDetailFixtures;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.LhAnnouncementSupplySource;
+import com.toadzip.backend.ingest.collection.lh.supply.domain.projection.LhAnnouncementSupplySourceSnapshot;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhScheduleData;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
@@ -58,7 +62,7 @@ class LhAnnouncementEnrichmentMapperTest {
 
     private LhAnnouncementEnrichmentData mapDetailFixture(String type) throws Exception {
         try (var input = getClass().getResourceAsStream("/ingest/lh/detail-" + type + "-excerpt.json")) {
-            var details = new LhAnnouncementDetailResponseParser().parse(PAN_ID,
+            var details = LhAnnouncementDetailFixtures.sources(PAN_ID,
                     JsonMapper.builder().build().readTree(input));
             return mapper.map(PAN_ID, details, List.of());
         }
@@ -66,7 +70,7 @@ class LhAnnouncementEnrichmentMapperTest {
 
     @Test
     void 날짜만_있는_접수_기간을_시작일과_종료일로_보강한다() {
-        var details = new LhAnnouncementDetailResponseParser().parse(PAN_ID,
+        var details = LhAnnouncementDetailFixtures.sources(PAN_ID,
                 JsonMapper.builder().build().readTree("""
                         [{"dsSplScdl":[{"ACP_DTTM":"2026.09.14 ~ 2026.09.15"}]}]
                         """));
@@ -81,7 +85,7 @@ class LhAnnouncementEnrichmentMapperTest {
 
     @Test
     void 별도_안내인_접수_기간은_일정을_만들지_않는다() {
-        var details = new LhAnnouncementDetailResponseParser().parse(PAN_ID,
+        var details = LhAnnouncementDetailFixtures.sources(PAN_ID,
                 JsonMapper.builder().build().readTree("""
                         [{"dsSplScdl":[{"ACP_DTTM":"별도 안내"}]}]
                         """));

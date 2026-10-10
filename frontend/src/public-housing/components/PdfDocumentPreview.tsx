@@ -1,3 +1,5 @@
+import type { DocumentPreviewTelemetry } from './documentAnalytics'
+import { useDocumentSearchShortcuts } from './useDocumentSearchShortcuts.ts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import pdfViewerStyles from 'pdfjs-dist/legacy/web/pdf_viewer.css?inline'
 import DocumentOutline from './DocumentOutline.tsx'
@@ -9,11 +11,11 @@ import scrollbarStyles from './DocumentScrollbar.module.css'
 // Keep the SDK's :root variables and generic annotation styles inside this viewer.
 const scopedViewerStyles = `@scope (.${styles.document}) { ${pdfViewerStyles.replaceAll(':root', ':scope')} }`
 
-export default function PdfDocumentPreview(props: { readonly url: string; readonly name: string }) {
+export default function PdfDocumentPreview(props: { readonly url: string; readonly name: string; readonly telemetry?: DocumentPreviewTelemetry }) {
   return <PdfPreview key={props.url} {...props} />
 }
 
-function PdfPreview({ url, name }: { readonly url: string; readonly name: string }) {
+function PdfPreview({ url, name, telemetry }: { readonly url: string; readonly name: string; readonly telemetry?: DocumentPreviewTelemetry }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<HTMLDivElement>(null)
@@ -23,19 +25,21 @@ function PdfPreview({ url, name }: { readonly url: string; readonly name: string
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [scale, setScale] = useState('page-width')
-  const { page, pages, ready, error, result, search, closeSearch, setScale: applyScale, outline, activeOutlineId, navigateOutline } = usePdfViewer(url, containerRef, viewerRef)
+  const { page, pages, ready, error, result, search, closeSearch, setScale: applyScale, outline, activeOutlineId, navigateOutline } = usePdfViewer(url, containerRef, viewerRef, telemetry)
 
   const openSearch = useCallback(() => {
+    telemetry?.action('search_open')
     setSearchOpen(true)
     inputRef.current?.focus()
     inputRef.current?.select()
     if (query) search(query)
-  }, [query, search])
+  }, [query, search, telemetry])
   const hideSearch = useCallback(() => {
+    telemetry?.action('search_close')
     setSearchOpen(false)
     closeSearch()
     containerRef.current?.focus({ preventScroll: true })
-  }, [closeSearch])
+  }, [closeSearch, telemetry])
 
   useEffect(() => {
     if (searchOpen) {
@@ -45,31 +49,20 @@ function PdfPreview({ url, name }: { readonly url: string; readonly name: string
   }, [searchOpen])
 
   useEffect(() => {
-    const target = rootRef.current?.closest('dialog') ?? rootRef.current
-    if (!target) return
-    function onKeyDown(event: Event) {
-      if (!(event instanceof KeyboardEvent) || event.isComposing) return
-      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f') {
-        if (!ready) return
-        event.preventDefault()
-        event.stopPropagation()
-        openSearch()
-      } else if (event.key === 'Escape' && searchOpen && !(event.target instanceof Element && event.target.closest('[data-document-outline][data-outline-open="true"]'))) {
-        event.preventDefault()
-        event.stopPropagation()
-        hideSearch()
-      }
-    }
-    target.addEventListener('keydown', onKeyDown)
-    return () => target.removeEventListener('keydown', onKeyDown)
-  }, [hideSearch, openSearch, ready, searchOpen])
+    if (!query.trim() || composing.current) return
+    const timer = setTimeout(() => telemetry?.action('search'), 250)
+    return () => clearTimeout(timer)
+  }, [query, telemetry])
+
+  useDocumentSearchShortcuts({ root: rootRef, ready, searchOpen, openSearch, hideSearch })
 
   const resultText = !query ? '' : result.pending ? '검색 중…' : result.notFound ? '검색 결과 없음' : `${result.current} / ${result.total}개`
-  return <div className={styles.document} ref={rootRef}>
+  return <div className={`${styles.document} ph-no-capture`} ref={rootRef}>
     <style>{scopedViewerStyles}</style>
     <div className={styles.controls} aria-label="PDF 도구">
       <span>{pages > 0 ? `${page} / ${pages} 페이지` : 'PDF를 준비하는 중…'}</span>
       <label>크기 <select aria-label="PDF 크기" disabled={!ready} value={scale} onChange={(event) => {
+        telemetry?.action('zoom')
         setScale(event.target.value)
         applyScale(event.target.value)
       }}><option value="page-width">너비 맞춤</option><option value="1.5">150%</option><option value="2">200%</option></select></label>
@@ -91,15 +84,16 @@ function PdfPreview({ url, name }: { readonly url: string; readonly name: string
         onKeyDown={(event) => {
           if (event.key === 'Enter' && !event.nativeEvent.isComposing && !composing.current) {
             event.preventDefault()
+            telemetry?.action(event.shiftKey ? 'previous_result' : 'next_result')
             search(query, true, event.shiftKey)
           }
         }} />
       <span className={styles.result} role="status">{resultText}</span>
       <div className={styles.searchActions}>
         <button type="button" aria-label="이전 검색 결과" disabled={!query || result.total === 0}
-          onClick={() => search(query, true, true)}>↑</button>
+          onClick={() => { telemetry?.action('previous_result'); search(query, true, true) }}>↑</button>
         <button type="button" aria-label="다음 검색 결과" disabled={!query || result.total === 0}
-          onClick={() => search(query, true)}>↓</button>
+          onClick={() => { telemetry?.action('next_result'); search(query, true) }}>↓</button>
         <button type="button" aria-label="검색 닫기" onClick={hideSearch}>닫기</button>
       </div>
     </div>}
@@ -108,7 +102,7 @@ function PdfPreview({ url, name }: { readonly url: string; readonly name: string
       <div ref={containerRef} className={`${styles.scroll} ${scrollbarStyles.scrollbar}`} role="region" aria-label={`${name} 문서`} tabIndex={0}>
         <div ref={viewerRef} className="pdfViewer" />
       </div>
-      {ready && !error && <DocumentOutline entries={outline} activeId={activeOutlineId} onNavigate={navigateOutline} />}
+      {ready && !error && <DocumentOutline entries={outline} activeId={activeOutlineId} onNavigate={(id) => { telemetry?.action('outline'); navigateOutline(id) }} />}
     </div>
   </div>
 }

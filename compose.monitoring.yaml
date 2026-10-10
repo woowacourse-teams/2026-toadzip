@@ -25,6 +25,11 @@ services:
       GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
       GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}"
       GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_DOMAIN: monitoring.bokduckbang.com
+      GF_SERVER_ROOT_URL: https://monitoring.bokduckbang.com/
+      GF_SERVER_PROTOCOL: http
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -34,7 +39,22 @@ services:
       - prometheus
     restart: unless-stopped
 
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/monitoring/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - grafana
+    restart: unless-stopped
+
 volumes:
   prometheus_data:
   loki_data:
   grafana_data:
+  caddy_data:
+  caddy_config:

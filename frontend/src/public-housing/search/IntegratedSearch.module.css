@@ -16,7 +16,7 @@
 
 .header h2 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: var(--ds-text-title);
   font-weight: 750;
 }
 
@@ -26,17 +26,17 @@
 
 .groupHeading {
   margin: 0;
-  padding: 0.75rem;
+  padding: var(--ds-space-3);
   background: #f4f6f8;
-  font-size: 0.95rem;
+  font-size: var(--ds-text-control-lg);
   font-weight: 750;
 }
 
 .message {
   margin: 0;
-  padding: 0.75rem;
+  padding: var(--ds-space-3);
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--ds-text-caption);
 }
 
 .result {
@@ -44,12 +44,13 @@
   width: 100%;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.2rem 0.6rem;
-  padding: 0.65rem 0.75rem;
+  padding: var(--ds-space-3);
   border: 0;
   border-top: 1px solid #f1f5f9;
   background: transparent;
   text-align: left;
   cursor: pointer;
+  font-size: var(--ds-text-body);
 }
 
 .result:hover,
@@ -60,11 +61,17 @@
 .result span,
 .result time {
   color: #64748b;
-  font-size: 0.75rem;
+  font-size: var(--ds-text-caption);
 }
 
 .result strong {
   grid-column: 1 / -1;
+}
+
+.result:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: -2px;
+  background: var(--ds-color-action-soft);
 }
 
 .result:disabled {

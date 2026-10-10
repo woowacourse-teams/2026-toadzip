@@ -1,4 +1,4 @@
-import type { JsonValue, Values } from './api'
+import { type JsonValue, type ManagementValues } from './managementContract'
 export const labels: Record<string, string> = {
   LONG_TERM_JEONSE: '장기전세', HAPPY_HOUSING: '행복주택', NATIONAL_RENTAL: '국민임대', PERMANENT_RENTAL: '영구임대',
   PUBLIC_RENTAL_5Y: '5년 공공임대', PUBLIC_RENTAL_10Y: '10년 공공임대', PUBLIC_RENTAL_50Y: '50년 공공임대',
@@ -9,6 +9,7 @@ export const labels: Record<string, string> = {
   ONLINE: '온라인', VISIT: '방문', MAIL: '우편', true: '설치', false: '미설치',
   CONFIRMED: '확정', CONDITIONAL: '조건부', UPDATE_SCHEDULE: '접수 일정 수정',
   UPDATE: '정보 수정', DELETE: '휴지통 이동', RESTORE: '복구', UPDATE_SUPPLY: '공급정보 수정',
+  UPDATE_HOUSING_TYPE: '주택형 수정',
 }
 export const rentals = ['HAPPY_HOUSING', 'NATIONAL_RENTAL', 'PERMANENT_RENTAL', 'PUBLIC_RENTAL_5Y', 'PUBLIC_RENTAL_10Y',
   'PUBLIC_RENTAL_50Y', 'INTEGRATED_PUBLIC_RENTAL', 'REDEVELOPMENT_RENTAL', 'LONG_TERM_JEONSE', 'ETC']
@@ -47,15 +48,15 @@ export const supplyFields: Field[] = [{name:'sourceComplexName',label:'원문 �
   {name:'expectedMoveInMonth',label:'입주 예정 연월',type:'month'},
   {name:'supplyCategory',label:'공급 구분',options:['NEW_SUPPLY','RESUPPLY'],required:true},
   {name:'totalSupplyHouseholdCount',label:'공급세대수',type:'number',min:0}]
-export function valueAt(data: Values, name: string): JsonValue | undefined {
+export function valueAt(data: ManagementValues, name: string): JsonValue | undefined {
   const [parent, child] = name.split('.')
   const value = data[parent]
   if (!child) return value
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value[child] : null
 }
-export function formValues(form: HTMLFormElement, fields: Field[], original: Values): Values {
+export function formValues(form: HTMLFormElement | FormData, fields: Field[], original: ManagementValues): ManagementValues {
   const result = structuredClone(original)
-  const values = new FormData(form)
+  const values = form instanceof FormData ? form : new FormData(form)
   for (const field of fields) {
     const text = String(values.get(field.name) ?? '').trim()
     const value = text === '' ? null : field.boolean ? text === 'true' : field.type === 'number' ? Number(text) : text

@@ -1,55 +1,78 @@
 import { ListPagination } from './ListPagination'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { list, type Page, type Resource, type Summary } from './api'
+import { getManagementPage } from './api'
+import type { ManagementPage, ManagementResource } from './managementContract'
+import { ManagementSummaryTable } from './ManagementSummaryTable'
 import { labels, provinces, rentals } from './fields'
+import styles from './ManagementList.module.css'
+import { managementListParams } from './managementNavigation'
+import { verificationStatuses } from './complexVerificationContract'
+import { verificationStatusLabels } from './complexVerificationPresentation'
 
-export function ManagementList({ resource }: { resource: Resource }) {
+export function ManagementList({ resource, embedded = false, compact = false, refresh = 0 }: { resource: ManagementResource; embedded?: boolean; compact?: boolean; refresh?: number }) {
   const [params, setParams] = useSearchParams()
-  const [page, setPage] = useState<Page | null>(null)
-  const [error, setError] = useState('')
+  const [loaded, setLoaded] = useState<{ query: string; filters: string; page: ManagementPage } | null>(null)
+  const [failure, setFailure] = useState<{ query: string; message: string } | null>(null)
   const [attempt, setAttempt] = useState(0)
-  const search = params.toString()
+  const search = (embedded ? managementListParams(params, resource) : params).toString()
+  const activeParams = new URLSearchParams(search)
+  const filterParams = new URLSearchParams(search)
+  filterParams.delete('page')
+  filterParams.sort()
+  const filters = `${resource}?${filterParams}`
+  const query = `${resource}?${search}#${attempt}-${refresh}`
+  const page = loaded?.filters === filters ? loaded.page : null
+  const error = failure?.query === query ? failure.message : ''
+  const pending = loaded?.query !== query && failure?.query !== query
   const title = resource === 'complexes' ? '단지' : '공고'
   const returnTo = `/admin/${resource}${search ? `?${search}` : ''}`
   useEffect(() => {
     const controller = new AbortController()
-    setPage(null); setError('')
-    void list(resource, new URLSearchParams(search), controller.signal).then(setPage).catch(cause => {
-      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '목록을 불러오지 못했습니다.')
+    void getManagementPage(resource, new URLSearchParams(search), controller.signal).then(result => {
+      if (!controller.signal.aborted) setLoaded({ query, filters, page: result })
+    }).catch(cause => {
+      if (!controller.signal.aborted) setFailure({ query, message: cause instanceof Error ? cause.message : '목록을 불러오지 못했습니다.' })
     })
     return () => controller.abort()
-  }, [resource, search, attempt])
-  function move(next: number) { setParams(current => { current.set('page', String(next)); return current }) }
-  return <section className="management-page">
-    <header className="management-heading"><div><h1>{title} 관리</h1><p>등록된 {title}를 찾고 정보를 확인하거나 수정합니다.</p></div>
-      <Link className="admin-primary" to={`/admin/${resource}/new`}>{title} 등록</Link></header>
-    <form key={search} className="management-filters" onSubmit={event => {
+  }, [resource, search, query, filters])
+  function updateFilters(next: URLSearchParams) {
+    if (embedded && params.has('mode')) for (const key of ['mode', 'complexId']) {
+      if (params.has(key)) next.set(key, params.get(key) ?? '')
+    }
+    setParams(next)
+  }
+  function move(next: number) { const current = new URLSearchParams(search); current.set('page', String(next)); updateFilters(current) }
+  return <section className={`management-page ${styles.page}`}>
+    {!embedded ? <header className="management-heading"><h1>{title} 관리</h1>
+      <Link className="admin-primary" to={`/admin/${resource}/new`}>{title} 추가</Link></header> : null}
+    <form key={search} data-admin-navigation className={styles.filters} onSubmit={event => {
       event.preventDefault(); const values = new FormData(event.currentTarget); const next = new URLSearchParams()
       for (const [key, value] of values) if (String(value).trim()) next.set(key, String(value).trim())
-      setParams(next)
+      updateFilters(next)
     }}>
-      <label className="management-search">{title === '단지' ? '단지명·주소' : '공고명'}<input name="keyword" defaultValue={params.get('keyword') ?? ''} maxLength={200} placeholder={`${title} 검색`} /></label>
-      <label>지역<select name="region" defaultValue={params.get('region') ?? ''}><option value="">전체 지역</option>{provinces.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      <label>기관<select name="provider" defaultValue={params.get('provider') ?? ''}><option value="">전체 기관</option>{['LH','SH','GH','ETC'].map(value => <option key={value}>{value}</option>)}</select></label>
-      <label>공급 유형<select name="rental" defaultValue={params.get('rental') ?? ''}><option value="">전체 유형</option>{rentals.map(value => <option key={value} value={value}>{labels[value]}</option>)}</select></label>
-      <label>보관 상태<select name="deleted" defaultValue={params.get('deleted') ?? 'false'}><option value="false">등록 데이터</option><option value="true">휴지통</option></select></label>
-      <label className="admin-check"><input name="review" type="checkbox" value="true" defaultChecked={params.get('review') === 'true'} />원천 변경 확인 필요</label>
-      {params.get('complexId') ? <input type="hidden" name="complexId" value={params.get('complexId') ?? ''} /> : null}
-      <button className="admin-primary" type="submit">검색</button><button type="button" onClick={() => setParams({})}>초기화</button>
+      <label className={styles.search}>{title === '단지' ? '단지명·주소' : '공고명'}<input name="keyword" defaultValue={activeParams.get('keyword') ?? ''} maxLength={200} placeholder={`${title} 검색`} /></label>
+      <label>지역<select name="region" defaultValue={activeParams.get('region') ?? ''}><option value="">전체 지역</option>{provinces.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label>기관<select name="provider" defaultValue={activeParams.get('provider') ?? ''}><option value="">전체 기관</option>{['LH','SH','GH','ETC'].map(value => <option key={value}>{value}</option>)}</select></label>
+      <div className={styles.actions}><button className="admin-primary" type="submit">검색</button><button data-admin-navigation type="button" onClick={() => setParams(embedded && params.has('mode') ? { mode: params.get('mode') ?? 'direct', ...(params.has('complexId') ? { complexId: params.get('complexId') ?? '' } : {}) } : {})}>초기화</button></div>
+      <details className={styles.moreFilters} open={activeParams.get('deleted') === 'true' || activeParams.has('rental') || activeParams.has('review') || activeParams.has('verification') || undefined}><summary>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M4 7h16M4 17h16" /><circle cx="9" cy="7" r="2" fill="var(--ds-color-surface)" /><circle cx="15" cy="17" r="2" fill="var(--ds-color-surface)" /></svg>
+        <span>추가 필터{activeParams.get('deleted') === 'true' ? ' · 휴지통' : ''}</span>
+        <svg className={styles.filterChevron} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+      </summary><div>
+        <label>공급 유형<select name="rental" defaultValue={activeParams.get('rental') ?? ''}><option value="">전체 유형</option>{rentals.map(value => <option key={value} value={value}>{labels[value]}</option>)}</select></label>
+        <label>보관 상태<select name="deleted" defaultValue={activeParams.get('deleted') ?? 'false'}><option value="false">등록 데이터</option><option value="true">휴지통</option></select></label>
+        {resource === 'complexes' ? <label>검토 상태<select name="verification" defaultValue={activeParams.get('verification') ?? ''}><option value="">전체 상태</option>
+          {verificationStatuses.map(status => <option key={status} value={status}>{verificationStatusLabels[status]}</option>)}</select></label> : null}
+        <label className={styles.review}><input name="review" type="checkbox" value="true" defaultChecked={activeParams.get('review') === 'true'} />원천 변경 확인 필요</label>
+      </div></details>
+      {managementListParams(params, resource).get('complexId') ? <input type="hidden" name="complexId" value={managementListParams(params, resource).get('complexId') ?? ''} /> : null}
     </form>
     {error ? <div role="alert" className="registration-error"><p>{error}</p><button onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></div> : null}
-    {!page && !error ? <p role="status">목록을 불러오는 중…</p> : null}
-    {page ? <><p className="ingest-meta">등록일 최신순 · 총 {page.totalElements.toLocaleString('ko-KR')}건</p><SummaryTable items={page.items} resource={resource} returnTo={returnTo} />
-      <ListPagination page={page.page} totalPages={page.totalPages} onMove={move} /></> : null}
+    <div className={styles.results} aria-busy={pending}>
+      {pending ? <p role="status" className={page ? styles.loading : undefined}>목록을 불러오는 중…</p> : null}
+      {page ? <><p className={`ingest-meta ${styles.resultCount}`}>등록일 최신순 · 총 {page.totalElements.toLocaleString('ko-KR')}건</p><ManagementSummaryTable items={page.items} resource={resource} returnTo={returnTo} inlineSearch={embedded ? search : undefined} compact={compact} fixedHeight />
+        <ListPagination page={page.page} totalPages={page.totalPages} onMove={move} disabled={pending} guardNavigation={embedded} /></> : null}
+    </div>
   </section>
-}
-export function SummaryTable({ items, resource, returnTo }: { items: Summary[]; resource: Resource; returnTo?: string }) {
-  if (!items.length) return <div className="admin-empty"><h2>표시할 {resource === 'complexes' ? '단지' : '공고'}가 없습니다.</h2><p>검색 조건을 바꾸거나 새 데이터를 등록해 주세요.</p></div>
-  return <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>이름</th><th>{resource === 'complexes' ? '주소' : '게시일'}</th><th>기관·유형</th><th>데이터 상태</th></tr></thead>
-    <tbody>{items.map(item => <tr key={item.id}><td><Link to={`/admin/${resource}/${item.id}${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`}>{item.name}</Link></td>
-      <td>{item.subtitle}</td><td>{item.provider} · {labels[item.rental] ?? item.rental}</td><td><Status summary={item} /></td></tr>)}</tbody></table></div>
-}
-export function Status({ summary }: { summary: Summary }) {
-  return <span className="admin-status" title="데이터의 보관·관리 상태입니다. 입주 여부나 공고 모집 상태를 뜻하지 않습니다.">{summary.deleted ? '휴지통' : summary.reviewRequired ? '원천 변경 확인 필요' : summary.modified ? '관리자 수정 보호' : '등록됨'}</span>
 }

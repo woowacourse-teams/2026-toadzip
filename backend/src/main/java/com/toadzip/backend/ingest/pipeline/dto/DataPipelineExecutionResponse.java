@@ -21,9 +21,9 @@ public record DataPipelineExecutionResponse(
         int currentStepIndex,
         int totalStepCount,
         List<String> completedSteps,
-        List<DataPipelineCompletedStepResponse> completedStepResults,
+        List<DataPipelineStepReportResponse> completedStepResults,
         List<DataPipelineSkippedStepResponse> skippedSteps,
-        List<DataPipelinePartiallyFailedStepResponse> partiallyFailedSteps,
+        List<DataPipelineStepReportResponse> partiallyFailedSteps,
         DataPipelineFailureResponse failure,
         Instant startedAt,
         Instant finishedAt,
@@ -31,7 +31,8 @@ public record DataPipelineExecutionResponse(
         long externalRequestCount,
         String lastRequestDescription,
         Instant lastProgressAt,
-        DataPipelineWorkProgress workProgress
+        DataPipelineWorkProgress workProgress,
+        String targetAnnouncementIdentifier
 ) {
 
     public DataPipelineExecutionResponse {
@@ -62,6 +63,7 @@ public record DataPipelineExecutionResponse(
                 null,
                 false,
                 0,
+                null,
                 null,
                 null,
                 null

@@ -1,119 +1,58 @@
 package com.toadzip.backend.interest.service;
 
-import com.toadzip.backend.announcement.repository.AnnouncementRepository;
-import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.interest.domain.NotificationEventType;
 import com.toadzip.backend.interest.domain.NotificationInterestEvent;
-import com.toadzip.backend.interest.domain.NotificationTargetType;
+import com.toadzip.backend.interest.domain.NotificationInterestOutcome;
 import com.toadzip.backend.interest.dto.NotificationInterestRequest;
-import com.toadzip.backend.interest.dto.NotificationSubscriptionResponse;
+import com.toadzip.backend.interest.dto.NotificationInterestResponse;
 import com.toadzip.backend.interest.exception.InvalidNotificationInterestException;
-import com.toadzip.backend.interest.repository.NotificationInterestRepository;
-import com.toadzip.backend.interest.repository.NotificationGuestSubscriptionRepository;
-import com.toadzip.backend.interest.repository.NotificationSubscriptionRepository;
-import com.toadzip.backend.region.repository.RegionCodeResolver;
+import com.toadzip.backend.privacy.repository.PrivacyNotificationEventRepository;
+import com.toadzip.backend.privacy.domain.AnalyticsCollectionPolicy;
+import com.toadzip.backend.privacy.domain.AnalyticsConsent;
+import com.toadzip.backend.privacy.repository.AnalyticsConsentRepository;
+import com.toadzip.backend.privacy.repository.PrivacyNoticeCatalog;
 import java.time.Clock;
-import java.util.UUID;
+import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/** Optional behavioral observations never change notification settings. */
 @Service
 @RequiredArgsConstructor
 public class NotificationInterestService {
 
-    private final NotificationInterestRepository repository;
-    private final NotificationSubscriptionRepository subscriptionRepository;
-    private final NotificationGuestSubscriptionRepository guestSubscriptionRepository;
-    private final RegionCodeResolver regionCodeResolver;
-    private final HousingComplexRepository complexRepository;
-    private final AnnouncementRepository announcementRepository;
+    private final PrivacyNotificationEventRepository repository;
+    private final AnalyticsConsentRepository consents;
+    private final PrivacyNoticeCatalog notices;
     private final Clock clock;
+    private final AnalyticsCollectionPolicy collectionPolicy;
 
     @Transactional
-    public void record(NotificationInterestRequest request, Long userId) {
-        NotificationInterestEvent event = NotificationInterestEvent.create(
-                request.eventId(), request.sessionId(), request.eventType(), request.source(),
-                request.targetType(), request.targetId(), request.email(), clock.instant());
-        if (!targetExists(request.targetType(), request.targetId())) {
+    public NotificationInterestResponse record(NotificationInterestRequest request, Long userId, String guestToken) {
+        if (request.eventType() == NotificationEventType.CONFIRMED
+                || request.eventType() == NotificationEventType.CANCELLED
+                || request.email() != null || request.clientId() != null) {
             throw new InvalidNotificationInterestException();
         }
+        AnalyticsConsent consent = consents.lockForCollection(userId, guestToken);
+        Instant now = clock.instant();
+        collectionPolicy.requireAllowed(consent, notices.requiredAnalyticsScope(), now);
+        NotificationInterestEvent event = NotificationInterestEvent.forRequest(
+                request.eventId(), request.sessionId(), request.eventType(), request.source(), request.targetType(),
+                request.targetId(), null, now, null, null);
         if (!repository.record(event)) {
-            return;
+            NotificationInterestEvent recorded = repository.findForUpdate(event.getEventId());
+            recorded.verifySameRequest(event);
+            return response(recorded);
         }
-        if (userId == null) {
-            updateGuest(request, event.getCreatedAt());
-            return;
-        }
-        switch (request.eventType()) {
-            case CONFIRMED -> {
-                if (request.email() != null) {
-                    subscriptionRepository.confirm(userId, request.targetType(), request.targetId(),
-                            request.email(), event.getCreatedAt());
-                }
-            }
-            case CLICKED -> {
-                if (subscriptionRepository.hasEmail(userId)) {
-                    subscriptionRepository.activate(userId, request.targetType(), request.targetId(),
-                            event.getCreatedAt());
-                }
-            }
-            case CANCELLED -> subscriptionRepository.cancel(userId, request.targetType(), request.targetId(),
-                    event.getCreatedAt());
-            case EXPOSED, DECLINED -> { }
-        }
+        event.complete(NotificationInterestOutcome.OBSERVED);
+        repository.complete(event);
+        return response(event);
     }
 
-    private void updateGuest(NotificationInterestRequest request, java.time.Instant now) {
-        UUID clientId = request.clientId();
-        if (clientId == null) {
-            return;
-        }
-        switch (request.eventType()) {
-            case CONFIRMED -> {
-                if (request.email() != null) {
-                    guestSubscriptionRepository.confirm(clientId, request.targetType(), request.targetId(),
-                            request.email(), now);
-                }
-            }
-            case CLICKED -> {
-                if (guestSubscriptionRepository.hasEmail(clientId)) {
-                    guestSubscriptionRepository.activate(clientId, request.targetType(), request.targetId(), now);
-                }
-            }
-            case CANCELLED -> guestSubscriptionRepository.cancel(clientId, request.targetType(), request.targetId(), now);
-            case EXPOSED, DECLINED -> { }
-        }
-    }
-
-    @Transactional(readOnly = true)
-    public NotificationSubscriptionResponse findForUser(long userId) {
-        return subscriptionRepository.findForUser(userId);
-    }
-
-    @Transactional(readOnly = true)
-    public NotificationSubscriptionResponse findForClient(UUID clientId) {
-        return guestSubscriptionRepository.findForClient(clientId);
-    }
-
-    private boolean targetExists(NotificationTargetType type, String id) {
-        if (type == NotificationTargetType.REGION) {
-            return regionCodeResolver.filterCodes(id).isPresent();
-        }
-        long numericId = numericId(id);
-        if (numericId <= 0) {
-            return false;
-        }
-        if (type == NotificationTargetType.COMPLEX) {
-            return complexRepository.existsById(numericId);
-        }
-        return announcementRepository.existsById(numericId);
-    }
-
-    private long numericId(String id) {
-        try {
-            return Long.parseLong(id);
-        } catch (NumberFormatException exception) {
-            throw new InvalidNotificationInterestException();
-        }
+    private NotificationInterestResponse response(NotificationInterestEvent event) {
+        return new NotificationInterestResponse(event.getEventId(), event.getTargetType(), event.getTargetId(),
+                event.getOutcome(), event.getCreatedAt());
     }
 }

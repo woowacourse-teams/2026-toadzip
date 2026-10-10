@@ -11,7 +11,15 @@ vi.mock('./googleAnalytics.ts', () => ({
   trackEvent: vi.fn(() => true),
 }))
 
+const consent = vi.hoisted(() => ({ allowed: true, listeners: new Set<() => void>() }))
+vi.mock('../privacy/consentStore', () => ({
+  analyticsCollectionAllowed: () => consent.allowed,
+  consentStore: { subscribe: (listener: () => void) => { consent.listeners.add(listener); return () => consent.listeners.delete(listener) } },
+}))
+
 beforeEach(() => {
+  consent.allowed = true
+  consent.listeners.clear()
   vi.mocked(trackEvent).mockReset().mockReturnValue(true)
   vi.mocked(setAnalyticsPageActive).mockClear()
 })
@@ -190,4 +198,21 @@ describe('trackAppliedFilters', () => {
       ['apply_filter', { filter_target: 'announcement', filter_types: 'none', filter_count: 0 }],
     ])
   })
+})
+
+
+it('does not replay pre-consent visits and starts the current page/detail on grant and regrant', async () => {
+  consent.allowed = false
+  renderHarness('/?complexId=17', { readyComplexId: '17' })
+  await flushEffects()
+  expect(trackEvent).not.toHaveBeenCalled()
+  await act(async () => { consent.allowed = true; consent.listeners.forEach(listener => listener()) })
+  await flushEffects()
+  expect(trackEvent).toHaveBeenCalledWith('page_view', {})
+  expect(detailEvents()).toHaveLength(1)
+  await act(async () => { consent.allowed = false; consent.listeners.forEach(listener => listener()) })
+  await act(async () => { consent.allowed = true; consent.listeners.forEach(listener => listener()) })
+  await flushEffects()
+  expect(vi.mocked(trackEvent).mock.calls.filter(([name]) => name === 'page_view')).toHaveLength(2)
+  expect(detailEvents()).toHaveLength(2)
 })

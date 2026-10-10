@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { issueGuestCancellationCode, loadGuestCancellationRequests, markGuestCancellationCodeSent, reissueGuestCancellationCode, type GuestCancellationRequest } from '../public-housing/interest/guestCancellationApi'
 import styles from './GuestCancellationAdminPage.module.css'
 
@@ -7,18 +7,34 @@ export function GuestCancellationAdminPage() {
   const [codes, setCodes] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [loadError, setLoadError] = useState('')
+  const [loadState, setLoadState] = useState<'loading' | 'success' | 'error'>('loading')
   const [confirmationId, setConfirmationId] = useState<string | null>(null)
+  const requestGeneration = useRef(0)
+  const mounted = useRef(false)
 
   async function refresh() {
-    setError('')
+    if (!mounted.current) return
+    const generation = ++requestGeneration.current
+    setLoadState('loading')
+    setLoadError('')
     try {
-      setRequests(await loadGuestCancellationRequests())
+      const nextRequests = await loadGuestCancellationRequests()
+      if (generation !== requestGeneration.current) return
+      setRequests(nextRequests)
+      setLoadState('success')
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '요청 목록을 불러오지 못했습니다.')
+      if (generation !== requestGeneration.current) return
+      setLoadError(cause instanceof Error ? cause.message : '요청 목록을 불러오지 못했습니다.')
+      setLoadState('error')
     }
   }
 
-  useEffect(() => { void refresh() }, [])
+  useEffect(() => {
+    mounted.current = true
+    void refresh()
+    return () => { mounted.current = false; requestGeneration.current += 1 }
+  }, [])
 
   async function issue(id: string, reissue = false) {
     setBusy(true)
@@ -67,10 +83,12 @@ export function GuestCancellationAdminPage() {
         <p>코드를 신청 주소로 직접 보낸 뒤 발송 완료를 기록하세요. 사용자가 코드를 입력하면 취소됩니다.</p>
         <p>발신: toadzip.official@gmail.com · 확인: 평일 10:00 / 17:00 (한국 시간)</p>
       </div>
-      <button type="button" onClick={() => { void refresh() }}>목록 새로고침</button>
+      <button type="button" disabled={busy} onClick={() => { setError('');void refresh() }}>목록 새로고침</button>
     </div>
     {error && <p role="alert" className={styles.error}>{error}</p>}
-    {requests.length === 0 && <p>대기 중인 요청이 없습니다.</p>}
+    {loadError && <p role="alert" className={styles.error}>{loadError}</p>}
+    {loadState === 'loading' && <p role="status">목록을 불러오는 중…</p>}
+    {loadState === 'success' && requests.length === 0 && <p>대기 중인 요청이 없습니다.</p>}
     <ul className={styles.list}>
       {requests.map((request) => <li key={request.id}>
         <div>

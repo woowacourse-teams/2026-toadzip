@@ -11,14 +11,16 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
+import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
+import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionTrigger;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
+import com.toadzip.backend.ingest.collection.repository.external.IngestServiceKeyContext;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -30,6 +32,8 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -87,6 +91,114 @@ class DataPipelineExecutionServiceTest {
         );
     }
 
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"", " "})
+    void 단건_등록은_빈_ID로_잠금을_얻지_않는다(String identifier) {
+        assertThatThrownBy(() -> service.startAnnouncementRegistration(identifier))
+                .hasMessageContaining("공고 ID");
+        verify(executionLock, never()).tryAcquire(any());
+    }
+
+    @Test
+    void 잘못된_URL은_실행_잠금을_얻기_전에_거부한다() {
+        assertThatThrownBy(() -> service.startAnnouncementRegistrationUrl("https://apply.lh.or.kr"))
+                .hasMessageContaining("잘못된 공고 URL");
+        verify(executionLock, never()).tryAcquire(any());
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void 단건_등록의_실행_ID와_대상_ID를_보존하고_설정키로_비동기_실행한다(boolean fromUrl) {
+        when(executionLock.tryAcquire(any())).thenReturn(Optional.of(lease));
+        when(executionStateService.createRegistration(any(), any(), any())).thenAnswer(invocation ->
+                DataPipelineExecution.startRegistration(invocation.getArgument(0),
+                        invocation.getArgument(1), invocation.getArgument(2)));
+
+        com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse response;
+        if (fromUrl) {
+            response = service.startAnnouncementRegistrationUrl(
+                    "https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21026");
+        }
+        else {
+            response = service.startAnnouncementRegistration(" 21026 ");
+        }
+
+        assertThat(response.executionId()).isNotNull();
+        assertThat(response.targetAnnouncementIdentifier()).isEqualTo("21026");
+        assertThat(response.type()).isEqualTo(DataPipelineType.ANNOUNCEMENT_REGISTRATION);
+        verify(runner).run(DataPipelineType.ANNOUNCEMENT_REGISTRATION, response.executionId(), "21026");
+        verify(executionStateService).complete(response.executionId(), Instant.parse("2026-09-02T12:00:00Z"));
+        assertThat(IngestServiceKeyContext.current()).isEmpty();
+    }
+
+    @Test
+    void 단건_등록_실패는_관리자에게_구체적_사유로_전달한다() {
+        when(executionLock.tryAcquire(any())).thenReturn(Optional.of(lease));
+        when(executionStateService.createRegistration(any(), any(), any())).thenAnswer(invocation ->
+                DataPipelineExecution.startRegistration(invocation.getArgument(0),
+                        invocation.getArgument(1), invocation.getArgument(2)));
+        org.mockito.Mockito.doThrow(
+                new com.toadzip.backend.ingest.exception.exception.AnnouncementRegistrationException("이미 등록된 공고"))
+                .when(runner).run(org.mockito.ArgumentMatchers.eq(DataPipelineType.ANNOUNCEMENT_REGISTRATION),
+                        any(), org.mockito.ArgumentMatchers.eq("21026"));
+
+        var response = service.startAnnouncementRegistration("21026");
+
+        verify(executionStateService).fail(response.executionId(), null, "이미 등록된 공고", null,
+                Instant.parse("2026-09-02T12:00:00Z"));
+        verify(executionStateService, never()).complete(any(), any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DataPipelineType.class, names = {
+            "COMPLEX_COLLECTION", "ANNOUNCEMENT_COLLECTION", "COMPLEX_SYNC", "ANNOUNCEMENT_SYNC"
+    })
+    void 입력키는_비동기_작업에서만_사용하고_상태와_스레드에_남기지_않는다(DataPipelineType type) {
+        configureStoredExecution();
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        AtomicReference<Runnable> queued = new AtomicReference<>();
+        service = serviceWith(queued::set);
+        doAnswer(invocation -> {
+            assertThat(IngestServiceKeyContext.current()).contains("runtime-test-key");
+            return null;
+        }).when(runner).run(any(), any());
+
+        var accepted = service.start(type, " runtime-test-key ");
+        assertThat(IngestServiceKeyContext.current()).isEmpty();
+        queued.get().run();
+
+        assertThat(IngestServiceKeyContext.current()).isEmpty();
+        assertThat(accepted.toString()).doesNotContain("runtime-test-key", "serviceKey");
+        assertThat(service.findLatest(type).toString())
+                .doesNotContain("runtime-test-key", "serviceKey");
+        assertThat(new com.toadzip.backend.ingest.pipeline.dto.DataPipelineStartRequest("runtime-test-key").toString())
+                .doesNotContain("runtime-test-key");
+    }
+
+    @Test
+    void 정제_실행에_입력키를_사용하려고_하면_저장_전에_거부한다() {
+        assertThatThrownBy(() -> service.start(DataPipelineType.COMPLEX_REFINEMENT, "runtime-test-key"))
+                .isInstanceOf(com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException.class)
+                .hasMessageNotContaining("runtime-test-key");
+        verify(executionLock, never()).tryAcquire(any(UUID.class));
+    }
+
+    @Test
+    void 비동기_수집이_실패해도_실행키를_스레드에서_제거한다() {
+        configureStoredExecution();
+        when(executionLock.tryAcquire(any(UUID.class))).thenReturn(Optional.of(lease));
+        doAnswer(invocation -> {
+            assertThat(IngestServiceKeyContext.current()).contains("runtime-test-key");
+            throw new IllegalStateException("수집 실패");
+        }).when(runner).run(any(), any());
+        service.start(DataPipelineType.COMPLEX_COLLECTION, "runtime-test-key");
+
+        assertThat(IngestServiceKeyContext.current()).isEmpty();
+        assertThat(service.findLatest(DataPipelineType.COMPLEX_COLLECTION).status())
+                .isEqualTo(DataPipelineExecutionStatus.FAILED);
+        verify(lease).close();
+    }
+
     @Test
     void 실행_ID를_별도_로그_맥락으로_전달하고_요청_traceId를_보존한다() {
         configureStoredExecution();
@@ -128,10 +240,10 @@ class DataPipelineExecutionServiceTest {
         when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         doAnswer(invocation -> {
             DataPipelineType type = invocation.getArgument(0);
-            DataPipelineProgressListener listener = invocation.getArgument(1);
+            UUID executionId = invocation.getArgument(1);
             type.steps().forEach(step -> {
-                listener.started(step);
-                listener.completed(step, "{\"processedCount\":1}");
+                executionStateService.startStep(executionId, step);
+                executionStateService.completeStep(executionId, step, "{\"processedCount\":1}");
             });
             return null;
         }).when(runner).run(any(), any());
@@ -141,6 +253,9 @@ class DataPipelineExecutionServiceTest {
 
         assertThat(started.executionId()).isNotNull();
         assertThat(started.status()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
+        assertThat(started.trigger()).isEqualTo(DataPipelineExecutionTrigger.MANUAL);
+        assertThat(started.scheduledAt()).isNull();
+        assertThat(started.upstreamExecutionId()).isNull();
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.COMPLETED);
         assertThat(status.completedSteps()).hasSize(4);
         verify(lease).close();
@@ -155,10 +270,10 @@ class DataPipelineExecutionServiceTest {
         when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         doAnswer(invocation -> {
             DataPipelineType type = invocation.getArgument(0);
-            DataPipelineProgressListener listener = invocation.getArgument(1);
+            UUID executionId = invocation.getArgument(1);
             type.steps().forEach(step -> {
-                listener.started(step);
-                listener.completed(step, "{\"processedCount\":1}");
+                executionStateService.startStep(executionId, step);
+                executionStateService.completeStep(executionId, step, "{\"processedCount\":1}");
             });
             return null;
         }).when(runner).run(any(), any());
@@ -234,9 +349,10 @@ class DataPipelineExecutionServiceTest {
         when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         String serverResponse = "{\"failedSourceRowCount\":3}";
         doAnswer(invocation -> {
-            DataPipelineProgressListener listener = invocation.getArgument(1);
-            listener.started(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
-            listener.partiallyFailed(
+            UUID executionId = invocation.getArgument(1);
+            executionStateService.startStep(executionId, DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS);
+            executionStateService.recordPartialFailure(
+                    executionId,
                     DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS,
                     serverResponse
             );
@@ -267,25 +383,29 @@ class DataPipelineExecutionServiceTest {
         when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         String serverResponse = "{\"rateLimitedRequestCount\":1}";
         doAnswer(invocation -> {
-            DataPipelineProgressListener listener = invocation.getArgument(1);
-            listener.started(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
-            listener.skipped(
+            UUID executionId = invocation.getArgument(1);
+            executionStateService.startStep(executionId, DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+            executionStateService.skipStep(
+                    executionId,
                     DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS,
                     "외부 API 호출 제한에 도달해 이 단계를 건너뛰었습니다.",
                     serverResponse
             );
-            listener.started(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
-            listener.completed(
+            executionStateService.startStep(executionId, DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
+            executionStateService.completeStep(
+                    executionId,
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG,
                     "{\"collectedSourceRowCount\":1}"
             );
-            listener.started(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
-            listener.completed(
+            executionStateService.startStep(executionId, DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES);
+            executionStateService.completeStep(
+                    executionId,
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_SUPPLIES,
                     "{\"collectedSourceRowCount\":1}"
             );
-            listener.started(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
-            listener.completed(
+            executionStateService.startStep(executionId, DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS);
+            executionStateService.completeStep(
+                    executionId,
                     DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS,
                     "{\"collectedSourceRowCount\":1}"
             );
@@ -313,10 +433,10 @@ class DataPipelineExecutionServiceTest {
         configureStoredExecution();
         when(executionLock.tryAcquire(any(java.util.UUID.class))).thenReturn(Optional.of(lease));
         doAnswer(invocation -> {
-            DataPipelineProgressListener listener = invocation.getArgument(1);
-            listener.started(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
-            listener.completed(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS, "{}");
-            listener.started(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
+            UUID executionId = invocation.getArgument(1);
+            executionStateService.startStep(executionId, DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
+            executionStateService.completeStep(executionId, DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS, "{}");
+            executionStateService.startStep(executionId, DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_CATALOG);
             throw new com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException(
                     "LH 공고 API 장애로 호출을 잠시 중단했습니다. 잠시 후 재실행해주세요.");
         }).when(runner).run(any(), any());
@@ -339,10 +459,10 @@ class DataPipelineExecutionServiceTest {
         }).when(executionStateService).complete(any(), any());
         doAnswer(invocation -> {
             DataPipelineType type = invocation.getArgument(0);
-            DataPipelineProgressListener listener = invocation.getArgument(1);
+            UUID executionId = invocation.getArgument(1);
             type.steps().forEach(step -> {
-                listener.started(step);
-                listener.completed(step, "{\"processedCount\":1}");
+                executionStateService.startStep(executionId, step);
+                executionStateService.completeStep(executionId, step, "{\"processedCount\":1}");
             });
             return null;
         }).when(runner).run(any(), any());
@@ -368,17 +488,16 @@ class DataPipelineExecutionServiceTest {
         staleExecution.startStep(DataPipelineStep.COLLECT_MYHOME_ANNOUNCEMENTS);
         when(executionRepository.findFirstByTypeOrderByIdDesc(any()))
                 .thenReturn(Optional.of(staleExecution));
-        when(executionStateService.recoverInterrupted(any(), any(), any(), any()))
+        when(executionStateService.recoverInterruptedBefore(any(), any(), any()))
                 .thenAnswer(invocation -> {
                     staleExecution.fail(
                             staleExecution.getCurrentStep(),
-                            invocation.getArgument(3),
+                            invocation.getArgument(2),
                             null,
-                            invocation.getArgument(2)
+                            invocation.getArgument(1)
                     );
-                    return true;
+                    return 1;
                 });
-        when(executionRepository.findByExecutionId(any())).thenReturn(Optional.of(staleExecution));
 
         var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
@@ -402,12 +521,13 @@ class DataPipelineExecutionServiceTest {
         var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 
         assertThat(status.status()).isEqualTo(DataPipelineExecutionStatus.RUNNING);
-        verify(executionStateService, never()).recoverInterrupted(any(), any(), any(), any());
+        verify(executionStateService, never()).recoverInterruptedBefore(any(), any(), any());
     }
 
     private void configureStoredExecution() {
         AtomicReference<DataPipelineExecution> savedExecution = new AtomicReference<>();
-        lenient().when(executionStateService.create(any(), any(), any())).thenAnswer(invocation -> {
+        lenient().when(executionStateService.create(any(), any(), any()))
+                .thenAnswer(invocation -> {
             DataPipelineExecution execution = DataPipelineExecution.start(
                     invocation.getArgument(0),
                     invocation.getArgument(1),

@@ -3,15 +3,20 @@ package com.toadzip.backend.ingest.enrichment.service;
 import static com.toadzip.backend.ingest.failure.domain.IngestFailureStatus.PENDING;
 
 import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
-import com.toadzip.backend.ingest.collection.domain.LhCatalogSource;
-import com.toadzip.backend.ingest.collection.repository.LhCatalogSourceRepository;
-import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdEnrichmentFailureResponse;
+import com.toadzip.backend.housing.repository.HousingTypeRepository;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.repository.LhLeaseCatalogSourceReader;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailureReason;
+import com.toadzip.backend.ingest.enrichment.dto.LhHouseholdEnrichmentFailureResponse;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureStore;
+import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHousehold;
+import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHouseholdSource;
+import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHouseholdSourceKey;
 import com.toadzip.backend.ingest.failure.service.IngestExecutionContext;
 import java.time.Clock;
 import java.time.Instant;
@@ -20,43 +25,25 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class LhHousingTypeHouseholdEnrichmentService {
 
-    private final LhCatalogSourceRepository sourceRepository;
+    private final LhLeaseCatalogSourceReader sourceRepository;
     private final HousingComplexRepository complexRepository;
+    private final HousingTypeRepository housingTypeRepository;
     private final LhHousingTypeHouseholdSourceMapper sourceMapper;
     private final LhHousingTypeHouseholdMatcher matcher;
-    private final LhHousingTypeHouseholdWriter writer;
     private final LhHouseholdEnrichmentFailureStore failureStore;
     private final LhHouseholdEnrichmentFailureRepository failureRepository;
     private final Clock clock;
-
-    public LhHousingTypeHouseholdEnrichmentService(
-            LhCatalogSourceRepository sourceRepository,
-            HousingComplexRepository complexRepository,
-            LhHousingTypeHouseholdSourceMapper sourceMapper,
-            LhHousingTypeHouseholdMatcher matcher,
-            LhHousingTypeHouseholdWriter writer,
-            LhHouseholdEnrichmentFailureStore failureStore,
-            LhHouseholdEnrichmentFailureRepository failureRepository,
-            Clock clock
-    ) {
-        this.sourceRepository = sourceRepository;
-        this.complexRepository = complexRepository;
-        this.sourceMapper = sourceMapper;
-        this.matcher = matcher;
-        this.writer = writer;
-        this.failureStore = failureStore;
-        this.failureRepository = failureRepository;
-        this.clock = clock;
-    }
 
     @Transactional(readOnly = true)
     public List<LhHouseholdEnrichmentFailureResponse> findFailures(int page, int size) {
@@ -100,7 +87,7 @@ public class LhHousingTypeHouseholdEnrichmentService {
             matchedSources.add(matchedSource.get());
         }
         report = report.plus(writeUniqueMatches(matchedSources, failures, occurredAt));
-        failureStore.replaceAll(
+        failureStore.reconcileAfterRun(
                 failures,
                 IngestExecutionContext.currentExecutionId().orElse(null)
         );
@@ -126,12 +113,14 @@ public class LhHousingTypeHouseholdEnrichmentService {
                         source.complexName(),
                         matches.size()
                 );
+                LhHouseholdEnrichmentFailureReason reason = LhHouseholdEnrichmentFailureReason.AMBIGUOUS_COMPLEX;
+                if (matches.isEmpty()) {
+                    reason = LhHouseholdEnrichmentFailureReason.COMPLEX_NOT_FOUND;
+                }
                 failures.add(failure(
                         sourceKey,
                         sources,
-                        matches.isEmpty()
-                                ? LhHouseholdEnrichmentFailureReason.COMPLEX_NOT_FOUND
-                                : LhHouseholdEnrichmentFailureReason.AMBIGUOUS_COMPLEX,
+                        reason,
                         "일치한 단지 수: " + matches.size(),
                         occurredAt
                 ));
@@ -189,12 +178,41 @@ public class LhHousingTypeHouseholdEnrichmentService {
                 report = report.plus(LhHousingTypeHouseholdEnrichmentReport.failed());
                 continue;
             }
-            report = report.plus(writer.write(
+            report = report.plus(write(
                     matchedSource.complex(),
                     matchedSource.source().housingTypes()
             ));
         }
         return report;
+    }
+
+    private LhHousingTypeHouseholdEnrichmentReport write(
+            HousingComplex complex,
+            List<LhHousingTypeHousehold> sources
+    ) {
+        List<HousingType> housingTypes = housingTypeRepository.findAllByHousingComplex(complex).stream()
+                .filter(type -> type.getSourceHousingTypeIdentifier() != null)
+                .toList();
+        int updatedCount = 0;
+        int unchangedCount = 0;
+        int unmatchedCount = 0;
+        for (LhHousingTypeHousehold source : sources) {
+            List<HousingType> matches = housingTypes.stream()
+                    .filter(type -> type.getExclusiveArea().compareTo(source.exclusiveArea()) == 0)
+                    .toList();
+            if (matches.size() != 1) {
+                unmatchedCount++;
+                continue;
+            }
+            if (matches.getFirst().enrichHouseholdCountFromLh(source.totalHouseholdCount())) {
+                updatedCount++;
+                continue;
+            }
+            unchangedCount++;
+        }
+        return LhHousingTypeHouseholdEnrichmentReport.matched(
+                updatedCount, unchangedCount, unmatchedCount
+        );
     }
 
     private LhHouseholdEnrichmentFailure failure(

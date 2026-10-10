@@ -1,0 +1,45 @@
+.floating { position: fixed; right: 24px; bottom: 24px; z-index: 3500; width: min(400px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow: auto; border-radius: 16px; box-shadow: 0 8px 30px rgb(18 51 35 / 16%); }
+.card { padding: 20px; border: 1px solid #dbe6df; border-radius: 16px; background: var(--ds-color-surface); color: var(--ds-color-text); font: var(--ds-text-caption)/1.55 var(--ds-font-family-ui); }
+.heading { display: flex; align-items: center; gap: 8px; }
+.heading h2 { font-size: 15px; line-height: 1.5; margin: 0; }
+.heading span { flex-shrink: 0; font-size: 11px; color: var(--ds-color-action); background: var(--ds-color-action-soft); padding: 2px 6px; border-radius: 4px; }
+.introduction { margin: 12px 0 8px; color: var(--ds-color-label); font-size: 12px; }
+.introduction strong { font-weight: 700; }
+.small { color: var(--ds-color-label); font-size: 12px; margin: 8px 0; }
+.disclosure { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0; color: var(--ds-color-action); background: none; border: 0; cursor: pointer; font: inherit; font-size: 12px; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.actions button { min-height: 40px; border: 1px solid #a5beb0; border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-action); font: inherit; font-weight: 700; cursor: pointer; }
+.actions .allow { border-color: var(--ds-color-action); color: white; background: var(--ds-color-action); }
+.actions button:disabled { opacity: .5; cursor: wait; }
+.card button:focus-visible, .menu summary:focus-visible, .menu a:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
+.footer { margin: 10px 0 0; font-size: 11px; color: var(--ds-color-muted); }
+.details { border-top: 1px solid var(--ds-color-divider); margin-top: 8px; padding-top: 12px; }
+.details h2, .details h3 { font-size: 12px; margin: 12px 0 4px; }
+.details p { font-size: 12px; }
+.details a, .page a { color: var(--ds-color-action); text-underline-offset: 3px; }
+.error { color: #a12622; font-size: 12px; }
+.error button { color: inherit; background: none; border: 0; text-decoration: underline; cursor: pointer; }
+.scope { background: var(--ds-color-action-soft); padding: 8px; border-radius: 6px; }
+.menu { position: relative; font-family: var(--ds-font-family-ui); }
+.menu summary { list-style: none; display: flex; align-items: center; flex-direction: column; gap: 6px; color: var(--ds-color-label); cursor: pointer; padding: 8px 4px; font-size: 11px; font-weight: 600; }
+.menu summary::-webkit-details-marker { display: none; }
+.menu svg { width: 24px; height: 24px; }
+.menu nav { position: absolute; left: calc(100% + 12px); bottom: 0; z-index: 3600; width: 212px; padding: 8px; border: 1px solid var(--ds-color-divider); border-radius: 12px; background: var(--ds-color-surface); box-shadow: 0 6px 24px rgb(0 0 0 / 12%); }
+.menu a { display: block; padding: 12px; color: var(--ds-color-text); text-decoration: none; font-size: 13px; }
+.menu a:hover { background: var(--ds-color-action-soft); }
+.page { max-width: 800px; margin: 0 auto; padding: 32px 24px 80px; color: var(--ds-color-text); font-family: var(--ds-font-family-ui); }
+.page > .card { max-width: 400px; }
+.page h1 { font-size: 24px; margin: 28px 0; }
+.page footer { border-top: 1px solid var(--ds-color-divider); margin-top: 32px; padding-top: 16px; font-size: 14px; }
+.document { line-height: 1.75; overflow-wrap: anywhere; }
+.document p { white-space: pre-wrap; }
+.document h2 { font-size: 18px; margin-top: 28px; }
+.document h3 { font-size: 16px; }
+@media (max-width: 767px) { .floating { right: 16px; bottom: 80px; max-height: calc(100dvh - 120px); } .menu nav { left: 0; bottom: calc(100% + 12px); } }
+
+@media (max-width: 767px) {
+  .menu { position: fixed; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .menu summary { width: 48px; min-height: 44px; padding: 6px 2px; box-sizing: border-box; gap: 2px; border: 1px solid var(--ds-color-divider); border-radius: 10px; background: var(--ds-color-surface); box-shadow: 0 2px 10px rgb(0 0 0 / 8%); font-size: 9px; }
+  .menu summary svg { width: 20px; height: 20px; }
+  .menu nav { left: auto; right: 0; bottom: calc(100% + 8px); }
+}

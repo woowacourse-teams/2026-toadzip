@@ -78,6 +78,22 @@ class MapClusteringAggregateNodeQueryTest {
     }
 
     @Test
+    void 읍면동_filter는_상위_시군구_node를_조회하되_집계_필터는_유지한다() {
+        HousingComplexFilterCondition filters = filters(Set.of("1111010100"));
+        when(aggregateRepository.findCounts(any(), any())).thenReturn(
+                List.of(new MapClusteringRegionCountRow(FIRST_BASIC_KEY, 2L))
+        );
+
+        List<MapClusteringAggregateNode> nodes = query.find(
+                MapClusteringStage.BASIC_REGION, bounds(), filters
+        );
+
+        assertEquals(List.of(FIRST_BASIC_KEY), groupKeys(nodes));
+        assertEquals(2L, nodes.getFirst().uniqueComplexCount());
+        verifyAssignments(filters, FIRST_BASIC_KEY);
+    }
+
+    @Test
     void 대표점이_viewport_밖인_node를_제외한다() {
         HousingComplexFilterCondition filters = filters(Set.of());
         when(aggregateRepository.findCounts(any(), any())).thenReturn(List.of());

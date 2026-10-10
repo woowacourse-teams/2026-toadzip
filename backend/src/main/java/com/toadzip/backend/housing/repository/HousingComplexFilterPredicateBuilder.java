@@ -103,19 +103,19 @@ final class HousingComplexFilterPredicateBuilder {
             """;
 
     private static final String MIN_DEPOSIT_FILTER = """
-              AND housing_complex.deposit_min >= :minDeposit
+                      AND matched_housing_type.basic_deposit >= :minDeposit
             """;
 
     private static final String MAX_DEPOSIT_FILTER = """
-              AND housing_complex.deposit_min <= :maxDeposit
+                      AND matched_housing_type.basic_deposit <= :maxDeposit
             """;
 
     private static final String MIN_MONTHLY_RENT_FILTER = """
-              AND housing_complex.monthly_rent_min >= :minMonthlyRent
+                      AND matched_housing_type.basic_monthly_rent >= :minMonthlyRent
             """;
 
     private static final String MAX_MONTHLY_RENT_FILTER = """
-              AND housing_complex.monthly_rent_min <= :maxMonthlyRent
+                      AND matched_housing_type.basic_monthly_rent <= :maxMonthlyRent
             """;
 
     private static final String MIN_EXCLUSIVE_AREA_FILTER = """
@@ -156,13 +156,24 @@ final class HousingComplexFilterPredicateBuilder {
             Map<String, Object> parameters
     ) {
         addFilter(condition.provinceCode(), PROVINCE_FILTER, "provinceCode", sql, parameters);
-        addCollectionFilter(condition.cityCountyDistrictCodes(), DISTRICT_FILTER, "districtCodes", sql, parameters);
+        addRegionFilter(condition.regionCodes(), sql, parameters);
         addStoredValueFilter(condition.rentalTypes(), RENTAL_TYPE_FILTER, "rentalTypeValues", sql, parameters);
         addStoredValueFilter(condition.agencyCodes(), AGENCY_CODE_FILTER, "agencyCodeValues", sql, parameters);
         addFilter(condition.builtYearFrom(), BUILT_YEAR_FROM_FILTER, "builtYearFrom", sql, parameters);
         addFilter(condition.builtYearTo(), BUILT_YEAR_TO_FILTER, "builtYearTo", sql, parameters);
         addFilter(condition.hasElevator(), ELEVATOR_FILTER, "hasElevator", sql, parameters);
         addActiveAnnouncementFilter(condition, sql, parameters);
+    }
+
+    private void addRegionFilter(Set<String> codes, StringBuilder sql, Map<String, Object> parameters) {
+        if (codes.stream().anyMatch(code -> code.length() == 10)) {
+            Set<String> prefixes = codes.stream().map(code -> code.substring(0, 8)).collect(Collectors.toSet());
+            addCollectionFilter(prefixes,
+                    " AND SUBSTRING(housing_complex.legal_dong_code, 1, 8) IN (:neighborhoodPrefixes)",
+                    "neighborhoodPrefixes", sql, parameters);
+            return;
+        }
+        addCollectionFilter(codes, DISTRICT_FILTER, "districtCodes", sql, parameters);
     }
 
     private void addActiveAnnouncementFilter(
@@ -247,10 +258,14 @@ final class HousingComplexFilterPredicateBuilder {
             StringBuilder sql,
             Map<String, Object> parameters
     ) {
-        addPriceBounds(condition, sql, parameters);
-        if (hasAreaFilter(condition)) {
-            addAreaExists(condition, sql, parameters);
+        if (!hasAreaFilter(condition) && condition.minDeposit() == null && condition.maxDeposit() == null
+                && condition.minMonthlyRent() == null && condition.maxMonthlyRent() == null) {
+            return;
         }
+        sql.append(AREA_EXISTS_START);
+        addPriceBounds(condition, sql, parameters);
+        addAreaBounds(condition, sql, parameters);
+        sql.append(EXISTS_END);
     }
 
     private void addPriceBounds(
@@ -262,16 +277,6 @@ final class HousingComplexFilterPredicateBuilder {
         addFilter(condition.maxDeposit(), MAX_DEPOSIT_FILTER, "maxDeposit", sql, parameters);
         addFilter(condition.minMonthlyRent(), MIN_MONTHLY_RENT_FILTER, "minMonthlyRent", sql, parameters);
         addFilter(condition.maxMonthlyRent(), MAX_MONTHLY_RENT_FILTER, "maxMonthlyRent", sql, parameters);
-    }
-
-    private void addAreaExists(
-            HousingComplexFilterCondition condition,
-            StringBuilder sql,
-            Map<String, Object> parameters
-    ) {
-        sql.append(AREA_EXISTS_START);
-        addAreaBounds(condition, sql, parameters);
-        sql.append(EXISTS_END);
     }
 
     private void addAreaBounds(

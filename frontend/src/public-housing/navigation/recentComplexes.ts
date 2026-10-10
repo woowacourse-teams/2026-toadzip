@@ -8,7 +8,7 @@ export interface RecentComplex {
 }
 
 export const RECENT_COMPLEXES_KEY = 'toadzip.recent-complexes.v1'
-const MAXIMUM_RECENT_COMPLEXES = 3
+const MAXIMUM_RECENT_COMPLEXES = 20
 
 export function readRecentComplexes(): readonly RecentComplex[] {
   try {

@@ -1,4 +1,6 @@
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
+import { createSearchMeasurement, type SearchMeasurement } from '../analytics/searchMeasurement'
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { DetailCloseButton } from '../components/DetailPrimitives.tsx'
 import {
   integratedSearchRepository,
@@ -10,6 +12,7 @@ import {
 import styles from './IntegratedSearch.module.css'
 import { findRegionBoundaryMetadata } from '../regions/regionBoundaryCatalog.ts'
 import { NotificationInterestButton } from '../interest/NotificationInterest'
+import { useSearchSuggestionsKeyboard } from './useSearchSuggestionsKeyboard.ts'
 
 interface GroupState {
   readonly items: readonly SearchResultItem[]
@@ -19,7 +22,7 @@ interface GroupState {
   readonly error: string | null
 }
 
-const searchTypes: readonly SearchType[] = ['REGION', 'ANNOUNCEMENT', 'COMPLEX']
+const searchTypes: readonly SearchType[] = ['REGION', 'SUBWAY_STATION', 'ANNOUNCEMENT', 'COMPLEX']
 
 export interface IntegratedSearchProps {
   readonly onActiveChange?: (active: boolean) => void
@@ -35,17 +38,43 @@ export function IntegratedSearch({
   selectionControl,
 }: IntegratedSearchProps) {
   const [query, setQuery] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
+  const closeReason = useRef<'manual' | 'selection' | 'navigation'>('manual')
+  const { inputRef, suggestionsRef, onKeyDown } = useSearchSuggestionsKeyboard(() => setQuery(''))
+  const suggestionsId = useId()
   const normalizedQuery = normalizeQuery(query)
   const active = normalizedQuery.replaceAll(' ', '').length >= 2
-  const inputLabel = '지역, 단지, 공고 검색'
+  const inputLabel = '지역, 지하철역, 단지, 공고 검색'
+  const measurement = useMemo(() => createSearchMeasurement('main_search', normalizedQuery, searchTypes), [normalizedQuery])
+  const activeSearch = useRef<SearchMeasurement | null>(null)
+  useEffect(() => {
+    if (active) activeSearch.current = measurement
+    else if (activeSearch.current) {
+      captureProductEvent('search_closed', { ...activeSearch.current.properties, reason: closeReason.current })
+      activeSearch.current = null
+      closeReason.current = 'manual'
+    }
+  }, [active, measurement])
+  useEffect(() => {
+    let mounted = true
+    const generation = activeSearch
+    const input = inputRef.current
+    return () => {
+      mounted = false
+      queueMicrotask(() => {
+        if (!mounted && generation.current && !input?.isConnected) {
+          captureProductEvent('search_closed', { ...generation.current.properties, reason: 'navigation' })
+          generation.current = null
+        }
+      })
+    }
+  }, [inputRef])
 
   useEffect(() => {
     onActiveChange?.(active)
   }, [active, onActiveChange])
 
   return (
-    <section className={`integrated-search${active ? ' is-active' : ''}`} aria-label="통합 검색">
+    <section className={`integrated-search${active ? ' is-active' : ''}`} aria-label="통합 검색" onKeyDown={onKeyDown}>
       <div className={selectionControl ? `${styles.top} ${styles.withSelection}` : styles.top}>
         <label className="integrated-search__input">
           <span className="visually-hidden">{inputLabel}</span>
@@ -64,6 +93,9 @@ export function IntegratedSearch({
           <input
             ref={inputRef}
             type="search"
+            autoComplete="off"
+            aria-autocomplete="list"
+            aria-controls={active ? suggestionsId : undefined}
             value={query}
             placeholder={inputLabel}
             onChange={(event) => setQuery(event.target.value)}
@@ -84,12 +116,19 @@ export function IntegratedSearch({
         )}
       </div>
       {active && (
-        <div className="integrated-search__body">
+        <div className="integrated-search__body" ref={suggestionsRef} id={suggestionsId}>
           <div className="integrated-search__results" key={normalizedQuery}>
             {searchTypes.map((type) => (
               <SearchGroup
                 key={type}
-                onSelect={onSelect}
+                measurement={measurement}
+                onSelect={(item) => {
+                  closeReason.current = 'selection'
+                  setQuery('')
+                  onActiveChange?.(false)
+                  inputRef.current?.focus({ preventScroll: true })
+                  onSelect(item)
+                }}
                 query={normalizedQuery}
                 repository={repository}
                 type={type}
@@ -102,17 +141,21 @@ export function IntegratedSearch({
   )
 }
 
-function SearchGroup({
+export function SearchGroup({
   onSelect,
   query,
   repository,
   type,
+  measurement: suppliedMeasurement,
 }: {
   readonly onSelect: (item: SearchResultItem) => void
   readonly query: string
   readonly repository: IntegratedSearchRepository
   readonly type: SearchType
+  readonly measurement?: SearchMeasurement
 }) {
+  const fallbackMeasurement = useMemo(() => createSearchMeasurement('welcome', query, [type]), [query, type])
+  const measurement = suppliedMeasurement ?? fallbackMeasurement
   const [page, setPage] = useState(0)
   const [retryRevision, setRetryRevision] = useState(0)
   const [state, setState] = useState<GroupState>({
@@ -124,7 +167,10 @@ function SearchGroup({
   useEffect(() => {
     const controller = new AbortController()
     setState((current) => ({ ...current, error: null, kind: 'loading' }))
+    const requestId = createAnalyticsId()
     const timer = window.setTimeout(() => {
+      if (page === 0) measurement.start(type)
+      else captureProductEvent('search_more_requested', { ...measurement.properties, result_type: type.toLowerCase(), request_id: requestId, page })
       repository.search(query, false, page, controller.signal, type)
         .then((response) => {
           // Some repositories can finish after abort; never apply their stale result.
@@ -133,9 +179,13 @@ function SearchGroup({
           }
           const failure = response.failures.find((candidate) => candidate.type === type)
           if (failure) {
+            if (page === 0) measurement.settle(type, 0, true)
+            else captureProductEvent('search_more_failed', { ...measurement.properties, result_type: type.toLowerCase(), request_id: requestId, page })
             setState((current) => ({ ...current, error: failure.message, kind: 'error' }))
             return
           }
+          if (page === 0) measurement.settle(type, responseItems(response, type).length, false)
+          else captureProductEvent('search_more_succeeded', { ...measurement.properties, result_type: type.toLowerCase(), request_id: requestId, page, result_count: responseItems(response, type).length })
           setState((current) => ({
             error: null,
             hasNext: response.hasNext,
@@ -148,6 +198,8 @@ function SearchGroup({
         })
         .catch(() => {
           if (!controller.signal.aborted) {
+            if (page === 0) measurement.settle(type, 0, true)
+            else captureProductEvent('search_more_failed', { ...measurement.properties, result_type: type.toLowerCase(), request_id: requestId, page })
             setState((current) => ({
               ...current,
               error: `${label} 검색 결과를 불러오지 못했습니다.`,
@@ -160,23 +212,27 @@ function SearchGroup({
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [label, page, query, repository, retryRevision, type])
+  }, [label, page, query, repository, retryRevision, type, measurement])
 
   return (
     <section className={styles.group} aria-labelledby={headingId} aria-busy={state.kind === 'loading'}>
       <h3 className={styles.groupHeading} id={headingId}>{label}</h3>
       <ul>
-        {state.items.map((item) => {
-          const unavailable = item.type === 'REGION'
-            && (item.latitude === null || item.longitude === null)
-            && !findRegionBoundaryMetadata(item.regionCode ?? item.id)
+        {state.items.map((item, index) => {
+          const missingCoordinates = item.latitude === null || item.longitude === null
+          const unavailable = missingCoordinates && (item.type === 'SUBWAY_STATION'
+            || (item.type === 'REGION' && !findRegionBoundaryMetadata(item.regionCode ?? item.id)))
           return (
             <li key={`${item.type}-${item.id}`} className={item.type === 'REGION' && item.regionCode ? styles.regionRow : undefined}>
               <button
                 type="button"
-                disabled={unavailable}
+                data-search-suggestion
                 className={styles.result}
-                onClick={() => onSelect(item)}
+                onClick={(event) => {
+                  captureProductEvent('select_search_result', { ...measurement.properties, result_type: item.type.toLowerCase(), result_id: item.id, rank: index + 1, method: event.detail === 0 ? 'keyboard' : 'pointer' })
+                  if (item.type === 'REGION') captureProductEvent('region_selected', { surface: measurement.properties.surface, region_code: item.regionCode ?? item.id, entry_point: 'search' })
+                  onSelect(item)
+                }}
               >
                 <strong>{item.title}</strong>
                 {item.subtitle && <span>{item.subtitle}</span>}
@@ -206,7 +262,7 @@ function SearchGroup({
       {state.kind === 'error' && (
         <div className="integrated-search__partial-error" role="alert">
           <span>{state.error}</span>
-          <button type="button" onClick={() => setRetryRevision((current) => current + 1)}>
+          <button type="button" onClick={() => { captureProductEvent('exploration_retry_clicked', { surface: measurement.properties.surface, result_type: type.toLowerCase() }); setRetryRevision((current) => current + 1) }}>
             {label} 다시 시도
           </button>
         </div>
@@ -240,6 +296,7 @@ function responseItems(response: IntegratedSearchResponse, type: SearchType) {
     ANNOUNCEMENT: response.announcements,
     COMPLEX: response.complexes,
     REGION: response.regions,
+    SUBWAY_STATION: response.subwayStations ?? [],
   }[type]
 }
 
@@ -253,7 +310,7 @@ function normalizeQuery(value: string) {
 }
 
 function typeLabel(type: SearchType) {
-  return { ANNOUNCEMENT: '공고', COMPLEX: '단지', REGION: '지역' }[type]
+  return { ANNOUNCEMENT: '공고', COMPLEX: '단지', REGION: '지역', SUBWAY_STATION: '지하철역' }[type]
 }
 
 function statusLabel(status: string) {

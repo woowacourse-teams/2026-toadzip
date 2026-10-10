@@ -216,3 +216,29 @@ it('현재 페이지 텍스트를 읽고 복사할 수 있으며 문서 마크�
   expect(screen.getByText('<script>공고문</script>')).toBeInTheDocument()
   expect(document.querySelector('script')).toBeNull()
 })
+
+it.each([
+  { key: 'f', ctrlKey: true, altKey: true },
+  { key: 'f', metaKey: true, isComposing: true },
+  { key: 'g', ctrlKey: true },
+])('문서 검색 대상이 아닌 단축키는 브라우저에 남긴다: %j', (key) => {
+  render(<dialog open><button>파일 목록</button><HwpDocumentPreview url="blob:shortcuts" name="공고.hwp" /></dialog>)
+  ready()
+  const event = new KeyboardEvent('keydown', { ...key, bubbles: true, cancelable: true })
+  fireEvent(screen.getByRole('button', { name: '파일 목록' }), event)
+  expect(event.defaultPrevented).toBe(false)
+  expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+})
+
+it('문서 준비 전과 뷰어 제거 후에는 검색 단축키를 가로채지 않는다', () => {
+
+  const { rerender } = render(<dialog open><button>파일 목록</button><HwpDocumentPreview url="blob:pending" name="공고.hwp" /></dialog>)
+  const before = new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true })
+  fireEvent(screen.getByRole('button', { name: '파일 목록' }), before)
+  expect(before.defaultPrevented).toBe(false)
+  expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+  rerender(<dialog open><button>파일 목록</button></dialog>)
+  const after = new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true })
+  fireEvent(screen.getByRole('button', { name: '파일 목록' }), after)
+  expect(after.defaultPrevented).toBe(false)
+})

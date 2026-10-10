@@ -1,7 +1,7 @@
 package com.toadzip.backend.ingest.collection.repository.external;
 
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import org.springframework.util.MultiValueMap;
@@ -12,6 +12,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.cfg.JsonNodeFeature;
 
 public class DataGoKrOpenApiClient {
 
@@ -40,19 +41,27 @@ public class DataGoKrOpenApiClient {
         this.restClient = restClient;
         this.objectMapper = objectMapper;
         this.baseUrl = baseUrl;
-        this.serviceKey = encodeServiceKey(serviceKey);
+        this.serviceKey = serviceKey;
         this.sourceName = sourceName;
         this.responseStatusValidator = responseStatusValidator;
     }
 
-    public ExternalDataResponse get(String path, MultiValueMap<String, String> params) {
-        requireConfigured();
-        URI requestUri = buildUri(path, params);
-        String rawPayload = requestRawPayload(requestUri);
-        JsonNode body = parsePayload(rawPayload);
-        validateGatewayRateLimit(body);
-        responseStatusValidator.validate(body);
-        return new ExternalDataResponse(rawPayload, body);
+    public JsonNode get(String path, MultiValueMap<String, String> params) {
+        try {
+            requireConfigured();
+            URI requestUri = buildUri(path, params);
+            String rawPayload = requestRawPayload(requestUri);
+            JsonNode body = parsePayload(rawPayload);
+            validateGatewayRateLimit(body);
+            responseStatusValidator.validate(body);
+            return body;
+        }
+        catch (ExternalDataRequestException exception) {
+            throw safeFailure(exception);
+        }
+        catch (RuntimeException exception) {
+            throw new ExternalDataRequestException(sourceName + " 외부 API 호출에 실패했습니다.");
+        }
     }
 
     URI buildUri(String path, MultiValueMap<String, String> params) {
@@ -61,7 +70,7 @@ public class DataGoKrOpenApiClient {
                 .build()
                 .encode(StandardCharsets.UTF_8)
                 .getQuery();
-        String uri = "%s/%s?serviceKey=%s".formatted(baseUrl, path, serviceKey);
+        String uri = "%s/%s?serviceKey=%s".formatted(baseUrl, path, encodeServiceKey(effectiveServiceKey()));
         if (query == null || query.isBlank()) {
             return URI.create(uri);
         }
@@ -104,7 +113,10 @@ public class DataGoKrOpenApiClient {
 
     private JsonNode parsePayload(String rawPayload) {
         try {
-            return objectMapper.readTree(rawPayload);
+            return objectMapper.reader()
+                    .with(JsonNodeFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+                    .without(JsonNodeFeature.STRIP_TRAILING_BIGDECIMAL_ZEROES)
+                    .readTree(rawPayload);
         }
         catch (RuntimeException exception) {
             throw new ExternalDataRequestException(sourceName + " 응답 형식이 올바르지 않습니다.", exception);
@@ -115,7 +127,8 @@ public class DataGoKrOpenApiClient {
         if (baseUrl == null || baseUrl.isBlank()) {
             throw new ExternalDataRequestException(sourceName + " API 주소가 비어 있습니다.");
         }
-        if (serviceKey == null || serviceKey.isBlank()) {
+        String requestKey = effectiveServiceKey();
+        if (requestKey == null || requestKey.isBlank()) {
             throw new ExternalDataRequestException("공공데이터 서비스키가 비어 있습니다.");
         }
     }
@@ -134,6 +147,35 @@ public class DataGoKrOpenApiClient {
 
     private String httpFailureMessage(int statusCode) {
         return sourceName + " 외부 API 호출에 실패했습니다: HTTP " + statusCode;
+    }
+
+    private String effectiveServiceKey() {
+        return IngestServiceKeyContext.current().orElse(serviceKey);
+    }
+
+    private ExternalDataRequestException safeFailure(ExternalDataRequestException failure) {
+        String message = failure.getMessage();
+        String key = effectiveServiceKey();
+        if (key != null && !key.isBlank()) {
+            message = message.replace(key, "[REDACTED]").replace(encodeServiceKey(key), "[REDACTED]");
+            message = message.replace(decodedServiceKey(key), "[REDACTED]");
+        }
+        if (failure.isRateLimited()) {
+            return ExternalDataRequestException.rateLimited(message, null, failure.isRetryable());
+        }
+        if (failure.isRetryable()) {
+            return ExternalDataRequestException.retryable(message);
+        }
+        return new ExternalDataRequestException(message);
+    }
+
+    private String decodedServiceKey(String key) {
+        try {
+            return URLDecoder.decode(encodeServiceKey(key), StandardCharsets.UTF_8);
+        }
+        catch (IllegalArgumentException exception) {
+            return key;
+        }
     }
 
     private ExternalDataRequestException tooManyRequests(HttpClientErrorException exception) {
@@ -165,8 +207,11 @@ public class DataGoKrOpenApiClient {
     }
 
     private static String encodeServiceKey(String raw) {
-        if (raw == null || raw.contains("%")) {
+        if (raw == null) {
             return raw;
+        }
+        if (raw.contains("%")) {
+            return URLEncoder.encode(URLDecoder.decode(raw, StandardCharsets.UTF_8), StandardCharsets.UTF_8);
         }
         return URLEncoder.encode(raw, StandardCharsets.UTF_8);
     }

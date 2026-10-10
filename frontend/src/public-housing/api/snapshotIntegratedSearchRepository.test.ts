@@ -16,13 +16,15 @@ describe('snapshot integrated search repository', () => {
     const result = await repository.search('서울', false, 0, new AbortController().signal)
 
     expect(result).toMatchObject({
-      totalCount: 3,
-      hasNext: false,
+      hasNext: true,
       complexes: [{ id: '17', title: '서울가람 행복주택', latitude: 37.5666, longitude: 126.9784 }],
       announcements: [{ id: '201', title: '서울 청년 행복주택 입주자 모집', applicationStatus: 'APPLYING' }],
-      regions: [{ id: '11140', regionCode: '11140', title: '서울특별시 중구', latitude: null, longitude: null }],
       failures: [],
     })
+    expect(result.regions).toEqual(expect.arrayContaining([expect.objectContaining({
+      id: '11140', regionCode: '11140', title: '서울특별시 중구',
+    })]))
+    expect(result.regions.some((region) => region.regionCode?.length === 10)).toBe(true)
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 

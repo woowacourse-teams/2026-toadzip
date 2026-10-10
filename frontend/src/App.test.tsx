@@ -1,4 +1,7 @@
-vi.mock('./admin/management/api', async importOriginal => ({ ...(await importOriginal<typeof import('./admin/management/api')>()), list:vi.fn(async () => ({items:[],page:0,hasNext:false,totalElements:0,totalPages:0})) }))
+vi.mock('./admin/management/api', async importOriginal => ({
+  ...(await importOriginal<typeof import('./admin/management/api')>()),
+  getManagementPage: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0 })),
+}))
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { MemoryRouter } from 'react-router'
@@ -25,10 +28,12 @@ vi.mock('./admin/ingest/api', async (importOriginal) => ({
 }))
 
 beforeEach(() => {
+  localStorage.clear()
   vi.stubEnv('VITE_NAVER_MAPS_CLIENT_ID', '')
 })
 
 afterEach(() => {
+  localStorage.clear()
   vi.unstubAllEnvs()
 })
 
@@ -37,20 +42,24 @@ describe('App', () => {
     vi.unstubAllGlobals()
   })
 
-  it('기본 화면을 표시한다', () => {
+  it('지도 설정이 없어도 첫 방문 안내를 표시하고 바로 지도 탐색을 시작한다', () => {
     render(
       <MemoryRouter>
         <App />
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole('banner', { name: '서비스 헤더' })).toBeVisible()
+    expect(screen.getByRole('dialog', { name: /살고 싶은 동네의/ })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '바로 지도 둘러보기' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByRole('banner', { name: '서비스 헤더' })).not.toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: '주요 메뉴' })).toBeVisible()
     const homeLink = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
     expect(homeLink).toBeVisible()
     expect(homeLink.querySelector('.brand-name')).not.toBeInTheDocument()
     expect(homeLink.querySelector('img')).toHaveAttribute('src', '/logo-bok-search.svg')
     expect(
-      screen.getByRole('searchbox', { name: '지역, 단지, 공고 검색' }),
+      screen.getByRole('searchbox', { name: '지역, 지하철역, 단지, 공고 검색' }),
     ).toBeVisible()
     expect(
       screen.getByRole('region', { name: '공공임대주택 지도' }),
@@ -60,17 +69,17 @@ describe('App', () => {
     )
   })
 
-  it('목록 위에는 검색창과 탭을 두고 소개 제목과 기본 입력 안내는 표시하지 않는다', () => {
+  it('검색창과 공고 메뉴를 두고 소개 제목과 기본 입력 안내는 표시하지 않는다', () => {
     render(
       <MemoryRouter>
         <App />
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole('searchbox', { name: '지역, 단지, 공고 검색' }))
-      .toHaveAttribute('placeholder', '지역, 단지, 공고 검색')
-    expect(screen.getByRole('tab', { name: '단지 목록' })).toBeVisible()
-    expect(screen.getByRole('tab', { name: '공고 목록' })).toBeVisible()
+    expect(screen.getByRole('searchbox', { name: '지역, 지하철역, 단지, 공고 검색' }))
+      .toHaveAttribute('placeholder', '지역, 지하철역, 단지, 공고 검색')
+    expect(screen.queryByRole('button', { name: '단지 목록' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '공고 목록' })).toBeVisible()
     expect(screen.queryByText('지도 기반 탐색')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '공공임대주택' }))
       .not.toBeInTheDocument()
@@ -148,11 +157,12 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: '단지 관리', level: 1 })).toBeVisible()
     expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('link', { name: '단지 관리' }))
-    fireEvent.click(screen.getByRole('link', { name: '단지 등록' }))
-    expect(screen.getByRole('heading', { name: '단지 등록',level:1 })).toBeVisible()
+    fireEvent.click(screen.getByRole('link', { name: '단지 추가' }))
+    expect(screen.getByRole('heading', { name: '단지 관리',level:1 })).toBeVisible()
+    expect(screen.getByRole('region', { name: '단지 추가' })).toBeVisible()
     expect(screen.queryByRole('button', { name: '공고 수집 실행' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('link', { name: '공고 관리' }))
-    fireEvent.click(screen.getByRole('link', { name: '공고 등록' }))
+    fireEvent.click(screen.getByRole('link', { name: '공고 추가' }))
     expect(screen.getByRole('heading', { name: 'JSON 가져오기' })).toBeVisible()
     expect(screen.queryByRole('heading', { name: '직접 입력' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '직접 입력' }))
@@ -171,6 +181,30 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: '직접 입력' })).toBeVisible()
     expect(screen.getByRole('link', { name: '공고 관리' })).toHaveAttribute('aria-current', 'page')
     expect(screen.queryByRole('heading', { name: '단지 등록' })).not.toBeInTheDocument()
+  })
+
+  it.each([false, true])('인증 복원 대기 중 로그인하면 관리자 화면을 연다 (실패 후 재시도: %s)', async retry => {
+    const restoring = deferredResponse()
+    const fetchMock = vi.fn().mockReturnValueOnce(restoring.promise)
+    if (retry) {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ token: 'csrf-token', headerName: 'X-XSRF-TOKEN' }))
+        .mockResolvedValueOnce(jsonResponse({ message: '로그인 실패' }, 401))
+    }
+    fetchMock.mockResolvedValueOnce(jsonResponse({ token: 'csrf-token', headerName: 'X-XSRF-TOKEN' }))
+      .mockResolvedValueOnce(jsonResponse({ loginIdentifier: 'current-admin', role: 'ADMIN' }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<MemoryRouter initialEntries={['/admin/login']}><App /></MemoryRouter>)
+    fireEvent.change(await screen.findByLabelText('로그인 식별자'), { target: { value: 'current-admin' } })
+    fireEvent.change(screen.getByLabelText('비밀번호'), { target: { value: 'password1' } })
+    fireEvent.click(screen.getByRole('button', { name: '로그인' }))
+    if (retry) {
+      expect(await screen.findByText('로그인 실패')).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: '로그인' }))
+    }
+    expect(await screen.findByRole('heading', { name: '단지 관리', level: 1 })).toBeVisible()
+    await act(async () => restoring.resolve(jsonResponse({ loginIdentifier: 'stale-admin', role: 'ADMIN' })))
+    expect(screen.getByText('current-admin')).toBeVisible()
+    expect(screen.queryByText('stale-admin')).not.toBeInTheDocument()
   })
 
   it('StrictMode의 오래된 인증 상태 응답이 로그인 후 세션을 덮어쓰지 않는다', async () => {

@@ -51,6 +51,19 @@ function complexWith(
 }
 
 describe('HousingComplexCard', () => {
+  it.each([
+    [999, '0만'], [3_000, '0.3만'], [9_999, '0.9만'],
+    [3_567_890, '356만'], [10_000_000, '1천'],
+    [35_550_000, '3.5천'], [103_000_000, '1억'],
+  ])('목록의 보증금과 월 임대료 %s원을 %s로 표시한다', (value, expected) => {
+    renderCard(complexWith({
+      depositMin: value, depositMax: value,
+      monthlyRentMin: value, monthlyRentMax: value,
+    }))
+    expect(screen.getByLabelText(`임대보증금 ${expected}`)).toHaveTextContent(expected)
+    expect(screen.getByLabelText(`월 임대료 ${expected}`)).toHaveTextContent(expected)
+  })
+
   it('상태와 기관부터 제목, 지역, 금액, 면적 순서로 표시한다', () => {
     renderCard()
 
@@ -76,11 +89,11 @@ describe('HousingComplexCard', () => {
       .toBeInTheDocument()
     expect(within(card).getByText(BASE_COMPLEX.regionName)).toBeInTheDocument()
     expect(within(conditions).getByText('임대보증금')).toBeInTheDocument()
-    expect(within(conditions).getByText('5,000만원 ~')).toBeInTheDocument()
-    expect(within(conditions).getByLabelText('임대보증금 5,000만원부터 7,000만원까지'))
+    expect(within(conditions).getByText('5천 ~')).toBeInTheDocument()
+    expect(within(conditions).getByLabelText('임대보증금 5천부터 7천까지'))
       .toBeInTheDocument()
     expect(within(conditions).getByText('월 임대료')).toBeInTheDocument()
-    expect(within(conditions).getByText('20만원 ~')).toBeInTheDocument()
+    expect(within(conditions).getByText('20만 ~')).toBeInTheDocument()
     expect(within(conditions).getByText('전용')).toBeInTheDocument()
     expect(within(conditions).getByText('36.12m² ~')).toBeInTheDocument()
     expect(within(conditions).getByLabelText('전용 36.12m²부터 44.87m²까지'))
@@ -256,10 +269,10 @@ describe('HousingComplexCard', () => {
         depositMin: 50_000_000,
         depositMax: null,
       },
-      expected: ['44.87m²', '5,000만원'],
+      expected: ['44.87m²', '5천'],
     },
     {
-      label: '두 값이 모두 없으면 공고문 확인으로 표시한다',
+      label: '금액이 없으면 대시, 면적이 없으면 공고문 확인으로 표시한다',
       changes: {
         exclusiveAreaMin: null,
         exclusiveAreaMax: null,
@@ -268,10 +281,10 @@ describe('HousingComplexCard', () => {
         monthlyRentMin: null,
         monthlyRentMax: null,
       },
-      expected: ['공고문 확인'],
+      expected: ['-', '공고문 확인'],
     },
     {
-      label: '만원 미만 단위와 큰 금액 및 면적을 손실 없이 표시한다',
+      label: '금액은 COMPACT로 버림 표시하고 면적은 보존한다',
       changes: {
         exclusiveAreaMin: 1_234.56,
         exclusiveAreaMax: 1_234.56,
@@ -280,7 +293,7 @@ describe('HousingComplexCard', () => {
         monthlyRentMin: 85_000,
         monthlyRentMax: 85_000,
       },
-      expected: ['1,234.56m²', '1.23456789억', '8.5만원'],
+      expected: ['1,234.56m²', '1.2억', '8만'],
     },
     {
       label: '유효하지 않은 수는 값으로 표시하지 않는다',
@@ -292,7 +305,7 @@ describe('HousingComplexCard', () => {
         monthlyRentMin: -1,
         monthlyRentMax: -1,
       },
-      expected: ['공고문 확인'],
+      expected: ['-', '공고문 확인'],
     },
     {
       label: '음수 금액은 범위에서 제외하고 확인된 0원은 유지한다',

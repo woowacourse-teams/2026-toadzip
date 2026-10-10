@@ -1,0 +1,219 @@
+import { useMobileViewport } from '../components/useMobileViewport'
+import { useFilterMeasurement } from '../analytics/useFilterMeasurement'
+import { Button } from '../../design-system/components/Button'
+import { IconButton } from '../../design-system/components/IconButton'
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
+import {
+  type PublicHousingRegionRepository,
+  publicHousingRegionRepository,
+} from '../api/publicHousingRegionRepository.ts'
+import type { AnnouncementSearchFilters } from '../api/publicHousingRepository.ts'
+import {
+  RENTAL_TYPE_OPTIONS, ANNOUNCEMENT_STATUS_OPTIONS, AGENCY_OPTIONS, RECRUITMENT_TYPE_OPTIONS,
+} from './searchFilterOptions.ts'
+import { RegionFilterFields } from './RegionFilterFields.tsx'
+import { announcementFiltersFromForm } from './searchFilterForm.ts'
+import { searchFiltersSignature } from './searchFilterLocation.ts'
+import styles from './AnnouncementFilterPanel.module.css'
+
+interface AnnouncementFilterPanelProps {
+  readonly filters: AnnouncementSearchFilters
+  readonly onApply: (filters: AnnouncementSearchFilters) => void
+  readonly regionRepository?: PublicHousingRegionRepository
+  readonly resultSummary?: ReactNode
+}
+
+export function AnnouncementFilterPanel({
+  filters,
+  onApply,
+  regionRepository = publicHousingRegionRepository,
+  resultSummary,
+}: AnnouncementFilterPanelProps) {
+  const mobile = useMobileViewport()
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLElement>(null)
+  const measurement = useFilterMeasurement('announcement', open ? 'all' : null, mobile ? 'mobile' : 'desktop', rootRef, filters)
+  const formRef = useRef<HTMLFormElement>(null)
+  const toggleRef = useRef<HTMLButtonElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const restoreFocusRef = useRef(false)
+  const panelId = 'announcement-search-filter-panel'
+  const summaryId = `${panelId}-summary`
+  const appliedCount = appliedFilterCount(filters)
+  const filtersKey = searchFiltersSignature(filters)
+
+  useEffect(() => {
+    if (open) {
+      closeRef.current?.focus()
+    } else if (restoreFocusRef.current) {
+      toggleRef.current?.focus()
+      restoreFocusRef.current = false
+    }
+  }, [open, filtersKey])
+
+  function close(reason: 'close_button' | 'escape' | 'toggle' = 'close_button') {
+    measurement.reason(reason)
+    restoreFocusRef.current = true
+    setOpen(false)
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const nextFilters = announcementFiltersFromForm(new FormData(event.currentTarget))
+    measurement.apply(nextFilters, 'submit')
+    onApply(nextFilters)
+  }
+
+  function reset() {
+    measurement.reset('all', 'applied')
+    measurement.apply({}, 'reset')
+    formRef.current?.reset()
+    onApply({})
+  }
+
+  return (
+    <section ref={rootRef} className={styles.panel} aria-label="공고 검색 필터">
+      <div className={styles.toolbar} role="group" aria-label="공고 목록 도구">
+        {resultSummary && <div className={styles.resultSummary}>{resultSummary}</div>}
+        <button
+          ref={toggleRef}
+          className={`${styles.toggle} ${appliedCount > 0 ? styles.toggleActive : ''}`}
+          type="button"
+          aria-label={`공고 필터 ${open ? '접기' : '열기'}`}
+          aria-controls={panelId}
+          aria-describedby={summaryId}
+          aria-expanded={open}
+          onClick={() => open ? close('toggle') : setOpen(true)}
+        >
+          <span>공고 필터</span>
+          {appliedCount > 0 && <span className={styles.count} aria-hidden="true">{appliedCount}</span>}
+          <span id={summaryId} className={styles.visuallyHidden}>
+            {appliedCount > 0 ? `${appliedCount}개 적용` : '조건 선택'}
+          </span>
+          <svg className={styles.chevron} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+            <path d="m3 6 5 5 5-5" />
+          </svg>
+        </button>
+      </div>
+
+      {open && (
+        <form
+          ref={formRef}
+          key={filtersKey}
+          id={panelId}
+          className={styles.form}
+          onSubmit={submit}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              close('escape')
+            }
+          }}
+        >
+          <div className={styles.header}>
+            <button className={styles.reset} type="button" onClick={reset}>
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                <path d="M16.4 8a6.5 6.5 0 1 0-.3 4.8M16.5 3.5V8H12" />
+              </svg>
+              초기화
+            </button>
+            <h2>공고 필터</h2>
+            <IconButton ref={closeRef} className={styles.close} type="button" label="공고 필터 닫기" onClick={() => close()}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" focusable="false">
+                <path d="m5 5 14 14M19 5 5 19" />
+              </svg>
+            </IconButton>
+          </div>
+          <div className={styles.fields}>
+            <div className={styles.grid}>
+              <RegionFilterFields
+                initialRegionCode={filters.regionCode ?? ''}
+                messageId="announcement-region-district-load-error"
+                loadingMessage="시·군·구 목록을 불러오는 중입니다."
+                styles={{
+                  regionFields: styles.regionFields,
+                  field: styles.field,
+                  regionError: styles.regionError,
+                  regionMessage: styles.regionMessage,
+                }}
+                repository={regionRepository}
+              />
+              <FilterCheckboxGroup
+                label="임대유형"
+                name="rentalTypes"
+                defaultValues={filters.rentalTypes}
+                options={RENTAL_TYPE_OPTIONS}
+              />
+              <FilterCheckboxGroup
+                label="모집상태"
+                name="applicationStatuses"
+                defaultValues={filters.applicationStatuses}
+                options={ANNOUNCEMENT_STATUS_OPTIONS}
+              />
+              <FilterCheckboxGroup
+                label="공급기관"
+                name="agencyCodes"
+                defaultValues={filters.agencyCodes}
+                options={AGENCY_OPTIONS}
+              />
+              <FilterCheckboxGroup
+                label="모집유형"
+                name="recruitmentTypes"
+                defaultValues={filters.recruitmentTypes}
+                options={RECRUITMENT_TYPE_OPTIONS}
+              />
+            </div>
+          </div>
+
+          <div className={styles.actions}>
+            <Button className={styles.apply} type="submit">
+              공고 필터 적용
+            </Button>
+          </div>
+        </form>
+      )}
+    </section>
+  )
+}
+
+function FilterCheckboxGroup({
+  defaultValues = [],
+  label,
+  name,
+  options,
+}: {
+  readonly defaultValues?: readonly string[]
+  readonly label: string
+  readonly name: string
+  readonly options: readonly (readonly [string, string])[]
+}) {
+  const selected = new Set(defaultValues)
+  return (
+    <fieldset className={styles.choiceGroup}>
+      <legend>{label}</legend>
+      <div className={styles.choiceOptions}>
+        {options.map(([value, optionLabel]) => (
+          <label key={value} className={styles.choice}>
+            <input
+              type="checkbox"
+              name={name}
+              value={value}
+              defaultChecked={selected.has(value)}
+            />
+            <span>{optionLabel}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  )
+}
+
+function appliedFilterCount(filters: AnnouncementSearchFilters) {
+  return [
+    filters.regionCode,
+    filters.rentalTypes?.length,
+    filters.applicationStatuses?.length,
+    filters.agencyCodes?.length,
+    filters.recruitmentTypes?.length,
+  ].filter(Boolean).length
+}

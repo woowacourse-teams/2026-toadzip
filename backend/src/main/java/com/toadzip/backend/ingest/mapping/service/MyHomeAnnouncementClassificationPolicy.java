@@ -5,7 +5,7 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
-import com.toadzip.backend.ingest.collection.domain.LhProviderPolicy;
+import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
 import java.util.Map;
 import java.util.Set;
 
@@ -21,17 +21,6 @@ class MyHomeAnnouncementClassificationPolicy {
             Map.entry("50년공공임대", RentalType.PUBLIC_RENTAL_50Y),
             Map.entry("통합공공임대", RentalType.INTEGRATED_PUBLIC_RENTAL),
             Map.entry("재개발임대", RentalType.REDEVELOPMENT_RENTAL)
-    );
-    private static final Map<String, String> COMPLEX_SUPPLY_TYPES = Map.ofEntries(
-            Map.entry("행복주택", "HAPPY_HOUSING"),
-            Map.entry("국민임대", "NATIONAL_RENTAL"),
-            Map.entry("영구임대", "PERMANENT_RENTAL"),
-            Map.entry("5년임대", "PUBLIC_RENTAL_5Y"),
-            Map.entry("10년임대", "PUBLIC_RENTAL_10Y"),
-            Map.entry("50년임대", "PUBLIC_RENTAL_50Y"),
-            Map.entry("50년공공임대", "PUBLIC_RENTAL_50Y"),
-            Map.entry("통합공공임대", "INTEGRATED_PUBLIC_RENTAL"),
-            Map.entry("재개발임대", "REDEVELOPMENT_RENTAL")
     );
 
     private final MyHomeAnnouncementValueParser parser;
@@ -65,11 +54,11 @@ class MyHomeAnnouncementClassificationPolicy {
     }
 
     String complexSupplyType(String value) {
-        String supplyType = COMPLEX_SUPPLY_TYPES.get(value);
+        RentalType supplyType = RENTAL_TYPES.get(value);
         if (supplyType == null) {
             throw parser.invalid("지원하지 않는 단지 공급유형입니다: " + value);
         }
-        return supplyType;
+        return supplyType.name();
     }
 
     AgencyCode provider(String value) {

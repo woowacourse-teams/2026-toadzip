@@ -1,0 +1,149 @@
+.dialog {
+  --welcome-size: min(448px, calc(100vw - 32px), calc(100dvh - 32px));
+  position: fixed;
+  inset: 0;
+  box-sizing: border-box;
+  width: var(--welcome-size);
+  height: var(--welcome-size);
+  max-width: none;
+  max-height: none;
+  margin: auto;
+  padding: var(--ds-space-7);
+  border: 1px solid var(--ds-color-divider);
+  border-radius: var(--ds-radius-control);
+  background: var(--ds-color-surface);
+  color: var(--ds-color-text);
+  font-family: var(--ds-font-family-ui);
+  box-shadow: 0 16px 48px rgb(32 33 36 / 16%);
+  overflow: auto;
+}
+
+.dialog::backdrop { background: rgb(32 33 36 / 40%); }
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-5);
+  height: 100%;
+  min-height: 0;
+}
+
+.intro {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--ds-space-6);
+  text-align: center;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brand img { display: block; width: 88px; height: 88px; object-fit: contain; }
+
+.intro h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: var(--ds-line-height-title);
+  letter-spacing: -0.04em;
+  word-break: keep-all;
+}
+
+.intro p {
+  margin: var(--ds-space-3) 0 0;
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+  line-height: var(--ds-line-height-body);
+  word-break: keep-all;
+}
+
+.actions { display: grid; flex-shrink: 0; gap: var(--ds-space-2); }
+
+.explore {
+  min-height: var(--ds-control-height-md);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border: 1px solid var(--ds-color-border-base);
+  border-radius: var(--ds-radius-control);
+  background: var(--ds-color-surface);
+  color: var(--ds-color-label);
+  font: inherit;
+  font-size: var(--ds-text-body);
+  font-weight: var(--ds-weight-strong);
+  cursor: pointer;
+}
+
+.explore:hover { background: var(--ds-color-surface-subtle); }
+.dialog button:focus-visible, .input:focus-within {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+}
+
+.searchHeader h2 {
+  margin: 0 0 var(--ds-space-4);
+  font-size: var(--ds-text-title);
+  line-height: var(--ds-line-height-title);
+}
+
+.input {
+  display: flex;
+  border: 1px solid var(--ds-color-border-base);
+  border-radius: var(--ds-radius-control);
+}
+
+.input input {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--ds-control-height-md);
+  padding: 0 var(--ds-space-3);
+  border: 0;
+  border-radius: inherit;
+  outline: none;
+  background: var(--ds-color-surface);
+  color: var(--ds-color-text);
+  font: inherit;
+  font-size: var(--ds-text-body);
+}
+
+.input input::placeholder { color: var(--ds-color-label); }
+.results { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.examples { flex: 1; min-height: 0; overflow: auto; }
+.examples p { margin: 0 0 var(--ds-space-3); color: var(--ds-color-label); font-size: var(--ds-text-caption); }
+.places { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ds-space-2); }
+.places button {
+  display: grid;
+  gap: var(--ds-space-2);
+  min-height: 88px;
+  padding: var(--ds-space-3);
+  border: 1px solid var(--ds-color-border-base);
+  border-radius: var(--ds-radius-control);
+  background: var(--ds-color-surface-subtle);
+  color: var(--ds-color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.places button:hover { border-color: var(--ds-color-action); background: var(--ds-color-action-soft); }
+.places strong { display: flex; justify-content: space-between; gap: var(--ds-space-1); font-size: var(--ds-text-body); }
+.places strong span { color: var(--ds-color-action); }
+.places button > span { color: var(--ds-color-label); font-size: var(--ds-text-caption); }
+
+@media (max-width: 480px), (max-height: 480px) {
+  .dialog { padding: var(--ds-space-4); }
+  .content { gap: var(--ds-space-3); }
+  .intro { gap: var(--ds-space-3); }
+  .intro h2 { font-size: var(--ds-text-title); }
+  .intro p { margin-top: var(--ds-space-2); }
+  .brand img { width: 64px; height: 64px; }
+  .places button { padding: var(--ds-space-2); min-height: 76px; }
+  .places strong { flex-wrap: wrap; }
+}
+
+@media (max-width: 380px), (max-height: 380px) {
+  .places button { min-height: 52px; padding: var(--ds-space-2) var(--ds-space-1); }
+  .places strong { justify-content: center; font-size: var(--ds-text-caption); }
+  .places button > span, .places strong span { display: none; }
+}

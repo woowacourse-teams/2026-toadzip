@@ -26,6 +26,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
+import com.toadzip.backend.user.domain.User;
+import com.toadzip.backend.user.repository.UserRepository;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -43,6 +46,8 @@ import tools.jackson.databind.ObjectMapper;
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class AdminAnnouncementRegistrationIntegrationTest {
+
+    @Autowired private UserRepository users;
 
     private static final String ENDPOINT = "/api/admin/announcements";
 
@@ -146,8 +151,10 @@ class AdminAnnouncementRegistrationIntegrationTest {
 
     @Test
     void 비관리자는_공고를_저장할_수_없다() throws Exception {
+        long memberId = users.saveAndFlush(User.create(
+                "authorization-test:" + java.util.UUID.randomUUID(), LocalDateTime.now())).getId();
         mockMvc.perform(post(ENDPOINT)
-                        .with(user("member").roles("USER"))
+                        .with(user(Long.toString(memberId)).roles("USER"))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validRequest(999L)))

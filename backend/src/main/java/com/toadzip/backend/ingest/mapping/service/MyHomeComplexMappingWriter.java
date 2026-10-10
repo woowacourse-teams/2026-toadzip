@@ -6,23 +6,28 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
-import com.toadzip.backend.ingest.collection.repository.MyHomeComplexSourceRepository;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
+import com.toadzip.backend.ingest.collection.myhome.complex.repository.MyHomeComplexSourceReader;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexLink;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
-import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
+import com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository;
+import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingData;
+import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeComplexMappingRejectedException;
+import com.toadzip.backend.ingest.mapping.service.MyHomeComplexSourceMapper.MyHomeHousingTypeMappingData;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class MyHomeComplexMappingWriter {
 
     private final HousingComplexRepository complexRepository;
@@ -31,30 +36,14 @@ public class MyHomeComplexMappingWriter {
 
     private final SupplyRowRepository supplyRowRepository;
     private final MyHomeComplexLinkRepository linkRepository;
-    private final MyHomeComplexSourceRepository sourceRepository;
+    private final MyHomeComplexSourceReader sourceRepository;
     private final MyHomeComplexSourceMapper sourceMapper;
-
-    public MyHomeComplexMappingWriter(
-            HousingComplexRepository complexRepository,
-            HousingTypeRepository housingTypeRepository,
-            SupplyRowRepository supplyRowRepository,
-            MyHomeComplexLinkRepository linkRepository,
-            MyHomeComplexSourceRepository sourceRepository,
-            MyHomeComplexSourceMapper sourceMapper
-    ) {
-        this.complexRepository = complexRepository;
-        this.housingTypeRepository = housingTypeRepository;
-        this.supplyRowRepository = supplyRowRepository;
-        this.linkRepository = linkRepository;
-        this.sourceRepository = sourceRepository;
-        this.sourceMapper = sourceMapper;
-    }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public MyHomeComplexMappingReport write(MyHomeComplexMappingData data, Address address) {
         MyHomeComplexLink link = linkRepository.findById(data.sourceComplexIdentifier()).orElse(null);
         if (link != null && link.getMergeId() != null) {
-            return writeVerifiedGroup(link);
+            throw mergedSourceConflict("확인된 원천 연결이 변경되어 재정제를 보류합니다.");
         }
         rejectChangedVerifiedSupplyType(data.sourceComplexIdentifier());
         ComplexWriteResult complexResult = upsertComplex(data, address);
@@ -66,15 +55,24 @@ public class MyHomeComplexMappingWriter {
                 data.housingTypes()
         );
         return new MyHomeComplexMappingReport(
-                complexResult.created() ? 1 : 0,
-                complexResult.updated() ? 1 : 0,
-                complexResult.unchanged() ? 1 : 0,
+                complexResult.created(),
+                complexResult.updated(),
+                complexResult.unchanged(),
                 housingTypeResult.created(),
                 housingTypeResult.updated(),
                 housingTypeResult.unchanged(),
                 housingTypeResult.deleted(),
                 0
         );
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public MyHomeComplexMappingReport writeVerified(String identifier) {
+        MyHomeComplexLink link = linkRepository.findById(identifier).orElse(null);
+        if (link == null || link.getMergeId() == null) {
+            throw mergedSourceConflict("확인된 원천 연결이 변경되어 재정제를 보류합니다.");
+        }
+        return writeVerifiedGroup(link);
     }
 
     private ComplexWriteResult upsertComplex(MyHomeComplexMappingData data, Address address) {
@@ -96,11 +94,9 @@ public class MyHomeComplexMappingWriter {
                     data.elevatorInstalled(),
                     data.parkingSpaceCount()
             );
-            created.updateRentalPriceRange(data.rentalPriceRange());
-            return new ComplexWriteResult(complexRepository.save(created), true, false);
+            return new ComplexWriteResult(complexRepository.save(created), 1, 0);
         }
         complex = complexRepository.findByIdForUpdate(complex.getId()).orElseThrow();
-        boolean priceUpdated = complex.updateRentalPriceRange(data.rentalPriceRange());
         boolean detailsUpdated = complex.updateFromMyHome(
                 data.name(),
                 data.supplyType(),
@@ -114,7 +110,10 @@ public class MyHomeComplexMappingWriter {
                 data.elevatorInstalled(),
                 data.parkingSpaceCount()
         );
-        return new ComplexWriteResult(complex, false, priceUpdated || detailsUpdated);
+        if (detailsUpdated) {
+            return new ComplexWriteResult(complex, 0, 1);
+        }
+        return new ComplexWriteResult(complex, 0, 0);
     }
 
     private MyHomeComplexMappingReport writeVerifiedGroup(MyHomeComplexLink link) {
@@ -125,7 +124,6 @@ public class MyHomeComplexMappingWriter {
         Map<String, List<MyHomeComplexSource>> grouped = sourceRepository.findAllByHsmpSnIn(identifiers).stream()
                 .collect(Collectors.groupingBy(sourceMapper::sourceComplexIdentifier));
         List<MyHomeHousingTypeMappingData> housingTypes = new ArrayList<>();
-        List<MyHomeComplexSource> allSources = new ArrayList<>();
         for (MyHomeComplexLink member : links) {
             List<MyHomeComplexSource> sources = grouped.get(member.getSourceComplexIdentifier());
             if (sources == null || sources.isEmpty()) {
@@ -137,12 +135,10 @@ public class MyHomeComplexMappingWriter {
                 throw mergedSourceConflict("통합 근거의 단지 공통값 또는 원천 세대수가 변경되어 재확인이 필요합니다.");
             }
             housingTypes.addAll(data.housingTypes());
-            allSources.addAll(sources);
         }
-        boolean priceUpdated = complex.updateRentalPriceRange(sourceMapper.rentalPriceRange(allSources));
         HousingTypeWriteResult result = synchronizeHousingTypes(complex, housingTypes, true);
         return new MyHomeComplexMappingReport(
-                0, priceUpdated ? 1 : 0, priceUpdated ? 0 : 1,
+                0, 0, 1,
                 result.created(), result.updated(), result.unchanged(), result.deleted(), 0);
     }
 
@@ -179,7 +175,7 @@ public class MyHomeComplexMappingWriter {
             List<MyHomeHousingTypeMappingData> incoming,
             boolean preserveSupplementalValues
     ) {
-        Map<String, HousingType> storedByIdentifier = housingTypeRepository.findAllByHousingComplex(complex)
+        Map<String, HousingType> remainingStoredByIdentifier = housingTypeRepository.findAllByHousingComplex(complex)
                 .stream()
                 .filter(type -> type.getSourceHousingTypeIdentifier() != null)
                 .collect(Collectors.toMap(
@@ -188,63 +184,99 @@ public class MyHomeComplexMappingWriter {
                         (first, second) -> first,
                         LinkedHashMap::new
                 ));
-        int created = 0;
+        MatchedHousingTypes matched = updateMatchedHousingTypes(remainingStoredByIdentifier, incoming);
+        HousingTypeWriteResult unmatched = writeUnmatchedHousingTypes(
+                complex, remainingStoredByIdentifier, matched.unmatched()
+        );
+        int deleted = deleteStaleHousingTypes(remainingStoredByIdentifier, preserveSupplementalValues);
+        return new HousingTypeWriteResult(
+                unmatched.created(), matched.updated() + unmatched.updated(), matched.unchanged(), deleted
+        );
+    }
+
+    private MatchedHousingTypes updateMatchedHousingTypes(
+            Map<String, HousingType> remainingStoredByIdentifier,
+            List<MyHomeHousingTypeMappingData> incoming
+    ) {
         int updated = 0;
         int unchanged = 0;
         List<MyHomeHousingTypeMappingData> unmatchedIncoming = new ArrayList<>();
         for (MyHomeHousingTypeMappingData data : incoming) {
-            HousingType housingType = storedByIdentifier.remove(data.sourceHousingTypeIdentifier());
+            HousingType housingType = remainingStoredByIdentifier.remove(data.sourceHousingTypeIdentifier());
             if (housingType == null) {
                 unmatchedIncoming.add(data);
                 continue;
             }
-            if (housingType.updateFromMyHome(
+            boolean typeUpdated = housingType.updateFromMyHome(
                     data.sourceHousingTypeIdentifier(),
                     data.name(),
                     data.exclusiveArea(),
                     data.supplyArea()
-            )) {
+            );
+            boolean priceUpdated = housingType.updateBasicRentalCondition(data.basicRentalCondition());
+            if (typeUpdated || priceUpdated) {
                 updated++;
                 continue;
             }
             unchanged++;
         }
+        return new MatchedHousingTypes(unmatchedIncoming, updated, unchanged);
+    }
+
+    private HousingTypeWriteResult writeUnmatchedHousingTypes(
+            HousingComplex complex,
+            Map<String, HousingType> remainingStoredByIdentifier,
+            List<MyHomeHousingTypeMappingData> unmatchedIncoming
+    ) {
+        int created = 0;
+        int updated = 0;
         for (MyHomeHousingTypeMappingData data : unmatchedIncoming) {
-            HousingType corrected = findUniqueStoredTypeByName(storedByIdentifier, data);
+            HousingType corrected = findUniqueStoredTypeByName(remainingStoredByIdentifier, data);
             if (corrected == null) {
-                housingTypeRepository.save(HousingType.createFromMyHome(
+                HousingType createdType = HousingType.createFromMyHome(
                         complex,
                         data.sourceHousingTypeIdentifier(),
                         data.name(),
                         data.exclusiveArea(),
                         data.supplyArea()
-                ));
+                );
+                createdType.updateBasicRentalCondition(data.basicRentalCondition());
+                housingTypeRepository.save(createdType);
                 created++;
                 continue;
             }
-            storedByIdentifier.remove(corrected.getSourceHousingTypeIdentifier());
+            remainingStoredByIdentifier.remove(corrected.getSourceHousingTypeIdentifier());
             corrected.updateFromMyHome(
                     data.sourceHousingTypeIdentifier(),
                     data.name(),
                     data.exclusiveArea(),
                     data.supplyArea()
             );
+            corrected.updateBasicRentalCondition(data.basicRentalCondition());
             updated++;
         }
-        List<HousingType> stale = List.copyOf(storedByIdentifier.values());
+        return new HousingTypeWriteResult(created, updated, 0, 0);
+    }
+
+    private int deleteStaleHousingTypes(
+            Map<String, HousingType> remainingStoredByIdentifier,
+            boolean preserveSupplementalValues
+    ) {
+        List<HousingType> stale = List.copyOf(remainingStoredByIdentifier.values());
         List<HousingType> deletable = stale.stream()
+                .filter(type -> !type.isAdminModified())
                 .filter(type -> !supplyRowRepository.existsByHousingType(type))
                 .filter(type -> !preserveSupplementalValues || !type.hasSupplementalInformation())
                 .toList();
         housingTypeRepository.deleteAll(deletable);
-        return new HousingTypeWriteResult(created, updated, unchanged, deletable.size());
+        return deletable.size();
     }
 
     private HousingType findUniqueStoredTypeByName(
-            Map<String, HousingType> storedByIdentifier,
+            Map<String, HousingType> remainingStoredByIdentifier,
             MyHomeHousingTypeMappingData incoming
     ) {
-        List<HousingType> sameName = storedByIdentifier.values()
+        List<HousingType> sameName = remainingStoredByIdentifier.values()
                 .stream()
                 .filter(type -> type.getName().equals(incoming.name()))
                 .filter(type -> MyHomeComplexSource.sameSourceComplex(
@@ -256,11 +288,14 @@ public class MyHomeComplexMappingWriter {
         return sameName.getFirst();
     }
 
-    private record ComplexWriteResult(HousingComplex complex, boolean created, boolean updated) {
+    private record ComplexWriteResult(HousingComplex complex, int created, int updated) {
 
-        boolean unchanged() {
-            return !created && !updated;
+        int unchanged() {
+            return 1 - created - updated;
         }
+    }
+
+    private record MatchedHousingTypes(List<MyHomeHousingTypeMappingData> unmatched, int updated, int unchanged) {
     }
 
     private record HousingTypeWriteResult(int created, int updated, int unchanged, int deleted) {

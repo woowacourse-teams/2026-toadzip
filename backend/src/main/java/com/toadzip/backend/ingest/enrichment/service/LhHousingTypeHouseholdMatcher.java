@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.enrichment.service;
 
 import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdSourceMapper.LhHousingTypeHouseholdSource;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -147,7 +148,9 @@ public class LhHousingTypeHouseholdMatcher {
         if (source.equals(candidate)) {
             return 9_000;
         }
-        if (hasConflictingNumbers(source, candidate)) {
+        Set<String> sourceNumbers = numbers(source);
+        Set<String> candidateNumbers = numbers(candidate);
+        if (hasConflictingNumbers(sourceNumbers, candidateNumbers)) {
             return 0;
         }
 
@@ -159,11 +162,15 @@ public class LhHousingTypeHouseholdMatcher {
 
         int commonLength = longestCommonSubstringLength(source, candidate);
         int diceScore = bigramDiceScore(source, candidate);
-        boolean sharesNumber = sharesNumber(source, candidate);
+        boolean sharesNumber = candidateNumbers.stream().anyMatch(sourceNumbers::contains);
         if (commonLength < 4 && diceScore < 450 && !(commonLength >= 2 && sharesNumber)) {
             return 0;
         }
-        return 1_000 + commonLength * 100 + diceScore + (sharesNumber ? 200 : 0);
+        int score = 1_000 + commonLength * 100 + diceScore;
+        if (sharesNumber) {
+            return score + 200;
+        }
+        return score;
     }
 
     private String comparableName(String normalizedName) {
@@ -209,14 +216,7 @@ public class LhHousingTypeHouseholdMatcher {
         return result;
     }
 
-    private boolean sharesNumber(String left, String right) {
-        Set<String> leftNumbers = numbers(left);
-        return numbers(right).stream().anyMatch(leftNumbers::contains);
-    }
-
-    private boolean hasConflictingNumbers(String left, String right) {
-        Set<String> leftNumbers = numbers(left);
-        Set<String> rightNumbers = numbers(right);
+    private boolean hasConflictingNumbers(Set<String> leftNumbers, Set<String> rightNumbers) {
         return !leftNumbers.isEmpty() && !rightNumbers.isEmpty() && !leftNumbers.equals(rightNumbers);
     }
 

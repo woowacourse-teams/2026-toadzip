@@ -1,6 +1,8 @@
+import type { NotificationInterestRepository } from '../interest/notificationInterestRepository'
+import { MemoryRouter } from 'react-router'
 /// <reference types="node" />
 
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -117,19 +119,39 @@ function factValue(container: HTMLElement, term: string) {
 }
 
 describe('HousingComplexDetailPanel', () => {
-  it('단지 알림 클릭은 단지 ID와 함께 최초 신청 의사를 묻는다', async () => {
+  it('두 면적 전환 버튼으로 모달 전체를 양방향 전환하고 주택형 변경에도 단위를 유지한다', () => {
+    const { panel } = renderPanel()
+    expect(within(panel).getAllByRole('button', { name: '평 전환' })).toHaveLength(2)
+    fireEvent.click(within(section(panel, '주택형별 임대조건')).getByRole('button', { name: '평 전환' }))
+    expect(within(panel).getAllByRole('button', { name: '㎡ 전환' })).toHaveLength(2)
+    expect(within(panel).getAllByText('10.93평')).toHaveLength(2)
+    expect(factValue(section(panel, '주택형 정보'), '공급 면적').getByRole('definition')).toBeEmptyDOMElement()
+    fireEvent.click(within(panel).getByRole('tab', { name: '44B' }))
+    expect(within(panel).getAllByText('13.57평')).toHaveLength(2)
+    expect(within(panel).getByText('18.19평')).toBeVisible()
+    fireEvent.click(within(section(panel, '주택형 정보')).getByRole('button', { name: '㎡ 전환' }))
+    expect(within(panel).getAllByRole('button', { name: '평 전환' })).toHaveLength(2)
+    expect(within(panel).getAllByText('44.87㎡')).toHaveLength(2)
+    expect(within(panel).getByText('60.12㎡')).toBeVisible()
+    expect(within(panel).getByText('50,000,000원')).toBeVisible()
+  })
+
+  it('회원 단지 알림 클릭은 단지 ID를 저장하고 준비 중임을 안내한다', async () => {
     localStorage.clear()
-    const record = vi.fn().mockResolvedValue(undefined)
+    const record = vi.fn<NotificationInterestRepository['record']>().mockImplementation(async event => ({ ...event, outcome: 'ACTIVATED', occurredAt: '2026-10-09T00:00:00Z', settingsRevision: 1, currentTarget: { active: true, expiresAt: '2027-04-07T00:00:00Z', noticeVersion: 'notification-2026-10-09-v1', requestedAt: '2026-10-09T00:00:00Z' } }))
     render(
-      <NotificationInterestProvider repository={{ record }}>
+      <MemoryRouter><NotificationInterestProvider repository={{ record, loadStatus: async () => ({ userId: '1', settingsRevision: 0, targets: [] }) }}>
         <HousingComplexDetailPanel detail={BASE_DETAIL} onClose={vi.fn()} />
-      </NotificationInterestProvider>,
+      </NotificationInterestProvider></MemoryRouter>,
     )
     expect(screen.getByText('단지 알림')).toBeVisible()
+    await waitFor(() => expect(screen.getByRole('button', { name: '서울가람 행복주택 알림 받기' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: '서울가람 행복주택 알림 받기' }))
-    expect(await screen.findByRole('dialog', { name: '이메일 알림 신청' })).toBeVisible()
+    expect(record).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByRole('button', { name: '신청하기' }))
+    expect(await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })).toBeVisible()
     expect(record).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'CLICKED', source: 'COMPLEX_DETAIL', targetType: 'COMPLEX', targetId: '17',
+      eventType: 'CONFIRMED', source: 'COMPLEX_DETAIL', targetType: 'COMPLEX', targetId: '17',
     }))
   })
 
@@ -285,7 +307,7 @@ describe('HousingComplexDetailPanel', () => {
     focus.mockRestore()
   })
 
-  it('null은 공고문 확인 또는 미표시하고 0과 false는 실제 값으로 표시한다', () => {
+  it('null은 빈칸으로 표시하고 0과 false는 실제 값으로 표시한다', () => {
     const { panel } = renderPanel(
       detailWith({
         completionDate: null,
@@ -314,15 +336,15 @@ describe('HousingComplexDetailPanel', () => {
     )
     const facts = section(panel, '단지 기본 정보')
 
-    expect(factValue(facts, '준공일자').getByText('공고문 확인')).toBeInTheDocument()
+    expect(factValue(facts, '준공일자').getByRole('definition')).toBeEmptyDOMElement()
     expect(factValue(facts, '엘리베이터').getByText('없음')).toBeInTheDocument()
     expect(factValue(facts, '1년 퇴거 세대수').getByText('0세대')).toBeInTheDocument()
     expect(factValue(facts, '총세대수').getByText('0세대')).toBeInTheDocument()
     expect(factValue(facts, '총주차대수(세대당)').getByText('0대')).toBeInTheDocument()
 
     const housingType = section(panel, '주택형 정보')
-    expect(factValue(housingType, '전용 면적').getByText('공고문 확인')).toBeInTheDocument()
-    expect(factValue(housingType, '공급 면적').getByText('공고문 확인')).toBeInTheDocument()
+    expect(factValue(housingType, '전용 면적').getByRole('definition')).toBeEmptyDOMElement()
+    expect(factValue(housingType, '공급 면적').getByRole('definition')).toBeEmptyDOMElement()
     expect(factValue(housingType, '복층여부').getByText('해당 없음')).toBeInTheDocument()
     expect(factValue(housingType, '관리비').getByText('0원')).toBeInTheDocument()
     expect(within(housingType).getAllByText('0원')).toHaveLength(3)
@@ -336,21 +358,21 @@ describe('HousingComplexDetailPanel', () => {
     expect(within(table).getAllByRole('rowheader')).toHaveLength(3)
     expect(within(table).getByRole('rowheader', { name: '임대보증금' }))
       .toHaveAttribute('scope', 'row')
-    expect(within(table).getByRole('row', { name: '임대보증금 5,000만원 월 임대료 20만원' }))
+    expect(within(table).getByRole('row', { name: '임대보증금 50,000,000원 월 임대료 200,000원' }))
       .toBeInTheDocument()
-    expect(within(table).getByRole('cell', { name: '5,000만원' }))
+    expect(within(table).getByRole('cell', { name: '50,000,000원' }))
       .toHaveAttribute('headers', within(table).getByRole('rowheader', { name: '임대보증금' }).id)
-    expect(within(table).getByRole('cell', { name: '20만원' }))
+    expect(within(table).getByRole('cell', { name: '200,000원' }))
       .toHaveAttribute('headers', within(table).getByRole('rowheader', { name: '월 임대료' }).id)
-    expect(within(table).getByRole('row', { name: '전환 가능 보증금 공고문 확인' }))
+    expect(within(table).getByRole('row', { name: '전환 가능 보증금' }))
       .toBeInTheDocument()
-    expect(within(table).getByRole('cell', { name: '5,000만원' }))
+    expect(within(table).getByRole('cell', { name: '50,000,000원' }))
       .toHaveAttribute('data-emphasis', 'true')
-    expect(within(table).getByRole('cell', { name: '공고문 확인' }))
+    expect(within(table).getByRole('cell', { name: '' }))
       .not.toHaveAttribute('data-emphasis')
   })
 
-  it('원 단위 금액을 공통 만원·억 표기로 표시하고 소수 금액을 보존한다', () => {
+  it('금액을 원 단위 전체 금액으로 표시한다', () => {
     const { panel } = renderPanel(detailWith({
       housingTypes: [{
         ...BASE_DETAIL.housingTypes[0],
@@ -365,10 +387,10 @@ describe('HousingComplexDetailPanel', () => {
     }))
     const table = within(panel).getByRole('table', { name: '36A 청년 현재 공급 조건' })
 
-    expect(within(table).getByRole('cell', { name: '1.8억' })).toBeInTheDocument()
-    expect(within(table).getByRole('cell', { name: '20.55만원' })).toBeInTheDocument()
-    expect(within(table).getByRole('cell', { name: '1,800만원' })).toBeInTheDocument()
-    expect(factValue(panel, '관리비').getByText('12.3456만원')).toBeInTheDocument()
+    expect(within(table).getByRole('cell', { name: '180,000,000원' })).toBeInTheDocument()
+    expect(within(table).getByRole('cell', { name: '205,500원' })).toBeInTheDocument()
+    expect(within(table).getByRole('cell', { name: '18,000,000원' })).toBeInTheDocument()
+    expect(factValue(panel, '관리비').getByText('123,456원')).toBeInTheDocument()
   })
 
   it('비교표는 읽기 전용으로 두고 주택형 정보의 독립 탭으로 상세를 바꾼다', () => {
@@ -399,7 +421,7 @@ describe('HousingComplexDetailPanel', () => {
     expect(firstTab).toHaveAttribute('tabindex', '-1')
     expect(secondTab).toHaveAttribute('aria-controls', secondPanel.id)
     expect(secondPanel).toHaveAttribute('aria-labelledby', secondTab.id)
-    expect(within(secondPanel).getByText('공고문 확인')).toBeInTheDocument()
+    expect(within(secondPanel).queryByText('공고문 확인')).not.toBeInTheDocument()
     expect(within(information).queryByRole('tabpanel', { name: '36A' })).not.toBeInTheDocument()
     expect(within(table).queryByRole('button')).not.toBeInTheDocument()
     expect(table.querySelector('[data-selected]')).toBeNull()
@@ -485,15 +507,15 @@ describe('HousingComplexDetailPanel', () => {
     const table = within(panel).getByRole('table', { name: '주택형별 임대조건 비교' })
     expect(within(table).getAllByRole('columnheader')).toHaveLength(4)
     const youngRow = within(table).getByText('청년').closest('tr')!
-    expect(within(youngRow).getByText('5,000만원')).toBeInTheDocument()
-    expect(within(youngRow).getByText('20만원')).toBeInTheDocument()
+    expect(within(youngRow).getByText('50,000,000원')).toBeInTheDocument()
+    expect(within(youngRow).getByText('200,000원')).toBeInTheDocument()
     const studentRow = within(table).getByText('대학생').closest('tr')!
-    expect(within(studentRow).getByText('4,000만원')).toBeInTheDocument()
-    expect(within(studentRow).getByText('22만원')).toBeInTheDocument()
+    expect(within(studentRow).getByText('40,000,000원')).toBeInTheDocument()
+    expect(within(studentRow).getByText('220,000원')).toBeInTheDocument()
     expect(within(table).getByRole('rowheader', { name: '36A' })).toHaveAttribute('rowspan', '2')
     expect(within(table).queryByRole('button')).not.toBeInTheDocument()
     const missingRow = within(table).getByRole('rowheader', { name: '44B' }).closest('tr')!
-    expect(within(missingRow).getAllByText('공고문 확인')).toHaveLength(3)
+    expect(within(missingRow).getAllByRole('cell', { name: '' })).toHaveLength(2)
     fireEvent.click(within(panel).getByRole('tab', { name: '44B' }))
     expect(within(panel).getByRole('tabpanel', { name: '44B' })).toBeInTheDocument()
   })
@@ -547,18 +569,14 @@ describe('HousingComplexDetailPanel', () => {
   })
 
   it.each([null, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
-    '누락되거나 유효하지 않은 마감일 %s는 상단의 공고문 확인으로 표시한다',
+    '누락되거나 유효하지 않은 마감일 %s는 마감 안내를 표시하지 않는다',
     (dDay) => {
       const { panel } = renderPanel(detailWith({
         currentAnnouncements: [{ ...BASE_DETAIL.currentAnnouncements[0], dDay }],
       }))
       const card = within(section(panel, '현재 모집 공고')).getByRole('article')
-      const title = within(card).getByRole('heading', { name: '행복주택 입주자 모집 공고' })
-      const deadline = within(card).getByText('공고문 확인')
-
-      expect(title.closest('header')?.firstElementChild).toContainElement(deadline)
-      expect(deadline.closest('p')).toHaveTextContent('마감까지 공고문 확인')
-      expect(deadline.closest('p')).toHaveAttribute('data-tone', 'neutral')
+      expect(within(card).queryByText('공고문 확인')).not.toBeInTheDocument()
+      expect(within(card).queryByText('마감까지')).not.toBeInTheDocument()
       expect(within(card).queryByText(/^D-/)).not.toBeInTheDocument()
     },
   )
@@ -655,4 +673,9 @@ describe('HousingComplexDetailPanel', () => {
     expect(sharedCss).toMatch(/\.tableViewport[\s\S]*?overflow-x:\s*auto;/)
     expect(sharedCss).toMatch(/\.table \{[\s\S]*?width:\s*100%;[\s\S]*?table-layout:\s*fixed;/)
   })
+})
+
+vi.mock('../../privacy/usePrivacy', () => {
+  const notices = [{ key: 'NOTIFICATION_NOTICE', version: 'notification-2026-10-09-v1' }]
+  return { usePrivacyNotices: () => ({ notices, error: false, retry: vi.fn() }) }
 })

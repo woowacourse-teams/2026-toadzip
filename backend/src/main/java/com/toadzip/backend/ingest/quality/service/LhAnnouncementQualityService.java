@@ -1,20 +1,19 @@
 package com.toadzip.backend.ingest.quality.service;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCollectionCheckpoint;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementCurrentSources;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionCheckpointRepository;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionLinkRepository;
-import com.toadzip.backend.ingest.collection.repository.MyHomeAnnouncementSourceRepository;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementCollectionCandidateResolver.Candidate;
-import com.toadzip.backend.ingest.collection.service.LhAnnouncementRefreshPolicy;
+import com.toadzip.backend.ingest.collection.lh.domain.LhAnnouncementQuery;
+import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectedAtReader;
+import com.toadzip.backend.ingest.collection.lh.repository.LhAnnouncementCollectionLinkRepository;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver.Candidate;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionCandidateResolver;
+import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementCollectionPolicy;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.MyHomeAnnouncementCurrentSources;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.repository.MyHomeAnnouncementSourceReader;
+import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.CollectionCoverage;
 import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse;
-import com.toadzip.backend.ingest.quality.dto.LhAnnouncementQualityResponse.Freshness;
 import com.toadzip.backend.ingest.quality.repository.LhAnnouncementQualityStore;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -30,24 +29,24 @@ import org.springframework.transaction.annotation.Transactional;
 public class LhAnnouncementQualityService {
 
     private final LhAnnouncementQualityStore store;
-    private final MyHomeAnnouncementSourceRepository sourceRepository;
+    private final MyHomeAnnouncementSourceReader sourceRepository;
     private final LhAnnouncementCollectionCandidateResolver candidateResolver;
-    private final LhAnnouncementRefreshPolicy refreshPolicy;
-    private final LhAnnouncementCollectionCheckpointRepository checkpointRepository;
+    private final LhAnnouncementCollectionPolicy collectionPolicy;
+    private final LhAnnouncementCollectedAtReader collectedAtReader;
     private final LhAnnouncementCollectionLinkRepository linkRepository;
     private final Clock clock;
 
     public LhAnnouncementQualityService(LhAnnouncementQualityStore store,
-            MyHomeAnnouncementSourceRepository sourceRepository,
+            MyHomeAnnouncementSourceReader sourceRepository,
             LhAnnouncementCollectionCandidateResolver candidateResolver,
-            LhAnnouncementRefreshPolicy refreshPolicy,
-            LhAnnouncementCollectionCheckpointRepository checkpointRepository,
+            LhAnnouncementCollectionPolicy collectionPolicy,
+            LhAnnouncementCollectedAtReader collectedAtReader,
             LhAnnouncementCollectionLinkRepository linkRepository, Clock clock) {
         this.store = store;
         this.sourceRepository = sourceRepository;
         this.candidateResolver = candidateResolver;
-        this.refreshPolicy = refreshPolicy;
-        this.checkpointRepository = checkpointRepository;
+        this.collectionPolicy = collectionPolicy;
+        this.collectedAtReader = collectedAtReader;
         this.linkRepository = linkRepository;
         this.clock = clock;
     }
@@ -59,13 +58,13 @@ public class LhAnnouncementQualityService {
         Set<String> currentSourceKeys = currentSources.stream()
                 .map(MyHomeAnnouncementSource::getSourceKey).collect(Collectors.toSet());
         List<CurrentRequest> requests = currentRequests(currentSources);
-        Map<String, RefreshRequirement> requirements = refreshRequirements(requests, now);
+        Set<String> requestHashes = collectionRequests(requests);
         Set<String> linkedPanIds = new HashSet<>();
         linkedPanIds.addAll(linkedPanIds(requests, ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY));
         linkedPanIds.addAll(linkedPanIds(requests, ExternalDataSource.LH_ANNOUNCEMENT_DETAIL));
         return store.snapshot(now,
-                freshness(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, requirements),
-                freshness(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, requirements), linkedPanIds, currentSourceKeys);
+                collectionCoverage(ExternalDataSource.LH_ANNOUNCEMENT_SUPPLY, requestHashes),
+                collectionCoverage(ExternalDataSource.LH_ANNOUNCEMENT_DETAIL, requestHashes), linkedPanIds, currentSourceKeys);
     }
 
     private List<MyHomeAnnouncementSource> currentSources() {
@@ -87,7 +86,7 @@ public class LhAnnouncementQualityService {
                 descriptions.computeIfAbsent(candidate.sourceAnnouncementKey(), ignored -> new HashSet<>())
                         .add(candidate.requestDescription());
                 requests.add(new CurrentRequest(candidate,
-                        refreshPolicy.scheduledRefreshTtl(sources.get(index), candidate).orElse(null)));
+                        collectionPolicy.isCollectionTarget(sources.get(index))));
             }
         }
         return requests.stream()
@@ -95,30 +94,20 @@ public class LhAnnouncementQualityService {
                 .toList();
     }
 
-    private Map<String, RefreshRequirement> refreshRequirements(List<CurrentRequest> requests, Instant now) {
-        Map<String, RefreshRequirement> requirements = new HashMap<>();
-        for (CurrentRequest request : requests) {
-            if (request.refreshTtl() != null) {
-                Candidate candidate = request.candidate();
-                String hash = LhAnnouncementCollectionCheckpoint.requestHashOf(candidate.requestDescription());
-                requirements.merge(hash, new RefreshRequirement(now.minus(request.refreshTtl()),
-                        candidate.catalogChangedAt()), RefreshRequirement::strictest);
-            }
-        }
-        return requirements;
+    private Set<String> collectionRequests(List<CurrentRequest> requests) {
+        return requests.stream()
+                .filter(CurrentRequest::collectionTarget)
+                .map(request -> LhAnnouncementQuery.requestHashOf(request.candidate().requestDescription()))
+                .collect(Collectors.toSet());
     }
 
-    private Freshness freshness(ExternalDataSource source, Map<String, RefreshRequirement> requirements) {
-        if (requirements.isEmpty()) {
-            return new Freshness(0, 0, null);
+    private CollectionCoverage collectionCoverage(ExternalDataSource source, Set<String> requestHashes) {
+        if (requestHashes.isEmpty()) {
+            return new CollectionCoverage(0, 0, null);
         }
-        var checkpoints = checkpointRepository.findAllBySourceAndRequestHashIn(source, requirements.keySet());
-        long fresh = checkpoints.stream()
-                .filter(checkpoint -> requirements.get(checkpoint.getRequestHash()).accepts(checkpoint.getCompletedAt()))
-                .count();
-        Instant latest = checkpoints.stream().map(LhAnnouncementCollectionCheckpoint::getCompletedAt)
-                .max(Instant::compareTo).orElse(null);
-        return new Freshness(requirements.size(), fresh, latest);
+        var collected = collectedAtReader.find(source, requestHashes);
+        Instant latest = collected.values().stream().max(Instant::compareTo).orElse(null);
+        return new CollectionCoverage(requestHashes.size(), collected.size(), latest);
     }
 
     private Set<String> linkedPanIds(List<CurrentRequest> requests, ExternalDataSource source) {
@@ -135,29 +124,7 @@ public class LhAnnouncementQualityService {
                 .map(link -> link.getPanId()).collect(Collectors.toSet());
     }
 
-    private record CurrentRequest(Candidate candidate, Duration refreshTtl) {
+    private record CurrentRequest(Candidate candidate, boolean collectionTarget) {
     }
 
-    private record RefreshRequirement(Instant freshAfter, Instant catalogChangedAt) {
-
-        private boolean accepts(Instant completedAt) {
-            return completedAt.isAfter(freshAfter)
-                    && (catalogChangedAt == null || !completedAt.isBefore(catalogChangedAt));
-        }
-
-        private RefreshRequirement strictest(RefreshRequirement other) {
-            return new RefreshRequirement(latest(freshAfter, other.freshAfter),
-                    latest(catalogChangedAt, other.catalogChangedAt));
-        }
-
-        private static Instant latest(Instant first, Instant second) {
-            if (first == null) {
-                return second;
-            }
-            if (second == null || first.isAfter(second)) {
-                return first;
-            }
-            return second;
-        }
-    }
 }

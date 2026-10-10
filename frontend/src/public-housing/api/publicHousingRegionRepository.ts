@@ -1,16 +1,12 @@
+import { getApiBaseUrl } from '../../api/apiBaseUrl'
 import type { PublicHousingRegion } from '../model/publicHousingRegion.ts'
+import { decodeHttpErrorBody, isAbortError, type HttpErrorBody } from './httpErrorBody.ts'
 
 const REGIONS_PATH = '/api/v1/regions'
 
 interface RepositoryOptions {
   readonly apiBaseUrl?: string
   readonly fetcher?: typeof globalThis.fetch
-}
-
-interface ErrorBody {
-  readonly code: string | null
-  readonly message: string | null
-  readonly traceId: string | null
 }
 
 export interface PublicHousingRegionRepository {
@@ -25,7 +21,7 @@ export class PublicHousingRegionHttpError extends Error {
   readonly code: string | null
   readonly traceId: string | null
 
-  constructor(status: number, body: ErrorBody) {
+  constructor(status: number, body: HttpErrorBody) {
     super(body.message ?? '지역 정보를 불러오지 못했습니다.')
     this.name = 'PublicHousingRegionHttpError'
     this.status = status
@@ -47,7 +43,7 @@ export class PublicHousingRegionContractError extends Error {
 export function createHttpPublicHousingRegionRepository(
   options: RepositoryOptions = {},
 ): PublicHousingRegionRepository {
-  const apiBaseUrl = options.apiBaseUrl ?? resolveApiBaseUrl()
+  const apiBaseUrl = options.apiBaseUrl ?? getApiBaseUrl()
   const fetcher = options.fetcher ?? globalThis.fetch
 
   return {
@@ -63,7 +59,7 @@ export function createHttpPublicHousingRegionRepository(
       if (!response.ok) {
         throw new PublicHousingRegionHttpError(
           response.status,
-          await decodeErrorBody(response),
+          await decodeHttpErrorBody(response),
         )
       }
       try {
@@ -83,27 +79,6 @@ export function createHttpPublicHousingRegionRepository(
 
 export const publicHousingRegionRepository =
   createHttpPublicHousingRegionRepository()
-
-async function decodeErrorBody(response: Response): Promise<ErrorBody> {
-  let value: unknown
-  try {
-    value = (await response.json()) as unknown
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw error
-    }
-    return { code: null, message: null, traceId: null }
-  }
-
-  if (!isRecord(value)) {
-    return { code: null, message: null, traceId: null }
-  }
-  return {
-    code: nullableString(value.code),
-    message: nullableString(value.message),
-    traceId: nullableString(value.traceId),
-  }
-}
 
 export function decodePublicHousingRegionEnvelope(
   value: unknown,
@@ -176,10 +151,6 @@ function nonEmptyStringAt(value: unknown, path: string): string {
   return value
 }
 
-function nullableString(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
-}
-
 function nullableNonEmptyStringAt(
   value: unknown,
   path: string,
@@ -192,26 +163,8 @@ function nullableNonEmptyStringAt(
 
 function regionCodeAt(value: unknown, path: string): string {
   const regionCode = nonEmptyStringAt(value, path)
-  if (!/^(?:\d{2}|\d{5})$/.test(regionCode)) {
+  if (!/^(?:\d{2}|\d{5}|\d{8}00)$/.test(regionCode)) {
     throw new PublicHousingRegionContractError(path)
   }
   return regionCode
-}
-
-function isAbortError(error: unknown) {
-  return typeof error === 'object'
-    && error !== null
-    && 'name' in error
-    && error.name === 'AbortError'
-}
-
-function resolveApiBaseUrl(): string {
-  const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL
-  if (configuredApiBaseUrl) {
-    return configuredApiBaseUrl
-  }
-  if (import.meta.env.DEV) {
-    return 'http://localhost:8080'
-  }
-  return ''
 }

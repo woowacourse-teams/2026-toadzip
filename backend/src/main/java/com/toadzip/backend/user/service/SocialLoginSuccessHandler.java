@@ -1,5 +1,7 @@
 package com.toadzip.backend.user.service;
 
+import com.toadzip.backend.user.configuration.SocialAuthorizationRequestResolver;
+import com.toadzip.backend.user.domain.SocialAuthorizationContext;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -42,19 +44,30 @@ public class SocialLoginSuccessHandler implements AuthenticationSuccessHandler {
         try {
             OAuth2AuthenticationToken oauth = (OAuth2AuthenticationToken) authentication;
             Object kakaoId = oauth.getPrincipal().getAttributes().get("id");
-            String subject = kakaoId == null ? null : kakaoId.toString();
+            String subject = null;
+            if (kakaoId != null) {
+                subject = kakaoId.toString();
+            }
             if ("google".equals(oauth.getAuthorizedClientRegistrationId())) {
                 subject = oauth.getPrincipal().getAttribute("sub");
             }
             Object emailAttribute = oauth.getPrincipal().getAttribute("email");
-            String email = emailAttribute instanceof String value ? value : null;
+            String email = null;
+            if (emailAttribute instanceof String value) {
+                email = value;
+            }
             if ("kakao".equals(oauth.getAuthorizedClientRegistrationId())) {
                 Object account = oauth.getPrincipal().getAttribute("kakao_account");
-                if (account instanceof Map<?, ?> accountDetails && accountDetails.get("email") instanceof String value) {
+                if (account instanceof Map<?, ?> accountDetails
+                        && accountDetails.get("email") instanceof String value) {
                     email = value;
                 }
             }
-            userId = socialUserService.findOrCreate(oauth.getAuthorizedClientRegistrationId(), subject, email);
+            SocialAuthorizationContext authorization = (SocialAuthorizationContext) request.getAttribute(
+                    SocialAuthorizationRequestResolver.CONTEXT_ATTRIBUTE);
+            request.removeAttribute(SocialAuthorizationRequestResolver.CONTEXT_ATTRIBUTE);
+            userId = socialUserService.findOrCreate(oauth.getAuthorizedClientRegistrationId(), subject,
+                    email, authorization);
         } catch (RuntimeException exception) {
             LOGGER.warn("event=user.login.failed phase=session reason={}", exception.getClass().getSimpleName());
             failureHandler.failAfterProviderAuthentication(response);

@@ -1,8 +1,10 @@
 package com.toadzip.backend.ingest.enrichment.repository;
 
+import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.LH_ANNOUNCEMENT_ENRICHMENT;
+import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.MYHOME_ANNOUNCEMENT_MAPPING;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingExecutionLock;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -21,15 +23,15 @@ class AnnouncementRefinementExecutionLockTest {
 
     @Test
     void 마이홈_공고_매핑_중에는_LH_보강을_동시에_실행하지_않는다() throws Exception {
-        MyHomeAnnouncementMappingExecutionLock mappingLock =
-                new MyHomeAnnouncementMappingExecutionLock(dataSource);
-        LhAnnouncementEnrichmentExecutionLock enrichmentLock =
-                new LhAnnouncementEnrichmentExecutionLock(dataSource);
+        IngestOperationLock mappingLock =
+                new IngestOperationLock(dataSource);
+        IngestOperationLock enrichmentLock =
+                new IngestOperationLock(dataSource);
         CountDownLatch mappingStarted = new CountDownLatch(1);
         CountDownLatch releaseMapping = new CountDownLatch(1);
 
         try (var executor = Executors.newSingleThreadExecutor()) {
-            var mapping = executor.submit(() -> mappingLock.tryRun(() -> {
+            var mapping = executor.submit(() -> mappingLock.tryRun(MYHOME_ANNOUNCEMENT_MAPPING, () -> {
                 mappingStarted.countDown();
                 try {
                     if (!releaseMapping.await(5, TimeUnit.SECONDS)) {
@@ -44,7 +46,7 @@ class AnnouncementRefinementExecutionLockTest {
             }));
             try {
                 assertThat(mappingStarted.await(5, TimeUnit.SECONDS)).isTrue();
-                assertThat(enrichmentLock.tryRun(() -> "enriched")).isEmpty();
+                assertThat(enrichmentLock.tryRun(LH_ANNOUNCEMENT_ENRICHMENT, () -> "enriched")).isEmpty();
             }
             finally {
                 releaseMapping.countDown();

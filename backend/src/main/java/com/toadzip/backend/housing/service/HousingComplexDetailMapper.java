@@ -1,5 +1,7 @@
 package com.toadzip.backend.housing.service;
 
+import com.toadzip.backend.housing.dto.response.BasicRentalConditionResponse;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -148,8 +150,22 @@ public class HousingComplexDetailMapper {
                 null,
                 row.isDuplex(),
                 toLongExact(row.maintenanceFee()),
+                row.totalHouseholdCount(),
+                toBasicRentalCondition(row),
                 conditions
         );
+    }
+
+    private BasicRentalConditionResponse toBasicRentalCondition(
+            HousingTypeDetailRow row
+    ) {
+        if (row.rentalConditionCollectedAt() == null) {
+            return null;
+        }
+        return new BasicRentalConditionResponse(
+                row.basicDeposit(), row.basicMonthlyRent(), "MYHOME",
+                MyHomeRentalHouseUrl.fromSourceIdentifier(row.sourceHousingTypeIdentifier()),
+                row.rentalConditionCollectedAt());
     }
 
     private List<CurrentAnnouncementResponse> toAnnouncements(

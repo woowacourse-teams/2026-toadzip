@@ -15,7 +15,7 @@ import com.toadzip.backend.announcement.domain.SupplyRow;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminSupplyRowUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.VerifiedApplicationSchedulesRequest;
-import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest.ReceptionPlaceRequest;
+import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest.ReceptionPlaceUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementCreateRequest.SupplyRowRequest;
 import com.toadzip.backend.announcement.dto.response.AdminAnnouncementDetail;
 import com.toadzip.backend.announcement.exception.AnnouncementNotFoundException;
@@ -184,14 +184,18 @@ public class AdminAnnouncementManagementService {
         return new AdminDataSummary(announcement.getId(), announcement.getName(),
                 announcement.getPostedDate().toString(), announcement.getProvider().name(),
                 announcement.getSupplyType().name(), announcement.isAdminDeleted(), announcement.isAdminModified(),
-                announcement.isSourceReviewRequired(), announcement.getAdminUpdatedAt());
+                announcement.isSourceReviewRequired(), announcement.getAdminUpdatedAt(), null,
+                new AdminDataSummary.AnnouncementSummary(announcement.getSourceAnnouncementIdentifier(),
+                        announcement.getOriginalUrl(), announcement.getRecruitmentType().name(),
+                        announcement.getPostedDate(), announcement.getApplicationStartDate(),
+                        announcement.getApplicationEndDate(), announcement.getWinnerAnnouncementDate()));
     }
 
     private AdminAnnouncementUpdateRequest data(Announcement announcement) {
-        ReceptionPlaceRequest reception = null;
+        ReceptionPlaceUpdateRequest reception = null;
         if (announcement.getReceptionPlace() != null) {
             var place = announcement.getReceptionPlace();
-            reception = new ReceptionPlaceRequest(place.getName(), place.getMethod(), place.getAddress(),
+            reception = new ReceptionPlaceUpdateRequest(place.getName(), place.getMethod(), place.getAddress(),
                     place.getContact(), place.getUrl());
         }
         return new AdminAnnouncementUpdateRequest(announcement.getVersion(), announcement.getName(),

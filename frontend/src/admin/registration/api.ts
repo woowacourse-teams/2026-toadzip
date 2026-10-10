@@ -1,3 +1,4 @@
+import { getApiBaseUrl } from '../../api/apiBaseUrl'
 export type HousingComplexCreateRequest = {
   name: string
   rentalType: string
@@ -26,6 +27,9 @@ export type HousingComplexCreateResponse = {
   housingComplexId: number
   name: string
   roadAddress: string
+  pnu?: string
+  rentalType?: string
+  agencyCode?: string
 }
 
 export type AnnouncementCreateRequest = {
@@ -121,7 +125,7 @@ export class AdminRegistrationApiError extends Error {
   }
 }
 
-const apiBaseUrl = resolveApiBaseUrl()
+const apiBaseUrl = getApiBaseUrl()
 
 export async function createHousingComplex(
   request: HousingComplexCreateRequest,
@@ -327,15 +331,4 @@ function isIssueArray(value: unknown): value is Array<{ path: string; reason: st
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
-}
-
-function resolveApiBaseUrl(): string {
-  const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL
-  if (configuredApiBaseUrl) {
-    return configuredApiBaseUrl
-  }
-  if (import.meta.env.DEV) {
-    return 'http://localhost:8080'
-  }
-  return ''
 }

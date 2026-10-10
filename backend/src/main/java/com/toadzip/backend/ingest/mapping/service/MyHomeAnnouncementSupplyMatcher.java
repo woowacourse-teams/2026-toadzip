@@ -6,6 +6,8 @@ import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.ingest.domain.SupplyNameNormalizer;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingWriter.MyHomeSupplyMatchingFailureData;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementSourceMapper.MyHomeSupplyRowMappingData;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.function.Function;
@@ -50,6 +52,24 @@ class MyHomeAnnouncementSupplyMatcher {
             return matchHousingType(data, matched);
         }
         return matchHousingType(data, complexes.getFirst());
+    }
+
+    MyHomeSupplyMatchResult matchSelected(MyHomeSupplyRowMappingData data, long complexId, Long housingTypeId) {
+        var complex = housingComplexRepository.findById(complexId).orElse(null);
+        if (complex == null || complex.isAdminDeleted() || !complex.getSupplyType().equals(data.complexSupplyType())) {
+            return MyHomeSupplyMatchResult.failure(data, MyHomeAnnouncementMappingFailureReason.COMPLEX_NOT_FOUND,
+                    "선택한 단지가 없거나 삭제되었거나 공급유형이 다릅니다.");
+        }
+        if (housingTypeId == null) {
+            return matchHousingType(data, complex);
+        }
+        var type = housingTypeRepository.findById(housingTypeId).orElse(null);
+        if (type == null || !type.getHousingComplex().getId().equals(complexId)) {
+            return MyHomeSupplyMatchResult.failure(data, complex,
+                    MyHomeAnnouncementMappingFailureReason.HOUSING_TYPE_NOT_FOUND,
+                    "선택한 주택형이 없거나 선택한 단지의 주택형이 아닙니다.");
+        }
+        return MyHomeSupplyMatchResult.matched(complex, type);
     }
 
     private HousingComplex uniqueComplexByName(List<HousingComplex> complexes, String sourceName) {
@@ -131,43 +151,43 @@ class MyHomeAnnouncementSupplyMatcher {
     private boolean sameArea(BigDecimal left, BigDecimal right) {
         return left != null && right != null && left.compareTo(right) == 0;
     }
-}
 
-record MyHomeSupplyMatchResult(
-        HousingComplex complex,
-        HousingType housingType,
-        MyHomeSupplyMatchingFailureData failure
-) {
-
-    static MyHomeSupplyMatchResult matched(HousingComplex complex, HousingType housingType) {
-        return new MyHomeSupplyMatchResult(complex, housingType, null);
-    }
-
-    static MyHomeSupplyMatchResult failure(
-            MyHomeSupplyRowMappingData data,
-            MyHomeAnnouncementMappingFailureReason reason,
-            String detail
-    ) {
-        return failure(data, null, reason, detail);
-    }
-
-    static MyHomeSupplyMatchResult failure(
-            MyHomeSupplyRowMappingData data,
+    record MyHomeSupplyMatchResult(
             HousingComplex complex,
-            MyHomeAnnouncementMappingFailureReason reason,
-            String detail
+            HousingType housingType,
+            MyHomeSupplyMatchingFailureData failure
     ) {
-        return new MyHomeSupplyMatchResult(
-                complex,
-                null,
-                new MyHomeSupplyMatchingFailureData(data.source(), reason, detail)
-        );
-    }
 
-    String failureDetail() {
-        if (failure == null) {
-            return null;
+        static MyHomeSupplyMatchResult matched(HousingComplex complex, HousingType housingType) {
+            return new MyHomeSupplyMatchResult(complex, housingType, null);
         }
-        return failure.detail();
+
+        static MyHomeSupplyMatchResult failure(
+                MyHomeSupplyRowMappingData data,
+                MyHomeAnnouncementMappingFailureReason reason,
+                String detail
+        ) {
+            return failure(data, null, reason, detail);
+        }
+
+        static MyHomeSupplyMatchResult failure(
+                MyHomeSupplyRowMappingData data,
+                HousingComplex complex,
+                MyHomeAnnouncementMappingFailureReason reason,
+                String detail
+        ) {
+            return new MyHomeSupplyMatchResult(
+                    complex,
+                    null,
+                    new MyHomeSupplyMatchingFailureData(data.source(), reason, detail)
+            );
+        }
+
+        String failureDetail() {
+            if (failure == null) {
+                return null;
+            }
+            return failure.detail();
+        }
     }
 }

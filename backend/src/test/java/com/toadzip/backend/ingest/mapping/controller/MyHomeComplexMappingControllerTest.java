@@ -11,12 +11,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingFailureResponse;
-import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingPreparationReport;
 import com.toadzip.backend.ingest.mapping.dto.MyHomeComplexMappingReport;
 import com.toadzip.backend.ingest.mapping.service.MyHomeComplexMappingService;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -33,44 +34,11 @@ class MyHomeComplexMappingControllerTest {
     @MockitoBean
     private MyHomeComplexMappingService mappingService;
 
-    @Test
-    void 좌표_조회_전_단지_후보를_준비한다() throws Exception {
-        when(mappingService.prepare()).thenReturn(new MyHomeComplexMappingPreparationReport(10, 2));
-
-        mockMvc.perform(post("/api/admin/ingest/myhome/complex-mappings/candidates"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.stagedCandidateCount").value(10))
-                .andExpect(jsonPath("$.failedSourceRowCount").value(2));
-
-        verify(mappingService).prepare();
-    }
-
-    @Test
-    void 준비된_후보를_요청한_배치_크기로_매핑한다() throws Exception {
-        when(mappingService.mapNext(50)).thenReturn(new MyHomeComplexMappingReport(
-                1, 0, 0, 2, 0, 0, 0, 0
-        ));
-
-        mockMvc.perform(post("/api/admin/ingest/myhome/complex-mappings/batches")
-                        .param("batchSize", "50"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.createdComplexCount").value(1))
-                .andExpect(jsonPath("$.createdHousingTypeCount").value(2));
-
-        verify(mappingService).mapNext(50);
-    }
-
-    @Test
-    void 허용_범위를_벗어난_배치_크기는_검증_오류로_반환한다() throws Exception {
-        mockMvc.perform(post("/api/admin/ingest/myhome/complex-mappings/batches")
-                        .param("batchSize", "0"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
-                .andExpect(jsonPath("$.message").value("요청값이 올바르지 않습니다."))
-                .andExpect(jsonPath("$.errors[0].field").value("batchSize"))
-                .andExpect(jsonPath("$.errors[0].reason").value("1 이상이어야 합니다."));
-
-        verify(mappingService, never()).mapNext(0);
+    @ParameterizedTest
+    @ValueSource(strings = {"candidates", "batches"})
+    void 단계별_정제_API는_제공하지_않는다(String path) throws Exception {
+        mockMvc.perform(post("/api/admin/ingest/myhome/complex-mappings/{path}", path))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -102,7 +70,7 @@ class MyHomeComplexMappingControllerTest {
 
     @Test
     void 매핑에_실패한_원천과_사유를_조회한다() throws Exception {
-        when(mappingService.findFailures()).thenReturn(List.of(new MyHomeComplexMappingFailureResponse(
+        when(mappingService.findFailures(0, 100)).thenReturn(List.of(new MyHomeComplexMappingFailureResponse(
                 "source-key",
                 "123",
                 MyHomeComplexMappingFailureReason.INVALID_VALUE,
@@ -110,12 +78,14 @@ class MyHomeComplexMappingControllerTest {
                 Instant.parse("2026-08-27T00:00:00Z")
         )));
 
-        mockMvc.perform(get("/api/admin/ingest/myhome/complex-mappings/failures"))
+        mockMvc.perform(get("/api/admin/ingest/myhome/complex-mappings/failures/page"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].sourceKey").value("source-key"))
                 .andExpect(jsonPath("$[0].sourceComplexIdentifier").value("123"))
                 .andExpect(jsonPath("$[0].reason").value("INVALID_VALUE"))
                 .andExpect(jsonPath("$[0].detail").value("준공일 형식이 올바르지 않습니다."));
+
+        verify(mappingService).findFailures(0, 100);
     }
 
     @Test

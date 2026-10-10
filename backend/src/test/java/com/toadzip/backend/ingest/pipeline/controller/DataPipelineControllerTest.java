@@ -1,21 +1,17 @@
 package com.toadzip.backend.ingest.pipeline.controller;
 
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
-import com.toadzip.backend.ingest.pipeline.domain.DataPipelineSchedule;
-import com.toadzip.backend.ingest.pipeline.domain.DataPipelineScheduleDeferralReason;
-import com.toadzip.backend.ingest.pipeline.domain.DataPipelineScheduleStage;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
-import com.toadzip.backend.ingest.pipeline.dto.DataPipelineScheduleDeferralResponse;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineScheduleDeferralService;
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -26,10 +22,75 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.http.MediaType;
 
 @WebMvcTest(DataPipelineController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class DataPipelineControllerTest {
+
+    @Test
+    void URL_등록도_기존_실행_서비스로_비동기_접수한다() throws Exception {
+        String url = "https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21026";
+        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration/url")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"url\":\"" + url + "\"}"))
+                .andExpect(status().isAccepted());
+        verify(executionService).startAnnouncementRegistrationUrl(url);
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"{}", "{\"url\":null}", "{\"url\":\" \"}"})
+    void 빈_URL은_실행을_접수하지_않는다(String body) throws Exception {
+        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration/url")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(executionService);
+    }
+
+    @Test
+    void URL_검증_실패는_접수가_아닌_400과_사유로_응답한다() throws Exception {
+        when(executionService.startAnnouncementRegistrationUrl("https://apply.lh.or.kr"))
+                .thenThrow(new com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException(
+                        "잘못된 공고 URL입니다."));
+        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration/url")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"url\":\"https://apply.lh.or.kr\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("잘못된 공고 URL입니다."));
+    }
+
+    @Test
+    void 단건_등록은_공고_ID만_받아_비동기로_접수한다() throws Exception {
+        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"pblancId\":\" 21026 \"}"))
+                .andExpect(status().isAccepted());
+        verify(executionService).startAnnouncementRegistration("21026");
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"{}", "{\"pblancId\":null}",
+            "{\"pblancId\":\" \"}", "{\"pblancId\":\"\"}"})
+    void 단건_등록은_빈_ID를_거부한다(String body) throws Exception {
+        mockMvc.perform(post("/api/admin/ingest/pipelines/announcement-registration")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(executionService);
+    }
+
+    @Test
+    void 없는_실행_ID의_상태_조회는_404를_반환한다() throws Exception {
+        UUID executionId = UUID.randomUUID();
+        when(executionService.find(executionId))
+                .thenThrow(new DataPipelineExecutionNotFoundException("실행을 찾을 수 없습니다."));
+        mockMvc.perform(get("/api/admin/ingest/pipelines/executions/{executionId}", executionId))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void 실행_ID로_단건_상태를_조회한다() throws Exception {
+        UUID executionId = UUID.randomUUID();
+        mockMvc.perform(get("/api/admin/ingest/pipelines/executions/{executionId}", executionId))
+                .andExpect(status().isOk());
+        verify(executionService).find(executionId);
+    }
 
     @Test
     void 실행_중지_요청을_접수한다() throws Exception {
@@ -43,17 +104,63 @@ class DataPipelineControllerTest {
     @MockitoBean
     private DataPipelineExecutionService executionService;
 
-    @MockitoBean
-    private DataPipelineScheduleDeferralService scheduleDeferralService;
+    @ParameterizedTest
+    @CsvSource({
+            "complex-collection, COMPLEX_COLLECTION", "announcement-collection, ANNOUNCEMENT_COLLECTION",
+            "complex-sync, COMPLEX_SYNC", "announcement-sync, ANNOUNCEMENT_SYNC"
+    })
+    void 수집_실행은_입력키를_양끝_공백_제거해_전달하고_응답에_노출하지_않는다(
+            String pathValue, DataPipelineType type
+    ) throws Exception {
+        mockMvc.perform(post("/api/admin/ingest/pipelines/{type}", pathValue)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"serviceKey\":\" transient-test-key \"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.serviceKey").doesNotExist());
+        verify(executionService).start(type, "transient-test-key");
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"{}", "{\"serviceKey\":null}",
+            "{\"serviceKey\":\" \"}", "{\"serviceKey\":\"\"}"})
+    void 입력_본문에_키가_없거나_비어_있으면_값을_노출하지_않고_거부한다(String body) throws Exception {
+        mockMvc.perform(post("/api/admin/ingest/pipelines/complex-collection")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        verifyNoInteractions(executionService);
+    }
+
+    @Test
+    void 최대_길이를_넘은_서비스키는_거부한다() throws Exception {
+        String key = "x".repeat(4097);
+        var result = mockMvc.perform(post("/api/admin/ingest/pipelines/complex-collection")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"serviceKey\":\"" + key + "\"}"))
+                .andExpect(status().isBadRequest()).andReturn();
+        org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentAsString()).doesNotContain(key);
+        verifyNoInteractions(executionService);
+    }
+
+    @Test
+    void 정제_실행은_서비스키_입력을_거부한다() throws Exception {
+        when(executionService.start(DataPipelineType.COMPLEX_REFINEMENT, "test-key"))
+                .thenThrow(new com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException(
+                        "수집 작업에만 서비스키를 입력할 수 있습니다."));
+        mockMvc.perform(post("/api/admin/ingest/pipelines/complex-refinement")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"serviceKey\":\"test-key\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INGEST_REQUEST"));
+    }
 
     @ParameterizedTest
     @CsvSource({
             "complex-collection, COMPLEX_COLLECTION",
             "complex-refinement, COMPLEX_REFINEMENT",
             "announcement-collection, ANNOUNCEMENT_COLLECTION",
-            "announcement-refinement, ANNOUNCEMENT_REFINEMENT"
+            "announcement-refinement, ANNOUNCEMENT_REFINEMENT",
+            "complex-sync, COMPLEX_SYNC",
+            "announcement-sync, ANNOUNCEMENT_SYNC"
     })
-    void 분리된_실행을_접수하고_진행_상태를_조회한다(
+    void 독립_및_통합_실행을_접수하고_진행_상태를_조회한다(
             String pathValue,
             DataPipelineType type
     ) throws Exception {
@@ -78,57 +185,30 @@ class DataPipelineControllerTest {
     }
 
     @Test
-    void 실행_ID로_파이프라인_결과를_조회한다() throws Exception {
-        UUID executionId = UUID.randomUUID();
+    void 파이프라인_실행_이력을_페이지로_조회한다() throws Exception {
         DataPipelineExecutionResponse response = DataPipelineExecutionResponse.idle(
                 DataPipelineType.ANNOUNCEMENT_COLLECTION
         );
-        when(executionService.find(executionId)).thenReturn(response);
+        when(executionService.history(2, 20)).thenReturn(List.of(response));
 
-        mockMvc.perform(get(
-                        "/api/admin/ingest/pipelines/executions/{executionId}",
-                        executionId
-                ))
+        mockMvc.perform(get("/api/admin/ingest/pipelines/history")
+                        .param("page", "2")
+                        .param("size", "20"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.type").value("ANNOUNCEMENT_COLLECTION"));
-    }
+                .andExpect(jsonPath("$[0].type").value("ANNOUNCEMENT_COLLECTION"));
 
-    @Test
-    void 정기_실행_지연_상태를_조회한다() throws Exception {
-        Instant observedAt = Instant.parse("2026-09-21T05:15:00Z");
-        when(scheduleDeferralService.findAll()).thenReturn(List.of(
-                new DataPipelineScheduleDeferralResponse(
-                        DataPipelineSchedule.ANNOUNCEMENT,
-                        DataPipelineScheduleStage.COLLECTION,
-                        Instant.parse("2026-09-21T03:00:00Z"),
-                        DataPipelineScheduleDeferralReason.EXECUTION_IN_PROGRESS,
-                        null,
-                        observedAt,
-                        observedAt.plusSeconds(60),
-                        null,
-                        true
-                )
-        ));
-
-        mockMvc.perform(get("/api/admin/ingest/pipelines/schedule-deferrals"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$[0].schedule").value("ANNOUNCEMENT"))
-                .andExpect(jsonPath("$[0].reason").value("EXECUTION_IN_PROGRESS"))
-                .andExpect(jsonPath("$[0].nextRetryAt")
-                        .value("2026-09-21T05:16:00Z"))
-                .andExpect(jsonPath("$[0].active").value(true));
+        verify(executionService).history(2, 20);
     }
 
     @Test
     void 존재하지_않는_실행_ID는_404를_반환한다() throws Exception {
         UUID executionId = UUID.randomUUID();
-        when(executionService.find(executionId)).thenThrow(
+        when(executionService.requestStop(executionId)).thenThrow(
                 new DataPipelineExecutionNotFoundException("실행 없음")
         );
 
-        mockMvc.perform(get(
-                        "/api/admin/ingest/pipelines/executions/{executionId}",
+        mockMvc.perform(post(
+                        "/api/admin/ingest/pipelines/executions/{executionId}/stop",
                         executionId
                 ))
                 .andExpect(status().isNotFound())

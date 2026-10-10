@@ -114,6 +114,19 @@ describe('public housing region HTTP repository', () => {
     })
   })
 
+  it.each([true, false])('지역 응답의 ok=%s 본문 읽기 취소는 오류로 바꾸지 않는다', async (ok) => {
+    const abortError = new DOMException('요청이 취소되었습니다.', 'AbortError')
+    const repository = createHttpPublicHousingRegionRepository({
+      fetcher: vi.fn().mockResolvedValue({
+        ok, status: ok ? 200 : 499,
+        json: vi.fn().mockRejectedValue(abortError),
+      }),
+    })
+
+    await expect(repository.search('서울', new AbortController().signal))
+      .rejects.toBe(abortError)
+  })
+
   it.each([
     ['missing data', {}, '$.data'],
     ['non-object data', { data: null }, '$.data'],
@@ -169,7 +182,7 @@ describe('public housing region HTTP repository', () => {
 })
 
 describe('district region options for a province', () => {
-  it('removes aggregate and other-province rows without changing response order', () => {
+  it('removes aggregate and other-province rows and uses official region order', () => {
     const regions = [
       region('41', '경기도', null),
       region('41130', '경기도', '성남시'),
@@ -179,7 +192,7 @@ describe('district region options for a province', () => {
 
     expect(districtRegionOptionsForProvince(regions, '41').map(
       ({ regionCode }) => regionCode,
-    )).toEqual(['41130', '41110'])
+    )).toEqual(['41110', '41130'])
   })
 
   it('keeps all 25 Seoul autonomous districts in response order', () => {
@@ -222,7 +235,7 @@ describe('district region options for a province', () => {
 
     expect(districtRegionOptionsForProvince(regions, '41').map(
       ({ regionCode }) => regionCode,
-    )).toEqual(['41110', '41112', '41281', '41371', '41372', '41461'])
+    )).toEqual(['41110', '41281', '41461', '41112', '41371', '41372'])
   })
 })
 

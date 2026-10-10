@@ -1,7 +1,6 @@
 # Backend Harness Map
 
-[backend/AGENTS.md](../AGENTS.md)는 시작점이고 이 디렉터리는 백엔드 전용 보충 지침이다.
-기존 원본 문서와 내용이 겹치면 원본을 우선하고 여기서 반복하지 않는다.
+[backend/AGENTS.md](../AGENTS.md)는 시작점이고 여기는 백엔드 보충 지침이다. 중복 내용은 원본을 우선한다.
 
 ## 원본 문서
 
@@ -20,20 +19,25 @@
 | 구조 변경 | [architecture.md](architecture.md), [layer-boundaries.md](layer-boundaries.md) | 계층 책임과 허용 의존성 |
 | Java·Spring | [CODE_CONVENTION.md](../CODE_CONVENTION.md) | 코드 스타일과 객체 규칙 |
 | Git 작업 | [CONTRIBUTING.md](../../CONTRIBUTING.md) | 이슈, 브랜치, 커밋, PR |
-| HTTP API | [api-conventions.md](api-conventions.md) | 요청, 응답, 호환성 |
+| HTTP API·지역 | [api-conventions.md](api-conventions.md), [location-search.md](location-search.md), [street-view.md](street-view.md), [region-search.md](region-search.md) | 요청·응답, 지역·지하철역 검색, 거리뷰 계약, 공식 지역 정렬 |
 | 예외 처리 | [exception-handling.md](exception-handling.md) | 예외 소유권, Advice, 오류 계약 |
-| DB 변경 | [persistence.md](persistence.md) | 모델, 쿼리, 트랜잭션 |
+| DB 변경 | [persistence.md](persistence.md), [ingest-branch-db-upgrade.md](ingest-branch-db-upgrade.md) | 모델·트랜잭션, 기존 ingest 작업 DB 통합 업그레이드 |
 | Flyway 최초 적용 | [flyway-adoption.md](flyway-adoption.md) | 기존 DB baseline과 새 DB 생성 경로 |
+| ingest 처음 읽기 | [ingest-maintenance.md](ingest-maintenance.md) | 시작할 두 파일, 단계별 서비스와 수집 흐름 |
+| ingest 전체 흐름·실행 제어 | [ingest-flow-review.md](ingest-flow-review.md), [data-pipeline-execution.md](data-pipeline-execution.md), [pipeline-operator-controls.md](pipeline-operator-controls.md) | 수집·정제 경계, 통합 실행과 수동 복구 |
+| ingest 실제 API 검증 | [ingest-live-verification.md](ingest-live-verification.md) | 격리 DB 실행 증거, 실응답 수정과 남은 데이터 품질 |
 | 관리자 데이터 파이프라인 | [data-pipeline-execution.md](data-pipeline-execution.md) | 실행 상태와 스키마 배포 |
 | 마이홈 단지 통합 | [myhome-complex-linking.md](myhome-complex-linking.md) | 원천 연결, 확인된 통합, 재정제와 복구 |
+| 관리자 단지 검증 | [complex-verification.md](complex-verification.md) | 원천 비교, 항목별 검토 기록, 재검토 상태와 목록 필터 |
 | 수집·정제 코드 리뷰 | [ingest-review-2026-09-26.md](ingest-review-2026-09-26.md) | 9월 28일 재검토: 해결 상태, 원천 선택 결함, 책임·성능·죽은 코드와 개선 순서 |
 | 공고 수집 성능 | [announcement-collection-performance.md](announcement-collection-performance.md) | 페이지 크기, LH 동시성, 실측과 메트릭 |
-| LH 공고 연결·복구 | [lh-announcement-link-resolution.md](lh-announcement-link-resolution.md) | 매핑·보강의 성공 연결 기준과 fallback 종료 |
-| LH 수집 정확성 | [lh-announcement-correctness-audit.md](lh-announcement-correctness-audit.md) | 반복된 빈 응답·원천 교체·중복 연결 P2와 검증 한계 |
+| LH 공고 연결·복구 | [lh-announcement-link-resolution.md](lh-announcement-link-resolution.md) | 매핑·보강의 성공 연결 기준과 원천 초기화 |
+| LH 수집 정확성·운영 | [lh-announcement-correctness-audit.md](lh-announcement-correctness-audit.md), [lh-announcement-quality-operations.md](lh-announcement-quality-operations.md) | 검증 한계, 품질 지표와 확인된 공급 감소 승인 |
 | 공고 원천 수명주기 | [announcement-source-lifecycle.md](announcement-source-lifecycle.md) | 미조회 정책과 스키마 배포 |
 | 테스트 | [testing.md](testing.md) | 테스트 범위와 대역 기준 |
 | 보안 변경 | [security.md](security.md) | 인증, 인가, 개인정보, 비밀 |
-| 사용자 로그인 | [user-social-login.md](user-social-login.md) | OAuth 설정, API, 스키마 배포 |
+| 사용자 로그인·의견·알림 | [user-social-login.md](user-social-login.md), [user-feedback.md](user-feedback.md), [notification-settings.md](notification-settings.md) | OAuth 설정, 의견 접수, 회원 알림 설정 |
+| 개인정보·동의·파기 | [privacy-consent.md](privacy-consent.md), [privacy-isolation.md](privacy-isolation.md), [privacy-deployment.md](privacy-deployment.md), [공통 운영 정책](../../docs/privacy-policy.md) | 동의·고지·보유·파기 계약, DB 배포 순서와 점검 |
 | 운영 변경 | [observability.md](observability.md) | 로그, 메트릭, 트레이스 |
 | 단지 도로명주소 좌표 적재 | [road-address-reference-data.md](road-address-reference-data.md) | 위치정보요약DB 전체분에서 단지 주소 일치분만 선별 적재하는 흐름 |
 | 작업 위임 | [agent-collaboration.md](agent-collaboration.md) | 역할과 읽기 범위 |
@@ -57,12 +61,3 @@
 - 이유는 짧은 문단, 매핑은 표, 순서는 번호, 완료 조건은 체크리스트로 쓴다.
 - 동일 규칙을 복제하지 않고 원본 문서에 링크한다.
 - 반복 실패에서 나온 규칙은 가능하면 Gradle, 테스트, CI로 승격한다.
-
-## 자동 검사
-
-```bash
-sh tests/harness/validate-harness-test.sh
-sh tests/harness/validate-commit-message-test.sh
-sh tests/harness/validate-pr-test.sh
-sh scripts/validate-harness.sh
-```

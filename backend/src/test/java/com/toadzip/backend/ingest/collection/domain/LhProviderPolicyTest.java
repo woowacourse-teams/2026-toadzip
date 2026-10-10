@@ -2,6 +2,7 @@ package com.toadzip.backend.ingest.collection.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.toadzip.backend.ingest.collection.lh.domain.LhProviderPolicy;
 import org.junit.jupiter.api.Test;
 
 class LhProviderPolicyTest {

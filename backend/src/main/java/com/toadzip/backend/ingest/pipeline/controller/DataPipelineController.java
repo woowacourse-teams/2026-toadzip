@@ -2,9 +2,13 @@ package com.toadzip.backend.ingest.pipeline.controller;
 
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
-import com.toadzip.backend.ingest.pipeline.dto.DataPipelineScheduleDeferralResponse;
+import com.toadzip.backend.ingest.pipeline.dto.DataPipelineStartRequest;
+import com.toadzip.backend.ingest.pipeline.dto.AnnouncementRegistrationRequest;
+import com.toadzip.backend.ingest.pipeline.dto.AnnouncementRegistrationUrlRequest;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineScheduleDeferralService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +16,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -19,30 +25,52 @@ import org.springframework.web.bind.annotation.RestController;
 public class DataPipelineController {
 
     private final DataPipelineExecutionService executionService;
-    private final DataPipelineScheduleDeferralService scheduleDeferralService;
 
-    public DataPipelineController(
-            DataPipelineExecutionService executionService,
-            DataPipelineScheduleDeferralService scheduleDeferralService
-    ) {
+    public DataPipelineController(DataPipelineExecutionService executionService) {
         this.executionService = executionService;
-        this.scheduleDeferralService = scheduleDeferralService;
     }
 
     @PostMapping("/{type}")
-    public ResponseEntity<DataPipelineExecutionResponse> start(@PathVariable String type) {
-        DataPipelineExecutionResponse response = executionService.start(
-                DataPipelineType.fromPathValue(type)
-        );
+    public ResponseEntity<DataPipelineExecutionResponse> start(
+            @PathVariable String type, @Valid @RequestBody(required = false) DataPipelineStartRequest request
+    ) {
+        DataPipelineType pipelineType = DataPipelineType.fromPathValue(type);
+        if (request == null) {
+            return ResponseEntity.accepted().body(executionService.start(pipelineType));
+        }
+        DataPipelineExecutionResponse response = executionService.start(pipelineType, request.serviceKey().strip());
         return ResponseEntity.accepted().body(response);
+    }
+
+    @PostMapping("/announcement-registration")
+    public ResponseEntity<DataPipelineExecutionResponse> register(
+            @Valid @RequestBody AnnouncementRegistrationRequest request
+    ) {
+        return ResponseEntity.accepted()
+                .body(executionService.startAnnouncementRegistration(request.pblancId().strip()));
+    }
+
+    @PostMapping("/announcement-registration/url")
+    public ResponseEntity<DataPipelineExecutionResponse> registerUrl(
+            @Valid @RequestBody AnnouncementRegistrationUrlRequest request
+    ) {
+        return ResponseEntity.accepted().body(executionService.startAnnouncementRegistrationUrl(request.url()));
+    }
+
+    @GetMapping("/executions/{executionId}")
+    public ResponseEntity<DataPipelineExecutionResponse> find(@PathVariable UUID executionId) {
+        return ResponseEntity.ok(executionService.find(executionId));
     }
 
     @GetMapping("/history")
     public ResponseEntity<List<DataPipelineExecutionResponse>> history(
-            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "0")
-            @jakarta.validation.constraints.Min(0) int page,
-            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20")
-            @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(100) int size) {
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @RequestParam(required = false) String domain
+    ) {
+        if (domain != null) {
+            return ResponseEntity.ok(executionService.history(page, size, domain));
+        }
         return ResponseEntity.ok(executionService.history(page, size));
     }
 
@@ -54,20 +82,9 @@ public class DataPipelineController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/schedule-deferrals")
-    public ResponseEntity<List<DataPipelineScheduleDeferralResponse>> findScheduleDeferrals() {
-        return ResponseEntity.ok(scheduleDeferralService.findAll());
-    }
-
     @PostMapping("/executions/{executionId}/stop")
     public ResponseEntity<DataPipelineExecutionResponse> stop(@PathVariable UUID executionId) {
         return ResponseEntity.accepted().body(executionService.requestStop(executionId));
     }
 
-    @GetMapping("/executions/{executionId}")
-    public ResponseEntity<DataPipelineExecutionResponse> find(
-            @PathVariable UUID executionId
-    ) {
-        return ResponseEntity.ok(executionService.find(executionId));
-    }
 }

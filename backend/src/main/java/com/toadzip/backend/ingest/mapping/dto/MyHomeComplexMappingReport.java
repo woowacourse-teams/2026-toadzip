@@ -9,7 +9,7 @@ public record MyHomeComplexMappingReport(
         int unchangedHousingTypeCount,
         int deletedHousingTypeCount,
         int failedSourceRowCount,
-        int rateLimitedSourceRowCount,
+        int rateLimitedSourceRowCount, // 기존 응답 호환: 로컬 좌표 조회에서는 항상 0
         int operationalFailedSourceRowCount
 ) {
 
@@ -37,22 +37,6 @@ public record MyHomeComplexMappingReport(
         );
     }
 
-    public MyHomeComplexMappingReport(
-            int createdComplexCount,
-            int updatedComplexCount,
-            int unchangedComplexCount,
-            int createdHousingTypeCount,
-            int updatedHousingTypeCount,
-            int unchangedHousingTypeCount,
-            int deletedHousingTypeCount,
-            int failedSourceRowCount,
-            int rateLimitedSourceRowCount
-    ) {
-        this(createdComplexCount, updatedComplexCount, unchangedComplexCount,
-                createdHousingTypeCount, updatedHousingTypeCount, unchangedHousingTypeCount,
-                deletedHousingTypeCount, failedSourceRowCount, rateLimitedSourceRowCount, 0);
-    }
-
     public MyHomeComplexMappingReport {
         if (createdComplexCount < 0
                 || updatedComplexCount < 0
@@ -72,11 +56,7 @@ public record MyHomeComplexMappingReport(
     }
 
     public static MyHomeComplexMappingReport failedRows(int count) {
-        return new MyHomeComplexMappingReport(0, 0, 0, 0, 0, 0, 0, count, 0);
-    }
-
-    public static MyHomeComplexMappingReport rateLimitedRows(int count) {
-        return new MyHomeComplexMappingReport(0, 0, 0, 0, 0, 0, 0, count, count, count);
+        return new MyHomeComplexMappingReport(0, 0, 0, 0, 0, 0, 0, count);
     }
 
     public static MyHomeComplexMappingReport operationalFailedRows(int count) {

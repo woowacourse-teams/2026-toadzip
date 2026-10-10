@@ -14,8 +14,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Propagation;
@@ -96,7 +96,7 @@ class DataPipelineExecutionRepositoryTest {
     }
 
     @Test
-    void 정기_실행_슬롯과_상위_실행을_조회한다() {
+    void 과거_정기_실행_메타데이터를_조회한다() {
         UUID collectionId = UUID.randomUUID();
         Instant scheduledAt = Instant.parse("2026-09-21T03:00:00Z");
         DataPipelineExecution collection = DataPipelineExecution.start(
@@ -119,17 +119,9 @@ class DataPipelineExecutionRepositoryTest {
         executionRepository.saveAndFlush(refinement);
         entityManager.clear();
 
-        DataPipelineExecution foundCollection = executionRepository
-                .findFirstByTypeAndScheduledAtOrderByIdDesc(
-                        DataPipelineType.ANNOUNCEMENT_COLLECTION,
-                        scheduledAt
-                )
+        DataPipelineExecution foundCollection = executionRepository.findById(collection.getId())
                 .orElseThrow();
-        DataPipelineExecution foundRefinement = executionRepository
-                .findFirstByTypeAndUpstreamExecutionIdOrderByIdDesc(
-                        DataPipelineType.ANNOUNCEMENT_REFINEMENT,
-                        collectionId
-                )
+        DataPipelineExecution foundRefinement = executionRepository.findById(refinement.getId())
                 .orElseThrow();
 
         assertThat(foundCollection.getExecutionTrigger())

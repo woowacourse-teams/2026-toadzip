@@ -250,7 +250,7 @@ afterEach(() => {
 })
 
 describe('공공주택 HTTP repository', () => {
-  it('정상 상세 응답 뒤 조회를 기록하고 서버가 반환한 조회수를 사용한다', async () => {
+  it('동의 전에는 상세 응답만 사용하고 자체 조회 기록을 보내지 않는다', async () => {
     vi.stubGlobal('navigator', { locks: { request: (_key: string, _options: unknown, run: () => unknown) => run() } })
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ data: ANNOUNCEMENT_DETAIL }))
@@ -259,10 +259,10 @@ describe('공공주택 HTTP repository', () => {
     try {
       const repository = createHttpPublicHousingRepository({ apiBaseUrl: '', fetcher })
       const result = await repository.findAnnouncementDetail('117', new AbortController().signal)
-      expect(result.viewCount).toBe(15)
-      expect(result.raw.viewCount).toBe(15)
+      expect(result.viewCount).toBe(0)
+      expect(result.raw.viewCount).toBe(0)
       expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
-        '/api/v1/announcements/117', '/api/auth/csrf', '/api/v1/announcements/117/views',
+        '/api/v1/announcements/117',
       ])
     } finally {
       vi.unstubAllGlobals()
@@ -666,6 +666,20 @@ describe('공공주택 HTTP repository', () => {
     expect(page.raw.items[0]).toEqual(LIST_ITEM)
   })
 
+  it.each(['11680', '1111010100'])('검색 지역 %s 목록은 지도 좌표 없이 지역과 커서로 조회한다', async (regionCode) => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      data: { items: [LIST_ITEM], nextCursor: null, hasNext: false },
+    }))
+    const repository = createRepository(fetchMock, 'https://api.example.test')
+    const page = await repository.findComplexPage(null, 'region-page', 20,
+      new AbortController().signal, { regionCode, agencyCodes: ['LH'] })
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]))
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      regionCode, agencyCodes: 'LH', cursor: 'region-page', size: '20',
+    })
+    expect(page.items[0].complexId).toBe('17')
+  })
+
   it('단지 목록 필터를 query로 직렬화한다', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(
@@ -735,6 +749,19 @@ describe('공공주택 HTTP repository', () => {
       traceId: 'trace-id',
     })
   })
+
+  it.each([null, [], { code: 7, message: {}, traceId: false }])(
+    '잘못된 HTTP 오류 본문 %j은 공개 오류 필드를 추정하지 않는다', async (body) => {
+      const repository = createRepository(vi.fn().mockResolvedValue(jsonResponse(body, 503)), '')
+
+      await expect(repository.findComplexPage(
+        BOUNDS, null, 20, new AbortController().signal,
+      )).rejects.toMatchObject({
+        name: 'PublicHousingHttpError', status: 503,
+        code: null, message: '공공주택 정보를 불러오지 못했습니다.', traceId: null,
+      })
+    },
+  )
 
   it('성공 응답이 JSON이 아니면 계약 오류로 처리한다', async () => {
     const fetchMock = vi

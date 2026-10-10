@@ -8,9 +8,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.ingest.location.domain.LocationSummaryRecord;
+import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.location.domain.RoadAddressLocation;
 import com.toadzip.backend.ingest.location.exception.RoadAddressGeocodingException;
-import com.toadzip.backend.ingest.location.domain.RoadAddressGeocodingFailureReason;
 import com.toadzip.backend.ingest.location.repository.RoadAddressLocationRepository;
 import java.math.BigDecimal;
 import java.util.List;
@@ -65,8 +65,11 @@ class RoadAddressGeocodingServiceTest {
         assertThatThrownBy(() -> service.geocode("서울특별시 중구 세종대로 110"))
                 .isInstanceOfSatisfying(
                         RoadAddressGeocodingException.class,
-                        exception -> assertThat(exception.getReason())
-                                .isEqualTo(RoadAddressGeocodingFailureReason.ADDRESS_NOT_FOUND)
+                        exception -> {
+                            assertThat(exception.getReason())
+                                    .isEqualTo(RoadAddressGeocodingFailureReason.ADDRESS_NOT_FOUND);
+                            assertThat(exception).hasMessageContaining("ZIP");
+                        }
                 );
     }
 
@@ -83,8 +86,12 @@ class RoadAddressGeocodingServiceTest {
     }
 
     private RoadAddressLocation location(boolean withCoordinate) {
-        BigDecimal x = withCoordinate ? new BigDecimal("953875.0441724667") : null;
-        BigDecimal y = withCoordinate ? new BigDecimal("1951999.4987320001") : null;
+        BigDecimal x = null;
+        BigDecimal y = null;
+        if (withCoordinate) {
+            x = new BigDecimal("953875.0441724667");
+            y = new BigDecimal("1951999.4987320001");
+        }
         return RoadAddressLocation.from(new LocationSummaryRecord(
                 "11140", "1", "1114010300", "서울특별시", "중구", "태평로1가",
                 "111402005001", "세종대로", "0", 110, 0, x, y

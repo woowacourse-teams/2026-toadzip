@@ -3,6 +3,9 @@ package com.toadzip.backend.interest.controller;
 import com.toadzip.backend.global.exception.ErrorResponse;
 import com.toadzip.backend.global.exception.RequestTraceIdResolver;
 import com.toadzip.backend.interest.exception.InvalidNotificationInterestException;
+import com.toadzip.backend.interest.exception.NotificationInterestConflictException;
+import com.toadzip.backend.interest.exception.NotificationMemberMissingException;
+import com.toadzip.backend.interest.exception.NotificationSettingsConflictException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -14,6 +17,27 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice
 public class NotificationInterestExceptionAdvice {
+
+    @ExceptionHandler(NotificationSettingsConflictException.class)
+    public ResponseEntity<ErrorResponse> handleSettingsConflict(
+            NotificationSettingsConflictException exception, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(
+                "NOTIFICATION_SETTINGS_CONFLICT", exception.getMessage(), RequestTraceIdResolver.resolve(request)));
+    }
+
+    @ExceptionHandler(NotificationMemberMissingException.class)
+    public ResponseEntity<ErrorResponse> handleMissingMember(
+            NotificationMemberMissingException exception, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse(
+                "UNAUTHORIZED", exception.getMessage(), RequestTraceIdResolver.resolve(request)));
+    }
+
+    @ExceptionHandler(NotificationInterestConflictException.class)
+    public ResponseEntity<ErrorResponse> handleConflict(
+            NotificationInterestConflictException exception, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(
+                "NOTIFICATION_INTEREST_CONFLICT", exception.getMessage(), RequestTraceIdResolver.resolve(request)));
+    }
 
     @ExceptionHandler(InvalidNotificationInterestException.class)
     public ResponseEntity<ErrorResponse> handleInvalidTarget(

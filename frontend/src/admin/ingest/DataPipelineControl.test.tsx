@@ -1,5 +1,5 @@
 import { MemoryRouter } from 'react-router'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DataPipelineExecution, DataPipelineType } from './api'
 import { DataPipelineControl } from './DataPipelineControl'
@@ -26,8 +26,8 @@ beforeEach(() => {
     connection: { total: 0, complexLinked: 0, housingTypeLinked: 0, unlinkedReasons: {} },
     amounts: { total: 0, fulfilled: 0 },
     schedules: { total: 0, reviewed: 0, withApplicationSchedule: 0 },
-    supplyCollection: { totalRequests: 0, freshRequests: 0, latestCollectedAt: null },
-    detailCollection: { totalRequests: 0, freshRequests: 0, latestCollectedAt: null },
+    supplyCollection: { totalRequests: 0, collectedRequests: 0, latestCollectedAt: null },
+    detailCollection: { totalRequests: 0, collectedRequests: 0, latestCollectedAt: null },
     unlinkedLhLeaseCatalogCount: 0,
     unlinkedLhCandidates: [],
     preservedSourceRequestCount: 0,
@@ -42,25 +42,194 @@ beforeEach(() => {
 })
 
 describe('DataPipelineControl', () => {
-  it('중지를 요청한 뒤 실제 종료 응답이 오기 전까지 새 실행을 막는다', async () => {
-    const running = execution('COMPLEX_COLLECTION', 'RUNNING', { executionId: 'run-1' })
-    apiMocks.startDataPipeline.mockResolvedValue(running)
-    apiMocks.stopDataPipeline.mockResolvedValue({ ...running, stopRequested: true })
+  it('v2 간소화 화면은 지정한 단지 실행 버튼만 남기고 미실행 카드와 품질 패널을 숨긴다', async () => {
+    render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+    await act(async () => {})
+    expect(screen.getByRole('heading', { name: '단지 데이터' })).toBeVisible()
+    expect(screen.getByText('단지 원천과 주택형 정보를 갱신합니다.')).toBeVisible()
+    expect(screen.getAllByRole('button').map(button => button.textContent))
+      .toEqual(['단지 수집·정제', '단지 수집', '단지 정제'])
+    expect(screen.queryByText('아직 실행하지 않았습니다.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '데이터 수집·정제' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '위치정보 ZIP 업로드' })).not.toBeInTheDocument()
+    expect(apiMocks.getLhAnnouncementQuality).not.toHaveBeenCalled()
+  })
+
+  it('v2 새로고침은 완료 카드를 복원하지 않고 진행 중인 작업 하나만 복원한다', async () => {
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) =>
+      Promise.resolve(execution(type, type === 'ANNOUNCEMENT_SYNC' ? 'RUNNING' : 'COMPLETED')))
+    render(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
+    await screen.findByRole('article', { name: '현재 작업 단계' })
+    expect(screen.getAllByRole('article', { name: '현재 작업 단계' })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: '공고 수집·정제 실행 중지' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '공고 정제' })).toBeDisabled()
+    expect(apiMocks.getLhAnnouncementQuality).not.toHaveBeenCalled()
+  })
+
+  it('v2 실행 직후 완료 결과는 유지하되 다음 실행 결과와 겹치지 않는다', async () => {
+    apiMocks.startDataPipeline.mockImplementation((type: DataPipelineType) =>
+      Promise.resolve(execution(type, 'COMPLETED')))
+    render(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: '단지 정제' }))
+    await screen.findByRole('article', { name: '현재 작업 단계' })
+    expect(screen.getByRole('article', { name: '현재 작업 단계' })).toHaveTextContent('단지 정제')
+    fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
+    fireEvent.change(screen.getByLabelText('공공데이터포털 API 키'), { target: { value: 'fixture-key' } })
+    fireEvent.click(screen.getByRole('button', { name: '단지 수집 시작' }))
+    await waitFor(() => expect(screen.getByRole('article', { name: '현재 작업 단계' })).toHaveTextContent('단지 수집'))
+    expect(screen.getAllByRole('article', { name: '현재 작업 단계' })).toHaveLength(1)
+  })
+
+  it('v2 탭 전환 중에도 다른 도메인의 잠금과 중지를 보존한다', async () => {
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) =>
+      Promise.resolve(execution(type, type === 'ANNOUNCEMENT_SYNC' ? 'RUNNING' : 'IDLE')))
+    const view = render(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
+    await screen.findByRole('article', { name: '현재 작업 단계' })
+    view.rerender(<MemoryRouter><DataPipelineControl domain="complex" compact /></MemoryRouter>)
+    expect(screen.queryByRole('article', { name: '현재 작업 단계' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '단지 정제' })).toBeDisabled()
+    expect(screen.getByRole('status')).toHaveTextContent('다른 탭')
+    view.rerender(<MemoryRouter><DataPipelineControl domain="announcement" compact /></MemoryRouter>)
+    expect(screen.getByRole('button', { name: '공고 수집·정제 실행 중지' })).toBeVisible()
+  })
+  it('최초 상태 조회가 실패해도 재조회하여 기존 실행과 중지 버튼을 복원한다', async () => {
+    vi.useFakeTimers()
+    let attempts = 0
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => {
+      if (type !== 'COMPLEX_SYNC') return Promise.resolve(execution(type, 'IDLE'))
+      attempts += 1
+      if (attempts === 1) return Promise.reject(new Error('상태 조회 일시 실패'))
+      return Promise.resolve(execution(type, 'RUNNING', { executionId: 'running-sync' }))
+    })
+    const view = render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+    try {
+      await act(async () => {})
+      expect(screen.getByRole('alert')).toHaveTextContent('상태 조회 일시 실패')
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+
+      expect(screen.getByRole('button', { name: '단지 수집·정제 실행 중지' })).toBeVisible()
+      expect(screen.getByRole('button', { name: '공고 수집' })).toBeDisabled()
+      expect(screen.queryByText('상태 조회 일시 실패')).not.toBeInTheDocument()
+      expect(apiMocks.startDataPipeline).not.toHaveBeenCalled()
+    } finally {
+      view.unmount()
+      vi.useRealTimers()
+    }
+  })
+
+  it.each([
+    ['단지 수집', 'COMPLEX_COLLECTION'], ['공고 수집', 'ANNOUNCEMENT_COLLECTION'],
+    ['단지 수집·정제', 'COMPLEX_SYNC'], ['공고 수집·정제', 'ANNOUNCEMENT_SYNC'],
+  ] as const)('%s는 매 실행마다 키를 입력받고 공백을 제거해 전송한다', async (label, type) => {
+    apiMocks.startDataPipeline.mockResolvedValue(execution(type, 'COMPLETED'))
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: label }))
+    const input = screen.getByLabelText('공공데이터포털 API 키')
+    expect(input).toHaveAttribute('type', 'password')
+    expect(input).toHaveAttribute('autocomplete', 'off')
+    expect(input).toHaveFocus()
+    expect(apiMocks.startDataPipeline).not.toHaveBeenCalled()
+    expect(screen.getByRole('link', { name: '공공데이터포털에서 API 키 발급' })).toHaveAttribute('href', 'https://www.data.go.kr/')
+    fireEvent.change(input, { target: { value: '  fixture-execution-key  ' } })
+    fireEvent.click(screen.getByRole('button', { name: `${label} 시작` }))
+    expect(apiMocks.startDataPipeline).toHaveBeenCalledWith(type, 'fixture-execution-key')
+    expect(screen.queryByLabelText('공공데이터포털 API 키')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: label })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: label }))
+    expect(screen.getByLabelText('공공데이터포털 API 키')).toHaveValue('')
+  })
+
+  it('키를 비워 제출하면 안내하고 수집을 실행하지 않는다', () => {
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
     fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
-    const stop = await screen.findByRole('button', { name: '단지 수집 실행 중지' })
-    fireEvent.click(stop)
-    expect(await screen.findByText(/중지 요청됨/)).toBeVisible()
-    expect(apiMocks.stopDataPipeline).toHaveBeenCalledWith('run-1')
-    expect(screen.getByRole('button', { name: '중지 요청 중…' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '공고 수집' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('공공데이터포털 API 키'), { target: { value: '   ' } })
+    fireEvent.click(screen.getByRole('button', { name: '단지 수집 시작' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('공공데이터포털 API 키를 입력해 주세요.')
+    expect(screen.getByLabelText('공공데이터포털 API 키')).toHaveAttribute('aria-invalid', 'true')
+    expect(apiMocks.startDataPipeline).not.toHaveBeenCalled()
+  })
+
+  it('키 입력을 취소하면 실행하지 않고 입력한 키를 폐기한다', () => {
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
+    fireEvent.change(screen.getByLabelText('공공데이터포털 API 키'), { target: { value: 'fixture-cancelled-key' } })
+    fireEvent.click(screen.getByRole('button', { name: '취소' }))
+    expect(screen.queryByLabelText('공공데이터포털 API 키')).not.toBeInTheDocument()
+    expect(apiMocks.startDataPipeline).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
+    expect(screen.getByLabelText('공공데이터포털 API 키')).toHaveValue('')
+  })
+
+  it('다른 수집을 선택하면 이전에 입력한 키를 가져가지 않는다', () => {
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
+    fireEvent.change(screen.getByLabelText('공공데이터포털 API 키'), { target: { value: 'fixture-previous-key' } })
+    fireEvent.click(screen.getByRole('button', { name: '공고 수집' }))
+    expect(screen.getByRole('form', { name: '공고 수집 API 키 입력' })).toBeVisible()
+    expect(screen.getByLabelText('공공데이터포털 API 키')).toHaveValue('')
+    expect(apiMocks.startDataPipeline).not.toHaveBeenCalled()
+  })
+
+  it('시작에 실패해도 키를 남기지 않고 재실행에 새 입력을 요구한다', async () => {
+    apiMocks.startDataPipeline.mockRejectedValue(new Error('수집 시작 요청 실패'))
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+    startCollection('단지 수집')
+    expect(await screen.findByRole('alert')).toHaveTextContent('수집 시작 요청 실패')
+    fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
+    expect(screen.getByLabelText('공공데이터포털 API 키')).toHaveValue('')
+    expect(apiMocks.startDataPipeline).toHaveBeenCalledTimes(1)
+  })
+
+  it('정제는 키 입력 없이 기존처럼 바로 실행한다', async () => {
+    apiMocks.startDataPipeline.mockResolvedValue(execution('COMPLEX_REFINEMENT', 'COMPLETED'))
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
+    fireEvent.change(screen.getByLabelText('공공데이터포털 API 키'), { target: { value: 'fixture-unused-key' } })
+    fireEvent.click(screen.getByRole('button', { name: '단지 정제' }))
+    expect(apiMocks.startDataPipeline).toHaveBeenCalledWith('COMPLEX_REFINEMENT')
+    expect(screen.queryByLabelText('공공데이터포털 API 키')).not.toBeInTheDocument()
+    expect(await screen.findByText('단지 정제 작업을 완료했습니다.')).toHaveAttribute('role', 'status')
+  })
+
+  it('중지를 요청한 뒤 실제 종료 응답이 오기 전까지 새 실행을 막는다', async () => {
+    vi.useFakeTimers()
+    const running = execution('COMPLEX_COLLECTION', 'RUNNING', { executionId: 'run-1' })
+    let current: DataPipelineExecution = { ...running, stopRequested: true }
+    apiMocks.startDataPipeline.mockResolvedValue(running)
+    apiMocks.stopDataPipeline.mockResolvedValue(current)
+    const view = render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+    try {
+      await act(async () => {})
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '단지 수집' })) })
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('공공데이터포털 API 키'), { target: { value: 'fixture-execution-key' } })
+        fireEvent.click(screen.getByRole('button', { name: '단지 수집 시작' }))
+      })
+      apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) =>
+        Promise.resolve(type === 'COMPLEX_COLLECTION' ? current : execution(type, 'IDLE')))
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '단지 수집 실행 중지' })) })
+      expect(screen.getByText(/중지 요청됨/)).toBeVisible()
+      expect(apiMocks.stopDataPipeline).toHaveBeenCalledWith('run-1')
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+      expect(screen.getByRole('button', { name: '중지 요청 중…' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: '공고 수집' })).toBeDisabled()
+
+      current = execution('COMPLEX_COLLECTION', 'STOPPED', { executionId: 'run-1', stopRequested: true })
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+      expect(screen.getByRole('button', { name: '공고 수집' })).toBeEnabled()
+    } finally {
+      view.unmount()
+      vi.useRealTimers()
+    }
   })
 
   it('중지 API가 실패하면 완료로 표시하지 않고 다시 중지할 수 있다', async () => {
     apiMocks.startDataPipeline.mockResolvedValue(execution('COMPLEX_COLLECTION', 'RUNNING', { executionId: 'run-1' }))
     apiMocks.stopDataPipeline.mockRejectedValue(new Error('중지 요청 실패'))
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
+    startCollection('단지 수집')
     fireEvent.click(await screen.findByRole('button', { name: '단지 수집 실행 중지' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('중지 요청 실패')
     expect(screen.getByRole('button', { name: '단지 수집 실행 중지' })).toBeEnabled()
@@ -78,14 +247,14 @@ describe('DataPipelineControl', () => {
     expect(screen.getByRole('button', { name: '공고 수집' })).toBeEnabled()
   })
 
-  it('단지 수집 실행 중 네 버튼을 잠그고 현재 단계를 표시한다', async () => {
+  it('단지 수집 실행 중 시작 버튼을 잠그고 현재 단계를 표시한다', async () => {
     apiMocks.startDataPipeline.mockResolvedValue(execution('COMPLEX_COLLECTION', 'RUNNING', {
       currentStepName: '마이홈 단지 수집',
       currentStepIndex: 1,
     }))
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
-    fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
+    startCollection('단지 수집')
 
     expect(await screen.findByRole('button', { name: '단지 수집 실행 중…' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '단지 정제' })).toBeDisabled()
@@ -102,7 +271,7 @@ describe('DataPipelineControl', () => {
     }))
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
-    fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
+    startCollection('단지 수집')
 
     const completed = await screen.findByText('마이홈 단지 수집 완료')
     fireEvent.click(completed.closest('details')!.querySelector('summary')!)
@@ -127,7 +296,9 @@ describe('DataPipelineControl', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       '마이홈 공고 정제 단계가 일부 실패했습니다.',
     )
-    expect(screen.getByLabelText('서버 응답')).toHaveTextContent('"failedSourceRowCount": 3')
+    fireEvent.click(screen.getByText('서버 응답 상세').closest('details')!.parentElement!.closest('details')!.querySelector('summary')!)
+    fireEvent.click(screen.getByText('서버 응답 상세'))
+    expect(screen.getByRole('table', { name: '서버 응답' })).toHaveTextContent('failedSourceRowCount3')
     expect(screen.getByRole('button', { name: '공고 정제' })).toBeEnabled()
   })
 
@@ -143,7 +314,7 @@ describe('DataPipelineControl', () => {
     })
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
-    expect(await screen.findByRole('status')).toHaveTextContent('1/3 · 마이홈 공고 수집 실행 중')
+    expect(await screen.findByRole('status')).toHaveTextContent('1/4 · 마이홈 공고 수집 실행 중')
     expect(screen.getByRole('button', { name: '공고 수집 실행 중…' })).toBeDisabled()
   })
 
@@ -161,7 +332,7 @@ describe('DataPipelineControl', () => {
     }))
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
-    fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
+    startCollection('단지 수집')
     expect(await screen.findByRole('status')).toHaveTextContent('마이홈 단지 수집 실행 중')
 
     await act(async () => staleStatus.resolve(execution('COMPLEX_COLLECTION', 'IDLE')))
@@ -171,11 +342,11 @@ describe('DataPipelineControl', () => {
 
   it('시작 응답과 상태 조회를 모두 잃으면 실행 잠금을 유지하며 재조회한다', async () => {
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
-    await waitFor(() => expect(apiMocks.getDataPipelineStatus).toHaveBeenCalledTimes(4))
+    await waitFor(() => expect(apiMocks.getDataPipelineStatus).toHaveBeenCalledTimes(6))
     apiMocks.startDataPipeline.mockRejectedValue(new Error('네트워크 연결이 끊겼습니다.'))
     apiMocks.getDataPipelineStatus.mockRejectedValue(new Error('상태를 조회하지 못했습니다.'))
 
-    fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
+    startCollection('단지 수집')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('네트워크 연결이 끊겼습니다.')
     expect(screen.getByRole('button', { name: '단지 수집 실행 중…' })).toBeDisabled()
@@ -191,10 +362,11 @@ describe('DataPipelineControl', () => {
     }))
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
-    fireEvent.click(screen.getByRole('button', { name: '단지 수집' }))
+    startCollection('단지 수집')
 
     await waitFor(() => expect(screen.getByRole('button', { name: '단지 수집' })).toBeEnabled())
     expect(screen.getByRole('status')).toHaveTextContent('단지 수집 작업을 완료했습니다.')
+    expect(screen.getByText(/모든 단지의 최신 상태를 보장하지 않습니다/)).toBeVisible()
   })
 
   it('행별 누락은 완료·주의로 표시하고 보고서를 확인할 수 있다', async () => {
@@ -219,9 +391,8 @@ describe('DataPipelineControl', () => {
     )).toHaveAttribute('role', 'status')
     fireEvent.click(screen.getByText('마이홈 단지 정제 원천 행 확인').closest('details')!.querySelector('summary')!)
     expect(screen.getByText('마이홈 단지 정제 원천 행 확인')).toBeVisible()
-    expect(screen.getByLabelText('마이홈 단지 정제 누락 보고서')).toHaveTextContent(
-      '"failedSourceRowCount": 3',
-    )
+    fireEvent.click(screen.getByText('원본 보고서'))
+    expect(screen.getByRole('table', { name: '마이홈 단지 정제 누락 보고서' })).toHaveTextContent('failedSourceRowCount3')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '단지 정제' })).toBeEnabled()
   })
@@ -241,19 +412,200 @@ describe('DataPipelineControl', () => {
     ))
     render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
 
-    fireEvent.click(screen.getByRole('button', { name: '공고 수집' }))
+    startCollection('공고 수집')
 
     expect(await screen.findByText(
       '공고 수집 작업을 일부 단계 건너뜀으로 완료했습니다.',
     )).toBeVisible()
     fireEvent.click(screen.getByText('마이홈 공고 수집 건너뜀').closest('details')!.querySelector('summary')!)
     expect(screen.getByText('마이홈 공고 수집 건너뜀')).toBeVisible()
-    expect(screen.getByLabelText('마이홈 공고 수집 건너뜀 응답')).toHaveTextContent(
-      '"rateLimitedRequestCount": 1',
-    )
+    fireEvent.click(screen.getByText('원본 응답'))
+    expect(screen.getByRole('table', { name: '마이홈 공고 수집 건너뜀 응답' })).toHaveTextContent('rateLimitedRequestCount1')
     expect(screen.getByRole('button', { name: '공고 수집' })).toBeEnabled()
+    expect(screen.getByRole('group', { name: '공고 수집 결과 요약' })).toHaveTextContent(/실패 요청\s*1/)
   })
+
+  it('완료된 수집의 호출·저장·생략·실패 수치를 단계 보고서에서 합산해 보여준다', async () => {
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
+      type === 'ANNOUNCEMENT_COLLECTION' ? execution(type, 'COMPLETED', {
+        completedStepResults: [
+          { step: 'COLLECT_LH_ANNOUNCEMENT_SUPPLIES', stepName: 'LH 공급 수집', report: {
+            externalApiCallCount: 2, storedRowCount: 4, skippedRequestCount: 3, failedRequestCount: 0,
+          } },
+          { step: 'COLLECT_LH_ANNOUNCEMENT_DETAILS', stepName: 'LH 상세 수집', report: {
+            externalApiCallCount: 3, storedRowCount: 2, skippedRequestCount: 4, failedRequestCount: 0,
+          } },
+        ],
+      }) : execution(type, 'IDLE'),
+    ))
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+
+    const result = await screen.findByRole('group', { name: '공고 수집 결과 요약' })
+    expect(result).toHaveTextContent(/API 호출\s*5/)
+    expect(result).toHaveTextContent(/저장한 행\s*6/)
+    expect(result).toHaveTextContent(/건너뛴 요청\s*7/)
+    expect(result).toHaveTextContent(/실패 요청\s*0/)
+    expect(screen.getByText(/선택된 수집 대상을 처리한 결과/)).toBeVisible()
+  })
+
+  it.each([
+    ['FAILED', '실패'],
+    ['STOPPED', '중지됨'],
+  ] as const)('최근 단지 수집이 %s여도 저장된 원천을 다시 정제할 수 있다', async (status, label) => {
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
+      type === 'COMPLEX_COLLECTION' ? execution(type, status, {
+        startedAt: '2026-09-30T00:00:00Z',
+      }) : execution(type, 'IDLE'),
+    ))
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+
+    const recentCollection = await screen.findByText(new RegExp(`최근 수집 포함 실행: ${label}`))
+    expect(recentCollection).toBeVisible()
+    expect(recentCollection).toHaveTextContent('정제는 저장된 원천을 사용합니다.')
+    expect(screen.getByRole('button', { name: '단지 정제' })).toBeEnabled()
+  })
+  it('통합 실행 버튼은 서버에 한 번 요청하고 모든 시작 버튼을 잠근다', async () => {
+    apiMocks.startDataPipeline.mockResolvedValue(execution('ANNOUNCEMENT_SYNC', 'RUNNING', {
+      currentStepName: '마이홈 공고 정제', currentStepIndex: 5,
+    }))
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+
+    fireEvent.click(screen.getByRole('button', { name: '공고 수집·정제' }))
+    fireEvent.change(screen.getByLabelText('공공데이터포털 API 키'), { target: { value: 'fixture-service-key' } })
+    fireEvent.click(screen.getByRole('button', { name: '공고 수집·정제 시작' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('5/6 · 마이홈 공고 정제 실행 중')
+    expect(apiMocks.startDataPipeline).toHaveBeenCalledExactlyOnceWith('ANNOUNCEMENT_SYNC', 'fixture-service-key')
+    expect(screen.getByRole('button', { name: '단지 수집·정제' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '공고 정제' })).toBeDisabled()
+  })
+
+  it.each(['FAILED', 'COMPLETED_WITH_SKIPS', 'STOPPED'] as const)(
+    '통합 수집이 %s로 끝나면 자동 정제 없이 저장된 원천으로 정제를 직접 실행할 수 있다',
+    async (status) => {
+      apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
+        execution(type, type === 'ANNOUNCEMENT_SYNC' ? status : 'IDLE', {
+          startedAt: type === 'ANNOUNCEMENT_SYNC' ? '2026-09-30T02:00:00Z' : null,
+        }),
+      ))
+      apiMocks.startDataPipeline.mockResolvedValue(execution('ANNOUNCEMENT_REFINEMENT', 'RUNNING'))
+      render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+
+      const recover = await screen.findByRole('button', { name: '저장된 원천으로 공고 정제 실행' })
+      expect(screen.getByText(/자동 정제가 실행되지 않았습니다/)).toBeVisible()
+      expect(apiMocks.startDataPipeline).not.toHaveBeenCalled()
+      fireEvent.click(recover)
+
+      await waitFor(() => expect(apiMocks.startDataPipeline).toHaveBeenCalledExactlyOnceWith('ANNOUNCEMENT_REFINEMENT'))
+      expect(recover).toBeDisabled()
+      expect(await screen.findByRole('button', { name: '공고 정제 실행 중지' })).toBeVisible()
+    },
+  )
+
+  it('통합 실행 재접속은 최신 진행을 복원하고 기존 실행 ID로 중지한다', async () => {
+    const running = execution('COMPLEX_SYNC', 'RUNNING', { executionId: 'sync-1', currentStepIndex: 3, currentStepName: '마이홈 단지 정제' })
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
+      type === 'COMPLEX_SYNC' ? running : execution(type, 'IDLE'),
+    ))
+    apiMocks.stopDataPipeline.mockResolvedValue({ ...running, stopRequested: true })
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+
+    fireEvent.click(await screen.findByRole('button', { name: '단지 수집·정제 실행 중지' }))
+
+    expect(apiMocks.stopDataPipeline).toHaveBeenCalledExactlyOnceWith('sync-1')
+    expect(await screen.findByText(/중지 요청됨/)).toBeVisible()
+    expect(screen.getByRole('button', { name: '단지 정제' })).toBeDisabled()
+  })
+
+  it('통합 실행 결과에서 수집·정제·보강의 실패를 각각 확인한다', async () => {
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
+      execution(type, type === 'ANNOUNCEMENT_SYNC' ? 'FAILED' : 'IDLE'),
+    ))
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+
+    expect(await screen.findByRole('link', { name: '공고 수집·정제 수집 실패 요청 보기' })).toHaveAttribute('href', expect.stringContaining('category=collection'))
+    expect(screen.getByRole('link', { name: '공고 수집·정제 정제 실패 행 보기' })).toHaveAttribute('href', expect.stringContaining('category=announcement'))
+    expect(screen.getByRole('link', { name: '공고 수집·정제 보강 실패 행 보기' })).toHaveAttribute('href', expect.stringContaining('category=enrichment'))
+  })
+
+  it.each([
+    ['COMPLEX_COLLECTION', '단지 수집', 'complex'], ['ANNOUNCEMENT_COLLECTION', '공고 수집', 'announcement'],
+    ['COMPLEX_SYNC', '단지 수집·정제', 'complex'], ['ANNOUNCEMENT_SYNC', '공고 수집·정제', 'announcement'],
+  ] as const)('%s의 실패 링크는 해당 도메인 탭으로 연결한다', async (selected, label, domain) => {
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
+      execution(type, type === selected ? 'FAILED' : 'IDLE'),
+    ))
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+    const name = selected.endsWith('_SYNC') ? `${label} 수집 실패 요청 보기` : `${label} 실패 행·요청 보기`
+    const link = await screen.findByRole('link', { name })
+    expect(new URL(link.getAttribute('href') ?? '', 'http://localhost').searchParams.get('domain')).toBe(domain)
+  })
+
+  it('이미 정제가 시작된 통합 실패를 정제 미실행으로 표시하지 않는다', async () => {
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
+      type === 'COMPLEX_SYNC' ? execution(type, 'FAILED', { currentStepIndex: 3 }) : execution(type, 'IDLE'),
+    ))
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+    await waitFor(() => expect(apiMocks.getDataPipelineStatus).toHaveBeenCalledWith('COMPLEX_SYNC'))
+
+    expect(screen.queryByText(/자동 정제가 실행되지 않았습니다/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '단지 정제' })).toBeEnabled()
+  })
+
+  it('독립 정제 옆에는 독립 수집보다 새로운 통합 실행의 수집 시각과 상태를 표시한다', async () => {
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
+      type === 'COMPLEX_SYNC' ? execution(type, 'FAILED', { startedAt: '2026-09-30T02:00:00Z' })
+        : type === 'COMPLEX_COLLECTION' ? execution(type, 'COMPLETED', { startedAt: '2026-09-29T02:00:00Z' })
+          : execution(type, 'IDLE'),
+    ))
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+
+    expect(await screen.findByText(/최근 수집 포함 실행: 실패/)).toHaveTextContent('이전 수집의 원천이 포함될 수 있습니다.')
+    expect(screen.queryByText(/최근 수집 포함 실행: 선택된 작업 완료/)).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['2026-09-30T02:00:00Z', '2026-09-29T02:00:00Z', '2/3 (67%)'],
+    ['2026-09-29T02:00:00Z', '2026-09-30T02:00:00Z', '4/5 (80%)'],
+  ])('LH 품질 지표는 통합·단독 수집 중 최신 실행의 성공률을 표시한다 (%s, %s)', async (syncAt, collectionAt, rate) => {
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
+      type === 'ANNOUNCEMENT_SYNC' || type === 'ANNOUNCEMENT_COLLECTION' ? execution(type, 'FAILED', {
+        startedAt: type === 'ANNOUNCEMENT_SYNC' ? syncAt : collectionAt,
+        partiallyFailedSteps: [{
+          step: 'COLLECT_LH_ANNOUNCEMENT_SUPPLIES', stepName: 'LH 공고 공급 원본 수집',
+          report: { successfulRequestCount: type === 'ANNOUNCEMENT_SYNC' ? 2 : 4, failedRequestCount: 1 },
+        }],
+      }) : execution(type, 'IDLE'),
+    ))
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+
+    const metric = within((await screen.findByRole('heading', { name: '최근 LH 공급 수집' })).parentElement!)
+    await waitFor(() => expect(metric.getByText(rate)).toBeVisible())
+  })
+
+  it('통합 실행 수집 합계에 성공 단계와 부분 실패 단계를 중복 없이 포함한다', async () => {
+    const successful = { step: 'COLLECT_LH_ANNOUNCEMENT_CATALOG', stepName: 'LH 목록', report: { externalApiCallCount: 2, storedRowCount: 5 } }
+    apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) => Promise.resolve(
+      type === 'ANNOUNCEMENT_SYNC' ? execution(type, 'FAILED', {
+        completedStepResults: [successful],
+        partiallyFailedSteps: [successful, { step: 'COLLECT_MYHOME_ANNOUNCEMENTS', stepName: '마이홈 공고', report: { externalApiCallCount: 3, failedRequestCount: 1 } }],
+      }) : execution(type, 'IDLE'),
+    ))
+    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+
+    const summary = await screen.findByRole('group', { name: '공고 수집·정제 결과 요약' })
+    expect(summary).toHaveTextContent(/API 호출\s*5/)
+    expect(summary).toHaveTextContent(/저장한 행\s*5/)
+    expect(summary).toHaveTextContent(/실패 요청\s*1/)
+  })
+
 })
+
+function startCollection(label: '단지 수집' | '공고 수집') {
+  fireEvent.click(screen.getByRole('button', { name: label }))
+  fireEvent.change(screen.getByLabelText('공공데이터포털 API 키'), { target: { value: 'fixture-service-key' } })
+  fireEvent.click(screen.getByRole('button', { name: `${label} 시작` }))
+}
 
 function execution(
   type: DataPipelineType,
@@ -276,7 +628,9 @@ function execution(
 }
 
 function stepCount(type: DataPipelineType): number {
-  return type === 'ANNOUNCEMENT_COLLECTION' ? 3 : 2
+  if (type === 'ANNOUNCEMENT_SYNC') return 6
+  if (type === 'COMPLEX_SYNC' || type === 'ANNOUNCEMENT_COLLECTION') return 4
+  return 2
 }
 
 function deferred<T>(): { promise: Promise<T>, resolve: (value: T) => void } {

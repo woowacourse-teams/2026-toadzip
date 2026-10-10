@@ -1,5 +1,6 @@
 package com.toadzip.backend.ingest.collection.service;
 
+import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.LH_ANNOUNCEMENT_COLLECTION;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -8,17 +9,20 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.ingest.collection.domain.LhAnnouncementCatalogSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.dto.ExternalDataResponse;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementCatalogPage;
-import com.toadzip.backend.ingest.collection.dto.LhAnnouncementCatalogPage.Entry;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogStore;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCatalogStore.StoreResult;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementCollectionExecutionLock;
-import com.toadzip.backend.ingest.collection.repository.LhAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.collection.fixture.dto.LhAnnouncementCatalogPage.Entry;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhAnnouncementExternalRepository;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhCatalogStorageFixtures.StoreResult;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhCatalogStorageFixtures;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogPage;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogRow;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.domain.LhAnnouncementCatalogSnapshot;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.repository.LhAnnouncementCatalogPageParser;
+import com.toadzip.backend.ingest.collection.lh.announcementcatalog.service.LhAnnouncementCatalogCollectionService;
+import com.toadzip.backend.ingest.collection.paging.domain.SourcePage;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.collection.repository.external.LhAnnouncementCatalogResponseParser;
+import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
@@ -39,11 +43,11 @@ class LhAnnouncementCatalogCollectionServiceTest {
     @Mock
     private LhAnnouncementExternalRepository externalRepository;
     @Mock
-    private LhAnnouncementCatalogResponseParser parser;
+    private LhAnnouncementCatalogPageParser parser;
     @Mock
-    private LhAnnouncementCatalogStore store;
+    private LhCatalogStorageFixtures store;
     @Mock
-    private LhAnnouncementCollectionExecutionLock lock;
+    private IngestOperationLock lock;
     @Mock
     private ExternalDataFailureRecorder failureRecorder;
 
@@ -52,18 +56,17 @@ class LhAnnouncementCatalogCollectionServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(lock.<ExternalDataCollectionReport>tryRun(any(), any())).thenAnswer(invocation -> {
-            Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(1);
-            return Optional.of(operation.get());
-        });
+        when(lock.<ExternalDataCollectionReport>tryRun(eq(LH_ANNOUNCEMENT_COLLECTION), any()))
+                .thenAnswer(invocation -> {
+                    Supplier<ExternalDataCollectionReport> operation = invocation.getArgument(1);
+                    return Optional.of(operation.get());
+                });
         when(externalRepository.fetchCatalog(anyInt(), eq(500))).thenReturn(
-                new ExternalDataResponse("{}", JsonMapper.builder().build().createObjectNode())
+                JsonMapper.builder().build().createObjectNode()
         );
         meterRegistry = new SimpleMeterRegistry();
-        service = new LhAnnouncementCatalogCollectionService(
-                externalRepository, parser, store, lock,
-                new ExternalDataRetryExecutor(Duration.ZERO, meterRegistry), failureRecorder, meterRegistry
-        );
+        service = new CollectionServiceTestFixture().catalog(externalRepository, parser, store, lock,
+                failureRecorder, new ExternalDataRetryExecutor(Duration.ZERO, meterRegistry), meterRegistry);
     }
 
     @Test
@@ -122,7 +125,7 @@ class LhAnnouncementCatalogCollectionServiceTest {
     @Test
     void 전체건수_증거가_없는_빈_목록은_실패로_보고하고_저장하지_않는다() {
         when(parser.parse(any(), eq(1), eq(500)))
-                .thenReturn(new LhAnnouncementCatalogPage(List.of(), 0, "20260725", "20260925"));
+                .thenReturn(new LhAnnouncementCatalogPage(new SourcePage<>(0, List.of()), "20260725", "20260925"));
         org.mockito.Mockito.lenient().when(store.store(any())).thenReturn(new StoreResult(0, 0, 0));
 
         assertThat(service.collect().failedRequestCount()).isOne();
@@ -139,10 +142,11 @@ class LhAnnouncementCatalogCollectionServiceTest {
     }
 
     private LhAnnouncementCatalogPage page(int start, int count, int total) {
-        List<Entry> entries = IntStream.range(start, start + count).mapToObj(index -> new Entry(
+        List<LhAnnouncementCatalogRow> entries = IntStream.range(start, start + count)
+                .mapToObj(index -> new LhAnnouncementCatalogRow(
                 new LhAnnouncementCatalogSnapshot(String.valueOf(index), "03", "06", "48", "063", "공고",
                         "공고중", "2026.09.25", "20260925", "2026.10.25", "url", "url"), "{}"
         )).toList();
-        return new LhAnnouncementCatalogPage(entries, total, "20260725", "20260925");
+        return new LhAnnouncementCatalogPage(new SourcePage<>(total, entries), "20260725", "20260925");
     }
 }

@@ -1,3 +1,4 @@
+import { analyticsCollectionAllowed, consentStore } from '../privacy/consentStore'
 const GOOGLE_TAG_URL = 'https://www.googletagmanager.com/gtag/js'
 const LOAD_TIMEOUT_MS = 15_000
 const MAX_PENDING_EVENTS = 50
@@ -12,7 +13,7 @@ export type AnalyticsEvents = {
   view_complex: { complex_id: string; entry_point: DetailEntryPoint }
   view_announcement: { announcement_id: string; entry_point: DetailEntryPoint }
   select_search_result: {
-    result_type: 'complex' | 'announcement' | 'region'
+    result_type: 'complex' | 'announcement' | 'region' | 'subway_station'
     complex_id?: string
     announcement_id?: string
   }
@@ -48,6 +49,7 @@ let pendingEvents: PendingEvent[] = []
 let stopLoading: (() => void) | undefined
 let tagScript: HTMLScriptElement | undefined
 let pageContext: Parameters | undefined
+let generation = 0
 
 function readMeasurementId(): string | null {
   const id = import.meta.env.VITE_GA_MEASUREMENT_ID?.trim()
@@ -77,7 +79,7 @@ function installDisableFlag(id: string): boolean {
     configurable: true,
     enumerable: true,
     get: () => (
-      externalOptOut ||
+      externalOptOut || !analyticsCollectionAllowed() ||
       !pageActive ||
       window.location.pathname !== '/' ||
       browserExcluded() ||
@@ -98,7 +100,7 @@ function installDisableFlag(id: string): boolean {
 }
 
 function collectionAllowed(): boolean {
-  const allowed = measurementId !== null &&
+  const allowed = analyticsCollectionAllowed() && measurementId !== null &&
     flagInstalled &&
     window[`ga-disable-${measurementId}`] !== true
   if (!allowed) pendingEvents = []
@@ -153,6 +155,7 @@ function sendEvent(event: PendingEvent): boolean {
 function loadGoogleTag(): void {
   if (state !== 'idle' || !measurementId) return
   state = 'loading'
+  const expected = generation
   pageContext = safePageContext()
   window.dataLayer ??= []
   // Google tag uses the standard arguments-object queue, not a nested array.
@@ -166,6 +169,7 @@ function loadGoogleTag(): void {
   script.referrerPolicy = 'no-referrer'
   script.setAttribute('data-toadzip-google-tag', '')
   const onLoad = () => {
+    if (expected !== generation) return
     stopLoading?.()
     state = 'ready'
     try {
@@ -177,7 +181,7 @@ function loadGoogleTag(): void {
       failCollection()
     }
   }
-  const onError = () => failCollection()
+  const onError = () => { if (expected === generation) failCollection() }
   const timeout = window.setTimeout(onError, LOAD_TIMEOUT_MS)
   stopLoading = () => {
     window.clearTimeout(timeout)
@@ -212,6 +216,7 @@ function eventParameters(name: keyof AnalyticsEvents, parameters: unknown): Para
     }
     case 'select_search_result':
       if (values.result_type === 'region') return { result_type: 'region' }
+      if (values.result_type === 'subway_station') return { result_type: 'subway_station' }
       if (values.result_type === 'complex' && isPublicId(values.complex_id)) {
         return { result_type: 'complex', complex_id: values.complex_id }
       }
@@ -275,3 +280,16 @@ export function trackEvent<Name extends keyof AnalyticsEvents>(
     return false
   }
 }
+
+consentStore.onStop(() => {
+  generation++
+  pendingEvents = []
+  configured = false
+  stopLoading?.()
+  if (state !== 'ready') {
+    tagScript?.remove()
+    tagScript = undefined
+    state = 'idle'
+  }
+  if (window.dataLayer) window.dataLayer.length = 0
+})

@@ -14,8 +14,19 @@ import com.toadzip.backend.announcement.repository.AnnouncementRepository;
 import com.toadzip.backend.announcement.repository.AnnouncementScheduleRepository;
 import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.announcement.repository.SupplyTargetRepository;
+import com.toadzip.backend.ingest.collection.lh.detail.domain.LhAnnouncementDetailSource;
+import com.toadzip.backend.ingest.collection.lh.detail.repository.LhAnnouncementDetailSourceReader;
+import com.toadzip.backend.ingest.collection.lh.dto.LhAnnouncementRequest;
+import com.toadzip.backend.ingest.collection.lh.supply.repository.LhAnnouncementSupplySourceReader;
+import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentData;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhAnnouncementEnrichmentRejectedException;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentMapper.LhSupplyData;
+import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementSupplyMatcher.LhSupplyMatchResult;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -42,6 +53,41 @@ class LhAnnouncementEnrichmentWriterTest {
     @Mock
     private LhAnnouncementSupplyMatcher supplyMatcher;
 
+    @Mock
+    private LhAnnouncementDetailSourceReader detailSourceRepository;
+
+    @Mock
+    private LhAnnouncementEnrichmentMapper mapper;
+
+    @Mock
+    private LhAnnouncementEnrichmentFailureStore failureStore;
+
+    @Mock
+    private LhAnnouncementSupplySourceReader sourceStore;
+
+    @Test
+    void 매핑_후_보강_저장이_중지되면_실패를_해결하지_않는다() {
+        Announcement announcement = mock(Announcement.class);
+        LhAnnouncementRequest request = new LhAnnouncementRequest("100", "03", "06", "08", "062");
+        when(announcement.getId()).thenReturn(1L);
+        when(detailSourceRepository.findAllByPanIdAndRequestHashOrderBySourceOrderAsc(any(), any()))
+                .thenReturn(List.of(mock(LhAnnouncementDetailSource.class)));
+        when(mapper.map(any(), any(), any())).thenReturn(new LhAnnouncementEnrichmentData(
+                "100", null, null, List.of(), List.of(), List.of()
+        ));
+        when(announcementRepository.findByIdForUpdate(1L)).thenThrow(new DataPipelineStoppedException());
+        LhAnnouncementEnrichmentWriter writer = new LhAnnouncementEnrichmentWriter(
+                scheduleRepository, announcementRepository, attachmentRepository,
+                supplyRowRepository, supplyTargetRepository, supplyMatcher, detailSourceRepository,
+                mapper, failureStore, sourceStore
+        );
+
+        assertThatThrownBy(() -> writer.writeAfterMapping(announcement, request, List.of(), Set.of(), Set.of()))
+                .isInstanceOf(DataPipelineStoppedException.class);
+
+        org.mockito.Mockito.verifyNoInteractions(failureStore);
+    }
+
     @Test
     void 공고의_공급대상을_한번_조회해_보강과_정리에_재사용한다() {
         Announcement announcement = mock(Announcement.class);
@@ -56,11 +102,12 @@ class LhAnnouncementEnrichmentWriterTest {
 
         LhAnnouncementEnrichmentWriter writer = new LhAnnouncementEnrichmentWriter(
                 scheduleRepository, announcementRepository, attachmentRepository,
-                supplyRowRepository, supplyTargetRepository, supplyMatcher
+                supplyRowRepository, supplyTargetRepository, supplyMatcher, detailSourceRepository,
+                mapper, failureStore, sourceStore
         );
         writer.write(announcement, new LhAnnouncementEnrichmentData(
                 "100", null, null, List.of(), List.of(), List.of(supply)
-        ));
+        ), Set.of(), Set.of());
 
         verify(supplyTargetRepository).findAllBySupplyRowIdIn(List.of(1L));
         verify(supplyTargetRepository, never()).findAllBySupplyRow(any());
@@ -82,12 +129,15 @@ class LhAnnouncementEnrichmentWriterTest {
         when(supplyMatcher.match(List.of(row), second)).thenReturn(LhSupplyMatchResult.matched(row));
         LhAnnouncementEnrichmentWriter writer = new LhAnnouncementEnrichmentWriter(
                 scheduleRepository, announcementRepository, attachmentRepository,
-                supplyRowRepository, supplyTargetRepository, supplyMatcher
+                supplyRowRepository, supplyTargetRepository, supplyMatcher, detailSourceRepository,
+                mapper, failureStore, sourceStore
+        );
+        LhAnnouncementEnrichmentData data = new LhAnnouncementEnrichmentData(
+                "100", null, null, List.of(), List.of(), List.of(first, second)
         );
 
-        assertThatThrownBy(() -> writer.write(announcement, new LhAnnouncementEnrichmentData(
-                "100", null, null, List.of(), List.of(), List.of(first, second)
-        ))).isInstanceOf(LhAnnouncementEnrichmentRejectedException.class)
+        assertThatThrownBy(() -> writer.write(announcement, data, Set.of(), Set.of()))
+                .isInstanceOf(LhAnnouncementEnrichmentRejectedException.class)
                 .hasMessageContaining("여러 LH 공급행");
 
         verify(row, never()).enrichFromLh(any(), any(), any());

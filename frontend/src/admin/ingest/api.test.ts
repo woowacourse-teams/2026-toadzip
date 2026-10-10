@@ -1,3 +1,4 @@
+import type { DataPipelineType } from './api'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 afterEach(() => {
@@ -7,6 +8,91 @@ afterEach(() => {
 })
 
 describe('관리자 데이터 수집·정제 API', () => {
+  it('URL 등록은 세션·CSRF와 URL만 전송하고 서버의 사유를 유지한다', async () => {
+    const fetchMock = prepareFetch(execution('ANNOUNCEMENT_REGISTRATION', 'RUNNING'))
+    const { startAnnouncementRegistrationUrl } = await import('./api.ts')
+    const url = 'https://www.myhome.go.kr/hws/portal/sch/selectRsdtRcritNtcDetailView.do?pblancId=21026'
+    await expect(startAnnouncementRegistrationUrl(` ${url} `)).resolves.toMatchObject({ status: 'RUNNING' })
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:8080/api/admin/ingest/pipelines/announcement-registration/url',
+      { method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CUSTOM-CSRF': 'csrf-token' },
+        body: JSON.stringify({ url }) },
+    )
+  })
+
+  it('빈 URL은 네트워크 요청을 하지 않는다', async () => {
+    const fetchMock = prepareFetch({})
+    const { startAnnouncementRegistrationUrl } = await import('./api.ts')
+    await expect(startAnnouncementRegistrationUrl(' ')).rejects.toThrow('공고 URL')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+  it('단건 등록은 공백을 제거한 공고 ID만 세션과 CSRF로 전달한다', async () => {
+    const fetchMock = prepareFetch(execution('ANNOUNCEMENT_REGISTRATION', 'RUNNING'))
+    const { startAnnouncementRegistration } = await import('./api.ts')
+    await expect(startAnnouncementRegistration(' 21026 ')).resolves.toMatchObject({ status: 'RUNNING' })
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:8080/api/admin/ingest/pipelines/announcement-registration',
+      {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CUSTOM-CSRF': 'csrf-token' },
+        body: JSON.stringify({ pblancId: '21026' }),
+      },
+    )
+  })
+
+  it('단건 등록은 빈 ID를 서버로 보내지 않는다', async () => {
+    const fetchMock = prepareFetch({})
+    const { startAnnouncementRegistration } = await import('./api.ts')
+    await expect(startAnnouncementRegistration(' ')).rejects.toThrow('공고 ID')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('실행 ID로 접수한 실행의 상태를 조회한다', async () => {
+    const fetchMock = prepareFetch(execution('ANNOUNCEMENT_REGISTRATION', 'RUNNING'))
+    fetchMock.mockReset().mockResolvedValue(jsonResponse(execution('ANNOUNCEMENT_REGISTRATION', 'RUNNING')))
+    const { getDataPipelineExecution } = await import('./api.ts')
+    await getDataPipelineExecution('run 1')
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:8080/api/admin/ingest/pipelines/executions/run%201', { credentials: 'include' },
+    )
+  })
+  it.each(['supplies', 'details'] as const)('%s 강제 재조회는 공고 ID, 세션과 CSRF를 전달한다', async (source) => {
+    const report = refreshReport()
+    const fetchMock = prepareFetch(report)
+    const { refreshLhAnnouncement } = await import('./api.ts')
+    await expect(refreshLhAnnouncement(source, 'myhome 1')).resolves.toEqual(report)
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `http://localhost:8080/api/admin/ingest/lh/announcements/${source}/myhome%201/refresh`,
+      { method: 'POST', credentials: 'include', headers: { 'X-CUSTOM-CSRF': 'csrf-token' } },
+    )
+  })
+
+  it('강제 재조회 부분 실패 보고서를 오류 응답에 보존한다', async () => {
+    const report = { ...refreshReport(), failedRequestCount: 1 }
+    prepareFetch(report, 502)
+    const { refreshLhAnnouncement, DataPipelineApiError } = await import('./api.ts')
+    const error = await refreshLhAnnouncement('supplies', 'myhome-1').catch((cause) => cause)
+    expect(error).toBeInstanceOf(DataPipelineApiError)
+    expect(error).toMatchObject({ status: 502, serverResponse: report })
+  })
+
+  it('강제 재조회 결과의 잘못된 수치를 성공으로 반환하지 않는다', async () => {
+    prepareFetch({ ...refreshReport(), externalApiCallCount: -1 })
+    const { refreshLhAnnouncement } = await import('./api.ts')
+    await expect(refreshLhAnnouncement('details', 'myhome-1')).rejects.toThrow('재조회 응답 형식')
+  })
+  it.each([
+    ['COMPLEX_SYNC', 'complex-sync'], ['ANNOUNCEMENT_SYNC', 'announcement-sync'],
+  ] as const)('%s 통합 실행은 기존 세션과 CSRF 계약으로 시작한다', async (type, path) => {
+    const fetchMock = prepareFetch(execution(type, 'RUNNING'))
+    const { startDataPipeline } = await import('./api.ts')
+    await expect(startDataPipeline(type)).resolves.toMatchObject({ type, status: 'RUNNING' })
+    expect(fetchMock).toHaveBeenLastCalledWith(`http://localhost:8080/api/admin/ingest/pipelines/${path}`, {
+      method: 'POST', credentials: 'include', headers: { 'X-CUSTOM-CSRF': 'csrf-token' },
+    })
+  })
+
   it('중지는 실행 ID와 CSRF 헤더를 포함하고 서버의 대기 상태를 보존한다', async () => {
     const fetchMock = prepareFetch({ ...execution('COMPLEX_COLLECTION', 'RUNNING'), stopRequested: true })
     const { stopDataPipeline } = await import('./api.ts')
@@ -72,6 +158,30 @@ describe('관리자 데이터 수집·정제 API', () => {
     )
   })
 
+  it.each([
+    ['COMPLEX_COLLECTION', 'complex-collection'], ['ANNOUNCEMENT_COLLECTION', 'announcement-collection'],
+    ['COMPLEX_SYNC', 'complex-sync'], ['ANNOUNCEMENT_SYNC', 'announcement-sync'],
+  ] as const)('%s 실행 키를 URL 대신 JSON 본문으로 전송한다', async (type, path) => {
+    const fetchMock = prepareFetch(execution(type, 'RUNNING'))
+    const { startDataPipeline } = await import('./api.ts')
+    await startDataPipeline(type, '  fixture-execution-key  ')
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `http://localhost:8080/api/admin/ingest/pipelines/${path}`,
+      {
+        method: 'POST', credentials: 'include',
+        headers: { 'X-CUSTOM-CSRF': 'csrf-token', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serviceKey: 'fixture-execution-key' }),
+      },
+    )
+  })
+
+  it('공백뿐인 키는 요청 전에 거절한다', async () => {
+    const fetchMock = prepareFetch(execution('COMPLEX_COLLECTION', 'RUNNING'))
+    const { startDataPipeline } = await import('./api.ts')
+    await expect(startDataPipeline('COMPLEX_COLLECTION', '   ')).rejects.toThrow('공공데이터포털 API 키를 입력해 주세요.')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('행별 누락을 담은 완료·주의 응답을 읽는다', async () => {
     const report = {
       ...execution('COMPLEX_REFINEMENT', 'COMPLETED_WARNINGS'),
@@ -81,10 +191,14 @@ describe('관리자 데이터 수집·정제 API', () => {
         report: { failedSourceRowCount: 3 },
       }],
     }
-    prepareFetch(report)
+    const fetchMock = prepareFetch(report)
     const { startDataPipeline } = await import('./api.ts')
 
     await expect(startDataPipeline('COMPLEX_REFINEMENT')).resolves.toMatchObject(report)
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://localhost:8080/api/admin/ingest/pipelines/complex-refinement',
+      { method: 'POST', credentials: 'include', headers: { 'X-CUSTOM-CSRF': 'csrf-token' } },
+    )
   })
 
   it('동적 CSRF 헤더와 세션 쿠키를 포함해 위치정보 ZIP을 업로드한다', async () => {
@@ -173,7 +287,13 @@ describe('관리자 데이터 수집·정제 API', () => {
   })
 })
 
-function prepareFetch(data: unknown) {
+function refreshReport() {
+  return { operation: 'lh-announcement-supply', storedRowCount: 2, failedRequestCount: 0,
+    externalApiCallCount: 1, skippedRequestCount: 0, rateLimitedRequestCount: 0,
+    successfulRequestCount: 1, selectionFailedRequestCount: 0 }
+}
+
+function prepareFetch(data: unknown, status = 202) {
   vi.stubEnv('DEV', true)
   vi.stubEnv('VITE_API_BASE_URL', '')
   const fetchMock = vi
@@ -181,13 +301,13 @@ function prepareFetch(data: unknown) {
     .mockResolvedValueOnce(
       jsonResponse({ token: 'csrf-token', headerName: 'X-CUSTOM-CSRF' }),
     )
-    .mockResolvedValueOnce(jsonResponse(data, 202))
+    .mockResolvedValueOnce(jsonResponse(data, status))
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
 
 function execution(
-  type: 'COMPLEX_COLLECTION' | 'COMPLEX_REFINEMENT' | 'ANNOUNCEMENT_COLLECTION',
+  type: DataPipelineType,
   status: string,
 ) {
   return {

@@ -1,14 +1,15 @@
 package com.toadzip.backend.ingest.collection.service;
 
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
 
-final class ExternalDataRateLimit {
+public final class ExternalDataRateLimit {
 
     private ExternalDataRateLimit() {
     }
 
-    static int count(RuntimeException exception) {
+    public static int count(RuntimeException exception) {
         if (exception instanceof ExternalDataCallFailureException failure
                 && failure.isRateLimited()) {
             return 1;

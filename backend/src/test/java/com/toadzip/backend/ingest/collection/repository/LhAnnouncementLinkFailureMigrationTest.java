@@ -3,9 +3,9 @@ package com.toadzip.backend.ingest.collection.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.toadzip.backend.MigrationSqlSection;
 import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailureReason;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
-import com.toadzip.backend.MigrationSqlSection;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;

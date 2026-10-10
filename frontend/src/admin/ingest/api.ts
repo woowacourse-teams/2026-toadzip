@@ -1,8 +1,12 @@
+import { getApiBaseUrl } from '../../api/apiBaseUrl'
 export type DataPipelineType =
   | 'COMPLEX_COLLECTION'
   | 'COMPLEX_REFINEMENT'
   | 'ANNOUNCEMENT_COLLECTION'
   | 'ANNOUNCEMENT_REFINEMENT'
+  | 'COMPLEX_SYNC'
+  | 'ANNOUNCEMENT_SYNC'
+  | 'ANNOUNCEMENT_REGISTRATION'
 
 export type DataPipelineExecutionStatus =
   | 'IDLE'
@@ -59,12 +63,13 @@ export type DataPipelineExecution = {
   lastProgressAt?: string | null
   workProgress?: DataPipelineWorkProgress | null
   completedStepResults?: readonly DataPipelineWarningStep[]
+  targetAnnouncementIdentifier?: string | null
 }
 
 export type LhQualityCoverage = { total: number; fulfilled: number }
-export type LhQualityFreshness = {
+export type LhQualityCollectionCoverage = {
   totalRequests: number
-  freshRequests: number
+  collectedRequests: number
   latestCollectedAt: string | null
 }
 export type LhAnnouncementQuality = {
@@ -77,8 +82,8 @@ export type LhAnnouncementQuality = {
   }
   amounts: LhQualityCoverage
   schedules: { total: number; reviewed: number; withApplicationSchedule: number }
-  supplyCollection: LhQualityFreshness
-  detailCollection: LhQualityFreshness
+  supplyCollection: LhQualityCollectionCoverage
+  detailCollection: LhQualityCollectionCoverage
   unlinkedLhLeaseCatalogCount: number
   unlinkedLhCandidates: readonly { panId: string; sourceKey: string; changedAt: string }[]
   preservedSourceRequestCount: number
@@ -129,8 +134,8 @@ function isLhAnnouncementQuality(value: unknown): value is LhAnnouncementQuality
     || !Array.isArray(value.unlinkedLhCandidates)) return false
   const count = (input: unknown) => typeof input === 'number' && Number.isSafeInteger(input) && input >= 0
   const counts = (input: unknown) => isRecord(input) && Object.values(input).every(count)
-  const freshness = (input: Record<string, unknown>) => count(input.totalRequests)
-    && count(input.freshRequests)
+  const collectionCoverage = (input: Record<string, unknown>) => count(input.totalRequests)
+    && count(input.collectedRequests)
     && (input.latestCollectedAt === null || typeof input.latestCollectedAt === 'string')
   return typeof value.observedAt === 'string'
     && count(value.connection.total) && count(value.connection.complexLinked)
@@ -138,7 +143,7 @@ function isLhAnnouncementQuality(value: unknown): value is LhAnnouncementQuality
     && count(value.amounts.total) && count(value.amounts.fulfilled)
     && count(value.schedules.total) && count(value.schedules.reviewed)
     && count(value.schedules.withApplicationSchedule)
-    && freshness(value.supplyCollection) && freshness(value.detailCollection)
+    && collectionCoverage(value.supplyCollection) && collectionCoverage(value.detailCollection)
     && count(value.unlinkedLhLeaseCatalogCount) && count(value.preservedSourceRequestCount)
     && value.unlinkedLhCandidates.every((candidate) => isRecord(candidate)
       && typeof candidate.panId === 'string' && typeof candidate.sourceKey === 'string'
@@ -169,7 +174,7 @@ type CsrfToken = {
   headerName: string
 }
 
-const apiBaseUrl = resolveApiBaseUrl()
+const apiBaseUrl = getApiBaseUrl()
 
 export class DataPipelineApiError extends Error {
   readonly status: number
@@ -183,16 +188,55 @@ export class DataPipelineApiError extends Error {
   }
 }
 
+export type LhRefreshSource = 'supplies' | 'details'
+export type ExternalDataCollectionReport = {
+  operation: string
+  storedRowCount: number
+  failedRequestCount: number
+  externalApiCallCount: number
+  skippedRequestCount: number
+  rateLimitedRequestCount: number
+  successfulRequestCount: number
+  selectionFailedRequestCount: number
+}
+
+export async function refreshLhAnnouncement(
+  source: LhRefreshSource, pblancId: string,
+): Promise<ExternalDataCollectionReport> {
+  const csrfToken = await requestCsrfToken()
+  const response = await fetch(
+    `${apiBaseUrl}/api/admin/ingest/lh/announcements/${source}/${encodeURIComponent(pblancId)}/refresh`,
+    { method: 'POST', credentials: 'include', headers: { [csrfToken.headerName]: csrfToken.token } },
+  )
+  const body = await readJson(response)
+  if (!response.ok) throw apiError(response.status, body)
+  if (!isExternalDataCollectionReport(body)) throw new Error('LH 재조회 응답 형식이 올바르지 않습니다.')
+  return body
+}
+
+export function isExternalDataCollectionReport(value: unknown): value is ExternalDataCollectionReport {
+  return isRecord(value) && typeof value.operation === 'string' && value.operation.trim().length > 0
+    && ['storedRowCount', 'failedRequestCount', 'externalApiCallCount', 'skippedRequestCount',
+      'rateLimitedRequestCount', 'successfulRequestCount', 'selectionFailedRequestCount'].every(
+      (key) => typeof value[key] === 'number' && Number.isSafeInteger(value[key]) && value[key] >= 0,
+    )
+}
+
 export async function startDataPipeline(
   type: DataPipelineType,
+  serviceKey?: string,
 ): Promise<DataPipelineExecution> {
+  const executionKey = serviceKey?.trim()
+  if (executionKey === '') throw new Error('공공데이터포털 API 키를 입력해 주세요.')
   const csrfToken = await requestCsrfToken()
   const response = await fetch(`${apiBaseUrl}${pipelinePath(type)}`, {
     method: 'POST',
     credentials: 'include',
     headers: {
       [csrfToken.headerName]: csrfToken.token,
+      ...(executionKey === undefined ? {} : { 'Content-Type': 'application/json' }),
     },
+    ...(executionKey === undefined ? {} : { body: JSON.stringify({ serviceKey: executionKey }) }),
   })
   return readExecutionResponse(response)
 }
@@ -203,6 +247,39 @@ export async function getDataPipelineStatus(
   const response = await fetch(`${apiBaseUrl}${pipelinePath(type)}`, {
     credentials: 'include',
   })
+  return readExecutionResponse(response)
+}
+
+export async function startAnnouncementRegistration(pblancId: string): Promise<DataPipelineExecution> {
+  const identifier = pblancId.trim()
+  if (!identifier) throw new Error('마이홈 공고 ID를 입력해 주세요.')
+  const csrfToken = await requestCsrfToken()
+  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/announcement-registration`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', [csrfToken.headerName]: csrfToken.token },
+    body: JSON.stringify({ pblancId: identifier }),
+  })
+  return readExecutionResponse(response)
+}
+
+export async function startAnnouncementRegistrationUrl(url: string): Promise<DataPipelineExecution> {
+  const target = url.trim()
+  if (!target) throw new Error('마이홈 공고 URL을 입력해 주세요.')
+  const csrfToken = await requestCsrfToken()
+  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/announcement-registration/url`, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', [csrfToken.headerName]: csrfToken.token },
+    body: JSON.stringify({ url: target }),
+  })
+  return readExecutionResponse(response)
+}
+
+export async function getDataPipelineExecution(executionId: string): Promise<DataPipelineExecution> {
+  const response = await fetch(
+    `${apiBaseUrl}/api/admin/ingest/pipelines/executions/${encodeURIComponent(executionId)}`,
+    { credentials: 'include' },
+  )
   return readExecutionResponse(response)
 }
 
@@ -296,6 +373,8 @@ function isDataPipelineExecution(value: unknown): value is DataPipelineExecution
     return false
   }
   return (typeof value.executionId === 'string' || value.executionId === null)
+    && (value.targetAnnouncementIdentifier === undefined || value.targetAnnouncementIdentifier === null
+      || typeof value.targetAnnouncementIdentifier === 'string')
     && (typeof value.currentStepName === 'string' || value.currentStepName === null)
     && typeof value.currentStepIndex === 'number'
     && typeof value.totalStepCount === 'number'
@@ -359,6 +438,9 @@ function isDataPipelineType(value: unknown): value is DataPipelineType {
     || value === 'COMPLEX_REFINEMENT'
     || value === 'ANNOUNCEMENT_COLLECTION'
     || value === 'ANNOUNCEMENT_REFINEMENT'
+    || value === 'COMPLEX_SYNC'
+    || value === 'ANNOUNCEMENT_SYNC'
+    || value === 'ANNOUNCEMENT_REGISTRATION'
 }
 
 function isExecutionStatus(value: unknown): value is DataPipelineExecutionStatus {
@@ -381,20 +463,13 @@ function pipelinePath(type: DataPipelineType): string {
     COMPLEX_REFINEMENT: 'complex-refinement',
     ANNOUNCEMENT_COLLECTION: 'announcement-collection',
     ANNOUNCEMENT_REFINEMENT: 'announcement-refinement',
+    COMPLEX_SYNC: 'complex-sync',
+    ANNOUNCEMENT_SYNC: 'announcement-sync',
+    ANNOUNCEMENT_REGISTRATION: 'announcement-registration',
   }
   return `/api/admin/ingest/pipelines/${paths[type]}`
 }
 
-function resolveApiBaseUrl(): string {
-  const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL
-  if (configuredApiBaseUrl) {
-    return configuredApiBaseUrl
-  }
-  if (import.meta.env.DEV) {
-    return 'http://localhost:8080'
-  }
-  return ''
-}
 
 export async function stopDataPipeline(executionId: string): Promise<DataPipelineExecution> {
   const csrfToken = await requestCsrfToken()
@@ -470,13 +545,12 @@ function parseIngestFailure(value: unknown): IngestFailure {
   }
 }
 
-export async function getPipelineHistory(page: number): Promise<DataPipelineExecution[]> {
-  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/history?page=${page}&size=20`, {credentials:'include'})
+export async function getPipelineHistory(page: number, domain?: 'complex' | 'announcement'): Promise<DataPipelineExecution[]> {
+  const query = new URLSearchParams({ page: String(page), size: '20' })
+  if (domain) query.set('domain', domain)
+  const response = await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/history?${query}`, {credentials:'include'})
   const body = await readJson(response)
   if (!response.ok) throw apiError(response.status,body)
   if (!Array.isArray(body) || !body.every(isDataPipelineExecution)) throw new Error('실행 이력 응답 형식이 올바르지 않습니다.')
   return body
-}
-export async function getPipelineExecution(id: string): Promise<DataPipelineExecution> {
-  return readExecutionResponse(await fetch(`${apiBaseUrl}/api/admin/ingest/pipelines/executions/${encodeURIComponent(id)}`, {credentials:'include'}))
 }

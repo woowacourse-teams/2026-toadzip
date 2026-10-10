@@ -1,8 +1,8 @@
 import { RegistrationSelectField, RegistrationTextField } from '../registration/RegistrationFields'
-import { type Values } from './api'
+import { type ManagementValues } from './managementContract'
 import { type Field, valueAt, labels } from './fields'
 export function EditFields({ fields, data, errors, scheduleReviewed = false, onValueChange }: {
-  fields: Field[]; data: Values; errors: Record<string,string>; scheduleReviewed?: boolean; onValueChange?: (name: string, value: string) => void
+  fields: Field[]; data: ManagementValues; errors: Record<string,string>; scheduleReviewed?: boolean; onValueChange?: (name: string, value: string) => void
 }) {
   return <div className={`registration-grid${fields.some(field => field.name === 'address.roadAddress') ? ' admin-location-grid' : ''}`}>{fields.map(field => {
     const raw = valueAt(data, field.name)

@@ -16,6 +16,45 @@ import org.junit.jupiter.api.Test;
 class HousingTypeTest {
 
     @Test
+    void 관리자_수정_주택형은_마이홈_재정제와_LH_보강이_덮어쓰지_않는다() {
+        HousingType type = HousingType.createFromMyHome(
+                createHousingComplex(), "source-type", "46A", new BigDecimal("46.8"), null);
+        type.reviseByAdmin("59B", new BigDecimal("59.1234"), 0);
+
+        assertFalse(type.updateFromMyHome("source-type", "원천 이름", new BigDecimal("46"), null));
+        assertFalse(type.enrichHouseholdCountFromLh(100));
+        assertAll(
+                () -> assertEquals("59B", type.getName()),
+                () -> assertEquals(new BigDecimal("59.1234"), type.getExclusiveArea()),
+                () -> assertEquals(0, type.getTotalHouseholdCount()),
+                () -> assertTrue(type.isAdminModified())
+        );
+    }
+
+    @Test
+    void 관리자_수정_주택형의_미확인_세대수는_null을_유지한다() {
+        HousingType type = HousingType.createFromMyHome(
+                createHousingComplex(), "source-type", "46A", new BigDecimal("46.8"), null);
+        type.enrichHouseholdCountFromLh(100);
+        type.reviseByAdmin("46A", new BigDecimal("46.8"), null);
+
+        assertFalse(type.enrichHouseholdCountFromLh(100));
+        assertNull(type.getTotalHouseholdCount());
+    }
+
+    @Test
+    void 관리자_주택형_수정은_이름과_면적과_세대수의_불변식을_지킨다() {
+        HousingType type = HousingType.createFromMyHome(
+                createHousingComplex(), "source-type", "46A", new BigDecimal("46.8"), null);
+        assertThrows(IllegalArgumentException.class, () -> type.reviseByAdmin(" ", BigDecimal.ONE, 1));
+        assertThrows(IllegalArgumentException.class, () -> type.reviseByAdmin("59B", null, 1));
+        assertThrows(IllegalArgumentException.class, () -> type.reviseByAdmin("59B", new BigDecimal("-1"), 1));
+        assertThrows(IllegalArgumentException.class, () -> type.reviseByAdmin("59B", BigDecimal.ONE, -1));
+        assertEquals("46A", type.getName());
+        assertFalse(type.isAdminModified());
+    }
+
+    @Test
     void LH_주택형_세대수만_보강하고_같은_값은_변경하지_않는다() {
         HousingType housingType = HousingType.createFromMyHome(
                 createHousingComplex(),

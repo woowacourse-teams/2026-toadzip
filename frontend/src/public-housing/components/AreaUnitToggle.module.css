@@ -1,0 +1,42 @@
+.button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-1);
+  min-width: 92px;
+  min-height: 36px;
+  padding: var(--ds-space-1) var(--ds-space-2);
+  border: 1px solid var(--ds-color-divider);
+  border-radius: var(--ds-radius-control);
+  background: var(--ds-color-surface);
+  color: var(--ds-color-label);
+  font-family: var(--ds-font-family-ui);
+  font-size: var(--ds-text-caption);
+  font-weight: 500;
+  line-height: var(--ds-line-height-caption);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.button svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.button:hover {
+  background: var(--ds-color-action-soft);
+  color: var(--ds-color-action);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 3px;
+}
+
+@media (pointer: coarse) {
+  .button {
+    min-height: 44px;
+  }
+}

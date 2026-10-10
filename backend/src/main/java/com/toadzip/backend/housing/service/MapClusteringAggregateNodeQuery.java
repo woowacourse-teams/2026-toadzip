@@ -55,8 +55,11 @@ final class MapClusteringAggregateNodeQuery {
             MapBounds bounds,
             HousingComplexFilterCondition filters
     ) {
+        Set<String> districtCodes = filters.regionCodes().stream()
+                .map(code -> code.substring(0, 5))
+                .collect(Collectors.toUnmodifiableSet());
         return pointPolicyRepository.current().candidates(
-                policy.groupsAt(stage, filters.cityCountyDistrictCodes()), bounds
+                policy.groupsAt(stage, districtCodes), bounds
         );
     }
 

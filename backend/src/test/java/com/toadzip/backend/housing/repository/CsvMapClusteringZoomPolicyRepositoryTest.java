@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.toadzip.backend.housing.domain.MapClusteringStage;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.ClassPathResource;
 
@@ -33,8 +35,39 @@ class CsvMapClusteringZoomPolicyRepositoryTest {
                 new ClassPathResource("map-clustering/stage-transitions.csv")
         );
 
-        assertEquals("2026-09-02-v1", repository.current().policyVersion());
+        assertEquals("2026-10-07-v2", repository.current().policyVersion());
         assertEquals("2026-07-01", repository.current().regionDatasetVersion());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "12.00, INDIVIDUAL, BASIC_REGION",
+            "12.29, INDIVIDUAL, BASIC_REGION",
+            "12.30, INDIVIDUAL, INDIVIDUAL",
+            "12.49, BASIC_REGION, BASIC_REGION",
+            "12.50, BASIC_REGION, INDIVIDUAL",
+            "12.60, BASIC_REGION, INDIVIDUAL"
+    })
+    void 배포용_정책은_더_넓은_지역에서_개별_단지를_유지한다(
+            String zoom, MapClusteringStage previous, MapClusteringStage expected
+    ) {
+        var policy = new CsvMapClusteringZoomPolicyRepository(
+                new ClassPathResource("map-clustering/stage-transitions.csv")
+        ).current();
+
+        assertEquals(expected, policy.resolveStage(new BigDecimal(zoom), previous));
+    }
+
+    @Test
+    void 지역_클릭은_12_6에서_개별_단지로_전환한다() {
+        var policy = new CsvMapClusteringZoomPolicyRepository(
+                new ClassPathResource("map-clustering/stage-transitions.csv")
+        ).current();
+
+        BigDecimal zoom = policy.expansionZoom(MapClusteringStage.BASIC_REGION).orElseThrow();
+
+        assertEquals(new BigDecimal("12.60"), zoom);
+        assertEquals(MapClusteringStage.INDIVIDUAL, policy.resolveStage(zoom, MapClusteringStage.BASIC_REGION));
     }
 
     @Test

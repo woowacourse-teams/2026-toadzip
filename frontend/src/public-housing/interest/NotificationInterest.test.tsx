@@ -1,305 +1,526 @@
+import { captureProductEvent, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router'
 import { NotificationInterestButton, NotificationInterestProvider } from './NotificationInterest'
-import type { NotificationInterestRepository } from './notificationInterestRepository'
+import { createNotificationInterestRepository, type NotificationInterestEvent, type NotificationInterestRepository, type NotificationInterestResult, type NotificationOutcome, type NotificationSubscriptionStatus } from './notificationInterestRepository'
 
-beforeEach(() => {
-  localStorage.clear()
-  sessionStorage.clear()
-})
+vi.mock('../../analytics/productAnalytics', () => ({ captureProductEvent: vi.fn(), setProductAuthState: vi.fn(), setReplaySensitive: vi.fn() }))
 
-afterEach(() => {
-  vi.restoreAllMocks()
-  vi.unstubAllGlobals()
-})
-
-function example(repository: NotificationInterestRepository, loadUser = vi.fn().mockResolvedValue(null)) {
-  return (
-    <NotificationInterestProvider repository={repository} loadUser={loadUser}>
-      <NotificationInterestButton target={{ type: 'COMPLEX', id: '1', name: '서울 단지' }} source="COMPLEX_DETAIL" />
-      <NotificationInterestButton target={{ type: 'REGION', id: '11', name: '서울특별시' }} source="REGION_SEARCH" />
-    </NotificationInterestProvider>
-  )
+beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); sessionStorage.clear() })
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
+const member: NotificationSubscriptionStatus = { userId: '1', settingsRevision: 0, targets: [] }
+const guest: NotificationSubscriptionStatus = { guest: true, targets: [] }
+function repository(status = member) {
+  return { record: vi.fn<NotificationInterestRepository['record']>().mockImplementation(async event => resultFor(event, event.eventType === 'CANCELLED' ? 'CANCELLED' : 'ACTIVATED')), loadStatus: vi.fn().mockResolvedValue(status) }
+}
+function example(repo: NotificationInterestRepository) {
+  return <MemoryRouter><NotificationInterestProvider repository={repo}>
+    <NotificationInterestButton target={{ type: 'COMPLEX', id: '1', name: '서울 단지' }} source="COMPLEX_DETAIL" />
+    <NotificationInterestButton target={{ type: 'REGION', id: '11', name: '서울특별시' }} source="REGION_SEARCH" />
+  </NotificationInterestProvider></MemoryRouter>
+}
+async function click(name = '서울 단지 알림 받기') {
+  const button = screen.getByRole('button', { name })
+  await waitFor(() => expect(button).toBeEnabled())
+  fireEvent.click(button)
+  if (screen.queryByRole('button', { name: '신청하기' })) fireEvent.click(screen.getByRole('button', { name: '신청하기' }))
+  return button
+}
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((complete, fail) => { resolve = complete; reject = fail })
+  return { promise, resolve, reject }
 }
 
-describe('이메일 알림 신청', () => {
-  it('로그인 사용자는 서버의 신청 상태를 우선 표시하고 새 창에서 다시 읽는다', async () => {
-    localStorage.setItem('toadzip.notification-interest.requested:REGION:11', '1')
-    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
-    const loadStatus = vi.fn().mockResolvedValueOnce({ emailConfirmed: true, targets: [
-      { targetType: 'COMPLEX', targetId: '1' },
-    ] }).mockResolvedValue({ emailConfirmed: true, targets: [] })
-    const first = render(example({ record, loadStatus }))
-    expect(await screen.findByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: '서울특별시 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
-    first.unmount()
+it('비회원은 이전 브라우저 설정을 무시하고 로그인 안내를 닫으면 포커스를 복원한다', async () => {
+  localStorage.setItem('toadzip.notification-interest.requested:COMPLEX:1', '1')
+  const repo = repository(guest)
+  render(example(repo))
+  const button = await click()
+  const dialog = await screen.findByRole('dialog', { name: '로그인이 필요해요' })
+  expect(dialog).toHaveAttribute('open')
+  fireEvent(dialog, new Event('cancel', { cancelable: true }))
+  await waitFor(() => expect(dialog).not.toBeInTheDocument())
+  expect(button).toHaveFocus()
+  expect(repo.record).not.toHaveBeenCalled()
+})
 
-    render(example({ record, loadStatus }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
-    fireEvent.click(screen.getByRole('button', { name: '서울특별시 알림 받기' }))
-    await waitFor(() => expect(record).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'CLICKED', targetType: 'REGION', targetId: '11',
-    })))
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+it('회원은 다른 기기와 새로고침에서도 서버 설정을 복원한다', async () => {
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+  render(example(repo))
+  expect(await screen.findByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: '서울특별시 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
+})
+
+it('기존 고지 버전과 신청 시각이 없는 알림도 선택 상태로 표시하고 해제할 수 있다', async () => {
+  const snapshot = { userId: '1', settingsRevision: 4, targets: [{ targetType: 'COMPLEX', targetId: '1', targetName: '서울 단지', noticeVersion: null, requestedAt: null, expiresAt: '2027-09-01T00:00:00Z' }] }
+  const fetcher = vi.fn<typeof fetch>(async (_url, options) => {
+    if (options?.method === 'POST') return Response.json(resultFor(JSON.parse(String(options.body)), 'CANCELLED'))
+    if (String(_url).endsWith('/csrf')) return Response.json({ token: 'csrf', headerName: 'X-XSRF-TOKEN' })
+    return Response.json(snapshot)
   })
+  render(example(createNotificationInterestRepository(fetcher)))
+  expect(await screen.findByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
+  await click('서울 단지 알림 취소')
+  await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false'))
+  const mutation = fetcher.mock.calls.find(([, options]) => options?.method === 'POST')
+  expect(JSON.parse(String(mutation?.[1]?.body))).toMatchObject({ eventType: 'CANCELLED', expectedUserId: '1', expectedSettingsRevision: 4 })
+  expect(JSON.parse(String(mutation?.[1]?.body))).not.toHaveProperty('noticeVersion')
+})
 
-  it('다른 기기에서 바뀐 신청 상태를 창으로 돌아올 때 반영한다', async () => {
-    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
-    const loadStatus = vi.fn().mockResolvedValueOnce({ emailConfirmed: true, targets: [] })
-      .mockResolvedValueOnce({ emailConfirmed: true, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
-    render(example({ record, loadStatus }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
-    fireEvent.focus(window)
-    expect(await screen.findByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
-    expect(record).not.toHaveBeenCalled()
+it('선택된 종을 다시 누르면 설정을 해제한다', async () => {
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+  render(example(repo))
+  await screen.findByRole('button', { name: '서울 단지 알림 취소' })
+  await click('서울 단지 알림 취소')
+  await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false'))
+  expect(repo.record).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'CANCELLED' }))
+  expect(screen.getByRole('status')).toHaveTextContent('알림 설정을 해제했어요.')
+})
+
+it('저장 실패는 선택 상태를 바꾸지 않고 같은 이벤트로 재시도한다', async () => {
+  const repo = repository()
+  repo.record.mockRejectedValueOnce(new Error('network'))
+  render(example(repo))
+  const button = await click()
+  expect(await screen.findByRole('alert')).toHaveTextContent('알림 설정을 저장하지 못했어요.')
+  expect(button).toHaveAttribute('aria-pressed', 'false')
+  fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+  expect(await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })).toBeVisible()
+  expect(repo.record.mock.calls[0]?.[0]).toEqual(repo.record.mock.calls[1]?.[0])
+  expect(button).toHaveAttribute('aria-pressed', 'true')
+})
+
+it('해제 실패는 기존 설정을 유지하고 닫은 뒤 다시 해제할 수 있다', async () => {
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+  repo.record.mockRejectedValueOnce(new Error('network'))
+  render(example(repo))
+  await screen.findByRole('button', { name: '서울 단지 알림 취소' })
+  const button = await click('서울 단지 알림 취소')
+  expect(await screen.findByRole('alert')).toHaveTextContent('알림 해제를 완료하지 못했어요.')
+  expect(button).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.click(screen.getByRole('button', { name: '닫기' }))
+  expect(button).toHaveFocus()
+  await click('서울 단지 알림 취소')
+  await screen.findByRole('button', { name: '서울 단지 알림 받기' })
+})
+
+it.each(['resolve', 'reject'] as const)('저장소 변경 전 요청이 %s되어도 새 세션을 덮지 않는다', async (settlement) => {
+  const pending = deferred<void>()
+  const previous = repository()
+  previous.record.mockReturnValue(pending.promise)
+  const next = repository(guest)
+  const view = render(example(previous))
+  await click()
+  view.rerender(example(next))
+  await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+  await act(async () => { if (settlement === 'resolve') pending.resolve(); else pending.reject(new Error('old')) })
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  await click()
+  expect(screen.getByRole('dialog')).toHaveTextContent('로그인한 사용자만 이용할 수 있어요.')
+})
+
+it('창으로 돌아오면 서버에서 변경된 설정을 반영한다', async () => {
+  const repo = repository()
+  render(example(repo))
+  await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+  repo.loadStatus.mockResolvedValue({ userId: '1', settingsRevision: 0, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+  fireEvent.focus(window)
+  expect(await screen.findByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+it('조회 실패는 빈 목록 성공으로 처리하지 않고 재시도한다', async () => {
+  const repo = repository()
+  repo.loadStatus.mockRejectedValueOnce(new Error('network'))
+  render(example(repo))
+  expect(await screen.findByRole('alert')).toHaveTextContent('알림 상태를 불러오지 못했어요.')
+  expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+})
+
+it('저장 중 창 포커스가 돌아와도 저장 응답을 버리거나 중복 요청하지 않는다', async () => {
+  const pending = deferred<NotificationInterestResult>()
+  const repo = repository()
+  repo.record.mockReturnValue(pending.promise)
+  render(example(repo))
+  const button = await click()
+  fireEvent.focus(window)
+  fireEvent.click(button)
+  await act(async () => pending.resolve(resultFor(repo.record.mock.calls[0]![0], 'ACTIVATED')))
+  expect(repo.record).toHaveBeenCalledOnce()
+  expect(button).toHaveAttribute('aria-pressed', 'true')
+})
+
+it('준비 중 모달은 키보드 포커스를 가두고 Escape로 닫는다', async () => {
+  render(example(repository()))
+  const button = await click()
+  const dialog = await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })
+  const confirm = screen.getByRole('button', { name: '확인' })
+  expect(confirm).toHaveFocus()
+  fireEvent.keyDown(confirm, { key: 'Tab' })
+  expect(confirm).toHaveFocus()
+  fireEvent.keyDown(dialog, { key: 'Escape' })
+  expect(button).toHaveFocus()
+})
+
+it('브라우저 저장소가 차단돼도 회원 설정 저장은 동작한다', async () => {
+  vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked') })
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked') })
+  render(example(repository()))
+  await click()
+  expect(await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })).toBeVisible()
+})
+
+it('동의하지 않은 실제 노출은 자체 서버에도 기록하지 않는다', async () => {
+  const observers: Array<(entries: Array<{ isIntersecting: boolean }>) => void> = []
+  vi.stubGlobal('IntersectionObserver', class {
+    constructor(callback: (entries: Array<{ isIntersecting: boolean }>) => void) { observers.push(callback) }
+    observe() {} disconnect() {}
   })
+  const repo = repository()
+  const view = render(example(repo))
+  await act(async () => { observers[0]?.([{ isIntersecting: false }]) })
+  expect(repo.record).not.toHaveBeenCalled()
+  await act(async () => { observers[0]?.([{ isIntersecting: true }]) })
+  expect(repo.record).not.toHaveBeenCalled()
+  view.unmount()
+  render(example(repo))
+  await act(async () => { observers[2]?.([{ isIntersecting: true }]) })
+  expect(repo.record).not.toHaveBeenCalled()
+})
 
-  it('비로그인 상태도 서버의 신청 목록으로 복원한다', async () => {
-    localStorage.setItem('toadzip.notification-interest.requested:REGION:11', '1')
-    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
-    const loadStatus = vi.fn().mockResolvedValue({ guest: true, emailConfirmed: true,
-      targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
-    render(example({ record, loadStatus }))
-    expect(await screen.findByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: '서울특별시 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
-    expect(loadStatus).toHaveBeenCalledWith(expect.stringMatching(/^[0-9a-f-]{36}$/))
-    fireEvent.click(screen.getByRole('button', { name: '서울특별시 알림 받기' }))
-    await waitFor(() => expect(record).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'CLICKED', clientId: expect.stringMatching(/^[0-9a-f-]{36}$/),
-    })))
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+it('전체 해제 도중 세션이 바뀌면 나머지 회원 설정 요청을 중단한다', async () => {
+  const { InterestContext } = await import('./NotificationInterestContext')
+  const pending = deferred<void>()
+  const previous = repository({ userId: '1', settingsRevision: 0, targets: [
+    { targetType: 'COMPLEX', targetId: '1' }, { targetType: 'REGION', targetId: '11' },
+  ] })
+  previous.record.mockReturnValue(pending.promise)
+  const next = repository(guest)
+  const content = (repo: NotificationInterestRepository) => <MemoryRouter><NotificationInterestProvider repository={repo}>
+    <InterestContext.Consumer>{(context) => <button type="button" disabled={context?.blocked}
+      onClick={(event) => context?.clearAll(event.currentTarget)}>전체 해제</button>}</InterestContext.Consumer>
+  </NotificationInterestProvider></MemoryRouter>
+  const view = render(content(previous))
+  await waitFor(() => expect(screen.getByRole('button')).toBeEnabled())
+  fireEvent.click(screen.getByRole('button'))
+  view.rerender(content(next))
+  await waitFor(() => expect(screen.getByRole('button')).toBeEnabled())
+  await act(async () => pending.resolve())
+  expect(previous.record).toHaveBeenCalledOnce()
+  expect(next.record).not.toHaveBeenCalled()
+  expect(screen.queryByText('알림 설정을 모두 해제했어요.')).not.toBeInTheDocument()
+})
+
+it('전체 해제 중 탭을 떠나면 나머지 요청을 중단하고 돌아올 때 상태를 다시 확인한다', async () => {
+  const { InterestContext } = await import('./NotificationInterestContext')
+  const pending = deferred<void>()
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [
+    { targetType: 'COMPLEX', targetId: '1' }, { targetType: 'REGION', targetId: '11' },
+  ] })
+  repo.record.mockReturnValue(pending.promise)
+  render(<MemoryRouter><NotificationInterestProvider repository={repo}>
+    <InterestContext.Consumer>{(context) => <button type="button" disabled={context?.blocked}
+      onClick={(event) => context?.clearAll(event.currentTarget)}>전체 해제</button>}</InterestContext.Consumer>
+  </NotificationInterestProvider></MemoryRouter>)
+  await waitFor(() => expect(screen.getByRole('button')).toBeEnabled())
+  fireEvent.click(screen.getByRole('button'))
+  fireEvent.blur(window)
+  repo.loadStatus.mockResolvedValue(guest)
+  await act(async () => pending.resolve())
+  fireEvent.focus(window)
+  await waitFor(() => expect(repo.loadStatus).toHaveBeenCalledTimes(2))
+  expect(repo.record).toHaveBeenCalledOnce()
+  expect(screen.queryByText('알림 설정을 모두 해제했어요.')).not.toBeInTheDocument()
+})
+
+it.each(['ACTIVATED', 'ALREADY_ACTIVE'] as const)(
+  '회원 설정 결과 %s에서 실제 신규 활성화만 완료로 수집한다', async (outcome) => {
+    const repo = repository()
+    repo.record.mockImplementation(async (event) => outcome ? resultFor(event, outcome) : undefined)
+    render(example(repo))
+    await click()
+    await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })
+    expect(repo.record.mock.calls[0]?.[0]).toMatchObject({ eventType: 'CONFIRMED' })
+    expect(repo.record.mock.calls[0]?.[0]).not.toHaveProperty('email')
+    const completions = captured('notification_preregistration_completed')
+    expect(completions).toHaveLength(outcome === 'ACTIVATED' ? 1 : 0)
+    if (outcome === 'ACTIVATED') {
+      expect(completions[0]?.[1]).toMatchObject({ target_type: 'COMPLEX', target_id: '1', completion_source: 'CONFIRMED' })
+      expect(completions[0]?.[2]).toMatchObject({ dedupeKey: `notification-completed:${repo.record.mock.calls[0]?.[0].eventId}`, authState: 'member' })
+    }
+    expect(captured('notification_form_viewed')).toHaveLength(0)
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  },
+)
+
+it.each(['CANCELLED', 'UNCHANGED'] as const)('회원 해제 결과 %s에서 실제 취소만 완료로 수집한다', async (outcome) => {
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+  repo.record.mockImplementation(async (event) => outcome ? resultFor(event, outcome) : undefined)
+  render(example(repo))
+  await screen.findByRole('button', { name: '서울 단지 알림 취소' })
+  await click('서울 단지 알림 취소')
+  await screen.findByText('서울 단지 알림 설정을 해제했어요.')
+  expect(captured('notification_cancel_completed')).toHaveLength(outcome === 'CANCELLED' ? 1 : 0)
+  expect(captured('notification_cancel_requested')).toHaveLength(1)
+})
+
+it.each(['UNKNOWN', 'NOT_ACTIVATED', 'OBSERVED'] as const)('%s는 회원 설정 성공을 만들지 않고 상태를 다시 조회한다', async (outcome) => {
+  const repo = repository()
+  repo.record.mockImplementation(async (event) => resultFor(event, outcome))
+  render(example(repo))
+  await click()
+  await screen.findByText('처리 결과를 확인하지 못했어요. 현재 알림 설정을 다시 확인해 주세요.')
+  await waitFor(() => expect(repo.loadStatus).toHaveBeenCalledTimes(2))
+  expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(captured('notification_preregistration_completed')).toHaveLength(0)
+})
+
+it.each(['ACTIVATED', 'CANCELLED'] as const)('UI가 해제되면 늦은 %s 결과의 선택적 분석을 전송하지 않는다', async (outcome) => {
+  const pending = deferred<NotificationInterestResult>()
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: outcome === 'CANCELLED' ? [{ targetType: 'COMPLEX', targetId: '1' }] : [] })
+  repo.record.mockReturnValue(pending.promise)
+  const view = render(example(repo))
+  const name = outcome === 'CANCELLED' ? '서울 단지 알림 취소' : '서울 단지 알림 받기'
+  await screen.findByRole('button', { name })
+  await click(name)
+  const event = repo.record.mock.calls[0]?.[0]
+  if (!event) throw new Error('The request should have started')
+  view.unmount()
+  await act(async () => pending.resolve(resultFor(event, outcome)))
+  expect(captured(outcome === 'CANCELLED' ? 'notification_cancel_completed' : 'notification_preregistration_completed')).toHaveLength(0)
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+it('세션 전환 후 늦은 성공은 분석을 전송하거나 새 UI를 덮지 않는다', async () => {
+  const pending = deferred<NotificationInterestResult>()
+  const previous = repository()
+  previous.record.mockReturnValue(pending.promise)
+  const view = render(example(previous))
+  await click()
+  const event = previous.record.mock.calls[0]?.[0]
+  if (!event) throw new Error('The request should have started')
+  const next = repository(guest)
+  view.rerender(example(next))
+  await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+  expect(setProductAuthState).toHaveBeenLastCalledWith('guest')
+  await act(async () => pending.resolve(resultFor(event, 'ACTIVATED')))
+  expect(captured('notification_preregistration_completed')).toHaveLength(0)
+  expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+it('응답 유실 재시도는 명령 ID를 유지하며 취소 후 재설정에는 새 ID를 사용한다', async () => {
+  const repo = repository()
+  repo.record.mockRejectedValueOnce(new Error('response lost')).mockImplementation(async (event) =>
+    resultFor(event, event.eventType === 'CANCELLED' ? 'CANCELLED' : 'ACTIVATED'))
+  render(example(repo))
+  await click()
+  fireEvent.click(await screen.findByRole('button', { name: '다시 시도' }))
+  fireEvent.click(await screen.findByRole('button', { name: '확인' }))
+  expect(repo.record.mock.calls[0]?.[0]).toEqual(repo.record.mock.calls[1]?.[0])
+  await click('서울 단지 알림 취소')
+  await screen.findByRole('button', { name: '서울 단지 알림 받기' })
+  await click()
+  await screen.findByRole('button', { name: '확인' })
+  expect(repo.record.mock.calls[1]?.[0].eventId).not.toBe(repo.record.mock.calls[2]?.[0].eventId)
+  expect(repo.record.mock.calls[2]?.[0].eventId).not.toBe(repo.record.mock.calls[3]?.[0].eventId)
+  expect(captured('notification_preregistration_completed')).toHaveLength(2)
+  expect(captured('notification_preregistration_failed')).toHaveLength(1)
+})
+
+it('창으로 돌아온 뒤 확인된 알림 상태로 분석의 회원 상태도 갱신한다', async () => {
+  const repo = repository()
+  render(example(repo))
+  await waitFor(() => expect(setProductAuthState).toHaveBeenLastCalledWith('member'))
+  repo.loadStatus.mockResolvedValue(guest)
+  fireEvent.focus(window)
+  await waitFor(() => expect(setProductAuthState).toHaveBeenLastCalledWith('guest'))
+})
+
+it('알림 안내 모달의 민감 화면 보호를 닫을 때 해제한다', async () => {
+  render(example(repository()))
+  await click()
+  await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })
+  expect(setReplaySensitive).toHaveBeenCalledWith('notification_form', true)
+  fireEvent.click(screen.getByRole('button', { name: '확인' }))
+  expect(setReplaySensitive).toHaveBeenLastCalledWith('notification_form', false)
+})
+
+it.each([false, true])('늦은 focus 조회가 설정 여부 %s의 변경 성공을 되돌리지 않는다', async (initiallyRequested) => {
+  const snapshot: NotificationSubscriptionStatus = { userId: '1', settingsRevision: 0,
+    targets: initiallyRequested ? [{ targetType: 'COMPLEX', targetId: '1' }] : [] }
+  const pending = deferred<NotificationSubscriptionStatus>()
+  const repo = repository(snapshot)
+  repo.loadStatus.mockResolvedValueOnce(snapshot).mockReturnValueOnce(pending.promise)
+  render(example(repo))
+  const beforeName = initiallyRequested ? '서울 단지 알림 취소' : '서울 단지 알림 받기'
+  await screen.findByRole('button', { name: beforeName })
+  await waitFor(() => expect(screen.getByRole('button', { name: beforeName })).toBeEnabled())
+  fireEvent.focus(window)
+  await click(beforeName)
+  const afterName = initiallyRequested ? '서울 단지 알림 받기' : '서울 단지 알림 취소'
+  await screen.findByRole('button', { name: afterName })
+  await act(async () => pending.resolve(snapshot))
+  expect(screen.getByRole('button', { name: afterName })).toHaveAttribute('aria-pressed', String(!initiallyRequested))
+  expect(repo.record).toHaveBeenCalledOnce()
+})
+
+it('전체 해제는 실제 취소만 완료로 수집하고 UNKNOWN 뒤 조회한 남은 설정은 새 ID로 해제한다', async () => {
+  const { InterestContext } = await import('./NotificationInterestContext')
+  const snapshot: NotificationSubscriptionStatus = { userId: '1', settingsRevision: 0, targets: [
+    { targetType: 'COMPLEX', targetId: '1' }, { targetType: 'REGION', targetId: '11' },
+  ] }
+  const repo = repository(snapshot)
+  repo.loadStatus.mockResolvedValueOnce(snapshot).mockResolvedValue({ userId: '1', settingsRevision: 0,
+    targets: [{ targetType: 'REGION', targetId: '11' }] })
+  let unknownEventId: string | undefined
+  repo.record.mockImplementation(async (event) => {
+    if (event.targetType === 'REGION' && !unknownEventId) unknownEventId = event.eventId
+    return resultFor(event, event.eventId === unknownEventId ? 'UNKNOWN' : 'CANCELLED')
   })
+  render(<MemoryRouter><NotificationInterestProvider repository={repo}>
+    <InterestContext.Consumer>{(context) => <>
+      <button type="button" disabled={context?.blocked} onClick={(event) => context?.clearAll(event.currentTarget)}>전체 해제</button>
+      {context?.batchError && <p role="alert">{context.batchError}</p>}
+      <p>남은 설정 {context?.targets.length}</p>
+    </>}</InterestContext.Consumer>
+  </NotificationInterestProvider></MemoryRouter>)
+  await click('전체 해제')
+  await screen.findByText('처리 결과를 확인하지 못했어요. 현재 알림 설정을 다시 확인해 주세요.')
+  await waitFor(() => expect(repo.loadStatus).toHaveBeenCalledTimes(2))
+  expect(screen.getByText('남은 설정 1')).toBeVisible()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(captured('notification_cancel_completed')).toHaveLength(1)
+  await click('전체 해제')
+  await screen.findByText('알림 설정을 모두 해제했어요.')
+  expect(repo.record.mock.calls[1]?.[0].eventId).not.toBe(repo.record.mock.calls[2]?.[0].eventId)
+  expect(captured('notification_cancel_completed')).toHaveLength(2)
+})
 
-  it('비로그인 사용자는 첫 클릭에서 이메일을 입력하고 이후 다른 대상은 클릭만 기록한다', async () => {
-    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
-    render(example({ record }))
-    const complexButton = screen.getByRole('button', { name: '서울 단지 알림 받기' })
-    expect(complexButton.querySelector('svg')).toHaveAttribute('data-state', 'idle')
-    fireEvent.click(complexButton)
-    const dialog = await screen.findByRole('dialog', { name: '이메일 알림 신청' })
-    const email = screen.getByRole('textbox', { name: '알림 받을 이메일' })
-    await waitFor(() => expect(email).toHaveFocus())
-    expect(email).toHaveValue('')
-    expect(dialog).not.toHaveTextContent('준비 중')
-    fireEvent.click(screen.getByRole('button', { name: '알림 신청' }))
-    expect(record.mock.calls.map(([event]) => event.eventType)).toEqual(['CLICKED'])
-    fireEvent.change(email, { target: { value: 'invalid' } })
-    fireEvent.click(screen.getByRole('button', { name: '알림 신청' }))
-    expect(record.mock.calls.map(([event]) => event.eventType)).toEqual(['CLICKED'])
-    fireEvent.change(email, { target: { value: 'guest@example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: '알림 신청' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(record.mock.calls[1]?.[0]).toEqual(expect.objectContaining({ eventType: 'CONFIRMED', email: 'guest@example.com' }))
-    expect(screen.getByRole('status')).toHaveTextContent('서울 단지 알림 신청을 받았어요.')
-    expect(complexButton).toHaveAccessibleName('서울 단지 알림 취소')
-    expect(complexButton.querySelector('svg')).toHaveAttribute('data-state', 'requested')
-    fireEvent.click(screen.getByRole('button', { name: '서울특별시 알림 받기' }))
-    await waitFor(() => expect(record).toHaveBeenCalledTimes(3))
-    expect(record.mock.calls[2]?.[0]).toEqual(expect.objectContaining({ eventType: 'CLICKED', targetType: 'REGION', targetId: '11' }))
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('서울특별시 알림 신청을 받았어요.')
-    expect(screen.getByRole('button', { name: '서울특별시 알림 취소' }).querySelector('svg'))
-      .toHaveAttribute('data-state', 'requested')
-    expect(localStorage.getItem('toadzip.notification-interest.email-confirmed')).toBe('1')
+it('응답 유실은 같은 ID로 먼저 확인하고 UNKNOWN은 재조회 후 새 선택으로 처리한다', async () => {
+  const { InterestContext } = await import('./NotificationInterestContext')
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [
+    { targetType: 'COMPLEX', targetId: '1' }, { targetType: 'REGION', targetId: '11' },
+  ] })
+  let failedEventId: string | undefined
+  let unknownEventId: string | undefined
+  repo.record.mockImplementation(async (event) => {
+    if (event.targetType === 'COMPLEX' && !failedEventId) {
+      failedEventId = event.eventId
+      throw new Error('network')
+    }
+    if (event.targetType === 'REGION' && !unknownEventId) unknownEventId = event.eventId
+    return resultFor(event, event.eventId === unknownEventId ? 'UNKNOWN' : 'CANCELLED')
   })
+  render(<MemoryRouter><NotificationInterestProvider repository={repo}>
+    <InterestContext.Consumer>{(context) => <>
+      <button type="button" disabled={context?.blocked} onClick={(event) => context?.clearAll(event.currentTarget)}>전체 해제</button>
+      {context?.batchError && <p role="alert">{context.batchError}</p>}
+    </>}</InterestContext.Consumer>
+  </NotificationInterestProvider></MemoryRouter>)
+  await click('전체 해제')
+  expect(await screen.findByRole('alert')).toHaveTextContent('1개 설정을 해제하지 못했어요.')
+  expect(repo.loadStatus).toHaveBeenCalledTimes(1)
+  expect(captured('notification_cancel_completed')).toHaveLength(0)
+  repo.loadStatus.mockResolvedValue({ userId: '1', settingsRevision: 2, targets: [{ targetType: 'REGION', targetId: '11' }] })
+  await click('전체 해제')
+  await screen.findByText('처리 결과를 확인하지 못했어요. 현재 알림 설정을 다시 확인해 주세요.')
+  await click('전체 해제')
+  await screen.findByText('알림 설정을 모두 해제했어요.')
+  expect(repo.record.mock.calls[0]?.[0].eventId).toBe(repo.record.mock.calls[1]?.[0].eventId)
+  expect(repo.record.mock.calls[2]?.[0].eventId).not.toBe(repo.record.mock.calls[3]?.[0].eventId)
+  expect(captured('notification_cancel_completed')).toHaveLength(2)
+})
 
-  it('로그인 사용자 이메일을 채우고 수정한 주소로 신청한다', async () => {
-    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
-    const loadUser = vi.fn().mockResolvedValue({ id: 7, email: 'member@example.com' })
-    render(example({ record }, loadUser))
-    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
-    const email = await screen.findByRole('textbox', { name: '알림 받을 이메일' })
-    await waitFor(() => expect(email).toHaveValue('member@example.com'))
-    fireEvent.change(email, { target: { value: 'other@example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: '알림 신청' }))
-    await waitFor(() => expect(record).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'CONFIRMED', email: 'other@example.com',
-    })))
+it('전체 해제 도중 세션이 바뀌어도 이미 성공한 취소만 원래 회원 맥락으로 기록한다', async () => {
+  const { InterestContext } = await import('./NotificationInterestContext')
+  const pending = deferred<NotificationInterestResult>()
+  const previous = repository({ userId: '1', settingsRevision: 0, targets: [
+    { targetType: 'COMPLEX', targetId: '1' }, { targetType: 'REGION', targetId: '11' },
+  ] })
+  previous.record.mockReturnValue(pending.promise)
+  const content = (repo: NotificationInterestRepository) => <MemoryRouter><NotificationInterestProvider repository={repo}>
+    <InterestContext.Consumer>{(context) => <button type="button" disabled={context?.blocked}
+      onClick={(event) => context?.clearAll(event.currentTarget)}>전체 해제</button>}</InterestContext.Consumer>
+  </NotificationInterestProvider></MemoryRouter>
+  const view = render(content(previous))
+  await click('전체 해제')
+  const event = previous.record.mock.calls[0]?.[0]
+  const signal = previous.record.mock.calls[0]?.[1]
+  if (!event) throw new Error('The request should have started')
+  view.rerender(content(repository(guest)))
+  await waitFor(() => expect(signal?.aborted).toBe(true))
+  await act(async () => pending.resolve(resultFor(event, 'CANCELLED')))
+  expect(previous.record).toHaveBeenCalledOnce()
+  expect(captured('notification_cancel_completed')).toHaveLength(0)
+  expect(screen.queryByText('알림 설정을 모두 해제했어요.')).not.toBeInTheDocument()
+})
+
+function resultFor(event: NotificationInterestEvent, outcome: NotificationOutcome): NotificationInterestResult {
+  return { eventId: event.eventId, targetType: event.targetType, targetId: event.targetId, outcome, occurredAt: '2026-10-08T00:00:00Z', settingsRevision: (event.expectedSettingsRevision ?? 0) + 1, currentTarget: { active: outcome === 'ACTIVATED' || outcome === 'ALREADY_ACTIVE', expiresAt: null, noticeVersion: null, requestedAt: null } }
+}
+function captured(eventName: string) {
+  return vi.mocked(captureProductEvent).mock.calls.filter(([name]) => name === eventName)
+}
+
+it('관리 화면에서 시작한 늦은 취소는 이동 후에도 원래 페이지 맥락으로 수집한다', async () => {
+  const pending = deferred<NotificationInterestResult>()
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+  repo.record.mockReturnValue(pending.promise)
+  window.history.replaceState({}, '', '/mypage/notifications')
+  try {
+    render(example(repo))
+    await screen.findByRole('button', { name: '서울 단지 알림 취소' })
+    await click('서울 단지 알림 취소')
+    const event = repo.record.mock.calls[0]?.[0]
+    if (!event) throw new Error('The request should have started')
+    window.history.replaceState({}, '', '/')
+    await act(async () => pending.resolve(resultFor(event, 'CANCELLED')))
+    expect(captured('notification_cancel_completed')[0]?.[2]).toMatchObject({ pageName: 'notification_settings' })
+  } finally {
+    window.history.replaceState({}, '', '/')
+  }
+})
+
+it('다른 모달에 가려진 알림 버튼은 모달이 닫혀 실제로 보일 때 노출을 수집한다', async () => {
+  const observers: Array<(entries: Array<{ isIntersecting: boolean }>) => void> = []
+  vi.stubGlobal('IntersectionObserver', class {
+    constructor(callback: (entries: Array<{ isIntersecting: boolean }>) => void) { observers.push(callback) }
+    observe() {} disconnect() {}
   })
-
-  it('마지막 신청을 취소하면 새로고침 후 이메일을 다시 입력한다', async () => {
-    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
-    const loadUser = vi.fn().mockResolvedValue({ id: 7, email: 'member@example.com' })
-    const first = render(example({ record }, loadUser))
-    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
-    const email = await screen.findByRole('textbox', { name: '알림 받을 이메일' })
-    await waitFor(() => expect(email).toHaveValue('member@example.com'))
-    fireEvent.click(screen.getByRole('button', { name: '알림 신청' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    first.unmount()
-
-    const second = render(example({ record }, loadUser))
-    expect(screen.getByRole('button', { name: '서울 단지 알림 취소' }).querySelector('svg'))
-      .toHaveAttribute('data-state', 'requested')
-    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 취소' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false'))
-    expect(record.mock.calls[2]?.[0]).toEqual(expect.objectContaining({ eventType: 'CANCELLED', targetType: 'COMPLEX', targetId: '1' }))
-    expect(localStorage.getItem('toadzip.notification-interest.requested:COMPLEX:1')).toBe('0')
-    expect(screen.getByRole('status')).toHaveTextContent('서울 단지 알림 신청을 취소했어요.')
-
-    second.unmount()
-    render(example({ record }, loadUser))
-    expect(screen.getByRole('button', { name: '서울 단지 알림 받기' }).querySelector('svg'))
-      .toHaveAttribute('data-state', 'idle')
-    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
-    expect(await screen.findByRole('dialog', { name: '이메일 알림 신청' })).toBeVisible()
-    await waitFor(() => expect(screen.getByRole('textbox', { name: '알림 받을 이메일' })).toHaveValue('member@example.com'))
-    fireEvent.click(screen.getByRole('button', { name: '알림 신청' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true'))
-    fireEvent.click(screen.getByRole('button', { name: '서울특별시 알림 받기' }))
-    await waitFor(() => expect(record).toHaveBeenCalledTimes(6))
-    expect(record.mock.calls.map(([event]) => event.eventType)).toEqual(['CLICKED', 'CONFIRMED', 'CANCELLED', 'CLICKED', 'CONFIRMED', 'CLICKED'])
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(loadUser).toHaveBeenCalledTimes(2)
-  })
-
-  it('취소 저장이 실패하면 신청 상태를 유지하고 같은 취소 이벤트를 재시도한다', async () => {
-    const record = vi.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(new Error('실패')).mockResolvedValue(undefined)
-    render(example({ record }))
-    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
-    await screen.findByRole('dialog')
-    fireEvent.change(screen.getByRole('textbox', { name: '알림 받을 이메일' }), { target: { value: 'guest@example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: '알림 신청' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-
-    const cancelButton = screen.getByRole('button', { name: '서울 단지 알림 취소' })
-    fireEvent.click(cancelButton)
-    expect(await screen.findByRole('alert')).toHaveTextContent('알림 취소를 완료하지 못했어요.')
-    expect(cancelButton).toHaveAttribute('aria-pressed', 'true')
-    expect(localStorage.getItem('toadzip.notification-interest.requested:COMPLEX:1')).toBe('1')
-    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false'))
-    expect(record.mock.calls[2]?.[0]).toEqual(record.mock.calls[3]?.[0])
-  })
-
-  it('이전 버전의 완료 기록이 있어도 이메일 신청 전에는 폼을 연다', async () => {
-    localStorage.setItem('toadzip.notification-interest.prompt-completed', '1')
-    localStorage.setItem('toadzip.notification-interest.email-prompt-completed', '1')
-    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
-    render(example({ record }))
-    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
-    expect(await screen.findByRole('dialog', { name: '이메일 알림 신청' })).toBeVisible()
-  })
-
-  it('이전 버전의 신청 표시만 남아 있으면 다시 신청해야 함을 안내한다', async () => {
-    localStorage.setItem('toadzip.notification-interest.requested:COMPLEX:1', '1')
-    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
-    const loadStatus = vi.fn().mockResolvedValue({ guest: true, emailConfirmed: false, targets: [] })
-    render(example({ record, loadStatus }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
-
-    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
-    expect(await screen.findByRole('dialog')).toHaveTextContent('이전에 누른 알림은 현재 신청 목록에 포함되지 않았어요. 이메일을 입력해 다시 신청해 주세요.')
-  })
-
-  it('늦은 로그인 응답은 사용자가 입력한 주소를 덮지 않는다', async () => {
-    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
-    let resolveUser: (value: { id: number; email: string }) => void = () => {}
-    const loadUser = vi.fn().mockImplementation(() => new Promise((resolve) => { resolveUser = resolve }))
-    render(example({ record }, loadUser))
-    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
-    const email = await screen.findByRole('textbox', { name: '알림 받을 이메일' })
-    fireEvent.change(email, { target: { value: 'typed@example.com' } })
-    await act(async () => resolveUser({ id: 7, email: 'member@example.com' }))
-    expect(email).toHaveValue('typed@example.com')
-  })
-
-  it('저장소를 사용할 수 없어도 취소 후 다음 클릭에서 다시 묻는다', async () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('저장소 차단') })
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('저장소 차단') })
-    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
-    render(example({ record }))
-    const trigger = screen.getByRole('button', { name: '서울 단지 알림 받기' })
-    fireEvent.click(trigger)
-    const dialog = await screen.findByRole('dialog')
-    fireEvent.keyDown(dialog, { key: 'Escape' })
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    await waitFor(() => expect(trigger).toHaveFocus())
-    expect(record.mock.calls[1]?.[0]).toEqual(expect.objectContaining({ eventType: 'DECLINED' }))
-    fireEvent.click(screen.getByRole('button', { name: '서울특별시 알림 받기' }))
-    await waitFor(() => expect(record).toHaveBeenCalledTimes(3))
-    expect(record.mock.calls[2]?.[0]).toEqual(expect.objectContaining({ eventType: 'CLICKED' }))
-    expect(await screen.findByRole('dialog', { name: '이메일 알림 신청' })).toBeVisible()
-    expect(screen.getByRole('textbox', { name: '알림 받을 이메일' })).toHaveValue('')
-  })
-
-  it('취소 후 같은 대상이나 새로고침에서 다시 이메일 폼을 연다', async () => {
-    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
-    const first = render(example({ record }))
-    const trigger = screen.getByRole('button', { name: '서울 단지 알림 받기' })
-    fireEvent.click(trigger)
-    await screen.findByRole('dialog')
-    fireEvent.click(screen.getByRole('button', { name: '취소' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(localStorage.getItem('toadzip.notification-interest.email-confirmed')).toBeNull()
-    expect(trigger.querySelector('svg')).toHaveAttribute('data-state', 'idle')
-
-    fireEvent.click(trigger)
-    expect(await screen.findByRole('dialog', { name: '이메일 알림 신청' })).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: '취소' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    first.unmount()
-
-    render(example({ record }))
-    fireEvent.click(screen.getByRole('button', { name: '서울 단지 알림 받기' }))
-    expect(await screen.findByRole('dialog', { name: '이메일 알림 신청' })).toBeVisible()
-    expect(record.mock.calls.map(([event]) => event.eventType)).toEqual([
-      'CLICKED', 'DECLINED', 'CLICKED', 'DECLINED', 'CLICKED',
-    ])
-  })
-
-  it('실제 화면 노출만 기록하고 같은 세션의 반복 노출은 중복하지 않는다', async () => {
-    const observers: Array<(entries: Array<{ isIntersecting: boolean }>) => void> = []
-    vi.stubGlobal('IntersectionObserver', class {
-      constructor(callback: (entries: Array<{ isIntersecting: boolean }>) => void) { observers.push(callback) }
-      observe() {}
-      disconnect() {}
-    })
-    const record = vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined)
-    const view = render(example({ record }))
-    await act(async () => { observers[0]?.([{ isIntersecting: false }]) })
-    expect(record).not.toHaveBeenCalled()
+  const repo = repository()
+  const modal = document.createElement('dialog')
+  modal.open = true
+  document.body.append(modal)
+  try {
+    render(example(repo))
     await act(async () => { observers[0]?.([{ isIntersecting: true }]) })
-    expect(record).toHaveBeenCalledOnce()
-    expect(record.mock.calls[0]?.[0].eventType).toBe('EXPOSED')
-    view.unmount()
-    render(example({ record }))
-    await act(async () => { observers[2]?.([{ isIntersecting: true }]) })
-    expect(record).toHaveBeenCalledOnce()
-  })
+    expect(repo.record).not.toHaveBeenCalled()
+    expect(captured('notification_cta_viewed')).toHaveLength(0)
+    await act(async () => { modal.remove() })
+    expect(repo.record).not.toHaveBeenCalled()
+    expect(captured('notification_cta_viewed')).toHaveLength(0)
+  } finally {
+    modal.remove()
+  }
+})
 
-  it('저장 실패를 완료로 표시하지 않고 같은 이벤트 ID로 재시도한다', async () => {
-    const record = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('실패'))
-      .mockResolvedValue(undefined)
-    render(example({ record }))
-    const trigger = screen.getByRole('button', { name: '서울 단지 알림 받기' })
-    fireEvent.click(trigger)
-    await screen.findByRole('dialog')
-    fireEvent.change(screen.getByRole('textbox', { name: '알림 받을 이메일' }), { target: { value: 'retry@example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: '알림 신청' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('알림 신청을 완료하지 못했어요.')
-    expect(trigger.querySelector('svg')).toHaveAttribute('data-state', 'idle')
-    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(record.mock.calls[1]?.[0]).toEqual(record.mock.calls[2]?.[0])
-    expect(trigger.querySelector('svg')).toHaveAttribute('data-state', 'requested')
-  })
+vi.mock('../../privacy/usePrivacy', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../privacy/usePrivacy')>()
+  const notices = [{ key: 'PRIVACY_POLICY', version: 'privacy-2026-10-09-v1' }, { key: 'NOTIFICATION_NOTICE', version: 'notification-2026-10-09-v1' }]
+  return { ...original, usePrivacyNotices: () => ({ notices, error: false, retry: vi.fn() }) }
+})
 
-  it('저장 실패 뒤 창을 닫아도 다시 알림 신청을 시작할 수 있다', async () => {
-    const record = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('실패'))
-      .mockResolvedValue(undefined)
-    render(example({ record }))
-    const trigger = screen.getByRole('button', { name: '서울 단지 알림 받기' })
-    fireEvent.click(trigger)
-    await screen.findByRole('dialog')
-    fireEvent.change(screen.getByRole('textbox', { name: '알림 받을 이메일' }), { target: { value: 'guest@example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: '알림 신청' }))
-    await screen.findByRole('alert')
-    fireEvent.click(screen.getByRole('button', { name: '취소' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(trigger).toHaveFocus()
-    fireEvent.click(trigger)
-    expect(await screen.findByRole('dialog')).toBeVisible()
-  })
+it('빈 저장 응답은 성공으로 표시하지 않고 현재 설정을 다시 확인한다', async () => {
+  const repo = repository(); repo.record.mockResolvedValueOnce(undefined)
+  render(example(repo)); await click()
+  expect(await screen.findByText('처리 결과를 확인하지 못했어요. 현재 알림 설정을 다시 확인해 주세요.')).toBeVisible()
+  await waitFor(() => expect(repo.loadStatus).toHaveBeenCalledTimes(2))
+  expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })

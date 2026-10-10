@@ -7,15 +7,15 @@ import static com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappin
 import static com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason.GEOCODING_ERROR;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
-import com.toadzip.backend.ingest.collection.domain.ExternalDataCollectionFailure;
-import com.toadzip.backend.ingest.collection.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.collection.repository.ExternalDataCollectionFailureRepository;
-import com.toadzip.backend.ingest.collection.repository.ExternalDataFailureStore;
+import com.toadzip.backend.ingest.enrichment.domain.LhAnnouncementEnrichmentFailure;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureRepository;
 import com.toadzip.backend.ingest.enrichment.repository.LhAnnouncementEnrichmentFailureStore;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureRepository;
+import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
+import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
+import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
+import com.toadzip.backend.ingest.failure.repository.ExternalDataFailureStore;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailure;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailure;
 import com.toadzip.backend.ingest.mapping.repository.MyHomeAnnouncementMappingFailureRepository;
@@ -131,14 +131,14 @@ class IngestFailureLifecycleIntegrationTest {
         UUID resolvedExecutionId = UUID.randomUUID();
         UUID recurredExecutionId = UUID.randomUUID();
 
-        announcementStore.replaceAll(List.of(
+        announcementStore.reconcileAfterRun(List.of(
                 announcementFailure("처음 실패", "2026-09-19T00:00:00Z")
         ), firstExecutionId);
-        announcementStore.replaceAll(List.of(
+        announcementStore.reconcileAfterRun(List.of(
                 announcementFailure("같은 실패 반복", "2026-09-19T01:00:00Z")
         ), repeatedExecutionId);
-        announcementStore.replaceAll(List.of(), resolvedExecutionId);
-        announcementStore.replaceAll(List.of(
+        announcementStore.reconcileAfterRun(List.of(), resolvedExecutionId);
+        announcementStore.reconcileAfterRun(List.of(
                 announcementFailure("해결 후 재발", "2026-09-19T03:00:00Z")
         ), recurredExecutionId);
 
@@ -157,53 +157,34 @@ class IngestFailureLifecycleIntegrationTest {
     }
 
     @Test
-    void 단지별_갱신은_해당_단지의_사라진_실패만_해결한다() {
-        complexStore.replaceForComplex(
-                "complex-a",
-                List.of(complexFailure("source-a", "complex-a")),
-                null
-        );
-        complexStore.replaceForComplex(
-                "complex-b",
-                List.of(complexFailure("source-b", "complex-b")),
-                null
-        );
+    void 단지_재정제는_사라진_실패만_해결한다() {
+        complexStore.reconcileAfterRun(List.of(
+                complexFailure("source-a", "complex-a"),
+                complexFailure("source-b", "complex-b")
+        ), null);
 
-        complexStore.replaceForComplex("complex-a", List.of(), null);
+        complexStore.reconcileAfterRun(List.of(complexFailure("source-b", "complex-b")), null);
 
-        assertThat(complexRepository.findAllBySourceComplexIdentifier("complex-a"))
+        assertThat(complexRepository.findAll().stream()
+                .filter(failure -> failure.getSourceComplexIdentifier().equals("complex-a")).toList())
                 .singleElement()
                 .extracting(MyHomeComplexMappingFailure::getStatus)
                 .isEqualTo(RESOLVED);
-        assertThat(complexRepository.findAllBySourceComplexIdentifier("complex-b"))
+        assertThat(complexRepository.findAll().stream()
+                .filter(failure -> failure.getSourceComplexIdentifier().equals("complex-b")).toList())
                 .singleElement()
-                .extracting(MyHomeComplexMappingFailure::getStatus)
-                .isEqualTo(PENDING);
-    }
-
-    @Test
-    void 후보_준비_동기화는_아직_재처리하지_않은_좌표_실패를_해결하지_않는다() {
-        complexStore.replaceForComplex(
-                "complex-a",
-                List.of(complexFailure("source-a", "complex-a")),
-                null
-        );
-
-        complexStore.replacePreparationFailures(List.of(), null);
-
-        assertThat(complexRepository.findAll()).singleElement()
                 .extracting(MyHomeComplexMappingFailure::getStatus)
                 .isEqualTo(PENDING);
     }
 
     @Test
     void LH_보강_실패가_다음_실행에서_사라지면_이력을_삭제하지_않고_해결한다() {
-        enrichmentStore.replaceAll(List.of(LhAnnouncementEnrichmentFailure.create(
+        enrichmentStore.reconcileAfterRun(List.of(LhAnnouncementEnrichmentFailure.create(
                 "source-key", "announcement-id", "pan-id", ANNOUNCEMENT_NOT_FOUND,
                 "공고 없음", Instant.parse("2026-09-19T00:00:00Z")
         )), null);
 
-        enrichmentStore.replaceAll(List.of(), null);
+        enrichmentStore.reconcileAfterRun(List.of(), null);
 
         assertThat(enrichmentRepository.findAll()).singleElement().satisfies(failure -> {
             assertThat(failure.getStatus()).isEqualTo(RESOLVED);

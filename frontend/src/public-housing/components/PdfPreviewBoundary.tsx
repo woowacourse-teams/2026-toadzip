@@ -1,12 +1,14 @@
 import { Component, type ReactNode } from 'react'
 import styles from './AnnouncementAttachments.module.css'
 
-export class PdfPreviewBoundary extends Component<{ readonly children: ReactNode; readonly label?: string }, { readonly failed: boolean }> {
+export class PdfPreviewBoundary extends Component<{ readonly children: ReactNode; readonly label?: string; readonly onFailure?: () => void }, { readonly failed: boolean }> {
   state = { failed: false }
 
   static getDerivedStateFromError() {
     return { failed: true }
   }
+
+  componentDidCatch() { this.props.onFailure?.() }
 
   render() {
     if (this.state.failed) {

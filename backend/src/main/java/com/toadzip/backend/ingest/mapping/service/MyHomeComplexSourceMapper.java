@@ -2,8 +2,8 @@ package com.toadzip.backend.ingest.mapping.service;
 
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
-import com.toadzip.backend.housing.domain.RentalPriceRange;
-import com.toadzip.backend.ingest.collection.domain.MyHomeComplexSource;
+import com.toadzip.backend.housing.domain.MyHomeRentalCondition;
+import com.toadzip.backend.ingest.collection.myhome.complex.domain.projection.MyHomeComplexSource;
 import com.toadzip.backend.ingest.location.domain.GeocodedRoadAddress;
 import com.toadzip.backend.ingest.location.domain.NormalizedRoadAddress;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeComplexMappingFailureReason;
@@ -85,24 +85,7 @@ public class MyHomeComplexSourceMapper {
                 corridorType,
                 elevatorInstalled,
                 parkingSpaceCount,
-                rentalPriceRange(sources),
                 housingTypes
-        );
-    }
-
-    public RentalPriceRange rentalPriceRange(List<MyHomeComplexSource> sources) {
-        List<Long> deposits = sources.stream().map(MyHomeComplexSource::getBassRentGtn)
-                .filter(value -> value != null && value >= 0).toList();
-        List<Long> monthlyRents = sources.stream().map(MyHomeComplexSource::getBassMtRntchrg)
-                .filter(value -> value != null && value >= 0).toList();
-        if (deposits.isEmpty() && monthlyRents.isEmpty()) {
-            return null;
-        }
-        return new RentalPriceRange(
-                deposits.stream().min(Long::compareTo).orElse(null),
-                deposits.stream().max(Long::compareTo).orElse(null),
-                monthlyRents.stream().min(Long::compareTo).orElse(null),
-                monthlyRents.stream().max(Long::compareTo).orElse(null)
         );
     }
 
@@ -131,84 +114,95 @@ public class MyHomeComplexSourceMapper {
                 source.getSourceKey(),
                 name,
                 exclusiveArea,
-                supplyArea
+                supplyArea,
+                source.getCollectedAt() == null ? null : new MyHomeRentalCondition(
+                        nonNegativeAmount(source.getBassRentGtn()),
+                        nonNegativeAmount(source.getBassMtRntchrg()),
+                        source.getCollectedAt())
         );
     }
 
-}
-
-record MyHomeComplexMappingData(
-        String sourceComplexIdentifier,
-        String name,
-        String supplyType,
-        MyHomeAddressMappingData address,
-        int totalHouseholdCount,
-        String provider,
-        LocalDate completionDate,
-        String heatingType,
-        String housingType,
-        String corridorType,
-        Boolean elevatorInstalled,
-        int parkingSpaceCount,
-        RentalPriceRange rentalPriceRange,
-        List<MyHomeHousingTypeMappingData> housingTypes
-) {
-
-    boolean matchesVerifiedProduct(HousingComplex product) {
-        return name.equals(product.getName()) && provider.equals(product.getProvider())
-                && supplyType.equals(product.getSupplyType())
-                && address.pnu().equals(product.getAddress().getPnu())
-                && address.provinceCode().equals(product.getAddress().getProvinceCode())
-                && address.cityCountyDistrictCode().equals(product.getAddress().getCityCountyDistrictCode())
-                && new NormalizedRoadAddress(address.sourceRoadAddress()).matches(product.getAddress().getRoadAddress())
-                && Objects.equals(completionDate, product.getCompletionDate())
-                && Objects.equals(heatingType, product.getHeatingType())
-                && Objects.equals(housingType, product.getHousingType())
-                && Objects.equals(corridorType, product.getCorridorType())
-                && Objects.equals(elevatorInstalled, product.getElevatorInstalled())
-                && parkingSpaceCount == product.getParkingSpaceCount();
-    }
-}
-
-record MyHomeAddressMappingData(
-        String sourceRoadAddress,
-        String pnu,
-        String legalDongCode,
-        String provinceCode,
-        String cityCountyDistrictCode
-) {
-
-    Address resolve(GeocodedRoadAddress geocodedAddress) {
-        return Address.create(
-                geocodedAddress.roadAddress(),
-                pnu,
-                legalDongCode,
-                provinceCode,
-                cityCountyDistrictCode,
-                geocodedAddress.latitude(),
-                geocodedAddress.longitude()
-        );
-    }
-}
-
-record MyHomeHousingTypeMappingData(
-        String sourceHousingTypeIdentifier,
-        String name,
-        BigDecimal exclusiveArea,
-        BigDecimal supplyArea
-) {
-}
-
-class MyHomeComplexMappingRejectedException extends RuntimeException {
-
-    private final MyHomeComplexMappingFailureReason reason;
-
-    MyHomeComplexMappingRejectedException(MyHomeComplexMappingFailureReason reason, String detail) {
-        super(detail);
-        this.reason = reason;
+    private Long nonNegativeAmount(Long amount) {
+        if (amount == null || amount < 0) {
+            return null;
+        }
+        return amount;
     }
 
-    MyHomeComplexMappingFailureReason reason() {
-        return reason;
+    record MyHomeComplexMappingData(
+            String sourceComplexIdentifier,
+            String name,
+            String supplyType,
+            MyHomeAddressMappingData address,
+            int totalHouseholdCount,
+            String provider,
+            LocalDate completionDate,
+            String heatingType,
+            String housingType,
+            String corridorType,
+            Boolean elevatorInstalled,
+            int parkingSpaceCount,
+            List<MyHomeHousingTypeMappingData> housingTypes
+    ) {
+
+        boolean matchesVerifiedProduct(HousingComplex product) {
+            return name.equals(product.getName()) && provider.equals(product.getProvider())
+                    && supplyType.equals(product.getSupplyType())
+                    && address.pnu().equals(product.getAddress().getPnu())
+                    && address.provinceCode().equals(product.getAddress().getProvinceCode())
+                    && address.cityCountyDistrictCode().equals(product.getAddress().getCityCountyDistrictCode())
+                    && new NormalizedRoadAddress(address.sourceRoadAddress())
+                            .matches(product.getAddress().getRoadAddress())
+                    && Objects.equals(completionDate, product.getCompletionDate())
+                    && Objects.equals(heatingType, product.getHeatingType())
+                    && Objects.equals(housingType, product.getHousingType())
+                    && Objects.equals(corridorType, product.getCorridorType())
+                    && Objects.equals(elevatorInstalled, product.getElevatorInstalled())
+                    && parkingSpaceCount == product.getParkingSpaceCount();
+        }
+    }
+
+    record MyHomeAddressMappingData(
+            String sourceRoadAddress,
+            String pnu,
+            String legalDongCode,
+            String provinceCode,
+            String cityCountyDistrictCode
+    ) {
+
+        Address resolve(GeocodedRoadAddress geocodedAddress) {
+            return Address.create(
+                    geocodedAddress.roadAddress(),
+                    pnu,
+                    legalDongCode,
+                    provinceCode,
+                    cityCountyDistrictCode,
+                    geocodedAddress.latitude(),
+                    geocodedAddress.longitude()
+            );
+        }
+    }
+
+    record MyHomeHousingTypeMappingData(
+            String sourceHousingTypeIdentifier,
+            String name,
+            BigDecimal exclusiveArea,
+            BigDecimal supplyArea,
+            MyHomeRentalCondition basicRentalCondition
+    ) {
+    }
+
+    static class MyHomeComplexMappingRejectedException extends RuntimeException {
+
+        private final MyHomeComplexMappingFailureReason reason;
+
+        MyHomeComplexMappingRejectedException(MyHomeComplexMappingFailureReason reason, String detail) {
+            super(detail);
+            this.reason = reason;
+        }
+
+        MyHomeComplexMappingFailureReason reason() {
+            return reason;
+        }
     }
 }

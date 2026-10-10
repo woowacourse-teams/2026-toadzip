@@ -3,11 +3,10 @@ package com.toadzip.backend.ingest.pipeline.service;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineWorkProgress;
-import com.toadzip.backend.ingest.pipeline.dto.DataPipelineCompletedStepResponse;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineExecutionResponse;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineFailureResponse;
-import com.toadzip.backend.ingest.pipeline.dto.DataPipelinePartiallyFailedStepResponse;
 import com.toadzip.backend.ingest.pipeline.dto.DataPipelineSkippedStepResponse;
+import com.toadzip.backend.ingest.pipeline.dto.DataPipelineStepReportResponse;
 import java.util.List;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
@@ -37,7 +36,7 @@ public class DataPipelineExecutionMapper {
                 execution.getStatus(),
                 currentStep,
                 stepName(currentStep),
-                currentStepIndex(currentStep),
+                currentStepIndex(execution),
                 execution.getType().steps().size(),
                 completedSteps,
                 completedStepResponses(execution),
@@ -50,16 +49,17 @@ public class DataPipelineExecutionMapper {
                 execution.getExternalRequestCount(),
                 execution.getLastRequestDescription(),
                 execution.getLastProgressAt(),
-                workProgress(execution)
+                workProgress(execution),
+                execution.getTargetAnnouncementIdentifier()
         );
     }
 
-    private List<DataPipelinePartiallyFailedStepResponse> partiallyFailedStepResponses(
+    private List<DataPipelineStepReportResponse> partiallyFailedStepResponses(
             DataPipelineExecution execution
     ) {
         return execution.getPartiallyFailedSteps()
                 .stream()
-                .map(partiallyFailedStep -> new DataPipelinePartiallyFailedStepResponse(
+                .map(partiallyFailedStep -> new DataPipelineStepReportResponse(
                         partiallyFailedStep.getStep(),
                         partiallyFailedStep.getStep().displayName(),
                         deserializeReport(partiallyFailedStep.getReport())
@@ -67,12 +67,12 @@ public class DataPipelineExecutionMapper {
                 .toList();
     }
 
-    private List<DataPipelineCompletedStepResponse> completedStepResponses(
+    private List<DataPipelineStepReportResponse> completedStepResponses(
             DataPipelineExecution execution
     ) {
         return execution.getCompletedStepResults()
                 .stream()
-                .map(completedStep -> new DataPipelineCompletedStepResponse(
+                .map(completedStep -> new DataPipelineStepReportResponse(
                         completedStep.getStep(),
                         completedStep.getStep().displayName(),
                         deserializeReport(completedStep.getReport())
@@ -104,11 +104,12 @@ public class DataPipelineExecutionMapper {
         );
     }
 
-    private int currentStepIndex(DataPipelineStep currentStep) {
+    private int currentStepIndex(DataPipelineExecution execution) {
+        DataPipelineStep currentStep = execution.getCurrentStep();
         if (currentStep == null) {
             return 0;
         }
-        return currentStep.sequence();
+        return execution.getType().sequenceOf(currentStep);
     }
 
     private String stepName(DataPipelineStep step) {

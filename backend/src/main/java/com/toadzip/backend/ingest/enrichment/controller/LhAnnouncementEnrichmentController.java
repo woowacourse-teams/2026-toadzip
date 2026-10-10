@@ -28,11 +28,6 @@ public class LhAnnouncementEnrichmentController {
         return ResponseEntity.ok(enrichmentService.enrichAll());
     }
 
-    @GetMapping("/failures")
-    public ResponseEntity<List<LhAnnouncementEnrichmentFailureResponse>> findFailures() {
-        return ResponseEntity.ok(enrichmentService.findFailures());
-    }
-
     @GetMapping("/failures/page")
     public ResponseEntity<List<LhAnnouncementEnrichmentFailureResponse>> findFailurePage(
             @RequestParam(defaultValue = "0") @Min(0) int page,

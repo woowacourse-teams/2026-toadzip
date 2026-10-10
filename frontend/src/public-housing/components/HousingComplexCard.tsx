@@ -1,5 +1,6 @@
+import { toHttpUrl } from '../presentation/httpUrl.ts'
 import { MISSING_DATA_LABEL } from '../presentation/missingData.ts'
-import { formatHousingMoney } from '../presentation/housingMoney.ts'
+import { formatAmount } from '../presentation/mapMarkerAmount.ts'
 import { useRef, useState, type FocusEvent } from 'react'
 import { AnnouncementStatusBadge } from './AnnouncementStatusBadge'
 import styles from './HousingComplexCard.module.css'
@@ -56,7 +57,7 @@ export function HousingComplexCard({
   const announcement = complex.representativeAnnouncement?.applicationStatus === 'CLOSED'
     ? null
     : complex.representativeAnnouncement
-  const safeImageUrl = safeHttpUrl(complex.thumbnailImageUrl)
+  const safeImageUrl = toHttpUrl(complex.thumbnailImageUrl)
   const [imageLoadState, setImageLoadState] = useState<{
     readonly failed: boolean
     readonly url: string | null
@@ -201,12 +202,14 @@ function ComplexConditions({ complex }: { complex: HousingComplexCardData }) {
   const deposit = formatRange(
     complex.depositMin,
     complex.depositMax,
-    formatHousingMoney,
+    (value) => formatAmount(value, 'COMPACT'),
+    '-',
   )
   const monthlyRent = formatRange(
     complex.monthlyRentMin,
     complex.monthlyRentMax,
-    formatHousingMoney,
+    (value) => formatAmount(value, 'COMPACT'),
+    '-',
   )
   const area = formatRange(
     complex.exclusiveAreaMin,
@@ -303,10 +306,11 @@ function formatRange(
   minimum: number | null,
   maximum: number | null,
   formatter: (value: number) => string,
+  missingLabel = MISSING_DATA_LABEL,
 ): RangePresentation {
   const values = [minimum, maximum].filter(isValidRangeValue)
   if (values.length === 0) {
-    return { accessible: MISSING_DATA_LABEL, visible: MISSING_DATA_LABEL }
+    return { accessible: missingLabel, visible: missingLabel }
   }
 
   const first = formatter(values[0])
@@ -407,19 +411,4 @@ function agencyTone(code: string | null) {
     return code
   }
   return 'unknown'
-}
-
-function safeHttpUrl(value: string | null) {
-  if (!value) {
-    return null
-  }
-  try {
-    const url = new URL(value)
-    if (url.protocol === 'http:' || url.protocol === 'https:') {
-      return url.href
-    }
-  } catch {
-    return null
-  }
-  return null
 }

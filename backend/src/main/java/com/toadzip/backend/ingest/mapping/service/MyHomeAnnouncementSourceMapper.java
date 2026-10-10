@@ -7,8 +7,9 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.SupplyCategory;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
-import com.toadzip.backend.ingest.collection.domain.MyHomeAnnouncementSource;
+import com.toadzip.backend.ingest.collection.myhome.announcement.domain.projection.MyHomeAnnouncementSource;
 import com.toadzip.backend.ingest.mapping.domain.MyHomeAnnouncementMappingFailureReason;
+import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementCommonValuesMapper.MyHomeAnnouncementCommonValues;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -29,6 +30,15 @@ public class MyHomeAnnouncementSourceMapper {
     }
 
     public MyHomeAnnouncementMappingData map(List<MyHomeAnnouncementSource> sources) {
+        java.util.Map<String, Object> identities = new java.util.HashMap<>();
+        for (MyHomeAnnouncementSource source : sources) {
+            Object previous = identities.putIfAbsent(source.getSourceKey(), source.snapshot());
+            if (previous != null && !previous.equals(source.snapshot())) {
+                throw new MyHomeAnnouncementMappingRejectedException(
+                        MyHomeAnnouncementMappingFailureReason.CONFLICTING_SOURCE_VALUE,
+                        "같은 공고·주택 식별자에 서로 다른 원천 응답이 있습니다.");
+            }
+        }
         MyHomeAnnouncementCommonValues common = commonValuesMapper.map(sources);
         List<MyHomeSupplyRowMappingData> supplyRows = ordered(sources).stream()
                 .map(source -> supplyRowOf(source, common.name(), common.sourceSupplyType()))
@@ -48,8 +58,7 @@ public class MyHomeAnnouncementSourceMapper {
                 common.originalUrl(),
                 ReceptionPlace.create(common.sourceProvider(), ReceptionMethod.ONLINE, null,
                         common.contact(), common.originalUrl()),
-                supplyRows,
-                false
+                supplyRows
         );
     }
 
@@ -86,96 +95,78 @@ public class MyHomeAnnouncementSourceMapper {
         ).thenComparing(MyHomeAnnouncementSource::getId, Comparator.nullsLast(Comparator.naturalOrder())));
         return ordered;
     }
-}
 
-record MyHomeAnnouncementMappingData(
-        String sourceAnnouncementIdentifier,
-        String previousSourceAnnouncementIdentifier,
-        String name,
-        AnnouncementPublicationType publicationType,
-        RentalType rentalType,
-        RecruitmentType recruitmentType,
-        AgencyCode provider,
-        LocalDate postedDate,
-        LocalDate applicationStartDate,
-        LocalDate applicationEndDate,
-        LocalDate winnerAnnouncementDate,
-        String originalUrl,
-        ReceptionPlace receptionPlace,
-        List<MyHomeSupplyRowMappingData> supplyRows,
-        boolean preserveExistingLhResolvedRows
-) {
-
-    MyHomeAnnouncementMappingData withSupplyRows(List<MyHomeSupplyRowMappingData> resolvedSupplyRows) {
-        return new MyHomeAnnouncementMappingData(
-                sourceAnnouncementIdentifier,
-                previousSourceAnnouncementIdentifier,
-                name,
-                publicationType,
-                rentalType,
-                recruitmentType,
-                provider,
-                postedDate,
-                applicationStartDate,
-                applicationEndDate,
-                winnerAnnouncementDate,
-                originalUrl,
-                receptionPlace,
-                resolvedSupplyRows,
-                false
-        );
-    }
-
-    MyHomeAnnouncementMappingData preservingExistingLhResolvedRows() {
-        return new MyHomeAnnouncementMappingData(
-                sourceAnnouncementIdentifier,
-                previousSourceAnnouncementIdentifier,
-                name,
-                publicationType,
-                rentalType,
-                recruitmentType,
-                provider,
-                postedDate,
-                applicationStartDate,
-                applicationEndDate,
-                winnerAnnouncementDate,
-                originalUrl,
-                receptionPlace,
-                supplyRows,
-                true
-        );
-    }
-}
-
-record MyHomeSupplyRowMappingData(
-        MyHomeAnnouncementSource source,
-        String sourceSupplyRowIdentifier,
-        String sourceComplexName,
-        String sourceHousingTypeName,
-        String pnu,
-        String complexSupplyType,
-        SupplyCategory supplyCategory,
-        Integer totalSupplyHouseholdCount,
-        BigDecimal exclusiveArea,
-        BigDecimal supplyArea,
-        Integer lhTotalSupplyHouseholdCount,
-        String resolvedLhSourceIdentifier
-) {
-}
-
-class MyHomeAnnouncementMappingRejectedException extends RuntimeException {
-
-    private final MyHomeAnnouncementMappingFailureReason reason;
-
-    MyHomeAnnouncementMappingRejectedException(
-            MyHomeAnnouncementMappingFailureReason reason,
-            String detail
+    record MyHomeAnnouncementMappingData(
+            String sourceAnnouncementIdentifier,
+            String previousSourceAnnouncementIdentifier,
+            String name,
+            AnnouncementPublicationType publicationType,
+            RentalType rentalType,
+            RecruitmentType recruitmentType,
+            AgencyCode provider,
+            LocalDate postedDate,
+            LocalDate applicationStartDate,
+            LocalDate applicationEndDate,
+            LocalDate winnerAnnouncementDate,
+            String originalUrl,
+            ReceptionPlace receptionPlace,
+            List<MyHomeSupplyRowMappingData> supplyRows
     ) {
-        super(detail);
-        this.reason = reason;
+
+        MyHomeAnnouncementMappingData withSupplyRows(List<MyHomeSupplyRowMappingData> resolvedSupplyRows) {
+            return new MyHomeAnnouncementMappingData(
+                    sourceAnnouncementIdentifier,
+                    previousSourceAnnouncementIdentifier,
+                    name,
+                    publicationType,
+                    rentalType,
+                    recruitmentType,
+                    provider,
+                    postedDate,
+                    applicationStartDate,
+                    applicationEndDate,
+                    winnerAnnouncementDate,
+                    originalUrl,
+                    receptionPlace,
+                    resolvedSupplyRows
+            );
+        }
     }
 
-    MyHomeAnnouncementMappingFailureReason reason() {
-        return reason;
+    record MyHomeSupplyRowMappingData(
+            MyHomeAnnouncementSource source,
+            String sourceSupplyRowIdentifier,
+            String sourceComplexName,
+            String sourceHousingTypeName,
+            String pnu,
+            String complexSupplyType,
+            SupplyCategory supplyCategory,
+            Integer totalSupplyHouseholdCount,
+            BigDecimal exclusiveArea,
+            BigDecimal supplyArea,
+            Integer lhTotalSupplyHouseholdCount,
+            String resolvedLhSourceIdentifier
+    ) {
+        String matchingIdentity() {
+            return source.snapshot() + ":" + sourceSupplyRowIdentifier + ":" + sourceHousingTypeName
+                    + ":" + exclusiveArea + ":" + supplyArea + ":" + resolvedLhSourceIdentifier;
+        }
+    }
+
+    static class MyHomeAnnouncementMappingRejectedException extends RuntimeException {
+
+        private final MyHomeAnnouncementMappingFailureReason reason;
+
+        MyHomeAnnouncementMappingRejectedException(
+                MyHomeAnnouncementMappingFailureReason reason,
+                String detail
+        ) {
+            super(detail);
+            this.reason = reason;
+        }
+
+        MyHomeAnnouncementMappingFailureReason reason() {
+            return reason;
+        }
     }
 }

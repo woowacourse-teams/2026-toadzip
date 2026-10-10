@@ -7,6 +7,8 @@ export interface MapMarkerAmount extends MapMarkerAmountParts {
 }
 
 export interface MapMarkerPresentation {
+  readonly applicationStatus?: 'BEFORE_APPLICATION' | 'APPLYING' | null
+  readonly exclusiveAreaLabel?: string
   readonly agencyLabel: string
   readonly agencyName: string
   readonly rentalTypeLabel: string
@@ -47,21 +49,31 @@ export function presentMapComplexMarker(
     complex.rentalType,
     complex.depositMin,
     complex.monthlyRentMin,
+    complex.exclusiveAreaMin,
+    complex.exclusiveAreaMax,
+    complex.applicationStatus,
   )
 }
 
 export function presentComplexDetailMarker(
   detail: DetailMarkerSource,
 ): MapMarkerPresentation {
+  const areas = detail.housingTypes?.map(({ exclusiveArea }) => exclusiveArea)
+    .filter(isValidArea) ?? []
   return presentMarker(
     detail.agency,
     detail.rentalType,
     detail.depositMin,
     detail.monthlyRentMin,
+    areas.length > 0 ? Math.min(...areas) : null,
+    areas.length > 0 ? Math.max(...areas) : null,
+    // Detail currentAnnouncements excludes closed announcements, so it cannot identify the map representative.
+    null,
   )
 }
 
 interface DetailMarkerSource {
+  readonly housingTypes?: readonly { readonly exclusiveArea: number | null }[]
   readonly agency: HousingAgency | null
   readonly depositMin: number | null
   readonly monthlyRentMin: number | null
@@ -73,10 +85,16 @@ function presentMarker(
   rentalType: string | null,
   deposit: number | null,
   monthlyRent: number | null,
+  areaMin: number | null,
+  areaMax: number | null,
+  applicationStatus: string | null | undefined,
 ): MapMarkerPresentation {
   const agencyPresentation = presentAgency(agency)
   const rentalTypePresentation = presentRentalType(rentalType)
   return {
+    applicationStatus: applicationStatus === 'APPLYING' || applicationStatus === 'BEFORE_APPLICATION'
+      ? applicationStatus : null,
+    exclusiveAreaLabel: presentAreaRange(areaMin, areaMax),
     agencyLabel: agencyPresentation.label,
     agencyName: agencyPresentation.name,
     rentalTypeLabel: rentalTypePresentation.label,
@@ -84,6 +102,18 @@ function presentMarker(
     deposit: presentAmount(deposit),
     monthlyRent: presentAmount(monthlyRent),
   }
+}
+
+function isValidArea(value: number | null): value is number {
+  return value !== null && Number.isFinite(value) && value >= 0
+}
+
+function presentAreaRange(minimum: number | null, maximum: number | null) {
+  const values = [minimum, maximum].filter(isValidArea)
+  if (values.length === 0) return MISSING_DATA_LABEL
+  const labels = values.map(value => value.toLocaleString('ko-KR', { maximumFractionDigits: 2 }))
+  return values.length === 1 || values[0] === values[1]
+    ? `${labels[0]}㎡` : `${labels[0]} ~ ${labels[1]}㎡`
 }
 
 function presentAgency(agency: HousingAgency | null): MarkerName {

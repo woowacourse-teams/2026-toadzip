@@ -1,3 +1,5 @@
+import type { NotificationInterestRepository } from '../interest/notificationInterestRepository'
+import { MemoryRouter } from 'react-router'
 /// <reference types="node" />
 
 import '@testing-library/jest-dom/vitest'
@@ -18,19 +20,54 @@ import {
 import { NotificationInterestProvider } from '../interest/NotificationInterest'
 
 describe('HousingAnnouncementDetailPanel', () => {
-  it('이메일 신청을 마친 뒤 공고 알림 클릭을 기록한다', async () => {
-    localStorage.setItem('toadzip.notification-interest.email-confirmed', '1')
-    const record = vi.fn().mockResolvedValue(undefined)
+  it('두 섹션의 면적 버튼을 동기화하고 단지 탭 변경과 왕복 전환에 원본 면적을 보존한다', () => {
+    const firstRow = supplyRow()
+    render(<HousingAnnouncementDetailPanel detail={detail({ supplyRows: [
+      firstRow,
+      supplyRow({ supplyRowId: 'larger', housingType: { ...firstRow.housingType!, housingTypeId: 'larger', exclusiveArea: 44.1 } }),
+      detail().supplyRows[1],
+    ] })} onClose={vi.fn()} />)
+    expect(screen.getAllByRole('button', { name: '평 전환' })).toHaveLength(2)
+    fireEvent.click(screen.getAllByRole('button', { name: '평 전환' })[0])
+    expect(screen.getAllByRole('button', { name: '㎡ 전환' })).toHaveLength(2)
+    const complex = screen.getByRole('article', { name: '새솔마을 단지 비교' })
+    expect(within(complex).getByText('10.95평 – 13.34평')).toBeVisible()
+    expect(screen.getByRole('cell', { name: '10.95평' })).toBeVisible()
+    fireEvent.click(screen.getByRole('tab', { name: /봇들마을/ }))
+    expect(screen.getByRole('cell', { name: '13.34평' })).toBeVisible()
+    fireEvent.click(screen.getAllByRole('button', { name: '㎡ 전환' })[1])
+    expect(screen.getAllByRole('button', { name: '평 전환' })).toHaveLength(2)
+    expect(within(complex).getByText('36.2㎡ – 44.1㎡')).toBeVisible()
+    expect(screen.getByRole('cell', { name: '44.1㎡' })).toBeVisible()
+  })
+
+  it('평 전환 시 누락된 면적을 0평으로 만들지 않고 실제 0은 보존한다', () => {
+    const row = supplyRow()
+    render(<HousingAnnouncementDetailPanel detail={detail({ supplyRows: [
+      supplyRow({ housingType: null, sourceHousingTypeName: '미확인형' }),
+      supplyRow({ supplyRowId: 'zero', housingType: { ...row.housingType!, exclusiveArea: 0 } }),
+    ] })} onClose={vi.fn()} />)
+    fireEvent.click(screen.getAllByRole('button', { name: '평 전환' })[0])
+    expect(screen.getByRole('cell', { name: '0평' })).toBeVisible()
+    const missing = screen.getByRole('article', { name: '새솔마을 미확인형 주택형' })
+    expect(within(missing).getByRole('cell', { name: '공고문 확인' })).toBeVisible()
+  })
+
+  it('회원은 이메일 없이 공고 알림을 저장한다', async () => {
+    const record = vi.fn<NotificationInterestRepository['record']>().mockImplementation(async event => ({ ...event, outcome: 'ACTIVATED', occurredAt: '2026-10-09T00:00:00Z', settingsRevision: 1, currentTarget: { active: true, expiresAt: '2027-04-07T00:00:00Z', noticeVersion: 'notification-2026-10-09-v1', requestedAt: '2026-10-09T00:00:00Z' } }))
     render(
-      <NotificationInterestProvider repository={{ record }}>
+      <MemoryRouter><NotificationInterestProvider repository={{ record, loadStatus: async () => ({ userId: '1', settingsRevision: 0, targets: [] }) }}>
         <HousingAnnouncementDetailPanel detail={detail()} onClose={vi.fn()} />
-      </NotificationInterestProvider>,
+      </NotificationInterestProvider></MemoryRouter>,
     )
+    await waitFor(() => expect(screen.getByRole('button', { name: '성남 행복주택 예비입주자 모집 알림 받기' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: '성남 행복주택 예비입주자 모집 알림 받기' }))
+    expect(record).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByRole('button', { name: '신청하기' }))
     await waitFor(() => expect(record).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'CLICKED', source: 'ANNOUNCEMENT_DETAIL', targetType: 'ANNOUNCEMENT', targetId: '201',
+      eventType: 'CONFIRMED', source: 'ANNOUNCEMENT_DETAIL', targetType: 'ANNOUNCEMENT', targetId: '201',
     })))
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: '알림 기능을 준비하고 있어요' })).toBeVisible()
     localStorage.clear()
   })
 
@@ -457,8 +494,8 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(firstComplex).getByText('1,046세대')).toBeVisible()
     expect(within(firstComplex).getByText('12세대')).toBeVisible()
     expect(within(firstComplex).getByText('36.2㎡')).toBeVisible()
-    expect(within(firstComplex).getByText('3,200만원')).toBeVisible()
-    expect(within(firstComplex).getByText('12.8만원')).toBeVisible()
+    expect(within(firstComplex).getByText('32,000,000원')).toBeVisible()
+    expect(within(firstComplex).getByText('128,000원')).toBeVisible()
 
     const firstHousingType = within(panel).getByRole('article', { name: '새솔마을 36A 주택형' })
     expect(within(firstHousingType).queryByText(/평면도/)).not.toBeInTheDocument()
@@ -620,7 +657,7 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(dialog).queryByText(/3D 평면도/)).not.toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: '평면도 닫기' })).toHaveFocus()
 
-    fireEvent.keyDown(dialog, { key: 'Escape' })
+    expect(fireEvent.keyDown(dialog, { key: 'Escape' })).toBe(false)
     expect(screen.queryByRole('dialog', { name: '44B 평면도' })).not.toBeInTheDocument()
     await waitFor(() => expect(openFloorPlan).toHaveFocus())
   })
@@ -757,15 +794,15 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(conditions).getByRole('cell', { name: '무주택 세대구성원' }))
       .toHaveAttribute('colspan', '3')
     expect(within(conditions).getByRole('rowheader', { name: '모집 예비자 수' })).toBeVisible()
-    expect(within(conditions).getByRole('cell', { name: '3,200만원' }))
+    expect(within(conditions).getByRole('cell', { name: '32,000,000원' }))
       .toHaveAttribute('data-emphasis', 'true')
-    expect(within(conditions).getByRole('cell', { name: '3,200만원' }))
+    expect(within(conditions).getByRole('cell', { name: '32,000,000원' }))
       .toHaveAttribute('headers', within(conditions).getByRole('rowheader', { name: '보증금' }).id)
-    expect(within(conditions).getByRole('cell', { name: '12.8만원' }))
+    expect(within(conditions).getByRole('cell', { name: '128,000원' }))
       .toHaveAttribute('data-numeric', 'true')
   })
 
-  it('만원·억 금액과 긴 범위를 표시하고 월 임대료의 월 접두사를 반복하지 않는다', () => {
+  it('원 단위 전체 금액과 긴 범위를 표시하고 월 임대료의 월 접두사를 반복하지 않는다', () => {
     const baseRow = supplyRow()
     const baseTarget = baseRow.targets[0]!
     render(
@@ -781,15 +818,15 @@ describe('HousingAnnouncementDetailPanel', () => {
     )
 
     const complex = screen.getByRole('article', { name: '새솔마을 단지 비교' })
-    const range = within(complex).getByText('1,800만원 – 1.8억')
+    const range = within(complex).getByText('18,000,000원 – 180,000,000원')
     expect(range.closest('[data-wide]')).toHaveAttribute('data-wide', 'true')
     const young = screen.getByRole('table', { name: '청년 공급 조건' })
-    expect(within(young).getByRole('cell', { name: '1,800만원' })).toBeVisible()
-    expect(within(young).getByRole('cell', { name: '18만원' })).toBeVisible()
+    expect(within(young).getByRole('cell', { name: '18,000,000원' })).toBeVisible()
+    expect(within(young).getByRole('cell', { name: '180,000원' })).toBeVisible()
     const newlywed = screen.getByRole('table', { name: '신혼부부 공급 조건' })
-    expect(within(newlywed).getByRole('cell', { name: '1.8억' })).toBeVisible()
+    expect(within(newlywed).getByRole('cell', { name: '180,000,000원' })).toBeVisible()
     expect(within(newlywed).getByRole('cell', { name: '0원' })).toBeVisible()
-    expect(screen.queryByText('월 18만원')).not.toBeInTheDocument()
+    expect(screen.queryByText('월 180,000원')).not.toBeInTheDocument()
   })
 
   it('상단 공고 정보는 항목명 접두어 없이 기존 값과 접근성 설명을 유지한다', () => {
@@ -1004,3 +1041,8 @@ function legacySchedule(
   return { scheduleId: 'application', type: 'APPLICATION', typeLabel: '접수', name: null,
     startAt: '2026-09-28T10:00:00', endAt: '2026-09-28T16:10:00', ...overrides }
 }
+
+vi.mock('../../privacy/usePrivacy', () => {
+  const notices = [{ key: 'NOTIFICATION_NOTICE', version: 'notification-2026-10-09-v1' }]
+  return { usePrivacyNotices: () => ({ notices, error: false, retry: vi.fn() }) }
+})

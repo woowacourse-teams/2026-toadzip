@@ -4,6 +4,7 @@ import com.toadzip.backend.ingest.location.domain.LocationSummaryRecord;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.Objects;
 import javax.sql.DataSource;
 import org.postgresql.PGConnection;
 import org.postgresql.copy.CopyIn;
@@ -34,7 +35,7 @@ public class LocationSummaryStore {
 
     public long count() {
         Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM road_address_locations", Long.class);
-        return count == null ? 0 : count;
+        return Objects.requireNonNullElse(count, 0L);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -111,7 +112,7 @@ public class LocationSummaryStore {
         }
 
         private static String nullable(Object value) {
-            return value == null ? "\\N" : value.toString();
+            return Objects.toString(value, "\\N");
         }
 
         private static String escape(String value) {

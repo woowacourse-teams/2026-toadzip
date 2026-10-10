@@ -34,7 +34,8 @@ public class RoadAddressGeocodingService {
         if (locations.isEmpty()) {
             throw new RoadAddressGeocodingException(
                     ADDRESS_NOT_FOUND,
-                    "선별 적재된 위치정보요약DB에서 도로명주소를 찾지 못했습니다."
+                    "선별 적재된 위치정보요약DB에서 도로명주소를 찾지 못했습니다. "
+                            + "새 단지 주소를 수집했다면 위치정보요약DB ZIP을 다시 업로드하세요."
             );
         }
         RoadAddressLocation resolved = locations.stream()

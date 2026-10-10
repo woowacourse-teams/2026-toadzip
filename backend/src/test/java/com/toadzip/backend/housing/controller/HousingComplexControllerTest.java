@@ -461,6 +461,8 @@ class HousingComplexControllerTest {
                         "floorPlan3dImageUrl",
                         "isDuplex",
                         "maintenanceFee",
+                        "totalHouseholdCount",
+                        "basicRentalCondition",
                         "currentSupplyConditions"
                 )))
                 .andExpect(jsonPath("$.data.housingTypes[0].currentSupplyConditions[0].keys()",
@@ -591,6 +593,8 @@ class HousingComplexControllerTest {
                         "https://example.com/floor.png",
                         null,
                         false,
+                        null,
+                        null,
                         null,
                         List.of(new CurrentSupplyConditionResponse(
                                 "청년",

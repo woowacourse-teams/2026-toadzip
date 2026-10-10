@@ -2,10 +2,12 @@ package com.toadzip.backend.ingest.collection.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.toadzip.backend.ingest.collection.domain.ExternalDataCollectionFailure;
-import com.toadzip.backend.ingest.collection.domain.ExternalDataFailureStatus;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
+import com.toadzip.backend.ingest.failure.domain.ExternalDataCollectionFailure;
+import com.toadzip.backend.ingest.failure.domain.ExternalDataFailureStatus;
+import com.toadzip.backend.ingest.failure.repository.ExternalDataCollectionFailureRepository;
+import com.toadzip.backend.ingest.failure.repository.ExternalDataFailureStore;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;

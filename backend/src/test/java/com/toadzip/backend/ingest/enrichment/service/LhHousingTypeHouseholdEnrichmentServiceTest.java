@@ -7,9 +7,9 @@ import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
-import com.toadzip.backend.ingest.collection.domain.LhCatalogSource;
-import com.toadzip.backend.ingest.collection.domain.LhCatalogSourceSnapshot;
-import com.toadzip.backend.ingest.collection.repository.LhCatalogSourceRepository;
+import com.toadzip.backend.ingest.collection.fixture.repository.LhLeaseCatalogSourceFixtures;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.LhCatalogSource;
+import com.toadzip.backend.ingest.collection.lh.leasecatalog.domain.projection.LhCatalogSourceSnapshot;
 import com.toadzip.backend.ingest.enrichment.domain.LhHouseholdEnrichmentFailureReason;
 import com.toadzip.backend.ingest.enrichment.repository.LhHouseholdEnrichmentFailureRepository;
 import java.math.BigDecimal;
@@ -29,7 +29,7 @@ class LhHousingTypeHouseholdEnrichmentServiceTest {
     private LhHousingTypeHouseholdEnrichmentService service;
 
     @Autowired
-    private LhCatalogSourceRepository sourceRepository;
+    private LhLeaseCatalogSourceFixtures sourceRepository;
 
     @Autowired
     private HousingComplexRepository complexRepository;

@@ -25,6 +25,16 @@ import org.springframework.transaction.annotation.Transactional;
 @ActiveProfiles("test")
 @Transactional
 class AdminManagementIntegrationTest {
+
+    @Autowired
+    private com.toadzip.backend.user.repository.UserRepository memberRepository;
+
+    private String memberId() {
+        var member = com.toadzip.backend.user.domain.User.create(
+                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        return memberRepository.saveAndFlush(member).getId().toString();
+    }
+
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     private com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService ownership;
 
@@ -45,6 +55,87 @@ class AdminManagementIntegrationTest {
                 .andExpect(status().isOk());
         mvc.perform(get("/api/admin/announcements").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void 단지_목록은_정제된_기본항목과_원천식별자를_반환한다() throws Exception {
+        long id = createComplex();
+        String identifier = getData("/api/admin/housing-complexes/" + id).get("sourceIdentifier").asText();
+
+        mvc.perform(get("/api/admin/housing-complexes").param("keyword", identifier)
+                        .with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].complex.sourceIdentifier").value(identifier))
+                .andExpect(jsonPath("$.data.items[0].complex.completionDate").value("2020-06-30"))
+                .andExpect(jsonPath("$.data.items[0].complex.totalHouseholdCount").value(0))
+                .andExpect(jsonPath("$.data.items[0].complex.totalParkingCount").value(0))
+                .andExpect(jsonPath("$.data.items[0].complex.heatingType").value("INDIVIDUAL"))
+                .andExpect(jsonPath("$.data.items[0].complex.buildingType").value("APARTMENT"))
+                .andExpect(jsonPath("$.data.items[0].complex.corridorType").value("STAIR"))
+                .andExpect(jsonPath("$.data.items[0].complex.hasElevator").value(true))
+                .andExpect(jsonPath("$.data.items[0].complex.moveOutCountLastYear").value(0))
+                .andExpect(jsonPath("$.data.items[0].announcement").isEmpty())
+                .andExpect(jsonPath("$.data.items[0].updatedAt").isEmpty());
+    }
+
+    @Test
+    void 단지_목록은_미확인_기본항목을_null로_유지한다() throws Exception {
+        long id = createComplex();
+        entityManager.createNativeQuery("""
+                UPDATE housing_complexes SET completion_date = NULL, heating_type = NULL,
+                housing_type = NULL, corridor_type = NULL, elevator_installed = NULL,
+                recent_one_year_move_out_count = NULL, admin_updated_at = '2026-10-03T01:00:00Z' WHERE id = :id
+                """).setParameter("id", id).executeUpdate();
+        entityManager.clear();
+
+        mvc.perform(get("/api/admin/housing-complexes").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].complex.sourceIdentifier").isNotEmpty())
+                .andExpect(jsonPath("$.data.items[0].complex.completionDate").isEmpty())
+                .andExpect(jsonPath("$.data.items[0].complex.heatingType").isEmpty())
+                .andExpect(jsonPath("$.data.items[0].complex.buildingType").isEmpty())
+                .andExpect(jsonPath("$.data.items[0].complex.corridorType").isEmpty())
+                .andExpect(jsonPath("$.data.items[0].complex.hasElevator").isEmpty())
+                .andExpect(jsonPath("$.data.items[0].complex.moveOutCountLastYear").isEmpty())
+                .andExpect(jsonPath("$.data.items[0].updatedAt").value("2026-10-03T01:00:00Z"));
+    }
+
+    @Test
+    void 공고_목록은_공식원문과_정제된_모집유형_일정을_반환한다() throws Exception {
+        long id = createAnnouncement(createComplex());
+        String identifier = getData("/api/admin/announcements/" + id).get("sourceIdentifier").asText();
+
+        mvc.perform(get("/api/admin/announcements").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].announcement.sourceIdentifier").value(identifier))
+                .andExpect(jsonPath("$.data.items[0].announcement.originalUrl").value("https://example.com/notice"))
+                .andExpect(jsonPath("$.data.items[0].announcement.recruitmentType").value("NEW"))
+                .andExpect(jsonPath("$.data.items[0].announcement.postedDate").value("2026-09-01"))
+                .andExpect(jsonPath("$.data.items[0].announcement.applicationStartDate").value("2026-09-10"))
+                .andExpect(jsonPath("$.data.items[0].announcement.applicationEndDate").value("2026-09-20"))
+                .andExpect(jsonPath("$.data.items[0].announcement.winnerAnnouncementDate").value("2026-10-01"))
+                .andExpect(jsonPath("$.data.items[0].complex").isEmpty())
+                .andExpect(jsonPath("$.data.items[0].updatedAt").isEmpty());
+    }
+
+    @Test
+    void 단지_상세의_연결공고에도_같은_기본항목을_반환한다() throws Exception {
+        long complexId = createComplex();
+        long announcementId = createAnnouncement(complexId);
+        String identifier = getData("/api/admin/announcements/" + announcementId).get("sourceIdentifier").asText();
+
+        mvc.perform(get("/api/admin/housing-complexes/" + complexId).with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.announcements[0].id").value(announcementId))
+                .andExpect(jsonPath("$.data.announcements[0].announcement.sourceIdentifier").value(identifier))
+                .andExpect(jsonPath("$.data.announcements[0].announcement.originalUrl")
+                        .value("https://example.com/notice"))
+                .andExpect(jsonPath("$.data.announcements[0].announcement.recruitmentType").value("NEW"))
+                .andExpect(jsonPath("$.data.announcements[0].announcement.postedDate").value("2026-09-01"))
+                .andExpect(jsonPath("$.data.announcements[0].announcement.applicationStartDate").value("2026-09-10"))
+                .andExpect(jsonPath("$.data.announcements[0].announcement.applicationEndDate").value("2026-09-20"))
+                .andExpect(jsonPath("$.data.announcements[0].announcement.winnerAnnouncementDate").value("2026-10-01"))
+                .andExpect(jsonPath("$.data.announcements[0].complex").isEmpty());
     }
 
     @Test
@@ -98,7 +189,7 @@ class AdminManagementIntegrationTest {
     @Test
     void 일반사용자와_CSRF_없는_수정은_거부한다() throws Exception {
         mvc.perform(get("/api/admin/housing-complexes")).andExpect(status().isUnauthorized());
-        mvc.perform(get("/api/admin/housing-complexes").with(user("user").roles("USER")))
+        mvc.perform(get("/api/admin/housing-complexes").with(user(memberId()).roles("USER")))
                 .andExpect(status().isForbidden());
         mvc.perform(delete("/api/admin/housing-complexes/1").param("version", "0")
                 .with(user("admin").roles("ADMIN"))).andExpect(status().isForbidden());
@@ -263,6 +354,98 @@ class AdminManagementIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content(complexRequest()))
                 .andExpect(status().isCreated()).andReturn();
         return json.readTree(result.getResponse().getContentAsString()).get("data").get("housingComplexId").asLong();
+    }
+
+    @Test
+    void 주택형_수정은_단지_버전을_갱신하고_이력을_남긴다() throws Exception {
+        long id = createComplex();
+        long typeId = createHousingType(id);
+        String path = "/api/admin/housing-complexes/" + id;
+        long version = getData(path).get("data").get("version").asLong();
+        String body = """
+                {"version": %d, "name": "59B", "exclusiveArea": 59.1234, "householdCount": 0}
+                """.formatted(version);
+        mvc.perform(put(path + "/housing-types/" + typeId).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.housingTypes[0].name").value("59B"))
+                .andExpect(jsonPath("$.data.housingTypes[0].exclusiveArea").value(59.1234))
+                .andExpect(jsonPath("$.data.housingTypes[0].householdCount").value(0));
+        assertThat(getData(path).get("data").get("version").asLong()).isGreaterThan(version);
+        mvc.perform(put(path + "/housing-types/" + typeId).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict());
+        mvc.perform(get(path + "/changes").with(user("admin").roles("ADMIN")))
+                .andExpect(jsonPath("$.data[0].action").value("UPDATE_HOUSING_TYPE"))
+                .andExpect(jsonPath("$.data[0].beforeValue").value(org.hamcrest.Matchers.containsString("46A")))
+                .andExpect(jsonPath("$.data[0].afterValue").value(org.hamcrest.Matchers.containsString("59B")));
+    }
+
+    @Test
+    void 주택형_수정은_소속단지와_권한과_입력값을_검증한다() throws Exception {
+        long id = createComplex();
+        long otherId = createComplex();
+        long typeId = createHousingType(id);
+        String path = "/api/admin/housing-complexes/" + id + "/housing-types/" + typeId;
+        long version = getData("/api/admin/housing-complexes/" + id).get("data").get("version").asLong();
+        String body = """
+                {"version": %d, "name": "59B", "exclusiveArea": 59.5, "householdCount": null}
+                """.formatted(version);
+        mvc.perform(put(path).with(user(memberId()).roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mvc.perform(put(path).with(user("admin").roles("ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mvc.perform(put("/api/admin/housing-complexes/" + otherId + "/housing-types/" + typeId)
+                        .with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isConflict());
+        for (String invalid : java.util.List.of(body.replace("59.5", "-1"),
+                body.replace("59.5", "59.12345"), body.replace("59B", " "),
+                body.replace("null", "-1"))) {
+            mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON).content(invalid))
+                    .andExpect(status().isBadRequest());
+        }
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.housingTypes[0].householdCount").isEmpty());
+        long currentVersion = getData("/api/admin/housing-complexes/" + id).get("data").get("version").asLong();
+        mvc.perform(delete("/api/admin/housing-complexes/" + id).param("version", String.valueOf(currentVersion))
+                        .with(user("admin").roles("ADMIN")).with(csrf())).andExpect(status().isNoContent());
+        long deletedVersion = getData("/api/admin/housing-complexes/" + id).get("data").get("version").asLong();
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.replace("\"version\": " + version, "\"version\": " + deletedVersion)))
+                .andExpect(status().isConflict());
+    }
+
+    private long createHousingType(long complexId) {
+        var type = com.toadzip.backend.housing.domain.HousingType.createFromMyHome(
+                complexes.findById(complexId).orElseThrow(), "TYPE-" + complexId,
+                "46A", new java.math.BigDecimal("46.8"), null);
+        entityManager.persist(type);
+        entityManager.flush();
+        return type.getId();
+    }
+
+    @Test
+    void 연락처가_미확인인_기존_공고도_수정하고_null을_보존한다() throws Exception {
+        long id = createAnnouncement(createComplex());
+        entityManager.createNativeQuery("UPDATE announcements SET reception_contact = NULL WHERE id = :id")
+                .setParameter("id", id).executeUpdate();
+        entityManager.clear();
+        String path = "/api/admin/announcements/" + id;
+        var data = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+        data.put("name", "단지 탭에서 수정한 공고");
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(data.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.data.name").value("단지 탭에서 수정한 공고"))
+                .andExpect(jsonPath("$.data.data.receptionPlace.contact").isEmpty());
+        var updated = (tools.jackson.databind.node.ObjectNode) getData(path).get("data");
+        ((tools.jackson.databind.node.ObjectNode) updated.get("receptionPlace")).put("name", " ");
+        mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(updated.toString()))
+                .andExpect(status().isBadRequest());
     }
 
     private JsonNode getData(String path) throws Exception {

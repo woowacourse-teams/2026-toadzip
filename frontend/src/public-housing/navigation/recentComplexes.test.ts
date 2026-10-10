@@ -27,13 +27,18 @@ describe('최근 본 단지', () => {
     expect(readRecentComplexes()).toEqual([])
   })
 
-  it('최근에 본 순서로 세 단지만 남기고 이전 기록은 변경하지 않는다', () => {
-    const previous: readonly RecentComplex[] = [third, second, first]
+  it('최근에 본 순서로 20개를 저장하고 21번째 방문에서 가장 오래된 기록만 제외한다', () => {
+    const previous = Array.from({ length: 20 }, (_, index) => ({
+      ...first, complexId: String(20 - index), name: `단지 ${20 - index}`,
+    }))
+    const newest = { ...first, complexId: '21', name: '단지 21' }
 
-    const next = rememberComplex(previous, fourth)
+    const next = rememberComplex(previous, newest)
 
-    expect(next).toEqual([fourth, third, second])
-    expect(previous).toEqual([third, second, first])
+    expect(next).toEqual([newest, ...previous.slice(0, 19)])
+    expect(readRecentComplexes()).toEqual(next)
+    expect(previous).toHaveLength(20)
+    expect(previous.at(-1)?.complexId).toBe('1')
   })
 
   it('다시 본 단지는 맨 앞으로 옮기고 최신 표시 정보로 갱신한다', () => {
@@ -110,16 +115,15 @@ describe('최근 본 단지', () => {
     expect(readRecentComplexes()).toEqual([first, second])
   })
 
-  it('저장된 중복 ID는 가장 앞의 기록을 유지하며 세 단지만 복원한다', () => {
+  it('저장된 중복 ID는 가장 앞의 기록을 유지하며 20개까지 복원한다', () => {
+    const entries = Array.from({ length: 21 }, (_, index) => ({
+      ...first, complexId: String(index + 1), name: `단지 ${index + 1}`,
+    }))
     localStorage.setItem(RECENT_COMPLEXES_KEY, JSON.stringify([
-      fourth,
-      { ...fourth, name: '과거 이름' },
-      third,
-      second,
-      first,
+      entries[0], { ...entries[0], name: '과거 이름' }, ...entries.slice(1),
     ]))
 
-    expect(readRecentComplexes()).toEqual([fourth, third, second])
+    expect(readRecentComplexes()).toEqual(entries.slice(0, 20))
   })
 
   it('저장소 읽기가 차단되어도 빈 기록으로 탐색을 시작할 수 있다', () => {
@@ -135,6 +139,6 @@ describe('최근 본 단지', () => {
       throw new DOMException('Storage full', 'QuotaExceededError')
     })
 
-    expect(rememberComplex([third, second, first], fourth)).toEqual([fourth, third, second])
+    expect(rememberComplex([third, second, first], fourth)).toEqual([fourth, third, second, first])
   })
 })

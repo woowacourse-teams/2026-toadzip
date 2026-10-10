@@ -1,3 +1,6 @@
+import { captureProductEvent } from '../../analytics/productAnalytics'
+import { detailVisitId, useDetailScrollAnalytics } from './detailAnalytics'
+import { toHttpUrl } from '../presentation/httpUrl.ts'
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -13,11 +16,14 @@ import {
   DetailSection,
   DetailTable,
 } from './DetailPrimitives'
-import { formatHousingMoney } from '../presentation/housingMoney'
-import { MISSING_DATA_LABEL } from '../presentation/missingData'
+import { formatHousingMoneyWon } from '../presentation/housingMoney'
+import { formatHousingArea as formatArea, type AreaUnit } from '../presentation/housingArea'
+import { AreaUnitToggle } from './AreaUnitToggle'
 import { AnnouncementStatusBadge } from './AnnouncementStatusBadge'
 import styles from './HousingComplexDetailPanel.module.css'
 import { NotificationInterestButton } from '../interest/NotificationInterest'
+import { StreetViewEntry } from '../../street-view/StreetViewEntry'
+import type { StreetViewController } from '../../street-view/useStreetView'
 
 export interface HousingComplexDetailSupplyCondition {
   readonly target: string | null
@@ -77,6 +83,8 @@ export interface HousingComplexDetailPanelProps {
   readonly onClose: () => void
   readonly backButton?: ReactNode
   readonly onOpenAnnouncement?: (announcementId: string) => void
+  readonly streetView?: StreetViewController
+  readonly onEscape?: () => void
 }
 
 interface HousingTypeSelection {
@@ -89,7 +97,12 @@ export function HousingComplexDetailPanel({
   onClose,
   onOpenAnnouncement,
   backButton,
+  streetView,
+  onEscape,
 }: HousingComplexDetailPanelProps) {
+  const scrollAnalytics = useDetailScrollAnalytics('COMPLEX', detail.complexId)
+  const [areaUnit, setAreaUnit] = useState<AreaUnit>('sqm')
+  const toggleAreaUnit = () => setAreaUnit((unit) => unit === 'sqm' ? 'pyeong' : 'sqm')
   const initialHousingTypeId = detail.housingTypes[0]?.housingTypeId ?? null
   const [selection, setSelection] = useState<HousingTypeSelection>({
     complexId: detail.complexId,
@@ -107,7 +120,7 @@ export function HousingComplexDetailPanel({
   const housingTypeIdPrefix = useId()
   const headingRef = useRef<HTMLHeadingElement>(null)
   const validImages = detail.images.filter(isSafeHttpUrl)
-  const validOverviewImage = safeHttpUrl(detail.overviewImageUrl)
+  const validOverviewImage = toHttpUrl(detail.overviewImageUrl)
   const usesOverviewAsCover = validImages.length === 0 && validOverviewImage !== null
   const coverImages = validImages.length > 0
     ? validImages
@@ -126,6 +139,10 @@ export function HousingComplexDetailPanel({
   }, [detail.complexId, activeHousingTypeId])
 
   function selectHousingType(housingTypeId: string) {
+    if (housingTypeId !== activeHousingTypeId) captureProductEvent('housing_type_selected', {
+      complex_id: detail.complexId, housing_type_id: housingTypeId,
+      detail_visit_id: detailVisitId(headingRef.current),
+    })
     setSelection({ complexId: detail.complexId, housingTypeId })
     revealHousingType(housingTypeId)
   }
@@ -148,11 +165,13 @@ export function HousingComplexDetailPanel({
   }
 
   function handlePanelKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.key !== 'Escape') {
+    if (event.key !== 'Escape' || event.defaultPrevented) {
       return
     }
     event.stopPropagation()
-    onClose()
+    event.preventDefault()
+    const closeCurrentView = onEscape ?? onClose
+    closeCurrentView()
   }
 
   return (
@@ -169,6 +188,7 @@ export function HousingComplexDetailPanel({
 
       <div
         className={styles.scroll}
+        {...scrollAnalytics}
         role="region"
         aria-label={`${detail.name} 단지 상세 내용`}
         tabIndex={0}
@@ -186,15 +206,18 @@ export function HousingComplexDetailPanel({
             <h2 ref={headingRef} id={titleId} tabIndex={-1}>{detail.name}</h2>
             <p className={styles.identityType}>
               <strong data-agency={agencyCode} title={detail.agencyName}>{agencyCode ?? detail.agencyName}</strong>
-              <span aria-hidden="true">·</span>
+              {(agencyCode || detail.agencyName) && detail.rentalTypeLabel && <span aria-hidden="true">·</span>}
               <span>{detail.rentalTypeLabel}</span>
             </p>
           </div>
-          <p className={styles.address}>{displayAddress(detail)}</p>
+          <div className={styles.addressRow}>
+            <p className={styles.address}>{displayAddress(detail)}</p>
+            {streetView && <StreetViewEntry controller={streetView} name={detail.name} />}
+          </div>
           <div className={styles.notificationCallout}>
             <div className={styles.notificationCopy}>
               <strong>단지 알림</strong>
-              <span>관심 있는 단지의 알림을 신청해 보세요.</span>
+              <span>이 단지의 새 모집 공고가 올라오면 알려드려요.</span>
             </div>
             <NotificationInterestButton
               target={{ type: 'COMPLEX', id: detail.complexId, name: detail.name }}
@@ -212,7 +235,8 @@ export function HousingComplexDetailPanel({
 
         {selectedHousingType && (
           <>
-            <DetailSection title="주택형별 임대조건">
+            <DetailSection title="주택형별 임대조건"
+              actions={<AreaUnitToggle unit={areaUnit} onToggle={toggleAreaUnit} />}>
               <div className={styles.comparison}>
                 <DetailTable caption="주택형별 임대조건 비교" minWidth={520}>
                   <colgroup>
@@ -242,14 +266,14 @@ export function HousingComplexDetailPanel({
                               </th>
                             )}
                             <td>
-                              {formatArea(housingType.exclusiveArea)}
-                              <span className={styles.conditionTarget}>{condition?.target ?? MISSING_DATA_LABEL}</span>
+                              {formatArea(housingType.exclusiveArea, areaUnit, '')}
+                              <span className={styles.conditionTarget}>{condition?.target ?? ''}</span>
                             </td>
                             <td data-numeric data-emphasis={Number.isFinite(condition?.deposit) || undefined}>
-                              {formatHousingMoney(condition?.deposit ?? null)}
+                              {formatDetailMoney(condition?.deposit ?? null)}
                             </td>
                             <td data-numeric data-emphasis={Number.isFinite(condition?.monthlyRent) || undefined}>
-                              {formatHousingMoney(condition?.monthlyRent ?? null)}
+                              {formatDetailMoney(condition?.monthlyRent ?? null)}
                             </td>
                           </tr>
                         ))}
@@ -302,7 +326,7 @@ export function HousingComplexDetailPanel({
                     tabIndex={0}
                     hidden={!selected}
                   >
-                    {selected && <HousingTypePanel housingType={housingType} />}
+                    {selected && <HousingTypePanel housingType={housingType} areaUnit={areaUnit} onToggleAreaUnit={toggleAreaUnit} />}
                   </div>
                 )
               })}
@@ -391,7 +415,7 @@ function AnnouncementCard({
   announcement: HousingComplexDetailAnnouncement
   onOpenAnnouncement?: (announcementId: string) => void
 }) {
-  const title = announcement.title ?? MISSING_DATA_LABEL
+  const title = announcement.title ?? ''
   const hasCountdown = announcement.applicationStatus !== 'CLOSED'
     && announcement.dDay !== null
     && Number.isInteger(announcement.dDay)
@@ -410,12 +434,12 @@ function AnnouncementCard({
             tone={applicationStatusTone(announcement.applicationStatus)}
             countdown={null}
           />
-          <p className={styles.announcementDeadline} data-tone={deadlineTone}>
+          {announcementDDay(announcement) && <p className={styles.announcementDeadline} data-tone={deadlineTone}>
             {announcement.applicationStatus !== 'BEFORE_APPLICATION' && (
               <span className={styles.visuallyHidden}>마감까지 </span>
             )}
             <span>{announcementDDay(announcement)}</span>
-          </p>
+          </p>}
         </div>
         <h4>{title}</h4>
         {announcement.publicationTypeLabel && <small>{announcement.publicationTypeLabel}</small>}
@@ -482,8 +506,12 @@ function BasicInformation({ detail }: { detail: HousingComplexDetailData }) {
 
 function HousingTypePanel({
   housingType,
+  areaUnit,
+  onToggleAreaUnit,
 }: {
   housingType: HousingComplexDetailHousingType
+  areaUnit: AreaUnit
+  onToggleAreaUnit: () => void
 }) {
   const floorPlanImages = floorPlanUrls(housingType)
   const name = housingTypeName(housingType)
@@ -501,28 +529,28 @@ function HousingTypePanel({
         </div>
       )}
 
-      <h4>선택 주택형 상세</h4>
+      <div className={styles.housingTypeDetailHeading}>
+        <h4>선택 주택형 상세</h4>
+        <AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} />
+      </div>
       <DetailFacts columns={2}>
         <DetailFact term="주택형" value={name} />
-        <DetailFact term="전용 면적" value={formatArea(housingType.exclusiveArea)} />
-        <DetailFact term="공급 면적" value={formatArea(housingType.supplyArea)} />
+        <DetailFact term="전용 면적" value={formatArea(housingType.exclusiveArea, areaUnit, '')} />
+        <DetailFact term="공급 면적" value={formatArea(housingType.supplyArea, areaUnit, '')} />
         <DetailFact term="복층여부" value={duplexLabel(housingType.isDuplex)} />
         <DetailFact
           term="관리비"
-          value={formatHousingMoney(housingType.maintenanceFee)}
+          value={formatDetailMoney(housingType.maintenanceFee)}
           emphasis={Number.isFinite(housingType.maintenanceFee)}
         />
       </DetailFacts>
 
       <h4>현재 공급 조건</h4>
-      {housingType.currentSupplyConditions.length === 0 && (
-        <p className={styles.empty}>{MISSING_DATA_LABEL}</p>
-      )}
       {housingType.currentSupplyConditions.length > 0 && (
         <ul className={styles.supplyList}>
           {housingType.currentSupplyConditions.map((condition, index) => (
             <li key={`${condition.target ?? 'unknown'}-${index}`}>
-              <strong>{condition.target ?? MISSING_DATA_LABEL}</strong>
+              <strong>{condition.target ?? ''}</strong>
               <SupplyConditionTable housingTypeName={name} condition={condition} />
             </li>
           ))}
@@ -541,7 +569,7 @@ function SupplyConditionTable({
 }) {
   const id = useId()
   return (
-    <DetailTable caption={`${housingTypeName} ${condition.target ?? MISSING_DATA_LABEL} 현재 공급 조건`}>
+    <DetailTable caption={`${housingTypeName} ${condition.target ?? ''} 현재 공급 조건`}>
       <colgroup>
         <col style={{ width: '22%' }} />
         <col style={{ width: '28%' }} />
@@ -552,11 +580,11 @@ function SupplyConditionTable({
         <tr>
           <th id={`${id}-deposit`} scope="row">임대보증금</th>
           <td headers={`${id}-deposit`} data-numeric data-emphasis={Number.isFinite(condition.deposit) || undefined}>
-            {formatHousingMoney(condition.deposit)}
+            {formatDetailMoney(condition.deposit)}
           </td>
           <th id={`${id}-rent`} scope="row">월 임대료</th>
           <td headers={`${id}-rent`} data-numeric data-emphasis={Number.isFinite(condition.monthlyRent) || undefined}>
-            {formatHousingMoney(condition.monthlyRent)}
+            {formatDetailMoney(condition.monthlyRent)}
           </td>
         </tr>
         <tr>
@@ -567,7 +595,7 @@ function SupplyConditionTable({
             data-numeric
             data-emphasis={Number.isFinite(condition.convertibleDeposit) || undefined}
           >
-            {formatHousingMoney(condition.convertibleDeposit)}
+            {formatDetailMoney(condition.convertibleDeposit)}
           </td>
         </tr>
       </tbody>
@@ -619,40 +647,25 @@ function setChoiceRef(
 
 function floorPlanUrls(housingType: HousingComplexDetailHousingType) {
   return [
-    { label: '평면도', url: safeHttpUrl(housingType.floorPlanImageUrl) },
-    { label: '3D 평면도', url: safeHttpUrl(housingType.floorPlan3dImageUrl) },
+    { label: '평면도', url: toHttpUrl(housingType.floorPlanImageUrl) },
+    { label: '3D 평면도', url: toHttpUrl(housingType.floorPlan3dImageUrl) },
   ].filter((image): image is { label: string; url: string } => image.url !== null)
 }
 
 function housingTypeName(housingType: HousingComplexDetailHousingType) {
-  return housingType.name ?? MISSING_DATA_LABEL
+  return housingType.name ?? ''
 }
 
 function isSafeHttpUrl(value: string) {
-  return safeHttpUrl(value) !== null
-}
-
-function safeHttpUrl(value: string | null) {
-  if (value === null) {
-    return null
-  }
-  try {
-    const url = new URL(value)
-    if (url.protocol === 'http:' || url.protocol === 'https:') {
-      return url.href
-    }
-  } catch {
-    return null
-  }
-  return null
+  return toHttpUrl(value) !== null
 }
 
 function displayAddress(detail: HousingComplexDetailData) {
-  return detail.roadAddress ?? detail.regionName ?? MISSING_DATA_LABEL
+  return detail.roadAddress || detail.regionName || ''
 }
 
 function displayDate(value: string | null) {
-  return formattedDate(value) ?? MISSING_DATA_LABEL
+  return formattedDate(value) ?? ''
 }
 
 function formattedDate(value: string | null) {
@@ -664,28 +677,28 @@ function formattedDate(value: string | null) {
 
 function availability(value: boolean | null) {
   if (value === null) {
-    return MISSING_DATA_LABEL
+    return ''
   }
   return value ? '있음' : '없음'
 }
 
 function duplexLabel(value: boolean | null) {
   if (value === null) {
-    return MISSING_DATA_LABEL
+    return ''
   }
   return value ? '복층' : '해당 없음'
 }
 
 function formatNullableCount(value: number | null, suffix: string) {
   if (value === null || !Number.isFinite(value)) {
-    return MISSING_DATA_LABEL
+    return ''
   }
   return `${formatNumber(value)}${suffix}`
 }
 
 function parkingSummary(parkingCount: number | null, householdCount: number | null) {
   if (parkingCount === null || !Number.isFinite(parkingCount)) {
-    return MISSING_DATA_LABEL
+    return ''
   }
   const total = `${formatNumber(parkingCount)}대`
   if (householdCount === null || householdCount <= 0 || !Number.isFinite(householdCount)) {
@@ -696,13 +709,6 @@ function parkingSummary(parkingCount: number | null, householdCount: number | nu
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   })}대)`
-}
-
-function formatArea(value: number | null) {
-  if (value === null || !Number.isFinite(value)) {
-    return MISSING_DATA_LABEL
-  }
-  return `${formatNumber(value)}㎡`
 }
 
 function formatNumber(value: number) {
@@ -719,7 +725,7 @@ function applicationStatusLabel(status: string | null) {
   if (status === 'CLOSED') {
     return '접수마감'
   }
-  return MISSING_DATA_LABEL
+  return ''
 }
 
 function applicationStatusTone(status: string | null) {
@@ -740,10 +746,10 @@ function announcementDDay(announcement: HousingComplexDetailAnnouncement) {
     return '종료'
   }
   if (announcement.dDay === null || !Number.isInteger(announcement.dDay)) {
-    return MISSING_DATA_LABEL
+    return ''
   }
   if (announcement.dDay < 0) {
-    return MISSING_DATA_LABEL
+    return ''
   }
   return announcement.applicationStatus === 'BEFORE_APPLICATION'
     ? `접수 시작 D-${announcement.dDay}`
@@ -757,4 +763,8 @@ function isUrgent(announcement: HousingComplexDetailAnnouncement) {
   return Number.isInteger(announcement.dDay)
     && announcement.dDay >= 0
     && announcement.dDay <= 3
+}
+
+function formatDetailMoney(value: number | null | undefined) {
+  return value == null || !Number.isFinite(value) || value < 0 ? '' : formatHousingMoneyWon(value)
 }

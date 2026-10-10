@@ -5,17 +5,17 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionStateService;
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineProgressListener;
-import com.toadzip.backend.ingest.pipeline.service.DataPipelineRunner;
+import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
+import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineStep;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
-import java.time.Instant;
-import java.time.Clock;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMonitor;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
+import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionStateService;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -38,7 +38,7 @@ class DataPipelineStopIntegrationTest {
     @Autowired private DataPipelineExecutionStateService stateService;
     @Autowired private DataPipelineExecutionLock executionLock;
     @Autowired private ExternalDataRetryExecutor retryExecutor;
-    @MockitoBean private DataPipelineRunner runner;
+    @MockitoBean private MyHomeComplexCollectionService collectionService;
     @MockitoBean(name = "dataPipelineExecutor") private Executor executor;
 
     @Test
@@ -53,8 +53,6 @@ class DataPipelineStopIntegrationTest {
             return null;
         }).when(executor).execute(any());
         doAnswer(invocation -> {
-            DataPipelineProgressListener listener = invocation.getArgument(1);
-            listener.started(DataPipelineStep.COLLECT_MYHOME_COMPLEXES);
             retryExecutor.execute(ExternalDataSource.MYHOME_COMPLEX, "pageNo=1", () -> {
                 calls.incrementAndGet();
                 entered.countDown();
@@ -66,8 +64,8 @@ class DataPipelineStopIntegrationTest {
                 calls.incrementAndGet();
                 return "must not run";
             }, new ExternalDataCallCounter());
-            return null;
-        }).when(runner).run(any(), any());
+            return new MyHomeComplexCollectionReport("myhome-complex", 2, 0, 2);
+        }).when(collectionService).collect(any());
         var accepted = service.start(DataPipelineType.COMPLEX_COLLECTION);
         try (var worker = Executors.newSingleThreadExecutor()) {
             var result = worker.submit(task.get());

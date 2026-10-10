@@ -1,4 +1,8 @@
 interface ImportMetaEnv {
+  readonly VITE_POSTHOG_KEY?: string
+  readonly VITE_POSTHOG_HOST?: string
+  readonly VITE_ANALYTICS_ENV?: string
+  readonly VITE_POSTHOG_LOCAL_ENABLED?: string
   readonly VITE_GA_MEASUREMENT_ID?: string
   readonly VITE_GA_DEBUG_MODE?: string
   readonly VITE_API_BASE_URL?: string

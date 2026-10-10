@@ -11,13 +11,17 @@ import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.housing.domain.ComplexVerificationStatus;
+import com.toadzip.backend.housing.domain.HousingType;
 import com.toadzip.backend.housing.domain.RentalType;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexCreateRequest.AddressRequest;
 import com.toadzip.backend.housing.dto.request.AdminHousingComplexUpdateRequest;
+import com.toadzip.backend.housing.dto.request.AdminHousingTypeUpdateRequest;
 import com.toadzip.backend.housing.dto.response.AdminHousingComplexDetail;
 import com.toadzip.backend.housing.exception.AdminHousingComplexNotFoundException;
 import com.toadzip.backend.housing.exception.InvalidRegionCodeException;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.housing.repository.HousingComplexReviewRepository;
 import com.toadzip.backend.housing.repository.HousingTypeRepository;
 import com.toadzip.backend.region.repository.RegionCodeResolver;
 import java.util.List;
@@ -35,23 +39,39 @@ public class AdminHousingComplexManagementService {
     private final AdminDataChangeRepository changes;
     private final RegionCodeResolver regions;
     private final ObjectMapper json;
+    private final HousingComplexReviewRepository reviews;
 
     public AdminHousingComplexManagementService(HousingComplexRepository complexes, HousingTypeRepository types,
             SupplyRowRepository rows, AdminDataChangeRepository changes, RegionCodeResolver regions,
-            ObjectMapper json) {
+            ObjectMapper json, HousingComplexReviewRepository reviews) {
         this.complexes = complexes;
         this.types = types;
         this.rows = rows;
         this.changes = changes;
         this.regions = regions;
         this.json = json;
+        this.reviews = reviews;
     }
 
     public AdminPage<AdminDataSummary> search(AdminSearch search) {
+        return search(search, null);
+    }
+
+    public AdminPage<AdminDataSummary> search(AdminSearch search, ComplexVerificationStatus verification) {
+        String verificationFilter = "";
+        if (verification != null) {
+            verificationFilter = verification.name();
+        }
         var page = complexes.searchAdmin(search.pattern(), search.identifier(), search.providerCode(), search.providerLegacy(),
                 search.rentalCode(), search.rentalLegacy(), search.regionCode(), search.deleted(), search.review(),
-                PageRequest.of(search.page(), search.pageSize()));
-        return new AdminPage<>(page.stream().map(this::summary).toList(), search.page(), page.hasNext(),
+                verificationFilter, PageRequest.of(search.page(), search.pageSize()));
+        var statuses = new java.util.HashMap<Long, HousingComplexReviewRepository.ReviewStatus>();
+        if (!page.isEmpty()) {
+            reviews.currentStatuses(page.stream().map(HousingComplex::getId).toList())
+                    .forEach(status -> statuses.put(status.getId(), status));
+        }
+        return new AdminPage<>(page.stream().map(complex -> summary(complex, statuses.get(complex.getId()))).toList(),
+                search.page(), page.hasNext(),
                 page.getTotalElements(), page.getTotalPages());
     }
 
@@ -65,7 +85,11 @@ public class AdminHousingComplexManagementService {
                         announcement.getPostedDate().toString(), announcement.getProvider().name(),
                         announcement.getSupplyType().name(), announcement.isAdminDeleted(),
                         announcement.isAdminModified(), announcement.isSourceReviewRequired(),
-                        announcement.getAdminUpdatedAt())).toList();
+                        announcement.getAdminUpdatedAt(), null, new AdminDataSummary.AnnouncementSummary(
+                                announcement.getSourceAnnouncementIdentifier(), announcement.getOriginalUrl(),
+                                announcement.getRecruitmentType().name(), announcement.getPostedDate(),
+                                announcement.getApplicationStartDate(), announcement.getApplicationEndDate(),
+                                announcement.getWinnerAnnouncementDate()))).toList();
         return new AdminHousingComplexDetail(summary(complex), complex.getSourceComplexIdentifier(),
                 data(complex), housingTypes, announcements);
     }
@@ -109,6 +133,33 @@ public class AdminHousingComplexManagementService {
                 json.writeValueAsString(summary(complex))));
     }
 
+    @Transactional
+    public AdminHousingComplexDetail updateHousingType(
+            long id, long typeId, AdminHousingTypeUpdateRequest request, String actor) {
+        var complex = complexes.findByIdForUpdate(id).orElseThrow(AdminHousingComplexNotFoundException::new);
+        checkVersion(complex, request.version());
+        if (complex.isAdminDeleted()) {
+            throw new AdminDataConflictException("휴지통에서 복구한 뒤 주택형을 수정해 주세요.");
+        }
+        var type = types.findById(typeId)
+                .orElseThrow(() -> new AdminDataConflictException("주택형이 없습니다. 새로 조회해 주세요."));
+        if (type.getHousingComplex().getId() != id) {
+            throw new AdminDataConflictException("이 단지에 속한 주택형만 수정할 수 있습니다.");
+        }
+        String before = json.writeValueAsString(housingTypeData(type));
+        type.reviseByAdmin(request.name(), request.exclusiveArea(), request.householdCount());
+        complex.noteHousingTypeRevisionByAdmin();
+        complexes.flush();
+        changes.save(new AdminDataChange("COMPLEX", id, "UPDATE_HOUSING_TYPE", actor, before,
+                json.writeValueAsString(housingTypeData(type))));
+        return detail(id);
+    }
+
+    private AdminHousingComplexDetail.HousingTypeItem housingTypeData(HousingType type) {
+        return new AdminHousingComplexDetail.HousingTypeItem(type.getId(), type.getName(),
+                type.getExclusiveArea(), type.getTotalHouseholdCount());
+    }
+
     public List<AdminChangeResponse> history(long id, int page) {
         find(id);
         return changes.findByResourceTypeAndResourceIdOrderByIdDesc("COMPLEX", id, PageRequest.of(page, 20))
@@ -131,10 +182,18 @@ public class AdminHousingComplexManagementService {
     }
 
     private AdminDataSummary summary(HousingComplex complex) {
+        return summary(complex, reviews.currentStatuses(List.of(complex.getId())).getFirst());
+    }
+
+    private AdminDataSummary summary(HousingComplex complex, HousingComplexReviewRepository.ReviewStatus status) {
         return new AdminDataSummary(complex.getId(), complex.getName(), complex.getAddress().getRoadAddress(),
                 AgencyCode.fromStoredValue(complex.getProvider()).name(),
                 RentalType.fromStoredValue(complex.getSupplyType()).name(), complex.isAdminDeleted(),
-                complex.isAdminModified(), complex.isSourceReviewRequired(), complex.getAdminUpdatedAt());
+                complex.isAdminModified(), complex.isSourceReviewRequired(), complex.getAdminUpdatedAt(),
+                new AdminDataSummary.ComplexSummary(complex.getSourceComplexIdentifier(), complex.getCompletionDate(),
+                        complex.getTotalHouseholdCount(), complex.getParkingSpaceCount(), complex.getHeatingType(),
+                        complex.getHousingType(), complex.getCorridorType(), complex.getElevatorInstalled(),
+                        complex.getRecentOneYearMoveOutCount(), status.getStatus(), status.getFieldCount()), null);
     }
 
     private AdminHousingComplexUpdateRequest data(HousingComplex complex) {

@@ -81,7 +81,7 @@ class HousingComplexSearchRequestNormalizerTest {
         assertAll(
                 () -> assertEquals("행복 단지", filters.keyword()),
                 () -> assertNull(filters.provinceCode()),
-                () -> assertEquals(Set.of("12210", "29110"), filters.cityCountyDistrictCodes()),
+                () -> assertEquals(Set.of("12210", "29110"), filters.regionCodes()),
                 () -> assertEquals(Set.of(RentalType.HAPPY_HOUSING, RentalType.NATIONAL_RENTAL),
                         filters.rentalTypes()),
                 () -> assertEquals(Set.of(ApplicationStatus.APPLYING, ApplicationStatus.CLOSED),
