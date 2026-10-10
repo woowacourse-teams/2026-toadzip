@@ -1,64 +1,36 @@
 # 사용자 소셜 로그인
 
+카카오·구글 인증 후 애플리케이션 세션으로 로그인한다. 인가 코드·공급자 토큰을 프론트엔드에 전달하지 않는다.
+
 ## API
 
-브라우저를 `GET /api/auth/oauth2/authorization/kakao` 또는
-`GET /api/auth/oauth2/authorization/google`로 이동시킨다. 공급자 인증 후
-`/api/auth/oauth2/callback/{provider}`로 돌아오며 성공 시 설정한 프론트엔드 URL,
-실패 시 실패 URL로 이동한다. 쿼리의 인가 코드나 공급자 토큰을 프론트엔드에 전달하지 않는다.
+| 요청 | 결과 |
+|---|---|
+| GET `/api/auth/oauth2/authorization/{provider}` | `google`·`kakao` 인증 시작, 콜백 후 설정된 성공·실패 URL로 이동 |
+| GET `/api/auth/me` | `{id, email}`. 이메일 미제공은 null, 비로그인 401·관리자만 로그인하면 403 |
+| GET `/api/auth/csrf` | CSRF 쿠키와 `{token, headerName}` |
+| POST `/api/auth/logout` | 세션 쿠키·CSRF 필요, 성공 204 |
 
-- `GET /api/auth/me`: 로그인한 사용자에게 `{ "id": 123, "email": "user@example.com" }`.
-  공급자가 이메일을 제공하지 않으면 `email`은 `null`이다. 비로그인 401, 관리자만 로그인한 경우 403.
-- `GET /api/auth/csrf`: `{ "token": "...", "headerName": "X-XSRF-TOKEN" }`와 CSRF 쿠키.
-- `POST /api/auth/logout`: CSRF 헤더와 세션 쿠키가 필요하며 성공 시 204.
-- 브라우저 요청에 세션 쿠키를 포함한다. 관리자 권한과 사용자 권한은 분리된다.
+브라우저 요청에는 세션 쿠키를 포함한다. 관리자와 사용자 권한은 분리된다.
 
-## 로컬에서 실제 로그인 연결하기
+## 공급자와 환경 설정
 
-두 공급자의 설정을 모두 마친 뒤 OAuth를 활성화한다. 현재 백엔드는 활성화 시
-카카오와 구글 설정을 함께 검증하므로 하나라도 비어 있으면 의도적으로 시작에 실패한다.
+카카오 REST API 키·Client Secret과 구글 웹 애플리케이션 Client ID·Secret을 준비한다.
+두 공급자를 모두 설정해야 한다. `USER_OAUTH_ENABLED=true`에서 하나라도 비면 백엔드 기동에 실패한다.
+설정 전에는 false로 두고 나머지 서비스를 실행한다.
 
-### 1. 카카오 애플리케이션 준비
+공급자 콘솔에 콜백을 등록한다. 오리진은 스킴·호스트·포트를 포함하며 후행 `/` 없이 설정한다.
 
-1. [카카오디벨로퍼스](https://developers.kakao.com/)에서 애플리케이션을 만든다.
-2. **앱 > 플랫폼 키 > REST API 키**의 키를 복사한다. 이 값이 **KAKAO_CLIENT_ID**다.
-3. 같은 REST API 키 설정에서 클라이언트 시크릿을 발급하고 활성화한다. 이 값이
-   **KAKAO_CLIENT_SECRET**이다.
-4. **카카오 로그인 > 사용 설정**을 켠다.
-5. **카카오 로그인 > 동의항목**에서 이메일(`account_email`) 동의를 설정한다.
-6. REST API 키의 Redirect URI에 아래 주소를 정확히 등록한다.
+| 공급자 | 등록할 콜백 |
+|---|---|
+| Google | `<공개_오리진>/api/auth/oauth2/callback/google` |
+| Kakao | `<공개_오리진>/api/auth/oauth2/callback/kakao` |
 
-~~~text
-http://localhost/api/auth/oauth2/callback/kakao
-~~~
+콘솔 설정은 [카카오 안내](https://developers.kakao.com/docs/ko/kakaologin/prerequisite),
+[구글 안내](https://developers.google.com/identity/protocols/oauth2/web-server)를 따른다.
+로컬 Compose 예시는 다음과 같다. 비밀값은 Git에서 제외된 루트 `.env`에 넣는다.
 
-카카오 공식 설정 절차는
-[카카오 로그인 설정하기](https://developers.kakao.com/docs/ko/kakaologin/prerequisite)를 참고한다.
-
-### 2. 구글 OAuth 클라이언트 준비
-
-1. [Google Cloud Console](https://console.cloud.google.com/)에서 프로젝트를 만들거나 선택한다.
-2. Google Auth Platform에서 앱 이름과 사용자 지원 이메일 등 동의 화면 정보를 설정한다.
-3. 테스트 상태라면 로그인에 사용할 구글 계정을 테스트 사용자로 추가한다.
-4. **Clients > Create Client**에서 애플리케이션 유형을 **Web application**으로 선택한다.
-5. Authorized redirect URIs에 아래 주소를 정확히 등록한다.
-
-~~~text
-http://localhost/api/auth/oauth2/callback/google
-~~~
-
-6. 생성된 Client ID와 Client secret을 복사한다. 각각 **GOOGLE_CLIENT_ID**,
-   **GOOGLE_CLIENT_SECRET**이다.
-
-구글은 스킴, 호스트, 포트와 경로가 모두 일치하는 Redirect URI만 허용한다. 로컬호스트는
-HTTP 등록이 허용된다. 자세한 내용은
-[Google 웹 서버 OAuth 안내](https://developers.google.com/identity/protocols/oauth2/web-server)를 참고한다.
-
-### 3. 로컬 환경 변수 입력
-
-루트 **.env**에 발급받은 값을 넣는다. 이 파일은 Git에 커밋하지 않는다.
-
-~~~dotenv
+```dotenv
 USER_OAUTH_ENABLED=true
 GOOGLE_CLIENT_ID=구글_Client_ID
 GOOGLE_CLIENT_SECRET=구글_Client_secret
@@ -67,38 +39,14 @@ KAKAO_CLIENT_SECRET=카카오_Client_Secret
 USER_OAUTH_REDIRECT_BASE_URL=http://localhost
 USER_OAUTH_SUCCESS_URL=http://localhost/
 USER_OAUTH_FAILURE_URL=http://localhost/?login=failed
-~~~
+```
 
-전체 프로젝트를 다시 빌드해 실행한다.
+[로컬 실행](../../docs/LOCAL_SETUP.md)으로 다시 빌드하고 두 공급자의 로그인·실패·로그아웃을 확인한다.
+운영은 HTTPS 서비스 오리진으로 콜백·이동 URL을 맞춘다. 성공 경로는 `/`, 실패는 `/?login=failed`다.
+앱 직접 실행 기본값은 `http://localhost:5173`, Compose는 `http://localhost`를 사용한다. 이전 `/login`도 메인 화면으로 연결된다.
 
-~~~shell
-docker compose -f compose.yaml -f compose.local.yaml -f compose.monitoring.yaml \
-  up --detach --build --wait
-~~~
+## 계정 보존
 
-브라우저에서 **http://localhost/**를 열고 헤더의 **로그인** 버튼으로 모달을 연다.
-카카오 또는 구글 버튼을 누르고 인증을 완료하면 메인 화면으로 돌아오며 헤더에 **로그인됨**이 표시된다.
-실패하면 메인 화면 위 로그인 모달의 중앙에 재시도 안내를 표시한다.
-
-설정이 덜 끝난 동안에는 **USER_OAUTH_ENABLED=false**로 두면 나머지 서비스는 정상 실행된다.
-
-## 환경별 설정과 배포
-
-`USER_OAUTH_ENABLED=true`로 켜고 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
-`KAKAO_CLIENT_ID`, `KAKAO_CLIENT_SECRET`, `USER_OAUTH_REDIRECT_BASE_URL`을 설정한다.
-마지막 값은 후행 `/`가 없는 브라우저 공개 서비스 오리진이다. 등록할 콜백 주소는 이 값에
-`/api/auth/oauth2/callback/google`과 `/api/auth/oauth2/callback/kakao`를 붙인 것이다.
-`USER_OAUTH_SUCCESS_URL`, `USER_OAUTH_FAILURE_URL`은 서버가 정한 프론트엔드 이동 주소이며
-애플리케이션 직접 실행 기본값은 각각 `http://localhost:5173/`,
-`http://localhost:5173/?login=failed`이며 Compose는 `http://localhost/` 경로를 사용한다.
-운영에서는 서비스 오리진으로 명시한다. 성공 URL은 `/`, 실패 URL은 `/?login=failed`를 사용한다.
-이전 `/login` 주소도 메인 화면으로 연결되므로 기존 설정으로 복귀해도 새 로그인 흐름을 사용할 수 있다. 카카오 개발자 콘솔에서 로그인과 Redirect URI를 등록하고,
-구글 OAuth 클라이언트에도 해당 Redirect URI를 등록한다. 비밀 값은 저장소에 넣지 않는다.
-
-기존 스키마는 [Flyway 도입 절차](flyway-adoption.md)에 따라 `20260922.00`으로 자동 baseline 한 뒤
-통합 스키마 `V20260922_01`과 사용자 식별자 제약 `V20260922_02`를 순서대로 적용한다.
-새 빈 DB에서는 baseline 스키마 `B20260922_01`을 사용한다. 이미 중복된 `login_identifier`가
-있다면 `V20260922_02`가 실패하므로 계정 소유권을 확인하고 처리한 뒤 재시도한다.
-새 로그인은 `google:{sub}` 또는 `kakao:{id}`로 저장하며 기존 사용자 ID와 연관 데이터는 유지한다.
-이메일은 로그인 시 공급자가 제공한 경우에만 저장하고, 알림 신청 창에서는 사용자가 수정할 수 있다.
-서로 다른 공급자 계정은 동일 이메일이어도 자동 연결하지 않는다.
+식별자는 `google:{sub}`·`kakao:{id}`다. 기존 사용자 ID와 연관 데이터를 유지한다.
+이메일은 공급자가 제공할 때 저장하며 같은 이메일의 서로 다른 공급자 계정을 자동 연결하지 않는다.
+스키마·기존 로그인 제약은 [Flyway 적용](flyway-adoption.md)을 따른다. 중복 식별자는 계정 소유권을 확인한 뒤 처리한다.

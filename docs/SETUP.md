@@ -1,31 +1,50 @@
-# 환경별 설정
+# 환경 설정
 
-## 사전 준비
+Git, Docker, Docker Compose와 Buildx를 준비한다.
+로컬 개발은 [로컬 설정](LOCAL_SETUP.md), 개발·운영 서버는 아래 절차를 따른다.
+DB와 모니터링은 [DB 설정](../infra/db/SETUP.md), [모니터링 설정](MONITORING_SERVER_SETUP.md)을 따른다.
 
-- Git
-- Docker
-- Docker Compose
-- Docker Buildx
+## 개발·운영 서버
 
-- [로컬 환경](LOCAL_SETUP.md)
-- [개발 서버](DEV_SERVER_SETUP.md)
-- [운영 서버](PROD_SERVER_SETUP.md)
-- [DB 서버](../infra/db/SETUP.md)
-- [모니터링 서버](MONITORING_SERVER_SETUP.md)
+### 환경변수
 
+루트 `.env.example`을 복사해 각 서버의 `.env`를 만든다. 비밀번호는 서버 파일에 직접 설정하며 Git에 넣지 않는다.
 
-## 공고 첨부파일 다운로드·미리보기
+| 설정 | 개발 | 운영 |
+|---|---|---|
+| `SPRING_PROFILES_ACTIVE` | `dev` | `prod` |
+| `PRIMARY_DB_PORT` | `5432` | `5433` |
+| 도메인 | `dev.bokduckbang.com` | `bokduckbang.com` |
 
-- `ANNOUNCEMENT_ATTACHMENT_MAX_SIZE=100MB`: 기본 100 MiB(104,857,600바이트). Docker Compose가 백엔드에 전달하며 환경변수를 생략해도 같은 기본값이다. 이 제한은 PDF·HWP·HWPX를 포함한 원본 다운로드와 PDF 미리보기에 공통 적용된다.
-- 외부 파일을 최대 120초 동안 임시파일로 수신한다. 헤더와 실제 수신량 모두 검사하며 완료·오류·전송 중 연결 종료 시 임시파일을 정리한다. 파일 전체를 Java 힙에 적재하지 않는다. 동시 요청 4개가 응답 전송을 마칠 때까지 슬롯을 유지하므로 서버 임시 디스크에 최대 약 400 MiB와 여유 공간을 확보한다. JVM 임시 디렉터리는 기본 `java.io.tmpdir`이다.
-- 이 제한은 다운로드 응답 제한이다. Nginx `client_max_body_size`나 Spring multipart 업로드 제한을 높이는 것으로 해결되지 않는다.
-- PDF.js worker `.mjs`는 `application/javascript`여야 한다. HWP·HWPX는 브라우저 worker와 WASM으로 표시하므로 별도 변환 서버·API 키가 필요하지 않다. 원본 서식과 완전히 같지는 않으며 암호·손상 파일 또는 지원되지 않는 구조는 다운로드를 안내한다.
+공통 설정은 다음과 같다.
 
-변경이 develop에 병합된 뒤 개발 서버에서 다음 명령으로 백엔드와 프론트엔드 모두 재배포한다.
-
-```bash
-git pull --ff-only origin develop
-docker compose up -d --build --no-deps backend frontend
+```dotenv
+LOKI_PUSH_URL=http://<모니터링 서버 사설 IP>:3100/loki/api/v1/push
+PRIMARY_DB_HOST=<DB 서버 사설 IP>
+PRIMARY_DB_PASSWORD=
+SHARED_DB_HOST=<DB 서버 사설 IP>
+SHARED_DB_PORT=5434
+SHARED_DB_PASSWORD=
+VITE_NAVER_MAPS_CLIENT_ID=
 ```
 
-배포 후 기존 413 파일이 200으로 응답하는지, PDF worker의 MIME, HWP·HWPX 페이지 표시와 원본 다운로드를 확인한다. 한도를 바꾸려면 `.env` 값을 수정하고 백엔드 컨테이너를 재생성한다.
+### 실행과 HTTPS
+
+처음에는 HTTP와 백엔드부터 실행한다. HTTPS 구성 전에는 `.env`에 HTTPS용 `COMPOSE_FILE`을 설정하지 않는다.
+
+```shell
+docker compose up -d --build
+```
+
+[HTTPS 설정](../infra/certbot/README.md)에서 인증서·권한·서버 환경변수·자동 갱신을 구성한다.
+개발 EC2에서 검증한 뒤 별도 운영 EC2에 적용하고 운영 인증서는 운영 서버에서 따로 발급한다.
+HTTPS 구성 후에도 위 실행 명령을 사용한다. 실제 HTTPS 접속·갱신·로그인 확인을 마쳐야 운영 준비가 끝난다.
+
+### 종료
+
+```shell
+docker compose down
+```
+
+파일 크기·임시 디스크 설정은 [공고 첨부파일](../backend/docs/announcement-attachments.md#용량과-시간),
+로그인은 [소셜 로그인](../backend/docs/user-social-login.md)을 따른다.

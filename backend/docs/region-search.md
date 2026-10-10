@@ -2,7 +2,7 @@
 
 ## 기준과 범위
 
-2026-10-08 기준 공식 자료를 사용한다.
+공식 자료의 취득일과 원문 해시는 `region/catalog-provenance.json`에서 확인한다.
 
 - 시·도와 자치 시·군·구: [행정안전부 지방자치단체 현황](https://www.mois.go.kr/frt/sub/a04/localGovernment/screen.do)의 게재 순서.
 - 읍·면·동: [행정표준코드관리시스템 법정동 코드](https://www.code.go.kr/stdcode/regCodeL.do?menuNo=101010100010)의 현행 코드와 상위 지역별 `서열`.
