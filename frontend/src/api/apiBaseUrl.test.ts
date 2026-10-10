@@ -146,7 +146,7 @@ describe('API 기본 주소 정책', () => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://changed.example.test')
 
     await expect(repository.record({
-      eventId: 'event-1', sessionId: 'session-1', eventType: 'CLICKED', source: 'COMPLEX_DETAIL',
+      eventId: 'event-1', expectedUserId: '1', expectedSettingsRevision: 0, eventType: 'CANCELLED', source: 'COMPLEX_DETAIL',
       targetType: 'COMPLEX', targetId: '7',
     })).rejects.toThrow()
     expect(fetcher.mock.calls[0]?.[0]).toBe('https://initial.example.test/api/auth/csrf')

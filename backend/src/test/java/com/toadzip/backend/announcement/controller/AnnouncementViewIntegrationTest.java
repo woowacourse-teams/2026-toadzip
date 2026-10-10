@@ -2,6 +2,7 @@ package com.toadzip.backend.announcement.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -13,6 +14,7 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
 import jakarta.persistence.EntityManager;
+import com.toadzip.backend.privacy.repository.PrivacyNoticeCatalog;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -28,6 +30,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -53,6 +57,8 @@ class AnnouncementViewIntegrationTest {
     @Autowired private TransactionTemplate transactions;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private ViewClock clock;
+    @Autowired private PrivacyNoticeCatalog notices;
+    private long memberId;
 
     private final List<Long> announcementIds = new ArrayList<>();
     private long announcementId;
@@ -61,10 +67,23 @@ class AnnouncementViewIntegrationTest {
     void setUp() {
         clock.set("2026-09-28T14:59:59Z");
         announcementId = createAnnouncement();
+        memberId = jdbc.queryForObject("""
+                INSERT INTO users(login_identifier,created_at) VALUES (?,CURRENT_TIMESTAMP) RETURNING id
+                """, Long.class, "view-" + UUID.randomUUID());
+        jdbc.update("""
+                INSERT INTO privacy_analytics_consents(id,user_id,decision,revision,notice_version,scope_version,
+                    decided_at,expires_at,created_at,updated_at)
+                VALUES (?,?,'GRANTED',1,?,?,?, ?,?,?)
+                """, UUID.randomUUID(), memberId, notices.currentVersion("ANALYTICS_NOTICE"),
+                notices.requiredAnalyticsScope(), java.sql.Timestamp.from(clock.instant()),
+                java.sql.Timestamp.from(clock.instant().plusSeconds(86400 * 10)),
+                java.sql.Timestamp.from(clock.instant()), java.sql.Timestamp.from(clock.instant()));
     }
 
     @AfterEach
     void cleanUp() {
+        jdbc.update("DELETE FROM privacy_analytics_consents WHERE user_id = ?", memberId);
+        jdbc.update("DELETE FROM users WHERE id = ?", memberId);
         for (long id : announcementIds) {
             // The view table's foreign key cascades on deletion.
             jdbc.update("DELETE FROM announcements WHERE id = ?", id);
@@ -81,6 +100,27 @@ class AnnouncementViewIntegrationTest {
         record(announcementId, viewer).andExpect(status().isOk()).andExpect(jsonPath("$.data.viewCount").value(2));
         record(announcementId, viewer).andExpect(status().isOk()).andExpect(jsonPath("$.data.viewCount").value(2));
         assertEquals(2, count());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"MISSING", "UNSET", "DENIED", "WITHDRAWN", "EXPIRED", "OLD_SCOPE"})
+    void 유효한_현재_범위_허용이_없으면_조회수를_저장하지_않는다(String state) throws Exception {
+        switch (state) {
+            case "MISSING" -> jdbc.update("DELETE FROM privacy_analytics_consents WHERE user_id = ?", memberId);
+            case "EXPIRED" -> jdbc.update("UPDATE privacy_analytics_consents SET expires_at = ? WHERE user_id = ?",
+                    java.sql.Timestamp.from(clock.instant()), memberId);
+            case "OLD_SCOPE" -> jdbc.update("""
+                    UPDATE privacy_analytics_consents SET notice_version = 'analytics-2026-10-09-v1',
+                        scope_version = 'analytics-scope-1' WHERE user_id = ?
+                    """, memberId);
+            default -> jdbc.update("UPDATE privacy_analytics_consents SET decision = ? WHERE user_id = ?", state, memberId);
+        }
+
+        record(announcementId, UUID.randomUUID().toString()).andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ANALYTICS_CONSENT_REQUIRED"));
+        assertEquals(0, count());
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM announcement_views WHERE announcement_id = ?",
+                Integer.class, announcementId));
     }
 
     @Test
@@ -174,7 +214,7 @@ class AnnouncementViewIntegrationTest {
 
     private ResultActions record(long id, String viewer) throws Exception {
         return mockMvc.perform(post("/api/v1/announcements/{id}/views", id)
-                .with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .with(user(Long.toString(memberId)).roles("USER")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"viewerId\":\"" + viewer + "\"}"));
     }
 

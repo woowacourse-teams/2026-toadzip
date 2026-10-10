@@ -35,7 +35,7 @@ it('기존 로그인 주소에 접근하면 메인 화면에서 로그인 모달
 })
 
 it('이전 로그인 콜백 주소로 인증이 완료되면 모달 없이 메인 화면으로 이동한다', async () => {
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.endsWith('/notification-subscriptions/me') ? { emailConfirmed: false, targets: [] } : { id: 7 } })))
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.endsWith('/notification-subscriptions/me') ? { userId: '7', settingsRevision: 0, targets: [] } : { id: 7 } })))
   render(<MemoryRouter initialEntries={['/login']}><App /><LocationDisplay /></MemoryRouter>)
   expect(await screen.findByText('마이페이지')).toBeVisible()
   expect(screen.getByRole('link', { name: '공공주택 복덕방 홈' })).toBeVisible()
@@ -44,7 +44,7 @@ it('이전 로그인 콜백 주소로 인증이 완료되면 모달 없이 메�
 })
 
 it('메인 화면으로 인증이 완료되면 로그인 상태만 표시한다', async () => {
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.endsWith('/notification-subscriptions/me') ? { emailConfirmed: false, targets: [] } : { id: 7 } })))
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.endsWith('/notification-subscriptions/me') ? { userId: '7', settingsRevision: 0, targets: [] } : { id: 7 } })))
   render(<MemoryRouter><App /></MemoryRouter>)
   expect(await screen.findByText('마이페이지')).toBeVisible()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -75,4 +75,10 @@ it('보관함과 로그인 진입 정보가 함께 있어도 로그인 모달을
   fireEvent.click(screen.getByRole('button', { name: '로그인 닫기' }))
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(screen.getByLabelText('현재 주소')).toHaveTextContent('/?region=seoul#map')
+})
+
+vi.mock('./privacy/usePrivacy', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./privacy/usePrivacy')>()
+  const notices = [{ key: 'PRIVACY_POLICY', version: 'privacy-2026-10-09-v1' }, { key: 'NOTIFICATION_NOTICE', version: 'notification-2026-10-09-v1' }]
+  return { ...original, usePrivacyNotices: () => ({ notices, error: false, retry: vi.fn() }) }
 })

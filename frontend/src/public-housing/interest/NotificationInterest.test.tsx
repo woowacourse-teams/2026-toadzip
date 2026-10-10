@@ -3,16 +3,16 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router'
 import { NotificationInterestButton, NotificationInterestProvider } from './NotificationInterest'
-import type { NotificationInterestEvent, NotificationInterestRepository, NotificationInterestResult, NotificationOutcome, NotificationSubscriptionStatus } from './notificationInterestRepository'
+import { createNotificationInterestRepository, type NotificationInterestEvent, type NotificationInterestRepository, type NotificationInterestResult, type NotificationOutcome, type NotificationSubscriptionStatus } from './notificationInterestRepository'
 
 vi.mock('../../analytics/productAnalytics', () => ({ captureProductEvent: vi.fn(), setProductAuthState: vi.fn(), setReplaySensitive: vi.fn() }))
 
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); sessionStorage.clear() })
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
-const member: NotificationSubscriptionStatus = { emailConfirmed: false, targets: [] }
-const guest: NotificationSubscriptionStatus = { guest: true, emailConfirmed: false, targets: [] }
+const member: NotificationSubscriptionStatus = { userId: '1', settingsRevision: 0, targets: [] }
+const guest: NotificationSubscriptionStatus = { guest: true, targets: [] }
 function repository(status = member) {
-  return { record: vi.fn<NotificationInterestRepository['record']>().mockResolvedValue(undefined), loadStatus: vi.fn().mockResolvedValue(status) }
+  return { record: vi.fn<NotificationInterestRepository['record']>().mockImplementation(async event => resultFor(event, event.eventType === 'CANCELLED' ? 'CANCELLED' : 'ACTIVATED')), loadStatus: vi.fn().mockResolvedValue(status) }
 }
 function example(repo: NotificationInterestRepository) {
   return <MemoryRouter><NotificationInterestProvider repository={repo}>
@@ -24,6 +24,7 @@ async function click(name = '서울 단지 알림 받기') {
   const button = screen.getByRole('button', { name })
   await waitFor(() => expect(button).toBeEnabled())
   fireEvent.click(button)
+  if (screen.queryByRole('button', { name: '신청하기' })) fireEvent.click(screen.getByRole('button', { name: '신청하기' }))
   return button
 }
 function deferred<T>() {
@@ -47,14 +48,30 @@ it('비회원은 이전 브라우저 설정을 무시하고 로그인 안내를 
 })
 
 it('회원은 다른 기기와 새로고침에서도 서버 설정을 복원한다', async () => {
-  const repo = repository({ emailConfirmed: false, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
   render(example(repo))
   expect(await screen.findByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
   expect(screen.getByRole('button', { name: '서울특별시 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
 })
 
+it('기존 고지 버전과 신청 시각이 없는 알림도 선택 상태로 표시하고 해제할 수 있다', async () => {
+  const snapshot = { userId: '1', settingsRevision: 4, targets: [{ targetType: 'COMPLEX', targetId: '1', targetName: '서울 단지', noticeVersion: null, requestedAt: null, expiresAt: '2027-09-01T00:00:00Z' }] }
+  const fetcher = vi.fn<typeof fetch>(async (_url, options) => {
+    if (options?.method === 'POST') return Response.json(resultFor(JSON.parse(String(options.body)), 'CANCELLED'))
+    if (String(_url).endsWith('/csrf')) return Response.json({ token: 'csrf', headerName: 'X-XSRF-TOKEN' })
+    return Response.json(snapshot)
+  })
+  render(example(createNotificationInterestRepository(fetcher)))
+  expect(await screen.findByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
+  await click('서울 단지 알림 취소')
+  await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false'))
+  const mutation = fetcher.mock.calls.find(([, options]) => options?.method === 'POST')
+  expect(JSON.parse(String(mutation?.[1]?.body))).toMatchObject({ eventType: 'CANCELLED', expectedUserId: '1', expectedSettingsRevision: 4 })
+  expect(JSON.parse(String(mutation?.[1]?.body))).not.toHaveProperty('noticeVersion')
+})
+
 it('선택된 종을 다시 누르면 설정을 해제한다', async () => {
-  const repo = repository({ emailConfirmed: false, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
   render(example(repo))
   await screen.findByRole('button', { name: '서울 단지 알림 취소' })
   await click('서울 단지 알림 취소')
@@ -77,7 +94,7 @@ it('저장 실패는 선택 상태를 바꾸지 않고 같은 이벤트로 재�
 })
 
 it('해제 실패는 기존 설정을 유지하고 닫은 뒤 다시 해제할 수 있다', async () => {
-  const repo = repository({ emailConfirmed: false, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
   repo.record.mockRejectedValueOnce(new Error('network'))
   render(example(repo))
   await screen.findByRole('button', { name: '서울 단지 알림 취소' })
@@ -109,7 +126,7 @@ it('창으로 돌아오면 서버에서 변경된 설정을 반영한다', async
   const repo = repository()
   render(example(repo))
   await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
-  repo.loadStatus.mockResolvedValue({ emailConfirmed: false, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+  repo.loadStatus.mockResolvedValue({ userId: '1', settingsRevision: 0, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
   fireEvent.focus(window)
   expect(await screen.findByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
 })
@@ -125,14 +142,14 @@ it('조회 실패는 빈 목록 성공으로 처리하지 않고 재시도한다
 })
 
 it('저장 중 창 포커스가 돌아와도 저장 응답을 버리거나 중복 요청하지 않는다', async () => {
-  const pending = deferred<void>()
+  const pending = deferred<NotificationInterestResult>()
   const repo = repository()
   repo.record.mockReturnValue(pending.promise)
   render(example(repo))
   const button = await click()
   fireEvent.focus(window)
   fireEvent.click(button)
-  await act(async () => pending.resolve())
+  await act(async () => pending.resolve(resultFor(repo.record.mock.calls[0]![0], 'ACTIVATED')))
   expect(repo.record).toHaveBeenCalledOnce()
   expect(button).toHaveAttribute('aria-pressed', 'true')
 })
@@ -157,7 +174,7 @@ it('브라우저 저장소가 차단돼도 회원 설정 저장은 동작한다'
   expect(await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })).toBeVisible()
 })
 
-it('실제 노출만 기록하고 같은 세션의 반복 노출을 중복하지 않는다', async () => {
+it('동의하지 않은 실제 노출은 자체 서버에도 기록하지 않는다', async () => {
   const observers: Array<(entries: Array<{ isIntersecting: boolean }>) => void> = []
   vi.stubGlobal('IntersectionObserver', class {
     constructor(callback: (entries: Array<{ isIntersecting: boolean }>) => void) { observers.push(callback) }
@@ -168,17 +185,17 @@ it('실제 노출만 기록하고 같은 세션의 반복 노출을 중복하지
   await act(async () => { observers[0]?.([{ isIntersecting: false }]) })
   expect(repo.record).not.toHaveBeenCalled()
   await act(async () => { observers[0]?.([{ isIntersecting: true }]) })
-  expect(repo.record).toHaveBeenCalledOnce()
+  expect(repo.record).not.toHaveBeenCalled()
   view.unmount()
   render(example(repo))
   await act(async () => { observers[2]?.([{ isIntersecting: true }]) })
-  expect(repo.record).toHaveBeenCalledOnce()
+  expect(repo.record).not.toHaveBeenCalled()
 })
 
 it('전체 해제 도중 세션이 바뀌면 나머지 회원 설정 요청을 중단한다', async () => {
   const { InterestContext } = await import('./NotificationInterestContext')
   const pending = deferred<void>()
-  const previous = repository({ emailConfirmed: false, targets: [
+  const previous = repository({ userId: '1', settingsRevision: 0, targets: [
     { targetType: 'COMPLEX', targetId: '1' }, { targetType: 'REGION', targetId: '11' },
   ] })
   previous.record.mockReturnValue(pending.promise)
@@ -201,7 +218,7 @@ it('전체 해제 도중 세션이 바뀌면 나머지 회원 설정 요청을 �
 it('전체 해제 중 탭을 떠나면 나머지 요청을 중단하고 돌아올 때 상태를 다시 확인한다', async () => {
   const { InterestContext } = await import('./NotificationInterestContext')
   const pending = deferred<void>()
-  const repo = repository({ emailConfirmed: false, targets: [
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [
     { targetType: 'COMPLEX', targetId: '1' }, { targetType: 'REGION', targetId: '11' },
   ] })
   repo.record.mockReturnValue(pending.promise)
@@ -220,7 +237,7 @@ it('전체 해제 중 탭을 떠나면 나머지 요청을 중단하고 돌아�
   expect(screen.queryByText('알림 설정을 모두 해제했어요.')).not.toBeInTheDocument()
 })
 
-it.each(['ACTIVATED', 'ALREADY_ACTIVE', undefined] as const)(
+it.each(['ACTIVATED', 'ALREADY_ACTIVE'] as const)(
   '회원 설정 결과 %s에서 실제 신규 활성화만 완료로 수집한다', async (outcome) => {
     const repo = repository()
     repo.record.mockImplementation(async (event) => outcome ? resultFor(event, outcome) : undefined)
@@ -240,8 +257,8 @@ it.each(['ACTIVATED', 'ALREADY_ACTIVE', undefined] as const)(
   },
 )
 
-it.each(['CANCELLED', 'UNCHANGED', undefined] as const)('회원 해제 결과 %s에서 실제 취소만 완료로 수집한다', async (outcome) => {
-  const repo = repository({ emailConfirmed: false, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+it.each(['CANCELLED', 'UNCHANGED'] as const)('회원 해제 결과 %s에서 실제 취소만 완료로 수집한다', async (outcome) => {
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
   repo.record.mockImplementation(async (event) => outcome ? resultFor(event, outcome) : undefined)
   render(example(repo))
   await screen.findByRole('button', { name: '서울 단지 알림 취소' })
@@ -263,9 +280,9 @@ it.each(['UNKNOWN', 'NOT_ACTIVATED', 'OBSERVED'] as const)('%s는 회원 설정 
   expect(captured('notification_preregistration_completed')).toHaveLength(0)
 })
 
-it.each(['ACTIVATED', 'CANCELLED'] as const)('UI가 해제되어도 서버의 %s 결과는 원래 대상과 회원 상태로 수집한다', async (outcome) => {
+it.each(['ACTIVATED', 'CANCELLED'] as const)('UI가 해제되면 늦은 %s 결과의 선택적 분석을 전송하지 않는다', async (outcome) => {
   const pending = deferred<NotificationInterestResult>()
-  const repo = repository({ emailConfirmed: false, targets: outcome === 'CANCELLED' ? [{ targetType: 'COMPLEX', targetId: '1' }] : [] })
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: outcome === 'CANCELLED' ? [{ targetType: 'COMPLEX', targetId: '1' }] : [] })
   repo.record.mockReturnValue(pending.promise)
   const view = render(example(repo))
   const name = outcome === 'CANCELLED' ? '서울 단지 알림 취소' : '서울 단지 알림 받기'
@@ -275,14 +292,11 @@ it.each(['ACTIVATED', 'CANCELLED'] as const)('UI가 해제되어도 서버의 %s
   if (!event) throw new Error('The request should have started')
   view.unmount()
   await act(async () => pending.resolve(resultFor(event, outcome)))
-  expect(captureProductEvent).toHaveBeenCalledWith(
-    outcome === 'CANCELLED' ? 'notification_cancel_completed' : 'notification_preregistration_completed',
-    expect.objectContaining({ target_type: 'COMPLEX', target_id: '1', server_event_id: event.eventId }),
-    expect.objectContaining({ authState: 'member', pageName: 'explorer' }))
+  expect(captured(outcome === 'CANCELLED' ? 'notification_cancel_completed' : 'notification_preregistration_completed')).toHaveLength(0)
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
-it('회원 요청 뒤 세션이 비회원으로 초기화되어도 늦은 성공은 회원 요청으로 남기고 새 UI를 덮지 않는다', async () => {
+it('세션 전환 후 늦은 성공은 분석을 전송하거나 새 UI를 덮지 않는다', async () => {
   const pending = deferred<NotificationInterestResult>()
   const previous = repository()
   previous.record.mockReturnValue(pending.promise)
@@ -295,8 +309,7 @@ it('회원 요청 뒤 세션이 비회원으로 초기화되어도 늦은 성공
   await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
   expect(setProductAuthState).toHaveBeenLastCalledWith('guest')
   await act(async () => pending.resolve(resultFor(event, 'ACTIVATED')))
-  expect(captured('notification_preregistration_completed')).toHaveLength(1)
-  expect(captured('notification_preregistration_completed')[0]?.[2]).toMatchObject({ authState: 'member', pageName: 'explorer' })
+  expect(captured('notification_preregistration_completed')).toHaveLength(0)
   expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
@@ -339,7 +352,7 @@ it('알림 안내 모달의 민감 화면 보호를 닫을 때 해제한다', as
 })
 
 it.each([false, true])('늦은 focus 조회가 설정 여부 %s의 변경 성공을 되돌리지 않는다', async (initiallyRequested) => {
-  const snapshot: NotificationSubscriptionStatus = { emailConfirmed: false,
+  const snapshot: NotificationSubscriptionStatus = { userId: '1', settingsRevision: 0,
     targets: initiallyRequested ? [{ targetType: 'COMPLEX', targetId: '1' }] : [] }
   const pending = deferred<NotificationSubscriptionStatus>()
   const repo = repository(snapshot)
@@ -359,11 +372,11 @@ it.each([false, true])('늦은 focus 조회가 설정 여부 %s의 변경 성공
 
 it('전체 해제는 실제 취소만 완료로 수집하고 UNKNOWN 뒤 조회한 남은 설정은 새 ID로 해제한다', async () => {
   const { InterestContext } = await import('./NotificationInterestContext')
-  const snapshot: NotificationSubscriptionStatus = { emailConfirmed: false, targets: [
+  const snapshot: NotificationSubscriptionStatus = { userId: '1', settingsRevision: 0, targets: [
     { targetType: 'COMPLEX', targetId: '1' }, { targetType: 'REGION', targetId: '11' },
   ] }
   const repo = repository(snapshot)
-  repo.loadStatus.mockResolvedValueOnce(snapshot).mockResolvedValue({ emailConfirmed: false,
+  repo.loadStatus.mockResolvedValueOnce(snapshot).mockResolvedValue({ userId: '1', settingsRevision: 0,
     targets: [{ targetType: 'REGION', targetId: '11' }] })
   let unknownEventId: string | undefined
   repo.record.mockImplementation(async (event) => {
@@ -389,9 +402,9 @@ it('전체 해제는 실제 취소만 완료로 수집하고 UNKNOWN 뒤 조회�
   expect(captured('notification_cancel_completed')).toHaveLength(2)
 })
 
-it('UNKNOWN 뒤 자동 조회해도 함께 실패한 네트워크 요청은 같은 ID로 재시도한다', async () => {
+it('응답 유실은 같은 ID로 먼저 확인하고 UNKNOWN은 재조회 후 새 선택으로 처리한다', async () => {
   const { InterestContext } = await import('./NotificationInterestContext')
-  const repo = repository({ emailConfirmed: false, targets: [
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [
     { targetType: 'COMPLEX', targetId: '1' }, { targetType: 'REGION', targetId: '11' },
   ] })
   let failedEventId: string | undefined
@@ -412,19 +425,22 @@ it('UNKNOWN 뒤 자동 조회해도 함께 실패한 네트워크 요청은 같�
   </NotificationInterestProvider></MemoryRouter>)
   await click('전체 해제')
   expect(await screen.findByRole('alert')).toHaveTextContent('1개 설정을 해제하지 못했어요.')
-  expect(repo.loadStatus).toHaveBeenCalledTimes(2)
+  expect(repo.loadStatus).toHaveBeenCalledTimes(1)
   expect(captured('notification_cancel_completed')).toHaveLength(0)
+  repo.loadStatus.mockResolvedValue({ userId: '1', settingsRevision: 2, targets: [{ targetType: 'REGION', targetId: '11' }] })
+  await click('전체 해제')
+  await screen.findByText('처리 결과를 확인하지 못했어요. 현재 알림 설정을 다시 확인해 주세요.')
   await click('전체 해제')
   await screen.findByText('알림 설정을 모두 해제했어요.')
-  expect(repo.record.mock.calls[0]?.[0].eventId).toBe(repo.record.mock.calls[2]?.[0].eventId)
-  expect(repo.record.mock.calls[1]?.[0].eventId).not.toBe(repo.record.mock.calls[3]?.[0].eventId)
+  expect(repo.record.mock.calls[0]?.[0].eventId).toBe(repo.record.mock.calls[1]?.[0].eventId)
+  expect(repo.record.mock.calls[2]?.[0].eventId).not.toBe(repo.record.mock.calls[3]?.[0].eventId)
   expect(captured('notification_cancel_completed')).toHaveLength(2)
 })
 
 it('전체 해제 도중 세션이 바뀌어도 이미 성공한 취소만 원래 회원 맥락으로 기록한다', async () => {
   const { InterestContext } = await import('./NotificationInterestContext')
   const pending = deferred<NotificationInterestResult>()
-  const previous = repository({ emailConfirmed: false, targets: [
+  const previous = repository({ userId: '1', settingsRevision: 0, targets: [
     { targetType: 'COMPLEX', targetId: '1' }, { targetType: 'REGION', targetId: '11' },
   ] })
   previous.record.mockReturnValue(pending.promise)
@@ -441,13 +457,12 @@ it('전체 해제 도중 세션이 바뀌어도 이미 성공한 취소만 원�
   await waitFor(() => expect(signal?.aborted).toBe(true))
   await act(async () => pending.resolve(resultFor(event, 'CANCELLED')))
   expect(previous.record).toHaveBeenCalledOnce()
-  expect(captured('notification_cancel_completed')).toHaveLength(1)
-  expect(captured('notification_cancel_completed')[0]?.[2]).toMatchObject({ authState: 'member' })
+  expect(captured('notification_cancel_completed')).toHaveLength(0)
   expect(screen.queryByText('알림 설정을 모두 해제했어요.')).not.toBeInTheDocument()
 })
 
 function resultFor(event: NotificationInterestEvent, outcome: NotificationOutcome): NotificationInterestResult {
-  return { eventId: event.eventId, targetType: event.targetType, targetId: event.targetId, outcome, occurredAt: '2026-10-08T00:00:00Z' }
+  return { eventId: event.eventId, targetType: event.targetType, targetId: event.targetId, outcome, occurredAt: '2026-10-08T00:00:00Z', settingsRevision: (event.expectedSettingsRevision ?? 0) + 1, currentTarget: { active: outcome === 'ACTIVATED' || outcome === 'ALREADY_ACTIVE', expiresAt: null, noticeVersion: null, requestedAt: null } }
 }
 function captured(eventName: string) {
   return vi.mocked(captureProductEvent).mock.calls.filter(([name]) => name === eventName)
@@ -455,7 +470,7 @@ function captured(eventName: string) {
 
 it('관리 화면에서 시작한 늦은 취소는 이동 후에도 원래 페이지 맥락으로 수집한다', async () => {
   const pending = deferred<NotificationInterestResult>()
-  const repo = repository({ emailConfirmed: false, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
   repo.record.mockReturnValue(pending.promise)
   window.history.replaceState({}, '', '/mypage/notifications')
   try {
@@ -488,9 +503,24 @@ it('다른 모달에 가려진 알림 버튼은 모달이 닫혀 실제로 보�
     expect(repo.record).not.toHaveBeenCalled()
     expect(captured('notification_cta_viewed')).toHaveLength(0)
     await act(async () => { modal.remove() })
-    expect(repo.record).toHaveBeenCalledOnce()
-    expect(captured('notification_cta_viewed')).toHaveLength(1)
+    expect(repo.record).not.toHaveBeenCalled()
+    expect(captured('notification_cta_viewed')).toHaveLength(0)
   } finally {
     modal.remove()
   }
+})
+
+vi.mock('../../privacy/usePrivacy', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../privacy/usePrivacy')>()
+  const notices = [{ key: 'PRIVACY_POLICY', version: 'privacy-2026-10-09-v1' }, { key: 'NOTIFICATION_NOTICE', version: 'notification-2026-10-09-v1' }]
+  return { ...original, usePrivacyNotices: () => ({ notices, error: false, retry: vi.fn() }) }
+})
+
+it('빈 저장 응답은 성공으로 표시하지 않고 현재 설정을 다시 확인한다', async () => {
+  const repo = repository(); repo.record.mockResolvedValueOnce(undefined)
+  render(example(repo)); await click()
+  expect(await screen.findByText('처리 결과를 확인하지 못했어요. 현재 알림 설정을 다시 확인해 주세요.')).toBeVisible()
+  await waitFor(() => expect(repo.loadStatus).toHaveBeenCalledTimes(2))
+  expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })

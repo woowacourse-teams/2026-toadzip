@@ -18,11 +18,15 @@ VITE_NAVER_MAPS_CLIENT_ID=
 
 ## 실행
 
-처음 서버를 준비할 때는 아래 명령으로 HTTP와 백엔드부터 실행한다. 아직 HTTPS를
-구성하지 않았다면 `.env`에 HTTPS용 `COMPOSE_FILE`을 설정하지 않는다.
+기존 서비스에 개인정보 기능을 처음 배포할 때는 아래 일괄 시작 명령 대신
+[개인정보 DB 배포 절차](../backend/docs/privacy-deployment.md)를 따른다. 기존 writer 중지,
+Flyway 적용과 DB 점검, 프론트 시작 순서가 필요하다.
+
+새 빈 DB로 서버를 준비할 때는 아래 명령을 사용한다. 아직 HTTPS를 구성하지 않았다면
+`.env`에 HTTPS용 `COMPOSE_FILE`을 설정하지 않는다.
 
 ```shell
-docker compose up -d --build
+docker compose up -d --build --wait --wait-timeout 300
 ```
 
 ## HTTPS 적용

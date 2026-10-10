@@ -232,7 +232,8 @@ class AdminUserManagementControllerIntegrationTest {
     @ParameterizedTest
     @ValueSource(strings = {"", "/1"})
     void 일반_회원은_관리자의_회원_목록과_상세를_조회할_수_없다(String suffix) throws Exception {
-        mockMvc.perform(get(ENDPOINT + suffix).with(user("member").roles("USER")))
+        long id = member("google:authorization-fixture", "member@example.test", "2026-10-03T09:00:00");
+        mockMvc.perform(get(ENDPOINT + suffix).with(user(Long.toString(id)).roles("USER")))
                 .andExpect(status().isForbidden());
     }
 

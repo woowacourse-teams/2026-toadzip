@@ -5,6 +5,10 @@ import com.toadzip.backend.announcement.dto.response.AnnouncementViewResponse;
 import com.toadzip.backend.announcement.service.AnnouncementViewService;
 import com.toadzip.backend.global.response.ApiResponse;
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
+import com.toadzip.backend.privacy.controller.PrivacyCookieSupport;
+import com.toadzip.backend.privacy.exception.PrivacyException;
+import org.springframework.security.core.Authentication;
 import java.util.UUID;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
@@ -20,16 +24,30 @@ import org.springframework.web.bind.annotation.RestController;
 public class AnnouncementViewController {
 
     private final AnnouncementViewService service;
+    private final PrivacyCookieSupport privacyCookie;
 
-    public AnnouncementViewController(AnnouncementViewService service) {
+    public AnnouncementViewController(AnnouncementViewService service, PrivacyCookieSupport privacyCookie) {
         this.service = service;
+        this.privacyCookie = privacyCookie;
     }
 
     @PostMapping("/{announcementId}/views")
     public ResponseEntity<ApiResponse<AnnouncementViewResponse>> recordView(
-            @PathVariable long announcementId, @Valid @RequestBody AnnouncementViewRequest request
+            @PathVariable long announcementId, @Valid @RequestBody AnnouncementViewRequest request,
+            Authentication authentication, HttpServletRequest servletRequest
     ) {
-        long count = service.recordView(announcementId, UUID.fromString(request.viewerId()));
+        Long userId = null;
+        if (authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_USER".equals(authority.getAuthority()))) {
+            userId = Long.valueOf(authentication.getName());
+        }
+        if (authentication != null && userId == null && authentication.isAuthenticated()
+                && authentication.getAuthorities().stream()
+                .anyMatch(authority -> !"ROLE_ANONYMOUS".equals(authority.getAuthority()))) {
+            throw new PrivacyException("FORBIDDEN", "회원 또는 비회원 요청만 허용합니다.");
+        }
+        long count = service.recordView(announcementId, UUID.fromString(request.viewerId()), userId,
+                privacyCookie.readToken(servletRequest));
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(new ApiResponse<>(new AnnouncementViewResponse(count)));
     }

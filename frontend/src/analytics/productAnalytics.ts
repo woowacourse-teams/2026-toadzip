@@ -1,5 +1,8 @@
-import type { CaptureResult, PostHog, PostHogConfig } from 'posthog-js'
+import { analyticsCollectionAllowed, consentStore } from '../privacy/consentStore'
+import type { CaptureResult, PostHogConfig } from 'posthog-js/no-external'
+import type { PostHog } from 'posthog-js/no-external'
 import { maskReplayAttribute } from './replayPrivacy'
+import { guardPostHogTransport } from './posthogTransport'
 export { maskReplayAttribute } from './replayPrivacy'
 import { isProductEvent, sanitizeProductProperties, type ProductProperties, type SafeProperties } from './productEvents'
 
@@ -11,7 +14,10 @@ const PUBLIC_PATHS = new Set(['/', '/feedback', '/notifications/cancel', '/mypag
 type AuthState = 'member' | 'guest' | 'unknown'
 type PendingEvent = { name: string; properties: SafeProperties; timestamp: Date }
 let instance: PostHog | undefined
+let transport: ReturnType<typeof guardPostHogTransport> | undefined
+let generation = 0
 let loading: Promise<void> | undefined
+let sdkModule: Promise<typeof import('posthog-js/no-external')> | undefined
 let failed = false
 let routeActive = true
 let listenersInstalled = false
@@ -48,7 +54,7 @@ function browserExcluded(): boolean {
 }
 
 function collectionAllowed(): boolean {
-  return !failed && routeActive && PUBLIC_PATHS.has(window.location.pathname) && !browserExcluded()
+  return analyticsCollectionAllowed() && !failed && routeActive && PUBLIC_PATHS.has(window.location.pathname) && !browserExcluded()
 }
 
 function safePageName(): string {
@@ -110,8 +116,8 @@ export function sanitizeCapture(event: CaptureResult | null): CaptureResult | nu
 }
 
 function replayAllowed(): boolean {
-  return collectionAllowed() && window.location.pathname === '/' && replayBlocks.size === 0
-    && !new URLSearchParams(window.location.search).has('login')
+  // The approved notice excludes individual session replay.
+  return false
 }
 
 function syncReplay(): void {
@@ -127,8 +133,12 @@ export function productAnalyticsOptions(): Partial<PostHogConfig> {
     capture_dead_clicks: false, rageclick: false, capture_heatmaps: false,
     capture_exceptions: false, capture_performance: false, capture_webmcp: false,
     disable_surveys: true, disable_product_tours: true, disable_web_experiments: true,
-    advanced_disable_feature_flags: true,
-    person_profiles: 'always', persistence: 'localStorage+cookie',
+    disable_conversations: true, disable_external_dependency_loading: true,
+    advanced_disable_flags: true, advanced_disable_feature_flags: true,
+    api_transport: 'fetch', disable_beacon: true, disable_compression: true,
+    request_batching: false, save_campaign_params: false,
+    person_profiles: 'never', persistence: 'memory',
+    opt_out_capturing_by_default: true, opt_out_persistence_by_default: true,
     ip: false, disableDeviceModel: true, save_referrer: false, store_google: false,
     enable_recording_console_log: false, disable_session_recording: true,
     session_recording: {
@@ -154,8 +164,7 @@ function installListeners(): void {
   window.addEventListener('storage', (event) => {
     if (event.key === EXCLUSION_KEY || event.key === null) {
       if (browserExcluded()) {
-        pending = []
-        instance?.stopSessionRecording()
+        stopCollection()
       }
       // The application gate owns team exclusion. Do not overwrite a separate
       // SDK opt-out, which must remain independent when this key is removed.
@@ -173,17 +182,44 @@ function initialize(): void {
   const config = configuration()
   if (!config || !collectionAllowed()) return
   installListeners()
-  loading = import('posthog-js').then(({ default: posthog }) => {
-    if (!collectionAllowed()) { pending = []; return }
-    instance = posthog.init(config.key, {
+  const expected = generation
+  const current = () => expected === generation && collectionAllowed()
+  sdkModule ??= import('posthog-js/no-external')
+  const operation = sdkModule.then(({ PostHog }) => {
+    if (!current()) return
+    const next = new PostHog()
+    const nextTransport = guardPostHogTransport(next, current)
+    transport = nextTransport
+    instance = next
+    let ready = false
+    next.init(config.key, {
       ...productAnalyticsOptions(), api_host: config.host,
-      loaded: () => { syncReplay() },
+      loaded: () => {
+        nextTransport.ready()
+        if (current()) { next.opt_in_capturing({ captureEventName: false }); ready = true }
+      },
     })
+    if (!ready) throw new Error('PostHog transport initialization failed')
+    if (!current()) { nextTransport.stop(); return }
     const queue = pending
     pending = []
     queue.forEach(send)
     syncReplay()
-  }).catch(() => { failed = true; pending = [] }).finally(() => { loading = undefined })
+  }).catch(() => {
+    if (expected === generation) { stopCollection(); failed = true }
+  }).finally(() => { if (loading === operation) loading = undefined })
+  loading = operation
+}
+
+function stopCollection(): void {
+  generation++
+  pending = []
+  loading = undefined
+  failed = false
+  const previous = transport
+  transport = undefined
+  instance = undefined
+  previous?.stop()
 }
 
 function hasBeenSent(key: string): boolean {
@@ -224,7 +260,7 @@ export function setProductPageActive(active: boolean): void {
   routeActive = active
   // StrictMode temporarily deactivates the boundary without leaving the page.
   // Do not discard already deduplicated safe events during that cleanup.
-  if (!PUBLIC_PATHS.has(window.location.pathname) || browserExcluded()) pending = []
+  if (!PUBLIC_PATHS.has(window.location.pathname) || browserExcluded()) stopCollection()
   syncReplay()
 }
 
@@ -241,3 +277,26 @@ export function setReplaySensitive(reason: string, active: boolean): void {
   else replayBlocks.delete(reason)
   syncReplay()
 }
+
+consentStore.onStop(() => {
+  stopCollection()
+  seen.clear()
+  try {
+    sessionStorage.removeItem(DEDUPLICATION_KEY)
+    for (const storage of [localStorage, sessionStorage]) {
+      for (const key of Object.keys(storage)) {
+        if (key.startsWith('ph_') || key.startsWith('__ph_opt_in_out_') || key.startsWith('toadzip.notification-interest.') || key === 'toadzip.announcement-viewer') storage.removeItem(key)
+      }
+    }
+  } catch { /* A blocked storage area must not prevent cookie cleanup. */ }
+  try {
+    for (const cookie of document.cookie.split(';')) {
+      const name = cookie.split('=')[0]?.trim()
+      if (!name || (!name.startsWith('_ga') && !name.startsWith('ph_'))) continue
+      document.cookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax`
+      const host = window.location.hostname
+      const parts = host.split('.')
+      for (let index = 0; index < parts.length - 1; index++) document.cookie = `${name}=; Max-Age=0; Path=/; Domain=.${parts.slice(index).join('.')}; SameSite=Lax`
+    }
+  } catch { /* Stop still applies in memory when browser storage is unavailable. */ }
+})

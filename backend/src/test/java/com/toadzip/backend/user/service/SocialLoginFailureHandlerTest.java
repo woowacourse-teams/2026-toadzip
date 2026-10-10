@@ -53,7 +53,7 @@ class SocialLoginFailureHandlerTest {
         SocialLoginFailureHandler failureHandler = new SocialLoginFailureHandler();
         ReflectionTestUtils.setField(failureHandler, "failureUrl", "/login?login=failed");
         SocialUserService userService = mock(SocialUserService.class);
-        when(userService.findOrCreate("kakao", "123", null))
+        when(userService.findOrCreate("kakao", "123", null, null))
                 .thenThrow(new IllegalStateException("database unavailable"));
         SocialLoginSuccessHandler successHandler = new SocialLoginSuccessHandler(
                 userService, repository, failureHandler);

@@ -12,10 +12,14 @@ import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService;
+import com.toadzip.backend.user.domain.User;
+import com.toadzip.backend.user.repository.UserRepository;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +42,7 @@ class ComplexVerificationIntegrationTest {
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper json;
     @Autowired private HousingComplexRepository complexes;
+    @Autowired private UserRepository userRepository;
     @Autowired private EntityManager entityManager;
     @Autowired private com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures sources;
     @Autowired private com.toadzip.backend.ingest.mapping.repository.MyHomeComplexLinkRepository links;
@@ -149,7 +154,9 @@ class ComplexVerificationIntegrationTest {
         unsafe.put("evidenceNote", " ");
         save(id, unsafe).andExpect(status().isBadRequest());
         mvc.perform(get(path(id))).andExpect(status().isUnauthorized());
-        mvc.perform(post(path(id) + "/reviews").with(user("guest").roles("USER")).with(csrf())
+        User member = userRepository.saveAndFlush(
+                User.create("google:verification-" + UUID.randomUUID(), LocalDateTime.now()));
+        mvc.perform(post(path(id) + "/reviews").with(user(member.getId().toString()).roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(emptyFields)))
                 .andExpect(status().isForbidden());
     }
