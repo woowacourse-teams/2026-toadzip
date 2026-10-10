@@ -23,7 +23,7 @@
 | 첨부파일·조회수·일정 대상 | [공고 상세](../backend/docs/features/ANNOUNCEMENTS.md) |
 | 로그인·사용자 의견 | [로그인과 의견](../backend/docs/features/USER.md) |
 | 알림 설정·보관·수동 취소 | [알림](../backend/docs/operations/NOTIFICATIONS.md) |
-| 분석 동의·유효 상태·수집 제어 | [분석 동의](../backend/docs/features/PRIVACY.md) |
+| 개인정보 안내·분석 허용·수집 제어 | [개인정보 안내와 이용 분석 동의](../backend/docs/features/PRIVACY.md) |
 | 개인정보 테이블·기존 업무 연동 | [개인정보 저장](../backend/docs/features/PRIVACY_STORAGE.md) |
 | 거리뷰 정책·초기화 결과 | [거리뷰](../backend/docs/features/STREET_VIEW.md) |
 

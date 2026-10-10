@@ -61,7 +61,7 @@
 
 공개 `/api/v1/notification-interest-events`는 유효한 분석 동의 이후의 노출·클릭·거절만 기록한다.
 공개 `CONFIRMED/CANCELLED`나 이메일·clientId를 포함한 요청은 거절하며 구독을 변경하지 않는다.
-동의 상태와 수집 시점의 잠금은 [분석 동의](../features/PRIVACY.md)를 따른다.
+동의 상태와 수집 시점의 잠금은 [개인정보 안내와 이용 분석 동의](../features/PRIVACY.md)를 따른다.
 
 신규 비회원 이메일 신청은 제공하지 않는다. 기존 조회는 `GET /api/v1/notification-subscriptions/guest`와
 필수 UUID 헤더 `X-Notification-Client-Id`를 사용하며 로그인·분석 동의가 필요 없다.
