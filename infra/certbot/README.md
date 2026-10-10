@@ -1,4 +1,4 @@
-# Certbot으로 개발·운영 HTTPS 적용
+# HTTPS 설정과 인증서 갱신
 
 EC2의 Certbot이 인증서를 발급·갱신하고, Docker 안의 Nginx가 그 인증서를 읽어
 HTTPS 요청을 받는다. 브라우저의 `/api` 요청은 기존처럼 Nginx에서 백엔드로 전달한다.
@@ -12,7 +12,7 @@ HTTPS 요청을 받는다. 브라우저의 `/api` 요청은 기존처럼 Nginx�
 | 개발 | `dev.bokduckbang.com` |
 | 운영 | `bokduckbang.com` |
 
-## 무엇을 어디에서 관리하는가
+## 구성
 
 | 위치 | 관리할 내용 |
 | --- | --- |
@@ -32,15 +32,16 @@ EC2의 `.env`에 추가할 설정은 세 가지다. 로컬 개발에는 필요�
 | `TOADZIP_TLS_GID` | Nginx에 인증서 읽기 권한을 주는 서버 그룹의 숫자 ID. 아래에서 조회한다. |
 | `COMPOSE_FILE` | 평소 `docker compose` 명령이 HTTPS 설정도 함께 읽도록 지정한다. |
 
-## 1. 적용 전 확인과 백업
+## 처음 설정
 
-서버의 기존 배포 커밋 SHA를 기록한 뒤 이 변경이 포함된 Git 버전을 반영한다.
+### 1. 확인과 백업
+
+서버의 기존 배포 커밋 SHA를 기록하고 배포할 버전을 확인한다.
 개발 서버는 `develop`, 운영 서버는 `main`에 반영된 버전을 사용한다.
-브랜치 반영과 릴리스 순서는 [기여 규칙](../../CONTRIBUTING.md#브랜치-생성)을 따른다.
+브랜치 반영과 릴리스 순서는 [기여 규칙](../../CONTRIBUTING.md#이슈와-브랜치-생성)을 따른다.
 아래 명령은 프로젝트 루트에서 실행한다. 같은 Compose 프로젝트에서 `backend`가
 실행 중이어야 한다. 초기 서버라면
-기존 [개발](../../docs/DEV_SERVER_SETUP.md) 또는 [운영](../../docs/PROD_SERVER_SETUP.md)
-안내로 HTTP와 백엔드부터 준비한다.
+[환경 설정](../../docs/SETUP.md)에서 대상 서버의 안내를 따라 HTTP와 백엔드부터 준비한다.
 
 ```shell
 cd /home/ec2-user/2026-toadzip
@@ -87,7 +88,7 @@ printf '백업 위치: %s\n' "$toadzip_https_backup"
 toadzip_tls_domain=dev.bokduckbang.com
 ```
 
-## 2. HTTP로 도메인 확인 파일 제공
+### 2. 도메인 확인
 
 Certbot의 `webroot` 방식은 특정 URL에서 확인 파일을 읽을 수 있는지 검사한다.
 EC2에 폴더를 만들고, Nginx가 이 폴더를 읽을 수 있도록 연결한다.
@@ -117,11 +118,11 @@ curl --fail --connect-timeout 5 --max-time 10 "http://$toadzip_tls_domain/health
 sudo rm /var/www/certbot/.well-known/acme-challenge/toadzip-check
 ```
 
-## 3. 최초 발급 또는 기존 인증서 전환과 읽기 권한 준비
+### 3. 인증서와 읽기 권한
 
 2단계의 외부 HTTP 확인이 성공한 뒤, 인증서 유무에 따라 아래 둘 중 하나를 진행한다.
 
-### 기존 인증서가 없는 경우
+#### 최초 발급
 
 기존 인증서가 없는 최초 발급은 아래 명령으로 진행한다. 안내에 따라 담당 이메일과
 약관 동의를 입력한다. 실패하면 원인을 해결하며 반복 강제 발급하지 않는다.
@@ -131,7 +132,7 @@ sudo certbot certonly --webroot -w /var/www/certbot \
   --cert-name "$toadzip_tls_domain" -d "$toadzip_tls_domain"
 ```
 
-### 기존 인증서가 있는 경우
+#### 기존 인증서
 
 위 최초 발급 명령을 반복하지 않는다. 인증서 이름이 해당 도메인과 일치하는지 먼저
 확인한다. 다른 이름이거나 여러 도메인을 포함한다면 기존 사용처와 각 도메인의 확인
@@ -152,7 +153,7 @@ sudo certbot reconfigure --cert-name "$toadzip_tls_domain" \
 2.2.0 이하 버전은 [Certbot의 버전별 갱신 설정 변경 절차](https://eff-certbot.readthedocs.io/en/stable/using.html#modifying-the-renewal-configuration-of-existing-certificates)를
 따른다. 갱신 설정 파일을 직접 고치거나 강제 발급을 반복하지 않는다.
 
-### 두 경우 모두: 인증서 읽기 권한 준비
+#### 읽기 권한
 
 Nginx는 일반 사용자로 실행된다. 개인키를 모두에게 공개하는 대신 `toadzip-tls`
 그룹에 읽기 권한을 주고, 컨테이너 Nginx에 그 그룹을 추가한다.
@@ -171,7 +172,7 @@ getent group toadzip-tls | cut -d: -f3
 컨테이너에는 해당 도메인의 `live`와 `archive` 폴더만 읽기 전용으로 연결한다.
 두 폴더를 같은 절대 경로에 연결해 인증서 심볼릭 링크가 계속 동작하게 한다.
 
-## 4. 서버 환경변수와 HTTPS 적용
+### 4. HTTPS 적용
 
 편집기로 프로젝트 루트 `.env`에 다음 값을 추가하거나 기존 값을 수정한다.
 `조회한_그룹_번호`는 위 숫자로 바꾼다. 운영에서는 도메인과 URL을 `bokduckbang.com`으로
@@ -189,13 +190,13 @@ ADMIN_CORS_ALLOWED_ORIGIN=https://dev.bokduckbang.com
 HTTPS 출처를 지정한다. `.env`는 Compose가 직접 읽는다. **`source .env`로 실행하지
 않으며**, 전체 내용을 채팅이나 로그에 출력하지 않는다.
 
-`USER_OAUTH_ENABLED=true`인 서버는 아래 기존 설정도 HTTPS로 바꾼다. 사용하지 않는
-OAuth를 이번 작업 때문에 활성화할 필요는 없다.
+`USER_OAUTH_ENABLED=true`인 서버는 아래 설정도 HTTPS로 바꾼다.
+OAuth 활성화는 사용할 공급자의 설정을 마친 뒤 진행한다.
 
 ```dotenv
 USER_OAUTH_REDIRECT_BASE_URL=https://dev.bokduckbang.com
-USER_OAUTH_SUCCESS_URL=https://dev.bokduckbang.com/login
-USER_OAUTH_FAILURE_URL=https://dev.bokduckbang.com/login?login=failed
+USER_OAUTH_SUCCESS_URL=https://dev.bokduckbang.com/
+USER_OAUTH_FAILURE_URL=https://dev.bokduckbang.com/?login=failed
 ```
 
 사용 중인 Google·Kakao 콘솔에도 각각 `https://도메인/api/auth/oauth2/callback/google`,
@@ -235,7 +236,7 @@ HTTP `/healthz`와 `/.well-known/acme-challenge/`는 상태 확인과 갱신을 
 관리자 로그인·세션 유지·사용 중인 소셜 로그인도 확인한다. 기존 HTTP 세션 사용자는
 다시 로그인해야 할 수 있다. 개발·운영 결과를 각각 기록한다.
 
-## 5. 갱신 후 반영과 자동 갱신 확인
+### 5. 자동 갱신 확인
 
 Certbot이 새 인증서를 저장하면 실행 중인 Nginx도 다시 읽어야 한다. 갱신 성공 후
 실행되는 `deploy hook`으로 저장소의 스크립트를 설치한다. 같은 이름의 기존 파일이
@@ -272,7 +273,9 @@ sudo systemctl list-timers --all '*certbot*' '*letsencrypt*'
 성공하고 자동 실행 일정까지 확인되어야 자동 갱신 구성이 완료된 것이다.** 80번 포트
 유지와 갱신 작업의 실패 로그 확인도 운영 점검에 포함한다.
 
-## 이후 배포와 문제 발생 시
+## 운영
+
+### 재배포
 
 HTTPS 전환을 마친 서버에서는 루트 `.env`의 `COMPOSE_FILE` 덕분에 기존 명령을 유지한다.
 명령에 `-f compose.yaml`만 붙이면 HTTPS 설정이 빠지므로 주의한다.
@@ -293,6 +296,8 @@ Nginx 설정은 이미지에 포함되며 HTTPS 설정은 컨테이너 시작 �
 만들어진다. 컨테이너 내부 파일을 직접 고치지 않는다. 인증서 갱신은 이미지 재빌드
 없이 hook이 반영한다. 도메인·그룹 값을 바꿀 때는 컨테이너를 재생성한다.
 
+### 장애와 복구
+
 전환 전 검사에서 실패하면 적용을 멈추고 기존 HTTP 서비스를 유지한다. 적용 후
 장애가 생기면 Nginx 로그에서 인증서 경로·권한·백엔드 연결 문제를 확인한다.
 급히 HTTP로 복귀해야 한다면 `.env` 백업을 복구하고 HTTP 구성을 명시한다.
@@ -310,7 +315,7 @@ sudo docker compose -f compose.yaml -f compose.certbot.yaml up -d --no-deps fron
 HTTP는 인증정보를 안전하게 전송하지 못하며 HTTPS 주소·Secure 쿠키·OAuth와도 맞지
 않는다. HTTP 복귀를 로그인 기능의 정상 복구로 간주하지 말고 HTTPS 복구를 우선한다.
 
-## 로컬에서 변경 검증
+## 로컬 검증
 
 실제 인증서나 EC2 접속 없이 임시 인증서로 구성을 검사한다. Python 3.9 이상,
 Docker Engine·CLI 26 이상([volume subpath 지원](https://docs.docker.com/engine/release-notes/26.0/#new)),

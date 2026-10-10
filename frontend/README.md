@@ -116,7 +116,7 @@ snapshot에 포함되지 않는다.
 
 실제 위치 검색은 서버의 네이버 Search API와 Maps Geocoding 인증 정보가 필요하다.
 프론트엔드에는 비공개 키를 넣지 않는다. 설정과 API 계약은
-[지역·지하철역 검색](../backend/docs/location-search.md)을 따른다.
+[지역·지하철역 검색](../backend/docs/features/SEARCH.md#위치-검색)을 따른다.
 
 ## 환경별 지도 설정
 

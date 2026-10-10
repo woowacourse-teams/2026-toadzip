@@ -19,7 +19,7 @@ VITE_NAVER_MAPS_CLIENT_ID=
 ## 실행
 
 기존 서비스에 개인정보 기능을 처음 배포할 때는 아래 일괄 시작 명령 대신
-[개인정보 DB 배포 절차](../backend/docs/privacy-deployment.md)를 따른다. 기존 writer 중지,
+[개인정보 DB 배포 절차](../backend/docs/operations/PRIVACY.md)를 따른다. 기존 writer 중지,
 Flyway 적용과 DB 점검, 프론트 시작 순서가 필요하다.
 
 새 빈 DB로 서버를 준비할 때는 아래 명령을 사용한다. 아직 HTTPS를 구성하지 않았다면

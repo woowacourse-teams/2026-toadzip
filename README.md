@@ -2,55 +2,27 @@
 
 > 살고 싶은 공공주택을 미리 편하게 찾고, 모집이 시작되면 놓치지 않도록 돕는 서비스
 
-**🏠 내 조건에 맞는 공공주택, 이제 놓치지 마세요!**
+공공주택의 위치·임대 조건·모집 공고·신청 일정을 연결해 원하는 단지를 찾고 모집 시기를 확인하도록 돕는다.
+서비스 목적과 기능은 [서비스 소개](SERVICE_OVERVIEW.md)를 참고한다.
 
-공공주택 공고는 여러 기관에 흩어져 있고, 복잡한 자격 조건과 모집 일정까지 직접 확인해야 합니다.
+## 시작하기
 
-**공공주택 복덕방** 은 원하는 공공주택을 편리하게 찾아보고, 관심 있는 주택의 모집이 시작되면 놓치지 않도록 돕기 위해 만들어졌습니다.
+- 서비스: [목적과 핵심 용어](SERVICE_OVERVIEW.md), [기능·운영 문서](docs/README.md)
+- 실행: [로컬·서버 환경](docs/SETUP.md)
+- 팀 작업: [기여·검증 규칙](CONTRIBUTING.md), [백엔드 하네스](backend/docs/README.md)
 
-흩어진 공고를 찾아다니지 말고, 공공주택 복덕방에서 살고 싶은 집을 미리 찾아보세요.
+## 저장소 구조
 
----
-
-## 레포지토리 구조
-
-| 디렉터리 | 역할 |
-| --- | --- |
-| [frontend/](frontend/README.md) | 공공주택 지도·검색, 공고·단지 상세, 사용자·관리자 화면을 제공하는 프론트엔드입니다. |
-| [backend/](backend/README.md) | 공공주택·공고 조회, 데이터 수집·정제, 로그인·알림 신청을 처리하는 백엔드입니다. |
-| [infra/](infra/README.md) | DB, 백업, HTTPS 인증서, 로그·메트릭 모니터링 구성을 관리합니다. |
-| [docs/](docs/README.md) | 환경별 실행 방법, 서비스 정책, API 안내와 운영용 SQL·예시 데이터를 관리합니다. |
-| [scripts/](scripts/README.md) | 저장소 규칙 검사, HTTPS·DB 점검과 운영 보조 스크립트를 관리합니다. |
-| [tests/](tests/README.md) | 저장소 규칙 검사 도구와 DB 백업 자동화의 테스트를 관리합니다. |
-| `.local/` | 개인 메모·계획·실험·검증 자료를 보관하는 Git 제외 폴더입니다. 사용 기준은 [기여 규칙](CONTRIBUTING.md#로컬-작업-자료)을 따릅니다. |
-| [tmp/](tmp/README.md) | 기존 로고 비교 시안과 이전 자산의 보관 위치를 안내합니다. 새 개인 작업 자료는 `.local/`에 둡니다. |
-| [.github/](.github/README.md) | GitHub Actions 워크플로와 이슈·PR 템플릿을 관리합니다. |
-| [.githooks/](.githooks/) | 커밋 전 저장소 규칙과 커밋 메시지를 검사하는 Git 훅을 관리합니다. |
-| [.codex/](.codex/) | 코드 탐색·설계 검토·리뷰를 맡는 에이전트 역할 설정을 관리합니다. |
-
-### 루트의 주요 파일
-
-| 파일 | 역할 |
-| --- | --- |
-| [SERVICE_OVERVIEW.md](SERVICE_OVERVIEW.md) | 서비스 목적, 핵심 기능과 용어를 설명합니다. |
-| [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) | 기여·Git 규칙과 에이전트의 작업 지침을 안내합니다. |
-| [compose.yaml](compose.yaml) | 백엔드·프론트엔드·로그 수집기의 기본 실행 구성을 정의합니다. |
-| [compose.local.yaml](compose.local.yaml), [compose.test.yaml](compose.test.yaml) | 로컬 개발 환경과 테스트용 PostgreSQL 구성을 정의합니다. |
-| [compose.monitoring.yaml](compose.monitoring.yaml) | 로그·메트릭 수집과 모니터링 화면을 실행합니다. |
-| [compose.https.yaml](compose.https.yaml), [compose.certbot.yaml](compose.certbot.yaml) | HTTPS 서비스와 인증서 발급·갱신 구성을 정의합니다. |
-| [.env.example](.env.example) | 환경 변수의 이름과 설정 예시를 제공합니다. |
-| [.editorconfig](.editorconfig), [.gitattributes](.gitattributes), [.gitignore](.gitignore) | 편집 형식, Git 파일 속성과 추적 제외 대상을 정의합니다. |
-
----
-
-## 📚 문서
-
-- [개발 환경 설정 및 실행](docs/SETUP.md)
-- [통합 검색 API](docs/INTEGRATED_SEARCH.md)
-- [기여 가이드](CONTRIBUTING.md)
-- [백엔드 코드 컨벤션](backend/CODE_CONVENTION.md)
-
----
+| 경로 | 역할 |
+|---|---|
+| [backend/](backend/README.md), [frontend/](frontend/README.md) | 서비스 코드·설정·테스트 |
+| [backend/docs/](backend/docs/README.md) | 백엔드 하네스. 기능·운영 안내는 `features/`·`operations/`로 구분 |
+| [docs/](docs/README.md) | 공통 환경 설정·문서 목록과 운영용 JSON·SQL |
+| [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) | 기여·검증 절차와 에이전트 작업 지침 |
+| [.github/](.github/), [.codex/](.codex/) | CI·이슈·PR 양식과 에이전트 역할 설정 |
+| [infra/](infra/), [scripts/](scripts/) | DB·HTTPS·모니터링 구성과 운영 도구 |
+| `.local/` | Git에서 제외한 개인 메모·실험·개발 기록 |
+| [tmp/](tmp/README.md) | 이전 개인 자산의 보관 안내 |
 
 ## 🧑‍💻 Team
 

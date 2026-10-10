@@ -24,7 +24,7 @@ Git이 추적하지 않는 로컬 `.env`에 직접 채운다. `GRAFANA_ADMIN_PAS
 환경변수는 아니다. 실제 비밀번호를 `.env.example`이나 문서에 기록하지 않는다.
 
 사용자 소셜 로그인 설정은
-[백엔드 소셜 로그인 문서](../backend/docs/user-social-login.md)의 로컬 설정 절차를 따른다.
+[백엔드 소셜 로그인 문서](../backend/docs/features/USER.md#공급자와-환경-설정)의 로컬 설정 절차를 따른다.
 
 ## 실행
 
@@ -34,10 +34,10 @@ docker compose -f compose.yaml -f compose.local.yaml -f compose.monitoring.yaml 
 
 새 빈 primary DB는 백엔드 시작 시 Flyway가 초기 스키마와 후속 마이그레이션을 적용한다.
 기존 로컬 DB에 Flyway 이력이 없다면 먼저 백업하고
-[Flyway 도입 절차](../backend/docs/flyway-adoption.md)의 스키마·제약 확인을 진행한다.
+[Flyway 도입 절차](../backend/docs/operations/DATABASE.md#flyway)의 스키마·제약 확인을 진행한다.
 개인정보 기능이 포함된 앱은 이력이 없는 기존 DB를 자동 보정하지 않고 기동을 차단한다.
 기존 기능의 Flyway 도입은 백업·격리 검증·별도 승인을 거쳐 먼저 완료한다.
-[개인정보 배포 경계](../backend/docs/privacy-deployment.md)를 확인한다.
+[개인정보 배포 경계](../backend/docs/operations/PRIVACY.md)를 확인한다.
 
 ## 관리자 데이터 등록 수동 검증
 

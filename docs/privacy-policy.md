@@ -10,11 +10,11 @@
 
 | 주제 | 원본 문서 |
 | --- | --- |
-| 동의 API·유효 상태·파기 동시성 | [백엔드 동의 관리](../backend/docs/privacy-consent.md) |
-| 신규 테이블 소유권·연결 지점·제거 범위 | [모듈 분리 계약](../backend/docs/privacy-isolation.md) |
-| 마이그레이션·배포 검사·실패와 복구 | [DB 배포](../backend/docs/privacy-deployment.md) |
-| OAuth·선택적 가입 고지 | [회원 로그인](../backend/docs/user-social-login.md) |
-| 회원 알림 명령·revision·업무 만료일 | [알림 설정](../backend/docs/notification-settings.md) |
+| 동의 API·유효 상태·파기 동시성 | [개인정보 안내와 이용 분석 동의](../backend/docs/features/PRIVACY.md) |
+| 신규 테이블 소유권·연결 지점·제거 범위 | [모듈 분리 계약](../backend/docs/features/PRIVACY_STORAGE.md) |
+| 마이그레이션·배포 검사·실패와 복구 | [DB 배포](../backend/docs/operations/PRIVACY.md) |
+| OAuth·선택적 가입 고지 | [회원 로그인](../backend/docs/features/USER.md) |
+| 회원 알림 명령·revision·업무 만료일 | [알림 설정](../backend/docs/operations/NOTIFICATIONS.md) |
 | 화면·브라우저 상태·SDK 제어 | [프론트 개인정보 처리](../frontend/docs/privacy-consent.md) |
 
 ## 운영 주체와 연락 창구
@@ -130,7 +130,7 @@
 ## 발행 원문의 후속 정비
 
 이미 발행한 원문·해시는 보존한다. 아래 사항은 실제 조건을 확정한 뒤 새 버전을 발행할 때 반영한다.
-발행·scope 변경 규칙은 [백엔드 동의 관리](../backend/docs/privacy-consent.md)를 따른다.
+발행·scope 변경 규칙은 [개인정보 안내와 이용 분석 동의](../backend/docs/features/PRIVACY.md)를 따른다.
 
 | 원문 | 후속 조치 |
 | --- | --- |

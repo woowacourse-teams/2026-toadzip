@@ -1,27 +1,35 @@
-# 서비스·운영 문서
+# 서비스 문서
 
-개발 환경을 준비하거나 서비스를 운영할 때 참고할 안내와 예시 데이터를 관리합니다.
+환경 설정과 현재 기능·데이터·운영 안내를 찾는 목록이다. 실험·개발 이력과 개인 공부는 `.local/`에 둔다.
+백엔드 개발 규칙은 [하네스 지도](../backend/docs/README.md)에서 찾는다.
 
-## 디렉터리 구조
+## 실행과 운영
 
-| 디렉터리 | 역할 |
-| --- | --- |
-| [fixtures/](fixtures/) | 관리자 공고 JSON 가져오기의 정상·미확정·다중 공급행 예시를 담습니다. |
-| [queries/](queries/) | 알림 신청의 유효 대상, 집계, 보존 상태와 스키마를 확인하는 SQL을 담습니다. |
+| 작업 | 문서 |
+|---|---|
+| 로컬·서버 실행, 모니터링 | [환경 설정](SETUP.md) |
+| 스키마 적용·원천 이관·복구 | [DB 운영](../backend/docs/operations/DATABASE.md) |
+| 수집 시작·중지·실패·원천 조회 | [수집 운영](../backend/docs/operations/INGEST.md) |
+| LH 수집 설정·품질·연결 복구 | [공고 수집](../backend/docs/operations/ANNOUNCEMENT_COLLECTION.md) |
+| 단지 통합·주택형·좌표 적재 | [단지 데이터](../backend/docs/operations/HOUSING.md) |
+| 관리자 수정·삭제·단지 검증·공고 JSON 등록 | [관리자 데이터 관리](../backend/docs/operations/ADMIN_DATA.md) |
+| 개인정보 DB 검사·서비스 교체·복구 | [개인정보 배포](../backend/docs/operations/PRIVACY.md) |
 
-## 주요 문서
+## 서비스 기능
 
-| 파일 | 역할 |
-| --- | --- |
-| [SETUP.md](SETUP.md) | 환경별 설정 안내의 시작점이며 사전 준비와 공고 첨부파일 설정을 설명합니다. |
-| [LOCAL_SETUP.md](LOCAL_SETUP.md) | 로컬 환경 변수, Docker Compose 실행과 DB 초기화 절차를 설명합니다. |
-| [DEV_SERVER_SETUP.md](DEV_SERVER_SETUP.md) | 개발 서버의 환경 변수, 실행과 HTTPS 설정을 설명합니다. |
-| [PROD_SERVER_SETUP.md](PROD_SERVER_SETUP.md) | 운영 서버의 환경 변수, 실행과 HTTPS 설정을 설명합니다. |
-| [MONITORING_SERVER_SETUP.md](MONITORING_SERVER_SETUP.md) | 모니터링 서버의 환경 변수와 실행 방법을 설명합니다. |
-| [INTEGRATED_SEARCH.md](INTEGRATED_SEARCH.md) | 통합 검색 API와 지역 단지 조회의 요청·응답 기준을 설명합니다. |
-| [ADMIN_ANNOUNCEMENT_IMPORT.md](ADMIN_ANNOUNCEMENT_IMPORT.md) | 관리자 공고 JSON의 작성, 검증과 등록 정책을 설명합니다. |
-| [NOTIFICATION_DATA.md](NOTIFICATION_DATA.md) | 알림 신청 데이터 구조, 운영 조회와 스키마 점검 방법을 설명합니다. |
-| [notification-retention-and-cancellation.md](notification-retention-and-cancellation.md) | 알림 신청의 보존·삭제, 비로그인 취소 확인과 수동 발송 절차를 설명합니다. |
+| 기능 | 문서 |
+|---|---|
+| 통합·지역·지하철역 검색 | [검색](../backend/docs/features/SEARCH.md) |
+| 첨부파일·조회수·일정 대상 | [공고 상세](../backend/docs/features/ANNOUNCEMENTS.md) |
+| 로그인·사용자 의견 | [로그인과 의견](../backend/docs/features/USER.md) |
+| 알림 설정·보관·수동 취소 | [알림](../backend/docs/operations/NOTIFICATIONS.md) |
+| 개인정보 안내·분석 허용·수집 제어 | [개인정보 안내와 이용 분석 동의](../backend/docs/features/PRIVACY.md) |
+| 개인정보 테이블·기존 업무 연동 | [개인정보 저장](../backend/docs/features/PRIVACY_STORAGE.md) |
+| 거리뷰 정책·초기화 결과 | [거리뷰](../backend/docs/features/STREET_VIEW.md) |
 
-백엔드 개발·운영 상세는 [backend/docs/](../backend/docs/README.md), 프론트엔드 개발 안내는
-[frontend/README.md](../frontend/README.md), DB 운영은 [infra/db/SETUP.md](../infra/db/SETUP.md)를 참고합니다.
+## 운영 자료
+
+[fixtures/](fixtures/)는 공고 JSON 예시, [queries/](queries/)는 알림 대상·집계·보관·스키마 점검 SQL이다.
+HTTPS 발급·갱신은 [인증서 운영](../infra/certbot/README.md)을 따른다.
+처리 목적·보유기간·권리행사·운영 책임은 [개인정보 운영 정책](privacy-policy.md)을 따른다.
+프론트엔드 안내는 [frontend](../frontend/README.md)에서 찾는다.
