@@ -4,10 +4,12 @@ import com.toadzip.backend.ingest.collection.lh.configuration.LhAnnouncementClie
 import com.toadzip.backend.ingest.collection.lh.repository.external.LhResponseStatusValidator;
 import com.toadzip.backend.ingest.collection.repository.external.DataGoKrOpenApiClient;
 import com.toadzip.backend.ingest.collection.repository.external.MyHomeResponseStatusValidator;
+import java.net.http.HttpClient;
 import java.time.Duration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
@@ -15,6 +17,15 @@ import tools.jackson.databind.ObjectMapper;
 @Configuration
 @EnableConfigurationProperties({ExternalDataIngestProperties.class, LhAnnouncementClientProperties.class})
 public class ExternalDataIngestConfiguration {
+
+    @Bean
+    RestClient shAnnouncementRestClient() {
+        HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
+                .followRedirects(HttpClient.Redirect.NEVER).build();
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+        factory.setReadTimeout(Duration.ofSeconds(30));
+        return RestClient.builder().requestFactory(factory).build();
+    }
 
     @Bean
     RestClient externalDataRestClient() {

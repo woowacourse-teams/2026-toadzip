@@ -80,9 +80,9 @@ export function SourceDataPage() {
     </div>
     <div id="source-panel" role="tabpanel" aria-labelledby={category ? `source-tab-${category}` : undefined}>
     {metadata ? <div className={styles.sourceInfo}>
-      <p><strong>{metadata.provider}</strong><a href={metadata.documentationUrl} target="_blank" rel="noreferrer">API 설명·키 발급</a>
-        <Link to="/admin/ingest">API 키 입력하고 수집</Link></p>
-      {result?.items[0] ? <p><span>수집 API URL</span><SourceUrl url={result.items[0].sourceUrl} /></p> : null}
+      <p><strong>{metadata.provider}</strong><a href={metadata.documentationUrl} target="_blank" rel="noreferrer">{category === 'SH_ANNOUNCEMENT' ? '공식 게시판' : 'API 설명·키 발급'}</a>
+        <Link to="/admin/ingest">{category === 'SH_ANNOUNCEMENT' ? '키 없이 SH 공고 수집' : 'API 키 입력하고 수집'}</Link></p>
+      {result?.items[0] ? <p><span>{category === 'SH_ANNOUNCEMENT' ? '수집 목록 URL' : '수집 API URL'}</span><SourceUrl url={result.items[0].sourceUrl} /></p> : null}
     </div> : null}
     <form key={search} className="management-filters" onSubmit={event => {
       event.preventDefault()

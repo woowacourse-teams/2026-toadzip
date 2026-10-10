@@ -27,6 +27,7 @@ const pipelineTypes: readonly DataPipelineType[] = [
   'ANNOUNCEMENT_REFINEMENT',
   'COMPLEX_SYNC',
   'ANNOUNCEMENT_SYNC',
+  'SH_ANNOUNCEMENT_COLLECTION',
 ]
 const pipelineStepCounts: Record<DataPipelineType, number> = {
   COMPLEX_COLLECTION: 2,
@@ -35,6 +36,7 @@ const pipelineStepCounts: Record<DataPipelineType, number> = {
   ANNOUNCEMENT_REFINEMENT: 2,
   COMPLEX_SYNC: 4,
   ANNOUNCEMENT_SYNC: 6,
+  SH_ANNOUNCEMENT_COLLECTION: 1,
 }
 const pipelineGroups = [
   {
@@ -74,6 +76,7 @@ export function DataPipelineControl({ domain, externalBusy = false, onBusyChange
     ANNOUNCEMENT_REFINEMENT: 0,
     COMPLEX_SYNC: 0,
     ANNOUNCEMENT_SYNC: 0,
+    SH_ANNOUNCEMENT_COLLECTION: 0,
   })
   const mounted = useRef(true)
   const orderedGroups = pipelineGroups.filter(group => !domain || group.id === `${domain}-pipelines`).sort((left, right) =>
@@ -334,8 +337,34 @@ export function DataPipelineControl({ domain, externalBusy = false, onBusyChange
             </div>
           </section>
         ))}
+        {domain !== 'complex' && <section aria-labelledby="sh-pipelines" className="data-pipeline-group">
+          <div className="data-pipeline-group-heading">
+            <div>
+              <h3 id="sh-pipelines">SH 공고 원천</h3>
+              <p>주택임대 게시판 원문과 첨부 정보를 수집합니다. API 키 없이 실행하며 정제는 별도로 진행합니다.</p>
+            </div>
+            <button type="button" disabled={isAnyPipelineRunning}
+              onClick={() => handleRun('SH_ANNOUNCEMENT_COLLECTION')}>
+              {buttonLabel('SH_ANNOUNCEMENT_COLLECTION', pipelineStates.SH_ANNOUNCEMENT_COLLECTION.execution.status)}
+            </button>
+          </div>
+          <div className={compact ? undefined : 'data-pipeline-results'}>
+            {compact ? <>
+              {selectedType === 'SH_ANNOUNCEMENT_COLLECTION'
+                && pipelineStates.SH_ANNOUNCEMENT_COLLECTION.execution.status !== 'IDLE'
+                && <PipelineExecutionSteps execution={pipelineStates.SH_ANNOUNCEMENT_COLLECTION.execution}
+                  stopping={stopping.SH_ANNOUNCEMENT_COLLECTION}
+                  onStop={() => void stop('SH_ANNOUNCEMENT_COLLECTION')} />}
+              {pipelineStates.SH_ANNOUNCEMENT_COLLECTION.requestError
+                && <p role="alert" className="form-error">{pipelineStates.SH_ANNOUNCEMENT_COLLECTION.requestError}</p>}
+            </> : <PipelineResult type="SH_ANNOUNCEMENT_COLLECTION" state={pipelineStates.SH_ANNOUNCEMENT_COLLECTION}
+              stopping={stopping.SH_ANNOUNCEMENT_COLLECTION ?? false}
+              onStop={() => void stop('SH_ANNOUNCEMENT_COLLECTION')} />}
+          </div>
+        </section>}
       </div>
-      {domain && ((!compact && externalBusy) || (domain === 'complex' && externalBusy) || pipelineGroups.filter(group => group.id !== `${domain}-pipelines`)
+      {domain && ((!compact && externalBusy) || (domain === 'complex' && (externalBusy
+        || pipelineStates.SH_ANNOUNCEMENT_COLLECTION.execution.status === 'RUNNING')) || pipelineGroups.filter(group => group.id !== `${domain}-pipelines`)
         .some(group => group.types.some(type => pipelineStates[type].execution.status === 'RUNNING'))) ?
         <p role="status">다른 탭에서 수집·정제 작업이 실행 중입니다. 완료 후 실행할 수 있습니다.</p> : null}
       {!compact && domain !== 'complex' && <LhAnnouncementQualityPanel collectionExecution={latestCollectionExecution(
@@ -393,6 +422,7 @@ function initialPipelineStates(): Record<DataPipelineType, PipelineViewState> {
     ANNOUNCEMENT_REFINEMENT: viewState(idleExecution('ANNOUNCEMENT_REFINEMENT')),
     COMPLEX_SYNC: viewState(idleExecution('COMPLEX_SYNC')),
     ANNOUNCEMENT_SYNC: viewState(idleExecution('ANNOUNCEMENT_SYNC')),
+    SH_ANNOUNCEMENT_COLLECTION: viewState(idleExecution('SH_ANNOUNCEMENT_COLLECTION')),
   }
 }
 

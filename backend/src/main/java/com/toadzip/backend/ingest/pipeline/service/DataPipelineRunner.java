@@ -9,6 +9,7 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeA
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.api.MyHomeComplexCollectionRequest;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
+import com.toadzip.backend.ingest.collection.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
 import com.toadzip.backend.ingest.enrichment.service.LhHousingTypeHouseholdEnrichmentService;
 import com.toadzip.backend.ingest.mapping.service.MyHomeAnnouncementMappingService;
@@ -49,6 +50,7 @@ public class DataPipelineRunner {
     private final DataPipelineExecutionStateService executionStateService;
     private final MeterRegistry meterRegistry;
     private final AnnouncementRegistrationService registrationService;
+    private final ShAnnouncementCollectionService shAnnouncementCollectionService;
 
     public void run(DataPipelineType type, UUID executionId) {
         run(type, executionId, null);
@@ -180,6 +182,7 @@ public class DataPipelineRunner {
             return registrationService.execute(step, targetIdentifier);
         }
         return switch (step) {
+            case COLLECT_SH_ANNOUNCEMENTS -> resultAdapter.adapt(shAnnouncementCollectionService.collect());
             case COLLECT_MYHOME_COMPLEXES -> resultAdapter.adapt(myHomeComplexCollectionService.collect(
                     MyHomeComplexCollectionRequest.allRegions(500, 1_000)
             ));

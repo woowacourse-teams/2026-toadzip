@@ -38,6 +38,9 @@ public class IngestOperationLock {
         LH_LEASE_CATALOG_COLLECTION(
                 8_432_026_082_800_020L, "LH 임대 카탈로그 수집 실행", "LH 임대 카탈로그 수집 잠금을 처리하지 못했습니다."
         ),
+        SH_ANNOUNCEMENT_COLLECTION(
+                8_432_026_100_500_015L, "SH 공고 수집 실행", "SH 공고 수집 실행 잠금을 처리하지 못했습니다."
+        ),
         LH_ANNOUNCEMENT_COLLECTION(
                 8_432_026_082_400_001L, "LH 공고 수집 실행", "LH 공고 수집 실행 잠금을 처리하지 못했습니다."
         ),

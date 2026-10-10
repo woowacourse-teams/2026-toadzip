@@ -12,7 +12,8 @@ public enum DataPipelineType {
     ANNOUNCEMENT_REFINEMENT("announcement-refinement"),
     COMPLEX_SYNC("complex-sync"),
     ANNOUNCEMENT_SYNC("announcement-sync"),
-    ANNOUNCEMENT_REGISTRATION("announcement-registration");
+    ANNOUNCEMENT_REGISTRATION("announcement-registration"),
+    SH_ANNOUNCEMENT_COLLECTION("sh-announcement-collection");
 
     private final String pathValue;
 
@@ -43,6 +44,7 @@ public enum DataPipelineType {
             case ANNOUNCEMENT_SYNC -> Stream.concat(
                     ANNOUNCEMENT_COLLECTION.steps().stream(), ANNOUNCEMENT_REFINEMENT.steps().stream()
             ).toList();
+            case SH_ANNOUNCEMENT_COLLECTION -> List.of(DataPipelineStep.COLLECT_SH_ANNOUNCEMENTS);
             case COMPLEX_COLLECTION -> List.of(
                     DataPipelineStep.COLLECT_MYHOME_COMPLEXES,
                     DataPipelineStep.COLLECT_LH_LEASE_CATALOG

@@ -13,6 +13,7 @@ const definitions = {
   MAP_MYHOME_COMPLEXES: '마이홈 단지 정제',
   ENRICH_LH_HOUSING_TYPE_HOUSEHOLDS: 'LH 주택형 세대수 보강',
   COLLECT_MYHOME_ANNOUNCEMENTS: '마이홈 공고 수집',
+  COLLECT_SH_ANNOUNCEMENTS: 'SH 공고 수집',
   COLLECT_LH_ANNOUNCEMENT_CATALOG: 'LH 공고 목록 수집',
   COLLECT_LH_ANNOUNCEMENT_SUPPLIES: 'LH 공고 공급 원본 수집',
   COLLECT_LH_ANNOUNCEMENT_DETAILS: 'LH 공고 상세 원본 수집',
@@ -30,6 +31,7 @@ const sequences: Record<DataPipelineType, Step[]> = {
   COMPLEX_SYNC: [...complexCollection, ...complexRefinement],
   ANNOUNCEMENT_COLLECTION: announcementCollection, ANNOUNCEMENT_REFINEMENT: announcementRefinement,
   ANNOUNCEMENT_SYNC: [...announcementCollection, ...announcementRefinement],
+  SH_ANNOUNCEMENT_COLLECTION: ['COLLECT_SH_ANNOUNCEMENTS'],
   ANNOUNCEMENT_REGISTRATION: ['COLLECT_MYHOME_ANNOUNCEMENTS', 'COLLECT_LH_ANNOUNCEMENT_SUPPLIES',
     'COLLECT_LH_ANNOUNCEMENT_DETAILS', 'MAP_MYHOME_ANNOUNCEMENTS'],
 }

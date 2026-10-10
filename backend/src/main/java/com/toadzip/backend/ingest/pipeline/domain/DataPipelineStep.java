@@ -1,6 +1,7 @@
 package com.toadzip.backend.ingest.pipeline.domain;
 
 public enum DataPipelineStep {
+    COLLECT_SH_ANNOUNCEMENTS("SH 공고 원천 수집"),
     COLLECT_MYHOME_COMPLEXES("마이홈 단지 수집"),
     COLLECT_LH_LEASE_CATALOG("LH 임대 카탈로그 수집"),
     MAP_MYHOME_COMPLEXES("마이홈 단지 정제"),
@@ -20,7 +21,7 @@ public enum DataPipelineStep {
 
     public boolean isCollection() {
         return switch (this) {
-            case COLLECT_MYHOME_COMPLEXES, COLLECT_LH_LEASE_CATALOG,
+            case COLLECT_SH_ANNOUNCEMENTS, COLLECT_MYHOME_COMPLEXES, COLLECT_LH_LEASE_CATALOG,
                     COLLECT_MYHOME_ANNOUNCEMENTS, COLLECT_LH_ANNOUNCEMENT_CATALOG,
                     COLLECT_LH_ANNOUNCEMENT_SUPPLIES, COLLECT_LH_ANNOUNCEMENT_DETAILS -> true;
             default -> false;
