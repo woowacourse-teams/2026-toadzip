@@ -16,9 +16,9 @@ function show(value: DataPipelineExecution, onStop?: () => void) {
 
 describe('v2 공통 단계 표시', () => {
   it('SH 수집은 한 단계의 진행 상태와 중지 버튼을 표시한다', () => {
-    show(execution({ type: 'SH_ANNOUNCEMENT_COLLECTION', currentStepName: 'SH 공고 수집', totalStepCount: 1 }), vi.fn())
+    show(execution({ type: 'SH_ANNOUNCEMENT_COLLECTION', currentStepName: 'SH 공고 원천 수집', totalStepCount: 1 }), vi.fn())
     expect(screen.getByRole('list', { name: '실행 단계' }).children).toHaveLength(1)
-    expect(screen.getByRole('button', { name: 'SH 공고 수집 진행' })).toHaveAttribute('aria-current', 'step')
+    expect(screen.getByRole('button', { name: 'SH 공고 원천 수집 진행' })).toHaveAttribute('aria-current', 'step')
     expect(screen.getByRole('button', { name: 'SH 공고 수집 실행 중지' })).toBeVisible()
   })
   it('단건 정제 매칭 실패에 수동 매칭 진입 버튼을 제공한다', () => {

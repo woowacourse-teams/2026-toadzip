@@ -26,40 +26,26 @@ class ShAnnouncementStoreTest {
     private EntityManager entityManager;
 
     @Test
-    void repeatedCollectionUsesSameKeyAndOnlyRefreshesObservedTimeForHtmlNoise() {
-        store(FIRST).store(snapshot("100", "제목", "<p>본문</p>", "[]", "조회수 100"));
-        assertThat(store(FIRST.plusSeconds(60)).store(snapshot("100", "제목", "<p>본문</p>", "[]", "조회수 200")))
-                .isEqualTo("unchanged");
+    void 재수집은_같은_게시글에_목록_정보와_원문과_수집_시각을_갱신한다() {
+        store(FIRST).store(snapshot("100", "제목", "첫 원문"));
+        store(FIRST.plusSeconds(60)).store(snapshot("100", "정정 제목", "정정 원문"));
         entityManager.flush();
         entityManager.clear();
 
         assertThat(repository.findAll()).singleElement().satisfies(source -> {
             assertThat(source.getSourceKey()).isEqualTo("SH:m_247:100");
-            assertThat(source.getChangedAt()).isEqualTo(FIRST);
+            assertThat(source.getTitle()).isEqualTo("정정 제목");
             assertThat(source.getCollectedAt()).isEqualTo(FIRST.plusSeconds(60));
-            assertThat(source.getRawDetailHtml()).isEqualTo("조회수 200");
+            assertThat(source.getRawListHtml()).isEqualTo("목록 원문");
+            assertThat(source.getRawDetailHtml()).isEqualTo("정정 원문");
         });
     }
 
     @Test
-    void titleBodyAndAttachmentChangesUpdateChangedTimeWithoutDuplicatingPost() {
-        store(FIRST).store(snapshot("100", "제목", "<p>본문</p>", "[]", "원문"));
-        assertThat(store(FIRST.plusSeconds(1)).store(snapshot("100", "정정 제목", "<p>본문</p>", "[]", "원문")))
-                .isEqualTo("changed");
-        assertThat(store(FIRST.plusSeconds(2)).store(snapshot("100", "정정 제목", "<p>정정 본문</p>", "[]", "원문")))
-                .isEqualTo("changed");
-        assertThat(store(FIRST.plusSeconds(3)).store(snapshot("100", "정정 제목", "<p>정정 본문</p>",
-                "[{\"fileSeq\":\"7\"}]", "원문"))).isEqualTo("changed");
-
-        assertThat(repository.findAll()).singleElement().satisfies(source ->
-                assertThat(source.getChangedAt()).isEqualTo(FIRST.plusSeconds(3)));
-    }
-
-    @Test
-    void collectingSubsetLeavesOtherStoredSourcesIntact() {
-        store(FIRST).store(snapshot("100", "제목", "<p>본문</p>", "[]", "원문"));
-        store(FIRST).store(snapshot("200", "다른 제목", "<p>본문</p>", "[]", "다른 원문"));
-        store(FIRST.plusSeconds(60)).store(snapshot("100", "제목", "<p>본문</p>", "[]", "원문"));
+    void 수집_범위에_없는_기존_원천도_보존한다() {
+        store(FIRST).store(snapshot("100", "제목", "원문"));
+        store(FIRST).store(snapshot("200", "다른 제목", "다른 원문"));
+        store(FIRST.plusSeconds(60)).store(snapshot("100", "제목", "원문"));
 
         assertThat(repository.count()).isEqualTo(2);
         assertThat(repository.findBySourceKey("SH:m_247:200").orElseThrow().getCollectedAt()).isEqualTo(FIRST);
@@ -69,8 +55,9 @@ class ShAnnouncementStoreTest {
         return new ShAnnouncementStore(repository, Clock.fixed(now, ZoneOffset.UTC));
     }
 
-    private ShAnnouncementSnapshot snapshot(String seq, String title, String body, String files, String raw) {
-        return new ShAnnouncementSnapshot(seq, title, "공급부", LocalDate.parse("2026-10-02"), body, "본문", files,
-                ShAnnouncementExternalRepository.detailUrl(seq), ShAnnouncementExternalRepository.LIST_URL, raw, raw);
+    private ShAnnouncementSnapshot snapshot(String seq, String title, String raw) {
+        return new ShAnnouncementSnapshot(seq, title, "공급부", LocalDate.parse("2026-10-02"),
+                ShAnnouncementExternalRepository.detailUrl(seq), ShAnnouncementExternalRepository.LIST_URL,
+                "목록 원문", raw);
     }
 }

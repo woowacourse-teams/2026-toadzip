@@ -77,10 +77,10 @@ class ShAnnouncementMigrationTest {
                         "INSERT INTO data_pipeline_executions(type) VALUES ('UNKNOWN')"))
                         .isInstanceOf(SQLException.class);
                 statement.execute("""
-                        INSERT INTO sh_announcement_source (source_key,seq,title,department,registered_date,body_html,
-                        body_text,attachments,original_url,list_url,raw_list_html,raw_detail_html,content_fingerprint,
-                        changed_at,collected_at) VALUES ('SH:m_247:100','100','공고','공급부','2026-10-02','<p>본문</p>',
-                        '본문','[]','url','list','list html','detail html','hash',now(),now())
+                        INSERT INTO sh_announcement_source (source_key,seq,title,department,registered_date,
+                        original_url,list_url,raw_list_html,raw_detail_html,collected_at)
+                        VALUES ('SH:m_247:100','100','공고','공급부','2026-10-02',
+                        'url','list','list html','detail html',now())
                         """);
             }
             finally {

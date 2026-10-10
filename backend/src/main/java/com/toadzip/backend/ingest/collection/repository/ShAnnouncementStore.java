@@ -16,16 +16,13 @@ public class ShAnnouncementStore {
     private final Clock clock;
 
     @Transactional
-    public String store(ShAnnouncementSnapshot snapshot) {
+    public void store(ShAnnouncementSnapshot snapshot) {
         Instant now = clock.instant();
         var existing = repository.findBySourceKey(snapshot.sourceKey());
         if (existing.isEmpty()) {
             repository.save(ShAnnouncementSource.from(snapshot, now));
-            return "new";
+            return;
         }
-        if (existing.orElseThrow().updateFrom(snapshot, now)) {
-            return "changed";
-        }
-        return "unchanged";
+        existing.orElseThrow().updateFrom(snapshot, now);
     }
 }

@@ -2,22 +2,21 @@ package com.toadzip.backend.ingest.collection.service;
 
 import static com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock.Operation.SH_ANNOUNCEMENT_COLLECTION;
 
-import com.toadzip.backend.ingest.exception.exception.ExternalDataRetryInterruptedException;
-import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
-import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.domain.ShAnnouncementSnapshot;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
-import com.toadzip.backend.ingest.collection.dto.ShAnnouncementPage;
 import com.toadzip.backend.ingest.collection.dto.ShAnnouncementPage.Entry;
+import com.toadzip.backend.ingest.collection.dto.ShAnnouncementPage;
 import com.toadzip.backend.ingest.collection.repository.ShAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.ShAnnouncementStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.collection.repository.external.ShAnnouncementResponseParser;
+import com.toadzip.backend.ingest.collection.repository.external.ShAnnouncementListParser;
+import com.toadzip.backend.ingest.exception.exception.ExternalDataCallFailureException;
+import com.toadzip.backend.ingest.exception.exception.ExternalDataRetryInterruptedException;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
+import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.IngestExecutionScope;
-import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -38,20 +37,19 @@ public class ShAnnouncementCollectionService {
     private static final int MAX_PAGES = 1_000;
 
     private final ShAnnouncementExternalRepository externalRepository;
-    private final ShAnnouncementResponseParser parser;
+    private final ShAnnouncementListParser parser;
     private final ShAnnouncementStore store;
     private final IngestOperationLock executionLock;
     private final ExternalDataRetryExecutor retryExecutor;
     private final ExternalDataFailureRecorder failureRecorder;
-    private final MeterRegistry meterRegistry;
     private final Clock clock;
     private final int lookbackDays;
     private final Duration requestInterval;
 
     public ShAnnouncementCollectionService(
-            ShAnnouncementExternalRepository externalRepository, ShAnnouncementResponseParser parser,
+            ShAnnouncementExternalRepository externalRepository, ShAnnouncementListParser parser,
             ShAnnouncementStore store, IngestOperationLock executionLock, ExternalDataRetryExecutor retryExecutor,
-            ExternalDataFailureRecorder failureRecorder, MeterRegistry meterRegistry, Clock clock,
+            ExternalDataFailureRecorder failureRecorder, Clock clock,
             @Value("${ingest.sh.lookback-days:90}") int lookbackDays,
             @Value("${ingest.sh.request-interval:1s}") Duration requestInterval
     ) {
@@ -64,7 +62,6 @@ public class ShAnnouncementCollectionService {
         this.executionLock = executionLock;
         this.retryExecutor = retryExecutor;
         this.failureRecorder = failureRecorder;
-        this.meterRegistry = meterRegistry;
         this.clock = clock;
         this.lookbackDays = lookbackDays;
         this.requestInterval = requestInterval;
@@ -138,10 +135,9 @@ public class ShAnnouncementCollectionService {
 
     private void collectDetail(Entry entry, ShAnnouncementPage page, Progress progress) {
         String request = "seq=" + entry.seq();
-        ShAnnouncementSnapshot snapshot;
+        String detailHtml;
         try {
-            snapshot = request(request,
-                    () -> parser.parseDetail(externalRepository.fetchDetail(entry.seq()), entry, page), progress);
+            detailHtml = request(request, () -> externalRepository.fetchDetail(entry.seq()), progress);
         }
         catch (ExternalDataCallFailureException | ExternalDataRequestException exception) {
             recordFailure(request, exception, progress);
@@ -149,11 +145,12 @@ public class ShAnnouncementCollectionService {
         }
         IngestExecutionScope.verifyHeld();
         IngestExecutionScope.checkStopRequested();
-        String change = store.store(snapshot);
+        store.store(new ShAnnouncementSnapshot(entry.seq(), entry.title(), entry.department(), entry.registeredDate(),
+                ShAnnouncementExternalRepository.detailUrl(entry.seq()),
+                ShAnnouncementExternalRepository.LIST_URL + "&page=" + page.page(), page.rawHtml(), detailHtml));
         failureRecorder.resolve(SOURCE, request);
         progress.stored++;
         progress.successful++;
-        meterRegistry.counter("ingest.sh.announcement.rows", "change", change).increment();
     }
 
     private <T> T request(String description, Supplier<T> action, Progress progress) {

@@ -65,11 +65,8 @@ const fieldLabels: Record<SourceCategory, Record<string, string>> = {
   LH_ANNOUNCEMENT_SUPPLY: {},
   SH_ANNOUNCEMENT: {
     seq: '게시글 식별자', title: '게시글 제목', department: '담당부서', registered_date: '등록일',
-    body_html: '본문 HTML', body_text: '본문 텍스트', attachments: '첨부 메타데이터',
     original_url: '게시글 원문 URL', list_url: '수집 목록 URL', raw_list_html: '목록 원문 HTML',
-    raw_detail_html: '상세 원문 HTML', content_fingerprint: '내용 해시', changed_at: '내용 변경 감지 시각',
-    brdId: '첨부 게시판 코드', fileSeq: '첨부 식별자', fileSize: '파일 크기 (바이트)',
-    oriFileNm: '원본 파일명', fileTp: '첨부 구분 코드', previewUrl: '공식 미리보기 URL',
+    raw_detail_html: '상세 원문 HTML',
   },
 }
 
@@ -79,7 +76,7 @@ export const sourcePresentation: Record<SourceCategory, {
   SH_ANNOUNCEMENT: {
     provider: '서울주택도시개발공사 · SH 게시판',
     documentationUrl: 'https://www.i-sh.co.kr/app/lay2/program/S48T561C563/www/brd/m_247/list.do?multi_itm_seq=2',
-    firstFields: ['title', 'registered_date', 'department', 'seq', 'body_text', 'attachments', 'original_url'],
+    firstFields: ['title', 'registered_date', 'department', 'seq', 'original_url', 'raw_detail_html'],
   },
   MYHOME_COMPLEX: {
     provider: '국토교통부 · 마이홈', documentationUrl: 'https://www.data.go.kr/data/15110581/openapi.do',

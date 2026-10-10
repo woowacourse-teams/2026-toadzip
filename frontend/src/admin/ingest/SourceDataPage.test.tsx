@@ -23,8 +23,8 @@ beforeEach(() => {
 
 it('SH 원천은 공식 게시판과 키 없는 수집으로 안내하고 HTML을 텍스트로 표시한다', async () => {
   fetchSources.mockResolvedValue({ ...fixture, items: [{ ...fixture.items[0], name: 'SH 공고',
-    raw: { title: 'SH 공고', raw_detail_html: '<script>window.shUnsafe = true</script>',
-      attachments: [{ fileSeq: '7', oriFileNm: '공고.pdf' }] } }] })
+    raw: { title: 'SH 공고', raw_list_html: '<html>목록</html>',
+      raw_detail_html: '<script>window.shUnsafe = true</script>' } }] })
   renderPage('/admin/sources?category=SH_ANNOUNCEMENT')
   const table = await screen.findByRole('table', { name: 'SH 공고 원천 목록 · 1페이지' })
   expect(screen.getByRole('link', { name: '공식 게시판' })).toHaveAttribute('href',
@@ -32,7 +32,7 @@ it('SH 원천은 공식 게시판과 키 없는 수집으로 안내하고 HTML�
   expect(screen.getByRole('link', { name: '키 없이 SH 공고 수집' })).toHaveAttribute('href', '/admin/ingest')
   expect(screen.queryByRole('link', { name: 'API 설명·키 발급' })).not.toBeInTheDocument()
   expect(table).toHaveTextContent('<script>window.shUnsafe = true</script>')
-  expect(table).toHaveTextContent('공고.pdf')
+  expect(table).toHaveTextContent('<html>목록</html>')
   expect(table.querySelector('script')).toBeNull()
 })
 function renderPage(entry = '/admin/sources') {

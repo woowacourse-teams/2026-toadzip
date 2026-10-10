@@ -158,15 +158,13 @@ class IngestSourceControllerIntegrationTest {
 
     private void storeShSource() {
         jdbc.sql("""
-                INSERT INTO sh_announcement_source (source_key,seq,title,department,registered_date,body_html,
-                body_text,attachments,original_url,list_url,raw_list_html,raw_detail_html,content_fingerprint,
-                changed_at,collected_at) VALUES ('SH:m_247:100','100','두꺼비 SH 공고','공급부','2026-10-02',
-                '<p>본문</p>','본문','[{"fileSeq":"7","oriFileNm":"공고.pdf"}]',
+                INSERT INTO sh_announcement_source (source_key,seq,title,department,registered_date,
+                original_url,list_url,raw_list_html,raw_detail_html,collected_at)
+                VALUES ('SH:m_247:100','100','두꺼비 SH 공고','공급부','2026-10-02',
                 'https://www.i-sh.co.kr/app/lay2/program/S48T561C563/www/brd/m_247/view.do?seq=100&multi_itm_seq=2',
                 'https://www.i-sh.co.kr/app/lay2/program/S48T561C563/www/brd/m_247/list.do?multi_itm_seq=2',
-                '<html>목록</html>','<html>상세</html>','fingerprint',:changedAt,:collectedAt)
-                """).param("changedAt", Timestamp.from(Instant.parse("2026-10-01T01:00:00Z")))
-                .param("collectedAt", Timestamp.from(Instant.parse("2026-10-02T01:00:00Z"))).update();
+                '<html>목록</html>','<html>상세</html>',:collectedAt)
+                """).param("collectedAt", Timestamp.from(Instant.parse("2026-10-02T01:00:00Z"))).update();
     }
 
     private void storeCurrentSource(String category) {
@@ -281,15 +279,15 @@ class IngestSourceControllerIntegrationTest {
     }
 
     @Test
-    void SH_원천은_HTML과_첨부_배열과_변경_감지_시각을_보존한다() throws Exception {
+    void SH_원천은_목록과_상세_HTML을_그대로_반환하고_추출_결과를_포함하지_않는다() throws Exception {
         mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("category", "SH_ANNOUNCEMENT"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].sourceKey").value("SH:m_247:100"))
-                .andExpect(jsonPath("$.data.items[0].sourceUpdatedAt").value("2026-10-01T01:00:00Z"))
+                .andExpect(jsonPath("$.data.items[0].sourceUpdatedAt").doesNotExist())
                 .andExpect(jsonPath("$.data.items[0].raw.raw_list_html").value("<html>목록</html>"))
                 .andExpect(jsonPath("$.data.items[0].raw.raw_detail_html").value("<html>상세</html>"))
-                .andExpect(jsonPath("$.data.items[0].raw.attachments[0].fileSeq").value("7"))
-                .andExpect(jsonPath("$.data.items[0].raw.attachments[0].oriFileNm").value("공고.pdf"));
+                .andExpect(jsonPath("$.data.items[0].raw.body_text").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].raw.attachments").doesNotExist());
     }
 
     @Test

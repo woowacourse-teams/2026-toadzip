@@ -5,15 +5,10 @@ CREATE TABLE sh_announcement_source (
     title text NOT NULL,
     department text NOT NULL,
     registered_date date NOT NULL,
-    body_html text NOT NULL,
-    body_text text NOT NULL,
-    attachments text NOT NULL CHECK (jsonb_typeof(attachments::jsonb) = 'array'),
     original_url text NOT NULL,
     list_url text NOT NULL,
     raw_list_html text NOT NULL,
     raw_detail_html text NOT NULL,
-    content_fingerprint varchar(64) NOT NULL,
-    changed_at timestamp with time zone NOT NULL,
     collected_at timestamp with time zone NOT NULL
 );
 CREATE INDEX idx_sh_announcement_collected_at ON sh_announcement_source (collected_at DESC, id DESC);

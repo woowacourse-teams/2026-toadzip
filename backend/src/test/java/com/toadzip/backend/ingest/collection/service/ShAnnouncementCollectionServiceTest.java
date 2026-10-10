@@ -5,17 +5,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.collection.domain.ExternalDataSource;
 import com.toadzip.backend.ingest.collection.dto.ExternalDataCollectionReport;
 import com.toadzip.backend.ingest.collection.repository.ShAnnouncementExternalRepository;
 import com.toadzip.backend.ingest.collection.repository.ShAnnouncementStore;
 import com.toadzip.backend.ingest.collection.repository.external.ExternalDataRequestException;
-import com.toadzip.backend.ingest.collection.repository.external.ShAnnouncementResponseParser;
+import com.toadzip.backend.ingest.collection.repository.external.ShAnnouncementListParser;
+import com.toadzip.backend.ingest.failure.service.ExternalDataFailureRecorder;
 import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineStoppedException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -55,12 +56,27 @@ class ShAnnouncementCollectionServiceTest {
     }
 
     @Test
+    void 상세_본문과_첨부를_해석하지_않고_목록_정보와_HTML_원문을_저장한다() {
+        String listHtml = list(1, 1, 100);
+        String detailHtml = "<!doctype html><html><body><article>새 상세 구조</article></body></html>";
+        when(externalRepository.fetchList(1)).thenReturn(listHtml);
+        when(externalRepository.fetchDetail("100")).thenReturn(detailHtml);
+
+        var report = service.collect();
+
+        assertThat(report.storedRowCount()).isOne();
+        assertThat(report.failedRequestCount()).isZero();
+        verify(store).store(org.mockito.ArgumentMatchers.argThat(snapshot ->
+                snapshot.seq().equals("100") && snapshot.title().equals("공고 100")
+                        && snapshot.rawListHtml().equals(listHtml) && snapshot.rawDetailHtml().equals(detailHtml)));
+    }
+
+    @Test
     void savesSelectedPostsOnEveryPageAndResolvesTheirFailures() {
         when(externalRepository.fetchList(1)).thenReturn(list(1, 11, 100));
         when(externalRepository.fetchList(2)).thenReturn(list(2, 11, 110));
         when(externalRepository.fetchDetail("100")).thenReturn(detail("100"));
         when(externalRepository.fetchDetail("110")).thenReturn(detail("110"));
-        when(store.store(any())).thenReturn("new");
 
         var report = service.collect();
 
@@ -76,7 +92,6 @@ class ShAnnouncementCollectionServiceTest {
     void laterListFailureKeepsAlreadyStoredPostsAndRecordsFailedPage() {
         when(externalRepository.fetchList(1)).thenReturn(list(1, 11, 100));
         when(externalRepository.fetchDetail("100")).thenReturn(detail("100"));
-        when(store.store(any())).thenReturn("new");
         when(externalRepository.fetchList(2)).thenThrow(ExternalDataRequestException.retryable("503"));
 
         var report = service.collect();
@@ -91,9 +106,9 @@ class ShAnnouncementCollectionServiceTest {
     void failedDetailDoesNotReplaceSourceAndNextPostStillSucceeds() {
         when(externalRepository.fetchList(1)).thenReturn(list(1, 3, 100, 101, 102));
         when(externalRepository.fetchDetail("100")).thenReturn(detail("100"));
-        when(externalRepository.fetchDetail("101")).thenReturn("<html>오류</html>");
+        when(externalRepository.fetchDetail("101"))
+                .thenThrow(new ExternalDataRequestException("SH 요청 실패: HTTP 404"));
         when(externalRepository.fetchDetail("102")).thenReturn(detail("102"));
-        when(store.store(any())).thenReturn("unchanged");
 
         var report = service.collect();
 
@@ -121,8 +136,7 @@ class ShAnnouncementCollectionServiceTest {
         String first = list(1, 11).replace("2026-01-01", "2026-07-06");
         when(externalRepository.fetchList(1)).thenReturn(first);
         when(externalRepository.fetchList(2)).thenReturn(list(2, 11, 110).replace("2026-10-02", "2026-07-07"));
-        when(externalRepository.fetchDetail("110")).thenReturn(detail("110").replace("2026-10-02", "2026-07-07"));
-        when(store.store(any())).thenReturn("new");
+        when(externalRepository.fetchDetail("110")).thenReturn(detail("110"));
 
         var report = service.collect();
 
@@ -136,7 +150,6 @@ class ShAnnouncementCollectionServiceTest {
         service = service(0);
         when(externalRepository.fetchList(1)).thenReturn(list(1, 1));
         when(externalRepository.fetchDetail("100")).thenReturn(detail("100").replace("2026-10-02", "2026-01-01"));
-        when(store.store(any())).thenReturn("new");
 
         assertThat(service.collect().storedRowCount()).isOne();
     }
@@ -161,7 +174,7 @@ class ShAnnouncementCollectionServiceTest {
     void stopDuringStorePropagatesInsteadOfBecomingCollectionFailure() {
         when(externalRepository.fetchList(1)).thenReturn(list(1, 1, 100));
         when(externalRepository.fetchDetail("100")).thenReturn(detail("100"));
-        when(store.store(any())).thenThrow(new DataPipelineStoppedException());
+        doThrow(new DataPipelineStoppedException()).when(store).store(any());
 
         assertThatThrownBy(service::collect).isInstanceOf(DataPipelineStoppedException.class);
         verify(failures, never()).record(any(), any(), any(), any(), any());
@@ -169,8 +182,8 @@ class ShAnnouncementCollectionServiceTest {
 
     private ShAnnouncementCollectionService service(int days) {
         var metrics = new SimpleMeterRegistry();
-        return new ShAnnouncementCollectionService(externalRepository, new ShAnnouncementResponseParser(), store,
-                lock, new ExternalDataRetryExecutor(Duration.ZERO, metrics), failures, metrics,
+        return new ShAnnouncementCollectionService(externalRepository, new ShAnnouncementListParser(), store,
+                lock, new ExternalDataRetryExecutor(Duration.ZERO, metrics), failures,
                 Clock.fixed(Instant.parse("2026-10-05T00:00:00Z"), ZoneOffset.UTC), days, Duration.ZERO);
     }
 
@@ -193,12 +206,6 @@ class ShAnnouncementCollectionServiceTest {
     }
 
     private String detail(String seq) {
-        return """
-                <input name='multi_itm_seq' value='2'><script>initParam.downList = [];</script>
-                <div class='detailTable gs0401Table firgs0401Table'><table><thead><tr><th>공고 %s</th></tr></thead>
-                <tbody><tr><td><ul><li><strong>등록일 : </strong>2026-10-02</li></ul></td></tr>
-                <tr><td class='cont'><p>본문</p></td></tr></tbody></table></div>
-                <ul class='personInfo'><li><span>담당부서</span> : 공급부</li></ul>
-                """.formatted(seq);
+        return "<html><body>공고 " + seq + " 원문</body></html>";
     }
 }
