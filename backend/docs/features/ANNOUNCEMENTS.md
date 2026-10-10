@@ -69,6 +69,10 @@ HTML로 변환해 DOM에 넣지 않으며 외부 변환 서비스·API 키는 �
 
 ## 조회수
 
+집계 요청은 [현재 범위의 유효한 분석 동의](PRIVACY.md)가 있어야 한다.
+미동의·거부·철회·만료·이전 범위는 `403 ANALYTICS_CONSENT_REQUIRED`이며 공고 열람은 계속 가능하다.
+서버는 동의 행을 잠근 트랜잭션 안에서 허용·만료를 확인한 뒤 집계한다.
+
 ### 집계 기준
 
 - 같은 브라우저·공고는 `Asia/Seoul`의 날짜별 하루 1회만 집계한다. 자정에 기준 날짜가 바뀐다.
@@ -79,7 +83,7 @@ HTML로 변환해 DOM에 넣지 않으며 외부 변환 서비스·API 키는 �
 
 ### 중복·동시성
 
-- 브라우저 UUID는 로컬 저장소 `toadzip.announcement-viewer`에 유지한다. [Web Locks](https://w3c.github.io/web-locks/)로 최초 생성과 CSRF 준비를 탭 간 직렬화한다.
+- 브라우저 UUID는 분석 허용 후에만 만들고 로컬 저장소 `toadzip.announcement-viewer`에 유지한다. [Web Locks](https://w3c.github.io/web-locks/)로 최초 생성과 CSRF 준비를 탭 간 직렬화한다.
 - 서버는 `(announcement_id, viewer_id)`의 유일성 제약과 마지막 집계일을 사용한다. 이력은 브라우저·공고당 한 행만 유지한다.
 - 공고 행 잠금 → 당일 기록 upsert → 카운터 증가가 하나의 트랜잭션이다. 실패하면 기록과 카운터가 함께 롤백된다.
 - 다른 브라우저의 동시 증가는 `view_count = view_count + 1`로 누적한다.

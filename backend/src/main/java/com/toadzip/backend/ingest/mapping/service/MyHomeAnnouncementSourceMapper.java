@@ -147,6 +147,10 @@ public class MyHomeAnnouncementSourceMapper {
             Integer lhTotalSupplyHouseholdCount,
             String resolvedLhSourceIdentifier
     ) {
+        String matchingIdentity() {
+            return source.snapshot() + ":" + sourceSupplyRowIdentifier + ":" + sourceHousingTypeName
+                    + ":" + exclusiveArea + ":" + supplyArea + ":" + resolvedLhSourceIdentifier;
+        }
     }
 
     static class MyHomeAnnouncementMappingRejectedException extends RuntimeException {

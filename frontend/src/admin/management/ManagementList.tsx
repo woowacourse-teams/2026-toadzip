@@ -7,6 +7,8 @@ import { ManagementSummaryTable } from './ManagementSummaryTable'
 import { labels, provinces, rentals } from './fields'
 import styles from './ManagementList.module.css'
 import { managementListParams } from './managementNavigation'
+import { verificationStatuses } from './complexVerificationContract'
+import { verificationStatusLabels } from './complexVerificationPresentation'
 
 export function ManagementList({ resource, embedded = false, compact = false, refresh = 0 }: { resource: ManagementResource; embedded?: boolean; compact?: boolean; refresh?: number }) {
   const [params, setParams] = useSearchParams()
@@ -53,13 +55,15 @@ export function ManagementList({ resource, embedded = false, compact = false, re
       <label>지역<select name="region" defaultValue={activeParams.get('region') ?? ''}><option value="">전체 지역</option>{provinces.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label>기관<select name="provider" defaultValue={activeParams.get('provider') ?? ''}><option value="">전체 기관</option>{['LH','SH','GH','ETC'].map(value => <option key={value}>{value}</option>)}</select></label>
       <div className={styles.actions}><button className="admin-primary" type="submit">검색</button><button data-admin-navigation type="button" onClick={() => setParams(embedded && params.has('mode') ? { mode: params.get('mode') ?? 'direct', ...(params.has('complexId') ? { complexId: params.get('complexId') ?? '' } : {}) } : {})}>초기화</button></div>
-      <details className={styles.moreFilters} open={activeParams.get('deleted') === 'true' || activeParams.has('rental') || activeParams.has('review') || undefined}><summary>
+      <details className={styles.moreFilters} open={activeParams.get('deleted') === 'true' || activeParams.has('rental') || activeParams.has('review') || activeParams.has('verification') || undefined}><summary>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M4 7h16M4 17h16" /><circle cx="9" cy="7" r="2" fill="var(--ds-color-surface)" /><circle cx="15" cy="17" r="2" fill="var(--ds-color-surface)" /></svg>
         <span>추가 필터{activeParams.get('deleted') === 'true' ? ' · 휴지통' : ''}</span>
         <svg className={styles.filterChevron} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
       </summary><div>
         <label>공급 유형<select name="rental" defaultValue={activeParams.get('rental') ?? ''}><option value="">전체 유형</option>{rentals.map(value => <option key={value} value={value}>{labels[value]}</option>)}</select></label>
         <label>보관 상태<select name="deleted" defaultValue={activeParams.get('deleted') ?? 'false'}><option value="false">등록 데이터</option><option value="true">휴지통</option></select></label>
+        {resource === 'complexes' ? <label>검토 상태<select name="verification" defaultValue={activeParams.get('verification') ?? ''}><option value="">전체 상태</option>
+          {verificationStatuses.map(status => <option key={status} value={status}>{verificationStatusLabels[status]}</option>)}</select></label> : null}
         <label className={styles.review}><input name="review" type="checkbox" value="true" defaultChecked={activeParams.get('review') === 'true'} />원천 변경 확인 필요</label>
       </div></details>
       {managementListParams(params, resource).get('complexId') ? <input type="hidden" name="complexId" value={managementListParams(params, resource).get('complexId') ?? ''} /> : null}

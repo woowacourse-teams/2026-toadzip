@@ -17,6 +17,7 @@ const POSTHOG_ENVIRONMENT_KEYS = [
   'VITE_ANALYTICS_ENV',
   'VITE_POSTHOG_LOCAL_ENABLED',
 ]
+const GA_ENVIRONMENT_KEYS = ['VITE_GA_MEASUREMENT_ID', 'VITE_GA_DEBUG_MODE']
 
 export default defineConfig(({ command, mode }) => {
   const environment = loadEnv(mode, '.', 'VITE_PUBLIC_HOUSING_LOCAL_MOCK')
@@ -26,7 +27,7 @@ export default defineConfig(({ command, mode }) => {
     environment.VITE_PUBLIC_HOUSING_LOCAL_MOCK === 'true'
 
   return {
-    define: posthogEnvironmentDefines(mode),
+    define: analyticsEnvironmentDefines(mode),
     plugins: [react(), ...(localMockEnabled ? [localPublicHousingMockPlugin()] : [])],
     build: {
       rolldownOptions: {
@@ -43,16 +44,17 @@ export default defineConfig(({ command, mode }) => {
   }
 })
 
-function posthogEnvironmentDefines(mode: string) {
+function analyticsEnvironmentDefines(mode: string) {
   // loadEnv also updates these process variables, even with a narrow prefix.
   // Keep the existing frontend environment behavior when reading the root file.
   const preservedKeys = ['VITE_USER_NODE_ENV', 'BROWSER', 'BROWSER_ARGS']
   const previousValues = preservedKeys.map((key) => [key, process.env[key]] as const)
   try {
     const rootDirectory = fileURLToPath(new URL('../', import.meta.url))
-    const environment = loadEnv(mode, rootDirectory, POSTHOG_ENVIRONMENT_KEYS)
+    const environment = loadEnv(mode, rootDirectory, [...POSTHOG_ENVIRONMENT_KEYS, ...GA_ENVIRONMENT_KEYS])
     // loadEnv matches prefixes, so pick exact names instead of spreading its result.
-    return Object.fromEntries(POSTHOG_ENVIRONMENT_KEYS.map((key) => [
+    const keys = [...POSTHOG_ENVIRONMENT_KEYS, ...GA_ENVIRONMENT_KEYS.filter(key => !!environment[key])]
+    return Object.fromEntries(keys.map((key) => [
       `import.meta.env.${key}`,
       JSON.stringify(environment[key] ?? ''),
     ]))

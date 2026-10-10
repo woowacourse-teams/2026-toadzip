@@ -22,7 +22,7 @@ interface GroupState {
   readonly error: string | null
 }
 
-const searchTypes: readonly SearchType[] = ['REGION', 'ANNOUNCEMENT', 'COMPLEX']
+const searchTypes: readonly SearchType[] = ['REGION', 'SUBWAY_STATION', 'ANNOUNCEMENT', 'COMPLEX']
 
 export interface IntegratedSearchProps {
   readonly onActiveChange?: (active: boolean) => void
@@ -43,7 +43,7 @@ export function IntegratedSearch({
   const suggestionsId = useId()
   const normalizedQuery = normalizeQuery(query)
   const active = normalizedQuery.replaceAll(' ', '').length >= 2
-  const inputLabel = '지역, 단지, 공고 검색'
+  const inputLabel = '지역, 지하철역, 단지, 공고 검색'
   const measurement = useMemo(() => createSearchMeasurement('main_search', normalizedQuery, searchTypes), [normalizedQuery])
   const activeSearch = useRef<SearchMeasurement | null>(null)
   useEffect(() => {
@@ -219,9 +219,9 @@ export function SearchGroup({
       <h3 className={styles.groupHeading} id={headingId}>{label}</h3>
       <ul>
         {state.items.map((item, index) => {
-          const unavailable = item.type === 'REGION'
-            && (item.latitude === null || item.longitude === null)
-            && !findRegionBoundaryMetadata(item.regionCode ?? item.id)
+          const missingCoordinates = item.latitude === null || item.longitude === null
+          const unavailable = missingCoordinates && (item.type === 'SUBWAY_STATION'
+            || (item.type === 'REGION' && !findRegionBoundaryMetadata(item.regionCode ?? item.id)))
           return (
             <li key={`${item.type}-${item.id}`} className={item.type === 'REGION' && item.regionCode ? styles.regionRow : undefined}>
               <button
@@ -296,6 +296,7 @@ function responseItems(response: IntegratedSearchResponse, type: SearchType) {
     ANNOUNCEMENT: response.announcements,
     COMPLEX: response.complexes,
     REGION: response.regions,
+    SUBWAY_STATION: response.subwayStations ?? [],
   }[type]
 }
 
@@ -309,7 +310,7 @@ function normalizeQuery(value: string) {
 }
 
 function typeLabel(type: SearchType) {
-  return { ANNOUNCEMENT: '공고', COMPLEX: '단지', REGION: '지역' }[type]
+  return { ANNOUNCEMENT: '공고', COMPLEX: '단지', REGION: '지역', SUBWAY_STATION: '지하철역' }[type]
 }
 
 function statusLabel(status: string) {

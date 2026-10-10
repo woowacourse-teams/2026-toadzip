@@ -21,7 +21,8 @@ services:
       retries: 5
       start_period: 5s
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
   backend:
@@ -45,6 +46,10 @@ services:
       GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
       KAKAO_CLIENT_ID: "${KAKAO_CLIENT_ID:-}"
       KAKAO_CLIENT_SECRET: "${KAKAO_CLIENT_SECRET:-}"
+      NAVER_SEARCH_CLIENT_ID: "${NAVER_SEARCH_CLIENT_ID:-}"
+      NAVER_SEARCH_CLIENT_SECRET: "${NAVER_SEARCH_CLIENT_SECRET:-}"
+      NAVER_MAPS_API_KEY_ID: "${NAVER_MAPS_API_KEY_ID:-}"
+      NAVER_MAPS_API_KEY: "${NAVER_MAPS_API_KEY:-}"
       USER_OAUTH_REDIRECT_BASE_URL: "${USER_OAUTH_REDIRECT_BASE_URL:-}"
       USER_OAUTH_SUCCESS_URL: "${USER_OAUTH_SUCCESS_URL:-http://localhost/}"
       USER_OAUTH_FAILURE_URL: "${USER_OAUTH_FAILURE_URL:-http://localhost/?login=failed}"
@@ -54,6 +59,22 @@ services:
     ports:
       - "${BACKEND_PORT:-8080}:8080"
       - "${MANAGEMENT_PORT:-8081}:8081"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --fail
+        - --silent
+        - --show-error
+        - --max-time
+        - "4"
+        - --output
+        - /dev/null
+        - http://127.0.0.1:8081/actuator/health
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
     restart: unless-stopped
 
   alloy:

@@ -23,6 +23,16 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class IngestFailureReviewControllerIntegrationTest {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.toadzip.backend.user.repository.UserRepository privacyPermissionUsers;
+
+    private String privacyPermissionMemberId() {
+        var member = com.toadzip.backend.user.domain.User.create(
+                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        return privacyPermissionUsers.saveAndFlush(member).getId().toString();
+    }
+
+
     private static final String ENDPOINT = "/api/admin/ingest/failure-reviews";
 
     @Autowired private MockMvc mockMvc;
@@ -346,7 +356,7 @@ class IngestFailureReviewControllerIntegrationTest {
 
     @Test
     void 관리자_권한이_없으면_실패와_제품_정보를_조회할_수_없다() throws Exception {
-        mockMvc.perform(get(ENDPOINT).with(user("user").roles("USER")).param("domain", "complex"))
+        mockMvc.perform(get(ENDPOINT).with(user(privacyPermissionMemberId()).roles("USER")).param("domain", "complex"))
                 .andExpect(status().isForbidden());
     }
 

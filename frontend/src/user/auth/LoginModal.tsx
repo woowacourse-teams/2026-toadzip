@@ -1,3 +1,6 @@
+import { Link } from 'react-router'
+import { usePrivacyNotices } from '../../privacy/usePrivacy'
+import { consentStore } from '../../privacy/consentStore'
 import { captureProductEvent, createAnalyticsId, setReplaySensitive } from '../../analytics/productAnalytics'
 import { useLayoutEffect, useId, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
@@ -14,6 +17,8 @@ interface Props {
 }
 
 export function LoginModal({ loginFailed, sessionError, onClose, returnFocusRef, entryPoint = 'button' }: Props) {
+  const { notices, error: noticeError, retry: retryNotice } = usePrivacyNotices()
+  const policyVersion = notices.find(notice => notice.key === 'PRIVACY_POLICY')?.version
   const [modalId] = useState(createAnalyticsId)
   const initialEntryPoint = useRef(entryPoint)
   const closing = useRef(false)
@@ -75,21 +80,24 @@ export function LoginModal({ loginFailed, sessionError, onClose, returnFocusRef,
               <circle cx="12" cy="12" r="9" /><path d="M12 7v6m0 3v1" />
             </svg>
             <strong>{loginFailed ? '로그인을 완료하지 못했습니다.' : '로그인 상태를 확인하지 못했습니다.'}</strong>
+            {loginFailed && <p>인증이 취소되었거나 로그인 요청이 만료되었을 수 있어요.</p>}
             <p>아래 버튼을 눌러 다시 시도해 주세요.</p>
           </div>
         )}
         <div className={styles.actions}>
-          <a ref={providerRef} className={`${styles.provider} ${styles.kakao}`} href={socialLoginUrl('kakao')} onClick={() => captureProductEvent('login_provider_clicked', { provider: 'kakao', login_modal_id: modalId })}>
+          <a ref={providerRef} className={`${styles.provider} ${styles.kakao}`} href={socialLoginUrl('kakao', policyVersion)} onClick={() => { captureProductEvent('login_provider_clicked', { provider: 'kakao', login_modal_id: modalId }); consentStore.beginAuthTransition('oauth') }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M12 3C6.48 3 2 6.36 2 10.5c0 2.63 1.82 4.94 4.57 6.28l-1.16 4.13 4.73-2.98c.6.05 1.23.07 1.86.07 5.52 0 10-3.36 10-7.5S17.52 3 12 3Z" />
             </svg>
             카카오톡으로 로그인
           </a>
-          <a className={`${styles.provider} ${styles.google}`} href={socialLoginUrl('google')} onClick={() => captureProductEvent('login_provider_clicked', { provider: 'google', login_modal_id: modalId })}>
+          <a className={`${styles.provider} ${styles.google}`} href={socialLoginUrl('google', policyVersion)} onClick={() => { captureProductEvent('login_provider_clicked', { provider: 'google', login_modal_id: modalId }); consentStore.beginAuthTransition('oauth') }}>
             <img className={styles.googleMark} src="/auth/google-g.png" width="20" height="20" alt="" />
             Google로 로그인
           </a>
         </div>
+        <p className={styles.policy}><Link to={policyVersion ? `/privacy/PRIVACY_POLICY/${policyVersion}` : '/privacy'}>개인정보처리방침</Link></p>
+        {noticeError && <p role="alert">개인정보처리방침 안내를 불러오지 못했어요. 로그인은 계속할 수 있어요. <button type="button" onClick={retryNotice}>다시 시도</button></p>}
       </div>
     </dialog>, document.body,
   )

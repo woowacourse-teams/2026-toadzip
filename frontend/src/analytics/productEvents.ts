@@ -34,8 +34,10 @@ export type SafeProperties = Record<string, string | number | boolean | string[]
 const PUBLIC_IDS = new Set(['complex_id', 'announcement_id', 'housing_type_id', 'attachment_id', 'target_id', 'result_id', 'region_code'])
 const CORRELATION_IDS = new Set([
   'event_id', 'detail_visit_id', 'list_view_id', 'search_id', 'filter_edit_id', 'document_open_id',
-  'action_id', 'server_event_id', 'street_view_open_id', 'attempt_id', 'exposure_id',
-  'request_id', 'notification_action_id', 'login_modal_id', 'feedback_id', 'submission_id', 'cancellation_id',
+  // These IDs are analytics-only. Notification command/receipt IDs are excluded
+  // because the business ledger associates them with member accounts.
+  'street_view_open_id', 'attempt_id', 'exposure_id',
+  'request_id', 'login_modal_id', 'feedback_id', 'submission_id', 'cancellation_id',
   'document_dialog_id', 'document_download_id',
 ])
 const COUNTS = new Set([

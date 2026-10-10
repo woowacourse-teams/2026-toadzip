@@ -1,29 +1,47 @@
 package com.toadzip.backend.user.service;
 
 import com.toadzip.backend.user.domain.User;
+import com.toadzip.backend.user.domain.SocialAuthorizationContext;
+import com.toadzip.backend.user.repository.SocialUserLockRepository;
 import com.toadzip.backend.user.repository.UserRepository;
+import com.toadzip.backend.privacy.repository.PrivacyNoticeCatalog;
+import com.toadzip.backend.privacy.repository.UserRegistrationNoticeRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.Instant;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
 public class SocialUserService {
 
     private final UserRepository userRepository;
+    private final SocialUserLockRepository userLocks;
+    private final UserRegistrationNoticeRepository registrationNotices;
+    private final PrivacyNoticeCatalog notices;
     private final Clock clock;
 
-    public Long findOrCreate(String provider, String subject) {
-        return findOrCreate(provider, subject, null);
-    }
-
-    public Long findOrCreate(String provider, String subject, String email) {
+    @Transactional
+    public Long findOrCreate(String provider, String subject, String email, SocialAuthorizationContext authorization) {
         String identifier = identifier(provider, subject);
-        return userRepository.findByLoginIdentifier(identifier)
-                .map(user -> updateEmail(user, email))
-                .orElseGet(() -> createOrFind(identifier, email));
+        userLocks.lockIdentifier(identifier);
+        var existing = userRepository.findForUpdateByLoginIdentifier(identifier);
+        Instant now = clock.instant();
+        if (authorization == null || !authorization.isValidAt(now)) {
+            throw new IllegalArgumentException("로그인 요청이 없거나 만료됐습니다.");
+        }
+        if (existing.isPresent()) {
+            User user = existing.get();
+            return updateEmail(user, email);
+        }
+        User user = User.create(identifier, LocalDateTime.now(clock));
+        user.updateEmail(email);
+        Long userId = userRepository.saveAndFlush(user).getId();
+        notices.findOptional("PRIVACY_POLICY", authorization.policyVersion())
+                .ifPresent(notice -> registrationNotices.record(userId, notice.version(), now));
+        return userId;
     }
 
     public String emailOf(Long id) {
@@ -34,18 +52,6 @@ public class SocialUserService {
         user.updateEmail(email);
         userRepository.save(user);
         return user.getId();
-    }
-
-    private Long createOrFind(String identifier, String email) {
-        try {
-            User user = User.create(identifier, LocalDateTime.now(clock));
-            user.updateEmail(email);
-            return userRepository.saveAndFlush(user).getId();
-        } catch (DataIntegrityViolationException exception) {
-            return userRepository.findByLoginIdentifier(identifier)
-                    .map(user -> updateEmail(user, email))
-                    .orElseThrow(() -> exception);
-        }
     }
 
     private String identifier(String provider, String subject) {

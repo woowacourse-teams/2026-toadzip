@@ -250,7 +250,7 @@ afterEach(() => {
 })
 
 describe('공공주택 HTTP repository', () => {
-  it('정상 상세 응답 뒤 조회를 기록하고 서버가 반환한 조회수를 사용한다', async () => {
+  it('동의 전에는 상세 응답만 사용하고 자체 조회 기록을 보내지 않는다', async () => {
     vi.stubGlobal('navigator', { locks: { request: (_key: string, _options: unknown, run: () => unknown) => run() } })
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ data: ANNOUNCEMENT_DETAIL }))
@@ -259,10 +259,10 @@ describe('공공주택 HTTP repository', () => {
     try {
       const repository = createHttpPublicHousingRepository({ apiBaseUrl: '', fetcher })
       const result = await repository.findAnnouncementDetail('117', new AbortController().signal)
-      expect(result.viewCount).toBe(15)
-      expect(result.raw.viewCount).toBe(15)
+      expect(result.viewCount).toBe(0)
+      expect(result.raw.viewCount).toBe(0)
       expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
-        '/api/v1/announcements/117', '/api/auth/csrf', '/api/v1/announcements/117/views',
+        '/api/v1/announcements/117',
       ])
     } finally {
       vi.unstubAllGlobals()

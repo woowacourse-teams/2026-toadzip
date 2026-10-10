@@ -24,6 +24,16 @@ import org.springframework.test.web.servlet.MockMvc;
 @ActiveProfiles("test")
 class DataPipelineStopSecurityIntegrationTest {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.toadzip.backend.user.repository.UserRepository privacyPermissionUsers;
+
+    private String privacyPermissionMemberId() {
+        var member = com.toadzip.backend.user.domain.User.create(
+                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        return privacyPermissionUsers.saveAndFlush(member).getId().toString();
+    }
+
+
     private static final String ENDPOINT = "/api/admin/ingest/pipelines/executions/{id}/stop";
 
     @Autowired private MockMvc mockMvc;
@@ -38,7 +48,7 @@ class DataPipelineStopSecurityIntegrationTest {
 
     @Test
     void 일반_사용자는_중지할_수_없다() throws Exception {
-        mockMvc.perform(post(ENDPOINT, UUID.randomUUID()).with(user("user").roles("USER")).with(csrf()))
+        mockMvc.perform(post(ENDPOINT, UUID.randomUUID()).with(user(privacyPermissionMemberId()).roles("USER")).with(csrf()))
                 .andExpect(status().isForbidden());
         verifyNoInteractions(service);
     }

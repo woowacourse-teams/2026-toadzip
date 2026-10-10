@@ -1,3 +1,5 @@
+import type { NotificationInterestRepository } from '../interest/notificationInterestRepository'
+import { MemoryRouter } from 'react-router'
 /// <reference types="node" />
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
@@ -136,15 +138,17 @@ describe('HousingComplexDetailPanel', () => {
 
   it('회원 단지 알림 클릭은 단지 ID를 저장하고 준비 중임을 안내한다', async () => {
     localStorage.clear()
-    const record = vi.fn().mockResolvedValue(undefined)
+    const record = vi.fn<NotificationInterestRepository['record']>().mockImplementation(async event => ({ ...event, outcome: 'ACTIVATED', occurredAt: '2026-10-09T00:00:00Z', settingsRevision: 1, currentTarget: { active: true, expiresAt: '2027-04-07T00:00:00Z', noticeVersion: 'notification-2026-10-09-v1', requestedAt: '2026-10-09T00:00:00Z' } }))
     render(
-      <NotificationInterestProvider repository={{ record, loadStatus: async () => ({ emailConfirmed: false, targets: [] }) }}>
+      <MemoryRouter><NotificationInterestProvider repository={{ record, loadStatus: async () => ({ userId: '1', settingsRevision: 0, targets: [] }) }}>
         <HousingComplexDetailPanel detail={BASE_DETAIL} onClose={vi.fn()} />
-      </NotificationInterestProvider>,
+      </NotificationInterestProvider></MemoryRouter>,
     )
     expect(screen.getByText('단지 알림')).toBeVisible()
     await waitFor(() => expect(screen.getByRole('button', { name: '서울가람 행복주택 알림 받기' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: '서울가람 행복주택 알림 받기' }))
+    expect(record).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByRole('button', { name: '신청하기' }))
     expect(await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })).toBeVisible()
     expect(record).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'CONFIRMED', source: 'COMPLEX_DETAIL', targetType: 'COMPLEX', targetId: '17',
@@ -669,4 +673,9 @@ describe('HousingComplexDetailPanel', () => {
     expect(sharedCss).toMatch(/\.tableViewport[\s\S]*?overflow-x:\s*auto;/)
     expect(sharedCss).toMatch(/\.table \{[\s\S]*?width:\s*100%;[\s\S]*?table-layout:\s*fixed;/)
   })
+})
+
+vi.mock('../../privacy/usePrivacy', () => {
+  const notices = [{ key: 'NOTIFICATION_NOTICE', version: 'notification-2026-10-09-v1' }]
+  return { usePrivacyNotices: () => ({ notices, error: false, retry: vi.fn() }) }
 })

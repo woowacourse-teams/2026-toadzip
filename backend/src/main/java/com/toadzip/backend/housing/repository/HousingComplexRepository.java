@@ -10,8 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface HousingComplexRepository extends JpaRepository<HousingComplex, Long> {
-    @Query(value = """
-            SELECT c.* FROM housing_complexes c
+    String ADMIN_SEARCH_FROM = " FROM housing_complexes c " + ComplexVerificationSql.LATEST_REVIEW + """
             WHERE c.admin_deleted = :deleted
               AND (:review = false OR c.source_review_required = true)
               AND (lower(c.name) LIKE :keyword ESCAPE '!' OR lower(c.road_address) LIKE :keyword ESCAPE '!'
@@ -19,10 +18,12 @@ public interface HousingComplexRepository extends JpaRepository<HousingComplex, 
               AND (:provider = '' OR c.provider IN (:provider, :providerLegacy))
               AND (:rental = '' OR c.supply_type IN (:rental, :rentalLegacy))
               AND (:region = '' OR c.province_code = :region OR c.city_county_district_code = :region)
-            ORDER BY c.created_at DESC NULLS LAST, c.id DESC
-            """, nativeQuery = true)
+            """ + " AND (:verification = '' OR (" + ComplexVerificationSql.STATUS + ") = :verification)";
+
+    @Query(value = "SELECT c.*" + ADMIN_SEARCH_FROM + " ORDER BY c.created_at DESC NULLS LAST, c.id DESC",
+            countQuery = "SELECT count(*)" + ADMIN_SEARCH_FROM, nativeQuery = true)
     org.springframework.data.domain.Page<HousingComplex> searchAdmin(String keyword, String identifier, String provider, String providerLegacy,
-            String rental, String rentalLegacy, String region, boolean deleted, boolean review,
+            String rental, String rentalLegacy, String region, boolean deleted, boolean review, String verification,
             org.springframework.data.domain.Pageable pageable);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

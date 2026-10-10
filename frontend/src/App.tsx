@@ -1,4 +1,5 @@
 import { FailureReviewPage } from './admin/ingest/FailureReviewPage'
+import { AnnouncementRegistrationV2Page } from './admin/ingest/AnnouncementRegistrationV2Page'
 import { SourceDataPage } from './admin/ingest/SourceDataPage'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router'
 import { AdminAuthProvider } from './admin/auth/AdminAuthProvider'
@@ -18,6 +19,7 @@ import { UserListPage } from './admin/users/UserListPage'
 import { UserDetailPage } from './admin/users/UserDetailPage'
 import { FeedbackPage } from './feedback/FeedbackPage'
 import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
+import { PrivacyBoundary, PrivacyMenu, PrivacyPolicyPage, PrivacySettingsPage } from './privacy/Privacy'
 import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
 
 function Home() {
@@ -25,7 +27,7 @@ function Home() {
     <NotificationInterestProvider>
       <div className="app-shell">
         <div className="service-rail-brand"><BrandLink /></div>
-        <div className="service-rail-account"><Link className="service-feedback-link" to="/feedback">의견 보내기</Link><NotificationInterestSessionControl presentation="rail" /></div>
+        <div className="service-rail-account"><PrivacyMenu /><Link className="service-feedback-link" to="/feedback">의견 보내기</Link><NotificationInterestSessionControl presentation="rail" /></div>
         <main className="map-main"><DefaultPublicHousingExplorer /></main>
       </div>
     </NotificationInterestProvider>
@@ -59,6 +61,7 @@ function AdminRoutes() {
           <Route element={<AdminLayout />}>
             <Route index element={<Navigate to="complexes" replace />} />
             <Route path="ingest" element={<AdminHome />} />
+            <Route path="ingest-v2" element={<AnnouncementRegistrationV2Page />} />
             <Route path="complexes/:id?" element={<ManagementWorkspace resource="complexes" />} />
             <Route path="announcements/:id?" element={<ManagementWorkspace resource="announcements" />} />
             <Route path="users" element={<UserListPage />} />
@@ -79,9 +82,13 @@ function AdminRoutes() {
 export default function App() {
   return (
     <>
+    <PrivacyBoundary />
     <ProductAnalyticsBoundary />
     <Routes>
       <Route path="/" element={<Home />} />
+      <Route path="/privacy" element={<PrivacyPolicyPage />} />
+      <Route path="/privacy/:key/:version" element={<PrivacyPolicyPage />} />
+      <Route path="/privacy/settings" element={<PrivacySettingsPage />} />
       <Route path="/login" element={<LegacyLoginRedirect />} />
       <Route path="/feedback" element={<FeedbackPage />} />
       <Route path="/notifications" element={<Navigate to="/?inbox=open" replace />} />

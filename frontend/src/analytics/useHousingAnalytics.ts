@@ -8,6 +8,7 @@ import {
 } from '../public-housing/filters/searchFilterLocation.ts'
 import type { DetailLocationResult } from '../public-housing/navigation/detailLocation.ts'
 import { type DetailEntryPoint, setAnalyticsPageActive, trackEvent } from './googleAnalytics.ts'
+import { useAnalyticsConsent } from './useAnalyticsConsent'
 
 interface HousingAnalyticsState {
   readonly detailLocation: DetailLocationResult
@@ -26,6 +27,7 @@ export function useHousingAnalytics({
   readyComplexId,
   readyAnnouncementId,
 }: HousingAnalyticsState) {
+  const allowed = useAnalyticsConsent()
   const location = useLocation()
   const navigationType = useNavigationType()
   const visitRef = useRef<DetailVisit | null>(null)
@@ -36,6 +38,7 @@ export function useHousingAnalytics({
   const targetKey = id === null ? null : `${kind}:${id}`
 
   useEffect(() => {
+    if (!allowed) return
     let cancelled = false
     let activated = false
     // StrictMode's discarded setup must not enqueue a page view or clear a real queue.
@@ -49,7 +52,7 @@ export function useHousingAnalytics({
       cancelled = true
       if (activated) setAnalyticsPageActive(false)
     }
-  }, [])
+  }, [allowed])
 
   useEffect(() => {
     if (visitRef.current === null || visitRef.current.key !== targetKey) {
@@ -60,6 +63,7 @@ export function useHousingAnalytics({
     }
     pendingEntryRef.current = null
     const visit = visitRef.current
+    if (!allowed) { visit.sent = false; return }
     let cancelled = false
     queueMicrotask(() => {
       if (cancelled || visit.sent || id === null) return
@@ -77,7 +81,7 @@ export function useHousingAnalytics({
       }
     })
     return () => { cancelled = true }
-  }, [id, kind, location.key, navigationType, readyAnnouncementId, readyComplexId, targetKey])
+  }, [allowed, id, kind, location.key, navigationType, readyAnnouncementId, readyComplexId, targetKey])
 
   const prepareDetailVisit = useCallback((
     detailKind: 'complex' | 'announcement',

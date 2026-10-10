@@ -2,6 +2,15 @@
 
 Git, Docker, Docker Compose와 Buildx를 준비한다. 로컬·개발·운영 환경의 비밀번호는 각 `.env`에 설정하고 Git에 넣지 않는다.
 
+## 개인정보 최초 배포
+
+기존 서비스에 개인정보 기능을 처음 배포할 때는 [개인정보 배포](../backend/docs/operations/PRIVACY.md)를 따른다.
+기존 writer를 중지하고 `사전 검사 → 백엔드 기동 → 사후 검사 → 프론트 기동` 순서로 교체한다.
+아래 일괄 실행 명령은 새 빈 DB를 준비할 때 사용한다.
+
+서버·프론트·배포 설정을 포함한 같은 릴리스를 사용한다. 구형 화면과 새 알림 API를 혼용하지 않는다.
+저장소 밖 자동 배포가 있다면 통합 릴리스 준비 전 중간 변경이 배포되지 않도록 확인한다.
+
 ## 로컬
 
 ### 환경변수
@@ -33,6 +42,8 @@ docker compose -f compose.yaml -f compose.local.yaml -f compose.monitoring.yaml 
 
 새 빈 primary DB는 백엔드 시작 시 Flyway가 초기 스키마와 후속 마이그레이션을 적용한다.
 기존 DB에 Flyway 이력이 없다면 먼저 백업하고 [DB 운영](../backend/docs/operations/DATABASE.md#flyway)의 스키마·제약 확인과 필요한 보정을 마친다.
+개인정보 앱은 이력이 없는 기존 DB를 자동 보정하지 않고 기동을 차단한다.
+최초 Flyway 도입은 백업·격리 검증·별도 승인을 거쳐 먼저 완료한다.
 
 ### 관리자 계정
 
@@ -79,10 +90,10 @@ VITE_NAVER_MAPS_CLIENT_ID=
 
 ### 실행과 HTTPS
 
-처음에는 HTTP와 백엔드부터 실행한다. HTTPS 구성 전에는 `.env`에 HTTPS용 `COMPOSE_FILE`을 설정하지 않는다.
+새 빈 DB를 준비할 때는 HTTP와 백엔드부터 실행한다. HTTPS 구성 전에는 `.env`에 HTTPS용 `COMPOSE_FILE`을 설정하지 않는다.
 
 ```shell
-docker compose up -d --build
+docker compose up -d --build --wait --wait-timeout 300
 ```
 
 [HTTPS 설정](../infra/certbot/README.md)에서 인증서·권한·서버 환경변수·자동 갱신을 구성한다.

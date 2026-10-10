@@ -20,13 +20,25 @@ docker compose up -d
 
 | DB 상태 | 경로 |
 |---|---|
-| 기존 테이블이 있고 Flyway 이력이 없음 | `20260922.00` 자동 baseline 후 통합 `V20260922_01`부터 적용 |
+| 기존 테이블이 있고 Flyway 이력이 없음 | 백업·격리 검증·별도 승인 후 기존 기능용 Flyway로 `20260922.00` baseline과 후속 `V` 적용 |
 | 새 빈 DB | 누적 스키마 `B20260922_01`과 후속 `V` 적용 |
 | Flyway 이력이 있음 | 미적용 `V`만 실행 |
 
 `baseline`은 기존 DB에 기준선을 기록하는 작업이고 `B`는 새 DB의 누적 스키마 스크립트다.
-`baseline-on-migrate=true`는 이력이 없는 비어 있지 않은 스키마에만 적용된다.
+개인정보 기능을 포함한 앱은 이력이 없는 기존 DB에서 기동을 차단한다. 앱 시작으로 최초 Flyway 도입을 대신하지 않는다.
 기준선 기록은 기존 구조·데이터의 검증이나 실패한 마이그레이션의 복구를 대신하지 않는다.
+
+### 개인정보 스키마
+
+| 영역 | 경로 | 이력 테이블 |
+|---|---|---|
+| 기존 서비스 | `classpath:db/migration` | `flyway_schema_history` |
+| 개인정보 | `classpath:db/privacy` | `privacy_flyway_schema_history` |
+
+앱은 읽기 전용 사전 검사 → 기존 Flyway → 개인정보 Flyway → JPA 검증 순으로 기동한다.
+개인정보 Flyway의 baseline 0은 전용 이력에만 기록하며 기존 이력을 대체하지 않는다.
+폐기된 개인정보 설계 흔적이나 실패 이력이 있으면 마이그레이션 전에 중단한다.
+사전·사후 검사와 기존 서비스 교체는 [개인정보 배포](PRIVACY.md)를 따른다.
 
 ### 기존 로그인 제약
 
@@ -39,7 +51,7 @@ Flyway 이력이 없고 `uk_users_login_identifier`가 `UNIQUE (login_identifier
 
 1. 주 DB 이름·주소를 확인하고 앱 쓰기를 중지한다. 백업과 복원 가능성을 확인한다.
 2. [준비 SQL](../../../scripts/flyway-login-constraint-prepare.sql)로 제약 이름을 `uk_users_login_identifier_pre_flyway`로 바꾼다. 고유성은 유지된다.
-3. 새 앱을 기동해 자동 baseline과 후속 `V`를 적용한다. `V20260922_02`가 원래 이름의 제약을 만든다.
+3. 기존 기능용 Flyway를 별도로 실행해 baseline과 후속 `V`를 적용한다. 개인정보 앱의 시작 검사를 우회하지 않는다. `V20260922_02`가 원래 이름의 제약을 만든다.
 4. 성공 이력과 두 제약 정의를 확인한 뒤 [마무리 SQL](../../../scripts/flyway-login-constraint-finalize.sql)로 이전 제약을 제거한다.
 5. [알림 스키마 검사](NOTIFICATIONS.md#배포-확인)를 실행하고 종료 코드 0을 확인한다.
 

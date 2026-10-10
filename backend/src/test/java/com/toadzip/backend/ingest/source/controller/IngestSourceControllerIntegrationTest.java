@@ -34,6 +34,16 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class IngestSourceControllerIntegrationTest {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.toadzip.backend.user.repository.UserRepository privacyPermissionUsers;
+
+    private String privacyPermissionMemberId() {
+        var member = com.toadzip.backend.user.domain.User.create(
+                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        return privacyPermissionUsers.saveAndFlush(member).getId().toString();
+    }
+
+
     private static final String ENDPOINT = "/api/admin/ingest/sources";
 
     @Autowired private MockMvc mockMvc;
@@ -422,7 +432,7 @@ class IngestSourceControllerIntegrationTest {
 
     @Test
     void 일반_사용자는_원천을_조회할_수_없다() throws Exception {
-        mockMvc.perform(get(ENDPOINT).with(user("member").roles("USER")).param("category", "MYHOME_COMPLEX"))
+        mockMvc.perform(get(ENDPOINT).with(user(privacyPermissionMemberId()).roles("USER")).param("category", "MYHOME_COMPLEX"))
                 .andExpect(status().isForbidden());
     }
 }

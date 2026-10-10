@@ -10,6 +10,7 @@ import { useRef, useState } from 'react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { trackEvent } from '../analytics/googleAnalytics.ts'
+import { consentStore } from '../privacy/consentStore'
 import * as streetViewApi from '../street-view/api'
 import { STREET_VIEW_CHANNEL, STREET_VIEW_VERSION } from '../street-view/protocol'
 import type { EnabledStreetViewConfiguration, StreetViewEvent } from '../street-view/types'
@@ -158,6 +159,88 @@ beforeEach(() => {
   localStorage.clear()
   vi.mocked(trackEvent).mockClear()
   localStorage.setItem('toadzip:welcome-completed', JSON.stringify({ expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 }))
+})
+
+it.each(['SUBWAY_STATION', 'REGION'] as const)('외부 %s 위치 선택은 경계를 해제하고 지도만 이동한다', async (type) => {
+  const repository = createRepository()
+  const selected = { ...searchItem(type, 'local-1', '서울 강남구 역삼동', 37.5, 127.03), regionCode: null }
+  renderExplorer(repository, '/?boundaryRegionCode=41110', searchRepository(
+    type === 'SUBWAY_STATION' ? [selected] : [], type === 'REGION' ? [selected] : [],
+  ))
+  await waitFor(() => expect(screen.getByTestId('map-boundary')).toHaveTextContent('41110'))
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: '역삼동' } })
+  fireEvent.click(await screen.findByRole('button', { name: /^서울 강남구 역삼동/ }))
+
+  await waitFor(() => expect(screen.getByTestId('map-boundary')).toHaveTextContent('none'))
+  expect(screen.getByText('카메라 37.5,127.03')).toBeVisible()
+  expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('14')
+  expect(new URLSearchParams(screen.getByTestId('location-search').textContent ?? '').has('boundaryRegionCode')).toBe(false)
+  expect(repository.findComplexDetail).not.toHaveBeenCalled()
+  expect(repository.findAnnouncementDetail).not.toHaveBeenCalled()
+  expect(trackEvent).toHaveBeenCalledWith('select_search_result', { result_type: type === 'SUBWAY_STATION' ? 'subway_station' : 'region' })
+})
+
+it.each((['SUBWAY_STATION', 'REGION'] as const).flatMap((type) =>
+  ['complexId=17', 'announcementId=201'].map((detailQuery) => ({ type, detailQuery })),
+))('외부 $type 선택은 $detailQuery 상세와 탐색 기록을 정리하고 다른 상태를 보존한다', async ({ type, detailQuery }) => {
+  const repository = createRepository()
+  const selected = { ...searchItem(type, 'local-1', '서울 강남구 역삼동', 37.5, 127.03), regionCode: null }
+  render(
+    <MemoryRouter initialEntries={[{
+      pathname: '/',
+      search: `?${detailQuery}&boundaryRegionCode=41110&rentalTypes=HAPPY_HOUSING`,
+      hash: '#map',
+      state: {
+        source: 'shared-state',
+        toadzipDetailEntry: true,
+        toadzipDetailReturnFocusStack: [{ kind: 'complex', id: '18', actionKey: 'complex:18' }],
+      },
+    }]}>
+      <PublicHousingExplorer repository={repository} mapRepository={repository}
+        regionRepository={createRegionRepository()} searchRepository={searchRepository(
+          type === 'SUBWAY_STATION' ? [selected] : [], type === 'REGION' ? [selected] : [],
+        )} />
+      <LocationSearch />
+    </MemoryRouter>,
+  )
+  await screen.findByRole('button', { name: /상세 닫기/ })
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: '역삼동' } })
+  fireEvent.click(await screen.findByRole('button', { name: /^서울 강남구 역삼동/ }))
+
+  expect(screen.queryByRole('button', { name: /상세 닫기/ })).not.toBeInTheDocument()
+  expectCurrentSearch({ rentalTypes: 'HAPPY_HOUSING' })
+  expect(screen.getByTestId('location-state')).toHaveTextContent('{"source":"shared-state"}')
+  expect(screen.getByTestId('location-hash')).toHaveTextContent('#map')
+  expect(screen.getByTestId('map-boundary')).toHaveTextContent('none')
+  expect(screen.getByText('카메라 37.5,127.03')).toBeVisible()
+  expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('14')
+  expect(screen.getByRole('searchbox')).toHaveValue('')
+})
+
+it.each(['SUBWAY_STATION', 'REGION'] as const)('외부 %s 선택 후 늦게 끝난 단지 상세는 지도 위치를 되돌리지 않는다', async (type) => {
+  const repository = createRepository()
+  const pending = createDeferred<ComplexDetail>()
+  repository.findComplexDetail.mockReturnValueOnce(pending.promise)
+  const selected = { ...searchItem(type, 'local-1', '서울 강남구 역삼동', 37.5, 127.03), regionCode: null }
+  renderSearchedExplorer(repository, '/', searchRepository(
+    type === 'SUBWAY_STATION' ? [selected] : [], type === 'REGION' ? [selected] : [],
+  ))
+  fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+  fireEvent.click(await screen.findByRole('button', { name: '서울가람 행복주택 단지 상세 보기' }))
+  await waitFor(() => expect(repository.findComplexDetail).toHaveBeenCalledOnce())
+
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: '역삼동' } })
+  fireEvent.click(await screen.findByRole('button', { name: /^서울 강남구 역삼동/ }))
+  expect(screen.getByText('카메라 37.5,127.03')).toBeVisible()
+  const cameraRequest = screen.getByTestId('map-camera-request').textContent
+
+  await act(async () => pending.resolve(complexDetail()))
+
+  expect(screen.getByText('카메라 37.5,127.03')).toBeVisible()
+  expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('14')
+  expect(screen.getByTestId('map-camera-request').textContent).toBe(cameraRequest)
+  expect(screen.queryByRole('button', { name: /상세 닫기/ })).not.toBeInTheDocument()
+  expectCurrentSearch({})
 })
 
 afterEach(() => {
@@ -2976,6 +3059,21 @@ describe('PublicHousingExplorer', () => {
 })
 
 describe('PublicHousingExplorer GA4 행동 연결', () => {
+  beforeEach(() => {
+    // These assertions describe events from an already-authorized visit.
+    // Consent-state and transport behavior are exercised in their own suites.
+    vi.spyOn(consentStore, 'allowed').mockReturnValue(true)
+  })
+
+  it('미동의 상태에서는 상세 조회가 끝나도 페이지·상세 분석을 시작하지 않는다', async () => {
+    vi.mocked(consentStore.allowed).mockReturnValue(false)
+    renderExplorer(createRepository(), '/?complexId=17')
+    expect(await screen.findByRole('region', { name: '서울가람 행복주택 단지 상세 내용' })).toBeVisible()
+    await act(async () => Promise.resolve())
+    expect(analyticsCalls('page_view')).toEqual([])
+    expect(analyticsCalls('view_complex')).toEqual([])
+  })
+
   it('직접 접속의 상세 로딩 완료를 한 번 기록하고 지도와 필터 변경에 중복하지 않는다', async () => {
     const repository = createRepository()
     const pending = createDeferred<ComplexDetail>()
@@ -3166,6 +3264,7 @@ function searchRepository(
   regions: readonly SearchResultItem[],
 ): IntegratedSearchRepository {
   const response: IntegratedSearchResponse = {
+    subwayStations: results.filter(({ type }) => type === 'SUBWAY_STATION'),
     announcements: results.filter(({ type }) => type === 'ANNOUNCEMENT'),
     complexes: results.filter(({ type }) => type === 'COMPLEX'),
     failures: [],

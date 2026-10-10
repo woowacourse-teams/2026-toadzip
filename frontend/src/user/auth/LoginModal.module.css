@@ -82,3 +82,7 @@
   .dialog, .alert, .provider { border-color: CanvasText; }
   .dialog::backdrop { background: Canvas; opacity: .7; }
 }
+
+.policy { text-align: center; margin: 18px 0 0; font-size: 12px; }
+.policy a { color: var(--ds-color-label); text-underline-offset: 3px; }
+.provider[aria-disabled="true"] { opacity: .5; cursor: wait; }

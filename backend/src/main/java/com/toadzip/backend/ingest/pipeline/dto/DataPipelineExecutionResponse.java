@@ -31,7 +31,8 @@ public record DataPipelineExecutionResponse(
         long externalRequestCount,
         String lastRequestDescription,
         Instant lastProgressAt,
-        DataPipelineWorkProgress workProgress
+        DataPipelineWorkProgress workProgress,
+        String targetAnnouncementIdentifier
 ) {
 
     public DataPipelineExecutionResponse {
@@ -62,6 +63,7 @@ public record DataPipelineExecutionResponse(
                 null,
                 false,
                 0,
+                null,
                 null,
                 null,
                 null

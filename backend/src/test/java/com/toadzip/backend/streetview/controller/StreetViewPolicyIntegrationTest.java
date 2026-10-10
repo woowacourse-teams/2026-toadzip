@@ -30,6 +30,16 @@ import org.springframework.transaction.annotation.Transactional;
 @ActiveProfiles("test")
 @Transactional
 class StreetViewPolicyIntegrationTest {
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.toadzip.backend.user.repository.UserRepository privacyPermissionUsers;
+
+    private String privacyPermissionMemberId() {
+        var member = com.toadzip.backend.user.domain.User.create(
+                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        return privacyPermissionUsers.saveAndFlush(member).getId().toString();
+    }
+
     private static final String POLICY = "/api/admin/street-view-policy";
     @Autowired private MockMvc mockMvc;
     @Autowired private JdbcClient jdbc;
@@ -124,7 +134,7 @@ class StreetViewPolicyIntegrationTest {
     @Test
     void 정책_관리에는_관리자와_CSRF가_필요하다() throws Exception {
         mockMvc.perform(get(POLICY)).andExpect(status().isUnauthorized());
-        mockMvc.perform(get(POLICY).with(user("member").roles("USER")))
+        mockMvc.perform(get(POLICY).with(user(privacyPermissionMemberId()).roles("USER")))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.message").value("관리자 권한이 필요합니다."));
         mockMvc.perform(get(POLICY + "/changes")).andExpect(status().isUnauthorized());
         mockMvc.perform(put(POLICY).with(user("operator").roles("ADMIN"))

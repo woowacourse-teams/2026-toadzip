@@ -28,6 +28,8 @@ async function activeAnalytics() {
 }
 
 beforeEach(() => {
+  consentGate.allowed = true
+  consentGate.stops = []
   vi.resetModules()
   vi.useFakeTimers()
   vi.stubEnv('DEV', false)
@@ -165,6 +167,38 @@ describe('Google Analytics transport', () => {
     const payloadCommands = commands().filter(([command]) => command !== 'js')
     expect(JSON.stringify(payloadCommands)).not.toMatch(/private|email|999/)
     expect(events().some((event) => event[1] === 'page_view')).toBe(false)
+  })
+
+  it('지하철역 선택은 이름 주소 좌표와 식별자를 전송하지 않는다', async () => {
+    const { trackEvent } = await activeAnalytics()
+    trackEvent('select_search_result', {
+      result_type: 'subway_station', complex_id: '999', title: 'private place', latitude: 37.5,
+    } as Parameters<typeof trackEvent<'select_search_result'>>[1])
+    script().dispatchEvent(new Event('load'))
+
+    expect(events()).toHaveLength(1)
+    expect(events()[0][2]).toEqual(expect.objectContaining({ result_type: 'subway_station' }))
+    expect(JSON.stringify(events())).not.toMatch(/private|latitude|999/)
+  })
+
+  it('지하철역 선택도 동의 후에만 전송하고 철회하면 중단한다', async () => {
+    consentGate.allowed = false
+    const { trackEvent } = await activeAnalytics()
+    expect(trackEvent('select_search_result', { result_type: 'subway_station' })).toBe(false)
+    expect(document.querySelector(SCRIPT_SELECTOR)).toBeNull()
+    expect(events()).toEqual([])
+
+    consentGate.allowed = true
+    expect(trackEvent('select_search_result', { result_type: 'subway_station' })).toBe(true)
+    script().dispatchEvent(new Event('load'))
+    expect(events()).toHaveLength(1)
+    expect(events()[0][2]).toEqual(expect.objectContaining({ result_type: 'subway_station' }))
+
+    consentGate.allowed = false
+    consentGate.stops.forEach(stop => stop())
+    expect(trackEvent('select_search_result', { result_type: 'subway_station' })).toBe(false)
+    expect(window[DISABLE_KEY]).toBe(true)
+    expect(events()).toEqual([])
   })
 
   it.each(['', '0', '-1', '1.2', 'complex-1', 'private@example.test', '1?email=private', '9'.repeat(20)])(
@@ -342,4 +376,51 @@ describe('Google Analytics transport', () => {
     expect(trackEvent('page_view', {})).toBe(false)
     expect(window[DISABLE_KEY]).toBe(true)
   })
+})
+
+
+const consentGate = vi.hoisted(() => ({ allowed: true, stops: [] as Array<() => void> }))
+vi.mock('../privacy/consentStore', () => ({ analyticsCollectionAllowed: () => consentGate.allowed, consentStore: { onStop: (callback: () => void) => { consentGate.stops.push(callback); return () => {} } } }))
+
+it('blocks the tag before consent and drops queued commands on withdrawal', async () => {
+  consentGate.allowed = false
+  const analytics = await activeAnalytics()
+  expect(analytics.trackEvent('page_view', {})).toBe(false)
+  expect(document.querySelector(SCRIPT_SELECTOR)).toBeNull()
+  consentGate.allowed = true
+  analytics.trackEvent('page_view', {})
+  const tag = script()
+  consentGate.allowed = false
+  consentGate.stops.forEach(stop => stop())
+  tag.dispatchEvent(new Event('load'))
+  expect(commands()).toEqual([])
+  expect(analytics.trackEvent('page_view', {})).toBe(false)
+})
+
+
+it('allows fresh events after withdrawal and regrant without reviving the old loading queue', async () => {
+  const analytics = await activeAnalytics()
+  analytics.trackEvent('view_complex', { complex_id: '17', entry_point: 'map' })
+  const oldTag = script()
+  consentGate.allowed = false
+  consentGate.stops.forEach(stop => stop())
+  consentGate.allowed = true
+  expect(analytics.trackEvent('page_view', {})).toBe(true)
+  oldTag.dispatchEvent(new Event('load'))
+  expect(events()).toEqual([])
+  script().dispatchEvent(new Event('load'))
+  expect(events().map(command => command[1])).toEqual(['page_view'])
+})
+
+it('resumes a loaded tag after a temporary stop with fresh configuration and no old commands', async () => {
+  const analytics = await activeAnalytics()
+  analytics.trackEvent('view_complex', { complex_id: '17', entry_point: 'map' })
+  script().dispatchEvent(new Event('load'))
+  consentGate.allowed = false
+  consentGate.stops.forEach(stop => stop())
+  expect(window[DISABLE_KEY]).toBe(true)
+  expect(commands()).toEqual([])
+  consentGate.allowed = true
+  expect(analytics.trackEvent('page_view', {})).toBe(true)
+  expect(events().map(command => command[1])).toEqual(['page_view'])
 })

@@ -25,6 +25,16 @@ import org.springframework.transaction.annotation.Transactional;
 @ActiveProfiles("test")
 @Transactional
 class AdminManagementIntegrationTest {
+
+    @Autowired
+    private com.toadzip.backend.user.repository.UserRepository memberRepository;
+
+    private String memberId() {
+        var member = com.toadzip.backend.user.domain.User.create(
+                "google:permission-" + java.util.UUID.randomUUID(), java.time.LocalDateTime.now());
+        return memberRepository.saveAndFlush(member).getId().toString();
+    }
+
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     private com.toadzip.backend.ingest.pipeline.service.IngestExecutionOwnershipService ownership;
 
@@ -179,7 +189,7 @@ class AdminManagementIntegrationTest {
     @Test
     void 일반사용자와_CSRF_없는_수정은_거부한다() throws Exception {
         mvc.perform(get("/api/admin/housing-complexes")).andExpect(status().isUnauthorized());
-        mvc.perform(get("/api/admin/housing-complexes").with(user("user").roles("USER")))
+        mvc.perform(get("/api/admin/housing-complexes").with(user(memberId()).roles("USER")))
                 .andExpect(status().isForbidden());
         mvc.perform(delete("/api/admin/housing-complexes/1").param("version", "0")
                 .with(user("admin").roles("ADMIN"))).andExpect(status().isForbidden());
@@ -381,7 +391,7 @@ class AdminManagementIntegrationTest {
         String body = """
                 {"version": %d, "name": "59B", "exclusiveArea": 59.5, "householdCount": null}
                 """.formatted(version);
-        mvc.perform(put(path).with(user("user").roles("USER")).with(csrf())
+        mvc.perform(put(path).with(user(memberId()).roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
         mvc.perform(put(path).with(user("admin").roles("ADMIN"))
                         .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
