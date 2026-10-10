@@ -51,6 +51,7 @@ class IngestSourceControllerIntegrationTest {
 
     @BeforeEach
     void storeSources() {
+        storeShSource();
         for (String category : java.util.List.of("MYHOME_COMPLEX", "MYHOME_ANNOUNCEMENT", "LH_LEASE_CATALOG",
                 "LH_ANNOUNCEMENT_CATALOG", "LH_ANNOUNCEMENT_DETAIL", "LH_ANNOUNCEMENT_SUPPLY")) {
             storeCurrentSource(category);
@@ -155,6 +156,17 @@ class IngestSourceControllerIntegrationTest {
                 .param("name", name).update();
     }
 
+    private void storeShSource() {
+        jdbc.sql("""
+                INSERT INTO sh_announcement_source (source_key,seq,title,department,registered_date,
+                original_url,list_url,raw_list_html,raw_detail_html,collected_at)
+                VALUES ('SH:m_247:100','100','두꺼비 SH 공고','공급부','2026-10-02',
+                'https://www.i-sh.co.kr/app/lay2/program/S48T561C563/www/brd/m_247/view.do?seq=100&multi_itm_seq=2',
+                'https://www.i-sh.co.kr/app/lay2/program/S48T561C563/www/brd/m_247/list.do?multi_itm_seq=2',
+                '<html>목록</html>','<html>상세</html>',:collectedAt)
+                """).param("collectedAt", Timestamp.from(Instant.parse("2026-10-02T01:00:00Z"))).update();
+    }
+
     private void storeCurrentSource(String category) {
         UUID record = UUID.randomUUID();
         jdbc.sql("""
@@ -242,9 +254,11 @@ class IngestSourceControllerIntegrationTest {
             "LH_ANNOUNCEMENT_DETAIL, 두꺼비 상세, complex_name, "
                     + "https://example.test/lh/lhLeaseNoticeDtlInfo1/getLeaseNoticeDtlInfo1",
             "LH_ANNOUNCEMENT_SUPPLY, 두꺼비 공급, complex_label, "
-                    + "https://example.test/lh/lhLeaseNoticeSplInfo1/getLeaseNoticeSplInfo1"
+                    + "https://example.test/lh/lhLeaseNoticeSplInfo1/getLeaseNoticeSplInfo1",
+            "SH_ANNOUNCEMENT, 두꺼비 SH 공고, title, "
+                    + "https://www.i-sh.co.kr/app/lay2/program/S48T561C563/www/brd/m_247/list.do?multi_itm_seq=2"
     })
-    void 관리자는_여섯_종류의_저장된_원천을_출처_URL과_함께_조회한다(
+    void 관리자는_저장된_원천을_출처_URL과_함께_조회한다(
             String category, String name, String rawField, String sourceUrl
     ) throws Exception {
         MvcResult result = mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN"))
@@ -262,6 +276,18 @@ class IngestSourceControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.hasNext").value(false))
                 .andReturn();
         assertThat(result.getResponse().getContentAsString()).doesNotContain("serviceKey", "secret", "password");
+    }
+
+    @Test
+    void SH_원천은_목록과_상세_HTML을_그대로_반환하고_추출_결과를_포함하지_않는다() throws Exception {
+        mockMvc.perform(get(ENDPOINT).with(user("admin").roles("ADMIN")).param("category", "SH_ANNOUNCEMENT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].sourceKey").value("SH:m_247:100"))
+                .andExpect(jsonPath("$.data.items[0].sourceUpdatedAt").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].raw.raw_list_html").value("<html>목록</html>"))
+                .andExpect(jsonPath("$.data.items[0].raw.raw_detail_html").value("<html>상세</html>"))
+                .andExpect(jsonPath("$.data.items[0].raw.body_text").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].raw.attachments").doesNotExist());
     }
 
     @Test

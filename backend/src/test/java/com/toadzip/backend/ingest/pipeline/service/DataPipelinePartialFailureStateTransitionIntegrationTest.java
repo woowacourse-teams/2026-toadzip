@@ -16,6 +16,7 @@ import com.toadzip.backend.ingest.collection.lh.leasecatalog.service.LhLeaseCata
 import com.toadzip.backend.ingest.collection.lh.service.LhAnnouncementExternalCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
+import com.toadzip.backend.ingest.collection.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
@@ -355,7 +356,8 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
                 executionStateService,
                 new SimpleMeterRegistry(),
-                mock(AnnouncementRegistrationService.class)
+                mock(AnnouncementRegistrationService.class),
+                mock(ShAnnouncementCollectionService.class)
         );
     }
 
@@ -386,7 +388,8 @@ class DataPipelinePartialFailureStateTransitionIntegrationTest {
                 new DataPipelineStepResultAdapter(JsonMapper.builder().build()),
                 executionStateService,
                 new SimpleMeterRegistry(),
-                mock(AnnouncementRegistrationService.class)
+                mock(AnnouncementRegistrationService.class),
+                mock(ShAnnouncementCollectionService.class)
         );
     }
     private LhAnnouncementCatalogCollectionService successfulCatalogService() {

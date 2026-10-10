@@ -22,6 +22,7 @@ import com.toadzip.backend.ingest.collection.myhome.announcement.dto.api.MyHomeA
 import com.toadzip.backend.ingest.collection.myhome.announcement.service.MyHomeAnnouncementCollectionService;
 import com.toadzip.backend.ingest.collection.myhome.complex.dto.MyHomeComplexCollectionReport;
 import com.toadzip.backend.ingest.collection.myhome.complex.service.MyHomeComplexCollectionService;
+import com.toadzip.backend.ingest.collection.service.ShAnnouncementCollectionService;
 import com.toadzip.backend.ingest.enrichment.dto.LhAnnouncementEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.dto.LhHousingTypeHouseholdEnrichmentReport;
 import com.toadzip.backend.ingest.enrichment.service.LhAnnouncementEnrichmentService;
@@ -84,6 +85,9 @@ class DataPipelineRunnerTest {
 
     private DataPipelineRunner runner;
 
+    private final ShAnnouncementCollectionService shAnnouncementCollectionService =
+            org.mockito.Mockito.mock(ShAnnouncementCollectionService.class);
+
     private DataPipelineStepResultAdapter resultAdapter;
     private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
@@ -105,7 +109,8 @@ class DataPipelineRunnerTest {
                 resultAdapter,
                 executionStateService,
                 meterRegistry,
-                registrationService
+                registrationService,
+                shAnnouncementCollectionService
         );
     }
 
@@ -152,6 +157,18 @@ class DataPipelineRunnerTest {
 
         verify(registrationService, never()).execute(DataPipelineStep.MAP_MYHOME_ANNOUNCEMENTS, "21026");
         verify(registrationService, never()).execute(DataPipelineStep.COLLECT_LH_ANNOUNCEMENT_DETAILS, "21026");
+    }
+
+    @Test
+    void SH_수집은_제품_정제_서비스를_실행하지_않는다() {
+        when(shAnnouncementCollectionService.collect()).thenReturn(collectionReport("sh-announcement"));
+
+        runner.run(DataPipelineType.SH_ANNOUNCEMENT_COLLECTION, executionId);
+
+        verify(shAnnouncementCollectionService).collect();
+        org.mockito.Mockito.verifyNoInteractions(myHomeAnnouncementMappingService, announcementEnrichmentService,
+                myHomeAnnouncementCollectionService, lhAnnouncementCatalogCollectionService, collectionService);
+        verify(executionStateService).completeStep(eq(executionId), eq(DataPipelineStep.COLLECT_SH_ANNOUNCEMENTS), any());
     }
 
     @Test

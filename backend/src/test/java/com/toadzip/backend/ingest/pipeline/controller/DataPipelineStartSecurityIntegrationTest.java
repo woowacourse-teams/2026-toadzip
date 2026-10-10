@@ -152,4 +152,35 @@ class DataPipelineStartSecurityIntegrationTest {
                 .andExpect(status().isAccepted());
         verify(service).start(DataPipelineType.COMPLEX_COLLECTION);
     }
+
+    @Test
+    void SH_수집은_관리자가_CSRF와_함께_본문_없이_접수한다() throws Exception {
+        when(service.start(DataPipelineType.SH_ANNOUNCEMENT_COLLECTION))
+                .thenReturn(DataPipelineExecutionResponse.idle(DataPipelineType.SH_ANNOUNCEMENT_COLLECTION));
+        mockMvc.perform(post("/api/admin/ingest/pipelines/sh-announcement-collection")
+                        .with(user("admin").roles("ADMIN")).with(csrf()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.type").value("SH_ANNOUNCEMENT_COLLECTION"));
+        verify(service).start(DataPipelineType.SH_ANNOUNCEMENT_COLLECTION);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"anonymous,true,401", "USER,true,403", "ADMIN,false,403"})
+    void SH_수집에도_관리자_권한과_CSRF가_필요하다(
+            String role, boolean withCsrf, int expected
+    ) throws Exception {
+        var request = post("/api/admin/ingest/pipelines/sh-announcement-collection");
+        if (!"anonymous".equals(role)) {
+            String principalName = "admin";
+            if ("USER".equals(role)) {
+                principalName = privacyPermissionMemberId();
+            }
+            request.with(user(principalName).roles(role));
+        }
+        if (withCsrf) {
+            request.with(csrf());
+        }
+        mockMvc.perform(request).andExpect(status().is(expected));
+        verifyNoInteractions(service);
+    }
 }

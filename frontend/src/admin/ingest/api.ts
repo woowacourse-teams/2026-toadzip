@@ -7,6 +7,7 @@ export type DataPipelineType =
   | 'COMPLEX_SYNC'
   | 'ANNOUNCEMENT_SYNC'
   | 'ANNOUNCEMENT_REGISTRATION'
+  | 'SH_ANNOUNCEMENT_COLLECTION'
 
 export type DataPipelineExecutionStatus =
   | 'IDLE'
@@ -441,6 +442,7 @@ function isDataPipelineType(value: unknown): value is DataPipelineType {
     || value === 'COMPLEX_SYNC'
     || value === 'ANNOUNCEMENT_SYNC'
     || value === 'ANNOUNCEMENT_REGISTRATION'
+    || value === 'SH_ANNOUNCEMENT_COLLECTION'
 }
 
 function isExecutionStatus(value: unknown): value is DataPipelineExecutionStatus {
@@ -466,6 +468,7 @@ function pipelinePath(type: DataPipelineType): string {
     COMPLEX_SYNC: 'complex-sync',
     ANNOUNCEMENT_SYNC: 'announcement-sync',
     ANNOUNCEMENT_REGISTRATION: 'announcement-registration',
+    SH_ANNOUNCEMENT_COLLECTION: 'sh-announcement-collection',
   }
   return `/api/admin/ingest/pipelines/${paths[type]}`
 }

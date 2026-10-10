@@ -15,6 +15,12 @@ public final class IngestSourceRows {
 
     public static String query(IngestSourceCategory category) {
         return switch (category) {
+            case SH_ANNOUNCEMENT -> """
+                    SELECT source.id, source.source_key, source.title AS name, source.original_url,
+                           source.collected_at, NULL::timestamptz AS updated_at,
+                           to_jsonb(source)::text AS raw_payload
+                    FROM sh_announcement_source source
+                    """;
             case MYHOME_COMPLEX -> myHomeComplex();
             case MYHOME_ANNOUNCEMENT -> myHomeAnnouncement();
             case LH_LEASE_CATALOG -> """

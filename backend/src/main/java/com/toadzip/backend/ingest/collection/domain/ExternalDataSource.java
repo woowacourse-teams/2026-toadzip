@@ -6,7 +6,8 @@ public enum ExternalDataSource {
     LH_LEASE_CATALOG("lh-lease-catalog"),
     LH_ANNOUNCEMENT_CATALOG("lh-announcement-catalog"),
     LH_ANNOUNCEMENT_DETAIL("lh-announcement-detail"),
-    LH_ANNOUNCEMENT_SUPPLY("lh-announcement-supply");
+    LH_ANNOUNCEMENT_SUPPLY("lh-announcement-supply"),
+    SH_ANNOUNCEMENT("sh-announcement");
 
     private final String operation;
 

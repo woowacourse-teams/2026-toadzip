@@ -69,6 +69,58 @@ import tools.jackson.databind.json.JsonMapper;
 class LocalProfileSchemaPersistenceTest {
 
     @Test
+    void develop_DB에_SH_수집을_추가해도_기존_단건_등록_이력과_제약을_보존한다() throws Exception {
+        String databaseName = "toadzip_sh_upgrade_" + UUID.randomUUID().toString().replace("-", "");
+        String jdbcUrl = primaryTestDatabaseUrl(databaseName);
+        createDatabase(databaseName);
+        try {
+            Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("classpath:db/migration").target("20261009.01").load().migrate();
+            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
+                    Statement statement = connection.createStatement()) {
+                statement.executeUpdate("""
+                        INSERT INTO data_pipeline_executions
+                            (execution_id, type, status, started_at, heartbeat_at, target_announcement_identifier)
+                        VALUES ('00000000-0000-0000-0000-000000000015', 'ANNOUNCEMENT_REGISTRATION',
+                            'COMPLETED', now(), now(), '21026')
+                        """);
+            }
+
+            var flyway = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("classpath:db/migration").load();
+            assertEquals(1, flyway.migrate().migrationsExecuted);
+            assertEquals(0, flyway.migrate().migrationsExecuted);
+            try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
+                    Statement statement = connection.createStatement()) {
+                assertEquals(1, countColumn(connection, "sh_announcement_source", "raw_detail_html"));
+                assertEquals(1, countAllRows(connection, "data_pipeline_executions"));
+                assertEquals(1, statement.executeUpdate("""
+                        INSERT INTO data_pipeline_executions
+                            (execution_id, type, status, started_at, heartbeat_at, current_step)
+                        VALUES ('00000000-0000-0000-0000-000000000016', 'SH_ANNOUNCEMENT_COLLECTION',
+                            'RUNNING', now(), now(), 'COLLECT_SH_ANNOUNCEMENTS')
+                        """));
+                assertEquals(1, statement.executeUpdate("""
+                        INSERT INTO data_pipeline_executions
+                            (execution_id, type, status, started_at, heartbeat_at, target_announcement_identifier)
+                        VALUES ('00000000-0000-0000-0000-000000000017', 'ANNOUNCEMENT_REGISTRATION',
+                            'RUNNING', now(), now(), '21027')
+                        """));
+                assertEquals("23514", assertThrows(SQLException.class, () -> statement.executeUpdate("""
+                        UPDATE data_pipeline_executions SET target_announcement_identifier = NULL
+                        WHERE execution_id = '00000000-0000-0000-0000-000000000015'
+                        """)).getSQLState());
+                assertEquals("23514", assertThrows(SQLException.class, () -> statement.executeUpdate("""
+                        UPDATE data_pipeline_executions SET target_announcement_identifier = '21028'
+                        WHERE type = 'SH_ANNOUNCEMENT_COLLECTION'
+                        """)).getSQLState());
+            }
+        } finally {
+            dropDatabase(databaseName);
+        }
+    }
+
+    @Test
     void local_프로필은_Flyway로_스키마를_생성하고_종료_후에도_유지한다() throws Exception {
         String databaseName = "toadzip_local_profile_" + UUID.randomUUID().toString().replace("-", "");
         String jdbcUrl = primaryTestDatabaseUrl(databaseName);
@@ -94,6 +146,7 @@ class LocalProfileSchemaPersistenceTest {
                 assertAll(
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
+                        () -> assertEquals(1, countColumn(connection, "sh_announcement_source", "raw_detail_html")),
                         () -> assertTrue(history.next()),
                         () -> assertEquals(migrationCount(), history.getInt(1)),
                         () -> assertEquals(1, countColumn(connection,

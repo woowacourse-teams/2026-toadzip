@@ -27,6 +27,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0'
 	implementation 'org.locationtech.proj4j:proj4j:1.4.3'
+	implementation 'org.jsoup:jsoup:1.23.2'
 	implementation 'org.postgresql:postgresql'
 	runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 	compileOnly 'org.projectlombok:lombok'

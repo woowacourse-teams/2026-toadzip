@@ -8,6 +8,7 @@ export const sourceCategories = {
   LH_ANNOUNCEMENT_CATALOG: 'LH 공고 목록',
   LH_ANNOUNCEMENT_DETAIL: 'LH 공고 상세',
   LH_ANNOUNCEMENT_SUPPLY: 'LH 공고 공급',
+  SH_ANNOUNCEMENT: 'SH 공고',
 } as const
 
 export type SourceCategory = keyof typeof sourceCategories
