@@ -68,7 +68,7 @@ Escape를 가로채지 않는다. iframe의 `CLOSE_REQUEST`도 거리뷰만 종�
 `api.ts`는 응답을 런타임 검증하고 `no-store`로 요청한다. 활성 응답의 canonical `complexId`,
 `policyRevision`, `initialization`과 FE의 이름표를 한 실행 시도에 고정한다. 상세 API 좌표를
 대신 사용하거나 별도 주소 검색·좌표 저장·장기 캐시를 추가하지 않는다.
-정책과 이벤트 필드, 오류 코드의 원본은 [BE 거리뷰 명세](../../backend/docs/street-view.md)다.
+정책과 이벤트 필드, 오류 코드의 원본은 [BE 거리뷰 명세](../../backend/docs/features/STREET_VIEW.md)다.
 
 ## GL 지도와 iframe 분리
 

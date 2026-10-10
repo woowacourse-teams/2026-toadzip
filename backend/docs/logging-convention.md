@@ -1,30 +1,55 @@
-# 로그와 메트릭
+# Backend Logging Convention
 
-HTTP 요청 로그와 오류 응답의 `traceId`로 같은 요청을 찾는다.
-`HttpRequestLoggingFilter`가 method·URI path·status·durationMs를 기록하고 MDC에 `traceId`를 넣는다.
-Controller마다 같은 요청 로그를 추가하지 않는다.
+## 기본 원칙
 
-## 로그 작성
+- 로그는 장애 추적, 요청 흐름과 주요 이벤트 확인을 위해 작성한다.
+- 자유로운 문장보다 검색 가능한 구조화 로그를 사용한다.
+- 동일한 내용이나 예외를 중복 기록하지 않는다.
+- 민감정보, 객체 전체와 불필요하게 상세한 데이터는 기록하지 않는다.
+
+## 로그 레벨
+
+| 레벨 | 기준 | 예시 |
+|---|---|---|
+| `ERROR` | 처리가 실패해 운영자 확인이 필요함 | 예상하지 못한 예외, DB·핵심 외부 시스템·배치 실패 |
+| `WARN` | 비정상이지만 처리를 계속할 수 있음 | 데이터 누락·매칭 실패, 재시도·fallback, 예상하지 못한 값 |
+| `INFO` | 운영 중 확인할 가치가 있는 주요 이벤트 | 수집·배치 결과, 주요 상태 변경, 인증 결과 |
+| `DEBUG` | 개발 중 상세한 실행 흐름을 확인함 | 중간 계산값과 분기 결과 |
+
+- 단순 CRUD 성공은 별도로 기록하지 않는다.
+- 반복적으로 발생하는 로그에는 `INFO` 사용을 지양한다.
+- 운영 환경에서는 `DEBUG`를 기본적으로 비활성화한다.
+
+## 로그 형식
 
 ```text
-event=<domain>.<action>.<state> key=value
+event=<domain>.<action>.<state> key=value key=value
 ```
 
-| 레벨 | 사용 기준 |
+| 필드 | 목적 |
 |---|---|
-| ERROR | 처리 실패로 운영자 확인이 필요함 |
-| WARN | 누락·매칭 실패·재시도 등 이상이 있지만 처리를 계속함 |
-| INFO | 수집 결과·주요 상태 변경 |
-| DEBUG | 개발 중 상세 흐름. 운영 기본값에서는 비활성 |
+| `timestamp` | 사건 시각과 시간대 |
+| `level` | 심각도 |
+| `traceId` | 요청과 트레이스 연결 |
+| `event` | `<domain>.<action>.<state>` 형식의 안정된 이벤트 이름 |
+| `result` | 처리 결과 |
+| `source` | 데이터 또는 요청 출처 |
+| `durationMs` | 처리 시간 |
+| `errorCode` | 내부 오류 코드 |
 
-예외는 처리 책임이 있는 곳에서 한 번만 기록한다. SLF4J placeholder를 사용하고 스택이 필요하면 예외를 마지막 인자로 전달한다.
-단순 CRUD 성공·반복 이벤트·객체 전체를 불필요하게 남기지 않는다.
+- 예시는 `announcement.collection.completed`, `external_api.request.failed`이다.
+- `traceId`는 MDC에 저장하고 로그 출력 형식에서 공통으로 포함한다.
 
-비밀번호·토큰·인증키·개인정보를 로그나 메트릭에 넣지 않는다.
-메트릭 label에는 사용자·주택 ID처럼 종류가 계속 늘어나는 값을 쓰지 않는다.
+## HTTP 요청과 예외
 
-## 메트릭 확인
+- HTTP 요청 로그는 Controller마다 작성하지 않고 Filter 또는 Interceptor에서 공통 처리한다.
+- 요청 로그에는 HTTP method, URI path, status code와 처리 시간을 기록한다.
+- 예외는 처리 책임이 있는 경계에서 한 번만 기록한다.
+- 스택 트레이스가 필요하면 예외 객체를 SLF4J 호출의 마지막 인자로 전달한다.
 
-관리 포트 `8081`의 `/actuator/prometheus`에서 HTTP 요청 수·시간과 기능별 지표를 확인한다.
-수집 단계·외부 요청·재시도·차단 지표는 [공고 수집 설정](announcement-collection-performance.md#성능-확인)을 따른다.
-로그 수집·대시보드 실행은 [모니터링 서버 설정](../../docs/MONITORING_SERVER_SETUP.md)을 따른다.
+```java
+log.error("event=external_api.request.failed uri={}", uri, exception);
+```
+
+- SLF4J placeholder를 사용하고 문자열을 직접 조합하지 않는다.
+- 필요한 식별자와 처리 결과만 기록하며 상세한 보안 기준은 [security.md](security.md)를 따른다.

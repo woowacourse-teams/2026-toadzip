@@ -386,7 +386,7 @@ Client ID를 설정한다. 실행·종료 명령과 필요한 Compose 파일은 
 
 | 환경 | 접속 주소와 실행 안내 |
 | --- | --- |
-| 로컬 | HTTP, [로컬 환경 설정](../docs/LOCAL_SETUP.md) |
+| 로컬 | HTTP, [로컬 환경 설정](../docs/SETUP.md#로컬) |
 | 개발 EC2 | `https://dev.bokduckbang.com`, [개발 서버 설정](../docs/SETUP.md#개발운영-서버) |
 | 운영 EC2 | `https://bokduckbang.com`, [운영 서버 설정](../docs/SETUP.md#개발운영-서버) |
 

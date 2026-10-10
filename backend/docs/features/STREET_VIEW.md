@@ -1,7 +1,7 @@
 # 거리뷰
 
 백엔드는 제공 정책·초기 실행 정보·초기화 결과를 관리한다. 촬영 지점 조회·영상 표시는 브라우저 네이버 SDK가 담당한다.
-화면 전환·iframe·핀은 [프론트엔드 거리뷰](../../frontend/docs/street-view.md)를 따른다.
+화면 전환·iframe·핀은 [프론트엔드 거리뷰](../../../frontend/docs/street-view.md)를 따른다.
 
 ## API
 
