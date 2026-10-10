@@ -57,7 +57,7 @@ USER_OAUTH_SUCCESS_URL=http://localhost/
 USER_OAUTH_FAILURE_URL=http://localhost/?login=failed
 ```
 
-[로컬 실행](../../../docs/SETUP.md#로컬)으로 다시 빌드하고 두 공급자의 로그인·실패·로그아웃을 확인한다.
+[로컬 실행](../../../docs/LOCAL_SETUP.md)으로 다시 빌드하고 두 공급자의 로그인·실패·로그아웃을 확인한다.
 운영은 HTTPS 서비스 오리진으로 콜백·이동 URL을 맞춘다. 성공 경로는 `/`, 실패는 `/?login=failed`다.
 앱 직접 실행 기본값은 `http://localhost:5173`, Compose는 `http://localhost`를 사용한다. 이전 `/login`도 메인 화면으로 연결된다.
 
