@@ -16,6 +16,8 @@ function session(member = true) {
   vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
     if (url.endsWith('/csrf')) return new Response(JSON.stringify({ token: 'csrf', headerName: 'X-XSRF-TOKEN' }))
     if (!member) return new Response(null, { status: 401 })
+    if (url.includes('/api/v1/notifications/unread-count')) return Response.json({ unreadCount: 0 })
+    if (url.includes('/api/v1/notifications?')) return Response.json({ items: [], nextCursor: null, readThrough: '0' })
     if (url.endsWith('/api/auth/me')) return new Response(JSON.stringify({ id: 7 }))
     if (options?.method === 'POST') { active = false; return settingResult(options, ++settingsRevision) }
     return new Response(JSON.stringify({ userId: '7', settingsRevision, targets: active ? [
@@ -37,12 +39,11 @@ it('알림 관리 주소에서 종류별 설정을 보고 해제한다', async (
   await waitFor(() => expect(screen.queryByText('서울 행복주택')).not.toBeInTheDocument())
 })
 
-it('보관함은 아직 전달 기능이 준비 중임을 알린다', async () => {
+it('보관함 주소에서 받은 알림 목록을 확인한다', async () => {
   session()
   render(<MemoryRouter initialEntries={['/notifications']}><App /></MemoryRouter>)
   expect(await screen.findByRole('heading', { name: '알림 보관함' })).toBeVisible()
-  expect(await screen.findByText('알림 기능을 준비하고 있어요')).toBeVisible()
-  expect(within(screen.getByRole('dialog')).getByRole('tab', { name: '알림 설정' })).toHaveAttribute('aria-selected', 'false')
+  expect(await screen.findByText('아직 받은 알림이 없어요.')).toBeVisible()
 })
 
 it('비회원이 관리 주소로 직접 접속해도 설정을 노출하지 않는다', async () => {
@@ -129,7 +130,7 @@ it('지도에서 보관함을 모달로 열고 닫으면 원래 버튼으로 포
   trigger.focus()
   fireEvent.click(trigger)
   const dialog = await screen.findByRole('dialog', { name: '알림 보관함' })
-  expect(dialog).toHaveTextContent('알림 기능을 준비하고 있어요')
+  expect(await within(dialog).findByText('아직 받은 알림이 없어요.')).toBeVisible()
   expect(screen.getByText('지도')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '알림 보관함 닫기' }))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

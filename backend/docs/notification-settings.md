@@ -70,3 +70,7 @@
 [공통 파기 감시·경보](../../docs/privacy-policy.md)를 적용하며 서버 복구 후에도 지연을 확인한다.
 
 화면 진입점과 신청·해제 UI는 [프론트 계약](../../frontend/docs/privacy-consent.md)을 따른다.
+
+## 새 공고 전달
+
+관심 단지·지역의 새 공고 전달은 [notification 기능](notification-delivery.md)이 담당한다. `activated_at`은 실제 활성화 시각이며 이미 활성인 구독을 다시 확인해도 유지한다. 해제·만료 후 재활성화할 때만 갱신한다. 공고 변경 알림은 이번 전달 대상이 아니다.

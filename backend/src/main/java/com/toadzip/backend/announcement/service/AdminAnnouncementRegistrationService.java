@@ -14,11 +14,14 @@ import com.toadzip.backend.announcement.repository.SupplyRowRepository;
 import com.toadzip.backend.housing.domain.HousingComplex;
 import com.toadzip.backend.housing.exception.AdminHousingComplexNotFoundException;
 import com.toadzip.backend.housing.repository.HousingComplexRepository;
+import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AdminAnnouncementRegistrationService {
+
+    private final NotificationOutboxRepository notificationOutbox;
 
     private final AnnouncementRepository announcementRepository;
 
@@ -32,12 +35,14 @@ public class AdminAnnouncementRegistrationService {
             AnnouncementRepository announcementRepository,
             SupplyRowRepository supplyRowRepository,
             HousingComplexRepository housingComplexRepository,
-            AdminAnnouncementSourceIdentifierGenerator identifierGenerator
+            AdminAnnouncementSourceIdentifierGenerator identifierGenerator,
+            NotificationOutboxRepository notificationOutbox
     ) {
         this.announcementRepository = announcementRepository;
         this.supplyRowRepository = supplyRowRepository;
         this.housingComplexRepository = housingComplexRepository;
         this.identifierGenerator = identifierGenerator;
+        this.notificationOutbox = notificationOutbox;
     }
 
     @Transactional
@@ -47,6 +52,8 @@ public class AdminAnnouncementRegistrationService {
         Announcement announcement = announcementRepository.save(createAnnouncement(request));
         SupplyRow createdSupplyRow = createSupplyRow(request.supplyRow(), announcement, housingComplex);
         SupplyRow supplyRow = supplyRowRepository.save(createdSupplyRow);
+        announcementRepository.flush();
+        notificationOutbox.appendNewAnnouncement(announcement);
         return new AdminAnnouncementCreateResponse(
                 announcement.getId(),
                 supplyRow.getId(),

@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { consentStore } from '../../privacy/consentStore'
 import { logoutUser, socialLoginUrl } from './api'
+import { registerPushLogoutHandler } from '../../notifications/pushSession'
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 
@@ -29,4 +30,18 @@ it.each(['success', 'csrf-http', 'csrf-body', 'logout-http', 'network'] as const
   expect(begin.mock.invocationCallOrder[0]).toBeLessThan(fetcher.mock.invocationCallOrder[0]!)
   expect(finish).toHaveBeenCalledExactlyOnceWith('00000000-0000-4000-8000-000000000001')
   expect(fetcher.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
+})
+
+it('서버 로그아웃 성공 즉시 푸시 정리 완료와 무관하게 화면 초기화를 전파한다', async () => {
+  vi.spyOn(consentStore, 'beginAuthTransition').mockReturnValue('00000000-0000-4000-8000-000000000001')
+  vi.spyOn(consentStore, 'finishAuthTransition').mockResolvedValue()
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json({ token: 'csrf', headerName: 'X-XSRF-TOKEN' }))
+    .mockResolvedValueOnce(new Response(null, { status: 204 })))
+  let complete!: () => void
+  const removeHandler = registerPushLogoutHandler(() => new Promise<void>(resolve => { complete = resolve }))
+  const ended = vi.fn()
+  window.addEventListener('toadzip:session-ended', ended)
+  const logout = logoutUser()
+  try { await vi.waitFor(() => expect(ended).toHaveBeenCalledOnce(), { timeout: 100 }) }
+  finally { complete(); await logout; removeHandler(); window.removeEventListener('toadzip:session-ended', ended) }
 })

@@ -42,7 +42,8 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-@SpringBootTest(properties = "spring.main.web-application-type=servlet")
+@SpringBootTest(properties = {"spring.main.web-application-type=servlet",
+        "app.notification.publisher-enabled=true", "app.notification.activation-at=2026-01-01T00:00:00Z"})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class AdminAnnouncementRegistrationIntegrationTest {
@@ -69,11 +70,16 @@ class AdminAnnouncementRegistrationIntegrationTest {
     @Autowired
     private HousingComplexRepository housingComplexRepository;
 
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate notificationJdbc;
+    @MockitoSpyBean private com.toadzip.backend.notification.repository.NotificationOutboxRepository outbox;
+
     @BeforeEach
     void cleanDatabase() {
+        notificationJdbc.update("DELETE FROM notification_outbox_events");
         supplyRowRepository.deleteAll();
         announcementRepository.deleteAll();
         housingComplexRepository.deleteAll();
+        housingComplexRepository.flush();
     }
 
     @Test
@@ -102,6 +108,8 @@ class AdminAnnouncementRegistrationIntegrationTest {
         SupplyRow supplyRow = supplyRowRepository.findById(supplyRowId).orElseThrow();
         assertAnnouncement(announcement);
         assertSupplyRow(supplyRow, announcementId, housingComplex.getId());
+        assertEquals(1, notificationJdbc.queryForObject("SELECT count(*) FROM notification_outbox_events",
+                Integer.class));
     }
 
     @Test
@@ -114,6 +122,8 @@ class AdminAnnouncementRegistrationIntegrationTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("HOUSING_COMPLEX_NOT_FOUND"));
 
+        assertEquals(0, notificationJdbc.queryForObject("SELECT count(*) FROM notification_outbox_events",
+                Integer.class));
         assertEquals(0, announcementRepository.count());
         assertEquals(0, supplyRowRepository.count());
     }
@@ -133,8 +143,27 @@ class AdminAnnouncementRegistrationIntegrationTest {
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.code").value("INTERNAL_SERVER_ERROR"));
 
+        assertEquals(0, notificationJdbc.queryForObject("SELECT count(*) FROM notification_outbox_events",
+                Integer.class));
         assertEquals(0, announcementRepository.count());
         assertEquals(0, supplyRowRepository.count());
+    }
+
+    @Test
+    void 아웃박스_기록후_실패하면_공고와_이벤트가_함께_롤백된다() throws Exception {
+        HousingComplex complex = housingComplexRepository.save(createHousingComplex());
+        com.toadzip.backend.notification.repository.NotificationOutboxRepository target =
+                org.springframework.test.util.AopTestUtils.getUltimateTargetObject(outbox);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            invocation.callRealMethod();
+            throw new IllegalStateException("after-outbox-probe");
+        }).when(target).appendNewAnnouncement(any(Announcement.class));
+        mockMvc.perform(post(ENDPOINT).with(user("admin").roles("ADMIN")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(validRequest(complex.getId())))
+                .andExpect(status().isInternalServerError());
+        assertEquals(0, announcementRepository.count());
+        assertEquals(0, notificationJdbc.queryForObject("SELECT count(*) FROM notification_outbox_events",
+                Integer.class));
     }
 
     @Test
@@ -146,6 +175,8 @@ class AdminAnnouncementRegistrationIntegrationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
 
+        assertEquals(0, notificationJdbc.queryForObject("SELECT count(*) FROM notification_outbox_events",
+                Integer.class));
         assertEquals(0, announcementRepository.count());
     }
 
@@ -161,6 +192,8 @@ class AdminAnnouncementRegistrationIntegrationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
 
+        assertEquals(0, notificationJdbc.queryForObject("SELECT count(*) FROM notification_outbox_events",
+                Integer.class));
         assertEquals(0, announcementRepository.count());
     }
 
@@ -173,6 +206,8 @@ class AdminAnnouncementRegistrationIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
 
+        assertEquals(0, notificationJdbc.queryForObject("SELECT count(*) FROM notification_outbox_events",
+                Integer.class));
         assertEquals(0, announcementRepository.count());
     }
 

@@ -75,6 +75,8 @@ public class AdminSecurityConfiguration {
                         .requestMatchers("/api/v1/privacy/analytics/me").hasRole("USER")
                         .requestMatchers(HttpMethod.GET, "/api/v1/notification-subscriptions/guest").permitAll()
                         .requestMatchers("/api/v1/notification-subscriptions/**").hasRole("USER")
+                        .requestMatchers("/api/v1/notifications", "/api/v1/notifications/**",
+                                "/api/v1/notification-push-devices", "/api/v1/notification-push-devices/**").hasRole("USER")
                         .anyRequest().permitAll()
                 )
                 .exceptionHandling(exceptionHandling -> exceptionHandling

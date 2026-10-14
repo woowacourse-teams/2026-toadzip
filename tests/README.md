@@ -10,3 +10,6 @@
 | [`backup/monitor-test.py`](backup/monitor-test.py) | AWS 클라이언트 모의 객체로 백업 누락·만료·빈 파일, 버킷 정책, 상태 메트릭 발행을 검증합니다. |
 
 실행 항목은 [CI 워크플로](../.github/workflows/harness-check.yml), 검사 대상은 [공통 스크립트](../scripts/README.md)와 [DB 백업 운영](../infra/db/BACKUP.md)을 참고합니다. 애플리케이션 테스트는 [백엔드 테스트](../backend/src/test/)와 [프론트엔드 소스](../frontend/src/)에 있으며, 실행 기준은 [기여 규칙](../CONTRIBUTING.md)과 [프론트엔드 품질 기준](../frontend/docs/quality-gates.md)을 따릅니다.
+
+알림 배포 설정은 `python3 tests/deployment/test_notification_environment.py`로 검증합니다.
+개인 `.env` 없이 공개 fixture만 사용해 기본 비활성화, 빌드/런타임 전달, 선택적 ADC 읽기 전용 마운트를 확인합니다.

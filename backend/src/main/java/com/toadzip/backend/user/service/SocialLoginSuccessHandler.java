@@ -1,5 +1,7 @@
 package com.toadzip.backend.user.service;
 
+import com.toadzip.backend.notification.dto.NotificationDeviceBinding;
+import com.toadzip.backend.notification.service.NotificationPushDeviceService;
 import com.toadzip.backend.user.configuration.SocialAuthorizationRequestResolver;
 import com.toadzip.backend.user.domain.SocialAuthorizationContext;
 import jakarta.servlet.ServletException;
@@ -7,6 +9,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Map;
+import java.util.UUID;
+import org.springframework.web.util.WebUtils;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +35,7 @@ public class SocialLoginSuccessHandler implements AuthenticationSuccessHandler {
     private final SocialUserService socialUserService;
     private final SecurityContextRepository securityContextRepository;
     private final SocialLoginFailureHandler failureHandler;
+    private final NotificationPushDeviceService notificationDevices;
 
     @Value("${app.user.oauth.success-url}")
     private String successUrl;
@@ -78,11 +83,32 @@ public class SocialLoginSuccessHandler implements AuthenticationSuccessHandler {
                 userId.toString(), null, AuthorityUtils.createAuthorityList("ROLE_USER"));
         request.getSession();
         request.changeSessionId();
+        captureNotificationBinding(request, userId);
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(userAuthentication);
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, request, response);
         response.sendRedirect(successRedirectUrl());
+    }
+
+    private void captureNotificationBinding(HttpServletRequest request, long userId) {
+        var session = request.getSession();
+        session.removeAttribute(NotificationDeviceBinding.SESSION_ATTRIBUTE);
+        var cookie = WebUtils.getCookie(request, "notification-device");
+        if (cookie == null) {
+            return;
+        }
+        UUID installation;
+        try {
+            installation = UUID.fromString(cookie.getValue());
+        } catch (IllegalArgumentException exception) {
+            return;
+        }
+        var device = notificationDevices.current(userId, installation);
+        if (device.enabled()) {
+            session.setAttribute(NotificationDeviceBinding.SESSION_ATTRIBUTE,
+                    new NotificationDeviceBinding(installation, userId, Long.parseLong(device.bindingVersion())));
+        }
     }
 
     private String successRedirectUrl() {

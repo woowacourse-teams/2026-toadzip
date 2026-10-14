@@ -80,3 +80,7 @@ URL은 공유 가능한 필터·상세 선택을 소유하고, history state는 
 지도 SDK 연결은 `NaverMap.test.tsx`, 지역 요청 경합은 `RegionFilterBehavior.test.tsx`에서 확인한다.
 리팩터링 전에 기존 동작을 검증하는 테스트를 추가하고, 구조 변경 후에도 같은 사용자 행동을 확인한다.
 최종 명령과 실제 브라우저 확인 범위는 [품질 게이트](quality-gates.md)를 따른다.
+
+## 회원 알림
+
+`notifications/`가 개수 폴링·받은 알림·읽음·기기 푸시를 소유한다. `PublicNotificationLayout`이 기존 관심 설정, 알림함, 푸시 Provider를 한 번 배치한다. Firebase는 `firebasePushSdk` 경계에서 지연 로딩하며 `firebasePushClient`가 계정·버전·콜백 수명을 관리한다. `workers/`는 별도 WebWorker 타입 설정과 Vite 빌드다.

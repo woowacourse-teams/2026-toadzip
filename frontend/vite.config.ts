@@ -28,7 +28,7 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     define: analyticsEnvironmentDefines(mode),
-    plugins: [react(), ...(localMockEnabled ? [localPublicHousingMockPlugin()] : [])],
+    plugins: [react(), notificationWorkerPlugin(), ...(localMockEnabled ? [localPublicHousingMockPlugin()] : [])],
     build: {
       rolldownOptions: {
         input: {
@@ -155,4 +155,18 @@ function writeJson(response: ServerResponse, statusCode: number, body: unknown) 
   response.setHeader('Cache-Control', 'no-store')
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
   response.end(JSON.stringify(body))
+}
+
+function notificationWorkerPlugin(): Plugin {
+  return { name: 'notification-worker', configureServer(server) {
+    server.middlewares.use(async (request, response, next) => {
+      if (requestPath(request.url) !== '/firebase-messaging-sw.js') { next(); return }
+      try {
+        const source = await readFile(fileURLToPath(new URL('./.worker-dev/firebase-messaging-sw.js', import.meta.url)))
+        response.setHeader('Content-Type', 'application/javascript')
+        response.setHeader('Cache-Control', 'no-cache')
+        response.end(source)
+      } catch { response.statusCode = 404; response.end() }
+    })
+  } }
 }

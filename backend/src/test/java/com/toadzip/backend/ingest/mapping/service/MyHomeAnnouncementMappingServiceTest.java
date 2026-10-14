@@ -69,7 +69,8 @@ import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepos
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import tools.jackson.databind.ObjectMapper;
 
-@SpringBootTest
+@SpringBootTest(properties = {"app.notification.publisher-enabled=true",
+        "app.notification.activation-at=2026-01-01T00:00:00Z"})
 @ActiveProfiles("test")
 class MyHomeAnnouncementMappingServiceTest {
 
@@ -150,9 +151,12 @@ class MyHomeAnnouncementMappingServiceTest {
     @Autowired
     private DataPipelineExecutionLock pipelineLock;
 
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate notificationJdbc;
+
     @BeforeEach
     @AfterEach
     void cleanUp() {
+        notificationJdbc.update("DELETE FROM notification_outbox_events");
         executions.deleteAll();
         fixtures.clear();
         supplyTargetRepository.deleteAll();
@@ -528,6 +532,8 @@ class MyHomeAnnouncementMappingServiceTest {
         assertThat(report.unchangedSupplyRowCount()).isOne();
         assertThat(announcementRepository.count()).isOne();
         assertThat(supplyRowRepository.count()).isOne();
+        assertThat(notificationJdbc.queryForObject("SELECT count(*) FROM notification_outbox_events", Long.class))
+                .isEqualTo(1);
     }
 
     @ParameterizedTest
