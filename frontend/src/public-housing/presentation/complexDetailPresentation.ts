@@ -2,6 +2,13 @@ import { rentalTypeLabel } from './rentalTypeLabel.ts'
 import type { HousingComplexDetailData } from '../components/HousingComplexDetailPanel.tsx'
 import type { ComplexDetail } from '../model/publicHousing.ts'
 
+export function formatRentalConditionCollectedDate(value: string | null): string | null {
+  if (value === null) return null
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return null
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(date).replaceAll('-', '.')
+}
+
 export function toHousingComplexDetailData(
   detail: ComplexDetail,
 ): HousingComplexDetailData {

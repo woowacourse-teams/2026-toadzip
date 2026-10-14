@@ -123,6 +123,14 @@ export interface RawComplexSupplyCondition {
   readonly convertibleDeposit: number | null
 }
 
+export interface ComplexBasicRentalCondition {
+  readonly deposit: number | null
+  readonly monthlyRent: number | null
+  readonly source: string | null
+  readonly sourceUrl: string | null
+  readonly collectedAt: string | null
+}
+
 export interface RawComplexHousingType {
   readonly housingTypeId: number
   readonly name: string | null
@@ -132,6 +140,7 @@ export interface RawComplexHousingType {
   readonly floorPlan3dImageUrl: string | null
   readonly isDuplex: boolean | null
   readonly maintenanceFee: number | null
+  readonly basicRentalCondition: ComplexBasicRentalCondition | null
   readonly currentSupplyConditions: readonly RawComplexSupplyCondition[]
 }
 
@@ -189,6 +198,7 @@ export interface ComplexHousingType {
   readonly floorPlan3dImageUrl: string | null
   readonly isDuplex: boolean | null
   readonly maintenanceFee: number | null
+  readonly basicRentalCondition: ComplexBasicRentalCondition | null
   readonly currentSupplyConditions: readonly ComplexSupplyCondition[]
 }
 

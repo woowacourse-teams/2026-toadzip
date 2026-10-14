@@ -24,6 +24,8 @@ import styles from './HousingComplexDetailPanel.module.css'
 import { NotificationInterestButton } from '../interest/NotificationInterest'
 import { StreetViewEntry } from '../../street-view/StreetViewEntry'
 import type { StreetViewController } from '../../street-view/useStreetView'
+import type { ComplexBasicRentalCondition } from '../model/publicHousing'
+import { formatRentalConditionCollectedDate } from '../presentation/complexDetailPresentation'
 
 export interface HousingComplexDetailSupplyCondition {
   readonly target: string | null
@@ -41,6 +43,7 @@ export interface HousingComplexDetailHousingType {
   readonly floorPlan3dImageUrl: string | null
   readonly isDuplex: boolean | null
   readonly maintenanceFee: number | null
+  readonly basicRentalCondition: ComplexBasicRentalCondition | null
   readonly currentSupplyConditions: readonly HousingComplexDetailSupplyCondition[]
 }
 
@@ -248,14 +251,13 @@ export function HousingComplexDetailPanel({
                   <thead>
                     <tr>
                       <th scope="col">주택형</th>
-                      <th scope="col">전용면적<span className={styles.conditionTarget}>공급 대상</span></th>
+                      <th scope="col">전용면적<span className={styles.conditionTarget}>조건 / 공급 대상</span></th>
                       <th scope="col">보증금</th>
                       <th scope="col">월 임대료</th>
                     </tr>
                   </thead>
                   {detail.housingTypes.map((housingType) => {
-                    const conditions: readonly (HousingComplexDetailSupplyCondition | null)[] =
-                      housingType.currentSupplyConditions.length > 0 ? housingType.currentSupplyConditions : [null]
+                    const conditions = rentalComparisonConditions(housingType)
                     return (
                       <tbody key={housingType.housingTypeId}>
                         {conditions.map((condition, conditionIndex) => (
@@ -267,7 +269,8 @@ export function HousingComplexDetailPanel({
                             )}
                             <td>
                               {formatArea(housingType.exclusiveArea, areaUnit, '')}
-                              <span className={styles.conditionTarget}>{condition?.target ?? ''}</span>
+                              <span className={styles.conditionTarget}>{condition?.label ?? ''}</span>
+                              {condition?.target && <span className={styles.conditionTarget}>{condition.target}</span>}
                             </td>
                             <td data-numeric data-emphasis={Number.isFinite(condition?.deposit) || undefined}>
                               {formatDetailMoney(condition?.deposit ?? null)}
@@ -545,6 +548,8 @@ function HousingTypePanel({
         />
       </DetailFacts>
 
+      <BasicRentalCondition condition={housingType.basicRentalCondition} />
+
       <h4>현재 공급 조건</h4>
       {housingType.currentSupplyConditions.length > 0 && (
         <ul className={styles.supplyList}>
@@ -558,6 +563,43 @@ function HousingTypePanel({
       )}
     </>
   )
+}
+
+function BasicRentalCondition({ condition }: { condition: ComplexBasicRentalCondition | null }) {
+  const sourceUrl = toHttpUrl(condition?.sourceUrl ?? null)
+  const sourceLabel = condition?.source === 'MYHOME' ? '마이홈' : condition?.source
+  const collectedAt = condition?.collectedAt ?? null
+  const collectedDateLabel = formatRentalConditionCollectedDate(collectedAt)
+
+  return (
+    <>
+      <h4>기본 임대조건</h4>
+      <DetailFacts columns={1}>
+        <DetailFact term="기본 보증금" value={formatDetailMoney(condition?.deposit ?? null)} emphasis={Number.isFinite(condition?.deposit)} />
+        <DetailFact term="기본 월 임대료" value={formatDetailMoney(condition?.monthlyRent ?? null)} emphasis={Number.isFinite(condition?.monthlyRent)} />
+      </DetailFacts>
+      {(sourceLabel || collectedDateLabel) && (
+        <p className={styles.rentalConditionSource}>
+          {sourceLabel && <>출처: {sourceUrl
+            ? <a href={sourceUrl} target="_blank" rel="noopener noreferrer">{sourceLabel}</a>
+            : <span>{sourceLabel}</span>}</>}
+          {sourceLabel && collectedDateLabel && ' · '}
+          {collectedDateLabel && <>수집일: <time dateTime={collectedAt ?? undefined}>{collectedDateLabel}</time></>}
+        </p>
+      )}
+    </>
+  )
+}
+
+function rentalComparisonConditions(housingType: HousingComplexDetailHousingType) {
+  const basic = housingType.basicRentalCondition
+  const conditions = [
+    ...(basic === null ? [] : [{
+      label: '기본 임대조건', target: null, deposit: basic.deposit, monthlyRent: basic.monthlyRent,
+    }]),
+    ...housingType.currentSupplyConditions.map((condition) => ({ ...condition, label: '현재 공급' })),
+  ]
+  return conditions.length > 0 ? conditions : [null]
 }
 
 function SupplyConditionTable({

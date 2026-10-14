@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { ComplexDetail, RawComplexDetail } from '../model/publicHousing.ts'
-import { toHousingComplexDetailData } from './complexDetailPresentation.ts'
+import { formatRentalConditionCollectedDate, toHousingComplexDetailData } from './complexDetailPresentation.ts'
+
+it.each([
+  ['2026-10-09T18:30:00Z', '2026.10.10'],
+  [null, null],
+  ['invalid', null],
+])('수집 시각 %s를 한국 시간 기준 날짜로 표시한다', (value, expected) => {
+  expect(formatRentalConditionCollectedDate(value)).toBe(expected)
+})
 
 describe('toHousingComplexDetailData', () => {
   it.each([
@@ -101,6 +109,7 @@ function complexDetail(changes: Partial<ComplexDetail> = {}): ComplexDetail {
       housingTypeId: '101',
       isDuplex: false,
       maintenanceFee: null,
+      basicRentalCondition: null,
       name: '36A',
       supplyArea: null,
     }],

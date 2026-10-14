@@ -80,6 +80,7 @@ export const MINIMAL_PUBLIC_HOUSING_SNAPSHOT = {
           floorPlan3dImageUrl: null,
           isDuplex: false,
           maintenanceFee: 0,
+          basicRentalCondition: null,
           currentSupplyConditions: [
             {
               target: '청년',

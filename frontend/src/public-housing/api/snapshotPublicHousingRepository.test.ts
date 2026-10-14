@@ -104,6 +104,7 @@ describe('local public housing snapshot repository', () => {
           housingTypeId: '301',
           exclusiveArea: 0,
           maintenanceFee: 0,
+          basicRentalCondition: null,
           currentSupplyConditions: [{ deposit: 0, monthlyRent: null }],
         },
       ],

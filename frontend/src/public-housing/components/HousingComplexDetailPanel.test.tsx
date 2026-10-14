@@ -42,6 +42,7 @@ const BASE_DETAIL: HousingComplexDetailData = {
       floorPlan3dImageUrl: null,
       isDuplex: false,
       maintenanceFee: null,
+      basicRentalCondition: null,
       currentSupplyConditions: [
         {
           target: '청년',
@@ -60,6 +61,7 @@ const BASE_DETAIL: HousingComplexDetailData = {
       floorPlan3dImageUrl: null,
       isDuplex: true,
       maintenanceFee: 123_456,
+      basicRentalCondition: null,
       currentSupplyConditions: [],
     },
   ],
@@ -119,6 +121,69 @@ function factValue(container: HTMLElement, term: string) {
 }
 
 describe('HousingComplexDetailPanel', () => {
+  it('공고가 없어도 주택형 기본 보증금과 월 임대료 및 출처를 표시하고 탭 전환에 맞춰 바꾼다', () => {
+    const { panel } = renderPanel(detailWith({
+      currentAnnouncements: [],
+      housingTypes: BASE_DETAIL.housingTypes.map((housingType, index) => ({
+        ...housingType,
+        currentSupplyConditions: [],
+        basicRentalCondition: {
+          deposit: index === 0 ? 42_000_000 : null,
+          monthlyRent: index === 0 ? 185_500 : 0,
+          source: 'MYHOME',
+          sourceUrl: `https://www.myhome.go.kr/rental/${housingType.housingTypeId}`,
+          collectedAt: '2026-10-09T18:30:00Z',
+        },
+      })),
+    }))
+    const comparison = within(panel).getByRole('table', { name: '주택형별 임대조건 비교' })
+    const firstRow = within(comparison).getByRole('rowheader', { name: '36A' }).closest('tr')!
+    expect(within(firstRow).getByText('기본 임대조건')).toBeInTheDocument()
+    expect(within(firstRow).getByText('42,000,000원')).toBeInTheDocument()
+    expect(within(firstRow).getByText('185,500원')).toBeInTheDocument()
+    const firstPanel = within(panel).getByRole('tabpanel', { name: '36A' })
+    expect(factValue(firstPanel, '기본 보증금').getByText('42,000,000원')).toBeInTheDocument()
+    expect(factValue(firstPanel, '기본 월 임대료').getByText('185,500원')).toBeInTheDocument()
+    expect(within(firstPanel).getByRole('link', { name: '마이홈' })).toHaveAttribute('href', 'https://www.myhome.go.kr/rental/101')
+    expect(within(firstPanel).getByText('2026.10.10')).toHaveAttribute('datetime', '2026-10-09T18:30:00Z')
+
+    fireEvent.click(within(panel).getByRole('tab', { name: '44B' }))
+    const secondPanel = within(panel).getByRole('tabpanel', { name: '44B' })
+    expect(factValue(secondPanel, '기본 보증금').getByRole('definition')).toBeEmptyDOMElement()
+    expect(factValue(secondPanel, '기본 월 임대료').getByText('0원')).toBeInTheDocument()
+    expect(within(secondPanel).getByRole('link', { name: '마이홈' })).toHaveAttribute('href', 'https://www.myhome.go.kr/rental/102')
+  })
+
+  it('기본 조건과 공고 공급 조건의 금액을 별도 행으로 표시하고 누락 금액을 섞어 채우지 않는다', () => {
+    const { panel } = renderPanel(detailWith({ housingTypes: [{
+      ...BASE_DETAIL.housingTypes[0],
+      basicRentalCondition: { deposit: 42_000_000, monthlyRent: 185_500, source: 'MYHOME', sourceUrl: null, collectedAt: null },
+      currentSupplyConditions: [{ target: '청년', deposit: null, monthlyRent: 200_000, convertibleDeposit: null }],
+    }] }))
+    const table = within(panel).getByRole('table', { name: '주택형별 임대조건 비교' })
+    const basicRow = within(table).getByText('기본 임대조건').closest('tr')!
+    expect(within(basicRow).getByText('42,000,000원')).toBeInTheDocument()
+    expect(within(basicRow).getByText('185,500원')).toBeInTheDocument()
+    const currentRow = within(table).getByText('청년').closest('tr')!
+    expect(within(currentRow).getByText('현재 공급')).toBeInTheDocument()
+    expect(within(currentRow).getByRole('cell', { name: '' })).toBeEmptyDOMElement()
+    expect(within(currentRow).getByText('200,000원')).toBeInTheDocument()
+    expect(within(table).getByRole('rowheader', { name: '36A' })).toHaveAttribute('rowspan', '2')
+    expect(within(panel).getByRole('table', { name: '36A 청년 현재 공급 조건' })).not.toHaveTextContent('42,000,000원')
+  })
+
+  it.each([null, 'javascript:alert(1)'])('출처 주소 %s는 링크로 만들지 않고 잘못된 수집일은 표시하지 않는다', (sourceUrl) => {
+    const { panel } = renderPanel(detailWith({ housingTypes: [{
+      ...BASE_DETAIL.housingTypes[0],
+      basicRentalCondition: { deposit: null, monthlyRent: 0, source: 'MYHOME', sourceUrl, collectedAt: 'invalid' },
+    }] }))
+    const typePanel = within(panel).getByRole('tabpanel', { name: '36A' })
+    expect(within(typePanel).getByText('마이홈')).toBeInTheDocument()
+    expect(within(typePanel).queryByRole('link', { name: '마이홈' })).not.toBeInTheDocument()
+    expect(within(typePanel).queryByText(/invalid|수집일/)).not.toBeInTheDocument()
+    expect(factValue(typePanel, '기본 월 임대료').getByText('0원')).toBeInTheDocument()
+  })
+
   it('두 면적 전환 버튼으로 모달 전체를 양방향 전환하고 주택형 변경에도 단위를 유지한다', () => {
     const { panel } = renderPanel()
     expect(within(panel).getAllByRole('button', { name: '평 전환' })).toHaveLength(2)
