@@ -363,6 +363,19 @@
   overflow-wrap: anywhere;
 }
 
+.rentalConditionSource {
+  margin: var(--ds-space-2) 0 var(--ds-space-4);
+  color: var(--ds-color-muted);
+  font-size: var(--ds-text-caption);
+  line-height: var(--ds-line-height-body);
+  overflow-wrap: anywhere;
+}
+
+.rentalConditionSource a {
+  color: var(--ds-color-action);
+  text-underline-offset: 3px;
+}
+
 .housingTypeTabs {
   display: flex;
   min-width: 0;

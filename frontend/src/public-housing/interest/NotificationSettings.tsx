@@ -1,3 +1,4 @@
+import { NotificationPushControl } from '../../notifications/NotificationPushControl'
 import { useRef } from 'react'
 import { useNotificationInterests } from './NotificationInterestContext'
 import type { NotificationTargetType } from './notificationInterestRepository'
@@ -13,6 +14,7 @@ export function NotificationSettings() {
   if (!context || context.mode === 'loading') return <p role="status">알림 설정을 불러오는 중…</p>
   if (context.mode !== 'member') return null
   return <div className={styles.settings}>
+    <NotificationPushControl />
     <div className={styles.actions}>
       <h3 ref={heading} tabIndex={-1}>등록한 알림 <span>{context.targets.length}</span></h3>
       <button type="button" disabled={context.blocked || context.targets.length === 0}
@@ -26,6 +28,7 @@ export function NotificationSettings() {
       if (targets.length === 0) return null
       return <section className={styles.group} key={type} aria-label={`${title} 알림 설정`}>
         <h4>{title}</h4>
+        {type === 'ANNOUNCEMENT' && <p>공고 변경 알림은 준비 중이에요.</p>}
         <ul>{targets.map((target) => <li key={target.id}>
           <span>{target.name}</span>
           <button type="button" disabled={context.blocked} aria-label={`${target.name} 알림 해제`}

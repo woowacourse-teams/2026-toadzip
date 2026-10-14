@@ -18,7 +18,7 @@ ORDER BY installed_rank;
 WITH expected(version) AS (
     VALUES ('20260922.02'), ('20260930.02'), ('20260930.03'), ('20260930.04'),
            ('20260930.05'), ('20260930.06'), ('20260930.07'), ('20260930.08'),
-           ('20260930.09'), ('20261013.01')
+           ('20260930.09'), ('20261013.01'), ('20261014.01'), ('20261014.02')
 )
 SELECT expected.version,
        COALESCE(bool_or(history.success), false) AS applied_successfully

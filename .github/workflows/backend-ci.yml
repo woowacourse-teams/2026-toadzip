@@ -2,8 +2,7 @@ name: Backend CI
 
 on:
   pull_request:
-  push:
-    branches: [main, develop]
+  workflow_call:
 
 permissions:
   contents: read

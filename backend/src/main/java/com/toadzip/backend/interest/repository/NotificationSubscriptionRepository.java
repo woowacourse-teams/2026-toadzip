@@ -53,12 +53,12 @@ public class NotificationSubscriptionRepository {
             long userId, NotificationTargetType type, String id, Instant now) {
         List<Long> inserted = jdbcTemplate.query("""
                 INSERT INTO notification_subscriptions
-                    (user_id, target_type, target_id, active, updated_at, expires_at)
-                VALUES (?, ?, ?, true, ?, ?::timestamptz + INTERVAL '12 months')
+                    (user_id, target_type, target_id, active, updated_at, expires_at, activated_at)
+                VALUES (?, ?, ?, true, ?, ?::timestamptz + INTERVAL '12 months', ?)
                 ON CONFLICT ON CONSTRAINT uk_notification_subscription_target DO NOTHING
                 RETURNING id
                 """, (row, number) -> row.getLong("id"), userId, type.name(), id,
-                Timestamp.from(now), Timestamp.from(now));
+                Timestamp.from(now), Timestamp.from(now), Timestamp.from(now));
         if (!inserted.isEmpty()) {
             return NotificationInterestOutcome.ACTIVATED;
         }
@@ -66,9 +66,10 @@ public class NotificationSubscriptionRepository {
                 .orElseThrow(() -> new ConcurrencyFailureException("알림 신청이 제거되었습니다."));
         int updated = jdbcTemplate.update("""
                 UPDATE notification_subscriptions
-                SET active = true, updated_at = ?, expires_at = ?::timestamptz + INTERVAL '12 months'
+                SET activated_at = CASE WHEN active AND expires_at > ? THEN activated_at ELSE ? END,
+                    active = true, updated_at = ?, expires_at = ?::timestamptz + INTERVAL '12 months'
                 WHERE user_id = ? AND target_type = ? AND target_id = ?
-                """, Timestamp.from(now), Timestamp.from(now), userId, type.name(), id);
+                """, Timestamp.from(now), Timestamp.from(now), Timestamp.from(now), Timestamp.from(now), userId, type.name(), id);
         if (updated != 1) {
             throw new ConcurrencyFailureException("알림 신청을 갱신할 수 없습니다.");
         }

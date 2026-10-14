@@ -279,6 +279,7 @@ function toComplexHousingType(raw: RawComplexHousingType): ComplexHousingType {
     floorPlan3dImageUrl: raw.floorPlan3dImageUrl,
     isDuplex: raw.isDuplex,
     maintenanceFee: raw.maintenanceFee,
+    basicRentalCondition: raw.basicRentalCondition,
     currentSupplyConditions: raw.currentSupplyConditions.map((condition) => ({
       target: condition.target,
       deposit: condition.deposit,

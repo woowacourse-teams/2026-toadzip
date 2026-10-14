@@ -1,6 +1,6 @@
 # 회원 알림 설정
 
-회원은 단지·공고·지역 알림 설정을 이메일 입력 없이 저장한다. 현재 새 공고 알림 생성·전달과 FCM은 제공하지 않는다. 신청은 회원 ID와 선택 대상의 설정 저장 요청이며, 분석 동의·마케팅 수신·OS 푸시 권한이 아니다. 회원 이메일은 관리자의 회원 조회·검색 목적으로 유지하며 알림 해제로 삭제하지 않는다.
+회원은 단지·공고·지역 알림 설정을 이메일 입력 없이 저장한다. 새 공고 알림 생성·전달과 FCM은 [notification 기능](notification-delivery.md)이 담당한다. 신청은 회원 ID와 선택 대상의 설정 저장 요청이며, 분석 동의·마케팅 수신·OS 푸시 권한이 아니다. 회원 이메일은 관리자의 회원 조회·검색 목적으로 유지하며 알림 해제로 삭제하지 않는다.
 
 ## 신청과 조회 계약
 
@@ -40,7 +40,7 @@
 
 ## 분석과 업무의 경계
 
-`NotificationSettingsService`가 회원 설정만 변경한다. 공개 `/api/v1/notification-interest-events`는 EXPOSED/CLICKED/DECLINED 같은 선택적 행동 분석만 다루며 구독을 변경하지 않는다. 공개 CONFIRMED/CANCELLED 및 이메일·clientId를 포함한 요청은 거절한다. 비회원 이메일 신규 신청은 제공하지 않는다. 비회원 알림 조회·취소 API와 전용 테이블은 V20261013_01에서 제거한다.
+`NotificationSettingsService`가 회원 설정만 변경한다. 공개 `/api/v1/notification-interest-events`는 EXPOSED/CLICKED/DECLINED 같은 선택적 행동 분석만 다루며 구독을 변경하지 않는다. 공개 CONFIRMED/CANCELLED 및 이메일·clientId를 포함한 요청은 거절한다. 비회원 이메일 신규 신청은 제공하지 않는다. 비회원 알림 조회·취소 API와 전용 테이블은 V20261014_02에서 제거한다.
 
 공개 interest와 공고 조회 기록은 동의 행을 잠근 같은 트랜잭션에서 현재 동의·scope·만료를 확인한다. 미동의·거부·철회 상태는 저장하지 않고 유효한 동의에만 수집한다. 공개 interest는 `privacy_notification_events`에 저장하며 회원 ID·이메일과 연결하지 않는다. 단순 공고 열람과 알림 설정 업무는 계속 사용할 수 있다. 업무 영수증은 분석 원자료로 재사용하지 않는다.
 
@@ -70,3 +70,7 @@
 [공통 파기 감시·경보](../../docs/privacy-policy.md)를 적용하며 서버 복구 후에도 지연을 확인한다.
 
 화면 진입점과 신청·해제 UI는 [프론트 계약](../../frontend/docs/privacy-consent.md)을 따른다.
+
+## 새 공고 전달
+
+관심 단지·지역의 새 공고 전달은 [notification 기능](notification-delivery.md)이 담당한다. `activated_at`은 실제 활성화 시각이며 이미 활성인 구독을 다시 확인해도 유지한다. 해제·만료 후 재활성화할 때만 갱신한다. 공고 변경 알림은 이번 전달 대상이 아니다.

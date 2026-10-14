@@ -35,6 +35,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +43,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Component
 @RequiredArgsConstructor
 public class MyHomeAnnouncementMappingWriter {
+
+    private final NotificationOutboxRepository notificationOutbox;
 
     private final AnnouncementRepository announcementRepository;
 
@@ -143,6 +146,10 @@ public class MyHomeAnnouncementMappingWriter {
                 selections
         );
         enrichChangedAnnouncement(resolved, announcementResult, supplyRowsResult);
+        if (announcementResult.created() == 1) {
+            announcementRepository.flush();
+            notificationOutbox.appendNewAnnouncement(announcementResult.announcement());
+        }
         return new MyHomeAnnouncementWriteResult(
                 reportOf(announcementResult, supplyRowsResult),
                 supplyRowsResult.failures()

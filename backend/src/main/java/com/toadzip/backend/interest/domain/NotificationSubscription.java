@@ -37,6 +37,10 @@ public class NotificationSubscription {
     private Instant updatedAt;
 
     @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("CURRENT_TIMESTAMP")
+    private Instant activatedAt;
+
+    @Column(nullable = false)
     private Instant expiresAt;
 
     protected NotificationSubscription() {

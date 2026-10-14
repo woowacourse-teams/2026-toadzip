@@ -71,6 +71,7 @@ export function NotificationInterestProvider({ children, repository = notificati
   const { notices } = usePrivacyNotices()
   const noticeVersion = notices.find(notice => notice.key === 'NOTIFICATION_NOTICE')?.version
   const memberId = useRef<string | undefined>(undefined)
+  const [userId, setUserId] = useState<string | null>(null)
   const revision = useRef(0)
   const [selection, setSelection] = useState<Selection | null>(null)
   const session = useRef<string | null>(null)
@@ -107,6 +108,7 @@ export function NotificationInterestProvider({ children, repository = notificati
         setDialog(null); setFailed(null); setSelection(null)
       }
       memberId.current = nextMemberId
+      setUserId(nextMemberId ?? null)
       revision.current = status?.settingsRevision ?? 0
       // Automatic reconciliation preserves only unanswered writes for targets
       // still active on the server. A completed UNKNOWN command needs a new ID.
@@ -129,13 +131,14 @@ export function NotificationInterestProvider({ children, repository = notificati
       })) : [])
       if (!member) { setDialog(null); setFailed(null); setMessage('') }
     }).catch(() => {
-      if (version === requestVersion.current) { setMode('error'); setTargets([]); setProductAuthState('unknown') }
+      if (version === requestVersion.current) { setUserId(null); setMode('error'); setTargets([]); setProductAuthState('unknown') }
     })
   }, [loadUser, repository])
   const refreshStatus = useCallback(() => reconcileStatus(), [reconcileStatus])
 
   const resetSession = useCallback(() => {
     memberId.current = undefined
+    setUserId(null)
     requestVersion.current++
     inFlight.current = false
     batchInFlight.current = false
@@ -342,8 +345,8 @@ export function NotificationInterestProvider({ children, repository = notificati
     }).catch(() => { exposed.current.delete(key) })
   }, [eventFor, repository])
 
-  const context = useMemo(() => ({ blocked: mode === 'loading' || mode === 'error' || busy || dialog !== null || failed !== null,
-    mode, requested, targets, request, expose, resetSession, refreshStatus, clearAll, clearingAll, batchError }), [clearAll, clearingAll, batchError, busy, dialog, expose, failed, mode, request, requested, targets, resetSession, refreshStatus])
+  const context = useMemo(() => ({ userId, blocked: mode === 'loading' || mode === 'error' || busy || dialog !== null || failed !== null,
+    mode, requested, targets, request, expose, resetSession, refreshStatus, clearAll, clearingAll, batchError }), [userId, clearAll, clearingAll, batchError, busy, dialog, expose, failed, mode, request, requested, targets, resetSession, refreshStatus])
   function dismiss() { if (busy) return; restoreFocus.current = true; setDialog(null); setFailed(null); setSelection(null) }
 
   return <InterestContext.Provider value={context}>

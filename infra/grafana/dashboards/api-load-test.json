@@ -10,7 +10,7 @@
   ],
   "timezone": "Asia/Seoul",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": true,
   "refresh": "15s",
   "time": {
@@ -223,7 +223,662 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "**환경 선택 → API 비교 → DB·JVM → 요청 로그 → traceId로 원인 조회**\n\np95·p99는 최근 집계 구간의 지연입니다. 요청 수·오류 건수는 선택한 전체 기간입니다. `—`는 요청 또는 데이터가 없어 계산할 수 없는 상태입니다. 느린 요청 기준은 검색 조건이며 성능 목표가 아닙니다."
+        "content": "**prod 상시 관측 → 테스트 환경·API → DB 락·디스크 → 요청 로그**\n\np95·p99는 최근 집계 구간의 지연입니다. 요청 수·오류 건수는 선택한 전체 기간입니다. `—`는 요청 또는 데이터가 없어 계산할 수 없는 상태입니다. 느린 요청 기준은 검색 조건이며 성능 목표가 아닙니다."
+      }
+    },
+    {
+      "id": 35,
+      "title": "운영 보호 · prod 상시 관측",
+      "type": "row",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 36,
+      "title": "prod · 수집 상태",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "description": "prod 백엔드의 Prometheus 수집 상태입니다. 1은 수집 성공, 0은 수집 실패, —는 대상·데이터 없음입니다. API·DB 정상 동작을 보장하지 않습니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "min(up{job=\"backend\",environment=\"prod\"})",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "수집 실패",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "수집 정상",
+                  "color": "green"
+                }
+              }
+            },
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 37,
+      "title": "prod · 전체 API RPS",
+      "type": "stat",
+      "gridPos": {
+        "x": 4,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "description": "환경·API·메서드·DB 풀 선택과 무관한 prod 전체 API(/api/health 제외)입니다. 수집 실패 시 —입니다. 요청 없는 구간의 지연·오류율도 —이며 정상 판정이 아닙니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum(rate(http_server_requests_seconds_count{job=\"backend\", environment=\"prod\", uri=~\"/api/.*\", uri!~\"/api/health.*\"}[$__rate_interval]))) and on () (min(up{job=\"backend\",environment=\"prod\"}) == 1)",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "noValue": "—",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 38,
+      "title": "prod · 전체 API p95",
+      "type": "stat",
+      "gridPos": {
+        "x": 8,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "description": "환경·API·메서드·DB 풀 선택과 무관한 prod 전체 API(/api/health 제외)입니다. 수집 실패 시 —입니다. 요청 없는 구간의 지연·오류율도 —이며 정상 판정이 아닙니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(histogram_quantile(0.95,sum by(le)(rate(http_server_requests_seconds_bucket{job=\"backend\", environment=\"prod\", uri=~\"/api/.*\", uri!~\"/api/health.*\"}[$__rate_interval])))) and on () (min(up{job=\"backend\",environment=\"prod\"}) == 1)",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "—",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 39,
+      "title": "prod · 5xx 비율",
+      "type": "stat",
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "description": "환경·API·메서드·DB 풀 선택과 무관한 prod 전체 API(/api/health 제외)입니다. 수집 실패 시 —입니다. 요청 없는 구간의 지연·오류율도 —이며 정상 판정이 아닙니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(100 * ((sum(rate(http_server_requests_seconds_count{job=\"backend\", environment=\"prod\", uri=~\"/api/.*\", uri!~\"/api/health.*\",status=~\"5..\"}[$__rate_interval]))) or (sum(rate(http_server_requests_seconds_count{job=\"backend\", environment=\"prod\", uri=~\"/api/.*\", uri!~\"/api/health.*\"}[$__rate_interval]))) * 0) / ((sum(rate(http_server_requests_seconds_count{job=\"backend\", environment=\"prod\", uri=~\"/api/.*\", uri!~\"/api/health.*\"}[$__rate_interval]))) > 0)) and on () (min(up{job=\"backend\",environment=\"prod\"}) == 1)",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "—",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 40,
+      "title": "prod · DB 풀 대기",
+      "type": "stat",
+      "gridPos": {
+        "x": 16,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "description": "환경·API·메서드·DB 풀 선택과 무관한 prod 전체 API(/api/health 제외)입니다. 수집 실패 시 —입니다. 요청 없는 구간의 지연·오류율도 —이며 정상 판정이 아닙니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(hikaricp_connections_pending{job=\"backend\",environment=\"prod\"}) and on () (min(up{job=\"backend\",environment=\"prod\"}) == 1)",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 41,
+      "title": "prod · DB 연결 timeout",
+      "type": "stat",
+      "gridPos": {
+        "x": 20,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "description": "환경·API·메서드·DB 풀 선택과 무관한 prod 전체 API(/api/health 제외)입니다. 수집 실패 시 —입니다. 요청 없는 구간의 지연·오류율도 —이며 정상 판정이 아닙니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(hikaricp_connections_timeout_total{job=\"backend\",environment=\"prod\"}[$__rate_interval])) and on () (min(up{job=\"backend\",environment=\"prod\"}) == 1)",
+          "legendFormat": "",
+          "editorMode": "code",
+          "range": false,
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {},
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 42,
+      "title": "prod · API별 p95",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 8,
+        "h": 7
+      },
+      "description": "환경·API·메서드·DB 풀 선택과 무관한 prod 전체 API(/api/health 제외)입니다. 수집 실패 시 —입니다. 요청 없는 구간의 지연·오류율도 —이며 정상 판정이 아닙니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95,sum by(le,method,uri)(rate(http_server_requests_seconds_bucket{job=\"backend\", environment=\"prod\", uri=~\"/api/.*\", uri!~\"/api/health.*\"}[$__rate_interval]))) and on () (min(up{job=\"backend\",environment=\"prod\"}) == 1)",
+          "legendFormat": "{{method}} {{uri}}",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 43,
+      "title": "prod · 5xx 요청률",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 8,
+        "y": 8,
+        "w": 8,
+        "h": 7
+      },
+      "description": "환경·API·메서드·DB 풀 선택과 무관한 prod 전체 API(/api/health 제외)입니다. 수집 실패 시 —입니다. 요청 없는 구간의 지연·오류율도 —이며 정상 판정이 아닙니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "((sum(rate(http_server_requests_seconds_count{job=\"backend\", environment=\"prod\", uri=~\"/api/.*\", uri!~\"/api/health.*\",status=~\"5..\"}[$__rate_interval]))) or (sum(rate(http_server_requests_seconds_count{job=\"backend\", environment=\"prod\", uri=~\"/api/.*\", uri!~\"/api/health.*\"}[$__rate_interval]))) * 0) and on () (min(up{job=\"backend\",environment=\"prod\"}) == 1)",
+          "legendFormat": "5xx",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 44,
+      "title": "prod · DB 풀 대기 추이",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 16,
+        "y": 8,
+        "w": 8,
+        "h": 7
+      },
+      "description": "환경·API·메서드·DB 풀 선택과 무관한 prod 전체 API(/api/health 제외)입니다. 수집 실패 시 —입니다. 요청 없는 구간의 지연·오류율도 —이며 정상 판정이 아닙니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_pending{job=\"backend\",environment=\"prod\"} and on (job,instance) (up{job=\"backend\",environment=\"prod\"} == 1)",
+          "legendFormat": "{{instance}} {{pool}}",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       }
     },
     {
@@ -232,7 +887,7 @@
       "type": "row",
       "gridPos": {
         "x": 0,
-        "y": 3,
+        "y": 15,
         "w": 24,
         "h": 1
       },
@@ -275,7 +930,7 @@
       "type": "stat",
       "gridPos": {
         "x": 0,
-        "y": 4,
+        "y": 16,
         "w": 4,
         "h": 4
       },
@@ -356,7 +1011,7 @@
       "type": "stat",
       "gridPos": {
         "x": 4,
-        "y": 4,
+        "y": 16,
         "w": 4,
         "h": 4
       },
@@ -425,7 +1080,7 @@
       "type": "stat",
       "gridPos": {
         "x": 8,
-        "y": 4,
+        "y": 16,
         "w": 4,
         "h": 4
       },
@@ -494,7 +1149,7 @@
       "type": "stat",
       "gridPos": {
         "x": 12,
-        "y": 4,
+        "y": 16,
         "w": 4,
         "h": 4
       },
@@ -563,7 +1218,7 @@
       "type": "stat",
       "gridPos": {
         "x": 16,
-        "y": 4,
+        "y": 16,
         "w": 4,
         "h": 4
       },
@@ -632,7 +1287,7 @@
       "type": "stat",
       "gridPos": {
         "x": 20,
-        "y": 4,
+        "y": 16,
         "w": 4,
         "h": 4
       },
@@ -701,7 +1356,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 8,
+        "y": 20,
         "w": 12,
         "h": 7
       },
@@ -775,7 +1430,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 12,
-        "y": 8,
+        "y": 20,
         "w": 12,
         "h": 7
       },
@@ -873,7 +1528,7 @@
       "type": "row",
       "gridPos": {
         "x": 0,
-        "y": 15,
+        "y": 27,
         "w": 24,
         "h": 1
       },
@@ -916,7 +1571,7 @@
       "type": "table",
       "gridPos": {
         "x": 0,
-        "y": 16,
+        "y": 28,
         "w": 24,
         "h": 10
       },
@@ -1219,7 +1874,7 @@
       "type": "row",
       "gridPos": {
         "x": 0,
-        "y": 26,
+        "y": 38,
         "w": 24,
         "h": 1
       },
@@ -1262,7 +1917,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 27,
+        "y": 39,
         "w": 12,
         "h": 7
       },
@@ -1348,7 +2003,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 12,
-        "y": 27,
+        "y": 39,
         "w": 12,
         "h": 7
       },
@@ -1422,7 +2077,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 34,
+        "y": 46,
         "w": 12,
         "h": 7
       },
@@ -1496,7 +2151,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 12,
-        "y": 34,
+        "y": 46,
         "w": 12,
         "h": 7
       },
@@ -1570,7 +2225,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 41,
+        "y": 53,
         "w": 8,
         "h": 7
       },
@@ -1644,7 +2299,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 8,
-        "y": 41,
+        "y": 53,
         "w": 8,
         "h": 7
       },
@@ -1730,7 +2385,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 16,
-        "y": 41,
+        "y": 53,
         "w": 8,
         "h": 7
       },
@@ -1804,7 +2459,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 48,
+        "y": 60,
         "w": 12,
         "h": 7
       },
@@ -1890,7 +2545,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 12,
-        "y": 48,
+        "y": 60,
         "w": 12,
         "h": 7
       },
@@ -1961,10 +2616,10 @@
     {
       "id": 29,
       "type": "row",
-      "title": "4 · 공유 DB 서버의 CPU·메모리가 부족한가요?",
+      "title": "4 · 공유 DB 서버의 CPU·메모리·디스크",
       "gridPos": {
         "x": 0,
-        "y": 55,
+        "y": 67,
         "w": 24,
         "h": 1
       },
@@ -1977,7 +2632,7 @@
       "type": "stat",
       "gridPos": {
         "x": 0,
-        "y": 56,
+        "y": 68,
         "w": 8,
         "h": 4
       },
@@ -2059,7 +2714,7 @@
       "type": "stat",
       "gridPos": {
         "x": 8,
-        "y": 56,
+        "y": 68,
         "w": 8,
         "h": 4
       },
@@ -2130,7 +2785,7 @@
       "type": "stat",
       "gridPos": {
         "x": 16,
-        "y": 56,
+        "y": 68,
         "w": 8,
         "h": 4
       },
@@ -2201,7 +2856,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 60,
+        "y": 72,
         "w": 12,
         "h": 7
       },
@@ -2289,7 +2944,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 12,
-        "y": 60,
+        "y": 72,
         "w": 12,
         "h": 7
       },
@@ -2382,12 +3037,740 @@
       }
     },
     {
+      "id": 45,
+      "title": "DB 디스크 · 읽기·쓰기 평균 지연",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 79,
+        "w": 12,
+        "h": 7
+      },
+      "description": "장치별 완료 I/O의 평균 시간입니다. I/O가 없으면 —입니다. NVMe 등 병렬 장치의 포화 여부는 지연·대기열과 함께 판단합니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(rate(node_disk_read_time_seconds_total{job=\"db-host\",instance=\"$db_host\",device!~\"loop.*|ram.*|fd.*|sr.*\"}[$__rate_interval]) / (rate(node_disk_reads_completed_total{job=\"db-host\",instance=\"$db_host\",device!~\"loop.*|ram.*|fd.*|sr.*\"}[$__rate_interval]) > 0)) and on(instance) (up{job=\"db-host\",instance=\"$db_host\"} == 1)",
+          "legendFormat": "{{device}} 읽기",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "(rate(node_disk_write_time_seconds_total{job=\"db-host\",instance=\"$db_host\",device!~\"loop.*|ram.*|fd.*|sr.*\"}[$__rate_interval]) / (rate(node_disk_writes_completed_total{job=\"db-host\",instance=\"$db_host\",device!~\"loop.*|ram.*|fd.*|sr.*\"}[$__rate_interval]) > 0)) and on(instance) (up{job=\"db-host\",instance=\"$db_host\"} == 1)",
+          "legendFormat": "{{device}} 쓰기",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 46,
+      "title": "DB 디스크 · I/O 수행 시간 비율",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 79,
+        "w": 12,
+        "h": 7
+      },
+      "description": "I/O가 진행 중이던 시간 비율입니다. 100%만으로 디스크 처리 한계를 판단하지 않습니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * rate(node_disk_io_time_seconds_total{job=\"db-host\",instance=\"$db_host\",device!~\"loop.*|ram.*|fd.*|sr.*\"}[$__rate_interval]) and on(instance) (up{job=\"db-host\",instance=\"$db_host\"} == 1)",
+          "legendFormat": "{{device}}",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 47,
+      "title": "DB 디스크 · 읽기·쓰기 처리량",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 86,
+        "w": 12,
+        "h": 7
+      },
+      "description": "DB 볼륨이 실제 사용하는 장치를 서버에서 확인합니다. 파티션·물리 장치를 합산하지 않습니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(node_disk_read_bytes_total{job=\"db-host\",instance=\"$db_host\",device!~\"loop.*|ram.*|fd.*|sr.*\"}[$__rate_interval]) and on(instance) (up{job=\"db-host\",instance=\"$db_host\"} == 1)",
+          "legendFormat": "{{device}} 읽기",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "rate(node_disk_written_bytes_total{job=\"db-host\",instance=\"$db_host\",device!~\"loop.*|ram.*|fd.*|sr.*\"}[$__rate_interval]) and on(instance) (up{job=\"db-host\",instance=\"$db_host\"} == 1)",
+          "legendFormat": "{{device}} 쓰기",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 48,
+      "title": "DB 디스크 · 평균 진행·대기 I/O",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 86,
+        "w": 12,
+        "h": 7
+      },
+      "description": "가중 I/O 시간의 증가율로 본 평균 진행·대기 I/O 수입니다. API 지연·디스크 지연과 함께 해석합니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(node_disk_io_time_weighted_seconds_total{job=\"db-host\",instance=\"$db_host\",device!~\"loop.*|ram.*|fd.*|sr.*\"}[$__rate_interval]) and on(instance) (up{job=\"db-host\",instance=\"$db_host\"} == 1)",
+          "legendFormat": "{{device}}",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 49,
+      "title": "공유 DB 서버 · PostgreSQL별 락·트랜잭션",
+      "type": "row",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 93,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 50,
+      "title": "PostgreSQL · 수집 상태",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 94,
+        "w": 8,
+        "h": 7
+      },
+      "description": "세 선이 모두 1이어야 락 지표를 판단할 수 있습니다. 미등록은 —, 수집·DB 접속 실패는 0입니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=\"postgres\"}",
+          "legendFormat": "{{db_role}} exporter",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "pg_up{job=\"postgres\"} and on(job,instance) (up{job=\"postgres\"} == 1)",
+          "legendFormat": "{{db_role}} DB 접속",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "pg_scrape_collector_success{job=\"postgres\",collector=\"stat_activity\"} and on(job,instance) (up{job=\"postgres\"} == 1)",
+          "legendFormat": "{{db_role}} 활동 수집",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 51,
+      "title": "PostgreSQL · 락 대기 세션",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 8,
+        "y": 94,
+        "w": 8,
+        "h": 7
+      },
+      "description": "pg_stat_activity의 wait_event_type=Lock 세션 수입니다. 보유한 락 수가 아닙니다. 15초보다 짧은 대기는 놓칠 수 있어 API 지연·DB 풀 대기와 함께 봅니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum by (instance,db_role,datname) (pg_stat_activity_count{job=\"postgres\",datname!~\"template[01]\",wait_event_type=\"Lock\"}) or (sum by (instance,db_role,datname) (pg_stat_activity_count{job=\"postgres\",datname!~\"template[01]\"}) * 0)) and on(instance) ((up{job=\"postgres\"} == 1) and on(job,instance) (pg_up{job=\"postgres\"} == 1) and on(job,instance) (pg_scrape_collector_success{job=\"postgres\",collector=\"stat_activity\"} == 1))",
+          "legendFormat": "{{db_role}} {{datname}}",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 52,
+      "title": "PostgreSQL · 가장 오래된 트랜잭션",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 16,
+        "y": 94,
+        "w": 8,
+        "h": 7
+      },
+      "description": "실행 중·idle in transaction 등을 포함한 열린 트랜잭션의 최대 나이입니다. 락 대기시간이나 SQL 실행시간과 같지 않습니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (instance,db_role,datname) (pg_stat_activity_max_tx_duration{job=\"postgres\",datname!~\"template[01]\"}) and on(instance) ((up{job=\"postgres\"} == 1) and on(job,instance) (pg_up{job=\"postgres\"} == 1) and on(job,instance) (pg_scrape_collector_success{job=\"postgres\",collector=\"stat_activity\"} == 1))",
+          "legendFormat": "{{db_role}} {{datname}}",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 53,
+      "title": "PostgreSQL · 세션 상태",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 101,
+        "w": 12,
+        "h": 7
+      },
+      "description": "active와 idle in transaction을 비교합니다. active에는 락·I/O를 기다리는 세션도 포함될 수 있습니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(instance,db_role,datname,state) (pg_stat_activity_count{job=\"postgres\",datname!~\"template[01]\"}) and on(instance) ((up{job=\"postgres\"} == 1) and on(job,instance) (pg_up{job=\"postgres\"} == 1) and on(job,instance) (pg_scrape_collector_success{job=\"postgres\",collector=\"stat_activity\"} == 1))",
+          "legendFormat": "{{db_role}} {{datname}} {{state}}",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 54,
+      "title": "PostgreSQL · 교착 상태 발생",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 101,
+        "w": 12,
+        "h": 7
+      },
+      "description": "PostgreSQL이 탐지한 deadlock 증가량입니다. 일반적인 락 대기는 위의 락 대기 세션으로 확인합니다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(instance,db_role,datname) (increase(pg_stat_database_deadlocks{job=\"postgres\",datname!~\"template[01]\"}[$__rate_interval])) and on(instance) ((up{job=\"postgres\"} == 1) and on(job,instance) (pg_up{job=\"postgres\"} == 1) and on(job,instance) (pg_scrape_collector_success{job=\"postgres\",collector=\"stat_database\"} == 1))",
+          "legendFormat": "{{db_role}} {{datname}}",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "—",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisCenteredZero": false
+          },
+          "mappings": [
+            {
+              "type": "special",
+              "options": {
+                "match": "nan",
+                "result": {
+                  "text": "—",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
       "id": 23,
       "title": "5 · 실패하거나 느린 요청을 찾으세요",
       "type": "row",
       "gridPos": {
         "x": 0,
-        "y": 67,
+        "y": 108,
         "w": 24,
         "h": 1
       },
@@ -2430,7 +3813,7 @@
       "type": "table",
       "gridPos": {
         "x": 0,
-        "y": 68,
+        "y": 109,
         "w": 24,
         "h": 8
       },
@@ -2586,7 +3969,7 @@
       "type": "table",
       "gridPos": {
         "x": 0,
-        "y": 76,
+        "y": 117,
         "w": 24,
         "h": 9
       },
@@ -2742,7 +4125,7 @@
       "type": "table",
       "gridPos": {
         "x": 0,
-        "y": 85,
+        "y": 126,
         "w": 24,
         "h": 9
       },
@@ -2898,7 +4281,7 @@
       "type": "logs",
       "gridPos": {
         "x": 0,
-        "y": 94,
+        "y": 135,
         "w": 24,
         "h": 9
       },
@@ -2962,7 +4345,7 @@
       "type": "logs",
       "gridPos": {
         "x": 0,
-        "y": 103,
+        "y": 144,
         "w": 24,
         "h": 7
       },

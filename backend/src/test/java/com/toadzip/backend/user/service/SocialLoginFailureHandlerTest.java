@@ -1,5 +1,7 @@
 package com.toadzip.backend.user.service;
 
+import com.toadzip.backend.notification.service.NotificationPushDeviceService;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
@@ -56,7 +58,7 @@ class SocialLoginFailureHandlerTest {
         when(userService.findOrCreate("kakao", "123", null, null))
                 .thenThrow(new IllegalStateException("database unavailable"));
         SocialLoginSuccessHandler successHandler = new SocialLoginSuccessHandler(
-                userService, repository, failureHandler);
+                userService, repository, failureHandler, mock(NotificationPushDeviceService.class));
         MockHttpServletRequest request = new MockHttpServletRequest();
         MockHttpSession session = new MockHttpSession();
         SecurityContext existingContext = SecurityContextHolder.createEmptyContext();

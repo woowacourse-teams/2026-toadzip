@@ -51,7 +51,8 @@ class AdminAnnouncementRegistrationServiceTest {
             announcementRepository,
             supplyRowRepository,
             housingComplexRepository,
-            identifierGenerator
+            identifierGenerator,
+            mock(com.toadzip.backend.notification.repository.NotificationOutboxRepository.class)
     );
 
     @BeforeEach

@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.worker.tsbuildinfo", "target": "ES2023", "lib": ["ES2023", "WebWorker"],
+    "module": "esnext", "types": ["vite/client"], "moduleResolution": "bundler", "skipLibCheck": true,
+    "verbatimModuleSyntax": true, "noEmit": true, "strict": true, "noUnusedLocals": true, "noUnusedParameters": true
+  },
+  "include": ["workers"]
+}

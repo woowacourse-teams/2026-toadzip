@@ -3,6 +3,7 @@ import type { NotificationEventSource, NotificationTarget } from './notification
 
 export interface Selection { readonly target: NotificationTarget; readonly source: NotificationEventSource }
 export const InterestContext = createContext<{
+  readonly userId: string | null
   readonly blocked: boolean
   readonly clearingAll: boolean
   readonly batchError: string

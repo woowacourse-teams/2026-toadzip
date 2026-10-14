@@ -19,7 +19,7 @@ class GuestNotificationRemovalMigrationTest {
         try (Connection admin = connect("postgres"); Statement statement = admin.createStatement()) {
             statement.execute("CREATE DATABASE " + database);
             try {
-                migration(database).target("20261011.01").load().migrate();
+                migration(database).target("20261013.01").load().migrate();
                 try (Connection connection = connect(database); Statement query = connection.createStatement()) {
                     query.execute("""
                             INSERT INTO users(id,login_identifier,email,created_at)
@@ -44,12 +44,14 @@ class GuestNotificationRemovalMigrationTest {
                     try (var result = query.executeQuery("""
                             SELECT to_regclass('notification_guest_subscriptions'),
                                 to_regclass('notification_guest_email_preferences'),
-                                to_regclass('notification_guest_cancellation_requests')
+                                to_regclass('notification_guest_cancellation_requests'),
+                                to_regclass('user_notifications') IS NOT NULL
                             """)) {
                         assertTrue(result.next());
                         for (int column = 1; column <= 3; column++) {
                             assertEquals(null, result.getObject(column));
                         }
+                        assertTrue(result.getBoolean(4));
                     }
                     try (var result = query.executeQuery("""
                             SELECT success FROM flyway_schema_history WHERE version='20260930.06'

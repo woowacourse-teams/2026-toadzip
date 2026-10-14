@@ -29,7 +29,10 @@ docker compose --env-file infra/monitoring/.env -f compose.monitoring.yaml down
 현재 서버에 먼저 등록하려면 Grafana의 Dashboards → New → Import dashboard에서 같은 JSON을 가져온다.
 파일 업로드를 사용할 수 없다면 JSON 내용을 `Import via dashboard JSON model`에 입력한다.
 
-- 환경은 dev·prod 중 하나를 선택한다. API 지표와 로그가 같은 환경을 사용한다.
+- 환경은 dev·prod 중 하나를 선택한다. 테스트 대상 API 지표와 로그가 같은 환경을 사용한다.
+- 맨 위 `운영 보호 · prod 상시 관측`은 환경·API·메서드·DB 풀 선택과 무관하다.
+  prod 전체 API(`/api/health` 제외)의 RPS·p95·5xx, DB 풀 대기·timeout과 API별 p95를 본다.
+  prod 수집 실패 시 지표를 숨기며, 무트래픽의 p95·오류율은 `—`다. `—`를 정상으로 판정하지 않는다.
 - 기본 범위는 사용자 API다. 관리자 API는 별도로 선택하며 `/api/health`는 집계에서 제외한다.
 - 상단 RPS·지연·오류율은 최근 집계 구간이다. API 비교 표는 선택한 전체 기간의 평균 RPS·지연·오류를 보여준다.
 - 테스트 종료 후에는 시작·종료 시간을 선택해 API 비교 표를 확인한다.
@@ -51,6 +54,8 @@ Tomcat·외부 HTTP·Nginx 패널은 해당 계측과 수집 설정을 애플리
 세 PostgreSQL이 같은 서버를 사용하므로 호스트 전체를 한 번만 수집한다.
 수집되지 않거나 계산에 필요한 데이터가 부족하면 자원 값은 `—`다. 사용률 0%와 구분한다.
 Node Exporter 배포와 실제 수집 대상 등록은 [DB 서버 설정](../infra/db/SETUP.md)을 따른다.
+디스크 패널과 PostgreSQL 락·트랜잭션 패널도 API 선택과 무관하다. PostgreSQL은 `db_role`로
+dev·prod·shared를 구분한다. DB 연결 성공과 collector 성공까지 확인한 데이터만 표시한다.
 
 ## 대시보드 조회식 검증
 
@@ -74,6 +79,42 @@ docker run --rm --entrypoint promtool \
   --mount type=bind,src="$PWD/.local/verification/monitoring",dst=/tests,readonly \
   prom/prometheus:v3.14.0 test rules /tests/db-host-tests.yml
 ```
+
+prod 고정 집계, 디스크 계산, DB 락과 수집 실패를 검증한다.
+
+```shell
+python3 tests/monitoring/guardrail_cases.py > .local/verification/monitoring/guardrails.yml
+docker run --rm --network none --entrypoint promtool \
+  --mount type=bind,src="$PWD/.local/verification/monitoring",dst=/tests,readonly \
+  prom/prometheus:v3.14.0 test rules /tests/guardrails.yml
+python3 tests/monitoring/postgres_collection.py
+```
+
+## 부하테스트 시작 전 확인
+
+1. [DB 서버 적용 절차](../infra/db/SETUP.md)에 따라 수집기와 모니터링 설정을 반영한다.
+2. dev와 특정 API를 선택해도 prod 행의 범위가 바뀌지 않는지 확인한다.
+   DB 호스트 디스크, PostgreSQL 3개 수집, DB 연결·collector 성공을 확인한다.
+3. 부하 전 동일 시간 범위로 prod의 요청량·지연·5xx·DB 풀 대기 기준선을 확보한다.
+   실제 prod 요청이 없으면 지연을 검증할 수 없으므로 저빈도 읽기 점검 여부를 별도로 정한다.
+4. dev의 낮은 부하부터 시작한다. prod에 새로운 5xx·DB timeout·지속적인 대기가 발생하거나
+   기준선 대비 지연이 악화되면 증가를 멈추고 부하를 중단한다. 관측 수집이 끊겨도 중단한다.
+   수치화한 지연 중단선과 정상·급증 목표 RPS는 실행 전에 별도로 확정한다.
+
+Tomcat 스레드 지표는 부하테스트의 필수 시작 조건이 아니다. 처리 스레드 포화를 구분하는 보조 지표다.
+현재 소스의 `server.tomcat.mbeanregistry.enabled=true`는 빌드된 JAR에 포함된다.
+이 변경 이전 이미지라면 **다음 백엔드 배포 때 새로 빌드**해야 하며 기존 이미지 재시작으로 반영되지 않는다.
+서버에서 배포 후 아래 읽기 전용 명령으로 확인한다(관리 포트가 기본값일 때).
+
+```shell
+curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8081/actuator/prometheus \
+  | rg '^tomcat_(threads|sessions)_'
+```
+
+직접 응답에는 스레드 지표가 있는데 Prometheus에 없으면 수집 대상·라벨·relabel 설정을 확인한다.
+직접 응답에도 없으면 배포 이미지의 설정과 `SERVER_TOMCAT_MBEANREGISTRY_ENABLED` 재정의,
+실제 서버 구현을 확인한다. 세션 지표는 MBean 없이도 등록되므로 세션 지표만 있는 것으로
+MBean 활성화를 확인할 수 없다. 전체 환경변수·비밀번호를 로그나 채팅에 출력하지 않는다.
 
 ## 애플리케이션 로그 수집 적용
 

@@ -5,6 +5,7 @@ services:
       - --collector.disable-defaults
       - --collector.cpu
       - --collector.meminfo
+      - --collector.diskstats
       - --path.procfs=/host/proc
     ports:
       - "${DB_METRICS_BIND_IP:?DB_METRICS_BIND_IP is required}:9100:9100"

@@ -39,6 +39,23 @@ class NotificationInterestIntegrationTest {
                 MEMBER, "privacy-notification-member", "retained@example.com");
     }
 
+    @Autowired private com.toadzip.backend.interest.repository.NotificationSubscriptionRepository subscriptions;
+
+    @Test
+    void 활성화_시각은_중복확인에_보존되고_재구독에_갱신된다() {
+        var first = java.time.Instant.parse("2026-10-13T00:00:00Z");
+        var type = com.toadzip.backend.interest.domain.NotificationTargetType.REGION;
+        subscriptions.activateForMember(MEMBER, type, "11", first);
+        subscriptions.activateForMember(MEMBER, type, "11", first.plusSeconds(10));
+        assertEquals(first, jdbc.queryForObject("SELECT activated_at FROM notification_subscriptions WHERE user_id = ?",
+                java.sql.Timestamp.class, MEMBER).toInstant());
+        subscriptions.cancel(MEMBER, type, "11", first.plusSeconds(20));
+        subscriptions.activateForMember(MEMBER, type, "11", first.plusSeconds(30));
+        assertEquals(first.plusSeconds(30), jdbc.queryForObject(
+                "SELECT activated_at FROM notification_subscriptions WHERE user_id = ?",
+                java.sql.Timestamp.class, MEMBER).toInstant());
+    }
+
     @Test
     void 분석_거부와_무관하게_이메일없이_신청_조회_취소한다() throws Exception {
         jdbc.update("""

@@ -1,0 +1,73 @@
+# Linux DB host only. Separate from the DB Compose project; no DB restart is needed.
+x-postgres-exporter: &postgres-exporter
+  image: prometheuscommunity/postgres-exporter:v0.20.1
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  command:
+    - --config.file=
+    - --no-collector.database
+    - --no-collector.locks
+    - --no-collector.replication
+    - --no-collector.replication_slots
+    - --no-collector.roles
+    - --no-collector.settings
+    - --no-collector.stat_archiver
+    - --no-collector.stat_bgwriter
+    - --no-collector.stat_progress_vacuum
+    - --no-collector.stat_replication
+    - --no-collector.stat_user_tables
+    - --no-collector.statio_user_tables
+    - --no-collector.wal
+    - --collector.stat_activity
+    - --collector.stat_database
+  user: "65534:65534"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  restart: unless-stopped
+
+services:
+  postgres-dev:
+    <<: *postgres-exporter
+    environment:
+      DATA_SOURCE_URI: "host.docker.internal:5432/postgres?sslmode=disable&connect_timeout=3"
+      DATA_SOURCE_USER: toadzip_monitor
+      DATA_SOURCE_PASS_FILE: /run/secrets/db-password
+      PG_EXPORTER_COLLECTION_TIMEOUT: 5s
+    ports:
+      - "${DB_METRICS_BIND_IP:?DB_METRICS_BIND_IP is required}:9187:9187"
+    secrets:
+      - source: dev-db-metrics-password
+        target: db-password
+  postgres-prod:
+    <<: *postgres-exporter
+    environment:
+      DATA_SOURCE_URI: "host.docker.internal:5433/postgres?sslmode=disable&connect_timeout=3"
+      DATA_SOURCE_USER: toadzip_monitor
+      DATA_SOURCE_PASS_FILE: /run/secrets/db-password
+      PG_EXPORTER_COLLECTION_TIMEOUT: 5s
+    ports:
+      - "${DB_METRICS_BIND_IP:?DB_METRICS_BIND_IP is required}:9188:9187"
+    secrets:
+      - source: prod-db-metrics-password
+        target: db-password
+  postgres-shared:
+    <<: *postgres-exporter
+    environment:
+      DATA_SOURCE_URI: "host.docker.internal:5434/postgres?sslmode=disable&connect_timeout=3"
+      DATA_SOURCE_USER: toadzip_monitor
+      DATA_SOURCE_PASS_FILE: /run/secrets/db-password
+      PG_EXPORTER_COLLECTION_TIMEOUT: 5s
+    ports:
+      - "${DB_METRICS_BIND_IP:?DB_METRICS_BIND_IP is required}:9189:9187"
+    secrets:
+      - source: shared-db-metrics-password
+        target: db-password
+
+secrets:
+  dev-db-metrics-password:
+    file: "${DEV_DB_METRICS_PASSWORD_FILE:?DEV_DB_METRICS_PASSWORD_FILE is required}"
+  prod-db-metrics-password:
+    file: "${PROD_DB_METRICS_PASSWORD_FILE:?PROD_DB_METRICS_PASSWORD_FILE is required}"
+  shared-db-metrics-password:
+    file: "${SHARED_DB_METRICS_PASSWORD_FILE:?SHARED_DB_METRICS_PASSWORD_FILE is required}"

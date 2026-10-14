@@ -20,7 +20,7 @@ BEGIN
     FOREACH expected_version IN ARRAY ARRAY[
             '20260922.02', '20260930.02', '20260930.03', '20260930.04',
             '20260930.05', '20260930.06', '20260930.07', '20260930.08',
-            '20260930.09', '20261013.01'] LOOP
+            '20260930.09', '20261013.01', '20261014.01', '20261014.02'] LOOP
         IF NOT EXISTS (
                 SELECT 1 FROM public.flyway_schema_history
                 WHERE version = expected_version AND success = true) THEN

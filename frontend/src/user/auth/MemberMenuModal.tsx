@@ -1,7 +1,7 @@
 import { setReplaySensitive } from '../../analytics/productAnalytics'
 import { useLayoutEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { notificationPreparationTitle } from '../../public-housing/interest/NotificationInterestContext'
+import { NotificationInbox } from '../../notifications/NotificationInbox'
 import { NotificationSettings } from '../../public-housing/interest/NotificationSettings'
 import styles from './MemberMenuModal.module.css'
 
@@ -61,14 +61,7 @@ export function MemberMenuModal({ view, onClose, returnFocusRef, children }: {
           aria-controls={`${tabId}-panel-settings`} tabIndex={activeTab === 'settings' ? 0 : -1} onClick={() => setActiveTab('settings')}>알림 설정</button>
       </div>
       <div className={styles.panel} id={`${tabId}-panel-received`} role="tabpanel" aria-labelledby={`${tabId}-received`} hidden={activeTab !== 'received'} tabIndex={0}>
-        {activeTab === 'received' && <section className={styles.preparation}>
-          <div className={styles.illustration} aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
-            </svg>
-          </div>
-          <h3>{notificationPreparationTitle}</h3>
-        </section>}
+        {activeTab === 'received' && <NotificationInbox onNavigate={onClose} />}
       </div>
       <div className={styles.panel} id={`${tabId}-panel-settings`} role="tabpanel" aria-labelledby={`${tabId}-settings`} hidden={activeTab !== 'settings'} tabIndex={0}>
         {activeTab === 'settings' && <NotificationSettings />}

@@ -1,4 +1,5 @@
 import type {
+  ComplexBasicRentalCondition,
   HousingAgency,
   RawAnnouncementAttachment,
   RawAnnouncementApplicationSchedule,
@@ -725,10 +726,33 @@ function decodeComplexHousingType(
       recordField(housingType, 'maintenanceFee', path),
       `${path}.maintenanceFee`,
     ),
+    basicRentalCondition: decodeBasicRentalCondition(
+      housingType.basicRentalCondition ?? null,
+      `${path}.basicRentalCondition`,
+    ),
     currentSupplyConditions: decodeComplexSupplyConditions(
       recordField(housingType, 'currentSupplyConditions', path),
       `${path}.currentSupplyConditions`,
     ),
+  }
+}
+
+function decodeBasicRentalCondition(
+  value: unknown,
+  path: string,
+): ComplexBasicRentalCondition | null {
+  if (value === null) return null
+  const condition = recordAt(value, path)
+  const deposit = nullableSafeIntegerAt(recordField(condition, 'deposit', path), `${path}.deposit`)
+  const monthlyRent = nullableSafeIntegerAt(recordField(condition, 'monthlyRent', path), `${path}.monthlyRent`)
+  if (deposit !== null && deposit < 0) throw new PublicHousingContractError(`${path}.deposit`)
+  if (monthlyRent !== null && monthlyRent < 0) throw new PublicHousingContractError(`${path}.monthlyRent`)
+  return {
+    deposit,
+    monthlyRent,
+    source: nullableStringAt(recordField(condition, 'source', path), `${path}.source`),
+    sourceUrl: nullableStringAt(recordField(condition, 'sourceUrl', path), `${path}.sourceUrl`),
+    collectedAt: nullableStringAt(recordField(condition, 'collectedAt', path), `${path}.collectedAt`),
   }
 }
 

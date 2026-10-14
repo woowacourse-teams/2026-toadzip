@@ -2,8 +2,7 @@ name: Frontend CI
 
 on:
   pull_request:
-  push:
-    branches: [main, develop]
+  workflow_call:
 
 permissions:
   contents: read
@@ -26,5 +25,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
         run: npm ci
+      - name: Verify notification deployment configuration
+        run: python3 ../tests/deployment/test_notification_environment.py
       - name: Check frontend
         run: npm run check

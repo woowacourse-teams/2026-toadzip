@@ -1,0 +1,36 @@
+name: Deploy Dev
+
+on:
+  # develop 브랜치에 푸시될 때 실행
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: toadzip-dev-deploy
+  cancel-in-progress: false
+
+jobs:
+  backend:
+    uses: ./.github/workflows/backend-ci.yml
+
+  frontend:
+    uses: ./.github/workflows/frontend-ci.yml
+
+  deploy:
+    name: Deploy to development server
+    needs: [backend, frontend]
+    if: github.ref == 'refs/heads/develop'
+    runs-on: [self-hosted, linux, toadzip-dev]
+    timeout-minutes: 30
+    steps:
+      - name: Deploy
+        working-directory: ${{ vars.DEV_DEPLOY_PATH }}
+        shell: bash
+        run: |
+          git switch develop
+          git pull --ff-only origin develop
+          docker compose up -d --build --wait --wait-timeout 180

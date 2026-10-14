@@ -6,7 +6,7 @@ DB 운영, HTTPS 인증서 갱신, 로그·메트릭 수집과 모니터링에 �
 | --- | --- |
 | [`alloy/config.alloy`](alloy/config.alloy) | 백엔드 예외 스택과 쿼리 값을 제외한 Nginx access 로그를 수집해 Loki로 전송합니다. |
 | [`certbot/`](certbot/) | HTTPS 적용 가이드와 인증서 갱신 후 Nginx가 설정을 다시 읽게 하는 `reload-nginx.sh`를 담습니다. |
-| [`db/`](db/) | 개발·운영·공유 PostgreSQL의 `compose.yaml`과 호스트 CPU·메모리 수집용 `compose.metrics.yaml`을 담습니다. |
+| [`db/`](db/) | PostgreSQL 운영 설정과 호스트 CPU·메모리·디스크, DB별 락·트랜잭션 수집용 Compose를 담습니다. |
 | [`db/automation/`](db/automation/), [`db/systemd/`](db/systemd/) | AWS 백업 감시·배포 템플릿 생성 코드와 정기 백업 서비스·타이머를 담습니다. |
 | [`grafana/provisioning/datasources/prometheus.yml`](grafana/provisioning/datasources/prometheus.yml) | Grafana의 기본 Prometheus 데이터 소스를 등록합니다. |
 | [`grafana/dashboards/`](grafana/dashboards/) | API·부하테스트 대시보드의 조회식, 환경 선택과 요청 로그 연결을 관리합니다. |

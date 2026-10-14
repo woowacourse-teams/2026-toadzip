@@ -34,7 +34,8 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-@SpringBootTest(properties = "spring.main.web-application-type=servlet")
+@SpringBootTest(properties = {"spring.main.web-application-type=servlet",
+        "app.notification.publisher-enabled=true", "app.notification.activation-at=2026-01-01T00:00:00Z"})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class AdminAnnouncementImportIntegrationTest {
@@ -71,8 +72,11 @@ class AdminAnnouncementImportIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate notificationJdbc;
+
     @BeforeEach
     void cleanDatabase() {
+        notificationJdbc.update("DELETE FROM notification_outbox_events");
         importRepository.deleteAll();
         supplyTargetRepository.deleteAll();
         attachmentRepository.deleteAll();
@@ -123,6 +127,8 @@ class AdminAnnouncementImportIntegrationTest {
         assertEquals(1, scheduleRepository.count());
         assertEquals(1, attachmentRepository.count());
         assertEquals(1, importRepository.count());
+        assertEquals(1, notificationJdbc.queryForObject("SELECT count(*) FROM notification_outbox_events",
+                Integer.class));
     }
 
     @Test

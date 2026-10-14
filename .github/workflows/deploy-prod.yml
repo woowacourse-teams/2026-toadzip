@@ -1,0 +1,38 @@
+name: Deploy Prod
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 배포 중에 작업이 끊기지 않도록 설정
+concurrency:
+  group: toadzip-prod-deploy
+  cancel-in-progress: false
+
+jobs:
+  backend:
+    uses: ./.github/workflows/backend-ci.yml
+
+  frontend:
+    uses: ./.github/workflows/frontend-ci.yml
+
+  deploy:
+    name: Deploy to production server
+    needs: [backend, frontend]
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, linux, toadzip-prod]
+    timeout-minutes: 30
+    steps:
+      - name: Deploy
+        working-directory: ${{ vars.PROD_DEPLOY_PATH }} # Github에서 설정한 환경변수
+        shell: bash
+        # 실제 동작하는 명령어 입력
+        run: |
+          git switch main
+          git pull --ff-only origin main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          docker compose up -d --build --wait --wait-timeout 180

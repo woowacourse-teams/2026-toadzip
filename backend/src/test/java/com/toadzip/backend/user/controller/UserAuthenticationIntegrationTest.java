@@ -66,6 +66,9 @@ class UserAuthenticationIntegrationTest {
     private MockMvc mockMvc;
 
     @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
+    @Autowired
     private SocialLoginSuccessHandler successHandler;
 
     @Autowired
@@ -152,6 +155,25 @@ class UserAuthenticationIntegrationTest {
                 .andExpect(status().isNoContent());
         mockMvc.perform(get("/api/auth/me").session(session))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void 재로그인_직후_SDK나_세션조회_없이도_로그아웃이_기기를_해제한다() throws Exception {
+        String subject = UUID.randomUUID().toString();
+        Long id = socialUserService.findOrCreate("google", subject, null, authorization());
+        UUID device = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO notification_push_devices(id,user_id,fid,binding_version,enabled,
+                    consented_at,registered_at,last_seen_at) VALUES(?,?,?,1,true,now(),now(),now())
+                """, device, id, UUID.randomUUID().toString());
+        var request = loginRequest("google");
+        request.setCookies(new jakarta.servlet.http.Cookie("notification-device", device.toString()));
+        successHandler.onAuthenticationSuccess(request, new MockHttpServletResponse(),
+                authentication("google", Map.of("sub", subject), "sub"));
+        mockMvc.perform(post("/api/auth/logout").session((MockHttpSession) request.getSession()).with(csrf()))
+                .andExpect(status().isNoContent());
+        assertEquals(false, jdbc.queryForObject("SELECT enabled FROM notification_push_devices WHERE id=?",
+                Boolean.class, device));
     }
 
     @Test

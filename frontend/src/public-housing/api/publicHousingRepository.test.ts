@@ -100,6 +100,13 @@ const COMPLEX_DETAIL = {
       floorPlan3dImageUrl: null,
       isDuplex: false,
       maintenanceFee: 0,
+      basicRentalCondition: {
+        deposit: 42_000_000,
+        monthlyRent: 185_500,
+        source: 'MYHOME',
+        sourceUrl: 'https://www.myhome.go.kr/rental/101',
+        collectedAt: '2026-10-09T18:30:00Z',
+      },
       currentSupplyConditions: [
         {
           target: null,
@@ -540,6 +547,7 @@ describe('공공주택 HTTP repository', () => {
           housingTypeId: '101',
           isDuplex: false,
           maintenanceFee: 0,
+          basicRentalCondition: COMPLEX_DETAIL.housingTypes[0].basicRentalCondition,
           currentSupplyConditions: [{ deposit: 0 }],
         },
       ],
@@ -1043,6 +1051,37 @@ describe('공공주택 응답 계약', () => {
       monthlyRentMin: null,
       monthlyRentMax: null,
     })
+  })
+
+  it.each([undefined, null])('주택형 기본 임대조건이 %s이면 null로 읽는다', (basicRentalCondition) => {
+    const decoded = decodeComplexDetailEnvelope({ data: {
+      ...COMPLEX_DETAIL,
+      housingTypes: [{ ...COMPLEX_DETAIL.housingTypes[0], basicRentalCondition }],
+    } })
+    expect(decoded.housingTypes[0].basicRentalCondition).toBeNull()
+  })
+
+  it('기본 임대조건의 0과 null 및 출처를 현재 공급 조건과 별도로 보존한다', () => {
+    const basicRentalCondition = {
+      ...COMPLEX_DETAIL.housingTypes[0].basicRentalCondition,
+      deposit: 0,
+      monthlyRent: null,
+    }
+    const decoded = decodeComplexDetailEnvelope({ data: {
+      ...COMPLEX_DETAIL,
+      housingTypes: [{ ...COMPLEX_DETAIL.housingTypes[0], basicRentalCondition }],
+    } })
+    expect(decoded.housingTypes[0].basicRentalCondition).toEqual(basicRentalCondition)
+    expect(decoded.housingTypes[0].currentSupplyConditions).toEqual(COMPLEX_DETAIL.housingTypes[0].currentSupplyConditions)
+  })
+
+  it.each(['185500', 0.5, -1, Number.MAX_SAFE_INTEGER + 1])('잘못된 기본 월 임대료 %s는 API 경계에서 거절한다', (monthlyRent) => {
+    expect(() => decodeComplexDetailEnvelope({ data: {
+      ...COMPLEX_DETAIL,
+      housingTypes: [{ ...COMPLEX_DETAIL.housingTypes[0], basicRentalCondition: {
+        ...COMPLEX_DETAIL.housingTypes[0].basicRentalCondition, monthlyRent,
+      } }],
+    } })).toThrowError(expect.objectContaining({ path: '$.data.housingTypes[0].basicRentalCondition.monthlyRent' }))
   })
 
   it('빈 배열, null과 false를 빈 성공 응답으로 보존한다', () => {
