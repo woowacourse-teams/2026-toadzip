@@ -35,6 +35,28 @@ it('빈 신청은 0건으로 표시하고 실패는 빈 목록으로 위장하�
   expect(screen.queryByRole('navigation', { name: '알림 신청 목록 페이지' })).not.toBeInTheDocument()
 })
 
+it('실패한 조건으로 돌아오면 새 조회의 로딩과 성공 결과를 표시하고 이전 오류를 지운다', async () => {
+  let resolve: (value: NotificationPage) => void = () => { throw new Error('not initialized') }
+  const pending = new Promise<NotificationPage>(yes => { resolve = yes })
+  vi.mocked(loadNotificationSubscriptions).mockRejectedValueOnce(new Error('활성 신청 조회 실패'))
+    .mockResolvedValueOnce(page).mockReturnValueOnce(pending)
+  mount()
+  expect(await screen.findByRole('alert')).toHaveTextContent('활성 신청 조회 실패')
+  fireEvent.change(screen.getByLabelText('신청 상태'), { target: { value: 'CANCELLED' } })
+  fireEvent.click(screen.getByRole('button', { name: '검색' }))
+  await screen.findByText('표시할 알림 신청이 없습니다.')
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+  fireEvent.change(screen.getByLabelText('신청 상태'), { target: { value: 'ACTIVE' } })
+  fireEvent.click(screen.getByRole('button', { name: '검색' }))
+  await waitFor(() => expect(loadNotificationSubscriptions).toHaveBeenCalledTimes(3))
+  expect(screen.getByText('알림 신청 목록을 불러오는 중…')).toBeVisible()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  await act(() => resolve(page))
+  expect(await screen.findByText('표시할 알림 신청이 없습니다.')).toBeVisible()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
 it('잘못된 URL 필터는 요청하지 않고 초기화할 수 있다', async () => {
   mount('/admin/notification-subscriptions?status=INVALID&page=-1')
   expect(screen.getByRole('alert')).toHaveTextContent('검색 조건을 확인해 주세요.')

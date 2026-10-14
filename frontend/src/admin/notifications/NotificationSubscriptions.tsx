@@ -78,6 +78,7 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
 
   useEffect(() => {
     if (!valid) return
+    setFailure(null)
     const controller = new AbortController()
     const query = new URLSearchParams({ page: String(page), size: '20', status })
     if (keyword) query.set('keyword', keyword)
@@ -87,6 +88,7 @@ export function NotificationSubscriptions({ userId }: { userId?: string }) {
     if (groupTarget) query.set('groupTarget', 'true')
     void loadNotificationSubscriptions(query, controller.signal, userId).then(value => {
       if (controller.signal.aborted) return
+      setFailure(null)
       if (value.totalPages > 0 && page >= value.totalPages) {
         setParams(current => { current.set(pageKey, String(value.totalPages - 1)); return current }, { replace: true })
         return
