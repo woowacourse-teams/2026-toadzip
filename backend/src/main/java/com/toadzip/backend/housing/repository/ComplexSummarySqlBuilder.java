@@ -13,18 +13,34 @@ import com.toadzip.backend.housing.domain.MapBounds;
 @Component
 final class ComplexSummarySqlBuilder {
 
-    private static final String BASE_SUMMARY_QUERY = HousingComplexRepresentativeSql.WITH_CLAUSE + """
+    private static final String BOUNDS_PREDICATE = """
+              AND housing_complex.latitude BETWEEN :southWestLat AND :northEastLat
+              AND housing_complex.longitude BETWEEN :southWestLng AND :northEastLng
+            """;
+
+    private static final String VIEWPORT_QUERY = """
+            , viewport_complexes AS (
+                SELECT housing_complex.*
+                FROM housing_complexes housing_complex
+                WHERE housing_complex.admin_deleted = false
+            """ + BOUNDS_PREDICATE + ")\n";
+
+    private static final String AREA_RANGE_QUERY = """
             , area_range AS (
-                SELECT housing_complex_id,
-                       MIN(exclusive_area) AS exclusive_area_min,
-                       MAX(exclusive_area) AS exclusive_area_max,
-                       MIN(basic_deposit) AS deposit_min,
-                       MAX(basic_deposit) AS deposit_max,
-                       MIN(basic_monthly_rent) AS monthly_rent_min,
-                       MAX(basic_monthly_rent) AS monthly_rent_max
-                FROM housing_types
-                GROUP BY housing_complex_id
+                SELECT housing_type.housing_complex_id,
+                       MIN(housing_type.exclusive_area) AS exclusive_area_min,
+                       MAX(housing_type.exclusive_area) AS exclusive_area_max,
+                       MIN(housing_type.basic_deposit) AS deposit_min,
+                       MAX(housing_type.basic_deposit) AS deposit_max,
+                       MIN(housing_type.basic_monthly_rent) AS monthly_rent_min,
+                       MAX(housing_type.basic_monthly_rent) AS monthly_rent_max
+                FROM housing_types housing_type
+                %s
+                GROUP BY housing_type.housing_complex_id
             )
+            """;
+
+    private static final String SUMMARY_QUERY = """
             SELECT housing_complex.id AS complex_id,
                    housing_complex.name,
                    housing_complex.image_url,
@@ -46,19 +62,22 @@ final class ComplexSummarySqlBuilder {
                    housing_complex.completion_date,
                    %s AS application_status,
                    %s
-            FROM housing_complexes housing_complex
-            """.formatted(ApplicationScheduleSql.status("representative", "housing_complex.id"),
-                    ApplicationScheduleSql.displayPeriodColumns("representative"))
+            FROM %s housing_complex
+            """
             + HousingComplexRepresentativeSql.LEFT_JOIN
             + ApplicationScheduleSql.displayPeriodJoin("representative", "housing_complex.id") + """
             LEFT JOIN area_range ON area_range.housing_complex_id = housing_complex.id
             WHERE housing_complex.admin_deleted = false
             """;
 
-    private static final String BOUNDS_PREDICATE = """
-              AND housing_complex.latitude BETWEEN :southWestLat AND :northEastLat
-              AND housing_complex.longitude BETWEEN :southWestLng AND :northEastLng
-            """;
+    private static final String BASE_SUMMARY_QUERY = HousingComplexRepresentativeSql.WITH_CLAUSE
+            + AREA_RANGE_QUERY.formatted("") + summaryQuery("housing_complexes");
+
+    private static final String MAP_SUMMARY_QUERY = HousingComplexRepresentativeSql.WITH_CLAUSE
+            + VIEWPORT_QUERY + AREA_RANGE_QUERY.formatted("""
+                JOIN viewport_complexes viewport_complex
+                  ON viewport_complex.id = housing_type.housing_complex_id
+                """) + summaryQuery("viewport_complexes");
 
     private static final String MAP_ORDER = """
             ORDER BY housing_complex.id
@@ -75,7 +94,11 @@ final class ComplexSummarySqlBuilder {
     }
 
     ComplexSummarySqlQuery buildMapQuery(HousingComplexSearchCondition condition) {
-        FilteredSummaryQuery query = filteredQuery(condition);
+        String baseQuery = BASE_SUMMARY_QUERY;
+        if (condition.bounds() != null) {
+            baseQuery = MAP_SUMMARY_QUERY;
+        }
+        FilteredSummaryQuery query = filteredQuery(condition, baseQuery);
         return new ComplexSummarySqlQuery(query.sql() + MAP_ORDER, query.parameters());
     }
 
@@ -85,22 +108,32 @@ final class ComplexSummarySqlBuilder {
             ComplexSummaryCursor cursor,
             int limit
     ) {
-        FilteredSummaryQuery query = filteredQuery(condition);
+        FilteredSummaryQuery query = filteredQuery(condition,
+                BASE_SUMMARY_QUERY + boundsPredicate(condition.bounds()));
         Map<String, Object> parameters = new HashMap<>(query.parameters());
         parameters.put("limit", limit);
         return pageQuery(query.sql(), parameters, sortSpec(sort), cursor);
     }
 
-    private FilteredSummaryQuery filteredQuery(HousingComplexSearchCondition condition) {
+    private static String summaryQuery(String complexTable) {
+        return SUMMARY_QUERY.formatted(
+                ApplicationScheduleSql.status("representative", "housing_complex.id"),
+                ApplicationScheduleSql.displayPeriodColumns("representative"), complexTable);
+    }
+
+    private String boundsPredicate(MapBounds bounds) {
+        if (bounds == null) {
+            return "";
+        }
+        return BOUNDS_PREDICATE;
+    }
+
+    private FilteredSummaryQuery filteredQuery(HousingComplexSearchCondition condition, String baseQuery) {
         HousingComplexFilterPredicate predicate = filterPredicateBuilder.build(condition.filters());
         Map<String, Object> parameters = new HashMap<>(boundsParameters(condition.bounds()));
         parameters.putAll(predicate.parameters());
         parameters.put("today", condition.filters().today());
-        String boundsPredicate = "";
-        if (condition.bounds() != null) {
-            boundsPredicate = BOUNDS_PREDICATE;
-        }
-        return new FilteredSummaryQuery(BASE_SUMMARY_QUERY + boundsPredicate + predicate.sql(), parameters);
+        return new FilteredSummaryQuery(baseQuery + predicate.sql(), parameters);
     }
 
     private ComplexSummarySqlQuery pageQuery(
