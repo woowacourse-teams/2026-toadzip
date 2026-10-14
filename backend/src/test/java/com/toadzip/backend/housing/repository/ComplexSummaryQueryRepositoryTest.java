@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.toadzip.backend.announcement.domain.Announcement;
+import com.toadzip.backend.announcement.domain.AnnouncementApplicationSchedule;
+import com.toadzip.backend.announcement.domain.ApplicationScheduleState;
 import com.toadzip.backend.announcement.domain.ApplicationStatus;
 import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ReceptionPlace;
@@ -24,6 +26,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -109,6 +112,83 @@ class ComplexSummaryQueryRepositoryTest {
         assertEquals(
                 List.of(boundaryComplex.getId(), insideComplex.getId(), northEastBoundaryComplex.getId()),
                 complexIds
+        );
+    }
+
+    @Test
+    void 지도_영역의_집계와_빈_주택형은_전체_조회에서_선별한_응답과_같다() {
+        HousingComplex southWest = persistComplex("남서 경계", "37.450000", "126.840000");
+        setBasicPrice(persistHousingType(southWest, "작은 주택형", "20"), 0L, 0L);
+        setBasicPrice(persistHousingType(southWest, "큰 주택형", "60"), 50_000_000L, 300_000L);
+        persistHousingType(southWest, "금액 미상", "40");
+        HousingComplex northEast = persistComplex("북동 경계", "37.550000", "126.960000");
+        persistHousingType(northEast, "금액 미상", "30");
+        HousingComplex withoutTypes = persistComplex("주택형 없음", "37.500000", "126.900000");
+        HousingComplex outside = persistComplex("영역 밖", "37.550001", "126.960000");
+        persistBasicPriceRange(outside, new RentalPriceRange(1L, 999_999_999L, 1L, 999_999L));
+        HousingComplex deleted = persistComplex("삭제 단지", "37.500000", "126.900000");
+        persistBasicPriceRange(deleted, new RentalPriceRange(1L, 999_999_999L, 1L, 999_999L));
+        deleted.moveToTrash();
+        entityManager.flush();
+        List<Long> expectedIds = List.of(southWest.getId(), northEast.getId(), withoutTypes.getId());
+        List<ComplexSummaryRow> expected = repository.findPage(
+                        noFilters(null), ComplexSort.LATEST_ANNOUNCEMENT, null, 100).stream()
+                .filter(row -> expectedIds.contains(row.complexId()))
+                .sorted(Comparator.comparingLong(ComplexSummaryRow::complexId))
+                .toList();
+
+        List<ComplexSummaryRow> actual = repository.findAll(noFilters(MapBounds.of(
+                new BigDecimal("37.45"), new BigDecimal("126.84"),
+                new BigDecimal("37.55"), new BigDecimal("126.96"))));
+
+        assertAll(
+                () -> assertEquals(expectedIds, ids(actual)),
+                () -> assertEquals(expected, actual),
+                () -> assertBigDecimalEquals("20", actual.getFirst().exclusiveAreaMin()),
+                () -> assertBigDecimalEquals("60", actual.getFirst().exclusiveAreaMax()),
+                () -> assertBigDecimalEquals("0", actual.getFirst().depositMin()),
+                () -> assertBigDecimalEquals("50000000", actual.getFirst().depositMax()),
+                () -> assertNull(actual.get(1).depositMin()),
+                () -> assertNull(actual.getLast().exclusiveAreaMin()),
+                () -> assertNull(actual.getLast().depositMin())
+        );
+    }
+
+    @Test
+    void 좌표_범위가_없으면_삭제되지_않은_모든_단지를_조회한다() {
+        HousingComplex inside = persistComplex("서울 단지", "37.500000", "126.900000");
+        HousingComplex outside = persistComplex("서울 밖 단지", "35.000000", "129.000000");
+        persistComplex("삭제 단지", "37.500000", "126.900000").moveToTrash();
+        entityManager.flush();
+
+        assertEquals(List.of(inside.getId(), outside.getId()), ids(repository.findAll(noFilters(null))));
+    }
+
+    @Test
+    void 지도와_목록은_다른_단지의_확정_일정을_제외하고_같은_접수_상태를_반환한다() {
+        HousingComplex inside = persistComplex("지도 안 단지", "37.500000", "126.900000");
+        HousingComplex outside = persistComplex("지도 밖 단지", "35.000000", "129.000000");
+        Announcement announcement = persistRepresentative(
+                inside, "ORIGINAL", LocalDate.of(2026, 8, 1), "reviewed-map");
+        LocalDate today = noFilters(SEOUL_BOUNDS).filters().today();
+        announcement.confirmApplicationPeriod(today, today.plusDays(1));
+        entityManager.persist(AnnouncementApplicationSchedule.verified(
+                announcement, inside, "1순위", ApplicationScheduleState.CONDITIONAL, "잔여 세대 발생 시",
+                today, today, null, null, "https://example.com/notice.pdf", 1));
+        entityManager.persist(AnnouncementApplicationSchedule.verified(
+                announcement, outside, "1순위", ApplicationScheduleState.CONFIRMED, null,
+                today, today.plusDays(1), null, null, "https://example.com/notice.pdf", 1));
+        entityManager.flush();
+
+        ComplexSummaryRow mapRow = repository.findAll(noFilters(SEOUL_BOUNDS)).getFirst();
+        ComplexSummaryRow listRow = repository.findPage(
+                noFilters(SEOUL_BOUNDS), ComplexSort.LATEST_ANNOUNCEMENT, null, 100).getFirst();
+
+        assertAll(
+                () -> assertEquals(listRow, mapRow),
+                () -> assertEquals("CONDITIONAL", mapRow.applicationStatus()),
+                () -> assertEquals(today, mapRow.applicationEndDate()),
+                () -> assertNull(mapRow.confirmedApplicationEndDate())
         );
     }
 
