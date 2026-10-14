@@ -9,7 +9,6 @@ import static org.mockito.Mockito.mock;
 import com.toadzip.backend.interest.domain.NotificationTargetType;
 import java.time.Instant;
 import java.util.List;
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.dao.ConcurrencyFailureException;
@@ -35,11 +34,4 @@ class NotificationSubscriptionConcurrencyTest {
                 () -> repository.activate(1L, NotificationTargetType.COMPLEX, "1", Instant.now()));
     }
 
-    @Test
-    void 충돌한_비회원_신청이_잠그기_전에_제거되면_성공으로_반환하지_않는다() {
-        NotificationGuestSubscriptionRepository repository = new NotificationGuestSubscriptionRepository(jdbcTemplate);
-
-        assertThrows(ConcurrencyFailureException.class,
-                () -> repository.activate(UUID.randomUUID(), NotificationTargetType.COMPLEX, "1", Instant.now()));
-    }
 }

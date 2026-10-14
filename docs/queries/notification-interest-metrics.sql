@@ -27,23 +27,11 @@ SELECT COUNT(*) FILTER (WHERE event_type = 'CONFIRMED') AS confirmed,
 FROM notification_interest_events
 WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '90 days';
 
--- 현재 유효한 대상별 신청 건수. 클릭/취소 이벤트 횟수가 아니라 서버의 active 상태를 집계한다.
-SELECT target_type, target_id,
-       SUM(member_count) AS member_subscriptions,
-       SUM(guest_count) AS guest_subscriptions,
-       SUM(member_count + guest_count) AS active_subscriptions
-FROM (
-    SELECT target_type, target_id, COUNT(*) AS member_count, 0::bigint AS guest_count
-    FROM notification_subscriptions
-    WHERE active = true AND expires_at > CURRENT_TIMESTAMP
-    GROUP BY target_type, target_id
-
-    UNION ALL
-
-    SELECT target_type, target_id, 0::bigint AS member_count, COUNT(*) AS guest_count
-    FROM notification_guest_subscriptions
-    WHERE active = true AND expires_at > CURRENT_TIMESTAMP
-    GROUP BY target_type, target_id
-) subscriptions
-GROUP BY target_type, target_id
-ORDER BY active_subscriptions DESC, target_type, target_id;
+-- Current member settings; business state rather than click/event counts.
+SELECT subscriptions.target_type, subscriptions.target_id,
+       COUNT(*) AS active_subscriptions, COUNT(DISTINCT subscriptions.user_id) AS active_members
+FROM notification_subscriptions subscriptions
+JOIN users ON users.id = subscriptions.user_id
+WHERE subscriptions.active = true AND subscriptions.expires_at > CURRENT_TIMESTAMP
+GROUP BY subscriptions.target_type, subscriptions.target_id
+ORDER BY active_subscriptions DESC, subscriptions.target_type, subscriptions.target_id;

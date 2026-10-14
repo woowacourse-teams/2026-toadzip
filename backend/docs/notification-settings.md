@@ -1,6 +1,6 @@
 # 회원 알림 설정
 
-회원은 단지·공고·지역 알림 설정을 이메일 입력 없이 저장한다. 현재 새 공고 알림 생성·전달과 FCM은 제공하지 않는다. 신청은 회원 ID와 선택 대상의 설정 저장 요청이며, 분석 동의·마케팅 수신·OS 푸시 권한이 아니다. 회원 이메일은 관리자의 회원 조회·검색 목적으로 유지하며 알림 해제로 삭제하지 않는다.
+회원은 단지·공고·지역 알림 설정을 이메일 입력 없이 저장한다. 새 공고 알림 생성·전달과 FCM은 [notification 기능](notification-delivery.md)이 담당한다. 신청은 회원 ID와 선택 대상의 설정 저장 요청이며, 분석 동의·마케팅 수신·OS 푸시 권한이 아니다. 회원 이메일은 관리자의 회원 조회·검색 목적으로 유지하며 알림 해제로 삭제하지 않는다.
 
 ## 신청과 조회 계약
 
@@ -40,7 +40,7 @@
 
 ## 분석과 업무의 경계
 
-`NotificationSettingsService`가 회원 설정만 변경한다. 공개 `/api/v1/notification-interest-events`는 EXPOSED/CLICKED/DECLINED 같은 선택적 행동 분석만 다루며 구독을 변경하지 않는다. 공개 CONFIRMED/CANCELLED 및 이메일·clientId를 포함한 요청은 거절한다. 비회원 이메일 신규 신청은 제공하지 않는다. 기존 비회원 알림은 `GET /api/v1/notification-subscriptions/guest`와 필수 UUID 헤더 `X-Notification-Client-Id`로 조회하며 로그인·분석 동의가 필요 없다. 응답은 기존 `{emailConfirmed, targets: [{targetType, targetId, targetName}]}`를 유지하고 `targetName`은 null이다. 활성·미만료 구독만 반환하며 이메일 원문과 개인정보 기록을 생성·변경하지 않는다. 잘못되거나 누락된 헤더는 400, 응답은 `Cache-Control: no-store`다.
+`NotificationSettingsService`가 회원 설정만 변경한다. 공개 `/api/v1/notification-interest-events`는 EXPOSED/CLICKED/DECLINED 같은 선택적 행동 분석만 다루며 구독을 변경하지 않는다. 공개 CONFIRMED/CANCELLED 및 이메일·clientId를 포함한 요청은 거절한다. 비회원 이메일 신규 신청은 제공하지 않는다. 비회원 알림 조회·취소 API와 전용 테이블은 V20261014_02에서 제거한다.
 
 공개 interest와 공고 조회 기록은 동의 행을 잠근 같은 트랜잭션에서 현재 동의·scope·만료를 확인한다. 미동의·거부·철회 상태는 저장하지 않고 유효한 동의에만 수집한다. 공개 interest는 `privacy_notification_events`에 저장하며 회원 ID·이메일과 연결하지 않는다. 단순 공고 열람과 알림 설정 업무는 계속 사용할 수 있다. 업무 영수증은 분석 원자료로 재사용하지 않는다.
 
@@ -64,7 +64,7 @@
 
 `PrivacyNotificationRetentionService`는 기본 15분 주기로 실행한다. 한 트랜잭션은 최대 500행을 삭제하고 실행은 30초로 제한한다. 회원 → 신규 revision → 신규 메타 순서로 잠그며 다른 작업의 잠금은 건너뛴다. 잠금 후 파기 조건을 다시 확인하여 재신청한 고지를 보존한다. 실패 청크는 롤백하고 다음 주기에 재시도한다.
 
-이 배치는 위 네 신규 테이블만 삭제한다. 기존 회원 이메일, 회원·비회원 구독, 이메일 참조, 비회원 취소 요청, 과거 행동 기록은 만료 여부와 무관하게 변경하지 않는다. 기존 자료의 보유·복구 작업은 별도 운영 승인 대상으로 관리한다. 배포 전 격리 DB에서 기존 스키마와 자료가 그대로인 것을 비교해야 하며 절차는 [DB 배포](privacy-deployment.md)를 따른다.
+이 배치는 위 네 신규 테이블만 삭제한다. 기존 회원 이메일, 회원 구독, 이메일 참조, 과거 행동 기록은 만료 여부와 무관하게 변경하지 않는다. 기존 자료의 보유·복구 작업은 별도 운영 승인 대상으로 관리한다. 배포 전 격리 DB에서 기존 스키마와 자료가 그대로인 것을 비교해야 하며 절차는 [DB 배포](privacy-deployment.md)를 따른다.
 
 운영 지표는 `privacy.retention.*{job="notification"}`로 제공한다.
 [공통 파기 감시·경보](../../docs/privacy-policy.md)를 적용하며 서버 복구 후에도 지연을 확인한다.

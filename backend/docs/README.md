@@ -27,6 +27,7 @@
 | ingest 전체 흐름·실행 제어 | [ingest-flow-review.md](ingest-flow-review.md), [data-pipeline-execution.md](data-pipeline-execution.md), [pipeline-operator-controls.md](pipeline-operator-controls.md) | 수집·정제 경계, 통합 실행과 수동 복구 |
 | ingest 실제 API 검증 | [ingest-live-verification.md](ingest-live-verification.md) | 격리 DB 실행 증거, 실응답 수정과 남은 데이터 품질 |
 | 관리자 데이터 파이프라인 | [data-pipeline-execution.md](data-pipeline-execution.md) | 실행 상태와 스키마 배포 |
+| 관리자 회원 알림 | [admin-notification-management.md](admin-notification-management.md) | 신청자 식별, 상태·대상 필터와 읽기 전용 조회 |
 | 마이홈 단지 통합 | [myhome-complex-linking.md](myhome-complex-linking.md) | 원천 연결, 확인된 통합, 재정제와 복구 |
 | 관리자 단지 검증 | [complex-verification.md](complex-verification.md) | 원천 비교, 항목별 검토 기록, 재검토 상태와 목록 필터 |
 | 수집·정제 코드 리뷰 | [ingest-review-2026-09-26.md](ingest-review-2026-09-26.md) | 9월 28일 재검토: 해결 상태, 원천 선택 결함, 책임·성능·죽은 코드와 개선 순서 |

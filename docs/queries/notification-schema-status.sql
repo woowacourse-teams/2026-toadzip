@@ -18,7 +18,7 @@ ORDER BY installed_rank;
 WITH expected(version) AS (
     VALUES ('20260922.02'), ('20260930.02'), ('20260930.03'), ('20260930.04'),
            ('20260930.05'), ('20260930.06'), ('20260930.07'), ('20260930.08'),
-           ('20260930.09')
+           ('20260930.09'), ('20261013.01'), ('20261014.01'), ('20261014.02')
 )
 SELECT expected.version,
        COALESCE(bool_or(history.success), false) AS applied_successfully
@@ -33,9 +33,9 @@ SELECT 'No Flyway history: back up and inspect an existing DB before automatic b
 SELECT to_regclass('public.notification_interest_events') IS NOT NULL AS event_table_exists,
        to_regclass('public.notification_email_preferences') IS NOT NULL AS email_preference_table_exists,
        to_regclass('public.notification_subscriptions') IS NOT NULL AS subscription_table_exists,
-       to_regclass('public.notification_guest_email_preferences') IS NOT NULL AS guest_email_table_exists,
-       to_regclass('public.notification_guest_subscriptions') IS NOT NULL AS guest_subscription_table_exists,
-       to_regclass('public.notification_guest_cancellation_requests') IS NOT NULL AS guest_cancellation_table_exists,
+       to_regclass('public.notification_guest_email_preferences') IS NULL AS guest_email_table_removed,
+       to_regclass('public.notification_guest_subscriptions') IS NULL AS guest_subscription_table_removed,
+       to_regclass('public.notification_guest_cancellation_requests') IS NULL AS guest_cancellation_table_removed,
        EXISTS (SELECT 1 FROM information_schema.columns
                WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'email') AS user_email_column_exists,
        EXISTS (SELECT 1 FROM information_schema.columns
@@ -44,15 +44,6 @@ SELECT to_regclass('public.notification_interest_events') IS NOT NULL AS event_t
        EXISTS (SELECT 1 FROM information_schema.columns
                WHERE table_schema = 'public' AND table_name = 'notification_subscriptions'
                  AND column_name = 'expires_at') AS member_expiry_column_exists,
-       EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_schema = 'public' AND table_name = 'notification_guest_subscriptions'
-                 AND column_name = 'expires_at') AS guest_expiry_column_exists,
-       EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_schema = 'public' AND table_name = 'notification_guest_cancellation_requests'
-                 AND column_name = 'code_sent_at') AS cancellation_sent_at_exists,
-       EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_schema = 'public' AND table_name = 'notification_guest_cancellation_requests'
-                 AND column_name = 'code_sent_by') AS cancellation_sent_by_exists,
        EXISTS (SELECT 1 FROM pg_constraint
                WHERE conname = 'notification_interest_events_event_type_check'
                  AND pg_get_constraintdef(oid) LIKE '%CANCELLED%') AS cancellation_allowed,

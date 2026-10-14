@@ -20,7 +20,7 @@ BEGIN
     FOREACH expected_version IN ARRAY ARRAY[
             '20260922.02', '20260930.02', '20260930.03', '20260930.04',
             '20260930.05', '20260930.06', '20260930.07', '20260930.08',
-            '20260930.09'] LOOP
+            '20260930.09', '20261013.01', '20261014.01', '20261014.02'] LOOP
         IF NOT EXISTS (
                 SELECT 1 FROM public.flyway_schema_history
                 WHERE version = expected_version AND success = true) THEN
@@ -29,8 +29,7 @@ BEGIN
     END LOOP;
     FOREACH expected_table IN ARRAY ARRAY[
             'notification_interest_events', 'notification_email_preferences',
-            'notification_subscriptions', 'notification_guest_email_preferences',
-            'notification_guest_subscriptions', 'notification_guest_cancellation_requests'] LOOP
+            'notification_subscriptions'] LOOP
         IF to_regclass('public.' || expected_table) IS NULL THEN
             RAISE EXCEPTION 'Table % is missing', expected_table;
         END IF;
@@ -39,17 +38,8 @@ BEGIN
                    WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'email')
             OR NOT EXISTS (SELECT 1 FROM information_schema.columns
                    WHERE table_schema = 'public' AND table_name = 'notification_subscriptions'
-                     AND column_name = 'expires_at')
-            OR NOT EXISTS (SELECT 1 FROM information_schema.columns
-                   WHERE table_schema = 'public' AND table_name = 'notification_guest_subscriptions'
-                     AND column_name = 'expires_at')
-            OR NOT EXISTS (SELECT 1 FROM information_schema.columns
-                   WHERE table_schema = 'public' AND table_name = 'notification_guest_cancellation_requests'
-                     AND column_name = 'code_sent_at')
-            OR NOT EXISTS (SELECT 1 FROM information_schema.columns
-                   WHERE table_schema = 'public' AND table_name = 'notification_guest_cancellation_requests'
-                     AND column_name = 'code_sent_by') THEN
-        RAISE EXCEPTION 'Notification email, expiry, or send tracking column is missing';
+                     AND column_name = 'expires_at') THEN
+        RAISE EXCEPTION 'Member notification email or expiry column is missing';
     END IF;
     IF EXISTS (SELECT 1 FROM information_schema.columns
                WHERE table_schema = 'public' AND table_name = 'notification_interest_events'
@@ -64,10 +54,7 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint
                    WHERE conrelid = 'public.notification_subscriptions'::regclass
-                     AND conname = 'uk_notification_subscription_target')
-            OR NOT EXISTS (SELECT 1 FROM pg_constraint
-                   WHERE conrelid = 'public.notification_guest_subscriptions'::regclass
-                     AND conname = 'uk_notification_guest_subscription_target') THEN
+                     AND conname = 'uk_notification_subscription_target') THEN
         RAISE EXCEPTION 'Subscription uniqueness constraint is missing';
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint
@@ -78,6 +65,11 @@ BEGIN
                    WHERE conrelid = 'public.users'::regclass
                      AND conname = 'uk_users_login_identifier_pre_flyway') THEN
         RAISE EXCEPTION 'Login identifier constraint correction is incomplete';
+    END IF;
+    IF to_regclass('public.notification_guest_subscriptions') IS NOT NULL
+            OR to_regclass('public.notification_guest_email_preferences') IS NOT NULL
+            OR to_regclass('public.notification_guest_cancellation_requests') IS NOT NULL THEN
+        RAISE EXCEPTION 'Removed guest notification tables still exist';
     END IF;
     RAISE NOTICE 'Notification schema verified in %', current_database();
 END $$;

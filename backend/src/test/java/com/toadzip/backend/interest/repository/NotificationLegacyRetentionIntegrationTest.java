@@ -25,8 +25,7 @@ class NotificationLegacyRetentionIntegrationTest {
 
     private static final Instant NOW = Instant.parse("2026-10-09T09:00:00Z");
     private static final List<String> LEGACY_TABLES = List.of("users", "notification_subscriptions",
-            "notification_email_preferences", "notification_guest_subscriptions",
-            "notification_guest_email_preferences", "notification_guest_cancellation_requests",
+            "notification_email_preferences",
             "notification_interest_events");
 
     @Autowired private PrivacyNotificationRetentionRepository retention;
@@ -34,7 +33,7 @@ class NotificationLegacyRetentionIntegrationTest {
     @Autowired private JdbcTemplate jdbcTemplate;
 
     @Test
-    void 신규_파기는_기존회원과_알림과_비회원과_과거분석자료를_그대로_보존한다() {
+    void 신규_파기는_기존회원과_알림과_과거분석자료를_그대로_보존한다() {
         long member = seedLegacyRecords();
         Map<String, List<String>> before = legacySnapshot();
         UUID eventId = UUID.randomUUID();
@@ -104,18 +103,6 @@ class NotificationLegacyRetentionIntegrationTest {
                 INSERT INTO notification_subscriptions(user_id,target_type,target_id,active,updated_at,expires_at)
                 VALUES (?,'REGION','11',true,?,?)
                 """, member, Timestamp.from(NOW.minusSeconds(100)), Timestamp.from(NOW.minusSeconds(10)));
-        UUID guest = UUID.randomUUID();
-        jdbcTemplate.update("""
-                INSERT INTO notification_guest_email_preferences(client_id,email,updated_at) VALUES (?,?,?)
-                """, guest, email, Timestamp.from(NOW));
-        jdbcTemplate.update("""
-                INSERT INTO notification_guest_subscriptions(client_id,target_type,target_id,active,updated_at,expires_at)
-                VALUES (?,'REGION','11',false,?,?)
-                """, guest, Timestamp.from(NOW.minusSeconds(100)), Timestamp.from(NOW.minusSeconds(10)));
-        jdbcTemplate.update("""
-                INSERT INTO notification_guest_cancellation_requests(id,email,requested_at,failed_attempts)
-                VALUES (?,?,?,0)
-                """, UUID.randomUUID(), email, Timestamp.from(NOW.minusSeconds(10000000)));
         jdbcTemplate.update("""
                 INSERT INTO notification_interest_events(event_id,session_id,event_type,source,target_type,target_id,
                     created_at) VALUES (?,?,'CLICKED','REGION_SEARCH','REGION','11',?)

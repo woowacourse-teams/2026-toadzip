@@ -12,14 +12,8 @@ $$;
 
 DELETE FROM notification_subscriptions;
 DELETE FROM notification_email_preferences;
-DELETE FROM notification_guest_subscriptions;
-DELETE FROM notification_guest_email_preferences;
-DELETE FROM notification_guest_cancellation_requests;
 COMMIT;
 
 SELECT
     (SELECT count(*) FROM notification_subscriptions) AS member_subscriptions,
-    (SELECT count(*) FROM notification_email_preferences) AS member_emails,
-    (SELECT count(*) FROM notification_guest_subscriptions) AS guest_subscriptions,
-    (SELECT count(*) FROM notification_guest_email_preferences) AS guest_emails,
-    (SELECT count(*) FROM notification_guest_cancellation_requests) AS pending_cancellations;
+    (SELECT count(*) FROM notification_email_preferences) AS member_emails;

@@ -8,7 +8,7 @@ export function ProductAnalyticsBoundary() {
   const allowed = useAnalyticsConsent()
   const visit = useRef<{ pathname: string; id: string } | null>(null)
   useLayoutEffect(() => {
-    const active = ['/explore', '/feedback', '/notifications/cancel', '/mypage/notifications'].includes(pathname)
+    const active = ['/explore', '/feedback', '/mypage/notifications'].includes(pathname)
     setProductPageActive(active)
     if (!active || !allowed) { visit.current = null; return }
     if (visit.current?.pathname !== pathname) visit.current = { pathname, id: createAnalyticsId() }

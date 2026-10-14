@@ -17,9 +17,9 @@ const CORE_RETRY_DELAY_MS = 30_000
 const MAX_DEDUPLICATION_KEYS = 1000
 const REQUIRED_ANALYTICS_SCOPE = 'analytics-scope-3'
 const MAX_TIMEOUT = 2_147_483_647
-const PUBLIC_PATHS = new Set(['/explore', '/feedback', '/notifications/cancel', '/mypage/notifications'])
+const PUBLIC_PATHS = new Set(['/explore', '/feedback', '/mypage/notifications'])
 type AuthState = 'member' | 'guest' | 'unknown'
-export type CaptureOptions = { dedupeKey?: string; authState?: AuthState; pageName?: 'explorer' | 'feedback' | 'guest_cancellation' | 'notification_settings' }
+export type CaptureOptions = { dedupeKey?: string; authState?: AuthState; pageName?: 'explorer' | 'feedback' | 'notification_settings' }
 type PendingEvent = { name: string; properties: SafeProperties; timestamp: Date }
 type CoreEvent = PendingEvent & { uuid: string; dedupeKey?: string; expiresAt: number; state: 'queued' | 'in_flight' }
 const corePending = new Map<string, CoreEvent>()
@@ -117,7 +117,6 @@ function scheduleIdentityExpiry(): void {
 
 function safePageName(): NonNullable<CaptureOptions['pageName']> {
   if (window.location.pathname === '/feedback') return 'feedback'
-  if (window.location.pathname === '/notifications/cancel') return 'guest_cancellation'
   if (window.location.pathname === '/mypage/notifications') return 'notification_settings'
   return 'explorer'
 }
@@ -163,7 +162,7 @@ export function sanitizeCapture(event: CaptureResult | null): CaptureResult | nu
   properties.environment = configuration()?.environment
   properties.schema_version = 1
   properties.identity_basis = 'browser_v1'
-  properties.page_name = ['explorer', 'feedback', 'guest_cancellation', 'notification_settings'].includes(event.properties.page_name)
+  properties.page_name = ['explorer', 'feedback', 'notification_settings'].includes(event.properties.page_name)
     ? event.properties.page_name : safePageName()
   properties.auth_state = ['member', 'guest', 'unknown'].includes(event.properties.auth_state)
     ? event.properties.auth_state : authState

@@ -88,7 +88,7 @@ class LocalProfileSchemaPersistenceTest {
 
             var flyway = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
                     .locations("classpath:db/migration").load();
-            assertEquals(3, flyway.migrate().migrationsExecuted);
+            assertEquals(5, flyway.migrate().migrationsExecuted);
             assertEquals(0, flyway.migrate().migrationsExecuted);
             try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
                     Statement statement = connection.createStatement()) {
@@ -156,21 +156,21 @@ class LocalProfileSchemaPersistenceTest {
                                 "notification_interest_events", "email")),
                         () -> assertEquals(1, countColumn(connection,
                                 "notification_subscriptions", "expires_at")),
-                        () -> assertEquals(1, countColumn(connection,
+                        () -> assertEquals(0, countColumn(connection,
                                 "notification_guest_subscriptions", "expires_at")),
                         () -> assertEquals(1, countColumn(connection,
                                 "notification_subscriptions", "active")),
                         () -> assertEquals(1, countColumn(connection,
                                 "notification_email_preferences", "email")),
-                        () -> assertEquals(1, countColumn(connection,
+                        () -> assertEquals(0, countColumn(connection,
                                 "notification_guest_email_preferences", "email")),
-                        () -> assertEquals(1, countColumn(connection,
+                        () -> assertEquals(0, countColumn(connection,
                                 "notification_guest_subscriptions", "active")),
-                        () -> assertEquals(1, countColumn(connection,
+                        () -> assertEquals(0, countColumn(connection,
                                 "notification_guest_cancellation_requests", "code_hash")),
-                        () -> assertEquals(1, countColumn(connection,
+                        () -> assertEquals(0, countColumn(connection,
                                 "notification_guest_cancellation_requests", "code_sent_at")),
-                        () -> assertEquals(1, countColumn(connection,
+                        () -> assertEquals(0, countColumn(connection,
                                 "notification_guest_cancellation_requests", "code_sent_by")),
                         () -> assertTrue(constraintDefinition(connection,
                                 "notification_interest_events_event_type_check").contains("CANCELLED")),

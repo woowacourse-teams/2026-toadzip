@@ -7,16 +7,15 @@ import { LocationDataPage } from './admin/ingest/LocationDataPage'
 import { ManagementWorkspace } from './admin/management/ManagementWorkspace'
 import { AdminHome } from './admin/auth/AdminHome'
 import { AdminLayout } from './admin/auth/AdminLayout'
-import { GuestCancellationAdminPage } from './admin/GuestCancellationAdminPage'
 import { LoginPage } from './admin/auth/LoginPage'
 import { RequireAdmin } from './admin/auth/RequireAdmin'
 import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHousingExplorer.tsx'
 import { BrandLink } from './BrandLink'
 import { NotificationInterestSessionControl } from './public-housing/interest/NotificationInterest'
 import { NotificationPage } from './public-housing/interest/NotificationPage'
-import { GuestCancellationPage } from './public-housing/interest/GuestCancellationPage'
 import { UserListPage } from './admin/users/UserListPage'
 import { UserDetailPage } from './admin/users/UserDetailPage'
+import { NotificationManagementPage } from './admin/notifications/NotificationSubscriptions'
 import { FeedbackPage } from './feedback/FeedbackPage'
 import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
 import { PrivacyBoundary, PrivacyMenu, PrivacyPolicyPage, PrivacySettingsPage } from './privacy/Privacy'
@@ -79,11 +78,11 @@ function AdminRoutes() {
             <Route path="announcements/:id?" element={<ManagementWorkspace resource="announcements" />} />
             <Route path="users" element={<UserListPage />} />
             <Route path="users/:id" element={<UserDetailPage />} />
+            <Route path="notification-subscriptions" element={<NotificationManagementPage />} />
             <Route path="feedback" element={<FeedbackListPage />} />
             <Route path="failures" element={<FailureReviewPage />} />
             <Route path="sources" element={<SourceDataPage />} />
             <Route path="locations" element={<LocationDataPage />} />
-            <Route path="notification-cancellations" element={<GuestCancellationAdminPage />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFound />} />
@@ -109,13 +108,12 @@ export default function App() {
         <Route path="/explore" element={<Home />} />
         <Route path="/notifications" element={<NotificationPage />} />
         <Route path="/mypage/notifications" element={<NotificationPage management />} />
-        </Route>
+      </Route>
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/privacy/:key/:version" element={<PrivacyPolicyPage />} />
       <Route path="/privacy/settings" element={<PrivacySettingsPage />} />
       <Route path="/login" element={<LegacyLoginRedirect />} />
       <Route path="/feedback" element={<FeedbackPage />} />
-      <Route path="/notifications/cancel" element={<GuestCancellationPage />} />
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

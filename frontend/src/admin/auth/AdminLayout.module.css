@@ -1,0 +1,35 @@
+.layout[class] {
+  grid-template-columns: 220px minmax(0, 1fr);
+  background: var(--ds-color-surface-subtle);
+  color: var(--ds-color-text);
+  font-family: var(--ds-font-family-base);
+}
+.layout :global(.admin-header) { flex-direction: row; padding: var(--ds-space-4) var(--ds-space-6); border-color: var(--ds-color-divider); }
+.layout :global(.admin-header-account) { min-width: 0; font-size: var(--ds-text-body); }
+.layout :global(.admin-header-account) > span { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layout :global(.admin-header) button { min-height: var(--ds-control-height-md); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-label); font: inherit; cursor: pointer; }
+.layout :global(.admin-navigation) { gap: var(--ds-space-6); padding: var(--ds-space-6) var(--ds-space-3); border-color: var(--ds-color-divider); }
+.layout :global(.admin-nav-group) { gap: var(--ds-space-1); }
+.layout :global(.admin-nav-group) > span { padding: var(--ds-space-2) var(--ds-space-3); color: var(--ds-color-muted); letter-spacing: 0; }
+.layout :global(.admin-navigation) a { padding: var(--ds-space-3); border-radius: var(--ds-radius-control); color: var(--ds-color-label); font-size: var(--ds-text-body); font-weight: 500; }
+.layout :global(.admin-navigation) a:hover { background: var(--ds-color-surface-subtle); }
+.layout :global(.admin-navigation) a:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
+.layout :global(.admin-navigation) a[aria-current="page"] { color: var(--ds-color-action); background: var(--ds-color-action-soft); font-weight: var(--ds-weight-strong); box-shadow: inset 3px 0 var(--ds-color-action); }
+.layout :global(.admin-content) { padding: var(--ds-space-7) 32px 64px; }
+.layout .menuButton { display: none; align-items: center; gap: var(--ds-space-2); padding-inline: var(--ds-space-3); }
+.layout :global(.admin-header) button:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
+@media (max-width: 1000px) { .layout[class] { grid-template-columns: 190px minmax(0, 1fr); } .layout :global(.admin-content) { padding-inline: var(--ds-space-5); } }
+@media (max-width: 700px) {
+  .layout[class] { display: block; }
+  .layout :global(.admin-header) { gap: var(--ds-space-2); padding: var(--ds-space-3); flex-wrap: wrap; }
+  .layout :global(.admin-header-account) { width: auto; margin-left: auto; }
+  .layout :global(.admin-brand) { flex-basis: auto; width: auto; }
+  .layout :global(.admin-header-account) > span { display: none; }
+  .layout .menuButton { display: inline-flex; }
+  .layout :global(.admin-navigation) { display: none; padding: var(--ds-space-4); gap: var(--ds-space-4); border-right: 0; }
+  .layout :global(.admin-navigation)[data-open="true"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .layout :global(.admin-nav-group) { flex-direction: column; align-items: stretch; }
+  .layout :global(.admin-nav-group) > span { display: block; }
+  .layout :global(.admin-navigation) a { white-space: normal; }
+  .layout :global(.admin-content) { padding: var(--ds-space-5) var(--ds-space-3) 48px; }
+}
