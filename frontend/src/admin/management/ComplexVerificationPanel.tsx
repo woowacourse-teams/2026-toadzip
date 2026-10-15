@@ -18,6 +18,8 @@ import { useUnsavedChanges } from './useUnsavedChanges'
 import styles from './ComplexVerification.module.css'
 
 type Props = {
+  reviewOnly?: boolean
+  onDirtyChange?: (dirty: boolean) => void
   id: string
   version: number
   deleted: boolean
@@ -25,7 +27,7 @@ type Props = {
   onReviewed: () => void
   onBusyChange: (busy: boolean) => void
 }
-export function ComplexVerificationPanel({ id, version, deleted, announcements, onReviewed, onBusyChange }: Props) {
+export function ComplexVerificationPanel({ id, version, deleted, announcements, onReviewed, onBusyChange, reviewOnly = false, onDirtyChange }: Props) {
   const [value, setValue] = useState<ComplexVerification | null>(null)
   const [error, setError] = useState('')
   const [conflict, setConflict] = useState(false)
@@ -41,6 +43,7 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
   const [notice, setNotice] = useState('')
   const session = useRef<AbortController | null>(null)
   useUnsavedChanges(dirty)
+  useEffect(() => { onDirtyChange?.(dirty); return () => onDirtyChange?.(false) }, [dirty, onDirtyChange])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -100,19 +103,19 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
         <ComplexVerificationBadge status={value.status} count={latest?.fields.length} />
       </header>
       {value.status === 'STALE' ? <p className={styles.warning}>지난 검토 이후 확인한 값이 바뀌었습니다. 변경된 항목을 다시 확인해 주세요.</p> : null}
-      <div className={styles.tools}>
+      {!reviewOnly ? <div className={styles.tools}>
         <a href="https://m.myhome.go.kr/hws/mbl/sch/selectCurrentSearchView.do" target="_blank" rel="noreferrer">마이홈 공식 검색 ↗</a>
         <a href={mapUrl(value.currentValues.LOCATION.join(','))} target="_blank" rel="noreferrer">저장 좌표 보기 ↗</a>
         {sourceIds.length > 1 ? <label className={styles.sourceFilter}>비교 원천<select value={source} onChange={event => setSource(event.target.value)}>
             <option value="">전체 원천 · {sourceIds.length}개</option>
             {sourceIds.map((identifier, index) => <option key={identifier} value={identifier}>원천 {index + 1} · 마이홈 단지 {identifier.split(':')[0]}</option>)}
           </select></label> : null}
-      </div>
+      </div> : null}
       <form onSubmit={event => void save(event)} className={styles.reviewForm}>
         {!value.sources.length ? <p className={styles.empty}>연결된 수집 원천이 없습니다. 공식 자료와 지도를 직접 확인해 주세요.</p> : null}
         <fieldset className={styles.comparison} disabled={busy || deleted}>
           <legend className={styles.srOnly}>직접 확인한 항목 선택</legend>
-          <div className={styles.columnHead} aria-hidden="true"><span>확인 항목</span><span>현재 등록값</span><span>수집 원천값</span></div>
+          {!reviewOnly ? <div className={styles.columnHead} aria-hidden="true"><span>확인 항목</span><span>현재 등록값</span><span>수집 원천값</span></div> : null}
           {verificationFields.map(field => {
             const comparable = field !== 'LOCATION' && sources.length > 0
             const missing = comparable && sources.some(row => sourceText(field, row) === null
@@ -138,7 +141,7 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
                   setFields(current => event.target.checked ? [...current, field] : current.filter(item => item !== field))
                   setDirty(true)
                 }} /><span>{verificationFieldLabels[field]}</span></label>
-                {comparison ? <span className={styles.result} data-tone={comparable && !missing ? 'different' : 'neutral'}>{comparison}</span> : null}
+                {!reviewOnly && comparison ? <span className={styles.result} data-tone={comparable && !missing ? 'different' : 'neutral'}>{comparison}</span> : null}
               </div>
               <div className={styles.current}><span className={styles.mobileLabel}>현재 등록값</span>
                 <strong>{currentText(field, value.currentValues)}</strong>
@@ -147,14 +150,14 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
                 {changed ? <small className={styles.changed}>지난 확인: {currentText(field, latest?.checkedValues ?? {})}
                   {field === 'ADDRESS' ? ` · PNU ${latest?.checkedValues.ADDRESS?.pnu}` : ''}</small> : null}
               </div>
-              <div className={styles.source}><span className={styles.mobileLabel}>수집 원천값</span>
+              {!reviewOnly ? <div className={styles.source}><span className={styles.mobileLabel}>수집 원천값</span>
                 {field === 'LOCATION' ? <span className={styles.muted}>좌표 원천 없음</span>
                   : !entries.length ? <span className={styles.muted}>미확인</span>
                     : entries.map(entry => <div key={JSON.stringify([entry.text, entry.pnu])}>
                       <span>{entry.text ?? '미확인'}</span>
                       {sourceIds.length > 1 && entries.length > 1 ? <small>{entry.identifiers.map(identifier => `원천 ${sourceIds.indexOf(identifier) + 1}`).join(' · ')}</small> : null}
                     </div>)}
-              </div>
+              </div> : null}
             </div>
           })}
         </fieldset>
@@ -196,6 +199,9 @@ export function ComplexVerificationPanel({ id, version, deleted, announcements, 
             </details>
           </fieldset>
           <div className={styles.saveBar}><p>{fields.length}개 항목 선택</p>
+            {reviewOnly && dirty ? <button type="button" disabled={busy} onClick={() => {
+              if (window.confirm('작성한 검토 기록을 취소할까요?')) { setFields([]); setNote(''); setEvidenceUrl(''); setDirty(false) }
+            }}>검토 작성 취소</button> : null}
             <Button data-design-system type="submit" disabled={busy || deleted || !fields.length || !note.trim() || conflict}>{busy ? '저장 중…' : '검토 저장'}</Button>
           </div>
         </section>

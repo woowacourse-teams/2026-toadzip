@@ -10,6 +10,8 @@ const api = vi.hoisted(() => ({ getManagementPage: vi.fn(), getManagementDetail:
 vi.mock('./api', async original => ({ ...(await original<typeof import('./api')>()), ...api }))
 const verification = vi.hoisted(() => ({ getComplexVerification: vi.fn(), saveComplexReview: vi.fn() }))
 vi.mock('./complexVerificationApi', () => verification)
+const comparison = vi.hoisted(() => ({ getComparison: vi.fn() }))
+vi.mock('./complexComparisonApi', async original => ({ ...(await original<typeof import('./complexComparisonApi')>()), ...comparison }))
 
 const summary: ManagementSummary = {
   id: 7, name: '검토 단지', subtitle: '서울 중구 세종대로 110', provider: 'LH', rental: 'HAPPY_HOUSING',
@@ -44,8 +46,27 @@ beforeEach(() => {
   api.getManagementPage.mockResolvedValue(page())
   api.getManagementDetail.mockResolvedValue(detail())
   verification.getComplexVerification.mockResolvedValue(evidence())
+  comparison.getComparison.mockResolvedValue({ snapshotToken: 'b'.repeat(64), current: detail().data, sources: [] })
 })
 afterEach(() => vi.restoreAllMocks())
+
+it('단지를 열면 비교 화면을 먼저 표시하고 수정 작성 중에는 검토 기록 저장을 잠근다', async () => {
+  show()
+  expect(await screen.findByRole('heading', { name: '원천과 비교하고 바로 수정' })).toBeVisible()
+  expect(screen.getByRole('button', { name: '데이터 검증' })).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.click(await screen.findByRole('button', { name: '이름 수정' }))
+  fireEvent.change(screen.getByLabelText('이름 수정값'), { target: { value: '비교하며 수정 중' } })
+  fireEvent.click(screen.getByText('확인 범위·검토 기록'))
+  expect(await screen.findByRole('checkbox', { name: '단지명 확인' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '검토 저장' })).toBeDisabled()
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  fireEvent.click(screen.getByRole('button', { name: '수정 취소' }))
+  expect(screen.getByRole('checkbox', { name: '단지명 확인' })).toBeEnabled()
+  fireEvent.click(screen.getByRole('checkbox', { name: '단지명 확인' }))
+  expect(screen.getByRole('button', { name: '이름 수정' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: '검토 작성 취소' }))
+  expect(screen.getByRole('button', { name: '이름 수정' })).toBeEnabled()
+})
 
 it('별도 상세 화면의 수정과 삭제도 작성 중인 검토의 이동 취소를 보존한다', async () => {
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
@@ -53,6 +74,7 @@ it('별도 상세 화면의 수정과 삭제도 작성 중인 검토의 이동 �
     <Route path="/admin/complexes/:id" element={<ManagementDetail resource="complexes" />} />
   </Routes></MemoryRouter>)
   fireEvent.click(await screen.findByRole('button', { name: '데이터 검증' }))
+  fireEvent.click(screen.getByText('확인 범위·검토 기록'))
   fireEvent.click(await screen.findByRole('checkbox', { name: '단지명 확인' }))
   fireEvent.change(screen.getByLabelText('확인 근거·메모'), { target: { value: '작성 중인 근거' } })
   fireEvent.click(screen.getByRole('button', { name: '수정' }))
@@ -66,8 +88,9 @@ it('별도 상세 화면의 수정과 삭제도 작성 중인 검토의 이동 �
 
 it('편집 패널에서 검토를 저장하면 탭과 목록 필터를 유지하며 목록 상태를 갱신한다', async () => {
   show('/admin/complexes/7?provider=LH')
-  await screen.findByLabelText('이름')
+  await openBasicInformation()
   fireEvent.click(screen.getByRole('button', { name: '데이터 검증' }))
+  fireEvent.click(screen.getByText('확인 범위·검토 기록'))
   fireEvent.click(await screen.findByRole('checkbox', { name: '단지명 확인' }))
   expect(screen.queryByLabelText('이름')).not.toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('확인 근거·메모'), { target: { value: '공식 자료 확인' } })
@@ -84,6 +107,8 @@ it('편집 패널에서 검토를 저장하면 탭과 목록 필터를 유지하
   expect(api.getManagementPage.mock.lastCall?.[1].get('provider')).toBe('LH')
   expect(screen.getByRole('button', { name: '데이터 검증' })).toHaveAttribute('aria-pressed', 'true')
   expect(screen.getByRole('link', { name: summary.name }).closest('th')).toHaveTextContent('확인 완료 · 1/6항목')
+  const reviewDetails = screen.getByText('확인 범위·검토 기록').closest('details')!
+  if (!reviewDetails.hasAttribute('open')) fireEvent.click(screen.getByText('확인 범위·검토 기록'))
   const panel = await screen.findByRole('region', { name: '단지 데이터 검증' })
   expect(within(panel).getByText(/1\/6항목/)).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '기본정보' }))
@@ -95,10 +120,11 @@ it('편집 패널에서 검토를 저장하면 탭과 목록 필터를 유지하
 it('검토 작성 중 탭·필터·편집 닫기 이동을 취소하면 입력과 선택을 보존한다', async () => {
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
   show()
-  await screen.findByLabelText('이름')
+  await openBasicInformation()
   expect(screen.getByLabelText('검토 상태')).toHaveValue('UNREVIEWED')
   expect(api.getManagementPage.mock.lastCall?.[1].get('verification')).toBe('UNREVIEWED')
   fireEvent.click(screen.getByRole('button', { name: '데이터 검증' }))
+  fireEvent.click(screen.getByText('확인 범위·검토 기록'))
   fireEvent.click(await screen.findByRole('checkbox', { name: '단지명 확인' }))
   fireEvent.change(screen.getByLabelText('확인 근거·메모'), { target: { value: '작성 중인 근거' } })
   fireEvent.click(screen.getByRole('button', { name: '기본정보' }))
@@ -118,8 +144,9 @@ it('검토 저장 중에는 편집 탭과 삭제를 잠그고 완료 후 해제�
   let finish!: (value: ComplexVerification) => void
   verification.saveComplexReview.mockReturnValue(new Promise<ComplexVerification>(resolve => { finish = resolve }))
   show()
-  await screen.findByLabelText('이름')
+  await openBasicInformation()
   fireEvent.click(screen.getByRole('button', { name: '데이터 검증' }))
+  fireEvent.click(screen.getByText('확인 범위·검토 기록'))
   fireEvent.click(await screen.findByRole('checkbox', { name: '단지명 확인' }))
   fireEvent.change(screen.getByLabelText('확인 근거·메모'), { target: { value: '공식 자료 확인' } })
   fireEvent.click(screen.getByRole('button', { name: '검토 저장' }))
@@ -129,3 +156,9 @@ it('검토 저장 중에는 편집 탭과 삭제를 잠그고 완료 후 해제�
   await waitFor(() => expect(screen.getByRole('button', { name: '기본정보' })).toBeEnabled())
   expect(screen.getByRole('button', { name: '삭제' })).toBeEnabled()
 })
+
+
+async function openBasicInformation() {
+  fireEvent.click(await screen.findByRole('button', { name: /^기본정보$/ }))
+  return screen.findByLabelText('이름')
+}

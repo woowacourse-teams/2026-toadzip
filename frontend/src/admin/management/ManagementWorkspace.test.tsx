@@ -27,7 +27,7 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks())
 it('상세에서는 편집에 집중하고 필요할 때 기존 목록과 검색을 펼친다', async () => {
   renderPage('/admin/complexes/7?keyword=두꺼비', false)
-  await screen.findByLabelText('이름')
+  await openBasicInformation()
   expect(screen.queryByRole('table')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '목록과 검색 펼치기' }))
   expect(screen.getByRole('table')).toBeVisible()
@@ -95,7 +95,7 @@ it('행을 열어도 목록과 검색을 유지하며 바로 수정하고 닫는
   renderPage()
   const table = await screen.findByRole('table')
   fireEvent.click(screen.getByRole('link', { name: summary.name }))
-  expect(await screen.findByLabelText('이름')).toHaveValue(summary.name)
+  expect(await openBasicInformation()).toHaveValue(summary.name)
   expect(screen.getByRole('table', { hidden: true })).toBe(table)
   expect(screen.getByLabelText('단지명·주소')).toHaveValue('두꺼비')
   expect(screen.getByLabelText('기관')).toHaveValue('LH')
@@ -109,7 +109,7 @@ it('행을 열어도 목록과 검색을 유지하며 바로 수정하고 닫는
 
 it('저장하면 수정된 행을 다시 조회하고 실패하면 입력을 보존한다', async () => {
   renderPage('/admin/complexes/7?provider=LH')
-  await screen.findByLabelText('이름')
+  await openBasicInformation()
   api.requestManagementApi.mockRejectedValueOnce(new ManagementError('다른 관리자가 수정했습니다.', 409))
   fireEvent.change(screen.getByLabelText('이름'), { target: { value: '수정한 단지' } })
   fireEvent.submit(screen.getByRole('button', { name: '변경사항 저장' }).closest('form')!)
@@ -127,7 +127,7 @@ it('저장하면 수정된 행을 다시 조회하고 실패하면 입력을 보
 it('미저장 수정의 닫기와 검색을 취소하면 입력과 목록 조건을 유지한다', async () => {
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
   renderPage('/admin/complexes/7?provider=LH')
-  await screen.findByLabelText('이름')
+  await openBasicInformation()
   fireEvent.change(screen.getByLabelText('이름'), { target: { value: '저장 전' } })
   fireEvent.click(screen.getByRole('link', { name: '편집 닫기' }))
   expect(screen.getByLabelText('이름')).toHaveValue('저장 전')
@@ -141,7 +141,7 @@ it('미저장 수정의 닫기와 검색을 취소하면 입력과 목록 조건
 it('현재 기본정보 탭을 다시 눌러도 미저장 입력 보호가 유지된다', async () => {
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
   renderPage('/admin/complexes/7')
-  fireEvent.change(await screen.findByLabelText('이름'), { target: { value: '저장 전' } })
+  fireEvent.change(await openBasicInformation(), { target: { value: '저장 전' } })
   fireEvent.click(screen.getByRole('button', { name: '기본정보' }))
   expect(confirm).not.toHaveBeenCalled()
   confirm.mockReturnValue(false)
@@ -183,7 +183,7 @@ it('추가 화면도 조회 표를 유지하고 JSON 및 직접 입력을 제공
 it('삭제 확인과 복구 후 목록을 갱신한다', async () => {
   renderPage('/admin/complexes/7')
   fireEvent.click(await screen.findByRole('button', { name: '삭제' }))
-  expect(api.requestManagementApi).not.toHaveBeenCalled()
+  expect(api.requestManagementApi.mock.calls.filter(([, method]) => method !== 'GET')).toEqual([])
   api.requestManagementApi.mockResolvedValue(null)
   api.getManagementDetail.mockResolvedValue({ ...detail(), summary: { ...summary, deleted: true }, data: { ...detail().data, version: 3 } })
   fireEvent.click(screen.getByRole('button', { name: '휴지통으로 이동' }))
@@ -192,15 +192,15 @@ it('삭제 확인과 복구 후 목록을 갱신한다', async () => {
   fireEvent.click(screen.getByRole('button', { name: '복구' }))
   api.getManagementDetail.mockResolvedValue({ ...detail(), data: { ...detail().data, version: 4 } })
   fireEvent.click(screen.getByRole('button', { name: '복구 확인' }))
-  await screen.findByLabelText('이름')
-  expect(api.requestManagementApi).toHaveBeenLastCalledWith('/api/admin/housing-complexes/7/restore?version=3', 'POST')
+  await openBasicInformation()
+  expect(api.requestManagementApi.mock.calls.filter(([, method]) => method !== 'GET').at(-1)).toEqual(['/api/admin/housing-complexes/7/restore?version=3', 'POST'])
 })
 
 it('기존 returnTo 상세 URL의 검색 조건과 페이지를 화면에서도 복원한다', async () => {
   const returnTo = encodeURIComponent('/admin/complexes?keyword=두꺼비&provider=LH&page=1')
   api.getManagementPage.mockResolvedValue({ items: [summary], page: 1, totalPages: 3, totalElements: 41, hasNext: true })
   renderPage(`/admin/complexes/7?returnTo=${returnTo}`)
-  await screen.findByLabelText('이름')
+  await openBasicInformation()
   expect(screen.getByLabelText('단지명·주소')).toHaveValue('두꺼비')
   expect(screen.getByLabelText('기관')).toHaveValue('LH')
   fireEvent.click(screen.getByRole('button', { name: '다음' }))
@@ -208,3 +208,8 @@ it('기존 returnTo 상세 URL의 검색 조건과 페이지를 화면에서도 
   expect(api.getManagementPage.mock.lastCall?.[1].get('keyword')).toBe('두꺼비')
   expect(api.getManagementPage.mock.lastCall?.[1].get('provider')).toBe('LH')
 })
+
+async function openBasicInformation() {
+  fireEvent.click(await screen.findByRole('button', { name: /^기본정보$/ }))
+  return screen.findByLabelText('이름')
+}
