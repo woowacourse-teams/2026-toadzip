@@ -701,4 +701,3 @@ class LocalProfileSchemaPersistenceTest {
         return System.getenv().getOrDefault(environmentVariable, defaultPort);
     }
 }
-
