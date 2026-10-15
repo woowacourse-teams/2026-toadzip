@@ -4,7 +4,7 @@ import { expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router'
 import { NotificationInterestButton, NotificationInterestProvider } from './NotificationInterest'
 
-it('회원은 이메일 없이 저장하고 준비 중 안내를 확인한다', async () => {
+it('회원은 이메일 없이 저장하고 신청 완료 안내를 확인한다', async () => {
   const repository = { record: vi.fn<NotificationInterestRepository['record']>().mockImplementation(async event => ({ ...event, outcome: 'ACTIVATED', occurredAt: '2026-10-09T00:00:00Z', settingsRevision: 1, currentTarget: { active: true, expiresAt: '2027-04-07T00:00:00Z', noticeVersion: 'notification-2026-10-09-v1', requestedAt: '2026-10-09T00:00:00Z' } })), loadStatus: vi.fn().mockResolvedValue({ userId: '1', settingsRevision: 0, targets: [] }) }
   render(<MemoryRouter><NotificationInterestProvider repository={repository}>
     <NotificationInterestButton target={{ type: 'COMPLEX', id: '1', name: '서울 단지' }} source="COMPLEX_DETAIL" />
@@ -13,9 +13,9 @@ it('회원은 이메일 없이 저장하고 준비 중 안내를 확인한다', 
   await waitFor(() => expect(button).toBeEnabled())
   fireEvent.click(button)
   expect(repository.record).not.toHaveBeenCalled()
-  expect(screen.getByRole('dialog')).toHaveTextContent('알림 설정 저장에 이용자 ID')
+  expect(screen.getByRole('dialog')).toHaveTextContent('이용자 ID와 선택한 대상')
   fireEvent.click(screen.getByRole('button', { name: '신청하기' }))
-  expect(await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })).toBeVisible()
+  expect(await screen.findByRole('dialog', { name: '알림 신청을 완료했어요' })).toBeVisible()
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   expect(repository.record).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'CONFIRMED' }))
   expect(button).toHaveAttribute('aria-pressed', 'true')

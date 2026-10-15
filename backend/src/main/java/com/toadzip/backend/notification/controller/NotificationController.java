@@ -1,6 +1,8 @@
 package com.toadzip.backend.notification.controller;
 
 import com.toadzip.backend.notification.dto.NotificationPageResponse;
+import com.toadzip.backend.notification.dto.NotificationDeleteRequest;
+import com.toadzip.backend.notification.service.NotificationDeleteService;
 import com.toadzip.backend.notification.dto.NotificationReadAllRequest;
 import com.toadzip.backend.notification.dto.NotificationUnreadCountResponse;
 import com.toadzip.backend.notification.service.NotificationQueryService;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class NotificationController {
     private final NotificationQueryService queries;
     private final NotificationReadService reads;
+    private final NotificationDeleteService deletes;
 
     @GetMapping
     public ResponseEntity<NotificationPageResponse> list(Authentication authentication,
@@ -47,6 +50,11 @@ public class NotificationController {
     @PostMapping("/read-all")
     public ResponseEntity<Void> readAll(Authentication authentication, @Valid @RequestBody NotificationReadAllRequest request) {
         reads.markAllRead(Long.parseLong(authentication.getName()), request.readThrough());
+        return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
+    }
+    @PostMapping("/delete")
+    public ResponseEntity<Void> delete(Authentication authentication, @Valid @RequestBody NotificationDeleteRequest request) {
+        deletes.delete(Long.parseLong(authentication.getName()), request);
         return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
     }
 }

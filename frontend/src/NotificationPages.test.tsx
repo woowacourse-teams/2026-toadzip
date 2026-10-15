@@ -17,7 +17,7 @@ function session(member = true) {
     if (url.endsWith('/csrf')) return new Response(JSON.stringify({ token: 'csrf', headerName: 'X-XSRF-TOKEN' }))
     if (!member) return new Response(null, { status: 401 })
     if (url.includes('/api/v1/notifications/unread-count')) return Response.json({ unreadCount: 0 })
-    if (url.includes('/api/v1/notifications?')) return Response.json({ items: [], nextCursor: null, readThrough: '0' })
+    if (url.includes('/api/v1/notifications?')) return Response.json({ items: [], nextCursor: null, readThrough: '0', totalCount: 0 })
     if (url.endsWith('/api/auth/me')) return new Response(JSON.stringify({ id: 7 }))
     if (options?.method === 'POST') { active = false; return settingResult(options, ++settingsRevision) }
     return new Response(JSON.stringify({ userId: '7', settingsRevision, targets: active ? [
@@ -164,7 +164,7 @@ it('받은 알림과 등록한 설정을 탭으로 분리하고 모달 안에서
   fireEvent.click(settings)
   expect(settings).toHaveAttribute('aria-selected', 'true')
   expect(within(dialog).getByText('서울 행복주택')).toBeVisible()
-  expect(within(dialog).queryByText('알림 기능을 준비하고 있어요')).not.toBeInTheDocument()
+  expect(within(dialog).queryByText('알림 신청을 완료했어요')).not.toBeInTheDocument()
   fireEvent.click(within(dialog).getByRole('button', { name: '서울 행복주택 알림 해제' }))
   await waitFor(() => expect(within(dialog).queryByText('서울 행복주택')).not.toBeInTheDocument())
   fireEvent.click(within(dialog).getByRole('button', { name: '전체 해제' }))

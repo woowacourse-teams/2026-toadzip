@@ -1,0 +1,7 @@
+.dialog { box-sizing: border-box; width: min(440px, calc(100% - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 24px; overflow: auto; border: 1px solid var(--ds-color-divider); border-radius: 20px; background: var(--ds-color-surface); color: var(--ds-color-text); font-family: var(--ds-font-family-ui); box-shadow: 0 20px 64px rgb(18 38 27 / 20%); }
+.dialog::backdrop { background: rgb(17 32 25 / 42%); }
+.dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.dialog h2 { margin: 0; font-size: 18px; line-height: 1.5; letter-spacing: -.02em; }
+.dialog h2:focus { outline: none; }
+.dialog header svg { width: 20px; height: 20px; }
+.dialog p { margin: 0 0 20px; font-size: 14px; line-height: 1.6; word-break: keep-all; overflow-wrap: anywhere; }

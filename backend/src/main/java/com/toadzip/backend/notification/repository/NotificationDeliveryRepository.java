@@ -31,7 +31,7 @@ public class NotificationDeliveryRepository {
                     attempts,next_attempt_at)
                 SELECT n.id,d.id,d.binding_version,'PENDING',0,? FROM user_notifications n
                     JOIN notification_push_devices d ON d.user_id=n.user_id AND d.enabled
-                WHERE n.id=?
+                WHERE n.id=? AND n.deleted_at IS NULL
                 ON CONFLICT(notification_id,device_id,device_binding_version) DO NOTHING
                 """, Timestamp.from(now), notificationId);
     }
@@ -67,7 +67,7 @@ public class NotificationDeliveryRepository {
     public boolean hasCurrentBinding(ClaimedNotificationDelivery delivery, Instant now) {
         return Boolean.TRUE.equals(jdbc.queryForObject("""
                 SELECT EXISTS(SELECT 1 FROM notification_push_devices d JOIN user_notifications n ON n.user_id=d.user_id
-                    WHERE d.id=? AND d.enabled AND d.binding_version=? AND d.user_id=? AND n.id=? AND n.expires_at>?)
+                    WHERE d.id=? AND d.enabled AND d.binding_version=? AND d.user_id=? AND n.id=? AND n.deleted_at IS NULL AND n.expires_at>?)
                 """, Boolean.class, delivery.deviceId(), delivery.bindingVersion(), delivery.userId(),
                 delivery.notificationId(), Timestamp.from(now)));
     }

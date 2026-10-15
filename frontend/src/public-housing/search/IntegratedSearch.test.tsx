@@ -87,7 +87,7 @@ describe('IntegratedSearch', () => {
     fireEvent.click(bell)
     expect(record).not.toHaveBeenCalled()
     fireEvent.click(await screen.findByRole('button', { name: '신청하기' }))
-    expect(await screen.findByRole('dialog')).toHaveTextContent('알림 기능을 준비하고 있어요')
+    expect(await screen.findByRole('dialog', { name: '알림 신청을 완료했어요' })).toBeVisible()
     expect(screen.getByRole('heading', { name: '검색결과' })).toBeVisible()
     expect(onSelect).not.toHaveBeenCalled()
     expect(record).toHaveBeenCalledWith(expect.objectContaining({

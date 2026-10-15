@@ -3,7 +3,7 @@ package com.toadzip.backend.notification.dto;
 import java.time.Instant;
 import java.util.List;
 
-public record NotificationPageResponse(List<Item> items, String nextCursor, String readThrough) {
+public record NotificationPageResponse(List<Item> items, String nextCursor, String readThrough, long totalCount) {
     public NotificationPageResponse {
         items = List.copyOf(items);
     }

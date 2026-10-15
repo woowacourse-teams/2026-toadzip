@@ -214,7 +214,7 @@ describe('HousingComplexDetailPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '서울가람 행복주택 알림 받기' }))
     expect(record).not.toHaveBeenCalled()
     fireEvent.click(await screen.findByRole('button', { name: '신청하기' }))
-    expect(await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })).toBeVisible()
+    expect(await screen.findByRole('dialog', { name: '알림 신청을 완료했어요' })).toBeVisible()
     expect(record).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'CONFIRMED', source: 'COMPLEX_DETAIL', targetType: 'COMPLEX', targetId: '17',
     }))

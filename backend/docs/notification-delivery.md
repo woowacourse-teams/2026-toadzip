@@ -38,13 +38,19 @@ SENT는 FCM의 요청 접수이며 기기 표시나 읽음의 증거가 아니�
 
 | API | 동작 |
 |---|---|
-| GET `/api/v1/notifications/unread-count` | 만료되지 않은 미읽음 개수 |
-| GET `/api/v1/notifications?size=20&cursor=...` | `(created_at,id)` 역순, nextCursor와 readThrough |
+| GET `/api/v1/notifications/unread-count` | 삭제·만료되지 않은 미읽음 개수 |
+| GET `/api/v1/notifications?size=20&cursor=...` | `(created_at,id)` 역순, nextCursor·readThrough·totalCount |
 | POST `/api/v1/notifications/{id}/read` | 본인 알림 개별 읽음, 멱등 |
 | POST `/api/v1/notifications/read-all` | `{readThrough}`까지 읽음 |
-| GET `/api/v1/notification-push-devices/current` | 현재 기기 상태와 bindingVersion |
+| POST `/api/v1/notifications/delete` | `{ids}` 선택 삭제 또는 `{deleteThrough, excludedIds}` 전체 범위 삭제 |
+| GET `/api/v1/notification-push-devices/current` | 현재 기기 상태·bindingVersion·resumeAfterLogin |
 | POST `/api/v1/notification-push-devices` | `{fid, expectedUserId, expectedBindingVersion}` 등록 |
 | DELETE `/api/v1/notification-push-devices/current` | `{expectedUserId, bindingVersion}`로 해제 |
+
+삭제 편집은 최초 목록의 readThrough와 totalCount를 고정한다. 전체 선택은 불러오지 않은 페이지까지 포함하며,
+excludedIds로 일부를 제외할 수 있다. 개별·제외 ID는 최대 1,000개이며 소유권을 모두 확인한 뒤 한 트랜잭션에서 삭제한다.
+삭제 시 deleted_at을 기록하고 목록·개수·읽음·발송 검증에서 제외한다. 이벤트 중복 방지와 기존 90일 정리 정책을 유지하며,
+구독은 해제하지 않는다. 이미 FCM에 접수된 알림은 회수하지 못한다.
 
 readThrough는 목록과 같은 DB snapshot의 본인 최대 ID다. 사용자별 advisory transaction lock을 획득한 뒤 ID를 발급하며,
 모두 읽음도 같은 잠금을 사용한다. 조회 이후 생성된 알림을 읽음으로 바꾸지 않는다. GET은 읽음 상태를 바꾸지 않는다.
@@ -52,12 +58,18 @@ readThrough는 목록과 같은 DB snapshot의 본인 최대 ID다. 사용자별
 다른 기기가 같은 FID를 주장하면 409다. A→B→A 교체·재동의·FID 변경 때 binding version이 증가한다.
 409는 새로운 사용자 동작과 상태 확인을 요구하며 최신 버전으로 무조건 덮어쓰지 않는다.
 
-소셜 로그인 성공 시 SDK와 무관하게 세션에 현재 사용자의 기기 버전을 기록한다. 등록·현재 상태 조회도 확인한 버전을 저장한다. 로그아웃은 그 버전만 서버에서 해제한 뒤 세션을 폐기한다.
+소셜 로그인 성공 시 SDK와 무관하게 세션에 현재 사용자의 기기 버전을 기록한다. 등록·현재 상태 조회도 확인한 버전을 저장한다. 직접 로그아웃하면 그 버전만 서버에서 일시 중지한 뒤 세션을 폐기한다.
 현재 로컬 HttpSession mutex로 등록·로그인 확인·로그아웃을 직렬화한다. 세션을 분산 저장소로 바꿀 때 이 직렬화도 검토해야 한다.
 오래된 활성 바인딩의 명시적 해제는 409다. 같은 해제 재시도는 204이며 버전을 중복 증가시키지 않는다.
 끄기·로그아웃은 서버 바인딩만 비활성화하고 Firebase installation을 unregister하지 않는다. installation은 탭과 계정이
 공유하므로 SDK 삭제가 다른 탭의 새 등록을 끊을 수 있다. 브라우저 권한과 설치는 유지되며, 발송 직전 서버 검증으로
 후속 전송을 차단한다. 이미 FCM에 접수된 메시지는 표시될 수 있다. 로그아웃 UI 초기화는 SDK 응답을 기다리지 않는다.
+
+직접 로그아웃은 resume_after_login을 저장하며, 같은 기기·회원의 다음 로그인에서만 복원 가능 상태를 노출한다.
+프론트는 브라우저 권한이 이미 허용된 경우 SDK 등록과 버전 검증을 거쳐 복원한다. 명시적 끄기와 무효 등록은 복원하지 않는다.
+자연스러운 인증 세션 만료는 기기 바인딩을 끄지 않으므로 푸시는 유지된다. 내용을 열 때는 재로그인이 필요할 수 있다.
+로그인 유지 기간은 변경하지 않는다. 신규 컬럼의 기본값은 false이며 이전에 꺼진 기기의 해제 이유를 추정해 복원하지 않는다.
+배포 전 로그아웃으로 꺼졌던 기기는 한 번 직접 알림을 켠 뒤부터 새 복원 동작을 사용한다.
 
 ## 설정과 출시 순서
 

@@ -128,6 +128,84 @@ class NotificationApiIntegrationTest {
                 .andExpect(jsonPath("$.items.length()").value(0)).andExpect(jsonPath("$.readThrough").value("0"));
     }
 
+    @Test
+    void 선택삭제는_본인_알림만_멱등하게_지우고_미읽음에서_제외한다() throws Exception {
+        long retained = notification(101);
+        String request = "{\"ids\":[\"" + first + "\"]}";
+        mvc.perform(post(ENDPOINT + "/delete").with(user("102").roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isNotFound());
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mvc.perform(post(ENDPOINT + "/delete").with(user("101").roles("USER")).with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON).content(request))
+                    .andExpect(status().isNoContent());
+        }
+        mvc.perform(get(ENDPOINT).with(user("101").roles("USER")))
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(Long.toString(retained)))
+                .andExpect(jsonPath("$.totalCount").value(1));
+        mvc.perform(get(ENDPOINT + "/unread-count").with(user("101").roles("USER")))
+                .andExpect(jsonPath("$.unreadCount").value(1));
+        mvc.perform(post(ENDPOINT + "/" + first + "/read").with(user("101").roles("USER")).with(csrf()))
+                .andExpect(status().isNotFound());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_notifications WHERE id=?", Long.class, first))
+                .isOne();
+    }
+
+    @Test
+    void 전체삭제는_불러오지_않은_페이지까지_지우되_새_알림과_다른_회원은_보존한다() throws Exception {
+        long bound = notification(101);
+        notification(102);
+        mvc.perform(get(ENDPOINT).param("size", "1").with(user("101").roles("USER")))
+                .andExpect(jsonPath("$.totalCount").value(2))
+                .andExpect(jsonPath("$.readThrough").value(Long.toString(bound)));
+        long latest = notification(101);
+        mvc.perform(post(ENDPOINT + "/delete").with(user("101").roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"deleteThrough\":\"" + bound + "\"}"))
+                .andExpect(status().isNoContent());
+        mvc.perform(get(ENDPOINT).with(user("101").roles("USER")))
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(Long.toString(latest)));
+        mvc.perform(get(ENDPOINT + "/unread-count").with(user("102").roles("USER")))
+                .andExpect(jsonPath("$.unreadCount").value(1));
+    }
+
+    @Test
+    void 삭제의_권한과_선택범위를_검사하며_타인항목이_섞이면_전체_요청을_거절한다() throws Exception {
+        String request = "{\"ids\":[\"" + first + "\"]}";
+        mvc.perform(post(ENDPOINT + "/delete").with(csrf()).contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post(ENDPOINT + "/delete").with(user("101").roles("USER"))
+                        .contentType(MediaType.APPLICATION_JSON).content(request)).andExpect(status().isForbidden());
+        long foreign = notification(102);
+        for (String invalid : java.util.List.of("{}", "{\"ids\":[]}", "{\"ids\":[\"-1\"]}",
+                "{\"ids\":[\"1\"],\"deleteThrough\":\"1\"}")) {
+            mvc.perform(post(ENDPOINT + "/delete").with(user("101").roles("USER")).with(csrf())
+                            .contentType(MediaType.APPLICATION_JSON).content(invalid)).andExpect(status().isBadRequest());
+        }
+        mvc.perform(post(ENDPOINT + "/delete").with(user("101").roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[\"" + first + "\",\"" + foreign + "\"]}"))
+                .andExpect(status().isNotFound());
+        mvc.perform(post(ENDPOINT + "/delete").with(user("101").roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"deleteThrough\":\"" + foreign + "\"}"))
+                .andExpect(status().isNotFound());
+        mvc.perform(get(ENDPOINT + "/unread-count").with(user("101").roles("USER")))
+                .andExpect(jsonPath("$.unreadCount").value(1));
+    }
+
+    @Test
+    void 전체선택에서_제외한_알림은_삭제하지_않는다() throws Exception {
+        long bound = notification(101);
+        mvc.perform(post(ENDPOINT + "/delete").with(user("101").roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"deleteThrough\":\"" + bound + "\",\"excludedIds\":[\"" + first + "\"]}"))
+                .andExpect(status().isNoContent());
+        mvc.perform(get(ENDPOINT).with(user("101").roles("USER")))
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(Long.toString(first)));
+    }
+
     private long notification(long userId) {
         var announcement = fixtures.announcement();
         fixtures.link(announcement, fixtures.complex("11140", "1114010100"));

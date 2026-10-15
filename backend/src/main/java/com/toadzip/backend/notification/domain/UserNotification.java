@@ -36,6 +36,9 @@ public class UserNotification {
     @Column(name = "read_at", nullable = true)
     private Instant readAt;
 
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 

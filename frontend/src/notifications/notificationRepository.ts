@@ -4,8 +4,10 @@ export interface NotificationItem {
   readonly id: string; readonly type: 'ANNOUNCEMENT_CREATED'; readonly announcementId: string
   readonly title: string; readonly createdAt: string; readonly readAt: string | null; readonly targetAvailable: boolean
 }
-export interface NotificationPageResult { readonly items: readonly NotificationItem[]; readonly nextCursor: string | null; readonly readThrough: string }
+export interface NotificationPageResult { readonly items: readonly NotificationItem[]; readonly nextCursor: string | null; readonly readThrough: string; readonly totalCount: number }
+export type NotificationDeleteSelection = { readonly ids: readonly string[] } | { readonly deleteThrough: string; readonly excludedIds: readonly string[] }
 export interface NotificationRepository {
+  delete(selection: NotificationDeleteSelection, signal: AbortSignal): Promise<void>
   count(signal: AbortSignal): Promise<number>
   list(cursor: string | null, signal: AbortSignal): Promise<NotificationPageResult>
   read(id: string, signal: AbortSignal): Promise<void>
@@ -19,6 +21,7 @@ function id(value: unknown, allowZero = false): value is string {
 function timestamp(value: unknown): value is string { return typeof value === 'string' && Number.isFinite(Date.parse(value)) }
 function parsePage(value: unknown): NotificationPageResult {
   if (!record(value) || !Array.isArray(value.items) || !id(value.readThrough, true)
+    || !Number.isSafeInteger(value.totalCount) || Number(value.totalCount) < 0
     || !(value.nextCursor === null || typeof value.nextCursor === 'string')) throw new Error('알림 응답을 확인하지 못했어요.')
   const items = value.items.map((item: unknown): NotificationItem => {
     if (!record(item) || !id(item.id) || !id(item.announcementId) || item.type !== 'ANNOUNCEMENT_CREATED'
@@ -26,7 +29,7 @@ function parsePage(value: unknown): NotificationPageResult {
       || typeof item.targetAvailable !== 'boolean') throw new Error('알림 응답을 확인하지 못했어요.')
     return item as unknown as NotificationItem
   })
-  return { items, nextCursor: value.nextCursor, readThrough: value.readThrough }
+  return { items, nextCursor: value.nextCursor, readThrough: value.readThrough, totalCount: Number(value.totalCount) }
 }
 export function createNotificationRepository(fetcher: typeof fetch = (...args) => globalThis.fetch(...args)): NotificationRepository {
   const base = `${getApiBaseUrl()}/api/v1/notifications`
@@ -38,7 +41,7 @@ export function createNotificationRepository(fetcher: typeof fetch = (...args) =
       const csrfResponse = await fetcher(`${getApiBaseUrl()}/api/auth/csrf`, { credentials: 'include', cache: 'no-store', signal: bounded })
       if (!csrfResponse.ok) throw new NotificationApiError(csrfResponse.status)
       const csrf: unknown = await csrfResponse.json()
-      if (!record(csrf) || csrf.headerName !== 'X-XSRF-TOKEN' || typeof csrf.token !== 'string' || !csrf.token) throw new Error('읽음 처리를 준비하지 못했어요.')
+      if (!record(csrf) || csrf.headerName !== 'X-XSRF-TOKEN' || typeof csrf.token !== 'string' || !csrf.token) throw new Error('알림 요청을 준비하지 못했어요.')
       headers = { 'Content-Type': 'application/json', [csrf.headerName]: csrf.token }
     }
     signal.throwIfAborted()
@@ -48,6 +51,12 @@ export function createNotificationRepository(fetcher: typeof fetch = (...args) =
     return response
   }
   return {
+    async delete(selection, signal) {
+      const ids = 'ids' in selection ? selection.ids : selection.excludedIds
+      if (ids.length > 1000 || ids.some(value => !id(value))
+        || ('ids' in selection ? ids.length === 0 : !id(selection.deleteThrough))) throw new Error('삭제할 알림 범위를 확인해 주세요.')
+      await request(`${base}/delete`, signal, selection)
+    },
     async count(signal) {
       const value: unknown = await (await request(`${base}/unread-count`, signal)).json()
       if (!record(value) || !Number.isSafeInteger(value.unreadCount) || Number(value.unreadCount) < 0) throw new Error('알림 개수 응답을 확인하지 못했어요.')

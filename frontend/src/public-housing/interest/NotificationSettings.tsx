@@ -16,8 +16,8 @@ export function NotificationSettings() {
   return <div className={styles.settings}>
     <NotificationPushControl />
     <div className={styles.actions}>
-      <h3 ref={heading} tabIndex={-1}>등록한 알림 <span>{context.targets.length}</span></h3>
-      <button type="button" disabled={context.blocked || context.targets.length === 0}
+      <h3 ref={heading} tabIndex={-1}>관심 알림 <span>{context.targets.length}</span></h3>
+      <button className={styles.actionButton} type="button" disabled={context.blocked || context.targets.length === 0}
         onClick={(event) => { heading.current?.focus(); context.clearAll(event.currentTarget) }}>
         {context.clearingAll ? '전체 해제 중…' : '전체 해제'}
       </button>
@@ -31,7 +31,7 @@ export function NotificationSettings() {
         {type === 'ANNOUNCEMENT' && <p>공고 변경 알림은 준비 중이에요.</p>}
         <ul>{targets.map((target) => <li key={target.id}>
           <span>{target.name}</span>
-          <button type="button" disabled={context.blocked} aria-label={`${target.name} 알림 해제`}
+          <button className={styles.actionButton} type="button" disabled={context.blocked} aria-label={`${target.name} 알림 해제`}
             onClick={(event) => { heading.current?.focus(); context.request({ target, source: 'SETTING' }, event.currentTarget) }}>해제</button>
         </li>)}</ul>
       </section>

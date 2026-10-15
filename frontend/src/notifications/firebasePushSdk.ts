@@ -1,6 +1,11 @@
 import type { PushSdk } from './firebasePushClient'
 export const pushUiEnabled = import.meta.env.VITE_NOTIFICATION_PUSH_ENABLED === 'true'
-export async function preparePushSdk(): Promise<PushSdk> {
+let preparation: Promise<PushSdk> | undefined
+export function preparePushSdk(): Promise<PushSdk> {
+  preparation ??= buildPushSdk().catch(error => { preparation = undefined; throw error })
+  return preparation
+}
+async function buildPushSdk(): Promise<PushSdk> {
   const config = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY, projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
     appId: import.meta.env.VITE_FIREBASE_APP_ID, messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,

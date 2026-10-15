@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { createPushDeviceRepository } from './pushDeviceRepository'
 it('기기 등록은 예상 사용자와 버전을 CSRF 보호 요청에 포함한다', async () => {
-  const response = { deviceId: 'b51ed2b7-1cce-4fe7-8e43-f45f4187ffdd', enabled: true, bindingVersion: '3' }
+  const response = { deviceId: 'b51ed2b7-1cce-4fe7-8e43-f45f4187ffdd', enabled: true, bindingVersion: '3', resumeAfterLogin: false }
   const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({ token: 'csrf', headerName: 'X-XSRF-TOKEN' })).mockResolvedValueOnce(Response.json(response))
   expect(await createPushDeviceRepository(fetcher).register('fid', '2', '2', new AbortController().signal)).toEqual(response)
   expect(fetcher.mock.calls[1]?.[1]).toMatchObject({ method: 'POST', credentials: 'include', body: JSON.stringify({ fid: 'fid', expectedUserId: '2', expectedBindingVersion: '2' }) })

@@ -10,7 +10,7 @@ import { LoginModal } from '../../user/auth/LoginModal'
 import { findRegionBoundaryName } from '../regions/regionBoundaryCatalog'
 import styles from './NotificationInterest.module.css'
 
-import { InterestContext, notificationPreparationTitle, notificationPreparationDescription, notificationPreparationNotice, type Selection } from './NotificationInterestContext'
+import { InterestContext, type Selection } from './NotificationInterestContext'
 
 interface Action extends Selection {
   readonly event: NotificationInterestEvent
@@ -75,7 +75,7 @@ export function NotificationInterestProvider({ children, repository = notificati
   const revision = useRef(0)
   const [selection, setSelection] = useState<Selection | null>(null)
   const session = useRef<string | null>(null)
-  const [dialog, setDialog] = useState<'guest' | 'confirm' | 'prepared' | 'login' | null>(null)
+  const [dialog, setDialog] = useState<'guest' | 'confirm' | 'completed' | 'login' | null>(null)
   const [busy, setBusy] = useState(false)
   const [clearingAll, setClearingAll] = useState(false)
   const [batchError, setBatchError] = useState('')
@@ -220,6 +220,7 @@ export function NotificationInterestProvider({ children, repository = notificati
       if (!isApplied(action, result)) {
         refreshAfterResponse = true
         restoreFocus.current = true
+        setDialog(null)
         setMessage('처리 결과를 확인하지 못했어요. 현재 알림 설정을 다시 확인해 주세요.')
         return
       }
@@ -230,13 +231,15 @@ export function NotificationInterestProvider({ children, repository = notificati
         return cancelled ? remaining : [...remaining, action.target]
       })
       if (cancelled !== (action.event.eventType === 'CANCELLED')) {
+        setDialog(null)
         restoreFocus.current = true
         setMessage('현재 서버의 알림 설정을 반영했어요.')
       } else if (cancelled) {
+        setDialog(null)
         restoreFocus.current = true
         setMessage(`${action.target.name} 알림 설정을 해제했어요.`)
       } else {
-        setDialog('prepared')
+        setDialog('completed')
         setMessage(`${action.target.name} 알림 설정을 저장했어요.`)
       }
     } catch (error) {
@@ -247,7 +250,7 @@ export function NotificationInterestProvider({ children, repository = notificati
         refreshAfterResponse = true
         setDialog(null)
         setMessage('설정이 변경됐어요. 현재 상태를 확인하고 다시 선택해 주세요.')
-      } else setFailed(action)
+      } else { setDialog(null); setFailed(action) }
     } finally {
       if (version === requestVersion.current) {
         inFlight.current = false; setBusy(false)
@@ -361,27 +364,25 @@ export function NotificationInterestProvider({ children, repository = notificati
     {dialog === 'login' && <LoginModal loginFailed={false} sessionError={false} onClose={dismiss} returnFocusRef={trigger} />}
     {dialog === 'confirm' && selection && <InterestDialog onDismiss={dismiss} label={`${selection.target.type === 'REGION' ? '지역' : selection.target.type === 'ANNOUNCEMENT' ? '공고' : '단지'} 알림을 신청할까요?`}>
       <h2>{selection.target.type === 'REGION' ? '지역' : selection.target.type === 'ANNOUNCEMENT' ? '공고' : '단지'} 알림을 신청할까요?</h2>
-      <p className={styles.description}>{selection.target.name}의 새 공고를 확인할 수 있도록 관심 대상으로 저장해요.</p>
-      <div className={styles.target}><strong>알림 기능은 현재 준비 중이에요.</strong><p className={styles.hint}>{notificationPreparationNotice}</p></div>
+      <div className={styles.target}>{selection.target.name}</div>
+      <p className={styles.description}>{selection.target.type === 'ANNOUNCEMENT' ? '공고 변경 알림은 준비 중이에요. 관심 공고로 저장해 둘게요.' : '새 공고가 올라오면 알림 보관함에 알려 드려요.'}</p>
       <div className={styles.actions}>
         <button className={styles.cancel} type="button" disabled={busy} onClick={dismiss}>취소</button>
         <button className={styles.submit} type="button" disabled={busy || !noticeVersion} onClick={() => {
           const action: Action = { ...selection, event: eventFor(selection, 'CONFIRMED'), authState: 'member',
             pageName: window.location.pathname === '/mypage/notifications' ? 'notification_settings' : 'explorer',
             completeAnalytics: prepareNotificationCompletion() }
-          setDialog(null)
           void send(action)
-        }}>신청하기</button>
+        }}>{busy ? '저장 중…' : '신청하기'}</button>
       </div>
-      <p className={styles.hint}>알림 설정 저장에 이용자 ID와 선택한 대상을 사용해요.</p>
-      <p className={styles.hint}>이 설정은 회원 계정에 연결해 저장돼요.</p>
+      <p className={styles.hint}>회원 계정에 관심 대상을 저장해요. 이용자 ID와 선택한 대상을 사용해요.</p>
       <Link className={styles.helpLink} to="/privacy">개인정보처리방침</Link>
       {!noticeVersion && <p className={styles.hint} role="status">신청 안내를 확인하고 있어요.</p>}
     </InterestDialog>}
-    {dialog === 'prepared' && <InterestDialog onDismiss={dismiss}>
-      <h2 id="notification-interest-title">{notificationPreparationTitle}</h2>
-      <p className={styles.description}>{notificationPreparationDescription}</p>
-      <p className={styles.description}>{notificationPreparationNotice}</p>
+    {dialog === 'completed' && <InterestDialog onDismiss={dismiss}>
+      <h2 id="notification-interest-title">알림 신청을 완료했어요</h2>
+      <p className={styles.description}>{selection?.target.type === 'ANNOUNCEMENT' ? '공고 변경 알림이 준비되면 서비스에서 안내할게요.' : '새 공고가 올라오면 알림 보관함에서 확인할 수 있어요.'}</p>
+      {selection?.target.type !== 'ANNOUNCEMENT' && <p className={styles.hint}>화면 밖에서도 받으려면 알림 설정에서 ‘이 기기 알림 받기’를 켜 주세요.</p>}
       <p className={styles.hint} role="status">{message}</p>
       <div className={styles.actions}><button className={styles.submit} type="button" onClick={dismiss}>확인</button></div>
     </InterestDialog>}

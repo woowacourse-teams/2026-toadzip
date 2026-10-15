@@ -105,3 +105,38 @@ it('오래된 바인딩 해제 충돌은 서버의 최신 등록과 SDK를 건�
   expect(sdk.unregister).not.toHaveBeenCalled()
   client.dispose()
 })
+
+it('로그아웃으로 중지된 같은 계정 기기는 권한을 다시 묻지 않고 복원한다', async () => {
+  const { client, repository, sdk } = setup()
+  vi.mocked(repository.current).mockResolvedValue({ deviceId: 'device', enabled: false, bindingVersion: '2', resumeAfterLogin: true })
+  await client.start()
+  await vi.waitFor(() => expect(client.getSnapshot().status).toBe('on'))
+  expect(sdk.requestPermission).not.toHaveBeenCalled()
+  expect(repository.register).toHaveBeenCalledWith('fid', '1', '2', expect.any(AbortSignal))
+  expect(client.getSnapshot().message).not.toBe('')
+  client.dispose()
+})
+it('서버 저장 전에는 완료를 표시하지 않고 저장 성공 후 완료를 알린다', async () => {
+  const { client, repository } = setup()
+  await client.start()
+  let saved!: (value: Awaited<ReturnType<PushDeviceRepository['register']>>) => void
+  vi.mocked(repository.register).mockImplementationOnce(() => new Promise(resolve => { saved = resolve }))
+  const registering = client.enable()
+  await vi.waitFor(() => expect(repository.register).toHaveBeenCalledOnce())
+  expect(client.getSnapshot().status).toBe('busy')
+  expect(client.getSnapshot().message).not.toBe('')
+  saved({ deviceId: 'device', enabled: true, bindingVersion: '1' })
+  await registering
+  expect(client.getSnapshot().status).toBe('on')
+  expect(client.getSnapshot().message).not.toBe('')
+  client.dispose()
+})
+it('권한이 없으면 로그인 복원 중에 권한 창을 자동으로 띄우지 않는다', async () => {
+  const { client, repository, sdk } = setup('default')
+  vi.mocked(repository.current).mockResolvedValue({ deviceId: 'device', enabled: false, bindingVersion: '2', resumeAfterLogin: true })
+  await client.start()
+  expect(client.getSnapshot().status).toBe('off')
+  expect(sdk.requestPermission).not.toHaveBeenCalled()
+  expect(repository.register).not.toHaveBeenCalled()
+  client.dispose()
+})

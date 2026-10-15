@@ -1,7 +1,7 @@
 import { getApiBaseUrl } from '../api/apiBaseUrl'
 import { record } from '../privacy/api'
 import { NotificationApiError } from './notificationRepository'
-export interface PushDeviceState { readonly deviceId: string | null; readonly enabled: boolean; readonly bindingVersion: string | null }
+export interface PushDeviceState { readonly deviceId: string | null; readonly enabled: boolean; readonly bindingVersion: string | null; readonly resumeAfterLogin?: boolean }
 export interface PushDeviceRepository {
   current(signal: AbortSignal): Promise<PushDeviceState>
   register(fid: string, expectedUserId: string, expectedBindingVersion: string | null, signal: AbortSignal): Promise<PushDeviceState>
@@ -9,10 +9,11 @@ export interface PushDeviceRepository {
 }
 function parseState(value: unknown): PushDeviceState {
   if (!record(value) || typeof value.enabled !== 'boolean'
+    || !(value.resumeAfterLogin === undefined || typeof value.resumeAfterLogin === 'boolean')
     || !(value.deviceId === null || typeof value.deviceId === 'string' && /^[0-9a-f-]{36}$/i.test(value.deviceId))
     || !(value.bindingVersion === null || typeof value.bindingVersion === 'string' && /^[1-9][0-9]{0,18}$/.test(value.bindingVersion))
     || ((value.deviceId === null) !== (value.bindingVersion === null)) || (value.enabled && value.deviceId === null)) throw new Error('기기 설정 응답을 확인하지 못했어요.')
-  return { deviceId: value.deviceId, enabled: value.enabled, bindingVersion: value.bindingVersion }
+  return { deviceId: value.deviceId, enabled: value.enabled, bindingVersion: value.bindingVersion, resumeAfterLogin: value.resumeAfterLogin === true }
 }
 export function createPushDeviceRepository(fetcher: typeof fetch = (...args) => globalThis.fetch(...args)): PushDeviceRepository {
   const base = `${getApiBaseUrl()}/api/v1/notification-push-devices`

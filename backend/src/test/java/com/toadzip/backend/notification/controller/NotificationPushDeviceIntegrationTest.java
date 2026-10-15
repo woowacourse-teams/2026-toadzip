@@ -126,6 +126,52 @@ class NotificationPushDeviceIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(false));
     }
 
+    @Test
+    void 로그아웃으로_중지한_기기는_같은_회원에게만_복원할_수_있다() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        Cookie cookie = register(101, session, null, null);
+        mvc.perform(post("/api/auth/logout").session(session).cookie(cookie)
+                        .with(user("101").roles("USER")).with(csrf()))
+                .andExpect(status().isNoContent());
+        mvc.perform(get(ENDPOINT + "/current").cookie(cookie).with(user("102").roles("USER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resumeAfterLogin").value(false));
+        mvc.perform(get(ENDPOINT + "/current").cookie(cookie).with(user("101").roles("USER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(false))
+                .andExpect(jsonPath("$.resumeAfterLogin").value(true))
+                .andExpect(jsonPath("$.bindingVersion").value("2"));
+        register(101, new MockHttpSession(), cookie, "2");
+        mvc.perform(get(ENDPOINT + "/current").cookie(cookie).with(user("101").roles("USER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.resumeAfterLogin").value(false))
+                .andExpect(jsonPath("$.bindingVersion").value("3"));
+    }
+
+    @Test
+    void 직접_알림을_끄면_재로그인해도_복원하지_않는다() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        Cookie cookie = register(101, session, null, null);
+        mvc.perform(delete(ENDPOINT + "/current").cookie(cookie).with(user("101").roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedUserId\":\"101\",\"bindingVersion\":\"1\"}"))
+                .andExpect(status().isNoContent());
+        mvc.perform(post("/api/auth/logout").session(session).cookie(cookie)
+                        .with(user("101").roles("USER")).with(csrf()))
+                .andExpect(status().isNoContent());
+        mvc.perform(get(ENDPOINT + "/current").cookie(cookie).with(user("101").roles("USER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(false))
+                .andExpect(jsonPath("$.resumeAfterLogin").value(false));
+    }
+
+    @Test
+    void 세션만_만료되어도_기기_알림은_활성_상태를_유지한다() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        Cookie cookie = register(101, session, null, null);
+        session.invalidate();
+        assertThat(jdbc.queryForObject("SELECT enabled FROM notification_push_devices", Boolean.class)).isTrue();
+        mvc.perform(get(ENDPOINT + "/current").cookie(cookie).with(user("101").roles("USER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(true));
+    }
+
     private Cookie register(long userId, MockHttpSession session, Cookie cookie, String version) throws Exception {
         var request = post(ENDPOINT).session(session).with(user(Long.toString(userId)).roles("USER")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(request(userId, version));
