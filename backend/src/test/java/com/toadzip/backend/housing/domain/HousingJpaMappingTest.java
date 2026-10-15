@@ -1,5 +1,6 @@
 package com.toadzip.backend.housing.domain;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -11,6 +12,7 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest
@@ -21,6 +23,20 @@ class HousingJpaMappingTest {
 
     @Autowired
     private EntityManagerFactory entityManagerFactory;
+
+    @Autowired
+    private JdbcClient jdbcClient;
+
+    @Test
+    void JPA로_생성한_주택형_테이블도_단지별_조회_인덱스를_갖는다() {
+        String definition = jdbcClient.sql("""
+                SELECT indexdef FROM pg_indexes
+                WHERE schemaname = 'public' AND tablename = 'housing_types'
+                  AND indexname = 'idx_housing_types_housing_complex_id'
+                """).query(String.class).single();
+
+        assertThat(definition).contains("USING btree (housing_complex_id)");
+    }
 
     @Test
     void 단지_도메인을_JPA_관리_타입으로_등록한다() {

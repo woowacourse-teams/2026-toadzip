@@ -2,6 +2,8 @@ package com.toadzip.backend.housing.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.housing.domain.MapBounds;
@@ -27,6 +29,8 @@ import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ClassPathResource;
@@ -48,6 +52,20 @@ class HousingMapResponseFactoryTest {
     @BeforeEach
     void setUp() {
         factory = new HousingMapResponseFactory(aggregateNodeQuery, complexRepository, summaryMapper);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = MapClusteringStage.class, names = {"SERVICE_ZONE", "METROPOLITAN", "BASIC_REGION"})
+    void 클러스터_단계는_개별_단지의_주택형_집계를_조회하지_않는다(MapClusteringStage stage) {
+        MapBounds bounds = MapBounds.of(decimal("30"), decimal("120"), decimal("45"), decimal("135"));
+        HousingComplexFilterCondition filters = filters();
+        when(aggregateNodeQuery.find(stage, bounds, filters)).thenReturn(List.of());
+
+        HousingMapNodeResult result = factory.create(stage, bounds, filters, zoomPolicy());
+
+        assertEquals(HousingMapRepresentation.AGGREGATE, result.representation());
+        verify(aggregateNodeQuery).find(stage, bounds, filters);
+        verifyNoInteractions(complexRepository, summaryMapper);
     }
 
     @Test
