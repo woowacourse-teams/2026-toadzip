@@ -30,6 +30,7 @@ vi.mock('../../privacy/consentStore', () => ({
 }))
 vi.mock('../../analytics/productAnalytics', () => ({
   captureProductEvent: vi.fn(() => consent.allowed),
+  captureWebPageView: vi.fn(() => consent.allowed),
   createAnalyticsId: () => crypto.randomUUID(),
   setProductPageActive: vi.fn(),
 }))
