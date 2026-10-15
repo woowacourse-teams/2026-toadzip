@@ -6,6 +6,7 @@ import com.toadzip.backend.admin.dto.AdminPage;
 import com.toadzip.backend.admin.dto.AdminSearch;
 import com.toadzip.backend.announcement.dto.request.AdminAnnouncementUpdateRequest;
 import com.toadzip.backend.announcement.dto.request.AdminSupplyRowUpdateRequest;
+import com.toadzip.backend.announcement.dto.request.AdminSupplyTargetUpdateRequest;
 import com.toadzip.backend.announcement.dto.response.AdminAnnouncementDetail;
 import com.toadzip.backend.announcement.service.AdminAnnouncementManagementService;
 import com.toadzip.backend.global.response.ApiResponse;
@@ -76,6 +77,14 @@ public class AdminAnnouncementManagementController {
     public ApiResponse<List<AdminChangeResponse>> history(@PathVariable long id,
             @RequestParam(defaultValue = "0") @Min(0) int page) {
         return new ApiResponse<>(service.history(id, page));
+    }
+
+    @PutMapping("/{id}/supply-targets/{targetId}")
+    public ApiResponse<AdminAnnouncementDetail> updateTarget(@PathVariable long id, @PathVariable long targetId,
+            @Valid @RequestBody AdminSupplyTargetUpdateRequest request, Principal principal) {
+        try (var lease = ownership.acquire()) {
+            return new ApiResponse<>(service.updateTarget(id, targetId, request, principal.getName()));
+        }
     }
 
     @PutMapping("/{id}/supply-rows/{rowId}")

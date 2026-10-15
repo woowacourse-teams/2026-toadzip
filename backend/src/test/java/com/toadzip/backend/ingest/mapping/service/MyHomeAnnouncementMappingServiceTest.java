@@ -537,8 +537,8 @@ class MyHomeAnnouncementMappingServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {0, 3})
-    void 공급기관이_바뀌면_기존_공급행들의_LH_공급대상만_삭제한다(int storedRowCount) {
+    @org.junit.jupiter.params.provider.CsvSource({"0, false", "3, false", "3, true"})
+    void 공급기관이_바뀌면_기존_공급행들의_LH_공급대상만_삭제한다(int storedRowCount, boolean reviewed) {
         saveMappedComplex();
         var sources = List.of(
                 source(0, data("21026", 1, "LH", "동삼2")),
@@ -557,8 +557,16 @@ class MyHomeAnnouncementMappingServiceTest {
             supplyRowRepository.deleteAll();
         }
         for (SupplyRow row : supplyRowRepository.findAll()) {
+            SupplyTarget lhTarget = SupplyTarget.createFromSource(row, "LH:" + row.getId(), "일반", null,
+                    1, null, null, 1);
+            if (reviewed) {
+                lhTarget.reviseByAdmin("청년", null, 2, null, new BigDecimal("7000000"),
+                        new BigDecimal("70000"), null, "PDF 확인");
+                row.protectConditionsByAdmin();
+                supplyRowRepository.save(row);
+            }
             supplyTargetRepository.saveAll(List.of(
-                    SupplyTarget.createFromSource(row, "LH:" + row.getId(), "일반", null, 1, null, null, 1),
+                    lhTarget,
                     SupplyTarget.createFromSource(row, "OTHER:" + row.getId(), "일반", null, 1, null, null, 2),
                     SupplyTarget.create(row, "수동", null, 1, null, null, null, null, "공고문 참조", 3)
             ));
@@ -576,10 +584,16 @@ class MyHomeAnnouncementMappingServiceTest {
             assertThat(stored.getProvider()).isEqualTo(AgencyCode.SH);
             assertThat(stored.getLhPanId()).isNull();
         });
-        assertThat(supplyTargetRepository.findAll()).hasSize(storedRowCount * 2)
+        assertThat(supplyTargetRepository.findAll()).hasSize(storedRowCount * (reviewed ? 3 : 2))
                 .allSatisfy(target -> assertThat(target.getSourceSupplyTargetIdentifier())
                         .satisfiesAnyOf(identifier -> assertThat(identifier).isNull(),
-                                identifier -> assertThat(identifier).startsWith("OTHER:")));
+                                identifier -> assertThat(identifier).startsWith("OTHER:"),
+                                identifier -> {
+                                    assertThat(reviewed).isTrue();
+                                    assertThat(identifier).startsWith("LH:");
+                                    assertThat(target.isAdminModified()).isTrue();
+                                    assertThat(target.getMonthlyRent()).isEqualByComparingTo("70000");
+                                }));
     }
 
     @Test

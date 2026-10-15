@@ -14,8 +14,10 @@ const summary = { id: 7, name: '두꺼비 단지', subtitle: '서울 중구 세�
 function detail(): ManagementDetailData {
   return { summary, sourceIdentifier: 'TEST-7', data: { version: 2, name: summary.name, agencyCode: 'LH', rentalType: 'HAPPY_HOUSING', address: { roadAddress: summary.subtitle, pnu: '1114010100100010000', legalDongCode: '1114010100', provinceCode: '11', cityCountyDistrictCode: '11140', latitude: 37.5, longitude: 127 }, totalHouseholdCount: 10, totalParkingCount: 5 }, housingTypes: [], announcements: [], supplyRows: [], scheduleReviewed: false, schedules: [] }
 }
-function renderPage(path = '/admin/complexes?keyword=두꺼비&provider=LH') {
+function renderPage(path = '/admin/complexes?keyword=두꺼비&provider=LH', showList = true) {
   render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/admin/complexes/:id?" element={<ManagementWorkspace resource="complexes" />} /><Route path="/admin/announcements/:id?" element={<ManagementWorkspace resource="announcements" />} /></Routes></MemoryRouter>)
+  const toggle = screen.queryByRole('button', { name: '목록과 검색 펼치기' })
+  if (showList && toggle) fireEvent.click(toggle)
 }
 beforeEach(() => {
   vi.clearAllMocks()
@@ -23,6 +25,17 @@ beforeEach(() => {
   api.getManagementDetail.mockResolvedValue(detail())
 })
 afterEach(() => vi.restoreAllMocks())
+it('상세에서는 편집에 집중하고 필요할 때 기존 목록과 검색을 펼친다', async () => {
+  renderPage('/admin/complexes/7?keyword=두꺼비', false)
+  await screen.findByLabelText('이름')
+  expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '목록과 검색 펼치기' }))
+  expect(screen.getByRole('table')).toBeVisible()
+  expect(screen.getByLabelText('단지명·주소')).toHaveValue('두꺼비')
+  fireEvent.click(screen.getByRole('button', { name: '목록과 검색 접기' }))
+  expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  expect(screen.getByLabelText('이름')).toHaveValue(summary.name)
+})
 
 function startInlineComplexRegistration() {
   let finish!: (value: HousingComplexCreateResponse) => void
@@ -83,7 +96,7 @@ it('행을 열어도 목록과 검색을 유지하며 바로 수정하고 닫는
   const table = await screen.findByRole('table')
   fireEvent.click(screen.getByRole('link', { name: summary.name }))
   expect(await screen.findByLabelText('이름')).toHaveValue(summary.name)
-  expect(screen.getByRole('table')).toBe(table)
+  expect(screen.getByRole('table', { hidden: true })).toBe(table)
   expect(screen.getByLabelText('단지명·주소')).toHaveValue('두꺼비')
   expect(screen.getByLabelText('기관')).toHaveValue('LH')
   expect(screen.getByRole('region', { name: '단지 상세·수정' })).toHaveFocus()

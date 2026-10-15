@@ -14,6 +14,7 @@ import { SourceUrl } from '../shared/SourceUrl'
 import { ComplexVerificationPanel } from './ComplexVerificationPanel'
 import { ComplexVerificationBadge } from './ComplexVerificationBadge'
 import { AddressPicker } from '../registration/AddressPicker'
+import { DocumentCorrectionPanel } from '../documents/DocumentCorrectionPanel'
 
 export function ManagementDetail({resource, embedded = false, detailId, onChanged, onBusyChange}: {resource:ManagementResource; embedded?: boolean; detailId?: string; onChanged?: () => void; onBusyChange?: (busy: boolean) => void}) {
   const {id: routeId = ''} = useParams()
@@ -69,9 +70,11 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
         <p>{value.summary.deleted ? '다시 서비스 조회 대상이 됩니다.' : '서비스 검색·상세에서 제외됩니다. 원천과 수정 이력은 유지되며 다시 복구할 수 있습니다.'}</p>
         {resource === 'complexes' ? <p>연결 공고 {value.announcements.length}건 · 주택형 {value.housingTypes.length}건. 휴지통에 없는 연결 공고가 있으면 삭제할 수 없습니다.</p> : <p>연결 공급정보 {value.supplyRows.length}건은 함께 보존됩니다.</p>}
         <div className="admin-inline"><button disabled={busy} className="admin-danger" onClick={() => void trash()}>{busy ? '처리 중…' : value.summary.deleted ? '복구 확인' : '휴지통으로 이동'}</button><button disabled={busy} onClick={() => setConfirmation(false)}>취소</button></div></section> : null}
-      {!editing || embedded ? <nav className="admin-section-tabs" aria-label="상세 섹션">{[['info','기본정보'], ...(resource === 'complexes' ? [['verification', '데이터 검증']] : []), ...(embedded && resource === 'announcements' ? [['schedules', '접수 일정']] : []), ['relations',resource === 'complexes' ? '주택형·연결 공고' : '공급정보·단지 연결'],['history','출처·수정 이력']].map(([key,label]) =>
+      {!editing || embedded ? <nav className="admin-section-tabs" aria-label="상세 섹션">{[['info','기본정보'], ...(resource === 'complexes' ? [['verification', '데이터 검증']] : []), ['documents', 'PDF로 보완'], ...(embedded && resource === 'announcements' ? [['schedules', '접수 일정']] : []), ['relations',resource === 'complexes' ? '주택형·연결 공고' : '공급정보·단지 연결'],['history','출처·수정 이력']].map(([key,label]) =>
         <button data-admin-navigation={section !== key || undefined} disabled={busy || verificationBusy} key={key} type="button" aria-pressed={section === key} onClick={() => {if (section !== key) {setSection(key);setDirty(false)}}}>{label}</button>)}</nav> : null}
       <div className="management-detail-content" role="region" aria-label={`${resource === 'complexes' ? '단지' : '공고'} 상세 내용`} tabIndex={0}>
+      {section === 'documents' ? <DocumentCorrectionPanel key={`${id}-${value.data.version}`} resource={resource} detail={value}
+        onSaved={saved} onBusyChange={setVerificationBusy} onReload={() => setAttempt(current => current + 1)} /> : null}
       {section === 'verification' && (!editing || embedded) && resource === 'complexes' ? <ComplexVerificationPanel key={id}
         id={id} version={Number(value.data.version)} deleted={value.summary.deleted} announcements={value.announcements}
         onBusyChange={setVerificationBusy}

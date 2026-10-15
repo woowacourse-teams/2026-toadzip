@@ -13,6 +13,7 @@ export function ManagementWorkspace({ resource }: { resource: ManagementResource
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const [revision, setRevision] = useState(0)
+  const [showList, setShowList] = useState(false)
   const workspaceRef = useRef<HTMLElement>(null)
   const editorRef = useRef<HTMLElement>(null)
   const addRef = useRef<HTMLAnchorElement>(null)
@@ -57,8 +58,9 @@ export function ManagementWorkspace({ resource }: { resource: ManagementResource
         {title} 추가
       </Link>
     </header>
+    {id ? <div className={styles.contextBar}><Link to={back}>← 목록으로 돌아가기</Link><button type="button" aria-expanded={showList} onClick={() => setShowList(current => !current)}>{showList ? '목록과 검색 접기' : '목록과 검색 펼치기'}</button></div> : <p className={styles.description}>{title}를 선택해 정보를 확인하거나 공식 자료로 보완하세요.</p>}
     <div className={`${styles.body} ${id ? styles.withEditor : ''}`}>
-      <ManagementList resource={resource} embedded compact={Boolean(id)} refresh={revision} />
+      <div className={styles.listPane} hidden={Boolean(id) && !showList}><ManagementList resource={resource} embedded compact={false} refresh={revision} /></div>
       {id ? <section ref={editorRef} tabIndex={-1} className={styles.editor} aria-label={`${title} ${id === 'new' ? '추가' : '상세·수정'}`}>
         <div className={styles.editorHeading}><strong>{id === 'new' ? `${title} 추가` : `${title} 상세·수정`}</strong><Link to={back} aria-label="편집 닫기">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>

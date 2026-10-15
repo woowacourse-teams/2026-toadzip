@@ -37,6 +37,7 @@ function show(path = '/admin/complexes/7?provider=LH&verification=UNREVIEWED') {
   render(<MemoryRouter initialEntries={[path]}><Routes>
     <Route path="/admin/complexes/:id?" element={<ManagementWorkspace resource="complexes" />} />
   </Routes></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button', { name: '목록과 검색 펼치기' }))
 }
 beforeEach(() => {
   vi.clearAllMocks()

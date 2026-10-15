@@ -59,6 +59,12 @@
 .admin-confirm h2 {font-size:18px;}
 .admin-change {padding:16px 0;border-bottom:1px solid #dbe5e1;}
 .admin-change summary,.pipeline-details summary {cursor:pointer;font-size:14px;font-weight:600;line-height:1.6;}
+.admin-history-summary {display:grid;gap:16px;margin-top:16px;}
+.admin-history-summary caption {text-align:left;padding:12px 16px;font-weight:700;}
+.admin-history-summary .admin-table {table-layout:fixed;}
+.admin-history-summary .admin-table :is(th,td) {overflow-wrap:anywhere;white-space:normal;}
+.admin-history-record {margin-top:18px;padding:14px;border:1px solid var(--ds-color-divider);border-radius:8px;}
+.admin-history-record>summary {color:var(--ds-color-label);font-size:13px;}
 .admin-change-values {display:grid;grid-template-columns:1fr 1fr;gap:18px;}
 .admin-change-values pre {max-height:350px;overflow:auto;background:#f1f4f2;padding:16px;font-size:12px;}
 .complex-picker {margin:16px 0;}
