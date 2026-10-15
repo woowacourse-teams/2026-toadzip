@@ -5,6 +5,7 @@ import { compareOfficialComplex, parseOfficialList, type CoverageResult, type Of
 import { downloadText } from './documentReview'
 import { SourceUrl } from '../shared/SourceUrl'
 import styles from './DocumentReview.module.css'
+import { OfficialSourceWorkflow } from '../quality/OfficialSourceWorkflow'
 
 const example = JSON.stringify({ sourceUrl: 'https://공식기관의-단지목록-주소', asOf: '2026-10-12', agencyCode: 'LH', complexes: [{ name: '공식 단지명', roadAddress: '공식 도로명주소' }] }, null, 2)
 const statusLabels = { MATCHED: '등록 확인', MISSING: '미등록 후보', REVIEW: '동일성 검토', DELETED: '휴지통 후보', ERROR: '조회 실패' }
@@ -51,6 +52,7 @@ export function ComplexCoveragePage() {
   return <section className={`${styles.panel} ${styles.coverage} ph-no-capture`}>
     <header className={styles.pageHeading}><span className={styles.eyebrow}>데이터 품질 관리</span><h1>단지 누락 대조</h1><p>공식 목록에 있는 단지가 서비스에도 등록되어 있는지 확인하세요.</p></header>
     <div className={styles.workflow} aria-label="대조 순서"><span><b>1</b> 목록 입력</span><span><b>2</b> 등록 여부 대조</span><span><b>3</b> 확인할 후보 검토</span></div>
+    <section className={styles.card} aria-label="공식 자료 가져오기"><OfficialSourceWorkflow disabled={busy} onImport={next => { setMode('json'); setInput(JSON.stringify(next, null, 2)); reset() }} /></section>
     <section className={styles.card} aria-label="대조할 목록 입력">
       <header className={styles.cardHeading}><div><h2>대조할 단지 목록</h2><p>공식 홈페이지·API·PDF에서 확인한 이름과 도로명주소를 입력하세요.</p></div><span className={styles.badge}>한 번에 최대 50개</span></header>
       <div className={styles.modeSwitch} aria-label="목록 입력 방식"><button type="button" disabled={busy} aria-pressed={mode === 'manual'} onClick={() => { setMode('manual'); reset() }}>직접 입력</button><button type="button" disabled={busy} aria-pressed={mode === 'json'} onClick={() => { setMode('json'); reset() }}>JSON 가져오기</button></div>
