@@ -1,5 +1,6 @@
 import { type JsonValue, type ManagementValues } from './managementContract'
 export const labels: Record<string, string> = {
+  UPDATE_COMPARED: '원천 비교 후 수정', LINK_COMPARISON_SOURCE: '비교 원천 연결', UNLINK_COMPARISON_SOURCE: '비교 원천 해제',
   LONG_TERM_JEONSE: '장기전세', HAPPY_HOUSING: '행복주택', NATIONAL_RENTAL: '국민임대', PERMANENT_RENTAL: '영구임대',
   PUBLIC_RENTAL_5Y: '5년 공공임대', PUBLIC_RENTAL_10Y: '10년 공공임대', PUBLIC_RENTAL_50Y: '50년 공공임대',
   INTEGRATED_PUBLIC_RENTAL: '통합공공임대', REDEVELOPMENT_RENTAL: '재개발임대', ETC: '기타',

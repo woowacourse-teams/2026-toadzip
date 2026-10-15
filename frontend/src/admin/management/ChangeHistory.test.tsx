@@ -6,6 +6,24 @@ import { getManagementHistory } from './api'
 vi.mock('./api', async original => ({ ...(await original<typeof import('./api')>()), getManagementHistory: vi.fn() }))
 beforeEach(() => vi.mocked(getManagementHistory).mockReset())
 
+it('원천 비교 수정은 변경값과 당시 원천 근거를 분리해 표시한다', async () => {
+  vi.mocked(getManagementHistory).mockResolvedValue([{
+    id: 2, action: 'UPDATE_COMPARED', actor: '운영자', occurredAt: '2026-10-15T00:00:00Z',
+    beforeValue: JSON.stringify({ totalHouseholdCount: 10, version: 1 }),
+    afterValue: JSON.stringify({ totalHouseholdCount: 120, version: 2, comparisonEvidence: { note: '단지 전체 범위 확인', sources: [
+      { category: 'MYHOME_COMPLEX', data: { name: '두꺼비 원천', collectedAt: '2026-10-08T00:00:00Z', raw: { hshld_co: 120 } } },
+    ] } }),
+  }])
+  render(<ChangeHistory resource="complexes" id="7" version={2} />)
+  fireEvent.click(await screen.findByText(/원천 비교 후 수정 · 운영자/))
+  expect(screen.getByRole('table', { name: '수정한 항목' })).not.toHaveTextContent('comparisonEvidence')
+  const evidence = screen.getByRole('region', { name: '확인한 DB 원천 근거' })
+  expect(evidence).toHaveTextContent('단지 전체 범위 확인')
+  expect(evidence).toHaveTextContent('두꺼비 원천')
+  fireEvent.click(within(evidence).getByText('수정 당시 원천 값'))
+  expect(within(evidence).getByRole('table')).toHaveTextContent('120')
+})
+
 it('변경 전후 값을 경로·값 표로 표시하고 원문 URL을 연결한다', async () => {
   vi.mocked(getManagementHistory).mockResolvedValue([{
     id: 1, action: 'UPDATE', actor: '운영자', occurredAt: '2026-10-01T00:00:00Z',

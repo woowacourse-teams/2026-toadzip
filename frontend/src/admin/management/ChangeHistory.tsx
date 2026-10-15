@@ -30,10 +30,24 @@ function readValue(text:string): unknown { try { return JSON.parse(text) as unkn
 function ChangedValues({ before, after }: { before: unknown; after: unknown }) {
   const previous = new Map(storedDataRows(before).map(row => [row.path, row.value]))
   const next = new Map(storedDataRows(after).map(row => [row.path, row.value]))
-  const paths = [...new Set([...previous.keys(), ...next.keys()])].filter(path => path !== 'version' && !path.startsWith('documentEvidence')
+  const paths = [...new Set([...previous.keys(), ...next.keys()])].filter(path => path !== 'version' && !path.startsWith('documentEvidence') && !path.startsWith('comparisonEvidence')
     && (previous.has(path) !== next.has(path) || JSON.stringify(previous.get(path)) !== JSON.stringify(next.get(path))))
   return <div className="admin-history-summary">
     {paths.length ? <div className="admin-table-scroll"><table className="admin-table"><caption>수정한 항목</caption><thead><tr><th scope="col">항목</th><th scope="col">변경 전</th><th scope="col">변경 후</th></tr></thead><tbody>{paths.map(path => <tr key={path}><th scope="row">{storedFieldLabel(path)}</th><td>{storedDataValue(path, previous.get(path))}</td><td>{storedDataValue(path, next.get(path))}</td></tr>)}</tbody></table></div> : <p>비교할 값의 차이가 없습니다. 전체 기록에서 내용을 확인하세요.</p>}
     {isRecord(after) && isRecord(after.documentEvidence) ? <StoredDataTable data={after.documentEvidence} label="확인한 PDF 근거" readable /> : null}
+    {isRecord(after) && isRecord(after.comparisonEvidence) ? <ComparisonEvidence value={after.comparisonEvidence} /> : null}
   </div>
+}
+
+function ComparisonEvidence({ value }: { value: Record<string, unknown> }) {
+  const sources = Array.isArray(value.sources) ? value.sources.filter(isRecord) : []
+  return <section aria-label="확인한 DB 원천 근거"><h3>확인한 DB 원천 근거</h3>
+    {typeof value.note === 'string' ? <p>{value.note}</p> : null}
+    {!sources.length ? <p>연결한 DB 원천 없이 공식 자료를 직접 확인해 수정했습니다.</p> : <ul>{sources.map((source, index) => {
+      const row = isRecord(source.data) ? source.data : null
+      return <li key={index}><strong>{source.category === 'MYHOME_COMPLEX' ? '마이홈 단지' : 'LH 임대 단지'} · {row && typeof row.name === 'string' ? row.name : '현재 원천 없음'}</strong>
+        {row && typeof row.collectedAt === 'string' ? <p>수집 시각 {new Date(row.collectedAt).toLocaleString('ko-KR')}</p> : null}
+        {row ? <details><summary>수정 당시 원천 값</summary><StoredDataTable data={row.raw} label={`수정 근거 원천 ${index + 1}`} /></details> : null}</li>
+    })}</ul>}
+  </section>
 }
