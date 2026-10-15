@@ -57,6 +57,8 @@ it('단지를 열면 비교 화면을 먼저 표시하고 수정 작성 중에�
   fireEvent.click(await screen.findByRole('button', { name: '이름 수정' }))
   fireEvent.change(screen.getByLabelText('이름 수정값'), { target: { value: '비교하며 수정 중' } })
   fireEvent.click(screen.getByText('확인 범위·검토 기록'))
+  expect(screen.queryByText(/연결된 수집 원천이 없습니다/)).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: '저장 좌표 보기 ↗' })).toBeVisible()
   expect(await screen.findByRole('checkbox', { name: '단지명 확인' })).toBeDisabled()
   expect(screen.getByRole('button', { name: '검토 저장' })).toBeDisabled()
   vi.spyOn(window, 'confirm').mockReturnValue(true)
