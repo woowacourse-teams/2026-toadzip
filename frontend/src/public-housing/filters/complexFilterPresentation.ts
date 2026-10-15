@@ -118,8 +118,10 @@ export function formatDepositTick(value: number) {
   return value === 500_000_000 ? '5억+' : value === 0 ? '0' : formatHousingMoney(value)
 }
 
+// 좁은 눈금에서 글자가 겹치지 않도록 보증금 눈금(1억, 5억+)처럼 '원'을 생략한다.
 export function formatMonthlyRentTick(value: number) {
-  return value === 600_000 ? '60만원+' : value === 0 ? '0' : formatHousingMoney(value)
+  if (value === 0) return '0'
+  return `${value / 10_000}만${value === 600_000 ? '+' : ''}`
 }
 
 export function formatArea(value: number) {

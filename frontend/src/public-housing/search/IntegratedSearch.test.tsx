@@ -61,6 +61,40 @@ describe('IntegratedSearch', () => {
     expect(screen.getByRole('searchbox')).toHaveFocus()
   })
 
+  it('공고 결과의 접수 상태와 게시일을 목록·상세와 같은 표기로 보여 준다', async () => {
+    const closed = { ...item('ANNOUNCEMENT', '2', '마감된 공고'), applicationStatus: 'CLOSED' }
+    render(<IntegratedSearch repository={repositoryWith(response([item('ANNOUNCEMENT', '1', '서울 공고'), closed], [], []))} onSelect={vi.fn()} />)
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })
+
+    const announcements = await screen.findByRole('region', { name: '공고' })
+    const applying = await within(announcements).findByRole('button', { name: /서울 공고/ })
+    expect(within(applying).getByText('접수중')).toBeVisible()
+    expect(within(applying).getByText('2026.09.01')).toHaveAttribute('dateTime', '2026-09-01')
+    expect(within(within(announcements).getByRole('button', { name: /마감된 공고/ })).getByText('접수마감')).toBeVisible()
+  })
+
+  it('결과가 없는 유형은 그룹을 숨기고 결과 아래에 한 줄로 모아 안내한다', async () => {
+    render(<IntegratedSearch repository={repositoryWith(response([item('ANNOUNCEMENT', '1', '서울 공고')], [], []))} onSelect={vi.fn()} />)
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })
+
+    const summary = await screen.findByText('지역·지하철역·단지 검색 결과가 없어요.')
+    const announcements = screen.getByRole('region', { name: '공고' })
+    expect(within(announcements).getByRole('button', { name: /서울 공고/ })).toBeVisible()
+    expect(screen.queryByRole('region', { name: '지역' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: '단지' })).not.toBeInTheDocument()
+    expect(announcements.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('공고 결과의 접수 상태를 목록과 같은 배지로 표시한다', async () => {
+    const upcoming = { ...item('ANNOUNCEMENT', '2', '공고중 공고'), applicationStatus: 'BEFORE_APPLICATION' }
+    render(<IntegratedSearch repository={repositoryWith(response([upcoming], [], []))} onSelect={vi.fn()} />)
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })
+
+    const result = await screen.findByRole('button', { name: /공고중 공고/ })
+    expect(result.querySelector('[data-status-badge]')).toHaveAttribute('data-tone', 'upcoming')
+    expect(result).toHaveAccessibleName(/^공고중\s*공고중 공고/)
+  })
+
   it('외부 읍면동은 좌표로 선택할 수 있고 내부 지역 알림을 제공하지 않는다', async () => {
     const region = { ...item('REGION', 'local-region:역삼동', '서울 강남구 역삼동'), regionCode: null }
     const onSelect = vi.fn()
@@ -88,7 +122,7 @@ describe('IntegratedSearch', () => {
     expect(record).not.toHaveBeenCalled()
     fireEvent.click(await screen.findByRole('button', { name: '신청하기' }))
     expect(await screen.findByRole('dialog', { name: '알림 신청을 완료했어요' })).toBeVisible()
-    expect(screen.getByRole('heading', { name: '검색결과' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: '검색 결과' })).toBeVisible()
     expect(onSelect).not.toHaveBeenCalled()
     expect(record).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'CONFIRMED', source: 'REGION_SEARCH', targetType: 'REGION', targetId: '11',
@@ -130,7 +164,7 @@ describe('IntegratedSearch', () => {
       fireEvent.change(input, { target: { value: ' 서  ' } })
       await act(async () => vi.advanceTimersByTime(200))
       expect(repository.search).not.toHaveBeenCalled()
-      expect(screen.queryByRole('heading', { name: '검색결과' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: '검색 결과' })).not.toBeInTheDocument()
 
       fireEvent.change(input, { target: { value: ' 서 울 ' } })
       await act(async () => vi.advanceTimersByTime(199))
@@ -138,17 +172,17 @@ describe('IntegratedSearch', () => {
       await act(async () => vi.advanceTimersByTime(1))
       expect(repository.search).toHaveBeenCalledTimes(4)
       expect(repository.search).toHaveBeenCalledWith('서 울', false, 0, expect.any(AbortSignal), 'REGION')
-      expect(screen.getByRole('heading', { name: '검색결과' })).toBeVisible()
+      expect(screen.getByRole('heading', { name: '검색 결과' })).toBeVisible()
 
       fireEvent.change(input, { target: { value: '' } })
       expect(searchRegion.querySelector('.integrated-search__body')).toBeNull()
-      expect(screen.queryByRole('heading', { name: '검색결과' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: '검색 결과' })).not.toBeInTheDocument()
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it('지역 조작부는 입력 다음과 검색결과 앞에 남고 결과 스크롤과 검색 닫기에 영향받지 않는다', async () => {
+  it('지역 조작부는 입력 다음과 검색 결과 앞에 남고 결과 스크롤과 검색 닫기에 영향받지 않는다', async () => {
     const regions = Array.from({ length: 20 }, (_, index) => item('REGION', String(index), `서울 지역 ${index}`))
     render(<IntegratedSearch
       repository={repositoryWith(response([], [], regions))}
@@ -160,7 +194,7 @@ describe('IntegratedSearch', () => {
     expect(input.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     fireEvent.change(input, { target: { value: '서울' } })
     await screen.findByRole('button', { name: /서울 지역 19/ })
-    const heading = screen.getByRole('heading', { name: '검색결과' })
+    const heading = screen.getByRole('heading', { name: '검색 결과' })
     expect(control.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     const body = screen.getByRole('region', { name: '통합 검색' }).querySelector('.integrated-search__body')
     if (!(body instanceof HTMLElement)) throw new Error('검색 결과 스크롤 영역 없음')
@@ -168,7 +202,7 @@ describe('IntegratedSearch', () => {
     body.scrollTop = 800
     fireEvent.scroll(body)
     expect(screen.getByRole('region', { name: '검색 지역 표시' })).toBe(control)
-    fireEvent.click(screen.getByRole('button', { name: '검색결과 닫기' }))
+    fireEvent.click(screen.getByRole('button', { name: '검색 결과 닫기' }))
     expect(screen.getByRole('region', { name: '검색 지역 표시' })).toBe(control)
     expect(screen.getByRole('button', { name: '전체 보기' })).toBeVisible()
   })
@@ -189,14 +223,14 @@ describe('IntegratedSearch', () => {
       .querySelector('.integrated-search__body')
     expect(body).not.toBeNull()
 
-    expect(body).toContainElement(screen.getByText('지역 검색 중입니다.'))
+    expect(body).toContainElement(screen.getByText('지역 검색 중이에요.'))
     expect(body).toContainElement(await screen.findByRole('alert'))
     fireEvent.click(screen.getByRole('button', { name: '지역 다시 시도' }))
-    expect(body).toContainElement(await screen.findByText('지역 검색 결과가 없습니다.'))
+    expect(body).toContainElement(await screen.findByText('검색 결과가 없어요.'))
     expect(search).toHaveBeenCalledTimes(5)
   })
 
-  it('검색결과 제목과 지역 공고 단지 순서를 표시하고 유형별 첫 페이지를 요청한다', async () => {
+  it('검색 결과 제목과 지역 공고 단지 순서를 표시하고 유형별 첫 페이지를 요청한다', async () => {
     const announcement = item('ANNOUNCEMENT', '1', '서울 행복주택 공고')
     const complex = item('COMPLEX', '2', '서울 행복주택 단지')
     const region = item('REGION', '11', '서울특별시 전체')
@@ -206,11 +240,12 @@ describe('IntegratedSearch', () => {
 
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '  서울  ' } })
     await screen.findByText('서울 행복주택 공고')
+    expect(await screen.findByText('지하철역 검색 결과가 없어요.')).toBeVisible()
 
     expect(screen.getAllByRole('heading').map((heading) => heading.textContent)).toEqual([
-      '검색결과', '지역', '지하철역', '공고', '단지',
+      '검색 결과', '지역', '공고', '단지',
     ])
-    expect(screen.getByRole('button', { name: '검색결과 닫기' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '검색 결과 닫기' })).toBeVisible()
     for (const type of ['REGION', 'SUBWAY_STATION', 'ANNOUNCEMENT', 'COMPLEX']) {
       expect(repository.search).toHaveBeenCalledWith('서울', false, 0, expect.any(AbortSignal), type)
     }
@@ -220,7 +255,7 @@ describe('IntegratedSearch', () => {
     expect(onSelect).toHaveBeenCalledWith(announcement)
   })
 
-  it('검색결과 닫기는 검색어와 결과만 지우고 선택 콜백을 호출하지 않는다', async () => {
+  it('검색 결과 닫기는 검색어와 결과만 지우고 선택 콜백을 호출하지 않는다', async () => {
     const onSelect = vi.fn()
     const onActiveChange = vi.fn()
     render(<IntegratedSearch
@@ -231,7 +266,7 @@ describe('IntegratedSearch', () => {
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })
     await screen.findByText('서울 단지')
 
-    fireEvent.click(screen.getByRole('button', { name: '검색결과 닫기' }))
+    fireEvent.click(screen.getByRole('button', { name: '검색 결과 닫기' }))
 
     expect(screen.getByRole('searchbox')).toHaveValue('')
     expect(screen.getByRole('searchbox')).toHaveFocus()
@@ -259,7 +294,7 @@ describe('IntegratedSearch', () => {
     expect(activeAtSelection).toBe(false)
     expect(input).toHaveValue('')
     expect(input).toHaveFocus()
-    expect(screen.queryByRole('heading', { name: '검색결과' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '검색 결과' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /서울 선택 결과.*서울특별시/ })).not.toBeInTheDocument()
     expect(onActiveChange).toHaveBeenLastCalledWith(false)
     expect(vi.mocked(repository.search).mock.calls.every((call) => call[3].aborted)).toBe(true)
@@ -270,7 +305,7 @@ describe('IntegratedSearch', () => {
     expect(repository.search).toHaveBeenCalledTimes(8)
   })
 
-  it('지역 선택은 검색결과를 닫고 좌표 없는 지역도 선택할 수 있다', async () => {
+  it('지역 선택은 검색 결과를 닫고 좌표 없는 지역도 선택할 수 있다', async () => {
     const region = item('REGION', '41110', '수원시')
     const unavailable = { ...item('REGION', '99999', '미지원 지역'), latitude: null }
     const onSelect = vi.fn()
@@ -283,7 +318,7 @@ describe('IntegratedSearch', () => {
 
     expect(onSelect).toHaveBeenCalledExactlyOnceWith(region)
     expect(screen.getByRole('searchbox')).toHaveValue('')
-    expect(screen.queryByRole('heading', { name: '검색결과' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '검색 결과' })).not.toBeInTheDocument()
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '수원' } })
     const unavailableButton = await screen.findByRole('button', { name: /미지원 지역/ })
     expect(unavailableButton).toBeEnabled()
@@ -416,18 +451,18 @@ describe('IntegratedSearch', () => {
     expect(search).toHaveBeenCalledWith('부산', false, 0, expect.any(AbortSignal), 'COMPLEX')
   })
 
-  it('검색결과를 닫은 뒤 늦게 끝난 요청 결과를 표시하지 않는다', async () => {
+  it('검색 결과를 닫은 뒤 늦게 끝난 요청 결과를 표시하지 않는다', async () => {
     const pending = deferred<IntegratedSearchResponse>()
     const search = vi.fn().mockReturnValue(pending.promise)
     render(<IntegratedSearch repository={{ search }} onSelect={vi.fn()} />)
 
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '서울' } })
     await waitFor(() => expect(search).toHaveBeenCalledTimes(4))
-    fireEvent.click(screen.getByRole('button', { name: '검색결과 닫기' }))
+    fireEvent.click(screen.getByRole('button', { name: '검색 결과 닫기' }))
     await act(async () => pending.resolve(response([], [item('COMPLEX', '1', '서울 단지')], [])))
 
     expect(screen.getByRole('searchbox')).toHaveValue('')
-    expect(screen.queryByRole('heading', { name: '검색결과' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '검색 결과' })).not.toBeInTheDocument()
     expect(screen.queryByText('서울 단지')).not.toBeInTheDocument()
   })
 

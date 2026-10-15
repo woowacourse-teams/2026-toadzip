@@ -173,7 +173,7 @@ export function AnnouncementFilterPanel({
               <RegionFilterFields
                 initialRegionCode={formFilters.regionCode ?? ''}
                 messageId="announcement-region-district-load-error"
-                loadingMessage="시·군·구 목록을 불러오는 중입니다."
+                loadingMessage="시·군·구 목록을 불러오는 중이에요."
                 styles={{
                   regionFields: styles.regionFields,
                   field: styles.field,

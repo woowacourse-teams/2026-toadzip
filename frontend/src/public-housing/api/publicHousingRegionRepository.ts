@@ -22,7 +22,7 @@ export class PublicHousingRegionHttpError extends Error {
   readonly traceId: string | null
 
   constructor(status: number, body: HttpErrorBody) {
-    super(body.message ?? '지역 정보를 불러오지 못했습니다.')
+    super(body.message ?? '지역 정보를 불러오지 못했어요.')
     this.name = 'PublicHousingRegionHttpError'
     this.status = status
     this.code = body.code

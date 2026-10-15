@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { StrictMode, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useCurrentLocation } from './useCurrentLocation.ts'
+import { LOCATION_ERROR_VISIBLE_MS, useCurrentLocation } from './useCurrentLocation.ts'
 
 let succeed: PositionCallback
 let fail: PositionErrorCallback | null
@@ -130,6 +130,24 @@ describe('현재 위치 확인', () => {
     expect(onLocated).not.toHaveBeenCalled()
     act(() => result.current.locate())
     expect(getCurrentPosition).toHaveBeenCalledTimes(2)
+  })
+
+  it('오류 안내는 잠시 뒤 스스로 닫히고 다시 확인하면 새로 표시한다', () => {
+    vi.useFakeTimers()
+    try {
+      const { result } = renderHook(() => useCurrentLocation(false, vi.fn()))
+      act(() => result.current.locate())
+      act(() => fail?.(error(1)))
+      act(() => vi.advanceTimersByTime(LOCATION_ERROR_VISIBLE_MS - 1))
+      expect(result.current.state.kind).toBe('error')
+      act(() => vi.advanceTimersByTime(1))
+      expect(result.current.state).toEqual({ kind: 'idle' })
+      act(() => result.current.locate())
+      act(() => fail?.(error(2)))
+      expect(result.current.state.kind).toBe('error')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it.each([[NaN, 127], [91, 127], [37, 181], [37, Infinity]])(

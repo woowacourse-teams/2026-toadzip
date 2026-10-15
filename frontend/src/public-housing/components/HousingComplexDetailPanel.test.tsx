@@ -2,7 +2,7 @@ import type { NotificationInterestRepository } from '../interest/notificationInt
 import { MemoryRouter } from 'react-router'
 /// <reference types="node" />
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -122,6 +122,36 @@ function factValue(container: HTMLElement, term: string) {
 
 describe('HousingComplexDetailPanel', () => {
   beforeEach(() => localStorage.removeItem('toadzip.area-unit'))
+
+  it('본문 단지명이 보이는 동안 헤더의 단지명을 숨기고 스크롤로 벗어나면 다시 보여 준다', () => {
+    const observed: Array<{ target: Element, callback: IntersectionObserverCallback }> = []
+    vi.stubGlobal('IntersectionObserver', class {
+      readonly callback: IntersectionObserverCallback
+      constructor(callback: IntersectionObserverCallback) { this.callback = callback }
+      observe(target: Element) { observed.push({ target, callback: this.callback }) }
+      disconnect() {}
+    })
+    try {
+      const { panel } = renderPanel()
+      const heading = within(panel).getByRole('heading', { level: 2, name: BASE_DETAIL.name })
+      const headerTitle = panel.querySelector('header strong')
+      const watcher = observed.find(({ target }) => target === heading)
+      expect(watcher).toBeDefined()
+      const report = (isIntersecting: boolean) => act(() => {
+        watcher?.callback([{ isIntersecting } as IntersectionObserverEntry], {} as IntersectionObserver)
+      })
+
+      report(true)
+      expect(headerTitle).toHaveAttribute('data-hidden', 'true')
+      expect(headerTitle).toHaveAttribute('aria-hidden', 'true')
+      report(false)
+      expect(headerTitle).toHaveAttribute('data-hidden', 'false')
+      expect(headerTitle).not.toHaveAttribute('aria-hidden')
+      expect(heading).toHaveFocus()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 
   it('공고가 없어도 주택형 기본 보증금과 월 임대료 및 출처를 표시하고 탭 전환에 맞춰 바꾼다', () => {
     const { panel } = renderPanel(detailWith({
@@ -610,7 +640,7 @@ describe('HousingComplexDetailPanel', () => {
     expect(within(panel).getByText('0 : 1')).toBeInTheDocument()
     expect(within(panel).getByText('D-0')).toBeInTheDocument()
     expect(factValue(panel, '접수 시작').getByText('2026.08.20')).toBeInTheDocument()
-    expect(factValue(panel, '접수 종료').getByText('2026.08.27')).toBeInTheDocument()
+    expect(factValue(panel, '접수 마감').getByText('2026.08.27')).toBeInTheDocument()
   })
 
   it.each([
@@ -710,7 +740,7 @@ describe('HousingComplexDetailPanel', () => {
       .not.toBeInTheDocument()
     expect(within(panel).queryByRole('tablist')).not.toBeInTheDocument()
     expect(within(panel).queryByRole('tabpanel')).not.toBeInTheDocument()
-    expect(within(panel).getByText('현재 연결된 모집 공고가 없습니다.'))
+    expect(within(panel).getByText('현재 연결된 모집 공고가 없어요.'))
       .toBeInTheDocument()
   })
 

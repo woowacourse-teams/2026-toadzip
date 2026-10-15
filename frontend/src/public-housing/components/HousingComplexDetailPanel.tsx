@@ -135,6 +135,18 @@ export function HousingComplexDetailPanel({
     headingRef.current?.focus({ preventScroll: true })
   }, [detail.complexId])
 
+  // 본문 단지명이 보이는 동안에는 헤더에 같은 이름을 반복하지 않는다.
+  const [identityInView, setIdentityInView] = useState(false)
+  useEffect(() => {
+    const heading = headingRef.current
+    if (!heading || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry) setIdentityInView(entry.isIntersecting)
+    })
+    observer.observe(heading)
+    return () => observer.disconnect()
+  }, [detail.complexId])
+
   useEffect(() => {
     if (activeHousingTypeId !== undefined) {
       revealTab(tabListRef.current, choiceRefs.current.get(activeHousingTypeId))
@@ -185,7 +197,14 @@ export function HousingComplexDetailPanel({
     >
       <header className={styles.header}>
         {backButton}
-        <strong className={styles.headerTitle} title={detail.name}>{detail.name}</strong>
+        <strong
+          className={styles.headerTitle}
+          title={detail.name}
+          data-hidden={identityInView}
+          aria-hidden={identityInView || undefined}
+        >
+          {detail.name}
+        </strong>
         <DetailCloseButton label="단지 상세 닫기" onClose={onClose} />
       </header>
 
@@ -393,7 +412,7 @@ function CurrentAnnouncements({
       title="현재 모집 공고"
     >
       {announcements.length === 0 && (
-        <p className={styles.empty}>현재 연결된 모집 공고가 없습니다.</p>
+        <p className={styles.empty}>현재 연결된 모집 공고가 없어요.</p>
       )}
       {announcements.length > 0 && (
         <ul className={styles.announcementList}>
@@ -450,7 +469,7 @@ function AnnouncementCard({
       <div className={styles.announcementBody}>
         <DetailFacts columns={2}>
           <DetailFact term="접수 시작" value={displayDate(announcement.applicationStartAt)} />
-          <DetailFact term="접수 종료" value={displayDate(announcement.applicationEndAt)} />
+          <DetailFact term="접수 마감" value={displayDate(announcement.applicationEndAt)} />
           {announcement.actualCompetitionRate !== null && (
             <DetailFact
               term="실제 경쟁률"

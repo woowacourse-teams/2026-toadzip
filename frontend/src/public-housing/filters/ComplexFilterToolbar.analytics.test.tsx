@@ -62,7 +62,7 @@ it('전체 패널에서 유효하지 않아 적용하지 않은 준공년도는 
   fireEvent.click(screen.getByRole('button', { name: '전체 필터 열기' }))
   fireEvent.change(screen.getByLabelText('최소 준공년도'), { target: { value: '2025' } })
   fireEvent.change(screen.getByLabelText('최대 준공년도'), { target: { value: '2020' } })
-  expect(screen.getByRole('alert')).toHaveTextContent('최소 준공년도는 최대 준공년도보다 클 수 없습니다.')
+  expect(screen.getByRole('alert')).toHaveTextContent('최소 준공년도는 최대 준공년도보다 클 수 없어요.')
   fireEvent.click(screen.getByRole('button', { name: '전체 필터 패널 닫기' }))
   await waitFor(() => expect(capture).toHaveBeenLastCalledWith('filter_closed', expect.objectContaining({
     topic: 'all', had_changes: true, unapplied_changes: true, reason: 'close_button',

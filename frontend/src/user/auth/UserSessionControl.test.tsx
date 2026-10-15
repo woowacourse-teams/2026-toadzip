@@ -106,7 +106,7 @@ it('실패 안내에 포커스를 주고 닫으면 실패 상태만 제거하며
   </MemoryRouter>)
   const dialog = await screen.findByRole('dialog', { name: '로그인' })
   const alert = within(dialog).getByRole('alert')
-  expect(alert).toHaveTextContent('로그인을 완료하지 못했습니다.')
+  expect(alert).toHaveTextContent('로그인을 완료하지 못했어요.')
   expect(alert).toHaveTextContent('다시 시도해 주세요.')
   expect(alert).toHaveFocus()
   fireEvent.click(within(dialog).getByRole('button', { name: '로그인 닫기' }))

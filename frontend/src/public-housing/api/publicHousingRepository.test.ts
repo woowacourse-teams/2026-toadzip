@@ -501,7 +501,7 @@ describe('공공주택 HTTP repository', () => {
       jsonResponse(
         {
           code: 'ANNOUNCEMENT_NOT_FOUND',
-          message: '공고를 찾을 수 없습니다.',
+          message: '공고를 찾을 수 없어요.',
           traceId: 'trace-id',
         },
         404,
@@ -518,7 +518,7 @@ describe('공공주택 HTTP repository', () => {
     expect(error).toMatchObject({
       status: 404,
       code: 'ANNOUNCEMENT_NOT_FOUND',
-      message: '공고를 찾을 수 없습니다.',
+      message: '공고를 찾을 수 없어요.',
     })
   })
 
@@ -606,7 +606,7 @@ describe('공공주택 HTTP repository', () => {
       jsonResponse(
         {
           code: 'COMPLEX_NOT_FOUND',
-          message: '단지를 찾을 수 없습니다.',
+          message: '단지를 찾을 수 없어요.',
           traceId: 'trace-id',
         },
         404,
@@ -623,7 +623,7 @@ describe('공공주택 HTTP repository', () => {
     expect(error).toMatchObject({
       status: 404,
       code: 'COMPLEX_NOT_FOUND',
-      message: '단지를 찾을 수 없습니다.',
+      message: '단지를 찾을 수 없어요.',
     })
   })
 
@@ -766,7 +766,7 @@ describe('공공주택 HTTP repository', () => {
         BOUNDS, null, 20, new AbortController().signal,
       )).rejects.toMatchObject({
         name: 'PublicHousingHttpError', status: 503,
-        code: null, message: '공공주택 정보를 불러오지 못했습니다.', traceId: null,
+        code: null, message: '공공주택 정보를 불러오지 못했어요.', traceId: null,
       })
     },
   )

@@ -47,16 +47,13 @@
   white-space: nowrap;
 }
 
+/* 가로 스크롤로 숨기지 않고 모든 구간을 한눈에 보이게 줄바꿈한다. */
 .presets {
   display: flex;
-  flex-wrap: nowrap;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 0 8px;
   margin-top: 8px;
   padding: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  scrollbar-width: thin;
 }
 
 .preset {

@@ -89,7 +89,7 @@ export function ComplexFilterFields({
         <RegionFilterFields
           initialRegionCode={filters.regionCode ?? ''}
           messageId="complex-region-load-error"
-          loadingMessage="시·군·구를 불러오는 중입니다."
+          loadingMessage="시·군·구를 불러오는 중이에요."
           styles={{
             regionFields: styles.regionFields,
             field: styles.field,

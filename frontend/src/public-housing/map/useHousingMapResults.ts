@@ -246,7 +246,7 @@ function requestErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
     return error.message
   }
-  return '지도 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'
+  return '지도 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.'
 }
 
 function isAbortError(error: unknown) {

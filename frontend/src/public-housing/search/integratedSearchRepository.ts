@@ -89,7 +89,7 @@ async function searchLocations(
     headers: { Accept: 'application/json' }, signal,
   })
   if (!response.ok) {
-    throw new Error('위치 검색을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.')
+    throw new Error('위치 검색을 사용할 수 없어요. 잠시 후 다시 시도해 주세요.')
   }
   const envelope = record((await response.json()) as unknown, '$')
   const data = record(envelope.data, '$.data')

@@ -1647,7 +1647,7 @@ function AnnouncementResultContent({
   if (state.status === 'idle') {
     return (
       <div className="housing-results__state" role="status">
-        <strong>공고 목록을 준비하고 있습니다.</strong>
+        <strong>공고 목록을 준비하고 있어요.</strong>
       </div>
     )
   }
@@ -1655,8 +1655,8 @@ function AnnouncementResultContent({
   if (state.status === 'loading' && state.items.length === 0) {
     return (
       <div className="housing-results__state" role="status">
-        <strong>공고를 불러오고 있습니다.</strong>
-        <span>현재 제공되는 최신 공고를 확인하고 있습니다.</span>
+        <strong>공고를 불러오고 있어요.</strong>
+        <span>현재 제공되는 최신 공고를 확인하고 있어요.</span>
       </div>
     )
   }
@@ -1664,7 +1664,7 @@ function AnnouncementResultContent({
   if (state.status === 'error' && state.items.length === 0) {
     return (
       <div className="housing-results__state housing-results__state--error" role="alert">
-        <strong>공고 목록을 불러오지 못했습니다.</strong>
+        <strong>공고 목록을 불러오지 못했어요.</strong>
         <span>{state.errorMessage}</span>
         <button type="button" onClick={onRetry}>다시 시도</button>
       </div>
@@ -1674,8 +1674,8 @@ function AnnouncementResultContent({
   if (state.status === 'ready' && state.items.length === 0) {
     return (
       <div className="housing-results__state" role="status">
-        <strong>현재 확인되는 공고가 없습니다.</strong>
-        <span>새 공고가 등록되면 이 목록에서 확인할 수 있습니다.</span>
+        <strong>현재 확인되는 공고가 없어요.</strong>
+        <span>새 공고가 등록되면 이 목록에서 확인할 수 있어요.</span>
       </div>
     )
   }
@@ -1798,7 +1798,7 @@ function HousingMapRequestFeedback({
   }
   return (
     <div className="housing-results__inline-error" role="alert">
-      <strong>지도 정보를 불러오지 못했습니다.</strong>
+      <strong>지도 정보를 불러오지 못했어요.</strong>
       <span>{errorMessage}</span>
       <button type="button" onClick={onRetry}>지도 다시 시도</button>
     </div>
@@ -1815,7 +1815,7 @@ function ComplexRequestFeedback({
   if (state.status === 'error') {
     return (
       <div className="housing-results__inline-error" role="alert">
-        <strong>단지 목록을 불러오지 못했습니다.</strong>
+        <strong>단지 목록을 불러오지 못했어요.</strong>
         <span>{state.errorMessage}</span>
         <button type="button" onClick={onRetry}>다시 시도</button>
       </div>
@@ -1836,15 +1836,15 @@ function ComplexRequestFeedback({
 
 function complexRequestStatusMessage(state: ComplexResultsState) {
   if (state.status === 'idle') {
-    return '지역 단지 목록을 준비하고 있습니다.'
+    return '지역 단지 목록을 준비하고 있어요.'
   }
   if (state.status === 'loading') {
     return state.items.length === 0
-      ? '단지 목록을 불러오고 있습니다.'
-      : '기존 결과를 유지하면서 새 지역을 확인하고 있습니다.'
+      ? '단지 목록을 불러오고 있어요.'
+      : '기존 결과를 유지하면서 새 지역을 확인하고 있어요.'
   }
   if (state.status === 'loading-more') {
-    return '단지 목록을 추가로 불러오고 있습니다.'
+    return '단지 목록을 추가로 불러오고 있어요.'
   }
   const total = state.hasNext ? '더 보기 가능' : `전체 ${state.items.length.toLocaleString('ko-KR')}곳`
   return `단지 목록 갱신 완료, ${total}, 현재 ${state.items.length.toLocaleString('ko-KR')}곳 표시`
@@ -1870,8 +1870,8 @@ function ComplexResultContent({
   if (state.status === 'idle' || (state.status === 'loading' && state.items.length === 0)) {
     return (
       <div className="housing-results__state">
-        <strong>단지를 불러오고 있습니다.</strong>
-        <span>검색한 지역의 단지를 확인하고 있습니다.</span>
+        <strong>단지를 불러오고 있어요.</strong>
+        <span>검색한 지역의 단지를 확인하고 있어요.</span>
       </div>
     )
   }
@@ -1883,7 +1883,7 @@ function ComplexResultContent({
   if (state.status === 'ready' && state.items.length === 0) {
     return (
       <div className="housing-results__state">
-        <strong>이 지역에서 확인되는 단지가 없습니다.</strong>
+        <strong>이 지역에서 확인되는 단지가 없어요.</strong>
         <span>다른 지역을 검색하거나 검색 조건을 변경해 주세요.</span>
       </div>
     )

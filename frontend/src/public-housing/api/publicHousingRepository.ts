@@ -99,7 +99,7 @@ export class PublicHousingHttpError extends Error {
   readonly traceId: string | null
 
   constructor(status: number, body: HttpErrorBody) {
-    super(body.message ?? '공공주택 정보를 불러오지 못했습니다.')
+    super(body.message ?? '공공주택 정보를 불러오지 못했어요.')
     this.name = 'PublicHousingHttpError'
     this.status = status
     this.code = body.code

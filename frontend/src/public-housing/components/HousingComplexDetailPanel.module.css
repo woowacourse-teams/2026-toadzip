@@ -39,6 +39,11 @@
   line-height: 1.4;
   overflow-wrap: anywhere;
   word-break: keep-all;
+  transition: opacity 150ms ease-out;
+}
+
+.headerTitle[data-hidden='true'] {
+  opacity: 0;
 }
 
 .housingTypeTab:focus-visible,
@@ -542,5 +547,9 @@
 @media (prefers-reduced-motion: reduce) {
   .imageGallery {
     scroll-behavior: auto;
+  }
+
+  .headerTitle {
+    transition: none;
   }
 }

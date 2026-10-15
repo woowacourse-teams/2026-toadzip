@@ -58,28 +58,28 @@ interface FailureContent {
 
 const FAILURE_CONTENT: Record<MapFailureReason, FailureContent> = {
   configuration: {
-    title: '지도 설정이 준비되지 않았습니다.',
+    title: '지도 설정이 준비되지 않았어요.',
     description: '현재 환경의 NAVER Maps Client ID를 확인해 주세요.',
     retryable: false,
   },
   authentication: {
-    title: '지도 인증에 실패했습니다.',
+    title: '지도 인증에 실패했어요.',
     description:
       'Client ID와 현재 주소의 Web 서비스 URL 설정을 확인한 후 새로고침해 주세요.',
     retryable: false,
   },
   network: {
-    title: '지도를 불러오지 못했습니다.',
+    title: '지도를 불러오지 못했어요.',
     description: '네트워크 연결을 확인한 뒤 다시 시도해 주세요.',
     retryable: true,
   },
   'invalid-sdk': {
-    title: '지도 SDK를 초기화하지 못했습니다.',
+    title: '지도 SDK를 초기화하지 못했어요.',
     description: '잠시 후 다시 시도해 주세요.',
     retryable: true,
   },
   initialization: {
-    title: '지도를 표시하지 못했습니다.',
+    title: '지도를 표시하지 못했어요.',
     description: '잠시 후 다시 시도해 주세요.',
     retryable: true,
   },
@@ -114,7 +114,7 @@ function MapLoading() {
     <div className="map-state-layer">
       <div className="map-state-card" role="status" aria-live="polite">
         <span className="map-loading-indicator" aria-hidden="true" />
-        <strong>지도를 불러오고 있습니다.</strong>
+        <strong>지도를 불러오고 있어요.</strong>
         <span>잠시만 기다려 주세요.</span>
       </div>
     </div>

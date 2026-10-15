@@ -733,7 +733,7 @@ describe('ComplexFilterToolbar', () => {
 
     expect(onApply).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toHaveTextContent(
-      '최소 준공년도는 최대 준공년도보다 클 수 없습니다.',
+      '최소 준공년도는 최대 준공년도보다 클 수 없어요.',
     )
     expect(screen.getByRole('region', { name: '준공년도 필터' }))
       .toBeInTheDocument()
@@ -982,7 +982,7 @@ describe('ComplexFilterToolbar', () => {
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(
-      '시·군·구를 불러오지 못했습니다.',
+      '시·군·구를 불러오지 못했어요.',
     )
     expect(screen.getByLabelText('시·군·구'))
       .toHaveAttribute('aria-describedby', alert.id)

@@ -155,6 +155,7 @@ import { IconButton } from '../design-system/components/IconButton'
 묶지만 순위·확정 상태·조건·시각·출처가 다른 항목은 합치지 않는다. 명시적인 전체 단지 공통 일정은
 특정 단지 일정과 구분한다. 당첨자 발표·서류제출 등은 별도의 **후속 일정** 영역에 모아 표시한다.
 상세 섹션 제목 아래 일반 안내문은 사용하지 않는다.
+단지 상세 헤더의 단지명은 본문 단지명이 화면 밖으로 스크롤된 뒤에만 표시한다.
 문의 전화번호의 연속 숫자는 하이픈으로 구분하고 복수 번호와 설명 문구는 보존한다.
 
 공고 상세 상단의 공사·지역·모집유형은 항목명 접두어 없이 값을 표시한다. 요약 단지명은 굵게,
@@ -168,7 +169,7 @@ import { IconButton } from '../design-system/components/IconButton'
 | 접수 상태 표시 | [AnnouncementStatusBadge](../src/public-housing/components/AnnouncementStatusBadge.tsx): label·tone·countdown을 전달. 상태 판단은 호출자에서 수행 |
 | 상세 구역·항목/값·표·닫기 | [DetailPrimitives](../src/public-housing/components/DetailPrimitives.tsx): 기존 heading·dl·table·키보드 계약 유지 |
 | 단지·공고 상세 | [HousingComplexDetailPanel](../src/public-housing/components/HousingComplexDetailPanel.tsx), [HousingAnnouncementDetailPanel](../src/public-housing/components/HousingAnnouncementDetailPanel.tsx): 제목 포커스, Escape, 내부 스크롤과 원문 이동 |
-| 통합 검색 | [IntegratedSearch](../src/public-housing/search/IntegratedSearch.tsx): 지역·단지·공고 결과, 로딩·빈 결과·부분 실패 구분 |
+| 통합 검색 | [IntegratedSearch](../src/public-housing/search/IntegratedSearch.tsx): 지역·단지·공고 결과, 로딩·빈 결과·부분 실패 구분. 결과가 없는 유형은 그룹을 숨기고 결과 아래 한 줄로 모으며, 공고 상태는 AnnouncementStatusBadge로 표시 |
 | 필터 | [ComplexFilterToolbar](../src/public-housing/filters/ComplexFilterToolbar.tsx), [AnnouncementFilterPanel](../src/public-housing/filters/AnnouncementFilterPanel.tsx): 모바일 선택 즉시 적용, 데스크톱의 기존 적용 방식, 초기화, 닫기·포커스 복귀 |
 | 금액·면적 범위 | [DualRangeFilter](../src/public-housing/filters/DualRangeFilter.tsx): 두 범위 입력, 키보드, 터치 영역, forced-colors 유지 |
 
@@ -201,6 +202,8 @@ import { IconButton } from '../design-system/components/IconButton'
 [announcementDetailPresentation](../src/public-housing/presentation/announcementDetailPresentation.ts)를 따른다.
 0과 false를 누락으로 바꾸지 않고, 기존 단위·날짜·마감 계산을 시각 컴포넌트에서 다시 구현하지 않는다.
 미확인 자격이나 공급 규모를 추정하지 않으며 실제 공식 출처와 기준 시점을 유지한다.
+
+사용자 화면의 안내·오류 문구는 해요체(`없어요`, `불러오지 못했어요`)로 쓴다. 개인정보 동의 안내처럼 버전으로 관리하는 고지문은 해당 절차 없이 바꾸지 않는다.
 
 ## 반응형과 접근성
 

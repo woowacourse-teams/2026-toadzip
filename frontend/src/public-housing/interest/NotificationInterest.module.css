@@ -71,8 +71,32 @@
   box-shadow: 0 4px 20px rgb(0 0 0 / 15%);
 }
 .feedback p { margin: 0; font-size: 0.875rem; }
+/* 상태 조회 오류는 지도·목록 위에 두되 필터 시트(1200)와 문서 미리보기는 가리지 않는다. */
+.feedback[role='alert'] { z-index: 1100; display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-3); }
+.feedback button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 var(--ds-space-3);
+  border: 1px solid var(--ds-color-divider);
+  border-radius: var(--ds-radius-icon-control);
+  background: var(--ds-color-surface);
+  color: var(--ds-color-action);
+  font: inherit;
+  font-size: var(--ds-text-caption);
+  font-weight: var(--ds-weight-strong);
+  cursor: pointer;
+}
+.feedback button:hover { background: var(--ds-color-action-soft); }
+.feedback button:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
+/* 모바일 하단 내비게이션과 오른쪽 지도 컨트롤 열을 가리지 않는다. */
 @media (max-width: 767px) {
-  .feedback { bottom: calc(var(--explorer-footer-height, 84px) + 12px); }
+  .feedback {
+    right: calc(var(--explorer-map-control-right, 12px) + var(--explorer-map-control-size, 48px) + var(--ds-space-2));
+    bottom: calc(var(--explorer-footer-height, 84px) + 12px);
+    left: var(--ds-space-4);
+    width: auto;
+    transform: none;
+  }
 }
 
 .inlineFeedback { margin: 0 0 12px; padding: 12px 14px; border-radius: 10px; background: var(--ds-color-action-soft); color: var(--ds-color-text); font-size: 14px; line-height: 1.5; text-align: center; word-break: keep-all; }

@@ -172,7 +172,7 @@ export function LandingPage() {
               </div>
             </div>
           </div>
-          <p className={styles.screenNote}>실제 서비스 화면의 일부를 확대했습니다. 모집 정보는 조회 시점에 따라 달라질 수 있어요.</p>
+          <p className={styles.screenNote}>실제 서비스 화면의 일부를 확대했어요. 모집 정보는 조회 시점에 따라 달라질 수 있어요.</p>
         </section>
 
         <section className={styles.closing} aria-labelledby="start-title">

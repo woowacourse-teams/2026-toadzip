@@ -172,7 +172,7 @@ describe('PDF 연속 열람과 검색', () => {
   it('PDF 파싱 실패는 다운로드 안내를 표시한다', async () => {
     sdk.getDocument.mockImplementation(() => ({ promise: Promise.reject(new Error('invalid pdf')), destroy: sdk.destroy }))
     render(<PdfDocumentPreview url="blob:invalid" name="공고문.pdf" />)
-    expect(await screen.findByRole('alert')).toHaveTextContent('PDF를 표시하지 못했습니다')
+    expect(await screen.findByRole('alert')).toHaveTextContent('PDF를 표시하지 못했어요')
   })
 
   it('SDK 초기화와 페이지 렌더 실패에도 다운로드 안내를 표시한다', async () => {

@@ -95,7 +95,7 @@ export function RegionFilterFields({
           id={messageId}
           role="alert"
         >
-          시·군·구를 불러오지 못했습니다. 시·도만 적용할 수 있습니다.
+          시·군·구를 불러오지 못했어요. 시·도만 적용할 수 있어요.
         </small>
       )}
     </div>
