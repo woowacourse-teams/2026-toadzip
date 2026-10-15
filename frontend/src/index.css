@@ -947,7 +947,7 @@ a {
   padding: 0;
   border: 0;
   background: transparent;
-  font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Noto Sans KR", sans-serif;
+  font-family: var(--ds-font-family-ui);
   text-align: left;
   cursor: pointer;
 }
