@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.toadzip.backend.housing.domain.Address;
 import com.toadzip.backend.housing.domain.HousingComplex;
+import com.toadzip.backend.housing.domain.HousingType;
+import com.toadzip.backend.housing.domain.MyHomeRentalCondition;
 import com.toadzip.backend.housing.dto.request.HousingComplexSearchRequest;
 import com.toadzip.backend.housing.dto.response.AgencyResponse;
 import com.toadzip.backend.housing.dto.response.HousingMapAggregateNodeResponse;
@@ -13,9 +15,12 @@ import com.toadzip.backend.housing.dto.response.HousingMapResponse;
 import com.toadzip.backend.housing.dto.response.HousingMapRepresentation;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
@@ -56,6 +61,31 @@ class HousingMapQueryIntegrationTest {
 
         assertEquals(List.of("SERVICE_ZONE:GYEONGGI"), aggregateGroupKeys(serviceZone));
         assertEquals(List.of("METROPOLITAN:41"), aggregateGroupKeys(metropolitan));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"6.0, 1", "8.5, 2", "11.0, 3"})
+    void 전국_범위의_클러스터도_같은_주택형에_가격과_면적_필터를_적용한다(String zoom, int expectedStage) {
+        HousingComplex matched = persistComplex("조건 일치", "41131", "37.45", "127.14");
+        persistHousingType(matched, "20A", "20", 10_000_000L, 100_000L);
+        persistHousingType(matched, "20B", "20", 10_000_000L, 100_000L);
+        HousingComplex crossType = persistComplex("주택형 간 조건 불일치", "41135", "37.35", "127.10");
+        persistHousingType(crossType, "20A", "20", 50_000_000L, 500_000L);
+        persistHousingType(crossType, "60A", "60", 10_000_000L, 100_000L);
+        persistComplex("주택형 없는 단지", "41131", "37.40", "127.10");
+        entityManager.flush();
+        HousingComplexSearchRequest request = new HousingComplexSearchRequest(
+                null, "41", null, null, null, null,
+                10_000_000L, 10_000_000L, 100_000L, 100_000L, decimal("20"), decimal("20"),
+                null, null, null, decimal("30"), decimal("120"), decimal("45"), decimal("135"), null
+        );
+
+        HousingMapResponse response = clusteringService.getMap(request, decimal(zoom), null);
+
+        assertEquals(expectedStage, response.resolvedStage());
+        assertEquals(HousingMapRepresentation.AGGREGATE, response.representation());
+        assertEquals(1L, aggregateNodes(response).stream()
+                .mapToLong(HousingMapAggregateNodeResponse::uniqueComplexCount).sum());
     }
 
     @Test
@@ -123,6 +153,14 @@ class HousingMapQueryIntegrationTest {
         );
         entityManager.persist(complex);
         return complex;
+    }
+
+    private void persistHousingType(HousingComplex complex, String name, String area, long deposit, long rent) {
+        HousingType type = HousingType.create(
+                complex, name, decimal(area), null, 50, "https://example.com/floor-plan.png", false, null);
+        type.updateBasicRentalCondition(new MyHomeRentalCondition(
+                deposit, rent, Instant.parse("2026-10-15T00:00:00Z")));
+        entityManager.persist(type);
     }
 
     private Address address(

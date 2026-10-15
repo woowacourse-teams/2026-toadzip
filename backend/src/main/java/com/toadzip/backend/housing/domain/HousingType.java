@@ -9,6 +9,7 @@ import jakarta.persistence.Embedded;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
@@ -22,6 +23,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(
         name = "housing_types",
+        indexes = @Index(name = "idx_housing_types_housing_complex_id", columnList = "housing_complex_id"),
         uniqueConstraints = @UniqueConstraint(
                 name = "uk_housing_type_source_identifier",
                 columnNames = "source_housing_type_identifier"

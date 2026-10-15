@@ -33,6 +33,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -61,6 +62,37 @@ class ComplexSummaryQueryRepositoryTest {
 
     @Autowired
     private ComplexSummaryQueryRepository repository;
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void 확대된_viewport에서도_가격_면적_필터와_단지별_전체_집계가_목록과_일치한다(boolean filtered) {
+        HousingComplex west = persistComplex("서쪽 단지", "37.500000", "126.850000");
+        HousingComplex center = persistComplex("가운데 단지", "37.550000", "126.950000");
+        HousingComplex east = persistComplex("동쪽 단지", "37.600000", "127.050000");
+        HousingComplex withoutTypes = persistComplex("주택형 없는 단지", "37.650000", "127.000000");
+        for (HousingComplex complex : List.of(west, center, east)) {
+            setBasicPrice(persistHousingType(complex, "20A", "20"), 10_000_000L, 100_000L);
+            setBasicPrice(persistHousingType(complex, "60A", "60"), 50_000_000L, 500_000L);
+        }
+        persistComplex("삭제 단지", "37.500000", "126.900000").moveToTrash();
+        persistComplex("영역 밖 단지", "36.000000", "127.000000");
+        entityManager.flush();
+        MapBounds expandedBounds = MapBounds.of(new BigDecimal("37.4"), new BigDecimal("126.8"),
+                new BigDecimal("37.7"), new BigDecimal("127.1"));
+        HousingComplexSearchCondition condition = noFilters(expandedBounds);
+        List<Long> expectedIds = List.of(west.getId(), center.getId(), east.getId(), withoutTypes.getId());
+        if (filtered) {
+            condition = new HousingComplexSearchCondition(expandedBounds, priceAreaFilters(
+                    new BigDecimal("10000000"), new BigDecimal("10000000"),
+                    new BigDecimal("100000"), new BigDecimal("100000"),
+                    new BigDecimal("20"), new BigDecimal("20")).filters());
+            expectedIds = List.of(west.getId(), center.getId(), east.getId());
+        }
+
+        assertBothQueryPaths(condition, expectedIds);
+        repository.findAll(condition).stream()
+                .filter(row -> row.complexId() != withoutTypes.getId()).forEach(this::assertAggregateRanges);
+    }
 
     @Test
     void 단지에_남은_옛_금액보다_주택형의_기본금액을_사용한다() {
@@ -2122,15 +2154,20 @@ class ComplexSummaryQueryRepositoryTest {
     }
 
     private void assertBothQueryPaths(HousingComplexSearchCondition condition, List<Long> expectedIds) {
-        List<Long> mapIds = ids(repository.findAll(condition));
-        List<Long> listIds = ids(repository.findPage(condition, ComplexSort.LATEST_ANNOUNCEMENT, null, 100));
+        List<ComplexSummaryRow> mapRows = repository.findAll(condition);
+        List<ComplexSummaryRow> listRows = repository.findPage(
+                        condition, ComplexSort.LATEST_ANNOUNCEMENT, null, 100).stream()
+                .sorted(Comparator.comparingLong(ComplexSummaryRow::complexId)).toList();
+        List<Long> mapIds = ids(mapRows);
+        List<Long> listIds = ids(listRows);
         Set<Long> expected = Set.copyOf(expectedIds);
 
         assertAll(
                 () -> assertEquals(expected, Set.copyOf(mapIds)),
                 () -> assertEquals(expectedIds.size(), mapIds.size()),
                 () -> assertEquals(expected, Set.copyOf(listIds)),
-                () -> assertEquals(expectedIds.size(), listIds.size())
+                () -> assertEquals(expectedIds.size(), listIds.size()),
+                () -> assertEquals(listRows, mapRows)
         );
     }
 

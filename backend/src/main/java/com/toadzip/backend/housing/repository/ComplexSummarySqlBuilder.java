@@ -19,25 +19,41 @@ final class ComplexSummarySqlBuilder {
             """;
 
     private static final String VIEWPORT_QUERY = """
-            , viewport_complexes AS (
+            , viewport_complexes AS MATERIALIZED (
                 SELECT housing_complex.*
                 FROM housing_complexes housing_complex
                 WHERE housing_complex.admin_deleted = false
             """ + BOUNDS_PREDICATE + ")\n";
 
+    private static final String AREA_RANGE_COLUMNS = """
+                   MIN(housing_type.exclusive_area) AS exclusive_area_min,
+                   MAX(housing_type.exclusive_area) AS exclusive_area_max,
+                   MIN(housing_type.basic_deposit) AS deposit_min,
+                   MAX(housing_type.basic_deposit) AS deposit_max,
+                   MIN(housing_type.basic_monthly_rent) AS monthly_rent_min,
+                   MAX(housing_type.basic_monthly_rent) AS monthly_rent_max
+            """;
+
     private static final String AREA_RANGE_QUERY = """
             , area_range AS (
                 SELECT housing_type.housing_complex_id,
-                       MIN(housing_type.exclusive_area) AS exclusive_area_min,
-                       MAX(housing_type.exclusive_area) AS exclusive_area_max,
-                       MIN(housing_type.basic_deposit) AS deposit_min,
-                       MAX(housing_type.basic_deposit) AS deposit_max,
-                       MIN(housing_type.basic_monthly_rent) AS monthly_rent_min,
-                       MAX(housing_type.basic_monthly_rent) AS monthly_rent_max
+            """ + AREA_RANGE_COLUMNS + """
                 FROM housing_types housing_type
-                %s
                 GROUP BY housing_type.housing_complex_id
             )
+            """;
+
+    private static final String AREA_RANGE_JOIN = """
+            LEFT JOIN area_range ON area_range.housing_complex_id = housing_complex.id
+            """;
+
+    private static final String MAP_AREA_RANGE_JOIN = """
+            LEFT JOIN LATERAL (
+                SELECT
+            """ + AREA_RANGE_COLUMNS + """
+                FROM housing_types housing_type
+                WHERE housing_type.housing_complex_id = housing_complex.id
+            ) area_range ON TRUE
             """;
 
     private static final String SUMMARY_QUERY = """
@@ -66,18 +82,15 @@ final class ComplexSummarySqlBuilder {
             """
             + HousingComplexRepresentativeSql.LEFT_JOIN
             + ApplicationScheduleSql.displayPeriodJoin("representative", "housing_complex.id") + """
-            LEFT JOIN area_range ON area_range.housing_complex_id = housing_complex.id
+            %s
             WHERE housing_complex.admin_deleted = false
             """;
 
     private static final String BASE_SUMMARY_QUERY = HousingComplexRepresentativeSql.WITH_CLAUSE
-            + AREA_RANGE_QUERY.formatted("") + summaryQuery("housing_complexes");
+            + AREA_RANGE_QUERY + summaryQuery("housing_complexes", AREA_RANGE_JOIN);
 
     private static final String MAP_SUMMARY_QUERY = HousingComplexRepresentativeSql.WITH_CLAUSE
-            + VIEWPORT_QUERY + AREA_RANGE_QUERY.formatted("""
-                JOIN viewport_complexes viewport_complex
-                  ON viewport_complex.id = housing_type.housing_complex_id
-                """) + summaryQuery("viewport_complexes");
+            + VIEWPORT_QUERY + summaryQuery("viewport_complexes", MAP_AREA_RANGE_JOIN);
 
     private static final String MAP_ORDER = """
             ORDER BY housing_complex.id
@@ -115,10 +128,10 @@ final class ComplexSummarySqlBuilder {
         return pageQuery(query.sql(), parameters, sortSpec(sort), cursor);
     }
 
-    private static String summaryQuery(String complexTable) {
+    private static String summaryQuery(String complexTable, String areaRangeJoin) {
         return SUMMARY_QUERY.formatted(
                 ApplicationScheduleSql.status("representative", "housing_complex.id"),
-                ApplicationScheduleSql.displayPeriodColumns("representative"), complexTable);
+                ApplicationScheduleSql.displayPeriodColumns("representative"), complexTable, areaRangeJoin);
     }
 
     private String boundsPredicate(MapBounds bounds) {
