@@ -4,7 +4,7 @@ import { Button } from '../../design-system/components/Button'
 import { getSourceData, type SourcePage } from '../ingest/sourceApi'
 import { StoredDataTable } from '../shared/StoredDataTable'
 import { AddressPicker } from '../registration/AddressPicker'
-import { ManagementError } from './api'
+import { ManagementError, requestManagementApi } from './api'
 import { type Field, labels, valueAt } from './fields'
 import { isRecord, type ManagementValues } from './managementContract'
 import { getComparison, linkComparisonSource, saveComparison, unlinkComparisonSource, type Comparison, type ComparisonCategory } from './complexComparisonApi'
@@ -87,6 +87,17 @@ export function ComplexComparisonEditor({ id, version, deleted, onChanged, onBus
       if (!controller.signal.aborted) setResults(value)
     } catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '원천 검색에 실패했습니다.') }
     finally { if (!controller.signal.aborted) setSearching(false) }
+  }
+  async function recordSourceCheck() {
+    if (!snapshot || !session.current || busy || changed.length || !note.trim()) return
+    const controller = session.current; setBusy(true); setError(''); setNotice('')
+    try {
+      await requestManagementApi(`/api/admin/quality/COMPLEX/${encodeURIComponent(id)}/comparison/checks/legacy`, 'POST',
+        { target: 'basic', snapshotToken: snapshot.snapshotToken, evidenceNote: note.trim() }, controller.signal)
+      if (!controller.signal.aborted) { setNote(''); setNotice('현재 원천 확인을 기록했습니다. 원천값이 바뀌거나 사라지면 검토 목록에 표시됩니다. 등록값의 확인 범위 기록은 별도로 남겨 주세요.') }
+    } catch (cause) {
+      if (!controller.signal.aborted) { setError(cause instanceof Error ? cause.message : '원천 확인을 기록하지 못했습니다.'); if (cause instanceof ManagementError && cause.status === 409) setConflict(true) }
+    } finally { if (!controller.signal.aborted) setBusy(false) }
   }
   function differs(field: Field) {
     return snapshot?.sources.some(source => {
@@ -188,7 +199,7 @@ export function ComplexComparisonEditor({ id, version, deleted, onChanged, onBus
         {changed.length ? <div className={styles.preview}><h3>저장할 수정사항 {changed.length}개</h3><ul>{changed.map(field => <li key={field.name}><strong>{field.label}</strong> {comparisonText(valueAt(snapshot.current, field.name))} → {comparisonText(valueAt(draft, field.name))}</li>)}</ul></div> : null}
         <div className={styles.save}><label>수정 근거·메모<textarea rows={2} maxLength={2000} value={note} disabled={busy || deleted || conflict} onChange={event => setNote(event.target.value)} placeholder="확인한 자료와 값의 적용 범위, 수정 이유를 적어 주세요." /></label>
           <p className={styles.hint}>원천에 없는 값은 임의로 0으로 채우지 않습니다. 단지·주택형·모집 세대수는 범위가 다를 수 있습니다.</p>
-          <div className={styles.saveActions}><button type="button" disabled={busy || !dirty} onClick={() => {
+          <div className={styles.saveActions}><button type="button" disabled={busy || deleted || conflict || changed.length > 0 || !note.trim() || !snapshot.sources.length || snapshot.sources.some(source => !source.data)} onClick={() => void recordSourceCheck()}>현재 원천 확인 기록</button><button type="button" disabled={busy || !dirty} onClick={() => {
             if (window.confirm('작성한 수정값과 근거를 취소할까요?')) { setDraft(structuredClone(snapshot.current)); setEditing([]); setNote(''); setLinkNote(''); setAddressConfirmed(false) }
           }}>수정 취소</button><Button data-design-system type="submit" disabled={busy || deleted || conflict || !changed.length || !note.trim() || addressChanged && !addressConfirmed}>{busy ? '저장 중…' : `수정사항 저장 · ${changed.length}개`}</Button></div>
         </div>

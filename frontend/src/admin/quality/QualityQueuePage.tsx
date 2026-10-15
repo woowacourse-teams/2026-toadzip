@@ -35,6 +35,7 @@ export function QualityQueuePage() {
       <label>이름 검색<input value={keyword} maxLength={200} onChange={event => setKeyword(event.target.value)} /></label><Button type="submit">검색</Button>
     </form>
     <p className={styles.hint}>등록값 변경·원천 불일치·정보 누락 순으로 우선 표시합니다. 0과 미설치는 빠진 값으로 분류하지 않습니다.</p>
+    <p className={styles.hint}>원천 변경·소실은 상세 화면에서 현재 원천 확인 기록을 남긴 뒤부터 판별합니다. 단순 수집 시각 변경은 제외합니다.</p>
     {loading ? <p role="status">검토 대상을 불러오는 중…</p> : null}
     {error ? <div role="alert"><p>{error}</p><button onClick={() => setAttempt(value => value + 1)}>다시 조회</button></div> : null}
     {result ? <><p role="status">총 {result.totalElements.toLocaleString('ko-KR')}개 · {result.page + 1}페이지</p>

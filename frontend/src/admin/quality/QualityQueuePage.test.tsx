@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { QualityQueuePage } from './QualityQueuePage'
@@ -12,7 +12,8 @@ it('검토 사유와 빠진 항목을 보여주고 비교 화면으로 바로 �
     reasons: ['MISSING', 'STALE'], missingFields: ['준공일'], updatedAt: null }], page: 0,
     totalElements: 1, totalPages: 1, hasNext: false })
   render(<MemoryRouter><QualityQueuePage /></MemoryRouter>)
-  expect(await screen.findByText('확인값 변경')).toBeVisible()
+  const reviewLink = await screen.findByRole('link', { name: '검토 단지 비교·검토' })
+  expect(within(reviewLink.closest('li')!).getByText('확인값 변경')).toBeVisible()
   expect(screen.getByText('준공일')).toBeVisible()
   expect(screen.getByRole('link', { name: '검토 단지 비교·검토' })).toHaveAttribute('href', '/admin/complexes/7?section=verification')
   fireEvent.change(screen.getByLabelText('검토 사유'), { target: { value: 'MISSING' } })
