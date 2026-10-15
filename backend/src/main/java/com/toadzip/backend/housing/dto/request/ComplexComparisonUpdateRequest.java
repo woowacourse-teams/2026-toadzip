@@ -11,4 +11,3 @@ public record ComplexComparisonUpdateRequest(
         @NotNull @Valid AdminHousingComplexUpdateRequest current,
         @NotBlank @Size(max = 2000) String evidenceNote,
         Boolean addressConfirmed) { }
-
