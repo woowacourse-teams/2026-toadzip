@@ -11,7 +11,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @Order(0)
 @RestControllerAdvice(assignableTypes = {AdminHousingComplexManagementController.class,
-        AdminAnnouncementManagementController.class, AdminComplexComparisonController.class})
+        AdminAnnouncementManagementController.class, AdminComplexComparisonController.class,
+        com.toadzip.backend.admin.quality.controller.QualityComparisonController.class,
+        com.toadzip.backend.admin.quality.controller.ReviewDocumentController.class})
 public class AdminManagementValidationAdvice {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> invalid(IllegalArgumentException exception) {

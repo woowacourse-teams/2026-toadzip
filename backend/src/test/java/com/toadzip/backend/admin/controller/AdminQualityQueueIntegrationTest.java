@@ -23,6 +23,7 @@ import tools.jackson.databind.ObjectMapper;
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
+@org.springframework.test.context.jdbc.Sql("/db/migration/V20261016_01__quality_comparison_workflow.sql")
 class AdminQualityQueueIntegrationTest {
     @Autowired private MockMvc mvc;
     @Autowired private HousingComplexRepository complexes;

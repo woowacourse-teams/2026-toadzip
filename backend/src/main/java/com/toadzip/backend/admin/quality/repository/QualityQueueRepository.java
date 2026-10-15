@@ -11,6 +11,19 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class QualityQueueRepository {
+    private static final String SOURCE_CHANGED = """
+            EXISTS (SELECT 1 FROM (
+              SELECT DISTINCT ON (resource, resource_id, target) * FROM admin_comparison_checks
+              ORDER BY resource, resource_id, target, id DESC
+            ) checked WHERE checked.resource = source.resource AND checked.resource_id = source.id
+              AND EXISTS (SELECT 1 FROM jsonb_array_elements(checked.evidence) AS saved(value)
+                WHERE saved.value -> 'rows' IS DISTINCT FROM (
+                  SELECT COALESCE(jsonb_agg(raw ORDER BY raw::text), '[]'::jsonb) FROM (
+            """ + QualityComparisonRepository.SOURCE_ROWS + """
+                  ) current_source WHERE category = saved.value ->> 'category'
+                    AND source_key = saved.value ->> 'sourceKey'
+                )))
+            """;
     private static final String COMPLEX = """
             SELECT 'COMPLEX'::text resource, c.id, c.name, c.admin_updated_at,
               array_remove(ARRAY[
@@ -44,7 +57,9 @@ public class QualityQueueRepository {
     private static final String FROM = """
              FROM (
               SELECT source.*, review_reasons || CASE WHEN cardinality(missing_fields) > 0
-                THEN ARRAY['MISSING'] ELSE ARRAY[]::text[] END reasons
+                THEN ARRAY['MISSING'] ELSE ARRAY[]::text[] END || CASE WHEN
+            """ + SOURCE_CHANGED + """
+                THEN ARRAY['SOURCE_CHANGED'] ELSE ARRAY[]::text[] END reasons
               FROM (
             """ + COMPLEX + " UNION ALL " + ANNOUNCEMENT + """
               ) source
@@ -64,14 +79,14 @@ public class QualityQueueRepository {
                 .replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
         long count = statement("SELECT count(*)" + FROM, resource, reason, pattern).query(Long.class).single();
         var items = statement("SELECT *" + FROM + """
-                 ORDER BY CASE WHEN 'STALE' = ANY(reasons) THEN 0
+                 ORDER BY CASE WHEN 'SOURCE_CHANGED' = ANY(reasons) OR 'STALE' = ANY(reasons) THEN 0
                    WHEN 'SOURCE_MISMATCH' = ANY(reasons) THEN 1
                    WHEN 'MISSING' = ANY(reasons) THEN 2 ELSE 3 END,
                  cardinality(missing_fields) DESC, admin_updated_at DESC NULLS LAST, resource, id DESC
                  LIMIT :size OFFSET :offset
                 """, resource, reason, pattern).param("size", size).param("offset", (long) page * size)
                 .query((row, index) -> item(row)).list();
-        return new AdminPage<>(items, page, (long) (page + 1) * size < count, count,
+        return new AdminPage<>(items, page, ((long) page + 1) * size < count, count,
                 Math.toIntExact((count + size - 1) / size));
     }
 
