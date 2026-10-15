@@ -14,6 +14,8 @@ import { SourceUrl } from '../shared/SourceUrl'
 import { ComplexVerificationPanel } from './ComplexVerificationPanel'
 import { ComplexVerificationBadge } from './ComplexVerificationBadge'
 import { AddressPicker } from '../registration/AddressPicker'
+import { DocumentCorrectionPanel } from '../documents/DocumentCorrectionPanel'
+import { ComplexComparisonEditor } from './ComplexComparisonEditor'
 
 export function ManagementDetail({resource, embedded = false, detailId, onChanged, onBusyChange}: {resource:ManagementResource; embedded?: boolean; detailId?: string; onChanged?: () => void; onBusyChange?: (busy: boolean) => void}) {
   const {id: routeId = ''} = useParams()
@@ -28,10 +30,12 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState(false)
   const [verificationBusy, setVerificationBusy] = useState(false)
+  const [comparisonDirty, setComparisonDirty] = useState(false)
+  const [reviewDirty, setReviewDirty] = useState(false)
   const [confirmation, setConfirmation] = useState(false)
   const [notice, setNotice] = useState('')
   const [attempt, setAttempt] = useState(0)
-  const [section, setSection] = useState('info')
+  const [section, setSection] = useState(resource === 'complexes' && params.get('section') !== 'info' ? 'verification' : 'info')
   const formRef = useRef<HTMLFormElement>(null)
   const sections = resource === 'complexes' ? complexSections : announcementSections
   useEffect(() => { onBusyChange?.(busy || verificationBusy) }, [busy, verificationBusy, onBusyChange])
@@ -69,13 +73,23 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
         <p>{value.summary.deleted ? '다시 서비스 조회 대상이 됩니다.' : '서비스 검색·상세에서 제외됩니다. 원천과 수정 이력은 유지되며 다시 복구할 수 있습니다.'}</p>
         {resource === 'complexes' ? <p>연결 공고 {value.announcements.length}건 · 주택형 {value.housingTypes.length}건. 휴지통에 없는 연결 공고가 있으면 삭제할 수 없습니다.</p> : <p>연결 공급정보 {value.supplyRows.length}건은 함께 보존됩니다.</p>}
         <div className="admin-inline"><button disabled={busy} className="admin-danger" onClick={() => void trash()}>{busy ? '처리 중…' : value.summary.deleted ? '복구 확인' : '휴지통으로 이동'}</button><button disabled={busy} onClick={() => setConfirmation(false)}>취소</button></div></section> : null}
-      {!editing || embedded ? <nav className="admin-section-tabs" aria-label="상세 섹션">{[['info','기본정보'], ...(resource === 'complexes' ? [['verification', '데이터 검증']] : []), ...(embedded && resource === 'announcements' ? [['schedules', '접수 일정']] : []), ['relations',resource === 'complexes' ? '주택형·연결 공고' : '공급정보·단지 연결'],['history','출처·수정 이력']].map(([key,label]) =>
+      {!editing || embedded ? <nav className="admin-section-tabs" aria-label="상세 섹션">{[['info','기본정보'], ...(resource === 'complexes' ? [['verification', '데이터 검증']] : []), ['documents', 'PDF로 보완'], ...(embedded && resource === 'announcements' ? [['schedules', '접수 일정']] : []), ['relations',resource === 'complexes' ? '주택형·연결 공고' : '공급정보·단지 연결'],['history','출처·수정 이력']].map(([key,label]) =>
         <button data-admin-navigation={section !== key || undefined} disabled={busy || verificationBusy} key={key} type="button" aria-pressed={section === key} onClick={() => {if (section !== key) {setSection(key);setDirty(false)}}}>{label}</button>)}</nav> : null}
       <div className="management-detail-content" role="region" aria-label={`${resource === 'complexes' ? '단지' : '공고'} 상세 내용`} tabIndex={0}>
-      {section === 'verification' && (!editing || embedded) && resource === 'complexes' ? <ComplexVerificationPanel key={id}
+      {section === 'documents' ? <DocumentCorrectionPanel key={`${id}-${value.data.version}`} resource={resource} detail={value}
+        onSaved={saved} onBusyChange={setVerificationBusy} onReload={() => setAttempt(current => current + 1)} /> : null}
+      {section === 'verification' && (!editing || embedded) && resource === 'complexes' ? <>
+        {reviewDirty ? <p className="admin-warning">작성 중인 검토 기록을 저장하거나 취소한 뒤 값을 수정할 수 있습니다.</p> : null}
+        <fieldset className="admin-verification-group" disabled={reviewDirty}>
+          <ComplexComparisonEditor id={id} version={Number(value.data.version)} deleted={value.summary.deleted}
+            onChanged={() => { setNotice('수정값과 비교 근거를 저장했습니다.'); setAttempt(current => current + 1); onChanged?.() }} onBusyChange={setVerificationBusy} onDirtyChange={setComparisonDirty} />
+        </fieldset>
+        <details className="admin-verification-review"><summary>확인 범위·검토 기록</summary>
+        {comparisonDirty ? <p className="admin-warning">작성 중인 수정사항을 저장하거나 취소한 뒤 확인 기록을 남겨 주세요.</p> : null}
+        <fieldset className="admin-verification-group" disabled={comparisonDirty}><ComplexVerificationPanel key={id} reviewOnly onDirtyChange={setReviewDirty}
         id={id} version={Number(value.data.version)} deleted={value.summary.deleted} announcements={value.announcements}
         onBusyChange={setVerificationBusy}
-        onReviewed={() => { setNotice('검토 기록을 저장했습니다.'); setAttempt(current => current + 1); onChanged?.() }} /> : null}
+        onReviewed={() => { setNotice('검토 기록을 저장했습니다.'); setAttempt(current => current + 1); onChanged?.() }} /></fieldset></details></> : null}
       {section === 'info' && !editing ? <>{sections.map(group => <section className="admin-detail-section" key={group.title}><h2>{group.title}</h2>
         <dl className={`admin-data-grid${group.fields.some(field => field.name === 'address.roadAddress') ? ' admin-location-grid' : ''}`}>{group.fields.map(field => <div key={field.name}><dt>{field.label}</dt><dd>{field.type === 'url'
           ? <SourceUrl url={valueAt(value.data,field.name)} /> : display(valueAt(value.data,field.name))}</dd></div>)}</dl></section>)}</> : null}

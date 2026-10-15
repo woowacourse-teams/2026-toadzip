@@ -22,6 +22,7 @@ import { PrivacyBoundary, PrivacyMenu, PrivacyPolicyPage, PrivacySettingsPage } 
 import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
 import { PublicNotificationLayout } from './notifications/PublicNotificationLayout'
 import { LandingPage } from './landing/LandingPage'
+import { ComplexCoveragePage } from './admin/documents/ComplexCoveragePage'
 
 function LandingEntry() {
   const { search, hash } = useLocation()
@@ -76,6 +77,7 @@ function AdminRoutes() {
             <Route path="ingest-v2" element={<AnnouncementRegistrationV2Page />} />
             <Route path="complexes/:id?" element={<ManagementWorkspace resource="complexes" />} />
             <Route path="announcements/:id?" element={<ManagementWorkspace resource="announcements" />} />
+            <Route path="complex-coverage" element={<ComplexCoveragePage />} />
             <Route path="users" element={<UserListPage />} />
             <Route path="users/:id" element={<UserDetailPage />} />
             <Route path="notification-subscriptions" element={<NotificationManagementPage />} />

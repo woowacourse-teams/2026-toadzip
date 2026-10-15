@@ -13,6 +13,7 @@
 .table {
   width: 100%;
   min-width: 320px;
+  table-layout: fixed;
   border-collapse: collapse;
   font-family: var(--ds-font-family-ui);
   font-size: var(--ds-text-body);

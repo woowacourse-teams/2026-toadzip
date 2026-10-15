@@ -4,6 +4,7 @@ import com.toadzip.backend.announcement.domain.RecruitmentType;
 import com.toadzip.backend.announcement.domain.ReceptionMethod;
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
+import com.toadzip.backend.admin.dto.AdminDocumentEvidence;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -36,8 +37,16 @@ public record AdminAnnouncementUpdateRequest(
         @Size(max = 255, message = "255자 이하여야 합니다.")
         @Pattern(regexp = "^https?://[^\\s]+$", message = "HTTP(S) URL이어야 합니다.")
         String originalUrl,
-        @Valid ReceptionPlaceUpdateRequest receptionPlace
+        @Valid ReceptionPlaceUpdateRequest receptionPlace,
+        @Valid AdminDocumentEvidence documentEvidence
 ) {
+    public AdminAnnouncementUpdateRequest(Long version, String name, RentalType rentalType,
+            RecruitmentType recruitmentType, AgencyCode agencyCode, LocalDate postedDate,
+            LocalDate applicationStartDate, LocalDate applicationEndDate, LocalDate winnerAnnouncementDate,
+            String originalUrl, ReceptionPlaceUpdateRequest receptionPlace) {
+        this(version, name, rentalType, recruitmentType, agencyCode, postedDate, applicationStartDate,
+                applicationEndDate, winnerAnnouncementDate, originalUrl, receptionPlace, null);
+    }
 
     public record ReceptionPlaceUpdateRequest(
             @NotBlank(message = "필수 값입니다.") @Size(max = 255) String name,

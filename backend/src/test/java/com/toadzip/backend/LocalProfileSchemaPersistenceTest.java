@@ -88,7 +88,10 @@ class LocalProfileSchemaPersistenceTest {
 
             var flyway = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
                     .locations("classpath:db/migration").load();
-            assertEquals(9, flyway.migrate().migrationsExecuted);
+            assertEquals(migrationCount() - Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
+                    .locations("classpath:db/migration").load().info().applied().length,
+                    flyway.migrate().migrationsExecuted);
+
             assertEquals(0, flyway.migrate().migrationsExecuted);
             try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
                     Statement statement = connection.createStatement()) {
@@ -150,6 +153,7 @@ class LocalProfileSchemaPersistenceTest {
                         () -> assertEquals("PostgreSQL", connection.getMetaData().getDatabaseProductName()),
                         () -> assertTrue(tables.next()),
                         () -> assertEquals(1, countColumn(connection, "sh_announcement_source", "body_text")),
+                        () -> assertEquals(1, countColumn(connection, "supply_targets", "admin_modified")),
                         () -> assertTrue(history.next()),
                         () -> assertEquals(migrationCount(), history.getInt(1)),
                         () -> assertEquals(1, countColumn(connection,

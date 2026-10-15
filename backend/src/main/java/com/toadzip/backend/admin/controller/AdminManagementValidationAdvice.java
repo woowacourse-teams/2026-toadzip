@@ -1,6 +1,7 @@
 package com.toadzip.backend.admin.controller;
 
 import com.toadzip.backend.housing.controller.AdminHousingComplexManagementController;
+import com.toadzip.backend.housing.controller.AdminComplexComparisonController;
 import com.toadzip.backend.announcement.controller.AdminAnnouncementManagementController;
 import java.util.Map;
 import org.springframework.core.annotation.Order;
@@ -10,7 +11,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @Order(0)
 @RestControllerAdvice(assignableTypes = {AdminHousingComplexManagementController.class,
-        AdminAnnouncementManagementController.class})
+        AdminAnnouncementManagementController.class, AdminComplexComparisonController.class})
 public class AdminManagementValidationAdvice {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> invalid(IllegalArgumentException exception) {
