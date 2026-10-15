@@ -6,5 +6,7 @@ import jakarta.validation.constraints.Size;
 
 public record NotificationPushDeviceRequest(@NotBlank @Size(max = 512) String fid,
         @NotBlank @Pattern(regexp = "[1-9][0-9]{0,18}") String expectedUserId,
-        @Pattern(regexp = "[1-9][0-9]{0,18}") String expectedBindingVersion) {
+        @Pattern(regexp = "[1-9][0-9]{0,18}") String expectedBindingVersion,
+        @Pattern(regexp = "IOS|IPADOS|ANDROID|MAC|WINDOWS|LINUX|OTHER") String platform,
+        @Pattern(regexp = "CHROME|SAFARI|EDGE|FIREFOX|SAMSUNG|HOME_SCREEN|OTHER") String browser) {
 }

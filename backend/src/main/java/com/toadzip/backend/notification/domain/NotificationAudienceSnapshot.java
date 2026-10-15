@@ -3,7 +3,10 @@ package com.toadzip.backend.notification.domain;
 import java.util.List;
 import java.util.Set;
 
-public record NotificationAudienceSnapshot(String title, List<ComplexTarget> complexes, List<String> regions) {
+public record NotificationAudienceSnapshot(String title, List<ComplexTarget> complexes, List<String> regions, ScheduleReminder schedule) {
+    public NotificationAudienceSnapshot(String title, List<ComplexTarget> complexes, List<String> regions) {
+        this(title, complexes, regions, null);
+    }
     public NotificationAudienceSnapshot {
         complexes = List.copyOf(complexes);
         regions = List.copyOf(regions);

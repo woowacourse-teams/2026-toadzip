@@ -1,6 +1,8 @@
 package com.toadzip.backend.notification.repository;
 
 import com.toadzip.backend.notification.domain.NotificationCursor;
+import com.toadzip.backend.notification.domain.NotificationContent;
+import tools.jackson.databind.ObjectMapper;
 import com.toadzip.backend.notification.dto.NotificationPageResponse;
 import com.toadzip.backend.notification.dto.NotificationPageResponse.Item;
 import java.sql.Timestamp;
@@ -21,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class UserNotificationRepository {
     private final JdbcTemplate jdbc;
+    private final ObjectMapper json;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void lockUser(long userId) {
@@ -44,12 +47,16 @@ public class UserNotificationRepository {
         return new InsertedNotification(id, false);
     }
 
+    public void setContent(long id, NotificationContent content) {
+        jdbc.update("UPDATE user_notifications SET content=? WHERE id=?", json.writeValueAsString(content), id);
+    }
+
     public record InsertedNotification(long id, boolean created) {
     }
 
     public long countUnread(long userId, Instant now) {
         return jdbc.queryForObject("""
-                SELECT count(*) FROM user_notifications WHERE user_id=? AND read_at IS NULL AND expires_at>?
+                SELECT count(*) FROM user_notifications WHERE user_id=? AND read_at IS NULL AND deleted_at IS NULL AND expires_at>?
                 """, Long.class, userId, Timestamp.from(now));
     }
 
@@ -63,10 +70,10 @@ public class UserNotificationRepository {
         }
         List<InboxRow> rows = new NamedParameterJdbcTemplate(jdbc).query("""
                 WITH own AS MATERIALIZED (
-                    SELECT * FROM user_notifications WHERE user_id=:user AND expires_at>:now
-                ), boundary AS (SELECT COALESCE(max(id),0) AS read_through FROM own),
+                    SELECT * FROM user_notifications WHERE user_id=:user AND deleted_at IS NULL AND expires_at>:now
+                ), boundary AS (SELECT COALESCE(max(id),0) AS read_through,count(*) AS total_count FROM own),
                 page AS (SELECT * FROM own %s ORDER BY created_at DESC,id DESC LIMIT :limit)
-                SELECT boundary.read_through,page.*,
+                SELECT boundary.read_through,boundary.total_count,page.*,
                     EXISTS(SELECT 1 FROM announcements a WHERE a.id=page.announcement_id AND NOT a.admin_deleted
                         AND a.status IN ('ORIGINAL','원공고','CORRECTION','정정공고')
                         AND (a.status IN ('ORIGINAL','원공고') OR a.previous_announcement_id IS NOT NULL)
@@ -82,11 +89,17 @@ public class UserNotificationRepository {
                         if (row.getTimestamp("read_at") != null) {
                             readAt = row.getTimestamp("read_at").toInstant();
                         }
-                        item = new Item(Long.toString(row.getLong("id")), "ANNOUNCEMENT_CREATED",
+                        NotificationContent content = null;
+                        String type = "ANNOUNCEMENT_CREATED";
+                        if (row.getString("content") != null) {
+                            content = json.readValue(row.getString("content"), NotificationContent.class);
+                            type = content.type();
+                        }
+                        item = new Item(Long.toString(row.getLong("id")), type,
                                 Long.toString(row.getLong("announcement_id")), row.getString("title"),
-                                row.getTimestamp("created_at").toInstant(), readAt, row.getBoolean("target_available"));
+                                row.getTimestamp("created_at").toInstant(), readAt, row.getBoolean("target_available"), content);
                     }
-                    return new InboxRow(item, row.getLong("read_through"));
+                    return new InboxRow(item, row.getLong("read_through"), row.getLong("total_count"));
                 });
         var items = new ArrayList<>(rows.stream().map(InboxRow::item).filter(java.util.Objects::nonNull).toList());
         String nextCursor = null;
@@ -95,12 +108,13 @@ public class UserNotificationRepository {
             Item last = items.getLast();
             nextCursor = new NotificationCursor(last.createdAt(), Long.parseLong(last.id())).encode();
         }
-        return new NotificationPageResponse(items, nextCursor, Long.toString(rows.getFirst().readThrough()));
+        return new NotificationPageResponse(items, nextCursor, Long.toString(rows.getFirst().readThrough()),
+                rows.getFirst().totalCount());
     }
 
     public boolean markRead(long userId, long id, Instant now) {
         return jdbc.update("""
-                UPDATE user_notifications SET read_at=COALESCE(read_at,?) WHERE user_id=? AND id=? AND expires_at>?
+                UPDATE user_notifications SET read_at=COALESCE(read_at,?) WHERE user_id=? AND id=? AND deleted_at IS NULL AND expires_at>?
                 """, Timestamp.from(now), userId, id, Timestamp.from(now)) == 1;
     }
 
@@ -116,10 +130,41 @@ public class UserNotificationRepository {
 
     public int markThrough(long userId, long bound, Instant now) {
         return jdbc.update("""
-                UPDATE user_notifications SET read_at=? WHERE user_id=? AND id<=? AND read_at IS NULL AND expires_at>?
+                UPDATE user_notifications SET read_at=? WHERE user_id=? AND id<=? AND read_at IS NULL AND deleted_at IS NULL AND expires_at>?
                 """, Timestamp.from(now), userId, bound, Timestamp.from(now));
     }
 
-    private record InboxRow(Item item, long readThrough) {
+    public long countOwned(long userId, List<Long> ids) {
+        if (ids.isEmpty()) {
+            return 0;
+        }
+        return new NamedParameterJdbcTemplate(jdbc).queryForObject(
+                "SELECT count(*) FROM user_notifications WHERE user_id=:user AND id IN (:ids)",
+                new MapSqlParameterSource().addValue("user", userId).addValue("ids", ids), Long.class);
+    }
+
+    public void deleteSelected(long userId, List<Long> ids, Instant now) {
+        new NamedParameterJdbcTemplate(jdbc).update("""
+                UPDATE user_notifications SET deleted_at=:now
+                WHERE user_id=:user AND id IN (:ids) AND deleted_at IS NULL
+                """, new MapSqlParameterSource().addValue("user", userId).addValue("ids", ids)
+                .addValue("now", Timestamp.from(now)));
+    }
+
+    public void deleteThrough(long userId, long bound, List<Long> excluded, Instant now) {
+        var parameters = new MapSqlParameterSource().addValue("user", userId).addValue("bound", bound)
+                .addValue("now", Timestamp.from(now));
+        String exclusion = "";
+        if (!excluded.isEmpty()) {
+            exclusion = " AND id NOT IN (:excluded)";
+            parameters.addValue("excluded", excluded);
+        }
+        new NamedParameterJdbcTemplate(jdbc).update("""
+                UPDATE user_notifications SET deleted_at=:now
+                WHERE user_id=:user AND id<=:bound AND deleted_at IS NULL
+                """ + exclusion, parameters);
+    }
+
+    private record InboxRow(Item item, long readThrough, long totalCount) {
     }
 }

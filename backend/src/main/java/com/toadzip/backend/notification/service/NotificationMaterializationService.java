@@ -5,6 +5,7 @@ import com.toadzip.backend.notification.domain.PendingNotificationEvent;
 import com.toadzip.backend.notification.repository.NotificationAudienceRepository;
 import com.toadzip.backend.notification.repository.NotificationDeliveryRepository;
 import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
+import com.toadzip.backend.notification.repository.NotificationScheduleRepository;
 import com.toadzip.backend.notification.repository.UserNotificationRepository;
 import java.time.Instant;
 import java.util.List;
@@ -20,6 +21,7 @@ public class NotificationMaterializationService {
     private final NotificationAudienceRepository audience;
     private final UserNotificationRepository notifications;
     private final NotificationDeliveryRepository deliveries;
+    private final NotificationScheduleRepository schedules;
 
     @Transactional
     public int materializeNextPage(Instant now, int pageSize) {
@@ -34,16 +36,25 @@ public class NotificationMaterializationService {
     }
 
     private int materialize(PendingNotificationEvent event, Instant now, int pageSize) {
-        Optional<String> title = audience.visibleTitle(event.announcementId());
+        if (event.snapshot() != null && event.snapshot().schedule() != null
+                && !schedules.isCurrent(event.snapshot().schedule(), now)) {
+            outbox.skip(event.id());
+            return 0;
+        }
+        Optional<String> title = audience.visibleTitle(event.announcementId(), event.snapshot());
         if (title.isEmpty()) {
             outbox.skip(event.id());
             return 0;
         }
         NotificationAudienceSnapshot snapshot = event.snapshot();
         Long upper = event.recipientUpperBound();
-        if (snapshot == null) {
-            snapshot = audience.snapshot(event.announcementId(), title.get());
-            if (snapshot.complexes().isEmpty()) {
+        if (snapshot == null || upper == null) {
+            if (snapshot != null && snapshot.schedule() != null) {
+                snapshot = new NotificationAudienceSnapshot(title.get(), List.of(), List.of(), snapshot.schedule());
+            } else {
+                snapshot = audience.snapshot(event.announcementId(), title.get());
+            }
+            if (snapshot.schedule() == null && snapshot.complexes().isEmpty()) {
                 outbox.awaitLinks(event, now);
                 return 0;
             }
@@ -54,9 +65,15 @@ public class NotificationMaterializationService {
                 event.recipientCursor(), upper, pageSize, now);
         long cursor = event.recipientCursor();
         for (long userId : recipients) {
+            var content = audience.content(userId, snapshot, event.occurredAt(), now);
+            if (content.isEmpty()) {
+                cursor = userId;
+                continue;
+            }
             var inserted = notifications.insertIfAbsent(userId, event.id(), event.announcementId(),
                     snapshot.title(), now);
             if (inserted.created()) {
+                notifications.setContent(inserted.id(), content.get());
                 deliveries.enqueueForCurrentDevices(inserted.id(), now);
             }
             cursor = userId;

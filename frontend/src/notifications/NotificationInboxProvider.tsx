@@ -4,7 +4,7 @@ import { NotificationInboxContext } from './NotificationInboxContext'
 import { notificationRepository, NotificationApiError, type NotificationRepository } from './notificationRepository'
 import { useNotificationPolling } from './useNotificationPolling'
 
-export function NotificationInboxProvider({ children, repository = notificationRepository }: { readonly children: ReactNode; readonly repository?: NotificationRepository }) {
+export function NotificationInboxProvider({ children, repository = notificationRepository, navigationKey }: { readonly children: ReactNode; readonly repository?: NotificationRepository; readonly navigationKey?: string }) {
   const interests = useNotificationInterests()
   const userId = interests?.mode === 'member' ? interests.userId : null
   const refreshStatus = interests?.resetSession
@@ -15,7 +15,7 @@ export function NotificationInboxProvider({ children, repository = notificationR
       throw error
     }
   }, [repository, sessionExpired])
-  const { unreadCount, error, refresh } = useNotificationPolling({ userId, load })
+  const { unreadCount, error, refresh } = useNotificationPolling({ userId, load, navigationKey })
   const [revision, setRevision] = useState(0)
   const channel = useRef<BroadcastChannel | null>(null)
   const invalidate = useCallback((broadcast = true) => {

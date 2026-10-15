@@ -73,7 +73,7 @@ class NotificationInterestIntegrationTest {
                 .andExpect(jsonPath("$.userId").value(Long.toString(MEMBER)))
                 .andExpect(jsonPath("$.settingsRevision").value(1))
                 .andExpect(jsonPath("$.emailConfirmed").doesNotExist())
-                .andExpect(jsonPath("$.targets[0].noticeVersion").value("notification-2026-10-10-v1"));
+                .andExpect(jsonPath("$.targets[0].noticeVersion").value("notification-2026-10-15-v1"));
         mockMvc.perform(post(ENDPOINT).with(user(Long.toString(MEMBER)).roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(request("CANCELLED", 1)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.currentTarget.active").value(false));
@@ -111,8 +111,8 @@ class NotificationInterestIntegrationTest {
 
     @Test
     void 신청은_최신_안내가_필요하며_클릭_이벤트는_업무요청이_아니다() throws Exception {
-        for (String body : List.of(request("CONFIRMED", 0).replace("notification-2026-10-10-v1", "old"),
-                request("CONFIRMED", 0).replace("\"noticeVersion\":\"notification-2026-10-10-v1\",", ""),
+        for (String body : List.of(request("CONFIRMED", 0).replace("notification-2026-10-15-v1", "old"),
+                request("CONFIRMED", 0).replace("\"noticeVersion\":\"notification-2026-10-15-v1\",", ""),
                 request("CLICKED", 0))) {
             mockMvc.perform(post(ENDPOINT).with(user(Long.toString(MEMBER)).roles("USER")).with(csrf())
                             .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -150,7 +150,7 @@ class NotificationInterestIntegrationTest {
     private String request(String type, long revision) {
         return """
                 {"eventId":"%s","expectedUserId":"%s","expectedSettingsRevision":%s,
-                 "noticeVersion":"notification-2026-10-10-v1","eventType":"%s",
+                 "noticeVersion":"notification-2026-10-15-v1","eventType":"%s",
                  "source":"SETTING","targetType":"REGION","targetId":"11"}
                 """.formatted(UUID.randomUUID(), MEMBER, revision, type);
     }

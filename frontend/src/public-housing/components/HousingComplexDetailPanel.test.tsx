@@ -201,7 +201,7 @@ describe('HousingComplexDetailPanel', () => {
     expect(within(panel).getByText('50,000,000원')).toBeVisible()
   })
 
-  it('회원 단지 알림 클릭은 단지 ID를 저장하고 준비 중임을 안내한다', async () => {
+  it('회원 단지 알림 클릭은 단지 ID를 저장하고 신청 완료를 안내한다', async () => {
     localStorage.clear()
     const record = vi.fn<NotificationInterestRepository['record']>().mockImplementation(async event => ({ ...event, outcome: 'ACTIVATED', occurredAt: '2026-10-09T00:00:00Z', settingsRevision: 1, currentTarget: { active: true, expiresAt: '2027-04-07T00:00:00Z', noticeVersion: 'notification-2026-10-09-v1', requestedAt: '2026-10-09T00:00:00Z' } }))
     render(
@@ -214,7 +214,7 @@ describe('HousingComplexDetailPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '서울가람 행복주택 알림 받기' }))
     expect(record).not.toHaveBeenCalled()
     fireEvent.click(await screen.findByRole('button', { name: '신청하기' }))
-    expect(await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })).toBeVisible()
+    expect(await screen.findByRole('dialog', { name: '알림 신청을 완료했어요' })).toBeVisible()
     expect(record).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'CONFIRMED', source: 'COMPLEX_DETAIL', targetType: 'COMPLEX', targetId: '17',
     }))

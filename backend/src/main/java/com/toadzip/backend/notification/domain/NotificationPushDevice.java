@@ -27,6 +27,10 @@ public class NotificationPushDevice {
     @Column(name = "enabled", nullable = false)
     private boolean enabled;
 
+    @org.hibernate.annotations.ColumnDefault("false")
+    @Column(name = "resume_after_login", nullable = false)
+    private boolean resumeAfterLogin;
+
     @Column(name = "consented_at", nullable = false)
     private Instant consentedAt;
 
@@ -35,6 +39,12 @@ public class NotificationPushDevice {
 
     @Column(name = "last_seen_at", nullable = false)
     private Instant lastSeenAt;
+
+    @Column(length = 16)
+    private String platform;
+
+    @Column(length = 16)
+    private String browser;
 
     protected NotificationPushDevice() {
     }

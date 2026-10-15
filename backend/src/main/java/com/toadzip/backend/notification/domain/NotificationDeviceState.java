@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record NotificationDeviceState(UUID id, long userId, String fid, long bindingVersion, boolean enabled,
-        Instant consentedAt) {
+        Instant consentedAt, boolean resumeAfterLogin, String platform, String browser) {
     public boolean retainsBinding(long user, String registration) {
         return enabled && userId == user && fid.equals(registration);
     }

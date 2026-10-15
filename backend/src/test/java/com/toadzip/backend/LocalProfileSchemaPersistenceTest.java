@@ -88,12 +88,14 @@ class LocalProfileSchemaPersistenceTest {
 
             var flyway = Flyway.configure().dataSource(jdbcUrl, "toadzip_test", "toadzip_test")
                     .locations("classpath:db/migration").load();
-            assertEquals(6, flyway.migrate().migrationsExecuted);
+            assertEquals(9, flyway.migrate().migrationsExecuted);
             assertEquals(0, flyway.migrate().migrationsExecuted);
             try (Connection connection = DriverManager.getConnection(jdbcUrl, "toadzip_test", "toadzip_test");
                     Statement statement = connection.createStatement()) {
                 assertEquals(0, countColumn(connection, "sh_announcement_source", "raw_detail_html"));
                 assertEquals(1, countColumn(connection, "sh_announcement_source", "body_text"));
+                assertEquals(1, countColumn(connection, "notification_push_devices", "platform"));
+                assertEquals(1, countColumn(connection, "notification_push_devices", "browser"));
                 assertEquals(1, countAllRows(connection, "data_pipeline_executions"));
                 assertEquals(1, statement.executeUpdate("""
                         INSERT INTO data_pipeline_executions

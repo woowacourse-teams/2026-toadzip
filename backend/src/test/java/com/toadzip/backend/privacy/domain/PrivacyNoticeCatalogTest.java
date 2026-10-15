@@ -26,8 +26,11 @@ class PrivacyNoticeCatalogTest {
             assertEquals(PrivacyHash.sha256(document.content()), document.contentHash());
             assertTrue(document.content().contains("90일"));
         }
+        assertTrue(!catalog.current("NOTIFICATION_NOTICE").content().contains("준비 중"));
+        assertTrue(!catalog.current("PRIVACY_POLICY").content().contains("알림 전달 기능은 준비 중"));
+        assertTrue(catalog.find("NOTIFICATION_NOTICE", "notification-2026-10-10-v1").content().contains("준비 중"));
         assertEquals("privacy-scope-1", catalog.current("PRIVACY_POLICY").scopeVersion());
-        assertEquals("privacy-2026-10-11-v1", catalog.currentVersion("PRIVACY_POLICY"));
+        assertEquals("privacy-2026-10-15-v1", catalog.currentVersion("PRIVACY_POLICY"));
         assertEquals("analytics-scope-3", catalog.requiredAnalyticsScope());
         assertEquals("analytics-2026-10-11-v1", catalog.currentVersion("ANALYTICS_NOTICE"));
         assertEquals("analytics-scope-1", catalog.find("ANALYTICS_NOTICE", "analytics-2026-10-09-v1").scopeVersion());

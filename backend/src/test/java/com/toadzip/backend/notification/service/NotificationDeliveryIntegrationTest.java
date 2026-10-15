@@ -49,7 +49,7 @@ class NotificationDeliveryIntegrationTest {
             complexId = complex.getId();
             fixtures.link(announcement, complex);
             fixtures.user(MEMBER);
-            fixtures.subscribe(MEMBER, "REGION", "11", NOW.minusSeconds(60));
+            fixtures.subscribe(MEMBER, "COMPLEX", complex.getId().toString(), NOW.minusSeconds(60));
             deviceId = fixtures.device(MEMBER);
             eventId = fixtures.event(announcement);
         });
@@ -202,6 +202,14 @@ class NotificationDeliveryIntegrationTest {
             }
             assertThat(first.get(5, java.util.concurrent.TimeUnit.SECONDS)).isPresent();
         }
+    }
+
+    @Test
+    void 보관함에서_삭제하면_대기_중인_푸시는_발송하지_않는다() {
+        jdbc.update("UPDATE user_notifications SET deleted_at=? WHERE event_id=?",
+                java.sql.Timestamp.from(NOW), eventId);
+        service(delivery -> { throw new AssertionError("삭제한 알림을 발송했습니다."); }).deliverAvailable(20);
+        assertThat(status()).isEqualTo("SKIPPED");
     }
 
     private NotificationDeliveryService service(NotificationPushSender sender) {

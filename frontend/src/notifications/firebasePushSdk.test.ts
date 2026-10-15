@@ -4,7 +4,7 @@ it('설정이 없으면 브라우저 권한이나 FCM에 접근하지 않는다'
   vi.stubEnv('VITE_NOTIFICATION_PUSH_ENABLED', 'true')
   vi.stubEnv('VITE_FIREBASE_API_KEY', '')
   const { preparePushSdk } = await import('./firebasePushSdk')
-  await expect(preparePushSdk()).rejects.toThrow('준비')
+  await expect(preparePushSdk()).rejects.toThrow('기기 알림 설정을 불러오지 못했어요')
 })
 it('비보안 origin에서는 SDK 등록 전에 미지원으로 안내한다', async () => {
   vi.stubEnv('VITE_NOTIFICATION_PUSH_ENABLED', 'true')

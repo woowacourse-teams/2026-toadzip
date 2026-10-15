@@ -15,6 +15,8 @@ import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
 import com.google.firebase.messaging.MessagingErrorCode;
 import com.toadzip.backend.notification.domain.ClaimedNotificationDelivery;
+import com.toadzip.backend.notification.domain.NotificationContent;
+import com.toadzip.backend.notification.domain.ScheduleReminder;
 import com.toadzip.backend.notification.domain.NotificationSendResult.Status;
 import java.time.Clock;
 import java.time.Duration;
@@ -30,10 +32,10 @@ class FirebaseNotificationPushSenderTest {
     private final Instant now = Instant.parse("2026-10-13T00:00:00Z");
     private final FirebaseMessaging messaging = mock(FirebaseMessaging.class);
     private final ClaimedNotificationDelivery delivery = new ClaimedNotificationDelivery(1, UUID.randomUUID(), 101,
-            UUID.randomUUID(), 1, "test-installation", 10, 20, 1, now.minusSeconds(3600), null);
+            UUID.randomUUID(), 1, "test-installation", 10, 20, 1, now.minusSeconds(3600), null, null, null, List.of());
 
     @Test
-    void FID와_일반문구_보관함링크_남은TTL_중복표시태그를_보낸다() throws Exception {
+    void FID와_관심단지문구_브랜드아이콘_보관함링크를_보낸다() throws Exception {
         when(messaging.sendAsync(any(Message.class))).thenReturn(ApiFutures.immediateFuture("projects/test/messages/1"));
         var result = sender(Duration.ofSeconds(30)).send(delivery);
         assertThat(result.status()).isEqualTo(Status.ACCEPTED);
@@ -42,7 +44,8 @@ class FirebaseNotificationPushSenderTest {
         String payload = GsonFactory.getDefaultInstance().toString(argument.getValue());
         assertThat(payload).contains("\"fid\":\"test-installation\"", "https://example.com/notifications",
                 "\"tag\":\"notification-101\"", "\"TTL\":\"82800\"")
-                .doesNotContain("userId", "announcementId", "관심 단지");
+                .contains("관심 단지에 새 공고가 올라왔어요", "https://example.com/brand/favicon-mark.png", "https://example.com/brand/notification-badge.svg")
+                .doesNotContain("userId", "announcementId");
     }
 
     @Test
@@ -81,6 +84,38 @@ class FirebaseNotificationPushSenderTest {
         failWith(MessagingErrorCode.QUOTA_EXCEEDED, response);
         var result = sender(Duration.ofSeconds(30)).send(delivery);
         assertThat(result.retryAfter()).isEqualTo(now.plus(Duration.ofHours(24)));
+    }
+
+    @Test
+    void 지역명과_묶인_공고수를_푸시_문구로_보낸다() throws Exception {
+        var content = NotificationContent.announcement("REGION", "11440", "서울특별시 마포구");
+        var first = withContent(1, 20, content);
+        var second = withContent(2, 21, content);
+        when(messaging.sendAsync(any(Message.class))).thenReturn(ApiFutures.immediateFuture("message"));
+        sender(Duration.ofSeconds(30)).send(first.withMembers(List.of(first, second)));
+        var argument = ArgumentCaptor.forClass(Message.class);
+        verify(messaging).sendAsync(argument.capture());
+        assertThat(GsonFactory.getDefaultInstance().toString(argument.getValue()))
+                .contains("서울특별시 마포구에 새 공고 2개가 올라왔어요.", "notification-group-1");
+    }
+
+    @Test
+    void 일정_푸시는_다음날_배달되지_않도록_한국시간_자정까지_TTL을_줄인다() throws Exception {
+        var reminder = new ScheduleReminder(20, "CONTRACT", "계약", java.time.LocalDate.parse("2026-10-14"),
+                java.time.LocalDate.parse("2026-10-14"), null, null, null, null,
+                "https://example.com/notice", null, "START_END", now);
+        when(messaging.sendAsync(any(Message.class))).thenReturn(ApiFutures.immediateFuture("message"));
+        sender(Duration.ofSeconds(30)).send(withContent(1, 20, NotificationContent.reminder(reminder)));
+        var argument = ArgumentCaptor.forClass(Message.class);
+        verify(messaging).sendAsync(argument.capture());
+        assertThat(GsonFactory.getDefaultInstance().toString(argument.getValue()))
+                .contains("내일 계약 일정이 있어요.", "\"TTL\":\"54000\"");
+    }
+
+    private ClaimedNotificationDelivery withContent(long id, long announcementId, NotificationContent content) {
+        return new ClaimedNotificationDelivery(id, delivery.leaseToken(), 100 + id, delivery.deviceId(),
+                delivery.bindingVersion(), delivery.fid(), delivery.userId(), announcementId, 1, now,
+                null, content, null, List.of());
     }
 
     private FirebaseNotificationPushSender sender(Duration deadline) {
