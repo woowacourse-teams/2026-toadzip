@@ -96,7 +96,9 @@ export function ComplexComparisonEditor({ id, version, deleted, onChanged, onBus
   }
   const ordinaryFields = comparisonFields.filter(field => !field.name.startsWith('address.'))
   const addressFields = comparisonFields.filter(field => field.name.startsWith('address.'))
-  const differenceCount = ordinaryFields.filter(differs).length
+  const ordinaryDifferenceCount = ordinaryFields.filter(differs).length
+  const addressDifferenceCount = addressFields.filter(differs).length
+  const differenceCount = ordinaryDifferenceCount + addressDifferenceCount
   function comparisonRow(field: Field) {
     if (!snapshot) return null
     const current = valueAt(snapshot.current, field.name)
@@ -172,8 +174,10 @@ export function ComplexComparisonEditor({ id, version, deleted, onChanged, onBus
       <form onSubmit={event => { event.preventDefault(); void mutate('save') }}>
         <div className={styles.table}><div className={styles.columns} aria-hidden="true"><span>항목</span><span>현재 등록값</span><span>DB 원천값</span><span>수정</span></div>
           {ordinaryFields.filter(field => !differentOnly || differs(field) || changed.some(item => item.name === field.name)).map(comparisonRow)}
-          {differentOnly && !differenceCount && !changed.length ? <p className={styles.empty}>비교 가능한 원천값에서 차이가 없습니다. 원천에 없는 항목은 모든 항목에서 확인하세요.</p> : null}</div>
-        <details className={styles.address}><summary>주소·위치 함께 확인·수정</summary><p className={styles.hint}>도로명주소·PNU·지역 코드·좌표를 함께 확인합니다. 주소만 원천값으로 덮어쓰지 않습니다.</p>
+          {differentOnly && !ordinaryDifferenceCount && !changed.length ? <p className={styles.empty}>{addressDifferenceCount
+            ? `주소 원천값이 다른 항목 ${addressDifferenceCount}개가 있습니다. 아래 주소·위치 영역을 펼쳐 확인하세요.`
+            : '비교 가능한 원천값에서 차이가 없습니다. 원천에 없는 항목은 모든 항목에서 확인하세요.'}</p> : null}</div>
+        <details className={styles.address}><summary>주소·위치 함께 확인·수정{addressDifferenceCount ? <span className={styles.difference}> · 값 다름 {addressDifferenceCount}개</span> : null}</summary><p className={styles.hint}>도로명주소·PNU·지역 코드·좌표를 함께 확인합니다. 주소만 원천값으로 덮어쓰지 않습니다.</p>
           <AddressPicker onSelect={address => {
             setDraft(value => ({ ...value, address: { ...(isRecord(value.address) ? value.address : {}), ...address } }))
             setEditing(value => [...new Set([...value, ...addressFields.map(field => field.name)])]); setAddressConfirmed(false)

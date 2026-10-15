@@ -60,3 +60,14 @@ it('미확인 원천과 false·0을 구분하며 임의로 자동 채우지 않�
   expect(within(screen.getByRole('group', { name: '엘리베이터 비교' })).getAllByText('미설치')).toHaveLength(2)
   expect(within(screen.getByRole('group', { name: '준공일 비교' })).getByText('원천에 없음')).toBeVisible()
 })
+
+it('주소만 다른 경우에도 차이 개수와 펼쳐 확인할 영역을 안내한다', async () => {
+  mocks.get.mockResolvedValue({ ...snapshot, sources: [{ ...snapshot.sources[0], data: { ...source,
+    raw: { ...source.raw, hshld_co: 10, rn_adres: '다른 도로명주소' } } }] })
+  show()
+  fireEvent.click(await screen.findByRole('button', { name: '값이 다른 항목 1' }))
+  expect(screen.getByText(/주소 원천값이 다른 항목 1개/)).toBeVisible()
+  fireEvent.click(screen.getByText(/주소·위치 함께 확인·수정/))
+  expect(within(screen.getByRole('group', { name: '도로명주소 비교' })).getByText('다른 도로명주소')).toBeVisible()
+  expect(screen.queryByText('비교 가능한 원천값에서 차이가 없습니다.')).not.toBeInTheDocument()
+})
