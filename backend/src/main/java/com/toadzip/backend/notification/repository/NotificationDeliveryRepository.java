@@ -151,7 +151,7 @@ public class NotificationDeliveryRepository {
                 """, status, Timestamp.from(next), result.providerMessageId(), result.errorCode(), finished,
                 delivery.id(), delivery.leaseToken());
         if (updated == 1 && result.status() == NotificationSendResult.Status.INVALID_REGISTRATION) {
-            devices.disable(delivery.userId(), delivery.deviceId(), delivery.bindingVersion(), now);
+            devices.disable(delivery.userId(), delivery.deviceId(), delivery.bindingVersion());
         }
         return updated == 1;
     }

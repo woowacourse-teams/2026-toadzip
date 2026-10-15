@@ -4,12 +4,14 @@ import com.toadzip.backend.notification.domain.NotificationDeviceState;
 import com.toadzip.backend.notification.dto.NotificationDeviceBinding;
 import com.toadzip.backend.notification.dto.NotificationPushDeviceRequest;
 import com.toadzip.backend.notification.dto.NotificationPushDeviceResponse;
+import com.toadzip.backend.notification.dto.NotificationPushDeviceSummaryResponse;
 import com.toadzip.backend.notification.dto.NotificationPushDisableRequest;
 import com.toadzip.backend.notification.exception.InvalidNotificationRequestException;
 import com.toadzip.backend.notification.exception.NotificationDeviceConflictException;
 import com.toadzip.backend.notification.repository.NotificationPushDeviceRepository;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -47,7 +49,8 @@ public class NotificationPushDeviceService {
                 consentedAt = previous.consentedAt();
             }
         }
-        var device = new NotificationDeviceState(installation, userId, request.fid(), version, true, consentedAt, false);
+        var device = new NotificationDeviceState(installation, userId, request.fid(), version, true, consentedAt, false,
+                request.platform(), request.browser());
         repository.save(device, clock.instant());
         return response(device, userId);
     }
@@ -55,7 +58,16 @@ public class NotificationPushDeviceService {
     @Transactional(readOnly = true)
     public NotificationPushDeviceResponse current(long userId, UUID installation) {
         return repository.find(installation).map(device -> response(device, userId))
-                .orElseGet(() -> new NotificationPushDeviceResponse(null, false, null, false));
+                .orElseGet(() -> new NotificationPushDeviceResponse(null, false, null, false, false));
+    }
+
+    @Transactional(readOnly = true)
+    public List<NotificationPushDeviceSummaryResponse> devices(long userId, UUID installation) {
+        return repository.findReceivingDevices(userId).stream()
+                .map(device -> new NotificationPushDeviceSummaryResponse(device.id().toString(),
+                        Long.toString(device.bindingVersion()), device.platform(), device.browser(), device.lastSeenAt(),
+                        device.enabled(), device.resumeAfterLogin(), device.id().equals(installation)))
+                .toList();
     }
 
     @Transactional
@@ -68,7 +80,7 @@ public class NotificationPushDeviceService {
         if (installation == null) {
             throw new NotificationDeviceConflictException();
         }
-        if (repository.disable(userId, installation, version, clock.instant())) {
+        if (repository.disable(userId, installation, version)) {
             return;
         }
         var current = repository.find(installation);
@@ -91,7 +103,8 @@ public class NotificationPushDeviceService {
 
     private NotificationPushDeviceResponse response(NotificationDeviceState device, long userId) {
         return new NotificationPushDeviceResponse(device.id().toString(), device.enabled() && device.userId() == userId,
-                Long.toString(device.bindingVersion()), device.resumeAfterLogin() && device.userId() == userId);
+                Long.toString(device.bindingVersion()), device.resumeAfterLogin() && device.userId() == userId,
+                device.userId() == userId);
     }
 
     private void verifyUser(long userId, String expected) {

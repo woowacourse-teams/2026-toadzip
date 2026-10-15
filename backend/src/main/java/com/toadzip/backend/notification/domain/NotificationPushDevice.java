@@ -40,6 +40,12 @@ public class NotificationPushDevice {
     @Column(name = "last_seen_at", nullable = false)
     private Instant lastSeenAt;
 
+    @Column(length = 16)
+    private String platform;
+
+    @Column(length = 16)
+    private String browser;
+
     protected NotificationPushDevice() {
     }
 }

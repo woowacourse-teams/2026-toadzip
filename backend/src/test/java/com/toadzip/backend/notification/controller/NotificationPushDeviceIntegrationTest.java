@@ -172,6 +172,85 @@ class NotificationPushDeviceIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(true));
     }
 
+
+    @Test
+    void 내_기기만_조회하고_현재기기와_마지막사용을_표시하며_FID는_노출하지_않는다() throws Exception {
+        Cookie cookie = register(101, new MockHttpSession(), null, null);
+        mvc.perform(post(ENDPOINT).cookie(cookie).with(user("101").roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request(101, "1").replace("}", ",\"platform\":\"MAC\",\"browser\":\"CHROME\"}")))
+                .andExpect(status().isOk());
+        jdbc.update("""
+                INSERT INTO notification_push_devices(id,user_id,fid,binding_version,enabled,
+                    consented_at,registered_at,last_seen_at)
+                VALUES(?,102,'private-other-fid',1,true,now(),now(),now())
+                """, java.util.UUID.randomUUID());
+        mvc.perform(get(ENDPOINT).cookie(cookie).with(user("101").roles("USER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].current").value(true))
+                .andExpect(jsonPath("$[0].platform").value("MAC"))
+                .andExpect(jsonPath("$[0].browser").value("CHROME"))
+                .andExpect(jsonPath("$[0].lastSeenAt").isNotEmpty())
+                .andExpect(jsonPath("$[0].fid").doesNotExist());
+        mvc.perform(get(ENDPOINT)).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void 다른_기기에서_해제하면_복원되지_않고_마지막사용을_유지한다() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        Cookie cookie = register(101, session, null, null);
+        mvc.perform(post("/api/auth/logout").session(session).cookie(cookie)
+                        .with(user("101").roles("USER")).with(csrf())).andExpect(status().isNoContent());
+        mvc.perform(get(ENDPOINT).with(user("101").roles("USER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].current").value(false))
+                .andExpect(jsonPath("$[0].resumeAfterLogin").value(true));
+        var lastSeen = jdbc.queryForObject("SELECT last_seen_at FROM notification_push_devices", java.sql.Timestamp.class);
+        mvc.perform(delete(ENDPOINT + "/" + cookie.getValue()).with(user("101").roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedUserId\":\"101\",\"bindingVersion\":\"2\"}"))
+                .andExpect(status().isNoContent());
+        mvc.perform(get(ENDPOINT + "/current").cookie(cookie).with(user("101").roles("USER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(false))
+                .andExpect(jsonPath("$.knownForUser").value(true))
+                .andExpect(jsonPath("$.resumeAfterLogin").value(false));
+        assertThat(jdbc.queryForObject("SELECT last_seen_at FROM notification_push_devices", java.sql.Timestamp.class))
+                .isEqualTo(lastSeen);
+        mvc.perform(post(ENDPOINT).cookie(cookie).with(user("101").roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(request(101, "2")))
+                .andExpect(status().isConflict());
+        mvc.perform(get(ENDPOINT).with(user("101").roles("USER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        mvc.perform(get(ENDPOINT + "/current").cookie(cookie).with(user("102").roles("USER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.knownForUser").value(false));
+    }
+
+    @Test
+    void 원격해제는_본인기기에만_가능하고_CSRF와_현재버전이_필요하다() throws Exception {
+        Cookie cookie = register(101, new MockHttpSession(), null, null);
+        String path = ENDPOINT + "/" + cookie.getValue();
+        mvc.perform(delete(path).with(user("102").roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedUserId\":\"102\",\"bindingVersion\":\"1\"}"))
+                .andExpect(status().isConflict());
+        mvc.perform(delete(path).with(user("101").roles("USER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedUserId\":\"101\",\"bindingVersion\":\"1\"}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(delete(path).with(user("101").roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedUserId\":\"101\",\"bindingVersion\":\"9\"}"))
+                .andExpect(status().isConflict());
+        assertThat(jdbc.queryForObject("SELECT enabled FROM notification_push_devices", Boolean.class)).isTrue();
+    }
+
+    @Test
+    void 기기표시에는_허용한_분류만_저장한다() throws Exception {
+        mvc.perform(post(ENDPOINT).with(user("101").roles("USER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request(101, null).replace("}", ",\"platform\":\"raw user agent\"}")))
+                .andExpect(status().isBadRequest());
+    }
+
     private Cookie register(long userId, MockHttpSession session, Cookie cookie, String version) throws Exception {
         var request = post(ENDPOINT).session(session).with(user(Long.toString(userId)).roles("USER")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(request(userId, version));

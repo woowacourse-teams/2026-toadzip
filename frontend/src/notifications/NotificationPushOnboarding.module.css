@@ -1,0 +1,5 @@
+.note { margin: 0 0 24px; padding: 16px; border-radius: 12px; background: var(--ds-color-surface-subtle); color: var(--ds-color-label); font-size: 13px; line-height: 1.8; word-break: keep-all; }
+.actions { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; }
+.primary { width: 100%; background: var(--ds-color-brand); color: var(--ds-color-text); border-color: var(--ds-color-brand); }
+.secondary { background: var(--ds-color-surface); color: var(--ds-color-label); border: 1px solid var(--ds-color-divider); }
+.secondary:hover:not(:disabled) { background: var(--ds-color-surface-subtle); }

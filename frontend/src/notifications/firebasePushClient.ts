@@ -8,16 +8,18 @@ export interface PushSdk {
 }
 export interface PushState { readonly status: 'loading' | 'off' | 'on' | 'busy' | 'error'; readonly message: string }
 export interface PushClient {
-  start(initialState?: PushDeviceState): Promise<void>; enable(): Promise<void>; disable(): Promise<void>; afterLogout(): Promise<void>
+  start(initialState?: PushDeviceState): Promise<void>; refresh(): Promise<void>; enable(): Promise<void>; disable(): Promise<void>; afterLogout(): Promise<void>
   subscribe(listener: () => void): () => void; getSnapshot(): PushState
   subscribeRefresh(listener: () => void): () => void; dispose(): void
 }
 export function createPushClient(userId: string, sdk: PushSdk, repository: PushDeviceRepository): PushClient {
   let state: PushState = { status: 'loading', message: '' }
   let bindingVersion: string | null = null
+  let bindingSnapshot = 0
   let active = false
   let disposed = false
   let generation = 0
+  let refreshSequence = 0
   let writes: Promise<void> = Promise.resolve()
   let completionMessage = ''
   let registrationDone: ((ok: boolean) => void) | null = null
@@ -31,9 +33,10 @@ export function createPushClient(userId: string, sdk: PushSdk, repository: PushD
     const version = generation
     writes = writes.then(async () => {
       if (!active || disposed || version !== generation) return
+      const snapshot = bindingSnapshot
       const result = await repository.register(fid, userId, bindingVersion, controller.signal)
-      // Retain this request's version for an immediately following disable, even if it just became inactive.
-      bindingVersion = result.bindingVersion
+      // A local disable needs this response's version, but a newer server snapshot must win.
+      if (bindingSnapshot === snapshot) bindingVersion = result.bindingVersion
       if (!active || disposed || version !== generation) return
       publish({ status: 'on', message: completionMessage }); completionMessage = ''; registrationDone?.(true)
     }).catch(() => { if (active && !disposed && version === generation) registrationError() })
@@ -66,6 +69,29 @@ export function createPushClient(userId: string, sdk: PushSdk, repository: PushD
         publish({ status: restoring ? 'busy' : active ? 'on' : 'off', message: restoring ? '기기 알림을 복원하고 있어요…' : '' })
         if (active) await registerDevice(restoring ? '이 기기에서 알림을 다시 받아요.' : '')
       } catch { if (!disposed) registrationError() }
+    },
+    async refresh() {
+      if (disposed || state.status === 'loading' || state.status === 'busy') return
+      const sequence = ++refreshSequence
+      const version = generation
+      const binding = bindingVersion
+      try {
+        const current = await repository.current(controller.signal)
+        if (disposed || sequence !== refreshSequence || generation !== version || binding !== bindingVersion) return
+        if (current.bindingVersion !== bindingVersion) { bindingSnapshot++; stop() }
+        bindingVersion = current.bindingVersion
+        const enabled = current.enabled && sdk.permission() === 'granted'
+        // Reconcile only. A logout pause or explicit remote disable must never restore itself here.
+        if (!enabled) stop()
+        else active = true
+        if (state.status !== (enabled ? 'on' : 'off')) {
+          publish({ status: enabled ? 'on' : 'off', message: enabled ? '' : '이 기기의 알림이 꺼져 있어요.' })
+        }
+      } catch {
+        if (!disposed && sequence === refreshSequence && generation === version) {
+          publish({ status: 'error', message: '기기 설정을 다시 확인하지 못했어요. 다시 시도해 주세요.' })
+        }
+      }
     },
     async enable() {
       if (disposed || state.status === 'loading' || state.status === 'busy' || state.status === 'on') return

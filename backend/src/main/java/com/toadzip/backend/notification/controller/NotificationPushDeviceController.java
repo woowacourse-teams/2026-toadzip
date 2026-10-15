@@ -3,11 +3,13 @@ package com.toadzip.backend.notification.controller;
 import com.toadzip.backend.notification.dto.NotificationDeviceBinding;
 import com.toadzip.backend.notification.dto.NotificationPushDeviceRequest;
 import com.toadzip.backend.notification.dto.NotificationPushDeviceResponse;
+import com.toadzip.backend.notification.dto.NotificationPushDeviceSummaryResponse;
 import com.toadzip.backend.notification.dto.NotificationPushDisableRequest;
 import com.toadzip.backend.notification.service.NotificationPushDeviceService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.CacheControl;
@@ -18,6 +20,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -72,6 +75,20 @@ public class NotificationPushDeviceController {
             }
             return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result);
         }
+    }
+
+    @GetMapping
+    public ResponseEntity<List<NotificationPushDeviceSummaryResponse>> devices(Authentication authentication,
+            @CookieValue(name = "notification-device", required = false) UUID installation) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(service.devices(Long.parseLong(authentication.getName()), installation));
+    }
+
+    @DeleteMapping("/{deviceId}")
+    public ResponseEntity<Void> disableDevice(Authentication authentication, @PathVariable UUID deviceId,
+            @Valid @RequestBody NotificationPushDisableRequest body) {
+        service.disable(Long.parseLong(authentication.getName()), deviceId, body);
+        return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
     }
 
     @DeleteMapping("/current")

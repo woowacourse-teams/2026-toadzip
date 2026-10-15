@@ -1,0 +1,23 @@
+.section { margin-top: 24px; border-top: 1px solid var(--ds-color-divider); }
+.heading { margin: 0; font-size: 15px; font-weight: 700; }
+.disclosure { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 56px; padding: 14px 0; border: 0; background: transparent; color: var(--ds-color-text); font: inherit; cursor: pointer; text-align: left; }
+.disclosure svg { width: 20px; height: 20px; color: var(--ds-color-muted); transition: transform .18s; }
+.disclosure[aria-expanded="true"] svg { transform: rotate(180deg); }
+.disclosure:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; border-radius: 6px; }
+.actions { display: flex; justify-content: flex-end; }
+.content { padding-bottom: 8px; }
+.refresh { padding: 8px 0 8px 8px; border: 0; background: transparent; color: var(--ds-color-label); font: inherit; font-size: 12px; cursor: pointer; }
+.refresh:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 0; border-top: 1px solid var(--ds-color-divider); }
+.list li > button { flex-shrink: 0; padding: 8px 10px; font-size: 12px; }
+.details { display: grid; gap: 6px; min-width: 0; }
+.deviceTitle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.deviceTitle strong { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.badge { padding: 3px 7px; border-radius: 6px; background: var(--ds-color-action-soft); color: var(--ds-color-action); font-size: 11px; font-weight: 600; white-space: nowrap; }
+.lastUsed, .paused { color: var(--ds-color-muted); font-size: 12px; line-height: 1.5; }
+.feedback { margin: 12px 0; padding: 12px; border-radius: 8px; background: var(--ds-color-surface-subtle); font-size: 13px; line-height: 1.7; word-break: keep-all; }
+.empty { margin: 20px 0 0; color: var(--ds-color-muted); font-size: 14px; }
+.list li > button { background: var(--ds-color-surface); color: var(--ds-color-label); border: 1px solid var(--ds-color-divider); }
+.list li > button:hover:not(:disabled) { background: var(--ds-color-surface-subtle); }
+@media (prefers-reduced-motion: reduce) { .disclosure svg { transition: none; } }

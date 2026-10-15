@@ -90,8 +90,10 @@ payload는 알림 종류별 문구·notification ID·`/notifications` 링크·�
 | POST `/api/v1/notifications/{id}/read` | 본인 알림 개별 읽음, 멱등 |
 | POST `/api/v1/notifications/read-all` | `{readThrough}`까지 읽음 |
 | POST `/api/v1/notifications/delete` | `{ids}` 선택 삭제 또는 `{deleteThrough, excludedIds}` 전체 범위 삭제 |
-| GET `/api/v1/notification-push-devices/current` | 현재 기기 상태·bindingVersion·resumeAfterLogin |
-| POST `/api/v1/notification-push-devices` | `{fid, expectedUserId, expectedBindingVersion}` 등록 |
+| GET `/api/v1/notification-push-devices/current` | 현재 기기 상태·bindingVersion·resumeAfterLogin·knownForUser |
+| POST `/api/v1/notification-push-devices` | `{fid, expectedUserId, expectedBindingVersion, platform?, browser?}` 등록 |
+| GET `/api/v1/notification-push-devices` | 본인의 활성·로그아웃 일시 중지 기기 목록, 현재 기기 여부·마지막 사용·기기 분류 |
+| DELETE `/api/v1/notification-push-devices/{deviceId}` | 본인의 다른 기기를 사용자·bindingVersion 검증 후 해제 |
 | DELETE `/api/v1/notification-push-devices/current` | `{expectedUserId, bindingVersion}`로 해제 |
 
 삭제 편집은 최초 목록의 readThrough와 totalCount를 고정한다. 전체 선택은 불러오지 않은 페이지까지 포함하며,
@@ -185,3 +187,23 @@ Firestore 하위에만 1.13.6 override를 적용했다. 제거할 때는 웹 SDK
 이번 변경의 실제 Firebase 전송과 iPhone/Android OS 표시·배포 worker 갱신은 미검증이다.
 로컬 브라우저 확인은 실제 UI와 가짜 응답으로 수행하며, 실기기의 권한·푸시 수신을 증명하지 않는다.
 배포 후 승인된 개발 프로젝트에서 지역 묶음·일정·브랜드 아이콘을 실제 기기로 확인한다.
+
+## 기기 관리와 새 기기 안내
+
+알림 설정의 관심 알림 목록 아래에 기본적으로 접힌 기기 목록을 둔다. 펼칠 때 조회한다. 목록은 FID와 다른 회원의 정보를 반환하지 않는다.
+등록 때 전체 User-Agent 대신 허용된 운영체제·브라우저 분류만 보관한다. 기존 기기의 분류는 다음 등록 갱신 때 채워지며,
+정보가 없는 동안은 `기기 정보 없음`으로 표시한다. 마지막 사용은 기기 등록·갱신 또는 직접 로그아웃 시각이다.
+다른 기기에서 해제한 시각을 마지막 사용으로 덮어쓰지 않는다.
+
+원격 해제는 현재 기기 해제와 같은 기기 잠금 및 bindingVersion 검증을 사용한다. 활성 상태와 로그인 복원 예약을 함께 끄고
+버전을 증가시켜 이미 대기 중인 자동 등록·발송을 차단한다. 관심 단지·지역·공고와 알림 보관함은 유지한다.
+해제된 기기의 설정 화면 진입·탭 복귀·온라인 복귀에서는 서버 상태를 다시 읽고, 자동 재등록 없이 토글에 반영한다.
+이미 FCM에 접수된 메시지는 회수할 수 없다.
+
+관심 알림이 있는 회원의 미등록 브라우저에만 최초 기기 안내를 표시한다. 서버가 같은 회원의 기존 기기로 판단하면
+직접 해제 여부와 관계없이 반복 권유하지 않는다. 일반 iPhone 브라우저도 상태를 먼저 조회하고 홈 화면 설치 안내로 연결한다.
+다른 모달이 열려 있으면 기다린다. 브라우저 권한 요청은 안내의 등록 버튼을 누른 동작에서만 시작한다.
+
+`나중에`·안내 닫기·등록 선택은 브라우저 로컬 저장소의 계정별 기능 설정으로 기억한다. 분석 도구에 전송하지 않는다.
+이 기록은 로그아웃으로 지우지 않으며 사이트 데이터 삭제 시 초기화된다. 저장소를 쓸 수 없는 환경에서는 현재 실행 중에만 기억한다.
+서버에 직접 해제 기록이 남아 있는 기기는 브라우저 안내 기록이 없어도 자동으로 권유하거나 켜지 않는다.

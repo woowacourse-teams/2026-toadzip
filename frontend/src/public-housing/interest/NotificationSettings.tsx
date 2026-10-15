@@ -1,3 +1,4 @@
+import { NotificationDeviceList } from '../../notifications/NotificationDeviceList'
 import { NotificationPushControl } from '../../notifications/NotificationPushControl'
 import { useRef } from 'react'
 import { useNotificationInterests } from './NotificationInterestContext'
@@ -35,5 +36,6 @@ export function NotificationSettings() {
         </li>)}</ul>
       </section>
     })}
+    <NotificationDeviceList />
   </div>
 }
