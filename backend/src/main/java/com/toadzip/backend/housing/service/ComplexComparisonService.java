@@ -225,8 +225,9 @@ public class ComplexComparisonService {
         return new AdminHousingComplexUpdateRequest(complex.getVersion(), complex.getName(),
                 RentalType.fromStoredValue(complex.getSupplyType()), AgencyCode.fromStoredValue(complex.getProvider()),
                 new AddressRequest(address.getRoadAddress(), address.getPnu(), address.getLegalDongCode(),
-                        address.getProvinceCode(), address.getCityCountyDistrictCode(), address.getLatitude().stripTrailingZeros(),
-                        address.getLongitude().stripTrailingZeros()), complex.getTotalHouseholdCount(), complex.getCompletionDate(),
+                        address.getProvinceCode(), address.getCityCountyDistrictCode(),
+                        address.getLatitude().stripTrailingZeros(), address.getLongitude().stripTrailingZeros()),
+                complex.getTotalHouseholdCount(), complex.getCompletionDate(),
                 complex.getHeatingType(), complex.getHousingType(), complex.getCorridorType(),
                 complex.getElevatorInstalled(), complex.getParkingSpaceCount(), complex.getImageUrl(),
                 complex.getRecentOneYearMoveOutCount());
