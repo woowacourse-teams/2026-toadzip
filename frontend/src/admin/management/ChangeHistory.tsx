@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { sourceCategories, isSourceCategory } from '../ingest/sourceApi'
 import { getManagementHistory } from './api'
 import type { ManagementChange, ManagementResource } from './managementContract'
 import { labels } from './fields'
@@ -43,11 +44,13 @@ function ComparisonEvidence({ value }: { value: Record<string, unknown> }) {
   const sources = Array.isArray(value.sources) ? value.sources.filter(isRecord) : []
   return <section aria-label="확인한 DB 원천 근거"><h3>확인한 DB 원천 근거</h3>
     {typeof value.note === 'string' ? <p>{value.note}</p> : null}
+    {typeof value.target === 'string' ? <p>확인 대상: {value.target === 'basic' ? '기본정보' : value.target.replace('type:', '주택형 #').replace('row:', '공급행 #').replace('target:', '공급대상 #')}</p> : null}
     {!sources.length ? <p>연결한 DB 원천 없이 공식 자료를 직접 확인해 수정했습니다.</p> : <ul>{sources.map((source, index) => {
-      const row = isRecord(source.data) ? source.data : null
-      return <li key={index}><strong>{source.category === 'MYHOME_COMPLEX' ? '마이홈 단지' : 'LH 임대 단지'} · {row && typeof row.name === 'string' ? row.name : '현재 원천 없음'}</strong>
-        {row && typeof row.collectedAt === 'string' ? <p>수집 시각 {new Date(row.collectedAt).toLocaleString('ko-KR')}</p> : null}
-        {row ? <details><summary>수정 당시 원천 값</summary><StoredDataTable data={row.raw} label={`수정 근거 원천 ${index + 1}`} /></details> : null}</li>
+      const rows = isRecord(source.data) ? [source.data] : Array.isArray(source.rows) ? source.rows.filter(isRecord) : []
+      const category = typeof source.category === 'string' && isSourceCategory(source.category) ? sourceCategories[source.category] : 'DB 원천'
+      return <li key={index}><strong>{category} · {rows.length && typeof rows[0].name === 'string' ? rows[0].name : '현재 원천 없음'}</strong>
+        {rows.map((row, rowIndex) => <div key={rowIndex}>{typeof row.collectedAt === 'string' ? <p>수집 시각 {new Date(row.collectedAt).toLocaleString('ko-KR')}</p> : null}
+          <details><summary>수정 당시 원천 값{rows.length > 1 ? ` · ${rowIndex + 1}` : ''}</summary><StoredDataTable data={row.raw} label={`수정 근거 원천 ${index + 1}-${rowIndex + 1}`} /></details></div>)}</li>
     })}</ul>}
   </section>
 }
