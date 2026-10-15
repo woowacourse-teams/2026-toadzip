@@ -61,7 +61,7 @@ describe('API 기본 주소 정책', () => {
     expect(fetcher.mock.calls[0]?.[0]).toBe('https://initial.example.test/api/admin/announcements')
   })
 
-  it.each(['admin-auth', 'registration', 'ingest', 'guest-cancellation'] as const)(
+  it.each(['admin-auth', 'registration', 'ingest'] as const)(
     '%s API는 모듈 초기화 후 환경 주소가 바뀌어도 기존 주소를 사용한다', async (api) => {
       vi.stubEnv('VITE_API_BASE_URL', 'https://initial.example.test')
       let request: () => Promise<unknown>
@@ -71,12 +71,9 @@ describe('API 기본 주소 정책', () => {
       } else if (api === 'registration') {
         const { validateAnnouncementImport } = await import('../admin/registration/api')
         request = () => validateAnnouncementImport('{}')
-      } else if (api === 'ingest') {
+      } else {
         const { getLhAnnouncementQuality } = await import('../admin/ingest/api')
         request = getLhAnnouncementQuality
-      } else {
-        const { requestGuestCancellation } = await import('../public-housing/interest/guestCancellationApi')
-        request = () => requestGuestCancellation('guest@example.test')
       }
       vi.stubEnv('VITE_API_BASE_URL', 'https://changed.example.test')
       const fetcher = vi.fn().mockRejectedValue(new Error('요청 경로 확인'))

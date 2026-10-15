@@ -15,6 +15,7 @@ import com.toadzip.backend.interest.exception.InvalidNotificationInterestExcepti
 import com.toadzip.backend.interest.exception.NotificationInterestConflictException;
 import com.toadzip.backend.interest.exception.NotificationSettingsConflictException;
 import com.toadzip.backend.interest.repository.NotificationSubscriptionRepository;
+import com.toadzip.backend.interest.repository.NotificationDailyActivityRepository;
 import com.toadzip.backend.privacy.repository.PrivacyNotificationRepository;
 import com.toadzip.backend.privacy.domain.PrivacyRetentionPolicy;
 import com.toadzip.backend.privacy.repository.PrivacyNoticeCatalog;
@@ -33,6 +34,7 @@ public class NotificationSettingsService {
 
     private final PrivacyNotificationRepository repository;
     private final NotificationSubscriptionRepository subscriptions;
+    private final NotificationDailyActivityRepository dailyActivity;
     private final PrivacyNoticeCatalog notices;
     private final RegionCodeResolver regions;
     private final HousingComplexRepository complexes;
@@ -73,6 +75,7 @@ public class NotificationSettingsService {
             throw new NotificationInterestConflictException();
         }
         repository.updateRevision(userId, revision, nextRevision, now);
+        dailyActivity.record(outcome, now);
         return response(new NotificationSettingReceipt(command.eventId(), userId, command.fingerprint(),
                 command.targetType(), command.targetId(), outcome, now, nextRevision), nextRevision, now);
     }

@@ -9,16 +9,17 @@
   "packageManager": "npm@11.17.0",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && vite build --config vite.worker.config.ts",
     "lint": "oxlint",
     "test": "vitest run",
     "check": "npm run lint && npm run test && npm run build",
     "preview": "vite preview",
-    "predev": "node scripts/prepare-pdf-assets.mjs",
+    "predev": "node scripts/prepare-pdf-assets.mjs && vite build --config vite.worker.config.ts --outDir .worker-dev --mode development",
     "prebuild": "node scripts/prepare-pdf-assets.mjs"
   },
   "dependencies": {
     "@rhwp/core": "0.8.6",
+    "firebase": "13.0.0",
     "pdfjs-dist": "6.3.289",
     "posthog-js": "1.438.2",
     "react": "19.2.8",
@@ -39,5 +40,10 @@
     "typescript": "6.0.3",
     "vite": "8.2.1",
     "vitest": "4.1.11"
+  },
+  "overrides": {
+    "@firebase/firestore": {
+      "@grpc/grpc-js": "1.13.6"
+    }
   }
 }

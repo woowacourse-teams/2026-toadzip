@@ -1,6 +1,7 @@
 import { captureProductEvent, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
+import { NotificationBadge } from '../../notifications/NotificationBadge'
 import { getCurrentUser, logoutUser } from './api'
 import { LoginModal } from './LoginModal'
 import { MemberMenuModal } from './MemberMenuModal'
@@ -39,13 +40,14 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
   }, [session, loginRequested, remainingSearch, hash, navigate])
 
   useEffect(() => {
+    if (sessionOverride !== undefined) return
     let active = true
     getCurrentUser().then(
       (user) => { if (active) setSession(user ? 'signed-in' : 'guest') },
       () => { if (active) setSession('error') },
     )
     return () => { active = false }
-  }, [])
+  }, [sessionOverride])
 
   async function retrySessionCheck() {
     if (onSessionRetry) { onSessionRetry(); return }
@@ -126,7 +128,7 @@ export function UserSessionControl({ onLogout, presentation = 'default', session
         onClick={(event) => { memberTrigger.current = event.currentTarget; setMemberView('inbox') }}>
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
           <path d="M4 4h16v16H4zM4 13h5l1 3h4l1-3h5" />
-        </svg><span>{mobile ? '알림' : '알림 보관함'}</span>
+        </svg><span>{mobile ? '알림' : '알림 보관함'}</span><NotificationBadge />
       </button>}
       {session === 'signed-in' && (
         presentation === 'rail' ? mobile ? <button className="service-login-link" type="button" aria-haspopup="dialog"

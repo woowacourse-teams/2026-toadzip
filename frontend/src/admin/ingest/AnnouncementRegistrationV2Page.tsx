@@ -113,7 +113,7 @@ export function AnnouncementRegistrationV2Page() {
   }
   const disabled = initializing || processing || pipelineBusy
   return <section className={`admin-registration-page ${workspaceStyles.page}`}>
-    <header className="admin-registration-heading"><h1>수집·정제 v2</h1></header>
+    <header className="admin-registration-heading"><h1>공고 수집·검토</h1></header>
     <div role="tablist" aria-label="수집 대상" className={workspaceStyles.tabs}>
       {(['announcement', 'complex'] as const).map(value => <button key={value} type="button" role="tab"
         id={`ingest-tab-${value}`} aria-selected={domain === value} aria-controls="ingest-domain-panel"

@@ -17,9 +17,9 @@ const CORE_RETRY_DELAY_MS = 30_000
 const MAX_DEDUPLICATION_KEYS = 1000
 const REQUIRED_ANALYTICS_SCOPE = 'analytics-scope-3'
 const MAX_TIMEOUT = 2_147_483_647
-const PUBLIC_PATHS = new Set(['/explore', '/feedback', '/notifications/cancel', '/mypage/notifications'])
+const PUBLIC_PATHS = new Set(['/explore', '/feedback', '/mypage/notifications'])
 type AuthState = 'member' | 'guest' | 'unknown'
-export type CaptureOptions = { dedupeKey?: string; authState?: AuthState; pageName?: 'explorer' | 'feedback' | 'guest_cancellation' | 'notification_settings' }
+export type CaptureOptions = { dedupeKey?: string; authState?: AuthState; pageName?: 'explorer' | 'feedback' | 'notification_settings' }
 type PendingEvent = { name: string; properties: SafeProperties; timestamp: Date }
 type CoreEvent = PendingEvent & { uuid: string; dedupeKey?: string; expiresAt: number; state: 'queued' | 'in_flight' }
 const corePending = new Map<string, CoreEvent>()
@@ -117,7 +117,6 @@ function scheduleIdentityExpiry(): void {
 
 function safePageName(): NonNullable<CaptureOptions['pageName']> {
   if (window.location.pathname === '/feedback') return 'feedback'
-  if (window.location.pathname === '/notifications/cancel') return 'guest_cancellation'
   if (window.location.pathname === '/mypage/notifications') return 'notification_settings'
   return 'explorer'
 }
@@ -146,7 +145,7 @@ const TECHNICAL_PROPERTIES = new Set([
 export function sanitizeCapture(event: CaptureResult | null): CaptureResult | null {
   if (!event || !collectionAllowed()) return null
   const replayEvent = event.event === '$snapshot'
-  if (!replayEvent && !isProductEvent(event.event)) return null
+  if (!replayEvent && event.event !== '$pageview' && !isProductEvent(event.event)) return null
   if (replayEvent && !replayAllowed()) return null
   const properties: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(event.properties)) {
@@ -154,7 +153,11 @@ export function sanitizeCapture(event: CaptureResult | null): CaptureResult | nu
   }
   if (!replayEvent) Object.assign(properties, sanitizeProductProperties(event.properties))
   properties.$current_url = `${window.location.origin}/`
-  properties.$pathname = PUBLIC_PATHS.has(window.location.pathname) ? window.location.pathname : '/'
+  // Manual pageviews can wait for the SDK while another allowed route opens.
+  // Keep only the allowlisted pathname captured at entry, never a raw URL.
+  const pathname = event.event === '$pageview' && PUBLIC_PATHS.has(event.properties.$pathname)
+    ? event.properties.$pathname : window.location.pathname
+  properties.$pathname = PUBLIC_PATHS.has(pathname) ? pathname : '/'
   properties.$referrer = safeAnalyticsUrl(document.referrer)
   properties.$host = window.location.host
   if (replayEvent) properties.$snapshot_host = window.location.hostname
@@ -163,7 +166,7 @@ export function sanitizeCapture(event: CaptureResult | null): CaptureResult | nu
   properties.environment = configuration()?.environment
   properties.schema_version = 1
   properties.identity_basis = 'browser_v1'
-  properties.page_name = ['explorer', 'feedback', 'guest_cancellation', 'notification_settings'].includes(event.properties.page_name)
+  properties.page_name = ['explorer', 'feedback', 'notification_settings'].includes(event.properties.page_name)
     ? event.properties.page_name : safePageName()
   properties.auth_state = ['member', 'guest', 'unknown'].includes(event.properties.auth_state)
     ? event.properties.auth_state : authState
@@ -336,6 +339,7 @@ function preparedEvent(name: string, properties: ProductProperties, options: Cap
   safeProperties.event_id ??= createAnalyticsId()
   safeProperties.auth_state = options.authState ?? authState
   safeProperties.page_name = options.pageName ?? safePageName()
+  if (name === '$pageview') safeProperties.$pathname = window.location.pathname
   const occurredAt = safeProperties.occurred_at
   return { name, properties: safeProperties, timestamp: typeof occurredAt === 'string' ? new Date(occurredAt) : new Date() }
 }
@@ -404,9 +408,19 @@ function queueCoreEvent(event: PendingEvent, options: CaptureOptions): boolean {
 
 /** Accepted means queued locally. Core deduplication is committed only after HTTP acceptance. */
 export function captureProductEvent(name: string, properties: ProductProperties = {}, options: CaptureOptions = {}): boolean {
+  if (!isProductEvent(name)) return false
+  return captureEvent(name, properties, options)
+}
+
+/** Separate from product page_view; uses the same consent, identity and transport gates. */
+export function captureWebPageView(visitId: string): boolean {
+  return captureEvent('$pageview', {}, { dedupeKey: `web-page:${visitId}` })
+}
+
+function captureEvent(name: string, properties: ProductProperties, options: CaptureOptions): boolean {
   try {
     if (browserIdentity && !identityCurrent()) { refreshIdentity(); return false }
-    if (!isProductEvent(name) || !configuration() || !collectionAllowed()) return false
+    if (!configuration() || !collectionAllowed()) return false
     const event = preparedEvent(name, properties, options)
     if (CORE_EVENT_NAMES.has(name)) return queueCoreEvent(event, options)
     if (options.dedupeKey && hasBeenSent(options.dedupeKey)) return false

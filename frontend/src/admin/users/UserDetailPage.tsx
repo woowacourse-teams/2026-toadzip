@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { getUser, type AdminUser } from './api'
 import { joinedAt, providerLabels } from './presentation'
+import { NotificationSubscriptions } from '../notifications/NotificationSubscriptions'
 import styles from './Users.module.css'
 
 export function UserDetailPage() {
   const { id = '' } = useParams()
   const [params] = useSearchParams()
   const candidate = params.get('returnTo') ?? ''
-  const back = /^\/admin\/users(?:\?[^#]*)?$/.test(candidate) ? candidate : '/admin/users'
+  const back = /^\/admin\/(?:users|notification-subscriptions)(?:\?[^#]*)?$/.test(candidate) ? candidate : '/admin/users'
   const [loaded, setLoaded] = useState<{ query: string; data: AdminUser } | null>(null)
   const [failure, setFailure] = useState<{ query: string; message: string } | null>(null)
   const [attempt, setAttempt] = useState(0)
@@ -38,5 +39,6 @@ export function UserDetailPage() {
       <tr><th scope="row">로그인 방식</th><td>{providerLabels[data.provider]}</td></tr>
       <tr><th scope="row">가입일</th><td><time dateTime={data.createdAt}>{joinedAt(data.createdAt)}</time></td></tr>
     </tbody></table> : null}
+    {data ? <NotificationSubscriptions key={id} userId={id} /> : null}
   </section>
 }

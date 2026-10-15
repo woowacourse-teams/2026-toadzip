@@ -251,14 +251,40 @@ describe('DataPipelineControl', () => {
   })
 
   it('중지 API가 실패하면 완료로 표시하지 않고 다시 중지할 수 있다', async () => {
-    apiMocks.startDataPipeline.mockResolvedValue(execution('COMPLEX_COLLECTION', 'RUNNING', { executionId: 'run-1' }))
-    apiMocks.stopDataPipeline.mockRejectedValue(new Error('중지 요청 실패'))
-    render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
-    startCollection('단지 수집')
-    fireEvent.click(await screen.findByRole('button', { name: '단지 수집 실행 중지' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('중지 요청 실패')
-    expect(screen.getByRole('button', { name: '단지 수집 실행 중지' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: '공고 수집' })).toBeDisabled()
+    vi.useFakeTimers()
+    const running = execution('COMPLEX_COLLECTION', 'RUNNING', { executionId: 'run-1' })
+    apiMocks.startDataPipeline.mockResolvedValue(running)
+    apiMocks.stopDataPipeline.mockRejectedValueOnce(new Error('중지 요청 실패'))
+      .mockResolvedValue(execution('COMPLEX_COLLECTION', 'STOPPED', { executionId: 'run-1', stopRequested: true }))
+    const view = render(<MemoryRouter><DataPipelineControl /></MemoryRouter>)
+    try {
+      await act(async () => {})
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '단지 수집' })) })
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('공공데이터포털 API 키'), { target: { value: 'fixture-execution-key' } })
+        fireEvent.click(screen.getByRole('button', { name: '단지 수집 시작' }))
+      })
+      apiMocks.getDataPipelineStatus.mockImplementation((type: DataPipelineType) =>
+        Promise.resolve(type === 'COMPLEX_COLLECTION' ? running : execution(type, 'IDLE')))
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '단지 수집 실행 중지' })) })
+      expect(screen.getByRole('alert')).toHaveTextContent('중지 요청 실패')
+      expect(screen.getByRole('button', { name: '단지 수집 실행 중지' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: '공고 수집' })).toBeDisabled()
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+      expect(screen.getByRole('button', { name: '단지 수집 실행 중지' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: '공고 수집' })).toBeDisabled()
+
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '단지 수집 실행 중지' })) })
+      expect(apiMocks.stopDataPipeline).toHaveBeenNthCalledWith(1, 'run-1')
+      expect(apiMocks.stopDataPipeline).toHaveBeenNthCalledWith(2, 'run-1')
+      expect(apiMocks.stopDataPipeline).toHaveBeenCalledTimes(2)
+      expect(screen.getByRole('status')).toHaveTextContent('실행이 중지되었습니다')
+      expect(screen.getByRole('button', { name: '공고 수집' })).toBeEnabled()
+    } finally {
+      view.unmount()
+      vi.useRealTimers()
+    }
   })
 
   it('재접속 시 중지된 실행과 완료한 단계를 표시한다', async () => {

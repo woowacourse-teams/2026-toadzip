@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.dao.DataIntegrityViolationException;
+import com.toadzip.backend.notification.repository.NotificationOutboxRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,6 +45,8 @@ public class AdminAnnouncementImportRegistrationService {
     private final AdminAnnouncementImportValidationService validationService;
     private final AdminAnnouncementImportJson importJson;
     private final AdminAnnouncementImportRepository importRepository;
+    private final NotificationOutboxRepository notificationOutbox;
+
     private final AnnouncementRepository announcementRepository;
     private final SupplyRowRepository supplyRowRepository;
     private final SupplyTargetRepository supplyTargetRepository;
@@ -62,7 +65,8 @@ public class AdminAnnouncementImportRegistrationService {
             AnnouncementScheduleRepository scheduleRepository,
             AnnouncementAttachmentRepository attachmentRepository,
             HousingComplexRepository housingComplexRepository,
-            AdminAnnouncementSourceIdentifierGenerator identifierGenerator
+            AdminAnnouncementSourceIdentifierGenerator identifierGenerator,
+            NotificationOutboxRepository notificationOutbox
     ) {
         this.validationService = validationService;
         this.importJson = importJson;
@@ -74,6 +78,7 @@ public class AdminAnnouncementImportRegistrationService {
         this.attachmentRepository = attachmentRepository;
         this.housingComplexRepository = housingComplexRepository;
         this.identifierGenerator = identifierGenerator;
+        this.notificationOutbox = notificationOutbox;
     }
 
     @Transactional
@@ -100,6 +105,8 @@ public class AdminAnnouncementImportRegistrationService {
                 registeredBy,
                 announcement
         );
+        announcementRepository.flush();
+        notificationOutbox.appendNewAnnouncement(announcement);
         return new AdminAnnouncementImportCreateResponse(
                 history.getId(),
                 announcement.getId(),

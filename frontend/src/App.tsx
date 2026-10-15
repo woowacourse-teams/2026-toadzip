@@ -7,20 +7,20 @@ import { LocationDataPage } from './admin/ingest/LocationDataPage'
 import { ManagementWorkspace } from './admin/management/ManagementWorkspace'
 import { AdminHome } from './admin/auth/AdminHome'
 import { AdminLayout } from './admin/auth/AdminLayout'
-import { GuestCancellationAdminPage } from './admin/GuestCancellationAdminPage'
 import { LoginPage } from './admin/auth/LoginPage'
 import { RequireAdmin } from './admin/auth/RequireAdmin'
 import { DefaultPublicHousingExplorer } from './public-housing/DefaultPublicHousingExplorer.tsx'
 import { BrandLink } from './BrandLink'
-import { NotificationInterestProvider, NotificationInterestSessionControl } from './public-housing/interest/NotificationInterest'
+import { NotificationInterestSessionControl } from './public-housing/interest/NotificationInterest'
 import { NotificationPage } from './public-housing/interest/NotificationPage'
-import { GuestCancellationPage } from './public-housing/interest/GuestCancellationPage'
 import { UserListPage } from './admin/users/UserListPage'
 import { UserDetailPage } from './admin/users/UserDetailPage'
+import { NotificationManagementPage } from './admin/notifications/NotificationSubscriptions'
 import { FeedbackPage } from './feedback/FeedbackPage'
 import { FeedbackListPage } from './admin/feedback/FeedbackListPage'
 import { PrivacyBoundary, PrivacyMenu, PrivacyPolicyPage, PrivacySettingsPage } from './privacy/Privacy'
 import { ProductAnalyticsBoundary } from './analytics/ProductAnalyticsBoundary'
+import { PublicNotificationLayout } from './notifications/PublicNotificationLayout'
 import { LandingPage } from './landing/LandingPage'
 
 function LandingEntry() {
@@ -38,13 +38,11 @@ function LandingEntry() {
 
 function Home() {
   return (
-    <NotificationInterestProvider>
       <div className="app-shell">
         <div className="service-rail-brand"><BrandLink /></div>
         <div className="service-rail-account"><PrivacyMenu /><Link className="service-feedback-link" to="/feedback">의견 보내기</Link><NotificationInterestSessionControl presentation="rail" /></div>
         <main className="map-main"><DefaultPublicHousingExplorer showWelcome={false} /></main>
       </div>
-    </NotificationInterestProvider>
   )
 }
 
@@ -80,11 +78,11 @@ function AdminRoutes() {
             <Route path="announcements/:id?" element={<ManagementWorkspace resource="announcements" />} />
             <Route path="users" element={<UserListPage />} />
             <Route path="users/:id" element={<UserDetailPage />} />
+            <Route path="notification-subscriptions" element={<NotificationManagementPage />} />
             <Route path="feedback" element={<FeedbackListPage />} />
             <Route path="failures" element={<FailureReviewPage />} />
             <Route path="sources" element={<SourceDataPage />} />
             <Route path="locations" element={<LocationDataPage />} />
-            <Route path="notification-cancellations" element={<GuestCancellationAdminPage />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFound />} />
@@ -106,15 +104,16 @@ export default function App() {
     <ProductAnalyticsBoundary />
     <Routes>
       <Route path="/" element={<LandingEntry />} />
-      <Route path="/explore" element={<Home />} />
+      <Route element={<PublicNotificationLayout />}>
+        <Route path="/explore" element={<Home />} />
+        <Route path="/notifications" element={<NotificationPage />} />
+        <Route path="/mypage/notifications" element={<NotificationPage management />} />
+      </Route>
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/privacy/:key/:version" element={<PrivacyPolicyPage />} />
       <Route path="/privacy/settings" element={<PrivacySettingsPage />} />
       <Route path="/login" element={<LegacyLoginRedirect />} />
       <Route path="/feedback" element={<FeedbackPage />} />
-      <Route path="/notifications" element={<Navigate to="/explore?inbox=open" replace />} />
-      <Route path="/mypage/notifications" element={<NotificationPage management />} />
-      <Route path="/notifications/cancel" element={<GuestCancellationPage />} />
       <Route path="/admin/*" element={<AdminRoutes />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

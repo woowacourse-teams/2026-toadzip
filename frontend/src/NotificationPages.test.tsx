@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { Link, MemoryRouter } from 'react-router'
 import { afterEach, expect, it, vi } from 'vitest'
 import App from './App'
 
@@ -16,6 +16,8 @@ function session(member = true) {
   vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
     if (url.endsWith('/csrf')) return new Response(JSON.stringify({ token: 'csrf', headerName: 'X-XSRF-TOKEN' }))
     if (!member) return new Response(null, { status: 401 })
+    if (url.includes('/api/v1/notifications/unread-count')) return Response.json({ unreadCount: 0 })
+    if (url.includes('/api/v1/notifications?')) return Response.json({ items: [], nextCursor: null, readThrough: '0', totalCount: 0 })
     if (url.endsWith('/api/auth/me')) return new Response(JSON.stringify({ id: 7 }))
     if (options?.method === 'POST') { active = false; return settingResult(options, ++settingsRevision) }
     return new Response(JSON.stringify({ userId: '7', settingsRevision, targets: active ? [
@@ -37,12 +39,11 @@ it('알림 관리 주소에서 종류별 설정을 보고 해제한다', async (
   await waitFor(() => expect(screen.queryByText('서울 행복주택')).not.toBeInTheDocument())
 })
 
-it('보관함은 아직 전달 기능이 준비 중임을 알린다', async () => {
+it('보관함 주소에서 받은 알림 목록을 확인한다', async () => {
   session()
   render(<MemoryRouter initialEntries={['/notifications']}><App /></MemoryRouter>)
   expect(await screen.findByRole('heading', { name: '알림 보관함' })).toBeVisible()
-  expect(await screen.findByText('알림 기능을 준비하고 있어요')).toBeVisible()
-  expect(within(screen.getByRole('dialog')).getByRole('tab', { name: '알림 설정' })).toHaveAttribute('aria-selected', 'false')
+  expect(await screen.findByText('아직 받은 알림이 없어요.')).toBeVisible()
 })
 
 it('비회원이 관리 주소로 직접 접속해도 설정을 노출하지 않는다', async () => {
@@ -129,7 +130,7 @@ it('지도에서 보관함을 모달로 열고 닫으면 원래 버튼으로 포
   trigger.focus()
   fireEvent.click(trigger)
   const dialog = await screen.findByRole('dialog', { name: '알림 보관함' })
-  expect(dialog).toHaveTextContent('알림 기능을 준비하고 있어요')
+  expect(await within(dialog).findByText('아직 받은 알림이 없어요.')).toBeVisible()
   expect(screen.getByText('지도')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '알림 보관함 닫기' }))
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -163,7 +164,7 @@ it('받은 알림과 등록한 설정을 탭으로 분리하고 모달 안에서
   fireEvent.click(settings)
   expect(settings).toHaveAttribute('aria-selected', 'true')
   expect(within(dialog).getByText('서울 행복주택')).toBeVisible()
-  expect(within(dialog).queryByText('알림 기능을 준비하고 있어요')).not.toBeInTheDocument()
+  expect(within(dialog).queryByText('알림 신청을 완료했어요')).not.toBeInTheDocument()
   fireEvent.click(within(dialog).getByRole('button', { name: '서울 행복주택 알림 해제' }))
   await waitFor(() => expect(within(dialog).queryByText('서울 행복주택')).not.toBeInTheDocument())
   fireEvent.click(within(dialog).getByRole('button', { name: '전체 해제' }))
@@ -184,3 +185,14 @@ function settingResult(options: RequestInit, settingsRevision: number) {
   const event = JSON.parse(String(options.body))
   return Response.json({ eventId: event.eventId, targetId: event.targetId, targetType: event.targetType, outcome: 'CANCELLED', occurredAt: '2026-10-09T00:00:00Z', settingsRevision, currentTarget: { active: false, noticeVersion: null, requestedAt: null, expiresAt: null } })
 }
+
+
+it('공유 레이아웃 안에서 화면을 이동하면 미읽음 개수를 즉시 다시 조회한다', async () => {
+  session()
+  const countRequests = () => vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/notifications/unread-count')).length
+  render(<MemoryRouter initialEntries={['/notifications']}><Link to="/mypage/notifications">설정 화면으로 이동</Link><App /></MemoryRouter>)
+  await waitFor(() => expect(countRequests()).toBe(1))
+  fireEvent.click(screen.getByRole('link', { name: '설정 화면으로 이동' }))
+  expect(await screen.findByRole('heading', { name: '알림 관리' })).toBeVisible()
+  await waitFor(() => expect(countRequests()).toBe(2))
+})

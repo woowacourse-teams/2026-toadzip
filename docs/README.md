@@ -21,7 +21,7 @@
 | [INTEGRATED_SEARCH.md](INTEGRATED_SEARCH.md) | 통합 검색 API와 지역 단지 조회의 요청·응답 기준을 설명합니다. |
 | [ADMIN_ANNOUNCEMENT_IMPORT.md](ADMIN_ANNOUNCEMENT_IMPORT.md) | 관리자 공고 JSON의 작성, 검증과 등록 정책을 설명합니다. |
 | [NOTIFICATION_DATA.md](NOTIFICATION_DATA.md) | 알림 신청 데이터 구조, 운영 조회와 스키마 점검 방법을 설명합니다. |
-| [notification-retention-and-cancellation.md](notification-retention-and-cancellation.md) | 알림 신청의 보존·삭제, 비로그인 취소 확인과 수동 발송 절차를 설명합니다. |
+| [notification-retention-and-cancellation.md](notification-retention-and-cancellation.md) | 회원 알림 신청의 보존·삭제, 운영 조회와 비회원 데이터 제거 절차를 설명합니다. |
 
 백엔드 개발·운영 상세는 [backend/docs/](../backend/docs/README.md), 프론트엔드 개발 안내는
 [frontend/README.md](../frontend/README.md), DB 운영은 [infra/db/SETUP.md](../infra/db/SETUP.md)를 참고합니다.

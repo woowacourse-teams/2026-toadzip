@@ -96,7 +96,7 @@ it('저장 실패는 선택 상태를 바꾸지 않고 같은 이벤트로 재�
   expect(await screen.findByRole('alert')).toHaveTextContent('알림 설정을 저장하지 못했어요.')
   expect(button).toHaveAttribute('aria-pressed', 'false')
   fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
-  expect(await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })).toBeVisible()
+  expect(await screen.findByRole('dialog', { name: '알림 신청을 완료했어요' })).toBeVisible()
   expect(repo.record.mock.calls[0]?.[0]).toEqual(repo.record.mock.calls[1]?.[0])
   expect(button).toHaveAttribute('aria-pressed', 'true')
   expect(prepareNotificationCompletion).toHaveBeenCalledOnce()
@@ -111,7 +111,7 @@ it('최초 신청이 분석 대상이 아니면 동의 후 같은 요청을 재�
   await screen.findByRole('alert')
   // A new call to prepareNotificationCompletion would now allow collection.
   fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
-  await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })
+  await screen.findByRole('dialog', { name: '알림 신청을 완료했어요' })
   expect(repo.record.mock.calls[0]?.[0]).toEqual(repo.record.mock.calls[1]?.[0])
   expect(captured('notification_preregistration_completed')).toHaveLength(0)
   expect(prepareNotificationCompletion).toHaveBeenCalledOnce()
@@ -178,10 +178,10 @@ it('저장 중 창 포커스가 돌아와도 저장 응답을 버리거나 중�
   expect(button).toHaveAttribute('aria-pressed', 'true')
 })
 
-it('준비 중 모달은 키보드 포커스를 가두고 Escape로 닫는다', async () => {
+it('완료 모달은 키보드 포커스를 가두고 Escape로 닫는다', async () => {
   render(example(repository()))
   const button = await click()
-  const dialog = await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })
+  const dialog = await screen.findByRole('dialog', { name: '알림 신청을 완료했어요' })
   const confirm = screen.getByRole('button', { name: '확인' })
   expect(confirm).toHaveFocus()
   fireEvent.keyDown(confirm, { key: 'Tab' })
@@ -195,7 +195,7 @@ it('브라우저 저장소가 차단돼도 회원 설정 저장은 동작한다'
   vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked') })
   render(example(repository()))
   await click()
-  expect(await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })).toBeVisible()
+  expect(await screen.findByRole('dialog', { name: '알림 신청을 완료했어요' })).toBeVisible()
 })
 
 it('동의하지 않은 실제 노출은 자체 서버에도 기록하지 않는다', async () => {
@@ -267,7 +267,7 @@ it.each(['ACTIVATED', 'ALREADY_ACTIVE'] as const)(
     repo.record.mockImplementation(async (event) => outcome ? resultFor(event, outcome) : undefined)
     render(example(repo))
     await click()
-    await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })
+    await screen.findByRole('dialog', { name: '알림 신청을 완료했어요' })
     expect(repo.record.mock.calls[0]?.[0]).toMatchObject({ eventType: 'CONFIRMED' })
     expect(repo.record.mock.calls[0]?.[0]).not.toHaveProperty('email')
     const completions = captured('notification_preregistration_completed')
@@ -369,7 +369,7 @@ it('창으로 돌아온 뒤 확인된 알림 상태로 분석의 회원 상태�
 it('알림 안내 모달의 민감 화면 보호를 닫을 때 해제한다', async () => {
   render(example(repository()))
   await click()
-  await screen.findByRole('dialog', { name: '알림 기능을 준비하고 있어요' })
+  await screen.findByRole('dialog', { name: '알림 신청을 완료했어요' })
   expect(setReplaySensitive).toHaveBeenCalledWith('notification_form', true)
   fireEvent.click(screen.getByRole('button', { name: '확인' }))
   expect(setReplaySensitive).toHaveBeenLastCalledWith('notification_form', false)
@@ -547,4 +547,18 @@ it('빈 저장 응답은 성공으로 표시하지 않고 현재 설정을 다�
   await waitFor(() => expect(repo.loadStatus).toHaveBeenCalledTimes(2))
   expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toHaveAttribute('aria-pressed', 'false')
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+it('신청 응답을 기다리는 동안 저장 상태를 보여 주고 성공한 뒤에만 완료 화면을 연다', async () => {
+  const response = deferred<NotificationInterestResult>()
+  const repo = repository()
+  repo.record.mockReturnValueOnce(response.promise)
+  render(example(repo))
+  await click()
+  expect(screen.getByRole('button', { name: '저장 중…' })).toBeDisabled()
+  expect(screen.queryByRole('dialog', { name: '알림 신청을 완료했어요' })).not.toBeInTheDocument()
+  const event = repo.record.mock.calls[0]![0]
+  await act(async () => response.resolve(resultFor(event, 'ACTIVATED')))
+  expect(screen.getByRole('dialog', { name: '알림 신청을 완료했어요' })).toBeVisible()
+  expect(screen.getByRole('status')).toHaveTextContent('서울 단지')
 })

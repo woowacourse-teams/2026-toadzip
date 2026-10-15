@@ -87,13 +87,15 @@ describe('PostHog privacy and identity boundary', () => {
     vi.stubEnv(key, value)
     const analytics = await import('./productAnalytics')
     expect(analytics.captureProductEvent('page_view')).toBe(false)
+    expect(analytics.captureWebPageView('visit')).toBe(false)
     await vi.dynamicImportSettled()
     expect(sdk.init).not.toHaveBeenCalled()
   })
 
   it.each(['/', '/admin', '/admin/complexes/1', '/login', '/not-found'])('does not initialize on %s', async path => {
     window.history.replaceState({}, '', path)
-    await initialized()
+    const analytics = await initialized()
+    expect(analytics.captureWebPageView('visit')).toBe(false)
     expect(sdk.init).not.toHaveBeenCalled()
   })
 
@@ -150,7 +152,7 @@ describe('PostHog privacy and identity boundary', () => {
     expect(sdk.capture).toHaveBeenCalledWith('notification_preregistration_completed', expect.anything(), { timestamp: new Date(properties.occurred_at), uuid: expect.any(String) })
   })
 
-  it('removes query/hash, person properties, contact, precise location and arbitrary fields', async () => {
+  it.each(['view_complex', '$pageview'])('%s removes query/hash, person properties, contact, precise location and arbitrary fields', async eventName => {
     window.history.replaceState({}, '', '/explore?email=private@example.test&lat=37.123#secret')
     const analytics = await initialized()
     vi.spyOn(document, 'referrer', 'get').mockReturnValue('https://user:password@search.example/private?q=secret')
@@ -158,12 +160,69 @@ describe('PostHog privacy and identity boundary', () => {
       complex_id: '17', entry_point: 'map', email: 'private@example.test', user_id: 'member-1', query: 'secret',
       latitude: 37.123, $set: { email: 'private@example.test' }, $set_once: { $initial_current_url: 'secret' },
       $current_url: window.location.href, $referrer: 'secret', event_id: crypto.randomUUID(),
-    })
+    }, eventName)
     Object.assign(unsafe, { $set_once: { $initial_current_url: 'https://example.test/?email=private@example.test' }, $set: { email: 'private@example.test' }, $unset: ['private'] })
     const output = analytics.sanitizeCapture(unsafe)
     expect(output?.properties).toMatchObject({ complex_id: '17', entry_point: 'map', $current_url: `${location.origin}/`, $referrer: 'https://search.example/', $geoip_disable: true, $ip: null })
     expect(JSON.stringify(output)).not.toMatch(/private|password|secret|latitude|user_id|\$set/)
     expect(analytics.captureProductEvent('arbitrary_private_event', { email: 'secret' })).toBe(false)
+  })
+
+  it('queues a separate manual pageview per visit and retains its allowed pathname while the SDK loads', async () => {
+    const analytics = await import('./productAnalytics')
+    analytics.captureProductEvent('page_view', {}, { dedupeKey: 'page:first' })
+    expect(analytics.captureWebPageView('first')).toBe(true)
+    analytics.setProductPageActive(false)
+    analytics.setProductPageActive(true)
+    expect(analytics.captureWebPageView('first')).toBe(false)
+    window.history.replaceState({}, '', '/feedback?query=secret#token')
+    expect(analytics.captureWebPageView('second')).toBe(true)
+    await vi.dynamicImportSettled()
+    const views = sdk.capture.mock.calls.filter(([name]) => name === '$pageview')
+    expect(views).toHaveLength(2)
+    expect(views.map(([, properties]) => analytics.sanitizeCapture(captured(properties, '$pageview'))?.properties.$pathname))
+      .toEqual(['/explore', '/feedback'])
+    expect(views[0][1].event_id).not.toBe(views[1][1].event_id)
+    expect(sdk.capture.mock.calls.filter(([name]) => name === 'page_view')).toHaveLength(1)
+    expect(analytics.captureProductEvent('$pageview')).toBe(false)
+    expect(analytics.sanitizeCapture(captured({ $pathname: '/private?token=secret' }, '$pageview'))?.properties.$pathname).toBe('/feedback')
+    expect(analytics.sanitizeCapture(captured({}, '$pageleave'))).toBeNull()
+    expect(analytics.sanitizeCapture(captured({}, '$autocapture'))).toBeNull()
+  })
+
+  it('keeps pageview deduplication through a pause but clears it on withdrawal without replaying blocked visits', async () => {
+    consentGate.allowed = false
+    const analytics = await import('./productAnalytics')
+    expect(analytics.captureWebPageView('before-consent')).toBe(false)
+    consentGate.allowed = true
+    expect(analytics.captureWebPageView('current')).toBe(true)
+    await vi.dynamicImportSettled()
+    consentGate.allowed = false
+    consentGate.stops.forEach(stop => stop('pause'))
+    expect(analytics.captureWebPageView('paused')).toBe(false)
+    consentGate.allowed = true
+    expect(analytics.captureWebPageView('current')).toBe(false)
+    consentGate.stops.forEach(stop => stop('reset'))
+    consentGate.allowed = false
+    expect(analytics.captureWebPageView('withdrawn')).toBe(false)
+    consentGate.allowed = true
+    expect(analytics.captureWebPageView('current')).toBe(true)
+    await vi.dynamicImportSettled()
+    expect(sdk.capture.mock.calls.filter(([name]) => name === '$pageview')).toHaveLength(2)
+  })
+
+  it('discards a pending pageview when consent ends before SDK initialization', async () => {
+    const analytics = await import('./productAnalytics')
+    expect(analytics.captureWebPageView('expired-before-load')).toBe(true)
+    consentGate.allowed = false
+    consentGate.stops.forEach(stop => stop('reset'))
+    await vi.dynamicImportSettled()
+    expect(sdk.init).not.toHaveBeenCalled()
+    expect(analytics.sanitizeCapture(captured({}, '$pageview'))).toBeNull()
+    consentGate.allowed = true
+    analytics.captureWebPageView('fresh')
+    await vi.dynamicImportSettled()
+    expect(sdk.capture.mock.calls.filter(([name]) => name === '$pageview')).toHaveLength(1)
   })
 
   it('fails closed on team exclusion and unavailable storage and stops cross-tab capture', async () => {

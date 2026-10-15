@@ -6,6 +6,10 @@ import { UserDetailPage } from './UserDetailPage'
 import type { AdminUser, UserPage } from './api'
 
 const mocks = vi.hoisted(() => ({ listUsers: vi.fn(), getUser: vi.fn() }))
+vi.mock('../notifications/api', async original => ({ ...(await original<typeof import('../notifications/api')>()),
+  loadNotificationSubscriptions: vi.fn(async () => ({ items: [], page: 0, hasNext: false, totalElements: 0, totalPages: 0,
+    summary: { activeMembers: 0, activeSubscriptions: 0, asOf: '2026-10-13T00:00:00Z' } })),
+}))
 vi.mock('./api', async original => ({ ...(await original<typeof import('./api')>()), ...mocks }))
 const user: AdminUser = { id: 7, email: 'member@example.test', provider: 'GOOGLE', createdAt: '2026-10-04T09:12:34' }
 function page(item = user, number = 0): UserPage {

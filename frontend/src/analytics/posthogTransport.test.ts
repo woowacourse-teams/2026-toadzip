@@ -82,10 +82,10 @@ it('never sends notification ledger identifiers that could join an external even
   expect(body).not.toMatch(/server_event_id|notification_action_id/)
 })
 
-it('drops a real failed-request retry and never flushes it on online, pagehide or a later grant', async () => {
+it.each(['view_complex', '$pageview'])('drops a real %s retry and never flushes it on online, pagehide or a later grant', async event => {
   network.mockResolvedValue(new Response('{}', { status: 503 }))
   const { instance, transport } = await sdk()
-  instance.capture('view_complex', { complex_id: '17' })
+  instance.capture(event, { complex_id: '17' })
   await vi.advanceTimersByTimeAsync(0)
   expect(instance._retryQueue?.length).toBe(1)
   consent.allowed = false
@@ -102,11 +102,11 @@ it('drops a real failed-request retry and never flushes it on online, pagehide o
   expect(String(network.mock.calls[1][1]?.body)).toContain('22')
 })
 
-it('aborts an in-flight fetch and prevents its late failure from recreating a retry queue', async () => {
+it.each(['view_complex', '$pageview'])('aborts an in-flight %s fetch and prevents its late failure from recreating a retry queue', async event => {
   let reject: (error: Error) => void = () => { throw new Error('request missing') }
   network.mockImplementation(() => new Promise((_resolve, rejectRequest) => { reject = rejectRequest }))
   const { instance, transport } = await sdk()
-  instance.capture('view_complex', { complex_id: '17' })
+  instance.capture(event, { complex_id: '17' })
   const signal = network.mock.calls[0][1]?.signal
   expect(signal?.aborted).toBe(false)
   consent.allowed = false
@@ -116,6 +116,31 @@ it('aborts an in-flight fetch and prevents its late failure from recreating a re
   await vi.advanceTimersByTimeAsync(60_000)
   expect(instance._retryQueue?.length).toBe(0)
   expect(network).toHaveBeenCalledOnce()
+})
+
+it('sends manual pageviews with the existing browser/session fields and no extra URL or automatic data', async () => {
+  const { instance } = await sdk()
+  expect(network).not.toHaveBeenCalled()
+  instance.capture('page_view')
+  instance.capture('$pageview', { $pathname: '/explore', query: 'secret', email: 'private@example.test' })
+  instance.capture('view_complex', { complex_id: '17' })
+  const events = network.mock.calls.map(([, options]) => JSON.parse(String(options?.body)).batch[0])
+  expect(events.map(event => event.event)).toEqual(['page_view', '$pageview', 'view_complex'])
+  const properties = events[1].properties
+  expect(properties).toMatchObject({
+    distinct_id: expect.any(String), $session_id: expect.any(String), $window_id: expect.any(String),
+    identity_basis: 'browser_v1', $pathname: '/explore', $current_url: `${location.origin}/`,
+    $geoip_disable: true, $ip: null,
+  })
+  for (const key of ['distinct_id', '$device_id', '$session_id', '$window_id']) {
+    expect(new Set(events.map(event => event.properties[key])).size).toBe(1)
+  }
+  expect(JSON.stringify(events)).not.toMatch(/private|secret|\$set|utm_|\$referring_domain|\$geoip_country|\$prev_pageview/)
+  instance.capture('$pageleave')
+  instance.capture('$autocapture')
+  instance.capture('$snapshot')
+  window.dispatchEvent(new Event('pagehide'))
+  expect(network).toHaveBeenCalledTimes(3)
 })
 
 it('discards real SDK batched requests on withdrawal instead of shutdown-flushing them', async () => {

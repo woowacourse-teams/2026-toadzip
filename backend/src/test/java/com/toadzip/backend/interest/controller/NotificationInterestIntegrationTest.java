@@ -39,6 +39,23 @@ class NotificationInterestIntegrationTest {
                 MEMBER, "privacy-notification-member", "retained@example.com");
     }
 
+    @Autowired private com.toadzip.backend.interest.repository.NotificationSubscriptionRepository subscriptions;
+
+    @Test
+    void 활성화_시각은_중복확인에_보존되고_재구독에_갱신된다() {
+        var first = java.time.Instant.parse("2026-10-13T00:00:00Z");
+        var type = com.toadzip.backend.interest.domain.NotificationTargetType.REGION;
+        subscriptions.activateForMember(MEMBER, type, "11", first);
+        subscriptions.activateForMember(MEMBER, type, "11", first.plusSeconds(10));
+        assertEquals(first, jdbc.queryForObject("SELECT activated_at FROM notification_subscriptions WHERE user_id = ?",
+                java.sql.Timestamp.class, MEMBER).toInstant());
+        subscriptions.cancel(MEMBER, type, "11", first.plusSeconds(20));
+        subscriptions.activateForMember(MEMBER, type, "11", first.plusSeconds(30));
+        assertEquals(first.plusSeconds(30), jdbc.queryForObject(
+                "SELECT activated_at FROM notification_subscriptions WHERE user_id = ?",
+                java.sql.Timestamp.class, MEMBER).toInstant());
+    }
+
     @Test
     void 분석_거부와_무관하게_이메일없이_신청_조회_취소한다() throws Exception {
         jdbc.update("""
@@ -56,7 +73,7 @@ class NotificationInterestIntegrationTest {
                 .andExpect(jsonPath("$.userId").value(Long.toString(MEMBER)))
                 .andExpect(jsonPath("$.settingsRevision").value(1))
                 .andExpect(jsonPath("$.emailConfirmed").doesNotExist())
-                .andExpect(jsonPath("$.targets[0].noticeVersion").value("notification-2026-10-10-v1"));
+                .andExpect(jsonPath("$.targets[0].noticeVersion").value("notification-2026-10-15-v1"));
         mockMvc.perform(post(ENDPOINT).with(user(Long.toString(MEMBER)).roles("USER")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(request("CANCELLED", 1)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.currentTarget.active").value(false));
@@ -94,8 +111,8 @@ class NotificationInterestIntegrationTest {
 
     @Test
     void 신청은_최신_안내가_필요하며_클릭_이벤트는_업무요청이_아니다() throws Exception {
-        for (String body : List.of(request("CONFIRMED", 0).replace("notification-2026-10-10-v1", "old"),
-                request("CONFIRMED", 0).replace("\"noticeVersion\":\"notification-2026-10-10-v1\",", ""),
+        for (String body : List.of(request("CONFIRMED", 0).replace("notification-2026-10-15-v1", "old"),
+                request("CONFIRMED", 0).replace("\"noticeVersion\":\"notification-2026-10-15-v1\",", ""),
                 request("CLICKED", 0))) {
             mockMvc.perform(post(ENDPOINT).with(user(Long.toString(MEMBER)).roles("USER")).with(csrf())
                             .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -133,7 +150,7 @@ class NotificationInterestIntegrationTest {
     private String request(String type, long revision) {
         return """
                 {"eventId":"%s","expectedUserId":"%s","expectedSettingsRevision":%s,
-                 "noticeVersion":"notification-2026-10-10-v1","eventType":"%s",
+                 "noticeVersion":"notification-2026-10-15-v1","eventType":"%s",
                  "source":"SETTING","targetType":"REGION","targetId":"11"}
                 """.formatted(UUID.randomUUID(), MEMBER, revision, type);
     }

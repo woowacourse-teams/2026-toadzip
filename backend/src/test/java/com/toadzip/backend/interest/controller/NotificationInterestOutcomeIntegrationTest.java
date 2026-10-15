@@ -90,6 +90,40 @@ class NotificationInterestOutcomeIntegrationTest {
     }
 
     @Test
+    void 일별_집계는_실제상태변화만_한국시간_자정으로_구분한다() {
+        jdbc.update("DELETE FROM notification_daily_activity");
+        NotificationSettingsRequest original = request(0, NotificationEventType.CONFIRMED, "11");
+        service.change(userId, original);
+        service.change(userId, original);
+        service.change(userId, request(1, NotificationEventType.CONFIRMED, "11"));
+        NotificationSettingsRequest cancelled = request(2, NotificationEventType.CANCELLED, "11");
+        service.change(userId, cancelled);
+        service.change(userId, cancelled);
+        service.change(userId, request(3, NotificationEventType.CANCELLED, "11"));
+        service.change(userId, request(4, NotificationEventType.CONFIRMED, "11"));
+        clock.set(Instant.parse("2026-10-09T15:00:00Z"));
+        service.change(userId, request(5, NotificationEventType.CONFIRMED, "26"));
+        assertEquals(2L, jdbc.queryForObject("SELECT activations FROM notification_daily_activity WHERE day='2026-10-09'", Long.class));
+        assertEquals(1L, jdbc.queryForObject("SELECT cancellations FROM notification_daily_activity WHERE day='2026-10-09'", Long.class));
+        assertEquals(1L, jdbc.queryForObject("SELECT activations FROM notification_daily_activity WHERE day='2026-10-10'", Long.class));
+    }
+
+    @Test
+    void 실패한_신청은_일별집계에도_남지_않는다() {
+        jdbc.update("DELETE FROM notification_daily_activity");
+        jdbc.execute("ALTER TABLE notification_daily_activity ADD CONSTRAINT test_activity_failure CHECK (activations=0)");
+        try {
+            assertThrows(DataIntegrityViolationException.class,
+                    () -> service.change(userId, request(0, NotificationEventType.CONFIRMED, "11")));
+            assertTrue(service.current(userId).targets().isEmpty());
+            assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM notification_daily_activity", Long.class));
+            assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM privacy_notification_receipts WHERE user_id=?", Long.class, userId));
+        } finally {
+            jdbc.execute("ALTER TABLE notification_daily_activity DROP CONSTRAINT test_activity_failure");
+        }
+    }
+
+    @Test
     void 취소후_이전_신청_재전송은_원래영수증과_현재취소를_함께_반환한다() {
         NotificationSettingsRequest original = request(0, NotificationEventType.CONFIRMED, "11");
         service.change(userId, original);
@@ -325,7 +359,7 @@ class NotificationInterestOutcomeIntegrationTest {
                 INSERT INTO privacy_notification_receipts(event_id,event_type,source,target_type,target_id,created_at,
                     outcome,user_id,notice_version,settings_revision,request_fingerprint,purge_after)
                 SELECT ('90000000-0000-4000-8000-' || lpad(sequence::text,12,'0'))::uuid,
-                    'CONFIRMED','SETTING','REGION','11',?,'ACTIVATED',?,'notification-2026-10-10-v1',sequence,'test',?
+                    'CONFIRMED','SETTING','REGION','11',?,'ACTIVATED',?,'notification-2026-10-15-v1',sequence,'test',?
                 FROM generate_series(1,501) AS sequence
                 """, Timestamp.from(created), userId, Timestamp.from(clock.instant()));
         int first = transactions.execute(status -> retention.purgeChunk(clock.instant(), 500));
@@ -384,7 +418,7 @@ class NotificationInterestOutcomeIntegrationTest {
     private NotificationSettingsRequest request(long revision, NotificationEventType type, String target) {
         String notice = null;
         if (type == NotificationEventType.CONFIRMED) {
-            notice = "notification-2026-10-10-v1";
+            notice = "notification-2026-10-15-v1";
         }
         return new NotificationSettingsRequest(UUID.randomUUID(), Long.toString(userId), revision, type,
                 NotificationEventSource.SETTING, NotificationTargetType.REGION, target, notice);

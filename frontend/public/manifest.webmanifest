@@ -1,0 +1,6 @@
+{
+  "id": "/", "name": "공공주택 복덕방", "short_name": "복덕방", "lang": "ko",
+  "start_url": "/explore", "scope": "/", "display": "standalone",
+  "background_color": "#ffffff", "theme_color": "#00c96c",
+  "icons": [{ "src": "/brand/favicon-mark.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }]
+}
