@@ -1,13 +1,14 @@
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 
 export type PdfTextItem = { str: string; x: number; y: number; width: number; height: number; endOfLine: boolean }
-export type ExtractedPage = { page: number; text: string; items: PdfTextItem[]; requiresOcr: boolean }
+export type ExtractedPage = { page: number; text: string; items: PdfTextItem[]; requiresOcr: boolean; method?: 'ocr'; confidence?: number }
 export type ExtractedDocument = { fileName: string; sha256: string; totalPages: number; pages: ExtractedPage[] }
 type PdfPage = { getTextContent: () => Promise<{ items: unknown[] }>; cleanup: () => void }
 type PdfReader = { numPages: number; getPage: (page: number) => Promise<PdfPage> }
 export type PdfSession = {
   fileName: string; sha256: string; totalPages: number
   extract: (selection: string, signal: AbortSignal, progress?: (done: number, total: number) => void) => Promise<ExtractedDocument>
+  ocr?: (selection: string, signal: AbortSignal, progress: (message: string) => void) => Promise<ExtractedDocument>
   destroy: () => Promise<void>
 }
 export const maxPdfBytes = 25 * 1024 * 1024
@@ -106,6 +107,43 @@ export async function openPdf(file: File, signal: AbortSignal): Promise<PdfSessi
     return { fileName: file.name, sha256, totalPages: pdf.numPages,
       extract: async (selection, extractionSignal, progress) => ({ fileName: file.name, sha256,
         totalPages: pdf.numPages, pages: await extractPages(pdf, parsePageSelection(selection, pdf.numPages), cache, extractionSignal, progress) }),
+      ocr: async (selection, ocrSignal, progress) => {
+        const selected = parsePageSelection(selection, pdf.numPages)
+        const extracted = await extractPages(pdf, selected, cache, ocrSignal)
+        const pending = extracted.filter(page => page.requiresOcr)
+        if (pending.length > 5) throw new Error('OCR은 한 번에 텍스트 없는 최대 5쪽만 처리합니다. 범위를 줄여 주세요.')
+        if (pending.length) {
+          const { withPdfOcr } = await import('./pdfOcr')
+          await withPdfOcr(ocrSignal, progress, async recognize => {
+            for (const missing of pending) {
+              ocrSignal.throwIfAborted()
+              progress(`${missing.page}쪽 OCR 준비 중…`)
+              const page = await pdf.getPage(missing.page)
+              const original = page.getViewport({ scale: 1 })
+              const scale = Math.min(2, Math.sqrt(16000000 / (original.width * original.height)))
+              const viewport = page.getViewport({ scale })
+              const canvas = document.createElement('canvas')
+              canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height)
+              if (canvas.width > 10000 || canvas.height > 10000) throw new Error('페이지 크기가 너무 큽니다. 작은 PDF로 나눠 주세요.')
+              const rendering = page.render({ canvas, viewport })
+              const renderTimer = setTimeout(() => rendering.cancel(), 30000)
+              const abortRender = () => rendering.cancel()
+              ocrSignal.addEventListener('abort', abortRender, { once: true })
+              try {
+                await rendering.promise
+                const result = await recognize(canvas)
+                cache.set(missing.page, { page: missing.page, text: result.text, items: [],
+                  requiresOcr: !result.text, method: 'ocr', confidence: result.confidence })
+              } finally {
+                clearTimeout(renderTimer)
+                ocrSignal.removeEventListener('abort', abortRender); canvas.width = 0; canvas.height = 0; page.cleanup()
+              }
+            }
+          })
+        }
+        return { fileName: file.name, sha256, totalPages: pdf.numPages,
+          pages: await extractPages(pdf, selected, cache, ocrSignal) }
+      },
       destroy: () => loading.destroy() }
   } catch (error) {
     await loading.destroy().catch(() => {})

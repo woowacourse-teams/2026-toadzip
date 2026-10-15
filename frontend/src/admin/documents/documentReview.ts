@@ -150,6 +150,7 @@ export function agentPacket(target: ReviewTarget, document: ExtractedDocument, s
     'allowedFields의 field·unit·scope를 그대로 사용한다. 금액은 원 단위의 18자리 이하 정수 문자열로 반환한다. 미확인 값을 0으로 바꾸지 않는다.',
     '주소·좌표·PNU는 추정하지 않는다. 주소 수정과 이미 검토된 접수 일정은 기존 관리자 전용 편집 화면에서 확인한다.',
     '외부 출처나 OCR이 필요하면 unresolved에 남긴다. OCR 필요 페이지는 자동 수정에 쓰지 않는다.',
+    'method가 ocr인 페이지는 추정 인식 결과다. 인식 점수를 정확성 보장으로 쓰지 말고 숫자·단위·각주의 불확실함은 unresolved에 남긴다.',
     'responseTemplate 형식의 JSON만 반환한다. 예시의 proposals는 실제 확정값이 없으면 빈 배열로 바꾼다.',
   ], sourceUrl, extractedAt: new Date().toISOString(), targetKey: target.key, version: target.version,
   currentValues: Object.fromEntries(target.fields.map(field => [field.name, valueAt(target.current, field.name) ?? null])),

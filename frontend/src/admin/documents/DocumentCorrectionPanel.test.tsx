@@ -5,6 +5,8 @@ import { DocumentCorrectionPanel } from './DocumentCorrectionPanel'
 import { ManagementError } from '../management/api'
 import type { ManagementDetailData } from '../management/managementContract'
 const mocks = vi.hoisted(() => ({ openPdf: vi.fn(), requestManagementApi: vi.fn(), destroy: vi.fn(), extract: vi.fn() }))
+const work = vi.hoisted(() => ({ readReviewDraft: vi.fn(), saveReviewDraft: vi.fn(), removeReviewDraft: vi.fn(), ocr: vi.fn() }))
+vi.mock('./reviewDraftStore', () => work)
 vi.mock('./pdfExtraction', async original => ({ ...await original<typeof import('./pdfExtraction')>(), openPdf: mocks.openPdf }))
 vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(), requestManagementApi: mocks.requestManagementApi }))
 const detail: ManagementDetailData = {
@@ -24,10 +26,62 @@ beforeEach(() => {
   Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:test') })
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
   mocks.extract.mockResolvedValue(document); mocks.destroy.mockResolvedValue(undefined)
-  mocks.openPdf.mockResolvedValue({ fileName: '공고.pdf', sha256: document.sha256, totalPages: 3, extract: mocks.extract, destroy: mocks.destroy })
+  mocks.openPdf.mockResolvedValue({ fileName: '공고.pdf', sha256: document.sha256, totalPages: 3, extract: mocks.extract, destroy: mocks.destroy, ocr: work.ocr })
+  work.saveReviewDraft.mockResolvedValue(undefined)
   mocks.requestManagementApi.mockResolvedValue(detail)
 })
 afterEach(() => vi.restoreAllMocks())
+
+it('명시적으로 보관할 때만 원본과 작업을 보관하고 DB 수정 API는 호출하지 않는다', async () => {
+  await setup()
+  expect(work.saveReviewDraft).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByText('원본·작업 보관 및 이어서 하기'))
+  fireEvent.click(screen.getByRole('button', { name: '원본과 작업 보관' }))
+  await waitFor(() => expect(work.saveReviewDraft).toHaveBeenCalledWith(expect.objectContaining({
+    key: 'complexes:7:basic', version: 2, file: expect.any(File), sha256: document.sha256,
+    sourceUrl: 'https://example.com/notice.pdf',
+  })))
+  expect(mocks.requestManagementApi).not.toHaveBeenCalled()
+})
+
+it('보관 작업을 복원하면 PDF를 다시 추출하고 예전 선택 확인은 복원하지 않는다', async () => {
+  work.readReviewDraft.mockResolvedValue({ key: 'complexes:7:basic', resource: 'complexes', id: 7, selection: 'basic', version: 1,
+    file: new Blob(['%PDF-']), fileName: '공고.pdf', sha256: document.sha256, pages: '2',
+    sourceUrl: 'https://example.com/notice.pdf', json, note: '보관 메모' })
+  await setup()
+  fireEvent.click(screen.getByText('원본·작업 보관 및 이어서 하기'))
+  fireEvent.click(screen.getByRole('button', { name: '보관 작업 이어서 하기' }))
+  expect(await screen.findByText(/작업 이후 DB 버전이 바뀌었습니다/)).toBeVisible()
+  expect(mocks.extract).toHaveBeenLastCalledWith('2', expect.any(AbortSignal))
+  expect(screen.queryByRole('heading', { name: '4. 원문과 대조 후 선택 반영' })).not.toBeInTheDocument()
+  expect(mocks.requestManagementApi).not.toHaveBeenCalled()
+})
+
+it('텍스트 없는 페이지를 OCR 처리하고 인식 점수와 원문 대조 필요를 안내한다', async () => {
+  mocks.extract.mockResolvedValue({ ...document, pages: [{ page: 2, text: '', items: [], requiresOcr: true }] })
+  work.ocr.mockResolvedValue({ ...document, pages: [{ ...document.pages[0], method: 'ocr', confidence: 72 }] })
+  await setup()
+  fireEvent.click(screen.getByRole('button', { name: '텍스트 없는 선택 페이지 OCR · 최대 5쪽' }))
+  expect(await screen.findByText(/OCR 추정 텍스트 · 인식 점수 72/)).toBeVisible()
+  expect(work.ocr).toHaveBeenCalledWith('1', expect.any(AbortSignal), expect.any(Function))
+  expect(mocks.requestManagementApi).not.toHaveBeenCalled()
+})
+
+it('보관 PDF 추출이 실패하면 복원 중인 문서만 해제하고 기존 문서를 유지한다', async () => {
+  await setup()
+  const release = vi.fn().mockResolvedValue(undefined)
+  work.readReviewDraft.mockResolvedValue({ key: 'complexes:7:basic', resource: 'complexes', id: 7, selection: 'basic',
+    version: 2, file: new Blob(['%PDF-']), fileName: '보관.pdf', sha256: document.sha256, pages: '2' })
+  mocks.openPdf.mockResolvedValueOnce({ sha256: document.sha256, destroy: release,
+    extract: vi.fn().mockRejectedValue(new Error('보관 문서를 읽지 못했습니다.')) })
+  fireEvent.click(screen.getByText('원본·작업 보관 및 이어서 하기'))
+  fireEvent.click(screen.getByRole('button', { name: '보관 작업 이어서 하기' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('보관 문서를 읽지 못했습니다.')
+  await waitFor(() => expect(release).toHaveBeenCalledOnce())
+  expect(mocks.destroy).not.toHaveBeenCalled()
+  expect(screen.getByRole('heading', { name: '2. 추출 근거 확인' })).toBeVisible()
+})
+
 async function setup(withNavigation = false) {
   const onSaved = vi.fn(); const onReload = vi.fn()
   const view = render(<MemoryRouter><DocumentCorrectionPanel resource="complexes" detail={detail} onSaved={onSaved} onReload={onReload} onBusyChange={vi.fn()} />{withNavigation ? <Link to="/admin/complexes">목록으로 돌아가기</Link> : null}</MemoryRouter>)

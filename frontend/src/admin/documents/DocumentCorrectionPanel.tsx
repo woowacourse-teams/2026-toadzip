@@ -7,6 +7,8 @@ import { useUnsavedChanges } from '../management/useUnsavedChanges'
 import { agentPacket, correctionBody, downloadText, parseReviewResult, reviewTarget, safeDocumentUrl, targetChoices, type ReviewResult } from './documentReview'
 import { openPdf, type ExtractedDocument, type PdfSession } from './pdfExtraction'
 import styles from './DocumentReview.module.css'
+import { readReviewDraft, removeReviewDraft, saveReviewDraft } from './reviewDraftStore'
+import { DocumentArchivePanel } from './DocumentArchivePanel'
 
 const PdfPreview = lazy(() => import('../../public-housing/components/PdfDocumentPreview'))
 
@@ -35,7 +37,10 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
   const sessionRef = useRef<PdfSession | null>(null)
   const previewRef = useRef('')
   const mounted = useRef(true)
-  useEffect(() => { onBusyChange(Boolean(busy)) }, [busy, onBusyChange])
+  const originalFile = useRef<File | null>(null)
+  const [draftNotice, setDraftNotice] = useState('')
+  const [archiveBusy, setArchiveBusy] = useState(false)
+  useEffect(() => { onBusyChange(Boolean(busy) || archiveBusy) }, [busy, archiveBusy, onBusyChange])
   useEffect(() => {
     mounted.current = true
     return () => {
@@ -56,7 +61,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
     try {
       const opened = await openPdf(file, controller.signal)
       if (controller.signal.aborted || !mounted.current) { await opened.destroy(); return }
-      sessionRef.current = opened; setSession(opened); setPages('1')
+      sessionRef.current = opened; originalFile.current = file; setSession(opened); setPages('1')
       const url = URL.createObjectURL(file); previewRef.current = url; setPreviewUrl(url)
     } catch (cause) {
       if (!controller.signal.aborted && mounted.current) setError(cause instanceof Error ? cause.message : 'PDF를 읽지 못했습니다.')
@@ -79,6 +84,53 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
     if (!extracted) return
     try { const result = parseReviewResult(text, target, extracted); setReview(result); setChecked([]); setError('') }
     catch (cause) { setReview(null); setChecked([]); setError(cause instanceof Error ? cause.message : '결과를 확인하지 못했습니다.') }
+  }
+  async function preserveWork() {
+    if (!session || !originalFile.current) return
+    setBusy('작업 보관 중…'); setError('')
+    try {
+      await saveReviewDraft({ key: target.key, resource, id: detail.summary.id, selection, version: target.version,
+        file: originalFile.current, fileName: session.fileName, sha256: session.sha256, pages, sourceUrl, json, note, updatedAt: new Date().toISOString() })
+      if (mounted.current) setDraftNotice('원본 PDF와 입력 내용을 현재 브라우저에 보관했습니다. DB 수정은 저장하지 않았습니다.')
+    } catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : '작업을 보관하지 못했습니다.') }
+    finally { if (mounted.current) setBusy('') }
+  }
+  async function resumeWork() {
+    if ((json.trim() || note.trim() || manualDirty) && !window.confirm('현재 입력을 보관 작업으로 바꿀까요?')) return
+    request.current?.abort(); const controller = new AbortController(); request.current = controller
+    setBusy('보관 작업 복원 중…'); setError('')
+    let pendingSession: PdfSession | null = null
+    try {
+      const draft = await readReviewDraft(target.key)
+      if (!draft) throw new Error('이 대상에 보관한 작업이 없습니다.')
+      if (draft.key !== target.key || draft.resource !== resource || draft.id !== detail.summary.id || draft.selection !== selection) throw new Error('현재 대상과 보관 작업이 다릅니다.')
+      controller.signal.throwIfAborted()
+      const file = new File([draft.file], draft.fileName, { type: 'application/pdf' })
+      const opened = await openPdf(file, controller.signal)
+        pendingSession = opened
+        if (opened.sha256 !== draft.sha256) throw new Error('보관 원본의 해시가 다릅니다. 원본 PDF를 다시 선택해 주세요.')
+      const document = await opened.extract(draft.pages, controller.signal)
+        if (controller.signal.aborted || !mounted.current) return
+      await sessionRef.current?.destroy().catch(() => {})
+      if (previewRef.current) URL.revokeObjectURL(previewRef.current)
+      const url = URL.createObjectURL(file); previewRef.current = url; setPreviewUrl(url); setPreview(false)
+      sessionRef.current = opened; originalFile.current = file; setSession(opened); setPages(draft.pages)
+        pendingSession = null
+      setExtracted(document); setSourceUrl(draft.sourceUrl); setJson(draft.json); setNote(draft.note); setReview(null); setChecked([]); setConflict(false)
+      setMethod(draft.json ? 'agent' : 'manual')
+      setDraftNotice(draft.version === target.version ? '작업을 복원했습니다. OCR 자료는 다시 OCR 처리하고 수정안을 검증한 뒤 원문과 대조해 선택하세요.' : '작업 이후 DB 버전이 바뀌었습니다. 원본·입력만 복원했습니다. 최신 값으로 수정안을 다시 작성해 주세요.')
+    } catch (cause) { if (!controller.signal.aborted && mounted.current) setError(cause instanceof Error ? cause.message : '보관 작업을 읽지 못했습니다.') }
+      finally { await pendingSession?.destroy().catch(() => {}); if (!controller.signal.aborted && mounted.current) setBusy('') }
+  }
+  async function runOcr() {
+    if (!session?.ocr || busy) return
+    request.current?.abort(); const controller = new AbortController(); request.current = controller
+    clearReview(); setBusy('OCR 준비 중…')
+    try {
+      const document = await session.ocr(pages, controller.signal, message => { if (mounted.current && !controller.signal.aborted) setBusy(message) })
+      if (mounted.current && !controller.signal.aborted) setExtracted(document)
+    } catch (cause) { if (mounted.current && !controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'OCR을 처리하지 못했습니다.') }
+    finally { if (mounted.current && !controller.signal.aborted) setBusy('') }
   }
   async function resultFile(file: File) {
     clearReview()
@@ -132,7 +184,12 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
         {!extracted ? <button type="button" onClick={() => setPreview(value => !value)} aria-expanded={preview}>{preview ? '원문 접기' : 'PDF 원문 보기'}</button> : null}</div>
       </> : null}
     </fieldset></details>
-    {busy ? <div role="status"><p>{busy}</p>{busy.startsWith('페이지 추출') ? <button type="button" onClick={() => {
+    <DocumentArchivePanel resource={resource} id={detail.summary.id} file={originalFile.current} sourceUrl={sourceUrl} onBusyChange={setArchiveBusy} />
+    <details className={styles.card}><summary>원본·작업 보관 및 이어서 하기</summary><p className={styles.hint}>현재 브라우저에 최대 5개 작업·100MB를 보관합니다. 작업 내용은 다른 기기로 동기화하지 않습니다. 새 작업으로 덮어쓰면 같은 대상의 이전 보관 내용을 대체합니다. 작성 중인 수기 입력은 먼저 수정안에 추가하세요.</p>
+      <div className={styles.actions}><button disabled={Boolean(busy) || !session} onClick={() => void preserveWork()}>원본과 작업 보관</button><button disabled={Boolean(busy)} onClick={() => void resumeWork()}>보관 작업 이어서 하기</button><button disabled={Boolean(busy)} onClick={() => {
+        if (window.confirm('이 대상의 브라우저 보관 원본과 작업을 삭제할까요? DB와 수정 이력은 유지됩니다.')) void removeReviewDraft(target.key).then(() => setDraftNotice('이 대상의 보관 작업을 삭제했습니다.')).catch(cause => setError(cause instanceof Error ? cause.message : '보관 작업을 삭제하지 못했습니다.'))
+      }}>이 대상 보관 작업 삭제</button></div>{draftNotice ? <p role="status">{draftNotice}</p> : null}</details>
+    {busy ? <div role="status"><p>{busy}</p>{busy.startsWith('페이지 추출') || busy.includes('OCR') ? <button type="button" onClick={() => {
       request.current?.abort(); setBusy(''); setError('추출을 취소했습니다. 필요한 쪽수를 다시 선택할 수 있습니다.')
     }}>추출 취소</button> : null}</div> : null}
     {preview && previewUrl ? <div className={styles.preview}><Suspense fallback={<p role="status">원문 준비 중…</p>}><PdfPreview url={previewUrl} name={session?.fileName ?? '공식 PDF'} /></Suspense></div> : null}
@@ -140,14 +197,19 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
       <section className={`${styles.card} ${styles.reference}`}><h3>2. 추출 근거 확인</h3>
         <p>선택한 {extracted.pages.length}쪽 · 텍스트 {extracted.pages.reduce((sum, page) => sum + page.text.length, 0).toLocaleString()}자</p>
         {extracted.pages.map((page, index) => <details key={page.page} open={index === 0}><summary>{page.page}쪽 {page.requiresOcr ? '· OCR 필요' : '· 추출 텍스트'}</summary>
-          {page.requiresOcr ? <p className={styles.warning}>읽을 수 있는 텍스트가 없습니다. OCR 후 PDF를 다시 선택하거나 기존 편집 화면에서 원문을 확인하고 수기로 수정하세요.</p>
-            : <pre className={styles.text}>{page.text}</pre>}</details>)}
+          {page.requiresOcr ? <p className={styles.warning}>읽을 수 있는 텍스트가 없습니다. 아래 OCR 처리로 읽거나 원문을 직접 확인하세요.</p>
+            : <>{page.method === 'ocr' ? <p className={styles.warning}>OCR 추정 텍스트 · 인식 점수 {Math.round(page.confidence ?? 0)}. 오인식이 있을 수 있으므로 숫자·단위·각주를 반드시 원문과 대조하세요.</p> : null}<pre className={styles.text}>{page.text}</pre></>}</details>)}
+        {extracted.pages.some(page => page.requiresOcr) && session?.ocr ? <button disabled={Boolean(busy)} onClick={() => void runOcr()}>텍스트 없는 선택 페이지 OCR · 최대 5쪽</button> : null}
         <p className={styles.hint}>표의 열·단위·각주는 원문과 함께 확인하세요. 파일이 바뀌면 새로 선택해 다시 추출합니다.</p>
         <button type="button" onClick={() => setPreview(value => !value)} aria-expanded={preview}>{preview ? '원문 접기' : 'PDF 원문 보기'}</button>
         <Button data-design-system disabled={Boolean(busy) || !safeDocumentUrl(sourceUrl)} onClick={() => {
           try { downloadText(agentPacket(target, extracted, sourceUrl), `document-review-${detail.summary.id}.json`) }
           catch (cause) { setError(cause instanceof Error ? cause.message : '자료를 만들지 못했습니다.') }
         }}>에이전트 자료 다운로드</Button>
+        <button disabled={Boolean(busy) || !safeDocumentUrl(sourceUrl)} onClick={() => {
+          if (!navigator.clipboard) { setError('클립보드를 사용할 수 없습니다. 에이전트 자료 다운로드를 이용하세요.'); return }
+          void navigator.clipboard.writeText(agentPacket(target, extracted, sourceUrl)).then(() => setDraftNotice('에이전트 요청을 복사했습니다. 사용하는 에이전트에 붙여넣으세요.')).catch(() => setError('복사 권한이 없습니다. 자료 다운로드를 이용하세요.'))
+        }}>에이전트 요청 복사</button>
         <p className={styles.hint}>다운로드한 파일을 사용하는 에이전트에 전달하세요. 현재값·허용 항목·페이지 근거·응답 형식이 포함됩니다.</p>
       </section>
       <section className={styles.card}><h3>3. 수정안 가져오기 또는 수기 입력</h3>
