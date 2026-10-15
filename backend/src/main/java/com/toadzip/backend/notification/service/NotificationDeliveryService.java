@@ -53,15 +53,26 @@ public class NotificationDeliveryService {
     }
 
     private void deliver(ClaimedNotificationDelivery delivery) {
-        NotificationSendResult result = transactions.execute(status -> validate(delivery));
-        if (result == null) {
-            result = sender.send(delivery);
+        var valid = transactions.execute(status -> {
+            var members = new java.util.ArrayList<ClaimedNotificationDelivery>();
+            for (var member : delivery.members()) {
+                var skipped = validate(member);
+                if (skipped != null) {
+                    deliveries.recordResult(member, skipped, clock.instant());
+                    continue;
+                }
+                members.add(member);
+            }
+            return members;
+        });
+        if (valid.isEmpty()) {
+            return;
         }
-        NotificationSendResult completed = result;
+        NotificationSendResult result = sender.send(valid.getFirst().withMembers(valid));
         try {
-            transactions.executeWithoutResult(status -> deliveries.recordResult(delivery, completed, clock.instant()));
+            transactions.executeWithoutResult(status -> deliveries.recordResults(valid, result, clock.instant()));
         } catch (RuntimeException exception) {
-            log.error("notification_result_not_recorded deliveryId={} providerStatus={}", delivery.id(), completed.status());
+            log.error("notification_result_not_recorded deliveryId={} providerStatus={}", delivery.id(), result.status());
             throw exception;
         }
     }
@@ -71,9 +82,9 @@ public class NotificationDeliveryService {
         if (retry.isExhausted(delivery.attempts() - 1, delivery.occurredAt(), now)) {
             return new NotificationSendResult(Status.PERMANENT_FAILURE, null, "RETRY_WINDOW_EXHAUSTED", null);
         }
-        if (!deliveries.hasCurrentBinding(delivery, now) || audience.visibleTitle(delivery.announcementId()).isEmpty()
+        if (!deliveries.hasCurrentBinding(delivery, now) || audience.visibleTitle(delivery.announcementId(), delivery.snapshot()).isEmpty()
                 || delivery.snapshot() == null
-                || !audience.isSubscribed(delivery.userId(), delivery.snapshot(), delivery.occurredAt(), now)) {
+                || !audience.isSubscribed(delivery.userId(), delivery.snapshot(), delivery.content(), delivery.occurredAt(), now)) {
             return new NotificationSendResult(Status.SKIPPED, null, "AUDIENCE_OR_DEVICE_CHANGED", null);
         }
         return null;

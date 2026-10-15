@@ -79,7 +79,7 @@ export function createPushClient(userId: string, sdk: PushSdk, repository: PushD
       if (disposed || version !== generation) return
       active = true
       publish({ status: 'busy', message: '기기에 알림을 연결하고 있어요…' })
-      await registerDevice('알림 설정이 완료됐어요. 새 공고가 올라오면 알려 드릴게요.')
+      await registerDevice('알림 설정이 완료됐어요. 새 공고와 신청한 공고의 일정을 알려 드릴게요.')
     },
     async disable() {
       if (disposed || state.status === 'busy') return

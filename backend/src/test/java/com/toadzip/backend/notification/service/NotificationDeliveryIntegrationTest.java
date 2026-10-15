@@ -49,7 +49,7 @@ class NotificationDeliveryIntegrationTest {
             complexId = complex.getId();
             fixtures.link(announcement, complex);
             fixtures.user(MEMBER);
-            fixtures.subscribe(MEMBER, "REGION", "11", NOW.minusSeconds(60));
+            fixtures.subscribe(MEMBER, "COMPLEX", complex.getId().toString(), NOW.minusSeconds(60));
             deviceId = fixtures.device(MEMBER);
             eventId = fixtures.event(announcement);
         });

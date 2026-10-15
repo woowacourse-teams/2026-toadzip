@@ -1,6 +1,8 @@
 package com.toadzip.backend.notification.repository;
 
 import com.toadzip.backend.notification.domain.NotificationCursor;
+import com.toadzip.backend.notification.domain.NotificationContent;
+import tools.jackson.databind.ObjectMapper;
 import com.toadzip.backend.notification.dto.NotificationPageResponse;
 import com.toadzip.backend.notification.dto.NotificationPageResponse.Item;
 import java.sql.Timestamp;
@@ -21,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class UserNotificationRepository {
     private final JdbcTemplate jdbc;
+    private final ObjectMapper json;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void lockUser(long userId) {
@@ -42,6 +45,10 @@ public class UserNotificationRepository {
         long id = jdbc.queryForObject("SELECT id FROM user_notifications WHERE user_id=? AND event_id=?",
                 Long.class, userId, eventId);
         return new InsertedNotification(id, false);
+    }
+
+    public void setContent(long id, NotificationContent content) {
+        jdbc.update("UPDATE user_notifications SET content=? WHERE id=?", json.writeValueAsString(content), id);
     }
 
     public record InsertedNotification(long id, boolean created) {
@@ -82,9 +89,15 @@ public class UserNotificationRepository {
                         if (row.getTimestamp("read_at") != null) {
                             readAt = row.getTimestamp("read_at").toInstant();
                         }
-                        item = new Item(Long.toString(row.getLong("id")), "ANNOUNCEMENT_CREATED",
+                        NotificationContent content = null;
+                        String type = "ANNOUNCEMENT_CREATED";
+                        if (row.getString("content") != null) {
+                            content = json.readValue(row.getString("content"), NotificationContent.class);
+                            type = content.type();
+                        }
+                        item = new Item(Long.toString(row.getLong("id")), type,
                                 Long.toString(row.getLong("announcement_id")), row.getString("title"),
-                                row.getTimestamp("created_at").toInstant(), readAt, row.getBoolean("target_available"));
+                                row.getTimestamp("created_at").toInstant(), readAt, row.getBoolean("target_available"), content);
                     }
                     return new InboxRow(item, row.getLong("read_through"), row.getLong("total_count"));
                 });

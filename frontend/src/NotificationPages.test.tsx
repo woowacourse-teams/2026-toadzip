@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { Link, MemoryRouter } from 'react-router'
 import { afterEach, expect, it, vi } from 'vitest'
 import App from './App'
 
@@ -185,3 +185,14 @@ function settingResult(options: RequestInit, settingsRevision: number) {
   const event = JSON.parse(String(options.body))
   return Response.json({ eventId: event.eventId, targetId: event.targetId, targetType: event.targetType, outcome: 'CANCELLED', occurredAt: '2026-10-09T00:00:00Z', settingsRevision, currentTarget: { active: false, noticeVersion: null, requestedAt: null, expiresAt: null } })
 }
+
+
+it('공유 레이아웃 안에서 화면을 이동하면 미읽음 개수를 즉시 다시 조회한다', async () => {
+  session()
+  const countRequests = () => vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/notifications/unread-count')).length
+  render(<MemoryRouter initialEntries={['/notifications']}><Link to="/mypage/notifications">설정 화면으로 이동</Link><App /></MemoryRouter>)
+  await waitFor(() => expect(countRequests()).toBe(1))
+  fireEvent.click(screen.getByRole('link', { name: '설정 화면으로 이동' }))
+  expect(await screen.findByRole('heading', { name: '알림 관리' })).toBeVisible()
+  await waitFor(() => expect(countRequests()).toBe(2))
+})

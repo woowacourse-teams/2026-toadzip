@@ -25,12 +25,16 @@ import java.util.concurrent.TimeoutException;
 public class FirebaseNotificationPushSender implements NotificationPushSender {
     private final FirebaseMessaging messaging;
     private final String notificationLink;
+    private final String icon;
+    private final String badge;
     private final Clock clock;
     private final Duration deadline;
 
     public FirebaseNotificationPushSender(FirebaseMessaging messaging, String origin, Clock clock, Duration deadline) {
         this.messaging = messaging;
         this.notificationLink = notificationLink(origin);
+        this.icon = URI.create(notificationLink).resolve("/brand/favicon-mark.png").toString();
+        this.badge = URI.create(notificationLink).resolve("/brand/notification-badge.svg").toString();
         this.clock = clock;
         if (deadline.isNegative() || deadline.isZero() || deadline.compareTo(Duration.ofSeconds(30)) > 0) {
             throw new IllegalArgumentException("FCM 호출 제한시간은 30초 이하여야 합니다.");
@@ -40,7 +44,16 @@ public class FirebaseNotificationPushSender implements NotificationPushSender {
 
     @Override
     public NotificationSendResult send(ClaimedNotificationDelivery delivery) {
-        long ttl = Duration.between(clock.instant(), delivery.occurredAt().plus(Duration.ofHours(24))).toSeconds();
+        Instant expires = delivery.members().stream().map(member -> member.occurredAt().plus(Duration.ofHours(24)))
+                .min(Instant::compareTo).orElseThrow();
+        if (delivery.content() != null && delivery.content().schedule() != null) {
+            var dayEnd = delivery.content().schedule().dueAt().atZone(java.time.ZoneId.of("Asia/Seoul"))
+                    .toLocalDate().plusDays(1).atStartOfDay(java.time.ZoneId.of("Asia/Seoul")).toInstant();
+            if (dayEnd.isBefore(expires)) {
+                expires = dayEnd;
+            }
+        }
+        long ttl = Duration.between(clock.instant(), expires).toSeconds();
         if (ttl <= 0) {
             return new NotificationSendResult(Status.PERMANENT_FAILURE, null, "RETRY_WINDOW_EXHAUSTED", null);
         }
@@ -66,12 +79,36 @@ public class FirebaseNotificationPushSender implements NotificationPushSender {
     private Message message(ClaimedNotificationDelivery delivery, long ttl) {
         return Message.builder().setFid(delivery.fid())
                 .setNotification(Notification.builder().setTitle("복덕방")
-                        .setBody("새 공고 알림이 있어요. 알림 보관함에서 확인해 주세요.").build())
+                        .setBody(body(delivery)).build())
                 .putData("notificationId", Long.toString(delivery.notificationId()))
                 .setWebpushConfig(WebpushConfig.builder().putHeader("TTL", Long.toString(ttl))
                         .setNotification(WebpushNotification.builder()
-                                .setTag("notification-" + delivery.notificationId()).build())
+                                .setIcon(icon).setBadge(badge)
+                                .setTag(tag(delivery)).build())
                         .setFcmOptions(WebpushFcmOptions.withLink(notificationLink)).build()).build();
+    }
+
+    private String tag(ClaimedNotificationDelivery delivery) {
+        if (delivery.groupId() != null) {
+            return "notification-group-" + delivery.groupId();
+        }
+        return "notification-" + delivery.notificationId();
+    }
+
+    private String body(ClaimedNotificationDelivery delivery) {
+        var content = delivery.content();
+        String message = "관심 단지에 새 공고가 올라왔어요.";
+        if (content != null) {
+            message = content.message();
+            if (content.targetType().equals("REGION")) {
+                long count = delivery.members().stream().map(ClaimedNotificationDelivery::announcementId).distinct().count();
+                message = content.targetName() + "에 새 공고가 올라왔어요.";
+                if (count > 1) {
+                    message = content.targetName() + "에 새 공고 " + count + "개가 올라왔어요.";
+                }
+            }
+        }
+        return message + " 알림 보관함에서 확인해 주세요.";
     }
 
     private NotificationSendResult failure(FirebaseMessagingException exception) {

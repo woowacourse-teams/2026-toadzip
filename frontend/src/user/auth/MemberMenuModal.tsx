@@ -2,6 +2,7 @@ import { setReplaySensitive } from '../../analytics/productAnalytics'
 import { useLayoutEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { NotificationInbox } from '../../notifications/NotificationInbox'
+import { useNotificationInterests } from '../../public-housing/interest/NotificationInterestContext'
 import { NotificationSettings } from '../../public-housing/interest/NotificationSettings'
 import styles from './MemberMenuModal.module.css'
 
@@ -12,6 +13,13 @@ export function MemberMenuModal({ view, onClose, returnFocusRef, children }: {
   readonly children?: ReactNode
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
+  const feedbackRef = useRef<HTMLDivElement>(null)
+  const setFeedbackContainer = useNotificationInterests()?.setFeedbackContainer
+  useLayoutEffect(() => {
+    if (view === 'account') return
+    setFeedbackContainer?.(feedbackRef.current)
+    return () => setFeedbackContainer?.(null)
+  }, [setFeedbackContainer, view])
   const closeRef = useRef<HTMLButtonElement>(null)
   const titleId = useId()
   const title = view === 'account' ? '마이페이지' : '알림 보관함'
@@ -67,6 +75,7 @@ export function MemberMenuModal({ view, onClose, returnFocusRef, children }: {
         {activeTab === 'settings' && <NotificationSettings />}
       </div>
       <div className={styles.footer}>
+        <div ref={feedbackRef} />
         <button className={styles.confirm} type="button" onClick={onClose}>확인</button>
       </div>
     </> : <div className={styles.account}>{children}</div>}

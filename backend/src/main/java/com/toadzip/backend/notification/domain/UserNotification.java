@@ -42,6 +42,9 @@ public class UserNotification {
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
+    @Column(columnDefinition = "text")
+    private String content;
+
     protected UserNotification() {
     }
 }

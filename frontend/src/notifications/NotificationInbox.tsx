@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router'
 import { Button } from '../design-system/components/Button'
 import { useNotificationInbox } from './NotificationInboxContext'
 import { NotificationDialog } from './NotificationDialog'
-import { NotificationApiError, type NotificationItem, type NotificationPageResult } from './notificationRepository'
+import { NotificationScheduleDetails } from './NotificationScheduleDetails'
+import { NotificationApiError, type NotificationItem, type NotificationPageResult, type NotificationSchedule } from './notificationRepository'
 import styles from './NotificationInbox.module.css'
 
 const empty: NotificationPageResult = { items: [], nextCursor: null, readThrough: '0', totalCount: 0 }
@@ -133,12 +134,13 @@ export function NotificationInbox({ onNavigate }: { readonly onNavigate?: () => 
     {message && <p className={styles.feedback} role="status">{message}</p>}
     {actionError && !confirmDelete && <p className={styles.feedback} role="alert">{actionError} {failedItem?.targetAvailable && <Link to={`/explore?announcementId=${failedItem.announcementId}`} onClick={onNavigate}>공고만 보기</Link>}</p>}
     {state.error && <p role="alert">{state.error} <button className={styles.textButton} type="button" onClick={() => { finishEditing(); setRetry(value => value + 1) }}>다시 시도</button></p>}
-    {!loading && !state.error && !page.items.length && <div className={styles.empty}><p>아직 받은 알림이 없어요.</p><p>관심 단지·지역의 새 공고가 도착하면 알려 드릴게요.</p></div>}
+    {!loading && !state.error && !page.items.length && <div className={styles.empty}><p>아직 받은 알림이 없어요.</p><p>관심 단지·지역의 새 공고와 신청한 공고 일정을 알려 드릴게요.</p></div>}
     <ul className={styles.list}>{page.items.map(item => <li key={item.id} className={item.readAt ? styles.read : styles.unread}>
       {edit ? <label className={styles.selectRow}>
         <input type="checkbox" aria-label={`${item.title} 선택`} checked={edit.all ? !edit.ids.has(item.id) : edit.ids.has(item.id)} disabled={busy} onChange={() => toggleItem(item.id)} />
         <span className={styles.content}><NotificationContent item={item} /></span>
       </label> : <button className={styles.itemButton} type="button" disabled={busy} onClick={() => void read(item)}><NotificationContent item={item} /></button>}
+      {item.content?.schedule && <NotificationScheduleDetails schedule={item.content.schedule} />}
     </li>)}</ul>
     {loading && <p role="status">알림을 불러오는 중…</p>}
     {page.nextCursor && <button className={styles.moreButton} type="button" disabled={loading || busy} onClick={() => { const signal = controller.current?.signal; if (signal) void loadPage(page.nextCursor, signal) }}>더 보기</button>}
@@ -152,7 +154,16 @@ export function NotificationInbox({ onNavigate }: { readonly onNavigate?: () => 
 function NotificationContent({ item }: { readonly item: NotificationItem }) {
   return <>
     {!item.readAt && <span className={styles.unreadLabel}>읽지 않음</span>}
-    <strong>{item.title}</strong><time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleDateString('ko-KR')}</time>
+    {item.content?.schedule && <span className={styles.scheduleLabel}>{scheduleLabel(item.content.schedule)}</span>}
+    <strong>{item.title}</strong>
+    {item.content?.message && !item.content.schedule && <span className={styles.announcementMessage}>{item.content.message}</span>}
+    <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleDateString('ko-KR')}</time>
     {!item.targetAvailable && <span className={styles.unavailable}>현재 확인할 수 없는 공고예요.</span>}
   </>
+}
+
+const kinds = { APPLICATION: '접수', DOCUMENT_SUBMISSION: '서류 제출', WINNER_ANNOUNCEMENT: '당첨자 발표', CONTRACT: '계약' }
+function scheduleLabel(schedule: NotificationSchedule) {
+  const phase = schedule.kind === 'WINNER_ANNOUNCEMENT' ? '예정' : schedule.phase === 'END' ? '마감 안내' : schedule.phase === 'START_END' ? '당일 일정' : '시작 안내'
+  return `${kinds[schedule.kind]} · ${phase}`
 }

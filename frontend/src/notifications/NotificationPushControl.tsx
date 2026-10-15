@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { Button } from '../design-system/components/Button'
 import { useNotificationPush } from './NotificationPushContext'
 import { pushUiEnabled } from './firebasePushSdk'
@@ -14,8 +14,8 @@ export function NotificationPushControl() {
   if (!pushUiEnabled) return null
   return <section className={styles.control} aria-label="이 기기 푸시 설정">
     <div className={styles.heading}><h3>기기 알림</h3><span>이 기기에만 적용</span></div>
-    <p className={styles.description}>관심 단지·지역의 새 공고를 화면 밖에서도 받아요.</p>
-    {help ? <Button className={styles.primary} onClick={() => setHelpOpen(true)}>이 기기 알림 받기</Button>
+    <p className={styles.description}>새 공고와 신청한 공고의 일정 알림을 받아요.</p>
+    {help ? <PushSwitch checked={false} onClick={() => setHelpOpen(true)} />
       : context?.error ? <><p className={styles.message} role="alert">{context.error}</p><Button onClick={context.retry}>다시 시도</Button></>
       : context?.client ? <DeviceControl client={context.client} retry={context.retry} />
         : <p className={styles.message} role="status">기기 설정을 확인하고 있어요…</p>}
@@ -38,13 +38,27 @@ export function NotificationPushControl() {
 function DeviceControl({ client, retry }: { readonly client: PushClient; readonly retry: () => void }) {
   const state = useSyncExternalStore(client.subscribe, client.getSnapshot)
   const working = state.status === 'loading' || state.status === 'busy'
+  const [confirmed, setConfirmed] = useState(state.status === 'on')
+  useEffect(() => {
+    if (state.status === 'on' || state.status === 'off') setConfirmed(state.status === 'on')
+  }, [state.status])
+  const enabled = state.status === 'on' || (working || state.status === 'error') && confirmed
   return <>
-    {state.status === 'on' && <div className={styles.enabled}><span aria-hidden="true">✓</span> 알림 켜짐</div>}
+    <PushSwitch checked={enabled} disabled={working || state.status === 'error'} busy={working}
+      onClick={() => void (enabled ? client.disable() : client.enable())} />
     {state.message && <p className={styles.message} role={state.status === 'error' ? 'alert' : 'status'}>{state.message}</p>}
-    {state.status === 'error' ? <Button onClick={retry}>다시 시도</Button>
-      : state.status === 'on' ? <button className={styles.secondary} type="button" onClick={() => void client.disable()}>알림 끄기</button>
-        : <Button className={styles.primary} disabled={working} onClick={() => void client.enable()}>
-          {working ? '알림 설정 중…' : '이 기기 알림 받기'}
-        </Button>}
+    {state.status === 'error' && <Button onClick={retry}>다시 시도</Button>}
   </>
+}
+
+function PushSwitch({ checked, disabled = false, busy = false, onClick }: {
+  readonly checked: boolean; readonly disabled?: boolean; readonly busy?: boolean; readonly onClick: () => void
+}) {
+  return <div className={styles.switchRow}>
+    <span>{busy ? '설정 중…' : checked ? '알림 켜짐' : '알림 꺼짐'}</span>
+    <button type="button" role="switch" aria-label="이 기기 알림 받기" aria-checked={checked}
+      aria-busy={busy} disabled={disabled} className={styles.switch} onClick={onClick}>
+      <span className={styles.thumb} />
+    </button>
+  </div>
 }

@@ -47,6 +47,16 @@ public class NotificationOutboxRepository {
                 Timestamp.from(occurredAt), Timestamp.from(occurredAt)) == 1;
     }
 
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean appendSchedule(com.toadzip.backend.notification.domain.ScheduleReminder reminder, NotificationAudienceSnapshot snapshot) {
+        return jdbc.update("""
+                INSERT INTO notification_outbox_events(event_key,announcement_id,source_identifier,occurred_at,
+                    status,attempts,next_attempt_at,recipient_cursor,target_snapshot)
+                VALUES(?,?,?,?,'PENDING',0,?,0,?) ON CONFLICT(event_key) DO NOTHING
+                """, reminder.key(), reminder.announcementId(), "schedule:" + reminder.announcementId(),
+                Timestamp.from(reminder.dueAt()), Timestamp.from(reminder.dueAt()), json.writeValueAsString(snapshot)) == 1;
+    }
+
     public Optional<PendingNotificationEvent> claimNext(Instant now) {
         return jdbc.query("""
                 SELECT * FROM notification_outbox_events WHERE status='PENDING' AND next_attempt_at<=?

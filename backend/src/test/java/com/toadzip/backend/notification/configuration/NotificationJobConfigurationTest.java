@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.toadzip.backend.notification.service.NotificationMaterializationService;
+import com.toadzip.backend.notification.service.NotificationScheduleService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -19,6 +21,7 @@ class NotificationJobConfigurationTest {
         var context = new ApplicationContextRunner()
                 .withUserConfiguration(NotificationJobConfiguration.class, NotificationMaterializerJob.class)
                 .withBean(Clock.class, Clock::systemUTC)
+                .withBean(NotificationScheduleService.class, () -> mock(NotificationScheduleService.class))
                 .withBean(NotificationMaterializationService.class, () -> mock(NotificationMaterializationService.class));
         context.run(application -> assertThat(application).doesNotHaveBean(NotificationMaterializerJob.class));
         context.withPropertyValues("app.notification.materializer-enabled=true").run(application -> {
@@ -32,7 +35,22 @@ class NotificationJobConfigurationTest {
         var service = mock(NotificationMaterializationService.class);
         Instant now = Instant.parse("2026-10-13T00:00:00Z");
         when(service.materializeNextPage(now, 200)).thenReturn(200);
-        new NotificationMaterializerJob(service, Clock.fixed(now, ZoneOffset.UTC)).materialize();
+        new NotificationMaterializerJob(service, Clock.fixed(now, ZoneOffset.UTC),
+                mock(NotificationScheduleService.class), new NotificationProperties(false, true, false, null, null))
+                .materialize();
         verify(service, times(20)).materializeNextPage(now, 200);
+    }
+    @Test
+    void 일정도_발행_활성화_설정에만_현재_시각으로_발행한다() {
+        var schedules = mock(NotificationScheduleService.class);
+        var materializer = mock(NotificationMaterializationService.class);
+        Instant now = Instant.parse("2026-10-13T00:00:00Z");
+        Clock clock = Clock.fixed(now, ZoneOffset.UTC);
+        new NotificationMaterializerJob(materializer, clock, schedules,
+                new NotificationProperties(false, true, false, null, null)).publishSchedules();
+        verifyNoInteractions(schedules);
+        new NotificationMaterializerJob(materializer, clock, schedules,
+                new NotificationProperties(true, true, false, now.minusSeconds(1), null)).publishSchedules();
+        verify(schedules).publishDue(now);
     }
 }

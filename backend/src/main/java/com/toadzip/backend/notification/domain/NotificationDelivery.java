@@ -54,6 +54,9 @@ public class NotificationDelivery {
     @Column(name = "finished_at", nullable = true)
     private Instant finishedAt;
 
+    @Column(name = "group_id")
+    private Long groupId;
+
     protected NotificationDelivery() {
     }
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-export function useNotificationPolling({ userId, load }: {
-  readonly userId: string | null; readonly load: (signal: AbortSignal) => Promise<number>
+export function useNotificationPolling({ userId, load, navigationKey }: {
+  readonly navigationKey?: string; readonly userId: string | null; readonly load: (signal: AbortSignal) => Promise<number>
 }) {
   const [state, setState] = useState<{ userId: string | null; count: number | null; error: string | null }>({ userId: null, count: null, error: null })
   const request = useRef<() => void>(() => {})
@@ -38,6 +38,6 @@ export function useNotificationPolling({ userId, load }: {
       document.removeEventListener('visibilitychange', trigger)
       window.removeEventListener('online', trigger)
     }
-  }, [userId, load])
+  }, [userId, load, navigationKey])
   return { unreadCount: state.userId === userId && userId ? state.count : null, error: state.userId === userId && userId ? state.error : null, refresh }
 }

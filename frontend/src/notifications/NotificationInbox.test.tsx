@@ -87,3 +87,16 @@ it('계정이 바뀌면 이전 계정의 선택과 삭제 확인을 지운다', 
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   expect(repository.delete).not.toHaveBeenCalled()
 })
+
+it('일정 알림은 일정명과 기간·대상·조건·원문을 분리해 표시한다', async () => {
+  const schedule = { kind: 'DOCUMENT_SUBMISSION' as const, name: '예비 입주자 서류 제출', startDate: '2026-10-14', endDate: '2026-10-15', startTime: '10:00:00', endTime: '17:00:00', scope: '경희궁자이 · 1순위', condition: '서류 제출 대상자', sourceUrl: 'https://example.com/notice', sourcePage: 3, phase: 'START' as const }
+  setup({ list: vi.fn(async () => ({ items: [{ ...item, type: 'SCHEDULE_REMINDER' as const, content: { type: 'SCHEDULE_REMINDER', targetType: 'ANNOUNCEMENT', targetId: '23', targetName: schedule.name, message: '내일 서류 제출 일정이 시작돼요.', schedule } }], nextCursor: null, readThrough: '10', totalCount: 1 })) })
+  expect(await screen.findByText('예비 입주자 서류 제출')).toBeVisible()
+  expect(screen.getByText('2026. 10. 14. 10:00 – 2026. 10. 15. 17:00')).toBeVisible()
+  expect(screen.getByText('경희궁자이 · 1순위')).toBeVisible()
+  expect(screen.getByText('서류 제출 대상자')).toBeVisible()
+  const source = screen.getByRole('link', { name: '원문 확인 · 3쪽' })
+  expect(source).toHaveAttribute('href', 'https://example.com/notice')
+  expect(source.closest('button')).toBeNull()
+  expect(screen.queryByText('내일 서류 제출 일정이 시작돼요.')).not.toBeInTheDocument()
+})

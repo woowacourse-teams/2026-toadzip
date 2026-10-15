@@ -359,7 +359,7 @@ class NotificationInterestOutcomeIntegrationTest {
                 INSERT INTO privacy_notification_receipts(event_id,event_type,source,target_type,target_id,created_at,
                     outcome,user_id,notice_version,settings_revision,request_fingerprint,purge_after)
                 SELECT ('90000000-0000-4000-8000-' || lpad(sequence::text,12,'0'))::uuid,
-                    'CONFIRMED','SETTING','REGION','11',?,'ACTIVATED',?,'notification-2026-10-10-v1',sequence,'test',?
+                    'CONFIRMED','SETTING','REGION','11',?,'ACTIVATED',?,'notification-2026-10-15-v1',sequence,'test',?
                 FROM generate_series(1,501) AS sequence
                 """, Timestamp.from(created), userId, Timestamp.from(clock.instant()));
         int first = transactions.execute(status -> retention.purgeChunk(clock.instant(), 500));
@@ -418,7 +418,7 @@ class NotificationInterestOutcomeIntegrationTest {
     private NotificationSettingsRequest request(long revision, NotificationEventType type, String target) {
         String notice = null;
         if (type == NotificationEventType.CONFIRMED) {
-            notice = "notification-2026-10-10-v1";
+            notice = "notification-2026-10-15-v1";
         }
         return new NotificationSettingsRequest(UUID.randomUUID(), Long.toString(userId), revision, type,
                 NotificationEventSource.SETTING, NotificationTargetType.REGION, target, notice);

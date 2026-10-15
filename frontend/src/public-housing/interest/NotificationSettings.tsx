@@ -27,8 +27,7 @@ export function NotificationSettings() {
       const targets = context.targets.filter((target) => target.type === type)
       if (targets.length === 0) return null
       return <section className={styles.group} key={type} aria-label={`${title} 알림 설정`}>
-        <h4>{title}</h4>
-        {type === 'ANNOUNCEMENT' && <p>공고 변경 알림은 준비 중이에요.</p>}
+        <h4><span>{title} 알림</span><span className={styles.groupCount}>{targets.length}개</span></h4>
         <ul>{targets.map((target) => <li key={target.id}>
           <span>{target.name}</span>
           <button className={styles.actionButton} type="button" disabled={context.blocked} aria-label={`${target.name} 알림 해제`}

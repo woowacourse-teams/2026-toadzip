@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router'
 import { analyticsCollectionAllowed, consentStore } from '../../privacy/consentStore'
 import { usePrivacyNotices } from '../../privacy/usePrivacy'
@@ -80,8 +81,9 @@ export function NotificationInterestProvider({ children, repository = notificati
   const [clearingAll, setClearingAll] = useState(false)
   const [batchError, setBatchError] = useState('')
   const batchRetries = useRef(new Map<string, NotificationInterestEvent>())
-  const [failed, setFailed] = useState<Action | null>(null)
+  const [failed, setFailed] = useState<(Action & { readonly reloadRequired?: boolean }) | null>(null)
   const [message, setMessage] = useState('')
+  const [feedbackContainer, setFeedbackContainer] = useState<HTMLElement | null>(null)
   const [targets, setTargets] = useState<readonly NotificationTarget[]>([])
   const [mode, setMode] = useState<'loading' | 'guest' | 'member' | 'error'>('loading')
   const inFlight = useRef(false)
@@ -250,7 +252,7 @@ export function NotificationInterestProvider({ children, repository = notificati
         refreshAfterResponse = true
         setDialog(null)
         setMessage('설정이 변경됐어요. 현재 상태를 확인하고 다시 선택해 주세요.')
-      } else { setDialog(null); setFailed(action) }
+      } else { setDialog(null); setFailed({ ...action, reloadRequired: error instanceof NotificationRequestError && error.status === 400 }) }
     } finally {
       if (version === requestVersion.current) {
         inFlight.current = false; setBusy(false)
@@ -349,7 +351,7 @@ export function NotificationInterestProvider({ children, repository = notificati
   }, [eventFor, repository])
 
   const context = useMemo(() => ({ userId, blocked: mode === 'loading' || mode === 'error' || busy || dialog !== null || failed !== null,
-    mode, requested, targets, request, expose, resetSession, refreshStatus, clearAll, clearingAll, batchError }), [userId, clearAll, clearingAll, batchError, busy, dialog, expose, failed, mode, request, requested, targets, resetSession, refreshStatus])
+    setFeedbackContainer, mode, requested, targets, request, expose, resetSession, refreshStatus, clearAll, clearingAll, batchError }), [userId, clearAll, clearingAll, batchError, busy, dialog, expose, failed, mode, request, requested, targets, resetSession, refreshStatus])
   function dismiss() { if (busy) return; restoreFocus.current = true; setDialog(null); setFailed(null); setSelection(null) }
 
   return <InterestContext.Provider value={context}>
@@ -365,7 +367,7 @@ export function NotificationInterestProvider({ children, repository = notificati
     {dialog === 'confirm' && selection && <InterestDialog onDismiss={dismiss} label={`${selection.target.type === 'REGION' ? '지역' : selection.target.type === 'ANNOUNCEMENT' ? '공고' : '단지'} 알림을 신청할까요?`}>
       <h2>{selection.target.type === 'REGION' ? '지역' : selection.target.type === 'ANNOUNCEMENT' ? '공고' : '단지'} 알림을 신청할까요?</h2>
       <div className={styles.target}>{selection.target.name}</div>
-      <p className={styles.description}>{selection.target.type === 'ANNOUNCEMENT' ? '공고 변경 알림은 준비 중이에요. 관심 공고로 저장해 둘게요.' : '새 공고가 올라오면 알림 보관함에 알려 드려요.'}</p>
+      <p className={styles.description}>{selection.target.type === 'ANNOUNCEMENT' ? '접수·서류 제출·당첨 발표·계약 일정을 전날 오전 9시에 알려 드려요.' : '새 공고가 올라오면 알림 보관함에 알려 드려요.'}</p>
       <div className={styles.actions}>
         <button className={styles.cancel} type="button" disabled={busy} onClick={dismiss}>취소</button>
         <button className={styles.submit} type="button" disabled={busy || !noticeVersion} onClick={() => {
@@ -381,20 +383,22 @@ export function NotificationInterestProvider({ children, repository = notificati
     </InterestDialog>}
     {dialog === 'completed' && <InterestDialog onDismiss={dismiss}>
       <h2 id="notification-interest-title">알림 신청을 완료했어요</h2>
-      <p className={styles.description}>{selection?.target.type === 'ANNOUNCEMENT' ? '공고 변경 알림이 준비되면 서비스에서 안내할게요.' : '새 공고가 올라오면 알림 보관함에서 확인할 수 있어요.'}</p>
+      <p className={styles.description}>{selection?.target.type === 'ANNOUNCEMENT' ? '확인된 일정의 시작·마감 전날 오전 9시에 알려 드려요. 당첨 발표는 발표 전날에 알려 드려요.' : '새 공고가 올라오면 알림 보관함에서 확인할 수 있어요.'}</p>
       {selection?.target.type !== 'ANNOUNCEMENT' && <p className={styles.hint}>화면 밖에서도 받으려면 알림 설정에서 ‘이 기기 알림 받기’를 켜 주세요.</p>}
       <p className={styles.hint} role="status">{message}</p>
       <div className={styles.actions}><button className={styles.submit} type="button" onClick={dismiss}>확인</button></div>
     </InterestDialog>}
     {failed && <InterestDialog label="알림 요청 오류" onDismiss={dismiss}>
-      <div className={styles.error} role="alert"><p>{failed.event.eventType === 'CANCELLED'
+      <div className={styles.error} role="alert"><p>{failed.reloadRequired ? '알림 대상이나 안내가 변경됐어요. 새로고침한 뒤 다시 신청해 주세요.' : failed.event.eventType === 'CANCELLED'
         ? '알림 해제를 완료하지 못했어요. 다시 시도해 주세요.' : '알림 설정을 저장하지 못했어요. 다시 시도해 주세요.'}</p></div>
       <div className={styles.actions}>
-        <button className={styles.submit} type="button" onClick={() => void send(failed)}>다시 시도</button>
+        <button className={styles.submit} type="button" onClick={() => { if (failed.reloadRequired) window.location.reload(); else void send(failed) }}>{failed.reloadRequired ? '새로고침' : '다시 시도'}</button>
         <button className={styles.cancel} type="button" onClick={dismiss}>닫기</button>
       </div>
     </InterestDialog>}
-    {!dialog && !failed && message && <div className={styles.feedback}><p role="status">{message}</p></div>}
+    {!dialog && !failed && message && (feedbackContainer
+      ? createPortal(<p className={styles.inlineFeedback} role="status">{message}</p>, feedbackContainer)
+      : <div className={styles.feedback}><p role="status">{message}</p></div>)}
     {mode === 'error' && <div className={styles.feedback} role="alert">
       <p>알림 상태를 불러오지 못했어요.</p><button type="button" onClick={refreshStatus}>다시 시도</button>
     </div>}

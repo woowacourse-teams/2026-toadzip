@@ -31,3 +31,15 @@
 .dialogActions { display: flex; gap: 8px; }
 .dialogActions > button { flex: 1; }
 .badge { display: inline-flex; justify-content: center; align-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 12px; background: var(--ds-color-action); color: white; font-size: 11px; font-weight: 700; }
+
+.scheduleLabel { color: var(--ds-color-action); font-size: 12px; font-weight: 700; }
+.announcementMessage { color: var(--ds-color-label); font-size: 13px; line-height: 1.6; }
+.scheduleDetails { margin: 0 12px 18px; padding: 14px; border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-surface); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.scheduleName { margin: 0 0 10px; font-weight: 600; font-size: 13px; }
+.scheduleDetails dl { display: grid; gap: 8px; margin: 0; }
+.scheduleDetails dl > div { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; }
+.scheduleDetails dt { color: var(--ds-color-muted); }
+.scheduleDetails dd { margin: 0; }
+.timezone { display: block; color: var(--ds-color-muted); font-size: 11px; }
+.sourceLink { display: inline-flex; align-items: center; min-height: 44px; margin: 6px 0 -6px; color: var(--ds-color-action); text-underline-offset: 3px; font-weight: 600; }
+.sourceLink:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
