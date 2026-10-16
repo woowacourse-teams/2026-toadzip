@@ -35,7 +35,8 @@
 - 기존 단지·원천·정제 연결과 검토 기록은 변경하지 않는다.
 - 연결된 원천 행에 외래키를 걸지 않아 원천 재수집·교체를 막지 않는다.
 - 기존 수정 API와 검토 API는 유지한다. 새 API는 PDF 근거 입력을 받지 않는다.
-- 이 기능은 단지의 기본·시설·주소 비교를 다룬다. 공고·주택형 임대조건 비교 화면은 포함하지 않는다.
+- 이 API는 단지의 기본·시설·주소 비교를 다룬다. 공고·주택형·임대조건 비교는
+  [관리자 데이터 검토 흐름](admin-quality-workflow.md)의 별도 API를 사용한다.
 
 검증: `ComplexComparisonIntegrationTest`, `ComplexVerificationIntegrationTest`,
 `LocalProfileSchemaPersistenceTest`와 프론트엔드 관리자 비교·검토 행동 테스트.
