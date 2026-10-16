@@ -1,4 +1,7 @@
 .panel { display: grid; gap: var(--ds-space-5); color: var(--ds-color-text); font-size: var(--ds-text-body); line-height: var(--ds-line-height-body); }
+.tableScroll { max-width: 100%; overflow-x: auto; max-height: 360px; }
+.tableScroll :is(td, th) { padding: var(--ds-space-2); border-bottom: 1px solid var(--ds-color-divider); }
+.tableScroll button[aria-pressed=true] { outline: 2px solid var(--ds-color-action); }
 .panel h2, .panel h3, .panel p { margin: 0; }
 .panel header, .step, .inputs, .inputs fieldset { display: grid; gap: var(--ds-space-3); }
 .panel fieldset { border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); padding: var(--ds-space-4); min-width: 0; }

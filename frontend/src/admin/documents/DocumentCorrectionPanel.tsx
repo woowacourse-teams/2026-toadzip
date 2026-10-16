@@ -9,6 +9,7 @@ import { openPdf, type ExtractedDocument, type PdfSession } from './pdfExtractio
 import styles from './DocumentReview.module.css'
 import { readReviewDraft, removeReviewDraft, saveReviewDraft } from './reviewDraftStore'
 import { DocumentArchivePanel } from './DocumentArchivePanel'
+import { PdfTablePanel } from './PdfTablePanel'
 
 const PdfPreview = lazy(() => import('../../public-housing/components/PdfDocumentPreview'))
 
@@ -84,6 +85,14 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
     if (!extracted) return
     try { const result = parseReviewResult(text, target, extracted); setReview(result); setChecked([]); setError('') }
     catch (cause) { setReview(null); setChecked([]); setError(cause instanceof Error ? cause.message : '결과를 확인하지 못했습니다.') }
+  }
+  function addProposal(proposal: ReviewResult['proposals'][number]) {
+    if (!extracted) return
+    const proposals = [...(review?.proposals.filter(item => item.field !== proposal.field) ?? []), proposal]
+    const unresolved = review?.unresolved.filter(item => item.field !== proposal.field) ?? []
+    const next = JSON.stringify({ schemaVersion: 'document-review/v1', targetKey: target.key, version: target.version,
+      sha256: extracted.sha256, proposals, unresolved }, null, 2)
+    setJson(next); validate(next)
   }
   async function preserveWork() {
     if (!session || !originalFile.current) return
@@ -213,6 +222,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
         <p className={styles.hint}>다운로드한 파일을 사용하는 에이전트에 전달하세요. 현재값·허용 항목·페이지 근거·응답 형식이 포함됩니다.</p>
       </section>
       <section className={styles.card}><h3>3. 수정안 가져오기 또는 수기 입력</h3>
+        <PdfTablePanel key={`${target.key}:${extracted.sha256}:${pages}`} target={target} document={extracted} disabled={Boolean(busy) || conflict || detail.summary.deleted} onAdded={addProposal} />
         <div className={styles.modeSwitch} aria-label="수정안 작성 방식"><button type="button" aria-pressed={method === 'manual'} disabled={Boolean(busy) || conflict || detail.summary.deleted} onClick={() => setMethod('manual')}>직접 입력</button><button type="button" aria-pressed={method === 'agent'} disabled={Boolean(busy) || conflict || detail.summary.deleted} onClick={() => setMethod('agent')}>에이전트 결과 가져오기</button></div>
         {method === 'agent' ? <fieldset className={styles.inputs} disabled={Boolean(busy) || conflict || detail.summary.deleted}>
           <legend className={styles.srOnly}>에이전트 결과</legend>
@@ -225,13 +235,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
           }} /></label>
           <button type="button" disabled={!json.trim()} onClick={() => validate()}>결과 검증</button>
         </fieldset> : null}
-        <div hidden={method !== 'manual'}><ManualProposal key={target.key} target={target} document={extracted} onDirtyChange={setManualDirty} disabled={Boolean(busy) || conflict || detail.summary.deleted} onAdded={proposal => {
-          const proposals = [...(review?.proposals.filter(item => item.field !== proposal.field) ?? []), proposal]
-          const unresolved = review?.unresolved.filter(item => item.field !== proposal.field) ?? []
-          const next = JSON.stringify({ schemaVersion: 'document-review/v1', targetKey: target.key, version: target.version,
-            sha256: extracted.sha256, proposals, unresolved }, null, 2)
-          setJson(next); validate(next)
-        }} /></div>
+        <div hidden={method !== 'manual'}><ManualProposal key={target.key} target={target} document={extracted} onDirtyChange={setManualDirty} disabled={Boolean(busy) || conflict || detail.summary.deleted} onAdded={addProposal} /></div>
       </section>
       {review ? <section className={`${styles.card} ${styles.review}`} aria-label="수정안 검토"><header className={styles.cardHeading}><h3>4. 원문과 대조 후 선택 반영</h3><span className={styles.badge}>{checked.length}/{review.proposals.length}개 확인</span></header>
         {review.unresolved.length ? <div className={styles.warning}><strong>보류 항목</strong><ul>{review.unresolved.map((item, index) => <li key={index}>{item.field}: {item.reason}</li>)}</ul></div> : null}
