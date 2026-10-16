@@ -44,6 +44,7 @@ class QualityComparisonIntegrationTest {
     @Autowired private com.toadzip.backend.announcement.repository.SupplyRowRepository supplyRows;
     @Autowired private com.toadzip.backend.announcement.repository.SupplyTargetRepository supplyTargets;
     @Autowired private EntityManager entities;
+    @Autowired private com.toadzip.backend.admin.quality.repository.QualityComparisonRepository comparisons;
     @Autowired private com.toadzip.backend.ingest.collection.fixture.repository.MyHomeComplexSourceFixtures sourceRows;
     @MockitoBean private IngestExecutionOwnershipService ownership;
 
@@ -177,12 +178,18 @@ class QualityComparisonIntegrationTest {
                 + com.toadzip.backend.admin.quality.repository.QualityComparisonRepository.SOURCE_ROWS
                 + ") sources WHERE category = 'MYHOME_ANNOUNCEMENT' AND raw ->> 'pblanc_id' = 'quality-metadata-test'";
         Object before = entities.createNativeQuery(query).getSingleResult();
+        String key = "21:quality-metadata-test1:1";
+        var category = com.toadzip.backend.ingest.source.dto.IngestSourceCategory.MYHOME_ANNOUNCEMENT;
+        var checked = json.readTree(comparisons.fingerprint(category, key));
+        assertThat(checked.size()).isEqualTo(1);
+        assertThat(checked.get(0)).isEqualTo(json.readTree((String) before));
         entities.createNativeQuery("""
                 UPDATE myhome_announcement_source_rows SET collection_record_id = :record,
                 collected_at = CURRENT_TIMESTAMP, last_seen_run_id = 'next-run', consecutive_miss_count = 1
                 WHERE pblanc_id = 'quality-metadata-test'
                 """).setParameter("record", second).executeUpdate();
         assertThat(entities.createNativeQuery(query).getSingleResult()).isEqualTo(before);
+        assertThat(json.readTree(comparisons.fingerprint(category, key))).isEqualTo(checked);
         entities.createNativeQuery("""
                 UPDATE myhome_announcement_source_rows SET active = false WHERE pblanc_id = 'quality-metadata-test'
                 """).executeUpdate();

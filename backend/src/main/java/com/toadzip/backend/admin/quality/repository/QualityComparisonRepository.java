@@ -11,11 +11,12 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class QualityComparisonRepository {
+    private static final String NORMALIZED_PAYLOAD =
+            "raw_payload::jsonb - 'id' - 'source_id' - 'collected_at' - 'source_order' "
+                    + "- 'collection_record_id' - 'consecutive_miss_count' - 'last_seen_run_id' - 'last_seen_at'";
     public static final String SOURCE_ROWS = Arrays.stream(IngestSourceCategory.values())
             .map(category -> "SELECT '" + category.name() + "'::text category, source_key, "
-                    + "raw_payload::jsonb - 'id' - 'source_id' - 'collected_at' - 'source_order' "
-                    + "- 'collection_record_id' - 'consecutive_miss_count' "
-                    + "- 'last_seen_run_id' - 'last_seen_at' raw FROM ("
+                    + NORMALIZED_PAYLOAD + " raw FROM ("
                     + IngestSourceRows.query(category) + ") rows")
             .collect(Collectors.joining(" UNION ALL "));
     private final JdbcClient jdbc;
@@ -57,10 +58,8 @@ public class QualityComparisonRepository {
     }
 
     public String fingerprint(IngestSourceCategory category, String key) {
-        String normalized = "raw_payload::jsonb - 'id' - 'source_id' - 'collected_at' - 'source_order' "
-                + "- 'last_seen_run_id' - 'last_seen_at'";
         return jdbc.sql("SELECT COALESCE(jsonb_agg(raw ORDER BY raw::text), '[]'::jsonb)::text FROM (SELECT "
-                + normalized + " raw FROM (" + IngestSourceRows.query(category)
+                + NORMALIZED_PAYLOAD + " raw FROM (" + IngestSourceRows.query(category)
                 + ") sources WHERE source_key = :key) current_rows")
                 .param("key", key).query(String.class).single();
     }
