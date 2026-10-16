@@ -21,11 +21,9 @@ export const TOPICS = [
   ['agency', '공급기관'], ['recruitmentType', '모집유형'],
 ] as const satisfies readonly (readonly [FilterTopic, string])[]
 export const DESKTOP_TOPICS = [['all', '전체'], ...TOPICS] as const
-export const DESKTOP_PRIMARY_TOPICS = DESKTOP_TOPICS.flatMap(
-  (entry): readonly (readonly [ToolbarTopic, string])[] => entry[0] === 'rentalType'
-    ? [entry, ['recruiting', '모집중']]
-    : [entry],
-)
+export const DESKTOP_PRIMARY_TOPICS = [
+  ...DESKTOP_TOPICS, ['recruiting', '모집중'],
+] as const satisfies readonly (readonly [ToolbarTopic, string])[]
 
 export const DETAIL_FILTER_TOPICS = [
   ['region', '지역'],

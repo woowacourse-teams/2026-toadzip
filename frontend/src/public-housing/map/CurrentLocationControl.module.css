@@ -29,6 +29,6 @@
 .status[hidden] { display: none; }
 
 @media (max-width: 767px) {
-  .control { top: calc(var(--explorer-search-bottom, 72px) + 64px); bottom: auto; }
+  .control { top: calc(var(--explorer-search-bottom, 72px) + 80px + 4.5rem); bottom: auto; }
   .status { top: 0; bottom: auto; }
 }

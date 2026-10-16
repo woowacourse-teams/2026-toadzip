@@ -16,14 +16,16 @@
   pointer-events: none;
 }
 
-.desktopFilters .toolbar,
+.desktopFilters .scroller,
+.desktopFilters .recruitingToggle,
 .desktopFilters .popover {
   pointer-events: auto;
 }
 
 .toolbar {
   display: flex;
-  width: fit-content;
+  flex-direction: column;
+  width: 100%;
   max-width: 100%;
   margin-inline-start: auto;
   padding: 3px;
@@ -31,6 +33,7 @@
 }
 
 .scroller {
+  width: 100%;
   padding-top: 6px;
   min-width: 0;
   flex: 1 1 auto;
@@ -41,6 +44,7 @@
 }
 
 .primaryFilters {
+  margin-inline-start: auto;
   display: flex;
   width: max-content;
   gap: 8px;
@@ -470,12 +474,16 @@
 }
 
 .mobileToolbar {
+  flex-direction: column;
+  pointer-events: none;
   width: 100%;
   gap: 6px;
   padding: 2px;
 }
 
 .mobileScroller {
+  width: 100%;
+  pointer-events: auto;
   padding-top: 6px;
   display: flex;
   min-width: 0;
@@ -724,13 +732,31 @@
   text-align: left;
 }
 
+.recruitingRow {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  pointer-events: none;
+}
+
 .trigger.recruitingToggle,
 .mobileTrigger.recruitingToggle {
-  border-radius: var(--ds-radius-control);
+  width: 4.5rem;
+  height: 4.5rem;
+  max-width: none;
+  padding: 0;
+  justify-content: center;
+  border-radius: 12px;
+  font-size: 1rem;
+  pointer-events: auto;
 }
 
 .recruitingToggle[aria-pressed='true'] {
-  border-color: var(--ds-color-action);
-  background: var(--ds-color-action);
-  color: var(--ds-color-surface);
+  border-color: var(--ds-color-brand);
+  background: var(--ds-color-brand);
+  color: var(--ds-color-on-brand);
+}
+
+.recruitingToggle[aria-pressed='true']:hover {
+  background: var(--ds-color-brand-hover);
 }

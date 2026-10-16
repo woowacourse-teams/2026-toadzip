@@ -1231,12 +1231,12 @@ describe('PublicHousingExplorer', () => {
       '전체 필터 열기',
       '지역 필터 열기',
       '임대유형 필터 열기',
-      '모집중',
       '가격 필터 열기',
       '전용면적 필터 열기',
       '준공년도 필터 열기',
       '공급기관 필터 열기',
       '모집유형 필터 열기',
+      '모집중',
     ])
     expect(screen.queryByRole('complementary', { name: '공공임대주택 검색 결과' })).not.toBeInTheDocument()
 

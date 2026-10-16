@@ -503,7 +503,7 @@ export function ComplexFilterToolbar({
           <div ref={scrollerRef} className={styles.scroller}>
             <div className={styles.primaryFilters}>
               {DESKTOP_PRIMARY_TOPICS.map(([topic, label]) => {
-                if (topic === 'recruiting') return recruitingToggle(false)
+                if (topic === 'recruiting') return null
                 const expanded = topic === openTopic
                 const summary = topic === 'all' ? null : topicSummary(
                   filters,
@@ -569,6 +569,7 @@ export function ComplexFilterToolbar({
               })}
             </div>
           </div>
+          <div className={styles.recruitingRow}>{recruitingToggle(false)}</div>
         </div>
 
         {openTopic !== null && openLabel !== null && headingId !== undefined && (
@@ -645,7 +646,7 @@ export function ComplexFilterToolbar({
       >
         <div className={styles.mobileScroller}>
         {MOBILE_PRIMARY_TOPICS.map(([topic, label]) => {
-          if (topic === 'recruiting') return recruitingToggle(true)
+          if (topic === 'recruiting') return null
           const summary = topic === 'all' ? null : topicSummary(filters, topic, resolvedRegionName)
           return (
             <button
@@ -669,6 +670,7 @@ export function ComplexFilterToolbar({
           )
         })}
         </div>
+        <div className={styles.recruitingRow}>{recruitingToggle(true)}</div>
       </div>
 
       {mobileSheetOpen && createPortal(

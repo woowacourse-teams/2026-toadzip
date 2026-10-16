@@ -274,8 +274,8 @@ describe('ComplexFilterToolbar', () => {
     render(<ComplexFilterToolbar filters={{}} onApply={vi.fn()} />)
     const toolbar = screen.getByRole('toolbar', { name: '단지 검색 필터' })
     expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
-      '전체 필터 열기', '지역 필터 열기', '임대유형 필터 열기', '모집중', '가격 필터 열기',
-      '전용면적 필터 열기', '준공년도 필터 열기', '공급기관 필터 열기', '모집유형 필터 열기',
+      '전체 필터 열기', '지역 필터 열기', '임대유형 필터 열기', '가격 필터 열기',
+      '전용면적 필터 열기', '준공년도 필터 열기', '공급기관 필터 열기', '모집유형 필터 열기', '모집중',
     ])
     fireEvent.click(within(toolbar).getByRole('button', { name: '공급기관 필터 열기' }))
     expect(screen.getByRole('region', { name: '공급기관 필터' })).toBeVisible()
@@ -951,13 +951,13 @@ describe('ComplexFilterToolbar', () => {
 
     rentalType.focus()
     fireEvent.keyDown(rentalType, { key: 'ArrowRight' })
+    expect(screen.getByRole('button', { name: '가격 필터 열기' })).toHaveFocus()
+    fireEvent.keyDown(rentalType, { key: 'End' })
     expect(applicationStatus).toHaveFocus()
-    fireEvent.keyDown(applicationStatus, { key: 'End' })
-    expect(detail).toHaveFocus()
-    fireEvent.keyDown(detail, { key: 'ArrowRight' })
+    fireEvent.keyDown(applicationStatus, { key: 'ArrowRight' })
     expect(region).toHaveFocus()
     fireEvent.keyDown(region, { key: 'ArrowLeft' })
-    expect(detail).toHaveFocus()
+    expect(applicationStatus).toHaveFocus()
     fireEvent.keyDown(detail, { key: 'Home' })
     expect(region).toHaveFocus()
   })
