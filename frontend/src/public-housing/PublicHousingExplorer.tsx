@@ -247,7 +247,8 @@ export function PublicHousingExplorer({
     })
     setCameraRequestId(current => current + 1)
   }, [])
-  const { cancel: cancelCurrentLocation, locate: locateCurrentPosition, state: currentLocationState } =
+  const { cancel: cancelCurrentLocation, locate: locateCurrentPosition,
+    position: currentPosition, state: currentLocationState } =
     useCurrentLocation(welcomeReady && autoLocationAllowed, applyCurrentLocation)
   const [detailCameraRevision, setDetailCameraRevision] = useState(0)
   const [selectedSearchComplex, setSelectedSearchComplex] =
@@ -255,11 +256,6 @@ export function PublicHousingExplorer({
   const [integratedSearchActive, setIntegratedSearchActive] = useState(false)
   const [searchRevision, setSearchRevision] = useState(0)
   const pendingListTriggerFocusRef = useRef<ResultList | null>(null)
-  useLayoutEffect(() => {
-    if (pendingListTriggerFocusRef.current === null) return
-    focusListTrigger(pendingListTriggerFocusRef.current)
-    pendingListTriggerFocusRef.current = null
-  }, [searchRevision])
   useLayoutEffect(() => {
     const overlay = searchOverlayRef.current
     const explorer = overlay?.closest<HTMLElement>('.housing-explorer')
@@ -288,6 +284,11 @@ export function PublicHousingExplorer({
     (initialDetail.kind === 'complex' || initialDetail.kind === 'announcement')
       && window.matchMedia?.('(max-width: 1023px)').matches ? 'collapsed' : 'auto'
   ))
+  useLayoutEffect(() => {
+    if (pendingListTriggerFocusRef.current === null) return
+    focusListTrigger(pendingListTriggerFocusRef.current)
+    pendingListTriggerFocusRef.current = null
+  }, [searchRevision, listPanelMode])
   const mobileDetailListModeRef = useRef<typeof listPanelMode | null>(
     listPanelMode === 'collapsed' ? 'auto' : null,
   )
@@ -1293,8 +1294,8 @@ export function PublicHousingExplorer({
 
   function collapseResults() {
     mobileDetailListModeRef.current = null
+    pendingListTriggerFocusRef.current = activeResultTab
     setListPanelMode('collapsed')
-    focusListTrigger(activeResultTab)
   }
 
   return (
@@ -1528,7 +1529,7 @@ export function PublicHousingExplorer({
           />
         </div>
         <div className="housing-map-base" inert={streetView.active} aria-hidden={streetView.active || undefined}>
-          <NaverMap {...naverMapProps} regionBoundary={boundaryState.boundary} />
+          <NaverMap {...naverMapProps} currentLocation={currentPosition} regionBoundary={boundaryState.boundary} />
           <CurrentLocationControl state={currentLocationState} onLocate={requestCurrentLocation} />
           <div className="housing-map-feedback" hidden={streetView.active}><HousingMapRequestFeedback errorMessage={serverMapState.errorMessage}
             onRetry={() => { captureProductEvent('exploration_retry_clicked', { surface: 'map_results' }); return retryServerMap() }} status={serverMapState.status} /></div>

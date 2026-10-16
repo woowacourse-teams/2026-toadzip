@@ -1,3 +1,50 @@
+.currentLocation {
+  --current-location-blue: #2784ff;
+  position: relative;
+  width: 48px;
+  height: 48px;
+  pointer-events: none;
+}
+
+.currentLocationPulse,
+.currentLocationDot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 50%;
+  background: var(--current-location-blue);
+  transform: translate(-50%, -50%);
+}
+
+.currentLocationPulse {
+  width: 34px;
+  height: 34px;
+  opacity: 0.2;
+  animation: currentLocationPulse 2.4s ease-out infinite;
+}
+
+.currentLocationDot {
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--ds-color-surface, #fff);
+  box-shadow: 0 1px 5px rgb(20 74 140 / 28%);
+}
+
+@keyframes currentLocationPulse {
+  0% { opacity: 0.3; transform: translate(-50%, -50%) scale(0.65); }
+  75%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.4); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .currentLocationPulse { animation: none; }
+}
+
+@media (forced-colors: active) {
+  .currentLocationDot { background: Highlight; border-color: Canvas; }
+  .currentLocationPulse { background: Highlight; animation: none; }
+}
+
 .zoomControls {
   position: absolute;
   z-index: 2;

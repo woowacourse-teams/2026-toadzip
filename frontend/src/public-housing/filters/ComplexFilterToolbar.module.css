@@ -553,8 +553,7 @@
 .mobileTrigger:focus-visible,
 .mobileAllTrigger:focus-visible,
 .mobileReset:focus-visible,
-.mobileClose:focus-visible,
-.mobileApply:focus-visible {
+.mobileClose:focus-visible {
   outline: 3px solid var(--ds-color-action);
   outline-offset: 1px;
 }
@@ -581,7 +580,7 @@
   display: grid;
   max-height: min(86dvh, 720px);
   overflow: clip;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .mobileSheetHeader {
@@ -640,7 +639,7 @@
 
 .mobileSheetBody {
   min-height: 0;
-  padding: 0 18px 20px;
+  padding: 0 18px max(20px, env(safe-area-inset-bottom, 0px));
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior-y: contain;
@@ -671,16 +670,6 @@
   background: #fdefec;
   color: #8a240f;
   font-size: var(--ds-text-caption);
-}
-
-.mobileFooter {
-  padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--ds-color-divider);
-  background: var(--ds-color-surface);
-}
-
-.mobileApply {
-  width: 100%;
 }
 
 @media (max-width: 767px) {

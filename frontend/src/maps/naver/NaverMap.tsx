@@ -1,6 +1,7 @@
 import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import styles from './NaverMap.module.css'
+import { createCurrentLocationMarker } from './currentLocationMarker.ts'
 import {
   cameraCoordinatesChanged,
   cameraZoomChanged,
@@ -150,6 +151,7 @@ export default function NaverMap({
   aggregateMarkers = [],
   cameraRequestId,
   cameraTarget,
+  currentLocation,
   dataBusy = false,
   markers = [],
   onAggregateMarkerSelect,
@@ -173,6 +175,16 @@ export default function NaverMap({
   const cameraRequestIdRef = useRef(cameraRequestId)
   cameraRequestIdRef.current = cameraRequestId
   const createdMarkersRef = useRef<CreatedMarker[]>([])
+  const currentLocationMarkerRef = useRef<naver.maps.Marker | null>(null)
+  const clearCurrentLocationMarker = useCallback(() => {
+    const marker = currentLocationMarkerRef.current
+    currentLocationMarkerRef.current = null
+    try {
+      marker?.setMap(null)
+    } catch {
+      // Authentication failure may already have invalidated the SDK overlay.
+    }
+  }, [])
   const boundaryOverlaysRef = useRef<naver.maps.OverlayView[]>([])
   const appliedMarkerContentKeyRef = useRef<string | null>(null)
   const aggregateMarkersRef = useRef(aggregateMarkers)
@@ -210,6 +222,8 @@ export default function NaverMap({
   const [initializedAttempt, setInitializedAttempt] = useState<number | null>(null)
   const [status, setStatus] = useState<MapStatus>({ kind: 'loading' })
   const cameraLatitude = cameraTarget?.latitude
+  const currentLocationLatitude = currentLocation?.latitude
+  const currentLocationLongitude = currentLocation?.longitude
   const cameraLongitude = cameraTarget?.longitude
   const cameraOffsetX = cameraTarget?.screenOffset?.x
   const cameraOffsetY = cameraTarget?.screenOffset?.y
@@ -311,6 +325,7 @@ export default function NaverMap({
       window.clearTimeout(markerFocusTimerRef.current)
       markerFocusTimerRef.current = undefined
       clearMarkers(createdMarkersRef.current)
+      clearCurrentLocationMarker()
       clearBoundaryOverlays(boundaryOverlaysRef.current)
       createdMarkersRef.current = []
       appliedMarkerContentKeyRef.current = null
@@ -454,6 +469,7 @@ export default function NaverMap({
       removeIdleListener()
       removeTransitionInterruptListeners()
       clearMarkers(createdMarkersRef.current)
+      clearCurrentLocationMarker()
       clearBoundaryOverlays(boundaryOverlaysRef.current)
       createdMarkersRef.current = []
       appliedMarkerContentKeyRef.current = null
@@ -465,7 +481,26 @@ export default function NaverMap({
       appliedCameraRequestIdRef.current = undefined
       destroyMapSafely(mapInstance)
     }
-  }, [attempt, handleUserInteraction])
+  }, [attempt, clearCurrentLocationMarker, handleUserInteraction])
+
+  useEffect(() => {
+    const map = mapInstanceRef.current
+    const maps = mapsRef.current
+    if (!map || !maps || status.kind !== 'ready' || initializedAttempt !== attempt
+      || currentLocationLatitude === undefined || currentLocationLongitude === undefined
+      || !isValidCameraTarget(currentLocationLatitude, currentLocationLongitude, undefined)) {
+      clearCurrentLocationMarker()
+      return
+    }
+
+    const position = new maps.LatLng(currentLocationLatitude, currentLocationLongitude)
+    if (currentLocationMarkerRef.current) {
+      currentLocationMarkerRef.current.setPosition(position)
+    } else {
+      currentLocationMarkerRef.current = createCurrentLocationMarker(maps, map, position)
+    }
+  }, [attempt, clearCurrentLocationMarker, currentLocationLatitude, currentLocationLongitude,
+    initializedAttempt, status.kind])
 
   useEffect(() => {
     const mapInstance = mapInstanceRef.current

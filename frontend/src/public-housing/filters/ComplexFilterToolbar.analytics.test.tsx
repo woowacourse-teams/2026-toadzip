@@ -43,25 +43,18 @@ it.each(['desktop', 'mobile'])('%s 전체 패널의 즉시 적용과 초기화�
   })))
 })
 
-it('모바일 개별 필터의 포털 입력은 적용 전 취소와 적용을 구별한다', async () => {
+it('모바일 개별 필터 선택을 즉시 적용으로 수집하고 닫아도 미적용 변경으로 남기지 않는다', async () => {
   render(<Toolbar />)
   fireEvent.click(screen.getByRole('button', { name: '모바일 임대유형 필터 열기' }))
   fireEvent.click(screen.getByRole('checkbox', { name: '행복주택' }))
+  expect(capture).toHaveBeenCalledWith('apply_filter', expect.objectContaining({
+    topic: 'rentalType', layout: 'mobile', apply_mode: 'immediate', methods_used: ['choice'],
+  }))
   fireEvent.click(screen.getByRole('button', { name: '단지 필터 닫기' }))
   await waitFor(() => expect(capture).toHaveBeenCalledWith('filter_closed', expect.objectContaining({
-    topic: 'rentalType', layout: 'mobile', had_changes: true, unapplied_changes: true, reason: 'close_button',
+    topic: 'rentalType', layout: 'mobile', had_changes: true, unapplied_changes: false, reason: 'close_button',
   })))
-  expect(capture.mock.calls.filter(([event]) => event === 'apply_filter')).toHaveLength(0)
-
-  fireEvent.click(screen.getByRole('button', { name: '모바일 임대유형 필터 열기' }))
-  fireEvent.click(screen.getByRole('checkbox', { name: '행복주택' }))
-  fireEvent.click(screen.getByRole('button', { name: '임대유형 적용' }))
-  expect(capture).toHaveBeenCalledWith('apply_filter', expect.objectContaining({
-    topic: 'rentalType', layout: 'mobile', apply_mode: 'submit', methods_used: ['choice'],
-  }))
-  expect(capture).toHaveBeenLastCalledWith('filter_closed', expect.objectContaining({
-    topic: 'rentalType', unapplied_changes: false, reason: 'apply',
-  }))
+  expect(capture.mock.calls.filter(([event]) => event === 'apply_filter')).toHaveLength(1)
 })
 
 it('전체 패널에서 유효하지 않아 적용하지 않은 준공년도는 닫을 때 미적용 변경으로 남는다', async () => {

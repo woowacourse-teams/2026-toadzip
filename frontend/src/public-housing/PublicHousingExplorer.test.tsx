@@ -279,10 +279,12 @@ describe('PublicHousingExplorer', () => {
       const repository = createRepository()
       renderExplorer(repository, '/?source=shared#map')
       await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledOnce())
-      expect(screen.getByRole('button', { name: '현재 위치로 이동' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: '현재 위치로 이동' })).toHaveAttribute('aria-disabled', 'true')
+      expect(screen.getByTestId('map-current-location')).toHaveTextContent('none')
       expect(screen.queryByText('내 주변 주택을 보여드리기 위해 현재 위치를 확인합니다.')).not.toBeInTheDocument()
       act(() => success(position))
       expect(screen.getByText('카메라 35.18,129.07')).toBeVisible()
+      expect(screen.getByTestId('map-current-location')).toHaveTextContent('35.18,129.07')
       expect(screen.getByTestId('map-camera-zoom')).toHaveTextContent('14')
       fireEvent.click(screen.getByRole('button', { name: '현재 카메라 idle' }))
       await waitFor(() => expect(repository.findMap).toHaveBeenCalledWith(
@@ -292,6 +294,28 @@ describe('PublicHousingExplorer', () => {
       expect(screen.getByTestId('location-hash')).toHaveTextContent('#map')
       expect(localStorage.length).toBe(1)
       expect(vi.mocked(trackEvent).mock.calls.flatMap(call => JSON.stringify(call))).not.toContain('35.18')
+    })
+
+    it('지도와 검색 위치를 바꿔도 마지막 실제 현재 위치를 보존하고 권한 거부 시 지운다', async () => {
+      const subway = { ...searchItem('SUBWAY_STATION', 'station-1', '강남역', 37.5, 127.03), regionCode: null }
+      renderExplorer(createRepository(), '/', searchRepository([subway], []))
+      await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledOnce())
+      act(() => success(position))
+      expect(screen.getByTestId('map-current-location')).toHaveTextContent('35.18,129.07')
+
+      fireEvent.click(screen.getByRole('button', { name: '지도 직접 조작' }))
+      fireEvent.click(screen.getByRole('button', { name: '다음 영역 알림' }))
+      expect(screen.getByText('카메라 37.475,126.9')).toBeVisible()
+      expect(screen.getByTestId('map-current-location')).toHaveTextContent('35.18,129.07')
+      fireEvent.change(screen.getByRole('searchbox'), { target: { value: '강남역' } })
+      fireEvent.click(await screen.findByRole('button', { name: /^강남역/ }))
+      expect(screen.getByText('카메라 37.5,127.03')).toBeVisible()
+      expect(screen.getByTestId('map-current-location')).toHaveTextContent('35.18,129.07')
+
+      fireEvent.click(screen.getByRole('button', { name: '현재 위치로 이동' }))
+      act(() => failure?.({ code: 1, message: 'denied', PERMISSION_DENIED: 1,
+        POSITION_UNAVAILABLE: 2, TIMEOUT: 3 }))
+      expect(screen.getByTestId('map-current-location')).toHaveTextContent('none')
     })
 
     it('첫 방문 안내를 닫은 뒤 위치 확인을 시작한다', async () => {
@@ -569,19 +593,20 @@ describe('PublicHousingExplorer', () => {
     expect(screen.getByRole('article', { name: '서울가람 행복주택' })).toBe(card)
   })
 
-  it('모바일 목록은 하단에서 세 단계로 조절하며 접혀도 펼치기 손잡이를 유지한다', async () => {
+  it('모바일 목록 높이를 조절하고 닫으면 손잡이까지 숨기며 지역 버튼으로 다시 연다', async () => {
     vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 767px)' || query === '(max-width: 1023px)' }))
     try {
       renderSearchedExplorer(createRepository())
       await screen.findByRole('article', { name: '서울가람 행복주택' })
       const handle = screen.getByRole('slider', { name: '목록 높이' })
       expect(handle).toHaveAttribute('aria-valuetext', '절반 펼침')
-      fireEvent.keyDown(handle, { key: 'ArrowUp' })
+      fireEvent.keyDown(handle, { key: 'End' })
       expect(handle).toHaveAttribute('aria-valuetext', '크게 펼침')
       fireEvent.keyDown(handle, { key: 'Home' })
-      expect(handle).toHaveAttribute('aria-valuetext', '접힘')
+      expect(screen.queryByRole('slider', { name: '목록 높이' })).not.toBeInTheDocument()
       expect(screen.queryByRole('region', { name: '단지 목록' })).not.toBeInTheDocument()
-      fireEvent.click(screen.getByRole('button', { name: '목록 펼치기' }))
+      expect(screen.getByRole('button', { name: /단지 목록 보기$/ })).toHaveFocus()
+      fireEvent.click(screen.getByRole('button', { name: /단지 목록 보기$/ }))
       expect(screen.getByRole('region', { name: '단지 목록' })).toBeVisible()
       expect(handle).toHaveAttribute('aria-valuetext', '절반 펼침')
     } finally {
@@ -3529,6 +3554,7 @@ function FakeNaverMap({
   regionBoundary,
   cameraTarget,
   cameraRequestId,
+  currentLocation,
   dataBusy = false,
   markers = [],
   onAggregateMarkerSelect,
@@ -3569,6 +3595,7 @@ function FakeNaverMap({
       data-transitioning={String(transitioning)}
     >
       <output>카메라 {currentCamera.latitude},{currentCamera.longitude}</output>
+      <output data-testid="map-current-location">{currentLocation ? `${currentLocation.latitude},${currentLocation.longitude}` : 'none'}</output>
       <output data-testid="map-boundary">{regionBoundary?.regionCode ?? 'none'}</output>
       <output data-testid="map-camera-padding">{JSON.stringify(cameraTarget?.boundsPadding)}</output>
       <output data-testid="map-camera-offset">{JSON.stringify(cameraTarget?.screenOffset)}</output>

@@ -31,6 +31,9 @@ export function AnnouncementFilterPanel({
 }: AnnouncementFilterPanelProps) {
   const mobile = useMobileViewport()
   const [open, setOpen] = useState(false)
+  const [formFilters, setFormFilters] = useState(filters)
+  const [formRevision, setFormRevision] = useState(0)
+  const immediateSignatureRef = useRef<string | null>(null)
   const rootRef = useRef<HTMLElement>(null)
   const measurement = useFilterMeasurement('announcement', open ? 'all' : null, mobile ? 'mobile' : 'desktop', rootRef, filters)
   const formRef = useRef<HTMLFormElement>(null)
@@ -41,6 +44,21 @@ export function AnnouncementFilterPanel({
   const summaryId = `${panelId}-summary`
   const appliedCount = appliedFilterCount(filters)
   const filtersKey = searchFiltersSignature(filters)
+  const formKey = `${formRevision}:${searchFiltersSignature(formFilters)}`
+  const previousFiltersKeyRef = useRef(filtersKey)
+
+  useEffect(() => {
+    if (previousFiltersKeyRef.current === filtersKey) return
+    previousFiltersKeyRef.current = filtersKey
+    if (immediateSignatureRef.current === filtersKey) {
+      immediateSignatureRef.current = null
+      return
+    }
+    immediateSignatureRef.current = null
+    setFormFilters(filters)
+    // History can return to the initial defaults while the live inputs have changed.
+    setFormRevision((revision) => revision + 1)
+  }, [filters, filtersKey])
 
   useEffect(() => {
     if (open) {
@@ -49,7 +67,7 @@ export function AnnouncementFilterPanel({
       toggleRef.current?.focus()
       restoreFocusRef.current = false
     }
-  }, [open, filtersKey])
+  }, [open, formKey])
 
   function close(reason: 'close_button' | 'escape' | 'toggle' = 'close_button') {
     measurement.reason(reason)
@@ -59,15 +77,34 @@ export function AnnouncementFilterPanel({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (mobile) return
     const nextFilters = announcementFiltersFromForm(new FormData(event.currentTarget))
     measurement.apply(nextFilters, 'submit')
     onApply(nextFilters)
   }
 
+  function changeFilter(event: FormEvent<HTMLFormElement>) {
+    const target = event.target
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return
+    const data = new FormData(event.currentTarget)
+    // Descendant region controls reset after this bubbling change handler.
+    if (target.name === 'provinceCode') data.set('districtCode', '')
+    if (target.name === 'provinceCode' || target.name === 'districtCode') data.set('neighborhoodCode', '')
+    const next = announcementFiltersFromForm(data)
+    const nextSignature = searchFiltersSignature(next)
+    if (nextSignature === filtersKey) return
+    immediateSignatureRef.current = nextSignature
+    measurement.apply(next, 'immediate')
+    onApply(next)
+  }
+
   function reset() {
     measurement.reset('all', 'applied')
     measurement.apply({}, 'reset')
+    immediateSignatureRef.current = null
     formRef.current?.reset()
+    setFormFilters({})
+    closeRef.current?.focus()
     onApply({})
   }
 
@@ -83,7 +120,13 @@ export function AnnouncementFilterPanel({
           aria-controls={panelId}
           aria-describedby={summaryId}
           aria-expanded={open}
-          onClick={() => open ? close('toggle') : setOpen(true)}
+          onClick={() => {
+            if (open) close('toggle')
+            else {
+              setFormFilters(filters)
+              setOpen(true)
+            }
+          }}
         >
           <span>공고 필터</span>
           {appliedCount > 0 && <span className={styles.count} aria-hidden="true">{appliedCount}</span>}
@@ -99,10 +142,11 @@ export function AnnouncementFilterPanel({
       {open && (
         <form
           ref={formRef}
-          key={filtersKey}
+          key={formKey}
           id={panelId}
           className={styles.form}
           onSubmit={submit}
+          onChange={mobile ? changeFilter : undefined}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               event.preventDefault()
@@ -127,7 +171,7 @@ export function AnnouncementFilterPanel({
           <div className={styles.fields}>
             <div className={styles.grid}>
               <RegionFilterFields
-                initialRegionCode={filters.regionCode ?? ''}
+                initialRegionCode={formFilters.regionCode ?? ''}
                 messageId="announcement-region-district-load-error"
                 loadingMessage="시·군·구 목록을 불러오는 중입니다."
                 styles={{
@@ -141,35 +185,35 @@ export function AnnouncementFilterPanel({
               <FilterCheckboxGroup
                 label="임대유형"
                 name="rentalTypes"
-                defaultValues={filters.rentalTypes}
+                defaultValues={formFilters.rentalTypes}
                 options={RENTAL_TYPE_OPTIONS}
               />
               <FilterCheckboxGroup
                 label="모집상태"
                 name="applicationStatuses"
-                defaultValues={filters.applicationStatuses}
+                defaultValues={formFilters.applicationStatuses}
                 options={ANNOUNCEMENT_STATUS_OPTIONS}
               />
               <FilterCheckboxGroup
                 label="공급기관"
                 name="agencyCodes"
-                defaultValues={filters.agencyCodes}
+                defaultValues={formFilters.agencyCodes}
                 options={AGENCY_OPTIONS}
               />
               <FilterCheckboxGroup
                 label="모집유형"
                 name="recruitmentTypes"
-                defaultValues={filters.recruitmentTypes}
+                defaultValues={formFilters.recruitmentTypes}
                 options={RECRUITMENT_TYPE_OPTIONS}
               />
             </div>
           </div>
 
-          <div className={styles.actions}>
+          {!mobile && <div className={styles.actions}>
             <Button className={styles.apply} type="submit">
               공고 필터 적용
             </Button>
-          </div>
+          </div>}
         </form>
       )}
     </section>

@@ -42,6 +42,54 @@ const BASE_FILTERS: ComplexSearchFilters = {
 }
 
 describe('ComplexFilterToolbar', () => {
+
+  it('모바일 임대유형은 연속 선택 즉시 적용하고 닫아도 선택과 다른 조건을 보존한다', () => {
+    render(<StatefulToolbar initialFilters={{ agencyCodes: ['LH'] }} />)
+    const trigger = screen.getByRole('button', { name: '모바일 임대유형 필터 열기' })
+    fireEvent.click(trigger)
+    const happy = screen.getByRole('checkbox', { name: '행복주택' })
+    happy.focus()
+    fireEvent.click(happy)
+    expect(appliedFilters()).toEqual({ agencyCodes: ['LH'], rentalTypes: ['HAPPY_HOUSING'] })
+    expect(happy).toHaveFocus()
+    fireEvent.click(screen.getByRole('checkbox', { name: '국민임대' }))
+    expect(appliedFilters().rentalTypes).toEqual(expect.arrayContaining(['HAPPY_HOUSING', 'NATIONAL_RENTAL']))
+    expect(screen.queryByRole('button', { name: /적용$/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '단지 필터 닫기' }))
+    fireEvent.click(trigger)
+    expect(screen.getByRole('checkbox', { name: '행복주택' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: '국민임대' })).toBeChecked()
+  })
+
+  it.each([
+    ['가격', '임대보증금 최댓값', '100000000', { maxDeposit: 100_000_000 }],
+    ['전용면적', '전용면적 최댓값', '66', { maxExclusiveArea: 66 }],
+  ] as const)('모바일 %s 슬라이더는 손을 놓을 때 적용하고 패널을 유지한다', (topic, label, value, expected) => {
+    const onApply = vi.fn()
+    render(<StatefulToolbar initialFilters={{ agencyCodes: ['LH'] }} onApply={onApply} />)
+    fireEvent.click(screen.getByRole('button', { name: `모바일 ${topic} 필터 열기` }))
+    const slider = screen.getByRole('slider', { name: label })
+    fireEvent.pointerDown(slider)
+    fireEvent.change(slider, { target: { value } })
+    expect(onApply).not.toHaveBeenCalled()
+    fireEvent.pointerUp(slider)
+    expect(appliedFilters()).toEqual({ agencyCodes: ['LH'], ...expected })
+    expect(screen.getByRole('dialog', { name: `${topic} 필터` })).toBeVisible()
+    expect(screen.queryByRole('button', { name: /적용$/ })).not.toBeInTheDocument()
+  })
+
+  it('모바일 준공년도는 유효한 선택만 즉시 적용하고 역전 범위는 수정할 때까지 유지한다', () => {
+    render(<StatefulToolbar initialFilters={{ builtYearTo: 2020, agencyCodes: ['LH'] }} />)
+    fireEvent.click(screen.getByRole('button', { name: '모바일 준공년도 필터 열기' }))
+    fireEvent.change(screen.getByLabelText('최소 준공년도'), { target: { value: '2025' } })
+    expect(screen.getByRole('alert')).toBeVisible()
+    expect(appliedFilters()).toEqual({ builtYearTo: 2020, agencyCodes: ['LH'] })
+    fireEvent.change(screen.getByLabelText('최대 준공년도'), { target: { value: '2026' } })
+    expect(appliedFilters()).toEqual({ builtYearFrom: 2025, builtYearTo: 2026, agencyCodes: ['LH'] })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /적용$/ })).not.toBeInTheDocument()
+  })
+
   it.each(['desktop', 'mobile'])('%s 모집중은 기본 해제이며 두 모집 상태를 함께 켜고 다른 조건을 유지하며 해제한다', (mode) => {
     render(<StatefulToolbar initialFilters={{ agencyCodes: ['LH'], maxDeposit: 0 }} />)
     const toolbar = screen.getByRole('toolbar', { name: mode === 'desktop' ? '단지 검색 필터' : '모바일 단지 검색 필터' })
@@ -260,13 +308,14 @@ describe('ComplexFilterToolbar', () => {
     expect(appliedFilters()).toEqual({ ...initialFilters, applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] })
   })
 
-  it('모바일에서 수정 없이 적용하면 0과 제한 없는 범위의 다른 끝점을 그대로 유지한다', () => {
+  it('모바일에서 수정 없이 닫아도 0과 제한 없는 범위의 다른 끝점을 그대로 유지한다', () => {
     const filters = { maxDeposit: 0, minMonthlyRent: 0, maxExclusiveArea: 0, builtYearTo: 1970 }
     const onApply = vi.fn()
-    renderToolbar({ filters, onApply })
+    render(<StatefulToolbar initialFilters={filters} onApply={onApply} />)
     fireEvent.click(screen.getByRole('button', { name: '모바일 가격 필터 열기' }))
-    fireEvent.click(screen.getByRole('button', { name: '가격 적용' }))
-    expect(onApply).toHaveBeenLastCalledWith(filters)
+    fireEvent.click(screen.getByRole('button', { name: '단지 필터 닫기' }))
+    expect(onApply).not.toHaveBeenCalled()
+    expect(appliedFilters()).toEqual(filters)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
@@ -846,12 +895,11 @@ describe('ComplexFilterToolbar', () => {
     expect(within(sheet).getByRole('slider', { name: '임대보증금 최솟값' })).toBeVisible()
     expect(within(sheet).queryByRole('slider', { name: '전용면적 최댓값' })).not.toBeInTheDocument()
     fireEvent.click(within(sheet).getByRole('button', { name: '1억 이하' }))
-    expect(onApply).not.toHaveBeenCalled()
-    fireEvent.click(within(sheet).getByRole('button', { name: '가격 적용' }))
+    expect(within(sheet).queryByRole('button', { name: '가격 적용' })).not.toBeInTheDocument()
     const { minDeposit, ...expected } = BASE_FILTERS
     void minDeposit
     expect(onApply).toHaveBeenCalledExactlyOnceWith({ ...expected, maxDeposit: 100_000_000 })
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(sheet).toBeVisible()
   })
 
   it('모바일 시트가 열린 동안 외부 필터가 바뀌면 stale draft를 닫는다', () => {

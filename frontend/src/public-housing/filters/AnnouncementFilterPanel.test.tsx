@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { type ComponentProps, useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AnnouncementFilterPanel } from './AnnouncementFilterPanel.tsx'
 
 const GYEONGGI_REGIONS = [
@@ -249,3 +249,81 @@ function renderFilter({
     regionRepository={regionRepository}
   />)
 }
+
+
+describe('모바일 공고 필터 즉시 적용', () => {
+  beforeEach(() => vi.stubGlobal('matchMedia', () => ({ matches: true })))
+  afterEach(() => vi.unstubAllGlobals())
+
+  function AppliedFilters({ initialFilters = {} }: { initialFilters?: ComponentProps<typeof AnnouncementFilterPanel>['filters'] }) {
+    const [filters, setFilters] = useState(initialFilters)
+    return <>
+      <AnnouncementFilterPanel filters={filters} onApply={setFilters}
+        regionRepository={{ search: async () => [...GYEONGGI_REGIONS] }} />
+      <output data-testid="applied-announcement-filters">{JSON.stringify(filters)}</output>
+    </>
+  }
+  function applied() {
+    return JSON.parse(screen.getByTestId('applied-announcement-filters').textContent ?? '{}')
+  }
+
+  it('선택 즉시 적용하며 입력 DOM·포커스·패널을 유지하고 초기화도 즉시 반영한다', () => {
+    render(<AppliedFilters />)
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    const lh = screen.getByRole('checkbox', { name: 'LH' })
+    lh.focus()
+    fireEvent.click(lh)
+    expect(applied()).toEqual({ agencyCodes: ['LH'] })
+    expect(screen.getByRole('checkbox', { name: 'LH' })).toBe(lh)
+    expect(lh).toHaveFocus()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'SH' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '접수중' }))
+    expect(applied()).toEqual({ agencyCodes: ['LH', 'SH'], applicationStatuses: ['APPLYING'] })
+    expect(screen.queryByRole('button', { name: '공고 필터 적용' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 닫기' }))
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    expect(screen.getByRole('checkbox', { name: 'LH' })).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: '초기화' }))
+    expect(applied()).toEqual({})
+    expect(screen.getByRole('checkbox', { name: 'LH' })).not.toBeChecked()
+    expect(screen.getByRole('button', { name: '공고 필터 닫기' })).toHaveFocus()
+  })
+
+  it('시도를 바꾸면 이전 시군구 대신 새 시도를 바로 적용하고 다른 조건을 유지한다', async () => {
+    render(<AppliedFilters initialFilters={{ regionCode: '41110', agencyCodes: ['LH'] }} />)
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    await waitFor(() => expect(screen.getByLabelText('시·군·구')).toHaveValue('41110'))
+    fireEvent.change(screen.getByLabelText('시·도'), { target: { value: '11' } })
+    expect(applied()).toEqual({ regionCode: '11', agencyCodes: ['LH'] })
+    expect(screen.getByLabelText('시·군·구')).toHaveValue('')
+  })
+
+  it('외부 필터 변경은 입력에 반영하되 자동 재조회하지 않는다', () => {
+    const onApply = vi.fn()
+    const { rerender } = renderFilter({ onApply })
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    rerender(<AnnouncementFilterPanel filters={{ rentalTypes: ['HAPPY_HOUSING'] }} onApply={onApply} />)
+    expect(screen.getByRole('checkbox', { name: '행복주택' })).toBeChecked()
+    expect(onApply).not.toHaveBeenCalled()
+  })
+
+  it('즉시 적용 뒤 외부 탐색으로 최초 조건에 돌아와도 체크와 지역을 복원한다', () => {
+    const onApply = vi.fn()
+    const regionRepository = { search: vi.fn().mockResolvedValue([]) }
+    const { rerender } = renderFilter({ onApply, regionRepository })
+    fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'LH' }))
+    rerender(<AnnouncementFilterPanel filters={{ agencyCodes: ['LH'] }} onApply={onApply} regionRepository={regionRepository} />)
+    fireEvent.change(screen.getByLabelText('시·도'), { target: { value: '11' } })
+    rerender(<AnnouncementFilterPanel filters={{ agencyCodes: ['LH'], regionCode: '11' }} onApply={onApply} regionRepository={regionRepository} />)
+    onApply.mockClear()
+
+    rerender(<AnnouncementFilterPanel filters={{}} onApply={onApply} regionRepository={regionRepository} />)
+
+    expect(screen.getByRole('checkbox', { name: 'LH' })).not.toBeChecked()
+    expect(screen.getByLabelText('시·도')).toHaveValue('')
+    expect(screen.getByLabelText('시·군·구')).toBeDisabled()
+    expect(screen.getByRole('button', { name: '공고 필터 닫기' })).toHaveFocus()
+    expect(onApply).not.toHaveBeenCalled()
+  })
+})
