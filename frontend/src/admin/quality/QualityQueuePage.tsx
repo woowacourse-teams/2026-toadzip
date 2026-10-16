@@ -14,6 +14,8 @@ export function QualityQueuePage() {
   const [attempt, setAttempt] = useState(0)
   const [keyword, setKeyword] = useState(params.get('keyword') ?? '')
   const [loading, setLoading] = useState(false)
+  const queryKeyword = params.get('keyword') ?? ''
+  useEffect(() => { setKeyword(queryKeyword) }, [queryKeyword])
   useEffect(() => {
     if (tasks) return
     const controller = new AbortController()

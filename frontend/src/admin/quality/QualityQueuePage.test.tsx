@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useNavigate } from 'react-router'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { QualityQueuePage } from './QualityQueuePage'
 
@@ -7,6 +7,23 @@ const mocks = vi.hoisted(() => ({ requestManagementApi: vi.fn() }))
 vi.mock('../management/api', () => mocks)
 vi.mock('./ReviewTaskBoard', () => ({ ReviewTaskBoard: () => null }))
 beforeEach(() => vi.clearAllMocks())
+
+function BackButton() {
+  const navigate = useNavigate()
+  return <button onClick={() => navigate(-1)}>뒤로가기</button>
+}
+
+it('뒤로가기로 조회 조건이 바뀌면 검색어 입력과 결과를 함께 복원한다', async () => {
+  mocks.requestManagementApi.mockResolvedValue({ items: [], page: 0, totalElements: 0, totalPages: 0, hasNext: false })
+  render(<MemoryRouter initialEntries={['/admin/quality?keyword=처음 단지']}><BackButton /><QualityQueuePage /></MemoryRouter>)
+  expect(screen.getByLabelText('이름 검색')).toHaveValue('처음 단지')
+  fireEvent.change(screen.getByLabelText('이름 검색'), { target: { value: '다음 단지' } })
+  fireEvent.click(screen.getByRole('button', { name: '검색' }))
+  expect(mocks.requestManagementApi).toHaveBeenLastCalledWith(expect.stringContaining('keyword=%EB%8B%A4%EC%9D%8C+%EB%8B%A8%EC%A7%80'), 'GET', undefined, expect.any(AbortSignal))
+  fireEvent.click(screen.getByRole('button', { name: '뒤로가기' }))
+  expect(screen.getByLabelText('이름 검색')).toHaveValue('처음 단지')
+  expect(mocks.requestManagementApi).toHaveBeenLastCalledWith(expect.stringContaining('keyword=%EC%B2%98%EC%9D%8C+%EB%8B%A8%EC%A7%80'), 'GET', undefined, expect.any(AbortSignal))
+})
 
 it('담당 업무를 별도 작업 화면에서 열고 검토 목록과 입력 도구를 겹쳐 놓지 않는다', async () => {
   mocks.requestManagementApi.mockResolvedValue({ items: [], page: 0, totalElements: 0, totalPages: 0, hasNext: false })
