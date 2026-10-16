@@ -28,7 +28,7 @@ const GYEONGGI_REGIONS = [
 const BASE_FILTERS: ComplexSearchFilters = {
   regionCode: '11',
   rentalTypes: ['NATIONAL_RENTAL'],
-  applicationStatuses: ['APPLYING'],
+  applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'],
   agencyCodes: ['LH'],
   recruitmentTypes: ['NEW'],
   minDeposit: 100_000_000,
@@ -42,6 +42,37 @@ const BASE_FILTERS: ComplexSearchFilters = {
 }
 
 describe('ComplexFilterToolbar', () => {
+  it.each(['desktop', 'mobile'])('%s 모집중은 기본 해제이며 두 모집 상태를 함께 켜고 다른 조건을 유지하며 해제한다', (mode) => {
+    render(<StatefulToolbar initialFilters={{ agencyCodes: ['LH'], maxDeposit: 0 }} />)
+    const toolbar = screen.getByRole('toolbar', { name: mode === 'desktop' ? '단지 검색 필터' : '모바일 단지 검색 필터' })
+    const toggle = within(toolbar).getByRole('button', { name: '모집중', pressed: false })
+    expect(toggle).not.toHaveAttribute('aria-expanded')
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    expect(toggle).toHaveAttribute('data-active', 'true')
+    expect(appliedFilters()).toEqual({ agencyCodes: ['LH'], maxDeposit: 0, applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    expect(toggle).toHaveAttribute('data-active', 'false')
+    expect(appliedFilters()).toEqual({ agencyCodes: ['LH'], maxDeposit: 0 })
+  })
+
+  it.each(['desktop', 'mobile'])('%s 전체 패널은 모집상태 선택 없이 다른 조건을 변경해도 모집중을 유지하고 전체 초기화로 해제한다', (mode) => {
+    render(<StatefulToolbar initialFilters={{ applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] }} />)
+    const toolbar = screen.getByRole('toolbar', { name: mode === 'desktop' ? '단지 검색 필터' : '모바일 단지 검색 필터' })
+    const toggle = within(toolbar).getByRole('button', { name: '모집중', pressed: true })
+    expect(within(toolbar).queryByRole('button', { name: /모집상태/ })).not.toBeInTheDocument()
+    fireEvent.click(within(toolbar).getByRole('button', { name: mode === 'desktop' ? '전체 필터 열기' : '모바일 전체 필터 열기' }))
+    expect(screen.queryByRole('group', { name: '모집상태' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: '행복주택' }))
+    expect(appliedFilters()).toEqual({ applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'], rentalTypes: ['HAPPY_HOUSING'] })
+    expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: '전체 필터 초기화' }))
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    expect(appliedFilters()).toEqual({})
+  })
+
   it.each(['desktop', 'mobile'])('%s 전체 배지는 선택 항목 수가 아닌 적용 중인 필터 종류 수를 표시한다', (mode) => {
     const { rerender } = renderToolbar({ filters: BASE_FILTERS })
     const name = mode === 'desktop' ? '전체 필터 열기' : '모바일 전체 필터 열기'
@@ -121,12 +152,12 @@ describe('ComplexFilterToolbar', () => {
     fireEvent.change(screen.getByLabelText('최소 준공년도'), { target: { value: '2025' } })
     expect(screen.getByRole('alert')).toHaveTextContent('최소 준공년도')
     expect(appliedFilters()).toMatchObject({ builtYearFrom: 2019, builtYearTo: 2024 })
-    fireEvent.click(screen.getByRole('checkbox', { name: '접수중' }))
-    expect(appliedFilters().applicationStatuses).toEqual(['APPLYING'])
+    fireEvent.click(screen.getByRole('checkbox', { name: '신규 모집' }))
+    expect(appliedFilters().recruitmentTypes).toEqual(['NEW'])
     expect(screen.getByRole('alert')).toHaveTextContent('최소 준공년도')
     fireEvent.change(screen.getByLabelText('최대 준공년도'), { target: { value: '2026' } })
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(appliedFilters()).toEqual({ regionCode: '41', rentalTypes: ['HAPPY_HOUSING'], agencyCodes: ['SH'], applicationStatuses: ['APPLYING'], maxDeposit: 100_000_000, builtYearFrom: 2025, builtYearTo: 2026 })
+    expect(appliedFilters()).toEqual({ regionCode: '41', rentalTypes: ['HAPPY_HOUSING'], agencyCodes: ['SH'], recruitmentTypes: ['NEW'], maxDeposit: 100_000_000, builtYearFrom: 2025, builtYearTo: 2026 })
     fireEvent.keyDown(document, { key: 'Escape' })
     fireEvent.click(screen.getByRole('button', { name: mode === 'desktop' ? '전체 필터 열기' : '모바일 전체 필터 열기' }))
     expect(screen.getByRole('checkbox', { name: '행복주택' })).toBeChecked()
@@ -222,12 +253,11 @@ describe('ComplexFilterToolbar', () => {
       .toHaveAttribute('data-active', 'true')
     expect(screen.getByRole('button', { name: '전용면적 필터 열기' }))
       .toHaveAttribute('data-active', 'true')
-    fireEvent.click(screen.getByRole('button', { name: '모집상태 필터 열기' }))
-    fireEvent.click(screen.getByRole('checkbox', { name: '접수마감' }))
-    expect(appliedFilters()).toEqual({ ...initialFilters, applicationStatuses: ['CLOSED'] })
+    fireEvent.click(within(screen.getByRole('toolbar', { name: '단지 검색 필터' })).getByRole('button', { name: '모집중' }))
+    expect(appliedFilters()).toEqual({ ...initialFilters, applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] })
     fireEvent.click(screen.getByRole('button', { name: '가격 필터 열기' }))
     fireEvent.click(screen.getByRole('button', { name: '가격 필터 패널 닫기' }))
-    expect(appliedFilters()).toEqual({ ...initialFilters, applicationStatuses: ['CLOSED'] })
+    expect(appliedFilters()).toEqual({ ...initialFilters, applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] })
   })
 
   it('모바일에서 수정 없이 적용하면 0과 제한 없는 범위의 다른 끝점을 그대로 유지한다', () => {
@@ -244,8 +274,8 @@ describe('ComplexFilterToolbar', () => {
     render(<ComplexFilterToolbar filters={{}} onApply={vi.fn()} />)
     const toolbar = screen.getByRole('toolbar', { name: '단지 검색 필터' })
     expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
-      '전체 필터 열기', '지역 필터 열기', '임대유형 필터 열기', '모집상태 필터 열기', '가격 필터 열기',
-      '전용면적 필터 열기', '준공년도 필터 열기', '공급기관 필터 열기', '모집유형 필터 열기',
+      '전체 필터 열기', '지역 필터 열기', '임대유형 필터 열기', '가격 필터 열기',
+      '전용면적 필터 열기', '준공년도 필터 열기', '공급기관 필터 열기', '모집유형 필터 열기', '모집중',
     ])
     fireEvent.click(within(toolbar).getByRole('button', { name: '공급기관 필터 열기' }))
     expect(screen.getByRole('region', { name: '공급기관 필터' })).toBeVisible()
@@ -453,14 +483,6 @@ describe('ComplexFilterToolbar', () => {
         rentalTypes: ['HAPPY_HOUSING', 'NATIONAL_RENTAL'],
       },
     },
-    {
-      topic: '모집상태',
-      option: '공고중',
-      expected: {
-        ...BASE_FILTERS,
-        applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'],
-      },
-    },
   ])('$topic 적용은 해당 키만 바꾸고 다른 단지 필터를 보존한다', ({
     expected,
     option,
@@ -502,7 +524,7 @@ describe('ComplexFilterToolbar', () => {
     else expect(screen.getByLabelText('시·도')).toHaveValue('41')
   })
 
-  it.each(['지역', '임대유형', '모집상태', '가격', '전용면적', '준공년도', '공급기관', '모집유형'])('%s 개별 필터에는 초기화 버튼을 표시하지 않는다', (topic) => {
+  it.each(['지역', '임대유형', '가격', '전용면적', '준공년도', '공급기관', '모집유형'])('%s 개별 필터에는 초기화 버튼을 표시하지 않는다', (topic) => {
     renderToolbar({ filters: BASE_FILTERS })
     fireEvent.click(screen.getByRole('button', { name: `${topic} 필터 열기` }))
     expect(within(screen.getByRole('region', { name: `${topic} 필터` })).queryByRole('button', { name: /초기화/ })).not.toBeInTheDocument()
@@ -633,7 +655,7 @@ describe('ComplexFilterToolbar', () => {
     expect(onApply).toHaveBeenCalledWith({
       regionCode: '11',
       rentalTypes: ['NATIONAL_RENTAL'],
-      applicationStatuses: ['APPLYING'],
+      applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'],
       agencyCodes: ['LH'],
       recruitmentTypes: ['NEW'],
       minDeposit: 100_000_000,
@@ -767,7 +789,6 @@ describe('ComplexFilterToolbar', () => {
 
     const expectedSummaries = [
       ['임대유형', '국민임대'],
-      ['모집상태', '접수중'],
       ['가격', '1억~2억 · 월 20만원~30만원'],
       ['전용면적', '10~19평'],
       ['준공년도', '2019~2024년'],
@@ -924,21 +945,19 @@ describe('ComplexFilterToolbar', () => {
     const rentalType = screen.getByRole('button', {
       name: '임대유형 필터 열기',
     })
-    const applicationStatus = screen.getByRole('button', {
-      name: '모집상태 필터 열기',
-    })
+    const applicationStatus = within(screen.getByRole('toolbar', { name: '단지 검색 필터' })).getByRole('button', { name: '모집중' })
     const detail = screen.getByRole('button', { name: '모집유형 필터 열기' })
     const region = screen.getByRole('button', { name: '전체 필터 열기' })
 
     rentalType.focus()
     fireEvent.keyDown(rentalType, { key: 'ArrowRight' })
+    expect(screen.getByRole('button', { name: '가격 필터 열기' })).toHaveFocus()
+    fireEvent.keyDown(rentalType, { key: 'End' })
     expect(applicationStatus).toHaveFocus()
-    fireEvent.keyDown(applicationStatus, { key: 'End' })
-    expect(detail).toHaveFocus()
-    fireEvent.keyDown(detail, { key: 'ArrowRight' })
+    fireEvent.keyDown(applicationStatus, { key: 'ArrowRight' })
     expect(region).toHaveFocus()
     fireEvent.keyDown(region, { key: 'ArrowLeft' })
-    expect(detail).toHaveFocus()
+    expect(applicationStatus).toHaveFocus()
     fireEvent.keyDown(detail, { key: 'Home' })
     expect(region).toHaveFocus()
   })

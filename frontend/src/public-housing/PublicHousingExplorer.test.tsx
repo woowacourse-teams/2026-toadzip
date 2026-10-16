@@ -1231,12 +1231,12 @@ describe('PublicHousingExplorer', () => {
       '전체 필터 열기',
       '지역 필터 열기',
       '임대유형 필터 열기',
-      '모집상태 필터 열기',
       '가격 필터 열기',
       '전용면적 필터 열기',
       '준공년도 필터 열기',
       '공급기관 필터 열기',
       '모집유형 필터 열기',
+      '모집중',
     ])
     expect(screen.queryByRole('complementary', { name: '공공임대주택 검색 결과' })).not.toBeInTheDocument()
 
@@ -1265,6 +1265,29 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(collapse)
     expect(within(toolbar).getByRole('button', { name: '공고 필터 열기' })).toHaveFocus()
     expect(within(panel).queryByRole('checkbox', { name: '행복주택' })).not.toBeInTheDocument()
+  })
+
+  it('모집중 토글을 URL과 지도·단지 목록에 적용하고 뒤로·앞으로 복원한다', async () => {
+    const repository = createRepository()
+    renderSearchedExplorer(repository, '/?complexAgencyCodes=LH&announcementApplicationStatuses=APPLYING')
+    fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
+    await waitFor(() => expect(repository.findMap).toHaveBeenCalled())
+    const toggle = within(screen.getByRole('toolbar', { name: '단지 검색 필터' })).getByRole('button', { name: '모집중', pressed: false })
+    fireEvent.click(toggle)
+    const filters = { agencyCodes: ['LH'], applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'] }
+    await waitFor(() => expect(repository.findMap).toHaveBeenLastCalledWith(expect.objectContaining({ filters }), expect.any(AbortSignal)))
+    expect(repository.findComplexPage).toHaveBeenLastCalledWith(null, null, 20, expect.any(AbortSignal), { ...filters, regionCode: '11' })
+    expect(new URLSearchParams(screen.getByTestId('location-search').textContent ?? '').getAll('complexApplicationStatuses')).toEqual(['BEFORE_APPLICATION', 'APPLYING'])
+    expect(currentSearch().announcementApplicationStatuses).toBe('APPLYING')
+    fireEvent.click(toggle)
+    await waitFor(() => expect(repository.findMap).toHaveBeenLastCalledWith(expect.objectContaining({ filters: { agencyCodes: ['LH'] } }), expect.any(AbortSignal)))
+    expect(currentSearch().complexApplicationStatuses).toBeUndefined()
+    fireEvent.click(screen.getByRole('button', { name: '브라우저 뒤로' }))
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-pressed', 'true'))
+    await waitFor(() => expect(repository.findMap).toHaveBeenLastCalledWith(expect.objectContaining({ filters }), expect.any(AbortSignal)))
+    fireEvent.click(screen.getByRole('button', { name: '브라우저 앞으로' }))
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-pressed', 'false'))
+    expect(currentSearch().announcementApplicationStatuses).toBe('APPLYING')
   })
 
   it('전체 필터의 즉시 선택과 초기화를 URL 및 지도 조회에 반영한다', async () => {
@@ -1335,12 +1358,13 @@ describe('PublicHousingExplorer', () => {
     fireEvent.click(screen.getByRole('button', { name: '초기 영역 알림' }))
     await waitFor(() => expect(repository.findMap).toHaveBeenCalled())
     await waitFor(() => expect(repository.findMap).toHaveBeenCalledOnce())
+    expect(within(screen.getByRole('toolbar', { name: '단지 검색 필터' })).getByRole('button', { name: '모집중', pressed: true })).toBeVisible()
     for (const [topic, option] of [['공급기관', 'LH'], ['모집유형', '신규 모집']]) {
       fireEvent.click(screen.getByRole('button', { name: `${topic} 필터 열기` }))
       fireEvent.click(screen.getByRole('checkbox', { name: option }))
     }
     const filters = {
-      regionCode: '41', rentalTypes: ['NATIONAL_RENTAL'], applicationStatuses: ['APPLYING'],
+      regionCode: '41', rentalTypes: ['NATIONAL_RENTAL'], applicationStatuses: ['BEFORE_APPLICATION', 'APPLYING'],
       agencyCodes: ['LH'], recruitmentTypes: ['NEW'], builtYearFrom: 2015, builtYearTo: 2026,
       minDeposit: 100000000, maxDeposit: 300000000, minMonthlyRent: 100000, maxMonthlyRent: 500000,
       minExclusiveArea: 33, maxExclusiveArea: 66,

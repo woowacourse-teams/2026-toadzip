@@ -23,8 +23,8 @@ import {
   topicDraftFromForm, replaceTopic, topicRangeError,
 } from './searchFilterForm.ts'
 import {
-  type DesktopFilterTopic, type FilterTopic,
-  DESKTOP_PRIMARY_TOPICS, DESKTOP_TOPICS,
+  type DesktopFilterTopic, type FilterTopic, type ToolbarTopic,
+  DESKTOP_PRIMARY_TOPICS, RECRUITING_APPLICATION_STATUSES,
   MOBILE_PRIMARY_TOPICS, MOBILE_SHEET_TOPICS, POPOVER_WIDTHS, TOPICS, TOPIC_KEYS,
   desktopTopicFor, desktopTopicLabel,
 } from './complexFilterTopics.ts'
@@ -56,7 +56,7 @@ export function ComplexFilterToolbar({
   const mobileAppliesImmediately = mobileInitialTopic !== null
     && ['all', 'region', 'agency', 'recruitmentType'].includes(mobileInitialTopic)
   const [rovingTopic, setRovingTopic] =
-    useState<DesktopFilterTopic>('all')
+    useState<ToolbarTopic>('all')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [popoverPlacement, setPopoverPlacement] = useState<{
     readonly anchorX: number
@@ -91,7 +91,7 @@ export function ComplexFilterToolbar({
   const mobileTriggerRef = useRef<HTMLButtonElement | null>(null)
   const mobileOpenedFiltersSignatureRef = useRef(filtersSignature)
   const triggerRefs = useRef<
-    Partial<Record<DesktopFilterTopic, HTMLButtonElement>>
+    Partial<Record<ToolbarTopic, HTMLButtonElement>>
   >({})
 
   useEffect(() => {
@@ -322,22 +322,22 @@ export function ComplexFilterToolbar({
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
       return
     }
-    const currentIndex = DESKTOP_TOPICS.findIndex(
+    const currentIndex = DESKTOP_PRIMARY_TOPICS.findIndex(
       ([topic]) => triggerRefs.current[topic] === event.target,
     )
     if (currentIndex < 0) {
       return
     }
     event.preventDefault()
-    const lastIndex = DESKTOP_TOPICS.length - 1
+    const lastIndex = DESKTOP_PRIMARY_TOPICS.length - 1
     const nextIndex = event.key === 'Home'
       ? 0
       : event.key === 'End'
         ? lastIndex
         : event.key === 'ArrowRight'
-          ? (currentIndex + 1) % DESKTOP_TOPICS.length
-          : (currentIndex - 1 + DESKTOP_TOPICS.length) % DESKTOP_TOPICS.length
-    const nextTopic = DESKTOP_TOPICS[nextIndex][0]
+          ? (currentIndex + 1) % DESKTOP_PRIMARY_TOPICS.length
+          : (currentIndex - 1 + DESKTOP_PRIMARY_TOPICS.length) % DESKTOP_PRIMARY_TOPICS.length
+    const nextTopic = DESKTOP_PRIMARY_TOPICS[nextIndex][0]
     setRovingTopic(nextTopic)
     triggerRefs.current[nextTopic]?.focus()
   }
@@ -451,9 +451,40 @@ export function ComplexFilterToolbar({
     && resolvedRegionSummary.regionCode === filters.regionCode
     ? resolvedRegionSummary.label
     : null
-  const appliedFilterCount = TOPICS.filter(([topic]) => topicSummary(filters, topic, resolvedRegionName) !== null).length
+  const recruiting = RECRUITING_APPLICATION_STATUSES.every((status) => filters.applicationStatuses?.includes(status))
+    && filters.applicationStatuses?.length === RECRUITING_APPLICATION_STATUSES.length
+  const appliedFilterCount = Number(recruiting) + TOPICS.filter(([topic]) => topicSummary(filters, topic, resolvedRegionName) !== null).length
   const filterCountDescriptionId = appliedFilterCount > 0 ? 'complex-applied-filter-count' : undefined
   const mobileResultAction = `${desktopTopicLabel(mobileInitialTopic) ?? '필터'} 적용`
+
+  function recruitingToggle(mobile: boolean) {
+    return (
+      <button
+        key="recruiting"
+        ref={mobile ? undefined : (node) => {
+          if (node === null) delete triggerRefs.current.recruiting
+          else triggerRefs.current.recruiting = node
+        }}
+        className={`${mobile ? styles.mobileTrigger : styles.trigger} ${styles.recruitingToggle}`}
+        type="button"
+        aria-label="모집중"
+        aria-pressed={recruiting}
+        data-active={recruiting}
+        tabIndex={mobile ? undefined : rovingTopic === 'recruiting' ? 0 : -1}
+        onFocus={mobile ? undefined : () => setRovingTopic('recruiting')}
+        onClick={() => {
+          measurement.reason('toggle')
+          setOpenTopic(null)
+          setErrorMessage(null)
+          const next = { ...filters }
+          if (recruiting) delete next.applicationStatuses
+          else next.applicationStatuses = RECRUITING_APPLICATION_STATUSES
+          measurement.apply(next, 'immediate', { topic: 'applicationStatus', layout: mobile ? 'mobile' : 'desktop', method: 'choice' })
+          onApply(next)
+        }}
+      >모집중</button>
+    )
+  }
 
   return (
     <section ref={rootRef} className={styles.root}>
@@ -472,6 +503,7 @@ export function ComplexFilterToolbar({
           <div ref={scrollerRef} className={styles.scroller}>
             <div className={styles.primaryFilters}>
               {DESKTOP_PRIMARY_TOPICS.map(([topic, label]) => {
+                if (topic === 'recruiting') return null
                 const expanded = topic === openTopic
                 const summary = topic === 'all' ? null : topicSummary(
                   filters,
@@ -537,6 +569,7 @@ export function ComplexFilterToolbar({
               })}
             </div>
           </div>
+          <div className={styles.recruitingRow}>{recruitingToggle(false)}</div>
         </div>
 
         {openTopic !== null && openLabel !== null && headingId !== undefined && (
@@ -613,6 +646,7 @@ export function ComplexFilterToolbar({
       >
         <div className={styles.mobileScroller}>
         {MOBILE_PRIMARY_TOPICS.map(([topic, label]) => {
+          if (topic === 'recruiting') return null
           const summary = topic === 'all' ? null : topicSummary(filters, topic, resolvedRegionName)
           return (
             <button
@@ -636,6 +670,7 @@ export function ComplexFilterToolbar({
           )
         })}
         </div>
+        <div className={styles.recruitingRow}>{recruitingToggle(true)}</div>
       </div>
 
       {mobileSheetOpen && createPortal(
