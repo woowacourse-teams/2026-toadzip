@@ -87,7 +87,8 @@ class QualityComparisonIntegrationTest {
         var before = detail(id, "type:" + first.getId());
         mvc.perform(put(root(id)).with(user("admin").roles("ADMIN")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of(
-                                "target", "type:" + first.getId(), "snapshotToken", before.get("snapshotToken").asText(),
+                                "target", "type:" + first.getId(),
+                                "snapshotToken", before.get("snapshotToken").asText(),
                                 "values", Map.of("householdCount", -1), "evidenceNote", "음수 거부"))))
                 .andExpect(status().isBadRequest());
     }
@@ -151,6 +152,44 @@ class QualityComparisonIntegrationTest {
     }
 
     @Test
+    void 공고의_수집_실행과_누락_횟수만_바뀌면_원천값_변경으로_보지_않는다() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        for (UUID record : java.util.List.of(first, second)) {
+            entities.createNativeQuery("""
+                    INSERT INTO source_collection_records
+                    (id, version, source, started_at, finished_at, status, stored_row_count)
+                    VALUES (:id, 0, 'MYHOME_ANNOUNCEMENT', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'SUCCESS', 1)
+                    """).setParameter("id", record).executeUpdate();
+        }
+        entities.createNativeQuery("""
+                INSERT INTO myhome_announcement_source_bundles(version, pblanc_id, last_collection_record_id)
+                VALUES (0, 'quality-metadata-test', :record)
+                """).setParameter("record", first).executeUpdate();
+        entities.createNativeQuery("""
+                INSERT INTO myhome_announcement_source_rows
+                (source_id, collection_record_id, source_order, pblanc_id, house_sn, pblanc_nm,
+                active, consecutive_miss_count)
+                SELECT id, :record, 0, pblanc_id, 1, '동일 공고', true, 0
+                FROM myhome_announcement_source_bundles WHERE pblanc_id = 'quality-metadata-test'
+                """).setParameter("record", first).executeUpdate();
+        String query = "SELECT raw::text FROM ("
+                + com.toadzip.backend.admin.quality.repository.QualityComparisonRepository.SOURCE_ROWS
+                + ") sources WHERE category = 'MYHOME_ANNOUNCEMENT' AND raw ->> 'pblanc_id' = 'quality-metadata-test'";
+        Object before = entities.createNativeQuery(query).getSingleResult();
+        entities.createNativeQuery("""
+                UPDATE myhome_announcement_source_rows SET collection_record_id = :record,
+                collected_at = CURRENT_TIMESTAMP, last_seen_run_id = 'next-run', consecutive_miss_count = 1
+                WHERE pblanc_id = 'quality-metadata-test'
+                """).setParameter("record", second).executeUpdate();
+        assertThat(entities.createNativeQuery(query).getSingleResult()).isEqualTo(before);
+        entities.createNativeQuery("""
+                UPDATE myhome_announcement_source_rows SET active = false WHERE pblanc_id = 'quality-metadata-test'
+                """).executeUpdate();
+        assertThat(entities.createNativeQuery(query).getSingleResult()).isNotEqualTo(before);
+    }
+
+    @Test
     void 공고와_공급행_임대조건을_분리해_수정하고_큰_금액_문자열을_보존한다() throws Exception {
         long complexId = type().getHousingComplex().getId();
         String request = """
@@ -170,10 +209,12 @@ class QualityComparisonIntegrationTest {
         var first = json.readTree(mvc.perform(get(path).with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("data");
         mvc.perform(put(path).with(user("admin").roles("ADMIN")).with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of("target", "basic", "snapshotToken", first.get("snapshotToken").asText(),
+                .content(json.writeValueAsString(Map.of("target", "basic",
+                        "snapshotToken", first.get("snapshotToken").asText(),
                         "values", Map.of("name", "원문 확인 공고"), "evidenceNote", "공식 공고명 확인"))))
                 .andExpect(status().isOk());
-        var row = supplyRows.findAll().stream().filter(item -> item.getAnnouncement().getId() == id).findFirst().orElseThrow();
+        var row = supplyRows.findAll().stream().filter(item -> item.getAnnouncement().getId() == id)
+                .findFirst().orElseThrow();
         var condition = supplyTargets.saveAndFlush(com.toadzip.backend.announcement.domain.SupplyTarget.create(
                 row, "일반", "1순위", 5, null, new BigDecimal("10000000"), new BigDecimal("100000"), null, null, 0));
         String target = "target:" + condition.getId();

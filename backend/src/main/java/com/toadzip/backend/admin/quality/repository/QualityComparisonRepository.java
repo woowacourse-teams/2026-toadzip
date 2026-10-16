@@ -14,6 +14,7 @@ public class QualityComparisonRepository {
     public static final String SOURCE_ROWS = Arrays.stream(IngestSourceCategory.values())
             .map(category -> "SELECT '" + category.name() + "'::text category, source_key, "
                     + "raw_payload::jsonb - 'id' - 'source_id' - 'collected_at' - 'source_order' "
+                    + "- 'collection_record_id' - 'consecutive_miss_count' "
                     + "- 'last_seen_run_id' - 'last_seen_at' raw FROM ("
                     + IngestSourceRows.query(category) + ") rows")
             .collect(Collectors.joining(" UNION ALL "));
