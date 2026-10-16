@@ -37,7 +37,7 @@
   flex-direction: column;
   min-width: 0;
   height: var(--management-pane-height);
-  scroll-margin-top: 16px;
+  scroll-margin-top: 80px;
   background: var(--ds-color-surface);
   border: 1px solid var(--ds-color-border-base);
   border-radius: 14px;
@@ -74,8 +74,8 @@
 .workspace :is(button, a):focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
 .workspace :global(.admin-primary) { min-height: 42px; border-radius: var(--ds-radius-control); background: var(--ds-color-action); border-color: var(--ds-color-action); color: var(--ds-color-surface); box-shadow: 0 2px 3px rgb(0 60 30 / 8%); }
 .workspace :global(.admin-primary):hover:not(:disabled) { background: color-mix(in srgb, var(--ds-color-action) 85%, black); }
-.workspace button:not(:global(.admin-primary)) { border-color: var(--ds-color-border-base); border-radius: var(--ds-radius-control); color: var(--ds-color-label); }
-.workspace button:not(:global(.admin-primary)):hover:not(:disabled) { background: var(--ds-color-surface-subtle); color: var(--ds-color-text); }
+.workspace button:not(:global(.admin-primary)):not([data-design-system]) { border-color: var(--ds-color-border-base); border-radius: var(--ds-radius-control); color: var(--ds-color-label); }
+.workspace button:not(:global(.admin-primary)):not([data-design-system]):hover:not(:disabled) { background: var(--ds-color-surface-subtle); color: var(--ds-color-text); }
 .workspace :is(input:not([type="checkbox"]), select, textarea) { box-sizing: border-box; min-height: 42px; border: 1px solid var(--ds-color-border-base); border-radius: var(--ds-radius-control); padding: 9px 12px; color: var(--ds-color-text); background: var(--ds-color-surface); font-weight: 400; transition: border-color .15s; }
 .workspace :is(input, select, textarea):hover:not(:disabled):not(:read-only) { border-color: var(--ds-color-muted); }
 .workspace :is(input, select, textarea):focus { outline: 2px solid var(--ds-color-action); outline-offset: 1px; border-color: var(--ds-color-action); }
@@ -160,3 +160,23 @@
 .editor :global(.admin-linked-announcement) :global(.admin-section-tabs) { padding-inline: 0; background: transparent; }
 .editor :global(.admin-linked-announcement) :global(.management-detail-content) { overflow: visible; padding: 20px 0 0; scrollbar-gutter: auto; }
 .editor :global(.admin-linked-announcement) :global(.admin-save-bar) { margin-inline: -16px; padding-inline: 16px; }
+
+/* Opening a record gives the editor the entire content width; the list stays mounted. */
+.description { margin: -8px 0 24px; font-size: 14px; color: var(--ds-color-muted-base); }
+.contextBar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; }
+.contextBar a { font-size: 13px; text-decoration: none; }
+.contextBar button { padding: 7px 12px; min-height: 36px; font-size: 12px; }
+.body.withEditor { display: flex; flex-direction: column; --management-pane-height: auto; }
+.listPane { min-width: 0; width: 100%; order: 0; }
+.withEditor .editor { order: 1; width: 100%; height: auto; overflow: visible; }
+.withEditor .editorBody { overflow: visible; }
+.withEditor .editorBody > :global(.management-detail) { height: auto; }
+.withEditor .editor :global(.management-detail-content) { overflow: visible; padding: 28px; scrollbar-gutter: auto; }
+.withEditor .editor :global(.management-heading) { padding: 24px 28px 20px; }
+.withEditor .editor :global(.management-heading) h2 { font-size: 24px; }
+.withEditor .editor :global(.admin-section-tabs) { gap: 8px; padding: 12px 24px; background: var(--ds-color-surface-subtle); flex-wrap: wrap; }
+.withEditor .editor :global(.admin-section-tabs) button { padding: 9px 14px; min-height: 40px; border: 1px solid transparent; border-radius: 8px; }
+.withEditor .editor :global(.admin-section-tabs) button[aria-pressed=true] { background: var(--ds-color-surface); border-color: var(--ds-color-border-base); box-shadow: 0 1px 3px rgb(0 0 0 / 4%); color: var(--ds-color-action); }
+.withEditor .editorBody > :global(.admin-registration-page) { height: auto; overflow: visible; }
+.withEditor .editor :global(.admin-change-values) { grid-template-columns: 1fr; }
+@media (max-width: 700px) { .withEditor .editor :global(.management-detail-content) { padding: 18px; } .withEditor .editor :global(.management-heading) { padding: 20px 18px; } .withEditor .editor :global(.management-heading) h2 { font-size: 20px; } .withEditor .editor :global(.admin-section-tabs) { padding: 10px 14px; } .contextBar { flex-wrap: wrap; } }

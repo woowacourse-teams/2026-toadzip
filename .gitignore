@@ -39,5 +39,6 @@ hs_err_pid*
 frontend/public/pdfjs-*/
 
 frontend/public/rhwp-*/
+frontend/public/ocr-*/
 
 frontend/.worker-dev/

@@ -90,7 +90,7 @@ class AnnouncementJpaMappingTest {
                         "applicationCondition",
                         "displayOrder",
                         "sourceSupplyTargetIdentifier",
-                        "lhAmountPreservedReason"
+                        "lhAmountPreservedReason", "adminModified"
                 )
         );
         assertEntityAttributes(

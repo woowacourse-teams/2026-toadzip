@@ -30,6 +30,7 @@
 | 관리자 회원 알림 | [admin-notification-management.md](admin-notification-management.md) | 신청자 식별, 상태·대상 필터와 읽기 전용 조회 |
 | 마이홈 단지 통합 | [myhome-complex-linking.md](myhome-complex-linking.md) | 원천 연결, 확인된 통합, 재정제와 복구 |
 | 관리자 단지 검증 | [complex-verification.md](complex-verification.md) | 원천 비교, 항목별 검토 기록, 재검토 상태와 목록 필터 |
+| 관리자 데이터 검토 | [admin-quality-workflow.md](admin-quality-workflow.md) | 검토 대상 목록, 공고·주택형 비교, PDF 원본과 재수집 대비 확인 |
 | 수집·정제 코드 리뷰 | [ingest-review-2026-09-26.md](ingest-review-2026-09-26.md) | 9월 28일 재검토: 해결 상태, 원천 선택 결함, 책임·성능·죽은 코드와 개선 순서 |
 | 공고 수집 성능 | [announcement-collection-performance.md](announcement-collection-performance.md) | 페이지 크기, LH 동시성, 실측과 메트릭 |
 | LH 공고 연결·복구 | [lh-announcement-link-resolution.md](lh-announcement-link-resolution.md) | 매핑·보강의 성공 연결 기준과 원천 초기화 |

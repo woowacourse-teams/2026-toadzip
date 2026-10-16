@@ -66,6 +66,7 @@ export type ManagementDetailData = {
   housingTypes: ManagementHousingType[]
   announcements: ManagementSummary[]
   supplyRows: ManagementSupplyRow[]
+  supplyTargets?: { id: number; supplyRowId: number; data: ManagementValues }[]
   scheduleReviewed: boolean
   schedules: ManagementValues[]
 }
@@ -146,6 +147,11 @@ export function parseManagementDetail(value: unknown): ManagementDetailData {
   if (!Array.isArray(schedules) || !schedules.every(isManagementValues)) {
     throw new Error('접수 일정 응답이 올바르지 않습니다.')
   }
+  const supplyTargets = value.supplyTargets === undefined ? [] : value.supplyTargets
+  if (!Array.isArray(supplyTargets) || !supplyTargets.every(item => isRecord(item)
+    && Number.isSafeInteger(item.id) && Number.isSafeInteger(item.supplyRowId) && isManagementValues(item.data))) {
+    throw new Error('공급대상 응답이 올바르지 않습니다.')
+  }
 
   return {
     summary: value.summary,
@@ -154,6 +160,9 @@ export function parseManagementDetail(value: unknown): ManagementDetailData {
     housingTypes,
     announcements,
     supplyRows,
+    ...(value.supplyTargets === undefined ? {} : {
+      supplyTargets: supplyTargets.map(item => ({ id: Number(item.id), supplyRowId: Number(item.supplyRowId), data: item.data as ManagementValues })),
+    }),
     scheduleReviewed: value.scheduleReviewed === true,
     schedules,
   }

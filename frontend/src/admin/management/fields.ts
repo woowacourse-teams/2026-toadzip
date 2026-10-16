@@ -1,5 +1,9 @@
 import { type JsonValue, type ManagementValues } from './managementContract'
 export const labels: Record<string, string> = {
+  UPDATE_REVIEW_TASK: '담당자·기한·업무 상태 변경', SAVE_REVIEW_DRAFT: '공유 작업 초안 저장',
+  CHECK_COMPARISON_SOURCES: '재수집 대비 원천 확인',
+  ARCHIVE_DOCUMENT: '검토 근거 PDF 원본 보관',
+  UPDATE_COMPARED: '원천 비교 후 수정', LINK_COMPARISON_SOURCE: '비교 원천 연결', UNLINK_COMPARISON_SOURCE: '비교 원천 해제',
   LONG_TERM_JEONSE: '장기전세', HAPPY_HOUSING: '행복주택', NATIONAL_RENTAL: '국민임대', PERMANENT_RENTAL: '영구임대',
   PUBLIC_RENTAL_5Y: '5년 공공임대', PUBLIC_RENTAL_10Y: '10년 공공임대', PUBLIC_RENTAL_50Y: '50년 공공임대',
   INTEGRATED_PUBLIC_RENTAL: '통합공공임대', REDEVELOPMENT_RENTAL: '재개발임대', ETC: '기타',
@@ -9,7 +13,7 @@ export const labels: Record<string, string> = {
   ONLINE: '온라인', VISIT: '방문', MAIL: '우편', true: '설치', false: '미설치',
   CONFIRMED: '확정', CONDITIONAL: '조건부', UPDATE_SCHEDULE: '접수 일정 수정',
   UPDATE: '정보 수정', DELETE: '휴지통 이동', RESTORE: '복구', UPDATE_SUPPLY: '공급정보 수정',
-  UPDATE_HOUSING_TYPE: '주택형 수정',
+  UPDATE_HOUSING_TYPE: '주택형 수정', UPDATE_SUPPLY_TARGET: '공급대상 임대조건 수정',
 }
 export const rentals = ['HAPPY_HOUSING', 'NATIONAL_RENTAL', 'PERMANENT_RENTAL', 'PUBLIC_RENTAL_5Y', 'PUBLIC_RENTAL_10Y',
   'PUBLIC_RENTAL_50Y', 'INTEGRATED_PUBLIC_RENTAL', 'REDEVELOPMENT_RENTAL', 'LONG_TERM_JEONSE', 'ETC']

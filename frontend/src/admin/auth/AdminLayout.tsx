@@ -54,8 +54,10 @@ export function AdminLayout() {
       <nav id={menuId} className="admin-navigation" aria-label="관리자 메뉴" data-open={menuOpen}
         onKeyDown={event => { if (event.key === 'Escape' && menuOpen) { setMenuOpen(false); menuButton.current?.focus() } }}>
         <div className="admin-nav-group"><span>데이터 관리</span>
+          <NavLink to="/admin/quality">검토할 데이터</NavLink>
           <NavLink to="/admin/complexes">단지 관리</NavLink>
           <NavLink to="/admin/announcements">공고 관리</NavLink>
+          <NavLink to="/admin/complex-coverage">단지 누락 대조</NavLink>
         </div>
         <div className="admin-nav-group"><span>수집 운영</span>
           <NavLink to="/admin/ingest">수집·정제</NavLink>
