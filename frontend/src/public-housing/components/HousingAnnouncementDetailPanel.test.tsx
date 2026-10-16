@@ -12,7 +12,7 @@ import {
 } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   HousingAnnouncementDetailPanel,
   type HousingAnnouncementDetailData,
@@ -20,6 +20,8 @@ import {
 import { NotificationInterestProvider } from '../interest/NotificationInterest'
 
 describe('HousingAnnouncementDetailPanel', () => {
+  beforeEach(() => localStorage.removeItem('toadzip.area-unit'))
+
   it('두 섹션의 면적 버튼을 동기화하고 단지 탭 변경과 왕복 전환에 원본 면적을 보존한다', () => {
     const firstRow = supplyRow()
     render(<HousingAnnouncementDetailPanel detail={detail({ supplyRows: [

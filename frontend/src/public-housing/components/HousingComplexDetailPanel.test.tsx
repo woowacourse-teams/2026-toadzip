@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   HousingComplexDetailPanel,
   type HousingComplexDetailData,
@@ -121,6 +121,8 @@ function factValue(container: HTMLElement, term: string) {
 }
 
 describe('HousingComplexDetailPanel', () => {
+  beforeEach(() => localStorage.removeItem('toadzip.area-unit'))
+
   it('공고가 없어도 주택형 기본 보증금과 월 임대료 및 출처를 표시하고 탭 전환에 맞춰 바꾼다', () => {
     const { panel } = renderPanel(detailWith({
       currentAnnouncements: [],

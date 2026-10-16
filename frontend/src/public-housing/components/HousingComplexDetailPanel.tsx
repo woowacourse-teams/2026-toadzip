@@ -18,6 +18,7 @@ import {
 } from './DetailPrimitives'
 import { formatHousingMoneyWon } from '../presentation/housingMoney'
 import { formatHousingArea as formatArea, type AreaUnit } from '../presentation/housingArea'
+import { useAreaUnit } from '../presentation/useAreaUnit'
 import { AreaUnitToggle } from './AreaUnitToggle'
 import { AnnouncementStatusBadge } from './AnnouncementStatusBadge'
 import styles from './HousingComplexDetailPanel.module.css'
@@ -104,8 +105,7 @@ export function HousingComplexDetailPanel({
   onEscape,
 }: HousingComplexDetailPanelProps) {
   const scrollAnalytics = useDetailScrollAnalytics('COMPLEX', detail.complexId)
-  const [areaUnit, setAreaUnit] = useState<AreaUnit>('sqm')
-  const toggleAreaUnit = () => setAreaUnit((unit) => unit === 'sqm' ? 'pyeong' : 'sqm')
+  const { areaUnit, toggleAreaUnit } = useAreaUnit()
   const initialHousingTypeId = detail.housingTypes[0]?.housingTypeId ?? null
   const [selection, setSelection] = useState<HousingTypeSelection>({
     complexId: detail.complexId,
