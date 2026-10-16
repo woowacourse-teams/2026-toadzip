@@ -484,11 +484,11 @@
 .mobileScroller {
   width: 100%;
   pointer-events: auto;
-  padding-top: 6px;
+  padding: 6px 4px 5px;
   display: flex;
   min-width: 0;
   flex: 1 1 auto;
-  gap: 6px;
+  gap: 4px;
   overflow-x: auto;
   overscroll-behavior-inline: contain;
   scrollbar-width: none;
@@ -501,26 +501,39 @@
 .mobileTrigger,
 .mobileAllTrigger {
   display: inline-flex;
-  min-width: 0;
-  height: 44px;
+  min-width: 44px;
+  height: 34px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  padding: 0 12px;
+  padding: 0 10px;
   border: 1px solid #e1e3e7;
   border-radius: 999px;
   background: var(--ds-color-surface);
   box-shadow: 0 2px 6px rgb(32 33 36 / 8%);
   color: var(--ds-color-text);
   font-size: var(--ds-text-caption);
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .mobileTrigger {
   position: relative;
-  gap: 6px;
+  gap: 4px;
   max-width: 104px;
+}
+
+.mobileTrigger::after {
+  /* Keep a 44px touch target around the compact chip. */
+  position: absolute;
+  inset: -5px 0;
+  border-radius: inherit;
+  content: '';
+}
+
+.mobileTrigger .detailIcon {
+  width: 16px;
+  height: 16px;
 }
 
 .mobileTrigger span {
@@ -540,8 +553,7 @@
 .mobileTrigger:focus-visible,
 .mobileAllTrigger:focus-visible,
 .mobileReset:focus-visible,
-.mobileClose:focus-visible,
-.mobileApply:focus-visible {
+.mobileClose:focus-visible {
   outline: 3px solid var(--ds-color-action);
   outline-offset: 1px;
 }
@@ -568,7 +580,7 @@
   display: grid;
   max-height: min(86dvh, 720px);
   overflow: clip;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .mobileSheetHeader {
@@ -627,7 +639,7 @@
 
 .mobileSheetBody {
   min-height: 0;
-  padding: 0 18px 20px;
+  padding: 0 18px max(20px, env(safe-area-inset-bottom, 0px));
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior-y: contain;
@@ -658,16 +670,6 @@
   background: #fdefec;
   color: #8a240f;
   font-size: var(--ds-text-caption);
-}
-
-.mobileFooter {
-  padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--ds-color-divider);
-  background: var(--ds-color-surface);
-}
-
-.mobileApply {
-  width: 100%;
 }
 
 @media (max-width: 767px) {

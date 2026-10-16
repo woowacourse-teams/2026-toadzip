@@ -44,6 +44,7 @@ interface FakeSdk {
   markerConstructor: ReturnType<typeof vi.fn>
   markerInstances: Array<{
     setMap: ReturnType<typeof vi.fn>
+    setPosition: ReturnType<typeof vi.fn>
     setZIndex: ReturnType<typeof vi.fn>
   }>
   markerSetMap: ReturnType<typeof vi.fn>
@@ -215,6 +216,7 @@ function createFakeSdk(): FakeSdk {
           content.remove()
         }
       }),
+      setPosition: vi.fn(),
       setZIndex: vi.fn((zIndex: number) => markerSetZIndex(zIndex)),
     }
     markerInstances.push(instance)
@@ -386,6 +388,135 @@ afterEach(() => {
 })
 
 describe('NaverMap', () => {
+  it('SDK와 지도 초기화를 기다린 뒤 최신 현재 위치를 비상호작용 마커로 표시한다', async () => {
+    const fakeSdk = createFakeSdk()
+    const sdk = createDeferred<typeof naver.maps>()
+    loadNaverMapsSdkMock.mockReturnValue(sdk.promise)
+    const { rerender } = render(<NaverMap representation="INDIVIDUAL" markers={[]}
+      currentLocation={{ latitude: 35.18, longitude: 129.07 }} />)
+
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[]}
+      currentLocation={{ latitude: 35.19, longitude: 129.08 }} />)
+    expect(fakeSdk.markerConstructor).not.toHaveBeenCalled()
+    await act(async () => sdk.resolve(fakeSdk.maps))
+    expect(fakeSdk.markerConstructor).not.toHaveBeenCalled()
+    act(() => fakeSdk.emitInit())
+
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      clickable: false,
+      position: { latitude: 35.19, longitude: 129.08 },
+      icon: expect.objectContaining({ anchor: { x: 24, y: 24 }, size: { width: 48, height: 48 } }),
+    }))
+    const marker = fakeSdk.markerConstructor.mock.calls[0][0].icon.content as HTMLElement
+    expect(marker).toHaveAttribute('aria-hidden', 'true')
+    expect(marker.querySelector('button, a, [tabindex]')).toBeNull()
+    expect(marker).not.toHaveAttribute('tabindex')
+  })
+
+  it('현재 위치 좌표만 갱신하고 지도 이동이나 동일 좌표 렌더링으로 마커를 다시 만들지 않는다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { rerender } = render(<NaverMap representation="INDIVIDUAL" markers={[]}
+      currentLocation={{ latitude: 35.18, longitude: 129.07 }} />)
+    await screen.findByRole('button', { name: '지도 확대' })
+    act(() => fakeSdk.emitIdle())
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
+    const marker = fakeSdk.markerInstances[0]
+
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[]}
+      currentLocation={{ latitude: 35.19, longitude: 129.08 }} />)
+    expect(marker.setPosition).toHaveBeenCalledExactlyOnceWith({ latitude: 35.19, longitude: 129.08 })
+
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[]}
+      currentLocation={{ latitude: 35.19, longitude: 129.08 }}
+      cameraTarget={{ latitude: 37.6, longitude: 127 }} />)
+    act(() => { fakeSdk.setCurrentCenter(37.7, 127.1); fakeSdk.emitDragStart(); fakeSdk.emitIdle() })
+
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
+    expect(marker.setPosition).toHaveBeenCalledOnce()
+    expect(marker.setMap).not.toHaveBeenCalled()
+  })
+
+  it('현재 위치가 지워지면 마커를 제거하고 재표시한 마커도 unmount에서 정리한다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { rerender, unmount } = render(<NaverMap representation="INDIVIDUAL" markers={[]}
+      currentLocation={{ latitude: 35.18, longitude: 129.07 }} />)
+    await screen.findByRole('button', { name: '지도 확대' })
+    act(() => fakeSdk.emitInit())
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
+    const first = fakeSdk.markerInstances[0]
+
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[]} currentLocation={null} />)
+    expect(first.setMap).toHaveBeenCalledExactlyOnceWith(null)
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[]}
+      currentLocation={{ latitude: 35.19, longitude: 129.08 }} />)
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledTimes(2)
+    unmount()
+    expect(first.setMap).toHaveBeenCalledOnce()
+    expect(fakeSdk.markerInstances[1].setMap).toHaveBeenCalledExactlyOnceWith(null)
+  })
+
+  it.each([
+    { latitude: Number.NaN, longitude: 127 },
+    { latitude: Number.POSITIVE_INFINITY, longitude: 127 },
+    { latitude: 91, longitude: 127 },
+    { latitude: -91, longitude: 127 },
+    { latitude: 37, longitude: 181 },
+    { latitude: 37, longitude: -181 },
+    { latitude: 37, longitude: Number.NaN },
+  ])('잘못된 현재 위치 %j를 SDK에 전달하지 않고 이전 마커를 정리한다', async currentLocation => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { rerender } = render(<NaverMap representation="INDIVIDUAL" markers={[]} currentLocation={currentLocation} />)
+    await screen.findByRole('button', { name: '지도 확대' })
+    act(() => fakeSdk.emitInit())
+    expect(fakeSdk.markerConstructor).not.toHaveBeenCalled()
+
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[]}
+      currentLocation={{ latitude: 35.18, longitude: 129.07 }} />)
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[]} currentLocation={currentLocation} />)
+    expect(fakeSdk.markerInstances[0].setMap).toHaveBeenCalledExactlyOnceWith(null)
+    expect(fakeSdk.markerInstances[0].setPosition).not.toHaveBeenCalled()
+  })
+
+  it('인증 실패 뒤 현재 위치 마커를 제거하고 다시 만들지 않는다', async () => {
+    const fakeSdk = createFakeSdk()
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { rerender } = render(<NaverMap representation="INDIVIDUAL" markers={[]}
+      currentLocation={{ latitude: 35.18, longitude: 129.07 }} />)
+    await screen.findByRole('button', { name: '지도 확대' })
+    act(() => fakeSdk.emitInit())
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
+    act(() => authenticationFailureListener?.(new NaverMapsSdkError('authentication', '인증 실패')))
+
+    expect(fakeSdk.markerInstances[0].setMap).toHaveBeenCalledExactlyOnceWith(null)
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[]}
+      currentLocation={{ latitude: 35.19, longitude: 129.08 }} />)
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
+    expect(fakeSdk.markerInstances[0].setPosition).not.toHaveBeenCalled()
+  })
+
+  it('SDK 재시도 중 위치를 지우면 초기화되어도 현재 위치 마커를 만들지 않는다', async () => {
+    const fakeSdk = createFakeSdk()
+    const sdk = createDeferred<typeof naver.maps>()
+    loadNaverMapsSdkMock
+      .mockRejectedValueOnce(new NaverMapsSdkError('network', '연결 실패'))
+      .mockReturnValueOnce(sdk.promise)
+    const { rerender } = render(<NaverMap representation="INDIVIDUAL" markers={[]}
+      currentLocation={{ latitude: 35.18, longitude: 129.07 }} />)
+    fireEvent.click(await screen.findByRole('button', { name: '다시 시도' }))
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[]} currentLocation={null} />)
+    await act(async () => sdk.resolve(fakeSdk.maps))
+    act(() => fakeSdk.emitInit())
+    expect(fakeSdk.markerConstructor).not.toHaveBeenCalled()
+
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[]}
+      currentLocation={{ latitude: 35.19, longitude: 129.08 }} />)
+    expect(fakeSdk.markerConstructor).toHaveBeenCalledOnce()
+  })
+
   it('직접 조작을 알리고 프로그램 이동과 idle은 사용자 조작으로 알리지 않는다', async () => {
     const fakeSdk = createFakeSdk()
     loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)

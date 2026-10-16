@@ -1,6 +1,5 @@
 import { useFilterMeasurement } from '../analytics/useFilterMeasurement'
 import { createPortal } from 'react-dom'
-import { Button } from '../../design-system/components/Button'
 import { IconButton } from '../../design-system/components/IconButton'
 import {
   type CSSProperties,
@@ -53,8 +52,6 @@ export function ComplexFilterToolbar({
   const [mobileFormRevision, setMobileFormRevision] = useState(0)
   const [mobileInitialTopic, setMobileInitialTopic] =
     useState<DesktopFilterTopic | null>(null)
-  const mobileAppliesImmediately = mobileInitialTopic !== null
-    && ['all', 'region', 'agency', 'recruitmentType'].includes(mobileInitialTopic)
   const [rovingTopic, setRovingTopic] =
     useState<ToolbarTopic>('all')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -356,29 +353,13 @@ export function ComplexFilterToolbar({
     setMobileSheetOpen(true)
   }
 
-  function closeMobileSheet(reason: 'close_button' | 'outside' | 'apply' = 'close_button') {
+  function closeMobileSheet(reason: 'close_button' | 'outside' = 'close_button') {
     measurement.reason(reason)
     const opener = mobileTriggerRef.current
     setMobileSheetOpen(false)
     setMobileInitialTopic(null)
     setErrorMessage(null)
     opener?.focus()
-  }
-
-  function submitMobileSheet(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const data = new FormData(event.currentTarget)
-    if (mobileInitialTopic === null || mobileInitialTopic === 'all' || mobileAppliesImmediately) return
-    const next = replaceTopic(filters, mobileInitialTopic, topicDraftFromForm(mobileInitialTopic, data))
-    const rangeError = topicRangeError(mobileInitialTopic, next)
-    if (rangeError !== null) {
-      setErrorMessage(rangeError)
-      return
-    }
-    measurement.apply(next, 'submit')
-    measurement.reason('apply')
-    onApply(next)
-    closeMobileSheet('apply')
   }
 
   function resetMobileSheet() {
@@ -455,7 +436,6 @@ export function ComplexFilterToolbar({
     && filters.applicationStatuses?.length === RECRUITING_APPLICATION_STATUSES.length
   const appliedFilterCount = Number(recruiting) + TOPICS.filter(([topic]) => topicSummary(filters, topic, resolvedRegionName) !== null).length
   const filterCountDescriptionId = appliedFilterCount > 0 ? 'complex-applied-filter-count' : undefined
-  const mobileResultAction = `${desktopTopicLabel(mobileInitialTopic) ?? '필터'} 적용`
 
   function recruitingToggle(mobile: boolean) {
     return (
@@ -695,8 +675,8 @@ export function ComplexFilterToolbar({
               ref={mobileFormRef}
               className={styles.mobileForm}
               aria-label="단지 필터 조건"
-              onSubmit={submitMobileSheet}
-              onChange={mobileAppliesImmediately ? changeFilter : undefined}
+              onSubmit={event => event.preventDefault()}
+              onChange={changeFilter}
             >
               <header className={styles.mobileSheetHeader} data-all={mobileInitialTopic === 'all'}>
                 {mobileInitialTopic === 'all' && <button
@@ -744,9 +724,7 @@ export function ComplexFilterToolbar({
                       filters={mobileDraftFilters}
                       regionRepository={regionRepository}
                       topic={topic}
-                      onRangeChange={mobileAppliesImmediately
-                        ? (values) => applyImmediateTopic(mobileFormRef.current, topic, values)
-                        : undefined}
+                      onRangeChange={values => applyImmediateTopic(mobileFormRef.current, topic, values)}
                     />
                   </section>
                 ))}
@@ -757,13 +735,6 @@ export function ComplexFilterToolbar({
                 )}
               </div>
 
-              {!mobileAppliesImmediately && <div className={styles.mobileFooter}>
-                <Button size="lg"
-                  className={styles.mobileApply}
-                  type="submit"
-                  aria-label={mobileResultAction}
-                >{mobileResultAction}</Button>
-              </div>}
             </form>
           </section>
         </div>,

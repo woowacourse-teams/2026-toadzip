@@ -1,9 +1,9 @@
 import { captureProductEvent } from '../../analytics/productAnalytics'
-import { useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
 import { useMobileViewport } from './useMobileViewport'
 
-const SNAP_LABELS = ['접힘', '절반 펼침', '크게 펼침'] as const
-const PEEK_HEIGHT = 76
+const HALF_HEIGHT = 50
+const DRAG_THRESHOLD = 12
 
 interface Props {
   readonly visible: boolean
@@ -15,32 +15,82 @@ interface Props {
 export function HousingResultsPanel({ visible, title, onCollapse, children }: Props) {
   const mobile = useMobileViewport()
   const panel = useRef<HTMLElement>(null)
-  const [snap, setSnap] = useState(1)
+  const [heightPercent, setHeightPercent] = useState(HALF_HEIGHT)
   const [dragHeight, setDragHeight] = useState<number | null>(null)
-  const drag = useRef<{ pointerId: number; y: number; height: number; peek: number; max: number; startTime: number } | null>(null)
-  const collapsed = mobile && snap === 0
+  const [searchCovered, setSearchCovered] = useState(false)
+  const resetOnOpen = useRef(false)
+  const drag = useRef<{ pointerId: number; y: number; height: number; half: number; max: number } | null>(null)
 
-  function changeSnap(next: number, method: 'drag' | 'keyboard' | 'button') {
-    if (next === snap) return
-    captureProductEvent('results_panel_snap_changed', { from_snap: ['peek', 'half', 'full'][snap], to_snap: ['peek', 'half', 'full'][next], method, list_view_id: panel.current?.dataset.listViewId ?? 'unavailable' })
-    setSnap(next)
+  useLayoutEffect(() => {
+    if (visible && resetOnOpen.current) {
+      resetOnOpen.current = false
+      setHeightPercent(HALF_HEIGHT)
+    }
+    if (!visible || !mobile) {
+      drag.current = null
+      setDragHeight(null)
+    }
+  }, [visible, mobile])
+
+  useLayoutEffect(() => {
+    const search = panel.current?.parentElement?.querySelector('.housing-search-overlay')
+    if (!mobile || !visible || !search) {
+      setSearchCovered(false)
+      return
+    }
+    const updateCoverage = () => {
+      const heights = readHeights()
+      if (!heights || !panel.current) return
+      const bottom = Number.parseFloat(getComputedStyle(panel.current).bottom) || 0
+      const height = Math.min(dragHeight ?? window.innerHeight * heightPercent / 100, heights.max)
+      setSearchCovered(window.innerHeight - bottom - height < search.getBoundingClientRect().bottom)
+    }
+    updateCoverage()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateCoverage)
+    observer?.observe(search)
+    window.addEventListener('resize', updateCoverage)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', updateCoverage)
+    }
+  }, [mobile, visible, heightPercent, dragHeight])
+
+  function readHeights() {
+    if (!panel.current) return null
+    const style = getComputedStyle(panel.current)
+    const bottom = Number.parseFloat(style.bottom) || 0
+    const max = Number.parseFloat(style.maxHeight) || window.innerHeight - bottom - 8
+    return { height: panel.current.getBoundingClientRect().height, half: Math.min(window.innerHeight / 2, max), max }
+  }
+
+  function changeHeight(next: number, method: 'drag' | 'keyboard') {
+    if (next === heightPercent) return
+    const label = (height: number) => height === HALF_HEIGHT ? 'half' : height === 100 ? 'full' : 'custom'
+    captureProductEvent('results_panel_snap_changed', {
+      from_snap: label(heightPercent), to_snap: label(next), method,
+      list_view_id: panel.current?.dataset.listViewId ?? 'unavailable',
+    })
+    setHeightPercent(next)
+  }
+
+  function dismiss() {
+    resetOnOpen.current = true
+    onCollapse()
   }
 
   function startDrag(event: PointerEvent<HTMLDivElement>) {
-    if (!event.isPrimary || event.button !== 0 || !panel.current) return
-    const style = getComputedStyle(panel.current)
-    const searchBottom = Number.parseFloat(style.getPropertyValue('--explorer-search-bottom')) || 72
-    const peek = PEEK_HEIGHT + (Number.parseFloat(style.paddingBottom) || 0)
-    const bottom = Number.parseFloat(style.bottom) || 0
-    const max = Math.max(peek, window.innerHeight - bottom - Math.max(80, searchBottom + 12))
-    drag.current = { pointerId: event.pointerId, y: event.clientY, height: panel.current.getBoundingClientRect().height, peek, max, startTime: event.timeStamp }
+    if (!mobile || !visible || !event.isPrimary || event.button !== 0
+      || (event.target instanceof Element && event.target.closest('button'))) return
+    const heights = readHeights()
+    if (!heights) return
+    drag.current = { pointerId: event.pointerId, y: event.clientY, ...heights }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
 
   function moveDrag(event: PointerEvent<HTMLDivElement>) {
     const current = drag.current
     if (!current || current.pointerId !== event.pointerId) return
-    setDragHeight(Math.max(current.peek, Math.min(current.max, current.height + current.y - event.clientY)))
+    setDragHeight(Math.max(0, Math.min(current.max, current.height + current.y - event.clientY)))
   }
 
   function endDrag(event: PointerEvent<HTMLDivElement>, cancelled = false) {
@@ -48,49 +98,58 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
     if (!current || current.pointerId !== event.pointerId) return
     drag.current = null
     setDragHeight(null)
-    if (cancelled) return
     const delta = current.y - event.clientY
-    const height = current.height + delta
-    const points = [current.peek, Math.min(window.innerHeight * 0.5, current.max), current.max]
-    const nearest = points.reduce((index, point, candidate) => Math.abs(point - height) < Math.abs(points[index] - height) ? candidate : index, 0)
-    const velocity = delta / Math.max(1, event.timeStamp - current.startTime)
-    if (nearest === snap && Math.abs(delta) > 24 && Math.abs(velocity) > 0.45) {
-      changeSnap(Math.max(0, Math.min(2, snap + Math.sign(delta))), 'drag')
+    if (cancelled || Math.abs(delta) < DRAG_THRESHOLD) return
+    const height = Math.max(0, Math.min(current.max, current.height + delta))
+    if (height < current.half) {
+      // Close from the release height instead of jumping back up first.
+      setHeightPercent(height / window.innerHeight * 100)
+      dismiss()
     } else {
-      changeSnap(nearest, 'drag')
+      changeHeight(height >= current.max ? 100 : height / window.innerHeight * 100, 'drag')
     }
   }
 
   return (
     <aside ref={panel} className="housing-results" id="housing-list-page" aria-label="공공임대주택 검색 결과"
-      aria-hidden={!visible} inert={!visible} data-mobile={mobile || undefined} data-snap={snap}
+      aria-hidden={!visible} inert={!visible} data-mobile={mobile || undefined}
+      data-search-covered={searchCovered || undefined}
       data-dragging={dragHeight !== null || undefined}
-      style={mobile && dragHeight !== null ? { '--sheet-drag-height': `${dragHeight}px` } as CSSProperties : undefined}>
-      {mobile && <div className="housing-results__sheet-handle" role="slider" tabIndex={0}
-        aria-label="목록 높이" aria-orientation="vertical" aria-valuemin={0} aria-valuemax={2}
-        aria-valuenow={snap} aria-valuetext={SNAP_LABELS[snap]}
+      style={mobile ? {
+        '--sheet-height': `${heightPercent}dvh`,
+        ...(dragHeight !== null ? { '--sheet-drag-height': `${dragHeight}px` } : {}),
+      } as CSSProperties : undefined}>
+      <div className="housing-results__sheet-top"
         onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={(event) => endDrag(event)}
-        onPointerCancel={(event) => endDrag(event, true)} onLostPointerCapture={(event) => endDrag(event, true)}
-        onKeyDown={(event) => {
-          if (!['ArrowUp', 'ArrowDown', 'Home', 'End', 'Enter', ' '].includes(event.key)) return
-          event.preventDefault()
-          if (event.key === 'Home') changeSnap(0, 'keyboard')
-          else if (event.key === 'End') changeSnap(2, 'keyboard')
-          else if (event.key === 'ArrowDown') changeSnap(Math.max(0, snap - 1), 'keyboard')
-          else if (event.key === 'ArrowUp') changeSnap(Math.min(2, snap + 1), 'keyboard')
-          else changeSnap(snap === 2 ? 0 : snap + 1, 'keyboard')
-        }}><span aria-hidden="true" /></div>}
-      <header className="housing-results__page-header">
-        <h2>{title}</h2>
-        <button type="button" className="housing-results__collapse" aria-label={collapsed ? '목록 펼치기' : '목록 접기'}
-          aria-controls="housing-list-content" aria-expanded={visible && !collapsed}
-          onClick={() => mobile ? changeSnap(collapsed ? 1 : 0, 'button') : onCollapse()}>
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-            <path d="m12 4-6 6 6 6" />
-          </svg>
-        </button>
-      </header>
-      <div className="housing-results__content" id="housing-list-content" aria-hidden={collapsed} inert={collapsed}>
+        onPointerCancel={(event) => endDrag(event, true)} onLostPointerCapture={(event) => endDrag(event, true)}>
+        {mobile && <div className="housing-results__sheet-handle" role="slider" tabIndex={0}
+          aria-label="목록 높이" aria-orientation="vertical" aria-valuemin={0} aria-valuemax={100}
+          aria-valuenow={heightPercent}
+          aria-valuetext={heightPercent === HALF_HEIGHT ? '절반 펼침' : heightPercent === 100 ? '크게 펼침' : `화면 높이의 ${Math.round(heightPercent)}%`}
+          onKeyDown={(event) => {
+            if (!['ArrowUp', 'ArrowDown', 'Home', 'End', 'Enter', ' ', 'Escape'].includes(event.key)) return
+            event.preventDefault()
+            if (event.key === 'Escape' || event.key === 'Home') dismiss()
+            else if (event.key === 'End') changeHeight(100, 'keyboard')
+            else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+              const heights = readHeights()
+              if (!heights) return
+              const next = heights.height + window.innerHeight * (event.key === 'ArrowUp' ? 0.1 : -0.1)
+              if (next < heights.half) dismiss()
+              else changeHeight(next >= heights.max ? 100 : next / window.innerHeight * 100, 'keyboard')
+            } else changeHeight(heightPercent === 100 ? HALF_HEIGHT : 100, 'keyboard')
+          }}><span aria-hidden="true" /></div>}
+        <header className="housing-results__page-header">
+          <h2>{title}</h2>
+          <button type="button" className="housing-results__collapse" aria-label="목록 접기"
+            aria-controls="housing-list-content" aria-expanded={visible} onClick={dismiss}>
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+              <path d="m12 4-6 6 6 6" />
+            </svg>
+          </button>
+        </header>
+      </div>
+      <div className="housing-results__content" id="housing-list-content">
         {children}
       </div>
     </aside>

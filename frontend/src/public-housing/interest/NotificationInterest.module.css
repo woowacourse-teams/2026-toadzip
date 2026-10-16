@@ -71,5 +71,8 @@
   box-shadow: 0 4px 20px rgb(0 0 0 / 15%);
 }
 .feedback p { margin: 0; font-size: 0.875rem; }
+@media (max-width: 767px) {
+  .feedback { bottom: calc(var(--explorer-footer-height, 84px) + 12px); }
+}
 
 .inlineFeedback { margin: 0 0 12px; padding: 12px 14px; border-radius: 10px; background: var(--ds-color-action-soft); color: var(--ds-color-text); font-size: 14px; line-height: 1.5; text-align: center; word-break: keep-all; }

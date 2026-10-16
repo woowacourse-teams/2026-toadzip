@@ -44,6 +44,7 @@ export interface NaverMapCameraTarget {
 interface NaverMapCommonProps {
   cameraRequestId?: number
   cameraTarget?: NaverMapCameraTarget
+  currentLocation?: { readonly latitude: number; readonly longitude: number } | null
   dataBusy?: boolean
   onMarkerHighlight?: (complexId: string | null) => void
   onMarkerSelect?: (complexId: string) => void
