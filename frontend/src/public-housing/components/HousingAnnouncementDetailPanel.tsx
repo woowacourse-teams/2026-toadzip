@@ -35,6 +35,7 @@ import {
 } from '../presentation/announcementDetailPresentation.ts'
 import { MISSING_DATA_LABEL } from '../presentation/missingData'
 import { formatHousingArea as formatArea, type AreaUnit } from '../presentation/housingArea'
+import { useAreaUnit } from '../presentation/useAreaUnit'
 import { AreaUnitToggle } from './AreaUnitToggle'
 import { formatPhoneNumber } from '../presentation/phoneNumber'
 import { groupAnnouncementSchedules } from '../presentation/announcementSchedulePresentation'
@@ -145,8 +146,7 @@ export function HousingAnnouncementDetailPanel({
   backButton,
 }: HousingAnnouncementDetailPanelProps) {
   const scrollAnalytics = useDetailScrollAnalytics('ANNOUNCEMENT', detail.announcementId)
-  const [areaUnit, setAreaUnit] = useState<AreaUnit>('sqm')
-  const toggleAreaUnit = () => setAreaUnit((unit) => unit === 'sqm' ? 'pyeong' : 'sqm')
+  const { areaUnit, toggleAreaUnit } = useAreaUnit()
   const sectionId = useId()
   const { scrollRef, sectionRefs, activeSection, trackSection, scrollToSection } =
     useAnnouncementSections(detail.announcementId)
