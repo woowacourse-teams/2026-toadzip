@@ -8,6 +8,15 @@ vi.mock('../management/api', () => mocks)
 vi.mock('./ReviewTaskBoard', () => ({ ReviewTaskBoard: () => null }))
 beforeEach(() => vi.clearAllMocks())
 
+it('담당 업무를 별도 작업 화면에서 열고 검토 목록과 입력 도구를 겹쳐 놓지 않는다', async () => {
+  mocks.requestManagementApi.mockResolvedValue({ items: [], page: 0, totalElements: 0, totalPages: 0, hasNext: false })
+  render(<MemoryRouter><QualityQueuePage /></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button', { name: '내 담당 업무' }))
+  expect(screen.queryByRole('form', { name: '검토 대상 검색' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '검토 대상' }))
+  expect(screen.getByRole('form', { name: '검토 대상 검색' })).toBeVisible()
+})
+
 it('검토 사유와 빠진 항목을 보여주고 비교 화면으로 바로 연결한다', async () => {
   mocks.requestManagementApi.mockResolvedValue({ items: [{ resource: 'COMPLEX', id: 7, name: '검토 단지',
     reasons: ['MISSING', 'STALE'], missingFields: ['준공일'], updatedAt: null }], page: 0,
