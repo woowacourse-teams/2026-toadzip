@@ -20,6 +20,13 @@ async function setup() {
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: '연동 폴더 선택' })) })
   return imported
 }
+it('폴더 선택 취소는 다시 시작하는 방법을 한국어로 안내한다', async () => {
+  mocks.pickExchangeDirectory.mockRejectedValue(new DOMException('User aborted', 'AbortError'))
+  await setup()
+  expect(screen.getByText(/폴더 선택을 취소했습니다/)).toBeVisible()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '연동 폴더 선택' })).toBeEnabled()
+})
 it('결과가 오면 자동 검증 결과를 전달하고 DB 저장은 수행하지 않는다', async () => {
   mocks.readExchangeResult.mockResolvedValue('{"proposals":[]}')
   const imported = await setup()

@@ -39,27 +39,28 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
   const [confirmation, setConfirmation] = useState(false)
   const [notice, setNotice] = useState('')
   const [attempt, setAttempt] = useState(0)
-  const [section, setSection] = useState(params.get('section') === 'verification' || resource === 'complexes' && params.get('section') !== 'info' ? 'verification' : 'info')
+  const requestedSection = params.get('section') ?? ''
+  const [section, setSection] = useState(['info', 'verification', 'documents', 'schedules', 'relations', 'history', 'tasks'].includes(requestedSection) ? requestedSection : 'info')
   const formRef = useRef<HTMLFormElement>(null)
   const sections = resource === 'complexes' ? complexSections : announcementSections
   useEffect(() => { onBusyChange?.(busy || verificationBusy || extendedBusy) }, [busy, verificationBusy, extendedBusy, onBusyChange])
   useEffect(() => {
     const controller = new AbortController();setValue(null);setError('');setEditing(false);setDirty(false);setConfirmation(false)
     if (!/^[1-9][0-9]*$/.test(id)) { setError('올바른 관리 페이지 주소가 아닙니다.');return }
-    void getManagementDetail(resource,id,controller.signal).then(next => { if (!controller.signal.aborted) { setValue(next); setEditing(embedded && !next.summary.deleted) } }).catch(cause => {
+    void getManagementDetail(resource,id,controller.signal).then(next => { if (!controller.signal.aborted) { setValue(next); setEditing(false) } }).catch(cause => {
       if(!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '불러오지 못했습니다.')
     })
     return () => controller.abort()
   },[resource,id,attempt,embedded])
   useUnsavedChanges(dirty)
-  function saved(next:ManagementDetailData) { setValue(next);setEditing(embedded && !next.summary.deleted);setDirty(false);setErrors({});setNotice('변경사항을 저장했습니다.');onChanged?.() }
+  function saved(next:ManagementDetailData) { setValue(next);setEditing(false);setDirty(false);setErrors({});setNotice('변경사항을 저장했습니다.');onChanged?.() }
   async function trash() {
     if(!value) return
     setBusy(true);setError('')
     try {
       await requestManagementApi(`${managementResourcePath(resource)}/${id}${value.summary.deleted ? '/restore' : ''}?version=${value.data.version}`,value.summary.deleted ? 'POST' : 'DELETE')
       const next = await getManagementDetail(resource,id)
-      setValue(next);setEditing(embedded && !next.summary.deleted);setDirty(false);setConfirmation(false);setNotice(value.summary.deleted ? '복구했습니다.' : '휴지통으로 이동했습니다. 필요하면 복구할 수 있습니다.');onChanged?.()
+      setValue(next);setEditing(false);setDirty(false);setConfirmation(false);setNotice(value.summary.deleted ? '복구했습니다.' : '휴지통으로 이동했습니다. 필요하면 복구할 수 있습니다.');onChanged?.()
     } catch(cause) { setError(cause instanceof Error ? cause.message : '처리하지 못했습니다.') }
     finally {setBusy(false)}
   }
@@ -71,16 +72,16 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
       {resource === 'complexes' && section !== 'verification' && value.summary.complex?.verificationStatus ? <ComplexVerificationBadge status={value.summary.complex.verificationStatus} count={value.summary.complex.reviewedFieldCount} /> : null}</div></div>
       {!editing || embedded ? <div className="admin-inline">{!value.summary.deleted && !editing ? <button type="button" data-admin-navigation disabled={busy || verificationBusy} className="admin-primary" onClick={() => {setEditing(true);setSection('info');setError('');setNotice('')}}>수정</button> : null}
         <button type="button" data-admin-navigation disabled={busy || verificationBusy || dirty} className={value.summary.deleted ? '' : 'admin-danger'} onClick={() => setConfirmation(true)}>{value.summary.deleted ? '복구' : '삭제'}</button></div> : null}</header>
-      {!value.summary.deleted ? <ReviewTaskPanel key={`task:${resource}:${id}`} resource={resource === 'complexes' ? 'COMPLEX' : 'ANNOUNCEMENT'} id={Number(id)} disabled={busy || verificationBusy || extendedBusy} /> : null}
       {value.summary.reviewRequired ? <p className="admin-warning">수집 원천과 관리자 수정값이 다릅니다. 공식 원문을 확인한 뒤 필요한 내용을 수정해 주세요. 저장한 관리자 값은 자동 정제로 덮어쓰지 않습니다.</p> : null}
       {confirmation ? <section className="admin-confirm" role="alertdialog" aria-label={value.summary.deleted ? '복구 확인' : '삭제 확인'}>
         <h2>{value.summary.deleted ? '복구할까요?' : '휴지통으로 이동할까요?'}</h2><p><strong>{value.summary.name}</strong></p>
         <p>{value.summary.deleted ? '다시 서비스 조회 대상이 됩니다.' : '서비스 검색·상세에서 제외됩니다. 원천과 수정 이력은 유지되며 다시 복구할 수 있습니다.'}</p>
         {resource === 'complexes' ? <p>연결 공고 {value.announcements.length}건 · 주택형 {value.housingTypes.length}건. 휴지통에 없는 연결 공고가 있으면 삭제할 수 없습니다.</p> : <p>연결 공급정보 {value.supplyRows.length}건은 함께 보존됩니다.</p>}
         <div className="admin-inline"><button disabled={busy} className="admin-danger" onClick={() => void trash()}>{busy ? '처리 중…' : value.summary.deleted ? '복구 확인' : '휴지통으로 이동'}</button><button disabled={busy} onClick={() => setConfirmation(false)}>취소</button></div></section> : null}
-      {!editing || embedded ? <nav className="admin-section-tabs" aria-label="상세 섹션">{[['info','기본정보'], ['verification', '데이터 검증'], ['documents', 'PDF로 보완'], ...(embedded && resource === 'announcements' ? [['schedules', '접수 일정']] : []), ['relations',resource === 'complexes' ? '주택형·연결 공고' : '공급정보·단지 연결'],['history','출처·수정 이력']].map(([key,label]) =>
+      {!editing || embedded ? <nav className="admin-section-tabs" aria-label="상세 섹션">{[['info','기본정보'], ['verification', '데이터 검증'], ['documents', 'PDF로 보완'], ...(embedded && resource === 'announcements' ? [['schedules', '접수 일정']] : []), ['relations',resource === 'complexes' ? '주택형·연결 공고' : '공급정보·단지 연결'], ['tasks', '담당 업무'], ['history','출처·수정 이력']].map(([key,label]) =>
         <button data-admin-navigation={section !== key || undefined} disabled={busy || verificationBusy} key={key} type="button" aria-pressed={section === key} onClick={() => {if (section !== key) {setSection(key);setDirty(false)}}}>{label}</button>)}</nav> : null}
       <div className="management-detail-content" role="region" aria-label={`${resource === 'complexes' ? '단지' : '공고'} 상세 내용`} tabIndex={0}>
+      {section === 'tasks' && !value.summary.deleted ? <><div className="admin-section-intro"><span>업무 관리</span><h2>누가, 언제까지 확인하나요?</h2><p>담당자와 기한을 공유하고 검토 진행 상황을 기록하세요. 업무 완료는 데이터 검증 기록과 별도로 관리합니다.</p></div><ReviewTaskPanel key={`task:${resource}:${id}`} resource={resource === 'complexes' ? 'COMPLEX' : 'ANNOUNCEMENT'} id={Number(id)} disabled={busy || verificationBusy || extendedBusy} /></> : null}
       {section === 'documents' ? <DocumentCorrectionPanel key={`${id}-${value.data.version}`} resource={resource} detail={value}
         onSaved={saved} onBusyChange={setVerificationBusy} onReload={() => setAttempt(current => current + 1)} /> : null}
       {section === 'verification' && (!editing || embedded) && resource === 'complexes' ? <>

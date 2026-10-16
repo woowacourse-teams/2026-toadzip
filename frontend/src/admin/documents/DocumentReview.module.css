@@ -92,3 +92,50 @@
 .candidate { display: flex; gap: 16px; flex-wrap: wrap; padding: 12px 14px; background: var(--ds-color-surface-subtle); border-radius: 8px; }
 @media (max-width: 900px) { .reviewLayout { grid-template-columns: minmax(0, 1fr); } .sourceGrid { grid-template-columns: 1fr 1fr; } .sourceGrid > :first-child { grid-column: 1 / -1; } .documentSourceGrid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 600px) { .panel { gap: 18px; } .panel .card { padding: 18px; } .panel h1 { font-size: 25px; } .workflow { gap: 12px 16px; padding: 14px; } .workflow :is(li, span) { gap: 6px; font-size: 12px; } .workflow b { width: 22px; height: 22px; } .entryRow { grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--ds-color-divider); } .entryRow > label:nth-of-type(2) { grid-column: 2; } .entryRow > button { grid-column: 3; grid-row: 1; } .rowNumber { padding-top: 0; } .footer > button { width: 100%; } }
+/* Guided PDF review: keep the current step visible and tools secondary. */
+.panel [hidden] { display:none!important; }
+.panel .stepNav { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0; padding:0; border-radius:12px; overflow:hidden; }
+.stepNav li { min-width:0; }
+.panel .stepNav button { width:100%; min-height:86px; padding:18px 20px; display:flex; align-items:center; gap:12px; border:0; border-radius:0; background:transparent; text-align:left; }
+.stepNav li+li { border-left:1px solid var(--ds-color-divider); }
+.stepNav button>span { display:grid; gap:4px; min-width:0; }
+.stepNav strong { font-size:13px; font-weight:700; }
+.stepNav small { font-size:11px; font-weight:400; color:var(--ds-color-muted); }
+.panel .stepNav button[aria-current=step] { background:var(--ds-color-action-soft); color:var(--ds-color-action); }
+.stepNav button[aria-current=step] b { background:var(--ds-color-action); color:var(--ds-color-surface); }
+.sourceStage { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:24px; align-items:start; }
+.sourceGuide { padding:28px; display:grid; gap:16px; border-radius:12px; background:var(--ds-color-surface-subtle); }
+.sourceGuide p,.sourceGuide ol { color:var(--ds-color-muted); font-size:13px; line-height:1.9; }
+.sourceGuide ol { margin:0; padding-left:18px; }
+.documentContext { display:flex; align-items:center; justify-content:space-between; gap:16px; border-bottom:1px solid var(--ds-color-divider); padding-bottom:18px; }
+.documentContext>div { min-width:0; display:grid; gap:5px; }
+.documentContext strong { font-size:13px; overflow-wrap:anywhere; }
+.documentContext span { color:var(--ds-color-muted); font-size:12px; }
+.workTools { order:10; border-top:1px solid var(--ds-color-divider); padding-top:16px; }
+.workTools>summary { font-size:13px; color:var(--ds-color-label); font-weight:600; }
+.workTools>summary span { margin-left:14px; font-weight:400; color:var(--ds-color-muted); font-size:11px; }
+.toolsGrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; padding-top:16px; }
+.panel .toolsGrid>.card,.toolsGrid>details { padding:18px; border-radius:10px; background:var(--ds-color-surface-subtle); }
+.toolsGrid .actions { align-items:stretch; flex-direction:column; }
+.panel .toolsGrid summary { font-size:13px; }
+.draftStatus { padding:12px 16px; border-left:3px solid var(--ds-color-action); color:var(--ds-color-action); background:var(--ds-color-action-soft); font-size:13px; }
+.panel .reviewLayout { grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr); gap:24px; }
+.panel .review { grid-column:auto; }
+.panel .reference { position:sticky; top:24px; border:0; background:var(--ds-color-surface-subtle); }
+.panel .reference details { min-width:0; }
+.panel .reference .text { padding:16px; margin:0; background:var(--ds-color-surface); max-height:480px; font-size:13px; border:1px solid var(--ds-color-divider); }
+.panel .reference>.hint { font-size:11px; }
+.panel .draftEditor,.panel .review { padding:0; border:0; border-radius:0; }
+.panel .draftEditor h4 { font-size:13px; margin:0; }
+.agentTools { display:grid; gap:16px; border-bottom:1px solid var(--ds-color-divider); padding-bottom:20px; }
+.panel .manual form>fieldset { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; padding:0; margin:0; border:0; background:transparent; }
+.manual form legend { display:none; }
+.manual form fieldset>label:has(textarea),.manual form fieldset>p,.manual form fieldset>button { grid-column:1/-1; }
+.panel .manual>p { margin-bottom:18px; }
+.panel .inputs.card { padding:28px; }
+.panel .proposal { border-radius:10px; padding:20px; }
+.panel .proposal dd { font-size:18px; }
+.panel .proposal dl { padding:14px; }
+.panel .saveActions { position:sticky; bottom:0; background:var(--ds-color-surface); padding-block:18px; z-index:2; }
+@media(max-width:1050px) { .toolsGrid { grid-template-columns:1fr; } .sourceStage { grid-template-columns:minmax(0,1fr); } .sourceGuide { padding:20px; } .panel .reviewLayout { grid-template-columns:1fr; } .panel .reference { position:static; } }
+@media(max-width:600px) { .panel .stepNav button { min-height:76px; padding:12px 8px; gap:7px; } .stepNav small { display:none; } .stepNav strong { font-size:11px; } .stepNav b { width:22px; height:22px; flex:none; } .workTools>summary span { display:block; margin:6px 0; } .panel .manual form>fieldset { grid-template-columns:1fr; } .panel .inputs.card { padding:20px; } .documentContext { align-items:flex-start; } .panel .reference { padding:18px; } }

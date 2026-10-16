@@ -51,7 +51,7 @@ export function ManagementWorkspace({ resource }: { resource: ManagementResource
   }
 
   return <section ref={workspaceRef} className={styles.workspace}>
-    <header className={styles.heading}>
+    <header className={styles.heading} data-detail={Boolean(id)}>
       <h1>{title} 관리</h1>
       <Link ref={addRef} className="admin-primary" to={managementUrl(resource, listParams, 'new')}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>

@@ -3,6 +3,7 @@ import type { ReviewTarget } from './documentReview'
 import type { ExtractedDocument } from './pdfExtraction'
 import { pickExchangeDirectory, readExchangeResult, writeExchangeRequest, type ExchangeDirectory, type ExchangeRequest } from './folderExchange'
 import styles from './DocumentReview.module.css'
+import { isRecord } from '../management/managementContract'
 
 export function FolderExchangePanel({ target, document, sourceUrl, disabled, onResult, onBusyChange }: {
   target: ReviewTarget; document: ExtractedDocument; sourceUrl: string; disabled: boolean;
@@ -18,7 +19,13 @@ export function FolderExchangePanel({ target, document, sourceUrl, disabled, onR
   async function connect() {
     setError('')
     try { setDirectory(await pickExchangeDirectory()); setNotice('연결한 전용 폴더에서 로컬 처리 도구를 실행하세요. 요청·결과 파일은 자동 삭제하지 않습니다.') }
-    catch (cause) { setError(cause instanceof Error ? cause.message : '폴더를 연결하지 못했습니다.') }
+    catch (cause) {
+      if (isRecord(cause) && cause.name === 'AbortError') {
+        setNotice('폴더 선택을 취소했습니다. 연결하려면 연동 폴더 선택을 다시 눌러주세요.')
+      } else {
+        setError('폴더를 연결하지 못했습니다. Chrome·Edge에서 전용 폴더를 선택하고 파일 수정 권한을 허용해 주세요.')
+      }
+    }
   }
   async function send() {
     if (!directory || busy || disabled) return

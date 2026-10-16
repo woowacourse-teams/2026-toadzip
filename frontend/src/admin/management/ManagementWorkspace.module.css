@@ -180,3 +180,30 @@
 .withEditor .editorBody > :global(.admin-registration-page) { height: auto; overflow: visible; }
 .withEditor .editor :global(.admin-change-values) { grid-template-columns: 1fr; }
 @media (max-width: 700px) { .withEditor .editor :global(.management-detail-content) { padding: 18px; } .withEditor .editor :global(.management-heading) { padding: 20px 18px; } .withEditor .editor :global(.management-heading) h2 { font-size: 20px; } .withEditor .editor :global(.admin-section-tabs) { padding: 10px 14px; } .contextBar { flex-wrap: wrap; } }
+/* Read first, choose a focused tool, then edit. */
+.withEditor .editor { box-shadow:none; border-color:var(--ds-color-divider); border-radius:14px; }
+.withEditor .editorHeading { padding:12px 28px; background:var(--ds-color-surface); }
+.withEditor .editorHeading strong { font-size:11px; color:var(--ds-color-muted); font-weight:500; }
+.withEditor .editor :global(.management-heading) { padding:28px; }
+.withEditor .editor :global(.management-heading) h2 { font-size:25px; line-height:1.5; }
+.withEditor .editor :global(.management-summary-meta) { font-size:12px; }
+.withEditor .editor :global(.admin-section-tabs) { gap:24px; padding:0 28px; border-top:1px solid var(--ds-color-divider); border-bottom:1px solid var(--ds-color-divider); background:var(--ds-color-surface); border-radius:0; margin:0; }
+.withEditor .editor :global(.admin-section-tabs) button { padding:16px 0; border:0; border-bottom:3px solid transparent; border-radius:0; font-size:12px; min-height:54px; }
+.withEditor .editor :global(.admin-section-tabs) button[aria-pressed=true] { border:0; border-bottom:3px solid var(--ds-color-action); background:transparent; box-shadow:none; }
+.withEditor .editor :global(.management-detail-content) { padding:28px; }
+.withEditor .editor :global(.admin-detail-section) { border:0; border-bottom:1px solid var(--ds-color-divider); border-radius:0; padding:0 0 28px; margin:0 0 28px; }
+.withEditor .editor :global(.admin-detail-section) h2 { font-size:16px; margin-bottom:22px; }
+.withEditor .editor :global(.admin-data-grid) { grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px; }
+.withEditor .editor :global(.admin-data-grid) dt { font-size:11px; }
+.withEditor .editor :global(.admin-data-grid) dd { font-size:14px; font-weight:500; }
+.withEditor .editor :global(.admin-section-intro) { display:grid; gap:8px; padding:0 0 24px; margin-bottom:24px; border-bottom:1px solid var(--ds-color-divider); }
+.withEditor .editor :global(.admin-section-intro)>span { font-size:11px; color:var(--ds-color-action); font-weight:700; }
+.withEditor .editor :global(.admin-section-intro) h2 { font-size:20px; margin:0; }
+.withEditor .editor :global(.admin-section-intro) p { font-size:13px; color:var(--ds-color-muted); margin:0; }
+@media(max-width:1000px) { .withEditor .editor :global(.admin-data-grid) { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:700px) { .withEditor .editor :global(.admin-data-grid) { grid-template-columns:1fr; } .withEditor .editor :global(.management-heading) { padding:22px 18px; } .withEditor .editor :global(.management-heading) h2 { font-size:20px; } .withEditor .editor :global(.admin-section-tabs) { padding:0 18px; gap:18px; } .withEditor .editor :global(.management-detail-content) { padding:22px 18px; } }
+.heading[data-detail=true] { margin-bottom:16px; }
+.heading[data-detail=true] h1 { font-size:14px; color:var(--ds-color-muted); letter-spacing:0; }
+.heading[data-detail=true] :global(.admin-primary) { background:var(--ds-color-surface); color:var(--ds-color-label); border-color:var(--ds-color-divider); box-shadow:none; min-height:34px; font-size:12px; }
+@media(max-width:700px) { .withEditor .editor :global(.admin-section-tabs) { flex-wrap:nowrap; overflow-x:auto; } .withEditor .editor :global(.admin-section-tabs) button { flex:none; white-space:nowrap; } }
+.workspace .heading[data-detail=true] h1 { font-size:14px; color:var(--ds-color-muted); letter-spacing:0; }

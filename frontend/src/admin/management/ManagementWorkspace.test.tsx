@@ -211,5 +211,15 @@ it('기존 returnTo 상세 URL의 검색 조건과 페이지를 화면에서도 
 
 async function openBasicInformation() {
   fireEvent.click(await screen.findByRole('button', { name: /^기본정보$/ }))
+  fireEvent.click(screen.getByRole('button', { name: /^수정$/ }))
   return screen.findByLabelText('이름')
 }
+
+it('상세는 읽기 화면으로 열고 수정 버튼을 눌렀을 때만 편집 입력을 제공한다', async () => {
+  renderPage('/admin/complexes/7')
+  await screen.findByRole('button', { name: /^수정$/ })
+  expect(screen.queryByLabelText('이름')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '변경사항 저장' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /^수정$/ }))
+  expect(screen.getByLabelText('이름')).toHaveValue(summary.name)
+})

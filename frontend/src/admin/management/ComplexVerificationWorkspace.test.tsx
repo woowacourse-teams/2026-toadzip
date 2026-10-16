@@ -50,8 +50,8 @@ beforeEach(() => {
 })
 afterEach(() => vi.restoreAllMocks())
 
-it('단지를 열면 비교 화면을 먼저 표시하고 수정 작성 중에는 검토 기록 저장을 잠근다', async () => {
-  show()
+it('검토 링크로 단지를 열면 비교 화면을 표시하고 수정 작성 중에는 검토 기록 저장을 잠근다', async () => {
+  show('/admin/complexes/7?section=verification')
   expect(await screen.findByRole('heading', { name: '원천과 비교하고 바로 수정' })).toBeVisible()
   expect(screen.getByRole('button', { name: '데이터 검증' })).toHaveAttribute('aria-pressed', 'true')
   fireEvent.click(await screen.findByRole('button', { name: '이름 수정' }))
@@ -114,7 +114,8 @@ it('편집 패널에서 검토를 저장하면 탭과 목록 필터를 유지하
   const panel = await screen.findByRole('region', { name: '단지 데이터 검증' })
   expect(within(panel).getByText(/1\/6항목/)).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '기본정보' }))
-  expect(screen.getByLabelText('이름')).toHaveValue(summary.name)
+  expect(screen.getByRole('button', { name: /^수정$/ })).toBeVisible()
+  expect(screen.queryByLabelText('이름')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '주택형·연결 공고' }))
   expect(screen.getByText('등록된 주택형이 없습니다.')).toBeVisible()
 })
@@ -162,5 +163,5 @@ it('검토 저장 중에는 편집 탭과 삭제를 잠그고 완료 후 해제�
 
 async function openBasicInformation() {
   fireEvent.click(await screen.findByRole('button', { name: /^기본정보$/ }))
-  return screen.findByLabelText('이름')
+  return screen.findByRole('button', { name: /^수정$/ })
 }

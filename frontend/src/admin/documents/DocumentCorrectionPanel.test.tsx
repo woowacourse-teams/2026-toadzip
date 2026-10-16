@@ -39,7 +39,7 @@ it('폴더 대기 종료 뒤 받은 교환 결과 파일도 수동으로 검증�
     text: async () => JSON.stringify({ schemaVersion: 'document-exchange/v1', requestId: 'late', result: JSON.parse(json) as unknown }),
   })
   fireEvent.change(screen.getByLabelText('에이전트 결과 JSON 파일'), { target: { files: [file] } })
-  expect(await screen.findByRole('heading', { name: '4. 원문과 대조 후 선택 반영' })).toBeVisible()
+  expect(await screen.findByRole('heading', { name: '원문과 대조 후 선택 반영' })).toBeVisible()
   expect(screen.getByRole('checkbox', { name: '전체 세대수 원문 확인' })).not.toBeChecked()
   expect(mocks.requestManagementApi).not.toHaveBeenCalled()
 })
@@ -65,7 +65,7 @@ it('보관 작업을 복원하면 PDF를 다시 추출하고 예전 선택 확�
   fireEvent.click(screen.getByRole('button', { name: '보관 작업 이어서 하기' }))
   expect(await screen.findByText(/작업 이후 DB 버전이 바뀌었습니다/)).toBeVisible()
   expect(mocks.extract).toHaveBeenLastCalledWith('2', expect.any(AbortSignal))
-  expect(screen.queryByRole('heading', { name: '4. 원문과 대조 후 선택 반영' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: '원문과 대조 후 선택 반영' })).not.toBeInTheDocument()
   expect(mocks.requestManagementApi).not.toHaveBeenCalled()
 })
 
@@ -91,7 +91,7 @@ it('보관 PDF 추출이 실패하면 복원 중인 문서만 해제하고 기�
   expect(await screen.findByRole('alert')).toHaveTextContent('보관 문서를 읽지 못했습니다.')
   await waitFor(() => expect(release).toHaveBeenCalledOnce())
   expect(mocks.destroy).not.toHaveBeenCalled()
-  expect(screen.getByRole('heading', { name: '2. 추출 근거 확인' })).toBeVisible()
+  expect(screen.getByRole('heading', { name: '추출한 근거' })).toBeVisible()
 })
 
 async function setup(withNavigation = false) {
@@ -100,7 +100,7 @@ async function setup(withNavigation = false) {
   fireEvent.change(screen.getByLabelText('공식 출처 URL'), { target: { value: 'https://example.com/notice.pdf' } })
   fireEvent.change(screen.getByLabelText('공식 PDF 파일'), { target: { files: [new File(['%PDF-'], '공고.pdf')] } })
   fireEvent.click(await screen.findByRole('button', { name: '선택 페이지 추출' }))
-  await screen.findByRole('heading', { name: '2. 추출 근거 확인' })
+  await screen.findByRole('heading', { name: '추출한 근거' })
   return { ...view, onSaved, onReload }
 }
 async function imported() {
@@ -157,7 +157,8 @@ it('잘못된 근거 결과는 검토 항목을 만들지 않는다', async () =
 })
 it('추출 후 직접 입력을 먼저 보여주고 에이전트 결과는 선택해서 가져온다', async () => {
   await setup()
-  expect(screen.getByText(/자료 다시 선택/).closest('details')).not.toHaveAttribute('open')
+  expect(screen.getByLabelText('공식 PDF 파일')).not.toBeVisible()
+  expect(screen.getByRole('button', { name: /근거·수정안/ })).toHaveAttribute('aria-current', 'step')
   expect(screen.getByLabelText('수정할 값')).toBeVisible()
   fireEvent.change(screen.getByLabelText('수정할 값'), { target: { value: '120' } })
   expect(screen.queryByLabelText('에이전트 결과 JSON')).not.toBeInTheDocument()
@@ -166,6 +167,17 @@ it('추출 후 직접 입력을 먼저 보여주고 에이전트 결과는 선�
   expect(screen.getByLabelText('수정할 값')).not.toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '직접 입력' }))
   expect(screen.getByLabelText('수정할 값')).toHaveValue('120')
+})
+
+it('단계를 오가도 수정안 입력은 보존하고 최종 확인 전에는 저장을 노출하지 않는다', async () => {
+  await setup()
+  fireEvent.change(screen.getByLabelText('수정할 값'), { target: { value: '120' } })
+  fireEvent.click(screen.getByRole('button', { name: '자료 다시 선택' }))
+  expect(screen.getByLabelText('공식 PDF 파일')).toBeVisible()
+  expect(screen.getByLabelText('수정할 값')).not.toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: /근거·수정안/ }))
+  expect(screen.getByLabelText('수정할 값')).toHaveValue('120')
+  expect(screen.queryByRole('button', { name: /항목 반영/ })).not.toBeInTheDocument()
 })
 it('수기 수정안을 추가하기 전에도 이동을 취소하면 작성한 값을 보존한다', async () => {
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
@@ -213,7 +225,7 @@ it('임대조건의 조회 당시 값을 보내고 수집 충돌이면 수정안
   fireEvent.change(screen.getByLabelText('공식 출처 URL'), { target: { value: 'https://example.com/notice.pdf' } })
   fireEvent.change(screen.getByLabelText('공식 PDF 파일'), { target: { files: [new File(['%PDF-'], '공고.pdf')] } })
   fireEvent.click(await screen.findByRole('button', { name: '선택 페이지 추출' }))
-  await screen.findByRole('heading', { name: '2. 추출 근거 확인' })
+  await screen.findByRole('heading', { name: '추출한 근거' })
   const targetJson = JSON.stringify({ schemaVersion: 'document-review/v1', targetKey: 'announcements:7:target:9',
     version: 2, sha256: document.sha256, unresolved: [], proposals: [{ field: 'rentalDeposit', value: '12000000',
       page: 2, quote: '임대보증금 12000000원', unit: '원', scope: '해당 공급대상', reason: '원문 확인' }] })
