@@ -8,7 +8,7 @@ export type CoverageResult = { entry: OfficialComplex; status: 'MATCHED' | 'MISS
 const normalize = (text: string) => text.normalize('NFKC').replace(/\s+/g, '').toLowerCase()
 const text = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= 200
 
-export function parseOfficialList(input: string): OfficialComplexList {
+export function parseOfficialList(input: string, maximum = 50): OfficialComplexList {
   if (new TextEncoder().encode(input).length > 1000000) throw new Error('공식 목록 JSON은 1MB 이하여야 합니다.')
   let value: unknown
   try { value = JSON.parse(input.replace(/^\uFEFF/, '')) as unknown } catch { throw new Error('공식 목록 JSON 문법을 확인해 주세요.') }
@@ -16,8 +16,8 @@ export function parseOfficialList(input: string): OfficialComplexList {
     || typeof value.asOf !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.asOf) || Number.isNaN(Date.parse(value.asOf))
     || new Date(value.asOf).toISOString().slice(0, 10) !== value.asOf
     || !['LH', 'SH', 'GH', 'ETC'].includes(String(value.agencyCode))
-    || !Array.isArray(value.complexes) || !value.complexes.length || value.complexes.length > 50) {
-    throw new Error('공식 URL·기준일·기관과 1~50개 단지 목록을 입력해 주세요.')
+    || !Array.isArray(value.complexes) || !value.complexes.length || value.complexes.length > maximum) {
+    throw new Error(`공식 URL·기준일·기관과 1~${maximum}개 단지 목록을 입력해 주세요.`)
   }
   const seen = new Set<string>()
   const complexes = value.complexes.map(entry => {
