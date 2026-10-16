@@ -1312,17 +1312,6 @@ export function PublicHousingExplorer({
       )}
       <nav className="housing-navigation" aria-label="주요 메뉴">
         <div className="housing-results__tabs">
-          {mobile && <button id="mobile-complex-list-trigger" type="button" aria-controls="complex-results-panel"
-            aria-expanded={showListPage && activeResultTab === 'complexes'}
-            className={activeResultTab === 'complexes' && !integratedSearchActive ? 'is-active' : undefined}
-            onClick={() => {
-              if (showListPage && activeResultTab === 'complexes') collapseResults()
-              else { prepareListEntry('navigation'); selectResultTab('complexes') }
-              if (!boundaryRegionCode) searchOverlayRef.current?.querySelector('input')?.focus()
-            }}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M4 21V4h10v17M14 10h6v11M2 21h20M7 8h4M7 12h4M7 16h4M17 14v3" /></svg>
-            <span>단지</span>
-          </button>}
           <button id="announcement-list-trigger" type="button"
             aria-controls="announcement-results-panel"
             aria-expanded={showListPage && activeResultTab === 'announcements'}
@@ -1334,7 +1323,7 @@ export function PublicHousingExplorer({
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M5 2h10l4 4v16H5ZM14 2v6h5M8 12h8M8 16h8" /></svg>
             <span aria-hidden="true">공고</span><span className="visually-hidden">공고 목록</span>
           </button>
-          {!mobile && <button id="recent-list-trigger" type="button" aria-label="최근 본 단지" aria-controls="recent-results-panel"
+          <button id="recent-list-trigger" type="button" aria-label="최근 본 단지" aria-controls="recent-results-panel"
             aria-expanded={showListPage && activeResultTab === 'recent'}
             className={showListPage && activeResultTab === 'recent' ? 'is-active' : undefined}
             onClick={() => {
@@ -1344,8 +1333,8 @@ export function PublicHousingExplorer({
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
               <circle cx="12" cy="12" r="9" /><path d="M12 6v6l4 2" />
             </svg>
-            <span className="housing-navigation__multiline-label">최근 본<br />단지</span>
-          </button>}
+            <span className="housing-navigation__multiline-label">최근 본<span className="housing-navigation__label-break" /> 단지</span>
+          </button>
         </div>
       </nav>
       <div className="housing-browse-panel">
@@ -2296,7 +2285,7 @@ function focusComplexCard(card: HTMLElement | undefined) {
 }
 
 function focusListTrigger(kind: ResultList) {
-  const trigger = document.getElementById(kind === 'recent' ? 'recent-list-trigger' : kind === 'complexes' ? 'region-complex-list-trigger' : 'announcement-list-trigger') ?? (kind === 'complexes' ? document.getElementById('mobile-complex-list-trigger') : null)
+  const trigger = document.getElementById(kind === 'recent' ? 'recent-list-trigger' : kind === 'complexes' ? 'region-complex-list-trigger' : 'announcement-list-trigger')
   const target = isAvailableFocusTarget(trigger) ? trigger
     : document.querySelector<HTMLInputElement>('.housing-search-overlay input[type="search"]')
   target?.focus({ preventScroll: true })

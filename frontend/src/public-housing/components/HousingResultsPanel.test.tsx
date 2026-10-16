@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { HousingResultsPanel } from './HousingResultsPanel'
 
@@ -39,6 +40,63 @@ function renderPanel() {
     <section aria-label="단지 카드"><button>상세 보기</button></section>
   </HousingResultsPanel>)
 }
+
+function DismissiblePanel() {
+  const [visible, setVisible] = useState(true)
+  return <>
+    <button onClick={() => setVisible(true)}>공고 열기</button>
+    <HousingResultsPanel title="공고 목록" visible={visible} onCollapse={() => setVisible(false)}>
+      <button>공고 상세 보기</button>
+    </HousingResultsPanel>
+  </>
+}
+
+it('접힌 목록을 아래로 다시 드래그하면 닫히고 재열면 절반 높이에서 내용을 보여준다', () => {
+  render(<DismissiblePanel />)
+  const handle = screen.getByRole('slider', { name: '목록 높이' })
+  fireEvent.keyDown(handle, { key: 'Home' })
+  fireEvent.pointerDown(handle, { clientY: 600, button: 0, pointerId: 1 })
+  fireEvent.pointerMove(handle, { clientY: 660, pointerId: 1 })
+  fireEvent.pointerUp(handle, { clientY: 660, pointerId: 1 })
+  expect(screen.queryByRole('slider')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '공고 열기' }))
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '절반 펼침')
+  expect(screen.getByRole('button', { name: '공고 상세 보기' })).toBeVisible()
+})
+
+it('접힌 상태에서 작은 움직임이나 취소된 드래그는 목록을 닫지 않는다', () => {
+  render(<DismissiblePanel />)
+  const handle = screen.getByRole('slider', { name: '목록 높이' })
+  fireEvent.keyDown(handle, { key: 'Home' })
+  fireEvent.pointerDown(handle, { clientY: 600, button: 0, pointerId: 1 })
+  fireEvent.pointerUp(handle, { clientY: 615, pointerId: 1 })
+  expect(handle).toHaveAttribute('aria-valuetext', '접힘')
+  fireEvent.pointerDown(handle, { clientY: 600, button: 0, pointerId: 2 })
+  fireEvent.pointerMove(handle, { clientY: 680, pointerId: 2 })
+  fireEvent.pointerCancel(handle, { clientY: 680, pointerId: 2 })
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '접힘')
+})
+
+it('제목 영역에서도 드래그해 펼칠 수 있고 버튼으로 최대 높이와 절반 높이를 전환한다', () => {
+  renderPanel()
+  const header = screen.getByRole('heading', { name: '단지 목록' })
+  fireEvent.pointerDown(header, { clientY: 600, button: 0, pointerId: 1 })
+  fireEvent.pointerMove(header, { clientY: 280, pointerId: 1 })
+  fireEvent.pointerUp(header, { clientY: 280, pointerId: 1 })
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '크게 펼침')
+  fireEvent.click(screen.getByRole('button', { name: '목록 절반으로 줄이기' }))
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '절반 펼침')
+  fireEvent.click(screen.getByRole('button', { name: '목록 크게 펼치기' }))
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '크게 펼침')
+})
+
+it('접힌 목록은 아래 방향키로 완전히 닫을 수 있다', () => {
+  render(<DismissiblePanel />)
+  const handle = screen.getByRole('slider', { name: '목록 높이' })
+  fireEvent.keyDown(handle, { key: 'Home' })
+  fireEvent.keyDown(handle, { key: 'ArrowDown' })
+  expect(screen.queryByRole('slider')).not.toBeInTheDocument()
+})
 
 it('손잡이를 위로 쓸어 크게 펼치고 길게 아래로 끌면 접힌 높이로 이동한다', () => {
   renderPanel()

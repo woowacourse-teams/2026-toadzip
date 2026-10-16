@@ -40,3 +40,7 @@
   outline: 2px solid var(--ds-color-action);
   outline-offset: 2px;
 }
+
+@media (max-width: 767px) {
+  .zoomControls { display: none; }
+}

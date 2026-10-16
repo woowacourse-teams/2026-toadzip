@@ -2425,15 +2425,15 @@ describe('PublicHousingExplorer', () => {
     expect(repository.findComplexDetail).toHaveBeenCalledTimes(2)
   })
 
-  it.each([767, 1023])('%spx 이하 화면에서 단지 메뉴에서 상세를 열고 닫으면 목록과 포커스를 복원한다', async (breakpoint) => {
+  it.each([767, 1023])('%spx 이하 화면에서 최근 본 단지의 상세를 열고 닫으면 목록과 포커스를 복원한다', async (breakpoint) => {
     vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === `(max-width: ${breakpoint}px)` || query === '(max-width: 1023px)' }))
     try {
       renderExplorer(createRepository(), breakpoint === 767 ? '/?complexId=17&boundaryRegionCode=11' : '/?complexId=17')
       await screen.findByRole('region', { name: /상세 내용$/ })
       fireEvent.click(screen.getByRole('button', { name: '단지 상세 닫기' }))
-      const toggle = screen.getByRole('button', { name: breakpoint === 767 ? '단지' : '최근 본 단지' })
+      const toggle = screen.getByRole('button', { name: '최근 본 단지' })
       if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle)
-      const listName = breakpoint === 767 ? '단지 목록' : '최근 본 단지'
+      const listName = '최근 본 단지'
       const recent = screen.getByRole('region', { name: listName })
       const opener = await within(recent).findByRole('button', { name: /서울가람 행복주택/ })
       opener.focus()

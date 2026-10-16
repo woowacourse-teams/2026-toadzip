@@ -27,12 +27,14 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
   }
 
   function startDrag(event: PointerEvent<HTMLDivElement>) {
-    if (!event.isPrimary || event.button !== 0 || !panel.current) return
+    if (!mobile || !visible || !event.isPrimary || event.button !== 0 || !panel.current
+      || (event.target instanceof Element && event.target.closest('button'))) return
     const style = getComputedStyle(panel.current)
     const searchBottom = Number.parseFloat(style.getPropertyValue('--explorer-search-bottom')) || 72
     const peek = PEEK_HEIGHT + (Number.parseFloat(style.paddingBottom) || 0)
     const bottom = Number.parseFloat(style.bottom) || 0
-    const max = Math.max(peek, window.innerHeight - bottom - Math.max(80, searchBottom + 12))
+    const max = Math.max(peek, Number.parseFloat(style.maxHeight)
+      || window.innerHeight - bottom - Math.max(80, searchBottom + 12))
     drag.current = { pointerId: event.pointerId, y: event.clientY, height: panel.current.getBoundingClientRect().height, peek, max, startTime: event.timeStamp }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -40,7 +42,7 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
   function moveDrag(event: PointerEvent<HTMLDivElement>) {
     const current = drag.current
     if (!current || current.pointerId !== event.pointerId) return
-    setDragHeight(Math.max(current.peek, Math.min(current.max, current.height + current.y - event.clientY)))
+    setDragHeight(Math.max(snap === 0 ? 24 : current.peek, Math.min(current.max, current.height + current.y - event.clientY)))
   }
 
   function endDrag(event: PointerEvent<HTMLDivElement>, cancelled = false) {
@@ -50,6 +52,10 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
     setDragHeight(null)
     if (cancelled) return
     const delta = current.y - event.clientY
+    if (snap === 0 && delta <= -40) {
+      dismiss()
+      return
+    }
     const height = current.height + delta
     const points = [current.peek, Math.min(window.innerHeight * 0.5, current.max), current.max]
     const nearest = points.reduce((index, point, candidate) => Math.abs(point - height) < Math.abs(points[index] - height) ? candidate : index, 0)
@@ -61,20 +67,28 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
     }
   }
 
+  function dismiss() {
+    onCollapse()
+    // Reopening a dismissed sheet should reveal its list, not just the handle.
+    setSnap(1)
+  }
+
   return (
     <aside ref={panel} className="housing-results" id="housing-list-page" aria-label="공공임대주택 검색 결과"
       aria-hidden={!visible} inert={!visible} data-mobile={mobile || undefined} data-snap={snap}
       data-dragging={dragHeight !== null || undefined}
       style={mobile && dragHeight !== null ? { '--sheet-drag-height': `${dragHeight}px` } as CSSProperties : undefined}>
+      <div className="housing-results__sheet-top"
+        onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={(event) => endDrag(event)}
+        onPointerCancel={(event) => endDrag(event, true)} onLostPointerCapture={(event) => endDrag(event, true)}>
       {mobile && <div className="housing-results__sheet-handle" role="slider" tabIndex={0}
         aria-label="목록 높이" aria-orientation="vertical" aria-valuemin={0} aria-valuemax={2}
         aria-valuenow={snap} aria-valuetext={SNAP_LABELS[snap]}
-        onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={(event) => endDrag(event)}
-        onPointerCancel={(event) => endDrag(event, true)} onLostPointerCapture={(event) => endDrag(event, true)}
         onKeyDown={(event) => {
-          if (!['ArrowUp', 'ArrowDown', 'Home', 'End', 'Enter', ' '].includes(event.key)) return
+          if (!['ArrowUp', 'ArrowDown', 'Home', 'End', 'Enter', ' ', 'Escape'].includes(event.key)) return
           event.preventDefault()
-          if (event.key === 'Home') changeSnap(0, 'keyboard')
+          if (event.key === 'Escape' || (event.key === 'ArrowDown' && snap === 0)) dismiss()
+          else if (event.key === 'Home') changeSnap(0, 'keyboard')
           else if (event.key === 'End') changeSnap(2, 'keyboard')
           else if (event.key === 'ArrowDown') changeSnap(Math.max(0, snap - 1), 'keyboard')
           else if (event.key === 'ArrowUp') changeSnap(Math.min(2, snap + 1), 'keyboard')
@@ -82,6 +96,12 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
         }}><span aria-hidden="true" /></div>}
       <header className="housing-results__page-header">
         <h2>{title}</h2>
+        <div className="housing-results__sheet-actions">
+        {mobile && !collapsed && <button type="button" className="housing-results__expand"
+          aria-label={snap === 2 ? '목록 절반으로 줄이기' : '목록 크게 펼치기'}
+          aria-controls="housing-list-content" onClick={() => changeSnap(snap === 2 ? 1 : 2, 'button')}>
+          {snap === 2 ? '절반 보기' : '크게 보기'}
+        </button>}
         <button type="button" className="housing-results__collapse" aria-label={collapsed ? '목록 펼치기' : '목록 접기'}
           aria-controls="housing-list-content" aria-expanded={visible && !collapsed}
           onClick={() => mobile ? changeSnap(collapsed ? 1 : 0, 'button') : onCollapse()}>
@@ -89,7 +109,9 @@ export function HousingResultsPanel({ visible, title, onCollapse, children }: Pr
             <path d="m12 4-6 6 6 6" />
           </svg>
         </button>
+        </div>
       </header>
+      </div>
       <div className="housing-results__content" id="housing-list-content" aria-hidden={collapsed} inert={collapsed}>
         {children}
       </div>
