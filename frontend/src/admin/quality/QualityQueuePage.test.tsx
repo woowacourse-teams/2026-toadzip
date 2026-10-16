@@ -5,6 +5,7 @@ import { QualityQueuePage } from './QualityQueuePage'
 
 const mocks = vi.hoisted(() => ({ requestManagementApi: vi.fn() }))
 vi.mock('../management/api', () => mocks)
+vi.mock('./ReviewTaskBoard', () => ({ ReviewTaskBoard: () => null }))
 beforeEach(() => vi.clearAllMocks())
 
 it('검토 사유와 빠진 항목을 보여주고 비교 화면으로 바로 연결한다', async () => {

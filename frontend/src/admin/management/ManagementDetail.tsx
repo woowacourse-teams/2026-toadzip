@@ -17,6 +17,7 @@ import { AddressPicker } from '../registration/AddressPicker'
 import { DocumentCorrectionPanel } from '../documents/DocumentCorrectionPanel'
 import { ComplexComparisonEditor } from './ComplexComparisonEditor'
 import { QualityComparisonPanel } from '../quality/QualityComparisonPanel'
+import { ReviewTaskPanel } from '../quality/ReviewTaskPanel'
 
 export function ManagementDetail({resource, embedded = false, detailId, onChanged, onBusyChange}: {resource:ManagementResource; embedded?: boolean; detailId?: string; onChanged?: () => void; onBusyChange?: (busy: boolean) => void}) {
   const {id: routeId = ''} = useParams()
@@ -70,6 +71,7 @@ export function ManagementDetail({resource, embedded = false, detailId, onChange
       {resource === 'complexes' && section !== 'verification' && value.summary.complex?.verificationStatus ? <ComplexVerificationBadge status={value.summary.complex.verificationStatus} count={value.summary.complex.reviewedFieldCount} /> : null}</div></div>
       {!editing || embedded ? <div className="admin-inline">{!value.summary.deleted && !editing ? <button type="button" data-admin-navigation disabled={busy || verificationBusy} className="admin-primary" onClick={() => {setEditing(true);setSection('info');setError('');setNotice('')}}>수정</button> : null}
         <button type="button" data-admin-navigation disabled={busy || verificationBusy || dirty} className={value.summary.deleted ? '' : 'admin-danger'} onClick={() => setConfirmation(true)}>{value.summary.deleted ? '복구' : '삭제'}</button></div> : null}</header>
+      {!value.summary.deleted ? <ReviewTaskPanel key={`task:${resource}:${id}`} resource={resource === 'complexes' ? 'COMPLEX' : 'ANNOUNCEMENT'} id={Number(id)} disabled={busy || verificationBusy || extendedBusy} /> : null}
       {value.summary.reviewRequired ? <p className="admin-warning">수집 원천과 관리자 수정값이 다릅니다. 공식 원문을 확인한 뒤 필요한 내용을 수정해 주세요. 저장한 관리자 값은 자동 정제로 덮어쓰지 않습니다.</p> : null}
       {confirmation ? <section className="admin-confirm" role="alertdialog" aria-label={value.summary.deleted ? '복구 확인' : '삭제 확인'}>
         <h2>{value.summary.deleted ? '복구할까요?' : '휴지통으로 이동할까요?'}</h2><p><strong>{value.summary.name}</strong></p>

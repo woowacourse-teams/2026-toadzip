@@ -3,6 +3,8 @@
 관리자는 `검토할 데이터`에서 필요한 대상을 찾고 상세의 `데이터 검증`에서 비교·수정한다.
 값 수정, 등록값 검토 기록, 재수집 대비 원천 확인은 각각 다른 기록이다.
 
+담당자·기한·업무 알림은 [검토 업무](admin-review-tasks.md)를 따른다.
+
 ## 검토 목록
 
 - `GET /api/admin/quality/queue`: `resource`, `reason`, `keyword`, `page`, `size` 필터.

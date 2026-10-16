@@ -11,7 +11,7 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class QualityQueueRepository {
-    private static final String SOURCE_CHANGED = """
+    public static final String SOURCE_CHANGED = """
             EXISTS (SELECT 1 FROM (
               SELECT DISTINCT ON (resource, resource_id, target) * FROM admin_comparison_checks
               ORDER BY resource, resource_id, target, id DESC
