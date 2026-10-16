@@ -2,7 +2,7 @@ import type { PublicHousingRegionRepository } from '../api/publicHousingRegionRe
 import type { ComplexSearchFilters } from '../api/publicHousingRepository.ts'
 import { formatHousingMoney } from '../presentation/housingMoney.ts'
 import { DualRangeFilter, type DualRangeFilterPreset } from './DualRangeFilter.tsx'
-import { AGENCY_OPTIONS, APPLICATION_STATUS_OPTIONS, RECRUITMENT_TYPE_OPTIONS, RENTAL_TYPE_OPTIONS } from './searchFilterOptions.ts'
+import { AGENCY_OPTIONS, RECRUITMENT_TYPE_OPTIONS, RENTAL_TYPE_OPTIONS } from './searchFilterOptions.ts'
 import { DETAIL_FILTER_TOPICS, TOPICS, type FilterTopic } from './complexFilterTopics.ts'
 import { formatArea, formatAreaTick, formatDepositTick, formatMonthlyRentTick } from './complexFilterPresentation.ts'
 import { RegionFilterFields } from './RegionFilterFields.tsx'
@@ -100,8 +100,6 @@ export function ComplexFilterFields({
       )
     case 'rentalType':
       return <ChoiceGroup label="임대유형" name="rentalTypes" values={filters.rentalTypes} options={RENTAL_TYPE_OPTIONS} />
-    case 'applicationStatus':
-      return <ChoiceGroup label="모집상태" name="applicationStatuses" values={filters.applicationStatuses} options={APPLICATION_STATUS_OPTIONS} />
     case 'agency':
       return <ChoiceGroup label="공급기관" name="agencyCodes" values={filters.agencyCodes} options={AGENCY_OPTIONS} />
     case 'recruitmentType':

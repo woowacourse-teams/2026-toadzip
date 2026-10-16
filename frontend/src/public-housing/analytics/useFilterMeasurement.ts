@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, type RefObject } from 'react'
 import { captureProductEvent, createAnalyticsId } from '../../analytics/productAnalytics'
 import type { ComplexSearchFilters } from '../api/publicHousingRepository'
-import { announcementFiltersFromForm, replaceTopic, topicDraftFromForm, topicsDraftFromForm } from '../filters/searchFilterForm'
+import { announcementFiltersFromForm, replaceTopic, replaceTopics, topicDraftFromForm, topicsDraftFromForm } from '../filters/searchFilterForm'
 import { TOPICS as FILTER_TOPICS, type FilterTopic } from '../filters/complexFilterTopics'
 
 const FIELDS: Readonly<Record<string, string>> = {
@@ -10,7 +10,7 @@ const FIELDS: Readonly<Record<string, string>> = {
   minDeposit: 'deposit', maxDeposit: 'deposit', minMonthlyRent: 'rent', maxMonthlyRent: 'rent',
   minExclusiveArea: 'area', maxExclusiveArea: 'area', builtYearFrom: 'built_year', builtYearTo: 'built_year',
 }
-const TOPICS = new Set(['region', 'rentalType', 'applicationStatus', 'agency', 'recruitmentType', 'price', 'exclusiveArea', 'builtYear'])
+const TOPICS = new Set<string>(FILTER_TOPICS.map(([topic]) => topic))
 type Method = 'select' | 'choice' | 'slider' | 'preset'
 type CloseReason = 'apply' | 'reset' | 'escape' | 'outside' | 'toggle' | 'close_button' | 'breakpoint'
 interface Edit {
@@ -27,7 +27,7 @@ export function useFilterMeasurement(target: 'complex' | 'announcement', topic: 
     if (!form) return
     const data = new FormData(form)
     if (target === 'announcement') current.draft = announcementFiltersFromForm(data)
-    else if (current.topic === 'all') current.draft = topicsDraftFromForm(FILTER_TOPICS, data)
+    else if (current.topic === 'all') current.draft = replaceTopics(current.applied, FILTER_TOPICS, topicsDraftFromForm(FILTER_TOPICS, data))
     else if (TOPICS.has(current.topic)) current.draft = replaceTopic(current.applied, current.topic as FilterTopic, topicDraftFromForm(current.topic as FilterTopic, data))
   }, [target])
   const currentForm = useCallback(() => root.current?.querySelector<HTMLFormElement>('form') ?? null, [root])
@@ -100,16 +100,17 @@ export function useFilterMeasurement(target: 'complex' | 'announcement', topic: 
     captureProductEvent('filter_reset_clicked', { filter_target: target, filter_edit_id: current?.id ?? createAnalyticsId(),
       topic: current?.topic ?? 'all', layout: options.current.layout, reset_scope: scope, state_target: stateTarget })
   }, [target, readDraft, currentForm])
-  const apply = useCallback((next: ComplexSearchFilters, mode: 'immediate' | 'submit' | 'reset') => {
+  const apply = useCallback((next: ComplexSearchFilters, mode: 'immediate' | 'submit' | 'reset',
+    directChange?: { topic: string; layout: 'desktop' | 'mobile'; method: Method }) => {
     const previous = options.current.filters
     const changes = Object.keys(FIELDS).filter(field => canonicalValue(previous[field as keyof ComplexSearchFilters]) !== canonicalValue(next[field as keyof ComplexSearchFilters]))
-    const current = edit.current
+    const current = directChange ? null : edit.current
     // Even equal re-application resolves a reverted draft without an extra apply event.
     if (current) { current.applied = next; current.draft = next }
     if (changes.length === 0) return
     captureProductEvent('apply_filter', { filter_target: target, filter_edit_id: current?.id ?? createAnalyticsId(),
-      topic: current?.topic ?? 'all', layout: options.current.layout, apply_mode: mode, changed_fields: [...new Set(changes.map(field => FIELDS[field]))],
-      methods_used: current ? [...current.methods] : [], operation: mode === 'reset' ? 'reset' : 'change' })
+      topic: directChange?.topic ?? current?.topic ?? 'all', layout: directChange?.layout ?? options.current.layout, apply_mode: mode, changed_fields: [...new Set(changes.map(field => FIELDS[field]))],
+      methods_used: directChange ? [directChange.method] : current ? [...current.methods] : [], operation: mode === 'reset' ? 'reset' : 'change' })
   }, [target])
   return useMemo(() => ({ reason, reset, apply }), [reason, reset, apply])
 }

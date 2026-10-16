@@ -1,7 +1,7 @@
 import type { ComplexSearchFilters } from '../api/publicHousingRepository.ts'
 import { provinceNameForRegionCode } from '../model/publicHousingRegion.ts'
 import { formatHousingMoney } from '../presentation/housingMoney.ts'
-import { AGENCY_OPTIONS, APPLICATION_STATUS_OPTIONS, RECRUITMENT_TYPE_OPTIONS, RENTAL_TYPE_OPTIONS } from './searchFilterOptions.ts'
+import { AGENCY_OPTIONS, RECRUITMENT_TYPE_OPTIONS, RENTAL_TYPE_OPTIONS } from './searchFilterOptions.ts'
 import type { FilterTopic } from './complexFilterTopics.ts'
 
 export function topicSummary(
@@ -22,8 +22,6 @@ export function topicSummary(
     }
     case 'rentalType':
       return optionsSummary(filters.rentalTypes, RENTAL_TYPE_OPTIONS)
-    case 'applicationStatus':
-      return optionsSummary(filters.applicationStatuses, APPLICATION_STATUS_OPTIONS)
     case 'agency':
       return optionsSummary(filters.agencyCodes, AGENCY_OPTIONS)
     case 'recruitmentType':
