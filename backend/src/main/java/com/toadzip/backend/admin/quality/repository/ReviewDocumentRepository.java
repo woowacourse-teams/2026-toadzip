@@ -44,5 +44,12 @@ public class ReviewDocumentRepository {
                 .query((row, index) -> new Content(row.getString(1), row.getBytes(2))).optional();
     }
 
+    public boolean exists(QualityResource resource, long id, String sha256) {
+        return jdbc.sql("SELECT EXISTS(SELECT 1 FROM admin_review_documents "
+                        + "WHERE resource = :resource AND resource_id = :id AND sha256 = :sha)")
+                .param("resource", resource.name()).param("id", id).param("sha", sha256)
+                .query(Boolean.class).single();
+    }
+
     public record Content(String fileName, byte[] bytes) { }
 }

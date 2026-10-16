@@ -46,3 +46,13 @@
 - `V20261016_01`: 비교 연결·확인 스냅샷. `V20261016_02`: 원본 PDF 보관.
 - 기존 데이터 자동 수정·자동 등록·외부 AI 호출은 수행하지 않는다.
 - `AdminQualityQueueIntegrationTest`, `QualityComparisonIntegrationTest`, `ReviewDocumentIntegrationTest`.
+
+## 공유 검토 초안
+
+- GET/PUT `/api/admin/quality/{resource}/{id}/draft`: `target`별 원본 해시·DB 버전·쪽수·수정안·메모 보관.
+- PDF는 같은 대상의 기존 원본 보관함을 사용한다. 수정안은 1MB 이하이며 대상·버전·해시를 검사한다.
+- PUT은 `expectedRevision`(신규 0)을 요구한다. 다른 저장이 먼저 완료되면 409이며 덮어쓰지 않는다.
+- 관리자·CSRF·소속 대상 검증을 적용하며 작성자·시각과 변경 전후 초안을 이력에 기록한다.
+- 과거 DB 버전의 초안도 보관할 수 있다. 복원은 원본 해시 확인·재추출·수정안 재검증을 거치며 확인 체크는 복원하지 않는다.
+- `V20261016_03`은 테이블만 추가한다. 기존 등록값은 변경하지 않으며 이전 앱 버전과 공존한다.
+- `SharedReviewDraftIntegrationTest`: 공유·revision 충돌·관리자·CSRF·다른 대상 원본 차단.

@@ -10,6 +10,8 @@ import styles from './DocumentReview.module.css'
 import { readReviewDraft, removeReviewDraft, saveReviewDraft } from './reviewDraftStore'
 import { DocumentArchivePanel } from './DocumentArchivePanel'
 import { PdfTablePanel } from './PdfTablePanel'
+import { SharedDraftPanel } from './SharedDraftPanel'
+import { sharedDraftFile, type SharedDraft } from './sharedDraftApi'
 
 const PdfPreview = lazy(() => import('../../public-housing/components/PdfDocumentPreview'))
 
@@ -41,7 +43,8 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
   const originalFile = useRef<File | null>(null)
   const [draftNotice, setDraftNotice] = useState('')
   const [archiveBusy, setArchiveBusy] = useState(false)
-  useEffect(() => { onBusyChange(Boolean(busy) || archiveBusy) }, [busy, archiveBusy, onBusyChange])
+  const [sharedBusy, setSharedBusy] = useState(false)
+  useEffect(() => { onBusyChange(Boolean(busy) || archiveBusy || sharedBusy) }, [busy, archiveBusy, sharedBusy, onBusyChange])
   useEffect(() => {
     mounted.current = true
     return () => {
@@ -93,6 +96,23 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
     const next = JSON.stringify({ schemaVersion: 'document-review/v1', targetKey: target.key, version: target.version,
       sha256: extracted.sha256, proposals, unresolved }, null, 2)
     setJson(next); validate(next)
+  }
+  async function restoreShared(draft: SharedDraft, signal: AbortSignal) {
+    let opened: PdfSession | null = null
+    try {
+      const file = await sharedDraftFile(resource, detail.summary.id, draft, signal)
+      opened = await openPdf(file, signal)
+      if (opened.sha256 !== draft.sha256) throw new Error('공유 원본의 해시가 다릅니다. 원본을 확인해 주세요.')
+      const document = await opened.extract(draft.pages, signal)
+      if (signal.aborted || !mounted.current) return
+      void sessionRef.current?.destroy().catch(() => {})
+      if (previewRef.current) URL.revokeObjectURL(previewRef.current)
+      const url = URL.createObjectURL(file); previewRef.current = url; setPreviewUrl(url)
+      originalFile.current = file; sessionRef.current = opened; setSession(opened); opened = null
+      setPages(draft.pages); setSourceUrl(draft.sourceUrl); setExtracted(document); setJson(draft.resultJson)
+      setNote(draft.note); setReview(null); setChecked([]); setConflict(false); setError(''); setMethod('agent')
+      setDraftNotice(draft.documentVersion === target.version ? '공유 입력을 복원했습니다. 수정안 검증과 원문 확인을 다시 수행하세요.' : '공유 작업 이후 DB 버전이 바뀌었습니다. 원본·입력만 복원했으며 최신 값으로 수정안을 다시 작성해야 합니다.')
+    } finally { await opened?.destroy().catch(() => {}) }
   }
   async function preserveWork() {
     if (!session || !originalFile.current) return
@@ -152,7 +172,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
     finally { if (mounted.current) setBusy('') }
   }
   async function save() {
-    if (!extracted || !review || busy || conflict || detail.summary.deleted) return
+    if (!extracted || !review || busy || sharedBusy || conflict || detail.summary.deleted) return
     let body
     try { body = correctionBody(target, review.proposals.filter(item => checked.includes(item.field)), extracted, sourceUrl, note) }
     catch (cause) { setError(cause instanceof Error ? cause.message : '확인 내용을 입력해 주세요.'); return }
@@ -175,7 +195,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
     {conflict ? <div className={styles.warning}><p>현재 데이터가 바뀌었습니다. 결과를 내려받아 보관하고 새로 조회한 자료로 다시 검토하세요.</p>
       <button type="button" disabled={Boolean(busy)} onClick={onReload}>현재 데이터 다시 조회</button></div> : null}
     <details className={styles.sourceFold} open={!extracted}><summary>{extracted ? `${extracted.fileName} · ${extracted.pages.length}쪽 추출 완료 · 자료 다시 선택` : '1. 공식 자료 선택'}</summary>
-    <fieldset className={`${styles.inputs} ${styles.card}`} disabled={Boolean(busy) || detail.summary.deleted || conflict}>
+    <fieldset className={`${styles.inputs} ${styles.card}`} disabled={Boolean(busy) || sharedBusy || detail.summary.deleted || conflict}>
       <legend>1. 대상과 공식 자료 선택</legend>
       <div className={styles.documentSourceGrid}><label>보완 대상<select value={selection} onChange={event => { setSelection(event.target.value); clearReview() }}>
         {targetChoices(resource, detail).map(choice => <option key={choice.key} value={choice.key}>{choice.label}</option>)}
@@ -194,6 +214,9 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
       </> : null}
     </fieldset></details>
     <DocumentArchivePanel resource={resource} id={detail.summary.id} file={originalFile.current} sourceUrl={sourceUrl} onBusyChange={setArchiveBusy} />
+    <SharedDraftPanel key={target.key} resource={resource} id={detail.summary.id} target={selection} file={originalFile.current}
+      disabled={Boolean(busy) || archiveBusy || conflict || detail.summary.deleted} onBusyChange={setSharedBusy} onRestore={restoreShared}
+      input={session && safeDocumentUrl(sourceUrl) ? { target: selection, documentVersion: target.version, sha256: session.sha256, sourceUrl, pages, resultJson: json, note } : null} />
     <details className={styles.card}><summary>원본·작업 보관 및 이어서 하기</summary><p className={styles.hint}>현재 브라우저에 최대 5개 작업·100MB를 보관합니다. 작업 내용은 다른 기기로 동기화하지 않습니다. 새 작업으로 덮어쓰면 같은 대상의 이전 보관 내용을 대체합니다. 작성 중인 수기 입력은 먼저 수정안에 추가하세요.</p>
       <div className={styles.actions}><button disabled={Boolean(busy) || !session} onClick={() => void preserveWork()}>원본과 작업 보관</button><button disabled={Boolean(busy)} onClick={() => void resumeWork()}>보관 작업 이어서 하기</button><button disabled={Boolean(busy)} onClick={() => {
         if (window.confirm('이 대상의 브라우저 보관 원본과 작업을 삭제할까요? DB와 수정 이력은 유지됩니다.')) void removeReviewDraft(target.key).then(() => setDraftNotice('이 대상의 보관 작업을 삭제했습니다.')).catch(cause => setError(cause instanceof Error ? cause.message : '보관 작업을 삭제하지 못했습니다.'))
@@ -222,9 +245,9 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
         <p className={styles.hint}>다운로드한 파일을 사용하는 에이전트에 전달하세요. 현재값·허용 항목·페이지 근거·응답 형식이 포함됩니다.</p>
       </section>
       <section className={styles.card}><h3>3. 수정안 가져오기 또는 수기 입력</h3>
-        <PdfTablePanel key={`${target.key}:${extracted.sha256}:${pages}`} target={target} document={extracted} disabled={Boolean(busy) || conflict || detail.summary.deleted} onAdded={addProposal} />
+        <PdfTablePanel key={`${target.key}:${extracted.sha256}:${pages}`} target={target} document={extracted} disabled={Boolean(busy) || sharedBusy || conflict || detail.summary.deleted} onAdded={addProposal} />
         <div className={styles.modeSwitch} aria-label="수정안 작성 방식"><button type="button" aria-pressed={method === 'manual'} disabled={Boolean(busy) || conflict || detail.summary.deleted} onClick={() => setMethod('manual')}>직접 입력</button><button type="button" aria-pressed={method === 'agent'} disabled={Boolean(busy) || conflict || detail.summary.deleted} onClick={() => setMethod('agent')}>에이전트 결과 가져오기</button></div>
-        {method === 'agent' ? <fieldset className={styles.inputs} disabled={Boolean(busy) || conflict || detail.summary.deleted}>
+        {method === 'agent' ? <fieldset className={styles.inputs} disabled={Boolean(busy) || sharedBusy || conflict || detail.summary.deleted}>
           <legend className={styles.srOnly}>에이전트 결과</legend>
           <p className={styles.hint}>에이전트 자료를 전달한 뒤, 받은 결과 파일을 선택하거나 아래에 붙여넣으세요.</p>
           <label className={styles.upload}>에이전트 결과 JSON 파일<input type="file" accept=".json,application/json" onChange={event => {
@@ -235,7 +258,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
           }} /></label>
           <button type="button" disabled={!json.trim()} onClick={() => validate()}>결과 검증</button>
         </fieldset> : null}
-        <div hidden={method !== 'manual'}><ManualProposal key={target.key} target={target} document={extracted} onDirtyChange={setManualDirty} disabled={Boolean(busy) || conflict || detail.summary.deleted} onAdded={addProposal} /></div>
+        <div hidden={method !== 'manual'}><ManualProposal key={target.key} target={target} document={extracted} onDirtyChange={setManualDirty} disabled={Boolean(busy) || sharedBusy || conflict || detail.summary.deleted} onAdded={addProposal} /></div>
       </section>
       {review ? <section className={`${styles.card} ${styles.review}`} aria-label="수정안 검토"><header className={styles.cardHeading}><h3>4. 원문과 대조 후 선택 반영</h3><span className={styles.badge}>{checked.length}/{review.proposals.length}개 확인</span></header>
         {review.unresolved.length ? <div className={styles.warning}><strong>보류 항목</strong><ul>{review.unresolved.map((item, index) => <li key={index}>{item.field}: {item.reason}</li>)}</ul></div> : null}
@@ -252,7 +275,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
         })}
         <label className={styles.note}>확인 메모<textarea rows={3} maxLength={2000} value={note} disabled={Boolean(busy) || conflict || detail.summary.deleted}
           onChange={event => setNote(event.target.value)} placeholder="값·단위·적용 범위와 정정 여부를 확인한 내용" /></label>
-        <div className={`${styles.actions} ${styles.saveActions}`}><p className={styles.hint}>{!checked.length ? '원문에서 확인한 항목을 선택하세요.' : !note.trim() ? '확인 메모를 작성하면 저장할 수 있습니다.' : '선택한 항목과 PDF 근거가 수정 이력에 저장됩니다.'}</p><Button data-design-system disabled={!checked.length || !note.trim() || !safeDocumentUrl(sourceUrl) || Boolean(busy) || conflict || detail.summary.deleted}
+        <div className={`${styles.actions} ${styles.saveActions}`}><p className={styles.hint}>{!checked.length ? '원문에서 확인한 항목을 선택하세요.' : !note.trim() ? '확인 메모를 작성하면 저장할 수 있습니다.' : '선택한 항목과 PDF 근거가 수정 이력에 저장됩니다.'}</p><Button data-design-system disabled={!checked.length || !note.trim() || !safeDocumentUrl(sourceUrl) || Boolean(busy) || sharedBusy || conflict || detail.summary.deleted}
           onClick={() => void save()}>확인한 {checked.length}개 항목 반영</Button>
           <button type="button" disabled={Boolean(busy)} onClick={() => downloadText(json, `document-review-result-${detail.summary.id}.json`)}>검토 결과 다운로드</button></div>
       </section> : null}
