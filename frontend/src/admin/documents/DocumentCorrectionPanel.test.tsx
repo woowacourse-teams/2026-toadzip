@@ -32,6 +32,18 @@ beforeEach(() => {
 })
 afterEach(() => vi.restoreAllMocks())
 
+it('폴더 대기 종료 뒤 받은 교환 결과 파일도 수동으로 검증해 가져올 수 있다', async () => {
+  await setup()
+  fireEvent.click(screen.getByRole('button', { name: '에이전트 결과 가져오기' }))
+  const file = Object.assign(new File(['result'], 'review.result.json', { type: 'application/json' }), {
+    text: async () => JSON.stringify({ schemaVersion: 'document-exchange/v1', requestId: 'late', result: JSON.parse(json) as unknown }),
+  })
+  fireEvent.change(screen.getByLabelText('에이전트 결과 JSON 파일'), { target: { files: [file] } })
+  expect(await screen.findByRole('heading', { name: '4. 원문과 대조 후 선택 반영' })).toBeVisible()
+  expect(screen.getByRole('checkbox', { name: '전체 세대수 원문 확인' })).not.toBeChecked()
+  expect(mocks.requestManagementApi).not.toHaveBeenCalled()
+})
+
 it('명시적으로 보관할 때만 원본과 작업을 보관하고 DB 수정 API는 호출하지 않는다', async () => {
   await setup()
   expect(work.saveReviewDraft).not.toHaveBeenCalled()
