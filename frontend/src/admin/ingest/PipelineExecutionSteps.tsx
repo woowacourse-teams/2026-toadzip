@@ -6,6 +6,7 @@ import { StoredDataTable } from '../shared/StoredDataTable'
 import { pipelineLabels, pipelineStatusLabels } from './pipelineLabels'
 import styles from './PipelineExecutionSteps.module.css'
 import { AnnouncementSupplyMatchingForm } from './AnnouncementSupplyMatchingForm'
+import { PipelineNextActions } from './PipelineNextActions'
 
 const definitions = {
   COLLECT_MYHOME_COMPLEXES: '마이홈 단지 수집',
@@ -52,8 +53,9 @@ function stepState(execution: DataPipelineExecution, step: Step): keyof typeof s
   return execution.status === 'RUNNING' ? 'waiting' : 'unexecuted'
 }
 
-export function PipelineExecutionSteps({ execution, onStop, stopping = false }: {
+export function PipelineExecutionSteps({ execution, onStop, stopping = false, onRefine, recoveryDisabled }: {
   execution: DataPipelineExecution; onStop?: () => void; stopping?: boolean
+  onRefine?: () => void; recoveryDisabled?: boolean
 }) {
   const [selected, setSelected] = useState<Step | null>(null)
   const [matchingOpen, setMatchingOpen] = useState(false)
@@ -101,6 +103,10 @@ export function PipelineExecutionSteps({ execution, onStop, stopping = false }: 
     {execution.status === 'RUNNING' && onStop && <button type="button" disabled={stopping || execution.stopRequested || !execution.executionId}
       onClick={onStop}>{stopping || execution.stopRequested ? '중지 요청 중…' : `${label} 실행 중지`}</button>}
     {execution.stopRequested && execution.status === 'RUNNING' && <p role="status">현재 처리가 끝나면 중지합니다.</p>}
+    <PipelineNextActions execution={execution} onRefine={onRefine} disabled={recoveryDisabled} />
+    {execution.status !== 'IDLE' && execution.status !== 'RUNNING' && execution.type !== 'ANNOUNCEMENT_REGISTRATION'
+      && <p><Link to={`/admin/failures?domain=${domain}&category=all&executionId=${encodeURIComponent(execution.executionId ?? '')}`}>
+        실패 내역 확인</Link></p>}
     {selected && <section className={styles.detail} aria-label="단계 상세">
       <header className={styles.heading}><h4>{selectedName}</h4><button type="button" onClick={() => setSelected(null)}>접기</button></header>
       <p>{failure?.message ?? skipped?.reason ?? (partial ? '일부 대상 처리에 실패했습니다. 상세 보고서와 실패 대상을 확인해 주세요.'

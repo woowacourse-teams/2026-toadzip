@@ -80,6 +80,61 @@ it('수집 요청은 지역과 조치로 표시하고 원문은 상세에 보존
   expect(within(screen.getByRole('dialog')).getByRole('link',{name:'API 키 입력·원천 수집'})).toHaveAttribute('href','/admin/ingest#complex-pipelines')
 })
 
+it('좌표 오류에서 ZIP 업로드로 이동하고 좌표가 없는 원천의 한계를 안내한다', async () => {
+  fetchFailures.mockResolvedValue(page([{...row,category:'complex',reason:'GEOCODING_ERROR'}]))
+  render(<IngestFailurePanel domain="complex" executionId={null}/>, {wrapper:MemoryRouter})
+  fireEvent.click(await screen.findByRole('button',{name:`확인·처리: ${row.target}`}))
+  const dialog=within(screen.getByRole('dialog'))
+  expect(dialog.getByRole('link',{name:'좌표 ZIP 업로드·단지 정제'})).toHaveAttribute('href','/admin/locations')
+  expect(dialog.getByText(/좌표 ZIP을 업로드해도 일치하는 주소나 좌표가 없으면/)).toBeVisible()
+  expect(dialog.queryByRole('link',{name:'단지·주택형 확인'})).not.toBeInTheDocument()
+})
+
+it.each(['COMPLEX_NOT_FOUND','HOUSING_TYPE_NOT_FOUND'])('%s 오류의 단지명이 있으면 후보 검색으로 연결한다', async reason => {
+  fetchFailures.mockResolvedValue(page([{...row,reason,raw:{complexName:'가람 & 나래'}}]))
+  render(<IngestFailurePanel domain="announcement" executionId={null}/>, {wrapper:MemoryRouter})
+  fireEvent.click(await screen.findByRole('button',{name:`확인·처리: ${row.target}`}))
+  const dialog=within(screen.getByRole('dialog'))
+  expect(dialog.getByRole('link',{name:'단지명으로 후보 검색'})).toHaveAttribute('href',`/admin/complexes?keyword=${encodeURIComponent('가람 & 나래')}`)
+  expect(dialog.queryByRole('link',{name:'단지·주택형 확인'})).not.toBeInTheDocument()
+})
+
+it('공고의 연결 단지 정보가 없으면 단지·주택형 관리 목록으로 연결한다', async () => {
+  fetchFailures.mockResolvedValue(page())
+  render(<IngestFailurePanel domain="announcement" executionId={null}/>, {wrapper:MemoryRouter})
+  fireEvent.click(await screen.findByRole('button',{name:`확인·처리: ${row.target}`}))
+  expect(within(screen.getByRole('dialog')).getByRole('link',{name:'단지·주택형 확인'})).toHaveAttribute('href','/admin/complexes')
+})
+
+it('연결된 단지가 있으면 같은 단지 관리 링크를 중복해서 만들지 않는다', async () => {
+  fetchFailures.mockResolvedValue(page([{...row,category:'household',reason:'HOUSING_TYPE_NOT_FOUND',productLinkStatus:'EXISTS',
+    raw:{complexName:'가람'},product:{id:7,name:'가람',resourceType:'complexes',deleted:false,hasCoordinates:true,
+      housingTypeCount:0,linkedComplexCount:null,supplyRowCount:null,applicationScheduleCount:null,attachmentCount:null,
+      applicationStartDate:null,applicationEndDate:null,applicationScheduleReviewed:null,
+      publicDetailAvailable:true,publicListEligible:true,listExclusionReasons:[]}}]))
+  render(<IngestFailurePanel domain="complex" executionId={null}/>, {wrapper:MemoryRouter})
+  fireEvent.click(await screen.findByRole('button',{name:`확인·처리: ${row.target}`}))
+  const dialog=within(screen.getByRole('dialog'))
+  expect(dialog.getByRole('link',{name:'단지 확인·수정'})).toHaveAttribute('href','/admin/complexes/7')
+  expect(dialog.queryByRole('link',{name:'단지명으로 후보 검색'})).not.toBeInTheDocument()
+  expect(dialog.queryByRole('link',{name:'단지·주택형 확인'})).not.toBeInTheDocument()
+})
+
+it.each([['complex','단지'],['announcement','공고']] as const)('%s 재실행은 저장된 원천 전체임을 안내하고 실행 중 중복 요청을 막는다', async (domain,label) => {
+  const onRetry=vi.fn()
+  fetchFailures.mockResolvedValue(page([{...row,category:domain}]))
+  const {rerender}=render(<IngestFailurePanel domain={domain} executionId="run-1" onRetry={onRetry}/>, {wrapper:MemoryRouter})
+  fireEvent.click(await screen.findByRole('button',{name:`확인·처리: ${row.target}`}))
+  const retry=within(screen.getByRole('dialog')).getByRole('button',{name:`${label} 정제 다시 실행`})
+  expect(retry).toHaveAccessibleDescription(`수정한 뒤 이 화면으로 돌아와 정제를 다시 실행하세요. 현재 저장된 ${label} 원천 전체가 대상이며, 다른 오류와 이미 처리한 데이터도 함께 정제합니다.`)
+  fireEvent.click(retry)
+  expect(onRetry).toHaveBeenCalledTimes(1)
+  rerender(<IngestFailurePanel domain={domain} executionId="run-1" onRetry={onRetry} retryDisabled/>)
+  expect(retry).toBeDisabled()
+  fireEvent.click(retry)
+  expect(onRetry).toHaveBeenCalledTimes(1)
+})
+
 it.each(['다음','목록 새로고침'])('%s 응답 중 표와 가로·세로 스크롤 위치를 유지한다', async action => {
   let complete:(result:FailureReviewPageData)=>void=()=>{}
   const pending=new Promise<FailureReviewPageData>(resolve=>{complete=resolve})
