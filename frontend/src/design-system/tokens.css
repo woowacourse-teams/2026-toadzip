@@ -1,8 +1,10 @@
 /* 공유 스타일 값의 원본. 사용 규칙: frontend/docs/design-system.md */
+@import "pretendard-gov/dist/web/variable/pretendardvariable-gov-dynamic-subset.css";
+
 :root {
-  --ds-font-family-base: "Pretendard GOV", Pretendard, -apple-system,
-    BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
-  --ds-font-family-ui: "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+  --ds-font-family-base: "Pretendard GOV Variable", "Pretendard GOV", -apple-system,
+    BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --ds-font-family-ui: var(--ds-font-family-base);
   --ds-text-body: 14px;
   --ds-text-caption: 13px;
   --ds-text-section: 16px;
