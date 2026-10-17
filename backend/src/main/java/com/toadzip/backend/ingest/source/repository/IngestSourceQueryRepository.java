@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.DeserializationFeature;
@@ -56,6 +57,22 @@ public class IngestSourceQueryRepository {
                 .query((row, index) -> item(row, sourceUrl)).list();
         long totalPages = (total + size - 1) / size;
         return new IngestSourcePageResponse(items, page, total, totalPages, (long) page + 1 < totalPages);
+    }
+
+    public List<Item> findAllByKey(IngestSourceCategory category, String sourceKey) {
+        return findOne(category, "source.source_key = :value", sourceKey);
+    }
+
+    public Optional<Item> findById(IngestSourceCategory category, long id) {
+        return findOne(category, "source.id = :value", id).stream().findFirst();
+    }
+
+    private List<Item> findOne(IngestSourceCategory category, String predicate, Object value) {
+        String query = "SELECT source.id, source.source_key AS source_key_value, source.name AS name_value, "
+                + "source.original_url AS original_url_value, source.collected_at, "
+                + "source.updated_at AS updated_at_value, source.raw_payload AS raw_value FROM ("
+                + IngestSourceRows.query(category) + ") source WHERE " + predicate + " ORDER BY source.id";
+        return jdbc.sql(query).param("value", value).query((row, index) -> item(row, null)).list();
     }
 
     private JdbcClient.StatementSpec statement(String sql, String keyword) {

@@ -2,6 +2,7 @@ package com.toadzip.backend.housing.dto.request;
 
 import com.toadzip.backend.housing.domain.AgencyCode;
 import com.toadzip.backend.housing.domain.RentalType;
+import com.toadzip.backend.admin.dto.AdminDocumentEvidence;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -24,4 +25,13 @@ public record AdminHousingComplexUpdateRequest(
         Boolean hasElevator,
         @NotNull @PositiveOrZero Integer totalParkingCount,
         @Size(max = 255) @Pattern(regexp = "^https?://[^\\s]+$") String overviewImageUrl,
-        @PositiveOrZero Integer moveOutCountLastYear) { }
+        @PositiveOrZero Integer moveOutCountLastYear,
+        @Valid AdminDocumentEvidence documentEvidence) {
+    public AdminHousingComplexUpdateRequest(Long version, String name, RentalType rentalType, AgencyCode agencyCode,
+            AdminHousingComplexCreateRequest.AddressRequest address, Integer totalHouseholdCount,
+            LocalDate completionDate, String heatingType, String buildingType, String corridorType,
+            Boolean hasElevator, Integer totalParkingCount, String overviewImageUrl, Integer moveOutCountLastYear) {
+        this(version, name, rentalType, agencyCode, address, totalHouseholdCount, completionDate, heatingType,
+                buildingType, corridorType, hasElevator, totalParkingCount, overviewImageUrl, moveOutCountLastYear, null);
+    }
+}

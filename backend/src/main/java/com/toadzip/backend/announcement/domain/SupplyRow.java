@@ -55,6 +55,10 @@ public class SupplyRow {
         adminModified = true;
     }
 
+    public void protectConditionsByAdmin() {
+        adminModified = true;
+    }
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

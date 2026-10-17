@@ -15,6 +15,13 @@ function setup() {
     <Route path="/admin/login" element={<h1>관리자 로그인</h1>} />
   </Routes></MemoryRouter>)
 }
+it('매일 하는 작업은 바로 보이고 수집 도구는 펼쳐서 찾을 수 있다', () => {
+  setup()
+  expect(screen.getByRole('link', { name: '검토할 데이터' })).toBeVisible()
+  expect(screen.getByRole('link', { name: '원천 데이터' })).not.toBeVisible()
+  fireEvent.click(screen.getByText('수집·원천 도구'))
+  expect(screen.getByRole('link', { name: '원천 데이터' })).toBeVisible()
+})
 it('메뉴를 펼치고 닫을 수 있으며 Escape로 닫으면 버튼으로 포커스가 돌아간다', () => {
   setup()
   const button = screen.getByRole('button', { name: '메뉴' })

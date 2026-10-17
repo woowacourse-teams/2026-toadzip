@@ -1,6 +1,7 @@
 package com.toadzip.backend.housing.service;
 
 import com.toadzip.backend.admin.domain.AdminDataChange;
+import com.toadzip.backend.admin.dto.AdminDocumentEvidence;
 import com.toadzip.backend.admin.dto.AdminChangeResponse;
 import com.toadzip.backend.admin.dto.AdminDataSummary;
 import com.toadzip.backend.admin.dto.AdminPage;
@@ -112,7 +113,8 @@ public class AdminHousingComplexManagementService {
                 request.overviewImageUrl(), request.moveOutCountLastYear());
         complex.reviseByAdmin(incoming);
         complexes.flush();
-        record(complex, "UPDATE", actor, before);
+        changes.save(new AdminDataChange("COMPLEX", id, "UPDATE", actor, before,
+                auditedData(data(complex), request.documentEvidence())));
         return detail(id);
     }
 
@@ -151,7 +153,7 @@ public class AdminHousingComplexManagementService {
         complex.noteHousingTypeRevisionByAdmin();
         complexes.flush();
         changes.save(new AdminDataChange("COMPLEX", id, "UPDATE_HOUSING_TYPE", actor, before,
-                json.writeValueAsString(housingTypeData(type))));
+                auditedData(housingTypeData(type), request.documentEvidence())));
         return detail(id);
     }
 
@@ -176,9 +178,12 @@ public class AdminHousingComplexManagementService {
         }
     }
 
-    private void record(HousingComplex complex, String action, String actor, String before) {
-        changes.save(new AdminDataChange("COMPLEX", complex.getId(), action, actor, before,
-                json.writeValueAsString(data(complex))));
+    private String auditedData(Object data, AdminDocumentEvidence evidence) {
+        var result = (tools.jackson.databind.node.ObjectNode) json.valueToTree(data);
+        if (evidence != null) {
+            result.set("documentEvidence", json.valueToTree(evidence));
+        }
+        return json.writeValueAsString(result);
     }
 
     private AdminDataSummary summary(HousingComplex complex) {

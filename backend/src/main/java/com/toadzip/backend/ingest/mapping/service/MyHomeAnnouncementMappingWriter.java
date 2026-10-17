@@ -257,6 +257,7 @@ public class MyHomeAnnouncementMappingWriter {
         }
         List<SupplyTarget> targets = supplyTargetRepository.findAllBySupplyRowIdIn(supplyRowIds).stream()
                 .filter(target -> isLhSource(target.getSourceSupplyTargetIdentifier()))
+                .filter(target -> !target.isAdminModified())
                 .toList();
         supplyTargetRepository.deleteAll(targets);
     }
@@ -366,7 +367,7 @@ public class MyHomeAnnouncementMappingWriter {
             }
             unchanged++;
         }
-        List<SupplyRow> staleRows = List.copyOf(storedRows.values());
+        List<SupplyRow> staleRows = storedRows.values().stream().filter(row -> !row.isAdminModified()).toList();
         deleteStaleRows(staleRows);
         return new SupplyRowsWriteResult(
                 created, updated, unchanged, staleRows.size(), failures, changedHousingTypeRowIds
