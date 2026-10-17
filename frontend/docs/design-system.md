@@ -32,6 +32,14 @@ UI 작업 전에 이 문서에서 기존 사용처를 찾고, 해당 코드와 �
 | 기관 약칭 배지의 글자·바탕 | `--ds-color-agency-{lh,sh,gh}-text`, `--ds-color-agency-{lh,sh,gh}-surface` |
 | 목록·필터 글꼴과 제목·본문·설명·금액 | `--ds-font-family-ui`, `--ds-text-*`, `--ds-line-height-*` |
 | 반복 간격·버튼 모서리·컨트롤 크기 | `--ds-space-*`, `--ds-radius-*`, `--ds-control-*`, `--ds-icon-*` |
+| 페이지 배경·전역 기본 글자·기본 테두리 | `--ds-color-page`, `--ds-color-text-base`, `--ds-color-muted-base`, `--ds-color-border-base` |
+| 아이콘 버튼 hover·브랜드 채움 hover | `--ds-color-control-hover`, `--ds-color-brand-hover` |
+| 상세 섹션 구분·표 머리·표 선 | `--ds-color-section-divider`, `--ds-color-table-heading`, `--ds-color-table-line` |
+| 접수 상태 배지 크기·여백·모서리 | `--ds-status-badge-*` |
+| 공개 지도 화면의 패널 폭·여백 | `.app-shell`의 `--explorer-*` (tokens.css에서 정의) |
+
+`--ds-color-text`·`--ds-color-muted`는 탐색 화면용, `--ds-color-text-base`·`--ds-color-muted-base`는
+`:root` 기본값과 랜딩·정책 페이지용으로 값이 다르다. 한 화면 안에서 두 계열을 섞지 않는다.
 
 현재 초록색 브랜드, 앰버색 공고중 배지, 파란색 접수중 배지는 서로 다른 역할이다. 같은 색상값을 쓰는 경우에도
 역할이 다른 토큰을 임의로 합치지 않는다. 기관색을 행동 버튼이나 접수 상태에 사용하지 않는다.
@@ -70,6 +78,27 @@ UI 작업 전에 이 문서에서 기존 사용처를 찾고, 해당 코드와 �
 - `font-synthesis: none`을 유지한다. 없는 굵기·기울임을 브라우저가 합성하지 않는다.
 - 글자 크기는 `--ds-text-*`를 먼저 사용한다. 금액·날짜·개수처럼 세로로 비교하는 숫자는 `font-variant-numeric: tabular-nums`를 사용한다.
 - Pretendard는 Noto Sans KR보다 자폭이 약간 좁다. 2026-10-15 전환 때 데스크톱(1440px)과 모바일(375px)에서 마커(92·150px), 필터 칩, 목록 카드, 하단 내비게이션의 줄바꿈·잘림이 늘지 않음을 확인했다.
+
+### 글꼴 통일 전 관찰 (2026-10-15)
+
+아래는 글꼴 통일 이전의 관찰과 당시 기준이다. 현재 글꼴과 웨이트 기준은 위 내용을 따른다.
+
+당시 글꼴 토큰과 실제 렌더링 결과는 달랐다. 2026-10-15 로컬 브라우저(macOS)에서 확인한 상태다.
+
+| 적용 범위 | 선언 | 실제 로드·렌더링 |
+|---|---|---|
+| `:root`·랜딩·정책 (`--ds-font-family-base`) | `"Pretendard GOV", Pretendard, -apple-system, …` | Pretendard 계열은 로드하지 않는다. macOS는 시스템 글꼴(Apple SD Gothic Neo), Windows는 `system-ui`로 맑은 고딕이 선택될 수 있다. |
+| 공개 지도 화면 `.app-shell` (`--ds-font-family-ui`) | `"Noto Sans KR", "Apple SD Gothic Neo", sans-serif` | [index.html](../index.html)의 Google Fonts에서 Noto Sans KR 400·500·700을 로드한다. |
+| 지도 마커 `.housing-map-marker` | `Pretendard, -apple-system, …`를 직접 선언 | Pretendard를 로드하지 않아 OS 시스템 글꼴로 대체된다. |
+| 코드·원문 텍스트 | `ui-monospace, …` | 시스템 고정폭 글꼴 |
+
+- 정적 웨이트는 400·500·700만 로드한다. 사용자 화면 CSS의 550·600·650·730·750·780·800·900은
+  `font-synthesis: none`이라 가장 가까운 로드 웨이트로 렌더링되며 의도한 굵기 차이가 나타나지 않는다.
+- 새 화면은 웨이트를 400(본문)·500(라벨·보조 강조)·700(`--ds-weight-strong`, 제목·금액·주 행동) 중에서 고른다.
+- 글자 크기는 `--ds-text-*`를 먼저 사용한다. 현재 토큰 밖의 고정 px은 9~28px에 걸쳐 남아 있으며
+  12px(배지·마커·작은 라벨)과 10·11px(모바일 하단 내비게이션)이 가장 많다.
+- 금액·날짜·개수처럼 세로로 비교하는 숫자는 `font-variant-numeric: tabular-nums`를 사용한다.
+- 한글 제목의 자간은 기존 사용처에 맞춰 `-0.025em`을 기본으로 하고, 랜딩 히어로처럼 큰 제목에서만 더 좁힌다.
 
 ## Button과 IconButton
 
@@ -279,6 +308,26 @@ AGENTS를 읽지 않는 도구에는 해당 도구의 저장소 진입 지침에
 - 오류·문서·이미지 등 기능별로만 사용되는 값은 가까운 CSS에 남는다. 새 공통 역할이 생길 때 추출한다.
 - 모든 버튼을 같은 모양으로 바꾸거나 모든 값을 토큰으로 만드는 것을 완료 기준으로 삼지 않는다.
 - 공통 적용 버튼의 좌우 여백은 기존 공고 필터 기준으로 맞췄다. 모바일 아이콘 버튼에도 공통 hover·focus·disabled 규칙을 제공한다.
+
+### 토큰 밖에 남은 값
+
+2026-10-15에 관리자(`src/admin/`)를 제외한 사용자 화면 CSS를 다시 집계한 결과다. 정리할 때 아래 순서로 사용처를 확인한다.
+새 코드에서 같은 값을 더 늘리지 않는다.
+
+| 영역 | 현재 상태 | 정리 기준 |
+|---|---|---|
+| 원시 색상 | [index.css](../src/index.css)에 hex 약 170개가 남아 있다. 모듈 중에는 [NotificationInterest](../src/public-housing/interest/NotificationInterest.module.css)가 독자적인 녹색 계열(`#277259`, `#263b33`, `#cbd9d0` 등)을 사용한다. | action·text·divider·surface 등 기존 역할 토큰으로 대응한다. 대응 역할이 없을 때만 토큰을 추가한다. |
+| 정의되지 않은 변수 | `var(--text)`가 index.css의 로컬 mock 상태와 NotificationInterest에서 쓰이지만 정의가 없어 상속 색으로 렌더링된다. | `--ds-color-text`로 교체한다. |
+| 호환 별칭 | `--focus`·`--border`·`--muted`·`--brand`·`--brand-dark`·`--surface`가 아직 60곳 이상에서 쓰인다. | 수정하는 파일에서 `--ds-*`로 옮긴다. 일괄 치환은 값이 다른 `--muted`(→`muted-base`)를 확인한 뒤 진행한다. |
+| 모서리 | 토큰 2종 외에 6·8·10·12·16·20px와 `999px`·`50%`가 고정값으로 쓰인다. | 컨트롤 8px, 아이콘 컨트롤 6px, 카드·시트 12px, 모달 16~20px, 원형·알약 `999px`의 역할로 묶을 후보다. |
+| 그림자 | 고정 `box-shadow` 약 50개, 녹색 기운(`rgb(20 35 25 / …)`)과 중성(`rgb(32 33 36 / …)`) 두 계열이 섞여 있다. | 지도 위 떠 있는 요소·팝오버·모달의 3단계로 묶을 후보다. |
+| 모션 | 120·150·180·200·220ms가 혼재한다. 220ms는 목록 패널, 150ms는 마커 확장의 계약이다. | 계약이 있는 값은 유지하고 나머지 상호작용 전환은 150ms 또는 220ms로 맞춘다. |
+| z-index | 1~5의 지역 값과 300·350·410·500·4100의 레이어 값이 파일마다 따로 있다. | 지도·패널·시트·모달·토스트 레이어 순서를 바꿀 때 한곳에서 확인할 수 있도록 정리한다. |
+| 중단점 | 767/768px와 1023/1024px가 주 기준이다. 600·420·640·720·900·1279·1600px는 개별 화면에만 쓰인다. | 새 화면은 767/768px와 1023/1024px, 패널 폭은 container 조건을 사용한다. |
+| 보조 버튼 | 흰 표면·구분선 테두리의 보조 버튼이 오류 재시도(index.css), 문서 미리보기 컨트롤, 알림 신청·취소, 거리뷰, 정책 동의 등 10곳 이상에서 각자 구현되어 있다. | 두 번째 사용처 기준을 충족했으므로 `Button`의 보조 변형 추출 후보다. |
+
+관리자 화면 스타일 약 700줄(`.admin-*`, `.lh-quality-*`, `.pipeline-*` 등)이 전역 index.css에 함께 있다.
+관리자 스타일은 이 시스템의 기준이 아니므로 사용자 화면에서 해당 클래스와 색(`#0f766e`, `#17685b`)을 재사용하지 않는다.
 
 ### 공고 첨부파일 확인
 
