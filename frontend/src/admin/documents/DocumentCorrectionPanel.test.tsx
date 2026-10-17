@@ -55,10 +55,12 @@ it('기존 수정안과 새 결과를 비교해 선택한 항목만 교체하고
   exchange.result = JSON.stringify({ ...JSON.parse(json) as object, proposals: [{ ...proposals[0], value: 130, quote: '전체 130세대' }] })
   fireEvent.click(screen.getByRole('button', { name: '자동 결과 가져오기' }))
   expect(screen.getByRole('region', { name: '가져온 수정안 비교' })).toBeVisible()
+  expect(screen.getByRole('region', { name: '가져온 수정안 비교' })).toHaveFocus()
   expect(screen.getByRole('button', { name: '선택한 0개 수정안 추가·교체' })).toBeDisabled()
   expect(mocks.requestManagementApi).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('checkbox', { name: '전체 세대수 가져오기' }))
   fireEvent.click(screen.getByRole('button', { name: '선택한 1개 수정안 추가·교체' }))
+  expect(screen.getByRole('button', { name: /3\s*확인·저장/ })).toHaveFocus()
   expect(screen.getByRole('checkbox', { name: '전체 세대수 원문 확인' })).not.toBeChecked()
   expect(screen.getByRole('checkbox', { name: '주차대수 원문 확인' })).not.toBeChecked()
   expect(JSON.parse((screen.getByLabelText('에이전트 결과 JSON') as HTMLTextAreaElement).value).proposals).toEqual(expect.arrayContaining([
@@ -100,6 +102,19 @@ it('잘못된 결과 파일은 기존 수정안·메모를 지우지 않고 올�
   fireEvent.click(screen.getByRole('button', { name: '가져오기 전 입력 복원' }))
   expect(screen.getByLabelText('확인 메모')).toHaveValue('보존할 메모')
   expect(screen.getByLabelText('에이전트 결과 JSON')).toHaveValue(json)
+})
+
+it('JSON 붙여넣기도 기존 수정안과 비교하고 취소하면 원래 입력을 유지한다', async () => {
+  await imported()
+  fireEvent.change(screen.getByLabelText('확인 메모'), { target: { value: '원래 메모' } })
+  fireEvent.click(screen.getByRole('button', { name: '수정안 계속 작성' }))
+  fireEvent.change(screen.getByLabelText('에이전트 결과 JSON'), { target: { value: JSON.stringify({ ...JSON.parse(json) as object, proposals: [proposals[1]] }) } })
+  fireEvent.click(screen.getByRole('button', { name: '결과 검증' }))
+  expect(screen.getByRole('region', { name: '가져온 수정안 비교' })).toHaveFocus()
+  fireEvent.click(screen.getByRole('button', { name: '이번 결과 가져오기 취소' }))
+  expect(screen.getByLabelText('에이전트 결과 JSON')).toHaveValue(json)
+  expect(screen.getByLabelText('확인 메모')).toHaveValue('원래 메모')
+  expect(mocks.requestManagementApi).not.toHaveBeenCalled()
 })
 
 it('명시적으로 보관할 때만 원본과 작업을 보관하고 DB 수정 API는 호출하지 않는다', async () => {

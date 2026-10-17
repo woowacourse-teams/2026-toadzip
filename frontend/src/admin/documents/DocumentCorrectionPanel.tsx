@@ -54,10 +54,11 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
   const stepNav = useRef<HTMLOListElement>(null)
   const previousPhase = useRef(phase)
   useEffect(() => {
-    if (previousPhase.current === phase) return
+    if (previousPhase.current === phase && !review) return
     previousPhase.current = phase
+    if (incomingReview) return
     stepNav.current?.querySelector<HTMLButtonElement>('[aria-current="step"]')?.focus()
-  }, [phase])
+  }, [phase, incomingReview, review])
   const workspaceBusy = Boolean(busy) || sharedBusy || exchangeBusy || Boolean(incomingReview)
   const resultContext = `${target.key}:${target.version}:${extracted?.sha256 ?? ''}`
   useEffect(() => { onBusyChange(Boolean(busy) || archiveBusy || sharedBusy || exchangeBusy || Boolean(incomingReview)) }, [busy, archiveBusy, sharedBusy, exchangeBusy, incomingReview, onBusyChange])
@@ -102,7 +103,17 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
   }
   function validate(text = json) {
     if (!extracted) return
-    try { const result = parseReviewResult(text, target, extracted); setReview(result); setChecked([]); setError(''); setPhase('confirm') }
+    try {
+      const result = parseReviewResult(text, target, extracted)
+      if (!review && resultBackup?.context === resultContext) {
+        let previous: ReviewResult | null = null
+        try { previous = parseReviewResult(resultBackup.json, target, extracted) } catch { /* Raw input can still be restored without a valid previous review. */ }
+        if (previous?.proposals.length) {
+          setJson(resultBackup.json); setNote(resultBackup.note); setReview(previous); setIncomingReview(result); setChecked([]); setError(''); setPhase('confirm'); return
+        }
+      }
+      setReview(result); setChecked([]); setError(''); setPhase('confirm')
+    }
     catch (cause) { setReview(null); setChecked([]); setError(cause instanceof Error ? cause.message : '결과를 확인하지 못했습니다.') }
   }
   function applyIncoming(result: ReviewResult) {

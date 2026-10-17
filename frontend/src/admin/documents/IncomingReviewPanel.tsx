@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { display } from '../management/fields'
 import type { ReviewResult, ReviewTarget } from './documentReview'
 import styles from './DocumentReview.module.css'
@@ -8,6 +8,8 @@ export function IncomingReviewPanel({ current, incoming, target, onApply, onCanc
   onApply: (result: ReviewResult) => void; onCancel: () => void
 }) {
   const [selected, setSelected] = useState<string[]>([])
+  const panel = useRef<HTMLElement>(null)
+  useEffect(() => { panel.current?.focus() }, [])
   function mergeSelected() {
     const added = incoming.proposals.filter(proposal => selected.includes(proposal.field))
     const proposals = [...current.proposals.filter(proposal => !selected.includes(proposal.field)), ...added]
@@ -16,7 +18,7 @@ export function IncomingReviewPanel({ current, incoming, target, onApply, onCanc
       .filter(item => !confirmedFields.has(item.field)).map(item => [item.field, item]))
     onApply({ proposals, unresolved: [...unresolved.values()] })
   }
-  return <section className={styles.card} aria-label="가져온 수정안 비교">
+  return <section ref={panel} tabIndex={-1} className={styles.card} aria-label="가져온 수정안 비교">
     <h3>기존 수정안과 가져온 결과를 비교하세요</h3>
     <p>기존 {current.proposals.length}개 · 가져온 수정안 {incoming.proposals.length}개 · 보류 {incoming.unresolved.length}개. 선택한 항목만 추가하며 같은 항목은 새 근거로 교체합니다.</p>
     {incoming.proposals.map(proposal => {
