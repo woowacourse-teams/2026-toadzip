@@ -13,6 +13,7 @@ import { PdfTablePanel } from './PdfTablePanel'
 import { SharedDraftPanel } from './SharedDraftPanel'
 import { sharedDraftFile, type SharedDraft } from './sharedDraftApi'
 import { FolderExchangePanel } from './FolderExchangePanel'
+import { IncomingReviewPanel } from './IncomingReviewPanel'
 
 const PdfPreview = lazy(() => import('../../public-housing/components/PdfDocumentPreview'))
 
@@ -30,6 +31,8 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
   const [extracted, setExtracted] = useState<ExtractedDocument | null>(null)
   const [json, setJson] = useState('')
   const [review, setReview] = useState<ReviewResult | null>(null)
+  const [incomingReview, setIncomingReview] = useState<ReviewResult | null>(null)
+  const [resultBackup, setResultBackup] = useState<{ context: string; json: string; note: string } | null>(null)
   const [checked, setChecked] = useState<string[]>([])
   const [note, setNote] = useState('')
   const [method, setMethod] = useState<'manual' | 'agent'>('manual')
@@ -55,8 +58,9 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
     previousPhase.current = phase
     stepNav.current?.querySelector<HTMLButtonElement>('[aria-current="step"]')?.focus()
   }, [phase])
-  const workspaceBusy = Boolean(busy) || sharedBusy || exchangeBusy
-  useEffect(() => { onBusyChange(Boolean(busy) || archiveBusy || sharedBusy || exchangeBusy) }, [busy, archiveBusy, sharedBusy, exchangeBusy, onBusyChange])
+  const workspaceBusy = Boolean(busy) || sharedBusy || exchangeBusy || Boolean(incomingReview)
+  const resultContext = `${target.key}:${target.version}:${extracted?.sha256 ?? ''}`
+  useEffect(() => { onBusyChange(Boolean(busy) || archiveBusy || sharedBusy || exchangeBusy || Boolean(incomingReview)) }, [busy, archiveBusy, sharedBusy, exchangeBusy, incomingReview, onBusyChange])
   useEffect(() => {
     mounted.current = true
     return () => {
@@ -67,7 +71,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
   }, [])
   useUnsavedChanges(Boolean(json.trim() || review?.proposals.length || manualDirty || note.trim()))
 
-  function clearReview() { setReview(null); setChecked([]); setJson(''); setError('') }
+  function clearReview() { setReview(null); setIncomingReview(null); setResultBackup(null); setChecked([]); setJson(''); setError('') }
   async function selectFile(file: File) {
     request.current?.abort(); void sessionRef.current?.destroy().catch(() => {})
     if (previewRef.current) URL.revokeObjectURL(previewRef.current)
@@ -101,6 +105,32 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
     try { const result = parseReviewResult(text, target, extracted); setReview(result); setChecked([]); setError(''); setPhase('confirm') }
     catch (cause) { setReview(null); setChecked([]); setError(cause instanceof Error ? cause.message : '결과를 확인하지 못했습니다.') }
   }
+  function applyIncoming(result: ReviewResult) {
+    if (!extracted) return
+    const text = JSON.stringify({ schemaVersion: 'document-review/v1', targetKey: target.key,
+      version: target.version, sha256: extracted.sha256, ...result }, null, 2)
+    try {
+      const validated = parseReviewResult(text, target, extracted)
+      if (json.trim() && json !== text) setResultBackup({ context: resultContext, json, note })
+      setJson(text); setReview(validated); setChecked([]); setIncomingReview(null); setMethod('agent'); setPhase('confirm'); setError('')
+      setDraftNotice(json.trim() && json !== text ? '가져온 결과를 반영했습니다. 이전 입력은 이 화면에서 복원할 수 있습니다. 원문 확인과 DB 저장은 별도로 진행하세요.' : '가져온 결과를 반영했습니다. 원문 확인과 DB 저장은 별도로 진행하세요.')
+    } catch (cause) { setError(cause instanceof Error ? cause.message : '수정안을 반영하지 못했습니다.') }
+  }
+  function importAgentResult(text: string) {
+    if (!extracted) return
+    try {
+      const incoming = parseReviewResult(text, target, extracted)
+      if (review?.proposals.length) { setIncomingReview(incoming); setPhase('confirm'); setError('') }
+      else applyIncoming(incoming)
+    } catch (cause) { setError(cause instanceof Error ? cause.message : '결과를 확인하지 못했습니다.') }
+  }
+  function restorePreviousResult() {
+    if (!resultBackup || resultBackup.context !== resultContext || !extracted) return
+    setJson(resultBackup.json); setNote(resultBackup.note); setChecked([]); setIncomingReview(null); setResultBackup(null); setError('')
+    try { setReview(parseReviewResult(resultBackup.json, target, extracted)); setPhase('confirm') }
+    catch { setReview(null); setPhase('draft') }
+    setDraftNotice('가져오기 전 입력을 복원했습니다. 수정안 검증과 원문 확인을 다시 진행하세요.')
+  }
   function addProposal(proposal: ReviewResult['proposals'][number]) {
     if (!extracted) return
     const proposals = [...(review?.proposals.filter(item => item.field !== proposal.field) ?? []), proposal]
@@ -122,7 +152,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
       const url = URL.createObjectURL(file); previewRef.current = url; setPreviewUrl(url)
       originalFile.current = file; sessionRef.current = opened; setSession(opened); opened = null
       setPages(draft.pages); setSourceUrl(draft.sourceUrl); setExtracted(document); setJson(draft.resultJson)
-      setNote(draft.note); setReview(null); setChecked([]); setConflict(false); setError(''); setMethod('agent')
+      setNote(draft.note); setReview(null); setIncomingReview(null); setResultBackup(null); setChecked([]); setConflict(false); setError(''); setMethod('agent')
       setPhase('draft'); setToolsOpen(false)
       setDraftNotice(draft.documentVersion === target.version ? '공유 입력을 복원했습니다. 수정안 검증과 원문 확인을 다시 수행하세요.' : '공유 작업 이후 DB 버전이 바뀌었습니다. 원본·입력만 복원했으며 최신 값으로 수정안을 다시 작성해야 합니다.')
     } finally { await opened?.destroy().catch(() => {}) }
@@ -158,7 +188,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
       const url = URL.createObjectURL(file); previewRef.current = url; setPreviewUrl(url); setPreview(false)
       sessionRef.current = opened; originalFile.current = file; setSession(opened); setPages(draft.pages)
         pendingSession = null
-      setExtracted(document); setSourceUrl(draft.sourceUrl); setJson(draft.json); setNote(draft.note); setReview(null); setChecked([]); setConflict(false)
+      setExtracted(document); setSourceUrl(draft.sourceUrl); setJson(draft.json); setNote(draft.note); setReview(null); setIncomingReview(null); setResultBackup(null); setChecked([]); setConflict(false)
       setMethod(draft.json ? 'agent' : 'manual')
       setPhase('draft'); setToolsOpen(false)
       setDraftNotice(draft.version === target.version ? '작업을 복원했습니다. OCR 자료는 다시 OCR 처리하고 수정안을 검증한 뒤 원문과 대조해 선택하세요.' : '작업 이후 DB 버전이 바뀌었습니다. 원본·입력만 복원했습니다. 최신 값으로 수정안을 다시 작성해 주세요.')
@@ -176,7 +206,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
     finally { if (mounted.current && !controller.signal.aborted) setBusy('') }
   }
   async function resultFile(file: File) {
-    clearReview()
+    setError('')
     if (file.size > 1000000) { setError('결과 JSON은 1MB 이하여야 합니다.'); return }
     setBusy('결과 파일 읽는 중…')
     try {
@@ -185,7 +215,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
       if (isRecord(envelope) && envelope.schemaVersion === 'document-exchange/v1' && isRecord(envelope.result)) {
         text = JSON.stringify(envelope.result)
       }
-      if (mounted.current) { setJson(text); validate(text) }
+      if (mounted.current) importAgentResult(text)
     } catch { if (mounted.current) setError('결과 파일을 읽지 못했습니다.') }
     finally { if (mounted.current) setBusy('') }
   }
@@ -271,7 +301,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
         <p className={styles.hint}>다운로드한 파일을 사용하는 에이전트에 전달하세요. 현재값·허용 항목·페이지 근거·응답 형식이 포함됩니다.</p>
         <FolderExchangePanel key={`${target.key}:${target.version}:${extracted.sha256}`} target={target} document={extracted} sourceUrl={sourceUrl}
           disabled={Boolean(busy) || sharedBusy || conflict || detail.summary.deleted || !safeDocumentUrl(sourceUrl)} onBusyChange={setExchangeBusy}
-          onResult={text => { setJson(text); setMethod('agent'); validate(text) }} /></div>
+          onResult={importAgentResult} /></div>
         {method === 'manual' ? <PdfTablePanel key={`${target.key}:${extracted.sha256}:${pages}`} target={target} document={extracted} disabled={workspaceBusy || conflict || detail.summary.deleted} onAdded={addProposal} /> : null}
         {method === 'agent' ? <fieldset className={styles.inputs} disabled={workspaceBusy || conflict || detail.summary.deleted}>
           <legend className={styles.srOnly}>에이전트 결과</legend>
@@ -280,13 +310,15 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
             const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void resultFile(file)
           }} /></label>
           <label>에이전트 결과 JSON<textarea rows={4} value={json} spellCheck={false} onChange={event => {
+            if (review && json.trim()) setResultBackup({ context: resultContext, json, note })
             setJson(event.target.value); setReview(null); setChecked([]); setError('')
           }} /></label>
           <button type="button" disabled={!json.trim()} onClick={() => validate()}>결과 검증</button>
         </fieldset> : null}
         <div hidden={method !== 'manual'}><ManualProposal key={target.key} target={target} document={extracted} onDirtyChange={setManualDirty} disabled={workspaceBusy || conflict || detail.summary.deleted} onAdded={addProposal} /></div>
       </section>
-      {review ? <section className={`${styles.card} ${styles.review}`} hidden={phase !== 'confirm'} aria-label="수정안 검토"><header className={styles.cardHeading}><div><span className={styles.eyebrow}>최종 확인</span><h3>원문과 대조 후 선택 반영</h3></div><span className={styles.badge}>{checked.length}/{review.proposals.length}개 확인</span></header><button type="button" disabled={workspaceBusy} onClick={() => setPhase('draft')}>수정안 계속 작성</button>
+      {phase === 'confirm' && incomingReview && review ? <IncomingReviewPanel current={review} incoming={incomingReview} target={target} onApply={applyIncoming} onCancel={() => { setIncomingReview(null); setPhase('draft') }} /> : null}
+      {review ? <section className={`${styles.card} ${styles.review}`} hidden={phase !== 'confirm' || Boolean(incomingReview)} aria-label="수정안 검토"><header className={styles.cardHeading}><div><span className={styles.eyebrow}>최종 확인</span><h3>원문과 대조 후 선택 반영</h3></div><span className={styles.badge}>{checked.length}/{review.proposals.length}개 확인</span></header><button type="button" disabled={workspaceBusy} onClick={() => setPhase('draft')}>수정안 계속 작성</button>
         {review.unresolved.length ? <div className={styles.warning}><strong>보류 항목</strong><ul>{review.unresolved.map((item, index) => <li key={index}>{item.field}: {item.reason}</li>)}</ul></div> : null}
         {!review.proposals.length ? <p>반영할 확정 수정안이 없습니다.</p> : <p>원문에서 값·단위·적용 대상을 확인한 항목만 선택하세요.</p>}
         {review.proposals.map(proposal => {
@@ -306,6 +338,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
           <button type="button" disabled={Boolean(busy)} onClick={() => downloadText(json, `document-review-result-${detail.summary.id}.json`)}>검토 결과 다운로드</button></div>
       </section> : null}
     </div> : null}
+    {resultBackup?.context === resultContext ? <div className={`${styles.callout} ${styles.resultBackup}`}><p>가져오기 전 수정안·메모가 이 화면에 보관되어 있습니다. 새로고침하면 사라지므로 필요한 작업은 별도로 보관하세요.</p><button type="button" disabled={workspaceBusy} onClick={restorePreviousResult}>가져오기 전 입력 복원</button></div> : null}
     {error ? <p className={styles.error} role="alert">{error}</p> : null}
   </section>
 }

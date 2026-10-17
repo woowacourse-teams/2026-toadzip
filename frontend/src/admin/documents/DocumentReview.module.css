@@ -94,6 +94,8 @@
 @media (max-width: 600px) { .panel { gap: 18px; } .panel .card { padding: 18px; } .panel h1 { font-size: 25px; } .workflow { gap: 12px 16px; padding: 14px; } .workflow :is(li, span) { gap: 6px; font-size: 12px; } .workflow b { width: 22px; height: 22px; } .entryRow { grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--ds-color-divider); } .entryRow > label:nth-of-type(2) { grid-column: 2; } .entryRow > button { grid-column: 3; grid-row: 1; } .rowNumber { padding-top: 0; } .footer > button { width: 100%; } }
 /* Guided PDF review: keep the current step visible and tools secondary. */
 .panel [hidden] { display:none!important; }
+.panel code { display:block; overflow-wrap:anywhere; white-space:normal; font-size:var(--ds-text-caption); }
+.resultBackup { flex-wrap:wrap; }
 .panel .stepNav { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0; padding:0; border-radius:12px; overflow:hidden; }
 .stepNav li { min-width:0; }
 .panel .stepNav button { width:100%; min-height:86px; padding:18px 20px; display:flex; align-items:center; gap:12px; border:0; border-radius:0; background:transparent; text-align:left; }
