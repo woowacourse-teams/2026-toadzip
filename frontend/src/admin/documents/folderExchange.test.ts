@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { parseExchangeResult, readExchangeResult, writeExchangeRequest, type ExchangeDirectory } from './folderExchange'
+import { parseExchangeResult, readExchangeResult, readExchangeWorker, readExchangeProgress, writeExchangeRequest, type ExchangeDirectory } from './folderExchange'
 import type { ReviewTarget } from './documentReview'
 const target: ReviewTarget = { key: 'complexes:7:basic', label: '단지 전체', version: 2, endpoint: '/', current: {}, body: {},
   fields: [{ name: 'totalHouseholdCount', label: '전체 세대수', type: 'number', unit: '세대', scope: '단지 전체' }] }
@@ -35,4 +35,25 @@ it('결과 없음은 대기하고 처리 오류 파일은 명시적인 실패로
     return { getFile: async () => ({ size: 50, text: async () => JSON.stringify({ requestId: 'current', message: '로그인 필요' }) }) }
   })
   await expect(readExchangeResult(directory, request, target, document)).rejects.toThrow('로그인 필요')
+})
+
+it('선택한 폴더의 최신 처리 도구만 연결됨으로 판단하고 끊어진 연결은 구분한다', async () => {
+  const now = Date.now()
+  let content = JSON.stringify({ schemaVersion: 'document-exchange-worker/v1', workerId: 'worker', updatedAt: new Date(now).toISOString() })
+  const directory = { name: '전용', getFileHandle: vi.fn(async () => ({ getFile: async () => ({ size: content.length, text: async () => content }) })) }
+  expect(await readExchangeWorker(directory as unknown as ExchangeDirectory, now)).toEqual({ workerId: 'worker' })
+  expect(await readExchangeWorker(directory as unknown as ExchangeDirectory, now + 21000)).toBeNull()
+  content = '{"schemaVersion":"wrong"}'
+  await expect(readExchangeWorker(directory as unknown as ExchangeDirectory, now)).rejects.toThrow(/연결 상태/)
+})
+
+it('다른 요청의 진행 상태는 거부하고 이전 처리 도구의 중단된 요청을 구분한다', async () => {
+  let requestId = 'one'
+  const directory = { name: '전용', getFileHandle: vi.fn(async () => ({ getFile: async () => ({ size: 100,
+    text: async () => JSON.stringify({ schemaVersion: 'document-exchange-status/v1', requestId, workerId: 'old', state: 'processing' }) }) })) }
+  const request = { id: 'one', requestFile: 'q', resultFile: 'r', errorFile: 'e' }
+  expect(await readExchangeProgress(directory as unknown as ExchangeDirectory, request, { workerId: 'old' })).toBe('processing')
+  expect(await readExchangeProgress(directory as unknown as ExchangeDirectory, request, { workerId: 'new' })).toBe('interrupted')
+  requestId = 'other'
+  await expect(readExchangeProgress(directory as unknown as ExchangeDirectory, request, { workerId: 'old' })).rejects.toThrow(/다른 요청/)
 })

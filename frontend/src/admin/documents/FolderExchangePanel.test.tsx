@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { FolderExchangePanel } from './FolderExchangePanel'
 import type { ReviewTarget } from './documentReview'
-const mocks = vi.hoisted(() => ({ pickExchangeDirectory: vi.fn(), writeExchangeRequest: vi.fn(), readExchangeResult: vi.fn() }))
+const mocks = vi.hoisted(() => ({ pickExchangeDirectory: vi.fn(), writeExchangeRequest: vi.fn(), readExchangeResult: vi.fn(), readExchangeWorker: vi.fn(), readExchangeProgress: vi.fn() }))
 vi.mock('./folderExchange', () => mocks)
 const target: ReviewTarget = { key: 'complexes:7:basic', version: 1, label: '단지', endpoint: '/', fields: [], current: {}, body: {} }
 const document = { fileName: '공고.pdf', sha256: 'a'.repeat(64), totalPages: 1, pages: [] }
@@ -11,6 +11,8 @@ beforeEach(() => {
   mocks.pickExchangeDirectory.mockResolvedValue({ name: '연동 전용' })
   mocks.writeExchangeRequest.mockResolvedValue({ id: 'one', requestFile: 'request.json', resultFile: 'result.json' })
   mocks.readExchangeResult.mockResolvedValue(null)
+  mocks.readExchangeWorker.mockResolvedValue({ workerId: 'worker' })
+  mocks.readExchangeProgress.mockResolvedValue('waiting')
 })
 afterEach(() => vi.useRealTimers())
 async function setup() {
@@ -23,7 +25,7 @@ async function setup() {
 it('폴더 선택 취소는 다시 시작하는 방법을 한국어로 안내한다', async () => {
   mocks.pickExchangeDirectory.mockRejectedValue(new DOMException('User aborted', 'AbortError'))
   await setup()
-  expect(screen.getByText(/폴더 선택을 취소했습니다/)).toBeVisible()
+  expect(screen.getByText(/폴더 연결을 완료하지 못했습니다/)).toBeVisible()
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: '연동 폴더 선택' })).toBeEnabled()
 })
@@ -50,4 +52,38 @@ it('10분 동안 결과가 없으면 상태를 안내하고 대기를 종료한�
   await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60 * 1000 + 1500) })
   expect(screen.getByRole('alert')).toHaveTextContent('10분')
   expect(screen.queryByRole('button', { name: '결과 대기 중지' })).not.toBeInTheDocument()
+})
+
+it('처리 도구가 없으면 요청을 보내지 않고 연결된 뒤에만 전송을 허용한다', async () => {
+  mocks.readExchangeWorker.mockResolvedValue(null)
+  await setup()
+  expect(screen.getByRole('button', { name: '요청 전달·결과 대기' })).toBeDisabled()
+  expect(mocks.writeExchangeRequest).not.toHaveBeenCalled()
+  mocks.readExchangeWorker.mockResolvedValue({ workerId: 'worker' })
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '처리 도구 연결 다시 확인' })) })
+  expect(screen.getByText('처리 도구 연결됨')).toBeVisible()
+  expect(screen.getByRole('button', { name: '요청 전달·결과 대기' })).toBeEnabled()
+})
+
+it('접수 후 처리 상태를 표시하고 실패 재시도에는 새 요청을 작성한다', async () => {
+  mocks.readExchangeProgress.mockResolvedValue('processing')
+  const imported = await setup()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '요청 전달·결과 대기' })) })
+  expect(screen.getByText(/요청을 접수해 Codex로 처리 중/)).toBeVisible()
+  mocks.readExchangeResult.mockRejectedValueOnce(new Error('로그인 실패'))
+  await act(async () => { await vi.advanceTimersByTimeAsync(1500) })
+  expect(screen.getByRole('alert')).toHaveTextContent('로그인 실패')
+  mocks.readExchangeResult.mockResolvedValue('{"proposals":[]}')
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '새 요청으로 다시 시도' })) })
+  expect(mocks.writeExchangeRequest).toHaveBeenCalledTimes(2)
+  expect(imported).toHaveBeenCalledOnce()
+})
+
+it('중단된 이전 처리 도구의 요청은 덮어쓰지 않고 새 요청을 안내한다', async () => {
+  mocks.readExchangeProgress.mockResolvedValue('interrupted')
+  const imported = await setup()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '요청 전달·결과 대기' })) })
+  expect(screen.getByRole('alert')).toHaveTextContent('도구가 중단되거나 바뀌었습니다')
+  expect(screen.getByRole('button', { name: '새 요청으로 다시 시도' })).toBeEnabled()
+  expect(imported).not.toHaveBeenCalled()
 })

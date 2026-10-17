@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
-import { parseRequest, processRequest } from '../../scripts/admin-review-exchange.mjs'
+import { parseRequest, processRequest, scanRequests } from '../../scripts/admin-review-exchange.mjs'
 
 const root = fileURLToPath(new URL('../../.local/admin-review-exchange-tests/', import.meta.url))
 async function fixture() {
@@ -40,4 +40,32 @@ test('경로 이탈·다른 요청·과도한 자료를 거부한다', async () 
   assert.throws(() => parseRequest('null', fileName))
   assert.throws(() => parseRequest(JSON.stringify({ schemaVersion: 'document-exchange/v1', requestId: id,
     packet: { ...packet, document: { ...packet.document, pages: Array.from({ length: 51 }, () => ({ page: 1, text: '' })) } } }), fileName))
+})
+
+test('작성 중인 요청이 완성되면 다시 감지하고 완료한 요청은 한 번만 처리한다', async () => {
+  const { directory, fileName, packet, id } = await fixture()
+  const content = await readFile(join(directory, fileName), 'utf8')
+  const state = { finished: new Set(), warned: new Set() }; let calls = 0
+  const agent = async () => { calls++; return { schemaVersion: 'document-review/v1', targetKey: packet.targetKey,
+    version: packet.version, sha256: packet.document.sha256, proposals: [], unresolved: [] } }
+  await writeFile(join(directory, fileName), '')
+  await scanRequests(directory, state, agent)
+  await writeFile(join(directory, fileName), '{"schemaVersion":')
+  await scanRequests(directory, state, agent)
+  assert.equal(calls, 0)
+  await writeFile(join(directory, fileName), content)
+  await scanRequests(directory, state, agent)
+  await scanRequests(directory, state, agent)
+  assert.equal(calls, 1)
+  assert.equal(JSON.parse(await readFile(join(directory, `review-${id}.result.json`), 'utf8')).requestId, id)
+})
+
+test('실제 에이전트를 실행하기 전에 같은 요청의 처리 상태를 발행한다', async () => {
+  const { directory, fileName, packet, id } = await fixture()
+  await processRequest(directory, fileName, async () => {
+    const status = JSON.parse(await readFile(join(directory, `review-${id}.status.json`), 'utf8'))
+    assert.equal(status.requestId, id); assert.equal(status.workerId, 'worker-test'); assert.equal(status.state, 'processing')
+    return { schemaVersion: 'document-review/v1', targetKey: packet.targetKey, version: packet.version,
+      sha256: packet.document.sha256, proposals: [], unresolved: [] }
+  }, 'worker-test')
 })
