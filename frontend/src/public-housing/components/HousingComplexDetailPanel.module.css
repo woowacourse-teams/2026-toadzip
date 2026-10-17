@@ -54,20 +54,19 @@
   outline-offset: -3px;
 }
 
-/* 회색 바탕 위에 흰 섹션 블록을 쌓고, 블록 사이 간격으로 섹션을 구분한다. */
+/* 스크롤바 영역도 흰 바탕을 유지하고 섹션의 위쪽 구분선만 회색으로 둔다. */
 .scroll {
   display: flex;
   min-width: 0;
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  gap: var(--ds-space-3);
+  gap: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: var(--ds-space-3);
-  /* 스크롤바 폭을 양쪽에 같이 두어 블록 좌우 여백을 맞춘다. */
-  scrollbar-gutter: stable both-edges;
-  background: var(--ds-color-section-divider);
+  padding: 0;
+  scrollbar-gutter: stable;
+  background: var(--ds-color-surface);
   /* 블록 안의 표는 칸 배경 없이 가로선만 쓴다. */
   --ds-color-table-heading: var(--ds-color-surface);
   overscroll-behavior: contain;
@@ -77,8 +76,8 @@
 
 .identity {
   flex: 0 0 auto;
-  padding: var(--ds-space-5);
-  border-radius: 16px;
+  padding: var(--ds-space-4);
+  border-radius: 0;
   background: var(--ds-color-surface);
 }
 
@@ -86,8 +85,8 @@
   display: grid;
   min-height: 224px;
   overflow: hidden;
-  border-radius: 16px 16px 0 0;
-  margin: calc(-1 * var(--ds-space-5)) calc(-1 * var(--ds-space-5)) var(--ds-space-5);
+  border-radius: 0;
+  margin: calc(-1 * var(--ds-space-4)) calc(-1 * var(--ds-space-4)) var(--ds-space-4);
   background: var(--ds-color-surface-subtle);
   gap: var(--ds-space-1);
   grid-auto-flow: column;
@@ -121,21 +120,13 @@
 }
 
 .identityType strong {
-  display: inline-flex;
-  min-height: var(--ds-status-badge-min-height);
-  align-items: center;
-  padding: 0 6px;
-  border-radius: var(--ds-status-badge-radius);
-  background: var(--ds-color-surface-subtle);
   color: var(--ds-color-label);
-  font-size: var(--ds-status-badge-font-size);
   font-weight: var(--ds-weight-strong);
-  line-height: 1;
 }
 
-.identityType strong[data-agency='LH'] { background: var(--ds-color-agency-lh-surface); color: var(--ds-color-agency-lh-text); }
-.identityType strong[data-agency='SH'] { background: var(--ds-color-agency-sh-surface); color: var(--ds-color-agency-sh-text); }
-.identityType strong[data-agency='GH'] { background: var(--ds-color-agency-gh-surface); color: var(--ds-color-agency-gh-text); }
+.identityType strong[data-agency='LH'] { color: var(--ds-color-agency-lh); }
+.identityType strong[data-agency='SH'] { color: var(--ds-color-agency-sh); }
+.identityType strong[data-agency='GH'] { color: var(--ds-color-agency-gh); }
 
 .address {
   margin: 0;
@@ -149,7 +140,7 @@
 .identityActions {
   display: flex;
   gap: var(--ds-space-2);
-  margin-top: var(--ds-space-5);
+  margin-top: var(--ds-space-4);
 }
 
 .identityActions > * {

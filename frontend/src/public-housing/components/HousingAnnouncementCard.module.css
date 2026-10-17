@@ -1,7 +1,7 @@
 .card {
   position: relative;
   min-width: 0;
-  padding-block: 12px 18px;
+  padding-block: var(--ds-space-3) var(--ds-space-4);
   padding-inline: var(--list-inset, 28px);
   padding-left: var(--list-start-inset, var(--list-inset, 28px));
   background: var(--ds-color-surface);
@@ -55,15 +55,15 @@
 }
 
 .agency[data-agency-tone='lh'] {
-  color: var(--ds-color-agency-lh-text);
+  color: var(--ds-color-agency-lh);
 }
 
 .agency[data-agency-tone='sh'] {
-  color: var(--ds-color-agency-sh-text);
+  color: var(--ds-color-agency-sh);
 }
 
 .agency[data-agency-tone='gh'] {
-  color: var(--ds-color-agency-gh-text);
+  color: var(--ds-color-agency-gh);
 }
 
 .titleRow {
@@ -102,7 +102,7 @@
 
 .schedule {
   min-width: 0;
-  margin-top: 10px;
+  margin-top: var(--ds-space-2);
 }
 
 .period {
@@ -113,9 +113,9 @@
 .periodRow {
   display: grid;
   min-width: 0;
-  align-items: center;
-  gap: 8px;
-  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--ds-space-3);
+  grid-template-columns: max-content minmax(0, 1fr);
 }
 
 .period dt {
@@ -123,12 +123,14 @@
   font-size: var(--ds-text-caption);
   font-weight: 500;
   line-height: 1.5;
+  white-space: nowrap;
 }
 
 .periodValues {
   display: flex;
   min-width: 0;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 4px;
   margin: 0;
   color: var(--list-text, var(--ds-color-text));
@@ -215,19 +217,6 @@
   outline-offset: -4px;
 }
 
-@container housing-list (max-width: 400px) {
-  .periodRow {
-    gap: 6px;
-    grid-template-columns: 80px minmax(0, 1fr);
-  }
-}
-
-@container housing-list (max-width: 340px) {
-  .periodRow {
-    grid-template-columns: 72px minmax(0, 1fr);
-  }
-}
-
 .visuallyHidden {
   position: absolute;
   width: 1px;
@@ -243,12 +232,6 @@
 @container housing-list (max-width: 380px) {
   .context {
     flex-wrap: wrap;
-  }
-
-  .periodRow {
-    align-items: start;
-    gap: 4px;
-    grid-template-columns: minmax(0, 1fr);
   }
 
 }

@@ -11,9 +11,9 @@
 
 .section[data-appearance='block'] {
   margin-inline: 0;
-  padding: var(--ds-space-5);
-  border-top: 0;
-  border-radius: 16px;
+  padding: var(--ds-space-4);
+  border-top: 8px solid var(--ds-color-section-divider);
+  border-radius: 0;
 }
 
 .sectionHeading {
@@ -172,6 +172,7 @@
 }
 
 .tableViewport {
+  position: relative;
   min-width: 0;
   overflow-x: auto;
   background: var(--ds-color-surface);

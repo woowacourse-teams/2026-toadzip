@@ -118,28 +118,27 @@
   font-weight: 700;
 }
 
-/* 단지 상세와 같이 회색 바탕 위에 흰 섹션 블록을 쌓는다. */
+/* 섹션을 전체 폭으로 채우고 각 섹션의 위쪽 구분선으로 나눈다. */
 .sectionGroup {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: var(--ds-space-3);
+  gap: 0;
 }
 
 .scroll {
-  --detail-content-inset: var(--ds-space-5);
+  --detail-content-inset: var(--ds-space-4);
   display: flex;
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: var(--ds-space-3);
-  padding: var(--ds-space-3);
+  gap: 0;
+  padding: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  /* 스크롤바 폭을 양쪽에 같이 두어 블록 좌우 여백을 맞춘다. */
-  scrollbar-gutter: stable both-edges;
-  background: var(--ds-color-section-divider);
+  scrollbar-gutter: stable;
+  background: var(--ds-color-surface);
   overscroll-behavior: contain;
   scrollbar-color: #d5d7dc transparent;
   scrollbar-width: thin;
@@ -155,8 +154,8 @@
 }
 
 .summaryBlock {
-  padding: var(--ds-space-5);
-  border-radius: 16px;
+  padding: var(--ds-space-4);
+  border-radius: 0;
   background: var(--ds-color-surface);
 }
 
@@ -168,7 +167,7 @@
 .notificationAction {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  padding-top: var(--ds-space-5);
+  padding-top: var(--ds-space-4);
 }
 
 /* 단지 상세의 행동 버튼과 같은 높이·테두리·글자를 쓴다. 행동이 하나라 전체 폭을 차지한다. */
@@ -214,29 +213,20 @@
   overflow-wrap: anywhere;
 }
 
-.intro strong[data-agency] {
-  display: inline-flex;
-  min-height: 22px;
-  align-items: center;
-  padding: 0 6px;
-  border-radius: var(--ds-status-badge-radius);
-  font-size: var(--ds-status-badge-font-size);
-  line-height: 1;
+.intro p.introMeta {
+  display: block;
 }
 
 .intro strong[data-agency='LH'] {
-  background: var(--ds-color-agency-lh-surface);
-  color: var(--ds-color-agency-lh-text);
+  color: var(--ds-color-agency-lh);
 }
 
 .intro strong[data-agency='SH'] {
-  background: var(--ds-color-agency-sh-surface);
-  color: var(--ds-color-agency-sh-text);
+  color: var(--ds-color-agency-sh);
 }
 
 .intro strong[data-agency='GH'] {
-  background: var(--ds-color-agency-gh-surface);
-  color: var(--ds-color-agency-gh-text);
+  color: var(--ds-color-agency-gh);
 }
 
 .intro p b,
@@ -272,8 +262,9 @@
 }
 
 .reason {
-  padding: var(--ds-space-5);
-  border-radius: 16px;
+  padding: var(--ds-space-4);
+  border-top: 8px solid var(--ds-color-section-divider);
+  border-radius: 0;
   background: var(--ds-color-surface);
   color: var(--ds-color-text);
 }
@@ -851,10 +842,6 @@
     display: none;
   }
 
-  .scroll {
-    --detail-content-inset: var(--ds-space-4);
-  }
-
   .sectionNav a {
     padding-inline: var(--ds-space-2);
   }
@@ -878,7 +865,7 @@
   }
 
   .housingTypes {
-    padding: var(--ds-space-3);
+    padding-top: var(--ds-space-3);
   }
 
   .housingTypeHeading {

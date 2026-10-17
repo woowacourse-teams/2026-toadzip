@@ -121,15 +121,15 @@
 }
 
 .agencyMeta strong[data-agency='LH'] {
-  color: var(--ds-color-agency-lh-text);
+  color: var(--ds-color-agency-lh);
 }
 
 .agencyMeta strong[data-agency='SH'] {
-  color: var(--ds-color-agency-sh-text);
+  color: var(--ds-color-agency-sh);
 }
 
 .agencyMeta strong[data-agency='GH'] {
-  color: var(--ds-color-agency-gh-text);
+  color: var(--ds-color-agency-gh);
 }
 
 .agencyMeta i {

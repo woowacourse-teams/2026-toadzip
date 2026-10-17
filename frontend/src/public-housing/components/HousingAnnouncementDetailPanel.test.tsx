@@ -34,13 +34,13 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(screen.getAllByRole('button', { name: '㎡ 전환' })).toHaveLength(2)
     const complex = screen.getByRole('article', { name: '새솔마을 단지 비교' })
     expect(within(complex).getByText('10.95평 – 13.34평')).toBeVisible()
-    expect(within(screen.getByRole('tabpanel')).getByText('10.95평', { selector: 'dd' })).toBeVisible()
+    expect(within(screen.getByRole('tabpanel')).getByText('10.95평', { selector: 'td' })).toBeVisible()
     fireEvent.click(screen.getByRole('tab', { name: /봇들마을/ }))
-    expect(within(screen.getByRole('tabpanel')).getByText('13.34평', { selector: 'dd' })).toBeVisible()
+    expect(within(screen.getByRole('tabpanel')).getByText('13.34평', { selector: 'td' })).toBeVisible()
     fireEvent.click(screen.getAllByRole('button', { name: '㎡ 전환' })[1])
     expect(screen.getAllByRole('button', { name: '평 전환' })).toHaveLength(2)
     expect(within(complex).getByText('36.2㎡ – 44.1㎡')).toBeVisible()
-    expect(within(screen.getByRole('tabpanel')).getByText('44.1㎡', { selector: 'dd' })).toBeVisible()
+    expect(within(screen.getByRole('tabpanel')).getByText('44.1㎡', { selector: 'td' })).toBeVisible()
   })
 
   it('평 전환 시 누락된 면적을 0평으로 만들지 않고 실제 0은 보존한다', () => {
@@ -50,7 +50,7 @@ describe('HousingAnnouncementDetailPanel', () => {
       supplyRow({ supplyRowId: 'zero', housingType: { ...row.housingType!, exclusiveArea: 0 } }),
     ] })} onClose={vi.fn()} />)
     fireEvent.click(screen.getAllByRole('button', { name: '평 전환' })[0])
-    expect(within(screen.getByRole('tabpanel')).getByText('0평', { selector: 'dd' })).toBeVisible()
+    expect(within(screen.getByRole('tabpanel')).getByText('0평', { selector: 'td' })).toBeVisible()
     const missing = screen.getByRole('article', { name: '새솔마을 미확인형 주택형' })
     expect(factValueIn(missing, '전용면적')).toHaveTextContent('공고문 확인')
   })
@@ -775,12 +775,12 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(screen.queryByText(/연결됨/)).not.toBeInTheDocument()
   })
 
-  it('주택형과 대상별 조건은 표 대신 이름/값 목록으로 표시한다', () => {
+  it('주택형 기본 정보는 기존 2행 표로 표시하고 대상별 조건은 유지한다', () => {
     renderPanel()
 
-    const housingType = screen.getByRole('group', { name: '새솔마을 36A 공급 정보' })
-    expect(within(housingType).queryByRole('table')).not.toBeInTheDocument()
-    expect(housingType.querySelector('dl')).toHaveAttribute('data-appearance', 'list')
+    const housingType = screen.getByRole('table', { name: '새솔마을 36A 공급 정보' })
+    expect(within(housingType).getAllByRole('row')).toHaveLength(2)
+    expect(within(housingType).getAllByRole('rowheader')).toHaveLength(4)
     expect(factValueIn(housingType, '공급 구분')).toHaveTextContent('신규공급')
     expect(factValueIn(housingType, '입주 예정')).toBeVisible()
 
@@ -1038,9 +1038,9 @@ vi.mock('../../privacy/usePrivacy', () => {
   return { usePrivacyNotices: () => ({ notices, error: false, retry: vi.fn() }) }
 })
 
-/** 이름/값 목록에서 항목 이름 바로 다음의 값(dd)을 찾는다. */
+/** 표나 이름/값 목록에서 항목명에 연결된 값을 찾는다. */
 function factValueIn(container: HTMLElement, term: string) {
-  const value = within(container).getByText(term, { selector: 'dt' }).nextElementSibling
+  const value = within(container).getByText(term, { selector: 'dt, th' }).nextElementSibling
   if (!(value instanceof HTMLElement)) throw new Error(`${term} 값 없음`)
   return value
 }

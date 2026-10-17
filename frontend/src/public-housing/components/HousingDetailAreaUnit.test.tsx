@@ -42,7 +42,7 @@ describe('상세 면적 단위 설정', () => {
 
     const announcement = openAnnouncement()
     expect(screen.getAllByRole('button', { name: '㎡ 전환' })).toHaveLength(2)
-    expect(within(screen.getByRole('tabpanel')).getByText('0평', { selector: 'dd' })).toBeVisible()
+    expect(within(screen.getByRole('tabpanel')).getByText('0평', { selector: 'td' })).toBeVisible()
     announcement.unmount()
 
     const otherComplex = openComplex('18')
@@ -72,7 +72,7 @@ describe('상세 면적 단위 설정', () => {
 
     openAnnouncement()
     expect(screen.getAllByRole('button', { name: button })).toHaveLength(2)
-    expect(within(screen.getByRole('tabpanel')).getByText(area, { selector: 'dd' })).toBeVisible()
+    expect(within(screen.getByRole('tabpanel')).getByText(area, { selector: 'td' })).toBeVisible()
   })
 
   it.each(['', 'unknown', '"pyeong"'])('잘못 저장된 단위 %s는 ㎡로 표시하고 다음 선택은 유효한 값으로 저장한다', (stored) => {
@@ -94,9 +94,9 @@ describe('상세 면적 단위 설정', () => {
     complex.unmount()
 
     openAnnouncement()
-    expect(within(screen.getByRole('tabpanel')).getByText('0평', { selector: 'dd' })).toBeVisible()
+    expect(within(screen.getByRole('tabpanel')).getByText('0평', { selector: 'td' })).toBeVisible()
     fireEvent.click(screen.getAllByRole('button', { name: '㎡ 전환' })[0])
-    expect(within(screen.getByRole('tabpanel')).getByText('0㎡', { selector: 'dd' })).toBeVisible()
+    expect(within(screen.getByRole('tabpanel')).getByText('0㎡', { selector: 'td' })).toBeVisible()
   })
 
   it('저장에 실패해도 이전 저장값 대신 방금 선택한 단위를 다음 상세에 적용한다', () => {
@@ -106,7 +106,7 @@ describe('상세 면적 단위 설정', () => {
     })
     const announcement = openAnnouncement()
     fireEvent.click(screen.getAllByRole('button', { name: '평 전환' })[0])
-    expect(within(screen.getByRole('tabpanel')).getByText('0평', { selector: 'dd' })).toBeVisible()
+    expect(within(screen.getByRole('tabpanel')).getByText('0평', { selector: 'td' })).toBeVisible()
     announcement.unmount()
 
     openComplex()

@@ -17,6 +17,7 @@ import {
   DetailFact,
   DetailFacts,
   DetailSection,
+  DetailTable,
 } from './DetailPrimitives.tsx'
 import { AttachmentDialog, AttachmentList } from './AnnouncementAttachments.tsx'
 import { hasAttachmentUrl } from '../api/announcementAttachments.ts'
@@ -436,7 +437,7 @@ function NoticeIntro({
   const missingAgencyAndRegion = agency === MISSING_DATA_LABEL && region === MISSING_DATA_LABEL
   return (
     <section className={styles.intro} aria-label="공고 요약">
-      <p>
+      <p className={styles.introMeta}>
         {missingAgencyAndRegion ? (
           <>
             <span className={styles.visuallyHidden}>공사·지역 </span>
@@ -445,7 +446,7 @@ function NoticeIntro({
         ) : (
           <>
             <strong data-agency={detail.agencyCode}>{agency}</strong>
-            <span aria-hidden="true">·</span>
+            <span aria-hidden="true">{'\u00a0·\u00a0'}</span>
             <b>{region}</b>
           </>
         )}
@@ -708,7 +709,7 @@ function ComplexCard({
         </div>
       </div>
       <div className={styles.complexRanges}>
-        <DetailFacts appearance="list">
+        <DetailFacts>
           <DetailFact term="전용면적" value={areaRange(group.rows, areaUnit)} wide />
           <DetailFact
             term="보증금"
@@ -811,6 +812,7 @@ function HousingTypeCard({
   row: HousingAnnouncementDetailSupplyRow
   onOpenFloorPlan: (selection: FloorPlanSelection) => void
 }) {
+  const idPrefix = useId()
   const housingTypeName = row.housingType?.name
     ?? row.sourceHousingTypeName
     ?? MISSING_DATA_LABEL
@@ -840,14 +842,26 @@ function HousingTypeCard({
           </button>
         )}
       </div>
-      <div role="group" aria-label={`${complexName} ${housingTypeName} 공급 정보`}>
-        <DetailFacts appearance="list">
-          <DetailFact term="공급 구분" value={row.supplyTypeLabel} />
-          <DetailFact term="전용면적" value={formatArea(row.housingType?.exclusiveArea ?? null, areaUnit)} />
-          <DetailFact term="공급 세대수" value={formatNullableCount(row.totalSupplyHouseholdCount, '세대')} />
-          <DetailFact term="입주 예정" value={formatYearMonth(row.occupancyExpectedYearMonth)} />
-        </DetailFacts>
-      </div>
+      <DetailTable caption={`${complexName} ${housingTypeName} 공급 정보`}>
+        <colgroup>
+          <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
+          <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
+        </colgroup>
+        <tbody>
+          <tr>
+            <th id={`${idPrefix}-kind`} scope="row">공급 구분</th>
+            <td headers={`${idPrefix}-kind`}>{row.supplyTypeLabel}</td>
+            <th id={`${idPrefix}-area`} scope="row">전용면적</th>
+            <td headers={`${idPrefix}-area`}>{formatArea(row.housingType?.exclusiveArea ?? null, areaUnit)}</td>
+          </tr>
+          <tr>
+            <th id={`${idPrefix}-count`} scope="row">공급 세대수</th>
+            <td headers={`${idPrefix}-count`}>{formatNullableCount(row.totalSupplyHouseholdCount, '세대')}</td>
+            <th id={`${idPrefix}-occupancy`} scope="row">입주 예정</th>
+            <td headers={`${idPrefix}-occupancy`}>{formatYearMonth(row.occupancyExpectedYearMonth)}</td>
+          </tr>
+        </tbody>
+      </DetailTable>
       <SupplyTargets targets={row.targets} />
     </article>
   )

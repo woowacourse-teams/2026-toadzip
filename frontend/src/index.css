@@ -796,9 +796,9 @@ a {
   text-overflow: ellipsis;
 }
 
-.housing-recent__meta strong[data-agency='LH'] { color: var(--ds-color-agency-lh-text); }
-.housing-recent__meta strong[data-agency='SH'] { color: var(--ds-color-agency-sh-text); }
-.housing-recent__meta strong[data-agency='GH'] { color: var(--ds-color-agency-gh-text); }
+.housing-recent__meta strong[data-agency='LH'] { color: var(--ds-color-agency-lh); }
+.housing-recent__meta strong[data-agency='SH'] { color: var(--ds-color-agency-sh); }
+.housing-recent__meta strong[data-agency='GH'] { color: var(--ds-color-agency-gh); }
 .housing-recent__meta i { color: #b4b7bc; font-style: normal; }
 
 .housing-recent button:hover {
