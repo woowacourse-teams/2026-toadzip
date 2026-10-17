@@ -81,7 +81,7 @@ describe('LocationSummaryUpload', () => {
     fireEvent.click(start)
     fireEvent.click(start)
 
-    expect(apiMocks.startDataPipeline).toHaveBeenCalledExactlyOnceWith('COMPLEX_REFINEMENT')
+    await waitFor(() => expect(apiMocks.startDataPipeline).toHaveBeenCalledExactlyOnceWith('COMPLEX_REFINEMENT'))
     expect(screen.getByRole('button', { name: '단지 정제 시작 중…' })).toBeDisabled()
     expect(screen.getByLabelText('월 전체분 ZIP')).toBeDisabled()
     expect(screen.getByText('summary.zip 적재를 완료했습니다.')).toBeVisible()
@@ -100,7 +100,7 @@ describe('LocationSummaryUpload', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('다른 수집 작업이 실행 중입니다.')
     await waitFor(() => expect(screen.getByRole('button', { name: '저장된 원천으로 단지 정제 실행' })).toBeEnabled())
     expect(screen.getByText('summary.zip 적재를 완료했습니다.')).toBeVisible()
-    expect(apiMocks.getDataPipelineStatus).toHaveBeenCalledTimes(2)
+    expect(apiMocks.getDataPipelineStatus).toHaveBeenCalledTimes(3)
   })
 
   it('정제 실행 실패는 완료로 표시하지 않고 같은 좌표로 다시 정제할 수 있다', async () => {
@@ -124,7 +124,8 @@ describe('LocationSummaryUpload', () => {
   it('시작 응답 유실 후 서버에서 실행 중인 정제를 복원하고 중지할 수 있다', async () => {
     apiMocks.uploadLocationSummary.mockResolvedValue(report())
     apiMocks.startDataPipeline.mockRejectedValue(new Error('응답 연결이 끊겼습니다.'))
-    apiMocks.getDataPipelineStatus.mockResolvedValueOnce(execution('IDLE')).mockResolvedValue(execution('RUNNING'))
+    apiMocks.getDataPipelineStatus.mockResolvedValueOnce(execution('IDLE')).mockResolvedValueOnce(execution('IDLE'))
+      .mockResolvedValue(execution('RUNNING'))
     apiMocks.stopDataPipeline.mockResolvedValue(execution('STOPPED'))
     await show()
     selectAndUpload()
@@ -138,10 +139,92 @@ describe('LocationSummaryUpload', () => {
     expect(screen.getByRole('button', { name: '저장된 원천으로 단지 정제 실행' })).toBeEnabled()
   })
 
+  it.each([
+    ['COMPLETED', '완료'], ['FAILED', '실패'], ['STOPPED', '중지됨'],
+  ] as const)('과거 결과는 숨기고 시작 응답 유실 후 새 정제의 %s 결과를 복원한다', async (status, label) => {
+    apiMocks.uploadLocationSummary.mockResolvedValue(report())
+    apiMocks.startDataPipeline.mockRejectedValue(new Error('응답 연결이 끊겼습니다.'))
+    apiMocks.getDataPipelineStatus.mockResolvedValueOnce(execution('COMPLETED'))
+      .mockResolvedValueOnce(execution('COMPLETED'))
+      .mockResolvedValue({
+        ...execution(status), executionId: 'refinement-2',
+        failure: status === 'FAILED'
+          ? { stepName: '마이홈 단지 정제', message: '일부 단지 정제 실패', serverResponse: null } : null,
+      })
+    await show()
+    expect(screen.queryByRole('article', { name: '현재 작업 단계' })).not.toBeInTheDocument()
+    selectAndUpload()
+    fireEvent.click(await screen.findByRole('button', { name: '저장된 원천으로 단지 정제 실행' }))
+
+    const result = await screen.findByRole('article', { name: '현재 작업 단계' })
+    expect(result).toHaveTextContent(label)
+    expect(screen.queryByText('응답 연결이 끊겼습니다.')).not.toBeInTheDocument()
+    if (status === 'FAILED') expect(within(result).getByRole('alert')).toHaveTextContent('일부 단지 정제 실패')
+    expect(screen.getByRole('button', { name: '저장된 원천으로 단지 정제 실행' })).toBeEnabled()
+    expect(apiMocks.startDataPipeline).toHaveBeenCalledTimes(1)
+  })
+
+  it('시작 직전에 확인한 과거 완료 기록을 이번 요청의 성공으로 표시하지 않는다', async () => {
+    apiMocks.uploadLocationSummary.mockResolvedValue(report())
+    apiMocks.startDataPipeline.mockRejectedValue(new Error('요청을 보내지 못했습니다.'))
+    apiMocks.getDataPipelineStatus.mockResolvedValueOnce(execution('IDLE')).mockResolvedValue(execution('COMPLETED'))
+    await show()
+    selectAndUpload()
+    fireEvent.click(await screen.findByRole('button', { name: '저장된 원천으로 단지 정제 실행' }))
+
+    await waitFor(() => expect(apiMocks.getDataPipelineStatus).toHaveBeenCalledTimes(3))
+    expect(await screen.findByRole('alert')).toHaveTextContent('요청을 보내지 못했습니다.')
+    expect(screen.queryByRole('article', { name: '현재 작업 단계' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '저장된 원천으로 단지 정제 실행' })).toBeEnabled()
+  })
+
+  it('시작 직전 다른 정제가 실행 중이면 해당 작업을 표시하고 추가로 시작하지 않는다', async () => {
+    apiMocks.uploadLocationSummary.mockResolvedValue(report())
+    apiMocks.getDataPipelineStatus.mockResolvedValueOnce(execution('IDLE')).mockResolvedValue(execution('RUNNING'))
+    await show()
+    selectAndUpload()
+    fireEvent.click(await screen.findByRole('button', { name: '저장된 원천으로 단지 정제 실행' }))
+
+    await screen.findByRole('button', { name: '단지 정제 실행 중지' })
+    expect(apiMocks.startDataPipeline).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: '저장된 원천으로 단지 정제 실행' })).toBeDisabled()
+  })
+
+  it('시작 직전 상태 조회가 실패하면 정제를 보내지 않고 재확인할 수 있다', async () => {
+    apiMocks.uploadLocationSummary.mockResolvedValue(report())
+    apiMocks.getDataPipelineStatus.mockResolvedValueOnce(execution('IDLE')).mockRejectedValueOnce(new Error('상태 조회 실패'))
+      .mockResolvedValue(execution('IDLE'))
+    await show()
+    selectAndUpload()
+    fireEvent.click(await screen.findByRole('button', { name: '저장된 원천으로 단지 정제 실행' }))
+
+    fireEvent.click(await screen.findByRole('button', { name: '단지 정제 상태 다시 확인' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '저장된 원천으로 단지 정제 실행' })).toBeEnabled())
+    expect(apiMocks.startDataPipeline).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('복구 조회 실패 뒤 수동 재확인에서도 새 정제의 완료 결과를 보존한다', async () => {
+    apiMocks.uploadLocationSummary.mockResolvedValue(report())
+    apiMocks.startDataPipeline.mockRejectedValue(new Error('응답 연결이 끊겼습니다.'))
+    apiMocks.getDataPipelineStatus.mockResolvedValueOnce(execution('COMPLETED'))
+      .mockResolvedValueOnce(execution('COMPLETED')).mockRejectedValueOnce(new Error('상태 조회 실패'))
+      .mockResolvedValue({ ...execution('COMPLETED'), executionId: 'refinement-2' })
+    await show()
+    selectAndUpload()
+    fireEvent.click(await screen.findByRole('button', { name: '저장된 원천으로 단지 정제 실행' }))
+
+    fireEvent.click(await screen.findByRole('button', { name: '단지 정제 상태 다시 확인' }))
+    expect(await screen.findByRole('article', { name: '현재 작업 단계' })).toHaveTextContent('완료')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(apiMocks.startDataPipeline).toHaveBeenCalledTimes(1)
+  })
+
   it('시작과 상태 확인이 모두 실패하면 상태를 재확인할 때까지 재시작하지 않는다', async () => {
     apiMocks.uploadLocationSummary.mockResolvedValue(report())
     apiMocks.startDataPipeline.mockRejectedValue(new Error('응답 연결이 끊겼습니다.'))
-    apiMocks.getDataPipelineStatus.mockResolvedValueOnce(execution('IDLE')).mockRejectedValueOnce(new Error('상태 조회 실패'))
+    apiMocks.getDataPipelineStatus.mockResolvedValueOnce(execution('IDLE')).mockResolvedValueOnce(execution('IDLE'))
+      .mockRejectedValueOnce(new Error('상태 조회 실패'))
       .mockResolvedValue(execution('RUNNING'))
     await show()
     selectAndUpload()

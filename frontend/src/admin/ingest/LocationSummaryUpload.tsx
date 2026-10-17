@@ -26,6 +26,7 @@ export function LocationSummaryUpload() {
   const mounted = useRef(false)
   const requestPending = useRef(false)
   const generation = useRef(0)
+  const startRecovery = useRef<{ previousExecutionId: string | null; message: string } | null>(null)
   const busy = isUploading || starting || checkingStatus || statusUnknown || execution?.status === 'RUNNING'
 
   useEffect(() => {
@@ -65,15 +66,20 @@ export function LocationSummaryUpload() {
     return () => { active = false; clearTimeout(timer) }
   }, [execution?.executionId, execution?.status])
 
-  async function checkStatus(preserveError = false) {
+  async function checkStatus() {
     const currentGeneration = ++generation.current
     setCheckingStatus(true)
     try {
       const data = await getDataPipelineStatus('COMPLEX_REFINEMENT')
       if (!mounted.current || currentGeneration !== generation.current) return
-      setExecution(previous => data.status === 'RUNNING' || previous ? data : null)
+      const recovery = startRecovery.current
+      const recovered = recovery !== null && data.executionId !== null
+        && data.executionId !== recovery.previousExecutionId
+      setExecution(data.status === 'RUNNING' || recovered ? data : null)
       setStatusUnknown(false)
-      if (!preserveError) setRefinementError(null)
+      setRefinementError(recovery && !recovered && data.status !== 'RUNNING' ? recovery.message : null)
+      startRecovery.current = null
+      return data
     } catch (cause) {
       if (!mounted.current || currentGeneration !== generation.current) return
       setStatusUnknown(true)
@@ -90,13 +96,20 @@ export function LocationSummaryUpload() {
     setStarting(true)
     setRefinementError(null)
     setExecution(null)
+    startRecovery.current = null
     try {
-      const data = await startDataPipeline('COMPLEX_REFINEMENT')
-      if (mounted.current) setExecution(data)
-    } catch (cause) {
-      if (!mounted.current) return
-      setRefinementError(errorMessage(cause, '단지 정제를 시작하지 못했습니다.'))
-      await checkStatus(true)
+      const previous = await checkStatus()
+      if (!previous || !mounted.current || previous.status === 'RUNNING') return
+      try {
+        const data = await startDataPipeline('COMPLEX_REFINEMENT')
+        if (mounted.current) setExecution(data)
+      } catch (cause) {
+        if (!mounted.current) return
+        const message = errorMessage(cause, '단지 정제를 시작하지 못했습니다.')
+        startRecovery.current = { previousExecutionId: previous.executionId, message }
+        setRefinementError(message)
+        await checkStatus()
+      }
     } finally {
       requestPending.current = false
       if (mounted.current) setStarting(false)
