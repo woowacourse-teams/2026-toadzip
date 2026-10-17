@@ -77,7 +77,6 @@
 
 .identity {
   flex: 0 0 auto;
-  overflow: hidden;
   padding: var(--ds-space-5);
   border-radius: 16px;
   background: var(--ds-color-surface);
@@ -87,6 +86,7 @@
   display: grid;
   min-height: 224px;
   overflow: hidden;
+  border-radius: 16px 16px 0 0;
   margin: calc(-1 * var(--ds-space-5)) calc(-1 * var(--ds-space-5)) var(--ds-space-5);
   background: var(--ds-color-surface-subtle);
   gap: var(--ds-space-1);

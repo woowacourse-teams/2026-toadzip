@@ -529,7 +529,7 @@ describe('HousingComplexDetailPanel', () => {
     }
   })
 
-  it('화면 밖 탭에 키보드로 이동하면 탭 띠만 가로로 이동하고 상세 스크롤은 유지한다', () => {
+  it('여러 줄의 주택형 탭에서 Home·End로 이동하면 포커스된 탭을 상세 스크롤 안에 드러낸다', () => {
     const { panel } = renderPanel(detailWith({
       housingTypes: [...BASE_DETAIL.housingTypes, { ...BASE_DETAIL.housingTypes[1], housingTypeId: '103', name: '59C' }],
     }))
@@ -538,10 +538,10 @@ describe('HousingComplexDetailPanel', () => {
     const firstTab = within(tabs).getByRole('tab', { name: '36A' })
     const lastTab = within(tabs).getByRole('tab', { name: '59C' })
     content.scrollTop = 320
-    vi.spyOn(tabs, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 100, 160, 44))
-    vi.spyOn(firstTab, 'getBoundingClientRect').mockImplementation(() => new DOMRect(100 - tabs.scrollLeft, 100, 80, 44))
+    vi.spyOn(content, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 100, 300, 400))
+    vi.spyOn(firstTab, 'getBoundingClientRect').mockImplementation(() => new DOMRect(100, 420 - content.scrollTop, 80, 44))
     vi.spyOn(lastTab, 'getBoundingClientRect').mockImplementation(() => new DOMRect(
-      260 - tabs.scrollLeft, 100, lastTab.getAttribute('aria-selected') === 'true' ? 90 : 80, 44,
+      100, 900 - content.scrollTop, 80, 44,
     ))
     const focus = vi.spyOn(lastTab, 'focus')
 
@@ -549,13 +549,29 @@ describe('HousingComplexDetailPanel', () => {
     fireEvent.keyDown(firstTab, { key: 'End' })
     expect(lastTab).toHaveFocus()
     expect(focus).toHaveBeenCalledWith({ preventScroll: true })
-    expect(tabs.scrollLeft).toBe(90)
-    expect(content.scrollTop).toBe(320)
+    expect(lastTab.getBoundingClientRect().bottom).toBe(content.getBoundingClientRect().bottom)
+    expect(content.scrollTop).toBe(444)
 
     fireEvent.keyDown(lastTab, { key: 'Home' })
     expect(firstTab).toHaveFocus()
-    expect(tabs.scrollLeft).toBe(0)
+    expect(firstTab.getBoundingClientRect().top).toBe(content.getBoundingClientRect().top)
     expect(content.scrollTop).toBe(320)
+  })
+
+  it('상세를 처음 열면 화면 아래의 선택 주택형으로 자동 스크롤하지 않는다', () => {
+    const geometry = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute('role') === 'tab'
+        ? new DOMRect(100, 900, 80, 44)
+        : new DOMRect(100, 100, 300, 400)
+    })
+    try {
+      const { panel } = renderPanel()
+      const content = within(panel).getByRole('region', { name: `${BASE_DETAIL.name} 단지 상세 내용` })
+      expect(within(panel).getByRole('heading', { level: 2, name: BASE_DETAIL.name })).toHaveFocus()
+      expect(content.scrollTop).toBe(0)
+    } finally {
+      geometry.mockRestore()
+    }
   })
 
   it('선택한 주택형이 사라지거나 단지가 바뀌면 첫 탭과 상세를 함께 선택한다', () => {

@@ -120,7 +120,7 @@ export function HousingComplexDetailPanel({
   ) ?? detail.housingTypes[0]
   const activeHousingTypeId = selectedHousingType?.housingTypeId
   const choiceRefs = useRef(new Map<string, HTMLButtonElement>())
-  const tabListRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const housingTypeIdPrefix = useId()
   const headingRef = useRef<HTMLHeadingElement>(null)
   const validImages = detail.images.filter(isSafeHttpUrl)
@@ -137,8 +137,9 @@ export function HousingComplexDetailPanel({
   }, [detail.complexId])
 
   useEffect(() => {
-    if (activeHousingTypeId !== undefined) {
-      revealTab(tabListRef.current, choiceRefs.current.get(activeHousingTypeId))
+    const activeTab = activeHousingTypeId === undefined ? undefined : choiceRefs.current.get(activeHousingTypeId)
+    if (activeTab === document.activeElement) {
+      revealTab(scrollRef.current, activeTab)
     }
   }, [detail.complexId, activeHousingTypeId])
 
@@ -152,7 +153,7 @@ export function HousingComplexDetailPanel({
   }
 
   function revealHousingType(housingTypeId: string) {
-    revealTab(tabListRef.current, choiceRefs.current.get(housingTypeId))
+    revealTab(scrollRef.current, choiceRefs.current.get(housingTypeId))
   }
 
   function handleHousingTypeKeyDown(
@@ -200,6 +201,7 @@ export function HousingComplexDetailPanel({
       </header>
 
       <div
+        ref={scrollRef}
         className={styles.scroll}
         {...scrollAnalytics}
         role="region"
@@ -285,7 +287,6 @@ export function HousingComplexDetailPanel({
             </DetailSection>
             <DetailSection appearance="block" title="주택형 정보">
               <div
-                ref={tabListRef}
                 className={styles.housingTypeTabs}
                 role="tablist"
                 aria-label="주택형 선택"
@@ -641,14 +642,14 @@ function SupplyConditionFacts({
   )
 }
 
-function revealTab(tabList: HTMLDivElement | null, tab: HTMLButtonElement | undefined) {
-  if (!tabList || !tab) return
-  const viewport = tabList.getBoundingClientRect()
+function revealTab(scrollContainer: HTMLDivElement | null, tab: HTMLButtonElement | undefined) {
+  if (!scrollContainer || !tab) return
+  const viewport = scrollContainer.getBoundingClientRect()
   const choice = tab.getBoundingClientRect()
-  if (choice.left < viewport.left) {
-    tabList.scrollLeft += choice.left - viewport.left
-  } else if (choice.right > viewport.right) {
-    tabList.scrollLeft += choice.right - viewport.right
+  if (choice.top < viewport.top) {
+    scrollContainer.scrollTop += choice.top - viewport.top
+  } else if (choice.bottom > viewport.bottom) {
+    scrollContainer.scrollTop += choice.bottom - viewport.bottom
   }
 }
 
