@@ -2,9 +2,11 @@ import { useEffect, useId, useState } from 'react'
 import type { StreetViewController } from './useStreetView'
 import styles from './StreetView.module.css'
 
-export function StreetViewEntry({ controller, name }: {
+export function StreetViewEntry({ controller, name, appearance = 'compact' }: {
   readonly controller: StreetViewController
   readonly name: string
+  /** compact: 주소 옆 작은 버튼, action: 행동 줄을 채우는 강조 버튼 */
+  readonly appearance?: 'compact' | 'action'
 }) {
   const [hovered, setHovered] = useState(false)
   const [focused, setFocused] = useState(false)
@@ -37,10 +39,11 @@ export function StreetViewEntry({ controller, name }: {
   }, [tooltip])
 
   if (!controller.visible) return null
-  return <div className={styles.entry}
+  return <div className={appearance === 'action' ? `${styles.entry} ${styles.actionEntry}` : styles.entry}
     onMouseEnter={() => { setHovered(true); setDismissed(false) }}
     onMouseLeave={() => setHovered(false)}>
-    <button ref={controller.buttonRef} type="button" className={styles.secondaryButton}
+    <button ref={controller.buttonRef} type="button"
+      className={appearance === 'action' ? `${styles.secondaryButton} ${styles.actionButton}` : styles.secondaryButton}
       aria-label={`${name} 주변 거리뷰 보기`} aria-disabled={!enabled}
       aria-pressed={controller.active} aria-controls={controller.panelId}
       aria-describedby={!enabled ? descriptionId : undefined}

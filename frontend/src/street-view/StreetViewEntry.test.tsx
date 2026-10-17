@@ -26,12 +26,12 @@ const configuration: EnabledStreetViewConfiguration = {
 }
 const properties = { complexId: '2647', name: '어바니엘 충정로' }
 
-function EntryFixture({ complexId, name, supported = true }: { complexId: string; name: string; supported?: boolean }) {
+function EntryFixture({ complexId, name, supported = true, appearance }: { complexId: string; name: string; supported?: boolean; appearance?: 'compact' | 'action' }) {
   const controller = useStreetView({ target: { complexId, name }, mobile: useMobileViewport(), supported })
   return <>
     <h2 id={`complex-detail-title-${complexId}`} tabIndex={-1}>단지 상세 제목</h2>
     <button type="button">상세 정보</button>
-    <StreetViewEntry controller={controller} name={name} />
+    <StreetViewEntry controller={controller} name={name} appearance={appearance} />
     <StreetViewPanel controller={controller} />
   </>
 }
@@ -94,6 +94,17 @@ function sendRuntimeMessage(payload: Record<string, unknown>) {
 }
 
 describe('StreetViewEntry', () => {
+  it('행동 줄용 강조 모양에서도 같은 이름과 열기 동작을 유지한다', async () => {
+    render(<EntryFixture {...properties} appearance="action" />)
+    await act(async () => {})
+    const button = screen.getByRole('button', { name: `${properties.name} 주변 거리뷰 보기` })
+
+    expect(button.className).toMatch(/actionButton/)
+    expect(button.parentElement?.className).toMatch(/actionEntry/)
+    expect(button).toHaveTextContent('거리뷰')
+    expect(button).not.toHaveAttribute('aria-disabled', 'true')
+  })
+
   it('모바일에서는 버튼과 API 요청을 만들지 않는다', async () => {
     mobile = true
     await showEntry()

@@ -27,6 +27,24 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('현재 위치 권한 안내', () => {
+  it('위치 안내가 떠 있는 동안에만 표시 상태를 밖에서 알 수 있게 하고 스스로 닫히지 않는다', () => {
+    vi.useFakeTimers()
+    try {
+      const { container } = render(<LocationControl />)
+      const status = container.querySelector('[data-location-status]')
+      expect(status).toHaveAttribute('hidden')
+      fireEvent.click(screen.getByRole('button', { name: '현재 위치로 이동' }))
+      rejectLocation(1)
+      expect(status).not.toHaveAttribute('hidden')
+      act(() => vi.advanceTimersByTime(60_000))
+      expect(screen.getByRole('status')).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: '위치 안내 닫기' }))
+      expect(status).toHaveAttribute('hidden')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it.each([false, true])('설정 방법 펼침=%s에서 안내 전체를 닫고 새 위치 요청 후 다시 표시한다', expanded => {
     render(<LocationControl />)
     const locate = screen.getByRole('button', { name: '현재 위치로 이동' })

@@ -34,13 +34,13 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(screen.getAllByRole('button', { name: '㎡ 전환' })).toHaveLength(2)
     const complex = screen.getByRole('article', { name: '새솔마을 단지 비교' })
     expect(within(complex).getByText('10.95평 – 13.34평')).toBeVisible()
-    expect(screen.getByRole('cell', { name: '10.95평' })).toBeVisible()
+    expect(within(screen.getByRole('tabpanel')).getByText('10.95평', { selector: 'dd' })).toBeVisible()
     fireEvent.click(screen.getByRole('tab', { name: /봇들마을/ }))
-    expect(screen.getByRole('cell', { name: '13.34평' })).toBeVisible()
+    expect(within(screen.getByRole('tabpanel')).getByText('13.34평', { selector: 'dd' })).toBeVisible()
     fireEvent.click(screen.getAllByRole('button', { name: '㎡ 전환' })[1])
     expect(screen.getAllByRole('button', { name: '평 전환' })).toHaveLength(2)
     expect(within(complex).getByText('36.2㎡ – 44.1㎡')).toBeVisible()
-    expect(screen.getByRole('cell', { name: '44.1㎡' })).toBeVisible()
+    expect(within(screen.getByRole('tabpanel')).getByText('44.1㎡', { selector: 'dd' })).toBeVisible()
   })
 
   it('평 전환 시 누락된 면적을 0평으로 만들지 않고 실제 0은 보존한다', () => {
@@ -50,9 +50,9 @@ describe('HousingAnnouncementDetailPanel', () => {
       supplyRow({ supplyRowId: 'zero', housingType: { ...row.housingType!, exclusiveArea: 0 } }),
     ] })} onClose={vi.fn()} />)
     fireEvent.click(screen.getAllByRole('button', { name: '평 전환' })[0])
-    expect(screen.getByRole('cell', { name: '0평' })).toBeVisible()
+    expect(within(screen.getByRole('tabpanel')).getByText('0평', { selector: 'dd' })).toBeVisible()
     const missing = screen.getByRole('article', { name: '새솔마을 미확인형 주택형' })
-    expect(within(missing).getByRole('cell', { name: '공고문 확인' })).toBeVisible()
+    expect(factValueIn(missing, '전용면적')).toHaveTextContent('공고문 확인')
   })
 
   it('회원은 이메일 없이 공고 알림을 저장한다', async () => {
@@ -103,7 +103,7 @@ describe('HousingAnnouncementDetailPanel', () => {
       targets: [emptyTarget, { ...emptyTarget, supplyTargetId: 'free', monthlyRent: 0 }] }] })} onClose={vi.fn()} />)
     const targets = screen.getByRole('list', { name: '대상별 공급 조건' })
     expect(within(targets).getAllByRole('listitem')).toHaveLength(1)
-    expect(within(targets).getByRole('cell', { name: '0원' })).toBeVisible()
+    expect(factValueIn(targets, '월 임대료')).toHaveTextContent(/^0원$/)
   })
 
   it('요약·일정·주택형 링크로 상세 내부를 이동하고 직접 스크롤한 구역을 추적한다', () => {
@@ -496,8 +496,8 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(firstComplex).getByText('1,046세대')).toBeVisible()
     expect(within(firstComplex).getByText('12세대')).toBeVisible()
     expect(within(firstComplex).getByText('36.2㎡')).toBeVisible()
-    expect(within(firstComplex).getByText('32,000,000원')).toBeVisible()
-    expect(within(firstComplex).getByText('128,000원')).toBeVisible()
+    expect(within(firstComplex).getByText('3,200만원')).toBeVisible()
+    expect(within(firstComplex).getByText('12만 8,000원')).toBeVisible()
 
     const firstHousingType = within(panel).getByRole('article', { name: '새솔마을 36A 주택형' })
     expect(within(firstHousingType).queryByText(/평면도/)).not.toBeInTheDocument()
@@ -775,36 +775,25 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(screen.queryByText(/연결됨/)).not.toBeInTheDocument()
   })
 
-  it('주택형과 대상별 조건은 항목·값 두 쌍의 4열 표로 표시한다', () => {
+  it('주택형과 대상별 조건은 표 대신 이름/값 목록으로 표시한다', () => {
     renderPanel()
 
-    const housingType = screen.getByRole('table', { name: '새솔마을 36A 공급 정보' })
-    const housingRows = within(housingType).getAllByRole('row')
-    expect(housingRows).toHaveLength(2)
-    expect(within(housingRows[0]!).getAllByRole('rowheader')).toHaveLength(2)
-    expect(within(housingRows[0]!).getAllByRole('cell')).toHaveLength(2)
-    expect(within(housingType).getByRole('rowheader', { name: '공급 구분' }))
-      .toHaveAttribute('scope', 'row')
-    expect(within(housingType).getByRole('rowheader', { name: '입주 예정' })).toBeVisible()
-    expect(within(housingType).getByRole('cell', { name: '신규공급' }))
-      .toHaveAttribute('headers', within(housingType).getByRole('rowheader', { name: '공급 구분' }).id)
+    const housingType = screen.getByRole('group', { name: '새솔마을 36A 공급 정보' })
+    expect(within(housingType).queryByRole('table')).not.toBeInTheDocument()
+    expect(housingType.querySelector('dl')).toHaveAttribute('data-appearance', 'list')
+    expect(factValueIn(housingType, '공급 구분')).toHaveTextContent('신규공급')
+    expect(factValueIn(housingType, '입주 예정')).toBeVisible()
 
-    const conditions = screen.getByRole('table', { name: '청년 공급 조건' })
-    const conditionRows = within(conditions).getAllByRole('row')
-    expect(within(conditionRows[0]!).getAllByRole('rowheader')).toHaveLength(2)
-    expect(within(conditionRows[0]!).getAllByRole('cell')).toHaveLength(2)
-    expect(within(conditions).getByRole('cell', { name: '무주택 세대구성원' }))
-      .toHaveAttribute('colspan', '3')
-    expect(within(conditions).getByRole('rowheader', { name: '모집 예비자 수' })).toBeVisible()
-    expect(within(conditions).getByRole('cell', { name: '32,000,000원' }))
-      .toHaveAttribute('data-emphasis', 'true')
-    expect(within(conditions).getByRole('cell', { name: '32,000,000원' }))
-      .toHaveAttribute('headers', within(conditions).getByRole('rowheader', { name: '보증금' }).id)
-    expect(within(conditions).getByRole('cell', { name: '128,000원' }))
-      .toHaveAttribute('data-numeric', 'true')
+    const conditions = screen.getByRole('group', { name: '청년 공급 조건' })
+    expect(factValueIn(conditions, '신청 조건')).toHaveTextContent('무주택 세대구성원')
+    expect(factValueIn(conditions, '신청 조건').parentElement).toHaveAttribute('data-wide', 'true')
+    expect(factValueIn(conditions, '모집 예비자 수')).toBeVisible()
+    expect(factValueIn(conditions, '보증금')).toHaveTextContent('3,200만원')
+    expect(factValueIn(conditions, '보증금').parentElement).toHaveAttribute('data-emphasis', 'true')
+    expect(factValueIn(conditions, '월 임대료')).toHaveTextContent('12만 8,000원')
   })
 
-  it('원 단위 전체 금액과 긴 범위를 표시하고 월 임대료의 월 접두사를 반복하지 않는다', () => {
+  it('억·만 단위 금액과 긴 범위를 표시하고 월 임대료의 월 접두사를 반복하지 않는다', () => {
     const baseRow = supplyRow()
     const baseTarget = baseRow.targets[0]!
     render(
@@ -820,15 +809,15 @@ describe('HousingAnnouncementDetailPanel', () => {
     )
 
     const complex = screen.getByRole('article', { name: '새솔마을 단지 비교' })
-    const range = within(complex).getByText('18,000,000원 – 180,000,000원')
+    const range = within(complex).getByText('1,800만원 – 1억 8,000만원')
     expect(range.closest('[data-wide]')).toHaveAttribute('data-wide', 'true')
-    const young = screen.getByRole('table', { name: '청년 공급 조건' })
-    expect(within(young).getByRole('cell', { name: '18,000,000원' })).toBeVisible()
-    expect(within(young).getByRole('cell', { name: '180,000원' })).toBeVisible()
-    const newlywed = screen.getByRole('table', { name: '신혼부부 공급 조건' })
-    expect(within(newlywed).getByRole('cell', { name: '180,000,000원' })).toBeVisible()
-    expect(within(newlywed).getByRole('cell', { name: '0원' })).toBeVisible()
-    expect(screen.queryByText('월 180,000원')).not.toBeInTheDocument()
+    const young = screen.getByRole('group', { name: '청년 공급 조건' })
+    expect(factValueIn(young, '보증금')).toHaveTextContent('1,800만원')
+    expect(factValueIn(young, '월 임대료')).toHaveTextContent('18만원')
+    const newlywed = screen.getByRole('group', { name: '신혼부부 공급 조건' })
+    expect(factValueIn(newlywed, '보증금')).toHaveTextContent('1억 8,000만원')
+    expect(factValueIn(newlywed, '월 임대료')).toHaveTextContent(/^0원$/)
+    expect(screen.queryByText('월 18만원')).not.toBeInTheDocument()
   })
 
   it('상단 공고 정보는 항목명 접두어 없이 기존 값과 접근성 설명을 유지한다', () => {
@@ -1048,3 +1037,10 @@ vi.mock('../../privacy/usePrivacy', () => {
   const notices = [{ key: 'NOTIFICATION_NOTICE', version: 'notification-2026-10-09-v1' }]
   return { usePrivacyNotices: () => ({ notices, error: false, retry: vi.fn() }) }
 })
+
+/** 이름/값 목록에서 항목 이름 바로 다음의 값(dd)을 찾는다. */
+function factValueIn(container: HTMLElement, term: string) {
+  const value = within(container).getByText(term, { selector: 'dt' }).nextElementSibling
+  if (!(value instanceof HTMLElement)) throw new Error(`${term} 값 없음`)
+  return value
+}

@@ -88,11 +88,18 @@
 }
 .feedback button:hover { background: var(--ds-color-action-soft); }
 .feedback button:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
-/* 모바일 하단 내비게이션과 오른쪽 지도 컨트롤 열을 가리지 않는다. */
+/* 모바일에서 목록 시트가 열렸거나 위치 안내가 떠 있으면 상태 오류는 잠시 숨겨 안내가 한 번에 하나만 보이게 한다. */
+@media (max-width: 767px) {
+  :global(body:has(.housing-results[data-mobile="true"][aria-hidden="false"])) .feedback[role='alert'],
+  :global(body:has([data-location-status]:not([hidden]))) .feedback[role='alert'] {
+    display: none;
+  }
+}
+/* 모바일 하단 내비게이션, 지도 출처 표기와 오른쪽 지도 컨트롤 열을 가리지 않는다. */
 @media (max-width: 767px) {
   .feedback {
     right: calc(var(--explorer-map-control-right, 12px) + var(--explorer-map-control-size, 48px) + var(--ds-space-2));
-    bottom: calc(var(--explorer-footer-height, 84px) + 12px);
+    bottom: calc(var(--explorer-footer-height, 84px) + var(--ds-space-7));
     left: var(--ds-space-4);
     width: auto;
     transform: none;

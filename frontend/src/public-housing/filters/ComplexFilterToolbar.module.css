@@ -22,9 +22,11 @@
   pointer-events: auto;
 }
 
+/* 필터 칩은 왼쪽에서 따로 넘기고, 모집중 토글은 줄 오른쪽 끝에 고정한다. */
 .toolbar {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: flex-start;
   width: 100%;
   max-width: 100%;
   margin-inline-start: auto;
@@ -40,7 +42,15 @@
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
+  /* 평소에는 스크롤바를 감추고 마우스를 올리거나 포커스가 들어오면 보인다. 끝은 흐리게 해 더 있음을 알린다. */
+  scrollbar-color: transparent transparent;
   overscroll-behavior-inline: contain;
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+
+.scroller:hover,
+.scroller:focus-within {
+  scrollbar-color: #c7cbd1 transparent;
 }
 
 .primaryFilters {
@@ -48,6 +58,7 @@
   display: flex;
   width: max-content;
   gap: 8px;
+  padding-inline-end: 24px;
 }
 
 .trigger {
@@ -474,7 +485,8 @@
 }
 
 .mobileToolbar {
-  flex-direction: column;
+  flex-direction: row;
+  align-items: flex-start;
   pointer-events: none;
   width: 100%;
   gap: 6px;
@@ -492,6 +504,7 @@
   overflow-x: auto;
   overscroll-behavior-inline: contain;
   scrollbar-width: none;
+  mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
 }
 
 .mobileScroller::-webkit-scrollbar {
@@ -736,29 +749,78 @@
 
 .recruitingRow {
   display: flex;
+  flex: none;
   justify-content: flex-end;
-  width: 100%;
+  padding-top: 6px;
   pointer-events: none;
 }
 
+.mobileToolbar .recruitingRow {
+  padding-right: 4px;
+}
+
+/* 모집중 토글: 글자와 스위치를 담은 알약. 켜짐은 aria-pressed와 스위치 위치·색으로 함께 전달한다. */
 .trigger.recruitingToggle,
 .mobileTrigger.recruitingToggle {
-  width: 3rem;
-  height: 3rem;
   max-width: none;
-  padding: 0;
-  justify-content: center;
-  border-radius: 10px;
-  font-size: 0.75rem;
+  gap: 8px;
+  padding-inline: 14px 10px;
+  font-weight: var(--ds-weight-strong);
   pointer-events: auto;
 }
 
-.recruitingToggle[aria-pressed='true'] {
-  border-color: var(--ds-color-brand);
-  background: var(--ds-color-brand);
-  color: var(--ds-color-on-brand);
+.mobileTrigger.recruitingToggle {
+  gap: 6px;
+  padding-inline: 10px 8px;
 }
 
-.recruitingToggle[aria-pressed='true']:hover {
-  background: var(--ds-color-brand-hover);
+.recruitingToggle[aria-pressed='true'] {
+  border-color: var(--ds-color-action);
+}
+
+.recruitingSwitch {
+  position: relative;
+  flex: none;
+  width: 32px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--ds-color-muted);
+  transition: background-color 150ms ease-out;
+}
+
+.recruitingSwitch > span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ds-color-surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 20%);
+  transition: transform 150ms ease-out;
+}
+
+.recruitingToggle[aria-pressed='true'] .recruitingSwitch {
+  background: var(--ds-color-action);
+}
+
+.recruitingToggle[aria-pressed='true'] .recruitingSwitch > span {
+  transform: translateX(14px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recruitingSwitch,
+  .recruitingSwitch > span {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .recruitingSwitch {
+    border: 1px solid CanvasText;
+  }
+
+  .recruitingToggle[aria-pressed='true'] .recruitingSwitch {
+    background: Highlight;
+  }
 }

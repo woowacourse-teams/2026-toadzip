@@ -17,7 +17,6 @@ import {
   DetailFact,
   DetailFacts,
   DetailSection,
-  DetailTable,
 } from './DetailPrimitives.tsx'
 import { AttachmentDialog, AttachmentList } from './AnnouncementAttachments.tsx'
 import { hasAttachmentUrl } from '../api/announcementAttachments.ts'
@@ -42,7 +41,7 @@ import { groupAnnouncementSchedules } from '../presentation/announcementSchedule
 import { ScheduleGroupCard } from './ScheduleGroupCard'
 import { SchedulePeriod } from './SchedulePeriod'
 import scheduleStyles from './ScheduleGroups.module.css'
-import { formatHousingMoneyWon } from '../presentation/housingMoney'
+import { formatHousingMoneyReadable } from '../presentation/housingMoney'
 import styles from './HousingAnnouncementDetailPanel.module.css'
 import { NotificationInterestButton } from '../interest/NotificationInterest'
 
@@ -247,12 +246,14 @@ export function HousingAnnouncementDetailPanel({
         <div id={`${sectionId}-summary`} className={styles.sectionGroup}
           role="region" aria-label="요약 영역" tabIndex={-1}
           ref={(node) => { sectionRefs.current.summary = node }}>
-          <NoticeIntro detail={detail} groups={groups} />
-          <div className={styles.notificationAction}>
-            <NotificationInterestButton
-              target={{ type: 'ANNOUNCEMENT', id: detail.announcementId, name: title }}
-              source="ANNOUNCEMENT_DETAIL"
-            />
+          <div className={styles.summaryBlock}>
+            <NoticeIntro detail={detail} groups={groups} />
+            <div className={styles.notificationAction}>
+              <NotificationInterestButton
+                target={{ type: 'ANNOUNCEMENT', id: detail.announcementId, name: title }}
+                source="ANNOUNCEMENT_DETAIL"
+              />
+            </div>
           </div>
           <CoreInformation detail={detail} />
           <ReasonNotice detail={detail} />
@@ -463,8 +464,8 @@ function NoticeIntro({
 function CoreInformation({ detail }: { detail: HousingAnnouncementDetailData }) {
   const audiences = detail.targets.map((target) => target.trim()).filter(Boolean)
   return (
-    <DetailSection title="공고 핵심 정보">
-      <DetailFacts>
+    <DetailSection appearance="block" title="공고 핵심 정보">
+      <DetailFacts appearance="list">
         <DetailFact term="접수 시작" value={formatDate(detail.applicationStartAt)} />
         <DetailFact term="접수 마감" value={formatDate(detail.applicationEndAt)} />
         <DetailFact term="공급 단지" value={formatNullableCount(detail.supplyComplexCount, '개 단지')} />
@@ -521,7 +522,7 @@ function ScheduleSection({ detail, groups }: {
 
   return (
     <>
-      <DetailSection title="접수 일정">
+      <DetailSection appearance="block" title="접수 일정">
         {hasVerifiedSchedules && <ApplicationScheduleGroups schedules={applicationSchedules} complexes={groups} />}
         {!hasApplicationSchedule && !hasApplicationFallback && <EmptyState>{MISSING_DATA_LABEL}</EmptyState>}
         {!hasVerifiedSchedules && receptionSchedules.length > 0 && (
@@ -530,7 +531,7 @@ function ScheduleSection({ detail, groups }: {
         )}
       </DetailSection>
       {followUpSchedules.length > 0 && (
-        <DetailSection title="후속 일정">
+        <DetailSection appearance="block" title="후속 일정">
           <AnnouncementScheduleGroups schedules={followUpSchedules} caption="후속 일정" />
         </DetailSection>
       )}
@@ -586,7 +587,7 @@ function ReceptionPlaces({
     return null
   }
   return (
-    <DetailSection title="접수 방법">
+    <DetailSection appearance="block" title="접수 방법">
       <ul className={styles.receptionList}>
         {places.map((place, index) => {
           const url = toHttpUrl(place.url)
@@ -600,7 +601,7 @@ function ReceptionPlaces({
                 {url && <ExternalLink href={url}>접수처 열기</ExternalLink>}
               </div>
               {(hasText(place.address) || hasText(place.phoneNumber)) && (
-                <DetailFacts>
+                <DetailFacts appearance="list">
                   {hasText(place.address) && <DetailFact term="주소" value={place.address} wide />}
                   {hasText(place.phoneNumber) && <DetailFact term="문의" value={formatPhoneNumber(place.phoneNumber) ?? MISSING_DATA_LABEL} wide />}
                 </DetailFacts>
@@ -631,7 +632,7 @@ function ComplexComparison({
   onOpenComplex?: (complexId: string) => void
 }) {
   return (
-    <DetailSection
+    <DetailSection appearance="block"
       title="단지 비교"
       actions={groups.length > 0 ? <AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} /> : undefined}
       aside={`${formatNullableCount(supplyComplexCount, '개 단지')} · ${supplyHouseholdSummary(supplyHouseholdCount)}`}
@@ -707,7 +708,7 @@ function ComplexCard({
         </div>
       </div>
       <div className={styles.complexRanges}>
-        <DetailFacts>
+        <DetailFacts appearance="list">
           <DetailFact term="전용면적" value={areaRange(group.rows, areaUnit)} wide />
           <DetailFact
             term="보증금"
@@ -752,7 +753,7 @@ function HousingTypeComparison({
   ))
   const panelId = `${idPrefix}-housing-types`
   return (
-    <DetailSection
+    <DetailSection appearance="block"
       title="주택형 비교"
       actions={<AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} />}
     >
@@ -810,7 +811,6 @@ function HousingTypeCard({
   row: HousingAnnouncementDetailSupplyRow
   onOpenFloorPlan: (selection: FloorPlanSelection) => void
 }) {
-  const idPrefix = useId()
   const housingTypeName = row.housingType?.name
     ?? row.sourceHousingTypeName
     ?? MISSING_DATA_LABEL
@@ -840,33 +840,20 @@ function HousingTypeCard({
           </button>
         )}
       </div>
-      <DetailTable caption={`${complexName} ${housingTypeName} 공급 정보`}>
-        <colgroup>
-          <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-          <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-        </colgroup>
-        <tbody>
-          <tr>
-            <th id={`${idPrefix}-kind`} scope="row">공급 구분</th>
-            <td headers={`${idPrefix}-kind`}>{row.supplyTypeLabel}</td>
-            <th id={`${idPrefix}-area`} scope="row">전용면적</th>
-            <td headers={`${idPrefix}-area`}>{formatArea(row.housingType?.exclusiveArea ?? null, areaUnit)}</td>
-          </tr>
-          <tr>
-            <th id={`${idPrefix}-count`} scope="row">공급 세대수</th>
-            <td headers={`${idPrefix}-count`}>{formatNullableCount(row.totalSupplyHouseholdCount, '세대')}</td>
-            <th id={`${idPrefix}-occupancy`} scope="row">입주 예정</th>
-            <td headers={`${idPrefix}-occupancy`}>{formatYearMonth(row.occupancyExpectedYearMonth)}</td>
-          </tr>
-        </tbody>
-      </DetailTable>
+      <div role="group" aria-label={`${complexName} ${housingTypeName} 공급 정보`}>
+        <DetailFacts appearance="list">
+          <DetailFact term="공급 구분" value={row.supplyTypeLabel} />
+          <DetailFact term="전용면적" value={formatArea(row.housingType?.exclusiveArea ?? null, areaUnit)} />
+          <DetailFact term="공급 세대수" value={formatNullableCount(row.totalSupplyHouseholdCount, '세대')} />
+          <DetailFact term="입주 예정" value={formatYearMonth(row.occupancyExpectedYearMonth)} />
+        </DetailFacts>
+      </div>
       <SupplyTargets targets={row.targets} />
     </article>
   )
 }
 
 function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget[] }) {
-  const idPrefix = useId()
   const visibleTargets = targets.filter((target) => (
     [target.target, target.priority, target.applicationCondition].some(hasText)
     || [target.supplyHouseholdCount, target.waitlistCount, target.deposit, target.monthlyRent].some(Number.isFinite)
@@ -874,46 +861,23 @@ function SupplyTargets({ targets }: { targets: readonly AnnouncementSupplyTarget
   if (visibleTargets.length === 0) return null
   return (
     <ul className={styles.targetList} aria-label="대상별 공급 조건">
-      {visibleTargets.map((target, index) => (
+      {visibleTargets.map((target) => (
         <li key={target.supplyTargetId}>
           <header className={styles.targetHeading}>
             <strong>{target.target ?? MISSING_DATA_LABEL}</strong>
             {hasText(target.priority) && <span>{target.priority}</span>}
           </header>
-          <DetailTable caption={`${target.target ?? MISSING_DATA_LABEL} 공급 조건`}>
-            <colgroup>
-              <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-              <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-            </colgroup>
-            <tbody>
-              <tr>
-                <th id={`${idPrefix}-${index}-count`} scope="row">공급 세대수</th>
-                <td headers={`${idPrefix}-${index}-count`} data-numeric="true">
-                  {formatNullableCount(target.supplyHouseholdCount, '세대')}
-                </td>
-                <th id={`${idPrefix}-${index}-waitlist`} scope="row">모집 예비자 수</th>
-                <td headers={`${idPrefix}-${index}-waitlist`} data-numeric="true">
-                  {formatNullableCount(target.waitlistCount, '명')}
-                </td>
-              </tr>
-              <tr>
-                <th id={`${idPrefix}-${index}-deposit`} scope="row">보증금</th>
-                <td headers={`${idPrefix}-${index}-deposit`} data-emphasis={Number.isFinite(target.deposit) || undefined} data-numeric="true">
-                  {formatHousingMoneyWon(target.deposit)}
-                </td>
-                <th id={`${idPrefix}-${index}-rent`} scope="row">월 임대료</th>
-                <td headers={`${idPrefix}-${index}-rent`} data-emphasis={Number.isFinite(target.monthlyRent) || undefined} data-numeric="true">
-                  {formatHousingMoneyWon(target.monthlyRent)}
-                </td>
-              </tr>
+          <div role="group" aria-label={`${target.target ?? MISSING_DATA_LABEL} 공급 조건`}>
+            <DetailFacts appearance="list">
+              <DetailFact term="공급 세대수" value={formatNullableCount(target.supplyHouseholdCount, '세대')} />
+              <DetailFact term="모집 예비자 수" value={formatNullableCount(target.waitlistCount, '명')} />
+              <DetailFact term="보증금" value={formatHousingMoneyReadable(target.deposit)} emphasis={Number.isFinite(target.deposit)} />
+              <DetailFact term="월 임대료" value={formatHousingMoneyReadable(target.monthlyRent)} emphasis={Number.isFinite(target.monthlyRent)} />
               {hasText(target.applicationCondition) && (
-                <tr>
-                  <th id={`${idPrefix}-${index}-condition`} scope="row">신청 조건</th>
-                  <td headers={`${idPrefix}-${index}-condition`} colSpan={3}>{target.applicationCondition}</td>
-                </tr>
+                <DetailFact term="신청 조건" value={target.applicationCondition} wide />
               )}
-            </tbody>
-          </DetailTable>
+            </DetailFacts>
+          </div>
         </li>
       ))}
     </ul>
@@ -1130,7 +1094,7 @@ function moneyRange(
   const values = rows.flatMap((row) => row.targets)
     .map((target) => target[key])
     .filter((value): value is number => value !== null)
-  return numericRange(values, formatHousingMoneyWon)
+  return numericRange(values, formatHousingMoneyReadable)
 }
 
 function numericRange(

@@ -30,7 +30,7 @@ export function CurrentLocationControl({ state, onLocate }: {
           <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
         </svg>
       </IconButton>
-      <div className={styles.status} hidden={!message}>
+      <div className={styles.status} hidden={!message} data-location-status>
         <div className={styles.statusHeader}>
           <p id={statusId} role="status" aria-live="polite">{message}</p>
           <IconButton label="위치 안내 닫기" className={styles.dismissButton} onClick={event => {

@@ -12,6 +12,14 @@
 .secondaryButton[aria-pressed='true'] { background: var(--ds-color-action-selected); border-color: var(--ds-color-action); }
 .secondaryButton:focus-visible, .retry:focus-visible { outline: 3px solid var(--ds-color-action); outline-offset: 2px; }
 .secondaryButton[aria-disabled='true'] { color: var(--ds-color-muted); background: var(--ds-color-surface-subtle); cursor: default; }
+.actionEntry { justify-items: stretch; }
+.actionButton {
+  min-height: 48px; gap: 6px; padding: 0 var(--ds-space-3);
+  border: 2px solid var(--ds-color-action); border-radius: 10px;
+  font-size: var(--ds-text-control-lg); font-weight: var(--ds-weight-strong);
+}
+.actionButton svg { width: 20px; height: 20px; }
+.actionButton[aria-disabled='true'] { border: 1px solid var(--ds-color-divider); }
 .retry { padding: 0; border: 0; background: transparent; color: var(--ds-color-action); font: inherit; font-size: var(--ds-text-caption); text-decoration: underline; cursor: pointer; }
 .description { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .tooltip { position: absolute; z-index: 2; right: 0; top: 100%; width: max-content; max-width: 240px; padding: var(--ds-space-2) var(--ds-space-3); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); background: var(--ds-color-text); color: var(--ds-color-surface); font-size: var(--ds-text-caption); line-height: var(--ds-line-height-caption); box-shadow: 0 4px 12px rgb(0 0 0 / 12%); }

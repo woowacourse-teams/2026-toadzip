@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { type ComponentProps, useState } from 'react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { ComplexSearchFilters } from '../api/publicHousingRepository.ts'
 import { ComplexFilterToolbar } from './ComplexFilterToolbar.tsx'
@@ -104,6 +106,21 @@ describe('ComplexFilterToolbar', () => {
     expect(toggle).toHaveAttribute('aria-pressed', 'false')
     expect(toggle).toHaveAttribute('data-active', 'false')
     expect(appliedFilters()).toEqual({ agencyCodes: ['LH'], maxDeposit: 0 })
+  })
+
+  it.each(['desktop', 'mobile'])('%s 모집중 토글은 필터 칩 다음 줄 끝에 스위치 모양으로 고정되고 이름은 그대로다', (mode) => {
+    render(<StatefulToolbar initialFilters={{}} />)
+    const toolbar = screen.getByRole('toolbar', { name: mode === 'desktop' ? '단지 검색 필터' : '모바일 단지 검색 필터' })
+    const toggle = within(toolbar).getByRole('button', { name: '모집중', pressed: false })
+
+    expect(toolbar.lastElementChild).toContainElement(toggle)
+    expect(toggle.querySelector('[aria-hidden="true"]')).toBeInTheDocument()
+    expect(toggle).toHaveTextContent(/^모집중$/)
+
+    const css = readFileSync(resolve(process.cwd(), 'src/public-housing/filters/ComplexFilterToolbar.module.css'), 'utf8')
+    expect(css).toMatch(/\.toolbar \{[^}]*flex-direction: row;/)
+    expect(css).toMatch(/\.mobileToolbar \{[^}]*flex-direction: row;/)
+    expect(css).toMatch(/\.recruitingRow \{[^}]*flex: none;/)
   })
 
   it.each(['desktop', 'mobile'])('%s 전체 패널은 모집상태 선택 없이 다른 조건을 변경해도 모집중을 유지하고 전체 초기화로 해제한다', (mode) => {

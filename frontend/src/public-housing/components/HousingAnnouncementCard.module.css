@@ -55,15 +55,15 @@
 }
 
 .agency[data-agency-tone='lh'] {
-  color: var(--ds-color-agency-lh);
+  color: var(--ds-color-agency-lh-text);
 }
 
 .agency[data-agency-tone='sh'] {
-  color: var(--ds-color-agency-sh);
+  color: var(--ds-color-agency-sh-text);
 }
 
 .agency[data-agency-tone='gh'] {
-  color: var(--ds-color-agency-gh);
+  color: var(--ds-color-agency-gh-text);
 }
 
 .titleRow {

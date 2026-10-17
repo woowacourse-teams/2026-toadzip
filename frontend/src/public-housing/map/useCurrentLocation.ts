@@ -10,7 +10,6 @@ export type CurrentLocationState =
 const UNAVAILABLE_MESSAGE = '이 환경에서는 위치를 사용할 수 없어요. 지역을 검색해 주세요.'
 const FAILED_MESSAGE = '현재 위치를 확인하지 못했어요. 다시 시도하거나 지역을 검색해 주세요.'
 const DENIED_MESSAGE = '위치 사용이 차단되어 있어요. 브라우저 설정에서 허용하거나 지역을 검색해 주세요.'
-export const LOCATION_ERROR_VISIBLE_MS = 8_000
 
 export function useCurrentLocation(
   autoEnabled: boolean,
@@ -79,15 +78,6 @@ export function useCurrentLocation(
     })
     return () => { cancelled = true }
   }, [autoEnabled, locate])
-
-  useEffect(() => {
-    if (state.kind !== 'error') return
-    // 안내가 지도를 계속 가리지 않도록 잠시 뒤 닫는다. 버튼으로 언제든 다시 확인할 수 있다.
-    const timer = window.setTimeout(() => {
-      setState(current => current === state ? { kind: 'idle' } : current)
-    }, LOCATION_ERROR_VISIBLE_MS)
-    return () => window.clearTimeout(timer)
-  }, [state])
 
   useEffect(() => () => {
     // getCurrentPosition has no abort API. Ignore callbacks after leaving.

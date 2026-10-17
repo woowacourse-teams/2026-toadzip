@@ -9,6 +9,13 @@
   font-family: var(--ds-font-family-ui);
 }
 
+.section[data-appearance='block'] {
+  margin-inline: 0;
+  padding: var(--ds-space-5);
+  border-top: 0;
+  border-radius: 16px;
+}
+
 .sectionHeading {
   display: flex;
   min-width: 0;
@@ -131,6 +138,37 @@
 
 .facts[data-columns='2'] > .fact[data-wide='true'] {
   grid-template-columns: minmax(0, 22%) minmax(0, 1fr);
+}
+
+/* 이름/값 목록: 칸·배경 없이 항목명 아래 값을 둔다. */
+.facts[data-appearance='list'] {
+  overflow: visible;
+  gap: var(--ds-space-4) var(--ds-space-5);
+  border-block: 0;
+  background: transparent;
+}
+
+.facts[data-appearance='list'] > .fact {
+  display: block;
+  background: transparent;
+  outline: 0;
+}
+
+.facts[data-appearance='list'] > .fact dt {
+  display: block;
+  padding: 0;
+  background: transparent;
+  font-size: var(--ds-text-caption);
+  font-weight: 400;
+  line-height: var(--ds-line-height-caption);
+  text-align: left;
+}
+
+.facts[data-appearance='list'] > .fact dd {
+  margin-top: 2px;
+  padding: 0;
+  border-left: 0;
+  text-align: left;
 }
 
 .tableViewport {
@@ -277,7 +315,18 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* 이름/값 목록은 칸 테두리가 없어 좁은 폭에서도 두 열을 유지한다. */
+  .facts[data-columns='2'][data-appearance='list'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .facts[data-columns='2'] > .fact[data-wide='true'] {
     grid-template-columns: minmax(0, 44%) minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 220px) {
+  .facts[data-columns='2'][data-appearance='list'] {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

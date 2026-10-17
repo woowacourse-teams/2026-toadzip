@@ -1,5 +1,7 @@
 import { captureProductEvent, prepareNotificationCompletion, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router'
 import { NotificationInterestButton, NotificationInterestProvider } from './NotificationInterest'
@@ -561,4 +563,13 @@ it('신청 응답을 기다리는 동안 저장 상태를 보여 주고 성공�
   await act(async () => response.resolve(resultFor(event, 'ACTIVATED')))
   expect(screen.getByRole('dialog', { name: '알림 신청을 완료했어요' })).toBeVisible()
   expect(screen.getByRole('status')).toHaveTextContent('서울 단지')
+})
+
+it('모바일 상태 오류 토스트는 목록 시트나 위치 안내가 떠 있는 동안 숨겨 안내를 겹치지 않는다', () => {
+  const css = readFileSync(resolve(process.cwd(), 'src/public-housing/interest/NotificationInterest.module.css'), 'utf8')
+  const mobileRule = css.slice(css.indexOf('@media (max-width: 767px)'))
+
+  expect(mobileRule).toContain(':global(body:has(.housing-results[data-mobile="true"][aria-hidden="false"])) .feedback[role=\'alert\']')
+  expect(mobileRule).toContain(':global(body:has([data-location-status]:not([hidden]))) .feedback[role=\'alert\']')
+  expect(mobileRule).toMatch(/\.feedback\[role='alert'\] \{\s*display: none;/)
 })

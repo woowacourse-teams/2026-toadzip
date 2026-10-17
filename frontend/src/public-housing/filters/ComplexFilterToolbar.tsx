@@ -462,7 +462,10 @@ export function ComplexFilterToolbar({
           measurement.apply(next, 'immediate', { topic: 'applicationStatus', layout: mobile ? 'mobile' : 'desktop', method: 'choice' })
           onApply(next)
         }}
-      >모집중</button>
+      >
+        <span>모집중</span>
+        <span className={styles.recruitingSwitch} aria-hidden="true"><span /></span>
+      </button>
     )
   }
 
