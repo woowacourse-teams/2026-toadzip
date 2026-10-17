@@ -364,7 +364,6 @@
 
 .receptionList a,
 .attachmentList a,
-.complexHeading button,
 .housingTypeHeading button {
   display: inline-flex;
   min-height: 36px;
@@ -387,132 +386,111 @@
   white-space: nowrap;
 }
 
-.complexList,
 .housingTypes {
   display: grid;
   gap: var(--ds-space-4);
 }
 
-.complexCard {
-  min-width: 0;
-}
-
-.complexCard + .complexCard,
 .housingTypeCard + .housingTypeCard {
   padding-top: var(--ds-space-4);
   border-top: 1px solid var(--detail-line);
 }
 
-.complexSummary {
-  display: grid;
-  min-width: 0;
-  align-items: center;
-  gap: var(--ds-space-3);
-  margin-top: var(--ds-space-2);
-  grid-template-columns: 92px minmax(0, 1fr);
+.complexComparisonTable table {
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
-.complexSummary[data-has-image='false'] {
-  display: block;
+.complexComparisonTable th,
+.complexComparisonTable td {
+  padding: var(--ds-space-2);
 }
 
-.complexImage {
-  display: grid;
-  min-height: 100px;
-  overflow: hidden;
-  border-radius: 6px;
-  background: var(--ds-color-surface-subtle);
-  color: var(--detail-muted);
-  font-size: var(--ds-text-caption);
-  line-height: var(--ds-line-height-caption);
-  text-align: center;
-  place-items: center;
+.complexComparisonTable thead th {
+  white-space: nowrap;
 }
 
-.complexImage img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.complexComparisonTable th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 140px;
+  box-shadow: 1px 0 0 var(--ds-color-divider);
+  text-align: left;
 }
 
-.complexBody {
-  min-width: 0;
-}
-
-.complexHeading {
-  display: flex;
-  min-width: 0;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ds-space-2);
-  flex-wrap: wrap;
-}
-
-.complexHeading > div {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--ds-space-2);
-  flex-wrap: wrap;
-}
-
-.complexHeading strong {
-  min-width: 0;
+.complexComparisonTable tbody th {
+  background: var(--ds-color-surface);
   color: var(--ds-color-text);
-  font-size: var(--ds-text-body);
-  line-height: var(--ds-line-height-body);
-  font-weight: 700;
-  overflow-wrap: anywhere;
 }
 
-.complexHeading span {
-  flex: 0 0 auto;
-  color: var(--ds-color-label);
-  font-size: var(--ds-text-caption);
-  line-height: var(--ds-line-height-caption);
-  font-weight: 400;
+.complexComparisonTable td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: normal;
 }
 
-.complexHeading button,
+.complexNameLink {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ds-color-action);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.complexNameLink:hover {
+  text-decoration-thickness: 2px;
+}
+
 .housingTypeHeading button {
   flex: 0 0 auto;
-}
-
-.complexBody > p {
-  margin: 0;
-  color: var(--ds-color-label);
-  font-size: var(--ds-text-caption);
-  line-height: var(--ds-line-height-caption);
-  overflow-wrap: anywhere;
-}
-
-.complexCounts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ds-space-3);
-  margin-top: var(--ds-space-2);
-  color: var(--detail-muted);
-  font-size: var(--ds-text-caption);
-  line-height: var(--ds-line-height-caption);
-}
-
-.complexCounts b {
-  color: var(--ds-color-label);
-  font-weight: 500;
-}
-
-.complexRanges {
-  margin-top: var(--ds-space-3);
 }
 
 .housingTypeGroup {
   min-width: 0;
 }
 
+.singleComplexHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  padding-bottom: var(--ds-space-3);
+  border-bottom: 1px solid var(--detail-line);
+}
+
+.singleComplexHeading h4 {
+  min-width: 0;
+  margin: 0;
+  color: var(--ds-color-text);
+  font-size: var(--ds-text-body);
+  line-height: var(--ds-line-height-body);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.singleComplexHeading > span {
+  flex-shrink: 0;
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+  line-height: var(--ds-line-height-caption);
+}
+
 .complexTabs {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--ds-space-1);
+  gap: var(--ds-space-3);
+  border-bottom: 1px solid var(--detail-line);
 }
 
 .complexTabs button {
@@ -524,10 +502,11 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--ds-space-2);
-  padding: var(--ds-space-2) var(--ds-space-3);
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: var(--ds-color-surface-subtle);
+  padding: var(--ds-space-2) var(--ds-space-1);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: var(--ds-color-surface);
   color: var(--ds-color-label);
   cursor: pointer;
   font-size: var(--ds-text-body);
@@ -542,9 +521,8 @@
 
 .complexTabs button span {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 .complexTabs button b {
@@ -555,10 +533,9 @@
 }
 
 .complexTabs button[aria-selected='true'] {
-  border: 1px solid var(--ds-color-brand);
-  background: var(--ds-color-brand);
-  color: var(--ds-color-on-brand);
-  font-weight: 700;
+  border-bottom-color: var(--ds-color-action);
+  color: var(--ds-color-action);
+  font-weight: 600;
 }
 
 .housingTypes {
@@ -567,6 +544,15 @@
 
 .housingTypeCard {
   min-width: 0;
+}
+
+.housingTypeFacts table {
+  table-layout: auto;
+}
+
+.housingTypeFacts th,
+.housingTypeFacts td {
+  white-space: nowrap;
 }
 
 .housingTypeHeading {
@@ -794,7 +780,6 @@
   text-align: center;
 }
 
-.complexHeading button:hover,
 .housingTypeHeading button:hover,
 .receptionList a:hover,
 .attachmentList a:hover {
@@ -813,14 +798,6 @@
 }
 
 @container housing-announcement-detail (max-width: 420px) {
-  .complexSummary {
-    grid-template-columns: 82px minmax(0, 1fr);
-  }
-
-  .complexHeading {
-    align-items: flex-start;
-  }
-
   .documents {
     align-items: stretch;
     grid-template-columns: minmax(0, 1fr);
@@ -854,14 +831,6 @@
     align-items: flex-start;
     justify-content: center;
     flex-direction: column;
-  }
-
-  .complexSummary {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .complexImage {
-    min-height: 132px;
   }
 
   .housingTypes {

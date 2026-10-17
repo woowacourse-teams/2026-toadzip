@@ -32,7 +32,7 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(screen.getAllByRole('button', { name: '평 전환' })).toHaveLength(2)
     fireEvent.click(screen.getAllByRole('button', { name: '평 전환' })[0])
     expect(screen.getAllByRole('button', { name: '㎡ 전환' })).toHaveLength(2)
-    const complex = screen.getByRole('article', { name: '새솔마을 단지 비교' })
+    const complex = screen.getByRole('row', { name: /^새솔마을/ })
     expect(within(complex).getByText('10.95평 – 13.34평')).toBeVisible()
     expect(within(screen.getByRole('tabpanel')).getByText('10.95평', { selector: 'td' })).toBeVisible()
     fireEvent.click(screen.getByRole('tab', { name: /봇들마을/ }))
@@ -50,9 +50,47 @@ describe('HousingAnnouncementDetailPanel', () => {
       supplyRow({ supplyRowId: 'zero', housingType: { ...row.housingType!, exclusiveArea: 0 } }),
     ] })} onClose={vi.fn()} />)
     fireEvent.click(screen.getAllByRole('button', { name: '평 전환' })[0])
-    expect(within(screen.getByRole('tabpanel')).getByText('0평', { selector: 'td' })).toBeVisible()
+    expect(within(screen.getByRole('table', { name: '새솔마을 36A 공급 정보' })).getByText('0평', { selector: 'td' })).toBeVisible()
     const missing = screen.getByRole('article', { name: '새솔마을 미확인형 주택형' })
     expect(factValueIn(missing, '전용면적')).toHaveTextContent('공고문 확인')
+  })
+
+  it.each([1, 2])('단지가 %i개여도 동일한 비교표와 열 구성을 유지한다', (count) => {
+    render(<HousingAnnouncementDetailPanel detail={detail({
+      supplyRows: detail().supplyRows.slice(0, count), supplyComplexCount: count,
+    })} onClose={vi.fn()} onOpenComplex={vi.fn()} />)
+    const table = screen.getByRole('table', { name: '단지별 공급 정보' })
+    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent))
+      .toEqual(['단지', '공급 세대수', '전용면적', '보증금', '월 임대료'])
+    expect(within(table).getAllByRole('row')).toHaveLength(count + 1)
+    const first = within(table).getByRole('row', { name: /^새솔마을/ })
+    expect(within(first).getByRole('rowheader')).toHaveTextContent(/^새솔마을$/)
+    expect(within(first).getByRole('button', { name: '새솔마을 단지 상세 보기' })).toHaveTextContent('새솔마을')
+    expect(within(first).getAllByRole('cell').map((cell) => cell.textContent))
+      .toEqual(['12세대', '36.2㎡', '3,200만원', '12만 8,000원'])
+    if (count === 2) {
+      const second = within(table).getByRole('row', { name: /^봇들마을/ })
+      expect(within(second).getByRole('rowheader')).toHaveTextContent(/^봇들마을$/)
+      expect(within(second).getAllByRole('cell').map((cell) => cell.textContent))
+        .toEqual(['8세대', '44.1㎡', '공고문 확인', '공고문 확인'])
+    }
+    expect(screen.getByRole('region', { name: '단지별 공급 정보 표' })).toHaveAttribute('tabindex', '0')
+  })
+
+  it('연결되지 않은 단지도 비교 행에 남기고 실제 0과 누락값을 구분한다', () => {
+    const row = supplyRow()
+    render(<HousingAnnouncementDetailPanel detail={detail({ supplyRows: [supplyRow({
+      complex: null,
+      sourceComplexName: '미연결 단지',
+      housingType: { ...row.housingType!, exclusiveArea: 0 },
+      totalSupplyHouseholdCount: 0,
+      targets: [{ ...row.targets[0]!, deposit: 0, monthlyRent: null }],
+    })] })} onClose={vi.fn()} onOpenComplex={vi.fn()} />)
+    const complex = screen.getByRole('row', { name: /^미연결 단지/ })
+    expect(within(complex).getAllByRole('cell').map((cell) => cell.textContent))
+      .toEqual(['0세대', '0㎡', '0원', '공고문 확인'])
+    expect(within(complex).getByRole('rowheader')).toHaveTextContent(/^미연결 단지$/)
+    expect(within(complex).queryByRole('button')).not.toBeInTheDocument()
   })
 
   it('회원은 이메일 없이 공고 알림을 저장한다', async () => {
@@ -72,17 +110,6 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(screen.getByRole('dialog', { name: '알림 신청을 완료했어요' })).toBeVisible()
     localStorage.clear()
   })
-
-  it('유효한 조감도만 표시하고 이미지가 없는 단지의 빈 안내는 숨긴다', () => {
-    renderPanel()
-    const withoutImage = screen.getByRole('article', { name: '새솔마을 단지 비교' })
-    expect(within(withoutImage).queryByText(/조감도/)).not.toBeInTheDocument()
-    expect(within(withoutImage).queryByRole('img')).not.toBeInTheDocument()
-    const withImage = screen.getByRole('article', { name: '봇들마을 단지 비교' })
-    expect(within(withImage).getByRole('img', { name: '봇들마을 단지 조감도' }))
-      .toHaveAttribute('src', 'https://example.com/botdeul.jpg')
-  })
-
 
   it('신청 대상을 핵심 정보의 한 행으로 표시하고 공백 대상은 제외한다', () => {
     render(<HousingAnnouncementDetailPanel detail={detail({ targets: [' 청년 ', '', '  ', '신혼부부'] })} onClose={vi.fn()} />)
@@ -428,17 +455,15 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(screen.queryByText('D-3')).not.toBeInTheDocument()
   })
 
-  it('단지가 하나여도 단지명 선택 탭과 주택형 패널을 연결한다', () => {
+  it('단지가 하나면 선택 탭 없이 단지명으로 주택형 정보를 안내한다', () => {
     render(<HousingAnnouncementDetailPanel detail={detail({
       supplyRows: [supplyRow()], supplyComplexCount: 1,
     })} onClose={vi.fn()} />)
-    const tab = screen.getByRole('tab', { name: /새솔마을/ })
-    expect(tab).toHaveAttribute('aria-selected', 'true')
-    const panel = screen.getByRole('tabpanel', { name: /새솔마을/ })
-    expect(tab).toHaveAttribute('aria-controls', panel.id)
+    expect(screen.queryByRole('tablist', { name: '주택형을 볼 단지 선택' })).not.toBeInTheDocument()
+    const heading = screen.getByRole('heading', { name: '새솔마을', level: 4 })
+    const panel = screen.getByRole('region', { name: '새솔마을' })
+    expect(panel).toHaveAttribute('aria-labelledby', heading.id)
     expect(within(panel).getByRole('article', { name: '새솔마을 36A 주택형' })).toBeVisible()
-    fireEvent.keyDown(tab, { key: 'ArrowRight' })
-    expect(tab).toHaveFocus()
   })
 
   it.each([
@@ -490,10 +515,7 @@ describe('HousingAnnouncementDetailPanel', () => {
     expect(within(panel).queryByText(/경쟁률 예측/)).not.toBeInTheDocument()
     expect(within(panel).queryByRole('button', { name: /공고 저장/ })).not.toBeInTheDocument()
 
-    const firstComplex = within(panel).getByRole('article', {
-      name: '새솔마을 단지 비교',
-    })
-    expect(within(firstComplex).getByText('1,046세대')).toBeVisible()
+    const firstComplex = within(panel).getByRole('row', { name: /^새솔마을/ })
     expect(within(firstComplex).getByText('12세대')).toBeVisible()
     expect(within(firstComplex).getByText('36.2㎡')).toBeVisible()
     expect(within(firstComplex).getByText('3,200만원')).toBeVisible()
@@ -632,7 +654,7 @@ describe('HousingAnnouncementDetailPanel', () => {
     })
     const tabs = within(tablist).getAllByRole('tab')
     expect(within(tabs[0]!).getByText('공급 세대수: 공고문 확인')).toBeVisible()
-    expect(within(screen.getByRole('article', { name: '가나다 단지 비교' })).getByText('주소: 공고문 확인')).toBeVisible()
+    expect(screen.getByRole('rowheader', { name: '가나다' })).toBeVisible()
     const panel = screen.getByRole('tabpanel')
     expect(tabs[0]).not.toHaveAttribute('id', tabs[1]?.id)
     expect(tabs[0]).toHaveAttribute('aria-controls', panel.id)
@@ -737,6 +759,7 @@ describe('HousingAnnouncementDetailPanel', () => {
     const complexSection = within(panel).getByRole('heading', { name: '단지 비교' }).closest('section')
     expect(within(complexSection!).getByText('0개 단지 · 공급 세대수: 공고문 확인')).toBeVisible()
     expect(within(complexSection!).getByText('단지 정보: 공고문 확인')).toBeVisible()
+    expect(within(complexSection!).queryByRole('table')).not.toBeInTheDocument()
     expect(within(complexSection!).queryByText('공고문 확인')).not.toBeInTheDocument()
     const footer = within(panel).getByRole('navigation', { name: '공고문 바로가기' }).parentElement
     expect(within(footer!).queryByText('첨부파일 정보 없음')).not.toBeInTheDocument()
@@ -808,9 +831,10 @@ describe('HousingAnnouncementDetailPanel', () => {
       />,
     )
 
-    const complex = screen.getByRole('article', { name: '새솔마을 단지 비교' })
+    const complex = screen.getByRole('row', { name: /^새솔마을/ })
     const range = within(complex).getByText('1,800만원 – 1억 8,000만원')
-    expect(range.closest('[data-wide]')).toHaveAttribute('data-wide', 'true')
+    expect(range).toHaveAttribute('data-emphasis', 'true')
+    expect(within(complex).getByRole('cell', { name: '0원 – 18만원' })).toBeVisible()
     const young = screen.getByRole('group', { name: '청년 공급 조건' })
     expect(factValueIn(young, '보증금')).toHaveTextContent('1,800만원')
     expect(factValueIn(young, '월 임대료')).toHaveTextContent('18만원')

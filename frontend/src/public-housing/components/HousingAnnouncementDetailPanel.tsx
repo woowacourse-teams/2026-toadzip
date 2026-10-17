@@ -272,7 +272,6 @@ export function HousingAnnouncementDetailPanel({
             areaUnit={areaUnit}
             onToggleAreaUnit={toggleAreaUnit}
             groups={groups}
-            rentalTypeLabel={detail.rentalTypeLabel}
             supplyComplexCount={detail.supplyComplexCount}
             supplyHouseholdCount={detail.supplyHouseholdCount}
             onOpenComplex={onOpenComplex}
@@ -619,7 +618,6 @@ function ComplexComparison({
   areaUnit,
   onToggleAreaUnit,
   groups,
-  rentalTypeLabel,
   supplyComplexCount,
   supplyHouseholdCount,
   onOpenComplex,
@@ -627,7 +625,6 @@ function ComplexComparison({
   areaUnit: AreaUnit
   onToggleAreaUnit: () => void
   groups: readonly HousingAnnouncementSupplyComplexGroup[]
-  rentalTypeLabel: string
   supplyComplexCount: number
   supplyHouseholdCount: number | null
   onOpenComplex?: (complexId: string) => void
@@ -639,36 +636,44 @@ function ComplexComparison({
       aside={`${formatNullableCount(supplyComplexCount, '개 단지')} · ${supplyHouseholdSummary(supplyHouseholdCount)}`}
     >
       {groups.length === 0 && <EmptyState>단지 정보: {MISSING_DATA_LABEL}</EmptyState>}
-      <div className={styles.complexList}>
-        {groups.map((group) => (
-          <ComplexCard
-            areaUnit={areaUnit}
-            key={group.key}
-            group={group}
-            rentalTypeLabel={rentalTypeLabel}
-            onOpenComplex={onOpenComplex}
-          />
-        ))}
-      </div>
+      {groups.length > 0 && (
+        <div className={styles.complexComparisonTable}>
+          <DetailTable caption="단지별 공급 정보" minWidth={620}>
+            <thead>
+              <tr>
+                <th scope="col">단지</th>
+                <th scope="col">공급 세대수</th>
+                <th scope="col">전용면적</th>
+                <th scope="col">보증금</th>
+                <th scope="col">월 임대료</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groups.map((group) => (
+                <ComplexComparisonRow
+                  areaUnit={areaUnit}
+                  key={group.key}
+                  group={group}
+                  onOpenComplex={onOpenComplex}
+                />
+              ))}
+            </tbody>
+          </DetailTable>
+        </div>
+      )}
     </DetailSection>
   )
 }
 
-function ComplexCard({
+function ComplexComparisonRow({
   areaUnit,
   group,
-  rentalTypeLabel,
   onOpenComplex,
 }: {
   areaUnit: AreaUnit
   group: HousingAnnouncementSupplyComplexGroup
-  rentalTypeLabel: string
   onOpenComplex?: (complexId: string) => void
 }) {
-  const imageUrl = toHttpUrl(group.overviewImageUrl)
-  const depositRange = moneyRange(group.rows, 'deposit')
-  const monthlyRentRange = moneyRange(group.rows, 'monthlyRent')
-
   function openComplex() {
     if (!group.complexId || !onOpenComplex) {
       return
@@ -677,55 +682,27 @@ function ComplexCard({
   }
 
   return (
-    <article className={styles.complexCard} aria-label={`${group.name} 단지 비교`}>
-      <header className={styles.complexHeading}>
-        <div>
-          <strong>{group.name}</strong>
-          <span>{rentalTypeLabel}</span>
-        </div>
-        {group.complexId && onOpenComplex && (
+    <tr>
+      <th scope="row">
+        {group.complexId && onOpenComplex ? (
           <button
+            className={styles.complexNameLink}
             type="button"
             data-detail-return-focus={`complex:${group.complexId}`}
             aria-label={`${group.name} 단지 상세 보기`}
             onClick={openComplex}
           >
-            단지 상세
+            {group.name}
           </button>
-        )}
-      </header>
-      <div className={styles.complexSummary} data-has-image={imageUrl !== null}>
-        {imageUrl && (
-          <div className={styles.complexImage}>
-            <img src={imageUrl} alt={`${group.name} 단지 조감도`} loading="lazy" />
-          </div>
-        )}
-        <div className={styles.complexBody}>
-          <p>{group.address ?? `주소: ${MISSING_DATA_LABEL}`}</p>
-          <div className={styles.complexCounts}>
-            <span>총 <b>{formatNullableCount(group.totalHouseholdCount, '세대')}</b></span>
-            <span>공급 <b>{formatNullableCount(group.supplyHouseholdCount, '세대')}</b></span>
-          </div>
-        </div>
-      </div>
-      <div className={styles.complexRanges}>
-        <DetailFacts>
-          <DetailFact term="전용면적" value={areaRange(group.rows, areaUnit)} wide />
-          <DetailFact
-            term="보증금"
-            value={depositRange}
-            wide={depositRange.includes(' – ')}
-            emphasis={group.rows.some((row) => row.targets.some((target) => Number.isFinite(target.deposit)))}
-          />
-          <DetailFact
-            term="월 임대료"
-            value={monthlyRentRange}
-            wide={monthlyRentRange.includes(' – ')}
-            emphasis={group.rows.some((row) => row.targets.some((target) => Number.isFinite(target.monthlyRent)))}
-          />
-        </DetailFacts>
-      </div>
-    </article>
+        ) : <strong>{group.name}</strong>}
+      </th>
+      <td>{formatNullableCount(group.supplyHouseholdCount, '세대')}</td>
+      <td>{areaRange(group.rows, areaUnit)}</td>
+      <td data-emphasis={group.rows.some((row) => row.targets.some((target) => Number.isFinite(target.deposit))) || undefined}>
+        {moneyRange(group.rows, 'deposit')}
+      </td>
+      <td>{moneyRange(group.rows, 'monthlyRent')}</td>
+    </tr>
   )
 }
 
@@ -753,13 +730,15 @@ function HousingTypeComparison({
     group.key === selectedGroup.key
   ))
   const panelId = `${idPrefix}-housing-types`
+  const hasMultipleGroups = groups.length > 1
+  const singleGroupTitleId = `${idPrefix}-complex-title`
   return (
     <DetailSection appearance="block"
       title="주택형 비교"
       actions={<AreaUnitToggle unit={areaUnit} onToggle={onToggleAreaUnit} />}
     >
       <div className={styles.housingTypeGroup}>
-        {groups.length > 0 && (
+        {hasMultipleGroups ? (
           <div className={styles.complexTabs} role="tablist" aria-label="주택형을 볼 단지 선택">
             {groups.map((group, index) => (
               <button
@@ -779,12 +758,17 @@ function HousingTypeComparison({
               </button>
             ))}
           </div>
+        ) : (
+          <div className={styles.singleComplexHeading}>
+            <h4 id={singleGroupTitleId}>{selectedGroup.name}</h4>
+            <span>{supplyHouseholdSummary(selectedGroup.supplyHouseholdCount)}</span>
+          </div>
         )}
         <div
           className={styles.housingTypes}
           id={panelId}
-          role="tabpanel"
-          aria-labelledby={`${idPrefix}-complex-tab-${selectedIndex}`}
+          role={hasMultipleGroups ? 'tabpanel' : 'region'}
+          aria-labelledby={hasMultipleGroups ? `${idPrefix}-complex-tab-${selectedIndex}` : singleGroupTitleId}
         >
           {selectedGroup.rows.map((row) => (
             <HousingTypeCard
@@ -842,26 +826,24 @@ function HousingTypeCard({
           </button>
         )}
       </div>
-      <DetailTable caption={`${complexName} ${housingTypeName} 공급 정보`}>
-        <colgroup>
-          <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-          <col style={{ width: '22%' }} /><col style={{ width: '28%' }} />
-        </colgroup>
-        <tbody>
-          <tr>
-            <th id={`${idPrefix}-kind`} scope="row">공급 구분</th>
-            <td headers={`${idPrefix}-kind`}>{row.supplyTypeLabel}</td>
-            <th id={`${idPrefix}-area`} scope="row">전용면적</th>
-            <td headers={`${idPrefix}-area`}>{formatArea(row.housingType?.exclusiveArea ?? null, areaUnit)}</td>
-          </tr>
-          <tr>
-            <th id={`${idPrefix}-count`} scope="row">공급 세대수</th>
-            <td headers={`${idPrefix}-count`}>{formatNullableCount(row.totalSupplyHouseholdCount, '세대')}</td>
-            <th id={`${idPrefix}-occupancy`} scope="row">입주 예정</th>
-            <td headers={`${idPrefix}-occupancy`}>{formatYearMonth(row.occupancyExpectedYearMonth)}</td>
-          </tr>
-        </tbody>
-      </DetailTable>
+      <div className={styles.housingTypeFacts}>
+        <DetailTable caption={`${complexName} ${housingTypeName} 공급 정보`}>
+          <tbody>
+            <tr>
+              <th id={`${idPrefix}-kind`} scope="row">공급 구분</th>
+              <td headers={`${idPrefix}-kind`}>{row.supplyTypeLabel}</td>
+              <th id={`${idPrefix}-area`} scope="row">전용면적</th>
+              <td headers={`${idPrefix}-area`}>{formatArea(row.housingType?.exclusiveArea ?? null, areaUnit)}</td>
+            </tr>
+            <tr>
+              <th id={`${idPrefix}-count`} scope="row">공급 세대수</th>
+              <td headers={`${idPrefix}-count`}>{formatNullableCount(row.totalSupplyHouseholdCount, '세대')}</td>
+              <th id={`${idPrefix}-occupancy`} scope="row">입주 예정</th>
+              <td headers={`${idPrefix}-occupancy`}>{formatYearMonth(row.occupancyExpectedYearMonth)}</td>
+            </tr>
+          </tbody>
+        </DetailTable>
+      </div>
       <SupplyTargets targets={row.targets} />
     </article>
   )
