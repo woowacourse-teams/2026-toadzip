@@ -9,19 +9,19 @@ export function prepareOfficialCoverage(category: SourceCategory, provider: stri
   for (const row of rows) {
     const agency = category === 'MYHOME_COMPLEX' ? agencies[String(row.raw.instt_nm)] ?? row.raw.instt_nm : 'LH'
     if (agency !== provider) continue
-    const name = category === 'MYHOME_COMPLEX' ? row.raw.hsmp_nm : row.raw.complex_name
-    const address = category === 'MYHOME_COMPLEX' ? row.raw.rn_adres : row.raw.address
-    if (row.raw.active === false || typeof name !== 'string' || !name.trim() || typeof address !== 'string'
-      || !address.trim() || !row.collectedAt || (category !== 'MYHOME_COMPLEX' && !/[로길]\s+\d/.test(address))) {
+    const name = category === 'MYHOME_COMPLEX' ? row.raw.hsmp_nm : category === 'LH_LEASE_CATALOG' ? row.raw.complex_label : row.raw.complex_name
+    const rawAddress = category === 'MYHOME_COMPLEX' ? row.raw.rn_adres : row.raw.address
+    const address = typeof rawAddress === 'string' && (category === 'MYHOME_COMPLEX' || /[로길]\s+\d/.test(rawAddress)) ? rawAddress.trim() : ''
+    if (row.raw.active === false || typeof name !== 'string' || !name.trim() || !row.collectedAt) {
       skipped++; continue
     }
-    const key = `${normalized(name)}:${normalized(address)}`
+    const key = `${normalized(name)}:${normalized(address) || `unlocated:${row.id}:${row.sourceKey}`}`
     if (unique.has(key)) duplicates++
     unique.set(key, { name: name.trim(), roadAddress: address.trim() })
     sourceUrl ||= row.sourceUrl
     asOf = [asOf, row.collectedAt.slice(0, 10)].sort().at(-1) ?? ''
   }
-  if (!unique.size) throw new Error('이 기관에서 이름·도로명주소·수집 시각을 확인할 수 있는 자료가 없습니다.')
+  if (!unique.size) throw new Error('이 기관에서 이름·수집 시각을 확인할 수 있는 자료가 없습니다.')
   const list = parseOfficialList(JSON.stringify({ sourceUrl, asOf, agencyCode: provider, complexes: [...unique.values()] }), 5000)
   return { list, rows: rows.length, skipped, duplicates }
 }

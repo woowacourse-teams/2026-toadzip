@@ -34,3 +34,11 @@ it('검색 결과 상한으로 대조가 불완전하면 미등록 판단을 막
   mocks.getManagementPage.mockResolvedValue({ items: [], hasNext: true })
   expect((await compareOfficialComplex(source, entry, new AbortController().signal)).status).toBe('ERROR')
 })
+
+it('주소가 없는 공식 자료는 이름으로 조사하되 미등록·일치로 확정하지 않는다', async () => {
+  const incomplete = { name: '두꺼비', roadAddress: '' }
+  expect(parseOfficialList(JSON.stringify({ ...source, complexes: [incomplete] })).complexes).toEqual([incomplete])
+  expect((await compareOfficialComplex(source, incomplete, new AbortController().signal)).status).toBe('REVIEW')
+  mocks.getManagementPage.mockResolvedValue({ items: [candidate], hasNext: false })
+  expect((await compareOfficialComplex(source, incomplete, new AbortController().signal)).status).toBe('REVIEW')
+})

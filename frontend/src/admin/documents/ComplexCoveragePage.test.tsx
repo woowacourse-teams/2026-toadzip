@@ -7,6 +7,21 @@ vi.mock('./complexCoverage', async original => ({ ...await original<typeof impor
 const entry = { name: '공식 단지', roadAddress: '서울 중구 세종대로 110' }
 const source = { sourceUrl: 'https://example.com/list', asOf: '2026-10-12', agencyCode: 'LH', complexes: [entry] }
 beforeEach(() => { vi.clearAllMocks() })
+it('기관 CSV의 주소 없는 단지도 대조하고 주소 보완으로 이어간다', async () => {
+  const incomplete = { name: '공식 단지', roadAddress: '' }
+  mocks.compareOfficialComplex.mockResolvedValue({ entry: incomplete, status: 'REVIEW', candidates: [], reason: '주소 확인 필요' })
+  render(<MemoryRouter><ComplexCoveragePage /></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button', { name: 'CSV·표 붙여넣기' }))
+  fireEvent.change(screen.getByLabelText('목록 출처 URL'), { target: { value: source.sourceUrl } })
+  fireEvent.change(screen.getByLabelText('자료 기준일'), { target: { value: source.asOf } })
+  fireEvent.change(screen.getByLabelText('공식 목록 CSV·TSV'), { target: { value: '단지명\n공식 단지' } })
+  fireEvent.click(screen.getByRole('button', { name: '공식 목록과 대조' }))
+  expect(await screen.findByRole('heading', { name: '공식 단지 · 동일성 검토' })).toBeVisible()
+  expect(screen.queryByRole('link', { name: '미등록 확인 후 단지 추가' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '이 단지 주소 보완 후 다시 대조' }))
+  expect(screen.getByLabelText('1번째 단지명')).toHaveValue('공식 단지')
+  expect(screen.getByLabelText('목록 출처 URL')).toHaveValue(source.sourceUrl)
+})
 function setup() {
   render(<MemoryRouter><ComplexCoveragePage /></MemoryRouter>)
   fireEvent.click(screen.getByRole('button', { name: 'JSON 가져오기' }))

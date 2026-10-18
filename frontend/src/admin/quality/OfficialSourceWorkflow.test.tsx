@@ -15,7 +15,7 @@ it('공식 DB 목록에서 기관·주소를 확인하고 주택형별 중복을
   fireEvent.click(screen.getByText('공식 API 자료로 목록 준비하기'))
   fireEvent.click(screen.getByRole('button', { name: '저장 자료 불러오기' }))
   fireEvent.click(await screen.findByRole('button', { name: '이 페이지를 대조 목록으로 가져오기' }))
-  expect(imported).toHaveBeenCalledWith({ sourceUrl: row.sourceUrl, asOf: '2026-10-16', agencyCode: 'LH', complexes: [{ name: '공식 단지', roadAddress: '서울 중구 세종대로 110' }] })
+  expect(imported).toHaveBeenCalledWith({ sourceUrl: row.sourceUrl, asOf: '2026-10-16', agencyCode: 'LH', complexes: [{ name: '공식 단지', roadAddress: '서울 중구 세종대로 110' }, { name: '공식 단지', roadAddress: '' }] })
   expect(mocks.start).not.toHaveBeenCalled()
 })
 it('수집 실패를 숨기지 않고 저장된 범위만 대조한다고 안내한다', async () => {
