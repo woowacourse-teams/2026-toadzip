@@ -36,8 +36,12 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.function.Function;
@@ -125,7 +129,7 @@ class SourceCollectionRecoveryIntegrationTest {
         states.fail(latestId, null, "최신 실행 실패", "{}", restartedAt.plusSeconds(1));
         entityManager.clear();
 
-        var history = queryService(mock(DataPipelineExecutionLock.class)).history(0, 100);
+        var history = queryService(unlockedPipelineLock()).history(0, 100);
         entityManager.clear();
 
         assertThat(history).filteredOn(item -> item.executionId().equals(staleId)).singleElement()
@@ -139,7 +143,7 @@ class SourceCollectionRecoveryIntegrationTest {
         UUID id = execution(STARTED_AT);
         var running = record(id, STARTED_AT);
         var lock = mock(DataPipelineExecutionLock.class);
-        when(lock.isHeld()).thenReturn(true);
+        when(lock.tryAcquire()).thenReturn(Optional.empty());
         entityManager.clear();
 
         var history = queryService(lock).history(0, 100);
@@ -174,14 +178,14 @@ class SourceCollectionRecoveryIntegrationTest {
                 recordService.fail(recordId, request, failure);
                 assertThat(failure.getSuppressed()).hasSize(1);
                 states.fail(id, null, "원래 실행 실패", "{\"marker\":1}", STARTED_AT.plusSeconds(60));
-                assertThat(queryService(mock(DataPipelineExecutionLock.class)).find(id).status())
+                assertThat(queryService(unlockedPipelineLock()).find(id).status())
                         .isEqualTo(DataPipelineExecutionStatus.FAILED);
                 assertThat(records.findById(recordId).orElseThrow().getStatus()).isEqualTo(CollectionStatus.RUNNING);
             } finally {
                 jdbc.execute("ALTER TABLE source_collection_records DROP CONSTRAINT test_reject_failed_record");
             }
 
-            var service = queryService(mock(DataPipelineExecutionLock.class));
+            var service = queryService(unlockedPipelineLock());
             CompletableFuture.allOf(
                     CompletableFuture.runAsync(() -> service.history(0, 100)),
                     CompletableFuture.runAsync(() -> service.history(0, 100))).join();
@@ -420,12 +424,17 @@ class SourceCollectionRecoveryIntegrationTest {
 
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void 다른_파이프라인이_전역_잠금을_보유해도_개별_수집의_중단_이력을_복구한다() {
+    void 파이프라인_실행_중에는_개별_수집_복구를_다음_조회로_미룬다() {
         var orphan = record(null, STARTED_AT);
         var globalLock = new DataPipelineExecutionLock(dataSource);
-        try (var ignored = globalLock.tryAcquire().orElseThrow()) {
-            queryService(globalLock).history(0, 100);
+        try {
+            try (var ignored = globalLock.tryAcquire().orElseThrow()) {
+                queryService(globalLock).history(0, 100);
 
+                assertThat(records.findById(orphan.getId()).orElseThrow().getStatus())
+                        .isEqualTo(CollectionStatus.RUNNING);
+            }
+            queryService(globalLock).history(0, 100);
             assertThat(records.findById(orphan.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.FAILED);
         } finally {
             records.deleteById(orphan.getId());
@@ -519,6 +528,78 @@ class SourceCollectionRecoveryIntegrationTest {
         }
     }
 
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 실행_중인_파이프라인의_상태_조회는_정상_수집의_작업_잠금을_선점하지_않는다() throws Exception {
+        var globalLock = new DataPipelineExecutionLock(dataSource);
+        var operationLock = new IngestOperationLock(dataSource);
+        var recoveryStarted = new CompletableFuture<Void>();
+        var releaseRecovery = new CountDownLatch(1);
+        var recovery = blockingRecovery(operationLock, recoveryStarted, releaseRecovery);
+        var service = queryService(globalLock, recovery);
+        try (var executor = Executors.newSingleThreadExecutor(); var ignored = globalLock.tryAcquire().orElseThrow()) {
+            var history = CompletableFuture.supplyAsync(() -> service.history(0, 100), executor);
+            try {
+                CompletableFuture.anyOf(history, recoveryStarted).get(5, TimeUnit.SECONDS);
+
+                assertThat(operationLock.tryRun(IngestOperationLock.Operation.MYHOME_ANNOUNCEMENT_COLLECTION,
+                        () -> "collected")).contains("collected");
+            } finally {
+                releaseRecovery.countDown();
+                history.get(5, TimeUnit.SECONDS);
+            }
+        }
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 조회_복구_중에는_다른_인스턴스의_새_파이프라인이_실행_잠금을_얻지_못한다() throws Exception {
+        var globalLock = new DataPipelineExecutionLock(dataSource);
+        var recoveryStarted = new CompletableFuture<Void>();
+        var releaseRecovery = new CountDownLatch(1);
+        var recovery = blockingRecovery(new IngestOperationLock(dataSource), recoveryStarted, releaseRecovery);
+        var service = queryService(globalLock, recovery);
+        Optional<DataPipelineExecutionLock.Lease> competingLease = Optional.empty();
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var history = CompletableFuture.supplyAsync(() -> service.history(0, 100), executor);
+            try {
+                recoveryStarted.get(5, TimeUnit.SECONDS);
+                competingLease = new DataPipelineExecutionLock(dataSource).tryAcquire();
+
+                assertThat(competingLease).isEmpty();
+            } finally {
+                competingLease.ifPresent(DataPipelineExecutionLock.Lease::close);
+                releaseRecovery.countDown();
+                history.get(5, TimeUnit.SECONDS);
+            }
+        }
+        try (var ignored = globalLock.tryAcquire().orElseThrow()) {
+            assertThat(globalLock.isHeld()).isTrue();
+        }
+    }
+
+    private SourceCollectionRecoveryService blockingRecovery(
+            IngestOperationLock operationLock, CompletableFuture<Void> started, CountDownLatch release
+    ) {
+        var recovery = mock(SourceCollectionRecoveryService.class);
+        doAnswer(invocation -> {
+            operationLock.tryRun(IngestOperationLock.Operation.MYHOME_ANNOUNCEMENT_COLLECTION, () -> {
+                started.complete(null);
+                try {
+                    if (!release.await(5, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("복구 종료 신호가 도착하지 않았습니다.");
+                    }
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(interrupted);
+                }
+                return true;
+            });
+            return null;
+        }).when(recovery).recoverUnlinkedCollections();
+        return recovery;
+    }
+
     private UUID execution(Instant startedAt) {
         UUID id = UUID.randomUUID();
         states.create(id, DataPipelineType.ANNOUNCEMENT_COLLECTION, startedAt);
@@ -534,14 +615,25 @@ class SourceCollectionRecoveryIntegrationTest {
         return RECOVERED_AT.minusSeconds(120);
     }
 
+    private DataPipelineExecutionLock unlockedPipelineLock() {
+        var lock = mock(DataPipelineExecutionLock.class);
+        when(lock.tryAcquire()).thenReturn(Optional.of(mock(DataPipelineExecutionLock.Lease.class)));
+        return lock;
+    }
+
     private DataPipelineExecutionService queryService(DataPipelineExecutionLock lock) {
+        return queryService(lock, new SourceCollectionRecoveryService(new IngestOperationLock(dataSource), records,
+                transactionManager, Clock.fixed(RECOVERED_AT, ZoneOffset.UTC)));
+    }
+
+    private DataPipelineExecutionService queryService(
+            DataPipelineExecutionLock lock, SourceCollectionRecoveryService recovery
+    ) {
         var heartbeatExecutor = mock(ScheduledExecutorService.class);
         when(heartbeatExecutor.scheduleWithFixedDelay(any(), anyLong(), anyLong(), any()))
                 .thenReturn(mock(ScheduledFuture.class));
         return new DataPipelineExecutionService(mock(DataPipelineRunner.class), lock, executions, states,
-                new SourceCollectionRecoveryService(new IngestOperationLock(dataSource), records,
-                        transactionManager, Clock.fixed(RECOVERED_AT, ZoneOffset.UTC)),
-                Runnable::run, heartbeatExecutor, Clock.fixed(RECOVERED_AT, ZoneOffset.UTC),
+                recovery, Runnable::run, heartbeatExecutor, Clock.fixed(RECOVERED_AT, ZoneOffset.UTC),
                 new DataPipelineExecutionMapper(JsonMapper.builder().build()));
     }
 }

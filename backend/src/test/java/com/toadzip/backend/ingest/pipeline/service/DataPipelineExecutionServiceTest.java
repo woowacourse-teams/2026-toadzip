@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -72,6 +73,8 @@ class DataPipelineExecutionServiceTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(executionLock.tryAcquire())
+                .thenReturn(Optional.of(mock(DataPipelineExecutionLock.Lease.class)));
         lenient().doReturn(heartbeatTask).when(heartbeatExecutor).scheduleWithFixedDelay(
                 any(Runnable.class),
                 anyLong(),
@@ -522,7 +525,7 @@ class DataPipelineExecutionServiceTest {
         );
         when(executionRepository.findFirstByTypeOrderByIdDesc(any()))
                 .thenReturn(Optional.of(activeExecution));
-        when(executionLock.isHeld()).thenReturn(true);
+        when(executionLock.tryAcquire()).thenReturn(Optional.empty());
 
         var status = service.findLatest(DataPipelineType.ANNOUNCEMENT_COLLECTION);
 

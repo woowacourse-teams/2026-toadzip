@@ -370,19 +370,23 @@ public class DataPipelineExecutionService {
     }
 
     private void recoverInterruptedExecutions() {
-        collectionRecovery.recoverUnlinkedCollections();
-        if (executionLock.isHeld()) {
+        var recoveryLease = executionLock.tryAcquire();
+        if (recoveryLease.isEmpty()) {
             return;
         }
-        Instant now = Instant.now(clock);
-        try {
-            executionStateService.recoverInterruptedBefore(
-                    now.minus(EXECUTION_LEASE_TIMEOUT), now, INTERRUPTED_FAILURE_MESSAGE);
+        try (var lease = recoveryLease.orElseThrow()) {
+            lease.verifyHeld();
+            collectionRecovery.recoverUnlinkedCollections();
+            Instant now = Instant.now(clock);
+            try {
+                executionStateService.recoverInterruptedBefore(
+                        now.minus(EXECUTION_LEASE_TIMEOUT), now, INTERRUPTED_FAILURE_MESSAGE);
+            }
+            catch (RuntimeException exception) {
+                log.error("중단된 데이터 파이프라인 실행을 복구하지 못했습니다.", exception);
+            }
+            recoverTerminalCollections(now);
         }
-        catch (RuntimeException exception) {
-            log.error("중단된 데이터 파이프라인 실행을 복구하지 못했습니다.", exception);
-        }
-        recoverTerminalCollections(now);
     }
 
     private void recoverTerminalCollections(Instant now) {
