@@ -20,10 +20,9 @@ Spring은 생성자 주입으로 객체를 연결한다. `Runner.run()`에서 �
 | 공고 정제 | [MyHomeAnnouncementMappingService](../src/main/java/com/toadzip/backend/ingest/mapping/service/MyHomeAnnouncementMappingService.java) → LH 공고 보강 |
 
 수집은 응답·식별·조회 조건·실제 수집 시각을 원천에 보관하고, 요청의 실행 시각·결과는 `collection/history`에 분리한다. 정제·보강은 원천을 읽어 단지·주택형·공고에 반영한다.
-원천 조회·매핑·보강은 현행 `collection` 저장 구조만 사용한다. 이전 원천 테이블의 읽기 우회와 체크포인트, JPA 매핑은 제거했다. 정제에서 쓰는 평면 행 모델은 현행 원천의 조회 결과를 담는다.
-테스트의 `collection/fixture`는 현행 원천 행을 준비하거나 실제 Storage를 호출하는 어댑터다. 구 테이블이나 별도 ORM 매핑을 사용하지 않는다. 파싱 회귀 테스트는 현행 파서를 검증한다.
+원천 조회·매핑·보강은 `collection` 저장 구조를 사용한다. 정제에서 쓰는 평면 행 모델은 해당 원천의 조회 결과를 담는다.
 
-`V20261004_07__import_legacy_collection_sources.sql`은 기존 원천을 새 저장 구조로 이관한다. 식별·지역·조회 조건이 불명확한 원천은 구형 테이블에 보관한다. `V20261005_01__discard_collected_sources.sql`은 보존용 버전으로, 원천·관리자 승인·실패 상태를 변경하지 않는다. 배포는 [수집 저장 구조 전환 절차](ingest-branch-db-upgrade.md)를 따른다. 원천 사전 삭제와 재수집을 전제로 한 폐기 절차는 실행하지 않는다. 이미 적용한 Flyway SQL·체크섬은 변경하지 않는다.
+기존 원천의 이관·보존과 배포는 [수집 저장 구조 전환 절차](ingest-branch-db-upgrade.md)를 따른다.
 
 통합 실행은 수집 뒤 정제까지 이어간다. 수집 부분 실패·호출 제한이면 자동 정제를 막고 독립 정제 실행으로 복구한다. 기존 네 단독 실행은 유지한다.
 
@@ -53,6 +52,12 @@ SourceMapper → SupplyRowResolver → MappingWriter → EnrichmentWriter.writeA
 현재 원천 중 기관이 빈 행도 매핑에는 포함하지만 LH 보강에서는 제외해 기존 금액을 보존한다. `MappingWriter`가 공고 한 건의 트랜잭션을 소유한다. 보강 실패 시 주택형과 금액을 함께 롤백한다. 최초 매핑과 변경 없는 재매핑은 상세 보강을 요구하지 않는다.
 독립 보강은 `LhAnnouncementEnrichmentService.enrichAll()`에서 시작하며 별도 실패 이력을 관리한다.
 
+## LH 공고 목록 단독 수집
+
+`POST /api/admin/ingest/lh/announcements/catalog`는 목록 원천만 갱신한다. 공급·상세 조회와 제품 공고 생성·정제는 실행하지 않는다. 전체 페이지 검증 후 한 번에 저장하며, 조회 범위 밖의 기존 행과 조회·검증 실패 시의 기존 원천을 보존한다.
+
+목록의 `sourceKey`로 신규·기존을 구분한다. 기존 행은 현재 목록에서 빠졌다 다시 나타나거나 공고 ID·조회 코드·공고명·상태·공고일·게시일·마감일·URL이 달라지면 `changedAt`을 갱신한다. `RNUM`·`ALL_CNT` 같은 페이지 메타데이터 변경은 제외한다. 완료 응답은 전체 저장 행 수이며 신규·변경·동일 건수는 로그와 `ingest.announcement.catalog.rows`에서 확인한다.
+
 ## 실제 재조회와 저장 원천 재사용
 
 관리자가 수집을 실행하면 대상 LH 공급·상세를 실제 조회한다. 목록 내용이 같아도 공급·상세가 같다는 보장이 없으므로 TTL로 호출을 생략하지 않는다. 정제 단독 실행은 저장된 원천만 읽으며 외부 호출을 하지 않는다.
@@ -68,8 +73,8 @@ SourceMapper → SupplyRowResolver → MappingWriter → EnrichmentWriter.writeA
 
 종료 후 30일 기준은 수집 대상의 범위를 정하는 운영 정책이며 공식 갱신 주기가 아니다. 시간 경과만으로 자동 실행되지 않는다. 응답 검증·빈 응답 보호·공급행 누락 승인 규칙은 모든 재조회에 적용한다.
 
-2026-10-05에 기존 6/24시간 TTL 생략과 세 TTL 환경 설정을 제거했다. [이전 성능 측정](announcement-collection-performance.md)의 166회 → 22회는 당시 호출을 생략한 결과이며 현재 정책의 성능 근거가 아니다. 동시성 2 → 8의 동일 166회 실측은 별도 기록이다.
-품질 응답의 `freshRequests`는 `collectedRequests`로 바뀌었다. 백엔드·관리자 프론트를 함께 배포한다. 현재 조회 조건의 성공 원천 확보 수이며 과거 성공도 포함한다. `latestCollectedAt`은 그중 최댓값이므로 전체 대상의 최신성이나 이번 실행의 성공률을 뜻하지 않는다.
+LH 공급·상세는 TTL로 호출을 생략하지 않으며 TTL 환경 설정을 사용하지 않는다. 동시성·타임아웃과 운영 메트릭은 [공고 수집 동시성과 계측](announcement-collection-performance.md)을 따른다.
+품질 응답의 `collectedRequests`는 현재 조회 조건의 성공 원천 확보 수이며 과거 성공도 포함한다. `latestCollectedAt`은 그중 최댓값이므로 전체 대상의 최신성이나 이번 실행의 성공률을 뜻하지 않는다.
 
 ## 운영 문제를 볼 때
 
@@ -85,14 +90,3 @@ SourceMapper → SupplyRowResolver → MappingWriter → EnrichmentWriter.writeA
 | 동기 작업의 충돌 범위 | [IngestOperationLock](../src/main/java/com/toadzip/backend/ingest/pipeline/repository/IngestOperationLock.java)의 `Operation`과 호출 서비스 |
 | 실패의 해결·재발 | [IngestFailure](../src/main/java/com/toadzip/backend/ingest/failure/domain/IngestFailure.java)의 상태 전이, [IngestFailureReconciler](../src/main/java/com/toadzip/backend/ingest/failure/domain/IngestFailureReconciler.java)의 일괄 조정 |
 | 위치 파일 적재 | [LocationSummaryImportService](../src/main/java/com/toadzip/backend/ingest/location/service/LocationSummaryImportService.java) → Parser·Store |
-
-## 클래스 분리 기준
-
-한 흐름에서만 사용하는 보조 절차는 담당 서비스의 private 메서드를 우선한다.
-독립된 규칙·재사용처·트랜잭션 경계가 있을 때 클래스로 분리한다. 줄 수만으로 분리하지 않는다. 원천별 파싱 규칙, 병렬 실행의 공고별 직렬화, 실행 소유권·중단·복구는 보존한다.
-동기 잠금은 한 구현을 공유한다. 공고 매핑과 LH 보강은 같은 DB 키를 쓰고 나머지 작업별 키는 구분한다.
-실행 서비스와 상태 저장, 단지 Writer의 `REQUIRES_NEW` 경계를 유지하고 공고 매핑·보강은 공고 단위로 원자적으로 저장한다.
-실패 Entity는 테이블·사유·원천 식별자를 소유하고 공통 상태·시각·횟수는 `IngestFailure`에서 상속한다.
-실패 조정은 조회된 행의 마지막 값, 보충 이력의 첫 값, 관찰된 행의 마지막 값을 선택한다.
-
-검증은 [품질 게이트](quality-gates.md)를 따른다. Gradle `check`에는 Java 스타일·계층 전용 검사기가 없으므로 테스트 통과를 모든 컨벤션의 자동 검증으로 해석하지 않는다. 상세 정책은 [문서 지도](README.md)에서 찾는다.
