@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react'
 import styles from './DetailPrimitives.module.css'
+import { MISSING_DATA_LABEL } from '../presentation/missingData'
 
 interface DetailSectionProps {
   readonly title: string
@@ -75,7 +76,8 @@ export function DetailFact({ term, value, wide = false, emphasis = false }: Deta
   return (
     <div className={styles.fact} data-wide={wide || undefined} data-emphasis={emphasis || undefined}>
       <dt>{term}</dt>
-      <dd>{value}</dd>
+      {/* 목록에서 빈 값은 이름만 떠 보이므로 흐린 결측 문구로 채운다. */}
+      <dd>{value === '' ? <span className={styles.missingValue}>{MISSING_DATA_LABEL}</span> : value}</dd>
     </div>
   )
 }

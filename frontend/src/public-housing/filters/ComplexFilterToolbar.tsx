@@ -77,6 +77,11 @@ export function ComplexFilterToolbar({
   const previousFiltersSignatureRef = useRef(filtersSignature)
   const quickAppliedSignatureRef = useRef<string | null>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
+  const primaryFiltersRef = useRef<HTMLDivElement>(null)
+  // 칩 줄의 시작 위치는 처음 놓인 자리(오른쪽 정렬로 계산)에 고정하고, 창 크기가 바뀔 때만 다시 잰다.
+  // 필터를 골라 칩 글자가 길어져도 '전체' 칩과 패널이 밀리지 않고 줄은 오른쪽으로 넘친다.
+  const [rowStart, setRowStart] = useState(0)
+  const [scrollEdges, setScrollEdges] = useState({ start: false, end: false })
   const mobileFormRef = useRef<HTMLFormElement>(null)
   const mobileSheetRef = useRef<HTMLElement>(null)
   const measurement = useFilterMeasurement('complex', mobileSheetOpen ? mobileInitialTopic : openTopic,
@@ -241,6 +246,47 @@ export function ComplexFilterToolbar({
     setErrorMessage(null)
     opener?.focus()
   }, [filtersSignature, mobileSheetOpen])
+
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current
+    const row = primaryFiltersRef.current
+    if (scroller === null || row === null) return
+    const measureStart = () => {
+      setRowStart(Math.max(0, Math.floor(scroller.clientWidth - row.getBoundingClientRect().width) - 1))
+    }
+    measureStart()
+    window.addEventListener('resize', measureStart)
+    return () => window.removeEventListener('resize', measureStart)
+  }, [])
+
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current
+    if (scroller === null) return
+    const updateEdges = () => {
+      const start = scroller.scrollLeft > 1
+      const end = scroller.scrollLeft + scroller.clientWidth < scroller.scrollWidth - 1
+      setScrollEdges((current) => current.start === start && current.end === end ? current : { start, end })
+    }
+    updateEdges()
+    scroller.addEventListener('scroll', updateEdges, { passive: true })
+    window.addEventListener('resize', updateEdges)
+    // 목록·상세 패널처럼 창 크기 말고 다른 이유로 폭이 바뀌어도 넘침을 다시 잰다.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateEdges)
+    observer?.observe(scroller)
+    if (scroller.firstElementChild) observer?.observe(scroller.firstElementChild)
+    return () => {
+      scroller.removeEventListener('scroll', updateEdges)
+      window.removeEventListener('resize', updateEdges)
+      observer?.disconnect()
+    }
+  }, [filtersSignature, rowStart, resolvedRegionSummary])
+
+  function scrollFilters(direction: 1 | -1) {
+    const scroller = scrollerRef.current
+    if (scroller === null) return
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    scroller.scrollBy({ left: direction * scroller.clientWidth * 0.6, behavior: reducedMotion ? 'auto' : 'smooth' })
+  }
 
   useLayoutEffect(() => {
     if (openTopic === null) {
@@ -483,8 +529,9 @@ export function ComplexFilterToolbar({
           aria-label="단지 검색 필터"
           onKeyDown={moveToolbarFocus}
         >
-          <div ref={scrollerRef} className={styles.scroller}>
-            <div className={styles.primaryFilters}>
+          <div className={styles.scrollArea}>
+          <div ref={scrollerRef} className={styles.scroller} data-overflow-end={scrollEdges.end || undefined}>
+            <div ref={primaryFiltersRef} className={styles.primaryFilters} style={{ marginInlineStart: rowStart }}>
               {DESKTOP_PRIMARY_TOPICS.map(([topic, label]) => {
                 if (topic === 'recruiting') return null
                 const expanded = topic === openTopic
@@ -551,6 +598,19 @@ export function ComplexFilterToolbar({
                 )
               })}
             </div>
+          </div>
+          {scrollEdges.start && (
+            <button type="button" className={styles.scrollArrow} data-direction="start" tabIndex={-1}
+              aria-label="앞쪽 필터 보기" onClick={() => scrollFilters(-1)}>
+              <ChevronIcon direction="start" />
+            </button>
+          )}
+          {scrollEdges.end && (
+            <button type="button" className={styles.scrollArrow} data-direction="end" tabIndex={-1}
+              aria-label="뒤쪽 필터 더 보기" onClick={() => scrollFilters(1)}>
+              <ChevronIcon direction="end" />
+            </button>
+          )}
           </div>
           <div className={styles.recruitingRow}>{recruitingToggle(false)}</div>
         </div>
@@ -761,4 +821,12 @@ function focusableElements(container: HTMLElement) {
   return [...container.querySelectorAll<HTMLElement>(
     'button:not([disabled]), select:not([disabled]), input:not([type="hidden"]):not([disabled]), [tabindex]:not([tabindex="-1"])',
   )].filter((element) => !element.hasAttribute('hidden'))
+}
+
+function ChevronIcon({ direction }: { readonly direction: 'start' | 'end' }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d={direction === 'end' ? 'm9 5 7 7-7 7' : 'm15 5-7 7 7 7'} />
+    </svg>
+  )
 }

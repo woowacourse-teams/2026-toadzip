@@ -3,7 +3,7 @@
   margin-inline: calc(-1 * var(--detail-content-inset, 0px));
   padding-block: var(--ds-space-4);
   padding-inline: var(--detail-content-inset, 0px);
-  border-top: 8px solid var(--ds-color-section-divider);
+  border-top: 6px solid var(--ds-color-section-divider);
   background: var(--ds-color-surface);
   color: var(--ds-color-text);
   font-family: var(--ds-font-family-ui);
@@ -12,7 +12,7 @@
 .section[data-appearance='block'] {
   margin-inline: 0;
   padding: var(--ds-space-4);
-  border-top: 8px solid var(--ds-color-section-divider);
+  border-top: 6px solid var(--ds-color-section-divider);
   border-radius: 0;
 }
 
@@ -320,4 +320,9 @@
   .facts[data-columns='2'][data-appearance='list'] {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+.missingValue {
+  color: var(--ds-color-muted);
+  font-weight: 400;
 }

@@ -2,14 +2,14 @@
 .actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .actions h3 { margin: 0; font-size: 15px; font-weight: 600; }
 .actions h3:focus { outline: none; }
-.actions h3 span { margin-left: 4px; color: var(--ds-color-action); }
+.actions h3 span { margin-left: 4px; color: var(--ds-color-text); }
 .actionButton { flex-shrink: 0; min-height: 44px; padding: 8px 12px; background: transparent; border: 0; border-radius: 8px; color: var(--ds-color-label); font: inherit; font-size: 13px; cursor: pointer; }
 .actionButton:hover:not(:disabled) { background: var(--ds-color-action-soft); }
 .actionButton:disabled { opacity: .45; cursor: default; }
 .actionButton:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 2px; }
 .group { margin-top: 24px; border: 1px solid var(--ds-color-divider); border-radius: 12px; overflow: hidden; }
 .group h4 { display: flex; align-items: center; gap: 8px; margin: 0; padding: 12px 14px; background: var(--ds-color-surface-subtle); font-size: 15px; font-weight: 700; color: var(--ds-color-text); }
-.groupCount { color: var(--ds-color-action); font-size: 13px; font-weight: 600; }
+.groupCount { color: var(--ds-color-text); font-size: 13px; font-weight: 600; }
 .group ul { list-style: none; padding: 0; margin: 0; }
 .group li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 58px; padding: 4px 12px 4px 14px; border-top: 1px solid var(--ds-color-divider); }
 .group li > span { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }

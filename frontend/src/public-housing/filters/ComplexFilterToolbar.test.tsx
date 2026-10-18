@@ -50,6 +50,8 @@ describe('ComplexFilterToolbar', () => {
     const trigger = screen.getByRole('button', { name: '모바일 임대유형 필터 열기' })
     fireEvent.click(trigger)
     const happy = screen.getByRole('checkbox', { name: '행복주택' })
+    expect(happy.closest('[data-appearance]')).toHaveAttribute('data-appearance', 'grid')
+    expect(happy.closest('label')).not.toHaveTextContent('✓')
     happy.focus()
     fireEvent.click(happy)
     expect(appliedFilters()).toEqual({ agencyCodes: ['LH'], rentalTypes: ['HAPPY_HOUSING'] })

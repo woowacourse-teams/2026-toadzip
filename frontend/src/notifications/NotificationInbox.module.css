@@ -30,7 +30,7 @@
 .feedback { font-size: 13px; line-height: 1.6; }
 .dialogActions { display: flex; gap: 8px; }
 .dialogActions > button { flex: 1; }
-.badge { display: inline-flex; justify-content: center; align-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 12px; background: var(--ds-color-action); color: white; font-size: 11px; font-weight: 700; }
+.badge { display: inline-flex; justify-content: center; align-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 12px; background: var(--ds-color-brand); color: var(--ds-color-on-brand); font-size: 11px; font-weight: 700; }
 
 .scheduleLabel { color: var(--ds-color-action); font-size: 12px; font-weight: 700; }
 .announcementMessage { color: var(--ds-color-label); font-size: 13px; line-height: 1.6; }

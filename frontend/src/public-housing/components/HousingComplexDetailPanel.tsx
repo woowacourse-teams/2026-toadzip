@@ -15,9 +15,9 @@ import {
   DetailFact,
   DetailFacts,
   DetailSection,
-  DetailTable,
 } from './DetailPrimitives'
 import { formatHousingMoneyReadable } from '../presentation/housingMoney'
+import { MISSING_DATA_LABEL } from '../presentation/missingData'
 import { formatHousingArea as formatArea, type AreaUnit } from '../presentation/housingArea'
 import { useAreaUnit } from '../presentation/useAreaUnit'
 import { AreaUnitToggle } from './AreaUnitToggle'
@@ -217,7 +217,7 @@ export function HousingComplexDetailPanel({
             />
           )}
           <p className={styles.address}>{displayAddress(detail)}</p>
-          {/* 단지 단위 행동은 같은 높이의 한 쌍으로 두고 거리뷰만 강조한다. */}
+          {/* 단지 단위 행동(알림·거리뷰)은 같은 모양·높이의 보조 버튼 한 쌍으로 둔다. */}
           <div className={styles.identityActions}>
             <NotificationInterestButton
               target={{ type: 'COMPLEX', id: detail.complexId, name: detail.name }}
@@ -238,52 +238,38 @@ export function HousingComplexDetailPanel({
           <>
             <DetailSection appearance="block" title="주택형별 임대조건"
               actions={<AreaUnitToggle unit={areaUnit} onToggle={toggleAreaUnit} />}>
-              <div className={styles.comparison}>
-                {/* 주택형을 첫 칸에 두고 한 행에 한 조건씩 비교한다. 좁은 패널에서도 가로 스크롤이 없다. */}
-                <DetailTable caption="주택형별 임대조건 비교">
-                  <colgroup>
-                    <col style={{ width: '30%' }} />
-                    <col style={{ width: '36%' }} />
-                    <col style={{ width: '34%' }} />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th scope="col">주택형</th>
-                      <th scope="col">보증금</th>
-                      <th scope="col">월 임대료</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detail.housingTypes.flatMap((housingType) => {
-                      const area = formatArea(housingType.exclusiveArea, areaUnit, '')
-                      const hasBasic = housingType.basicRentalCondition !== null
-                      return rentalComparisonConditions(housingType).map((condition, conditionIndex) => {
-                        const parts = [area, ...comparisonConditionParts(condition, hasBasic)].filter(Boolean)
-                        return (
-                          <tr key={`${housingType.housingTypeId}-${conditionIndex}`}>
-                            <th scope="row">
-                              <strong>{housingTypeName(housingType)}</strong>
-                              {parts.length > 0 && (
-                                <span className={styles.conditionTarget}>
-                                  {parts.map((part, index) => (
-                                    <Fragment key={part}>{index > 0 && ' · '}<span>{part}</span></Fragment>
-                                  ))}
-                                </span>
-                              )}
-                            </th>
-                            <td data-numeric data-emphasis={Number.isFinite(condition?.deposit) || undefined}>
-                              {formatDetailMoney(condition?.deposit ?? null)}
-                            </td>
-                            <td data-numeric>
-                              {formatDetailMoney(condition?.monthlyRent ?? null)}
-                            </td>
-                          </tr>
-                        )
-                      })
-                    })}
-                  </tbody>
-                </DetailTable>
-              </div>
+              {/* 한 줄에 주택형 하나·조건 하나. 왼쪽은 주택형, 오른쪽은 보증금·월 임대료를 위아래로 둔다. */}
+              <ul className={styles.rentList} aria-label="주택형별 임대조건 비교">
+                {detail.housingTypes.flatMap((housingType) => {
+                  const area = formatArea(housingType.exclusiveArea, areaUnit, '')
+                  const hasBasic = housingType.basicRentalCondition !== null
+                  return rentalComparisonConditions(housingType).map((condition, conditionIndex) => {
+                    const parts = [area, ...comparisonConditionParts(condition, hasBasic)].filter(Boolean)
+                    return (
+                      <li key={`${housingType.housingTypeId}-${conditionIndex}`}>
+                        <div className={styles.rentType}>
+                          <strong>{housingTypeName(housingType)}</strong>
+                          {parts.length > 0 && (
+                            <span>
+                              {parts.map((part, index) => (
+                                <Fragment key={part}>{index > 0 && ' · '}<span>{part}</span></Fragment>
+                              ))}
+                            </span>
+                          )}
+                        </div>
+                        <dl className={styles.rentMoney}>
+                          <dt>보증금</dt>
+                          <dd data-emphasis={Number.isFinite(condition?.deposit) || undefined}>
+                            <DetailMoney value={condition?.deposit ?? null} />
+                          </dd>
+                          <dt>월 임대료</dt>
+                          <dd><DetailMoney value={condition?.monthlyRent ?? null} /></dd>
+                        </dl>
+                      </li>
+                    )
+                  })
+                })}
+              </ul>
             </DetailSection>
             <DetailSection appearance="block" title="주택형 정보">
               <div
@@ -439,6 +425,8 @@ function AnnouncementCard({
             tone={applicationStatusTone(announcement.applicationStatus)}
             countdown={null}
           />
+          {/* 원공고는 따로 표시하지 않고, 정정공고만 빨간 딱지로 알린다. */}
+          {announcement.publicationTypeLabel === '정정공고' && <span className={styles.correctionBadge}>정정</span>}
           {announcementDDay(announcement) && <p className={styles.announcementDeadline} data-tone={deadlineTone}>
             {announcement.applicationStatus !== 'BEFORE_APPLICATION' && (
               <span className={styles.visuallyHidden}>마감까지 </span>
@@ -447,7 +435,6 @@ function AnnouncementCard({
           </p>}
         </div>
         <h4>{title}</h4>
-        {announcement.publicationTypeLabel && <small>{announcement.publicationTypeLabel}</small>}
       </header>
       <div className={styles.announcementBody}>
         <DetailFacts columns={2} appearance="list">
@@ -802,6 +789,12 @@ function isUrgent(announcement: HousingComplexDetailAnnouncement) {
   return Number.isInteger(announcement.dDay)
     && announcement.dDay >= 0
     && announcement.dDay <= 3
+}
+
+/** 비교 목록의 금액. 값이 없으면 빈칸 대신 흐린 결측 문구를 둔다. */
+function DetailMoney({ value }: { readonly value: number | null | undefined }) {
+  const formatted = formatDetailMoney(value)
+  return formatted === '' ? <span className={styles.missingValue}>{MISSING_DATA_LABEL}</span> : <>{formatted}</>
 }
 
 /** 단지 상세 금액은 억·만 단위로 읽는 순서대로 표시하고 버리지 않는다. */

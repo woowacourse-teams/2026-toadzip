@@ -182,15 +182,19 @@
   border-top: 1px solid var(--ds-color-divider);
 }
 
+/* 공고마다 연한 초록 카드로 묶는다. */
 .announcementList > li + li {
-  padding-top: var(--ds-space-4);
-  border-top: 1px solid var(--ds-color-divider);
+  margin-top: 0;
 }
 
 .announcementCard {
   display: grid;
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
+  padding: var(--ds-space-4);
+  border: 1px solid var(--ds-color-action-selected);
+  border-radius: 8px;
+  background: var(--ds-color-action-soft);
   container-type: inline-size;
 }
 
@@ -208,13 +212,17 @@
   gap: var(--ds-space-2);
 }
 
+
+/* 남은 날짜는 배지 없이 큰 초록 글자로 강조하고, 마감 3일 이내일 때만 마감색을 쓴다. */
 .announcementDeadline {
   margin: 0 0 0 auto;
   color: var(--ds-color-action);
-  font-size: var(--ds-text-title);
-  font-weight: 700;
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
   line-height: var(--ds-line-height-title);
   text-align: right;
+  white-space: nowrap;
 }
 
 .announcementDeadline[data-tone='urgent'] {
@@ -226,6 +234,16 @@
   font-size: var(--ds-text-caption);
   font-weight: 400;
   line-height: var(--ds-line-height-caption);
+}
+
+.correctionBadge {
+  flex: none;
+  padding: 2px var(--ds-space-2);
+  border-radius: var(--ds-status-badge-radius);
+  background: color-mix(in srgb, var(--ds-color-deadline) 12%, var(--ds-color-surface));
+  color: color-mix(in srgb, var(--ds-color-deadline) 78%, #000);
+  font-size: var(--ds-text-caption);
+  font-weight: 700;
 }
 
 .visuallyHidden {
@@ -277,73 +295,83 @@
 }
 
 .announcementAction:hover {
-  background: color-mix(in srgb, var(--ds-color-brand) 90%, var(--ds-color-action));
+  background: var(--ds-color-brand-strong);
 }
 
-.comparison th,
-.comparison td {
-  padding: var(--ds-space-2) 6px;
-  vertical-align: top;
-}
-
-.comparison thead th {
-  color: var(--ds-color-label);
-  font-size: var(--ds-text-caption);
-  font-weight: 400;
-}
-
-.comparison thead th:first-child,
-.comparison tbody th[scope='row'] {
-  text-align: left;
-}
-
-.comparison thead th + th,
-.comparison td[data-numeric] {
-  padding-left: var(--ds-space-2);
-  text-align: right;
-}
-
-/*
- * 보증금만 굵게 두고 월 임대료는 보통 굵기로 둬 두 숫자가 경쟁하지 않게 한다.
- * 폭이 모자라면 가로 스크롤 대신 억·만 단위 경계에서만 줄을 바꾼다.
- */
-.comparison td[data-numeric] {
-  word-break: keep-all;
-  overflow-wrap: normal;
-  font-size: var(--ds-text-body);
+/* 주택형별 임대조건: 한 줄에 주택형 하나·조건 하나. 줄 사이 선 하나만 둔다. */
+.rentList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
   font-variant-numeric: tabular-nums;
-  font-weight: 400;
 }
 
-.comparison td[data-numeric][data-emphasis='true'] {
-  font-weight: 600;
+.rentList > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--ds-space-3);
+  padding-block: var(--ds-space-4);
 }
 
-.comparison tbody th[scope='row'] {
-  font-weight: 400;
+.rentList > li:first-child {
+  padding-top: var(--ds-space-1);
 }
 
-.comparison tbody th[scope='row'] > strong {
-  display: block;
-  color: var(--ds-color-text);
-  font-size: var(--ds-text-body);
-  font-weight: 600;
+.rentList > li + li {
+  border-top: 1px solid var(--ds-color-divider);
+}
+
+.rentType {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.rentType > strong {
+  font-size: 17px;
+  font-weight: 700;
   line-height: 1.3;
 }
 
-.comparison tbody th[scope='row'] > .conditionTarget {
+.rentType > span {
+  color: var(--ds-color-label);
   font-size: var(--ds-text-caption);
   line-height: var(--ds-line-height-caption);
+  overflow-wrap: anywhere;
 }
 
-.conditionTarget {
-  display: block;
-  margin-top: 2px;
+.rentMoney {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: end;
+  align-items: baseline;
+  gap: 2px var(--ds-space-3);
+  margin: 0;
+  text-align: right;
+}
+
+.rentMoney dt {
   color: var(--ds-color-label);
-  font-size: inherit;
+  font-size: var(--ds-text-caption);
+}
+
+/* 보증금만 굵게 두고 월 임대료는 보통 굵기로 둬 두 숫자가 경쟁하지 않게 한다. */
+.rentMoney dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.rentMoney dd[data-emphasis='true'] {
+  font-weight: 700;
+}
+
+.missingValue {
+  color: var(--ds-color-muted);
+  font-size: var(--ds-text-caption);
   font-weight: 400;
-  line-height: inherit;
-  overflow-wrap: anywhere;
 }
 
 .rentalConditionSource {
@@ -384,8 +412,8 @@
 }
 
 .housingTypeTab[aria-selected='true'] {
-  border-bottom-color: var(--ds-color-action);
-  color: var(--ds-color-action);
+  border-bottom-color: var(--ds-color-brand);
+  color: var(--ds-color-text);
   font-weight: 600;
 }
 

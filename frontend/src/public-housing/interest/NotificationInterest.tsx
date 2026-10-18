@@ -95,14 +95,14 @@ export function NotificationInterestProvider({ children, repository = notificati
   const exposed = useRef(new Set<string>())
   const requested = useMemo(() => new Map(targets.map((target) => [requestedKey(target), true])), [targets])
 
-  const reconcileStatus = useCallback((preserveBatchRetries = false) => {
-    if (inFlight.current) return
+  const reconcileStatus = useCallback((preserveBatchRetries = false): Promise<boolean> => {
+    if (inFlight.current) return Promise.resolve(false)
     const version = ++requestVersion.current
     const statusRequest = repository.loadStatus
       ? repository.loadStatus()
       : loadUser().then((user) => ({ guest: !user, userId: user ? String(user.id) : undefined, settingsRevision: 0, targets: [] }))
-    void statusRequest.then((status) => {
-      if (version !== requestVersion.current) return
+    return statusRequest.then((status) => {
+      if (version !== requestVersion.current) return false
       const member = status && !status.guest
       const nextMemberId = status?.userId
       if (memberId.current !== nextMemberId) {
@@ -132,11 +132,16 @@ export function NotificationInterestProvider({ children, repository = notificati
           ?? `${{ REGION: '지역', COMPLEX: '단지', ANNOUNCEMENT: '공고' }[target.targetType]} ${target.targetId}`,
       })) : [])
       if (!member) { setDialog(null); setFailed(null); setMessage('') }
+      return true
     }).catch(() => {
       if (version === requestVersion.current) { setUserId(null); setMode('error'); setTargets([]); setProductAuthState('unknown') }
+      return false
     })
   }, [loadUser, repository])
-  const refreshStatus = useCallback(() => reconcileStatus(), [reconcileStatus])
+  const refreshStatus = useCallback(() => { void reconcileStatus() }, [reconcileStatus])
+  // 상태를 못 불러온 채 알림 받기를 누르면 먼저 다시 불러오고, 성공하면 누른 요청을 이어서 처리한다.
+  const [retrying, setRetrying] = useState(false)
+  const pendingRequest = useRef<{ readonly selection: Selection; readonly button: HTMLButtonElement } | null>(null)
 
   const resetSession = useCallback(() => {
     memberId.current = undefined
@@ -262,7 +267,17 @@ export function NotificationInterestProvider({ children, repository = notificati
   }, [refreshStatus, repository])
 
   const request = useCallback((selection: Selection, button: HTMLButtonElement) => {
-    if (inFlight.current || dialog || failed || mode === 'loading' || mode === 'error') return
+    if (mode === 'error') {
+      if (retrying) return
+      setRetrying(true)
+      void reconcileStatus().then((loaded) => {
+        setRetrying(false)
+        if (loaded) pendingRequest.current = { selection, button }
+        else setMessage('알림 상태를 불러오지 못했어요. 잠시 후 다시 눌러 주세요.')
+      })
+      return
+    }
+    if (inFlight.current || dialog || failed || mode === 'loading') return
     trigger.current = button
     const isRequested = requested.has(requestedKey(selection.target))
     captureProductEvent('notification_cta_clicked', { target_type: selection.target.type, target_id: selection.target.id,
@@ -274,7 +289,14 @@ export function NotificationInterestProvider({ children, repository = notificati
     })
     void send({ ...selection, event: eventFor(selection, isRequested ? 'CANCELLED' : 'CONFIRMED'), authState: mode,
       pageName: window.location.pathname === '/mypage/notifications' ? 'notification_settings' : 'explorer' })
-  }, [dialog, eventFor, failed, mode, requested, send])
+  }, [dialog, eventFor, failed, mode, reconcileStatus, requested, retrying, send])
+
+  useEffect(() => {
+    const pending = pendingRequest.current
+    if (!pending || mode === 'loading' || mode === 'error') return
+    pendingRequest.current = null
+    request(pending.selection, pending.button)
+  }, [mode, request])
 
   const clearAll = useCallback(async (button: HTMLButtonElement) => {
     if (mode !== 'member' || inFlight.current || dialog || failed || targets.length === 0) return
@@ -351,7 +373,7 @@ export function NotificationInterestProvider({ children, repository = notificati
   }, [eventFor, repository])
 
   const context = useMemo(() => ({ userId, blocked: mode === 'loading' || mode === 'error' || busy || dialog !== null || failed !== null,
-    setFeedbackContainer, mode, requested, targets, request, expose, resetSession, refreshStatus, clearAll, clearingAll, batchError }), [userId, clearAll, clearingAll, batchError, busy, dialog, expose, failed, mode, request, requested, targets, resetSession, refreshStatus])
+    setFeedbackContainer, mode, retrying, requested, targets, request, expose, resetSession, refreshStatus, clearAll, clearingAll, batchError }), [userId, clearAll, clearingAll, batchError, busy, dialog, expose, failed, mode, request, requested, retrying, targets, resetSession, refreshStatus])
   function dismiss() { if (busy) return; restoreFocus.current = true; setDialog(null); setFailed(null); setSelection(null) }
 
   return <InterestContext.Provider value={context}>
@@ -399,9 +421,6 @@ export function NotificationInterestProvider({ children, repository = notificati
     {!dialog && !failed && message && (feedbackContainer
       ? createPortal(<p className={styles.inlineFeedback} role="status">{message}</p>, feedbackContainer)
       : <div className={styles.feedback}><p role="status">{message}</p></div>)}
-    {mode === 'error' && <div className={styles.feedback} role="alert">
-      <p>알림 상태를 불러오지 못했어요.</p><button type="button" onClick={refreshStatus}>다시 시도</button>
-    </div>}
   </InterestContext.Provider>
 }
 
@@ -472,7 +491,8 @@ export function NotificationInterestButton({ target, source, iconOnly = false }:
   return (
     <button ref={button} type="button" className={iconOnly ? styles.bell : styles.button}
       aria-label={`${name} 알림 ${isRequested ? '취소' : '받기'}`} title={iconOnly ? (isRequested ? '알림 취소' : '알림 받기') : undefined}
-      aria-pressed={isRequested} data-requested={isRequested} disabled={context.blocked}
+      aria-pressed={isRequested} data-requested={isRequested}
+      disabled={context.mode === 'error' ? context.retrying : context.blocked} aria-busy={context.retrying || undefined}
       onClick={(event) => context.request({ target, source }, event.currentTarget)}>
       <svg aria-hidden="true" data-state={isRequested ? 'requested' : 'idle'} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" fill={isRequested ? 'currentColor' : 'none'} />

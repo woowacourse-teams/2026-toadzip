@@ -94,7 +94,7 @@ function sendRuntimeMessage(payload: Record<string, unknown>) {
 }
 
 describe('StreetViewEntry', () => {
-  it('행동 줄용 강조 모양에서도 같은 이름과 열기 동작을 유지한다', async () => {
+  it('행동 줄용 버튼 모양에서도 같은 이름과 열기 동작을 유지한다', async () => {
     render(<EntryFixture {...properties} appearance="action" />)
     await act(async () => {})
     const button = screen.getByRole('button', { name: `${properties.name} 주변 거리뷰 보기` })

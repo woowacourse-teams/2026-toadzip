@@ -149,6 +149,7 @@ function MapUnavailable({ onRetry, reason }: MapUnavailableProps) {
 
 export default function NaverMap({
   aggregateMarkers = [],
+  animateMarkerEntry = true,
   cameraRequestId,
   cameraTarget,
   currentLocation,
@@ -195,6 +196,8 @@ export default function NaverMap({
   representationRef.current = representation
   const dataBusyRef = useRef(dataBusy)
   dataBusyRef.current = dataBusy
+  const animateMarkerEntryRef = useRef(animateMarkerEntry)
+  animateMarkerEntryRef.current = animateMarkerEntry
   const transitioningRef = useRef(transitioning)
   const transitionInterruptedRef = useRef(false)
   const wasTransitioning = transitioningRef.current
@@ -535,7 +538,8 @@ export default function NaverMap({
       representationRef.current,
     )
     const previousMarkers = createdMarkersRef.current
-    const animateNewMarkers = appliedMarkerContentKeyRef.current !== markerContentKey
+    const animateNewMarkers = animateMarkerEntryRef.current
+      && appliedMarkerContentKeyRef.current !== markerContentKey
     appliedMarkerContentKeyRef.current = markerContentKey
     const previousFocus = readMarkerFocus(previousMarkers)
     window.clearTimeout(markerFocusTimerRef.current)

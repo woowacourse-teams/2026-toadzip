@@ -10,6 +10,8 @@ export const InterestContext = createContext<{
   readonly setFeedbackContainer?: (element: HTMLElement | null) => void
   readonly clearAll: (trigger: HTMLButtonElement) => void
   readonly mode: 'loading' | 'guest' | 'member' | 'error'
+  /** 상태 조회 실패 뒤 알림 버튼을 눌러 다시 불러오는 중인지 */
+  readonly retrying: boolean
   readonly requested: ReadonlyMap<string, boolean>
   readonly targets: readonly NotificationTarget[]
   readonly resetSession: () => void

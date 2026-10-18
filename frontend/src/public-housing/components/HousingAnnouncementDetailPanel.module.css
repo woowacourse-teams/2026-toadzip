@@ -70,8 +70,12 @@
 }
 
 .headerContext > span[data-publication='changed'] {
-  color: var(--ds-color-text);
-  font-weight: 500;
+  padding: 2px var(--ds-space-2);
+  border-radius: var(--ds-status-badge-radius);
+  background: color-mix(in srgb, var(--ds-color-deadline) 12%, var(--ds-color-surface));
+  color: color-mix(in srgb, var(--ds-color-deadline) 78%, #000);
+  font-size: var(--ds-text-caption);
+  font-weight: 700;
 }
 
 .headerMain h2 {
@@ -263,7 +267,7 @@
 
 .reason {
   padding: var(--ds-space-4);
-  border-top: 8px solid var(--ds-color-section-divider);
+  border-top: 6px solid var(--ds-color-section-divider);
   border-radius: 0;
   background: var(--ds-color-surface);
   color: var(--ds-color-text);
@@ -386,174 +390,169 @@
   white-space: nowrap;
 }
 
-.housingTypes {
-  display: grid;
-  gap: var(--ds-space-4);
-}
 
 .housingTypeCard + .housingTypeCard {
   padding-top: var(--ds-space-4);
   border-top: 1px solid var(--detail-line);
 }
 
-.complexComparisonTable table {
-  border-collapse: separate;
-  border-spacing: 0;
+/* 공급 주택형: 단지마다 이름 한 줄과 주택형 표 하나. 한눈에 훑는 용도라 표로 둔다. */
+.supplyComplex + .supplyComplex {
+  margin-top: var(--ds-space-5);
+  padding-top: var(--ds-space-4);
+  border-top: 1px solid var(--ds-color-divider);
 }
 
-.complexComparisonTable th,
-.complexComparisonTable td {
-  padding: var(--ds-space-2);
+.supplyComplexHead {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  margin-bottom: var(--ds-space-2);
 }
 
-.complexComparisonTable thead th {
-  white-space: nowrap;
+.supplyComplexHead > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px var(--ds-space-2);
 }
 
-.complexComparisonTable th:first-child {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  width: 140px;
-  box-shadow: 1px 0 0 var(--ds-color-divider);
-  text-align: left;
+.supplyComplexHead strong {
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
-.complexComparisonTable tbody th {
+.supplyComplexHead > div > span {
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+}
+
+/* 단지 상세로 가는 버튼: 평 전환과 같은 흰 바탕 테두리 버튼. */
+.complexDetailButton {
+  display: inline-flex;
+  flex: none;
+  min-height: 36px;
+  align-items: center;
+  padding: 0 14px;
+  border: 1px solid var(--ds-color-divider);
+  border-radius: 8px;
   background: var(--ds-color-surface);
-  color: var(--ds-color-text);
-}
-
-.complexComparisonTable td {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: normal;
-}
-
-.complexNameLink {
-  display: block;
-  width: 100%;
-  min-height: 44px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ds-color-action);
-  font: inherit;
-  font-weight: 600;
-  text-align: left;
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
+  color: var(--ds-color-label);
   cursor: pointer;
+  font: inherit;
+  font-size: var(--ds-text-caption);
+  font-weight: 700;
 }
 
-.complexNameLink:hover {
-  text-decoration-thickness: 2px;
+.complexDetailButton:hover {
+  background: var(--ds-color-control-hover);
 }
+
+.complexDetailButton:focus-visible {
+  outline: 2px solid var(--ds-color-action);
+  outline-offset: 2px;
+}
+
+/* 회색 머리줄, 가로선만, 가운데 정렬. 금액은 보증금 굵게·월 임대료 아래 작은 글자. */
+.supplyTable table {
+  border-block: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.supplyTable :is(th, td) {
+  padding: var(--ds-space-3) 4px;
+  border-left: 0;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.supplyTable thead th {
+  padding-block: var(--ds-space-2);
+  background: var(--ds-color-table-heading);
+  color: var(--ds-color-label);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.supplyTable tbody th > strong,
+.supplyTable td > strong {
+  display: block;
+  color: var(--ds-color-text);
+  font-weight: 700;
+}
+
+.supplyTable tbody th > span,
+.supplyTable td > span {
+  display: block;
+  color: var(--ds-color-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.supplyTable td > span[data-missing='true'] {
+  color: var(--ds-color-muted);
+}
+
+.supplyNote {
+  margin: var(--ds-space-2) 0 0;
+  color: var(--ds-color-label);
+  font-size: var(--ds-text-caption);
+}
+
+.supplyDetails {
+  margin-top: var(--ds-space-1);
+}
+
+.supplyDetails > summary {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  color: var(--ds-color-label);
+  cursor: pointer;
+  font-size: var(--ds-text-caption);
+  font-weight: 600;
+  list-style: none;
+}
+
+.supplyDetails > summary::-webkit-details-marker {
+  display: none;
+}
+
+.supplyDetails > summary::after {
+  content: "›";
+  margin-left: 4px;
+  transition: transform 150ms ease-out;
+}
+
+.supplyDetails[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.supplyDetails[open] > summary {
+  margin-bottom: var(--ds-space-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .supplyDetails > summary::after { transition: none; }
+}
+
 
 .housingTypeHeading button {
   flex: 0 0 auto;
 }
 
-.housingTypeGroup {
-  min-width: 0;
-}
-
-.singleComplexHeading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--ds-space-3);
-  padding-bottom: var(--ds-space-3);
-  border-bottom: 1px solid var(--detail-line);
-}
-
-.singleComplexHeading h4 {
-  min-width: 0;
-  margin: 0;
-  color: var(--ds-color-text);
-  font-size: var(--ds-text-body);
-  line-height: var(--ds-line-height-body);
-  font-weight: 700;
-  overflow-wrap: anywhere;
-  word-break: keep-all;
-}
-
-.singleComplexHeading > span {
-  flex-shrink: 0;
-  color: var(--ds-color-label);
-  font-size: var(--ds-text-caption);
-  line-height: var(--ds-line-height-caption);
-}
-
-.complexTabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ds-space-3);
-  border-bottom: 1px solid var(--detail-line);
-}
-
-.complexTabs button {
-  display: flex;
-  min-width: 0;
-  max-width: 100%;
-  min-height: 44px;
-  flex: 0 1 auto;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ds-space-2);
-  padding: var(--ds-space-2) var(--ds-space-1);
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: var(--ds-color-surface);
-  color: var(--ds-color-label);
-  cursor: pointer;
-  font-size: var(--ds-text-body);
-  line-height: var(--ds-line-height-body);
-  font-weight: 500;
-}
-
-
-.complexTabs button:focus-visible {
-  outline-offset: -3px;
-}
-
-.complexTabs button span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  word-break: keep-all;
-}
-
-.complexTabs button b {
-  flex: 0 0 auto;
-  font-size: var(--ds-text-caption);
-  line-height: var(--ds-line-height-caption);
-  font-weight: 400;
-}
-
-.complexTabs button[aria-selected='true'] {
-  border-bottom-color: var(--ds-color-action);
-  color: var(--ds-color-action);
-  font-weight: 600;
-}
-
-.housingTypes {
-  padding-top: var(--ds-space-4);
-}
 
 .housingTypeCard {
   min-width: 0;
 }
 
-.housingTypeFacts table {
-  table-layout: auto;
-}
-
-.housingTypeFacts th,
-.housingTypeFacts td {
-  white-space: nowrap;
-}
 
 .housingTypeHeading {
   display: flex;
@@ -831,10 +830,6 @@
     align-items: flex-start;
     justify-content: center;
     flex-direction: column;
-  }
-
-  .housingTypes {
-    padding-top: var(--ds-space-3);
   }
 
   .housingTypeHeading {

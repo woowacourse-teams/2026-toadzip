@@ -9,7 +9,7 @@
 .disclosure { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0; color: var(--ds-color-action); background: none; border: 0; cursor: pointer; font: inherit; font-size: 12px; }
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
 .actions button { min-height: 40px; border: 1px solid #a5beb0; border-radius: var(--ds-radius-control); background: var(--ds-color-surface); color: var(--ds-color-action); font: inherit; font-weight: 700; cursor: pointer; }
-.actions .allow { border-color: var(--ds-color-action); color: white; background: var(--ds-color-action); }
+.actions .allow { border-color: var(--ds-color-brand); color: var(--ds-color-on-brand); background: var(--ds-color-brand); }
 .actions button:disabled { opacity: .5; cursor: wait; }
 .card button:focus-visible, .menu summary:focus-visible, .menu a:focus-visible { outline: 2px solid var(--ds-color-action); outline-offset: 3px; }
 .footer { margin: 10px 0 0; font-size: 11px; color: var(--ds-color-muted); }

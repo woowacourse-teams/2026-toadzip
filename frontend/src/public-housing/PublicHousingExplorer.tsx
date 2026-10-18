@@ -998,10 +998,13 @@ export function PublicHousingExplorer({
     setCameraRequestId((current) => current + 1)
   }, [complexDetail, detailCameraRevision, selectedSearchComplex])
 
+  // 필터를 바꾸면 같은 화면의 마커를 다시 거르는 것이므로, 남는 마커는 그대로 두고 새 마커도 등장 효과 없이 바꾼다.
+  const [animateMarkerEntry, setAnimateMarkerEntry] = useState(true)
   const previousMapFiltersKeyRef = useRef(complexFiltersKey)
   useEffect(() => {
     if (previousMapFiltersKeyRef.current === complexFiltersKey) return
     previousMapFiltersKeyRef.current = complexFiltersKey
+    setAnimateMarkerEntry(false)
     if (viewportTimerRef.current !== null) {
       window.clearTimeout(viewportTimerRef.current)
       viewportTimerRef.current = null
@@ -1081,6 +1084,9 @@ export function PublicHousingExplorer({
       && previous.zoom === nextViewport.zoom
       && !transitionWaitingForIdleRef.current) {
       return
+    }
+    if (previous !== null) {
+      setAnimateMarkerEntry(true)
     }
     if (viewportRef.current !== null) {
       viewportRevisionRef.current += 1
@@ -1244,6 +1250,7 @@ export function PublicHousingExplorer({
   const naverMapProps: NaverMapProps = aggregateMapResult !== null
     ? {
         aggregateMarkers: aggregateMapResult.nodes,
+        animateMarkerEntry,
         cameraRequestId,
         cameraTarget: mapCameraTarget,
         dataBusy: serverMapState.status === 'loading',
@@ -1255,6 +1262,7 @@ export function PublicHousingExplorer({
         transitioning: clusterTransitioning,
       }
     : {
+        animateMarkerEntry,
         cameraRequestId,
         cameraTarget: mapCameraTarget,
         dataBusy: serverMapState.status === 'loading',

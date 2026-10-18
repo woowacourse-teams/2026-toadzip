@@ -99,7 +99,7 @@ export function ComplexFilterFields({
         />
       )
     case 'rentalType':
-      return <ChoiceGroup label="임대유형" name="rentalTypes" values={filters.rentalTypes} options={RENTAL_TYPE_OPTIONS} />
+      return <ChoiceGroup label="임대유형" name="rentalTypes" values={filters.rentalTypes} options={RENTAL_TYPE_OPTIONS} appearance="grid" />
     case 'agency':
       return <ChoiceGroup label="공급기관" name="agencyCodes" values={filters.agencyCodes} options={AGENCY_OPTIONS} />
     case 'recruitmentType':
@@ -176,17 +176,20 @@ function ChoiceGroup({
   name,
   options,
   values = [],
+  appearance = 'pill',
 }: {
   readonly label: string
   readonly name: string
   readonly options: readonly (readonly [string, string])[]
   readonly values?: readonly string[]
+  /** grid: 임대유형처럼 칸을 맞춘 회색 칸, pill: 나머지 선택지는 알약 칩 */
+  readonly appearance?: 'grid' | 'pill'
 }) {
   const selected = new Set(values)
   return (
     <fieldset className={styles.choiceGroup}>
       <legend>{label}</legend>
-      <div className={styles.choices}>
+      <div className={styles.choices} data-appearance={appearance}>
         {options.map(([value, optionLabel]) => (
           <label key={value} className={styles.choice}>
             <input
@@ -195,10 +198,7 @@ function ChoiceGroup({
               value={value}
               defaultChecked={selected.has(value)}
             />
-            <span>
-              <span className={styles.choiceCheck} aria-hidden="true">✓</span>
-              {optionLabel}
-            </span>
+            <span>{optionLabel}</span>
           </label>
         ))}
       </div>

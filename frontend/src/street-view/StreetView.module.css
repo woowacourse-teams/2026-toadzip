@@ -15,8 +15,8 @@
 .actionEntry { justify-items: stretch; }
 .actionButton {
   min-height: 48px; gap: 6px; padding: 0 var(--ds-space-3);
-  border: 2px solid var(--ds-color-action); border-radius: 10px;
-  font-size: var(--ds-text-control-lg); font-weight: var(--ds-weight-strong);
+  border: 1px solid var(--ds-color-border-base); border-radius: 10px;
+  color: var(--ds-color-text); font-size: var(--ds-text-control-lg); font-weight: 600;
 }
 .actionButton svg { width: 20px; height: 20px; }
 .actionButton[aria-disabled='true'] { border: 1px solid var(--ds-color-divider); }

@@ -1,7 +1,5 @@
 import { captureProductEvent, prepareNotificationCompletion, setProductAuthState, setReplaySensitive } from '../../analytics/productAnalytics'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router'
 import { NotificationInterestButton, NotificationInterestProvider } from './NotificationInterest'
@@ -157,14 +155,31 @@ it('창으로 돌아오면 서버에서 변경된 설정을 반영한다', async
   expect(await screen.findByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
 })
 
-it('조회 실패는 빈 목록 성공으로 처리하지 않고 재시도한다', async () => {
+it('조회 실패는 빈 목록 성공으로 처리하지 않고, 알림 받기를 누르면 다시 불러와 이어서 신청한다', async () => {
   const repo = repository()
   repo.loadStatus.mockRejectedValueOnce(new Error('network'))
   render(example(repo))
-  expect(await screen.findByRole('alert')).toHaveTextContent('알림 상태를 불러오지 못했어요.')
-  expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeDisabled()
-  fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
-  await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+  const button = await screen.findByRole('button', { name: '서울 단지 알림 받기' })
+  await waitFor(() => expect(button).toBeEnabled())
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(repo.loadStatus).toHaveBeenCalledTimes(1)
+
+  fireEvent.click(button)
+  await waitFor(() => expect(repo.loadStatus).toHaveBeenCalledTimes(2))
+  expect(await screen.findByRole('dialog')).toBeVisible()
+})
+
+it('다시 불러오기도 실패하면 짧은 안내만 보이고 버튼은 그대로 둔다', async () => {
+  const repo = repository()
+  repo.loadStatus.mockRejectedValueOnce(new Error('network')).mockRejectedValueOnce(new Error('network'))
+  render(example(repo))
+  const button = await screen.findByRole('button', { name: '서울 단지 알림 받기' })
+  await waitFor(() => expect(button).toBeEnabled())
+
+  fireEvent.click(button)
+  expect(await screen.findByText('알림 상태를 불러오지 못했어요. 잠시 후 다시 눌러 주세요.')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
 it('저장 중 창 포커스가 돌아와도 저장 응답을 버리거나 중복 요청하지 않는다', async () => {
@@ -565,11 +580,3 @@ it('신청 응답을 기다리는 동안 저장 상태를 보여 주고 성공�
   expect(screen.getByRole('status')).toHaveTextContent('서울 단지')
 })
 
-it('모바일 상태 오류 토스트는 목록 시트나 위치 안내가 떠 있는 동안 숨겨 안내를 겹치지 않는다', () => {
-  const css = readFileSync(resolve(process.cwd(), 'src/public-housing/interest/NotificationInterest.module.css'), 'utf8')
-  const mobileRule = css.slice(css.indexOf('@media (max-width: 767px)'))
-
-  expect(mobileRule).toContain(':global(body:has(.housing-results[data-mobile="true"][aria-hidden="false"])) .feedback[role=\'alert\']')
-  expect(mobileRule).toContain(':global(body:has([data-location-status]:not([hidden]))) .feedback[role=\'alert\']')
-  expect(mobileRule).toMatch(/\.feedback\[role='alert'\] \{\s*display: none;/)
-})

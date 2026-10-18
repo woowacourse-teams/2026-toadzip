@@ -57,12 +57,9 @@ export function HousingDetailStatePanel({
   return (
     <aside ref={panelRef} className="housing-detail-state"
       aria-label={`${labels.name} 상세 정보`} tabIndex={-1} onKeyDown={handleKeyDown}>
+      {/* 불러오는 중·오류에는 내부 ID 같은 임시 제목을 보이지 않고 뒤로·닫기만 둔다. */}
       <header>
         {backButton}
-        <div>
-          <span>{labels.name} 상세 정보</span>
-          <strong>{`${labels.name} ${id ?? ''}`.trim()}</strong>
-        </div>
         <DetailCloseButton label={`${labels.name} 상세 닫기`} onClose={onClose} />
       </header>
       <div className="housing-detail-state__content" role={status === 'loading' ? 'status' : 'alert'}>
