@@ -120,12 +120,15 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
         <section className={styles.detailSection}><h3>다음 행동</h3><div className={styles.workflow}>
           {selected.product ? <Link to={`/admin/${selected.product.resourceType}/${selected.product.id}`}>{label} 확인·수정</Link> : null}
           {selected.product?.publicDetailAvailable ? <Link to={`/?${selected.product.resourceType === 'complexes' ? 'complexId' : 'announcementId'}=${selected.product.id}`} target="_blank" rel="noreferrer">사용자 상세 보기</Link> : null}
+          <RecoveryLinks row={selected}/>
           <Link to={sourceLocation(selected)}>{selected.category === 'enrichment' ? 'LH 상세 원천 확인' : '원천 데이터 확인'}</Link>
           {selected.category === 'enrichment' ? <Link to={sourceLocation(selected, true)}>LH 공급 원천 확인</Link> : null}
           {selected.category === 'collection' ? <Link to={`/admin/ingest#${domain === 'complex' ? 'complex' : 'announcement'}-pipelines`}>API 키 입력·원천 수집</Link>
-            : selected.status === 'PENDING' && onRetry ? <button type="button" disabled={retryDisabled} onClick={onRetry}>{label} 정제 다시 실행</button> : null}
+            : selected.status === 'PENDING' && onRetry ? <button type="button" disabled={retryDisabled} onClick={onRetry} aria-describedby="failure-retry-scope">{label} 정제 다시 실행</button> : null}
         </div>
-          {selected.productLinkStatus === 'UNKNOWN' && typeof selected.raw.complexName === 'string' ? <p><Link to={`/admin/complexes?keyword=${encodeURIComponent(selected.raw.complexName)}`}>단지명으로 후보 검색</Link></p> : null}
+          {selected.category !== 'collection' && selected.status === 'PENDING' && onRetry ? <p id="failure-retry-scope" className={styles.hint}>
+            수정한 뒤 이 화면으로 돌아와 정제를 다시 실행하세요. 현재 저장된 {label} 원천 전체가 대상이며, 다른 오류와 이미 처리한 데이터도 함께 정제합니다.
+          </p> : null}
           {runMessage ? <p role="status">{runMessage}</p> : null}{runError ? <p role="alert">{runError}</p> : null}
           <p className={styles.hint}>값을 수정한 뒤 재처리 결과를 확인하세요. 등록 데이터가 존재한다는 이유만으로 오류를 해결 처리하지 않습니다.</p></section>
         {selected.category === 'announcement' && typeof selected.raw.sourceAnnouncementIdentifier === 'string'
@@ -139,6 +142,20 @@ export function IngestFailurePanel({ domain: selectedDomain, initialCategory, ex
       </div> : null}
     </dialog>
   </section>
+}
+
+function RecoveryLinks({row}: {row:FailureReview}) {
+  if (row.category === 'collection') return null
+  const complexName = typeof row.raw.complexName === 'string' ? row.raw.complexName.trim() : ''
+  const needsComplexReview = /COMPLEX|HOUSING_TYPE/.test(row.reason)
+    || (row.productLinkStatus === 'UNKNOWN' && complexName !== '')
+  return <>
+    {/GEOCODING/.test(row.reason) ? <Link to="/admin/locations">좌표 ZIP 업로드·단지 정제</Link> : null}
+    {needsComplexReview && row.product?.resourceType !== 'complexes' ? <Link
+      to={complexName ? `/admin/complexes?keyword=${encodeURIComponent(complexName)}` : '/admin/complexes'}>
+      {complexName ? '단지명으로 후보 검색' : '단지·주택형 확인'}
+    </Link> : null}
+  </>
 }
 
 function ProductSummary({row}: {row:FailureReview}) {
@@ -197,7 +214,7 @@ function nextAction(row:FailureReview) {
   if (row.status === 'RESOLVED') return '해결된 기록입니다. 다시 발생하면 미해결로 표시됩니다.'
   if (row.status === 'SKIPPED') return '건너뛴 사유와 원천 요청 조건을 확인하세요.'
   if (row.category === 'collection') return collectionCause(row).action
-  if (/GEOCODING/.test(row.reason)) return '단지 주소·좌표와 주소 원천을 확인한 뒤 정제하세요.'
+  if (/GEOCODING/.test(row.reason)) return '단지 주소와 좌표 원천을 확인하세요. 좌표 ZIP을 업로드해도 일치하는 주소나 좌표가 없으면 별도 확인이 필요합니다.'
   if (/HOUSING_TYPE/.test(row.reason)) return '단지의 주택형과 원천의 면적·공급 유형을 비교한 뒤 정제하세요.'
   if (/COMPLEX/.test(row.reason)) return '단지 등록·주소·공급 유형과 원천 연결을 확인한 뒤 정제하세요.'
   if (/PREVIOUS|CYCLIC/.test(row.reason)) return '이전·후속 공고 연결을 확인한 뒤 정제하세요.'
