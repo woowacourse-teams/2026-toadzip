@@ -545,7 +545,7 @@ describe('NaverMap', () => {
     render(<NaverMap representation="INDIVIDUAL" markers={[]} />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      '지도 설정이 준비되지 않았습니다.',
+      '지도 설정이 준비되지 않았어요.',
     )
     expect(loadNaverMapsSdkMock).not.toHaveBeenCalled()
     expect(
@@ -560,7 +560,7 @@ describe('NaverMap', () => {
     render(<NaverMap representation="INDIVIDUAL" markers={[]} />)
 
     expect(screen.getByRole('status')).toHaveTextContent(
-      '지도를 불러오고 있습니다.',
+      '지도를 불러오고 있어요.',
     )
     expect(
       screen.getByRole('region', { name: '공공임대주택 지도' }),
@@ -948,7 +948,7 @@ describe('NaverMap', () => {
 
     act(() => authenticationFailureListener?.(new NaverMapsSdkError('authentication', '인증 실패')))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('지도 인증에 실패했습니다.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('지도 인증에 실패했어요.')
     for (const polygon of fakeSdk.overlayInstances) {
       expect(polygon.setMap).toHaveBeenCalledTimes(2)
       expect(polygon.setMap).toHaveBeenLastCalledWith(null)
@@ -1872,6 +1872,26 @@ describe('NaverMap', () => {
     expect(secondMotion).not.toHaveClass('housing-marker-enter')
   })
 
+  it('필터 변경처럼 등장 효과를 끄면 남는 마커는 그대로 두고 새 마커도 바로 바꾼다', async () => {
+    const fakeSdk = createFakeSdk()
+    const [a, b, c] = ['a', 'b', 'c'].map((id, index) => ({
+      ...markerPresentation,
+      id,
+      latitude: 37.5,
+      longitude: 127 + index * 0.01,
+      name: `${id} 단지`,
+    }))
+    loadNaverMapsSdkMock.mockResolvedValue(fakeSdk.maps)
+    const { rerender } = render(<NaverMap representation="INDIVIDUAL" markers={[a, b]} />)
+    const aButton = await screen.findByRole('button', { name: /^a 단지,/ })
+
+    rerender(<NaverMap representation="INDIVIDUAL" markers={[a, c]} animateMarkerEntry={false} />)
+
+    expect(screen.getByRole('button', { name: /^a 단지,/ })).toBe(aButton)
+    expect(screen.queryByRole('button', { name: /^b 단지,/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^c 단지,/ }).parentElement).not.toHaveClass('housing-marker-enter')
+  })
+
   it('조회 결과 일부가 바뀌면 기존 마커와 포커스를 유지하고 새 마커만 등장한다', async () => {
     const fakeSdk = createFakeSdk()
     const onMarkerSelect = vi.fn()
@@ -2659,7 +2679,7 @@ describe('NaverMap', () => {
     render(<NaverMap representation="INDIVIDUAL" markers={[]} />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      '지도 인증에 실패했습니다.',
+      '지도 인증에 실패했어요.',
     )
     expect(
       screen.queryByRole('button', { name: '다시 시도' }),
@@ -2698,7 +2718,7 @@ describe('NaverMap', () => {
     })
 
     expect(screen.getByRole('alert')).toHaveTextContent(
-      '지도 인증에 실패했습니다.',
+      '지도 인증에 실패했어요.',
     )
     expect(fakeSdk.destroyMap).toHaveBeenCalledOnce()
     expect(fakeSdk.removeListener).toHaveBeenCalledTimes(4)
@@ -2733,7 +2753,7 @@ describe('NaverMap', () => {
     fireEvent.click(retryButton)
 
     expect(screen.getByRole('status')).toHaveTextContent(
-      '지도를 불러오고 있습니다.',
+      '지도를 불러오고 있어요.',
     )
     await waitFor(() => expect(fakeSdk.mapConstructor).toHaveBeenCalledOnce())
     expect(loadNaverMapsSdkMock).toHaveBeenCalledTimes(2)
@@ -2749,7 +2769,7 @@ describe('NaverMap', () => {
     render(<NaverMap representation="INDIVIDUAL" markers={[]} />)
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('지도를 표시하지 못했습니다.')
+    expect(alert).toHaveTextContent('지도를 표시하지 못했어요.')
 
     fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
 
@@ -2774,7 +2794,7 @@ describe('NaverMap', () => {
     render(<NaverMap representation="INDIVIDUAL" markers={[]} onViewportChange={vi.fn()} />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      '지도를 표시하지 못했습니다.',
+      '지도를 표시하지 못했어요.',
     )
     expect(fakeSdk.destroyMap).toHaveBeenCalledOnce()
     expect(fakeSdk.removeListener).toHaveBeenCalledTimes(4)

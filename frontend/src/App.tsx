@@ -50,7 +50,7 @@ function NotFound() {
   return (
     <main className="not-found-main">
       <BrandLink />
-      <h1>페이지를 찾을 수 없습니다.</h1>
+      <h1>페이지를 찾을 수 없어요.</h1>
       <p>입력한 주소를 다시 확인해 주세요.</p>
       <Link to="/explore">지도로 돌아가기</Link>
     </main>

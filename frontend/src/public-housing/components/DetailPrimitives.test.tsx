@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DetailTable } from './DetailPrimitives'
+import { DetailFact, DetailFacts, DetailSection, DetailTable } from './DetailPrimitives'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -41,5 +41,27 @@ describe('DetailTable 가로 이동', () => {
     renderComparison()
     expect(screen.getByRole('table', { name: '임대조건 비교' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /임대조건 비교.*이동/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('상세 섹션·항목 모양', () => {
+  it('기본은 구분 띠와 표 형태이고, 선택하면 섹션 블록과 이름/값 목록으로 바뀐다', () => {
+    render(
+      <>
+        <DetailSection title="기본 섹션"><DetailFacts><DetailFact term="공급기관" value="LH" /></DetailFacts></DetailSection>
+        <DetailSection title="블록 섹션" appearance="block">
+          <DetailFacts appearance="list"><DetailFact term="임대종류" value="행복주택" /></DetailFacts>
+        </DetailSection>
+      </>,
+    )
+    const band = screen.getByRole('heading', { name: '기본 섹션' }).closest('section')
+    const block = screen.getByRole('heading', { name: '블록 섹션' }).closest('section')
+
+    expect(band).toHaveAttribute('data-appearance', 'band')
+    expect(band?.querySelector('dl')).toHaveAttribute('data-appearance', 'table')
+    expect(block).toHaveAttribute('data-appearance', 'block')
+    expect(block?.querySelector('dl')).toHaveAttribute('data-appearance', 'list')
+    expect(screen.getByText('임대종류').tagName).toBe('DT')
+    expect(screen.getByText('행복주택').tagName).toBe('DD')
   })
 })

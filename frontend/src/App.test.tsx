@@ -63,7 +63,7 @@ describe('App', () => {
       screen.getByRole('region', { name: '공공임대주택 지도' }),
     ).toBeVisible()
     expect(screen.getByRole('alert')).toHaveTextContent(
-      '지도 설정이 준비되지 않았습니다.',
+      '지도 설정이 준비되지 않았어요.',
     )
   })
 
@@ -92,7 +92,7 @@ describe('App', () => {
     )
 
     expect(
-      screen.getByRole('heading', { name: '페이지를 찾을 수 없습니다.' }),
+      screen.getByRole('heading', { name: '페이지를 찾을 수 없어요.' }),
     ).toBeVisible()
     const brand = screen.getByRole('link', { name: '공공주택 복덕방 홈' })
     expect(brand.querySelector('.brand-name')).not.toBeInTheDocument()

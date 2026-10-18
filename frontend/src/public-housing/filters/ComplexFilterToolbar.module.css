@@ -22,39 +22,52 @@
   pointer-events: auto;
 }
 
+/* 필터 칩은 왼쪽에서 따로 넘기고, 모집중 토글은 줄 오른쪽 끝에 고정한다. */
 .toolbar {
+  position: relative;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
   width: 100%;
   max-width: 100%;
   margin-inline-start: auto;
-  padding: 3px;
+  margin-top: 1px;
+  padding: 0;
   gap: 8px;
 }
 
 .scroller {
+  box-sizing: border-box;
   width: 100%;
-  padding-top: 6px;
+  padding: 5px;
   min-width: 0;
   flex: 1 1 auto;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: thin;
+  /* 넘치는 필터는 화살표로 이동한다. 칩 글자는 끌어도 선택되지 않게 한다. */
+  scrollbar-width: none;
+  user-select: none;
   overscroll-behavior-inline: contain;
 }
 
+.scroller::-webkit-scrollbar {
+  display: none;
+}
+
+/* 시작 위치는 컴포넌트가 처음 잰 값으로 고정한다(margin-inline-start 인라인 스타일). */
 .primaryFilters {
-  margin-inline-start: auto;
   display: flex;
   width: max-content;
   gap: 8px;
+  padding-inline-end: 44px;
 }
 
 .trigger {
   position: relative;
   display: inline-flex;
   width: auto;
-  height: calc(var(--ds-space-5) * 2);
+  height: 40px;
+  box-sizing: border-box;
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;
@@ -82,9 +95,9 @@
 
 .trigger[data-active='true'],
 .trigger[aria-expanded='true'] {
-  border-color: var(--ds-color-action);
+  border-color: var(--ds-color-brand);
   background: var(--ds-color-action-selected);
-  color: var(--ds-color-action);
+  color: var(--ds-color-text);
 }
 
 .detailTrigger {
@@ -106,25 +119,26 @@
 
 .filterCount {
   position: absolute;
-  top: -5px;
-  right: -2px;
+  top: -8px;
+  right: -4px;
   display: inline-flex;
-  min-width: 18px;
-  height: 18px;
+  min-width: 22px;
+  height: 22px;
   align-items: center;
   justify-content: center;
-  padding: 0 3px;
+  padding: 0 5px;
   border: 2px solid var(--ds-color-surface);
   border-radius: 999px;
-  background: var(--ds-color-action);
-  color: var(--ds-color-surface);
-  font-size: 10px;
-  font-weight: 700;
+  background: var(--ds-color-brand);
+  color: var(--ds-color-on-brand);
+  font-size: 12px;
+  font-weight: 800;
   line-height: 1;
   pointer-events: none;
 }
 
 .triggerText {
+  min-width: 0;
   display: block;
   max-width: 132px;
   overflow: hidden;
@@ -299,23 +313,51 @@
   overflow-wrap: anywhere;
 }
 
+
+/*
+ * 선택지 두 가지 모양(체크 표시 없음).
+ * grid(임대유형): 회색 칸, 고르면 흰 바탕·먹색 테두리·굵은 글자.
+ * pill(그 외): 흰 알약, 고르면 먹색 2px 테두리·굵은 글자.
+ */
+.choices[data-appearance='pill'] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.choices[data-appearance='pill'] .choice {
+  width: auto;
+}
+
+.choices[data-appearance='pill'] .choice > span {
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: var(--ds-text-caption);
+  border-color: var(--ds-color-table-line);
+  border-radius: 999px;
+  background: var(--ds-color-surface);
+  color: var(--ds-color-text);
+}
+
 .choice:hover > span {
-  background: var(--ds-color-action-soft);
+  background: color-mix(in srgb, var(--ds-color-control-hover) 70%, var(--ds-color-divider));
+}
+
+.choices[data-appearance='pill'] .choice:hover > span {
+  border-color: var(--ds-color-muted);
+  background: var(--ds-color-surface);
 }
 
 .choice input:checked + span {
-  border-color: var(--ds-color-action);
-  background: var(--ds-color-action-soft);
-  color: var(--ds-color-action);
+  border-color: var(--ds-color-text);
+  background: var(--ds-color-surface);
+  box-shadow: inset 0 0 0 0.5px var(--ds-color-text);
+  color: var(--ds-color-text);
+  font-weight: 700;
 }
 
-.choiceCheck {
-  display: none;
-  margin-right: 4px;
-}
-
-.choice input:checked + span .choiceCheck {
-  display: inline;
+.choices[data-appearance='pill'] .choice input:checked + span {
+  box-shadow: inset 0 0 0 1px var(--ds-color-text);
 }
 
 .choice input:focus-visible + span {
@@ -474,7 +516,8 @@
 }
 
 .mobileToolbar {
-  flex-direction: column;
+  flex-direction: row;
+  align-items: flex-start;
   pointer-events: none;
   width: 100%;
   gap: 6px;
@@ -492,6 +535,7 @@
   overflow-x: auto;
   overscroll-behavior-inline: contain;
   scrollbar-width: none;
+  mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
 }
 
 .mobileScroller::-webkit-scrollbar {
@@ -545,9 +589,9 @@
 .mobileAllTrigger[data-active='true'],
 .mobileTrigger[aria-expanded='true'],
 .mobileAllTrigger[aria-expanded='true'] {
-  border-color: var(--ds-color-action);
+  border-color: var(--ds-color-brand);
   background: var(--ds-color-action-selected);
-  color: var(--ds-color-action);
+  color: var(--ds-color-text);
 }
 
 .mobileTrigger:focus-visible,
@@ -734,31 +778,131 @@
   text-align: left;
 }
 
-.recruitingRow {
-  display: flex;
-  justify-content: flex-end;
-  width: 100%;
-  pointer-events: none;
+.scrollArea {
+  position: relative;
+  margin-inline: 20px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
-.trigger.recruitingToggle,
-.mobileTrigger.recruitingToggle {
-  width: 3rem;
-  height: 3rem;
-  max-width: none;
+/* 흰 원형 화살표로 중간 필터를 덮고, 행 끝 여백으로 마지막 필터를 보호한다. */
+.scrollArrow {
+  position: absolute;
+  z-index: 2;
+  top: 5px;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
   padding: 0;
-  justify-content: center;
-  border-radius: 10px;
-  font-size: 0.75rem;
+  border: 1px solid var(--ds-color-divider);
+  border-radius: 50%;
+  background: var(--ds-color-surface);
+  box-shadow: 0 2px 8px rgb(32 33 36 / 16%);
+  color: var(--ds-color-text);
+  cursor: pointer;
   pointer-events: auto;
 }
 
-.recruitingToggle[aria-pressed='true'] {
-  border-color: var(--ds-color-brand);
-  background: var(--ds-color-brand);
-  color: var(--ds-color-on-brand);
+.scrollArrow[data-direction='start'] {
+  left: -20px;
 }
 
-.recruitingToggle[aria-pressed='true']:hover {
-  background: var(--ds-color-brand-hover);
+.scrollArrow[data-direction='end'] {
+  right: -20px;
+}
+
+.scrollArrow:disabled {
+  visibility: hidden;
+}
+
+.scrollArrow svg {
+  width: 18px;
+  height: 18px;
+}
+
+.scrollArrow:hover {
+  background: var(--ds-color-control-hover);
+}
+
+.recruitingRow {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  padding-top: 0;
+  pointer-events: none;
+}
+
+.mobileToolbar .recruitingRow {
+  padding-top: 6px;
+  padding-right: 4px;
+}
+
+/* 모집중 토글: 글자와 스위치를 담은 알약. 켜짐은 aria-pressed와 스위치 위치·색으로 함께 전달한다. */
+.trigger.recruitingToggle,
+.mobileTrigger.recruitingToggle {
+  max-width: none;
+  gap: 8px;
+  padding-inline: 14px 10px;
+  font-weight: var(--ds-weight-strong);
+  pointer-events: auto;
+}
+
+.mobileTrigger.recruitingToggle {
+  gap: 6px;
+  padding-inline: 10px 8px;
+}
+
+/* 켜짐은 다른 선택된 칩과 같은 모양(연한 초록 바탕·초록 테두리·먹색 글자)으로 맞춘다. */
+.recruitingToggle[aria-pressed='true'] {
+  border-color: var(--ds-color-brand);
+  background: var(--ds-color-action-selected);
+  color: var(--ds-color-text);
+}
+
+.recruitingSwitch {
+  position: relative;
+  flex: none;
+  width: 32px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--ds-color-muted);
+  transition: background-color 150ms ease-out;
+}
+
+.recruitingSwitch > span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ds-color-surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 20%);
+  transition: transform 150ms ease-out;
+}
+
+.recruitingToggle[aria-pressed='true'] .recruitingSwitch {
+  background: var(--ds-color-brand);
+}
+
+.recruitingToggle[aria-pressed='true'] .recruitingSwitch > span {
+  transform: translateX(14px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recruitingSwitch,
+  .recruitingSwitch > span {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .recruitingSwitch {
+    border: 1px solid CanvasText;
+  }
+
+  .recruitingToggle[aria-pressed='true'] .recruitingSwitch {
+    background: Highlight;
+  }
 }

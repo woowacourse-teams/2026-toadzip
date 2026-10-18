@@ -20,7 +20,7 @@ vi.mock('./HwpDocumentPreview.tsx', () => ({
 vi.mock('../api/announcementAttachments.ts', async (importOriginal) => ({
   ...await importOriginal<typeof import('../api/announcementAttachments.ts')>(),
   loadAnnouncementAttachment: vi.fn(),
-  attachmentErrorMessage: () => '첨부파일을 불러오지 못했습니다. 다시 시도해 주세요.',
+  attachmentErrorMessage: () => '첨부파일을 불러오지 못했어요. 다시 시도해 주세요.',
 }))
 
 const pdf: HousingAnnouncementDetailAttachment = {
@@ -80,7 +80,7 @@ describe('첨부파일', () => {
   it('ZIP은 자동 다운로드 없이 지원 안내와 다운로드 버튼을 제공한다', () => {
     vi.mocked(loadAnnouncementAttachment).mockClear()
     render(<AttachmentDialog announcementId="201" attachments={[{ ...pdf, fileName: '신청서.zip' }]} onClose={vi.fn()} />)
-    expect(screen.getByText('이 파일은 미리보기를 지원하지 않습니다. 다운로드해서 확인해 주세요.')).toBeVisible()
+    expect(screen.getByText('이 파일은 미리보기를 지원하지 않아요. 다운로드해서 확인해 주세요.')).toBeVisible()
     expect(screen.getByRole('button', { name: '신청서.zip 다운로드' })).toBeEnabled()
     expect(loadAnnouncementAttachment).not.toHaveBeenCalled()
   })
@@ -95,7 +95,7 @@ describe('첨부파일', () => {
   it('미리보기 실패를 표시하고 다시 시도할 수 있다', async () => {
     vi.mocked(loadAnnouncementAttachment).mockRejectedValueOnce(new Error('offline'))
     render(<AttachmentDialog announcementId="201" attachments={[pdf]} onClose={vi.fn()} />)
-    expect(await screen.findByRole('alert')).toHaveTextContent('첨부파일을 불러오지 못했습니다')
+    expect(await screen.findByRole('alert')).toHaveTextContent('첨부파일을 불러오지 못했어요')
     fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
     expect(await screen.findByTitle('모집공고.pdf 미리보기')).toBeVisible()
   })
@@ -173,7 +173,7 @@ describe('미리보기 원본 다운로드 재사용', () => {
     vi.mocked(loadAnnouncementAttachment).mockClear()
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     render(<AttachmentDialog announcementId="201" attachments={[{ ...pdf, fileName: '깨진.pdf' }]} onClose={vi.fn()} />)
-    expect(await screen.findByRole('alert')).toHaveTextContent('뷰어를 불러오지 못했습니다')
+    expect(await screen.findByRole('alert')).toHaveTextContent('뷰어를 불러오지 못했어요')
     fireEvent.click(screen.getByRole('button', { name: '깨진.pdf 다운로드' }))
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
     expect(loadAnnouncementAttachment).toHaveBeenCalledTimes(1)

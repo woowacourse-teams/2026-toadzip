@@ -36,3 +36,21 @@ export function formatHousingMoneyWon(value: number | null | undefined): string 
   if (value == null || !Number.isFinite(value) || value < 0) return MISSING_DATA_LABEL
   return `${value.toLocaleString('ko-KR', { maximumFractionDigits: 20 })}원`
 }
+
+/** 원 단위 금액을 버리지 않고 읽는 순서대로 억·만·원으로 나눠 표시한다. 예: 1억 2,000만원, 42만 5,000원 */
+export function formatHousingMoneyReadable(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value) || value < 0) return MISSING_DATA_LABEL
+  if (!Number.isInteger(value)) return formatHousingMoneyWon(value)
+  if (value === 0) return '0원'
+
+  const amount = BigInt(value)
+  const eok = amount / 100_000_000n
+  const man = (amount % 100_000_000n) / 10_000n
+  const won = amount % 10_000n
+  const parts = [
+    eok > 0n ? `${eok.toLocaleString('ko-KR')}억` : null,
+    man > 0n ? `${man.toLocaleString('ko-KR')}만` : null,
+    won > 0n ? won.toLocaleString('ko-KR') : null,
+  ].filter((part) => part !== null)
+  return `${parts.join(' ')}원`
+}

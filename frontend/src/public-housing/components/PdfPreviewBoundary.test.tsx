@@ -7,7 +7,7 @@ it('뷰어 모듈 로딩 실패는 상세나 다운로드를 없애지 않고 �
   function BrokenViewer(): never { throw new Error('viewer chunk load failed') }
   try {
     render(<><button>다운로드</button><PdfPreviewBoundary><BrokenViewer /></PdfPreviewBoundary></>)
-    expect(screen.getByRole('alert')).toHaveTextContent('PDF 뷰어를 불러오지 못했습니다')
+    expect(screen.getByRole('alert')).toHaveTextContent('PDF 뷰어를 불러오지 못했어요')
     expect(screen.getByRole('button', { name: '다운로드' })).toBeVisible()
   } finally { error.mockRestore() }
 })

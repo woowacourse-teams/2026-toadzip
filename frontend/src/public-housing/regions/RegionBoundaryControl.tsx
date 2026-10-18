@@ -35,11 +35,11 @@ export function RegionBoundaryControl({ name, status, supported, canRecenter, li
           경계 지우기
         </button>
       </div>
-      {!supported && <p className={styles.message} role="status">이 지역은 경계 정보를 제공하지 않습니다.</p>}
-      {supported && status === 'loading' && <p className={styles.message} role="status">지역 경계를 불러오는 중입니다.</p>}
+      {!supported && <p className={styles.message} role="status">이 지역은 경계 정보를 제공하지 않아요.</p>}
+      {supported && status === 'loading' && <p className={styles.message} role="status">지역 경계를 불러오는 중이에요.</p>}
       {supported && status === 'error' && (
         <div className={styles.feedback} role="alert">
-          <p className={styles.message}>지역 경계를 불러오지 못했습니다.</p>
+          <p className={styles.message}>지역 경계를 불러오지 못했어요.</p>
           <button className={styles.retry} type="button" onClick={onRetry}>경계 다시 시도</button>
         </div>
       )}

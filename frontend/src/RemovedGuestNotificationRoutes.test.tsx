@@ -10,7 +10,7 @@ it.each(['/notifications/cancel', '/admin/notification-cancellations'])(
     vi.stubGlobal('fetch', vi.fn(async (url: string) => url.endsWith('/api/admin/auth/me')
       ? Response.json({ loginIdentifier: 'admin' }) : Response.json([])))
     render(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>)
-    expect(await screen.findByRole('heading', { name: '페이지를 찾을 수 없습니다.' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '페이지를 찾을 수 없어요.' })).toBeVisible()
     expect(screen.queryByRole('link', { name: '알림 취소 요청' })).not.toBeInTheDocument()
   },
 )

@@ -134,7 +134,7 @@ function Document({ url, name, retry, telemetry }: { readonly url: string; reado
     viewport.current.focus({ preventScroll: true })
   }
   if (failed) return <div className={styles.error}>
-    <p role="alert">한글 문서를 표시하지 못했습니다. 암호가 있거나 지원하지 않는 문서일 수 있습니다. 다운로드해서 확인해 주세요.</p>
+    <p role="alert">한글 문서를 표시하지 못했어요. 암호가 있거나 지원하지 않는 문서일 수 있어요. 다운로드해서 확인해 주세요.</p>
     <button type="button" onClick={retry}>다시 시도</button>
   </div>
 
@@ -162,7 +162,7 @@ function Document({ url, name, retry, telemetry }: { readonly url: string; reado
           }
         }} />
       <span className={styles.result} role="status">{!query.trim() ? '' : (debouncing || result.pending) ? '검색 중…'
-        : result.error ? '문서를 검색하지 못했습니다.' : result.matches.length ? `${result.current + 1} / ${result.matches.length}개` : '검색 결과 없음'}</span>
+        : result.error ? '문서를 검색하지 못했어요.' : result.matches.length ? `${result.current + 1} / ${result.matches.length}개` : '검색 결과 없음'}</span>
       <div className={styles.searchActions}>
         <button type="button" aria-label="이전 검색 결과" disabled={result.pending || !result.matches.length} onClick={() => { telemetry?.action('previous_result'); moveMatch(true) }}>↑</button>
         <button type="button" aria-label="다음 검색 결과" disabled={result.pending || !result.matches.length} onClick={() => { telemetry?.action('next_result'); moveMatch() }}>↓</button>
@@ -185,7 +185,7 @@ function Document({ url, name, retry, telemetry }: { readonly url: string; reado
     <DocumentOutline entries={outline} activeId={activeOutlineId} onNavigate={navigateOutline} />
     </div>
     {ready && <details className={styles.text}><summary>현재 페이지 텍스트</summary>
-      <pre>{images.get(page)?.text || '추출할 수 있는 텍스트가 없습니다.'}</pre>
+      <pre>{images.get(page)?.text || '추출할 수 있는 텍스트가 없어요.'}</pre>
     </details>}
   </section>
 }

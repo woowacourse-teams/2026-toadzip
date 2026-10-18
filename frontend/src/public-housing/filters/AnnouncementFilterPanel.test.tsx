@@ -226,7 +226,7 @@ describe('AnnouncementFilterPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '공고 필터 열기' }))
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('시·군·구를 불러오지 못했습니다.')
+    expect(alert).toHaveTextContent('시·군·구를 불러오지 못했어요.')
     expect(screen.getByLabelText('시·군·구'))
       .toHaveAttribute('aria-describedby', alert.id)
   })

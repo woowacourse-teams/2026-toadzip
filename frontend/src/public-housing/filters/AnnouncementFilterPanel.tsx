@@ -173,7 +173,7 @@ export function AnnouncementFilterPanel({
               <RegionFilterFields
                 initialRegionCode={formFilters.regionCode ?? ''}
                 messageId="announcement-region-district-load-error"
-                loadingMessage="시·군·구 목록을 불러오는 중입니다."
+                loadingMessage="시·군·구 목록을 불러오는 중이에요."
                 styles={{
                   regionFields: styles.regionFields,
                   field: styles.field,
@@ -187,6 +187,7 @@ export function AnnouncementFilterPanel({
                 name="rentalTypes"
                 defaultValues={formFilters.rentalTypes}
                 options={RENTAL_TYPE_OPTIONS}
+                appearance="grid"
               />
               <FilterCheckboxGroup
                 label="모집상태"
@@ -225,7 +226,10 @@ function FilterCheckboxGroup({
   label,
   name,
   options,
+  appearance = 'pill',
 }: {
+  /** grid: 임대유형처럼 칸을 맞춘 회색 칸, pill: 나머지 선택지는 알약 칩 */
+  readonly appearance?: 'grid' | 'pill'
   readonly defaultValues?: readonly string[]
   readonly label: string
   readonly name: string
@@ -235,7 +239,7 @@ function FilterCheckboxGroup({
   return (
     <fieldset className={styles.choiceGroup}>
       <legend>{label}</legend>
-      <div className={styles.choiceOptions}>
+      <div className={styles.choiceOptions} data-appearance={appearance}>
         {options.map(([value, optionLabel]) => (
           <label key={value} className={styles.choice}>
             <input

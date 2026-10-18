@@ -46,6 +46,8 @@ interface NaverMapCommonProps {
   cameraTarget?: NaverMapCameraTarget
   currentLocation?: { readonly latitude: number; readonly longitude: number } | null
   dataBusy?: boolean
+  /** false면 새로 나타나는 마커도 등장 효과 없이 바로 바꾼다(필터 변경처럼 같은 화면을 다시 거를 때). */
+  animateMarkerEntry?: boolean
   onMarkerHighlight?: (complexId: string | null) => void
   onMarkerSelect?: (complexId: string) => void
   onTransitionInterrupt?: () => void

@@ -78,7 +78,7 @@ export function topicRangeError(topic: FilterTopic, draft: ComplexSearchFilters)
     && draft.builtYearFrom != null
     && draft.builtYearTo != null
     && draft.builtYearFrom > draft.builtYearTo
-    ? '최소 준공년도는 최대 준공년도보다 클 수 없습니다.'
+    ? '최소 준공년도는 최대 준공년도보다 클 수 없어요.'
     : null
 }
 

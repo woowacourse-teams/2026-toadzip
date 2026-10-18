@@ -73,7 +73,7 @@ it.each(['/?login=failed', '/?login=failed&reason=privacy-notice'])('%s 복귀�
   vi.spyOn(privacyApi, 'notices').mockReturnValue(new Promise(() => {}))
   renderLogin(path)
   const alert = screen.getByRole('alert')
-  expect(alert).toHaveTextContent('로그인을 완료하지 못했습니다.')
+  expect(alert).toHaveTextContent('로그인을 완료하지 못했어요.')
   expect(alert).toHaveTextContent('인증이 취소되었거나 로그인 요청이 만료되었을 수 있어요.')
   expect(alert).toHaveTextContent('아래 버튼을 눌러 다시 시도해 주세요.')
   expect(alert).toHaveFocus()

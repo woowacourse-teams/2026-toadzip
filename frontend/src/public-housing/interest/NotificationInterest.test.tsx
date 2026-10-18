@@ -155,14 +155,48 @@ it('창으로 돌아오면 서버에서 변경된 설정을 반영한다', async
   expect(await screen.findByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
 })
 
-it('조회 실패는 빈 목록 성공으로 처리하지 않고 재시도한다', async () => {
+it('조회 실패는 빈 목록 성공으로 처리하지 않고, 알림 받기를 누르면 다시 불러와 이어서 신청한다', async () => {
   const repo = repository()
   repo.loadStatus.mockRejectedValueOnce(new Error('network'))
   render(example(repo))
-  expect(await screen.findByRole('alert')).toHaveTextContent('알림 상태를 불러오지 못했어요.')
-  expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeDisabled()
-  fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
-  await waitFor(() => expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled())
+  const button = await screen.findByRole('button', { name: '서울 단지 알림 받기' })
+  await waitFor(() => expect(button).toBeEnabled())
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(repo.loadStatus).toHaveBeenCalledTimes(1)
+
+  fireEvent.click(button)
+  await waitFor(() => expect(repo.loadStatus).toHaveBeenCalledTimes(2))
+  expect(await screen.findByRole('dialog')).toBeVisible()
+})
+
+it('조회 실패 뒤 알림 받기로 복구한 기존 구독은 유지하고 다시 취소를 눌러야 해제한다', async () => {
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+  repo.loadStatus.mockRejectedValueOnce(new Error('network'))
+  render(example(repo))
+  const button = await screen.findByRole('button', { name: '서울 단지 알림 받기' })
+  await waitFor(() => expect(button).toBeEnabled())
+
+  fireEvent.click(button)
+  expect(await screen.findByText('이미 알림을 받고 있어요.')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
+  expect(repo.record).not.toHaveBeenCalled()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+  await click('서울 단지 알림 취소')
+  await waitFor(() => expect(repo.record).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'CANCELLED' })))
+})
+
+it('다시 불러오기도 실패하면 짧은 안내만 보이고 버튼은 그대로 둔다', async () => {
+  const repo = repository()
+  repo.loadStatus.mockRejectedValueOnce(new Error('network')).mockRejectedValueOnce(new Error('network'))
+  render(example(repo))
+  const button = await screen.findByRole('button', { name: '서울 단지 알림 받기' })
+  await waitFor(() => expect(button).toBeEnabled())
+
+  fireEvent.click(button)
+  expect(await screen.findByText('알림 상태를 불러오지 못했어요. 잠시 후 다시 눌러 주세요.')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '서울 단지 알림 받기' })).toBeEnabled()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
 it('저장 중 창 포커스가 돌아와도 저장 응답을 버리거나 중복 요청하지 않는다', async () => {
@@ -562,3 +596,4 @@ it('신청 응답을 기다리는 동안 저장 상태를 보여 주고 성공�
   expect(screen.getByRole('dialog', { name: '알림 신청을 완료했어요' })).toBeVisible()
   expect(screen.getByRole('status')).toHaveTextContent('서울 단지')
 })
+

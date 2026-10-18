@@ -3,11 +3,16 @@
   z-index: 3;
   right: var(--ds-space-4);
   bottom: calc(48px + 2 * var(--ds-icon-control-lg) + 2 * var(--ds-space-1) + env(safe-area-inset-bottom, 0px));
+  width: var(--ds-icon-control-lg);
+  height: var(--ds-icon-control-lg);
+  box-sizing: border-box;
   border: 1px solid var(--ds-color-border-base);
   border-radius: var(--ds-radius-icon-control);
   background: var(--ds-color-surface);
   box-shadow: 0 2px 6px rgb(0 0 0 / 8%);
 }
+
+.control > button { width: 100%; height: 100%; }
 
 .status {
   position: absolute;
@@ -100,8 +105,6 @@
     bottom: calc(var(--explorer-map-control-bottom) + var(--explorer-map-control-size) + var(--explorer-map-control-gap));
     width: var(--explorer-map-control-size);
     height: var(--explorer-map-control-size);
-    box-sizing: border-box;
     border-radius: 10px;
   }
-  .control > button { width: 100%; height: 100%; }
 }

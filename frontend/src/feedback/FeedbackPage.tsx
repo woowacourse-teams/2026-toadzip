@@ -42,7 +42,7 @@ export function FeedbackPage() {
       setSubmitted(true)
     } catch (cause) {
       captureProductEvent('feedback_failed', { feedback_id: feedbackId, submission_id: submissionId, failure_reason: 'request_failed' })
-      setError(cause instanceof Error ? cause.message : '의견을 보내지 못했습니다. 다시 시도해 주세요.')
+      setError(cause instanceof Error ? cause.message : '의견을 보내지 못했어요. 다시 시도해 주세요.')
     } finally {
       inFlight.current = false
       setPending(false)
@@ -66,8 +66,8 @@ export function FeedbackPage() {
       </div>
       {submitted ? <section className={styles.confirmation} role="status">
         <span className={styles.successIcon} aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m6 12 4 4 8-8" /></svg></span>
-        <h2 ref={confirmation} tabIndex={-1}>의견이 접수되었습니다.</h2>
-        <p>남겨 주신 의견은 서비스 개선에 참고하겠습니다.</p>
+        <h2 ref={confirmation} tabIndex={-1}>의견이 접수되었어요.</h2>
+        <p>남겨 주신 의견은 서비스 개선에 참고할게요.</p>
         <Link to="/explore">지도로 돌아가기</Link>
       </section> : <form className={styles.form} noValidate aria-label="의견 접수" aria-busy={pending}
         onSubmit={event => { event.preventDefault(); void submit() }}>
@@ -89,7 +89,7 @@ export function FeedbackPage() {
         </div>
         {error && <p id="feedback-error" className={styles.error} role="alert">{error}</p>}
         <div className={styles.formFooter}>
-          <p className={styles.footnote}>이 창구는 의견 수집용이며 개별 답변은 제공하지 않습니다.</p>
+          <p className={styles.footnote}>이 창구는 의견 수집용이며 개별 답변은 제공하지 않아요.</p>
           <Button className={styles.submitButton} type="submit" size="lg" disabled={pending}>{pending ? '보내는 중…' : '의견 보내기'}</Button>
         </div>
       </form>}

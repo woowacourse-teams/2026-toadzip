@@ -18,7 +18,7 @@ it('주관식 내용만 입력하고 전송 성공을 안내한다', async () =>
   expect(screen.queryByRole('radio')).not.toBeInTheDocument()
   fireEvent.change(input, { target: { value: '  지도가 불편해요.\n개선해 주세요.  ' } })
   fireEvent.click(screen.getByRole('button', { name: '의견 보내기' }))
-  const confirmation = await screen.findByRole('heading', { name: '의견이 접수되었습니다.' })
+  const confirmation = await screen.findByRole('heading', { name: '의견이 접수되었어요.' })
   await waitFor(() => expect(confirmation).toHaveFocus())
   expect(submitFeedback).toHaveBeenCalledWith('지도가 불편해요.\n개선해 주세요.')
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
@@ -41,7 +41,7 @@ it('실패하면 내용을 보존하고 다시 제출할 수 있다', async () =
   expect(await screen.findByRole('alert')).toHaveTextContent('전송 실패')
   expect(input).toHaveValue('검색을 개선해 주세요.')
   fireEvent.click(screen.getByRole('button', { name: '의견 보내기' }))
-  expect(await screen.findByRole('heading', { name: '의견이 접수되었습니다.' })).toBeVisible()
+  expect(await screen.findByRole('heading', { name: '의견이 접수되었어요.' })).toBeVisible()
 })
 
 it('전송 중에는 중복 제출과 내용 변경을 막는다', async () => {
@@ -56,7 +56,7 @@ it('전송 중에는 중복 제출과 내용 변경을 막는다', async () => {
   expect(screen.getByRole('button', { name: '보내는 중…' })).toBeDisabled()
   expect(submitFeedback).toHaveBeenCalledTimes(1)
   await act(async () => complete())
-  expect(screen.getByRole('heading', { name: '의견이 접수되었습니다.' })).toBeVisible()
+  expect(screen.getByRole('heading', { name: '의견이 접수되었어요.' })).toBeVisible()
 })
 
 it('최대 글자 수를 표시하고 초과 입력을 거절한다', async () => {

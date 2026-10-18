@@ -32,8 +32,8 @@ describe.each([
     fireEvent.click(screen.getByRole('button', { name: open }))
     fireEvent.change(screen.getByLabelText('시·도'), { target: { value: '11' } })
     expect(screen.getByRole('status')).toHaveTextContent(kind === 'announcement'
-      ? '시·군·구 목록을 불러오는 중입니다.'
-      : '시·군·구를 불러오는 중입니다.')
+      ? '시·군·구 목록을 불러오는 중이에요.'
+      : '시·군·구를 불러오는 중이에요.')
     fireEvent.change(screen.getByLabelText('시·도'), { target: { value: '41' } })
     expect(search.mock.calls[0][1].aborted).toBe(true)
     await act(async () => second.resolve(GYEONGGI_REGIONS))
