@@ -169,6 +169,23 @@ it('조회 실패는 빈 목록 성공으로 처리하지 않고, 알림 받기�
   expect(await screen.findByRole('dialog')).toBeVisible()
 })
 
+it('조회 실패 뒤 알림 받기로 복구한 기존 구독은 유지하고 다시 취소를 눌러야 해제한다', async () => {
+  const repo = repository({ userId: '1', settingsRevision: 0, targets: [{ targetType: 'COMPLEX', targetId: '1' }] })
+  repo.loadStatus.mockRejectedValueOnce(new Error('network'))
+  render(example(repo))
+  const button = await screen.findByRole('button', { name: '서울 단지 알림 받기' })
+  await waitFor(() => expect(button).toBeEnabled())
+
+  fireEvent.click(button)
+  expect(await screen.findByText('이미 알림을 받고 있어요.')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '서울 단지 알림 취소' })).toHaveAttribute('aria-pressed', 'true')
+  expect(repo.record).not.toHaveBeenCalled()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+  await click('서울 단지 알림 취소')
+  await waitFor(() => expect(repo.record).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'CANCELLED' })))
+})
+
 it('다시 불러오기도 실패하면 짧은 안내만 보이고 버튼은 그대로 둔다', async () => {
   const repo = repository()
   repo.loadStatus.mockRejectedValueOnce(new Error('network')).mockRejectedValueOnce(new Error('network'))

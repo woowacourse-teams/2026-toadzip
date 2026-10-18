@@ -295,8 +295,13 @@ export function NotificationInterestProvider({ children, repository = notificati
     const pending = pendingRequest.current
     if (!pending || mode === 'loading' || mode === 'error') return
     pendingRequest.current = null
+    // 조회 실패 중 누른 '알림 받기'를 복구된 구독의 취소로 바꾸지 않는다.
+    if (requested.has(requestedKey(pending.selection.target))) {
+      setMessage('이미 알림을 받고 있어요.')
+      return
+    }
     request(pending.selection, pending.button)
-  }, [mode, request])
+  }, [mode, request, requested])
 
   const clearAll = useCallback(async (button: HTMLButtonElement) => {
     if (mode !== 'member' || inFlight.current || dialog || failed || targets.length === 0) return
