@@ -10,7 +10,9 @@ spring:
       maximum-pool-size: 4
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      # Cached contexts share this schema; evicting one must not drop tables used by another.
+      # compose.test.yaml owns cleanup of the disposable test databases.
+      ddl-auto: create
   main:
     web-application-type: none
 

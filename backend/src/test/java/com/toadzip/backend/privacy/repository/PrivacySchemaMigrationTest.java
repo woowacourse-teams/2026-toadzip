@@ -2,6 +2,7 @@ package com.toadzip.backend.privacy.repository;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,10 +19,13 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class PrivacySchemaMigrationTest {
 
@@ -219,6 +223,54 @@ class PrivacySchemaMigrationTest {
         }
     }
 
+    @ParameterizedTest
+    @CsvSource(value = {
+            "columns|ALTER TABLE snapshot_fixture ALTER COLUMN note SET DEFAULT 'changed'",
+            "constraints|ALTER TABLE snapshot_fixture ADD CONSTRAINT positive_id CHECK (id > 0)",
+            "indexes|CREATE INDEX note_idx ON snapshot_fixture (note)",
+            "triggers|CREATE TRIGGER write_guard BEFORE INSERT ON snapshot_fixture "
+                    + "FOR EACH ROW EXECUTE FUNCTION keep_row()",
+            "rows|UPDATE snapshot_fixture SET note = 'changed' WHERE id = 1"
+    }, delimiter = '|')
+    void 스냅샷은_검사대상_테이블의_메타데이터와_행_변경을_감지한다(String category, String change) throws Exception {
+        try (TestDatabase database = TestDatabase.create()) {
+            try (Connection connection = database.connect(); Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE snapshot_fixture(id BIGINT PRIMARY KEY, note TEXT DEFAULT 'original')");
+                statement.execute("INSERT INTO snapshot_fixture(id) VALUES (1)");
+                statement.execute("CREATE TABLE empty_fixture(id BIGINT)");
+                statement.execute("CREATE TABLE privacy_fixture(id BIGINT)");
+                statement.execute("CREATE SCHEMA unrelated");
+                statement.execute("CREATE TABLE unrelated.snapshot_fixture(other_column TEXT)");
+                statement.execute("CREATE FUNCTION keep_row() RETURNS trigger LANGUAGE plpgsql "
+                        + "AS $$ BEGIN RETURN NEW; END $$");
+            }
+            SchemaSnapshot before = snapshot(database, false);
+            assertEquals(Set.of("snapshot_fixture", "empty_fixture"), before.rows().keySet());
+            assertEquals(8, before.schema().size());
+            assertEquals(List.of(), before.rows().get("empty_fixture"));
+            assertEquals(List.of(), before.schema().get("empty_fixture:constraints"));
+            assertEquals(List.of(), before.schema().get("empty_fixture:indexes"));
+            assertEquals(List.of(), before.schema().get("empty_fixture:triggers"));
+            assertEquals(2, before.schema().get("snapshot_fixture:columns").size());
+            SchemaSnapshot includingPrivacy = snapshot(database, true);
+            assertEquals(Set.of("snapshot_fixture", "empty_fixture", "privacy_fixture"),
+                    includingPrivacy.rows().keySet());
+            assertEquals(1, includingPrivacy.schema().get("privacy_fixture:columns").size());
+
+            try (Connection connection = database.connect(); Statement statement = connection.createStatement()) {
+                statement.execute(change);
+            }
+            SchemaSnapshot after = snapshot(database, false);
+
+            if (category.equals("rows")) {
+                assertNotEquals(before.rows().get("snapshot_fixture"), after.rows().get("snapshot_fixture"));
+                return;
+            }
+            assertNotEquals(before.schema().get("snapshot_fixture:" + category),
+                    after.schema().get("snapshot_fixture:" + category));
+        }
+    }
+
     private void copyLegacyMigrations(Path directory) throws Exception {
         try (var paths = Files.list(Path.of("src/main/resources/db/migration"))) {
             for (Path path : paths.filter(Files::isRegularFile).toList()) {
@@ -264,28 +316,57 @@ class PrivacySchemaMigrationTest {
             Map<String, List<String>> schema = new LinkedHashMap<>();
             Map<String, List<String>> rows = new LinkedHashMap<>();
             for (String table : tables) {
-                schema.put(table + ":columns", queryStrings(statement, """
-                        SELECT concat_ws('|', attnum, attname, format_type(atttypid, atttypmod), attnotnull,
-                            attidentity, attgenerated, coalesce(pg_get_expr(d.adbin,d.adrelid),''))
-                        FROM pg_attribute a LEFT JOIN pg_attrdef d ON a.attrelid=d.adrelid AND a.attnum=d.adnum
-                        WHERE a.attrelid='public.%s'::regclass AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum
-                        """.formatted(table)));
-                schema.put(table + ":constraints", queryStrings(statement, """
-                        SELECT conname || '|' || pg_get_constraintdef(oid) || '|' || convalidated
-                        FROM pg_constraint WHERE conrelid='public.%s'::regclass ORDER BY conname
-                        """.formatted(table)));
-                schema.put(table + ":indexes", queryStrings(statement, """
-                        SELECT indexname || '|' || indexdef FROM pg_indexes
-                        WHERE schemaname='public' AND tablename='%s' ORDER BY indexname
-                        """.formatted(table)));
-                schema.put(table + ":triggers", queryStrings(statement, """
-                        SELECT tgname || '|' || pg_get_triggerdef(oid) FROM pg_trigger
-                        WHERE tgrelid='public.%s'::regclass ORDER BY tgname
-                        """.formatted(table)));
+                for (String category : List.of("columns", "constraints", "indexes", "triggers")) {
+                    schema.put(table + ":" + category, new ArrayList<>());
+                }
                 rows.put(table, queryStrings(statement,
                         "SELECT to_jsonb(row)::text FROM public.\"" + table + "\" row ORDER BY to_jsonb(row)::text"));
             }
+            collectMetadata(statement, schema, "columns", """
+                    SELECT r.relname,
+                        concat_ws('|', a.attnum, a.attname, format_type(a.atttypid, a.atttypmod), a.attnotnull,
+                            a.attidentity, a.attgenerated, coalesce(pg_get_expr(d.adbin,d.adrelid),''))
+                    FROM pg_attribute a
+                    JOIN pg_class r ON r.oid=a.attrelid
+                    JOIN pg_namespace n ON n.oid=r.relnamespace
+                    LEFT JOIN pg_attrdef d ON a.attrelid=d.adrelid AND a.attnum=d.adnum
+                    WHERE n.nspname='public' AND a.attnum>0 AND NOT a.attisdropped
+                    ORDER BY r.relname, a.attnum
+                    """);
+            collectMetadata(statement, schema, "constraints", """
+                    SELECT r.relname, c.conname || '|' || pg_get_constraintdef(c.oid) || '|' || c.convalidated
+                    FROM pg_constraint c
+                    JOIN pg_class r ON r.oid=c.conrelid
+                    JOIN pg_namespace n ON n.oid=r.relnamespace
+                    WHERE n.nspname='public'
+                    ORDER BY r.relname, c.conname
+                    """);
+            collectMetadata(statement, schema, "indexes", """
+                    SELECT tablename, indexname || '|' || indexdef FROM pg_indexes
+                    WHERE schemaname='public' ORDER BY tablename, indexname
+                    """);
+            collectMetadata(statement, schema, "triggers", """
+                    SELECT r.relname, t.tgname || '|' || pg_get_triggerdef(t.oid)
+                    FROM pg_trigger t
+                    JOIN pg_class r ON r.oid=t.tgrelid
+                    JOIN pg_namespace n ON n.oid=r.relnamespace
+                    WHERE n.nspname='public'
+                    ORDER BY r.relname, t.tgname
+                    """);
             return new SchemaSnapshot(schema, rows);
+        }
+    }
+
+    private void collectMetadata(
+            Statement statement, Map<String, List<String>> schema, String category, String query
+    ) throws SQLException {
+        try (var result = statement.executeQuery(query)) {
+            while (result.next()) {
+                List<String> values = schema.get(result.getString(1) + ":" + category);
+                if (values != null) {
+                    values.add(result.getString(2));
+                }
+            }
         }
     }
 

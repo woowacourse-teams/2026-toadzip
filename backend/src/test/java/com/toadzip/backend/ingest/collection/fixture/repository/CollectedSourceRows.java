@@ -28,7 +28,7 @@ public class CollectedSourceRows {
 
     @jakarta.annotation.PostConstruct
     void prepareControlTables() {
-        // create-drop는 Entity 테이블만 생성하므로 JDBC 전용 제어 테이블을 테스트에서 보충한다.
+        // JPA는 Entity 테이블만 생성하므로 JDBC 전용 제어 테이블을 테스트에서 보충한다.
         jdbc.sql("CREATE TABLE IF NOT EXISTS myhome_announcement_lifecycle_runs "
                 + "(execution_id UUID PRIMARY KEY, completed_at TIMESTAMPTZ NOT NULL)").update();
         jdbc.sql("CREATE TABLE IF NOT EXISTS lh_announcement_catalog_write_lock "
