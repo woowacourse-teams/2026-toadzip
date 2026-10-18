@@ -10,6 +10,16 @@
 .filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--ds-space-3); padding: var(--ds-space-4) 0; }
 .filters label { min-width: 150px; }
 .filters > button { margin-left: auto; }
+.search { display: flex; flex-wrap: wrap; align-items: end; gap: var(--ds-space-3); margin-top: var(--ds-space-4); }
+.search label { flex: 1 1 280px; max-width: 600px; }
+.search input { width: 100%; }
+.executionFilter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-3); padding: var(--ds-space-3) 0; border-bottom: 1px solid var(--ds-color-divider); }
+.executionFilter p { flex: 1; margin: 0; font-size: var(--ds-text-caption); }
+.executionFilter span { display: block; overflow-wrap: anywhere; color: var(--ds-color-label); }
+.executionScope, .recovery { flex-basis: 100%; padding: var(--ds-space-4); border: 1px solid var(--ds-color-divider); background: var(--ds-color-surface-subtle); border-radius: var(--ds-radius-control); }
+.executionScope p, .recovery p { margin: var(--ds-space-2) 0 var(--ds-space-3); }
+.recovery { margin: var(--ds-space-4) 0; }
+.detailNotice { margin: var(--ds-space-4); }
 .results { position: relative; }
 .summary { display: flex; justify-content: space-between; gap: var(--ds-space-3); color: var(--ds-color-label); font-size: var(--ds-text-caption); margin-bottom: var(--ds-space-2); }
 .loading { position: absolute; right: 0; top: 34px; z-index: 5; margin: 0; padding: var(--ds-space-2) var(--ds-space-3); background: var(--ds-color-surface); color: var(--ds-color-label); border: 1px solid var(--ds-color-divider); border-radius: var(--ds-radius-control); font-size: var(--ds-text-caption); }
@@ -43,7 +53,7 @@
 .dialogBody { padding: var(--ds-space-4); overflow-wrap: anywhere; line-height: var(--ds-line-height-body); }
 .dialogBody > h3 { margin-top: 0; }
 .detailSection { padding: var(--ds-space-4) 0; border-top: 1px solid var(--ds-color-divider); }
-.detailSection h3 { margin: 0 0 var(--ds-space-3); font-size: var(--ds-text-body); }
+.detailSection h3 { margin: 0 0 var(--ds-space-3); font-size: var(--ds-text-body); scroll-margin-top: 88px; }
 .facts p { margin: var(--ds-space-2) 0; }
 .raw { border-top: 1px solid var(--ds-color-divider); padding-top: var(--ds-space-4); }
 .raw summary { cursor: pointer; color: var(--ds-color-action); margin-bottom: var(--ds-space-3); }

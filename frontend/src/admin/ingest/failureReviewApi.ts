@@ -21,13 +21,20 @@ export type FailureReviewPageData = {
 export async function getFailureReviews(
   domain: FailureDomain, category: FailureCategory | 'all', status: FailureReviewStatus,
   page: number, signal?: AbortSignal,
+  filters: { keyword?: string; executionId?: string | null } = {},
 ): Promise<FailureReviewPageData> {
   const params = new URLSearchParams({ domain, category, status, page: String(page), size: '20' })
+  if (filters.keyword) params.set('keyword', filters.keyword)
+  if (filters.executionId) params.set('executionId', filters.executionId)
   const value = await requestManagementApi(`/api/admin/ingest/failure-reviews?${params}`, 'GET', undefined, signal)
   if (!record(value) || !Array.isArray(value.items) || !count(value.page) || !count(value.totalElements)
     || !count(value.totalPages) || typeof value.hasNext !== 'boolean') throw invalid()
   return { items: value.items.map(parseReview), page: value.page, totalElements: value.totalElements,
     totalPages: value.totalPages, hasNext: value.hasNext }
+}
+
+export async function getFailureReview(category: FailureCategory, id: number, signal?: AbortSignal): Promise<FailureReview> {
+  return parseReview(await requestManagementApi(`/api/admin/ingest/failure-reviews/${category}/${id}`, 'GET', undefined, signal))
 }
 
 function parseReview(value: unknown): FailureReview {

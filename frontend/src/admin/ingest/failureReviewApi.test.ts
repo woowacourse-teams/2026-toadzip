@@ -34,3 +34,13 @@ it('조회 실패를 빈 데이터로 바꾸지 않는다',async()=>{
   vi.mocked(requestManagementApi).mockRejectedValue(new Error('권한 없음'))
   await expect(getFailureReviews('complex','all','PENDING',0)).rejects.toThrow('권한 없음')
 })
+
+it('검색어와 선택한 실행을 서버 조회에 전달한다',async()=>{
+  vi.mocked(requestManagementApi).mockResolvedValue(response)
+  await getFailureReviews('complex','all','PENDING',0,undefined,{
+    keyword:'한스빌',executionId:'0208a423-2bcb-4934-a2e4-feb82291aa67',
+  })
+  const url=new URL(String(vi.mocked(requestManagementApi).mock.lastCall?.[0]),'https://local.test')
+  expect(url.searchParams.get('keyword')).toBe('한스빌')
+  expect(url.searchParams.get('executionId')).toBe('0208a423-2bcb-4934-a2e4-feb82291aa67')
+})

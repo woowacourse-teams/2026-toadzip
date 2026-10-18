@@ -6,6 +6,7 @@ import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFo
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.exception.exception.InvalidIngestRequestException;
 import com.toadzip.backend.ingest.exception.exception.LhAnnouncementUnavailableException;
+import com.toadzip.backend.ingest.failure.exception.IngestFailureReviewNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -71,6 +72,15 @@ public class IngestExceptionAdvice {
     ) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(new ErrorResponse(
                 "LH_ANNOUNCEMENT_UNAVAILABLE", exception.getMessage(), traceIdOf(request)
+        ));
+    }
+
+    @ExceptionHandler(IngestFailureReviewNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleFailureReviewNotFound(
+            IngestFailureReviewNotFoundException exception, HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(
+                "INGEST_FAILURE_REVIEW_NOT_FOUND", exception.getMessage(), traceIdOf(request)
         ));
     }
 

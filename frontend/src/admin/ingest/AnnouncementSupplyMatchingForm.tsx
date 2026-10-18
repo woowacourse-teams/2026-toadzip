@@ -6,8 +6,8 @@ import { getSupplyMatches, searchMatchingComplexes, getMatchingHousingTypes, ref
   type SupplyMatch, type MatchingComplex, type MatchingHousingType } from './supplyMatchingApi'
 import styles from './AnnouncementSupplyMatchingForm.module.css'
 
-export function AnnouncementSupplyMatchingForm({ identifier, disabled = false }: {
-  identifier: string; disabled?: boolean
+export function AnnouncementSupplyMatchingForm({ identifier, disabled = false, onApplied, onBusy }: {
+  identifier: string; disabled?: boolean; onApplied?: () => void; onBusy?: (busy: boolean) => void
 }) {
   const [rows, setRows] = useState<SupplyMatch[]>([])
   const [error, setError] = useState('')
@@ -55,12 +55,12 @@ export function AnnouncementSupplyMatchingForm({ identifier, disabled = false }:
       selections.push({ rowIdentifier: row.rowIdentifier, token: row.token,
         complexId: choice.complexId, housingTypeId: choice.housingTypeId })
     }
-    pending.current = true; setRefining(true); setError(''); setNotice('')
+    pending.current = true; setRefining(true); onBusy?.(true); setError(''); setNotice('')
     try {
       await refineSupplyMatches(identifier, selections)
-      if (alive.current) setNotice('선택한 연결로 공고 정제·저장을 완료했습니다.')
+      if (alive.current) { setNotice('선택한 연결로 공고 정제·저장을 완료했습니다.'); onApplied?.() }
     } catch (cause) { if (alive.current) setError(message(cause)) }
-    finally { pending.current = false; if (alive.current) setRefining(false) }
+    finally { pending.current = false; if (alive.current) { setRefining(false); onBusy?.(false) } }
   }
 
   return <section className={styles.workspace} aria-label="공급행 수동 매칭">

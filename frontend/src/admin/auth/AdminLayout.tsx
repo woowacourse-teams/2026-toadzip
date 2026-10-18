@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { BrandLink } from '../../BrandLink'
 import { useAdminAuth } from './useAdminAuth'
 import styles from './AdminLayout.module.css'
+import { FailureReturnLink } from '../ingest/FailureReturnLink'
 
 export function AdminLayout() {
   const { logout, session } = useAdminAuth()
@@ -71,6 +72,7 @@ export function AdminLayout() {
         </div>
       </nav>
       <main className="admin-content" id="admin-main">
+        <FailureReturnLink />
         <Outlet />
       </main>
     </div>

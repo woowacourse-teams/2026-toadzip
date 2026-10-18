@@ -41,7 +41,8 @@ describe('선택 적용 후 공고 정제', () => {
   })
 
   it('주택형을 선택해 바로 정제하고 완료 후 공고 관리 링크를 보여준다', async () => {
-    renderForm()
+    const onApplied=vi.fn(), onBusy=vi.fn()
+    render(<MemoryRouter><AnnouncementSupplyMatchingForm identifier="21395" onApplied={onApplied} onBusy={onBusy}/></MemoryRouter>)
     expect(await screen.findByText('26A,B')).toBeVisible()
     await screen.findByRole('option', { name: /26 · 전용/ })
     fireEvent.change(screen.getByLabelText('매칭 주택형'), { target: { value: '10' } })
@@ -50,6 +51,8 @@ describe('선택 적용 후 공고 정제', () => {
     await waitFor(() => expect(refineSupplyMatches).toHaveBeenCalledWith('21395',
       [{ rowIdentifier: '21395:1', token: 'version', complexId: 1, housingTypeId: 10 }]))
     expect(await screen.findByRole('status')).toHaveTextContent('정제·저장을 완료했습니다')
+    expect(onApplied).toHaveBeenCalledOnce()
+    expect(onBusy.mock.calls).toEqual([[true],[false]])
     expect(screen.getByRole('link', { name: '공고 관리로 이동' })).toHaveAttribute('href', '/admin/announcements')
     expect(screen.queryByRole('button', { name: '등록 재시도' })).not.toBeInTheDocument()
   })
