@@ -491,6 +491,19 @@ describe('ComplexFilterToolbar', () => {
     expect(popover.style.getPropertyValue('--popover-top')).toBe('94px')
   })
 
+  it('오른쪽 끝에서는 뒤쪽 화살표를 비활성화하고 필터를 가리지 않는다', () => {
+    renderToolbar()
+    const first = screen.getByRole('button', { name: '전체 필터 열기' })
+    const scroller = first.parentElement?.parentElement
+    if (!scroller) throw new Error('필터 스크롤 영역을 찾을 수 없습니다.')
+    Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 250 })
+    Object.defineProperty(scroller, 'scrollWidth', { configurable: true, value: 900 })
+    Object.defineProperty(scroller, 'scrollLeft', { configurable: true, value: 650 })
+    fireEvent.scroll(scroller)
+    expect(screen.getByRole('button', { name: '뒤쪽 필터 더 보기' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '앞쪽 필터 보기' })).toBeEnabled()
+  })
+
   it('필터 행을 가로 스크롤하면 열린 팝오버의 연결 위치를 갱신한다', () => {
     renderToolbar()
     const toolbar = screen.getByRole('toolbar', { name: '단지 검색 필터' })

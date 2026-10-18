@@ -27,29 +27,27 @@
   position: relative;
   display: flex;
   flex-direction: row;
-  align-items: flex-start;
+  align-items: center;
   width: 100%;
   max-width: 100%;
   margin-inline-start: auto;
-  padding: 3px;
+  margin-top: 1px;
+  padding: 0;
   gap: 8px;
 }
 
 .scroller {
+  box-sizing: border-box;
   width: 100%;
-  padding-top: 6px;
+  padding: 5px;
   min-width: 0;
   flex: 1 1 auto;
   overflow-x: auto;
   overflow-y: hidden;
-  /* 스크롤바는 늘 숨기고, 넘칠 때는 양 끝 화살표와 흐린 끝으로 더 있음을 알린다. 칩 글자는 끌어도 선택되지 않게 한다. */
+  /* 넘치는 필터는 화살표로 이동한다. 칩 글자는 끌어도 선택되지 않게 한다. */
   scrollbar-width: none;
   user-select: none;
   overscroll-behavior-inline: contain;
-}
-
-.scroller[data-overflow-end='true'] {
-  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
 }
 
 .scroller::-webkit-scrollbar {
@@ -61,14 +59,15 @@
   display: flex;
   width: max-content;
   gap: 8px;
-  padding-inline-end: 24px;
+  padding-inline-end: 44px;
 }
 
 .trigger {
   position: relative;
   display: inline-flex;
   width: auto;
-  height: calc(var(--ds-space-5) * 2);
+  height: 40px;
+  box-sizing: border-box;
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;
@@ -139,6 +138,7 @@
 }
 
 .triggerText {
+  min-width: 0;
   display: block;
   max-width: 132px;
   overflow: hidden;
@@ -780,18 +780,19 @@
 
 .scrollArea {
   position: relative;
+  margin-inline: 20px;
   min-width: 0;
   flex: 1 1 auto;
 }
 
-/* 칩 줄이 넘칠 때 양 끝에 둥근 화살표를 띄워 넘겨 볼 수 있게 한다. */
+/* 흰 원형 화살표로 중간 필터를 덮고, 행 끝 여백으로 마지막 필터를 보호한다. */
 .scrollArrow {
   position: absolute;
   z-index: 2;
-  top: 11px;
+  top: 5px;
   display: grid;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   place-items: center;
   padding: 0;
   border: 1px solid var(--ds-color-divider);
@@ -804,11 +805,15 @@
 }
 
 .scrollArrow[data-direction='start'] {
-  left: 4px;
+  left: -20px;
 }
 
 .scrollArrow[data-direction='end'] {
-  right: 4px;
+  right: -20px;
+}
+
+.scrollArrow:disabled {
+  visibility: hidden;
 }
 
 .scrollArrow svg {
@@ -824,11 +829,12 @@
   display: flex;
   flex: none;
   justify-content: flex-end;
-  padding-top: 6px;
+  padding-top: 0;
   pointer-events: none;
 }
 
 .mobileToolbar .recruitingRow {
+  padding-top: 6px;
   padding-right: 4px;
 }
 

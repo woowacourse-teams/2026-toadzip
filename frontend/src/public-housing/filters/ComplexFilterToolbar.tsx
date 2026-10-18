@@ -252,7 +252,7 @@ export function ComplexFilterToolbar({
     const row = primaryFiltersRef.current
     if (scroller === null || row === null) return
     const measureStart = () => {
-      setRowStart(Math.max(0, Math.floor(scroller.clientWidth - row.getBoundingClientRect().width) - 1))
+      setRowStart(Math.max(0, Math.floor(scroller.clientWidth - row.getBoundingClientRect().width) - 11))
     }
     measureStart()
     window.addEventListener('resize', measureStart)
@@ -530,7 +530,7 @@ export function ComplexFilterToolbar({
           onKeyDown={moveToolbarFocus}
         >
           <div className={styles.scrollArea}>
-          <div ref={scrollerRef} className={styles.scroller} data-overflow-end={scrollEdges.end || undefined}>
+          <div ref={scrollerRef} className={styles.scroller}>
             <div ref={primaryFiltersRef} className={styles.primaryFilters} style={{ marginInlineStart: rowStart }}>
               {DESKTOP_PRIMARY_TOPICS.map(([topic, label]) => {
                 if (topic === 'recruiting') return null
@@ -599,14 +599,14 @@ export function ComplexFilterToolbar({
               })}
             </div>
           </div>
-          {scrollEdges.start && (
-            <button type="button" className={styles.scrollArrow} data-direction="start" tabIndex={-1}
+          {(scrollEdges.start || scrollEdges.end) && (
+            <button type="button" className={styles.scrollArrow} data-direction="start" disabled={!scrollEdges.start}
               aria-label="앞쪽 필터 보기" onClick={() => scrollFilters(-1)}>
               <ChevronIcon direction="start" />
             </button>
           )}
-          {scrollEdges.end && (
-            <button type="button" className={styles.scrollArrow} data-direction="end" tabIndex={-1}
+          {(scrollEdges.start || scrollEdges.end) && (
+            <button type="button" className={styles.scrollArrow} data-direction="end" disabled={!scrollEdges.end}
               aria-label="뒤쪽 필터 더 보기" onClick={() => scrollFilters(1)}>
               <ChevronIcon direction="end" />
             </button>
