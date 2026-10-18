@@ -106,7 +106,8 @@ class LhAnnouncementCollectionQueryCountTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"32,true", "256,true", "501,true", "32,false", "501,false"})
+    // 건수별 요청 중복 제거는 단위 테스트에서 검증하고, 실제 저장은 배치 경계와 개별 요청을 검증한다.
+    @CsvSource({"501,true", "32,false"})
     void 최근_성공_원천이_있어도_배치에_걸친_공유_요청은_실행마다_한_번_조회한다(
             int count, boolean sharedRequest
     ) {

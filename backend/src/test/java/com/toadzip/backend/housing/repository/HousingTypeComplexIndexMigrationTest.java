@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.toadzip.backend.global.config.PostgresTestDatabases;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -95,7 +96,6 @@ class HousingTypeComplexIndexMigrationTest {
     }
 
     private String url(String database) {
-        String port = System.getenv().getOrDefault("TEST_POSTGRES_PORT", "55432");
-        return "jdbc:postgresql://127.0.0.1:" + port + "/" + database;
+        return PostgresTestDatabases.primaryUrl(database);
     }
 }

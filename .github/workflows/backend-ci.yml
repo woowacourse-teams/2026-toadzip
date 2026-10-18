@@ -18,20 +18,14 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
-      - name: Start test PostgreSQL
-        run: >-
-          docker compose --project-name toadzip-test --file compose.test.yaml
-          up --detach --wait --wait-timeout 60 --force-recreate db db-shared
-      - name: Verify backend against PostgreSQL
+      - name: Verify backend with Testcontainers
         working-directory: backend
         run: ./gradlew --rerun-tasks check
-      - name: Show PostgreSQL logs on failure
+      - name: Upload test reports on failure
         if: failure()
-        run: >-
-          docker compose --project-name toadzip-test --file compose.test.yaml
-          logs --no-color db db-shared
-      - name: Stop test PostgreSQL
-        if: always()
-        run: >-
-          docker compose --project-name toadzip-test --file compose.test.yaml
-          down --volumes --remove-orphans
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: |
+            backend/build/reports/tests/test/
+            backend/build/test-results/test/
