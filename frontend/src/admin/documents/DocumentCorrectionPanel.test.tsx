@@ -9,6 +9,8 @@ const work = vi.hoisted(() => ({ readReviewDraft: vi.fn(), saveReviewDraft: vi.f
 const exchange = vi.hoisted(() => ({ result: '' }))
 vi.mock('./FolderExchangePanel', () => ({ FolderExchangePanel: ({ onResult }: { onResult: (text: string) => void }) => <button onClick={() => onResult(exchange.result)}>자동 결과 가져오기</button> }))
 vi.mock('./reviewDraftStore', () => work)
+const recovery = vi.hoisted(() => ({ readRecoveryInputs: vi.fn(), saveRecoveryInput: vi.fn() }))
+vi.mock('./reviewBrowserStore', () => recovery)
 vi.mock('./pdfExtraction', async original => ({ ...await original<typeof import('./pdfExtraction')>(), openPdf: mocks.openPdf }))
 vi.mock('../management/api', async original => ({ ...await original<typeof import('../management/api')>(), requestManagementApi: mocks.requestManagementApi }))
 const detail: ManagementDetailData = {
@@ -25,6 +27,7 @@ const proposals = [
 const json = JSON.stringify({ schemaVersion: 'document-review/v1', targetKey: 'complexes:7:basic', version: 2, sha256: document.sha256, proposals, unresolved: [] })
 beforeEach(() => {
   vi.clearAllMocks()
+  recovery.readRecoveryInputs.mockResolvedValue([]); recovery.saveRecoveryInput.mockResolvedValue(undefined)
   Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:test') })
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
   mocks.extract.mockResolvedValue(document); mocks.destroy.mockResolvedValue(undefined)
@@ -33,6 +36,20 @@ beforeEach(() => {
   mocks.requestManagementApi.mockResolvedValue(detail)
 })
 afterEach(() => vi.restoreAllMocks())
+
+it('브라우저 복구 기록을 복원해도 원문 확인은 다시 수행한다', async () => {
+  recovery.readRecoveryInputs.mockResolvedValue([{ id: 'previous', context: `complexes:7:basic:2:${document.sha256}`, json, note: '이전 기기 메모', updatedAt: '2026-10-17T00:00:00Z' }])
+  await imported()
+  fireEvent.click(screen.getByRole('checkbox', { name: '전체 세대수 원문 확인' }))
+  fireEvent.click(screen.getByText('새로고침 후에도 남는 입력 복구 기록'))
+  await waitFor(() => expect(screen.getByRole('button', { name: '선택한 입력 복원' })).toBeEnabled())
+  fireEvent.click(screen.getByRole('button', { name: '선택한 입력 복원' }))
+  fireEvent.click(screen.getByRole('button', { name: '결과 검증' }))
+  expect(screen.getByLabelText('확인 메모')).toHaveValue('이전 기기 메모')
+  expect(screen.getByRole('checkbox', { name: '전체 세대수 원문 확인' })).not.toBeChecked()
+  expect(screen.queryByRole('region', { name: '가져온 수정안 비교' })).not.toBeInTheDocument()
+  expect(mocks.requestManagementApi).not.toHaveBeenCalled()
+})
 
 it('폴더 대기 종료 뒤 받은 교환 결과 파일도 수동으로 검증해 가져올 수 있다', async () => {
   await setup()

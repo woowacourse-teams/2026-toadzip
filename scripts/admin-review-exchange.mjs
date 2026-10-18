@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 const requestPattern = /^review-([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\.request\.json$/
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+const executions = new Set()
 export function parseRequest(text, fileName) {
   const id = requestPattern.exec(fileName)?.[1]
   const value = JSON.parse(text.replace(/^\uFEFF/, ''))
@@ -34,26 +35,43 @@ export function responseSchema(packet) {
         } } }, unresolved: { type: 'array', maxItems: 100, items: { type: 'object', additionalProperties: false,
         required: ['field', 'reason'], properties: { field: { type: 'string', enum: packet.allowedFields.map(field => field.field) }, reason: { type: 'string' } } } } } }
 }
-function execute(executable, args, options, input = '') {
+export function execute(executable, args, options, input = '', signal) {
   return new Promise((resolveRun, rejectRun) => {
-    const child = spawn(executable, args, { ...options, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'] })
+    signal?.throwIfAborted()
+    const child = spawn(executable, args, { ...options, detached: process.platform !== 'win32', windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'] })
     let output = ''; let size = 0
-    const timer = setTimeout(() => { child.kill(); rejectRun(new Error('Codex 실행 제한 시간을 초과했습니다.')) }, 180000)
+    let stopped = ''
+    function terminate(message) {
+      if (stopped) return
+      stopped = message
+      if (!child.pid) return
+      if (process.platform === 'win32') {
+        const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, shell: false, stdio: 'ignore' })
+        killer.on('error', () => child.kill())
+        killer.on('close', code => { if (code !== 0) child.kill() })
+      } else {
+        try { process.kill(-child.pid, 'SIGKILL') } catch { child.kill('SIGKILL') }
+      }
+    }
+    const abort = () => terminate('요청 처리를 취소했습니다.')
+    signal?.addEventListener('abort', abort, { once: true })
+    if (signal?.aborted) abort()
+    const timer = setTimeout(() => terminate('Codex 실행 제한 시간을 초과했습니다.'), 180000)
     for (const stream of [child.stdout, child.stderr]) stream.on('data', chunk => {
       size += chunk.length
-      if (size > 1024 * 1024) { child.kill(); return }
+      if (size > 1024 * 1024) { terminate('Codex 실행 출력 한도를 초과했습니다.'); return }
       output += chunk.toString()
     })
-    child.once('error', () => { clearTimeout(timer); rejectRun(new Error('Codex CLI를 실행하지 못했습니다. 설치·로그인 상태를 확인해 주세요.')) })
-    child.once('exit', code => { clearTimeout(timer); if (code !== 0 || size > 1024 * 1024) rejectRun(new Error(`Codex 실행 실패(${code ?? '중지'}). 로그인·사용 한도·설정과 네트워크를 확인해 주세요.`)); else resolveRun(output) })
+    child.once('error', () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); rejectRun(new Error('Codex CLI를 실행하지 못했습니다. 설치·로그인 상태를 확인해 주세요.')) })
+    child.once('close', code => { clearTimeout(timer); signal?.removeEventListener('abort', abort); if (stopped) rejectRun(new Error(stopped)); else if (code !== 0) rejectRun(new Error(`Codex 실행 실패(${code ?? '중지'}). 로그인·사용 한도·설정과 네트워크를 확인해 주세요.`)); else resolveRun(output) })
     child.stdin.on('error', () => {})
     child.stdin.end(input)
   })
 }
-export async function runCodex(packet, runDirectory, executable = 'codex') {
+export async function runCodex(packet, runDirectory, signal, executable = 'codex') {
   const environment = { ...process.env }
   for (const key of ['OPENAI_API_KEY', 'CODEX_API_KEY', 'OPENAI_BASE_URL']) delete environment[key]
-  const login = await execute(executable, ['login', 'status'], { cwd: runDirectory, env: environment })
+  const login = await execute(executable, ['login', 'status'], { cwd: runDirectory, env: environment }, '', signal)
   if (!login.includes('Logged in using ChatGPT')) throw new Error('추가 API 결제를 막기 위해 ChatGPT 로그인만 허용합니다. codex login으로 로그인해 주세요.')
   const schemaPath = join(runDirectory, 'schema.json'); const answerPath = join(runDirectory, 'answer.json')
   await writeFile(schemaPath, JSON.stringify(responseSchema(packet)), { flag: 'wx' })
@@ -63,7 +81,7 @@ export async function runCodex(packet, runDirectory, executable = 'codex') {
     + '금액은 원 단위 18자리 이하 정수 문자열입니다. OCR 결과의 숫자는 확신할 수 없으면 보류하세요.\n자료 JSON:\n' + JSON.stringify(packet)
   await execute(executable, ['exec', '--ignore-user-config', '--sandbox', 'read-only', '--ephemeral', '--skip-git-repo-check',
     '--disable', 'shell_tool', '--disable', 'multi_agent', '--config', 'project_doc_max_bytes=0',
-    '--output-schema', schemaPath, '--output-last-message', answerPath, '-'], { cwd: runDirectory, env: environment }, prompt)
+    '--output-schema', schemaPath, '--output-last-message', answerPath, '-'], { cwd: runDirectory, env: environment }, prompt, signal)
   if ((await stat(answerPath)).size > 1000000) throw new Error('에이전트 결과가 1MB를 초과했습니다.')
   return JSON.parse(await readFile(answerPath, 'utf8'))
 }
@@ -87,13 +105,27 @@ export async function processRequest(directory, fileName, agent = runCodex, work
   let lock
   try { lock = await open(lockPath, 'wx') } catch (cause) { if (cause.code === 'EEXIST') return 'claimed'; throw cause }
   await lock.close()
+  const controller = new AbortController()
+  executions.add(controller)
+  async function checkCancellation() {
+    try {
+      const cancel = join(root, `review-${request.id}.cancel.json`)
+      const info = await lstat(cancel)
+      if (!info.isFile() || info.isSymbolicLink() || info.size > 4096) return
+      const value = JSON.parse(await readFile(cancel, 'utf8'))
+      if (value.schemaVersion === 'document-exchange/v1' && value.requestId === request.id) controller.abort()
+    } catch { /* An absent or partially written cancellation is checked again. */ }
+  }
+  const timer = setInterval(() => { void checkCancellation() }, 250)
   try {
+    await checkCancellation(); controller.signal.throwIfAborted()
     const runDirectory = join(root, `.run-${request.id}`)
     await mkdir(runDirectory)
     if (dirname(await realpath(runDirectory)) !== root) throw new Error('전용 실행 폴더 경계를 벗어났습니다.')
     await publishJson(root, `review-${request.id}.status.json`, { schemaVersion: 'document-exchange-status/v1',
       requestId: request.id, workerId, state: 'processing' })
-    const result = await agent(request.packet, runDirectory)
+    const result = await agent(request.packet, runDirectory, controller.signal)
+    await checkCancellation(); controller.signal.throwIfAborted()
     if (!record(result) || result.schemaVersion !== 'document-review/v1' || result.targetKey !== request.packet.targetKey
       || result.version !== request.packet.version || result.sha256 !== request.packet.document.sha256
       || !Array.isArray(result.proposals) || result.proposals.length > 100 || !Array.isArray(result.unresolved)
@@ -105,13 +137,15 @@ export async function processRequest(directory, fileName, agent = runCodex, work
     return 'completed'
   } catch (cause) {
     await publishJson(root, `review-${request.id}.error.json`, { schemaVersion: 'document-exchange/v1', requestId: request.id,
-      message: cause instanceof Error ? cause.message.slice(0, 500) : '로컬 처리에 실패했습니다.' })
+      ...(controller.signal.aborted ? { code: 'CANCELLED' } : {}),
+      message: controller.signal.aborted ? '요청 처리를 취소했습니다. 실행이 종료됐으며 결과는 반영하지 않습니다.' : cause instanceof Error ? cause.message.slice(0, 500) : '로컬 처리에 실패했습니다.' })
     return 'failed'
-  }
+  } finally { clearInterval(timer); executions.delete(controller) }
 }
-export async function scanRequests(root, state, agent = runCodex, workerId = null) {
+export async function scanRequests(root, state, agent = runCodex, workerId = null, signal) {
   const events = []
   for (const fileName of (await readdir(root)).filter(name => requestPattern.test(name)).sort()) {
+    if (signal?.aborted) break
     if (state.finished.has(fileName)) continue
     try {
       const status = await processRequest(root, fileName, agent, workerId)
@@ -128,28 +162,44 @@ export async function scanRequests(root, state, agent = runCodex, workerId = nul
   return events
 }
 async function main() {
-  const [directory, ...flags] = process.argv.slice(2)
-  if (!directory || flags.some(flag => flag !== '--watch')) throw new Error('사용법: node scripts/admin-review-exchange.mjs <전용 폴더> [--watch]')
+  const args = process.argv.slice(2)
+  const flags = args.filter(value => value.startsWith('--'))
+  const directory = args.find(value => !value.startsWith('--')) ?? resolve(dirname(fileURLToPath(import.meta.url)), '../.local/admin-review-exchange')
+  if (flags.some(flag => !['--watch', '--setup'].includes(flag)) || args.filter(value => !value.startsWith('--')).length > 1) throw new Error('사용법: node scripts/admin-review-exchange.mjs [전용 폴더] [--watch] [--setup]')
+  if (flags.includes('--setup')) await mkdir(directory, { recursive: true })
   const root = await realpath(resolve(directory))
+  const quote = value => `'${value.replaceAll("'", "''")}'`
+  const command = `node ${quote(fileURLToPath(import.meta.url))} ${quote(root)} --watch`
+  if (flags.includes('--setup')) {
+    const launcher = join(root, 'start-review-worker.ps1')
+    try { await writeFile(launcher, `# 관리자 PDF 검토 도구\r\n${command}\r\nRead-Host '종료하려면 Enter'\r\n`, { flag: 'wx' }) }
+    catch (cause) { if (cause.code !== 'EEXIST') throw cause }
+    console.log(`연동 폴더: ${root}\n다음 실행: ${command}\n시작 파일: ${launcher}`)
+    if (!flags.includes('--watch')) return
+  }
   const state = { finished: new Set(), warned: new Set() }
   const workerId = randomUUID()
   // Serialize heartbeat writes so a delayed older update cannot replace a newer one.
   let heartbeatWrite = Promise.resolve()
   const heartbeat = () => {
     heartbeatWrite = heartbeatWrite.catch(() => {}).then(() => publishJson(root, '.review-worker.json', {
-      schemaVersion: 'document-exchange-worker/v1', workerId, updatedAt: new Date().toISOString(),
+      schemaVersion: 'document-exchange-worker/v1', workerId, updatedAt: new Date().toISOString(), command, cancellation: true,
     }))
     return heartbeatWrite
   }
   await heartbeat()
   const timer = setInterval(() => { void heartbeat().catch(() => console.error('처리 도구 연결 상태를 기록하지 못했습니다. 폴더 권한을 확인해 주세요.')) }, 5000)
+  let stopping = false
+  const scanning = new AbortController()
+  const stop = () => { stopping = true; scanning.abort(); for (const controller of executions) controller.abort() }
+  process.once('SIGINT', stop); process.once('SIGTERM', stop)
   try {
     do {
-      for (const event of await scanRequests(root, state, runCodex, workerId)) console.log(event)
-      if (!flags.includes('--watch')) break
+      for (const event of await scanRequests(root, state, runCodex, workerId, scanning.signal)) console.log(event)
+      if (!flags.includes('--watch') || stopping) break
       await new Promise(done => setTimeout(done, 2000))
-    } while (true)
-  } finally { clearInterval(timer); await heartbeatWrite.catch(() => {}) }
+    } while (!stopping)
+  } finally { clearInterval(timer); process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop); await heartbeatWrite.catch(() => {}) }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch(cause => { console.error(cause instanceof Error ? cause.message : '로컬 교환 실패'); process.exitCode = 1 })

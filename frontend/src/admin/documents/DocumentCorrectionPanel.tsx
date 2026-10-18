@@ -14,6 +14,8 @@ import { SharedDraftPanel } from './SharedDraftPanel'
 import { sharedDraftFile, type SharedDraft } from './sharedDraftApi'
 import { FolderExchangePanel } from './FolderExchangePanel'
 import { IncomingReviewPanel } from './IncomingReviewPanel'
+import { ReviewRecoveryPanel } from './ReviewRecoveryPanel'
+import { saveRecoveryInput } from './reviewBrowserStore'
 
 const PdfPreview = lazy(() => import('../../public-housing/components/PdfDocumentPreview'))
 
@@ -33,6 +35,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
   const [review, setReview] = useState<ReviewResult | null>(null)
   const [incomingReview, setIncomingReview] = useState<ReviewResult | null>(null)
   const [resultBackup, setResultBackup] = useState<{ context: string; json: string; note: string } | null>(null)
+  const [recoveryRevision, setRecoveryRevision] = useState(0)
   const [checked, setChecked] = useState<string[]>([])
   const [note, setNote] = useState('')
   const [method, setMethod] = useState<'manual' | 'agent'>('manual')
@@ -61,6 +64,12 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
   }, [phase, incomingReview, review])
   const workspaceBusy = Boolean(busy) || sharedBusy || exchangeBusy || Boolean(incomingReview)
   const resultContext = `${target.key}:${target.version}:${extracted?.sha256 ?? ''}`
+  function rememberInput() {
+    setResultBackup({ context: resultContext, json, note })
+    void saveRecoveryInput({ context: resultContext, json, note }).then(() => {
+      if (mounted.current) setRecoveryRevision(value => value + 1)
+    }).catch(cause => { if (mounted.current) setError(cause instanceof Error ? cause.message : '복구 기록을 보관하지 못했습니다. 현재 화면의 이전 입력 복원은 사용할 수 있습니다.') })
+  }
   useEffect(() => { onBusyChange(Boolean(busy) || archiveBusy || sharedBusy || exchangeBusy || Boolean(incomingReview)) }, [busy, archiveBusy, sharedBusy, exchangeBusy, incomingReview, onBusyChange])
   useEffect(() => {
     mounted.current = true
@@ -122,7 +131,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
       version: target.version, sha256: extracted.sha256, ...result }, null, 2)
     try {
       const validated = parseReviewResult(text, target, extracted)
-      if (json.trim() && json !== text) setResultBackup({ context: resultContext, json, note })
+      if (json.trim() && json !== text) rememberInput()
       setJson(text); setReview(validated); setChecked([]); setIncomingReview(null); setMethod('agent'); setPhase('confirm'); setError('')
       setDraftNotice(json.trim() && json !== text ? '가져온 결과를 반영했습니다. 이전 입력은 이 화면에서 복원할 수 있습니다. 원문 확인과 DB 저장은 별도로 진행하세요.' : '가져온 결과를 반영했습니다. 원문 확인과 DB 저장은 별도로 진행하세요.')
     } catch (cause) { setError(cause instanceof Error ? cause.message : '수정안을 반영하지 못했습니다.') }
@@ -321,7 +330,7 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
             const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void resultFile(file)
           }} /></label>
           <label>에이전트 결과 JSON<textarea rows={4} value={json} spellCheck={false} onChange={event => {
-            if (review && json.trim()) setResultBackup({ context: resultContext, json, note })
+            if (review && json.trim()) rememberInput()
             setJson(event.target.value); setReview(null); setChecked([]); setError('')
           }} /></label>
           <button type="button" disabled={!json.trim()} onClick={() => validate()}>결과 검증</button>
@@ -349,7 +358,13 @@ export function DocumentCorrectionPanel({ resource, detail, onSaved, onBusyChang
           <button type="button" disabled={Boolean(busy)} onClick={() => downloadText(json, `document-review-result-${detail.summary.id}.json`)}>검토 결과 다운로드</button></div>
       </section> : null}
     </div> : null}
-    {resultBackup?.context === resultContext ? <div className={`${styles.callout} ${styles.resultBackup}`}><p>가져오기 전 수정안·메모가 이 화면에 보관되어 있습니다. 새로고침하면 사라지므로 필요한 작업은 별도로 보관하세요.</p><button type="button" disabled={workspaceBusy} onClick={restorePreviousResult}>가져오기 전 입력 복원</button></div> : null}
+    {resultBackup?.context === resultContext ? <div className={`${styles.callout} ${styles.resultBackup}`}><p>가져오기 전 수정안·메모를 바로 복원할 수 있습니다. 새로고침 후에는 같은 PDF를 열고 아래 입력 복구 기록을 확인하세요.</p><button type="button" disabled={workspaceBusy} onClick={restorePreviousResult}>가져오기 전 입력 복원</button></div> : null}
+    {extracted ? <ReviewRecoveryPanel context={resultContext} json={json} note={note} revision={recoveryRevision} disabled={workspaceBusy || conflict} onRestore={input => {
+      if (input.context !== resultContext) return
+      if (json.trim() || note.trim()) rememberInput()
+      setJson(input.json); setNote(input.note); setReview(null); setIncomingReview(null); setResultBackup(null); setChecked([]); setPhase('draft'); setMethod('agent')
+      setDraftNotice('입력 복구 기록을 복원했습니다. 결과 검증과 원문 확인을 다시 수행하세요.')
+    }} /> : null}
     {error ? <p className={styles.error} role="alert">{error}</p> : null}
   </section>
 }

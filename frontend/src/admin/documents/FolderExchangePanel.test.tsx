@@ -2,17 +2,45 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { FolderExchangePanel } from './FolderExchangePanel'
 import type { ReviewTarget } from './documentReview'
-const mocks = vi.hoisted(() => ({ pickExchangeDirectory: vi.fn(), writeExchangeRequest: vi.fn(), readExchangeResult: vi.fn(), readExchangeWorker: vi.fn(), readExchangeProgress: vi.fn() }))
+const mocks = vi.hoisted(() => ({ pickExchangeDirectory: vi.fn(), writeExchangeRequest: vi.fn(), readExchangeResult: vi.fn(), readExchangeWorker: vi.fn(), readExchangeProgress: vi.fn(), cancelExchangeRequest: vi.fn() }))
 vi.mock('./folderExchange', () => mocks)
+const connection = vi.hoisted(() => ({ readExchangeConnection: vi.fn(), saveExchangeConnection: vi.fn() }))
+vi.mock('./reviewBrowserStore', () => connection)
 const target: ReviewTarget = { key: 'complexes:7:basic', version: 1, label: '단지', endpoint: '/', fields: [], current: {}, body: {} }
 const document = { fileName: '공고.pdf', sha256: 'a'.repeat(64), totalPages: 1, pages: [] }
 beforeEach(() => {
   vi.clearAllMocks(); vi.useFakeTimers()
+  connection.readExchangeConnection.mockResolvedValue(null); connection.saveExchangeConnection.mockResolvedValue(undefined)
+  mocks.cancelExchangeRequest.mockResolvedValue(undefined)
   mocks.pickExchangeDirectory.mockResolvedValue({ name: '연동 전용' })
   mocks.writeExchangeRequest.mockResolvedValue({ id: 'one', requestFile: 'request.json', resultFile: 'result.json' })
   mocks.readExchangeResult.mockResolvedValue(null)
-  mocks.readExchangeWorker.mockResolvedValue({ workerId: 'worker' })
+  mocks.readExchangeWorker.mockResolvedValue({ workerId: 'worker', cancellation: true })
   mocks.readExchangeProgress.mockResolvedValue('waiting')
+})
+
+it('실제 처리 취소를 전달하고 취소 후 늦은 결과를 가져오지 않는다', async () => {
+  const imported = await setup()
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '요청 전달·결과 대기' })) })
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '요청 처리 취소' })) })
+  expect(mocks.cancelExchangeRequest).toHaveBeenCalledOnce()
+  expect(screen.getByRole('button', { name: '처리 취소 확인 중' })).toBeDisabled()
+  mocks.readExchangeResult.mockResolvedValue('{"proposals":[]}')
+  await act(async () => { await vi.advanceTimersByTimeAsync(1500) })
+  expect(imported).not.toHaveBeenCalled()
+  expect(screen.getByRole('alert')).toHaveTextContent('취소 요청 전에 결과가 발행')
+})
+
+it('이전 폴더 권한을 사용자 동작에서 다시 확인하고 선택창 없이 연결한다', async () => {
+  const previous = { name: '이전 폴더', queryPermission: vi.fn().mockResolvedValue('prompt'), requestPermission: vi.fn().mockResolvedValue('granted') }
+  connection.readExchangeConnection.mockResolvedValue(previous)
+  render(<FolderExchangePanel target={target} document={document} sourceUrl="https://example.com" disabled={false} onResult={vi.fn()} onBusyChange={vi.fn()} />)
+  fireEvent.click(screen.getByText('로컬 폴더로 에이전트 자동 연결'))
+  await act(async () => {})
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '이전 연동 폴더 연결 · 이전 폴더' })) })
+  expect(previous.requestPermission).toHaveBeenCalledWith({ mode: 'readwrite' })
+  expect(mocks.pickExchangeDirectory).not.toHaveBeenCalled()
+  expect(screen.getByText('처리 도구 연결됨')).toBeVisible()
 })
 afterEach(() => vi.useRealTimers())
 async function setup() {

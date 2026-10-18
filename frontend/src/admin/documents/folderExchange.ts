@@ -2,12 +2,13 @@ import { isRecord } from '../management/managementContract'
 import { agentPacket, parseReviewResult, type ReviewTarget } from './documentReview'
 import type { ExtractedDocument } from './pdfExtraction'
 
-export type ExchangeDirectory = { name: string; getFileHandle: (name: string, options?: { create?: boolean }) => Promise<{
+export type ExchangeDirectory = { name: string; queryPermission?: (options: { mode: 'readwrite' }) => Promise<PermissionState>;
+  requestPermission?: (options: { mode: 'readwrite' }) => Promise<PermissionState>; getFileHandle: (name: string, options?: { create?: boolean }) => Promise<{
   createWritable: () => Promise<{ write: (value: string) => Promise<void>; close: () => Promise<void>; abort: () => Promise<void> }>;
   getFile: () => Promise<File>;
 }> }
 export type ExchangeRequest = { id: string; requestFile: string; resultFile: string; errorFile: string }
-export type ExchangeWorker = { workerId: string }
+export type ExchangeWorker = { workerId: string; command?: string; cancellation?: boolean }
 const missing = (cause: unknown) => isRecord(cause) && cause.name === 'NotFoundError'
 async function readStatus(directory: ExchangeDirectory, name: string): Promise<unknown> {
   try {
@@ -25,7 +26,12 @@ export async function readExchangeWorker(directory: ExchangeDirectory, now = Dat
     || typeof value.updatedAt !== 'string' || !Number.isFinite(Date.parse(value.updatedAt))) throw new Error('처리 도구의 연결 상태 형식을 확인해 주세요.')
   const age = now - Date.parse(value.updatedAt)
   if (age > 20000 || age < -5000) return null
-  return { workerId: value.workerId }
+  return { workerId: value.workerId, ...(value.cancellation === true ? { cancellation: true } : {}), ...(typeof value.command === 'string' && value.command.length < 2000 ? { command: value.command } : {}) }
+}
+export async function cancelExchangeRequest(directory: ExchangeDirectory, request: ExchangeRequest): Promise<void> {
+  const writable = await (await directory.getFileHandle(`review-${request.id}.cancel.json`, { create: true })).createWritable()
+  try { await writable.write(JSON.stringify({ schemaVersion: 'document-exchange/v1', requestId: request.id })); await writable.close() }
+  catch (cause) { await writable.abort().catch(() => {}); throw cause }
 }
 export async function readExchangeProgress(directory: ExchangeDirectory, request: ExchangeRequest, worker: ExchangeWorker): Promise<'waiting' | 'processing' | 'interrupted'> {
   const value = await readStatus(directory, `review-${request.id}.status.json`)

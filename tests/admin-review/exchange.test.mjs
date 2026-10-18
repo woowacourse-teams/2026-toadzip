@@ -3,8 +3,8 @@ import { test } from 'node:test'
 import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import { join } from 'node:path'
-import { parseRequest, processRequest, scanRequests } from '../../scripts/admin-review-exchange.mjs'
+import { join, resolve } from 'node:path'
+import { parseRequest, processRequest, scanRequests, execute } from '../../scripts/admin-review-exchange.mjs'
 
 const root = fileURLToPath(new URL('../../.local/admin-review-exchange-tests/', import.meta.url))
 async function fixture() {
@@ -68,4 +68,66 @@ test('실제 에이전트를 실행하기 전에 같은 요청의 처리 상태�
     return { schemaVersion: 'document-review/v1', targetKey: packet.targetKey, version: packet.version,
       sha256: packet.document.sha256, proposals: [], unresolved: [] }
   }, 'worker-test')
+})
+
+test('취소한 대기 요청은 실행하지 않고 취소 결과를 남긴다', async () => {
+  const { directory, id, fileName } = await fixture()
+  await writeFile(join(directory, `review-${id}.cancel.json`), JSON.stringify({ schemaVersion: 'document-exchange/v1', requestId: id }))
+  let calls = 0
+  assert.equal(await processRequest(directory, fileName, async () => { calls++ }), 'failed')
+  assert.equal(calls, 0)
+  assert.equal(JSON.parse(await readFile(join(directory, `review-${id}.error.json`), 'utf8')).code, 'CANCELLED')
+})
+
+test('실행 중 취소는 자식 실행 종료를 기다린 뒤 결과 발행을 차단한다', async () => {
+  const { directory, id, fileName } = await fixture()
+  let terminated = false
+  await processRequest(directory, fileName, async (_packet, runDirectory, signal) => {
+    await writeFile(join(directory, `review-${id}.cancel.json`), JSON.stringify({ schemaVersion: 'document-exchange/v1', requestId: id }))
+    try { await execute(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { cwd: runDirectory }, '', signal) }
+    finally { terminated = true }
+  })
+  assert.equal(terminated, true)
+  assert.equal(JSON.parse(await readFile(join(directory, `review-${id}.error.json`), 'utf8')).code, 'CANCELLED')
+  await assert.rejects(readFile(join(directory, `review-${id}.result.json`)), { code: 'ENOENT' })
+})
+
+test('초기 설정은 폴더와 재실행 파일을 만들고 기존 시작 파일은 보존한다', async () => {
+  const { directory } = await fixture()
+  const script = resolve('scripts/admin-review-exchange.mjs')
+  await execute(process.execPath, [script, directory, '--setup'], { cwd: directory })
+  const launcher = join(directory, 'start-review-worker.ps1')
+  assert.match(await readFile(launcher, 'utf8'), /--watch/)
+  await writeFile(launcher, '# user-owned launcher')
+  await execute(process.execPath, [script, directory, '--setup'], { cwd: directory })
+  assert.equal(await readFile(launcher, 'utf8'), '# user-owned launcher')
+})
+
+test('처리 도구 종료 요청 이후 다음 대기 파일은 시작하지 않는다', async () => {
+  const { directory, id, packet } = await fixture()
+  const second = randomUUID()
+  await writeFile(join(directory, `review-${second}.request.json`), JSON.stringify({ schemaVersion: 'document-exchange/v1', requestId: second, packet }))
+  const controller = new AbortController(); let calls = 0
+  await scanRequests(directory, { finished: new Set(), warned: new Set() }, async () => {
+    calls++; controller.abort()
+    return { schemaVersion: 'document-review/v1', targetKey: packet.targetKey, version: packet.version, sha256: packet.document.sha256, proposals: [], unresolved: [] }
+  }, id, controller.signal)
+  assert.equal(calls, 1)
+})
+
+test('취소는 중첩 자식 프로세스도 종료한다', { timeout: 10000 }, async () => {
+  const { directory } = await fixture()
+  const pidFile = join(directory, 'grandchild.pid')
+  const controller = new AbortController()
+  const code = `const {spawn}=require('node:child_process'); const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'inherit'}); require('node:fs').writeFileSync(process.argv[1],String(child.pid)); setInterval(()=>{},1000)`
+  const outcome = execute(process.execPath, ['-e', code, pidFile], { cwd: directory }, '', controller.signal).then(() => null, error => error)
+  let pid
+  try {
+    for (let i = 0; i < 100 && !pid; i++) {
+      try { pid = Number(await readFile(pidFile, 'utf8')) } catch { await new Promise(done => setTimeout(done, 50)) }
+    }
+    assert(pid, '중첩 자식이 시작돼야 종료를 검사할 수 있습니다.')
+  } finally { controller.abort() }
+  assert.match((await outcome).message, /취소/)
+  assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' })
 })
