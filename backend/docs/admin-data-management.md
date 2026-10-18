@@ -62,7 +62,7 @@
 - 수정 대상의 공고 소속·삭제 상태·버전·권한·CSRF를 확인하고 공급대상과 공급행을 관리자 수정으로 보호한다.
   LH 재보강·철회·원천 변경 정리에서도 확인한 공급대상을 유지하고, 원천에서 사라진 보호 공급행을 삭제하지 않는다.
   LH 응답 순서가 바뀌어 공급 식별자가 달라져도 같은 공급행에 임대조건을 중복 생성하지 않는다.
-- `V20261012_01__protect_admin_supply_target_updates.sql`의 `supply_targets.admin_modified`를 적용한 뒤
+- `V20261016_05__protect_admin_supply_target_updates.sql`의 `supply_targets.admin_modified`를 적용한 뒤
   서버와 관리자 화면을 함께 배포한다. 구버전 수집기는 보호 상태를 해석하지 못하므로 혼용하지 않는다.
   앱 롤백 시 열과 근거 이력을 보존하고 공급정보 정제를 중지한다.
 
