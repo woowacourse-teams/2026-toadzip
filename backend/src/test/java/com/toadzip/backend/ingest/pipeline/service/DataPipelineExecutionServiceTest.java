@@ -11,6 +11,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.ingest.collection.history.service.SourceCollectionRecoveryService;
 import com.toadzip.backend.ingest.exception.exception.DataPipelineExecutionNotFoundException;
 import com.toadzip.backend.ingest.exception.exception.IngestAlreadyRunningException;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecution;
@@ -64,6 +65,9 @@ class DataPipelineExecutionServiceTest {
     @Mock
     private ScheduledFuture<?> heartbeatTask;
 
+    @Mock
+    private SourceCollectionRecoveryService collectionRecovery;
+
     private DataPipelineExecutionService service;
 
     @BeforeEach
@@ -84,6 +88,7 @@ class DataPipelineExecutionServiceTest {
                 executionLock,
                 executionRepository,
                 executionStateService,
+                collectionRecovery,
                 executor,
                 heartbeatExecutor,
                 clock,
@@ -283,6 +288,7 @@ class DataPipelineExecutionServiceTest {
                 executionLock,
                 executionRepository,
                 executionStateService,
+                collectionRecovery,
                 Runnable::run,
                 heartbeatExecutor,
                 Clock.fixed(Instant.parse("2026-09-02T12:00:00Z"), ZoneOffset.UTC),

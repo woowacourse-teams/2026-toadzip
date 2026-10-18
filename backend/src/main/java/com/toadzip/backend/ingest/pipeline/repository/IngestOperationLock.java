@@ -3,6 +3,7 @@ package com.toadzip.backend.ingest.pipeline.repository;
 import com.toadzip.backend.global.persistence.PostgresAdvisoryLock;
 import java.sql.SQLException;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.springframework.stereotype.Repository;
@@ -18,6 +19,12 @@ public class IngestOperationLock {
     }
 
     public <T> Optional<T> tryRun(Operation operation, Supplier<T> action) {
+        return tryRunWithLease(operation, ignored -> action.get());
+    }
+
+    public <T> Optional<T> tryRunWithLease(
+            Operation operation, Function<PostgresAdvisoryLock.Lease, T> action
+    ) {
         try {
             Optional<PostgresAdvisoryLock.Lease> lease = databaseLock.tryAcquire(
                     operation.key, operation.lockName
@@ -25,8 +32,8 @@ public class IngestOperationLock {
             if (lease.isEmpty()) {
                 return Optional.empty();
             }
-            try (PostgresAdvisoryLock.Lease ignored = lease.orElseThrow()) {
-                return Optional.of(action.get());
+            try (PostgresAdvisoryLock.Lease acquired = lease.orElseThrow()) {
+                return Optional.of(action.apply(acquired));
             }
         }
         catch (SQLException exception) {

@@ -2,9 +2,15 @@ package com.toadzip.backend.ingest.collection.history.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.toadzip.backend.global.persistence.PostgresAdvisoryLock;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionSource;
 import com.toadzip.backend.ingest.collection.history.domain.CollectionStatus;
 import com.toadzip.backend.ingest.collection.history.domain.SourceCollectionRecord;
@@ -18,11 +24,14 @@ import com.toadzip.backend.ingest.pipeline.domain.DataPipelineExecutionStatus;
 import com.toadzip.backend.ingest.pipeline.domain.DataPipelineType;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionLock;
 import com.toadzip.backend.ingest.pipeline.repository.DataPipelineExecutionRepository;
+import com.toadzip.backend.ingest.pipeline.repository.IngestOperationLock;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionMapper;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineExecutionStateService;
 import com.toadzip.backend.ingest.pipeline.service.DataPipelineRunner;
 import jakarta.persistence.EntityManager;
+import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -30,8 +39,13 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.function.Function;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
@@ -287,6 +301,224 @@ class SourceCollectionRecoveryIntegrationTest {
         }
     }
 
+    @ParameterizedTest
+    @EnumSource(CollectionSource.class)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 파이프라인에_연결되지_않은_개별_수집의_중단_이력을_복구한다(CollectionSource source) {
+        var withoutId = records.saveAndFlush(SourceCollectionRecord.start(
+                UUID.randomUUID(), null, source, Map.of(), STARTED_AT));
+        var withoutExecution = records.saveAndFlush(SourceCollectionRecord.start(
+                UUID.randomUUID(), UUID.randomUUID(), source, Map.of(), STARTED_AT));
+        try {
+            queryService(new DataPipelineExecutionLock(dataSource)).history(0, 100);
+
+            assertThat(records.findById(withoutId.getId()).orElseThrow().getStatus())
+                    .isEqualTo(CollectionStatus.FAILED);
+            assertThat(records.findById(withoutExecution.getId()).orElseThrow().getStatus())
+                    .isEqualTo(CollectionStatus.FAILED);
+        } finally {
+            records.deleteById(withoutId.getId());
+            records.deleteById(withoutExecution.getId());
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "MYHOME_COMPLEX_COLLECTION, MYHOME_COMPLEX",
+            "MYHOME_ANNOUNCEMENT_COLLECTION, MYHOME_ANNOUNCEMENT",
+            "LH_LEASE_CATALOG_COLLECTION, LH_LEASE_CATALOG",
+            "LH_ANNOUNCEMENT_COLLECTION, LH_ANNOUNCEMENT_CATALOG",
+            "LH_ANNOUNCEMENT_COLLECTION, LH_ANNOUNCEMENT_SUPPLY",
+            "LH_ANNOUNCEMENT_COLLECTION, LH_ANNOUNCEMENT_DETAIL"
+    })
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 작업별_잠금이_유지되는_동안_정상_수집은_보존하고_다른_작업만_복구한다(
+            IngestOperationLock.Operation operation, CollectionSource source
+    ) {
+        var active = records.saveAndFlush(SourceCollectionRecord.start(UUID.randomUUID(), null,
+                source, Map.of(), STARTED_AT));
+        CollectionSource other = CollectionSource.MYHOME_COMPLEX;
+        if (source == CollectionSource.MYHOME_COMPLEX) {
+            other = CollectionSource.LH_ANNOUNCEMENT_DETAIL;
+        }
+        var interrupted = records.saveAndFlush(SourceCollectionRecord.start(UUID.randomUUID(), null,
+                other, Map.of(), STARTED_AT));
+        var operationLock = new IngestOperationLock(dataSource);
+        var globalLock = new DataPipelineExecutionLock(dataSource);
+        var service = queryService(globalLock);
+        try {
+            assertThat(operationLock.tryRun(operation, () -> {
+                service.history(0, 100);
+                assertThat(records.findById(active.getId()).orElseThrow().getStatus())
+                        .isEqualTo(CollectionStatus.RUNNING);
+                assertThat(records.findById(interrupted.getId()).orElseThrow().getStatus())
+                        .isEqualTo(CollectionStatus.FAILED);
+                return true;
+            })).contains(true);
+
+            service.history(0, 100);
+            assertThat(records.findById(active.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.FAILED);
+        } finally {
+            records.deleteById(active.getId());
+            records.deleteById(interrupted.getId());
+        }
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 개별_수집_복구는_기존_성공_원천과_성공_실패_이력을_보존한다() {
+        var orphan = record(null, STARTED_AT);
+        var successful = record(null, STARTED_AT);
+        successful.complete(STARTED_AT.plusSeconds(1), 1);
+        records.saveAndFlush(successful);
+        var failed = record(null, STARTED_AT);
+        failed.fail(STARTED_AT.plusSeconds(1), "ExternalError", "기존 외부 응답 실패");
+        records.saveAndFlush(failed);
+        var query = new LhAnnouncementQuery("preserved-orphan-pan", "03", "06", "07", "062");
+        var source = LhAnnouncementQuerySource.create(CollectionSource.LH_ANNOUNCEMENT_DETAIL, query);
+        source.replace(CollectionSource.LH_ANNOUNCEMENT_DETAIL, query, "preserved-hash", "기존 성공 원천",
+                Map.of("PAN_ID", "preserved-orphan-pan"), STARTED_AT.plusSeconds(1), false, successful);
+        sources.saveAndFlush(source);
+        jdbc.update("""
+                INSERT INTO lh_announcement_detail_rows
+                    (source_id, source_order, collected_at, dataset_type, complex_name, address)
+                VALUES (?, 1, ?, 'COMPLEX', '기존 성공 단지', '서울특별시 강남구 테스트로 1')
+                """, source.getId(), Timestamp.from(STARTED_AT.plusSeconds(1)));
+        var previousRow = jdbc.queryForMap("SELECT * FROM lh_announcement_detail_rows WHERE source_id = ?",
+                source.getId());
+        try {
+            var service = queryService(new DataPipelineExecutionLock(dataSource));
+            service.history(0, 100);
+            service.history(0, 100);
+
+            assertThat(records.findById(orphan.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.FAILED);
+            assertThat(records.findById(successful.getId()).orElseThrow()).satisfies(found -> {
+                assertThat(found.getStatus()).isEqualTo(CollectionStatus.SUCCESS);
+                assertThat(found.getStoredRowCount()).isEqualTo(1);
+                assertThat(found.getFinishedAt()).isEqualTo(STARTED_AT.plusSeconds(1));
+            });
+            assertThat(records.findById(failed.getId()).orElseThrow()).satisfies(found -> {
+                assertThat(found.getStatus()).isEqualTo(CollectionStatus.FAILED);
+                assertThat(found.getFailureReason()).isEqualTo("기존 외부 응답 실패");
+            });
+            assertThat(sources.findById(source.getId()).orElseThrow()).satisfies(found -> {
+                assertThat(found.getCollectedAt()).isEqualTo(STARTED_AT.plusSeconds(1));
+                assertThat(found.getLastCollectionRecord().getId()).isEqualTo(successful.getId());
+                assertThat(found.getRequestHash()).isEqualTo("preserved-hash");
+                assertThat(found.isVerifiedEmpty()).isFalse();
+            });
+            assertThat(jdbc.queryForMap("SELECT * FROM lh_announcement_detail_rows WHERE source_id = ?",
+                    source.getId())).isEqualTo(previousRow);
+        } finally {
+            jdbc.update("DELETE FROM lh_announcement_detail_rows WHERE source_id = ?", source.getId());
+            sources.deleteById(source.getId());
+            records.deleteById(orphan.getId());
+            records.deleteById(successful.getId());
+            records.deleteById(failed.getId());
+        }
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 다른_파이프라인이_전역_잠금을_보유해도_개별_수집의_중단_이력을_복구한다() {
+        var orphan = record(null, STARTED_AT);
+        var globalLock = new DataPipelineExecutionLock(dataSource);
+        try (var ignored = globalLock.tryAcquire().orElseThrow()) {
+            queryService(globalLock).history(0, 100);
+
+            assertThat(records.findById(orphan.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.FAILED);
+        } finally {
+            records.deleteById(orphan.getId());
+        }
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 파이프라인에_연결된_진행_중_수집은_개별_수집_복구에서_제외한다() {
+        UUID id = execution(RECOVERED_AT);
+        var linked = record(id, RECOVERED_AT);
+        var orphan = record(null, STARTED_AT);
+        try {
+            queryService(new DataPipelineExecutionLock(dataSource)).history(0, 100);
+
+            assertThat(records.findById(orphan.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.FAILED);
+            assertThat(records.findById(linked.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.RUNNING);
+        } finally {
+            records.deleteById(linked.getId());
+            records.deleteById(orphan.getId());
+            executions.delete(executions.findByExecutionId(id).orElseThrow());
+        }
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 이력을_조회하지_않아도_새_파이프라인_시작_전에_개별_수집을_복구한다() {
+        var orphan = record(null, STARTED_AT);
+        UUID id = null;
+        try {
+            var result = queryService(new DataPipelineExecutionLock(dataSource))
+                    .start(DataPipelineType.COMPLEX_REFINEMENT);
+            id = result.executionId();
+
+            assertThat(records.findById(orphan.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.FAILED);
+        } finally {
+            records.deleteById(orphan.getId());
+            if (id != null) {
+                executions.delete(executions.findByExecutionId(id).orElseThrow());
+            }
+        }
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 개별_수집_마감_DB_오류는_같은_작업의_복구를_롤백하고_다음_조회에서_재시도한다() {
+        var first = record(null, STARTED_AT);
+        var second = record(null, STARTED_AT);
+        try {
+            jdbc.execute("ALTER TABLE source_collection_records ADD CONSTRAINT test_reject_orphan_recovery "
+                    + "CHECK (id <> '" + second.getId() + "'::uuid OR status <> 'FAILED')");
+            try {
+                queryService(new DataPipelineExecutionLock(dataSource)).history(0, 100);
+
+                assertThat(records.findById(first.getId()).orElseThrow().getStatus())
+                        .isEqualTo(CollectionStatus.RUNNING);
+                assertThat(records.findById(second.getId()).orElseThrow().getStatus())
+                        .isEqualTo(CollectionStatus.RUNNING);
+            } finally {
+                jdbc.execute("ALTER TABLE source_collection_records DROP CONSTRAINT test_reject_orphan_recovery");
+            }
+            queryService(new DataPipelineExecutionLock(dataSource)).history(0, 100);
+            assertThat(records.findById(first.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.FAILED);
+            assertThat(records.findById(second.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.FAILED);
+        } finally {
+            records.deleteById(first.getId());
+            records.deleteById(second.getId());
+        }
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 커밋_직전에_작업별_잠금_소유권을_잃으면_개별_수집_복구를_롤백한다() throws Exception {
+        var orphan = records.saveAndFlush(SourceCollectionRecord.start(UUID.randomUUID(), null,
+                CollectionSource.MYHOME_COMPLEX, Map.of(), STARTED_AT));
+        var operationLock = mock(IngestOperationLock.class);
+        var lease = mock(PostgresAdvisoryLock.Lease.class);
+        doNothing().doThrow(new SQLException("잠금 세션 종료")).when(lease).verifyHeld();
+        doAnswer(invocation -> {
+            Function<PostgresAdvisoryLock.Lease, Integer> action = invocation.getArgument(1);
+            return java.util.Optional.of(action.apply(lease));
+        }).when(operationLock).tryRunWithLease(eq(IngestOperationLock.Operation.MYHOME_COMPLEX_COLLECTION), any());
+        var recovery = new SourceCollectionRecoveryService(operationLock, records,
+                transactionManager, Clock.fixed(RECOVERED_AT, ZoneOffset.UTC));
+        try {
+            recovery.recoverUnlinkedCollections();
+
+            assertThat(records.findById(orphan.getId()).orElseThrow().getStatus()).isEqualTo(CollectionStatus.RUNNING);
+        } finally {
+            records.deleteById(orphan.getId());
+        }
+    }
+
     private UUID execution(Instant startedAt) {
         UUID id = UUID.randomUUID();
         states.create(id, DataPipelineType.ANNOUNCEMENT_COLLECTION, startedAt);
@@ -303,8 +535,13 @@ class SourceCollectionRecoveryIntegrationTest {
     }
 
     private DataPipelineExecutionService queryService(DataPipelineExecutionLock lock) {
+        var heartbeatExecutor = mock(ScheduledExecutorService.class);
+        when(heartbeatExecutor.scheduleWithFixedDelay(any(), anyLong(), anyLong(), any()))
+                .thenReturn(mock(ScheduledFuture.class));
         return new DataPipelineExecutionService(mock(DataPipelineRunner.class), lock, executions, states,
-                Runnable::run, mock(ScheduledExecutorService.class), Clock.fixed(RECOVERED_AT, ZoneOffset.UTC),
+                new SourceCollectionRecoveryService(new IngestOperationLock(dataSource), records,
+                        transactionManager, Clock.fixed(RECOVERED_AT, ZoneOffset.UTC)),
+                Runnable::run, heartbeatExecutor, Clock.fixed(RECOVERED_AT, ZoneOffset.UTC),
                 new DataPipelineExecutionMapper(JsonMapper.builder().build()));
     }
 }
