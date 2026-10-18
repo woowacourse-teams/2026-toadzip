@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { parseRequest, processRequest, scanRequests, execute } from '../../scripts/admin-review-exchange.mjs'
 
 const root = fileURLToPath(new URL('../../.local/admin-review-exchange-tests/', import.meta.url))
@@ -94,7 +94,7 @@ test('실행 중 취소는 자식 실행 종료를 기다린 뒤 결과 발행�
 
 test('초기 설정은 폴더와 재실행 파일을 만들고 기존 시작 파일은 보존한다', async () => {
   const { directory } = await fixture()
-  const script = resolve('scripts/admin-review-exchange.mjs')
+  const script = fileURLToPath(new URL('../../scripts/admin-review-exchange.mjs', import.meta.url))
   await execute(process.execPath, [script, directory, '--setup'], { cwd: directory })
   const launcher = join(directory, 'start-review-worker.ps1')
   assert.match(await readFile(launcher, 'utf8'), /--watch/)
