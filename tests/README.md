@@ -4,6 +4,7 @@
 
 | 디렉터리·주요 파일 | 역할 |
 | --- | --- |
+| [`ci/test_flyway_migrations.py`](ci/test_flyway_migrations.py) | 임시 Git 이력으로 Flyway 버전 중복, 낮은 버전 추가와 기존 SQL의 수정·삭제·이름 변경 차단을 검증합니다. |
 | [`harness/`](harness/) | 한글 판별, 커밋·PR 규칙, 필수 문서·에이전트 구성, 로컬 자료 추적 금지 검사의 정상·실패 사례를 검증합니다. |
 | [`backup/`](backup/) | 실제 DB·AWS 접속 없이 백업 스크립트와 감시 코드의 동작을 검증합니다. |
 | [`backup/backup-test.sh`](backup/backup-test.sh) | Docker·AWS 명령을 모의 구현해 DB 백업, S3 파일 크기·보관 정책, 실패 알림 처리를 검증합니다. |
@@ -13,3 +14,6 @@
 
 알림 배포 설정은 `python3 tests/deployment/test_notification_environment.py`로 검증합니다.
 개인 `.env` 없이 공개 fixture만 사용해 기본 비활성화, 빌드/런타임 전달, 선택적 ADC 읽기 전용 마운트를 확인합니다.
+
+Flyway CI 검사는 `python3 -B tests/ci/test_flyway_migrations.py`로 검증합니다.
+DB·원격 저장소에 연결하지 않으며, `.local/`에 만든 테스트용 Git 저장소만 사용하고 종료 시 정리합니다.
